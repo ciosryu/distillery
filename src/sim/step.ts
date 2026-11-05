@@ -1,6 +1,7 @@
 import { CASK_STORAGE, CASKS, EQUIPMENT, INGREDIENTS, ROLE_INFO } from './content/catalog';
 import { liquorTaxPerBottle, regionOf, traditionalTaxFactor } from './content/regions';
 import { refreshBroker } from './broker';
+import { sumCashFlows } from './cashflow';
 import { bulkValuePerLPA, fulfillContracts, refreshCaskBids, refreshContractOffers, updateBulkIndex } from './bulk';
 import { clamp, weightedAverage } from './flavor';
 import { gainXp, refreshCandidates } from './hr';
@@ -163,7 +164,10 @@ export function advanceMonth(prev: GameState): GameState {
   const s = clone(prev);
   const { monthOfYear } = calendar(s);
   const cashStart = s.cash;
-  const report: MonthReport = { month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] };
+  // 직전 결산 이후 턴 사이 행동(현물 판매·대출·설비 구매 등)으로 움직인 현금 — 이번 보고서에 합치고 비운다
+  const offTurn = { ...(s.pendingCash ?? {}) };
+  s.pendingCash = {};
+  const report: MonthReport = { month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, spotBulkRevenue: (offTurn.spotBulk ?? 0) + (offTurn.caskBid ?? 0), offTurn, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] };
 
   pruneModifiers(s);
   s.rotatedThisMonth = 0;
@@ -241,8 +245,12 @@ export function advanceMonth(prev: GameState): GameState {
     if (s.negativeCashMonths >= BANKRUPT_AFTER_MONTHS) { s.status = 'bankrupt'; report.notes.push('파산했습니다'); }
   } else s.negativeCashMonths = 0;
 
-  report.netCash = s.cash - cashStart;
+  // 순현금 = 이번 턴 안의 변화 + 턴 사이 행동 → 직전 결산 이후 현금 변화 전체
+  report.netCash = s.cash - cashStart + sumCashFlows(offTurn);
   report.cashEnd = s.cash;
+  report.investingCash = sumCashFlows(offTurn, 'investing');
+  report.financingCash = sumCashFlows(offTurn, 'financing') - (report.expenses.principal ?? 0);
+  report.operatingCash = report.netCash - report.investingCash - report.financingCash;
   s.reports = [...s.reports, report].slice(-REPORTS_KEPT);
   s.month += 1;
   return s;

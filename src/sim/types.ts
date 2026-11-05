@@ -214,16 +214,35 @@ export interface Contract extends ContractTerms {
   prepaidRemaining: number;
 }
 
+/** 턴 사이 행동(즉시 입출금)의 현금 흐름 항목 — 분류는 cashflow.ts의 CASH_FLOW_LINES */
+export type CashFlowKey =
+  | 'spotBulk' | 'caskBid' | 'caskOwnership' | 'contractPrepay' | 'contractCancel' | 'bottling' | 'severance' | 'rotation' | 'event' | 'brokerCask' | 'other'
+  | 'casks' | 'usedCask' | 'equipment'
+  | 'loan' | 'loanRepay' | 'investment';
+/** 항목별 현금 흐름. 부호: 입금 +, 출금 − */
+export type CashFlows = Partial<Record<CashFlowKey, number>>;
+
 export interface MonthReport {
   month: number;
+  /** 제품(병입) 매출 */
   revenue: number;
   expenses: Record<string, number>;
+  /** 직전 결산 이후 현금 변화 = 이번 결산 월말 현금 − 직전 결산 월말 현금 (턴 사이 행동 포함) */
   netCash: number;
   cashEnd: number;
   sales: { productId: string; name: string; bottles: number; revenue: number; demandBottles: number }[];
   /** 원액 계약 납품 */
   bulk: { contractId: string; buyerName: string; deliveredLPA: number; revenue: number; penalty: number }[];
+  /** 원액 계약 납품 매출 (현물 판매는 spotBulkRevenue) */
   bulkRevenue: number;
+  /** 원액 현물 판매(탱크 로트·캐스크째, sellBulk) + 독립 병입자 캐스크 매각(acceptCaskBid). 구버전 세이브의 보고서에는 없다 */
+  spotBulkRevenue?: number;
+  /** 직전 결산 이후 턴 사이 행동으로 생긴 현금 흐름 (부호: 입금 +, 출금 −). 구버전 세이브의 보고서에는 없다 */
+  offTurn?: CashFlows;
+  /** 순현금 분해: 영업 + 투자 + 재무 = netCash. 투자 = 설비·빈 캐스크 매매, 재무 = 대출 실행·상환(정기 원금 포함)·투자 유치 */
+  operatingCash?: number;
+  investingCash?: number;
+  financingCash?: number;
   production: { recipeId: string; name: string; batches: number; lpa: number; cost: number }[];
   angelsShareL: number;
   liquorTaxRemitted: number;
@@ -352,6 +371,9 @@ export interface GameState {
   traditionalReleasedL: number;
   /** 작년 전통주 경감 대상 출고량(L) — 500㎘ 넘으면 올해 경감 없음 */
   traditionalPrevYearL: number;
+  /** 직전 결산 이후 턴 사이 행동으로 생긴 현금 흐름 — 다음 결산 보고서(offTurn)로 넘어가고 비워진다.
+   *  구버전(v5 초기) 세이브에는 없을 수 있어 선택 필드로 둔다 */
+  pendingCash?: CashFlows;
   reports: MonthReport[];
   nextId: number;
 }

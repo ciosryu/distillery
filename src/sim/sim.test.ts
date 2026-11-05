@@ -675,3 +675,63 @@ describe('v1.0 운영 시스템', () => {
     expect(s.localBuzz).toBeGreaterThan(0);
   });
 });
+
+describe('월간 보고서 — 턴 사이 현금 흐름', () => {
+  it('현물 벌크 판매(sellBulk)가 그달 보고서의 현물 매출·순현금에 잡힌다', () => {
+    let s = newGame({ seed: 21 });
+    s = applyAction(s, { type: 'setOrder', recipeId: recipeId(s, '싱글 몰트 — 언'), batchesPerMonth: 2 }).state;
+    s = advanceMonths(s, 1);
+    const lot = s.lots.find((l) => l.kind === 'malt')!;
+    const before = s.cash;
+    s = applyAction(s, { type: 'sellBulk', source: 'lot', id: lot.id }).state;
+    const sold = s.cash - before;
+    expect(sold).toBeGreaterThan(0);
+    expect(s.pendingCash?.spotBulk).toBe(sold);
+
+    s = advanceMonths(s, 1);
+    const r = s.reports.at(-1)!;
+    expect(r.spotBulkRevenue).toBe(sold);
+    expect(r.offTurn?.spotBulk).toBe(sold);
+    // 순현금 = 직전 결산 이후 현금 변화 전체 (현물 판매 포함)
+    expect(r.netCash).toBeCloseTo(r.cashEnd - s.reports.at(-2)!.cashEnd, 0);
+    expect(r.operatingCash).toBeCloseTo(r.netCash, 0);
+    // 결산 후 대기 중인 턴 사이 흐름은 비워진다
+    expect(s.pendingCash).toEqual({});
+  });
+
+  it('대출·캐스크 구매·IB/현물 매각까지 섞여도 순현금 = 월말 현금 차이, 영업+투자+재무 = 순현금', () => {
+    let s = newGame({ seed: 22 });
+    const cash0 = s.cash;
+    s = applyAction(s, { type: 'takeLoan', offerId: 'working', amount: 100_000_000 }).state;
+    s = applyAction(s, { type: 'buyCasks', caskType: 'ex_bourbon_barrel', qty: 2 }).state;
+    s = applyAction(s, { type: 'buyBrokerCask', offerId: s.brokerOffers[0]!.id }).state;
+    s = applyAction(s, { type: 'sellBulk', source: 'cask', id: s.casks.at(-1)!.id }).state;
+    s = advanceMonths(s, 1);
+    let r = s.reports.at(-1)!;
+    expect(r.netCash).toBeCloseTo(r.cashEnd - cash0, 0);
+    expect(r.offTurn?.loan).toBe(100_000_000);
+    expect(r.offTurn?.casks).toBeLessThan(0);
+    expect(r.offTurn?.brokerCask).toBeLessThan(0);
+    expect(r.spotBulkRevenue).toBeGreaterThan(0);
+    // 대출(실행 − 그달 원금 상환)은 재무, 빈 캐스크는 투자 — 영업 현금흐름에는 들어가지 않는다
+    expect(r.expenses.principal).toBeGreaterThan(0); // 운전자금 대출은 거치 기간이 없다
+    expect(r.financingCash).toBe(100_000_000 - r.expenses.principal!);
+    expect(r.investingCash).toBe(r.offTurn!.casks);
+    expect(r.operatingCash! + r.investingCash! + r.financingCash!).toBeCloseTo(r.netCash, 0);
+
+    // 행동 없는 달: 순현금은 예전과 같다(턴 안의 변화만), 정기 원금 상환은 재무
+    s = advanceMonths(s, 1);
+    r = s.reports.at(-1)!;
+    expect(r.offTurn).toEqual({});
+    expect(r.netCash).toBeCloseTo(r.cashEnd - s.reports.at(-2)!.cashEnd, 0);
+    expect(r.financingCash).toBe(-(r.expenses.principal ?? 0));
+  });
+
+  it('구버전 세이브(pendingCash 없음)도 그대로 진행된다', () => {
+    const { pendingCash: _p, ...old } = newGame({ seed: 23 });
+    let s = old as GameState;
+    s = applyAction(s, { type: 'buyCasks', caskType: 'ex_bourbon_barrel', qty: 1 }).state;
+    s = advanceMonths(s, 1);
+    expect(s.reports.at(-1)!.offTurn?.casks).toBeLessThan(0);
+  });
+});
