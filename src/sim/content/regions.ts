@@ -234,7 +234,8 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     domesticSpiritPremium: 0.1,
     bulkMarketDepth: 0.5,
     // 국내 블렌디드 위스키 산업이 거의 없다 → 그레인은 수출해야 하고, 스코틀랜드 대형 그레인 증류소와 경쟁한다 (#81)
-    grainSpotDepthLPA: 12_000,
+    // 12,000·20,000 둘 다 지배 전략 기준 통과 → 그레인 강세 정체성을 남기는 20,000 (§16.18)
+    grainSpotDepthLPA: 20_000,
     eventWeights: { market: 1.3, supply: 1.0, disaster: 1.5, regulation: 0.7, b2b: 0.6, opportunity: 1.1, people: 1.0 },
     // 싱글 몰트 애호 시장이라 매입 원액 병입은 저가 시장에만 머문다
     sourcedPenalty: 0.7,

@@ -1,5 +1,6 @@
 import { BULK, CASKS } from '../../sim/content/catalog';
-import { cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, lotQuality, monthLabel, spotBidPerLPA, spotQuote, type ContractAgingImpact, type GameState } from '../../sim';
+import { regionOf } from '../../sim/content/regions';
+import { cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, lotQuality, monthLabel, spotBidPerLPA, spotQuote, spotSaturation, type ContractAgingImpact, type GameState } from '../../sim';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';
@@ -82,6 +83,7 @@ export function B2B() {
       </Card>
 
       <Card title="현물 벌크 판매 — 탱크 원액 (몰트·그레인)">
+        {Number.isFinite(regionOf(s).grainSpotDepthLPA) && <p className="mb-2 text-xs text-amber-700 dark:text-amber-400">이 지역은 그레인 현물 시장이 얕습니다(깊이 {num(regionOf(s).grainSpotDepthLPA)} LPA). 최근 판매량 {num(s.spotSoldLPA?.grain ?? 0)} LPA — 많이 팔수록 단가가 떨어지고 매달 {pct(1 - BULK.spotDecay, 0)}씩 회복합니다.</p>}
         {!maltLots.length ? <Empty>탱크에 몰트·그레인 원액이 없습니다</Empty> : (
           <Table head={['원액', '액량', '도수', 'LPA', '품질', '단가(LPA)', '판매 금액', 'LPA당 원가', '']}>
             {maltLots.map((l) => (
@@ -91,7 +93,7 @@ export function B2B() {
                 <Td right>{pct(l.abv)}</Td>
                 <Td right>{num(l.volumeL * l.abv, 1)}</Td>
                 <Td right>{lotQuality(l)}</Td>
-                <Td right>{won(spotBidPerLPA(s, l))}</Td>
+                <Td right>{won(spotBidPerLPA(s, l))}{l.kind === 'grain' && spotSaturation(s, l, l.volumeL * l.abv) < 0.95 && <> <Badge tone="warn">전량 팔면 ×{spotSaturation(s, l, l.volumeL * l.abv).toFixed(2)}</Badge></>}</Td>
                 <Td right>{won(spotQuote(s, l, l.volumeL))}</Td>
                 <Td right>{won(l.costPerLPA)}</Td>
                 <Td><Button small onClick={() => dispatch({ type: 'sellBulk', source: 'lot', id: l.id })}>전량 판매</Button></Td>
