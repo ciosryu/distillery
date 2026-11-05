@@ -17,8 +17,12 @@ export type Flavor = Partial<Record<AxisId, number>>;
 /** 생산 주종 (원액 기준) */
 export type SpiritKind = 'soju' | 'gin' | 'malt' | 'grain' | 'baijiu';
 
-/** 시작·운영 지역 */
+/** 국가 (세제·GI·내수 시장·채널). 역사적 이유로 이름이 RegionId (PRD §3.6, 결정 #58) */
 export type RegionId = 'KR' | 'JP' | 'TW';
+export type CountryId = RegionId;
+
+/** 산지 (기후·물·원료·물류·고유 이벤트) — docs/design/regions.md Tier 1 */
+export type SiteId = 'gyeonggi' | 'andong' | 'jeju' | 'kanto' | 'kansai' | 'hokkaido' | 'yilan';
 
 /** 판매 카테고리 (라벨 판정 결과) */
 export type ProductCategory = 'soju_distilled' | 'gin' | 'whisky' | 'grain_whisky' | 'blended_whisky' | 'baijiu' | 'malt_spirit' | 'flavored_spirit';
@@ -73,6 +77,8 @@ export interface SpiritLot {
   /** 누적 원가(원/LPA) — 원재료·에너지·매입가 */
   costPerLPA: number;
   recipeId?: string;
+  /** 전통주(민속주·지역특산주) 자격으로 생산된 원액 — 한국 주세 감면·온라인 직판 대상 */
+  traditional?: boolean;
 }
 
 export interface Cask {
@@ -113,6 +119,10 @@ export interface Product {
   createdMonth: number;
   lastMonthSold: number;
   totalSold: number;
+  /** 전통주 자격 — 모든 구성 원액이 전통주 원액일 때 */
+  traditional?: boolean;
+  /** 지난달 판매 중 면세 채널 몫 */
+  lastMonthDutyFree?: number;
 }
 
 export interface StaffStats { a: number; b: number; c: number }
@@ -196,6 +206,10 @@ export interface MonthReport {
   production: { recipeId: string; name: string; batches: number; lpa: number; cost: number }[];
   angelsShareL: number;
   liquorTaxRemitted: number;
+  /** 전통주 주세 감면액 */
+  taxRelief?: number;
+  /** 면세 채널 판매 병수 */
+  dutyFreeBottles?: number;
   /** 이번 달 발생한 이벤트 제목 */
   events: string[];
   notes: string[];
@@ -241,13 +255,27 @@ export interface EventLogEntry { month: number; title: string; text: string }
 /** 독립 병입자(IB)의 캐스크 매입 제안 */
 export interface CaskBid { id: string; buyerName: string; caskId: string; price: number; expiresMonth: number }
 
+/** 산지 고유 상태 */
+export interface SiteState {
+  /** 취수 허가량 — 월 발효 투입 용량 상한(L). 제주 */
+  waterPermitL?: number;
+  /** 취수 증량 신청 — 결정 월에 승인 여부가 정해진다 */
+  permitApplication?: { decideMonth: number; addL: number; chance: number };
+  /** 전통주 출고량(L) — 연도별 감면 구간 판정 */
+  traditionalShipped?: { year: number; liters: number; lastYearLiters: number };
+}
+
 export interface GameState {
-  version: 4;
+  version: 5;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;
   startYear: number;
+  /** 국가 */
   regionId: RegionId;
+  /** 산지 (국가의 하위) */
+  siteId: SiteId;
+  siteState: SiteState;
   distilleryName: string;
   cash: number;
   status: 'running' | 'bankrupt';

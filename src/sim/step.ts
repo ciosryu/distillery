@@ -1,5 +1,5 @@
 import { CASKS, EQUIPMENT, ROLE_INFO } from './content/catalog';
-import { liquorTaxPerBottle, regionOf } from './content/regions';
+import { siteIngredientFactor, siteOf } from './content/sites';
 import { refreshBroker } from './broker';
 import { fulfillContracts, refreshCaskBids, refreshContractOffers, updateBulkIndex } from './bulk';
 import { clamp, weightedAverage } from './flavor';
@@ -9,6 +9,7 @@ import { runSales, updateAwareness, updateTrends } from './market';
 import { simulateBatch, stillDefOf, volumeDiscounts } from './production';
 import { effectivePriceIndex, mod, pruneModifiers } from './modifiers';
 import { runEvents } from './events';
+import { applyTerroir, fermentCapacityFactor, heatingCost, isTraditionalRecipe, resolveWaterPermit, seasonalEnergyFactor, waterPermitCap } from './sites';
 import { rngFor } from './rng';
 import type { FermenterType, GameState, MonthReport, SpiritLot, StaffRole } from './types';
 import { bestBy, calendar, clone, monthLabel, nid, staffOf } from './util';
@@ -21,7 +22,8 @@ export const distillerRunCapacity = (process: number) => 20 + process / 5;
 
 interface FermenterSlot { id: string; type: FermenterType; capacityL: number; daysLeft: number }
 
-function runProduction(s: GameState, report: MonthReport): { runsUsed: number } {
+function runProduction(s: GameState, report: MonthReport, monthOfYear: number): { runsUsed: number } {
+  const site = siteOf(s);
   const distillers = staffOf(s, 'distiller');
   let distillerRuns = distillers.reduce((t, d) => t + distillerRunCapacity(d.stats.b), 0);
   const lead = bestBy(distillers, 'b');
@@ -31,14 +33,17 @@ function runProduction(s: GameState, report: MonthReport): { runsUsed: number } 
     if (e.readyMonth > s.month) continue;
     const def = EQUIPMENT[e.catalogId];
     if (def?.kind === 'still') stillRuns.set(e.id, def.runsPerMonth);
-    if (def?.kind === 'fermenter') fermenters.push({ id: e.id, type: def.fermenterType, capacityL: def.capacityL, daysLeft: 30 });
+    if (def?.kind === 'fermenter') fermenters.push({ id: e.id, type: def.fermenterType, capacityL: def.capacityL, daysLeft: 30 * fermentCapacityFactor(s, monthOfYear) });
   }
+  // 취수 허가 (제주): 월 발효 투입 용량 상한
+  let waterLeftL = waterPermitCap(s);
   // 소주는 옹기 우선
   fermenters.sort((a, b) => (a.type === 'onggi' ? -1 : 0) - (b.type === 'onggi' ? -1 : 0));
   let runsUsed = 0;
   if (mod(s, 'production') === 0) { if (s.orders.length) report.notes.push('생산 중단 — 이번 달은 증류하지 못했습니다'); return { runsUsed }; }
-  // 원재료 가격 = 시세 지수 × 이벤트 보정 × 대량 구매 할인
+  // 원재료 가격 = 시세 지수 × 이벤트 보정 × 대량 구매 할인 × 산지(원료 단가·운송 할증·겨울 에너지)
   const prices = effectivePriceIndex(s, volumeDiscounts(s));
+  for (const k of Object.keys(prices)) prices[k] = prices[k]! * (k === 'energy' ? seasonalEnergyFactor(s, monthOfYear) : siteIngredientFactor(site, k));
   const boughtKg: Record<string, number> = {};
 
   for (const order of s.orders) {
@@ -55,16 +60,18 @@ function runProduction(s: GameState, report: MonthReport): { runsUsed: number } 
       if (distillerRuns < recipe.runs) { blocked = distillers.length ? '디스틸러 운전 한도' : '디스틸러 없음'; break; }
       let ferm: FermenterSlot | undefined;
       if (recipe.kind !== 'gin') {
+        if (waterLeftL < still.chargeL) { blocked = '취수 허가량'; break; }
         const need = recipe.fermentDays + 2;
         ferm = fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need && (recipe.kind === 'soju' || f.type !== 'onggi'))
           ?? fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need);
         if (!ferm) { blocked = '발효조 부족'; break; }
         ferm.daysLeft -= need;
+        waterLeftL -= still.chargeL;
       }
       stillRuns.set(stillInst.id, (stillRuns.get(stillInst.id) ?? 0) - recipe.runs);
       distillerRuns -= recipe.runs;
       runsUsed += recipe.runs;
-      const res = simulateBatch(recipe, still, ferm?.type ?? null, lead, prices, stillInst.feintsLPA ?? 0);
+      const res = simulateBatch(recipe, still, ferm?.type ?? null, lead, prices, stillInst.feintsLPA ?? 0, site.water);
       stillInst.feintsLPA = res.feintsOutLPA;
       s.cash -= res.cost;
       for (const [id, kg] of Object.entries(res.ingredientsKg)) boughtKg[id] = (boughtKg[id] ?? 0) + kg;
@@ -79,6 +86,7 @@ function runProduction(s: GameState, report: MonthReport): { runsUsed: number } 
     const lpa = parts.reduce((t, p) => t + p.lpa, 0);
     const volumeL = parts.reduce((t, p) => t + p.lot.volumeL, 0);
     const cost = parts.reduce((t, p) => t + p.cost, 0);
+    const traditional = isTraditionalRecipe(site, recipe);
     s.lots.push({
       ...parts[0]!.lot,
       id: nid(s, 'L'),
@@ -87,6 +95,7 @@ function runProduction(s: GameState, report: MonthReport): { runsUsed: number } 
       abv: lpa / volumeL,
       flavor: weightedAverage(parts.map((p) => ({ flavor: p.lot.flavor, weight: p.lpa }))),
       costPerLPA: cost / lpa,
+      ...(traditional ? { traditional: true } : {}),
     });
     if (recipe.kind === 'soju') s.flags.producedSoju = true;
     report.production.push({ recipeId: recipe.id, name: recipe.name, batches: parts.length, lpa, cost });
@@ -97,20 +106,21 @@ function runProduction(s: GameState, report: MonthReport): { runsUsed: number } 
 }
 
 function runMaturation(s: GameState, report: MonthReport, monthOfYear: number): void {
-  const region = regionOf(s);
-  const climate = { tempC: region.tempC[monthOfYear - 1]!, humidity: region.humidity[monthOfYear - 1]! };
+  const site = siteOf(s);
+  const climate = { tempC: site.tempC[monthOfYear - 1]!, humidity: site.humidity[monthOfYear - 1]! };
   const wm = staffOf(s, 'warehouse');
   const control = Math.max(0, ...wm.map((x) => x.stats.b));
   const observe = Math.max(0, ...wm.map((x) => x.stats.a));
   const diligence = Math.max(0, ...wm.map((x) => x.stats.c));
   const rng = rngFor(s.seed, s.month, 'maturation');
-  const evap = mod(s, 'evaporation');
+  // 엔젤스 셰어 = 기후 모델 × 이벤트 보정 × 산지 보정 (regions.md §2.2)
+  const evap = mod(s, 'evaporation') * site.angelShareFactor;
   let lost = 0;
   s.casks = s.casks.map((cask) => {
     if (!cask.contents) return cask;
     const res = matureCask(cask, climate, { control, evaporationFactor: evap });
     lost += res.lostL;
-    let next = res.cask;
+    let next = applyTerroir(site, res.cask, climate.tempC);
     // 누수: 성실 스탯이 확률을, 관찰 스탯이 손실량을 줄임
     if (rng.chance(0.002 * (1 - diligence / 150) * (CASKS[cask.typeId].leakFactor ?? 1))) {
       const lossShare = rng.range(0.03, 0.08) * (1 - observe / 150);
@@ -125,14 +135,15 @@ function runMaturation(s: GameState, report: MonthReport, monthOfYear: number): 
   report.angelsShareL = lost;
 }
 
-function runFinance(s: GameState, report: MonthReport): void {
+function runFinance(s: GameState, report: MonthReport, monthOfYear: number): void {
   const pay = (key: string, amount: number) => {
     if (amount <= 0) return;
     s.cash -= amount;
     report.expenses[key] = (report.expenses[key] ?? 0) + amount;
   };
   pay('salaries', s.staff.reduce((t, x) => t + x.salary, 0));
-  pay('overhead', regionOf(s).overheadPerMonth);
+  pay('overhead', siteOf(s).overheadPerMonth);
+  pay('heating', heatingCost(s, monthOfYear));
   pay('maintenance', s.equipment.reduce((t, e) => t + (e.readyMonth <= s.month ? (EQUIPMENT[e.catalogId]?.maintenance ?? 0) : 0), 0));
   pay('marketing', s.marketingBudget);
   for (const loan of s.loans) {
@@ -155,24 +166,27 @@ export function advanceMonth(prev: GameState): GameState {
   const report: MonthReport = { month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] };
 
   pruneModifiers(s);
+  resolveWaterPermit(s, report);
   runEvents(s, report, monthOfYear);
   for (const e of s.equipment) if (e.readyMonth === s.month && s.month > 0) report.notes.push(`${EQUIPMENT[e.catalogId]?.nameKo ?? e.catalogId} 가동 시작`);
 
-  const { runsUsed } = runProduction(s, report);
+  const { runsUsed } = runProduction(s, report, monthOfYear);
   runMaturation(s, report, monthOfYear);
   fulfillContracts(s, report);
 
   const sales = runSales(s, rngFor(s.seed, s.month, 'sales'), monthOfYear);
   report.sales = sales;
   report.revenue = sales.reduce((t, x) => t + x.revenue, 0);
-  report.liquorTaxRemitted = Math.round(sales.reduce((t, x) => { const p = s.products.find((q) => q.id === x.productId); return t + (p ? x.bottles * liquorTaxPerBottle(regionOf(s), p.price, p.bottleMl, p.abv) : 0); }, 0));
+  report.liquorTaxRemitted = Math.round(sales.reduce((t, x) => t + x.tax, 0));
+  report.taxRelief = Math.round(sales.reduce((t, x) => t + x.relief, 0));
+  report.dutyFreeBottles = sales.reduce((t, x) => t + x.dutyFree, 0);
   s.cash += report.revenue;
   const distribution = sales.reduce((t, x) => t + x.distribution, 0);
   if (distribution > 0) { s.cash -= distribution; report.expenses.distribution = distribution; }
   updateAwareness(s, sales);
   updateTrends(s, rngFor(s.seed, s.month, 'trend'));
 
-  runFinance(s, report);
+  runFinance(s, report, monthOfYear);
 
   const activity: Record<StaffRole, number> = {
     distiller: runsUsed / 2,
@@ -213,7 +227,7 @@ export function advanceMonths(s: GameState, n: number): GameState {
 }
 
 export function monthlyFixedCost(s: GameState): number {
-  return s.staff.reduce((t, x) => t + x.salary, 0) + regionOf(s).overheadPerMonth + s.marketingBudget +
+  return s.staff.reduce((t, x) => t + x.salary, 0) + siteOf(s).overheadPerMonth + s.marketingBudget +
     s.equipment.reduce((t, e) => t + (EQUIPMENT[e.catalogId]?.maintenance ?? 0), 0) +
     s.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0);
 }

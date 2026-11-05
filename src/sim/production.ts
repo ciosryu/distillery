@@ -1,6 +1,7 @@
 import { BOTANICALS, EQUIPMENT, GNS, INGREDIENTS, VOLUME_DISCOUNT_TIERS, YEASTS, type EquipmentDef } from './content/catalog';
 import { addScaled, clampFlavor, distillFlavor, heartsFraction } from './flavor';
 import { regionOf } from './content/regions';
+import { siteOf, type WaterId } from './content/sites';
 import type { Flavor, FermenterType, GameState, Recipe, Staff } from './types';
 
 type StillDef = Extract<EquipmentDef, { kind: 'still' }>;
@@ -37,6 +38,7 @@ export function stillDefOf(state: GameState, stillId: string): StillDef | null {
 export function validateRecipe(state: GameState, r: Recipe): string[] {
   const errs: string[] = [];
   const region = regionOf(state);
+  const site = siteOf(state);
   if (!region.allowedKinds.includes(r.kind)) errs.push(`${region.nameKo}에서는 이 주종을 생산할 수 없습니다`);
   const still = stillDefOf(state, r.stillId);
   if (!still) errs.push('증류기를 선택하세요');
@@ -48,6 +50,7 @@ export function validateRecipe(state: GameState, r: Recipe): string[] {
     for (const b of r.botanicals) {
       const def = BOTANICALS[b.botanicalId];
       if (def?.regions && !def.regions.includes(region.id)) errs.push(`${def.nameKo}은(는) 이 지역에서 구할 수 없습니다`);
+      if (def?.sites && !def.sites.includes(site.id)) errs.push(`${def.nameKo}은(는) ${site.nameKo}에서만 구할 수 있습니다`);
     }
   } else {
     const sum = r.mashBill.reduce((s, m) => s + m.ratio, 0);
@@ -56,12 +59,20 @@ export function validateRecipe(state: GameState, r: Recipe): string[] {
       const ing = INGREDIENTS[m.ingredientId];
       if (!ing) errs.push(`알 수 없는 원재료: ${m.ingredientId}`);
       else if (!(ing.kinds as string[]).includes(r.kind)) errs.push(`${ing.nameKo}은(는) 이 주종에 쓸 수 없습니다`);
+      else if (ing.sites && !ing.sites.includes(site.id)) errs.push(`${ing.nameKo}은(는) ${site.nameKo}에서만 구할 수 있습니다`);
     }
     if (r.fermentDays < 2 || r.fermentDays > 28) errs.push('발효 기간은 2~28일');
   }
   if (r.pressure === 'vacuum' && still && !still.vacuum) errs.push('감압 증류는 감압 증류기에서만 가능합니다');
   return errs;
 }
+
+/** 물이 발효에 주는 효과 [튜닝] — 연수 = 과일·플로럴↑·이취↓, 화산암반수 = 이취↓·과일↑·수율↑ */
+export const WATER_EFFECT: Record<WaterId, { offnote: number; fruity: number; fruitAdd: number; yield: number }> = {
+  medium: { offnote: 1, fruity: 1, fruitAdd: 0, yield: 1 },
+  soft: { offnote: 0.7, fruity: 1.1, fruitAdd: 0, yield: 1 },
+  volcanic: { offnote: 0.8, fruity: 1, fruitAdd: 5, yield: 1.03 },
+};
 
 /** 배치 1회 시뮬레이션 (결정론적) */
 export function simulateBatch(
@@ -71,6 +82,7 @@ export function simulateBatch(
   distiller: Staff | undefined,
   priceIndex: Record<string, number>,
   feintsInLPA: number,
+  water: WaterId = 'medium',
 ): BatchResult {
   const warnings: string[] = [];
   const ingredientsKg: Record<string, number> = {};
@@ -109,8 +121,9 @@ export function simulateBatch(
     const washAbv = WASH_ABV[r.kind];
     chargeLPA = still.chargeL * washAbv;
     const yeast = YEASTS[r.yeast];
+    const w = WATER_EFFECT[water];
     const avgLpaPerKg = r.mashBill.reduce((s, m) => s + m.ratio * (INGREDIENTS[m.ingredientId]?.lpaPerKg ?? 0), 0);
-    const kgTotal = chargeLPA / Math.max(0.01, avgLpaPerKg * yeast.yieldFactor);
+    const kgTotal = chargeLPA / Math.max(0.01, avgLpaPerKg * yeast.yieldFactor * w.yield);
     for (const m of r.mashBill) {
       const ing = INGREDIENTS[m.ingredientId];
       if (!ing) continue;
@@ -125,13 +138,17 @@ export function simulateBatch(
     flavor.floral = (flavor.floral ?? 0) + 6 * ester * yeast.ester;
     flavor.tropical = (flavor.tropical ?? 0) + yeast.tropical * ester;
     flavor.acetic = yeast.acetic + (r.kind === 'malt' ? Math.max(0, r.fermentDays - 6) * 2 : 0);
+    // 물: 발효 단계의 과일·플로럴과 산패
+    flavor.fresh_fruit = (flavor.fresh_fruit ?? 0) * w.fruity + w.fruitAdd;
+    flavor.floral = (flavor.floral ?? 0) * w.fruity;
+    flavor.acetic *= w.offnote;
     if (fermenterType === 'onggi') {
       flavor.nuruk_rice = (flavor.nuruk_rice ?? 0) * 1.1;
       flavor.earthy = (flavor.earthy ?? 0) + 3;
       flavor.fresh_fruit = (flavor.fresh_fruit ?? 0) + 3;
     }
-    // 발효가 만드는 기본 이취·무게감
-    flavor.solvent = 30;
+    // 발효가 만드는 기본 이취·무게감 (물이 초류취를 조금 바꾼다)
+    flavor.solvent = 30 * (0.5 + 0.5 * w.offnote);
     flavor.feinty = 35;
     flavor.sulfur_meaty = r.kind === 'malt' ? 25 : r.kind === 'grain' ? 15 : 12;
     flavor.oily_waxy = 20;
@@ -185,16 +202,23 @@ export function simulateBatch(
     flavor.harshness = (flavor.harshness ?? 0) - 10;
   }
   if (still.condenser === 'worm_tub') bodyBonus += 8;
+  // 석탄 직화: 솥 바닥이 국부 가열돼 무겁고 구수한 원액 (요이치형)
+  if (still.directFire && r.kind !== 'gin') {
+    bodyBonus += 6;
+    flavor.oily_waxy = (flavor.oily_waxy ?? 0) + 5;
+    flavor.toasted_grain = (flavor.toasted_grain ?? 0) + 4;
+  }
   flavor.body = (flavor.body ?? 0) + bodyBonus;
 
-  // 디스틸러: 공정 스탯이 이취를 줄임 (결과 확률 아님 — 결정론적 보정)
-  const offMul = distiller ? 1.25 - 0.5 * (distiller.stats.b / 100) : 1.4;
+  // 디스틸러: 공정 스탯이 이취를 줄임 (결과 확률 아님 — 결정론적 보정). 직화는 불 조절 숙련이 더 필요하다
+  const fireSkill = still.directFire ? 1.15 - 0.3 * ((distiller?.stats.b ?? 0) / 100) : 1;
+  const offMul = (distiller ? 1.25 - 0.5 * (distiller.stats.b / 100) : 1.4) * fireSkill;
   for (const k of ['solvent', 'feinty', 'acetic'] as const) flavor[k] = (flavor[k] ?? 0) * offMul;
   if (distiller) flavor.fresh_fruit = (flavor.fresh_fruit ?? 0) * (1 + 0.1 * (distiller.stats.a / 100));
   else warnings.push('디스틸러 없이 생산 — 품질 저하');
 
   // 규모의 경제: 큰 증류기일수록 L당 에너지비가 낮다
-  cost += r.runs * still.chargeL * ENERGY_PER_L_RUN * Math.pow(1000 / still.chargeL, 0.3) * (priceIndex.energy ?? 1);
+  cost += r.runs * still.chargeL * ENERGY_PER_L_RUN * Math.pow(1000 / still.chargeL, 0.3) * (priceIndex.energy ?? 1) * (still.directFire ? 1.15 : 1);
 
   return {
     lpa,

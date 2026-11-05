@@ -2,8 +2,9 @@ import demandData from '../../../data/market/base-demand.json';
 import type { CaskTypeId, GameState, ProductCategory, RegionId, SpiritKind } from '../types';
 import type { EventCategory } from './events';
 
-// 지역 정의 (PRD §3.5 국가별 전략 정체성). 기후는 대표 산지 근사치, 세율·시장 규모는 [튜닝]·[확인 필요].
-// 게임 통화는 원화(KRW)로 통일한다.
+// 국가 정의 (PRD §3.5 국가별 전략 정체성, §3.6 국가/산지 2단 구조 — 결정 #58).
+// 국가 = 세제·GI·내수 시장·채널·B2B. 기후·물·원료·물류·고정비는 산지(content/sites.ts)에 있다.
+// 세율·시장 규모는 [튜닝]·[확인 필요]. 게임 통화는 원화(KRW)로 통일한다.
 
 interface DemandRecord { id: string; cases9L: number | null }
 const records = (demandData as { records: DemandRecord[] }).records;
@@ -26,16 +27,25 @@ export interface MarketDef {
   shareCap: number;
 }
 
-export interface RegionDef {
+/** 전통주 주세 감면 (한국: 민속주·지역특산주) — 출고량 구간별 감면율 */
+export interface TraditionalRelief {
+  /** 연간 누적 출고량(L)이 uptoL 미만인 동안 relief 비율만큼 주세 감면 */
+  tiers: { uptoL: number; relief: number }[];
+  /** 전년 출고량이 이 값을 넘으면 감면 자격 상실 */
+  eligibleMaxLastYearL: number;
+  /** 온라인 직판(통신판매) 허용 → 유통 커버리지 가산 */
+  onlineCoverage: number;
+  label: string;
+}
+
+export interface CountryDef {
   id: RegionId;
   nameKo: string;
-  /** 월별 평균 기온(°C)·상대습도(%), 1월~12월 */
-  tempC: number[];
-  humidity: number[];
-  /** 주세: 종가세율(출고가 대비) + 교육세(주세 대비), 종량세(원/LPA), 부가세 */
-  tax: { adValorem: number; education: number; specificPerLPA: number; vat: number; label: string };
+  /** 주세: 종가세율(출고가 대비) + 교육세(주세 대비), 종량세(원/LPA), 부가세.
+   *  baseDeduction = 기준판매비율(한국) — 국산 주류 과세표준(출고가)에서 차감하는 비율, 카테고리별 */
+  tax: { adValorem: number; education: number; specificPerLPA: number; vat: number; label: string; baseDeduction?: Partial<Record<ProductCategory, number>> };
+  traditional?: TraditionalRelief;
   retailMarkup: number;
-  overheadPerMonth: number;
   /** 인건비 배수 (한국 = 1) */
   laborCost: number;
   /** 이 지역에서 생산 가능한 주종 (지리적 표시·문화권 규칙) */
@@ -51,9 +61,12 @@ export interface RegionDef {
   eventWeights: Partial<Record<EventCategory, number>>;
   /** 매입(수입) 원액 비중에 대한 매력도 감점 계수 (일본: 재패니즈 위스키 표기 기준) */
   sourcedPenalty: number;
-  /** 지역 특산 캐스크는 싸고, 다른 지역 캐스크는 비싸다 */
+  /** 지역 특산 캐스크는 싸고, 다른 지역 캐스크는 비싸다 (산지 배수가 추가로 곱해진다) */
   caskPriceFactor: Partial<Record<CaskTypeId, number>>;
 }
+
+/** 호환용 별칭 — 기존 코드의 RegionDef는 이제 국가 정의다 */
+export type RegionDef = CountryDef;
 
 const zero = (src: string): MarketDef => ({ baseCases: 0, baseSource: src, refConsumerPricePerL: 50_000, refAbv: 0.4, elasticity: 1.5, shareCap: 0 });
 
@@ -61,21 +74,29 @@ const krWhisky = casesOf('KR.whisky_total.imports.2024');
 const jpWhisky = casesOf('JP.whisky_total.tax_volume.FY2024?');
 const twWhisky = casesOf('TW.whisky_total.imports.2023');
 
-export const REGIONS: Record<RegionId, RegionDef> = {
+export const REGIONS: Record<RegionId, CountryDef> = {
   KR: {
     id: 'KR',
-    nameKo: '대한민국 (경기 내륙)',
-    tempC: [-3, 0, 6, 13, 18, 23, 26, 26, 21, 14, 6, -1],
-    humidity: [60, 58, 58, 60, 65, 72, 82, 80, 74, 68, 65, 62],
-    tax: { adValorem: 0.72, education: 0.3, specificPerLPA: 0, vat: 0.1, label: '종가세 72% + 교육세(주세의 30%) + 부가세 10%' },
+    nameKo: '대한민국',
+    // 기준판매비율: 국세청 고시 제2026-23호 (소주 23.2%, 위스키 28.0%, 일반증류주 21.3%, 리큐르 22.7%).
+    // 국산 주류는 유통 이윤이 붙은 출고가에, 수입 주류는 그 전의 신고가에 과세돼 생기는 역차별을 줄이려고 과세표준에서 뺀다.
+    // 게임 카테고리 매핑: 진·고량주·3년 미만 곡물 스피릿·기타 증류주 = 일반증류주 [튜닝]
+    tax: {
+      adValorem: 0.72, education: 0.3, specificPerLPA: 0, vat: 0.1,
+      label: '종가세 72%(기준판매비율 차감 후 과세) + 교육세(주세의 30%) + 부가세 10%',
+      baseDeduction: { soju_distilled: 0.232, whisky: 0.28, blended_whisky: 0.28, grain_whisky: 0.28, gin: 0.213, baijiu: 0.213, malt_spirit: 0.213, flavored_spirit: 0.213 },
+    },
+    // 전통주 주세 감면 (2025년 시행령 개정): 증류주 전년 출고 500kL 이하면 자격, 처음 100kL 50%·100~200kL 30% 감면.
+    // 전통주는 온라인 통신판매 허용 (일반 증류주는 택배 판매 불가)
+    traditional: { tiers: [{ uptoL: 100_000, relief: 0.5 }, { uptoL: 200_000, relief: 0.3 }], eligibleMaxLastYearL: 500_000, onlineCoverage: 0.15, label: '전통주 주세 감면(100kL까지 50%·200kL까지 30%) + 온라인 직판' },
     retailMarkup: 1.35,
-    overheadPerMonth: 10_000_000,
     laborCost: 1,
     allowedKinds: ['soju', 'gin', 'malt', 'grain', 'baijiu'],
     market: {
       soju_distilled: { baseCases: casesOf('KR.soju_distilled.domestic_release.2025'), baseSource: 'KR.soju_distilled (TASIS 2025)', refConsumerPricePerL: 40_000, refAbv: 0.25, elasticity: 1.6, shareCap: 0.2 },
       // 한국 진 시장은 작다 — 칵테일 바에서 제한적으로 쓰이는 정도 [결정 #45, 수치 튜닝]
-      gin: { baseCases: 15_000, baseSource: '추정: 칵테일용 소규모 시장', refConsumerPricePerL: 32_000, refAbv: 0.43, elasticity: 2.2, shareCap: 0.2 },
+      // v0.8: 기준판매비율(일반증류주 21.3%) 반영 후에도 마진 사다리(#32, 진 10~25%)를 지키도록 기준가 32,000 → 29,000원/L [튜닝]
+      gin: { baseCases: 15_000, baseSource: '추정: 칵테일용 소규모 시장', refConsumerPricePerL: 29_000, refAbv: 0.43, elasticity: 2.2, shareCap: 0.2 },
       whisky: { baseCases: Math.round(krWhisky * 0.4), baseSource: 'KR.whisky_total × 40% (싱글 몰트 몫, 추정)', refConsumerPricePerL: 170_000, refAbv: 0.43, elasticity: 1.1, shareCap: 0.01 },
       blended_whisky: { baseCases: Math.round(krWhisky * 0.5), baseSource: 'KR.whisky_total × 50% (블렌디드 몫, 추정)', refConsumerPricePerL: 90_000, refAbv: 0.4, elasticity: 1.5, shareCap: 0.012 },
       grain_whisky: { baseCases: Math.round(krWhisky * 0.1), baseSource: 'KR.whisky_total × 10% (추정)', refConsumerPricePerL: 100_000, refAbv: 0.43, elasticity: 1.3, shareCap: 0.02 },
@@ -94,13 +115,10 @@ export const REGIONS: Record<RegionId, RegionDef> = {
   },
   JP: {
     id: 'JP',
-    nameKo: '일본 (간토 내륙)',
-    tempC: [3, 4, 8, 13, 18, 21, 25, 26, 22, 16, 10, 5],
-    humidity: [52, 52, 58, 63, 68, 76, 78, 76, 76, 72, 66, 56],
+    nameKo: '일본',
     // 증류주 20% 이상: kl당 20만 엔 + 1%마다 1만 엔 ≒ LPA당 1,000엔 [확인 필요]
     tax: { adValorem: 0, education: 0, specificPerLPA: 9_000, vat: 0.1, label: '종량세 약 9,000원/LPA (LPA당 약 1,000엔) + 소비세 10%' },
     retailMarkup: 1.3,
-    overheadPerMonth: 12_000_000,
     laborCost: 1.25,
     allowedKinds: ['soju', 'gin', 'malt', 'grain'],
     market: {
@@ -128,13 +146,10 @@ export const REGIONS: Record<RegionId, RegionDef> = {
   },
   TW: {
     id: 'TW',
-    nameKo: '대만 (이란현)',
-    tempC: [16, 16, 18, 21, 25, 27, 29, 29, 27, 24, 21, 17],
-    humidity: [83, 84, 83, 82, 82, 82, 78, 79, 80, 82, 83, 82],
+    nameKo: '대만',
     // 증류주: 리터·도수당 NT$2.5 ≒ LPA당 NT$250 [확인 필요]
     tax: { adValorem: 0, education: 0, specificPerLPA: 10_750, vat: 0.05, label: '종량세 약 10,750원/LPA (LPA당 NT$250) + 영업세 5%' },
     retailMarkup: 1.35,
-    overheadPerMonth: 7_000_000,
     laborCost: 0.8,
     allowedKinds: ['gin', 'malt', 'grain'],
     market: {
@@ -159,35 +174,47 @@ export const REGIONS: Record<RegionId, RegionDef> = {
 };
 
 export const KOREA = REGIONS.KR;
+export const COUNTRIES = REGIONS;
 
-export function regionOf(s: Pick<GameState, 'regionId'>): RegionDef {
+export function regionOf(s: Pick<GameState, 'regionId'>): CountryDef {
   return REGIONS[s.regionId] ?? REGIONS.KR;
 }
+export const countryOf = regionOf;
 
 /** 도수 반영 기준 소비자가(원/L) */
-export function refPricePerL(region: RegionDef, category: ProductCategory, abv: number): number {
+export function refPricePerL(region: CountryDef, category: ProductCategory, abv: number): number {
   const m = region.market[category];
   return m.refConsumerPricePerL * Math.pow(abv / m.refAbv, 0.7);
 }
 
-/** 병당 주세 (종가세 + 교육세 + 종량세) */
-export function liquorTaxPerBottle(region: RegionDef, price: number, bottleMl: number, abv: number): number {
+/** 세금 계산 옵션: 카테고리(기준판매비율 적용), 전통주 감면율 */
+export interface TaxOptions { category?: ProductCategory; relief?: number }
+
+/** 과세표준 비율 = 1 − 기준판매비율 (카테고리를 모르면 차감 없음) */
+export function taxBaseRatio(region: CountryDef, category?: ProductCategory): number {
+  return 1 - (category ? region.tax.baseDeduction?.[category] ?? 0 : 0);
+}
+
+/** 병당 주세 (종가세 + 교육세 + 종량세) × (1 − 전통주 감면율) */
+export function liquorTaxPerBottle(region: CountryDef, price: number, bottleMl: number, abv: number, opts: TaxOptions = {}): number {
   const lpa = (bottleMl / 1000) * abv;
-  return price * region.tax.adValorem * (1 + region.tax.education) + region.tax.specificPerLPA * lpa;
+  const gross = price * taxBaseRatio(region, opts.category) * region.tax.adValorem * (1 + region.tax.education) + region.tax.specificPerLPA * lpa;
+  return gross * (1 - (opts.relief ?? 0));
 }
 
 /** 출고가 → 병당 소비자가 */
-export function consumerPrice(region: RegionDef, price: number, bottleMl: number, abv: number, markupFactor = 1): number {
-  return (price + liquorTaxPerBottle(region, price, bottleMl, abv)) * (1 + region.tax.vat) * region.retailMarkup * markupFactor;
+export function consumerPrice(region: CountryDef, price: number, bottleMl: number, abv: number, markupFactor = 1, opts: TaxOptions = {}): number {
+  return (price + liquorTaxPerBottle(region, price, bottleMl, abv, opts)) * (1 + region.tax.vat) * region.retailMarkup * markupFactor;
 }
 
 /** 병당 소비자가 → 그 소비자가가 되는 출고가 (권장가 계산용) */
-export function priceForConsumer(region: RegionDef, consumer: number, bottleMl: number, abv: number): number {
+export function priceForConsumer(region: CountryDef, consumer: number, bottleMl: number, abv: number, opts: TaxOptions = {}): number {
   const lpa = (bottleMl / 1000) * abv;
-  const beforeTax = consumer / ((1 + region.tax.vat) * region.retailMarkup) - region.tax.specificPerLPA * lpa;
-  return Math.max(100, beforeTax / (1 + region.tax.adValorem * (1 + region.tax.education)));
+  const keep = 1 - (opts.relief ?? 0);
+  const beforeTax = consumer / ((1 + region.tax.vat) * region.retailMarkup) - region.tax.specificPerLPA * lpa * keep;
+  return Math.max(100, beforeTax / (1 + taxBaseRatio(region, opts.category) * region.tax.adValorem * (1 + region.tax.education) * keep));
 }
 
-export function categoryName(region: RegionDef, category: ProductCategory, fallback: string): string {
+export function categoryName(region: CountryDef, category: ProductCategory, fallback: string): string {
   return region.categoryNames?.[category] ?? fallback;
 }

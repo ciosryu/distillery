@@ -6,6 +6,7 @@ import { executeBlend, type BlendComponent, type BottleOptions } from './blendin
 import { MAX_RECHAR, recharCask } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
+import { applyWaterPermit, equipmentBlocker, equipmentCost } from './sites';
 import type { CaskTypeId, GameState, Recipe } from './types';
 import { annuityPayment, clone, nid, warehouseCapacity } from './util';
 
@@ -29,7 +30,9 @@ export type Action =
   | { type: 'acceptContract'; offerId: string }
   | { type: 'cancelContract'; contractId: string }
   | { type: 'resolveEvent'; eventId: string; choice: number }
-  | { type: 'acceptCaskBid'; bidId: string };
+  | { type: 'acceptCaskBid'; bidId: string }
+  /** 취수 허가 증량 신청 (제주) */
+  | { type: 'applyWaterPermit' };
 
 export interface ActionResult { state: GameState; error?: string; message?: string }
 
@@ -64,8 +67,11 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
     case 'buyEquipment': {
       const def = EQUIPMENT[a.catalogId];
       if (!def) return fail(prev, '알 수 없는 설비');
-      if (s.cash < def.cost) return fail(prev, '현금이 부족합니다');
-      s.cash -= def.cost;
+      const blocker = equipmentBlocker(s, def);
+      if (blocker) return fail(prev, blocker);
+      const cost = equipmentCost(s, def);
+      if (s.cash < cost) return fail(prev, '현금이 부족합니다');
+      s.cash -= cost;
       s.equipment.push({ id: nid(s, 'E'), catalogId: def.id, readyMonth: s.month + def.leadMonths, ...(def.kind === 'still' ? { feintsLPA: 0 } : {}) });
       return { state: s, message: `${def.nameKo} 발주 — ${def.leadMonths}개월 후 설치` };
     }
@@ -229,6 +235,12 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       const text = resolvePending(s, a.eventId, a.choice);
       if (!text) return fail(prev, '처리할 이벤트가 없습니다');
       return { state: s, message: text };
+    }
+    case 'applyWaterPermit': {
+      const err = applyWaterPermit(s);
+      if (err) return fail(prev, err);
+      const app = s.siteState.permitApplication!;
+      return { state: s, message: `취수 증량 신청 접수 — 약 ${app.decideMonth - s.month}개월 뒤 결과 (승인 확률 ${Math.round(app.chance * 100)}%)` };
     }
     case 'cancelContract': {
       const c = s.contracts.find((x) => x.id === a.contractId);

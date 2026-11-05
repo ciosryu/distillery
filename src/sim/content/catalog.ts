@@ -1,4 +1,4 @@
-import type { CaskTypeId, CondenserType, Flavor, FermenterType, RegionId, StillType, WoodId, YeastId } from '../types';
+import type { CaskTypeId, CondenserType, Flavor, FermenterType, RegionId, SiteId, StillType, WoodId, YeastId } from '../types';
 
 // 콘텐츠 카탈로그 — 모든 수치 [튜닝]. 가격은 KRW.
 
@@ -11,6 +11,8 @@ export interface IngredientDef {
   flavor: Flavor;
   /** 매시에 쓰는 주종 */
   kinds: ('soju' | 'malt' | 'grain' | 'baijiu')[];
+  /** 산지 한정 원료 (없으면 어디서나) */
+  sites?: SiteId[];
 }
 
 export const INGREDIENTS: Record<string, IngredientDef> = {
@@ -29,13 +31,19 @@ export const INGREDIENTS: Record<string, IngredientDef> = {
   rice_domestic: { id: 'rice_domestic', nameKo: '국산 쌀', lpaPerKg: 0.46, pricePerKg: 2600, flavor: { nuruk_rice: 25, floral: 8, fresh_fruit: 8, sweetness: 8 }, kinds: ['soju'] },
   rice_processing: { id: 'rice_processing', nameKo: '가공용 쌀', lpaPerKg: 0.44, pricePerKg: 1300, flavor: { nuruk_rice: 20, floral: 5, fresh_fruit: 5, sweetness: 6, cereal: 5 }, kinds: ['soju'] },
   nuruk: { id: 'nuruk', nameKo: '전통 누룩', lpaPerKg: 0.1, pricePerKg: 6000, flavor: { nuruk_rice: 40, earthy: 6, fresh_fruit: 6 }, kinds: ['soju'] },
+  // 산지 한정 (regions.md §4)
+  jeju_millet: { id: 'jeju_millet', nameKo: '제주 차조(좁쌀) — 고소리술 원료', lpaPerKg: 0.42, pricePerKg: 4500, flavor: { nuruk_rice: 15, cereal: 18, earthy: 6, toasted_grain: 6, sweetness: 6 }, kinds: ['soju'], sites: ['jeju'] },
+  potato: { id: 'potato', nameKo: '홋카이도 감자', lpaPerKg: 0.11, pricePerKg: 450, flavor: { earthy: 10, sweetness: 8, floral: 6, fresh_fruit: 4 }, kinds: ['soju'], sites: ['hokkaido'] },
 };
+
+/** 한국 전통주(민속주·지역특산주) 자격에 쓸 수 있는 국산 원료 */
+export const KR_DOMESTIC_INGREDIENTS = ['rice_domestic', 'rice_processing', 'nuruk', 'jeju_millet'];
 
 /** 진 베이스 중성 스피릿(주정 95%) — L당 가격 */
 export const GNS = { nameKo: '주정(95%)', abv: 0.95, pricePerL: 2300, flavor: { harshness: 35, solvent: 8, feinty: 8 } as Flavor };
 
-/** regions가 없으면 모든 지역에서 구할 수 있다 */
-export interface BotanicalDef { id: string; nameKo: string; pricePerKg: number; perGram: Flavor; regions?: RegionId[] }
+/** regions(국가)·sites(산지)가 없으면 모든 곳에서 구할 수 있다 */
+export interface BotanicalDef { id: string; nameKo: string; pricePerKg: number; perGram: Flavor; regions?: RegionId[]; sites?: SiteId[] }
 
 export const BOTANICALS: Record<string, BotanicalDef> = {
   juniper: { id: 'juniper', nameKo: '주니퍼', pricePerKg: 32000, perGram: { juniper: 2.0, herbal: 0.3 } },
@@ -53,6 +61,7 @@ export const BOTANICALS: Record<string, BotanicalDef> = {
   hinoki: { id: 'hinoki', nameKo: '히노키', pricePerKg: 40000, perGram: { herbal: 2.5, earthy: 1.0, juniper: 0.5 }, regions: ['JP'] },
   maqaw: { id: 'maqaw', nameKo: '마고(산후추, 馬告)', pricePerKg: 80000, perGram: { citrus: 3.0, botanical_spice: 2.0 }, regions: ['TW'] },
   oolong: { id: 'oolong', nameKo: '우롱차', pricePerKg: 70000, perGram: { floral: 2.0, herbal: 2.0, toasted_grain: 0.5 }, regions: ['TW'] },
+  jeju_citrus: { id: 'jeju_citrus', nameKo: '제주 청귤 껍질', pricePerKg: 35000, perGram: { citrus: 4.5, fresh_fruit: 1.0, floral: 0.5 }, sites: ['jeju'] },
 };
 
 export const YEASTS: Record<YeastId, { nameKo: string; yieldFactor: number; ester: number; tropical: number; acetic: number }> = {
@@ -62,10 +71,19 @@ export const YEASTS: Record<YeastId, { nameKo: string; yieldFactor: number; este
 };
 
 // ── 설비 ──
+/** 부지 개량 (regions.md §3.2) — 산지 리스크를 줄이는 1회성 투자 */
+export type UpgradeId = 'seismic_1' | 'seismic_2' | 'temp_control';
+
+/** sites가 있으면 그 산지에서만 발주할 수 있다 */
+interface EquipmentBase { id: string; nameKo: string; cost: number; leadMonths: number; maintenance: number; sites?: SiteId[] }
 export type EquipmentDef =
-  | { id: string; kind: 'still'; nameKo: string; cost: number; leadMonths: number; maintenance: number; stillType: StillType; condenser: CondenserType; chargeL: number; runsPerMonth: number; reflux: number; copperContact: number; vacuum: boolean; ginBasket: boolean }
-  | { id: string; kind: 'fermenter'; nameKo: string; cost: number; leadMonths: number; maintenance: number; fermenterType: FermenterType; capacityL: number }
-  | { id: string; kind: 'warehouse'; nameKo: string; cost: number; leadMonths: number; maintenance: number; casks: number };
+  | (EquipmentBase & { kind: 'still'; stillType: StillType; condenser: CondenserType; chargeL: number; runsPerMonth: number; reflux: number; copperContact: number; vacuum: boolean; ginBasket: boolean; /** 석탄 직화 — 바디·오일리↑, 숙련 요구 */ directFire?: boolean })
+  | (EquipmentBase & { kind: 'fermenter'; fermenterType: FermenterType; capacityL: number })
+  | (EquipmentBase & { kind: 'warehouse'; casks: number })
+  | (EquipmentBase & { kind: 'upgrade'; upgrade: UpgradeId; description: string; /** 먼저 설치돼 있어야 하는 설비 */ requires?: string });
+
+/** 지진 위험이 있는 산지 */
+export const SEISMIC_SITES: SiteId[] = ['kanto', 'kansai', 'hokkaido', 'yilan'];
 
 export const EQUIPMENT: Record<string, EquipmentDef> = {
   pot_onion_1000: { id: 'pot_onion_1000', kind: 'still', nameKo: '단식 증류기 1,000L (양파형)', cost: 300_000_000, leadMonths: 4, maintenance: 1_500_000, stillType: 'pot_onion', condenser: 'copper_shell', chargeL: 1000, runsPerMonth: 20, reflux: 0.4, copperContact: 1.0, vacuum: false, ginBasket: true },
@@ -79,6 +97,18 @@ export const EQUIPMENT: Record<string, EquipmentDef> = {
   ferm_steel_2000: { id: 'ferm_steel_2000', kind: 'fermenter', nameKo: '스테인리스 발효조 2,000L', cost: 40_000_000, leadMonths: 1, maintenance: 200_000, fermenterType: 'stainless', capacityL: 2000 },
   ferm_onggi_set: { id: 'ferm_onggi_set', kind: 'fermenter', nameKo: '옹기 발효 세트 (1,200L 상당)', cost: 30_000_000, leadMonths: 1, maintenance: 300_000, fermenterType: 'onggi', capacityL: 1200 },
   warehouse_rack_100: { id: 'warehouse_rack_100', kind: 'warehouse', nameKo: '랙 숙성고 증설 (+100 캐스크)', cost: 150_000_000, leadMonths: 6, maintenance: 800_000, casks: 100 },
+  // 홋카이도 — 석탄 직화 단식 증류기 (요이치형)
+  pot_coal_1000: { id: 'pot_coal_1000', kind: 'still', nameKo: '석탄 직화 단식 증류기 1,000L (스트레이트형)', cost: 340_000_000, leadMonths: 5, maintenance: 2_000_000, stillType: 'pot_onion', condenser: 'copper_shell', chargeL: 1000, runsPerMonth: 18, reflux: 0.25, copperContact: 1.0, vacuum: false, ginBasket: false, directFire: true, sites: ['hokkaido'] },
+  // 부지 개량 [튜닝]
+  upg_seismic_1: { id: 'upg_seismic_1', kind: 'upgrade', upgrade: 'seismic_1', nameKo: '내진 랙·증류기 고정 (1단계)', description: '지진 피해 −50%', cost: 80_000_000, leadMonths: 2, maintenance: 100_000, sites: SEISMIC_SITES },
+  upg_seismic_2: { id: 'upg_seismic_2', kind: 'upgrade', upgrade: 'seismic_2', nameKo: '면진 숙성고·배관 보강 (2단계)', description: '지진 피해 −85% (1단계 필요)', cost: 250_000_000, leadMonths: 4, maintenance: 300_000, sites: SEISMIC_SITES, requires: 'upg_seismic_1' },
+  upg_temp_control: { id: 'upg_temp_control', kind: 'upgrade', upgrade: 'temp_control', nameKo: '발효실 온도 제어 설비', description: '겨울 발효 지연 해소', cost: 60_000_000, leadMonths: 2, maintenance: 300_000, sites: ['andong'] },
+};
+
+/** 부지 개량별 리스크 경감률 */
+export const UPGRADE_RISK_REDUCTION: Partial<Record<UpgradeId, { risk: 'earthquake'; reduce: number }>> = {
+  seismic_1: { risk: 'earthquake', reduce: 0.5 },
+  seismic_2: { risk: 'earthquake', reduce: 0.85 },
 };
 
 // ── 캐스크 ──
@@ -191,7 +221,7 @@ export const ROLE_INFO: Record<'distiller' | 'warehouse' | 'sales', { nameKo: st
   sales: { nameKo: '영업', stats: ['친화', '네트워크', '협상'], baseSalary: 3_800_000 },
 };
 
-export const NAME_POOLS: Record<'KR' | 'JP' | 'TW', { surnames: string[]; given: string[] }> = {
+export const NAME_POOLS: Record<RegionId, { surnames: string[]; given: string[] }> = {
   KR: { surnames: ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '한', '오', '서', '신', '권', '황'], given: ['민준', '서연', '도윤', '지우', '하준', '서윤', '은우', '하은', '지호', '수아', '현우', '지민', '예준', '채원', '건우', '다은'] },
   JP: { surnames: ['사토 ', '스즈키 ', '다카하시 ', '다나카 ', '와타나베 ', '이토 ', '야마모토 ', '나카무라 '], given: ['하루토', '유이', '소타', '미오', '렌', '히나', '유토', '사쿠라'] },
   TW: { surnames: ['천', '린', '황', '장', '리', '왕', '우', '류'], given: ['즈하오', '이팅', '젠훙', '샤오웨이', '자오', '옌쥔', '이린', '웨이훙'] },

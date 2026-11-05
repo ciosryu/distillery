@@ -1,6 +1,8 @@
 import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/catalog';
 import { CATEGORY } from './content/categories';
-import { priceForConsumer, refPricePerL, regionOf, type RegionDef } from './content/regions';
+import { priceForConsumer, refPricePerL, regionOf, type RegionDef, type TaxOptions } from './content/regions';
+import { siteOf } from './content/sites';
+import { traditionalReliefRate } from './sites';
 import { clampFlavor, evaluate, weightedAverage, type Evaluation } from './flavor';
 import { emptyCask } from './maturation';
 import { bestBy, nid, staffOf } from './util';
@@ -28,6 +30,8 @@ export interface BlendPreview {
   unitCost: number;
   sourcedShare: number;
   suggestedPrice: number;
+  /** 전통주 자격 (모든 구성 원액이 전통주 원액) */
+  traditional: boolean;
 }
 
 export const WHISKY_MIN_MONTHS = 36;
@@ -59,10 +63,11 @@ export function lotCategory(lot: SpiritLot): ProductCategory {
   return lot.kind === 'grain' ? 'grain_whisky' : 'whisky';
 }
 
-export function suggestedPrice(region: RegionDef, category: ProductCategory, bottleMl: number, quality: number, ageYears: number | null, abv: number): number {
+/** 권장 출고가 — 기준 소비자가에서 세금(기준판매비율·전통주 감면 반영)을 역산 */
+export function suggestedPrice(region: RegionDef, category: ProductCategory, bottleMl: number, quality: number, ageYears: number | null, abv: number, tax: TaxOptions = { category }): number {
   const ageBonus = isWhiskyCategory(category) && ageYears ? 1 + 0.06 * Math.min(ageYears, 12) : 1;
   const consumer = refPricePerL(region, category, abv) * (bottleMl / 1000) * Math.sqrt(Math.max(quality, 20) / 60) * ageBonus;
-  const p = priceForConsumer(region, consumer, bottleMl, abv);
+  const p = priceForConsumer(region, consumer, bottleMl, abv, { category, ...tax });
   return Math.round(p / 100) * 100;
 }
 
@@ -77,7 +82,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     if (c.liters > lot.volumeL + 1e-6) errors.push(`${lot.name}: 보유량(${lot.volumeL.toFixed(1)}L)보다 많이 선택했습니다`);
     items.push({ lot, liters: Math.min(c.liters, lot.volumeL) });
   }
-  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, suggestedPrice: 0 };
+  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, suggestedPrice: 0, traditional: false };
   if (!items.length) { errors.push('블렌딩할 원액을 선택하세요'); return empty; }
   const kinds = new Set(items.map((i) => i.lot.kind));
   const whiskyMix = [...kinds].every((k) => k === 'malt' || k === 'grain');
@@ -93,6 +98,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   if (finalAbv > mixAbv + 1e-6) { errors.push(`목표 도수(${(finalAbv * 100).toFixed(1)}%)가 원액 도수(${(mixAbv * 100).toFixed(1)}%)보다 높습니다`); finalAbv = mixAbv; }
   const minOakMonths = Math.min(...items.map((i) => i.lot.oakMonths));
   const sourcedShare = items.reduce((t, i) => t + (i.lot.sourced ? i.liters * i.lot.abv : 0), 0) / lpa;
+  const traditional = items.every((i) => i.lot.traditional);
 
   let flavor = weightedAverage(items.map((i) => ({ flavor: i.lot.flavor, weight: i.liters * i.lot.abv })));
   // 가수: 지각 강도 약화, 자극 완화
@@ -121,14 +127,19 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   const bottles = Math.floor(finalVolume / (opts.bottleMl / 1000));
   if (bottles < 1) errors.push('병입할 양이 부족합니다');
   const spiritCost = items.reduce((t, i) => t + i.liters * i.lot.abv * i.lot.costPerLPA, 0);
-  const perBottleFixed = packagingCost(opts.packagingId, opts.bottleMl) * mod(s, 'packaging') + BOTTLING_LABOR_PER_BOTTLE;
+  const perBottleFixed = packagingUnitCost(s, opts) + BOTTLING_LABOR_PER_BOTTLE;
   const unitCost = bottles > 0 ? spiritCost / bottles + perBottleFixed : 0;
   const evaluation = evaluate(flavor, category);
   return {
     ok: errors.length === 0, errors, warnings, kind, category, volumeL: finalVolume, lpa, mixAbv, finalAbv, bottles,
-    minOakMonths, ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare,
-    suggestedPrice: suggestedPrice(regionOf(s), category, opts.bottleMl, evaluation.quality, ageYears, finalAbv),
+    minOakMonths, ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare, traditional,
+    suggestedPrice: suggestedPrice(regionOf(s), category, opts.bottleMl, evaluation.quality, ageYears, finalAbv, { category, relief: traditionalReliefRate(s, traditional) }),
   };
+}
+
+/** 병당 포장재 원가 — 이벤트 보정 × 산지 운송 할증 */
+function packagingUnitCost(s: GameState, opts: Pick<BottleOptions, 'packagingId' | 'bottleMl'>): number {
+  return packagingCost(opts.packagingId, opts.bottleMl) * mod(s, 'packaging') * siteOf(s).freight.packaging;
 }
 
 /** 블렌딩·병입 실행 (s는 변경 가능한 복제본) */
@@ -171,9 +182,10 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     createdMonth: s.month,
     lastMonthSold: 0,
     totalSold: 0,
+    ...(p.traditional ? { traditional: true } : {}),
   };
   // 포장재·병입 인건비는 병입 시점에 지출
-  s.cash -= Math.round((packagingCost(opts.packagingId, opts.bottleMl) * mod(s, 'packaging') + BOTTLING_LABOR_PER_BOTTLE) * p.bottles);
+  s.cash -= Math.round((packagingUnitCost(s, opts) + BOTTLING_LABOR_PER_BOTTLE) * p.bottles);
   s.products.push(product);
   return { product };
 }

@@ -7,6 +7,11 @@ import {
 import { EQUIPMENT } from './content/catalog';
 import { BUYERS } from './content/names';
 import { consumerPrice, priceForConsumer, REGIONS } from './content/regions';
+import { DEFAULT_SITE, SITES } from './content/sites';
+import {
+  applyTerroir, dutyFreeDemand, fermentCapacityFactor, isTraditionalRecipe, migrateState, productConsumerPrice, riskScale, scaleEffects,
+  traditionalReliefRate, waterPermitCap, WATER_EFFECT,
+} from './index';
 
 const recipeId = (s: GameState, prefix: string) => s.recipes.find((r) => r.name.startsWith(prefix))!.id;
 
@@ -312,7 +317,8 @@ describe('지역 (v0.6)', () => {
     const titles = (region: 'KR' | 'TW') => new Set(advanceMonths(newGame({ seed: 7, region, startingCash: 50_000_000_000 }), 240).eventLog.map((e) => e.title));
     const tw = titles('TW');
     const kr = titles('KR');
-    for (const t of ['전통주 재조명', '정부 가공용 쌀 할인 공급', '지진', '본격 쇼추 붐']) expect(tw.has(t)).toBe(false);
+    // v0.8: 대만(이란)은 지진대에 있어 지진이 일어날 수 있다 (regions.md §4.3.1)
+    for (const t of ['전통주 재조명', '정부 가공용 쌀 할인 공급', '본격 쇼추 붐']) expect(tw.has(t)).toBe(false);
     for (const t of ['지진', '대만 위스키 투기 거품 붕괴', '태풍 상륙']) expect(kr.has(t)).toBe(false);
   });
 });
@@ -347,5 +353,175 @@ describe('실명 레지스트리 (결정 #44)', () => {
     expect(s.cash).toBe(cash + 12_000_000);
     expect(s.casks.some((c) => c.id === cask.id)).toBe(false);
     expect(s.caskBids).toEqual([]);
+  });
+});
+
+describe('산지 (v0.8, regions.md Tier 1)', () => {
+  const sojuOf = (s: GameState) => s.recipes.find((r) => r.kind === 'soju')!;
+  const bottleLot = (s: GameState, lotId: string, abv = 0.25) => applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: lotId, liters: s.lots.find((l) => l.id === lotId)!.volumeL }], options: { name: 'x', targetAbv: abv, bottleMl: 375, chillFilter: true, packagingId: 'standard' } }).state;
+
+  it('국가마다 표준 산지가 있고, 표준 산지는 v0.6 지역 수치를 그대로 쓴다', () => {
+    for (const r of ['KR', 'JP', 'TW'] as const) {
+      const s = newGame({ seed: 1, region: r });
+      expect(s.siteId).toBe(DEFAULT_SITE[r]);
+      expect(SITES[s.siteId].standard).toBe(true);
+    }
+    expect(SITES.gyeonggi.tempC).toEqual([-3, 0, 6, 13, 18, 23, 26, 26, 21, 14, 6, -1]);
+    expect(SITES.kanto.overheadPerMonth).toBe(12_000_000);
+    expect(newGame({ seed: 1, site: 'hokkaido' }).regionId).toBe('JP');
+  });
+
+  it('v4 세이브는 국가의 표준 산지로 마이그레이션된다', () => {
+    const { siteId: _siteId, siteState: _ss, ...rest } = newGame({ seed: 1, region: 'JP' });
+    const v4 = { ...rest, version: 4 };
+    const s = migrateState(JSON.parse(JSON.stringify(v4)))!;
+    expect(s.version).toBe(5);
+    expect(s.siteId).toBe('kanto');
+    expect(s.siteState).toEqual({});
+    expect(s.priceIndex.jeju_millet).toBe(1);
+    expect(migrateState({ version: 3 })).toBeNull();
+    expect(advanceMonths(s, 2).month).toBe(2);
+  });
+
+  it('증발 보정: 이란은 연 약 10%, 홋카이도는 1.5% 안팎 (기후 모델 × angelShareFactor)', () => {
+    const yearLoss = (siteId: keyof typeof SITES) => {
+      const site = SITES[siteId];
+      let c: Cask = { id: 'c', typeId: 'ex_bourbon_barrel', sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: { id: 'l', name: 'x', kind: 'malt', volumeL: 190, abv: 0.635, flavor: {}, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 1 } };
+      for (let m = 0; m < 12; m++) c = matureCask(c, { tempC: site.tempC[m]!, humidity: site.humidity[m]! }, { control: 0, evaporationFactor: site.angelShareFactor }).cask;
+      return 1 - c.contents!.volumeL / 190;
+    };
+    expect(yearLoss('yilan')).toBeGreaterThan(0.09);
+    expect(yearLoss('yilan')).toBeLessThan(0.11);
+    expect(yearLoss('hokkaido')).toBeGreaterThan(0.013);
+    expect(yearLoss('hokkaido')).toBeLessThan(0.017);
+  });
+
+  it('기준판매비율: 한국 국산 위스키는 과세표준이 28% 줄어 소비자가가 낮아지고, 권장가 역산은 그대로 맞는다', () => {
+    const plain = consumerPrice(REGIONS.KR, 50_000, 700, 0.4);
+    const whisky = consumerPrice(REGIONS.KR, 50_000, 700, 0.4, 1, { category: 'whisky' });
+    expect(whisky).toBeLessThan(plain * 0.92);
+    expect(consumerPrice(REGIONS.JP, 50_000, 700, 0.4, 1, { category: 'whisky' })).toBeCloseTo(consumerPrice(REGIONS.JP, 50_000, 700, 0.4), 6);
+    for (const opts of [{ category: 'whisky' as const }, { category: 'soju_distilled' as const, relief: 0.5 }])
+      expect(priceForConsumer(REGIONS.KR, consumerPrice(REGIONS.KR, 30_000, 700, 0.4, 1, opts), 700, 0.4, opts)).toBeCloseTo(30_000, 0);
+  });
+
+  it('전통주 자격: 안동은 국산 원료 소주, 제주는 차조 50% 이상, 경기는 자격 없음', () => {
+    const rice = { kind: 'soju' as const, mashBill: [{ ingredientId: 'rice_domestic', ratio: 0.92 }, { ingredientId: 'nuruk', ratio: 0.08 }] };
+    const millet = { kind: 'soju' as const, mashBill: [{ ingredientId: 'jeju_millet', ratio: 0.9 }, { ingredientId: 'nuruk', ratio: 0.1 }] };
+    expect(isTraditionalRecipe(SITES.andong, rice)).toBe(true);
+    expect(isTraditionalRecipe(SITES.gyeonggi, rice)).toBe(false);
+    expect(isTraditionalRecipe(SITES.jeju, rice)).toBe(false);
+    expect(isTraditionalRecipe(SITES.jeju, millet)).toBe(true);
+    expect(isTraditionalRecipe(SITES.andong, { kind: 'malt', mashBill: [{ ingredientId: 'malt_korean', ratio: 1 }] })).toBe(false);
+  });
+
+  it('전통주 감면: 안동 소주는 감면으로 소비자가가 낮고, 출고량 구간·전년 실적에 따라 감면율이 바뀐다', () => {
+    let a = newGame({ seed: 2, site: 'andong' });
+    let g = newGame({ seed: 2, site: 'gyeonggi' });
+    a = advanceMonths(applyAction(a, { type: 'setOrder', recipeId: sojuOf(a).id, batchesPerMonth: 1 }).state, 1);
+    g = advanceMonths(applyAction(g, { type: 'setOrder', recipeId: sojuOf(g).id, batchesPerMonth: 1 }).state, 1);
+    expect(a.lots[0]!.traditional).toBe(true);
+    expect(g.lots[0]!.traditional).toBeFalsy();
+    a = bottleLot(a, a.lots[0]!.id);
+    const p = a.products[0]!;
+    expect(p.traditional).toBe(true);
+    expect(productConsumerPrice(a, p)).toBeLessThan(productConsumerPrice(a, { ...p, traditional: false }));
+    const year = a.startYear;
+    a.siteState.traditionalShipped = { year, liters: 0, lastYearLiters: 0 };
+    expect(traditionalReliefRate(a, true)).toBe(0.5);
+    a.siteState.traditionalShipped = { year, liters: 150_000, lastYearLiters: 0 };
+    expect(traditionalReliefRate(a, true)).toBe(0.3);
+    a.siteState.traditionalShipped = { year, liters: 250_000, lastYearLiters: 0 };
+    expect(traditionalReliefRate(a, true)).toBe(0);
+    a.siteState.traditionalShipped = { year, liters: 0, lastYearLiters: 600_000 };
+    expect(traditionalReliefRate(a, true)).toBe(0);
+    expect(traditionalReliefRate(a, false)).toBe(0);
+  });
+
+  it('산지 한정 원료·설비: 제주 차조는 제주에서만, 내진 개량은 지진 산지에서만, 2단계는 1단계 뒤에', () => {
+    const andong = newGame({ seed: 1, site: 'andong' });
+    const jeju = newGame({ seed: 1, site: 'jeju' });
+    const millet = { ...sojuOf(jeju), id: 'X' };
+    expect(millet.mashBill.some((m) => m.ingredientId === 'jeju_millet')).toBe(true);
+    expect(validateRecipe(jeju, millet)).toEqual([]);
+    expect(validateRecipe(andong, millet).length).toBeGreaterThan(0);
+    expect(applyAction(andong, { type: 'buyEquipment', catalogId: 'upg_seismic_1' }).error).toBeTruthy();
+    expect(applyAction(newGame({ seed: 1, site: 'kansai' }), { type: 'buyEquipment', catalogId: 'upg_temp_control' }).error).toBeTruthy();
+    let k = newGame({ seed: 1, site: 'kansai' });
+    expect(applyAction(k, { type: 'buyEquipment', catalogId: 'upg_seismic_2' }).error).toBeTruthy();
+    k = applyAction(k, { type: 'buyEquipment', catalogId: 'upg_seismic_1' }).state;
+    expect(riskScale(k, 'earthquake')).toBe(1);
+    k = advanceMonths(k, 2);
+    expect(riskScale(k, 'earthquake')).toBe(0.5);
+  });
+
+  it('지진 피해 경감: 현금·캐스크·가동 중단 피해가 비율대로 준다', () => {
+    const effects = [{ type: 'cash' as const, amount: -30_000_000 }, { type: 'caskLoss' as const, share: [0.02, 0.06] as [number, number] }, { type: 'stillDown' as const, months: 1 }];
+    const scaled = scaleEffects(effects, 0.15);
+    expect(scaled[0]).toEqual({ type: 'cash', amount: -4_500_000 });
+    expect(scaled[1]).toMatchObject({ type: 'caskLoss', allowZero: true });
+    expect(scaled.some((e) => e.type === 'stillDown')).toBe(false);
+  });
+
+  it('제주 취수 허가: 월 발효 투입 상한을 넘으면 생산이 멈추고, 증량 신청은 심사 후 결정된다', () => {
+    let s = newGame({ seed: 4, site: 'jeju' });
+    expect(waterPermitCap(s)).toBe(15_000);
+    s.siteState.waterPermitL = 3_000;
+    const malt = s.recipes.find((r) => r.kind === 'malt')!;
+    s = applyAction(s, { type: 'setOrder', recipeId: malt.id, batchesPerMonth: 6 }).state;
+    s = advanceMonths(s, 1);
+    expect(s.reports.at(-1)!.production[0]!.batches).toBe(3);
+    expect(s.reports.at(-1)!.notes.some((n) => n.includes('취수 허가량'))).toBe(true);
+    const cash = s.cash;
+    s = applyAction(s, { type: 'applyWaterPermit' }).state;
+    expect(s.cash).toBe(cash - 20_000_000);
+    expect(applyAction(s, { type: 'applyWaterPermit' }).error).toBeTruthy();
+    s = advanceMonths(applyAction(s, { type: 'setOrder', recipeId: malt.id, batchesPerMonth: 0 }).state, 13);
+    expect(s.siteState.permitApplication).toBeUndefined();
+    expect([3_000, 13_000]).toContain(waterPermitCap(s));
+    expect(waterPermitCap(newGame({ seed: 1, site: 'andong' }))).toBe(Infinity);
+  });
+
+  it('제주 면세 채널: 제주에서만 수요가 있고, 1인 한도(약 55만 원)를 넘는 병은 팔 수 없다', () => {
+    const p = { id: 'p', name: 'p', category: 'whisky', ageYears: 3, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 80, style: null, sourcedShare: 0, stockBottles: 1000, price: 60_000, unitCost: 20_000, createdMonth: 0, lastMonthSold: 0, totalSold: 0 } as Product;
+    const jeju = newGame({ seed: 1, site: 'jeju' });
+    jeju.awareness = 0.3;
+    expect(dutyFreeDemand(jeju, p, 1, 1)).toBeGreaterThan(0);
+    expect(dutyFreeDemand({ ...jeju, siteId: 'gyeonggi' }, p, 1, 1)).toBe(0);
+    expect(dutyFreeDemand(jeju, { ...p, price: 400_000 }, 1, 1)).toBe(0);
+  });
+
+  it('물·계절·테루아: 연수는 산패를 줄이고, 안동 겨울은 발효가 늦고, 이란 더운 달은 열대향이 쌓인다', () => {
+    const s = newGame({ seed: 1, site: 'kansai' });
+    const malt = s.recipes.find((r) => r.kind === 'malt')!;
+    const still = stillDefOf(s, malt.stillId)!;
+    const slow = { ...malt, fermentDays: 10 };
+    const soft = simulateBatch(slow, still, 'stainless', s.staff[0], s.priceIndex, 0, 'soft');
+    const medium = simulateBatch(slow, still, 'stainless', s.staff[0], s.priceIndex, 0, 'medium');
+    expect(soft.flavor.acetic ?? 0).toBeLessThan(medium.flavor.acetic ?? 0);
+    expect(WATER_EFFECT.volcanic.yield).toBeGreaterThan(1);
+    const a = newGame({ seed: 1, site: 'andong' });
+    expect(fermentCapacityFactor(a, 1)).toBe(0.85);
+    expect(fermentCapacityFactor(a, 6)).toBe(1);
+    const cask = { ...newGame({ seed: 1 }).casks[0]!, contents: { id: 'l', name: 'x', kind: 'malt' as const, volumeL: 190, abv: 0.6, flavor: {}, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 1 } };
+    expect(applyTerroir(SITES.yilan, cask, 28).contents!.flavor.tropical).toBeCloseTo(0.1, 6);
+    expect(applyTerroir(SITES.yilan, cask, 20).contents!.flavor.tropical).toBeUndefined();
+  });
+
+  it('산지 고정비: 홋카이도는 1월 난방비가 나가고, 관리비는 간사이가 가장 비싸다', () => {
+    const h = advanceMonths(newGame({ seed: 1, site: 'hokkaido' }), 1);
+    expect(h.reports[0]!.expenses.heating).toBe(2_500_000);
+    expect(advanceMonths(newGame({ seed: 1, site: 'kanto' }), 1).reports[0]!.expenses.heating).toBeUndefined();
+    expect(SITES.kansai.overheadPerMonth).toBeGreaterThan(SITES.kanto.overheadPerMonth);
+    expect(SITES.hokkaido.overheadPerMonth).toBeLessThan(SITES.kanto.overheadPerMonth);
+  });
+
+  it('산지 한정 이벤트는 그 산지에서만 일어난다', () => {
+    const titles = (site: 'andong' | 'kansai') => new Set(advanceMonths(newGame({ seed: 7, site, startingCash: 50_000_000_000 }), 120).eventLog.map((e) => e.title));
+    const andong = titles('andong');
+    const kansai = titles('kansai');
+    expect(andong.has('안동 탈춤축제')).toBe(true);
+    for (const t of ['태풍 상륙', '폭설', '간사이 인바운드 관광 붐', '지진']) expect(andong.has(t)).toBe(false);
+    for (const t of ['안동 탈춤축제', '제주 관광객 급증', '폭설']) expect(kansai.has(t)).toBe(false);
   });
 });

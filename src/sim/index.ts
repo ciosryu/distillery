@@ -10,6 +10,8 @@ export * from './maturation';
 export * from './newGame';
 export * from './production';
 export * from './step';
+export * from './sites';
+export * from './unlocks';
 export * from './util';
 export { rngFor, mulberry32 } from './rng';
 export * as content from './content';

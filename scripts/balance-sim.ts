@@ -1,12 +1,22 @@
 // 헤드리스 밸런스 시뮬레이션 — 전략별 단순 정책으로 N개 시드를 돌려 파산률·흑자 전환 시점·매출 구성을 본다.
-// 실행: npm run balance [-- 시드수 개월수 전략 지역]   전략 = brand | hybrid | expand | grain | all(기본), 지역 = KR(기본) | JP | TW
-import { advanceMonth, applyAction, bulkValuePerLPA, previewBlend, newGame, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
+// 실행: npm run balance [-- 시드수 개월수 전략 지역]   전략 = brand | hybrid | expand | grain | all(기본)
+//       지역 = 국가(KR | JP | TW → 표준 산지) 또는 산지(gyeonggi | andong | jeju | kanto | kansai | hokkaido | yilan)
+import { advanceMonth, applyAction, bulkValuePerLPA, previewBlend, newGame, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SiteId, type SpiritKind } from '../src/sim';
+import { DEFAULT_SITE, SITES } from '../src/sim/content/sites';
+import { REGIONS } from '../src/sim/content/regions';
 
 const SEEDS = Number(process.argv[2] ?? 12);
 const MONTHS = Number(process.argv[3] ?? 120);
 const WHICH = process.argv[4] ?? 'all';
-const REGION = (process.argv[5] ?? 'KR') as RegionId;
+const PLACE = process.argv[5] ?? 'KR';
+const SITE: SiteId = PLACE in SITES ? (PLACE as SiteId) : DEFAULT_SITE[PLACE as RegionId] ?? 'gyeonggi';
+const REGION = `${SITES[SITE].country}/${SITE}`;
 const BRIDGE = process.env.NO_BRIDGE !== '1';
+// 비교 실험용: 한국 기준판매비율을 끄고 v0.6 진 기준가(32,000원/L)로 되돌린다
+if (process.env.NO_DEDUCTION === '1') {
+  REGIONS.KR.tax.baseDeduction = undefined;
+  REGIONS.KR.market.gin.refConsumerPricePerL = 32_000;
+}
 
 type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain';
 
@@ -205,7 +215,7 @@ function bookWorth(s: GameState): number {
 interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWorth: number; bookWorth: number; firstPositive: number; y5retail: number; y5bulk: number }
 
 function play(strategy: Strategy, seed: number): Result {
-  let s = newGame({ seed, region: REGION });
+  let s = newGame({ seed, site: SITE });
   let lo = s.cash;
   for (let m = 0; m < MONTHS && s.status === 'running'; m++) {
     s = advanceMonth(policy(s, strategy));

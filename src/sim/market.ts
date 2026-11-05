@@ -1,5 +1,7 @@
 import { DISTRIBUTION, PACKAGING, logisticsCost } from './content/catalog';
-import { consumerPrice, refPricePerL, regionOf, type RegionDef } from './content/regions';
+import { consumerPrice, liquorTaxPerBottle, refPricePerL, regionOf, type RegionDef } from './content/regions';
+import { DUTY_FREE, siteOf } from './content/sites';
+import { onlineCoverageBonus, rollTraditionalYear, traditionalReliefRate } from './sites';
 import { clamp } from './flavor';
 import { staffOf } from './util';
 import { mod } from './modifiers';
@@ -19,9 +21,16 @@ export function markupFactor(s: GameState): number {
   return (1 - 0.1 * (best / 100)) * mod(s, 'consumerPrice:all');
 }
 
-/** 제품의 병당 소비자가 (지역 세제·유통 마진·영업 협상·이벤트 반영) */
-export function productConsumerPrice(s: GameState, p: Pick<Product, 'price' | 'bottleMl' | 'abv'>, region: RegionDef = regionOf(s)): number {
-  return consumerPrice(region, p.price, p.bottleMl, p.abv, markupFactor(s));
+type PricedProduct = Pick<Product, 'price' | 'bottleMl' | 'abv'> & Partial<Pick<Product, 'category' | 'traditional'>>;
+
+/** 제품의 병당 소비자가 (국가 세제·기준판매비율·전통주 감면·유통 마진·영업 협상·이벤트 반영) */
+export function productConsumerPrice(s: GameState, p: PricedProduct, region: RegionDef = regionOf(s)): number {
+  return consumerPrice(region, p.price, p.bottleMl, p.abv, markupFactor(s), { category: p.category, relief: traditionalReliefRate(s, p.traditional) });
+}
+
+/** 면세 채널 병당 소비자가 — 주세·부가세 없음 */
+export function dutyFreeConsumerPrice(p: Pick<Product, 'price'>): number {
+  return p.price * DUTY_FREE.markup;
 }
 
 export function appeal(p: Product, s?: Pick<GameState, 'modifiers' | 'month' | 'regionId'>): number {
@@ -46,8 +55,9 @@ export interface DemandBreakdown {
 
 export function demandFor(s: GameState, p: Product, sameCategoryCount: number, monthOfYear: number, region: RegionDef = regionOf(s)): DemandBreakdown {
   const m = region.market[p.category];
-  const marketL = (m.baseCases * 9 / 12) * region.seasonality[monthOfYear - 1]! * (s.trend[p.category] ?? 1) * mod(s, `demand:${p.category}`) * mod(s, 'demand:all');
-  const reach = (s.awareness * coverage(s) * m.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
+  const marketL = (m.baseCases * 9 / 12) * region.seasonality[monthOfYear - 1]! * (s.trend[p.category] ?? 1) * mod(s, `demand:${p.category}`) * mod(s, 'demand:all') * siteOf(s).demandFactor;
+  const cov = clamp(coverage(s) + onlineCoverageBonus(s, p), 0, 1);
+  const reach = (s.awareness * cov * m.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
   const a = appeal(p, s);
   const bottleL = p.bottleMl / 1000;
   const consumerPricePerL = productConsumerPrice(s, p, region) / bottleL;
@@ -59,32 +69,70 @@ export function demandFor(s: GameState, p: Product, sameCategoryCount: number, m
   return { marketL, reach, appeal: a, consumerPricePerL, refPricePerL: ref, priceFactor, demandBottles };
 }
 
-export interface SalesResult { productId: string; name: string; bottles: number; revenue: number; demandBottles: number; distribution: number }
+/** 지정면세점 채널 수요 (제주) — 국내 기준가의 60%를 기준으로, 주세·부가세 없이 */
+export function dutyFreeDemand(s: GameState, p: Product, sameCategoryCount: number, monthOfYear: number, region: RegionDef = regionOf(s)): number {
+  if (!siteOf(s).dutyFree) return 0;
+  const base = DUTY_FREE.market[p.category] ?? 0;
+  const consumer = dutyFreeConsumerPrice(p);
+  if (base <= 0 || consumer > DUTY_FREE.maxBottlePrice) return 0;
+  const marketL = (base * 9 / 12) * region.seasonality[monthOfYear - 1]! * (s.trend[p.category] ?? 1) * mod(s, 'dutyfree');
+  // 면세점 입점은 지역 상품 진열이 기본 → 영업 커버리지의 영향이 작다
+  const reach = (s.awareness * (0.3 + 0.5 * coverage(s)) * DUTY_FREE.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
+  const bottleL = p.bottleMl / 1000;
+  const ref = refPricePerL(region, p.category, p.abv) * DUTY_FREE.refFactor;
+  const priceFactor = Math.pow(consumer / bottleL / ref, -region.market[p.category].elasticity);
+  return (marketL * reach * appeal(p, s) * priceFactor) / bottleL;
+}
 
-/** 병당 유통비 = 채널 수수료(출고가 비례) + 물류비 */
-export function distributionCostPerBottle(price: number, bottleMl: number): number {
-  return price * DISTRIBUTION.channelFeeRate + logisticsCost(bottleMl);
+export interface SalesResult {
+  productId: string; name: string; bottles: number; revenue: number; demandBottles: number; distribution: number;
+  /** 면세 채널 판매 병수 (bottles에 포함) */
+  dutyFree: number;
+  /** 국내 판매분 주세 (감면 후) / 전통주 감면액 */
+  tax: number; relief: number;
+}
+
+/** 병당 유통비 = 채널 수수료(출고가 비례) + 물류비 × 산지 출고 물류 배수 */
+export function distributionCostPerBottle(price: number, bottleMl: number, outbound = 1): number {
+  return price * DISTRIBUTION.channelFeeRate + logisticsCost(bottleMl) * outbound;
 }
 
 /** 병당 공헌이익과 공헌이익률 (출고가 − 생산 원가 − 유통비) */
-export function bottleMargin(p: Pick<Product, 'price' | 'unitCost' | 'bottleMl'>): { perBottle: number; rate: number } {
-  const perBottle = p.price - p.unitCost - distributionCostPerBottle(p.price, p.bottleMl);
+export function bottleMargin(p: Pick<Product, 'price' | 'unitCost' | 'bottleMl'>, outbound = 1): { perBottle: number; rate: number } {
+  const perBottle = p.price - p.unitCost - distributionCostPerBottle(p.price, p.bottleMl, outbound);
   return { perBottle, rate: p.price > 0 ? perBottle / p.price : 0 };
 }
 
 export function runSales(s: GameState, rng: Rng, monthOfYear: number): SalesResult[] {
+  const region = regionOf(s);
+  const site = siteOf(s);
   const counts: Partial<Record<ProductCategory, number>> = {};
   for (const p of s.products) if (p.stockBottles > 0) counts[p.category] = (counts[p.category] ?? 0) + 1;
+  const shipped = region.traditional ? rollTraditionalYear(s) : null;
   const out: SalesResult[] = [];
   for (const p of s.products) {
-    if (p.stockBottles <= 0) { p.lastMonthSold = 0; continue; }
-    const d = demandFor(s, p, counts[p.category] ?? 1, monthOfYear);
-    const demand = Math.round(d.demandBottles * rng.range(0.9, 1.1));
+    if (p.stockBottles <= 0) { p.lastMonthSold = 0; p.lastMonthDutyFree = 0; continue; }
+    const d = demandFor(s, p, counts[p.category] ?? 1, monthOfYear, region);
+    const noise = rng.range(0.9, 1.1);
+    const domestic = Math.round(d.demandBottles * noise);
+    const df = Math.round(dutyFreeDemand(s, p, counts[p.category] ?? 1, monthOfYear, region) * noise);
+    const demand = domestic + df;
     const sold = Math.min(p.stockBottles, demand);
+    const dfSold = demand > 0 ? Math.round((sold * df) / demand) : 0;
+    const domSold = sold - dfSold;
+    // 주세는 국내 판매분만. 전통주는 이번 달 시작 시점의 누적 출고 구간으로 감면율을 정한다
+    const relief = traditionalReliefRate(s, p.traditional);
+    const opts = { category: p.category, relief };
+    const tax = domSold * liquorTaxPerBottle(region, p.price, p.bottleMl, p.abv, opts);
+    const fullTax = domSold * liquorTaxPerBottle(region, p.price, p.bottleMl, p.abv, { category: p.category });
+    if (p.traditional && shipped) shipped.liters += (sold * p.bottleMl) / 1000;
     p.stockBottles -= sold;
     p.lastMonthSold = sold;
+    p.lastMonthDutyFree = dfSold;
     p.totalSold += sold;
-    out.push({ productId: p.id, name: p.name, bottles: sold, revenue: sold * p.price, demandBottles: demand, distribution: Math.round(sold * distributionCostPerBottle(p.price, p.bottleMl)) });
+    // 면세 판매분은 섬 안에서 소화 → 육지 출고 물류 할증 없음
+    const distribution = domSold * distributionCostPerBottle(p.price, p.bottleMl, site.outboundLogistics) + dfSold * distributionCostPerBottle(p.price, p.bottleMl);
+    out.push({ productId: p.id, name: p.name, bottles: sold, revenue: sold * p.price, demandBottles: demand, distribution: Math.round(distribution), dutyFree: dfSold, tax, relief: fullTax - tax });
   }
   return out;
 }

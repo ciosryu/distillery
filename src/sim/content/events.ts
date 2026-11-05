@@ -1,4 +1,4 @@
-import type { ProductCategory, RegionId } from '../types';
+import type { ProductCategory, RegionId, SiteId } from '../types';
 
 // 이벤트 정의 — 선언형 데이터 (Godot 이식 시 JSON으로 옮길 수 있게 함수 없이 작성). 확률·수치 [튜닝]
 // 원칙: ① 큰 악재는 예보(빗나갈 수 있음)로 대비할 시간을 준다 ② 호재와 악재를 섞는다
@@ -11,7 +11,7 @@ export type Effect =
   | { type: 'cash'; amount: number }
   | { type: 'awareness'; delta: number }
   | { type: 'trust'; delta: number }
-  | { type: 'caskLoss'; share: [number, number] }
+  | { type: 'caskLoss'; share: [number, number]; /** 부지 개량으로 줄어든 경우 0개 손실 허용 */ allowZero?: boolean }
   | { type: 'caskVolumeLoss'; share: number }
   | { type: 'stillDown'; months: number }
   | { type: 'lotSpoil'; acetic: number }
@@ -39,8 +39,12 @@ export interface EventDef {
   minMonth?: number;
   /** 발생 가능한 달(1~12) */
   months?: number[];
-  /** 발생 가능한 지역 (없으면 모든 지역) */
+  /** 발생 가능한 국가 (없으면 모든 국가) */
   regions?: RegionId[];
+  /** 발생 가능한 산지 (없으면 모든 산지) */
+  sites?: SiteId[];
+  /** 부지 개량으로 피해가 줄어드는 리스크 */
+  risk?: 'earthquake';
   requires?: Requirement[];
   /** 몇 달 앞서 예보. certainty = 실제로 일어날 확률 */
   forecast?: { months: number; certainty: number; text: string };
@@ -143,9 +147,9 @@ export const EVENTS: EventDef[] = [
   { id: 'critic_visit', title: '평론가 {critic} 방문', category: 'opportunity', chance: 0.012, cooldown: 24, requires: ['products'], text: '평론가 {critic}이(가) 시음하러 왔습니다. 평가는 제품 품질에 달려 있습니다.',
     effects: [{ type: 'qualityGamble', success: [{ type: 'awareness', delta: 0.05 }, m('demand:all', 1.15, [6, 6], '평론가 호평')], failure: [m('demand:all', 0.88, [6, 6], '평론가 혹평')] }] },
   // ── 지역 고유 ──
-  { id: 'typhoon', title: '태풍 상륙', category: 'disaster', chance: 0.05, cooldown: 12, months: [8, 9, 10], regions: ['JP', 'TW'], text: '태풍으로 공장이 피해를 입고 한 달간 생산이 멈춥니다.',
+  { id: 'typhoon', title: '태풍 상륙', category: 'disaster', chance: 0.05, cooldown: 12, months: [8, 9, 10], sites: ['jeju', 'kanto', 'kansai', 'yilan'], text: '태풍으로 공장이 피해를 입고 한 달간 생산이 멈춥니다.',
     effects: [{ type: 'caskVolumeLoss', share: 0.02 }, m('production', 0, [1, 1], '태풍 복구'), { type: 'cash', amount: -15_000_000 }] },
-  { id: 'earthquake', title: '지진', category: 'disaster', chance: 0.004, cooldown: 60, regions: ['JP'], requires: ['filledCasks'], text: '강한 지진으로 숙성고 랙이 무너지고 증류기가 손상됐습니다.',
+  { id: 'earthquake', title: '지진', category: 'disaster', chance: 0.004, cooldown: 60, regions: ['JP', 'TW'], risk: 'earthquake', requires: ['filledCasks'], text: '강한 지진으로 숙성고 랙이 무너지고 증류기가 손상됐습니다.',
     effects: [{ type: 'caskLoss', share: [0.02, 0.06] }, { type: 'stillDown', months: 1 }, { type: 'cash', amount: -30_000_000 }] },
   { id: 'jp_whisky_shortage', title: '재패니즈 위스키 원액 부족', category: 'b2b', chance: 0.012, cooldown: 60, minMonth: 12, regions: ['JP'], text: '재패니즈 위스키 인기로 대형 회사들이 일본산 원액을 구하지 못해 웃돈을 붙입니다.',
     effects: [m('domestic_premium', 1.5, [24, 36], '일본산 원액 부족'), m('demand:whisky', 1.2, [24, 36], '재패니즈 위스키 인기')] },
@@ -156,6 +160,21 @@ export const EVENTS: EventDef[] = [
     effects: [m('demand:whisky', 0.75, [18, 30], '투기 거품 붕괴'), m('bulk', 0.85, [12, 18], '투기 거품 붕괴')] },
   { id: 'tw_collector_boom', title: '싱글 캐스크 수집 열풍', category: 'market', chance: 0.012, cooldown: 48, regions: ['TW'], text: '대만 수집가들 사이에서 싱글 캐스크·고숙성 위스키 열풍이 붑니다.',
     effects: [m('demand:whisky', 1.3, [12, 24], '수집 열풍'), m('appeal:all', 1.05, [12, 24], '수집 열풍')] },
+  // ── 산지 고유 (regions.md §4, Tier 1) ──
+  { id: 'andong_festival', title: '안동 탈춤축제', category: 'market', chance: 0.3, cooldown: 10, months: [9, 10], sites: ['andong'], text: '탈춤축제 관광객이 몰려 증류식 소주가 잘 팔립니다.',
+    effects: [m('demand:soju_distilled', 1.3, [1, 1], '탈춤축제'), { type: 'awareness', delta: 0.01 }] },
+  { id: 'jeju_tourism_boom', title: '제주 관광객 급증', category: 'market', chance: 0.02, cooldown: 36, sites: ['jeju'], text: '제주 관광객이 크게 늘어 지정면세점 매출이 오릅니다.',
+    effects: [m('dutyfree', 1.4, [12, 18], '제주 관광 호황')] },
+  { id: 'jeju_tourism_slump', title: '제주 관광객 감소', category: 'market', chance: 0.015, cooldown: 36, sites: ['jeju'], text: '항공편 감소와 고물가로 제주 관광객이 줄어듭니다.',
+    forecast: { months: 2, certainty: 0.6, text: '관광 동향: 제주 항공 노선 감축 소식이 들립니다.' },
+    effects: [m('dutyfree', 0.6, [6, 12], '제주 관광 침체')] },
+  { id: 'kansai_inbound_boom', title: '간사이 인바운드 관광 붐', category: 'market', chance: 0.02, cooldown: 36, sites: ['kansai'], text: '외국인 관광객이 몰려 증류소 견학과 기념품 수요가 늘어납니다.',
+    effects: [m('demand:all', 1.1, [12, 18], '인바운드 관광 붐')] },
+  { id: 'kansai_inbound_slump', title: '인바운드 관광 급감', category: 'market', chance: 0.012, cooldown: 48, sites: ['kansai'], text: '엔화 강세와 항공편 감소로 외국인 관광객이 줄어듭니다.',
+    forecast: { months: 2, certainty: 0.6, text: '관광 동향: 방일 관광객 증가세가 꺾이고 있습니다.' },
+    effects: [m('demand:all', 0.9, [6, 12], '인바운드 관광 급감')] },
+  { id: 'hokkaido_snow', title: '폭설', category: 'disaster', chance: 0.04, cooldown: 10, months: [1, 2], sites: ['hokkaido'], text: '폭설로 도로가 끊겨 한 달간 원료 반입과 생산이 멈춥니다.',
+    effects: [m('production', 0, [1, 1], '폭설'), { type: 'cash', amount: -5_000_000 }] },
   { id: 'staff_poaching', title: '경쟁사 스카우트 제안', category: 'people', chance: 0.015, cooldown: 18, requires: ['twoStaff'], text: '경쟁사가 우리 직원에게 이직을 제안했습니다.',
     choices: [
       { label: '연봉 20% 인상', detail: '직원 한 명의 연봉을 20% 올려 붙잡는다', effects: [{ type: 'raiseSalary', share: 0.2 }] },

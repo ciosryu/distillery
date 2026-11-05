@@ -1,5 +1,6 @@
 import { NAME_POOLS, ROLE_INFO } from './content/catalog';
 import { regionOf } from './content/regions';
+import { siteOf } from './content/sites';
 import { clamp } from './flavor';
 import type { Rng } from './rng';
 import type { Candidate, GameState, Staff, StaffRole } from './types';
@@ -28,7 +29,8 @@ export function makeCandidate(s: GameState, rng: Rng, role?: StaffRole): Candida
 }
 
 export function refreshCandidates(s: GameState, rng: Rng): void {
-  s.candidates = ROLES.map((r) => makeCandidate(s, rng, r)).concat([makeCandidate(s, rng)]);
+  const extra = 1 + siteOf(s).extraCandidates;
+  s.candidates = ROLES.map((r) => makeCandidate(s, rng, r)).concat(Array.from({ length: extra }, () => makeCandidate(s, rng)));
 }
 
 /** 월간 XP와 레벨업 */

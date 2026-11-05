@@ -1,5 +1,7 @@
 import { EVENT, EVENTS, type Effect, type EventDef, type Requirement } from './content/events';
 import { regionOf } from './content/regions';
+import { siteOf } from './content/sites';
+import { riskScale } from './sites';
 import { BUYERS, COMPETITIONS, CRITICS, displayName } from './content/names';
 import { makeSpecialContractOffer } from './bulk';
 import { clamp } from './flavor';
@@ -29,6 +31,7 @@ function meets(s: GameState, r: Requirement): boolean {
 
 function eligible(s: GameState, def: EventDef, monthOfYear: number): boolean {
   if (def.regions && !def.regions.includes(s.regionId)) return false;
+  if (def.sites && !def.sites.includes(s.siteId)) return false;
   if (def.minMonth != null && s.month < def.minMonth) return false;
   if (def.months && !def.months.includes(monthOfYear)) return false;
   const last = s.eventLastMonth[def.id];
@@ -56,7 +59,9 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
       case 'trust': s.b2bTrust = clamp(s.b2bTrust + e.delta, 0, 100); break;
       case 'caskLoss': {
         const filled = s.casks.filter((c) => c.contents);
-        const n = Math.max(1, Math.round(filled.length * rng.range(e.share[0], e.share[1])));
+        const raw = Math.round(filled.length * rng.range(e.share[0], e.share[1]));
+        const n = e.allowZero ? raw : Math.max(1, raw);
+        if (n <= 0) { notes.push('캐스크 손실 없음'); break; }
         const lost = new Set<string>();
         while (lost.size < Math.min(n, filled.length)) lost.add(rng.pick(filled).id);
         s.casks = s.casks.filter((c) => !lost.has(c.id));
@@ -146,8 +151,23 @@ function fill(text: string, rng: Rng): string {
   return text.replace('{competition}', displayName(rng.pick(COMPETITIONS))).replace('{critic}', displayName(rng.pick(CRITICS)));
 }
 
+/** 부지 개량에 따른 피해 축소 — 현금 손실·캐스크 손실·가동 중단을 k배로 (tech-tree의 risk_scale 개념) */
+export function scaleEffects(effects: Effect[], k: number): Effect[] {
+  if (k >= 1) return effects;
+  return effects.flatMap((e): Effect[] => {
+    switch (e.type) {
+      case 'cash': return e.amount < 0 ? [{ ...e, amount: Math.round(e.amount * k) }] : [e];
+      case 'caskLoss': return [{ ...e, share: [e.share[0] * k, e.share[1] * k], allowZero: true }];
+      case 'caskVolumeLoss': return [{ ...e, share: e.share * k }];
+      case 'stillDown': { const months = Math.round(e.months * k); return months > 0 ? [{ ...e, months }] : []; }
+      default: return [e];
+    }
+  });
+}
+
 function fire(s: GameState, base: EventDef, rng: Rng, report: MonthReport): void {
-  const def = { ...base, title: fill(base.title, rng), text: fill(base.text, rng) };
+  const k = base.risk ? riskScale(s, base.risk) : 1;
+  const def = { ...base, title: fill(base.title, rng), text: fill(base.text, rng) + (k < 1 ? ` (부지 개량으로 피해 ${Math.round((1 - k) * 100)}% 경감)` : ''), effects: base.effects && scaleEffects(base.effects, k) };
   if (def.choices?.length) {
     s.pendingEvents.push({
       id: nid(s, 'V'), defId: def.id, title: def.title, text: def.text, month: s.month,
@@ -193,7 +213,8 @@ export function runEvents(s: GameState, report: MonthReport, monthOfYear: number
   for (const def of order) {
     if (fired >= MAX_NEW_EVENTS_PER_MONTH) break;
     if (!eligible(s, def, monthOfYear)) continue;
-    const weight = regionOf(s).eventWeights[def.category] ?? 1;
+    const site = siteOf(s);
+    const weight = (regionOf(s).eventWeights[def.category] ?? 1) * (site.eventWeights[def.category] ?? 1) * (site.eventBoost[def.id] ?? 1);
     if (!rng.chance(def.chance * weight * EVENT_RATE)) continue;
     s.eventLastMonth[def.id] = s.month;
     fired++;

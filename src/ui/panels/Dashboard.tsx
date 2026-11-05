@@ -1,13 +1,61 @@
-import { capacityReport, coverage, monthLabel, monthlyFixedCost, warehouseCapacity } from '../../sim';
+import { calendar, capacityReport, coverage, hasUpgrade, monthLabel, monthlyFixedCost, riskScale, traditionalReliefRate, warehouseCapacity, waterPermitCap } from '../../sim';
+import { REGIONS } from '../../sim/content/regions';
+import { siteOf } from '../../sim/content/sites';
 import { useGame } from '../../store/game';
 import { Sparkline } from '../charts';
 import { won, pct, liters, num } from '../format';
-import { Card, Empty, Meter, Stat, Table, Td } from '../kit';
+import { Badge, Button, Card, Empty, Meter, Stat, Table, Td } from '../kit';
 import { EventsCard } from './Events';
 
 const EXPENSE_LABEL: Record<string, string> = {
-  production: '생산(원재료·에너지)', distribution: '유통비(채널·물류)', penalty: '계약 위약금', salaries: '급여', overhead: '관리비', maintenance: '설비 유지비', marketing: '마케팅', interest: '이자', principal: '원금 상환',
+  production: '생산(원재료·에너지)', distribution: '유통비(채널·물류)', penalty: '계약 위약금', salaries: '급여', overhead: '관리비', heating: '난방비', maintenance: '설비 유지비', marketing: '마케팅', interest: '이자', principal: '원금 상환',
 };
+
+/** 산지 특성과 산지 고유 상태 (regions.md Tier 1) */
+function SiteCard() {
+  const s = useGame((g) => g.state);
+  const dispatch = useGame((g) => g.dispatch);
+  const site = siteOf(s);
+  const country = REGIONS[s.regionId];
+  const wp = site.waterPermit;
+  const app = s.siteState.permitApplication;
+  const shipped = s.siteState.traditionalShipped;
+  const thisYear = shipped && shipped.year === calendar(s).year ? shipped.liters : 0;
+  const quake = riskScale(s, 'earthquake');
+  return (
+    <Card title={<>산지 — {country.nameKo} · {site.nameKo} <span className="text-xs font-normal text-stone-500">{'★'.repeat(site.difficulty)} · {site.tagline}</span></>}>
+      <div className="grid gap-3 md:grid-cols-2">
+        <ul className="grid gap-0.5 text-sm">
+          {site.traits.map((x) => <li key={x.text} className={x.tone === 'good' ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}>{x.tone === 'good' ? '＋' : '－'} {x.text}</li>)}
+        </ul>
+        <div className="grid content-start gap-2 text-sm">
+          <div className="text-stone-600 dark:text-stone-300">
+            관리비 월 {won(site.overheadPerMonth)} · 엔젤스 셰어 보정 ×{site.angelShareFactor} · 물 {site.water === 'soft' ? '연수' : site.water === 'volcanic' ? '화산암반수' : '보통'}
+          </div>
+          {site.traditional && country.traditional && (
+            <div>
+              <b>전통주</b> — 올해 출고 {liters(thisYear)} · 현재 감면율 {pct(traditionalReliefRate(s, true), 0)}
+              <div className="text-xs text-stone-500">{country.traditional.label}. 전년 출고 {liters(country.traditional.eligibleMaxLastYearL)} 초과 시 자격 상실</div>
+            </div>
+          )}
+          {wp && (
+            <div>
+              <b>취수 허가</b> — 월 발효 투입 {liters(waterPermitCap(s))} 상한
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                {app
+                  ? <Badge tone="warn">증량 심사 중 · {monthLabel(s.startYear, app.decideMonth)} 결과 · 승인 확률 {pct(app.chance, 0)}</Badge>
+                  : <Button small disabled={s.cash < wp.cost} onClick={() => dispatch({ type: 'applyWaterPermit' })}>증량 신청 (+{liters(wp.stepL)}, {won(wp.cost)}, {wp.months[0]}~{wp.months[1]}개월, 승인 {pct(wp.chance, 0)})</Button>}
+              </div>
+            </div>
+          )}
+          {site.dutyFree && <div><b>지정면세점</b> — 지난달 면세 판매 {num(s.reports.at(-1)?.dutyFreeBottles ?? 0)}병 (주세·부가세 없음)</div>}
+          {site.winterFerment && <div><b>겨울 발효</b> — {site.winterFerment.months.join('·')}월 발효조 가동 {pct(site.winterFerment.capacity, 0)} {hasUpgrade(s, 'temp_control') ? <Badge tone="good">온도 제어 설비로 해소</Badge> : <span className="text-xs text-stone-500">(생산 탭에서 온도 제어 설비 발주)</span>}</div>}
+          {quake < 1 && <div><b>지진 대비</b> — 피해 {pct(1 - quake, 0)} 경감</div>}
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 export function Dashboard() {
   const s = useGame((g) => g.state);
@@ -33,6 +81,8 @@ export function Dashboard() {
       </div>
 
       <EventsCard />
+
+      <SiteCard />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card title="현금 추이" className="lg:col-span-2">
