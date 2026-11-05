@@ -212,6 +212,9 @@ export const BULK = {
   /** 미납 1 LPA당 위약금 = 계약가 × penaltyRate */
   penaltyRate: 0.3,
   maxActiveContracts: 5,
+  /** 크래프트 프리미엄 계약(#78): 생산 능력의 10~20%, 단가 ×1.5, 최소 품질 40~46 */
+  craftPriceFactor: 1.5,
+  craftChance: 0.3,
   /** 그레인 뉴메이크 기준가(원/LPA) — 대량·저가 */
   grainNewMakeBase: 7_000,
   grainAgePerYear: 0.12,

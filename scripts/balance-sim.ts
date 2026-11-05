@@ -1,6 +1,6 @@
 // 헤드리스 밸런스 시뮬레이션 — 전략별 단순 정책으로 N개 시드를 돌려 파산률·흑자 전환 시점·매출 구성을 본다.
 // 실행: npm run balance [-- 시드수 개월수 전략 지역 입지]   전략 = brand | hybrid | expand | grain | all(기본), 지역 = KR(기본) | JP | TW
-import { advanceMonth, applyAction, bulkValuePerLPA, capacityLPA, previewBlend, newGame, whiskyMinMonths, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
+import { advanceMonth, applyAction, bulkValuePerLPA, capacityLPA, lotQuality, previewBlend, newGame, whiskyMinMonths, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
 import { regionOf } from '../src/sim/content/regions';
 import { EVENTS } from '../src/sim/content/events';
 
@@ -135,7 +135,9 @@ function acceptContracts(s: GameState, maxCommittedLPA: number, spirit: Contract
   for (const o of [...s.contractOffers]) {
     if (o.spirit !== spirit) continue;
     const committed = s.contracts.filter((c) => c.spirit === spirit).reduce((t, c) => t + c.lpaPerMonth, 0);
-    const qOk = spirit === 'grain_newmake' ? o.minQuality <= 36 : o.minQuality <= 42;
+    // 크래프트 계약은 최근 몰트 뉴메이크 품질로 판단
+    const recent = s.lots.filter((l) => l.kind === 'malt').at(-1);
+    const qOk = spirit === 'grain_newmake' ? o.minQuality <= 36 : o.craft ? !!recent && lotQuality(recent) >= o.minQuality + 2 : o.minQuality <= 42;
     if (o.style !== 'peated' && qOk && committed + o.lpaPerMonth <= maxCommittedLPA) s = act(s, { type: 'acceptContract', offerId: o.id });
   }
   return s;

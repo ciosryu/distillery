@@ -131,9 +131,30 @@ export function makeSpecialContractOffer(s: GameState, rng: Rng, e: { capacitySh
   return { ...offer, expiresMonth: s.month + 2 };
 }
 
+/** 크래프트 프리미엄 계약 (#78): 독립 병입자·크래프트 블렌더가 소규모 증류소의 개성 있는 몰트 뉴메이크를 소량·고단가로 산다 */
+export function makeCraftContractOffer(s: GameState, rng: Rng): ContractOffer | null {
+  const cap = capacityLPA(s, 'malt');
+  if (cap <= 0) return null;
+  const ib = rng.pick(INDEPENDENT_BOTTLERS);
+  const style = rng.pick(['any', 'unpeated', 'peated'] as const);
+  const minQuality = rng.int(40, 46);
+  const termMonths = rng.pick([24, 36]);
+  const prepayShare = rng.chance(0.5) ? 0.3 : 0;
+  const lpaPerMonth = Math.max(20, Math.round((cap * rng.pick([0.1, 0.15, 0.2])) / 10) * 10);
+  const pricePerLPA = Math.round(contractPrice(s, 'malt_newmake', style, minQuality, false, prepayShare > 0, BULK.craftPriceFactor, termMonths) / 100) * 100;
+  return {
+    id: nid(s, 'Q'), buyerId: ib.id, buyerName: `${displayName(ib)} (크래프트)`, spirit: 'malt_newmake', domestic: false, style, craft: true,
+    lpaPerMonth, termMonths, pricePerLPA, minQuality, prepayShare, penaltyPerLPA: Math.round(pricePerLPA * BULK.penaltyRate), expiresMonth: s.month + 3,
+  };
+}
+
 export function refreshContractOffers(s: GameState, rng: Rng): void {
   s.contractOffers = s.contractOffers.filter((o) => o.expiresMonth > s.month);
-  while (s.contractOffers.length < 2) s.contractOffers.push(makeContractOffer(s, rng));
+  while (s.contractOffers.filter((o) => !o.craft).length < 2) s.contractOffers.push(makeContractOffer(s, rng));
+  if (!s.contractOffers.some((o) => o.craft) && rng.chance(BULK.craftChance)) {
+    const o = makeCraftContractOffer(s, rng);
+    if (o) s.contractOffers.push(o);
+  }
 }
 
 export const contractTotalValue = (c: ContractTerms) => c.lpaPerMonth * c.termMonths * c.pricePerLPA;

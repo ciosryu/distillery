@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   advanceMonths, annuityPayment, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, categorize, demandFor, evaluate, evaporate, heartsFraction, spotBidPerLPA, spotQuote,
-  makeContractOffer, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
+  makeContractOffer, makeCraftContractOffer, capacityLPA, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
   appeal, applyEffects, buyersFor, presetRecipes, validateRecipe, type Product,
   agePerception, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
 } from './index';
@@ -200,6 +200,29 @@ describe('국산 원액 프리미엄', () => {
     const avg = (xs: typeof offers) => xs.reduce((t, o) => t + o.pricePerLPA / qualityFactor(o.minQuality + 8), 0) / xs.length;
     expect(dom.length && foreign.length).toBeTruthy();
     expect(avg(dom)).toBeGreaterThan(avg(foreign));
+  });
+
+  it('크래프트 계약은 일반 계약보다 소량·고단가다 (#78)', () => {
+    const s = newGame({ seed: 23 });
+    const rng = mulberry32(2);
+    const crafts = Array.from({ length: 30 }, () => makeCraftContractOffer(s, rng)!).filter((o) => o.style === 'any' && o.prepayShare === 0);
+    const regular = Array.from({ length: 60 }, () => makeContractOffer(s, rng)).filter((o) => o.spirit === 'malt_newmake' && o.style === 'any' && o.prepayShare === 0 && !o.domestic);
+    const norm = (o: { pricePerLPA: number; minQuality: number; termMonths: number }) => o.pricePerLPA / qualityFactor(o.minQuality + 8) / (1 + 0.04 * (o.termMonths - 12) / 12);
+    const avg = (xs: { pricePerLPA: number; minQuality: number; termMonths: number }[]) => xs.reduce((t, o) => t + norm(o), 0) / xs.length;
+    expect(crafts.length && regular.length).toBeTruthy();
+    expect(crafts.every((o) => o.craft && o.lpaPerMonth >= 20)).toBe(true);
+    expect(avg(crafts)).toBeGreaterThan(avg(regular) * 1.3);
+    expect(Math.max(...crafts.map((o) => o.lpaPerMonth))).toBeLessThan(Math.max(...regular.map((o) => o.lpaPerMonth)));
+  });
+
+  it('일본은 B2B 시장이 깊어 계약 물량이 크다 (#79)', () => {
+    const avgLpa = (region: 'KR' | 'JP') => {
+      const s = newGame({ seed: 23, region });
+      const rng = mulberry32(3);
+      const xs = Array.from({ length: 60 }, () => makeContractOffer(s, rng)).filter((o) => o.spirit === 'malt_newmake');
+      return xs.reduce((t, o) => t + o.lpaPerMonth / capacityLPA(s, 'malt'), 0) / xs.length;
+    };
+    expect(avgLpa('JP')).toBeGreaterThan(avgLpa('KR') * 1.5);
   });
 });
 

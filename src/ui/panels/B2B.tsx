@@ -1,4 +1,4 @@
-import { CASKS } from '../../sim/content/catalog';
+import { BULK, CASKS } from '../../sim/content/catalog';
 import { cancellationCost, capacityLPA, contractTotalValue, domesticPremium, isNewMake, lotQuality, spotBidPerLPA, spotQuote } from '../../sim';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won } from '../format';
@@ -27,7 +27,7 @@ export function B2B() {
           <Table head={['구매자', '원액', '스타일', '월 물량', '기간', '단가(LPA)', '최소 품질', '선급금', '총액', '미납 위약금', '']}>
             {s.contractOffers.map((o) => (
               <tr key={o.id}>
-                <Td className="font-medium">{o.buyerName}{o.domestic && <> <Badge tone="good">국산 프리미엄</Badge></>}</Td>
+                <Td className="font-medium">{o.buyerName}{o.domestic && <> <Badge tone="good">국산 프리미엄</Badge></>}{o.craft && <> <Badge tone="good">크래프트 ×{BULK.craftPriceFactor}</Badge></>}</Td>
                 <Td>{o.spirit === 'grain_newmake' ? '그레인 뉴메이크' : '몰트 뉴메이크'}</Td>
                 <Td><Badge>{STYLE_LABEL[o.style]}</Badge></Td>
                 <Td right>{num(o.lpaPerMonth)} LPA</Td>

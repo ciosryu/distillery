@@ -191,6 +191,8 @@ export interface ContractTerms {
   buyerName: string;
   /** 납품 원액: 몰트·그레인 뉴메이크 (버번은 켄터키 지역과 함께) */
   spirit: 'malt_newmake' | 'grain_newmake';
+  /** 크래프트 프리미엄 계약 — 소량·고단가 (독립 병입자·크래프트 블렌더) */
+  craft?: boolean;
   /** 국내 블렌더 — 국산 원액 프리미엄 적용 */
   domestic: boolean;
   style: 'any' | 'unpeated' | 'peated';
