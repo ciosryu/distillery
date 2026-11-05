@@ -1,7 +1,7 @@
 // 헤드리스 밸런스 시뮬레이션 — 전략별 단순 정책으로 N개 시드를 돌려 파산률·흑자 전환 시점·매출 구성을 본다.
 // 실행: npm run balance [-- 시드수 개월수 전략 지역]   전략 = brand | hybrid | expand | grain | all(기본)
 //       지역 = 국가(KR | JP | TW → 표준 산지) 또는 산지(gyeonggi | andong | jeju | kanto | kansai | hokkaido | yilan)
-import { advanceMonth, applyAction, bulkValuePerLPA, previewBlend, newGame, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SiteId, type SpiritKind } from '../src/sim';
+import { advanceMonth, applyAction, bulkValuePerLPA, capacityReport, previewBlend, newGame, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SiteId, type SpiritKind } from '../src/sim';
 import { DEFAULT_SITE, SITES } from '../src/sim/content/sites';
 import { REGIONS, setKrBaseDeduction } from '../src/sim/content/regions';
 import { HOLDING } from '../src/sim/content/catalog';
@@ -18,6 +18,7 @@ if (process.env.KR_DEDUCTION === 'on' || process.env.KR_DEDUCTION === 'off') set
 // 비교 실험용: HOLDING_OFF=1 이면 숙성 재고 보유 비용(결정 #65)을 끈다, HOLDING_GRACE=개월 로 면제 기간 조정
 if (process.env.HOLDING_OFF === '1') { HOLDING.perCaskMonth = 0; HOLDING.insuranceRateMonth = 0; }
 if (process.env.HOLDING_GRACE) HOLDING.graceMonths = Number(process.env.HOLDING_GRACE);
+if (process.env.HOLDING_SCALE) { HOLDING.perCaskMonth *= Number(process.env.HOLDING_SCALE); HOLDING.insuranceRateMonth *= Number(process.env.HOLDING_SCALE); }
 
 type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site';
 
@@ -40,7 +41,7 @@ const BIG_RECIPE = 'B2B 몰트';
 
 function bottleCashProducts(s: GameState): GameState {
   for (const lot of [...s.lots]) {
-    if (lot.kind === 'soju' && stockOf(s, 'soju_distilled') < 1500 && s.month - lot.createdMonth >= 1)
+    if (lot.kind === 'soju' && stockOf(s, 'soju_distilled') < 1500 + retailBuffer && s.month - lot.createdMonth >= 1)
       s = act(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: lot.volumeL }], options: { name: `소주 ${s.month}`, targetAbv: 0.25, bottleMl: 375, chillFilter: true, packagingId: 'standard' } });
     if (lot.kind === 'baijiu' && stockOf(s, 'baijiu') < 1500 && s.month - lot.createdMonth >= 1)
       s = act(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: lot.volumeL }], options: { name: `고량주 ${s.month}`, targetAbv: 0.34, bottleMl: 500, chillFilter: true, packagingId: 'standard' } });
@@ -66,6 +67,8 @@ function fillMalt(s: GameState, maxLPA = Infinity, kind: 'malt' | 'grain' = 'mal
 }
 
 let dutyFreeEditions = false;
+/** 대형 유통 납품으로 나갈 소주 병수 — 병입 기준 재고에 더한다 */
+let retailBuffer = 0;
 
 function bottleWhisky(s: GameState): GameState {
   if (stockOf(s, 'whisky') >= 800) return s;
@@ -73,7 +76,9 @@ function bottleWhisky(s: GameState): GameState {
   const ready = s.casks.filter((c) => c.contents && c.contents.oakMonths >= REGIONS[s.regionId].whiskyMinMonths && !c.contents.sourced).slice(0, 3);
   if (!ready.length) return s;
   const comps = ready.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }));
-  const df = dutyFreeEditions && SITES[s.siteId].dutyFree;
+  // 면세 전용 한정판은 일부만 (면세 전용 재고 400병 미만일 때) — 국내 판매를 통째로 포기하지 않는다
+  const dfStock = s.products.filter((p) => p.dutyFreeOnly).reduce((t, p) => t + p.stockBottles, 0);
+  const df = dutyFreeEditions && !!SITES[s.siteId].dutyFree && dfStock < 400;
   const opts = { name: `싱글 몰트 ${s.month}`, targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: df ? 'premium' : 'standard', dutyFreeOnly: df };
   return previewBlend(s, comps, opts).ok ? act(s, { type: 'bottle', components: comps, options: opts }) : s;
 }
@@ -108,15 +113,25 @@ function bottleBlended(s: GameState): GameState {
 /** 산지 전용 전략의 추가 행동 */
 function siteActions(s: GameState): GameState {
   switch (s.siteId) {
-    case 'gyeonggi':
-      for (const o of [...s.retailOffers]) s = act(s, { type: 'acceptRetail', offerId: o.id });
+    case 'gyeonggi': {
+      // 납품 계약은 소주·고량주처럼 증산할 수 있는 카테고리만 받고, 받은 만큼 증산한다
+      for (const o of [...s.retailOffers]) if (o.category === 'soju_distilled' || o.category === 'baijiu') s = act(s, { type: 'acceptRetail', offerId: o.id });
+      const need = s.retailContracts.filter((c) => c.category === 'soju_distilled').reduce((t, c) => t + c.bottlesPerMonth, 0);
+      const soju = rid(s, 'soju');
+      if (soju) s = act(s, { type: 'setOrder', recipeId: soju, batchesPerMonth: 2 + Math.ceil(need / 1000) });
+      retailBuffer = need;
       return s;
-    case 'kanto':
-      for (const o of [...s.oemOffers]) s = act(s, { type: 'acceptOem', offerId: o.id });
+    }
+    case 'kanto': {
+      // 남는 증류기 가동분 안에서만 위탁생산을 받는다 (배치당 2회 증류)
+      const cap = capacityReport(s);
+      const spare = cap.stills.reduce((t, x) => t + x.cap - x.used, 0) - s.oemContracts.reduce((t, c) => t + c.batchesPerMonth * 2, 0);
+      for (const o of [...s.oemOffers]) if (o.batchesPerMonth * 2 <= spare && s.month >= 6) s = act(s, { type: 'acceptOem', offerId: o.id });
       return s;
+    }
     case 'kansai':
-      // 2년 차 이후 현금 여유가 생기면 직판장, 미즈나라는 소량씩
-      if (s.month >= 24 && s.cash > 400_000_000 && !s.equipment.some((e) => e.catalogId === 'upg_visitor')) s = act(s, { type: 'buyEquipment', catalogId: 'upg_visitor' });
+      // 위스키가 나온 뒤(3년 차), 대출을 뺀 자기 자금이 충분할 때 직판장. 미즈나라는 소량씩
+      if (s.month >= 36 && s.cash - s.loans.reduce((t, l) => t + l.balance, 0) > 300_000_000 && !s.equipment.some((e) => e.catalogId === 'upg_visitor')) s = act(s, { type: 'buyEquipment', catalogId: 'upg_visitor' });
       if (s.month % 12 === 6 && s.cash > 200_000_000) s = act(s, { type: 'buyCasks', caskType: 'mizunara_hogshead', qty: 2 });
       return s;
     case 'hokkaido':
@@ -198,6 +213,7 @@ function sellLots(s: GameState, kind: 'malt' | 'grain'): GameState {
 }
 
 function policy(s: GameState, strategy: Strategy): GameState {
+  if (strategy !== 'site') retailBuffer = 0;
   if (strategy === 'site') {
     dutyFreeEditions = true;
     // 산지 전용: 간토는 혼합형, 나머지는 브랜드형 위에 대표 결정을 얹는다
