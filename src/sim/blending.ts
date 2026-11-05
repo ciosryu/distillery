@@ -43,6 +43,13 @@ export function categorize(kind: SpiritKind, minOakMonths: number, abv: number, 
   return minOakMonths >= WHISKY_MIN_MONTHS && abv >= MIN_BOTTLING_ABV.whisky ? 'whisky' : 'malt_spirit';
 }
 
+/** 원액(탱크·캐스크)을 지금 병입한다면 받을 카테고리 — 평가 표시용 */
+export function lotCategory(lot: SpiritLot): ProductCategory {
+  if (lot.kind === 'soju') return 'soju_distilled';
+  if (lot.kind === 'gin') return 'gin';
+  return lot.oakMonths >= WHISKY_MIN_MONTHS ? 'whisky' : 'malt_spirit';
+}
+
 export function suggestedPrice(category: ProductCategory, bottleMl: number, quality: number, ageYears: number | null): number {
   const m = KOREA.market[category];
   const ageBonus = category === 'whisky' && ageYears ? 1 + 0.06 * Math.min(ageYears, 12) : 1;

@@ -199,3 +199,34 @@ export function monthlyFixedCost(s: GameState): number {
 }
 
 export const roleName = (r: StaffRole) => ROLE_INFO[r].nameKo;
+
+export interface CapacityReport {
+  stills: { id: string; name: string; used: number; cap: number }[];
+  fermenterDaysUsed: number;
+  fermenterDaysCap: number;
+  distillerRunsUsed: number;
+  distillerRunsCap: number;
+}
+
+/** 현재 생산 지시 기준의 설비·인력 가동 예상 (UI 미리보기용) */
+export function capacityReport(s: GameState): CapacityReport {
+  const stills = s.equipment
+    .filter((e) => EQUIPMENT[e.catalogId]?.kind === 'still')
+    .map((e) => {
+      const def = EQUIPMENT[e.catalogId]!;
+      return { id: e.id, name: def.nameKo + (e.readyMonth > s.month ? ` (설치 중, ${monthLabel(s.startYear, e.readyMonth)})` : ''), used: 0, cap: e.readyMonth <= s.month && def.kind === 'still' ? def.runsPerMonth : 0 };
+    });
+  let fermenterDaysUsed = 0;
+  let distillerRunsUsed = 0;
+  for (const o of s.orders) {
+    const r = s.recipes.find((x) => x.id === o.recipeId);
+    if (!r) continue;
+    const st = stills.find((x) => x.id === r.stillId);
+    if (st) st.used += o.batchesPerMonth * r.runs;
+    distillerRunsUsed += o.batchesPerMonth * r.runs;
+    if (r.kind !== 'gin') fermenterDaysUsed += o.batchesPerMonth * (r.fermentDays + 2);
+  }
+  const fermenterDaysCap = s.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'fermenter' && e.readyMonth <= s.month).length * 30;
+  const distillerRunsCap = staffOf(s, 'distiller').reduce((t, d) => t + distillerRunCapacity(d.stats.b), 0);
+  return { stills, fermenterDaysUsed, fermenterDaysCap, distillerRunsUsed, distillerRunsCap: Math.floor(distillerRunsCap) };
+}
