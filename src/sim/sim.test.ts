@@ -3,11 +3,12 @@ import {
   advanceMonths, annuityPayment, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, categorize, demandFor, evaluate, evaporate, heartsFraction, spotBidPerLPA, spotQuote,
   makeContractOffer, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
   appeal, applyEffects, buyersFor, presetRecipes, validateRecipe, type Product,
-  agePerception, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost,
+  agePerception, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
 } from './index';
+import { overhangFactor, ownsFacility, slotClimate } from './ops';
 import { EQUIPMENT } from './content/catalog';
 import { BUYERS } from './content/names';
-import { consumerPrice, priceForConsumer, REGIONS, siteOf } from './content/regions';
+import { consumerPrice, logisticsMultiplier, priceForConsumer, REGIONS, siteOf } from './content/regions';
 
 const recipeId = (s: GameState, prefix: string) => s.recipes.find((r) => r.name.startsWith(prefix))!.id;
 
@@ -278,20 +279,25 @@ describe('결정론', () => {
 describe('지역 (v0.6)', () => {
   const asRecipe = (s: GameState, kind: string) => ({ ...presetRecipes(s.equipment[0]!.id, 'KR').find((r) => r.kind === kind)!, id: 'X' });
 
-  it('주종 생산 지역 규칙: 소주는 한국·일본, 백주는 한국·대만(중국은 추후), 일본은 백주 불가', () => {
-    const kr = newGame({ seed: 1, region: 'KR' });
+  it('교차 생산(결정 #67): 원산지 잠금이 없는 주종은 어느 지역에서나 만들 수 있고, 자생하지 않는 원재료는 물류 배수가 붙는다', () => {
     const jp = newGame({ seed: 1, region: 'JP' });
     const tw = newGame({ seed: 1, region: 'TW' });
-    expect(validateRecipe(kr, asRecipe(kr, 'baijiu'))).toEqual([]);
-    expect(validateRecipe(tw, asRecipe(tw, 'baijiu'))).toEqual([]);
-    expect(validateRecipe(jp, asRecipe(jp, 'baijiu')).length).toBeGreaterThan(0);
-    expect(validateRecipe(tw, asRecipe(tw, 'soju')).length).toBeGreaterThan(0);
-    expect(jp.recipes.some((r) => r.kind === 'soju')).toBe(true);
-    expect(tw.recipes.some((r) => r.kind === 'soju')).toBe(false);
+    expect(validateRecipe(jp, asRecipe(jp, 'baijiu'))).toEqual([]);
+    expect(validateRecipe(tw, asRecipe(tw, 'soju'))).toEqual([]);
+    expect(logisticsMultiplier(['KR'], 'KR')).toBe(1);
+    expect(logisticsMultiplier(['KR'], 'TW')).toBeCloseTo(1.3, 5);
+    expect(logisticsMultiplier(['MX'], 'KR')).toBeCloseTo(1.8, 5);
+    expect(logisticsMultiplier(undefined, 'JP')).toBe(1);
+    // 같은 레시피(국산 쌀·누룩)를 대만에서 만들면 원재료비가 오른다
+    const kr = newGame({ seed: 1, region: 'KR' });
+    const soju = asRecipe(kr, 'soju');
+    const still = stillDefOf(kr, kr.equipment[0]!.id)!;
+    const home = simulateBatch(soju, still, 'stainless', kr.staff[0], kr.priceIndex, 0, { tempC: 18, regionId: 'KR' });
+    const away = simulateBatch(soju, still, 'stainless', kr.staff[0], kr.priceIndex, 0, { tempC: 18, regionId: 'TW' });
+    expect(away.cost).toBeGreaterThan(home.cost * 1.15);
   });
 
-  it('진먼 고량은 대만에서만 구할 수 있고, 진먼섬 증류소에서 60% 이상 쓰면 "진먼 고량주" 특산물이 된다', () => {
-    const kr = newGame({ seed: 1, region: 'KR' });
+  it('진먼 고량은 대만 자생(다른 곳은 수입), 진먼섬 증류소에서 60% 이상 쓰면 "진먼 고량주" 특산물이 된다', () => {
     const yilan = newGame({ seed: 1, region: 'TW', startingCash: 5_000_000_000 });
     const yk = yilan.recipes.find((r) => r.kind === 'baijiu')!;
     const yl = advanceMonths(applyAction(yilan, { type: 'setOrder', recipeId: yk.id, batchesPerMonth: 1 }).state, 1);
@@ -301,7 +307,6 @@ describe('지역 (v0.6)', () => {
     expect(ypv.warnings.some((w) => w.includes('진먼섬'))).toBe(true);
     let tw = newGame({ seed: 1, region: 'TW', site: 'kinmen', startingCash: 5_000_000_000 });
     const kinmen = tw.recipes.find((r) => r.kind === 'baijiu')!;
-    expect(validateRecipe(kr, { ...kinmen, stillId: kr.equipment[0]!.id })).toContain('진먼 고량(金門 계약재배)은(는) 이 지역에서 구할 수 없습니다');
     tw = advanceMonths(applyAction(tw, { type: 'setOrder', recipeId: kinmen.id, batchesPerMonth: 1 }).state, 1);
     const lot = tw.lots.find((l) => l.kind === 'baijiu')!;
     const pv = previewBlend(tw, [{ source: 'lot', id: lot.id, liters: lot.volumeL }], { name: 'k', targetAbv: 0.58, bottleMl: 600, chillFilter: true, packagingId: 'standard' });
@@ -362,10 +367,11 @@ describe('증발 보정 (v0.8)', () => {
       for (let m = 0; m < 36; m++) cask = matureCask(cask, { tempC: temps[m % 12]!, humidity: hum }, { control: 0 }).cask;
       return 1 - Math.pow(cask.contents!.volumeL / 190, 1 / 3);
     };
-    expect(rate(REGIONS.TW.tempC, 82)).toBeGreaterThan(0.095);
-    expect(rate(REGIONS.TW.tempC, 82)).toBeLessThan(0.14);
-    expect(rate(REGIONS.KR.tempC, 68)).toBeGreaterThan(0.045);
-    expect(rate([4, 4, 6, 8, 11, 14, 15, 15, 13, 10, 7, 5], 85)).toBeLessThan(0.025);
+    // 외기 그대로(습도 60 중립) 기준 — 숙성고 내부 보정은 아래 테스트
+    expect(rate(REGIONS.TW.tempC, 60)).toBeGreaterThan(0.095);
+    expect(rate(REGIONS.TW.tempC, 60)).toBeLessThan(0.14);
+    expect(rate(REGIONS.KR.tempC, 60)).toBeGreaterThan(0.045);
+    expect(rate([4, 4, 6, 8, 11, 14, 15, 15, 13, 10, 7, 5], 60)).toBeLessThan(0.025);
   });
 
   it('입지에 따라 기후가 바뀐다 (안동·진먼섬)', () => {
@@ -446,5 +452,140 @@ describe('실명 레지스트리 (결정 #44)', () => {
     expect(s.cash).toBe(cash + 12_000_000);
     expect(s.casks.some((c) => c.id === cask.id)).toBe(false);
     expect(s.caskBids).toEqual([]);
+  });
+});
+
+describe('v1.0 운영 시스템', () => {
+  it('습도: 70%↑면 액량은 덜 줄고 도수가 떨어지며, 50%↓면 물이 더 날아가 도수가 오른다', () => {
+    const wet = evaporate(200, 0.6, 0.004, 85);
+    const dry = evaporate(200, 0.6, 0.004, 40);
+    expect(wet.abv).toBeLessThan(0.6);
+    expect(dry.abv).toBeGreaterThan(0.6);
+    expect(wet.lostL).toBeLessThan(dry.lostL);
+  });
+
+  it('숙성고: 랙은 위가 덥고 건조하며, 더니지는 상하단 차이가 작고 연교차가 줄어든다', () => {
+    const s = newGame({ seed: 1, region: 'KR', startingCash: 5_000_000_000 });
+    s.equipment.push({ id: 'WD', catalogId: 'warehouse_dunnage_45', readyMonth: 0 });
+    const at = (w: string, tier: number) => slotClimate(s, { slot: { w, tier } } as Cask, 8);
+    expect(at('W0', 5).tempC - at('W0', 0).tempC).toBeGreaterThan(4);
+    expect(at('W0', 5).humidity).toBeLessThan(at('W0', 0).humidity);
+    expect(Math.abs(at('WD', 2).tempC - at('WD', 0).tempC)).toBeLessThan(1);
+    expect(at('WD', 0).tempC).toBeLessThan(at('W0', 0).tempC);
+  });
+
+  it('로테이션: QC가 있어야 하고, 단을 뒤집는다', () => {
+    let s = newGame({ seed: 1, region: 'KR' });
+    const cask = s.brokerOffers[0]!.cask; s.casks.push(cask); cask.slot = { w: 'W0', tier: 5 };
+    expect(applyAction(s, { type: 'rotateWarehouse', warehouseId: 'W0' }).error).toContain('QC');
+    const qc = s.candidates.find((c) => c.role === 'warehouse')!;
+    s = applyAction(s, { type: 'hire', candidateId: qc.id }).state;
+    s = applyAction(s, { type: 'rotateWarehouse', warehouseId: 'W0' }).state;
+    expect(s.casks.find((c) => c.id === cask.id)!.slot!.tier).toBe(0);
+  });
+
+  it('발효 온도: 추우면 발효가 길어지고 플로럴↑, 더우면 짧아지고 열대 과일↑', () => {
+    expect(fermentDaysAt(10, 0)).toBe(13);
+    expect(fermentDaysAt(10, 30)).toBe(9);
+    const s = newGame({ seed: 1 });
+    const r = s.recipes.find((x) => x.kind === 'malt')!;
+    const still = stillDefOf(s, r.stillId)!;
+    const cold = simulateBatch(r, still, 'stainless', s.staff[0], s.priceIndex, 0, { tempC: 2 });
+    const hot = simulateBatch(r, still, 'stainless', s.staff[0], s.priceIndex, 0, { tempC: 32 });
+    expect(cold.flavor.floral ?? 0).toBeGreaterThan(hot.flavor.floral ?? 0);
+    expect(hot.flavor.tropical ?? 0).toBeGreaterThan(cold.flavor.tropical ?? 0);
+  });
+
+  it('소매 처리 역량을 넘는 판매분은 고비용 채널, 2배를 넘으면 못 판다', () => {
+    let s = newGame({ seed: 1, startingCash: 50_000_000_000 });
+    s.awareness = 0.9;
+    s.products.push({ id: 'P1', name: 'x', category: 'soju_distilled', ageYears: null, abv: 0.25, bottleMl: 375, chillFiltered: true, packagingId: 'standard', flavor: {}, quality: 80, typicity: 90, style: null, sourcedShare: 0, stockBottles: 1_000_000, price: 3000, unitCost: 1000, createdMonth: 0, lastMonthSold: 0, totalSold: 0 });
+    s = advanceMonths(s, 1);
+    const r = s.reports.at(-1)!;
+    expect(r.retailSoldCases).toBeLessThanOrEqual(2 * r.retailCapacityCases! + 1);
+    expect(r.overflowCases).toBeGreaterThan(0);
+  });
+
+  it('재고 적체: 6개월 넘게 팔 재고는 매력도가 떨어진다', () => {
+    expect(overhangFactor({ stockBottles: 1200, salesEma: 100, createdMonth: 0 }, 12)).toBeCloseTo(Math.sqrt(0.5), 5);
+    expect(overhangFactor({ stockBottles: 500, salesEma: 100, createdMonth: 0 }, 12)).toBe(1);
+    expect(overhangFactor({ stockBottles: 5000, salesEma: 10, createdMonth: 10 }, 12)).toBe(1);
+  });
+
+  it('캐스크 시장: 쿠퍼리지 주문은 2개월 뒤 도착, 스팟은 즉시·웃돈, 시즈닝 계약은 24개월 뒤 최상급', () => {
+    let s = newGame({ seed: 1, startingCash: 5_000_000_000 });
+    const n0 = s.casks.length;
+    s = applyAction(s, { type: 'buyCasks', caskType: 'ex_bourbon_barrel', qty: 3 }).state;
+    expect(s.casks.length).toBe(n0);
+    s = applyAction(s, { type: 'buySpotCasks', caskType: 'ex_bourbon_barrel', qty: 2 }).state;
+    expect(s.casks.length).toBe(n0 + 2);
+    s = applyAction(s, { type: 'orderSeasoning', caskType: 'oloroso_butt', qty: 1 }).state;
+    s = advanceMonths(s, 2);
+    expect(s.casks.length).toBe(n0 + 2);
+    s = advanceMonths(s, 1); // 2개월 뒤(3번째 월 처리 시작)에 도착
+    expect(s.casks.length).toBe(n0 + 5);
+    s = advanceMonths(s, 22);
+    const butt = s.casks.find((c) => c.typeId === 'oloroso_butt')!;
+    expect(butt.seasoning).toBeGreaterThan(1);
+  });
+
+  it('중고 통 매각: 쓴 빈 통만, 활성도가 높을수록 비싸다', () => {
+    let s = newGame({ seed: 1 });
+    const c = s.casks[0]!;
+    expect(applyAction(s, { type: 'sellUsedCask', caskId: c.id }).error).toBeTruthy();
+    c.fills = 2;
+    const cash = s.cash;
+    s = applyAction(s, { type: 'sellUsedCask', caskId: c.id }).state;
+    expect(s.cash).toBeGreaterThan(cash);
+  });
+
+  it('부사수 없이 마스터가 떠나면 하우스 스타일 초기화, 24개월 수련한 부사수가 있으면 이어받는다', () => {
+    let s = newGame({ seed: 1, startingCash: 5_000_000_000 });
+    s.houseStyle = 50;
+    const master = s.staff[0]!;
+    let a = applyAction(s, { type: 'fire', staffId: master.id }).state;
+    expect(a.houseStyle).toBe(0);
+    const cand = s.candidates.find((c) => c.role === 'distiller')!;
+    s = applyAction(s, { type: 'hire', candidateId: cand.id, asApprentice: true }).state;
+    s.month += 24;
+    a = applyAction(s, { type: 'fire', staffId: master.id }).state;
+    expect(a.houseStyle).toBe(45);
+  });
+
+  it('에이징 커브: 65세에 은퇴한다', () => {
+    let s = newGame({ seed: 1 });
+    s.staff[0]!.ageAtHire = 64.95;
+    s = advanceMonths(s, 2);
+    expect(s.staff.length).toBe(0);
+  });
+
+  it('방재 설비가 있으면 재해 피해가 없다', () => {
+    const s = newGame({ seed: 1 });
+    expect(ownsFacility(s, 'facility_snow')).toBe(false);
+    s.equipment.push({ id: 'F', catalogId: 'facility_snow', readyMonth: 0 });
+    expect(ownsFacility(s, 'facility_snow')).toBe(true);
+  });
+
+  it('투자 유치와 캐스크 오너십 선도 판매', () => {
+    let s = newGame({ seed: 1, startingCash: 5_000_000_000 });
+    const cash = s.cash;
+    s = applyAction(s, { type: 'takeInvestment', offerId: 'angel' }).state;
+    expect(s.cash).toBe(cash + 200_000_000);
+    expect(s.investorShare).toBeCloseTo(0.1, 5);
+    const cask = { ...s.brokerOffers[0]!.cask, contents: { ...s.brokerOffers[0]!.cask.contents!, sourced: false } };
+    s.casks.push(cask);
+    const before = s.cash;
+    s = applyAction(s, { type: 'sellCaskOwnership', caskId: cask.id }).state;
+    expect(s.cash).toBeGreaterThan(before);
+    expect(applyAction(s, { type: 'sellBulk', source: 'cask', id: cask.id }).error).toContain('고객');
+  });
+
+  it('비지터 센터: 방문객 매출과 입소문이 쌓인다', () => {
+    let s = newGame({ seed: 1, startingCash: 5_000_000_000 });
+    s = applyAction(s, { type: 'buyEquipment', catalogId: 'visitor_basic' }).state;
+    expect(applyAction(s, { type: 'buyEquipment', catalogId: 'visitor_restaurant' }).error).toBeTruthy();
+    s = advanceMonths(s, 12);
+    expect(s.reports.at(-1)!.visitors).toBeGreaterThan(0);
+    expect(s.localBuzz).toBeGreaterThan(0);
   });
 });

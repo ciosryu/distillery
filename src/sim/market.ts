@@ -1,6 +1,7 @@
 import { DISTRIBUTION, PACKAGING, logisticsCost } from './content/catalog';
 import { consumerPrice, refPricePerL, regionOf, type RegionDef } from './content/regions';
 import { agePerception } from './blending';
+import { overhangFactor, ownershipOversold, OWNERSHIP, retailCapacityCases, RETAIL } from './ops';
 import { clamp } from './flavor';
 import { staffOf } from './util';
 import { mod } from './modifiers';
@@ -65,11 +66,17 @@ export function demandFor(s: GameState, p: Product, sameCategoryCount: number, m
   const elasticity = m.elasticity * (1 - 0.15 * (charm / 100)) * sourcedElasticityFactor(p);
   const ref = refPricePerL(region, p.category, p.abv);
   const priceFactor = m.baseCases > 0 ? Math.pow(consumerPricePerL / ref, -elasticity) : 0;
-  const demandBottles = (marketL * reach * a * priceFactor) / bottleL;
+  // 재고 적체(할인 이미지)·첫 출시 오픈런·캐스크 오너십 과다 판매(매니아 신뢰↓)
+  const launch = p.launchBoost && s.month < p.launchBoost.untilMonth ? p.launchBoost.factor : 1;
+  const oversold = ownershipOversold(s) ? OWNERSHIP.oversellAppeal : 1;
+  const demandBottles = (marketL * reach * a * priceFactor * overhangFactor(p, s.month) * launch * oversold) / bottleL;
   return { marketL, reach, appeal: a, consumerPricePerL, refPricePerL: ref, priceFactor, demandBottles };
 }
 
-export interface SalesResult { productId: string; name: string; bottles: number; revenue: number; demandBottles: number; distribution: number }
+export interface SalesResult { productId: string; name: string; bottles: number; revenue: number; demandBottles: number; distribution: number; overflowBottles?: number }
+
+/** 소매 처리 역량 집계 (runSales가 채운다) */
+export interface RetailSummary { capacityCases: number; soldCases: number; overflowCases: number; lostBottles: number }
 
 /** 병당 유통비 = 채널 수수료(출고가 비례) + 물류비 */
 export function distributionCostPerBottle(price: number, bottleMl: number): number {
@@ -82,21 +89,38 @@ export function bottleMargin(p: Pick<Product, 'price' | 'unitCost' | 'bottleMl'>
   return { perBottle, rate: p.price > 0 ? perBottle / p.price : 0 };
 }
 
-export function runSales(s: GameState, rng: Rng, monthOfYear: number): SalesResult[] {
+export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results: SalesResult[]; retail: RetailSummary } {
   const counts: Partial<Record<ProductCategory, number>> = {};
   for (const p of s.products) if (p.stockBottles > 0) counts[p.category] = (counts[p.category] ?? 0) + 1;
-  const out: SalesResult[] = [];
+  // 1) 제품별 수요
+  const wants: { p: Product; demand: number; want: number }[] = [];
   for (const p of s.products) {
-    if (p.stockBottles <= 0) { p.lastMonthSold = 0; continue; }
+    if (p.stockBottles <= 0) { p.lastMonthSold = 0; p.salesEma = (p.salesEma ?? 0) * 0.7; continue; }
     const d = demandFor(s, p, counts[p.category] ?? 1, monthOfYear);
     const demand = Math.round(d.demandBottles * rng.range(0.9, 1.1));
-    const sold = Math.min(p.stockBottles, demand);
+    wants.push({ p, demand, want: Math.min(p.stockBottles, demand) });
+  }
+  // 2) 소매 처리 역량 (결정 #65): 역량까지는 정상 채널, 역량의 2배까지는 고비용 채널(할인·추가 수수료), 그 너머는 못 판다
+  const cap = retailCapacityCases(s);
+  const cases = (bottles: number, ml: number) => (bottles * ml) / 9000;
+  const totalCases = wants.reduce((t, w) => t + cases(w.want, w.p.bottleMl), 0);
+  const scale = totalCases > 2 * cap ? (2 * cap) / totalCases : 1;
+  const soldCases = totalCases * scale;
+  const overflowShare = soldCases > cap ? (soldCases - cap) / soldCases : 0;
+  const out: SalesResult[] = [];
+  let lost = 0;
+  for (const { p, demand, want } of wants) {
+    const sold = Math.floor(want * scale);
+    lost += want - sold;
     p.stockBottles -= sold;
     p.lastMonthSold = sold;
     p.totalSold += sold;
-    out.push({ productId: p.id, name: p.name, bottles: sold, revenue: sold * p.price, demandBottles: demand, distribution: Math.round(sold * distributionCostPerBottle(p.price, p.bottleMl)) });
+    p.salesEma = p.salesEma == null ? sold : 0.7 * p.salesEma + 0.3 * sold;
+    const over = Math.round(sold * overflowShare);
+    const extraFee = over * p.price * (RETAIL.overflowFeeRate - DISTRIBUTION.channelFeeRate);
+    out.push({ productId: p.id, name: p.name, bottles: sold, revenue: sold * p.price, demandBottles: demand, distribution: Math.round(sold * distributionCostPerBottle(p.price, p.bottleMl) + extraFee), overflowBottles: over });
   }
-  return out;
+  return { results: out, retail: { capacityCases: cap, soldCases: Math.round(soldCases), overflowCases: Math.round(soldCases * overflowShare), lostBottles: lost } };
 }
 
 /** 인지도 계수 [튜닝] — 월 500만 원 마케팅 단독이면 평형 인지도 ≈ 0.4 */

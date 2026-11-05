@@ -18,11 +18,15 @@ export const sizeFactor = (sizeL: number) => Math.cbrt(200 / sizeL);
 export const tempFactor = (tempC: number) => Math.exp(TEMP_K * (tempC - 10));
 export const evapTempFactor = (tempC: number) => Math.exp(EVAP_TEMP_K * (tempC - 10));
 
-/** 습도에 따른 증발 증기의 알코올 비율 배수: >1이면 도수 하락 */
-export const humidityK = (humidity: number) => 1 + 0.01 * (humidity - 65);
+/** 습도에 따른 증발 증기의 알코올 비율 배수: >1이면 도수 하락 (결정 #67)
+ *  60% 근처에서 중립. 70%↑ 습하면 알코올이 더 날아가 도수가 빨리 떨어지고, 50%↓ 건조하면 물이 더 날아가 도수가 오른다 */
+export const humidityK = (humidity: number) => clamp(1 + 0.012 * (humidity - 60), 0.6, 1.5);
+
+/** 습도에 따른 증발량(액량) 배수: 습하면 덜 줄고 건조하면 더 준다 */
+export const humidityVolumeFactor = (humidity: number) => clamp(1 - 0.01 * (humidity - 60), 0.7, 1.3);
 
 export function evaporate(volumeL: number, abv: number, rate: number, humidity: number): { volumeL: number; abv: number; lostL: number } {
-  const lostL = volumeL * rate;
+  const lostL = volumeL * rate * humidityVolumeFactor(humidity);
   const alpha = Math.min(0.97, abv * humidityK(humidity));
   const newVol = volumeL - lostL;
   const newAbv = clamp((volumeL * abv - lostL * alpha) / newVol, 0, 0.97);
@@ -59,6 +63,12 @@ export function matureCask(cask: Cask, climate: Climate, opts: MatureOptions): {
   f.cereal = (f.cereal ?? 0) * (1 - d * 0.3);
   f.solvent = (f.solvent ?? 0) * (1 - d * 0.5);
   f.feinty = (f.feinty ?? 0) * (1 - d * 0.2);
+  // 습도와 질감: 습하면 부드러워지고(자극 추가 감소), 건조하면 도수가 올라 스파이시한 타격감이 커진다
+  if (climate.humidity > 70) f.harshness = (f.harshness ?? 0) * (1 - d * 0.02 * (climate.humidity - 70));
+  else if (climate.humidity < 50) {
+    f.harshness = (f.harshness ?? 0) + 0.15 * m * (50 - climate.humidity) / 10;
+    f.wood_spice = (f.wood_spice ?? 0) + 0.1 * m * (50 - climate.humidity) / 10;
+  }
 
   // ② 추출 (목재 + 시즈닝)
   for (const [k, v] of Object.entries(WOOD_EXTRACT[cask.wood]) as [AxisId, number][]) bump(k, v * act * m);

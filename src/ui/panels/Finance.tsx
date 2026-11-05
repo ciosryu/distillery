@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { LOAN_OFFERS } from '../../sim/content/catalog';
+import { INVESTMENT_OFFERS } from '../../sim/ops';
 import { annuityPayment, currentLoanPayment, monthLabel } from '../../sim';
 import { useGame } from '../../store/game';
 import { pct, won } from '../format';
@@ -34,6 +35,26 @@ export function Finance() {
             );
           })}
         </Table>
+      </Card>
+
+      <Card title={`투자 유치 — 외부 지분 ${pct(s.investorShare, 1)}`}>
+        <Table head={['제안', '금액', '지분', '가능 시기', '비고', '']}>
+          {INVESTMENT_OFFERS.map((o) => {
+            const taken = s.investmentsTaken.includes(o.id);
+            const open = s.month >= o.minMonth && s.month <= o.maxMonth;
+            return (
+              <tr key={o.id}>
+                <Td className="font-medium">{o.nameKo}</Td>
+                <Td right>{won(o.amount)}</Td>
+                <Td right>{pct(o.share, 0)}</Td>
+                <Td className="text-xs">{o.minMonth}~{o.maxMonth}개월차</Td>
+                <Td className="text-xs text-stone-500">{o.note}</Td>
+                <Td><Button small variant="primary" disabled={taken || !open} onClick={() => dispatch({ type: 'takeInvestment', offerId: o.id })}>{taken ? '유치 완료' : open ? '유치' : '기간 아님'}</Button></Td>
+              </tr>
+            );
+          })}
+        </Table>
+        <p className="mt-2 text-xs text-stone-500">다른 초기 자금원: 숙성고의 <b>캐스크 오너십 판매</b>(지금 현금, 8년 뒤 인도 — 많이 팔면 매니아 신뢰↓), 독립 병입자의 <b>통째 매입 제안</b>(3년↑·품질 65↑), <b>비지터 센터</b> 투어·뉴메이크 판매.</p>
       </Card>
 
       <Card title="보유 대출">

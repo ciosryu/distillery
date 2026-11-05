@@ -2,6 +2,8 @@ import { EVENT, EVENTS, type Effect, type EventDef, type Requirement } from './c
 import { regionOf } from './content/regions';
 import { BUYERS, COMPETITIONS, CRITICS, displayName } from './content/names';
 import { makeSpecialContractOffer } from './bulk';
+import { EQUIPMENT } from './content/catalog';
+import { ownsFacility, taxAuditDefense } from './ops';
 import { clamp } from './flavor';
 import { addModifier } from './modifiers';
 import { rngFor, type Rng } from './rng';
@@ -108,6 +110,28 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
       case 'gamble':
         notes.push(...(rng.chance(e.chance) ? ['성공!', ...applyEffects(s, e.success, rng, label)] : ['실패', ...applyEffects(s, e.failure, rng, label)]));
         break;
+      case 'contaminate': {
+        const filled = s.casks.filter((c) => c.contents && !c.contamination);
+        const n = Math.min(filled.length, Math.max(1, Math.round(filled.length * rng.range(e.share[0], e.share[1]))));
+        for (let i = 0; i < n; i++) { const c = rng.pick(filled.filter((x) => !x.contamination)); c.contamination = e.kind; }
+        notes.push(`캐스크 ${n}개 오염 (숙성고 QC가 찾아내야 한다)`);
+        break;
+      }
+      case 'criticVerdict': {
+        const best = Math.max(0, ...s.products.filter((p) => p.stockBottles > 0).map((p) => p.quality));
+        const verdict = best >= e.rave ? 'rave' : best < e.pan ? 'pan' : 'mild';
+        notes.push(verdict === 'rave' ? `극찬 — 품질 ${best} (수요 폭증, 가격 저항 감소)` : verdict === 'pan' ? `혹평 — 품질 ${best} (수요 급감, 재고 적체 주의)` : `무난한 평가 — 품질 ${best}`);
+        notes.push(...applyEffects(s, verdict === 'rave' ? e.raveEffects : verdict === 'pan' ? e.panEffects : e.mildEffects, rng, label));
+        break;
+      }
+      case 'taxAudit': {
+        const recentTax = s.reports.slice(-3).reduce((t, r) => t + r.liquorTaxRemitted, 0);
+        const defense = taxAuditDefense(s);
+        const due = Math.round(recentTax * e.rate * (1 - defense));
+        s.cash -= due;
+        notes.push(`추징 ${due.toLocaleString()}원${defense > 0 ? ` (사무직 방어로 ${Math.round(defense * 100)}% 감면)` : ''}`);
+        break;
+      }
       case 'qualityGamble': {
         const best = Math.max(0, ...s.products.filter((p) => p.stockBottles > 0).map((p) => p.quality));
         const ok = rng.chance(clamp((best - 30) / 50, 0.05, 0.95));
@@ -154,6 +178,10 @@ function fire(s: GameState, base: EventDef, rng: Rng, report: MonthReport): void
       choices: def.choices.map((c) => ({ label: c.label, detail: c.detail })), defaultChoice: def.defaultChoice ?? 0,
     });
     log(s, report, def.title, `${def.text} (선택 대기)`);
+    return;
+  }
+  if (def.defense && ownsFacility(s, def.defense)) {
+    log(s, report, def.title, `${def.text} 하지만 ${EQUIPMENT[def.defense]?.nameKo ?? '방재 설비'} 덕분에 피해가 없었습니다.`);
     return;
   }
   const notes = applyEffects(s, def.effects ?? [], rng, def.title);

@@ -1,4 +1,5 @@
 import { capacityReport, coverage, monthLabel, monthlyFixedCost, warehouseCapacity } from '../../sim';
+import { hasPremiumChannel, retailCapacityCases, visitorTiers } from '../../sim/ops';
 import { useGame } from '../../store/game';
 import { Sparkline } from '../charts';
 import { won, pct, liters, num } from '../format';
@@ -30,6 +31,8 @@ export function Dashboard() {
         <Stat label="탱크 원액" value={`${num(tankLPA)} LPA`} hint={`${s.lots.length}개 로트`} />
         <Stat label="판매 중 제품" value={s.products.filter((p) => p.stockBottles > 0).length} hint={`재고 ${num(s.products.reduce((t, p) => t + p.stockBottles, 0))}병`} />
         <Stat label="대출 잔액" value={won(s.loans.reduce((t, l) => t + l.balance, 0))} hint={`${s.loans.length}건`} />
+        <Stat label="소매 처리 역량 (지난달)" value={last?.retailCapacityCases != null ? `${num(last.retailSoldCases ?? 0)} / ${num(last.retailCapacityCases)} 케이스` : `${num(retailCapacityCases(s))} 케이스/월`} tone={last?.overflowCases ? 'warn' : undefined} hint={last?.overflowCases ? `초과 ${num(last.overflowCases)}케이스 고비용 채널${last.lostSalesBottles ? ` · ${num(last.lostSalesBottles)}병 못 팔음` : ''}` : `영업 직원·네트워크로 늘어남${hasPremiumChannel(s) ? ' · 고급 유통망 확보' : ''}`} />
+        <Stat label="비지터 센터 (지난달)" value={visitorTiers(s).length ? `${num(last?.visitors ?? 0)}명 · ${won(last?.tourismRevenue ?? 0)}` : '없음'} hint={`입소문 ${pct(s.localBuzz)} — 첫 위스키 출시 때 오픈런 확률`} />
       </div>
 
       <EventsCard />

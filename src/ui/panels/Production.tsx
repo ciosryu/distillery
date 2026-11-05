@@ -6,7 +6,7 @@ import {
   type FermenterType, type GameState, type ProductCategory, type Recipe, type SpiritKind, type YeastId,
 } from '../../sim';
 import { useGame } from '../../store/game';
-import { regionOf } from '../../sim/content/regions';
+import { logisticsMultiplier, regionOf } from '../../sim/content/regions';
 import { Radar } from '../charts';
 import { liters, num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
@@ -133,7 +133,7 @@ function RecipeEditor() {
               <div className="text-xs font-semibold text-stone-500">보태니컬 (g/L — 주니퍼 필수, 주니퍼가 가장 강해야 "진" 표기 가능)</div>
               {draft.botanicals.map((b, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-2">
-                  <Select value={b.botanicalId} options={Object.values(BOTANICALS).filter((o) => !o.regions || o.regions.includes(s.regionId)).map((o) => ({ value: o.id, label: `${o.nameKo}${o.regions ? ' (지역 특산)' : ''}` }))} onChange={(v) => set({ botanicals: draft.botanicals.map((x, j) => (j === i ? { ...x, botanicalId: v } : x)) })} />
+                  <Select value={b.botanicalId} options={Object.values(BOTANICALS).map((o) => { const k = logisticsMultiplier(o.native, s.regionId); return { value: o.id, label: `${o.nameKo}${o.native ? (k > 1 ? ` (수입 ×${k})` : ' (지역 특산)') : ''}` }; })} onChange={(v) => set({ botanicals: draft.botanicals.map((x, j) => (j === i ? { ...x, botanicalId: v } : x)) })} />
                   <NumberField value={b.gramsPerL} min={0} max={60} step={0.5} width="w-16" suffix="g/L" onCommit={(v) => set({ botanicals: draft.botanicals.map((x, j) => (j === i ? { ...x, gramsPerL: v } : x)) })} />
                   <Button small variant="ghost" onClick={() => set({ botanicals: draft.botanicals.filter((_, j) => j !== i) })}>삭제</Button>
                 </div>
@@ -218,7 +218,7 @@ function Equipment() {
               <tr key={d.id}>
                 <Td>{d.nameKo}</Td>
                 <Td className="text-xs text-stone-500">
-                  {d.kind === 'still' ? `월 ${d.runsPerMonth}회 · 환류 ${d.reflux}${d.vacuum ? ' · 감압' : ''}${d.ginBasket ? ' · 진 바스켓' : ''}` : d.kind === 'fermenter' ? `${d.capacityL.toLocaleString()}L` : `+${d.casks} 캐스크`}
+                  {d.kind === 'still' ? `월 ${d.runsPerMonth}회 · 환류 ${d.reflux}${d.vacuum ? ' · 감압' : ''}${d.ginBasket ? ' · 진 바스켓' : ''}` : d.kind === 'fermenter' ? `${d.capacityL.toLocaleString()}L` : d.kind === 'warehouse' ? `+${d.casks} 캐스크 · ${d.warehouseType === 'dunnage' ? '더니지' : '랙'} ${d.tiers}단` : d.kind === 'facility' ? d.note : `방문객 월 ${d.visitorsPerMonth}명 · 1인 ${won(d.spendPerVisitor)}${d.requires ? ` · ${EQUIPMENT[d.requires]?.nameKo} 필요` : ''}`}
                 </Td>
                 <Td right>{won(d.cost)}</Td>
                 <Td right>{d.leadMonths}개월</Td>

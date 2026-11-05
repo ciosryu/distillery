@@ -11,6 +11,7 @@ const REGION = (process.argv[5] ?? 'KR') as RegionId;
 const SITE = process.argv[6];
 const BRIDGE = process.env.NO_BRIDGE !== '1';
 const YOUNG = process.env.NO_YOUNG !== '1';
+const TOUR = process.env.NO_TOUR !== '1';
 
 type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain';
 
@@ -41,8 +42,9 @@ function fillMalt(s: GameState, maxLPA = Infinity, kind: 'malt' | 'grain' = 'mal
     if (budget <= 0) break;
     const lpa = Math.min(budget, lot.volumeL * lot.abv);
     const need = Math.ceil(lpa / (200 * 0.635));
-    const empty = s.casks.filter((c) => !c.contents);
-    if (empty.length < need && s.cash > 100_000_000) s = act(s, { type: 'buyCasks', caskType: 'ex_bourbon_barrel', qty: need - empty.length });
+    const empty = s.casks.filter((c) => !c.contents && !c.contamination);
+    // v1.0: 쿠퍼리지 주문은 2개월 걸리므로 모자라면 스팟으로 메운다(웃돈·골빈 통 위험)
+    if (empty.length < need && s.cash > 100_000_000) s = act(s, { type: 'buySpotCasks', caskType: 'ex_bourbon_barrel', qty: need - empty.length });
     s = act(s, { type: 'fillCasks', lotId: lot.id, caskIds: s.casks.filter((c) => !c.contents).slice(0, need).map((c) => c.id), entryAbv: 0.635 });
     budget -= lpa;
   }
@@ -95,6 +97,20 @@ function bottleBlended(s: GameState): GameState {
   return previewBlend(s, comps, opts).ok ? act(s, { type: 'bottle', components: comps, options: opts }) : s;
 }
 
+/** v1.0 운영: 빈 통을 미리 쿠퍼리지에 주문하고, 소매 역량이 넘치면 영업 직원을 늘린다 */
+function operations(s: GameState, strategy: Strategy): GameState {
+  const empty = s.casks.filter((c) => !c.contents).length + s.caskOrders.reduce((t, o) => t + o.qty, 0);
+  if (empty < 12 && s.cash > 150_000_000) s = act(s, { type: 'buyCasks', caskType: 'ex_bourbon_barrel', qty: 12 });
+  const last = s.reports.at(-1);
+  const sales = s.staff.filter((x) => x.role === 'sales').length;
+  if (last?.overflowCases && last.overflowCases > 20 && sales < 4 && s.cash > 150_000_000) {
+    const c = s.candidates.filter((x) => x.role === 'sales').sort((a, b) => b.stats.b - a.stats.b)[0];
+    if (c) s = act(s, { type: 'hire', candidateId: c.id });
+  }
+  void strategy;
+  return s;
+}
+
 function finance(s: GameState): GameState {
   if (s.cash < 100_000_000 && !s.loans.some((l) => l.offerId === 'working')) s = act(s, { type: 'takeLoan', offerId: 'working', amount: 300_000_000 });
   if (s.cash < 50_000_000 && !s.loans.some((l) => l.offerId === 'facility')) s = act(s, { type: 'takeLoan', offerId: 'facility', amount: 500_000_000 });
@@ -118,6 +134,8 @@ function start(s: GameState, strategy: Strategy): GameState {
   const sales = s.candidates.filter((c) => c.role === 'sales').sort((a, b) => b.stats.b - a.stats.b)[0];
   if (sales) s = act(s, { type: 'hire', candidateId: sales.id });
   s = act(s, { type: 'setMarketing', amount: 5_000_000 });
+  // v1.0: 모든 전략이 베이직 투어 비지터 센터로 초반 현금 흐름을 만든다
+  if (TOUR) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_basic' });
   const soju = rid(s, 'soju');
   if (soju) s = act(s, { type: 'setOrder', recipeId: soju, batchesPerMonth: 2 });
   // 한국은 진 시장이 작으므로(결정 #45) 진 대신 고량주를 현금 제품으로 쓴다
@@ -197,6 +215,7 @@ function policy(s: GameState, strategy: Strategy): GameState {
   }
   s = bottleWhisky(s);
   if (BRIDGE) s = bridgeSourced(s);
+  s = operations(s, strategy);
   return finance(s);
 }
 
@@ -207,7 +226,7 @@ const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.le
 function netWorth(s: GameState): number {
   const stock = [...s.lots, ...s.casks.flatMap((c) => (c.contents ? [c.contents] : []))].reduce((t, l) => t + l.volumeL * l.abv * bulkValuePerLPA(s, l) * 0.85, 0);
   const products = s.products.reduce((t, p) => t + p.stockBottles * p.unitCost, 0);
-  return s.cash - s.loans.reduce((t, l) => t + l.balance, 0) + stock + products;
+  return (s.cash - s.loans.reduce((t, l) => t + l.balance, 0) + stock + products) * (1 - s.investorShare);
 }
 
 /** 보수적 순자산 = 원액 재고를 시가가 아닌 장부 원가로 평가 (회계상 재고 평가와 같음) */

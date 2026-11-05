@@ -29,7 +29,7 @@ export type StillType = 'pot_onion' | 'pot_lantern' | 'hybrid' | 'vacuum_pot' | 
 export type CondenserType = 'copper_shell' | 'worm_tub';
 export type CaskTypeId = 'ex_bourbon_barrel' | 'oloroso_butt' | 'korean_oak_quarter' | 'mizunara_hogshead';
 export type WoodId = 'american_oak' | 'european_oak' | 'korean_oak' | 'mizunara';
-export type StaffRole = 'distiller' | 'warehouse' | 'sales';
+export type StaffRole = 'distiller' | 'warehouse' | 'sales' | 'office';
 
 export interface Recipe {
   id: string;
@@ -91,6 +91,15 @@ export interface Cask {
   char: number;
   contents?: SpiritLot;
   filledMonth?: number;
+  /** 숙성고 위치: 숙성고 id + 단(0 = 맨 아래) */
+  slot?: { w: string; tier: number };
+  /** false면 활성도를 아직 모른다 (스팟 매입 통 — 골빈 통일 수 있음) */
+  activityKnown?: boolean;
+  /** 오염(TCA·곰팡이) — 숙성고 QC가 찾아내기 전까지는 모른다 */
+  contamination?: 'tca' | 'mold';
+  contaminationKnown?: boolean;
+  /** 캐스크 오너십으로 판 통 — 고객 소유, 병입·판매 불가 */
+  owner?: { name: string; soldMonth: number; deliverMonth: number };
 }
 
 export interface Product {
@@ -123,6 +132,10 @@ export interface Product {
   createdMonth: number;
   lastMonthSold: number;
   totalSold: number;
+  /** 월 판매량 지수이동평균 — 재고 적체 판정 */
+  salesEma?: number;
+  /** 첫 위스키 출시 오픈런 효과 */
+  launchBoost?: { factor: number; untilMonth: number };
 }
 
 export interface StaffStats { a: number; b: number; c: number }
@@ -137,6 +150,10 @@ export interface Staff {
   stats: StaffStats;
   salary: number;
   hiredMonth: number;
+  /** 입사 시 나이 — 나이가 들면 스탯이 꺾이고 65세에 은퇴 (에이징 커브) */
+  ageAtHire?: number;
+  /** 부사수: 이 직원을 가르치는 마스터 디스틸러 id */
+  apprenticeOf?: string;
 }
 
 export interface Candidate extends Staff { askSalary: number }
@@ -208,6 +225,13 @@ export interface MonthReport {
   liquorTaxRemitted: number;
   /** 이번 달 발생한 이벤트 제목 */
   events: string[];
+  /** 소매 처리 역량(9L 케이스)과 실제 판매 — 초과분은 고비용 채널 */
+  retailCapacityCases?: number;
+  retailSoldCases?: number;
+  overflowCases?: number;
+  lostSalesBottles?: number;
+  visitors?: number;
+  tourismRevenue?: number;
   notes: string[];
 }
 
@@ -249,10 +273,18 @@ export interface Forecast {
 export interface EventLogEntry { month: number; title: string; text: string }
 
 /** 독립 병입자(IB)의 캐스크 매입 제안 */
+export interface CaskOrder {
+  id: string;
+  typeId: CaskTypeId;
+  qty: number;
+  arriveMonth: number;
+  source: 'cooperage' | 'seasoning';
+}
+
 export interface CaskBid { id: string; buyerName: string; caskId: string; price: number; expiresMonth: number }
 
 export interface GameState {
-  version: 4;
+  version: 5;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;
@@ -299,6 +331,19 @@ export interface GameState {
   caskBids: CaskBid[];
   /** 지난달 원재료별 실제 구매량(kg) — 대량 구매 할인 등급 */
   ingredientKgLastMonth: Record<string, number>;
+  /** 쿠퍼리지 주문·시즈닝 계약으로 도착 예정인 캐스크 */
+  caskOrders: CaskOrder[];
+  /** 증류소 하우스 스타일 0~100 — 마스터 디스틸러가 쌓고, 부사수 없이 은퇴하면 초기화 */
+  houseStyle: number;
+  /** 외부 투자자 지분 (0~1) */
+  investorShare: number;
+  investmentsTaken: string[];
+  /** 비지터 센터 입소문(로컬 인지도) 0~1 */
+  localBuzz: number;
+  /** 사무직이 타결한 폐기물(드래프·지게미) 유상 판매 단가(원/kg) */
+  wasteContractPerKg: number;
+  /** 이번 달 로테이션한 캐스크 수 */
+  rotatedThisMonth: number;
   reports: MonthReport[];
   nextId: number;
 }

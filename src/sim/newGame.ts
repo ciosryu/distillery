@@ -71,7 +71,7 @@ export function emptyCaskOf(s: GameState, typeId: keyof typeof CASKS): Cask {
 export function newGame(opts: NewGameOptions = {}): GameState {
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   const s: GameState = {
-    version: 4,
+    version: 5,
     seed,
     month: 0,
     startYear: opts.startYear ?? 2027,
@@ -108,6 +108,13 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     eventLastMonth: {},
     ingredientKgLastMonth: {},
     caskBids: [],
+    caskOrders: [],
+    houseStyle: 0,
+    investorShare: 0,
+    investmentsTaken: [],
+    localBuzz: 0,
+    wasteContractPerKg: 0,
+    rotatedThisMonth: 0,
     reports: [],
     nextId: 1,
   };
@@ -118,7 +125,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
   for (const t of STARTER[s.regionId].casks) s.casks.push(emptyCaskOf(s, t));
   // 창업 멤버: 디스틸러 1명
   const stats = { a: 50, b: 50, c: 45 };
-  s.staff.push({ id: nid(s, 'S'), name: STARTER[s.regionId].name, role: 'distiller', level: 1, xp: 0, stats, salary: salaryFor('distiller', stats, 1, regionOf(s).laborCost), hiredMonth: 0 });
+  s.staff.push({ id: nid(s, 'S'), name: STARTER[s.regionId].name, role: 'distiller', level: 1, xp: 0, stats, salary: salaryFor('distiller', stats, 1, regionOf(s).laborCost), hiredMonth: 0, ageAtHire: 38 });
   const rng = mulberry32(seed ^ 0x9e3779b9);
   refreshCandidates(s, rng);
   refreshBroker(s, rng);

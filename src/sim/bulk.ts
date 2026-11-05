@@ -208,11 +208,11 @@ export function updateBulkIndex(s: GameState, rng: Rng): void {
 
 // ── 독립 병입자(IB) 캐스크 매입 제안 ──
 
-/** 5년 이상·품질 70 이상인 자사 캐스크가 있으면 IB가 현물가의 135%에 캐스크째 사겠다고 제안한다 */
+/** 3년 이상·품질 65 이상인 자사 캐스크가 있으면 IB가 현물가의 135%에 캐스크째 사겠다고 제안한다 (초기 런웨이 — 통떼기 매각) */
 export function refreshCaskBids(s: GameState, rng: Rng): void {
   s.caskBids = s.caskBids.filter((b) => b.expiresMonth > s.month && s.casks.some((c) => c.id === b.caskId && c.contents));
   if (s.caskBids.length >= 2 || !rng.chance(0.25)) return;
-  const candidates = s.casks.filter((c) => c.contents && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= 60 && lotQuality(c.contents) >= 70 && !s.caskBids.some((b) => b.caskId === c.id));
+  const candidates = s.casks.filter((c) => c.contents && !c.owner && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= 36 && lotQuality(c.contents) >= 65 && !s.caskBids.some((b) => b.caskId === c.id));
   if (!candidates.length) return;
   const cask = rng.pick(candidates);
   const ib = rng.pick(INDEPENDENT_BOTTLERS);

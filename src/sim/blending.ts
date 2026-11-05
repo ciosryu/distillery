@@ -96,6 +96,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     if (c.liters <= 0) continue;
     const lot = lotOf(s, c);
     if (!lot) { errors.push('원액을 찾을 수 없습니다'); continue; }
+    if (c.source === 'cask' && s.casks.find((k) => k.id === c.id)?.owner) { errors.push('고객 소유(캐스크 오너십) 캐스크는 병입할 수 없습니다'); continue; }
     if (c.liters > lot.volumeL + 1e-6) errors.push(`${lot.name}: 보유량(${lot.volumeL.toFixed(1)}L)보다 많이 선택했습니다`);
     items.push({ lot, liters: Math.min(c.liters, lot.volumeL) });
   }
@@ -136,6 +137,8 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   // 블렌더(디스틸러 직관 스탯) 매링 보너스
   const blender = bestBy(staffOf(s, 'distiller'), 'c');
   if (blender && items.length > 1) f.integration = (f.integration ?? 0) + blender.stats.c / 20;
+  // 하우스 스타일: 마스터 디스틸러가 쌓은 증류소 고유의 블렌딩 감각 (부사수 없이 은퇴하면 사라진다)
+  if (s.houseStyle > 0) f.integration = (f.integration ?? 0) + s.houseStyle / 25;
   if (opts.chillFilter) { f.body = (f.body ?? 0) - 8; f.oily_waxy = (f.oily_waxy ?? 0) * 0.8; }
   flavor = clampFlavor(f);
 
@@ -213,6 +216,10 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     lastMonthSold: 0,
     totalSold: 0,
   };
+  // 첫 위스키 출시: 비지터 센터 입소문이 높으면 오픈런 (3개월간 수요 × (1 + 2 × 입소문))
+  if (isWhiskyCategory(product.category) && !s.products.some((x) => isWhiskyCategory(x.category)) && s.localBuzz > 0.05) {
+    product.launchBoost = { factor: 1 + 2 * s.localBuzz, untilMonth: s.month + 3 };
+  }
   // 포장재·병입 인건비는 병입 시점에 지출
   s.cash -= Math.round((packagingCost(opts.packagingId, opts.bottleMl) * mod(s, 'packaging') + BOTTLING_LABOR_PER_BOTTLE) * p.bottles);
   s.products.push(product);

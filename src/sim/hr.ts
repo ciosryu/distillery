@@ -5,7 +5,7 @@ import type { Rng } from './rng';
 import type { Candidate, GameState, Staff, StaffRole } from './types';
 import { nid } from './util';
 
-const ROLES: StaffRole[] = ['distiller', 'warehouse', 'sales'];
+const ROLES: StaffRole[] = ['distiller', 'warehouse', 'sales', 'office'];
 
 export function salaryFor(role: StaffRole, stats: Staff['stats'], level: number, laborCost = 1): number {
   const avg = (stats.a + stats.b + stats.c) / 3;
@@ -24,6 +24,8 @@ export function makeCandidate(s: GameState, rng: Rng, role?: StaffRole): Candida
     id: nid(s, 'C'),
     name: `${rng.pick(pool.surnames)}${rng.pick(pool.given)}`,
     role: r, level, xp: 0, stats, salary, askSalary: salary, hiredMonth: -1,
+    // 입사 나이 24~58세: 노련할수록 스탯은 높지만 은퇴(65세)가 가깝다
+    ageAtHire: Math.round(clamp(rng.normal(36 + (level - 1) * 5, 7), 24, 58)),
   };
 }
 

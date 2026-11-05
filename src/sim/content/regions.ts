@@ -57,6 +57,8 @@ export interface SiteDef {
   tempC: number[];
   humidity: number[];
   basis: string;
+  /** 관광 잠재력 배수 (지역 배수에 곱한다) */
+  tourism?: number;
 }
 
 /** 스코틀랜드·EU식 3년 규정 — 지역 정의가 없을 때의 기본값 */
@@ -92,11 +94,14 @@ export interface RegionDef {
   specialties?: SpecialtyDef[];
   /** 기본 입지(위 tempC·humidity) 외의 선택 입지 */
   sites?: SiteDef[];
+  /** 비지터 센터 관광 잠재력 (한국 = 1) */
+  tourism?: number;
   /** 지역 특산 캐스크는 싸고, 다른 지역 캐스크는 비싸다 */
   caskPriceFactor: Partial<Record<CaskTypeId, number>>;
 }
 
-const zero = (src: string): MarketDef => ({ baseCases: 0, baseSource: src, refConsumerPricePerL: 50_000, refAbv: 0.4, elasticity: 1.5, shareCap: 0 });
+const ALL_KINDS: SpiritKind[] = ['soju', 'gin', 'malt', 'grain', 'baijiu'];
+
 
 const krWhisky = casesOf('KR.whisky_total.imports.2024');
 const jpWhisky = casesOf('JP.whisky_total.tax_volume.FY2024');
@@ -112,7 +117,8 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     retailMarkup: 1.35,
     overheadPerMonth: 10_000_000,
     laborCost: 1,
-    allowedKinds: ['soju', 'gin', 'malt', 'grain', 'baijiu'],
+    allowedKinds: ALL_KINDS,
+    tourism: 1.0,
     market: {
       soju_distilled: { baseCases: casesOf('KR.soju_distilled.domestic_release.2025'), baseSource: 'KR.soju_distilled (TASIS 2025)', refConsumerPricePerL: 40_000, refAbv: 0.25, elasticity: 1.6, shareCap: 0.2 },
       // 한국 진 시장은 작다 — 칵테일 바에서 제한적으로 쓰이는 정도 [결정 #45]. 규모는 관세청 원표 진 수입 576.7t(4차) — 수입 브랜드 중심이라 점유 상한 낮음
@@ -140,6 +146,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       tempC: [-1.9, 0.6, 6.3, 12.4, 17.6, 22.0, 24.9, 24.9, 20.0, 13.4, 6.6, 0.4],
       humidity: [60, 57, 56, 56, 62, 70, 78, 78, 75, 71, 67, 63],
       basis: '안동 ASOS 평년값(연·계절 평균) 기반 근사. 김창수위스키 제2증류소(2026-07 준공) 소재지',
+      tourism: 1.2,
     }],
     caskPriceFactor: { korean_oak_quarter: 1.0, mizunara_hogshead: 1.6 },
   },
@@ -153,7 +160,8 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     retailMarkup: 1.3,
     overheadPerMonth: 12_000_000,
     laborCost: 1.25,
-    allowedKinds: ['soju', 'gin', 'malt', 'grain'],
+    allowedKinds: ALL_KINDS,
+    tourism: 1.3,
     market: {
       // 본격 쇼추: 거대하지만 저가·파편화 시장
       soju_distilled: { baseCases: casesOf('JP.shochu_honkaku.tax_volume.FY2024'), baseSource: 'JP.shochu_honkaku (국세청 과세수량 FY2024)', refConsumerPricePerL: 13_000, refAbv: 0.25, elasticity: 2.0, shareCap: 0.004 },
@@ -164,7 +172,8 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       whisky: { baseCases: Math.round(jpWhisky * 0.04), baseSource: 'JP.whisky_total × 4% (싱글 몰트 몫, 추정)', refConsumerPricePerL: 120_000, refAbv: 0.43, elasticity: 1.0, shareCap: 0.01 },
       blended_whisky: { baseCases: Math.round(jpWhisky * 0.78), baseSource: 'JP.whisky_total × 78% (블렌디드·하이볼용, 추정)', refConsumerPricePerL: 28_000, refAbv: 0.4, elasticity: 2.0, shareCap: 0.003 },
       grain_whisky: { baseCases: Math.round(jpWhisky * 0.1), baseSource: 'JP.whisky_total × 10% (추정)', refConsumerPricePerL: 70_000, refAbv: 0.43, elasticity: 1.5, shareCap: 0.01 },
-      baijiu: zero('일본에서는 생산 불가'),
+      // 교차 생산(#67): 중화요리점 중심의 작은 시장 [추정]
+      baijiu: { baseCases: 40_000, baseSource: '추정: 중화요리점 중심 소규모', refConsumerPricePerL: 30_000, refAbv: 0.42, elasticity: 1.8, shareCap: 0.02 },
       malt_spirit: { baseCases: 50_000, baseSource: '추정', refConsumerPricePerL: 60_000, refAbv: 0.46, elasticity: 1.3, shareCap: 0.3 },
       flavored_spirit: { baseCases: 200_000, baseSource: '추정', refConsumerPricePerL: 30_000, refAbv: 0.4, elasticity: 2.0, shareCap: 0.1 },
     },
@@ -190,9 +199,11 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     retailMarkup: 1.35,
     overheadPerMonth: 7_000_000,
     laborCost: 0.8,
-    allowedKinds: ['gin', 'malt', 'grain', 'baijiu'],
+    allowedKinds: ALL_KINDS,
+    tourism: 1.1,
     market: {
-      soju_distilled: zero('대만에서는 생산 불가'),
+      // 교차 생산(#67): 한국 소주 인기로 생긴 작은 시장 [추정]
+      soju_distilled: { baseCases: 30_000, baseSource: '추정: 한국 소주 인기(수입 희석식 중심)', refConsumerPricePerL: 35_000, refAbv: 0.25, elasticity: 1.8, shareCap: 0.03 },
       gin: { baseCases: 40_000, baseSource: '추정: 소규모 칵테일 시장', refConsumerPricePerL: 45_000, refAbv: 0.43, elasticity: 1.8, shareCap: 0.1 },
       // 싱글 몰트 애호 시장 — 자국 브랜드 수용도가 높다(카발란 선례). 점유 상한은 한국보다 약간 높게
       // 세금이 낮아 소비자가는 한국보다 낮다 — 카발란 클래식 700ml ≒ NT$1,500~2,000 [추정]
@@ -221,12 +232,30 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       tempC: [13.0, 13.3, 15.4, 19.4, 23.3, 26.4, 28.4, 28.2, 26.9, 23.6, 19.6, 15.1],
       humidity: [73, 78, 80, 82, 83, 85, 82, 81, 76, 70, 70, 70],
       basis: '진먼현 기후 근사치(추정). 금문주창 소재지',
+      tourism: 1.3,
     }],
     caskPriceFactor: { korean_oak_quarter: 1.6, mizunara_hogshead: 1.4 },
   },
 };
 
 export const KOREA = REGIONS.KR;
+
+/** 원산지 표기 잠금(AOC·GI) — 이 주종은 여기서만 그 이름으로 생산 (스카치·버번·코냑·테킬라는 지역 추가 때) */
+export const GI_LOCK: Partial<Record<SpiritKind, string[]>> = {};
+
+/** 물류망 페널티 (결정 #67): 원재료 자생지 → 생산지 운송 배수. 표에 없는 먼 거리는 FAR */
+const DISTANCE: Record<string, Record<string, number>> = {
+  KR: { JP: 1.2, TW: 1.3, CN: 1.15, US: 1.5, MX: 1.8, UK: 1.6 },
+  JP: { KR: 1.2, TW: 1.3, CN: 1.3, US: 1.5, MX: 1.8, UK: 1.6 },
+  TW: { KR: 1.3, JP: 1.3, CN: 1.15, US: 1.5, MX: 1.8, UK: 1.6 },
+};
+export const FAR_LOGISTICS = 1.8;
+
+/** 원재료 가격 배수 = baseMaterialCost × logisticsMultiplier. 자생지가 없으면(세계 상품) 1 */
+export function logisticsMultiplier(native: string[] | undefined, at: RegionId): number {
+  if (!native?.length || native.includes(at)) return 1;
+  return Math.min(...native.map((n) => DISTANCE[at]?.[n] ?? FAR_LOGISTICS));
+}
 
 export function regionOf(s: Pick<GameState, 'regionId'>): RegionDef {
   return REGIONS[s.regionId] ?? REGIONS.KR;
