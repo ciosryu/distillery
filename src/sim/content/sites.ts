@@ -80,7 +80,7 @@ export const SITES: Record<SiteId, SiteDef> = {
     ],
   },
   andong: {
-    id: 'andong', country: 'KR', nameKo: '안동', tagline: '전통주 감면 한도 안에서 작고 진하게', difficulty: 3,
+    id: 'andong', country: 'KR', nameKo: '안동', tagline: '전통주 감면 한도 안에서 작고 진하게', difficulty: 2,
     tempC: [-2.5, 0, 5.5, 12, 17.5, 22, 25, 25.5, 20.5, 13.5, 6.5, 0],
     humidity: [60, 57, 56, 56, 62, 70, 80, 80, 77, 72, 67, 63],
     angelShareFactor: 1, water: 'medium', overheadPerMonth: 8_000_000, buildCostFactor: 1, warehouseCostFactor: 1,
