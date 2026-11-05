@@ -6,7 +6,7 @@ import {
 } from './index';
 import { EQUIPMENT, INGREDIENTS } from './content/catalog';
 import { BUYERS } from './content/names';
-import { APPLY_KR_BASE_DEDUCTION, consumerPrice, krImportCompetitionFactor, priceForConsumer, REGIONS, setKrBaseDeduction } from './content/regions';
+import { APPLY_KR_BASE_DEDUCTION, consumerPrice, krImportCompetitionFactor, priceForConsumer, refPricePerL, REGIONS, setKrBaseDeduction } from './content/regions';
 import { DEFAULT_SITE, DUTY_FREE, SITES } from './content/sites';
 import {
   applyTerroir, dutyFreeDemand, fermentCapacityFactor, isTraditionalRecipe, migrateState, productConsumerPrice, riskScale, scaleEffects,
@@ -692,6 +692,10 @@ describe('보유 비용·산지 대표 결정 (결정 #65)', () => {
     expect(pv.ok).toBe(true);
     expect(pv.localIngredient).toBe(true);
     expect(pv.dfEdition).toEqual({ vol: 1, streak: 0 });
+    // 권장 출고가는 면세 기준(결정 #71): 면세 소비자가 = 국내 기준가 × 0.6 × √(품질/60), 국내 권장가보다 낮다
+    const dfRef = refPricePerL(REGIONS.KR, pv.category!, pv.finalAbv) * DUTY_FREE.refFactor * 0.5 * Math.sqrt(Math.max(pv.evaluation!.quality, 20) / 60);
+    expect((pv.suggestedPrice * DUTY_FREE.markup) / dfRef).toBeCloseTo(1, 1);
+    expect(pv.suggestedPrice).toBeLessThan(previewBlend(j, [{ source: 'lot', id: 'S1', liters: 100 }], { ...opts, dutyFreeOnly: false }).suggestedPrice);
     const first = executeBlend(j, [{ source: 'lot', id: 'S1', liters: 100 }], opts).product!;
     expect(first.dfEdition).toEqual({ vol: 1, streak: 0 });
     expect(first.localIngredient).toBe(true);

@@ -1,7 +1,7 @@
 import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/catalog';
 import { CATEGORY } from './content/categories';
 import { priceForConsumer, refPricePerL, regionOf, type RegionDef, type TaxOptions } from './content/regions';
-import { siteOf } from './content/sites';
+import { DUTY_FREE, siteOf } from './content/sites';
 import { dutyFreeSlotBlocker, nextDutyFreeEdition, traditionalReliefRate } from './sites';
 import { clampFlavor, evaluate, weightedAverage, type Evaluation } from './flavor';
 import { emptyCask } from './maturation';
@@ -76,6 +76,13 @@ export function suggestedPrice(region: RegionDef, category: ProductCategory, bot
   return Math.round(p / 100) * 100;
 }
 
+/** 면세 전용 한정판 권장 출고가 (결정 #71) — 면세 기준가(국내 기준가 × 0.6)에 맞춘 면세 소비자가 ÷ 면세점 마진. 주세·부가세 없음 */
+export function dutyFreeSuggestedPrice(region: RegionDef, category: ProductCategory, bottleMl: number, quality: number, ageYears: number | null, abv: number): number {
+  const ageBonus = isWhiskyCategory(category) && ageYears ? 1 + 0.06 * Math.min(ageYears, 12) : 1;
+  const consumer = refPricePerL(region, category, abv) * DUTY_FREE.refFactor * (bottleMl / 1000) * Math.sqrt(Math.max(quality, 20) / 60) * ageBonus;
+  return Math.round(Math.min(consumer, DUTY_FREE.maxBottlePrice) / DUTY_FREE.markup / 100) * 100;
+}
+
 export function previewBlend(s: GameState, components: BlendComponent[], opts: BottleOptions): BlendPreview {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -147,7 +154,9 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     ok: errors.length === 0, errors, warnings, kind, category, volumeL: finalVolume, lpa, mixAbv, finalAbv, bottles,
     minOakMonths, ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare, traditional, localIngredient,
     dfEdition: opts.dutyFreeOnly && siteOf(s).dutyFree ? nextDutyFreeEdition(s) : null,
-    suggestedPrice: suggestedPrice(regionOf(s), category, opts.bottleMl, evaluation.quality, ageYears, finalAbv, { category, relief: traditionalReliefRate(s, traditional) }),
+    suggestedPrice: opts.dutyFreeOnly && siteOf(s).dutyFree
+      ? dutyFreeSuggestedPrice(regionOf(s), category, opts.bottleMl, evaluation.quality, ageYears, finalAbv)
+      : suggestedPrice(regionOf(s), category, opts.bottleMl, evaluation.quality, ageYears, finalAbv, { category, relief: traditionalReliefRate(s, traditional) }),
   };
 }
 

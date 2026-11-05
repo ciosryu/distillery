@@ -256,7 +256,7 @@ export const DUTY_FREE = {
   /** 한정판 시리즈 (결정 #70) [튜닝] — 전용 매대 1칸, 산지 원료 기념품만 매력도 보너스(위스키 한정판은 없음),
    *  출시 6개월 안에 완판하면 다음 판 매력도 +3%(최대 3연속 +9%)·인지도 +0.5%p, 12개월 안에 못 팔면 국내 매대로 넘어가고 연속 기록 초기화 */
   slots: 1,
-  localAppeal: 1.15,
+  localAppeal: 1.1,
   sellOutMonths: 6,
   returnMonths: 12,
   streakAppeal: 0.03,
