@@ -56,6 +56,14 @@ export interface SiteDef {
   dutyFree?: boolean;
   /** 취수 허가: 월 발효 투입 용량 상한(L) + 증량 신청 */
   waterPermit?: { baseL: number; stepL: number; cost: number; months: [number, number]; chance: number };
+  /** 직판장 월 기본 방문객 수 (관광 잠재력) */
+  tourism: number;
+  /** 산지 대표 거래: 대형 유통 납품(경기) / 위탁생산(간토) */
+  deals?: ('retail' | 'oem')[];
+  /** 면세 채널 월별 계절성 (관광 성수기·비수기) */
+  dutyFreeSeasonality?: number[];
+  /** 숙성 재고 담보대출 담보 인정 비율 (기본 0.4) */
+  inventoryLtv?: number;
   /** 숙성 테루아: 월평균 기온이 minTempC 이상인 달마다 축이 쌓인다 */
   terroir?: { axis: AxisId; perMonth: number; cap: number; minTempC: number }[];
   starter: { name: string; distillery: string; casks: CaskTypeId[] };
@@ -75,6 +83,7 @@ export const SITES: Record<SiteId, SiteDef> = {
     angelShareFactor: 1, water: 'medium', overheadPerMonth: 10_000_000, buildCostFactor: 1, warehouseCostFactor: 1,
     freight: NO_FREIGHT, outboundLogistics: 0.9, ingredientPrice: {}, caskPriceFactor: {}, eventWeights: {}, eventBoost: {},
     demandFactor: 1, extraCandidates: 2,
+    tourism: 1000, deals: ['retail'],
     starter: { name: '윤도현', distillery: '한빛 증류소', casks: bourbon(10) },
     traits: [
       { tone: 'good', text: '국내 출고 물류비 −10%' },
@@ -94,6 +103,7 @@ export const SITES: Record<SiteId, SiteDef> = {
     winterFerment: { months: [12, 1, 2], capacity: 0.85 },
     // 결정 #62: 감면은 지역 농산물(안동 쌀)만 원료로 쓴 술에만. 수입 맥아·타지역 원료가 들어가면 감면 없음
     traditional: { label: '민속주 헤리티지 — 안동 쌀(지역 농산물)만 원료로 빚은 술은 전통주. 수입 맥아·타지역 원료를 쓰면 감면 없음', mainIngredients: ['andong_rice'], starters: ['nuruk'] },
+    tourism: 1200,
     starter: { name: '권태호', distillery: '낙강 증류소', casks: [...bourbon(8), 'korean_oak_quarter', 'korean_oak_quarter'] },
     traits: [
       { tone: 'good', text: '전통주 자격: 안동 쌀(지역 농산물)로만 빚으면 주세 감면(연 5kL까지 50%·10kL까지 30%) + 온라인 직판' },
@@ -118,6 +128,7 @@ export const SITES: Record<SiteId, SiteDef> = {
     dutyFree: true,
     // 공정용수 월 15,000L — 실제 허가량(t/일)을 게임 규모로 단순화 [게임적 단순화]
     waterPermit: { baseL: 15_000, stepL: 10_000, cost: 20_000_000, months: [6, 12], chance: 0.6 },
+    tourism: 2000, dutyFreeSeasonality: [1.15, 1.0, 0.75, 0.85, 1.0, 0.9, 1.4, 1.5, 0.9, 1.15, 0.75, 0.95],
     starter: { name: '고은별', distillery: '오름 증류소', casks: bourbon(10) },
     traits: [
       { tone: 'good', text: '화산암반수: 발효 이취 −20%, 과일향↑, 수율 +3%' },
@@ -136,6 +147,7 @@ export const SITES: Record<SiteId, SiteDef> = {
     angelShareFactor: 1, water: 'medium', overheadPerMonth: 12_000_000, buildCostFactor: 1, warehouseCostFactor: 1,
     freight: NO_FREIGHT, outboundLogistics: 1, ingredientPrice: {}, caskPriceFactor: {}, eventWeights: {}, eventBoost: {},
     demandFactor: 1, extraCandidates: 0,
+    tourism: 800, deals: ['oem'],
     starter: { name: '사토 겐타', distillery: '아카리 증류소', casks: [...bourbon(8), 'mizunara_hogshead', 'mizunara_hogshead'] },
     traits: [
       { tone: 'good', text: '일본 표준 산지 — 원액 B2B 시장이 가장 깊다(국가 공통)' },
@@ -150,6 +162,7 @@ export const SITES: Record<SiteId, SiteDef> = {
     freight: NO_FREIGHT, outboundLogistics: 1, ingredientPrice: {}, caskPriceFactor: { mizunara_hogshead: 0.8 }, eventWeights: {},
     eventBoost: { earthquake: 1.5, critic_visit: 1.3 },
     demandFactor: 1.1, extraCandidates: 0,
+    tourism: 3000,
     starter: { name: '야마다 유키', distillery: '미오 증류소', casks: [...bourbon(8), 'mizunara_hogshead', 'mizunara_hogshead'] },
     traits: [
       { tone: 'good', text: '연수 명수: 발효 이취 −30%, 과일·플로럴 +10%' },
@@ -167,6 +180,7 @@ export const SITES: Record<SiteId, SiteDef> = {
     freight: NO_FREIGHT, outboundLogistics: 1.25, ingredientPrice: {}, caskPriceFactor: {}, eventWeights: {}, eventBoost: {},
     demandFactor: 1, extraCandidates: 0,
     heating: { months: [11, 12, 1, 2, 3], perMonth: 4_000_000, energyFactor: 1.6 },
+    tourism: 900, inventoryLtv: 0.6,
     starter: { name: '오노 다이치', distillery: '시라카바 증류소', casks: bourbon(10) },
     traits: [
       { tone: 'good', text: '싼 땅: 관리비 ×0.9, 숙성고 증설비 ×0.7' },
@@ -188,6 +202,7 @@ export const SITES: Record<SiteId, SiteDef> = {
     freight: NO_FREIGHT, outboundLogistics: 1, ingredientPrice: {}, caskPriceFactor: {}, eventWeights: {}, eventBoost: {},
     demandFactor: 1, extraCandidates: 0,
     terroir: [{ axis: 'tropical', perMonth: 0.1, cap: 30, minTempC: 25 }],
+    tourism: 1500,
     starter: { name: '린즈하오', distillery: '란양 증류소', casks: bourbon(10) },
     traits: [
       { tone: 'good', text: '빠른 숙성: 스페이사이드의 약 2.4배' },
@@ -228,4 +243,7 @@ export const DUTY_FREE = {
   refFactor: 0.6,
   /** 1인 구매 한도 미화 400달러 ≒ 55만 원 [환율 가정] — 이보다 비싼 병은 팔 수 없다 */
   maxBottlePrice: 550_000,
+  /** 면세 전용 한정판(결정 #65): 전용 매대 점유 상한 배수, 한정판 매력도 배수 [튜닝] */
+  limitedShareCap: 2,
+  limitedAppeal: 1.15,
 };

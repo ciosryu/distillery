@@ -218,7 +218,7 @@ export function simulateBatch(
   else warnings.push('디스틸러 없이 생산 — 품질 저하');
 
   // 규모의 경제: 큰 증류기일수록 L당 에너지비가 낮다
-  cost += r.runs * still.chargeL * ENERGY_PER_L_RUN * Math.pow(1000 / still.chargeL, 0.3) * (priceIndex.energy ?? 1) * (still.directFire ? 1.15 : 1);
+  cost += batchEnergyCost(still, r.runs, priceIndex.energy ?? 1);
 
   return {
     lpa,
@@ -230,6 +230,11 @@ export function simulateBatch(
     ingredientsKg,
     warnings,
   };
+}
+
+/** 배치 증류 에너지비 — 큰 증류기일수록 L당 에너지비가 낮다(규모의 경제), 직화는 +15% */
+export function batchEnergyCost(still: StillDef, runs: number, energyIndex: number): number {
+  return runs * still.chargeL * ENERGY_PER_L_RUN * Math.pow(1000 / still.chargeL, 0.3) * energyIndex * (still.directFire ? 1.15 : 1);
 }
 
 /** 대량 구매 할인 배수 — 지난달 실제 구매량(kg) 기준 공급 등급 (주문만 크게 넣는 꼼수 방지) */

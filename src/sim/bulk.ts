@@ -208,14 +208,17 @@ export function updateBulkIndex(s: GameState, rng: Rng): void {
 
 // ── 독립 병입자(IB) 캐스크 매입 제안 ──
 
-/** 5년 이상·품질 70 이상인 자사 캐스크가 있으면 IB가 현물가의 135%에 캐스크째 사겠다고 제안한다 */
+/** 숙성(국가 기준, 기본 5년)·품질 70 이상인 자사 캐스크가 있으면 IB·수집가가 현물가의 135%에 캐스크째 사겠다고 제안한다.
+ *  대만(결정 #65): 3년부터, 월 40%, 열대향(tropical ≥ 10) 캐스크는 160% — 수집가 시장 */
 export function refreshCaskBids(s: GameState, rng: Rng): void {
+  const rule = regionOf(s).caskBids;
   s.caskBids = s.caskBids.filter((b) => b.expiresMonth > s.month && s.casks.some((c) => c.id === b.caskId && c.contents));
-  if (s.caskBids.length >= 2 || !rng.chance(0.25)) return;
-  const candidates = s.casks.filter((c) => c.contents && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= 60 && lotQuality(c.contents) >= 70 && !s.caskBids.some((b) => b.caskId === c.id));
+  if (s.caskBids.length >= 2 || !rng.chance(rule.chance)) return;
+  const candidates = s.casks.filter((c) => c.contents && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= rule.minMonths && lotQuality(c.contents) >= 70 && !s.caskBids.some((b) => b.caskId === c.id));
   if (!candidates.length) return;
   const cask = rng.pick(candidates);
   const ib = rng.pick(INDEPENDENT_BOTTLERS);
-  s.caskBids.push({ id: nid(s, 'I'), buyerName: displayName(ib), caskId: cask.id, price: Math.round(spotQuote(s, cask.contents!, cask.contents!.volumeL, cask) * 1.35), expiresMonth: s.month + 2 });
+  const premium = rule.tropicalPremium && (cask.contents!.flavor.tropical ?? 0) >= 10 ? rule.tropicalPremium : rule.premium;
+  s.caskBids.push({ id: nid(s, 'I'), buyerName: displayName(ib), caskId: cask.id, price: Math.round(spotQuote(s, cask.contents!, cask.contents!.volumeL, cask) * premium), expiresMonth: s.month + 2 });
 }
 

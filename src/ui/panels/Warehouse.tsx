@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CASKS, RECHAR_COST } from '../../sim/content/catalog';
-import { evaluate, lotCategory, MAX_RECHAR, regionalCaskPrice, topNotes, warehouseCapacity, WHISKY_MIN_MONTHS, type CaskTypeId, type SpiritLot } from '../../sim';
+import { agingOutlook, evaluate, lotCategory, MAX_RECHAR, regionalCaskPrice, topNotes, warehouseCapacity, type CaskTypeId, type SpiritLot } from '../../sim';
+import { regionOf } from '../../sim/content/regions';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Select, Table, Td } from '../kit';
@@ -80,7 +81,7 @@ function Casks() {
       }
     >
       {!list.length ? <Empty>{filter === 'filled' ? '숙성 중인 캐스크가 없습니다' : '빈 캐스크가 없습니다'}</Empty> : (
-        <Table head={filter === 'filled' ? ['ID', '캐스크', '회차', '원액', '액량', '도수', '숙성', '주요 향', '품질', '표기'] : ['ID', '캐스크', '사용 횟수', '활성도', '재탄화', '']}>
+        <Table head={filter === 'filled' ? ['ID', '캐스크', '회차', '원액', '액량', '도수', '숙성', '주요 향', '품질', '표기', '1년 더 두면'] : ['ID', '캐스크', '사용 횟수', '활성도', '재탄화', '']}>
           {list.map((c) => {
             const lot = c.contents;
             if (!lot) return (
@@ -89,7 +90,9 @@ function Casks() {
                 <Td><Button small disabled={c.recharCount >= MAX_RECHAR || c.fills === 0} onClick={() => dispatch({ type: 'rechar', caskId: c.id })} title="활성도를 0.7까지 회복">재탄화 {won(RECHAR_COST)}</Button></Td>
               </tr>
             );
-            const cat = lotCategory(lot);
+            const minMonths = regionOf(s).whiskyMinMonths;
+            const cat = lotCategory(lot, minMonths);
+            const outlook = agingOutlook(s, c);
             return (
               <tr key={c.id}>
                 <Td>{c.id}</Td>
@@ -101,7 +104,8 @@ function Casks() {
                 <Td right>{months(lot.oakMonths)}</Td>
                 <Td><Notes lot={lot} /></Td>
                 <Td right>{evaluate(lot.flavor, cat).quality}</Td>
-                <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : lot.oakMonths >= WHISKY_MIN_MONTHS ? <Badge tone="good">{lot.kind === 'grain' ? '그레인 위스키 가능' : '위스키 가능'}</Badge> : <Badge tone="warn">{WHISKY_MIN_MONTHS - lot.oakMonths}개월 남음</Badge>}</Td>
+                <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : lot.oakMonths >= minMonths ? <Badge tone="good">{lot.kind === 'grain' ? '그레인 위스키 가능' : '위스키 가능'}</Badge> : <Badge tone="warn">{minMonths - lot.oakMonths}개월 남음</Badge>}</Td>
+                <Td right>{outlook ? <span title={`숙성 가치 +${pct(outlook.valueGain)} · 증발 −${pct(outlook.evaporation)} · 보유 비용 −${pct(outlook.holding)}`} className={outlook.net >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}>{outlook.net >= 0 ? '+' : ''}{pct(outlook.net)}</span> : '—'}</Td>
               </tr>
             );
           })}

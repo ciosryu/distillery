@@ -81,10 +81,10 @@ export const YEASTS: Record<YeastId, { nameKo: string; yieldFactor: number; este
 
 // ── 설비 ──
 /** 부지 개량 (regions.md §3.2) — 산지 리스크를 줄이는 1회성 투자 */
-export type UpgradeId = 'seismic_1' | 'seismic_2' | 'temp_control';
+export type UpgradeId = 'seismic_1' | 'seismic_2' | 'temp_control' | 'visitor';
 
 /** sites가 있으면 그 산지에서만 발주할 수 있다 */
-interface EquipmentBase { id: string; nameKo: string; cost: number; leadMonths: number; maintenance: number; sites?: SiteId[] }
+interface EquipmentBase { id: string; nameKo: string; cost: number; leadMonths: number; maintenance: number; sites?: SiteId[]; /** 숙성고 캐스크 자리를 차지하는 수 */ warehouseSlots?: number }
 export type EquipmentDef =
   | (EquipmentBase & { kind: 'still'; stillType: StillType; condenser: CondenserType; chargeL: number; runsPerMonth: number; reflux: number; copperContact: number; vacuum: boolean; ginBasket: boolean; /** 석탄 직화 — 바디·오일리↑, 숙련 요구 */ directFire?: boolean })
   | (EquipmentBase & { kind: 'fermenter'; fermenterType: FermenterType; capacityL: number })
@@ -111,6 +111,8 @@ export const EQUIPMENT: Record<string, EquipmentDef> = {
   // 부지 개량 [튜닝]
   upg_seismic_1: { id: 'upg_seismic_1', kind: 'upgrade', upgrade: 'seismic_1', nameKo: '내진 랙·증류기 고정 (1단계)', description: '지진 피해 −50%', cost: 80_000_000, leadMonths: 2, maintenance: 100_000, sites: SEISMIC_SITES },
   upg_seismic_2: { id: 'upg_seismic_2', kind: 'upgrade', upgrade: 'seismic_2', nameKo: '면진 숙성고·배관 보강 (2단계)', description: '지진 피해 −85% (1단계 필요)', cost: 250_000_000, leadMonths: 4, maintenance: 300_000, sites: SEISMIC_SITES, requires: 'upg_seismic_1' },
+  // 증류소 투어·직판장 (결정 #65) — 관광객 직판으로 소매 마진을 가져오지만 숙성고 40자리를 차지한다
+  upg_visitor: { id: 'upg_visitor', kind: 'upgrade', upgrade: 'visitor', nameKo: '증류소 투어·직판장', description: '관광객 직판(소매 마진 확보) — 숙성고 40자리 사용', cost: 200_000_000, leadMonths: 4, maintenance: 1_500_000, warehouseSlots: 40 },
   upg_temp_control: { id: 'upg_temp_control', kind: 'upgrade', upgrade: 'temp_control', nameKo: '발효실 온도 제어 설비', description: '겨울 발효 지연 해소', cost: 60_000_000, leadMonths: 2, maintenance: 300_000, sites: ['andong'] },
 };
 
@@ -215,11 +217,19 @@ export const VOLUME_DISCOUNT_TIERS: { minKg: number; factor: number }[] = [
 
 
 // ── 대출 상품 ──
-export interface LoanOfferDef { id: string; nameKo: string; annualRate: number; termMonths: number; max: number; requires?: 'producedSoju'; /** 원금 거치 기간(이자만 납부) */ graceMonths: number }
+export interface LoanOfferDef { id: string; nameKo: string; annualRate: number; termMonths: number; max: number; requires?: 'producedSoju'; /** 원금 거치 기간(이자만 납부) */ graceMonths: number; /** 숙성 재고 담보 — 한도 = 재고 시가 × 담보 인정 비율, 시가가 떨어지면 추가 상환 요구 */ collateral?: 'inventory' }
+
+/** 숙성 재고 보유 비용 (결정 #65) — 숙성 중 캐스크당 보관료 × 산지 땅값(숙성고 증설비 배수) + 재고 시가의 보험료.
+ *  게임 시작 후 graceMonths 동안 면제 (데스밸리 완화, 조정 가능) [튜닝] */
+export const HOLDING = { perCaskMonth: 3_000, insuranceRateMonth: 0.001, graceMonths: 36 };
+
+/** 직판장: 관광객 1인당 구매 병수, 직판 가격 = 소비자가(부가세·주세 제외 몫을 증류소가 가져감) [튜닝] */
+export const VISITOR = { bottlesPerVisitor: 0.12 };
 
 export const LOAN_OFFERS: LoanOfferDef[] = [
   { id: 'facility', nameKo: '시설자금 대출', annualRate: 0.05, termMonths: 120, max: 1_000_000_000, graceMonths: 24 },
   { id: 'working', nameKo: '운전자금 대출', annualRate: 0.075, termMonths: 36, max: 300_000_000, graceMonths: 0 },
+  { id: 'inventory', nameKo: '숙성 재고 담보대출', annualRate: 0.06, termMonths: 60, max: 0, graceMonths: 12, collateral: 'inventory' },
   { id: 'policy', nameKo: '전통주 육성 정책자금', annualRate: 0.025, termMonths: 60, max: 200_000_000, requires: 'producedSoju', graceMonths: 12 },
 ];
 

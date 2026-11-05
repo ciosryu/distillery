@@ -1,4 +1,7 @@
 import { CASKS } from '../../sim/content/catalog';
+import { CATEGORY } from '../../sim/content/categories';
+import { regionOf } from '../../sim/content/regions';
+import { siteOf } from '../../sim/content/sites';
 import { cancellationCost, capacityLPA, contractTotalValue, domesticPremium, isNewMake, lotQuality, spotBidPerLPA, spotQuote } from '../../sim';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won } from '../format';
@@ -85,9 +88,11 @@ export function B2B() {
         )}
       </Card>
 
-      <Card title="독립 병입자(IB) 캐스크 매입 제안 — 5년 이상·품질 70 이상 캐스크">
+      <SiteDeals />
+
+      <Card title={`독립 병입자·수집가 캐스크 매입 제안 — ${regionOf(s).caskBids.minMonths / 12}년 이상·품질 70 이상 캐스크`}>
         {!s.caskBids.length ? <Empty>제안이 없습니다 (조건에 맞는 캐스크가 있으면 가끔 들어옵니다)</Empty> : (
-          <Table head={['병입자', '캐스크', '숙성', '품질', '제안가(현물가의 135%)', '만료', '']}>
+          <Table head={['병입자', '캐스크', '숙성', '품질', `제안가(현물가의 ${Math.round(regionOf(s).caskBids.premium * 100)}%${regionOf(s).caskBids.tropicalPremium ? `, 열대향 ${Math.round(regionOf(s).caskBids.tropicalPremium! * 100)}%` : ''})`, '만료', '']}>
             {s.caskBids.map((b) => {
               const c = s.casks.find((x) => x.id === b.caskId);
               return (
@@ -131,5 +136,67 @@ export function B2B() {
         <p className="mt-2 text-xs text-stone-500">벌크 단가 = 기준가 × 숙성 연수 × 품질 × 피트 × 시세 지수 × 현물 할인(85%). 같은 원액을 브로커에게 살 때는 125%를 내므로 사고팔기만으로는 차익이 나지 않습니다. 숙성할수록 벌크 가치가 오르지만, 자사 브랜드로 병입하면 LPA당 수익이 훨씬 큽니다(대신 판매량이 브랜드 인지도에 묶입니다).</p>
       </Card>
     </div>
+  );
+}
+
+/** 산지 대표 거래 (결정 #65) — 경기: 대형 유통 납품 / 간토: 위탁생산 */
+function SiteDeals() {
+  const s = useGame((g) => g.state);
+  const dispatch = useGame((g) => g.dispatch);
+  const deals = siteOf(s).deals ?? [];
+  if (!deals.length && !s.receivables.length) return null;
+  return (
+    <>
+      {deals.includes('retail') && (
+        <Card title="대형 유통 납품 — 큰 물량·출고가의 80%·대금 2개월 뒤, 계약 중 숙성 위스키 매력도 ×0.9·인지도 상승 ×1.2">
+          <Table head={['유통사', '카테고리', '월 납품', '단가', '기간', '병당 위약금', '상태', '']}>
+            {s.retailOffers.map((o) => (
+              <tr key={o.id}>
+                <Td className="font-medium">{o.partner}</Td><Td>{CATEGORY[o.category].nameKo}</Td><Td right>{num(o.bottlesPerMonth)}병</Td>
+                <Td right>출고가 × {pct(o.priceFactor, 0)}</Td><Td right>{o.termMonths}개월</Td><Td right>{won(o.penaltyPerBottle)}</Td>
+                <Td><Badge tone="info">제안 · {o.expiresMonth - s.month}개월 후 만료</Badge></Td>
+                <Td><Button small variant="primary" onClick={() => dispatch({ type: 'acceptRetail', offerId: o.id })}>체결</Button></Td>
+              </tr>
+            ))}
+            {s.retailContracts.map((c) => (
+              <tr key={c.id}>
+                <Td className="font-medium">{c.partner}</Td><Td>{CATEGORY[c.category].nameKo}</Td><Td right>{num(c.bottlesPerMonth)}병</Td>
+                <Td right>출고가 × {pct(c.priceFactor, 0)}</Td><Td right>{c.monthsDone}/{c.termMonths}개월</Td><Td right>{won(c.penaltyPerBottle)}</Td>
+                <Td><Badge tone={c.shortfall ? 'warn' : 'good'}>진행 중 · 누적 미납 {num(c.shortfall)}병</Badge></Td>
+                <Td><Button small variant="danger" onClick={() => dispatch({ type: 'cancelRetail', contractId: c.id })}>해지</Button></Td>
+              </tr>
+            ))}
+          </Table>
+          {!s.retailOffers.length && !s.retailContracts.length && <Empty>제안이 없습니다 (가끔 들어옵니다)</Empty>}
+        </Card>
+      )}
+      {deals.includes('oem') && (
+        <Card title="대기업 위탁생산(OEM) — 원료는 위탁사 부담, 가공비를 받고 증류 설비를 먼저 내준다 (몰트 2회 증류 배치)">
+          <Table head={['위탁사', '월 배치', '배치당 가공비', '기간', '배치당 위약금', '상태', '']}>
+            {s.oemOffers.map((o) => (
+              <tr key={o.id}>
+                <Td className="font-medium">{o.buyerName}</Td><Td right>{o.batchesPerMonth}</Td><Td right>{won(o.feePerBatch)}</Td><Td right>{o.termMonths}개월</Td><Td right>{won(o.penaltyPerBatch)}</Td>
+                <Td><Badge tone="info">제안 · {o.expiresMonth - s.month}개월 후 만료</Badge></Td>
+                <Td><Button small variant="primary" onClick={() => dispatch({ type: 'acceptOem', offerId: o.id })}>체결</Button></Td>
+              </tr>
+            ))}
+            {s.oemContracts.map((c) => (
+              <tr key={c.id}>
+                <Td className="font-medium">{c.buyerName}</Td><Td right>{c.batchesPerMonth}</Td><Td right>{won(c.feePerBatch)}</Td><Td right>{c.monthsDone}/{c.termMonths}개월</Td><Td right>{won(c.penaltyPerBatch)}</Td>
+                <Td><Badge tone={c.missed ? 'warn' : 'good'}>진행 중 · 누적 미이행 {c.missed}배치</Badge></Td><Td />
+              </tr>
+            ))}
+          </Table>
+          {!s.oemOffers.length && !s.oemContracts.length && <Empty>제안이 없습니다 (가끔 들어옵니다)</Empty>}
+        </Card>
+      )}
+      {s.receivables.length > 0 && (
+        <Card title="받을 대금 (매출채권)">
+          <Table head={['내용', '입금 예정', '금액']}>
+            {s.receivables.map((r, i) => <tr key={i}><Td>{r.label}</Td><Td right>{r.dueMonth - s.month}개월 후</Td><Td right>{won(r.amount)}</Td></tr>)}
+          </Table>
+        </Card>
+      )}
+    </>
   );
 }

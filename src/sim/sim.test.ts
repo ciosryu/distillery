@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   advanceMonths, annuityPayment, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, categorize, demandFor, evaluate, evaporate, heartsFraction, spotBidPerLPA, spotQuote,
-  makeContractOffer, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
+  makeContractOffer, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, warehouseCapacity, windowFraction, type Cask, type GameState, type SpiritLot,
   appeal, applyEffects, buyersFor, presetRecipes, suggestedPrice, validateRecipe, type Product,
 } from './index';
 import { EQUIPMENT, INGREDIENTS } from './content/catalog';
@@ -11,7 +11,9 @@ import { DEFAULT_SITE, SITES } from './content/sites';
 import {
   applyTerroir, dutyFreeDemand, fermentCapacityFactor, isTraditionalRecipe, migrateState, productConsumerPrice, riskScale, scaleEffects,
   traditionalReliefRate, waterPermitCap, WATER_EFFECT,
+  agingOutlook, holdingCost, inventoryCollateral, inventoryLoanRoom, makeOemOffer, makeRetailOffer, runVisitorSales, startOem, startRetail,
 } from './index';
+import { HOLDING } from './content/catalog';
 
 const recipeId = (s: GameState, prefix: string) => s.recipes.find((r) => r.name.startsWith(prefix))!.id;
 
@@ -555,5 +557,110 @@ describe('산지 (v0.8, regions.md Tier 1)', () => {
     expect(andong.has('안동 탈춤축제')).toBe(true);
     for (const t of ['태풍 상륙', '폭설', '간사이 인바운드 관광 붐', '지진']) expect(andong.has(t)).toBe(false);
     for (const t of ['안동 탈춤축제', '제주 관광객 급증', '폭설']) expect(kansai.has(t)).toBe(false);
+  });
+});
+
+describe('보유 비용·산지 대표 결정 (결정 #65)', () => {
+  const malt = (oakMonths: number, volumeL = 190): SpiritLot => ({ id: 'm', name: 'm', kind: 'malt', volumeL, abv: 0.6, flavor: { fresh_fruit: 30, cereal: 20, vanilla_caramel: 40, integration: 50, harshness: 25 }, createdMonth: 0, oakMonths, sourced: false, costPerLPA: 9_000 });
+  const withCasks = (s: GameState, n: number, oakMonths = 48): GameState => ({ ...s, casks: s.casks.slice(0, n).map((c) => ({ ...c, contents: malt(oakMonths) })) });
+  const product = (over: Partial<Product> = {}): Product => ({ id: 'p', name: 'p', category: 'whisky', ageYears: 4, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 80, style: null, sourcedShare: 0, stockBottles: 5000, price: 60_000, unitCost: 20_000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, ...over });
+
+  it('보관료: 시작 후 36개월은 면제, 그 뒤 캐스크당 보관료(산지 땅값 반영) + 재고 보험료', () => {
+    const k = withCasks(newGame({ seed: 1, site: 'kansai' }), 10);
+    const h = withCasks(newGame({ seed: 1, site: 'hokkaido' }), 10);
+    expect(holdingCost(k)).toEqual({ storage: 0, insurance: 0 });
+    const kc = holdingCost({ ...k, month: HOLDING.graceMonths });
+    const hc = holdingCost({ ...h, month: HOLDING.graceMonths });
+    expect(kc.storage).toBe(Math.round(10 * HOLDING.perCaskMonth * 1.3));
+    expect(hc.storage).toBeLessThan(kc.storage);
+    expect(kc.insurance).toBeGreaterThan(0);
+    const after = advanceMonths({ ...k, month: HOLDING.graceMonths }, 1);
+    expect(after.reports.at(-1)!.expenses.storage).toBeGreaterThan(0);
+  });
+
+  it('숙성 전망: 같은 캐스크라도 이란은 증발 때문에 1년 더 두는 이득이 경기보다 작다', () => {
+    const y = withCasks(newGame({ seed: 1, site: 'yilan' }), 1, 60);
+    const g = withCasks(newGame({ seed: 1, site: 'gyeonggi' }), 1, 60);
+    const oy = agingOutlook(y, y.casks[0]!)!;
+    const og = agingOutlook(g, g.casks[0]!)!;
+    expect(oy.evaporation).toBeGreaterThan(0.09);
+    expect(oy.net).toBeLessThan(og.net);
+  });
+
+  it('재고 담보대출: 한도 = 재고 시가 × 담보 인정 비율(홋카이도 0.6), 시가가 떨어지면 추가 상환', () => {
+    let h = withCasks(newGame({ seed: 1, site: 'hokkaido' }), 10);
+    const g = withCasks(newGame({ seed: 1, site: 'gyeonggi' }), 10);
+    expect(inventoryLoanRoom(h)).toBeGreaterThan(inventoryLoanRoom(g));
+    expect(inventoryLoanRoom(h)).toBeLessThanOrEqual(inventoryCollateral(h) * 0.6);
+    const room = inventoryLoanRoom(h);
+    h = applyAction(h, { type: 'takeLoan', offerId: 'inventory', amount: room }).state;
+    expect(h.loans.find((l) => l.offerId === 'inventory')!.balance).toBe(room);
+    expect(applyAction(newGame({ seed: 1, site: 'hokkaido' }), { type: 'takeLoan', offerId: 'inventory', amount: 50_000_000 }).error).toBeTruthy();
+    const crash = advanceMonths({ ...h, bulkIndex: 0.6 }, 1);
+    expect(crash.loans.find((l) => l.offerId === 'inventory')!.balance).toBeLessThan(room);
+    expect(crash.reports.at(-1)!.notes.some((n) => n.includes('추가 상환'))).toBe(true);
+  });
+
+  it('대형 유통 납품(경기): 재고를 먼저 가져가고 대금은 2개월 뒤, 계약 중 숙성 위스키 매력도 ×0.9', () => {
+    let s = newGame({ seed: 2, site: 'gyeonggi' });
+    s.products = [product({ category: 'soju_distilled', bottleMl: 375, abv: 0.25, price: 5_000, ageYears: null })];
+    const offer = makeRetailOffer(s, mulberry32(1));
+    expect(offer.category).toBe('soju_distilled');
+    const before = appeal(product(), s);
+    s.retailContracts = [startRetail(s, { ...offer, bottlesPerMonth: 600 })];
+    expect(appeal(product(), s)).toBeCloseTo(before * 0.9, 6);
+    s = advanceMonths(s, 1);
+    expect(s.receivables.some((r) => r.amount === Math.round(600 * 5_000 * 0.8))).toBe(true);
+    s = advanceMonths(s, 2);
+    expect(s.reports.some((r) => (r.retailRevenue ?? 0) >= 600 * 5_000 * 0.8)).toBe(true);
+  });
+
+  it('위탁생산(간토): 자사 생산보다 먼저 설비를 쓰고 가공비를 받는다', () => {
+    let s = newGame({ seed: 2, site: 'kanto' });
+    expect(makeOemOffer(s, mulberry32(1))).not.toBeNull();
+    const o = { ...makeOemOffer(s, mulberry32(1))!, batchesPerMonth: 2 };
+    s.oemContracts = [startOem(s, o)];
+    s = advanceMonths(s, 1);
+    expect(s.reports.at(-1)!.oemRevenue).toBe(2 * o.feePerBatch);
+    expect(s.oemContracts[0]!.missed).toBe(0);
+  });
+
+  it('직판장: 숙성고 40자리를 쓰고, 관광객이 소비자가로 사 간다(오사카·교토가 경기보다 많이)', () => {
+    let k = newGame({ seed: 1, site: 'kansai', startingCash: 2_000_000_000 });
+    const cap = warehouseCapacity(k);
+    k = applyAction(k, { type: 'buyEquipment', catalogId: 'upg_visitor' }).state;
+    expect(warehouseCapacity(k)).toBe(cap - 40);
+    k = { ...advanceMonths(k, 4), products: [product()] };
+    const g = { ...k, siteId: 'gyeonggi' as const, regionId: 'KR' as const, products: [product()] };
+    const kv = runVisitorSales(structuredClone(k), 6);
+    const gv = runVisitorSales(structuredClone(g), 6);
+    expect(kv[0]!.bottles).toBeGreaterThan(gv[0]!.bottles);
+    expect(kv[0]!.revenue / kv[0]!.bottles).toBeGreaterThan(60_000);
+  });
+
+  it('면세 전용 한정판(제주): 국내에선 안 팔리고 면세 수요는 늘어난다, 제주 밖에선 못 만든다', () => {
+    const j = newGame({ seed: 1, site: 'jeju' });
+    j.awareness = 0.3;
+    const normal = dutyFreeDemand(j, product(), 1, 8);
+    const limited = dutyFreeDemand(j, product({ dutyFreeOnly: true }), 1, 8);
+    expect(limited).toBeGreaterThan(normal * 2);
+    expect(dutyFreeDemand(j, product(), 1, 8)).toBeGreaterThan(dutyFreeDemand(j, product(), 1, 3));
+    const a = newGame({ seed: 1, site: 'andong' });
+    const lot = { ...malt(48), id: 'L1' };
+    a.lots = [lot];
+    expect(previewBlend(a, [{ source: 'lot', id: 'L1', liters: 100 }], { name: 'x', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard', dutyFreeOnly: true }).errors.some((e) => e.includes('면세'))).toBe(true);
+  });
+
+  it('대만은 24개월이면 위스키, 수집가는 열대향 캐스크에 더 쳐준다 / 일본은 미즈나라 인센스 프리미엄', () => {
+    const tw = newGame({ seed: 1, site: 'yilan' });
+    const kr = newGame({ seed: 1, site: 'gyeonggi' });
+    for (const s of [tw, kr]) s.lots = [{ ...malt(26), id: 'L1' }];
+    const opts = { name: 'x', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' };
+    expect(previewBlend(tw, [{ source: 'lot', id: 'L1', liters: 100 }], opts).category).toBe('whisky');
+    expect(previewBlend(kr, [{ source: 'lot', id: 'L1', liters: 100 }], opts).category).toBe('malt_spirit');
+    expect(REGIONS.TW.caskBids.tropicalPremium!).toBeGreaterThan(REGIONS.TW.caskBids.premium);
+    const jp = newGame({ seed: 1, site: 'kansai' });
+    expect(appeal(product({ flavor: { incense: 10 } }), jp)).toBeCloseTo(appeal(product(), jp) * 1.25, 6);
+    expect(appeal(product({ flavor: { incense: 10 } }), kr)).toBeCloseTo(appeal(product(), kr), 6);
   });
 });

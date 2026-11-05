@@ -34,6 +34,13 @@ export const BUYERS: NamedEntity[] = [
   { id: 'formosa', real: '포모사 캐스크 트레이딩', fictional: '포모사 캐스크 트레이딩', country: 'TW', canDefault: true },
 ];
 
+/** 대형 유통사 (경기 대형 유통 납품, 결정 #65) — 가상 회사만 쓴다: 단가 인하·계약 파기 같은 부정적 상황이 생길 수 있으므로 */
+export const RETAILERS: NamedEntity[] = [
+  { id: 'saenal', real: '새날 편의점', fictional: '새날 편의점', country: 'KR', canDefault: true },
+  { id: 'gaon', real: '가온마트', fictional: '가온마트', country: 'KR', canDefault: true },
+  { id: 'dodam', real: '도담 리테일', fictional: '도담 리테일', country: 'KR', canDefault: true },
+];
+
 /** 독립 병입자 — 우수 캐스크 매입 제안 */
 export const INDEPENDENT_BOTTLERS: NamedEntity[] = [
   { id: 'gm', real: '고든 앤 맥페일', fictional: '엘긴 보틀러스' },

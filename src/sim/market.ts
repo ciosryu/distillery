@@ -1,7 +1,7 @@
-import { DISTRIBUTION, PACKAGING, logisticsCost } from './content/catalog';
+import { DISTRIBUTION, PACKAGING, VISITOR, logisticsCost } from './content/catalog';
 import { consumerPrice, liquorTaxPerBottle, refPricePerL, regionOf, type RegionDef } from './content/regions';
 import { DUTY_FREE, siteOf } from './content/sites';
-import { onlineCoverageBonus, rollTraditionalYear, traditionalReliefRate } from './sites';
+import { hasUpgrade, onlineCoverageBonus, rollTraditionalYear, traditionalReliefRate } from './sites';
 import { clamp } from './flavor';
 import { staffOf } from './util';
 import { mod } from './modifiers';
@@ -40,7 +40,12 @@ export function appeal(p: Product, s?: Pick<GameState, 'modifiers' | 'month' | '
   // 시장 국면: 피트·셰리 유행
   const trend = s ? mod(s, 'appeal:all') * ((p.flavor.peat_smoke ?? 0) >= 25 ? mod(s, 'appeal:peated') : 1) * ((p.flavor.dried_fruit ?? 0) >= 25 ? mod(s, 'appeal:sherried') : 1) : 1;
   const sourcedPenalty = s ? regionOf(s).sourcedPenalty : 0.15;
-  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * (1 - sourcedPenalty * p.sourcedShare) * trend;
+  // 대형 유통 입점(경기)은 숙성 위스키의 프리미엄 이미지를 깎는다 / 미즈나라 백단·인센스 향은 일본 시장 프리미엄
+  const premium = s && aged ? mod(s, 'appeal:premium') : 1;
+  const incense = s && (p.flavor.incense ?? 0) >= 8 ? regionOf(s).incensePremium ?? 1 : 1;
+  // 면세 전용 한정판(제주)
+  const limited = p.dutyFreeOnly ? DUTY_FREE.limitedAppeal : 1;
+  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * (1 - sourcedPenalty * p.sourcedShare) * trend * premium * incense * limited;
 }
 
 export interface DemandBreakdown {
@@ -75,9 +80,11 @@ export function dutyFreeDemand(s: GameState, p: Product, sameCategoryCount: numb
   const base = DUTY_FREE.market[p.category] ?? 0;
   const consumer = dutyFreeConsumerPrice(p);
   if (base <= 0 || consumer > DUTY_FREE.maxBottlePrice) return 0;
-  const marketL = (base * 9 / 12) * region.seasonality[monthOfYear - 1]! * (s.trend[p.category] ?? 1) * mod(s, 'dutyfree');
-  // 면세점 입점은 지역 상품 진열이 기본 → 영업 커버리지의 영향이 작다
-  const reach = (s.awareness * (0.3 + 0.5 * coverage(s)) * DUTY_FREE.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
+  const season = (siteOf(s).dutyFreeSeasonality ?? region.seasonality)[monthOfYear - 1]!;
+  const marketL = (base * 9 / 12) * season * (s.trend[p.category] ?? 1) * mod(s, 'dutyfree');
+  // 면세점 입점은 지역 상품 진열이 기본 → 영업 커버리지의 영향이 작다. 면세 전용 한정판은 전용 매대(점유 상한 ×2)
+  const shareCap = DUTY_FREE.shareCap * (p.dutyFreeOnly ? DUTY_FREE.limitedShareCap : 1);
+  const reach = (s.awareness * (0.3 + 0.5 * coverage(s)) * shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
   const bottleL = p.bottleMl / 1000;
   const ref = refPricePerL(region, p.category, p.abv) * DUTY_FREE.refFactor;
   const priceFactor = Math.pow(consumer / bottleL / ref, -region.market[p.category].elasticity);
@@ -114,7 +121,7 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): SalesResu
     if (p.stockBottles <= 0) { p.lastMonthSold = 0; p.lastMonthDutyFree = 0; continue; }
     const d = demandFor(s, p, counts[p.category] ?? 1, monthOfYear, region);
     const noise = rng.range(0.9, 1.1);
-    const domestic = Math.round(d.demandBottles * noise);
+    const domestic = p.dutyFreeOnly ? 0 : Math.round(d.demandBottles * noise);
     const df = Math.round(dutyFreeDemand(s, p, counts[p.category] ?? 1, monthOfYear, region) * noise);
     const demand = domestic + df;
     const sold = Math.min(p.stockBottles, demand);
@@ -134,6 +141,36 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): SalesResu
     const distribution = domSold * distributionCostPerBottle(p.price, p.bottleMl, site.outboundLogistics) + dfSold * distributionCostPerBottle(p.price, p.bottleMl);
     out.push({ productId: p.id, name: p.name, bottles: sold, revenue: sold * p.price, demandBottles: demand, distribution: Math.round(distribution), dutyFree: dfSold, tax, relief: fullTax - tax });
   }
+  return out;
+}
+
+export interface VisitorSale { productId: string; bottles: number; revenue: number; tax: number }
+
+/**
+ * 증류소 투어·직판장 (결정 #65): 방문객 = 산지 관광 잠재력 × 계절 × (0.5 + 인지도). 1인당 0.12병을 매력도에 비례해 나눠 산다.
+ * 직판은 소비자가로 팔고 부가세·주세만 내므로 유통 마진(채널 수수료·소매 마진)을 증류소가 가져간다
+ */
+export function runVisitorSales(s: GameState, monthOfYear: number): VisitorSale[] {
+  if (!hasUpgrade(s, 'visitor')) return [];
+  const region = regionOf(s);
+  const visitors = siteOf(s).tourism * region.seasonality[monthOfYear - 1]! * mod(s, 'demand:all') * (0.5 + s.awareness);
+  const items = s.products.filter((p) => p.stockBottles > 0 && !p.dutyFreeOnly);
+  const weights = items.map((p) => appeal(p, s));
+  const total = weights.reduce((a, b) => a + b, 0);
+  if (!items.length || total <= 0) return [];
+  const bottles = visitors * VISITOR.bottlesPerVisitor;
+  const out: VisitorSale[] = [];
+  items.forEach((p, i) => {
+    const n = Math.min(p.stockBottles, Math.round((bottles * weights[i]!) / total));
+    if (n <= 0) return;
+    const opts = { category: p.category, relief: traditionalReliefRate(s, p.traditional) };
+    const consumer = consumerPrice(region, p.price, p.bottleMl, p.abv, 1, opts);
+    const tax = liquorTaxPerBottle(region, p.price, p.bottleMl, p.abv, opts);
+    p.stockBottles -= n;
+    p.totalSold += n;
+    p.lastMonthSold += n;
+    out.push({ productId: p.id, bottles: n, revenue: Math.round(n * (consumer / (1 + region.tax.vat) - tax)), tax: Math.round(n * tax) });
+  });
   return out;
 }
 

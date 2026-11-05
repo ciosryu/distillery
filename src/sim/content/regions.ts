@@ -63,6 +63,12 @@ export interface CountryDef {
   sourcedPenalty: number;
   /** 지역 특산 캐스크는 싸고, 다른 지역 캐스크는 비싸다 (산지 배수가 추가로 곱해진다) */
   caskPriceFactor: Partial<Record<CaskTypeId, number>>;
+  /** "위스키" 표기 최소 오크 숙성 개월 (공통 36, 대만 24 — 결정 #65) */
+  whiskyMinMonths: number;
+  /** 백단·인센스 향(미즈나라 장기 숙성) 매력도 배수 — incense ≥ 8 */
+  incensePremium?: number;
+  /** 독립 병입자·수집가 캐스크 매입 제안: 최소 숙성, 월 확률, 현물가 대비 배수, 열대향 캐스크 추가 배수 */
+  caskBids: { minMonths: number; chance: number; premium: number; tropicalPremium?: number };
 }
 
 /** 호환용 별칭 — 기존 코드의 RegionDef는 이제 국가 정의다 */
@@ -125,6 +131,8 @@ export const REGIONS: Record<RegionId, CountryDef> = {
     eventWeights: { market: 1.0, supply: 1.0, disaster: 1.2, regulation: 1.3, b2b: 0.8, opportunity: 1.0, people: 1.0 },
     sourcedPenalty: 0.15,
     caskPriceFactor: { korean_oak_quarter: 1.0, mizunara_hogshead: 1.6 },
+    whiskyMinMonths: 36,
+    caskBids: { minMonths: 60, chance: 0.25, premium: 1.35 },
   },
   JP: {
     id: 'JP',
@@ -156,6 +164,10 @@ export const REGIONS: Record<RegionId, CountryDef> = {
     eventWeights: { market: 1.1, supply: 1.0, disaster: 1.4, regulation: 0.8, b2b: 1.1, opportunity: 1.0, people: 1.0 },
     sourcedPenalty: 0.5,
     caskPriceFactor: { mizunara_hogshead: 0.6, korean_oak_quarter: 1.6 },
+    whiskyMinMonths: 36,
+    // 미즈나라 6년 이상 숙성의 백단·인센스 향은 일본 시장에서 프리미엄 (결정 #65)
+    incensePremium: 1.25,
+    caskBids: { minMonths: 60, chance: 0.25, premium: 1.35 },
   },
   TW: {
     id: 'TW',
@@ -183,6 +195,10 @@ export const REGIONS: Record<RegionId, CountryDef> = {
     eventWeights: { market: 1.3, supply: 1.0, disaster: 1.5, regulation: 0.7, b2b: 0.6, opportunity: 1.1, people: 1.0 },
     sourcedPenalty: 0.2,
     caskPriceFactor: { korean_oak_quarter: 1.6, mizunara_hogshead: 1.4 },
+    // 대만은 위스키 최소 숙성 2년 (2차 출처 기준 [확인 필요: 법령 원문]) — 빠른 출시 정체성 (결정 #65)
+    whiskyMinMonths: 24,
+    // 수집가 시장: 3년 이상 캐스크부터, 더 자주, 열대향 캐스크는 더 비싸게
+    caskBids: { minMonths: 36, chance: 0.4, premium: 1.35, tropicalPremium: 1.6 },
   },
 };
 

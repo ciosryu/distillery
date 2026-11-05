@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { LOAN_OFFERS } from '../../sim/content/catalog';
-import { annuityPayment, currentLoanPayment, monthLabel } from '../../sim';
+import { annuityPayment, currentLoanPayment, inventoryLoanRoom, inventoryLtv, monthLabel } from '../../sim';
 import { useGame } from '../../store/game';
 import { pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Table, Td } from '../kit';
@@ -17,17 +17,19 @@ export function Finance() {
         <Table head={['상품', '금리', '기간', '거치', '한도', '조건', '신청 금액', '월 상환액(거치 후)', '']}>
           {LOAN_OFFERS.map((o) => {
             const amt = (amounts[o.id] ?? 0) * 1e6;
-            const using = s.loans.some((l) => l.offerId === o.id);
-            const locked = o.requires === 'producedSoju' && !s.flags.producedSoju;
+            const collateral = o.collateral === 'inventory';
+            const max = collateral ? inventoryLoanRoom(s) : o.max;
+            const using = !collateral && s.loans.some((l) => l.offerId === o.id);
+            const locked = (o.requires === 'producedSoju' && !s.flags.producedSoju) || (collateral && max < 10_000_000);
             return (
               <tr key={o.id}>
                 <Td className="font-medium">{o.nameKo}</Td>
                 <Td right>{pct(o.annualRate)}</Td>
                 <Td right>{o.termMonths / 12}년</Td>
                 <Td right>{o.graceMonths ? `${o.graceMonths}개월` : '—'}</Td>
-                <Td right>{won(o.max)}</Td>
-                <Td>{o.requires ? <Badge tone={locked ? 'warn' : 'good'}>증류식 소주 생산 실적</Badge> : '—'}</Td>
-                <Td><NumberField value={amounts[o.id] ?? 0} min={10} max={o.max / 1e6} width="w-20" suffix="백만" onCommit={(v) => setAmounts({ ...amounts, [o.id]: v })} /></Td>
+                <Td right>{won(max)}</Td>
+                <Td>{o.requires ? <Badge tone={locked ? 'warn' : 'good'}>증류식 소주 생산 실적</Badge> : collateral ? <Badge tone="info">숙성 재고 시가 × {pct(inventoryLtv(s), 0)} · 시가 하락 시 추가 상환</Badge> : '—'}</Td>
+                <Td><NumberField value={amounts[o.id] ?? 0} min={10} max={Math.max(10, max / 1e6)} width="w-20" suffix="백만" onCommit={(v) => setAmounts({ ...amounts, [o.id]: v })} /></Td>
                 <Td right>{won(annuityPayment(amt, o.annualRate, o.termMonths - o.graceMonths))}</Td>
                 <Td><Button small variant="primary" disabled={using || locked} onClick={() => dispatch({ type: 'takeLoan', offerId: o.id, amount: amt })}>{using ? '이용 중' : '실행'}</Button></Td>
               </tr>

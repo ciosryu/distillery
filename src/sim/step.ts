@@ -5,10 +5,12 @@ import { fulfillContracts, refreshCaskBids, refreshContractOffers, updateBulkInd
 import { clamp, weightedAverage } from './flavor';
 import { gainXp, refreshCandidates } from './hr';
 import { matureCask, restLot } from './maturation';
-import { runSales, updateAwareness, updateTrends } from './market';
-import { simulateBatch, stillDefOf, volumeDiscounts } from './production';
+import { runSales, runVisitorSales, updateAwareness, updateTrends } from './market';
+import { batchEnergyCost, simulateBatch, stillDefOf, volumeDiscounts } from './production';
+import { fulfillRetail, OEM, refreshDeals } from './deals';
 import { effectivePriceIndex, mod, pruneModifiers } from './modifiers';
 import { runEvents } from './events';
+import { holdingCost, inventoryMarginCall } from './holding';
 import { applyTerroir, fermentCapacityFactor, heatingCost, isTraditionalRecipe, resolveWaterPermit, seasonalEnergyFactor, waterPermitCap } from './sites';
 import { rngFor } from './rng';
 import type { FermenterType, GameState, MonthReport, SpiritLot, StaffRole } from './types';
@@ -45,6 +47,39 @@ function runProduction(s: GameState, report: MonthReport, monthOfYear: number): 
   const prices = effectivePriceIndex(s, volumeDiscounts(s));
   for (const k of Object.keys(prices)) prices[k] = prices[k]! * (k === 'energy' ? seasonalEnergyFactor(s, monthOfYear) : siteIngredientFactor(site, k));
   const boughtKg: Record<string, number> = {};
+
+  // 위탁생산(OEM, 간토) — 자사 생산보다 먼저 설비를 내준다. 원료는 위탁사 부담, 에너지비만 우리 몫
+  const oemDone: string[] = [];
+  for (const c of s.oemContracts) {
+    const stillInst = s.equipment.find((e) => e.readyMonth <= s.month && EQUIPMENT[e.catalogId]?.kind === 'still' && (EQUIPMENT[e.catalogId] as { stillType: string }).stillType !== 'column');
+    const still = stillInst ? stillDefOf(s, stillInst.id) : null;
+    let done = 0;
+    for (let b = 0; b < c.batchesPerMonth && still && stillInst; b++) {
+      if ((stillRuns.get(stillInst.id) ?? 0) < OEM.runs || distillerRuns < OEM.runs || waterLeftL < still.chargeL) break;
+      const ferm = fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= OEM.fermentDays + 2 && f.type !== 'onggi');
+      if (!ferm) break;
+      ferm.daysLeft -= OEM.fermentDays + 2;
+      waterLeftL -= still.chargeL;
+      stillRuns.set(stillInst.id, (stillRuns.get(stillInst.id) ?? 0) - OEM.runs);
+      distillerRuns -= OEM.runs;
+      runsUsed += OEM.runs;
+      const energy = Math.round(batchEnergyCost(still, OEM.runs, prices.energy ?? 1));
+      s.cash -= energy;
+      report.expenses.production = (report.expenses.production ?? 0) + energy;
+      done++;
+    }
+    const missed = c.batchesPerMonth - done;
+    const fee = done * c.feePerBatch;
+    const penalty = missed * c.penaltyPerBatch;
+    s.cash += fee - penalty;
+    report.oemRevenue = (report.oemRevenue ?? 0) + fee;
+    if (penalty > 0) { report.expenses.penalty = (report.expenses.penalty ?? 0) + penalty; report.notes.push(`${c.buyerName} 위탁생산 ${missed}배치 미이행 — 위약금`); }
+    c.monthsDone += 1;
+    c.missed += missed;
+    if (c.missed >= 2 * c.batchesPerMonth) { report.notes.push(`${c.buyerName} 위탁생산 계약 파기 — 누적 미이행 과다`); oemDone.push(c.id); }
+    else if (c.monthsDone >= c.termMonths) { report.notes.push(`${c.buyerName} 위탁생산 계약 만료`); oemDone.push(c.id); }
+  }
+  s.oemContracts = s.oemContracts.filter((c) => !oemDone.includes(c.id));
 
   for (const order of s.orders) {
     if (order.batchesPerMonth <= 0) continue;
@@ -149,6 +184,18 @@ function runFinance(s: GameState, report: MonthReport, monthOfYear: number): voi
   pay('salaries', s.staff.reduce((t, x) => t + x.salary, 0));
   pay('overhead', siteOf(s).overheadPerMonth);
   pay('heating', heatingCost(s, monthOfYear));
+  // 숙성 재고 보유 비용 (결정 #65) — 시작 후 HOLDING.graceMonths 동안 면제
+  const hold = holdingCost(s);
+  pay('storage', hold.storage);
+  pay('insurance', hold.insurance);
+  // 결제 지연 대금(대형 유통 납품) 입금
+  const due = s.receivables.filter((r) => r.dueMonth <= s.month);
+  if (due.length) {
+    const amount = due.reduce((t, r) => t + r.amount, 0);
+    s.cash += amount;
+    report.retailRevenue = (report.retailRevenue ?? 0) + amount;
+    s.receivables = s.receivables.filter((r) => r.dueMonth > s.month);
+  }
   pay('maintenance', s.equipment.reduce((t, e) => t + (e.readyMonth <= s.month ? (EQUIPMENT[e.catalogId]?.maintenance ?? 0) : 0), 0));
   pay('marketing', s.marketingBudget);
   for (const loan of s.loans) {
@@ -159,6 +206,7 @@ function runFinance(s: GameState, report: MonthReport, monthOfYear: number): voi
     pay('interest', interest);
     pay('principal', principal);
   }
+  pay('principal', inventoryMarginCall(s, report));
   s.loans = s.loans.filter((l) => l.balance > 0);
 }
 
@@ -179,10 +227,16 @@ export function advanceMonth(prev: GameState): GameState {
   runMaturation(s, report, monthOfYear);
   fulfillContracts(s, report);
 
+  fulfillRetail(s, report);
   const sales = runSales(s, rngFor(s.seed, s.month, 'sales'), monthOfYear);
   report.sales = sales;
   report.revenue = sales.reduce((t, x) => t + x.revenue, 0);
-  report.liquorTaxRemitted = Math.round(sales.reduce((t, x) => t + x.tax, 0));
+  // 직판장 (판매 뒤 남은 재고에서)
+  const visitor = runVisitorSales(s, monthOfYear);
+  report.visitorBottles = visitor.reduce((t, x) => t + x.bottles, 0);
+  report.visitorRevenue = visitor.reduce((t, x) => t + x.revenue, 0);
+  report.revenue += report.visitorRevenue;
+  report.liquorTaxRemitted = Math.round(sales.reduce((t, x) => t + x.tax, 0) + visitor.reduce((t, x) => t + x.tax, 0));
   report.taxRelief = Math.round(sales.reduce((t, x) => t + x.relief, 0));
   report.dutyFreeBottles = sales.reduce((t, x) => t + x.dutyFree, 0);
   s.cash += report.revenue;
@@ -203,6 +257,7 @@ export function advanceMonth(prev: GameState): GameState {
   refreshBroker(s, rngFor(s.seed, s.month, 'broker'));
   refreshContractOffers(s, rngFor(s.seed, s.month, 'contracts'));
   refreshCaskBids(s, rngFor(s.seed, s.month, 'caskbids'));
+  refreshDeals(s, rngFor(s.seed, s.month, 'deals'));
   updateBulkIndex(s, rngFor(s.seed, s.month, 'bulk'));
 
   // 원재료 가격 변동 (평균 회귀 랜덤 워크)

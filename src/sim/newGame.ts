@@ -121,6 +121,11 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     eventLastMonth: {},
     ingredientKgLastMonth: {},
     caskBids: [],
+    retailOffers: [],
+    retailContracts: [],
+    oemOffers: [],
+    oemContracts: [],
+    receivables: [],
     reports: [],
     nextId: 1,
   };
@@ -144,9 +149,14 @@ export function newGame(opts: NewGameOptions = {}): GameState {
 export function migrateState(raw: unknown): GameState | null {
   if (!raw || typeof raw !== 'object') return null;
   const s = raw as Partial<GameState> & { version?: number };
-  if (s.version === 5) return s as GameState;
+  // v5 안에서 늘어난 필드(산지 대표 거래·매출채권, 새 원재료 시세)는 빈 값으로 채운다
+  const fill = (x: GameState): GameState => ({
+    ...x,
+    priceIndex: { ...Object.fromEntries(Object.keys(INGREDIENTS).map((k) => [k, 1])), ...(x.priceIndex ?? {}) },
+    retailOffers: x.retailOffers ?? [], retailContracts: x.retailContracts ?? [], oemOffers: x.oemOffers ?? [], oemContracts: x.oemContracts ?? [], receivables: x.receivables ?? [],
+  });
+  if (s.version === 5) return fill(s as GameState);
   if (s.version !== 4 || !s.regionId) return null;
   const siteId = DEFAULT_SITE[s.regionId] ?? 'gyeonggi';
-  const priceIndex = { ...Object.fromEntries(Object.keys(INGREDIENTS).map((k) => [k, 1])), ...(s.priceIndex ?? {}) };
-  return { ...(s as unknown as GameState), version: 5, siteId, siteState: initialSiteState(siteId), priceIndex };
+  return fill({ ...(s as unknown as GameState), version: 5, siteId, siteState: initialSiteState(siteId) });
 }

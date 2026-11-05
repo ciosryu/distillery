@@ -10,7 +10,7 @@ import { mod } from './modifiers';
 import type { AxisId, Flavor, GameState, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
 
 export interface BlendComponent { source: 'cask' | 'lot'; id: string; liters: number }
-export interface BottleOptions { name: string; targetAbv: number | 'cask'; bottleMl: number; chillFilter: boolean; packagingId: string }
+export interface BottleOptions { name: string; targetAbv: number | 'cask'; bottleMl: number; chillFilter: boolean; packagingId: string; /** 면세 전용 한정판(제주) */ dutyFreeOnly?: boolean }
 
 export interface BlendPreview {
   ok: boolean;
@@ -34,6 +34,7 @@ export interface BlendPreview {
   traditional: boolean;
 }
 
+/** 공통 "위스키" 최소 숙성 — 국가별 값은 CountryDef.whiskyMinMonths (대만 24) */
 export const WHISKY_MIN_MONTHS = 36;
 export const MIN_BOTTLING_ABV: Record<ProductCategory, number> = { whisky: 0.4, grain_whisky: 0.4, blended_whisky: 0.4, baijiu: 0.3, malt_spirit: 0.3, soju_distilled: 0.17, gin: 0.375, flavored_spirit: 0.2 };
 
@@ -42,11 +43,11 @@ export function lotOf(s: GameState, c: BlendComponent): SpiritLot | undefined {
 }
 
 /** 라벨 판정 (대표 법규만) */
-export function categorize(kind: SpiritKind, minOakMonths: number, abv: number, flavor: Flavor, hasGrain = kind === 'grain', hasMalt = kind === 'malt'): ProductCategory {
+export function categorize(kind: SpiritKind, minOakMonths: number, abv: number, flavor: Flavor, hasGrain = kind === 'grain', hasMalt = kind === 'malt', minMonths = WHISKY_MIN_MONTHS): ProductCategory {
   if (kind === 'soju') return 'soju_distilled';
   if (kind === 'baijiu') return 'baijiu';
   if (kind === 'gin') return evaluate(flavor, 'gin').labelOk && abv >= MIN_BOTTLING_ABV.gin ? 'gin' : 'flavored_spirit';
-  if (minOakMonths < WHISKY_MIN_MONTHS || abv < MIN_BOTTLING_ABV.whisky) return 'malt_spirit';
+  if (minOakMonths < minMonths || abv < MIN_BOTTLING_ABV.whisky) return 'malt_spirit';
   if (hasMalt && hasGrain) return 'blended_whisky';
   return hasGrain ? 'grain_whisky' : 'whisky';
 }
@@ -55,11 +56,11 @@ const WHISKY_CATS: ProductCategory[] = ['whisky', 'grain_whisky', 'blended_whisk
 export const isWhiskyCategory = (c: ProductCategory) => WHISKY_CATS.includes(c);
 
 /** 원액(탱크·캐스크)을 지금 병입한다면 받을 카테고리 — 평가 표시용 */
-export function lotCategory(lot: SpiritLot): ProductCategory {
+export function lotCategory(lot: SpiritLot, minMonths = WHISKY_MIN_MONTHS): ProductCategory {
   if (lot.kind === 'soju') return 'soju_distilled';
   if (lot.kind === 'baijiu') return 'baijiu';
   if (lot.kind === 'gin') return 'gin';
-  if (lot.oakMonths < WHISKY_MIN_MONTHS) return 'malt_spirit';
+  if (lot.oakMonths < minMonths) return 'malt_spirit';
   return lot.kind === 'grain' ? 'grain_whisky' : 'whisky';
 }
 
@@ -115,8 +116,10 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   if (opts.chillFilter) { f.body = (f.body ?? 0) - 8; f.oily_waxy = (f.oily_waxy ?? 0) * 0.8; }
   flavor = clampFlavor(f);
 
-  const category = categorize(kind, minOakMonths, finalAbv, flavor, hasGrain, hasMalt);
-  if ((hasMalt || hasGrain) && category === 'malt_spirit') warnings.push(minOakMonths < WHISKY_MIN_MONTHS ? `오크 숙성 ${minOakMonths}개월 — 36개월 미만이라 "위스키" 표기 불가(몰트 스피릿)` : '도수 40% 미만 — 위스키 표기 불가');
+  const minMonths = regionOf(s).whiskyMinMonths;
+  const category = categorize(kind, minOakMonths, finalAbv, flavor, hasGrain, hasMalt, minMonths);
+  if ((hasMalt || hasGrain) && category === 'malt_spirit') warnings.push(minOakMonths < minMonths ? `오크 숙성 ${minOakMonths}개월 — ${minMonths}개월 미만이라 "위스키" 표기 불가(몰트 스피릿)` : '도수 40% 미만 — 위스키 표기 불가');
+  if (opts.dutyFreeOnly && !siteOf(s).dutyFree) errors.push('면세 전용 한정판은 지정면세점이 있는 산지(제주)에서만 만들 수 있습니다');
   if (kind === 'gin' && category === 'flavored_spirit') warnings.push('주니퍼가 지배적이지 않거나 도수 37.5% 미만 — "진" 표기 불가(기타 증류주)');
   if (finalAbv < MIN_BOTTLING_ABV[category]) errors.push(`${CATEGORY[category].nameKo} 최소 병입 도수는 ${(MIN_BOTTLING_ABV[category] * 100).toFixed(1)}%`);
   if (!opts.chillFilter && finalAbv < 0.46 && (hasMalt || hasGrain)) warnings.push('논칠필터 + 46% 미만 — 저온 혼탁 클레임 위험');
@@ -183,6 +186,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     lastMonthSold: 0,
     totalSold: 0,
     ...(p.traditional ? { traditional: true } : {}),
+    ...(opts.dutyFreeOnly ? { dutyFreeOnly: true } : {}),
   };
   // 포장재·병입 인건비는 병입 시점에 지출
   s.cash -= Math.round((packagingUnitCost(s, opts) + BOTTLING_LABOR_PER_BOTTLE) * p.bottles);

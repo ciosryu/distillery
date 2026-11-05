@@ -9,7 +9,7 @@ import { Badge, Button, Card, Empty, Meter, Stat, Table, Td } from '../kit';
 import { EventsCard } from './Events';
 
 const EXPENSE_LABEL: Record<string, string> = {
-  production: '생산(원재료·에너지)', distribution: '유통비(채널·물류)', penalty: '계약 위약금', salaries: '급여', overhead: '관리비', heating: '난방비', maintenance: '설비 유지비', marketing: '마케팅', interest: '이자', principal: '원금 상환',
+  production: '생산(원재료·에너지)', distribution: '유통비(채널·물류)', penalty: '계약 위약금', salaries: '급여', overhead: '관리비', heating: '난방비', storage: '숙성 재고 보관료', insurance: '숙성 재고 보험료', maintenance: '설비 유지비', marketing: '마케팅', interest: '이자', principal: '원금 상환',
 };
 
 /** 산지 특성과 산지 고유 상태 (regions.md Tier 1) */
@@ -115,6 +115,9 @@ export function Dashboard() {
               <Table head={['항목', '금액']}>
                 <tr><Td>제품 매출</Td><Td right>{won(last.revenue)}</Td></tr>
                 {last.bulkRevenue > 0 && <tr><Td>원액 계약 납품</Td><Td right>{won(last.bulkRevenue)}</Td></tr>}
+                {(last.visitorRevenue ?? 0) > 0 && <tr><Td>└ 그중 직판장 ({num(last.visitorBottles ?? 0)}병)</Td><Td right>{won(last.visitorRevenue!)}</Td></tr>}
+                {(last.retailRevenue ?? 0) > 0 && <tr><Td>대형 유통 납품 대금 입금</Td><Td right>{won(last.retailRevenue!)}</Td></tr>}
+                {(last.oemRevenue ?? 0) > 0 && <tr><Td>위탁생산 가공비</Td><Td right>{won(last.oemRevenue!)}</Td></tr>}
                 {Object.entries(last.expenses).map(([k, v]) => <tr key={k}><Td>{EXPENSE_LABEL[k] ?? k}</Td><Td right>−{won(v)}</Td></tr>)}
                 <tr className="font-semibold"><Td>순현금</Td><Td right>{won(last.netCash)}</Td></tr>
               </Table>

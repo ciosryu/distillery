@@ -123,6 +123,8 @@ export interface Product {
   traditional?: boolean;
   /** 지난달 판매 중 면세 채널 몫 */
   lastMonthDutyFree?: number;
+  /** 면세 전용 한정판 (제주) — 국내 판매 없음 */
+  dutyFreeOnly?: boolean;
 }
 
 export interface StaffStats { a: number; b: number; c: number }
@@ -210,6 +212,12 @@ export interface MonthReport {
   taxRelief?: number;
   /** 면세 채널 판매 병수 */
   dutyFreeBottles?: number;
+  /** 직판장 판매 병수·순매출 */
+  visitorBottles?: number;
+  visitorRevenue?: number;
+  /** 대형 유통 납품 대금 입금 / OEM 가공비 */
+  retailRevenue?: number;
+  oemRevenue?: number;
   /** 이번 달 발생한 이벤트 제목 */
   events: string[];
   notes: string[];
@@ -254,6 +262,30 @@ export interface EventLogEntry { month: number; title: string; text: string }
 
 /** 독립 병입자(IB)의 캐스크 매입 제안 */
 export interface CaskBid { id: string; buyerName: string; caskId: string; price: number; expiresMonth: number }
+
+/** 대형 유통 납품 계약 (경기) — 큰 물량·낮은 단가·결제 지연 */
+export interface RetailTerms {
+  id: string;
+  partner: string;
+  category: ProductCategory;
+  bottlesPerMonth: number;
+  /** 납품 단가 = 제품 출고가 × priceFactor */
+  priceFactor: number;
+  termMonths: number;
+  /** 대금 지급까지 개월 수 */
+  paymentDelay: number;
+  penaltyPerBottle: number;
+}
+export interface RetailOffer extends RetailTerms { expiresMonth: number }
+export interface RetailContract extends RetailTerms { startMonth: number; monthsDone: number; delivered: number; shortfall: number }
+
+/** 대기업 위탁생산(OEM) 계약 (간토) — 원료는 위탁사 부담, 가공비를 받고 증류 설비를 내준다 */
+export interface OemTerms { id: string; buyerName: string; batchesPerMonth: number; feePerBatch: number; termMonths: number; penaltyPerBatch: number }
+export interface OemOffer extends OemTerms { expiresMonth: number }
+export interface OemContract extends OemTerms { startMonth: number; monthsDone: number; missed: number }
+
+/** 매출채권 — 결제 지연 대금 */
+export interface Receivable { dueMonth: number; amount: number; label: string }
 
 /** 산지 고유 상태 */
 export interface SiteState {
@@ -313,6 +345,11 @@ export interface GameState {
   /** 이벤트별 마지막 발생 월 (쿨다운) */
   eventLastMonth: Record<string, number>;
   caskBids: CaskBid[];
+  retailOffers: RetailOffer[];
+  retailContracts: RetailContract[];
+  oemOffers: OemOffer[];
+  oemContracts: OemContract[];
+  receivables: Receivable[];
   /** 지난달 원재료별 실제 구매량(kg) — 대량 구매 할인 등급 */
   ingredientKgLastMonth: Record<string, number>;
   reports: MonthReport[];
