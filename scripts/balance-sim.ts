@@ -1,6 +1,6 @@
 // 헤드리스 밸런스 시뮬레이션 — 전략별 단순 정책으로 N개 시드를 돌려 파산률·흑자 전환 시점·매출 구성을 본다.
 // 실행: npm run balance [-- 시드수 개월수 전략 지역 입지]   전략 = brand | hybrid | expand | grain | all(기본), 지역 = KR(기본) | JP | TW
-import { advanceMonth, applyAction, bulkValuePerLPA, previewBlend, newGame, whiskyMinMonths, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
+import { advanceMonth, applyAction, bulkValuePerLPA, capacityLPA, previewBlend, newGame, whiskyMinMonths, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
 import { regionOf } from '../src/sim/content/regions';
 import { EVENTS } from '../src/sim/content/events';
 
@@ -202,7 +202,8 @@ function policy(s: GameState, strategy: Strategy): GameState {
     s = fillMalt(s);
   } else if (strategy === 'hybrid') {
     // 몰트 생산의 일부만 계약, 나머지는 숙성. 위스키 재고가 쌓이면 오래된 캐스크를 현물 판매
-    s = acceptContracts(s, 200);
+    // v1.3: 몰트 생산 능력의 절반까지 계약
+    s = acceptContracts(s, capacityLPA(s, 'malt') * 0.5);
     s = fillMalt(s);
     if (stockOf(s, 'whisky') > 2000) {
       const old = s.casks.find((c) => c.contents && c.contents.oakMonths >= 48 && !c.contents.sourced);

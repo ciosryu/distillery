@@ -203,12 +203,15 @@ export const BULK = {
   bid: 0.85,
   ask: 1.25,
   /** 계약가 = 기준가치 × contract (현물보다 높지만 고정) */
-  contract: 0.9,
+  /** v1.3(#77): 0.9 → 1.1 — 장기 계약은 물량 보장 대가로 현물 기준가보다 비싸다 */
+  contract: 1.1,
+  /** 계약 기간 프리미엄: 24개월 +4%, 36개월 +8% */
+  termPremiumPer12: 0.04,
   /** 선급금을 받으면 단가 할인 */
   prepayDiscount: 0.05,
   /** 미납 1 LPA당 위약금 = 계약가 × penaltyRate */
   penaltyRate: 0.3,
-  maxActiveContracts: 3,
+  maxActiveContracts: 5,
   /** 그레인 뉴메이크 기준가(원/LPA) — 대량·저가 */
   grainNewMakeBase: 7_000,
   grainAgePerYear: 0.12,

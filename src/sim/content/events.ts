@@ -138,7 +138,7 @@ export const EVENTS: EventDef[] = [
   { id: 'blender_default', title: '거래 블렌더 부도', category: 'b2b', chance: 0.01, cooldown: 36, requires: ['activeContract'], text: '계약 중인 블렌더가 부도났습니다. 계약이 끝나고 지난달 대금을 받지 못합니다.',
     effects: [{ type: 'buyerDefault' }] },
   { id: 'mega_contract', title: '대형 블렌더 장기 계약 제안', category: 'b2b', chance: 0.012, cooldown: 24, minMonth: 6, text: '대형 블렌더가 선급금 40% 조건의 장기 공급 계약을 제안합니다.',
-    effects: [{ type: 'specialContract', capacityShare: 0.6, prepayShare: 0.4, priceFactor: 1.05, termMonths: 36 }] },
+    effects: [{ type: 'specialContract', capacityShare: 0.8, prepayShare: 0.4, priceFactor: 1.15, termMonths: 36 }] },
 
   // ── 기회·사람 ──
   { id: 'export_inquiry', title: '해외 바이어 문의', category: 'opportunity', chance: 0.015, cooldown: 12, requires: ['whiskyStock'], text: '해외 바이어가 위스키 300병을 출고가의 120%에 사고 싶어 합니다.',

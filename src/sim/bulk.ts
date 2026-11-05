@@ -85,11 +85,11 @@ export function capacityLPA(s: GameState, kind: 'malt' | 'grain'): number {
 }
 export const maltCapacityLPA = (s: GameState) => capacityLPA(s, 'malt');
 
-function contractPrice(s: GameState, spirit: ContractTerms['spirit'], style: ContractTerms['style'], minQuality: number, domestic: boolean, prepay: boolean, priceFactor = 1): number {
+function contractPrice(s: GameState, spirit: ContractTerms['spirit'], style: ContractTerms['style'], minQuality: number, domestic: boolean, prepay: boolean, priceFactor = 1, termMonths = 12): number {
   const base = spirit === 'grain_newmake' ? BULK.grainNewMakeBase : BULK.newMakeBase;
   // 블렌더는 최소 품질보다 약간 높은 원액을 기준으로 값을 매긴다
   const ref = base * qualityFactor(minQuality + 8) * (style === 'peated' ? 1 + BULK.peatPremium : 1) * s.bulkIndex * mod(s, 'bulk');
-  const p = ref * BULK.contract * trustAdj(s.b2bTrust) * (prepay ? 1 - BULK.prepayDiscount : 1) * (domestic ? 1 + domesticPremium(s) : 1) * priceFactor;
+  const p = ref * BULK.contract * (1 + BULK.termPremiumPer12 * Math.max(0, termMonths / 12 - 1)) * trustAdj(s.b2bTrust) * (prepay ? 1 - BULK.prepayDiscount : 1) * (domestic ? 1 + domesticPremium(s) : 1) * priceFactor;
   return Math.round(p / 100) * 100;
 }
 
@@ -103,7 +103,7 @@ function buildOffer(s: GameState, rng: Rng, spirit: ContractTerms['spirit'], lpa
   const buyer = rng.pick(pool.length ? pool : buyersFor(s));
   const style = spirit === 'grain_newmake' ? 'any' : rng.pick(['any', 'any', 'unpeated', 'peated'] as const);
   const minQuality = spirit === 'grain_newmake' ? rng.int(30, 38) : rng.int(35, 46);
-  const pricePerLPA = contractPrice(s, spirit, style, minQuality, buyer.domestic, prepayShare > 0, priceFactor);
+  const pricePerLPA = contractPrice(s, spirit, style, minQuality, buyer.domestic, prepayShare > 0, priceFactor, termMonths);
   return {
     id: nid(s, 'O'), buyerId: buyer.id, buyerName: buyer.nameKo, spirit, domestic: buyer.domestic, style,
     lpaPerMonth, termMonths, pricePerLPA, minQuality, prepayShare,
@@ -115,7 +115,7 @@ export function makeContractOffer(s: GameState, rng: Rng): ContractOffer {
   const grainCap = capacityLPA(s, 'grain');
   const spirit: ContractTerms['spirit'] = grainCap > 0 && rng.chance(0.5) ? 'grain_newmake' : 'malt_newmake';
   const cap = spirit === 'grain_newmake' ? grainCap : capacityLPA(s, 'malt');
-  const lpaPerMonth = Math.max(40, Math.round((cap * rng.pick([0.15, 0.25, 0.35, 0.5]) * (0.8 + 0.4 * s.b2bTrust / 100) * regionOf(s).bulkMarketDepth) / 10) * 10);
+  const lpaPerMonth = Math.max(40, Math.round((cap * rng.pick([0.25, 0.35, 0.5, 0.7]) * (0.8 + 0.4 * s.b2bTrust / 100) * regionOf(s).bulkMarketDepth) / 10) * 10);
   return buildOffer(s, rng, spirit, lpaPerMonth, rng.pick([12, 24, 36]), rng.chance(0.35) ? 0.3 : 0);
 }
 
