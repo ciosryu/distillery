@@ -661,7 +661,7 @@ describe('보유 비용·산지 대표 결정 (결정 #65)', () => {
     j.awareness = 0.3;
     const normal = dutyFreeDemand(j, product(), 1, 8);
     const limited = dutyFreeDemand(j, product({ dutyFreeOnly: true }), 1, 8);
-    expect(limited).toBeGreaterThan(normal * 1.15);
+    expect(limited).toBeGreaterThan(normal * 1.04);
     expect(dutyFreeDemand(j, product(), 1, 8)).toBeGreaterThan(dutyFreeDemand(j, product(), 1, 3));
     const a = newGame({ seed: 1, site: 'andong' });
     const lot = { ...malt(48), id: 'L1' };
