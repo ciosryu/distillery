@@ -99,9 +99,10 @@ export const REGIONS: Record<RegionId, CountryDef> = {
       label: '종가세 72% + 교육세(주세의 30%) + 부가세 10%',
       // baseDeduction(기준판매비율)·시장 보정은 아래 setKrBaseDeduction()이 적용한다
     },
-    // 전통주 주세 감면 (2025년 시행령 개정): 증류주 전년 출고 500kL 이하면 자격, 처음 100kL 50%·100~200kL 30% 감면.
+    // 전통주 주세 감면 — 실제(2025년 시행령): 증류주 전년 출고 500kL 이하면 자격, 처음 100kL 50%·100~200kL 30%.
+    // 결정 #64: 게임 속 증류소 규모(소주 연 약 10kL)에 맞춰 실제 구간의 1/20로 축소 [게임적 단순화]
     // 전통주는 온라인 통신판매 허용 (일반 증류주는 택배 판매 불가)
-    traditional: { tiers: [{ uptoL: 100_000, relief: 0.5 }, { uptoL: 200_000, relief: 0.3 }], eligibleMaxLastYearL: 500_000, onlineCoverage: 0.15, label: '전통주 주세 감면(100kL까지 50%·200kL까지 30%) + 온라인 직판' },
+    traditional: { tiers: [{ uptoL: 5_000, relief: 0.5 }, { uptoL: 10_000, relief: 0.3 }], eligibleMaxLastYearL: 25_000, onlineCoverage: 0.15, label: '전통주 주세 감면(연 5kL까지 50%·10kL까지 30%, 전년 25kL 초과 시 자격 상실 — 실제의 1/20 규모) + 온라인 직판' },
     retailMarkup: 1.35,
     laborCost: 1,
     allowedKinds: ['soju', 'gin', 'malt', 'grain', 'baijiu'],

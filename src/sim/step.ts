@@ -1,4 +1,4 @@
-import { CASKS, EQUIPMENT, ROLE_INFO } from './content/catalog';
+import { CASKS, EQUIPMENT, INGREDIENTS, ROLE_INFO } from './content/catalog';
 import { siteIngredientFactor, siteOf } from './content/sites';
 import { refreshBroker } from './broker';
 import { fulfillContracts, refreshCaskBids, refreshContractOffers, updateBulkIndex } from './bulk';
@@ -65,13 +65,18 @@ function runProduction(s: GameState, report: MonthReport, monthOfYear: number): 
         ferm = fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need && (recipe.kind === 'soju' || f.type !== 'onggi'))
           ?? fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need);
         if (!ferm) { blocked = '발효조 부족'; break; }
-        ferm.daysLeft -= need;
-        waterLeftL -= still.chargeL;
       }
+      const res = simulateBatch(recipe, still, ferm?.type ?? null, lead, prices, stillInst.feintsLPA ?? 0, site.water);
+      // 원료 월 공급 한도 (지역 계약재배 물량 등)
+      const short = Object.entries(res.ingredientsKg).find(([id, kg]) => {
+        const cap = INGREDIENTS[id]?.monthlySupplyKg;
+        return cap != null && (boughtKg[id] ?? 0) + kg > cap + 1e-6;
+      });
+      if (short) { blocked = `${INGREDIENTS[short[0]]!.nameKo} 공급 한도(월 ${INGREDIENTS[short[0]]!.monthlySupplyKg!.toLocaleString()}kg)`; break; }
+      if (ferm) { ferm.daysLeft -= recipe.fermentDays + 2; waterLeftL -= still.chargeL; }
       stillRuns.set(stillInst.id, (stillRuns.get(stillInst.id) ?? 0) - recipe.runs);
       distillerRuns -= recipe.runs;
       runsUsed += recipe.runs;
-      const res = simulateBatch(recipe, still, ferm?.type ?? null, lead, prices, stillInst.feintsLPA ?? 0, site.water);
       stillInst.feintsLPA = res.feintsOutLPA;
       s.cash -= res.cost;
       for (const [id, kg] of Object.entries(res.ingredientsKg)) boughtKg[id] = (boughtKg[id] ?? 0) + kg;

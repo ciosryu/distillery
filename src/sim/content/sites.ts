@@ -96,9 +96,10 @@ export const SITES: Record<SiteId, SiteDef> = {
     traditional: { label: '민속주 헤리티지 — 안동 쌀(지역 농산물)만 원료로 빚은 술은 전통주. 수입 맥아·타지역 원료를 쓰면 감면 없음', mainIngredients: ['andong_rice'], starters: ['nuruk'] },
     starter: { name: '권태호', distillery: '낙강 증류소', casks: [...bourbon(8), 'korean_oak_quarter', 'korean_oak_quarter'] },
     traits: [
-      { tone: 'good', text: '전통주 자격: 안동 쌀(지역 농산물)로만 빚으면 주세 감면(100kL까지 50%) + 온라인 직판' },
+      { tone: 'good', text: '전통주 자격: 안동 쌀(지역 농산물)로만 빚으면 주세 감면(연 5kL까지 50%·10kL까지 30%) + 온라인 직판' },
       { tone: 'good', text: '국산 쌀 계약재배 −15%, 관리비 낮음' },
-      { tone: 'bad', text: '감면은 지역 농산물만: 안동 쌀은 일반 국산 쌀보다 비싸고, 수입 맥아·타지역 원료를 쓰면 감면 없음' },
+      { tone: 'bad', text: '감면은 지역 농산물만: 안동 쌀은 비싸고(3,200원/kg) 계약재배 물량이 월 800kg(소주 약 2배치)뿐. 국산·수입 쌀이나 수입 맥아를 쓰면 감면 없음' },
+      { tone: 'bad', text: '감면 구간이 작다: 연 10kL를 넘으면 감면 없음, 전년 25kL 초과 시 자격 상실' },
       { tone: 'good', text: '우리술 품평회 수상 기회 ×1.5, 가을 탈춤축제' },
       { tone: 'bad', text: '전년 출고 500kL를 넘으면 감면 자격 상실' },
       { tone: 'bad', text: '대륙성 겨울: 12~2월 발효 효율 −15%(온도 제어 설비로 해소)·난방비' },

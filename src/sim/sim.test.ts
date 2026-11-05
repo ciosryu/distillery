@@ -4,7 +4,7 @@ import {
   makeContractOffer, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
   appeal, applyEffects, buyersFor, presetRecipes, suggestedPrice, validateRecipe, type Product,
 } from './index';
-import { EQUIPMENT } from './content/catalog';
+import { EQUIPMENT, INGREDIENTS } from './content/catalog';
 import { BUYERS } from './content/names';
 import { APPLY_KR_BASE_DEDUCTION, consumerPrice, krImportCompetitionFactor, priceForConsumer, REGIONS, setKrBaseDeduction } from './content/regions';
 import { DEFAULT_SITE, SITES } from './content/sites';
@@ -443,13 +443,31 @@ describe('산지 (v0.8, regions.md Tier 1)', () => {
     const year = a.startYear;
     a.siteState.traditionalShipped = { year, liters: 0, lastYearLiters: 0 };
     expect(traditionalReliefRate(a, true)).toBe(0.5);
-    a.siteState.traditionalShipped = { year, liters: 150_000, lastYearLiters: 0 };
+    a.siteState.traditionalShipped = { year, liters: 7_000, lastYearLiters: 0 };
     expect(traditionalReliefRate(a, true)).toBe(0.3);
-    a.siteState.traditionalShipped = { year, liters: 250_000, lastYearLiters: 0 };
+    a.siteState.traditionalShipped = { year, liters: 12_000, lastYearLiters: 0 };
     expect(traditionalReliefRate(a, true)).toBe(0);
-    a.siteState.traditionalShipped = { year, liters: 0, lastYearLiters: 600_000 };
+    a.siteState.traditionalShipped = { year, liters: 0, lastYearLiters: 30_000 };
     expect(traditionalReliefRate(a, true)).toBe(0);
     expect(traditionalReliefRate(a, false)).toBe(0);
+  });
+
+  it('쌀 세분화·공급 한도(결정 #64): 수입·국산 쌀은 감면 없음, 안동 쌀은 월 800kg까지만 — 3배치째는 막힌다', () => {
+    expect(INGREDIENTS.andong_rice!.origin).toBe('local');
+    expect(INGREDIENTS.rice_domestic!.origin).toBe('domestic');
+    expect(INGREDIENTS.rice_imported!.origin).toBe('imported');
+    expect(INGREDIENTS.rice_imported!.pricePerKg).toBeLessThan(INGREDIENTS.rice_processing!.pricePerKg);
+    const imported = { kind: 'soju' as const, mashBill: [{ ingredientId: 'rice_imported', ratio: 0.92 }, { ingredientId: 'nuruk', ratio: 0.08 }] };
+    expect(isTraditionalRecipe(SITES.andong, imported)).toBe(false);
+    expect(isTraditionalRecipe(SITES.jeju, { kind: 'soju', mashBill: [{ ingredientId: 'jeju_millet', ratio: 0.5 }, { ingredientId: 'rice_imported', ratio: 0.45 }, { ingredientId: 'nuruk', ratio: 0.05 }] })).toBe(false);
+    let s = newGame({ seed: 3, site: 'andong' });
+    const local = s.recipes.find((r) => r.mashBill.some((m) => m.ingredientId === 'andong_rice'))!;
+    s = applyAction(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' }).state;
+    s = advanceMonths(applyAction(s, { type: 'setOrder', recipeId: local.id, batchesPerMonth: 4 }).state, 2);
+    const last = s.reports.at(-1)!;
+    expect(last.production[0]!.batches).toBe(2);
+    expect(last.notes.some((n) => n.includes('공급 한도'))).toBe(true);
+    expect(s.ingredientKgLastMonth.andong_rice).toBeLessThanOrEqual(800);
   });
 
   it('산지 한정 원료·설비: 제주 차조는 제주에서만, 내진 개량은 지진 산지에서만, 2단계는 1단계 뒤에', () => {

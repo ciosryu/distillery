@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { BOTANICALS, EQUIPMENT, INGREDIENTS, YEASTS } from '../../sim/content/catalog';
+import { BOTANICALS, EQUIPMENT, INGREDIENTS, ORIGIN_LABEL, YEASTS } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import {
   bestBy, equipmentAvailable, equipmentBlocker, equipmentCost, evaluate, isTraditionalRecipe, monthLabel, simulateBatch, staffOf, stillDefOf, validateRecipe,
@@ -116,7 +116,7 @@ function RecipeEditor() {
               <div className="text-xs font-semibold text-stone-500">원재료 배합 (합계 {pct(ratioSum, 0)})</div>
               {draft.mashBill.map((m, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-2">
-                  <Select value={m.ingredientId} options={ingOptions.map((o) => ({ value: o.id, label: `${o.nameKo} (${won(o.pricePerKg)}/kg)${o.sites ? ' · 산지 특산' : ''}` }))} onChange={(v) => set({ mashBill: draft.mashBill.map((x, j) => (j === i ? { ...x, ingredientId: v } : x)) })} />
+                  <Select value={m.ingredientId} options={ingOptions.map((o) => ({ value: o.id, label: `[${ORIGIN_LABEL[o.origin]}] ${o.nameKo} (${won(o.pricePerKg)}/kg)${o.monthlySupplyKg ? ` · 월 ${o.monthlySupplyKg.toLocaleString()}kg 한도` : ''}` }))} onChange={(v) => set({ mashBill: draft.mashBill.map((x, j) => (j === i ? { ...x, ingredientId: v } : x)) })} />
                   <NumberField value={Math.round(m.ratio * 100)} min={0} max={100} width="w-16" suffix="%" onCommit={(v) => set({ mashBill: draft.mashBill.map((x, j) => (j === i ? { ...x, ratio: v / 100 } : x)) })} />
                   <Button small variant="ghost" onClick={() => set({ mashBill: draft.mashBill.filter((_, j) => j !== i) })}>삭제</Button>
                 </div>

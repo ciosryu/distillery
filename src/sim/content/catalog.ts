@@ -13,28 +13,36 @@ export interface IngredientDef {
   kinds: ('soju' | 'malt' | 'grain' | 'baijiu')[];
   /** 산지 한정 원료 (없으면 어디서나) */
   sites?: SiteId[];
+  /** 원산지 — 지역 농산물 / 국산 / 수입 (생산 국가 기준, 결정 #64) */
+  origin: IngredientOrigin;
+  /** 월 공급 한도(kg) — 지역 계약재배 물량 등 */
+  monthlySupplyKg?: number;
 }
 
+export type IngredientOrigin = 'local' | 'domestic' | 'imported';
+export const ORIGIN_LABEL: Record<IngredientOrigin, string> = { local: '지역 농산물', domestic: '국산', imported: '수입' };
+
 export const INGREDIENTS: Record<string, IngredientDef> = {
-  malt_unpeated: { id: 'malt_unpeated', nameKo: '맥아(언피티드, 수입)', lpaPerKg: 0.42, pricePerKg: 1600, flavor: { cereal: 40, sweetness: 10 }, kinds: ['malt', 'grain'] },
-  malt_peated: { id: 'malt_peated', nameKo: '피티드 맥아(40ppm, 수입)', lpaPerKg: 0.41, pricePerKg: 2200, flavor: { cereal: 35, sweetness: 8, peat_smoke: 70 }, kinds: ['malt'] },
-  malt_korean: { id: 'malt_korean', nameKo: '국산 맥아(소량 생산)', lpaPerKg: 0.39, pricePerKg: 3000, flavor: { cereal: 45, sweetness: 12, fresh_fruit: 4 }, kinds: ['malt'] },
-  corn: { id: 'corn', nameKo: '옥수수(수입)', lpaPerKg: 0.38, pricePerKg: 450, flavor: { sweetness: 25, cereal: 12 }, kinds: ['grain'] },
-  wheat: { id: 'wheat', nameKo: '밀(수입)', lpaPerKg: 0.37, pricePerKg: 500, flavor: { sweetness: 15, cereal: 10, floral: 3 }, kinds: ['grain'] },
+  malt_unpeated: { id: 'malt_unpeated', nameKo: '맥아(언피티드, 수입)', lpaPerKg: 0.42, pricePerKg: 1600, flavor: { cereal: 40, sweetness: 10 }, kinds: ['malt', 'grain'], origin: 'imported' },
+  malt_peated: { id: 'malt_peated', nameKo: '피티드 맥아(40ppm, 수입)', lpaPerKg: 0.41, pricePerKg: 2200, flavor: { cereal: 35, sweetness: 8, peat_smoke: 70 }, kinds: ['malt'], origin: 'imported' },
+  malt_korean: { id: 'malt_korean', nameKo: '국산 맥아(소량 생산)', lpaPerKg: 0.39, pricePerKg: 3000, flavor: { cereal: 45, sweetness: 12, fresh_fruit: 4 }, kinds: ['malt'], origin: 'domestic' },
+  corn: { id: 'corn', nameKo: '옥수수(수입)', lpaPerKg: 0.38, pricePerKg: 450, flavor: { sweetness: 25, cereal: 12 }, kinds: ['grain'], origin: 'imported' },
+  wheat: { id: 'wheat', nameKo: '밀(수입)', lpaPerKg: 0.37, pricePerKg: 500, flavor: { sweetness: 15, cereal: 10, floral: 3 }, kinds: ['grain'], origin: 'imported' },
   // 일본 본격 쇼추용
-  rice_koji: { id: 'rice_koji', nameKo: '쌀 코지(입국)', lpaPerKg: 0.4, pricePerKg: 4000, flavor: { nuruk_rice: 60, fresh_fruit: 8, floral: 6 }, kinds: ['soju'] },
-  sweet_potato: { id: 'sweet_potato', nameKo: '고구마', lpaPerKg: 0.13, pricePerKg: 600, flavor: { earthy: 15, sweetness: 22, floral: 10, fresh_fruit: 4 }, kinds: ['soju'] },
-  barley_raw: { id: 'barley_raw', nameKo: '보리(비맥아)', lpaPerKg: 0.38, pricePerKg: 900, flavor: { cereal: 25, toasted_grain: 10 }, kinds: ['soju'] },
+  rice_koji: { id: 'rice_koji', nameKo: '쌀 코지(입국)', lpaPerKg: 0.4, pricePerKg: 4000, flavor: { nuruk_rice: 60, fresh_fruit: 8, floral: 6 }, kinds: ['soju'], origin: 'domestic' },
+  sweet_potato: { id: 'sweet_potato', nameKo: '고구마', lpaPerKg: 0.13, pricePerKg: 600, flavor: { earthy: 15, sweetness: 22, floral: 10, fresh_fruit: 4 }, kinds: ['soju'], origin: 'domestic' },
+  barley_raw: { id: 'barley_raw', nameKo: '보리(비맥아)', lpaPerKg: 0.38, pricePerKg: 900, flavor: { cereal: 25, toasted_grain: 10 }, kinds: ['soju'], origin: 'domestic' },
   // 백주(고량주)용
-  sorghum: { id: 'sorghum', nameKo: '고량(수수)', lpaPerKg: 0.36, pricePerKg: 900, flavor: { sorghum_grain: 45, earthy: 8 }, kinds: ['baijiu'] },
-  daqu: { id: 'daqu', nameKo: '대곡(밀 누룩, 曲)', lpaPerKg: 0.15, pricePerKg: 3000, flavor: { fermented_umami: 25, tropical: 20, earthy: 10, sorghum_grain: 5 }, kinds: ['baijiu'] },
-  rice_domestic: { id: 'rice_domestic', nameKo: '국산 쌀', lpaPerKg: 0.46, pricePerKg: 2600, flavor: { nuruk_rice: 25, floral: 8, fresh_fruit: 8, sweetness: 8 }, kinds: ['soju'] },
-  rice_processing: { id: 'rice_processing', nameKo: '가공용 쌀', lpaPerKg: 0.44, pricePerKg: 1300, flavor: { nuruk_rice: 20, floral: 5, fresh_fruit: 5, sweetness: 6, cereal: 5 }, kinds: ['soju'] },
-  nuruk: { id: 'nuruk', nameKo: '전통 누룩', lpaPerKg: 0.1, pricePerKg: 6000, flavor: { nuruk_rice: 40, earthy: 6, fresh_fruit: 6 }, kinds: ['soju'] },
+  sorghum: { id: 'sorghum', nameKo: '고량(수수)', lpaPerKg: 0.36, pricePerKg: 900, flavor: { sorghum_grain: 45, earthy: 8 }, kinds: ['baijiu'], origin: 'imported' },
+  daqu: { id: 'daqu', nameKo: '대곡(밀 누룩, 曲)', lpaPerKg: 0.15, pricePerKg: 3000, flavor: { fermented_umami: 25, tropical: 20, earthy: 10, sorghum_grain: 5 }, kinds: ['baijiu'], origin: 'imported' },
+  rice_domestic: { id: 'rice_domestic', nameKo: '국산 쌀(타지역)', lpaPerKg: 0.46, pricePerKg: 2600, flavor: { nuruk_rice: 25, floral: 8, fresh_fruit: 8, sweetness: 8 }, kinds: ['soju'], origin: 'domestic' },
+  rice_processing: { id: 'rice_processing', nameKo: '국산 가공용 쌀(정부 할인 공급)', lpaPerKg: 0.44, pricePerKg: 1300, flavor: { nuruk_rice: 20, floral: 5, fresh_fruit: 5, sweetness: 6, cereal: 5 }, kinds: ['soju'], origin: 'domestic' },
+  rice_imported: { id: 'rice_imported', nameKo: '수입 쌀(가공용)', lpaPerKg: 0.44, pricePerKg: 1000, flavor: { nuruk_rice: 17, floral: 4, fresh_fruit: 4, sweetness: 5, cereal: 6 }, kinds: ['soju'], origin: 'imported' },
+  nuruk: { id: 'nuruk', nameKo: '전통 누룩', lpaPerKg: 0.1, pricePerKg: 6000, flavor: { nuruk_rice: 40, earthy: 6, fresh_fruit: 6 }, kinds: ['soju'], origin: 'domestic' },
   // 산지 한정 (regions.md §4)
-  andong_rice: { id: 'andong_rice', nameKo: '안동 쌀 — 지역 농산물(계약재배)', lpaPerKg: 0.46, pricePerKg: 3200, flavor: { nuruk_rice: 27, floral: 9, fresh_fruit: 9, sweetness: 8 }, kinds: ['soju'], sites: ['andong'] },
-  jeju_millet: { id: 'jeju_millet', nameKo: '제주 차조(좁쌀) — 고소리술 원료', lpaPerKg: 0.42, pricePerKg: 4500, flavor: { nuruk_rice: 15, cereal: 18, earthy: 6, toasted_grain: 6, sweetness: 6 }, kinds: ['soju'], sites: ['jeju'] },
-  potato: { id: 'potato', nameKo: '홋카이도 감자', lpaPerKg: 0.11, pricePerKg: 450, flavor: { earthy: 10, sweetness: 8, floral: 6, fresh_fruit: 4 }, kinds: ['soju'], sites: ['hokkaido'] },
+  andong_rice: { id: 'andong_rice', nameKo: '안동 쌀 — 지역 농산물(계약재배)', lpaPerKg: 0.46, pricePerKg: 3200, flavor: { nuruk_rice: 27, floral: 9, fresh_fruit: 9, sweetness: 8 }, kinds: ['soju'], sites: ['andong'], origin: 'local', monthlySupplyKg: 800 },
+  jeju_millet: { id: 'jeju_millet', nameKo: '제주 차조(좁쌀) — 고소리술 원료', lpaPerKg: 0.42, pricePerKg: 4500, flavor: { nuruk_rice: 15, cereal: 18, earthy: 6, toasted_grain: 6, sweetness: 6 }, kinds: ['soju'], sites: ['jeju'], origin: 'local' },
+  potato: { id: 'potato', nameKo: '홋카이도 감자', lpaPerKg: 0.11, pricePerKg: 450, flavor: { earthy: 10, sweetness: 8, floral: 6, fresh_fruit: 4 }, kinds: ['soju'], sites: ['hokkaido'], origin: 'local' },
 };
 
 /** 발효제 — 전통주 자격 판정에서 주원료로 치지 않는다 */
