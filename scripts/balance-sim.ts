@@ -61,9 +61,21 @@ function fillMalt(s: GameState, maxLPA = Infinity, kind: 'malt' | 'grain' = 'mal
   return s;
 }
 
+/** v1.4(#82): 위스키 병입량은 수요를 따른다 — 지난달 위스키 수요의 1.5개월치까지 재고를 채운다(한 번에 최대 10캐스크, 제품 1개로).
+ *  v1.3까지는 "재고 800병 미만이면 3캐스크"라서 월 약 1,100병이 상한이었고, 수요가 3~6배인데도 숙성 캐스크가 쌓였다.
+ *  OLD_BOTTLE=1이면 옛 정책 */
+const OLD_BOTTLE = process.env.OLD_BOTTLE === '1';
+const BOTTLES_PER_CASK = 330;
+function whiskyDemandLastMonth(s: GameState): number {
+  const ids = new Set(s.products.filter((p) => p.category === 'whisky').map((p) => p.id));
+  return s.reports.at(-1)?.sales.filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0) ?? 0;
+}
 function bottleWhisky(s: GameState): GameState {
-  if (stockOf(s, 'whisky') >= 800) return s;
-  const ready = s.casks.filter((c) => c.contents && c.contents.oakMonths >= 36 && !c.contents.sourced).slice(0, 3);
+  const stock = stockOf(s, 'whisky');
+  const target = OLD_BOTTLE ? 800 : Math.max(800, whiskyDemandLastMonth(s) * 1.5);
+  if (stock >= target) return s;
+  const n = OLD_BOTTLE ? 3 : Math.min(10, Math.max(1, Math.ceil((target - stock) / BOTTLES_PER_CASK)));
+  const ready = s.casks.filter((c) => c.contents && c.contents.oakMonths >= 36 && !c.contents.sourced).slice(0, n);
   if (!ready.length) return s;
   const comps = ready.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }));
   const opts = { name: `싱글 몰트 ${s.month}`, targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' };
@@ -321,6 +333,15 @@ function diag(strategy: Strategy, seed: number, s: GameState): void {
       return { prod: Object.fromEntries(Object.entries(prod).map(([k, v]) => [k, { lpa: Math.round(v.lpa), perLPA: Math.round(v.cost / Math.max(1, v.lpa)) }])), deliveredLPA: Math.round(dl), contractPerLPA: Math.round(del.reduce((t, b) => t + b.revenue, 0) / Math.max(1, dl)) };
     })(),
     contracts: s.contracts.length, casks: s.casks.filter((c) => c.contents).length,
+    whisky: (() => {
+      const cat = new Map(s.products.map((p) => [p.id, p.category]));
+      return s.reports.map((r) => {
+        const w = r.sales.filter((x) => cat.get(x.productId) === 'whisky');
+        return [w.reduce((t, x) => t + x.demandBottles, 0), w.reduce((t, x) => t + x.bottles, 0)];
+      });
+    })(),
+    agedMaltCasks: s.casks.filter((c) => c.contents?.kind === 'malt' && !c.contents.sourced && c.contents.oakMonths >= 36).length,
+    retailCap: s.reports.slice(-12).map((r) => [r.retailCapacityCases ?? 0, r.retailSoldCases ?? 0, r.overflowCases ?? 0, r.lostSalesBottles ?? 0]),
     worth: (() => {
       const val = (l: { volumeL: number; abv: number; kind: string }) => l.volumeL * l.abv * bulkValuePerLPA(s, l as never) * 0.85;
       const inCasks = s.casks.flatMap((c) => (c.contents ? [c.contents] : []));
