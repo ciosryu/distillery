@@ -134,11 +134,13 @@ function finance(s: GameState): GameState {
 function acceptContracts(s: GameState, maxCommittedLPA: number, spirit: ContractTerms['spirit'] = 'malt_newmake'): GameState {
   for (const o of [...s.contractOffers]) {
     if (o.spirit !== spirit) continue;
-    const committed = s.contracts.filter((c) => c.spirit === spirit).reduce((t, c) => t + c.lpaPerMonth, 0);
-    // 크래프트 계약은 최근 몰트 뉴메이크 품질로 판단
+    // 크래프트 계약(#78)은 일반 계약과 별도 한도(몰트 생산 능력의 25%)를 쓰고, 최근 몰트 뉴메이크 품질로 판단
+    const craft = !!o.craft;
+    const committed = s.contracts.filter((c) => c.spirit === spirit && !!c.craft === craft).reduce((t, c) => t + c.lpaPerMonth, 0);
+    const cap = craft ? capacityLPA(s, 'malt') * 0.25 : maxCommittedLPA;
     const recent = s.lots.filter((l) => l.kind === 'malt').at(-1);
-    const qOk = spirit === 'grain_newmake' ? o.minQuality <= 36 : o.craft ? !!recent && lotQuality(recent) >= o.minQuality + 2 : o.minQuality <= 42;
-    if (o.style !== 'peated' && qOk && committed + o.lpaPerMonth <= maxCommittedLPA) s = act(s, { type: 'acceptContract', offerId: o.id });
+    const qOk = spirit === 'grain_newmake' ? o.minQuality <= 36 : craft ? !!recent && lotQuality(recent) >= o.minQuality + 0.5 : o.minQuality <= 42;
+    if (o.style !== 'peated' && qOk && committed + o.lpaPerMonth <= cap) s = act(s, { type: 'acceptContract', offerId: o.id });
   }
   return s;
 }
