@@ -23,7 +23,7 @@ export function markupFactor(s: GameState): number {
 
 /** 제품의 병당 소비자가 (지역 세제·유통 마진·영업 협상·이벤트 반영) */
 export function productConsumerPrice(s: GameState, p: Pick<Product, 'price' | 'bottleMl' | 'abv' | 'traditional'>, region: RegionDef = regionOf(s)): number {
-  return consumerPrice(region, p.price, p.bottleMl, p.abv, markupFactor(s), traditionalTaxFactor(region, p.traditional, s.traditionalReleasedL));
+  return consumerPrice(region, p.price, p.bottleMl, p.abv, markupFactor(s), traditionalTaxFactor(region, p.traditional, s.traditionalReleasedL, s.traditionalPrevYearL));
 }
 
 export function appeal(p: Product, s?: Pick<GameState, 'modifiers' | 'month' | 'regionId'>): number {
@@ -101,26 +101,37 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
     wants.push({ p, demand, want: Math.min(p.stockBottles, demand) });
   }
   // 2) 소매 처리 역량 (결정 #65): 역량까지는 정상 채널, 역량의 2배까지는 고비용 채널(할인·추가 수수료), 그 너머는 못 판다
+  //    영업은 케이스당 공헌이익이 큰 제품부터 민다 → 역량이 모자라면 저마진 제품부터 밀려난다
   const cap = retailCapacityCases(s);
   const cases = (bottles: number, ml: number) => (bottles * ml) / 9000;
-  const totalCases = wants.reduce((t, w) => t + cases(w.want, w.p.bottleMl), 0);
-  const scale = totalCases > 2 * cap ? (2 * cap) / totalCases : 1;
-  const soldCases = totalCases * scale;
-  const overflowShare = soldCases > cap ? (soldCases - cap) / soldCases : 0;
+  const marginPerCase = (p: Product) => (bottleMargin(p).perBottle * 9000) / p.bottleMl;
+  const order = [...wants].sort((a, b) => marginPerCase(b.p) - marginPerCase(a.p));
+  let normalLeft = cap;
+  let overflowLeft = cap;
+  const alloc = new Map<string, { sold: number; over: number }>();
+  for (const w of order) {
+    const perBottle = w.p.bottleMl / 9000;
+    const normal = Math.min(w.want, Math.floor(normalLeft / perBottle));
+    normalLeft -= normal * perBottle;
+    const over = Math.min(w.want - normal, Math.floor(overflowLeft / perBottle));
+    overflowLeft -= over * perBottle;
+    alloc.set(w.p.id, { sold: normal + over, over });
+  }
+  const soldCases = wants.reduce((t, w) => t + cases(alloc.get(w.p.id)!.sold, w.p.bottleMl), 0);
+  const overflowCases = wants.reduce((t, w) => t + cases(alloc.get(w.p.id)!.over, w.p.bottleMl), 0);
   const out: SalesResult[] = [];
   let lost = 0;
   for (const { p, demand, want } of wants) {
-    const sold = Math.floor(want * scale);
+    const { sold, over } = alloc.get(p.id)!;
     lost += want - sold;
     p.stockBottles -= sold;
     p.lastMonthSold = sold;
     p.totalSold += sold;
     p.salesEma = p.salesEma == null ? sold : 0.7 * p.salesEma + 0.3 * sold;
-    const over = Math.round(sold * overflowShare);
     const extraFee = over * p.price * (RETAIL.overflowFeeRate - DISTRIBUTION.channelFeeRate);
     out.push({ productId: p.id, name: p.name, bottles: sold, revenue: sold * p.price, demandBottles: demand, distribution: Math.round(sold * distributionCostPerBottle(p.price, p.bottleMl) + extraFee), overflowBottles: over });
   }
-  return { results: out, retail: { capacityCases: cap, soldCases: Math.round(soldCases), overflowCases: Math.round(soldCases * overflowShare), lostBottles: lost } };
+  return { results: out, retail: { capacityCases: cap, soldCases: Math.round(soldCases), overflowCases: Math.round(overflowCases), lostBottles: lost } };
 }
 
 /** 인지도 계수 [튜닝] — 월 500만 원 마케팅 단독이면 평형 인지도 ≈ 0.4 */

@@ -120,7 +120,7 @@ function Casks() {
             const lot = c.contents;
             if (!lot) return (
               <tr key={c.id}>
-                <Td>{c.id}</Td><Td>{CASKS[c.typeId].nameKo}</Td><Td right>{c.fills}회</Td><Td right>{c.activityKnown === false ? '? (스팟 매입)' : c.activity.toFixed(2)}</Td><Td right>{c.recharCount}/{MAX_RECHAR}</Td>
+                <Td>{c.id}</Td><Td>{CASKS[c.typeId].nameKo}{c.contaminationKnown && <> <Badge tone="bad">오염 — 재탄화 필요</Badge></>}</Td><Td right>{c.fills}회</Td><Td right>{c.activityKnown === false ? '? (스팟 매입)' : c.activity.toFixed(2)}</Td><Td right>{c.recharCount}/{MAX_RECHAR}</Td>
                 <Td className="flex gap-1"><Button small disabled={c.recharCount >= MAX_RECHAR || c.fills === 0} onClick={() => dispatch({ type: 'rechar', caskId: c.id })} title="활성도를 0.7까지 회복">재탄화 {won(RECHAR_COST)}</Button>
                   <Button small variant="ghost" disabled={c.fills === 0} onClick={() => dispatch({ type: 'sellUsedCask', caskId: c.id })} title="럼·테킬라·수제 맥주 양조장에 매각">중고 매각 {won(usedCaskPrice(c))}</Button></Td>
               </tr>

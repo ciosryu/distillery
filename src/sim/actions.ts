@@ -78,6 +78,7 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       if (!def) return fail(prev, '알 수 없는 설비');
       if (def.kind === 'visitor' && def.requires && !s.equipment.some((e) => e.catalogId === def.requires)) return fail(prev, `${EQUIPMENT[def.requires]?.nameKo}부터 지어야 합니다`);
       if ((def.kind === 'visitor' || def.kind === 'facility') && s.equipment.some((e) => e.catalogId === def.id)) return fail(prev, '이미 있습니다');
+      if (def.kind === 'facility' && def.regions && !def.regions.includes(s.regionId)) return fail(prev, '이 지역에서는 해당 없는 설비입니다');
       if (s.cash < def.cost) return fail(prev, '현금이 부족합니다');
       s.cash -= def.cost;
       s.equipment.push({ id: nid(s, 'E'), catalogId: def.id, readyMonth: s.month + def.leadMonths, ...(def.kind === 'still' ? { feintsLPA: 0 } : {}) });
@@ -206,7 +207,7 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
         assignSlot(s, s.casks[ci]!, a.warehouseId);
         filled++;
       }
-      if (!filled) return fail(prev, '채울 수 있는 빈 캐스크가 없습니다');
+      if (!filled) return fail(prev, '채울 수 있는 빈 캐스크가 없습니다 (오염 통은 재탄화해야 다시 쓸 수 있다)');
       if (lotLeftL < 1) s.lots.splice(lotIdx, 1);
       else s.lots[lotIdx] = { ...lot, volumeL: lotLeftL };
       return { state: s, message: `캐스크 ${filled}개 통입 (${(entry * 100).toFixed(1)}%)` };

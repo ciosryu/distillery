@@ -194,12 +194,12 @@ export function advanceMonth(prev: GameState): GameState {
   report.revenue = sales.reduce((t, x) => t + x.revenue, 0);
   // 주세 납부 — 전통주는 연 누적 출고량 구간별 경감 (한국 완화책 #73)
   const region = regionOf(s);
-  if (monthOfYear === 1) s.traditionalReleasedL = 0;
+  if (monthOfYear === 1) { s.traditionalPrevYearL = s.traditionalReleasedL; s.traditionalReleasedL = 0; }
   let tax = 0;
   for (const x of sales) {
     const p = s.products.find((q) => q.id === x.productId);
     if (!p) continue;
-    tax += x.bottles * liquorTaxPerBottle(region, p.price, p.bottleMl, p.abv, traditionalTaxFactor(region, p.traditional, s.traditionalReleasedL));
+    tax += x.bottles * liquorTaxPerBottle(region, p.price, p.bottleMl, p.abv, traditionalTaxFactor(region, p.traditional, s.traditionalReleasedL, s.traditionalPrevYearL));
     if (p.traditional) s.traditionalReleasedL += (x.bottles * p.bottleMl) / 1000;
   }
   report.liquorTaxRemitted = Math.round(tax);

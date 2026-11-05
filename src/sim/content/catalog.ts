@@ -72,7 +72,7 @@ export type EquipmentDef =
   | { id: string; kind: 'fermenter'; nameKo: string; cost: number; leadMonths: number; maintenance: number; fermenterType: FermenterType; capacityL: number }
   | { id: string; kind: 'warehouse'; nameKo: string; cost: number; leadMonths: number; maintenance: number; casks: number; warehouseType: WarehouseType; tiers: number }
   /** 방재 설비 — 해당 재해의 피해를 막는다 (테크트리 도입 전 대체) */
-  | { id: string; kind: 'facility'; nameKo: string; cost: number; leadMonths: number; maintenance: number; defends: string[]; note: string }
+  | { id: string; kind: 'facility'; nameKo: string; cost: number; leadMonths: number; maintenance: number; defends: string[]; note: string; regions?: RegionId[] }
   /** 비지터 센터 등급 — 상위 등급은 하위 등급이 있어야 지을 수 있다 */
   | { id: string; kind: 'visitor'; nameKo: string; cost: number; leadMonths: number; maintenance: number; tier: 1 | 2 | 3; visitorsPerMonth: number; spendPerVisitor: number; buzzQuality: number; requires?: string };
 
@@ -97,6 +97,7 @@ export const EQUIPMENT: Record<string, EquipmentDef> = {
   facility_snow: { id: 'facility_snow', kind: 'facility', nameKo: '내설 지붕 보강', cost: 40_000_000, leadMonths: 2, maintenance: 100_000, defends: ['snowstorm'], note: '폭설로 지붕이 무너지는 것을 막는다' },
   facility_heating: { id: 'facility_heating', kind: 'facility', nameKo: '동파 방지·보온 설비', cost: 35_000_000, leadMonths: 1, maintenance: 300_000, defends: ['cold_wave'], note: '한파로 배관이 얼어 생산이 멈추는 것을 막는다' },
   facility_dehumid: { id: 'facility_dehumid', kind: 'facility', nameKo: '제습·환기 설비', cost: 45_000_000, leadMonths: 1, maintenance: 400_000, defends: ['mold_outbreak'], note: '곰팡이 증식을 막고 평소 캐스크 오염 확률을 절반으로' },
+  kr_farm_registration: { id: 'kr_farm_registration', kind: 'facility', nameKo: '농업경영체 등록·원료 계약재배 (전통주 요건)', cost: 50_000_000, leadMonths: 6, maintenance: 1_000_000, defends: [], note: '지역특산주 자격 — 국산 원료 70%↑ 제품이 전통주 주세 경감 대상', regions: ['KR'] },
   facility_seismic: { id: 'facility_seismic', kind: 'facility', nameKo: '내진 랙 보강', cost: 80_000_000, leadMonths: 3, maintenance: 200_000, defends: ['earthquake'], note: '지진에 랙이 무너지는 것을 막는다' },
   // ── 비지터 센터 ──
   visitor_basic: { id: 'visitor_basic', kind: 'visitor', nameKo: '비지터 센터 — 베이직 투어', cost: 80_000_000, leadMonths: 4, maintenance: 3_000_000, tier: 1, visitorsPerMonth: 600, spendPerVisitor: 15_000, buzzQuality: 0.6 },

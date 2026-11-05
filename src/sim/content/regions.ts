@@ -97,7 +97,7 @@ export interface RegionDef {
   /** 비지터 센터 관광 잠재력 (한국 = 1) */
   tourism?: number;
   /** 전통주(지역특산주) 주세 경감: 자국 자생 원재료 비율이 nativeShare 이상인 자사 제품. 연 누적 출고량(L) 구간별 세율 배수 */
-  traditionalRelief?: { nativeShare: number; tiers: { upToL: number; factor: number }[]; label: string; basis: string };
+  traditionalRelief?: { nativeShare: number; tiers: { upToL: number; factor: number }[]; label: string; basis: string; requiresFacility: string; maxPrevYearL: number };
   /** 지역 특산 캐스크는 싸고, 다른 지역 캐스크는 비싸다 */
   caskPriceFactor: Partial<Record<CaskTypeId, number>>;
 }
@@ -122,7 +122,8 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     allowedKinds: ALL_KINDS,
     tourism: 1.0,
     market: {
-      soju_distilled: { baseCases: casesOf('KR.soju_distilled.domestic_release.2025'), baseSource: 'KR.soju_distilled (TASIS 2025)', refConsumerPricePerL: 40_000, refAbv: 0.25, elasticity: 1.6, shareCap: 0.2 },
+      // 한국 소주 시장은 희석식이 절대 우위(2024 출고 81.6만㎘ vs 증류식 0.46만㎘ = 0.6%) — 증류식은 작은 프리미엄 틈새, 화요·일품진로 등 기존 강자 → 신규 점유 상한 3%, 희석식과 가격 비교돼 탄력성↑ (#75)
+      soju_distilled: { baseCases: casesOf('KR.soju_distilled.domestic_release.2025'), baseSource: 'KR.soju_distilled (TASIS 2025) — 희석식(81.6만㎘)의 0.6%', refConsumerPricePerL: 40_000, refAbv: 0.25, elasticity: 2.0, shareCap: 0.03 },
       // 한국 진 시장은 작다 — 칵테일 바에서 제한적으로 쓰이는 정도 [결정 #45]. 규모는 관세청 원표 진 수입 576.7t(4차) — 수입 브랜드 중심이라 점유 상한 낮음
       gin: { baseCases: casesOf('KR.gin.imports.2024'), baseSource: 'KR.gin 수입 576.7t (관세청 원표 2024, 750L/톤 가정)', refConsumerPricePerL: 32_000, refAbv: 0.43, elasticity: 2.2, shareCap: 0.1 },
       whisky: { baseCases: Math.round(krWhisky * 0.4), baseSource: 'KR.whisky_total × 40% (싱글 몰트 몫, 추정)', refConsumerPricePerL: 170_000, refAbv: 0.43, elasticity: 1.1, shareCap: 0.01 },
@@ -143,7 +144,8 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     // 나무통 1년 이상 (v0.8 웹 확인: 나무위키 '코리안 위스키'·국세청 관련 보도 — 법령 원문은 미열람) [확인 필요: 조문]
     whisky: { minMonths: 12, requiresOak: true, basis: '주세법 시행령: 나무통 1년 이상 저장 (2차 자료 2건 일치, 조문 미열람)' },
     // 완화책(#73): 전통주 주세 경감 — 증류주 연 100㎘까지 50%, 100~200㎘ 30% (2025 시행령 개정안 보도 기준) [확인 필요: 최종 조문]
-    traditionalRelief: { nativeShare: 0.5, tiers: [{ upToL: 100_000, factor: 0.5 }, { upToL: 200_000, factor: 0.7 }], label: '전통주 주세 경감', basis: '주세법: 전통주 세율 100분의 50 범위 경감, 시행령 개정안: 증류주 100㎘ 이하 50%·100~200㎘ 30%' },
+    // 요건 강화(#75): 지역 농산물 70% 이상 + 농업경영체 등록(원료 계약재배) + 전년 경감 대상 출고 500㎘ 이하
+    traditionalRelief: { nativeShare: 0.7, tiers: [{ upToL: 100_000, factor: 0.5 }, { upToL: 200_000, factor: 0.7 }], label: '전통주 주세 경감', basis: '주세법: 전통주 세율 100분의 50 범위 경감, 시행령 개정안: 증류주 100㎘ 이하 50%·100~200㎘ 30%, 대상 출고량 500㎘ 이하. 지역특산주는 농업경영체·생산자단체 요건', requiresFacility: 'kr_farm_registration', maxPrevYearL: 500_000 },
     sites: [{
       id: 'andong', nameKo: '경북 안동',
       // 안동 ASOS 평년(1991~2020) 연평균 12.2°C·여름 23.9°C·겨울 −0.3°C에 맞춘 월별 근사치. 습도는 추정 [확인 필요: 기상청 월별 평년값]
@@ -296,8 +298,9 @@ export function priceForConsumer(region: RegionDef, consumer: number, bottleMl: 
 }
 
 /** 전통주 주세 경감 배수 — 올해 누적 경감 대상 출고량(L) 구간별 */
-export function traditionalTaxFactor(region: RegionDef, traditional: boolean | undefined, releasedThisYearL: number): number {
+export function traditionalTaxFactor(region: RegionDef, traditional: boolean | undefined, releasedThisYearL: number, prevYearL = 0): number {
   if (!traditional || !region.traditionalRelief) return 1;
+  if (prevYearL > region.traditionalRelief.maxPrevYearL) return 1;
   return region.traditionalRelief.tiers.find((t) => releasedThisYearL < t.upToL)?.factor ?? 1;
 }
 

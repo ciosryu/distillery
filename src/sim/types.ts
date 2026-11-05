@@ -348,6 +348,8 @@ export interface GameState {
   rotatedThisMonth: number;
   /** 올해 전통주 경감 대상 누적 출고량(L) — 1월에 초기화 */
   traditionalReleasedL: number;
+  /** 작년 전통주 경감 대상 출고량(L) — 500㎘ 넘으면 올해 경감 없음 */
+  traditionalPrevYearL: number;
   reports: MonthReport[];
   nextId: number;
 }

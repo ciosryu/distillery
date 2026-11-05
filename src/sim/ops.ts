@@ -82,6 +82,8 @@ export const RETAIL = {
   /** 영업 직원 1명당 + 네트워크 스탯 1당 — 네트워크 60이면 1명당 약 100케이스 (#72) */
   perSalesCases: 40,
   perNetworkCase: 1.0,
+  /** 관리 효율 저하(#76): 영업 직원을 늘릴수록 추가 1명의 기여가 직전의 60%로 준다 (네트워크 높은 순으로 1.0, 0.6, 0.36, 0.22…) */
+  staffEfficiencyDecay: 0.6,
   /** 네트워크 70↑ 영업 직원이 있으면 고급 유통망(B2B 온트레이드) 확보 → 역량 +30% */
   premiumNetwork: 70,
   premiumBonus: 0.3,
@@ -92,8 +94,8 @@ export const RETAIL = {
 export const hasPremiumChannel = (s: GameState) => staffOf(s, 'sales').some((x) => x.stats.b >= RETAIL.premiumNetwork);
 
 export function retailCapacityCases(s: GameState): number {
-  const sales = staffOf(s, 'sales');
-  const base = RETAIL.baseCases + sales.reduce((t, x) => t + RETAIL.perSalesCases + RETAIL.perNetworkCase * x.stats.b, 0);
+  const sales = [...staffOf(s, 'sales')].sort((a, b) => b.stats.b - a.stats.b);
+  const base = RETAIL.baseCases + sales.reduce((t, x, i) => t + (RETAIL.perSalesCases + RETAIL.perNetworkCase * x.stats.b) * Math.pow(RETAIL.staffEfficiencyDecay, i), 0);
   return Math.round(base * (hasPremiumChannel(s) ? 1 + RETAIL.premiumBonus : 1));
 }
 

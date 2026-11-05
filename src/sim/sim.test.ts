@@ -5,7 +5,7 @@ import {
   appeal, applyEffects, buyersFor, presetRecipes, validateRecipe, type Product,
   agePerception, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
 } from './index';
-import { overhangFactor, ownsFacility, slotClimate } from './ops';
+import { overhangFactor, ownsFacility, retailCapacityCases, slotClimate } from './ops';
 import { EQUIPMENT } from './content/catalog';
 import { BUYERS } from './content/names';
 import { consumerPrice, logisticsMultiplier, priceForConsumer, REGIONS, siteOf, traditionalTaxFactor } from './content/regions';
@@ -506,6 +506,17 @@ describe('v1.0 운영 시스템', () => {
     expect(r.overflowCases).toBeGreaterThan(0);
   });
 
+  it('영업 직원을 늘릴수록 관리 효율이 떨어진다', () => {
+    const s = newGame({ seed: 1 });
+    const c0 = retailCapacityCases(s);
+    const add = () => { const c = s.candidates.find((x) => x.role === 'sales' && !s.staff.includes(x))!; s.staff.push({ ...c, stats: { a: 50, b: 60, c: 50 }, id: `S${s.staff.length + 10}` }); s.candidates = s.candidates.filter((x) => x !== c); };
+    s.candidates = Array.from({ length: 4 }, (_, i) => ({ ...s.candidates.find((x) => x.role === 'sales')!, id: `C${i}` }));
+    add(); const c1 = retailCapacityCases(s); add(); const c2 = retailCapacityCases(s); add(); const c3 = retailCapacityCases(s);
+    expect(c1 - c0).toBeGreaterThan(c2 - c1);
+    expect(c2 - c1).toBeGreaterThan(c3 - c2);
+    expect((c3 - c2) / (c1 - c0)).toBeCloseTo(0.36, 1);
+  });
+
   it('재고 적체: 6개월 넘게 팔 재고는 매력도가 떨어진다', () => {
     expect(overhangFactor({ stockBottles: 1200, salesEma: 100, createdMonth: 0 }, 12)).toBeCloseTo(Math.sqrt(0.5), 5);
     expect(overhangFactor({ stockBottles: 500, salesEma: 100, createdMonth: 0 }, 12)).toBe(1);
@@ -577,7 +588,10 @@ describe('v1.0 운영 시스템', () => {
     kr = advanceMonths(applyAction(kr, { type: 'setOrder', recipeId: soju.id, batchesPerMonth: 1 }).state, 1);
     const lot = kr.lots.find((l) => l.kind === 'soju')!;
     const pv = previewBlend(kr, [{ source: 'lot', id: lot.id, liters: lot.volumeL }], { name: 's', targetAbv: 0.25, bottleMl: 375, chillFilter: true, packagingId: 'standard' });
-    expect(pv.traditional).toBe(true);
+    expect(pv.traditional).toBe(false); // 농업경영체 등록 전
+    kr.equipment.push({ id: 'FR', catalogId: 'kr_farm_registration', readyMonth: 0 });
+    expect(previewBlend(kr, [{ source: 'lot', id: lot.id, liters: lot.volumeL }], { name: 's', targetAbv: 0.25, bottleMl: 375, chillFilter: true, packagingId: 'standard' }).traditional).toBe(true);
+    expect(traditionalTaxFactor(REGIONS.KR, true, 0, 600_000)).toBe(1); // 전년 500㎘ 초과
     expect(applyAction(kr, { type: 'takeLoan', offerId: 'kr_regional', amount: 300_000_000 }).error).toBeUndefined();
     expect(applyAction(newGame({ seed: 1, region: 'JP' }), { type: 'takeLoan', offerId: 'kr_regional', amount: 300_000_000 }).error).toBeTruthy();
   });
@@ -587,6 +601,15 @@ describe('v1.0 운영 시스템', () => {
     s.staff[0]!.ageAtHire = 64.95;
     s = advanceMonths(s, 2);
     expect(s.staff.length).toBe(0);
+  });
+
+  it('오염 통은 비워도 오염이 남고(통입 불가), 재탄화하면 다시 쓸 수 있다', () => {
+    let s = newGame({ seed: 1 });
+    const c = s.casks[0]!;
+    c.contamination = 'mold'; c.fills = 1;
+    expect(applyAction(s, { type: 'rechar', caskId: c.id }).state.casks[0]!.contamination).toBeUndefined();
+    s = applyAction(s, { type: 'rechar', caskId: c.id }).state;
+    expect(s.casks[0]!.contamination).toBeUndefined();
   });
 
   it('방재 설비가 있으면 재해 피해가 없다', () => {

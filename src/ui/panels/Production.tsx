@@ -214,7 +214,7 @@ function Equipment() {
         <div>
           <h3 className="mb-1 text-xs font-semibold text-stone-500">구매</h3>
           <Table head={['설비', '사양', '가격', '설치 기간', '']}>
-            {Object.values(EQUIPMENT).map((d) => (
+            {Object.values(EQUIPMENT).filter((d) => !(d.kind === 'facility' && d.regions && !d.regions.includes(s.regionId))).map((d) => (
               <tr key={d.id}>
                 <Td>{d.nameKo}</Td>
                 <Td className="text-xs text-stone-500">

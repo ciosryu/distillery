@@ -4,6 +4,7 @@ import { BULK, INGREDIENTS } from './content/catalog';
 import { DEFAULT_WHISKY_RULES, priceForConsumer, refPricePerL, regionOf, traditionalTaxFactor, type RegionDef, type WhiskyRules } from './content/regions';
 import { clampFlavor, evaluate, weightedAverage, type Evaluation } from './flavor';
 import { emptyCask } from './maturation';
+import { ownsFacility } from './ops';
 import { bestBy, nid, staffOf } from './util';
 import { mod } from './modifiers';
 import type { AxisId, Flavor, GameState, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
@@ -148,7 +149,8 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   if ((hasMalt || hasGrain) && category === 'malt_spirit') warnings.push(minOakMonths < minMonths ? `오크 숙성 ${minOakMonths}개월 — ${region.nameKo}에서는 ${rules.requiresOak && rules.minMonths === 0 ? '나무통 저장' : `${minMonths}개월 이상 숙성`}해야 "위스키" 표기 가능(몰트 스피릿)` : '도수 40% 미만 — 위스키 표기 불가');
   // 전통주(지역특산주): 자국 자생 원재료 비율이 기준 이상인 자사 원액 (한국 주세 경감 #73)
   const nativeShare = Object.entries(mash).reduce((t, [id, v]) => t + (INGREDIENTS[id]?.native?.includes(region.id) ? v : 0), 0);
-  const traditional = !!region.traditionalRelief && sourcedShare === 0 && nativeShare >= region.traditionalRelief.nativeShare;
+  const traditional = !!region.traditionalRelief && sourcedShare === 0 && nativeShare >= region.traditionalRelief.nativeShare && ownsFacility(s, region.traditionalRelief.requiresFacility);
+  if (region.traditionalRelief && !traditional && sourcedShare === 0 && nativeShare >= region.traditionalRelief.nativeShare) warnings.push(`국산 원료 ${Math.round(nativeShare * 100)}% — 농업경영체 등록이 있으면 ${region.traditionalRelief.label} 대상`);
   const premiumLabel = !!rules.premiumLabel && isWhiskyCategory(category) && minOakMonths >= rules.premiumLabel.minMonths && sourcedShare === 0;
   if (rules.premiumLabel && isWhiskyCategory(category) && !premiumLabel) warnings.push(`"${rules.premiumLabel.name}" 표기 불가(${rules.premiumLabel.minMonths}개월 이상 자사 원액만) — 매력도 ×${rules.premiumLabel.appealWithout}`);
   const specialty = region.specialties?.find((sp) => sp.category === category && (mash[sp.ingredientId] ?? 0) >= sp.minShare && sourcedShare === 0 && (!sp.siteOnly || sp.siteOnly === s.siteId)) ?? null;
@@ -171,7 +173,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   return {
     ok: errors.length === 0, errors, warnings, kind, category, volumeL: finalVolume, lpa, mixAbv, finalAbv, bottles,
     minOakMonths, ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare, sourcedPrestige, specialty: specialty?.id ?? null, premiumLabel, traditional,
-    suggestedPrice: suggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? minOakMonths : null, finalAbv, traditionalTaxFactor(region, traditional, s.traditionalReleasedL)),
+    suggestedPrice: suggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? minOakMonths : null, finalAbv, traditionalTaxFactor(region, traditional, s.traditionalReleasedL, s.traditionalPrevYearL)),
   };
 }
 

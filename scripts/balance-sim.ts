@@ -2,6 +2,7 @@
 // 실행: npm run balance [-- 시드수 개월수 전략 지역 입지]   전략 = brand | hybrid | expand | grain | all(기본), 지역 = KR(기본) | JP | TW
 import { advanceMonth, applyAction, bulkValuePerLPA, previewBlend, newGame, whiskyMinMonths, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
 import { regionOf } from '../src/sim/content/regions';
+import { EVENTS } from '../src/sim/content/events';
 
 const SEEDS = Number(process.argv[2] ?? 12);
 const MONTHS = Number(process.argv[3] ?? 120);
@@ -12,6 +13,7 @@ const SITE = process.argv[6];
 const BRIDGE = process.env.NO_BRIDGE !== '1';
 const YOUNG = process.env.NO_YOUNG !== '1';
 const TOUR = process.env.NO_TOUR !== '1';
+const DEFEND = process.env.NO_DEFEND !== '1';
 
 type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain';
 
@@ -45,7 +47,7 @@ function fillMalt(s: GameState, maxLPA = Infinity, kind: 'malt' | 'grain' = 'mal
     const empty = s.casks.filter((c) => !c.contents && !c.contamination);
     // v1.0: 쿠퍼리지 주문은 2개월 걸리므로 모자라면 스팟으로 메운다(웃돈·골빈 통 위험)
     if (empty.length < need && s.cash > 100_000_000) s = act(s, { type: 'buySpotCasks', caskType: 'ex_bourbon_barrel', qty: need - empty.length });
-    s = act(s, { type: 'fillCasks', lotId: lot.id, caskIds: s.casks.filter((c) => !c.contents).slice(0, need).map((c) => c.id), entryAbv: 0.635 });
+    s = act(s, { type: 'fillCasks', lotId: lot.id, caskIds: s.casks.filter((c) => !c.contents && !c.contamination).slice(0, need).map((c) => c.id), entryAbv: 0.635 });
     budget -= lpa;
   }
   return s;
@@ -99,13 +101,21 @@ function bottleBlended(s: GameState): GameState {
 
 /** v1.0 운영: 빈 통을 미리 쿠퍼리지에 주문하고, 소매 역량이 넘치면 영업 직원을 늘린다 */
 function operations(s: GameState, strategy: Strategy): GameState {
-  const empty = s.casks.filter((c) => !c.contents).length + s.caskOrders.reduce((t, o) => t + o.qty, 0);
+  // 비운 오염 통은 재탄화해서 다시 쓴다
+  for (const c of s.casks.filter((x) => !x.contents && x.contamination && x.recharCount < 2)) if (s.cash > 100_000_000) s = act(s, { type: 'rechar', caskId: c.id });
+  const empty = s.casks.filter((c) => !c.contents && !c.contamination).length + s.caskOrders.reduce((t, o) => t + o.qty, 0);
   if (empty < 12 && s.cash > 150_000_000) s = act(s, { type: 'buyCasks', caskType: 'ex_bourbon_barrel', qty: 12 });
   const last = s.reports.at(-1);
   const sales = s.staff.filter((x) => x.role === 'sales').length;
   if (last?.overflowCases && last.overflowCases > 20 && sales < 4 && s.cash > 150_000_000) {
     const c = s.candidates.filter((x) => x.role === 'sales').sort((a, b) => b.stats.b - a.stats.b)[0];
     if (c) s = act(s, { type: 'hire', candidateId: c.id });
+  }
+  // 방재: 이 지역에서 일어나는 재해의 방재 설비를 여유 현금으로 하나씩 갖춘다
+  // 공백기 자금을 말리지 않도록 숙성 위스키가 나오기 시작한 뒤(36개월~), 현금 여유가 클 때만
+  if (DEFEND && s.month >= 36 && s.cash > 500_000_000) {
+    const need = EVENTS.filter((e) => e.defense && (!e.regions || e.regions.includes(s.regionId))).map((e) => e.defense!).find((id) => !s.equipment.some((x) => x.catalogId === id));
+    if (need) s = act(s, { type: 'buyEquipment', catalogId: need });
   }
   void strategy;
   return s;
@@ -139,6 +149,8 @@ function start(s: GameState, strategy: Strategy): GameState {
   s = act(s, { type: 'setMarketing', amount: 5_000_000 });
   // v1.0: 모든 전략이 베이직 투어 비지터 센터로 초반 현금 흐름을 만든다
   if (TOUR) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_basic' });
+  // 한국: 전통주 요건(농업경영체 등록) — 국산 쌀·누룩 소주를 전통주로
+  if (s.regionId === 'KR') s = act(s, { type: 'buyEquipment', catalogId: 'kr_farm_registration' });
   const soju = rid(s, 'soju');
   if (soju) s = act(s, { type: 'setOrder', recipeId: soju, batchesPerMonth: 2 });
   // 한국은 진 시장이 작으므로(결정 #45) 진 대신 고량주를 현금 제품으로 쓴다
