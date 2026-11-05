@@ -16,7 +16,7 @@ export function Finance() {
     <div className="grid gap-4">
       <Card title="대출 상품">
         <Table head={['상품', '금리', '기간', '거치', '한도', '조건', '신청 금액', '월 상환액(거치 후)', '']}>
-          {LOAN_OFFERS.map((o) => {
+          {LOAN_OFFERS.filter((o) => !o.regions || o.regions.includes(s.regionId)).map((o) => {
             const amt = (amounts[o.id] ?? 0) * 1e6;
             const using = s.loans.some((l) => l.offerId === o.id);
             const locked = o.requires === 'producedSoju' && !s.flags.producedSoju;
@@ -27,7 +27,7 @@ export function Finance() {
                 <Td right>{o.termMonths / 12}년</Td>
                 <Td right>{o.graceMonths ? `${o.graceMonths}개월` : '—'}</Td>
                 <Td right>{won(o.max)}</Td>
-                <Td>{o.requires ? <Badge tone={locked ? 'warn' : 'good'}>증류식 소주 생산 실적</Badge> : '—'}</Td>
+                <Td>{o.requires ? <Badge tone={locked ? 'warn' : 'good'}>증류식 소주 생산 실적</Badge> : o.regions ? <Badge tone="info" >지역 정책자금</Badge> : '—'}</Td>
                 <Td><NumberField value={amounts[o.id] ?? 0} min={10} max={o.max / 1e6} width="w-20" suffix="백만" onCommit={(v) => setAmounts({ ...amounts, [o.id]: v })} /></Td>
                 <Td right>{won(annuityPayment(amt, o.annualRate, o.termMonths - o.graceMonths))}</Td>
                 <Td><Button small variant="primary" disabled={using || locked} onClick={() => dispatch({ type: 'takeLoan', offerId: o.id, amount: amt })}>{using ? '이용 중' : '실행'}</Button></Td>

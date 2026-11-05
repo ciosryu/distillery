@@ -35,7 +35,7 @@ export function Sales() {
               return (
                 <tr key={p.id}>
                   <Td className="font-medium">{p.name}</Td>
-                  <Td><Badge tone="info">{categoryName(region, p.category, CATEGORY[p.category].nameKo)}</Badge>{p.ageYears != null && <> <Badge tone="good">{p.ageYears}년</Badge></>}{p.premiumLabel && region.whisky.premiumLabel && <> <Badge tone="good">{region.whisky.premiumLabel.name}</Badge></>}{p.specialty && <> <Badge tone="good">{region.specialties?.find((x) => x.id === p.specialty)?.label}</Badge></>}{p.sourcedShare > 0 && <> <Badge tone="warn">매입 {pct(p.sourcedShare, 0)} · 브랜드 {Math.round((p.sourcedPrestige ?? 0) * 100)}</Badge></>}</Td>
+                  <Td><Badge tone="info">{categoryName(region, p.category, CATEGORY[p.category].nameKo)}</Badge>{p.ageYears != null && <> <Badge tone="good">{p.ageYears}년</Badge></>}{p.premiumLabel && region.whisky.premiumLabel && <> <Badge tone="good">{region.whisky.premiumLabel.name}</Badge></>}{p.specialty && <> <Badge tone="good">{region.specialties?.find((x) => x.id === p.specialty)?.label}</Badge></>}{p.traditional && <> <Badge tone="good">{region.traditionalRelief?.label}</Badge></>}{p.sourcedShare > 0 && <> <Badge tone="warn">매입 {pct(p.sourcedShare, 0)} · 브랜드 {Math.round((p.sourcedPrestige ?? 0) * 100)}</Badge></>}</Td>
                   <Td className="text-xs">{p.bottleMl}ml · {pct(p.abv)}</Td>
                   <Td right>{p.quality}</Td>
                   <Td right>{num(p.stockBottles)}</Td>

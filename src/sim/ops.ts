@@ -79,9 +79,9 @@ export function rotateWarehouse(s: GameState, wId: string): { moved: number; err
 export const RETAIL = {
   /** 직원 없이도 처리하는 월 9L 케이스 */
   baseCases: 60,
-  /** 영업 직원 1명당 + 네트워크 스탯 1당 */
-  perSalesCases: 80,
-  perNetworkCase: 1.5,
+  /** 영업 직원 1명당 + 네트워크 스탯 1당 — 네트워크 60이면 1명당 약 100케이스 (#72) */
+  perSalesCases: 40,
+  perNetworkCase: 1.0,
   /** 네트워크 70↑ 영업 직원이 있으면 고급 유통망(B2B 온트레이드) 확보 → 역량 +30% */
   premiumNetwork: 70,
   premiumBonus: 0.3,
@@ -151,6 +151,10 @@ export function runTourism(s: GameState, report: MonthReport, monthOfYear: numbe
 
 export const RETIRE_AGE = 65;
 export const ageOf = (x: Staff, month: number) => (x.ageAtHire ?? 40) + (month - x.hiredMonth) / 12;
+/** 에이징 커브는 근속 기준 (#74): 근속 20년부터 스탯이 꺾이고 25년부터 더 빨라진다. 은퇴는 65세 */
+export const AGING_TENURE_MONTHS = 240;
+export const AGING_FAST_TENURE_MONTHS = 300;
+export const tenureOf = (x: Staff, month: number) => Math.max(0, month - x.hiredMonth);
 
 /** 마스터 디스틸러 = 부사수가 아닌 디스틸러 중 레벨이 가장 높고 가장 오래된 사람 */
 export function masterDistiller(s: GameState): Staff | undefined {
@@ -187,8 +191,9 @@ export function runStaffLifecycle(s: GameState, report: MonthReport, rng: Rng): 
       report.notes.push(`${x.name} 은퇴 (${Math.floor(age)}세)`, ...notes);
       continue;
     }
-    // 에이징 커브: 55세부터 스탯이 꺾이고 60세부터 더 빨라진다
-    if (age > 55 && rng.chance(age > 60 ? 0.25 : 0.12)) {
+    // 에이징 커브(근속 기준): 근속 20년부터 매달 12%, 25년부터 25% 확률로 스탯 1~2 하락
+    const tenure = tenureOf(x, s.month);
+    if (tenure >= AGING_TENURE_MONTHS && rng.chance(tenure >= AGING_FAST_TENURE_MONTHS ? 0.25 : 0.12)) {
       const k = rng.pick(['a', 'b', 'c'] as const);
       x.stats[k] = Math.max(10, x.stats[k] - rng.int(1, 2));
     }

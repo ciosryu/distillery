@@ -112,6 +112,9 @@ function operations(s: GameState, strategy: Strategy): GameState {
 }
 
 function finance(s: GameState): GameState {
+  // 한국 완화책(#73): 저리 지역 정책자금을 먼저 쓴다
+  if (s.regionId === 'KR' && s.cash < 200_000_000 && !s.loans.some((l) => l.offerId === 'kr_regional')) s = act(s, { type: 'takeLoan', offerId: 'kr_regional', amount: 300_000_000 });
+  if (s.regionId === 'KR' && s.cash < 100_000_000 && !s.loans.some((l) => l.offerId === 'kr_startup')) s = act(s, { type: 'takeLoan', offerId: 'kr_startup', amount: 200_000_000 });
   if (s.cash < 100_000_000 && !s.loans.some((l) => l.offerId === 'working')) s = act(s, { type: 'takeLoan', offerId: 'working', amount: 300_000_000 });
   if (s.cash < 50_000_000 && !s.loans.some((l) => l.offerId === 'facility')) s = act(s, { type: 'takeLoan', offerId: 'facility', amount: 500_000_000 });
   if (s.flags.producedSoju && !s.loans.some((l) => l.offerId === 'policy') && s.cash < 300_000_000) s = act(s, { type: 'takeLoan', offerId: 'policy', amount: 200_000_000 });

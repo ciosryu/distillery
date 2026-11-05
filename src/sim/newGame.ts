@@ -115,6 +115,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     localBuzz: 0,
     wasteContractPerKg: 0,
     rotatedThisMonth: 0,
+    traditionalReleasedL: 0,
     reports: [],
     nextId: 1,
   };

@@ -124,6 +124,8 @@ export interface Product {
   specialty?: string;
   /** 지역 프리미엄 표기 충족 여부 (예: 재패니즈 위스키) */
   premiumLabel?: boolean;
+  /** 전통주(지역특산주) 주세 경감 대상 */
+  traditional?: boolean;
   stockBottles: number;
   /** 출고가(세전) / 병 */
   price: number;
@@ -344,6 +346,8 @@ export interface GameState {
   wasteContractPerKg: number;
   /** 이번 달 로테이션한 캐스크 수 */
   rotatedThisMonth: number;
+  /** 올해 전통주 경감 대상 누적 출고량(L) — 1월에 초기화 */
+  traditionalReleasedL: number;
   reports: MonthReport[];
   nextId: number;
 }

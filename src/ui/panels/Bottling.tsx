@@ -73,6 +73,7 @@ export function Bottling() {
                 {preview.evaluation?.style && <Badge>{preview.evaluation.style}</Badge>}
                 {preview.sourcedShare > 0 && <Badge tone="warn">매입 원액 {pct(preview.sourcedShare, 0)} · 브랜드 가치 {Math.round(preview.sourcedPrestige * 100)}</Badge>}
                 {preview.premiumLabel && <Badge tone="good">{regionOf(s).whisky.premiumLabel?.name}</Badge>}
+                {preview.traditional && <Badge tone="good">{regionOf(s).traditionalRelief?.label}</Badge>}
                 {preview.specialty && <Badge tone="good">{regionOf(s).specialties?.find((x) => x.id === preview.specialty)?.label}</Badge>}
               </div>
               <dl className="grid grid-cols-2 gap-x-2 text-sm">

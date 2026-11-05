@@ -1,7 +1,7 @@
 import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/catalog';
 import { CATEGORY } from './content/categories';
-import { BULK } from './content/catalog';
-import { DEFAULT_WHISKY_RULES, priceForConsumer, refPricePerL, regionOf, type RegionDef, type WhiskyRules } from './content/regions';
+import { BULK, INGREDIENTS } from './content/catalog';
+import { DEFAULT_WHISKY_RULES, priceForConsumer, refPricePerL, regionOf, traditionalTaxFactor, type RegionDef, type WhiskyRules } from './content/regions';
 import { clampFlavor, evaluate, weightedAverage, type Evaluation } from './flavor';
 import { emptyCask } from './maturation';
 import { bestBy, nid, staffOf } from './util';
@@ -32,6 +32,7 @@ export interface BlendPreview {
   sourcedPrestige: number;
   specialty: string | null;
   premiumLabel: boolean;
+  traditional: boolean;
   suggestedPrice: number;
 }
 
@@ -81,10 +82,10 @@ export function agePerception(oakMonths: number): number {
   return 1.18 * (0.4 + 0.6 * Math.pow(Math.max(0, oakMonths) / 36, 0.8));
 }
 
-export function suggestedPrice(region: RegionDef, category: ProductCategory, bottleMl: number, quality: number, oakMonths: number | null, abv: number): number {
+export function suggestedPrice(region: RegionDef, category: ProductCategory, bottleMl: number, quality: number, oakMonths: number | null, abv: number, taxFactor = 1): number {
   const ageBonus = isWhiskyCategory(category) && oakMonths != null ? agePerception(oakMonths) : 1;
   const consumer = refPricePerL(region, category, abv) * (bottleMl / 1000) * Math.sqrt(Math.max(quality, 20) / 60) * ageBonus;
-  const p = priceForConsumer(region, consumer, bottleMl, abv);
+  const p = priceForConsumer(region, consumer, bottleMl, abv, taxFactor);
   return Math.round(p / 100) * 100;
 }
 
@@ -100,7 +101,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     if (c.liters > lot.volumeL + 1e-6) errors.push(`${lot.name}: 보유량(${lot.volumeL.toFixed(1)}L)보다 많이 선택했습니다`);
     items.push({ lot, liters: Math.min(c.liters, lot.volumeL) });
   }
-  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, sourcedPrestige: 1, specialty: null, premiumLabel: false, suggestedPrice: 0 };
+  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, sourcedPrestige: 1, specialty: null, premiumLabel: false, traditional: false, suggestedPrice: 0 };
   const region = regionOf(s);
   const rules = region.whisky;
   if (!items.length) { errors.push('블렌딩할 원액을 선택하세요'); return empty; }
@@ -145,6 +146,9 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   const category = categorize(kind, minOakMonths, finalAbv, flavor, hasGrain, hasMalt, rules);
   const minMonths = whiskyMinMonths(rules);
   if ((hasMalt || hasGrain) && category === 'malt_spirit') warnings.push(minOakMonths < minMonths ? `오크 숙성 ${minOakMonths}개월 — ${region.nameKo}에서는 ${rules.requiresOak && rules.minMonths === 0 ? '나무통 저장' : `${minMonths}개월 이상 숙성`}해야 "위스키" 표기 가능(몰트 스피릿)` : '도수 40% 미만 — 위스키 표기 불가');
+  // 전통주(지역특산주): 자국 자생 원재료 비율이 기준 이상인 자사 원액 (한국 주세 경감 #73)
+  const nativeShare = Object.entries(mash).reduce((t, [id, v]) => t + (INGREDIENTS[id]?.native?.includes(region.id) ? v : 0), 0);
+  const traditional = !!region.traditionalRelief && sourcedShare === 0 && nativeShare >= region.traditionalRelief.nativeShare;
   const premiumLabel = !!rules.premiumLabel && isWhiskyCategory(category) && minOakMonths >= rules.premiumLabel.minMonths && sourcedShare === 0;
   if (rules.premiumLabel && isWhiskyCategory(category) && !premiumLabel) warnings.push(`"${rules.premiumLabel.name}" 표기 불가(${rules.premiumLabel.minMonths}개월 이상 자사 원액만) — 매력도 ×${rules.premiumLabel.appealWithout}`);
   const specialty = region.specialties?.find((sp) => sp.category === category && (mash[sp.ingredientId] ?? 0) >= sp.minShare && sourcedShare === 0 && (!sp.siteOnly || sp.siteOnly === s.siteId)) ?? null;
@@ -166,8 +170,8 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   const evaluation = evaluate(flavor, category);
   return {
     ok: errors.length === 0, errors, warnings, kind, category, volumeL: finalVolume, lpa, mixAbv, finalAbv, bottles,
-    minOakMonths, ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare, sourcedPrestige, specialty: specialty?.id ?? null, premiumLabel,
-    suggestedPrice: suggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? minOakMonths : null, finalAbv),
+    minOakMonths, ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare, sourcedPrestige, specialty: specialty?.id ?? null, premiumLabel, traditional,
+    suggestedPrice: suggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? minOakMonths : null, finalAbv, traditionalTaxFactor(region, traditional, s.traditionalReleasedL)),
   };
 }
 
@@ -209,6 +213,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     sourcedPrestige: p.sourcedPrestige,
     ...(p.specialty ? { specialty: p.specialty } : {}),
     premiumLabel: p.premiumLabel,
+    ...(p.traditional ? { traditional: true } : {}),
     stockBottles: p.bottles,
     price: p.suggestedPrice,
     unitCost: p.unitCost,

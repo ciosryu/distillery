@@ -1,5 +1,5 @@
 import { DISTRIBUTION, PACKAGING, logisticsCost } from './content/catalog';
-import { consumerPrice, refPricePerL, regionOf, type RegionDef } from './content/regions';
+import { consumerPrice, refPricePerL, regionOf, traditionalTaxFactor, type RegionDef } from './content/regions';
 import { agePerception } from './blending';
 import { overhangFactor, ownershipOversold, OWNERSHIP, retailCapacityCases, RETAIL } from './ops';
 import { clamp } from './flavor';
@@ -22,8 +22,8 @@ export function markupFactor(s: GameState): number {
 }
 
 /** 제품의 병당 소비자가 (지역 세제·유통 마진·영업 협상·이벤트 반영) */
-export function productConsumerPrice(s: GameState, p: Pick<Product, 'price' | 'bottleMl' | 'abv'>, region: RegionDef = regionOf(s)): number {
-  return consumerPrice(region, p.price, p.bottleMl, p.abv, markupFactor(s));
+export function productConsumerPrice(s: GameState, p: Pick<Product, 'price' | 'bottleMl' | 'abv' | 'traditional'>, region: RegionDef = regionOf(s)): number {
+  return consumerPrice(region, p.price, p.bottleMl, p.abv, markupFactor(s), traditionalTaxFactor(region, p.traditional, s.traditionalReleasedL));
 }
 
 export function appeal(p: Product, s?: Pick<GameState, 'modifiers' | 'month' | 'regionId'>): number {

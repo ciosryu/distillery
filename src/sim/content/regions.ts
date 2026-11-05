@@ -96,6 +96,8 @@ export interface RegionDef {
   sites?: SiteDef[];
   /** 비지터 센터 관광 잠재력 (한국 = 1) */
   tourism?: number;
+  /** 전통주(지역특산주) 주세 경감: 자국 자생 원재료 비율이 nativeShare 이상인 자사 제품. 연 누적 출고량(L) 구간별 세율 배수 */
+  traditionalRelief?: { nativeShare: number; tiers: { upToL: number; factor: number }[]; label: string; basis: string };
   /** 지역 특산 캐스크는 싸고, 다른 지역 캐스크는 비싸다 */
   caskPriceFactor: Partial<Record<CaskTypeId, number>>;
 }
@@ -140,6 +142,8 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     sourcedPenalty: 0.4,
     // 나무통 1년 이상 (v0.8 웹 확인: 나무위키 '코리안 위스키'·국세청 관련 보도 — 법령 원문은 미열람) [확인 필요: 조문]
     whisky: { minMonths: 12, requiresOak: true, basis: '주세법 시행령: 나무통 1년 이상 저장 (2차 자료 2건 일치, 조문 미열람)' },
+    // 완화책(#73): 전통주 주세 경감 — 증류주 연 100㎘까지 50%, 100~200㎘ 30% (2025 시행령 개정안 보도 기준) [확인 필요: 최종 조문]
+    traditionalRelief: { nativeShare: 0.5, tiers: [{ upToL: 100_000, factor: 0.5 }, { upToL: 200_000, factor: 0.7 }], label: '전통주 주세 경감', basis: '주세법: 전통주 세율 100분의 50 범위 경감, 시행령 개정안: 증류주 100㎘ 이하 50%·100~200㎘ 30%' },
     sites: [{
       id: 'andong', nameKo: '경북 안동',
       // 안동 ASOS 평년(1991~2020) 연평균 12.2°C·여름 23.9°C·겨울 −0.3°C에 맞춘 월별 근사치. 습도는 추정 [확인 필요: 기상청 월별 평년값]
@@ -273,22 +277,28 @@ export function refPricePerL(region: RegionDef, category: ProductCategory, abv: 
   return m.refConsumerPricePerL * Math.pow(abv / m.refAbv, 0.7);
 }
 
-/** 병당 주세 (종가세 + 교육세 + 종량세) */
-export function liquorTaxPerBottle(region: RegionDef, price: number, bottleMl: number, abv: number): number {
+/** 병당 주세 (종가세 + 교육세 + 종량세) × 경감 배수 */
+export function liquorTaxPerBottle(region: RegionDef, price: number, bottleMl: number, abv: number, taxFactor = 1): number {
   const lpa = (bottleMl / 1000) * abv;
-  return price * region.tax.adValorem * (1 + region.tax.education) + region.tax.specificPerLPA * lpa;
+  return (price * region.tax.adValorem * (1 + region.tax.education) + region.tax.specificPerLPA * lpa) * taxFactor;
 }
 
 /** 출고가 → 병당 소비자가 */
-export function consumerPrice(region: RegionDef, price: number, bottleMl: number, abv: number, markupFactor = 1): number {
-  return (price + liquorTaxPerBottle(region, price, bottleMl, abv)) * (1 + region.tax.vat) * region.retailMarkup * markupFactor;
+export function consumerPrice(region: RegionDef, price: number, bottleMl: number, abv: number, markupFactor = 1, taxFactor = 1): number {
+  return (price + liquorTaxPerBottle(region, price, bottleMl, abv, taxFactor)) * (1 + region.tax.vat) * region.retailMarkup * markupFactor;
 }
 
 /** 병당 소비자가 → 그 소비자가가 되는 출고가 (권장가 계산용) */
-export function priceForConsumer(region: RegionDef, consumer: number, bottleMl: number, abv: number): number {
+export function priceForConsumer(region: RegionDef, consumer: number, bottleMl: number, abv: number, taxFactor = 1): number {
   const lpa = (bottleMl / 1000) * abv;
-  const beforeTax = consumer / ((1 + region.tax.vat) * region.retailMarkup) - region.tax.specificPerLPA * lpa;
-  return Math.max(100, beforeTax / (1 + region.tax.adValorem * (1 + region.tax.education)));
+  const beforeTax = consumer / ((1 + region.tax.vat) * region.retailMarkup) - region.tax.specificPerLPA * lpa * taxFactor;
+  return Math.max(100, beforeTax / (1 + region.tax.adValorem * (1 + region.tax.education) * taxFactor));
+}
+
+/** 전통주 주세 경감 배수 — 올해 누적 경감 대상 출고량(L) 구간별 */
+export function traditionalTaxFactor(region: RegionDef, traditional: boolean | undefined, releasedThisYearL: number): number {
+  if (!traditional || !region.traditionalRelief) return 1;
+  return region.traditionalRelief.tiers.find((t) => releasedThisYearL < t.upToL)?.factor ?? 1;
 }
 
 export function categoryName(region: RegionDef, category: ProductCategory, fallback: string): string {

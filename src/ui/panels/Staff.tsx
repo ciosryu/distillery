@@ -1,6 +1,6 @@
 import { ROLE_INFO } from '../../sim/content/catalog';
 import type { Staff as StaffT } from '../../sim';
-import { ageOf, APPRENTICE_MONTHS, masterDistiller, RETIRE_AGE } from '../../sim/ops';
+import { ageOf, AGING_TENURE_MONTHS, APPRENTICE_MONTHS, masterDistiller, RETIRE_AGE, tenureOf } from '../../sim/ops';
 import { useGame } from '../../store/game';
 import { won } from '../format';
 import { Badge, Button, Card, Empty } from '../kit';
@@ -25,12 +25,13 @@ function StatBar({ name, value }: { name: string; value: number }) {
 function Person({ x, action, month, tag }: { x: StaffT & { askSalary?: number }; action: React.ReactNode; month: number; tag?: React.ReactNode }) {
   const info = ROLE_INFO[x.role];
   const age = Math.floor(ageOf(x, Math.max(month, x.hiredMonth)));
+  const tenureY = x.hiredMonth >= 0 ? Math.floor(tenureOf(x, month) / 12) : 0;
   return (
     <div className="rounded-lg border border-stone-200 p-3 dark:border-stone-800">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div>
           <div className="font-medium">{x.name}</div>
-          <div className="text-xs text-stone-500">{info.nameKo} · Lv.{x.level}{x.hiredMonth >= 0 && ` · XP ${Math.round(x.xp)}/${100 * x.level}`} · {age}세{age > 55 ? ' (기량 하락기)' : ''}{RETIRE_AGE - age <= 3 ? ` · ${RETIRE_AGE}세 은퇴 임박` : ''}</div>
+          <div className="text-xs text-stone-500">{info.nameKo} · Lv.{x.level}{x.hiredMonth >= 0 && ` · XP ${Math.round(x.xp)}/${100 * x.level}`} · {age}세{x.hiredMonth >= 0 ? ` · 근속 ${tenureY}년` : ''}{x.hiredMonth >= 0 && tenureOf(x, month) >= AGING_TENURE_MONTHS ? ' (근속 20년↑ 기량 하락기)' : ''}{RETIRE_AGE - age <= 3 ? ` · ${RETIRE_AGE}세 은퇴 임박` : ''}</div>
           {tag}
         </div>
         <Badge>{won(x.askSalary ?? x.salary)}/월</Badge>

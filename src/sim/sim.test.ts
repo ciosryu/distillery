@@ -8,7 +8,7 @@ import {
 import { overhangFactor, ownsFacility, slotClimate } from './ops';
 import { EQUIPMENT } from './content/catalog';
 import { BUYERS } from './content/names';
-import { consumerPrice, logisticsMultiplier, priceForConsumer, REGIONS, siteOf } from './content/regions';
+import { consumerPrice, logisticsMultiplier, priceForConsumer, REGIONS, siteOf, traditionalTaxFactor } from './content/regions';
 
 const recipeId = (s: GameState, prefix: string) => s.recipes.find((r) => r.name.startsWith(prefix))!.id;
 
@@ -550,6 +550,36 @@ describe('v1.0 운영 시스템', () => {
     s.month += 24;
     a = applyAction(s, { type: 'fire', staffId: master.id }).state;
     expect(a.houseStyle).toBe(45);
+  });
+
+  it('에이징 커브(근속 기준): 근속 20년 전에는 스탯이 꺾이지 않고, 넘으면 꺾인다', () => {
+    let s = newGame({ seed: 3 });
+    const x = s.staff[0]!;
+    x.ageAtHire = 20;
+    s.month = 200; x.hiredMonth = 0; const before = { ...x.stats };
+    s = advanceMonths(s, 24);
+    const st = s.staff[0]!.stats;
+    expect(st.a >= before.a && st.b >= before.b && st.c >= before.c).toBe(true); // 레벨업으로 오를 수는 있어도 꺾이지 않는다
+    s.month = 300;
+    const mid = { ...s.staff[0]!.stats };
+    s = advanceMonths(s, 24);
+    const after = s.staff[0]!.stats;
+    expect(after.a + after.b + after.c).toBeLessThan(mid.a + mid.b + mid.c);
+  });
+
+  it('한국 완화책: 국산 원료 50% 이상 자사 제품은 전통주 주세 경감(연 100㎘까지 50%, 200㎘까지 30%), 지역 정책자금', () => {
+    expect(traditionalTaxFactor(REGIONS.KR, true, 0)).toBe(0.5);
+    expect(traditionalTaxFactor(REGIONS.KR, true, 150_000)).toBe(0.7);
+    expect(traditionalTaxFactor(REGIONS.KR, true, 250_000)).toBe(1);
+    expect(traditionalTaxFactor(REGIONS.JP, true, 0)).toBe(1);
+    let kr = newGame({ seed: 1, region: 'KR', startingCash: 5_000_000_000 });
+    const soju = kr.recipes.find((r) => r.kind === 'soju')!;
+    kr = advanceMonths(applyAction(kr, { type: 'setOrder', recipeId: soju.id, batchesPerMonth: 1 }).state, 1);
+    const lot = kr.lots.find((l) => l.kind === 'soju')!;
+    const pv = previewBlend(kr, [{ source: 'lot', id: lot.id, liters: lot.volumeL }], { name: 's', targetAbv: 0.25, bottleMl: 375, chillFilter: true, packagingId: 'standard' });
+    expect(pv.traditional).toBe(true);
+    expect(applyAction(kr, { type: 'takeLoan', offerId: 'kr_regional', amount: 300_000_000 }).error).toBeUndefined();
+    expect(applyAction(newGame({ seed: 1, region: 'JP' }), { type: 'takeLoan', offerId: 'kr_regional', amount: 300_000_000 }).error).toBeTruthy();
   });
 
   it('에이징 커브: 65세에 은퇴한다', () => {

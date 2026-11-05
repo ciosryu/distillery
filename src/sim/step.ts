@@ -1,5 +1,5 @@
 import { CASK_STORAGE, CASKS, EQUIPMENT, INGREDIENTS, ROLE_INFO } from './content/catalog';
-import { liquorTaxPerBottle, regionOf } from './content/regions';
+import { liquorTaxPerBottle, regionOf, traditionalTaxFactor } from './content/regions';
 import { refreshBroker } from './broker';
 import { bulkValuePerLPA, fulfillContracts, refreshCaskBids, refreshContractOffers, updateBulkIndex } from './bulk';
 import { clamp, weightedAverage } from './flavor';
@@ -192,7 +192,17 @@ export function advanceMonth(prev: GameState): GameState {
   report.lostSalesBottles = retail.lostBottles;
   if (retail.overflowCases > 0) report.notes.push(`소매 처리 역량 초과 — ${retail.overflowCases}케이스를 고비용 채널로 판매${retail.lostBottles > 0 ? `, ${retail.lostBottles.toLocaleString()}병은 못 팔았다` : ''} (영업 직원을 늘리면 역량↑)`);
   report.revenue = sales.reduce((t, x) => t + x.revenue, 0);
-  report.liquorTaxRemitted = Math.round(sales.reduce((t, x) => { const p = s.products.find((q) => q.id === x.productId); return t + (p ? x.bottles * liquorTaxPerBottle(regionOf(s), p.price, p.bottleMl, p.abv) : 0); }, 0));
+  // 주세 납부 — 전통주는 연 누적 출고량 구간별 경감 (한국 완화책 #73)
+  const region = regionOf(s);
+  if (monthOfYear === 1) s.traditionalReleasedL = 0;
+  let tax = 0;
+  for (const x of sales) {
+    const p = s.products.find((q) => q.id === x.productId);
+    if (!p) continue;
+    tax += x.bottles * liquorTaxPerBottle(region, p.price, p.bottleMl, p.abv, traditionalTaxFactor(region, p.traditional, s.traditionalReleasedL));
+    if (p.traditional) s.traditionalReleasedL += (x.bottles * p.bottleMl) / 1000;
+  }
+  report.liquorTaxRemitted = Math.round(tax);
   s.cash += report.revenue;
   const distribution = sales.reduce((t, x) => t + x.distribution, 0);
   if (distribution > 0) { s.cash -= distribution; report.expenses.distribution = distribution; }

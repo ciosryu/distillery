@@ -266,6 +266,7 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       const offer = LOAN_OFFERS.find((o) => o.id === a.offerId);
       if (!offer) return fail(prev, '대출 상품이 없습니다');
       if (offer.requires === 'producedSoju' && !s.flags.producedSoju) return fail(prev, '전통주(증류식 소주) 생산 실적이 있어야 신청할 수 있습니다');
+      if (offer.regions && !offer.regions.includes(s.regionId)) return fail(prev, '이 지역에서는 신청할 수 없는 정책자금입니다');
       if (s.loans.some((l) => l.offerId === offer.id)) return fail(prev, '같은 상품을 이미 이용 중입니다');
       const amount = Math.min(offer.max, Math.max(10_000_000, Math.round(a.amount / 1_000_000) * 1_000_000));
       s.cash += amount;
