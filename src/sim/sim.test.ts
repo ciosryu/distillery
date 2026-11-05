@@ -6,7 +6,7 @@ import {
 } from './index';
 import { EQUIPMENT } from './content/catalog';
 import { BUYERS } from './content/names';
-import { consumerPrice, priceForConsumer, REGIONS } from './content/regions';
+import { APPLY_KR_BASE_DEDUCTION, consumerPrice, KR_BASE_DEDUCTION_2026, priceForConsumer, REGIONS } from './content/regions';
 import { DEFAULT_SITE, SITES } from './content/sites';
 import {
   applyTerroir, dutyFreeDemand, fermentCapacityFactor, isTraditionalRecipe, migrateState, productConsumerPrice, riskScale, scaleEffects,
@@ -396,13 +396,17 @@ describe('산지 (v0.8, regions.md Tier 1)', () => {
     expect(yearLoss('hokkaido')).toBeLessThan(0.017);
   });
 
-  it('기준판매비율: 한국 국산 위스키는 과세표준이 28% 줄어 소비자가가 낮아지고, 권장가 역산은 그대로 맞는다', () => {
-    const plain = consumerPrice(REGIONS.KR, 50_000, 700, 0.4);
-    const whisky = consumerPrice(REGIONS.KR, 50_000, 700, 0.4, 1, { category: 'whisky' });
+  it('기준판매비율(켰을 때): 한국 국산 위스키는 과세표준이 28% 줄어 소비자가가 낮아지고, 권장가 역산은 그대로 맞는다', () => {
+    const KR = { ...REGIONS.KR, tax: { ...REGIONS.KR.tax, baseDeduction: KR_BASE_DEDUCTION_2026 } };
+    const plain = consumerPrice(KR, 50_000, 700, 0.4);
+    const whisky = consumerPrice(KR, 50_000, 700, 0.4, 1, { category: 'whisky' });
     expect(whisky).toBeLessThan(plain * 0.92);
     expect(consumerPrice(REGIONS.JP, 50_000, 700, 0.4, 1, { category: 'whisky' })).toBeCloseTo(consumerPrice(REGIONS.JP, 50_000, 700, 0.4), 6);
     for (const opts of [{ category: 'whisky' as const }, { category: 'soju_distilled' as const, relief: 0.5 }])
-      expect(priceForConsumer(REGIONS.KR, consumerPrice(REGIONS.KR, 30_000, 700, 0.4, 1, opts), 700, 0.4, opts)).toBeCloseTo(30_000, 0);
+      expect(priceForConsumer(KR, consumerPrice(KR, 30_000, 700, 0.4, 1, opts), 700, 0.4, opts)).toBeCloseTo(30_000, 0);
+    // v0.8 기본값은 꺼짐 (오너 결정 대기)
+    expect(APPLY_KR_BASE_DEDUCTION).toBe(false);
+    expect(consumerPrice(REGIONS.KR, 50_000, 700, 0.4, 1, { category: 'whisky' })).toBeCloseTo(plain, 6);
   });
 
   it('전통주 자격: 안동은 국산 원료 소주, 제주는 차조 50% 이상, 경기는 자격 없음', () => {

@@ -3,7 +3,7 @@
 //       지역 = 국가(KR | JP | TW → 표준 산지) 또는 산지(gyeonggi | andong | jeju | kanto | kansai | hokkaido | yilan)
 import { advanceMonth, applyAction, bulkValuePerLPA, previewBlend, newGame, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SiteId, type SpiritKind } from '../src/sim';
 import { DEFAULT_SITE, SITES } from '../src/sim/content/sites';
-import { REGIONS } from '../src/sim/content/regions';
+import { KR_BASE_DEDUCTION_2026, REGIONS } from '../src/sim/content/regions';
 
 const SEEDS = Number(process.argv[2] ?? 12);
 const MONTHS = Number(process.argv[3] ?? 120);
@@ -12,8 +12,11 @@ const PLACE = process.argv[5] ?? 'KR';
 const SITE: SiteId = PLACE in SITES ? (PLACE as SiteId) : DEFAULT_SITE[PLACE as RegionId] ?? 'gyeonggi';
 const REGION = `${SITES[SITE].country}/${SITE}`;
 const BRIDGE = process.env.NO_BRIDGE !== '1';
-// 비교 실험용: 한국 기준판매비율을 끄고 v0.6 진 기준가(32,000원/L)로 되돌린다
-if (process.env.NO_DEDUCTION === '1') {
+// 비교 실험용: KR_DEDUCTION=on|off 로 한국 기준판매비율 스위치(APPLY_KR_BASE_DEDUCTION)를 덮어쓴다 (진 기준가도 함께)
+if (process.env.KR_DEDUCTION === 'on') {
+  REGIONS.KR.tax.baseDeduction = KR_BASE_DEDUCTION_2026;
+  REGIONS.KR.market.gin.refConsumerPricePerL = 29_000;
+} else if (process.env.KR_DEDUCTION === 'off') {
   REGIONS.KR.tax.baseDeduction = undefined;
   REGIONS.KR.market.gin.refConsumerPricePerL = 32_000;
 }

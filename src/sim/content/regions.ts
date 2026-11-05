@@ -68,6 +68,20 @@ export interface CountryDef {
 /** 호환용 별칭 — 기존 코드의 RegionDef는 이제 국가 정의다 */
 export type RegionDef = CountryDef;
 
+/**
+ * 한국 기준판매비율 — 국세청 고시 제2026-23호 (소주 23.2%, 위스키 28.0%, 일반증류주 21.3%, 리큐르 22.7%, 브랜디 11.2%).
+ * 국산 주류는 유통 이윤이 붙은 출고가에, 수입 주류는 그 전의 신고가에 과세돼 생기는 역차별을 줄이려고 과세표준에서 뺀다.
+ * 게임 카테고리 매핑: 진·고량주·3년 미만 곡물 스피릿·기타 증류주 = 일반증류주 [튜닝]
+ */
+export const KR_BASE_DEDUCTION_2026: Partial<Record<ProductCategory, number>> = {
+  soju_distilled: 0.232, whisky: 0.28, blended_whisky: 0.28, grain_whisky: 0.28, gin: 0.213, baijiu: 0.213, malt_spirit: 0.213, flavored_spirit: 0.213,
+};
+/**
+ * 기준판매비율 적용 스위치 — v0.8 기본값 꺼짐 (오너 결정 대기, PRD §15.2 #12).
+ * 켜면 한국 10년 순자산이 약 2배가 된다(regions.md §6). 켜면 진 기준가도 마진 사다리(#32)에 맞게 29,000원/L로 바뀐다.
+ */
+export const APPLY_KR_BASE_DEDUCTION = false;
+
 const zero = (src: string): MarketDef => ({ baseCases: 0, baseSource: src, refConsumerPricePerL: 50_000, refAbv: 0.4, elasticity: 1.5, shareCap: 0 });
 
 const krWhisky = casesOf('KR.whisky_total.imports.2024');
@@ -78,13 +92,10 @@ export const REGIONS: Record<RegionId, CountryDef> = {
   KR: {
     id: 'KR',
     nameKo: '대한민국',
-    // 기준판매비율: 국세청 고시 제2026-23호 (소주 23.2%, 위스키 28.0%, 일반증류주 21.3%, 리큐르 22.7%).
-    // 국산 주류는 유통 이윤이 붙은 출고가에, 수입 주류는 그 전의 신고가에 과세돼 생기는 역차별을 줄이려고 과세표준에서 뺀다.
-    // 게임 카테고리 매핑: 진·고량주·3년 미만 곡물 스피릿·기타 증류주 = 일반증류주 [튜닝]
     tax: {
       adValorem: 0.72, education: 0.3, specificPerLPA: 0, vat: 0.1,
-      label: '종가세 72%(기준판매비율 차감 후 과세) + 교육세(주세의 30%) + 부가세 10%',
-      baseDeduction: { soju_distilled: 0.232, whisky: 0.28, blended_whisky: 0.28, grain_whisky: 0.28, gin: 0.213, baijiu: 0.213, malt_spirit: 0.213, flavored_spirit: 0.213 },
+      label: APPLY_KR_BASE_DEDUCTION ? '종가세 72%(기준판매비율 차감 후 과세) + 교육세(주세의 30%) + 부가세 10%' : '종가세 72% + 교육세(주세의 30%) + 부가세 10%',
+      ...(APPLY_KR_BASE_DEDUCTION ? { baseDeduction: KR_BASE_DEDUCTION_2026 } : {}),
     },
     // 전통주 주세 감면 (2025년 시행령 개정): 증류주 전년 출고 500kL 이하면 자격, 처음 100kL 50%·100~200kL 30% 감면.
     // 전통주는 온라인 통신판매 허용 (일반 증류주는 택배 판매 불가)
@@ -95,8 +106,8 @@ export const REGIONS: Record<RegionId, CountryDef> = {
     market: {
       soju_distilled: { baseCases: casesOf('KR.soju_distilled.domestic_release.2025'), baseSource: 'KR.soju_distilled (TASIS 2025)', refConsumerPricePerL: 40_000, refAbv: 0.25, elasticity: 1.6, shareCap: 0.2 },
       // 한국 진 시장은 작다 — 칵테일 바에서 제한적으로 쓰이는 정도 [결정 #45, 수치 튜닝]
-      // v0.8: 기준판매비율(일반증류주 21.3%) 반영 후에도 마진 사다리(#32, 진 10~25%)를 지키도록 기준가 32,000 → 29,000원/L [튜닝]
-      gin: { baseCases: 15_000, baseSource: '추정: 칵테일용 소규모 시장', refConsumerPricePerL: 29_000, refAbv: 0.43, elasticity: 2.2, shareCap: 0.2 },
+      // 기준판매비율(일반증류주 21.3%)을 켜면 마진 사다리(#32, 진 10~25%)를 지키도록 기준가 32,000 → 29,000원/L [튜닝]
+      gin: { baseCases: 15_000, baseSource: '추정: 칵테일용 소규모 시장', refConsumerPricePerL: APPLY_KR_BASE_DEDUCTION ? 29_000 : 32_000, refAbv: 0.43, elasticity: 2.2, shareCap: 0.2 },
       whisky: { baseCases: Math.round(krWhisky * 0.4), baseSource: 'KR.whisky_total × 40% (싱글 몰트 몫, 추정)', refConsumerPricePerL: 170_000, refAbv: 0.43, elasticity: 1.1, shareCap: 0.01 },
       blended_whisky: { baseCases: Math.round(krWhisky * 0.5), baseSource: 'KR.whisky_total × 50% (블렌디드 몫, 추정)', refConsumerPricePerL: 90_000, refAbv: 0.4, elasticity: 1.5, shareCap: 0.012 },
       grain_whisky: { baseCases: Math.round(krWhisky * 0.1), baseSource: 'KR.whisky_total × 10% (추정)', refConsumerPricePerL: 100_000, refAbv: 0.43, elasticity: 1.3, shareCap: 0.02 },
