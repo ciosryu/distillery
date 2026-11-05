@@ -1,4 +1,4 @@
-import { EQUIPMENT, INGREDIENTS, KR_DOMESTIC_INGREDIENTS, UPGRADE_RISK_REDUCTION, type EquipmentDef, type UpgradeId } from './content/catalog';
+import { EQUIPMENT, UPGRADE_RISK_REDUCTION, type EquipmentDef, type UpgradeId } from './content/catalog';
 import { regionOf } from './content/regions';
 import { siteOf, type SiteDef } from './content/sites';
 import { clamp } from './flavor';
@@ -51,14 +51,18 @@ export function equipmentAvailable(s: GameState): EquipmentDef[] {
 
 // ── 전통주 (한국: 민속주·지역특산주) ──
 
-/** 레시피가 이 산지에서 전통주 자격을 갖는가 — 증류식 소주 + 국산 원료(+지역 원료 비중) */
+/**
+ * 레시피가 이 산지에서 전통주 자격을 갖는가 (결정 #62) — 주원료가 모두 산지가 정한 지역 농산물이고 발효제는 허용 목록만.
+ * 주종은 가리지 않는다: 수입 맥아·옥수수·주정(진) 같은 원료가 하나라도 있으면 자격 없음
+ */
 export function isTraditionalRecipe(site: SiteDef, r: Pick<Recipe, 'kind' | 'mashBill'>): boolean {
   const t = site.traditional;
-  if (!t || r.kind !== 'soju' || !r.mashBill.length) return false;
-  if (!r.mashBill.every((m) => KR_DOMESTIC_INGREDIENTS.includes(m.ingredientId) && INGREDIENTS[m.ingredientId])) return false;
-  if (t.kind === 'regional' && t.ingredient) {
-    const share = r.mashBill.filter((m) => m.ingredientId === t.ingredient).reduce((a, m) => a + m.ratio, 0);
-    if (share + 1e-9 < (t.minShare ?? 0)) return false;
+  if (!t || !r.mashBill.length) return false;
+  const mains = r.mashBill.filter((m) => m.ratio > 0 && !t.starters.includes(m.ingredientId));
+  if (!mains.length || !mains.every((m) => t.mainIngredients.includes(m.ingredientId))) return false;
+  if (t.minShare) {
+    const share = r.mashBill.filter((m) => m.ingredientId === t.minShare!.ingredient).reduce((a, m) => a + m.ratio, 0);
+    if (share + 1e-9 < t.minShare.share) return false;
   }
   return true;
 }

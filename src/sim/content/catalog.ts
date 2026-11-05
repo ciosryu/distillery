@@ -32,12 +32,13 @@ export const INGREDIENTS: Record<string, IngredientDef> = {
   rice_processing: { id: 'rice_processing', nameKo: '가공용 쌀', lpaPerKg: 0.44, pricePerKg: 1300, flavor: { nuruk_rice: 20, floral: 5, fresh_fruit: 5, sweetness: 6, cereal: 5 }, kinds: ['soju'] },
   nuruk: { id: 'nuruk', nameKo: '전통 누룩', lpaPerKg: 0.1, pricePerKg: 6000, flavor: { nuruk_rice: 40, earthy: 6, fresh_fruit: 6 }, kinds: ['soju'] },
   // 산지 한정 (regions.md §4)
+  andong_rice: { id: 'andong_rice', nameKo: '안동 쌀 — 지역 농산물(계약재배)', lpaPerKg: 0.46, pricePerKg: 3200, flavor: { nuruk_rice: 27, floral: 9, fresh_fruit: 9, sweetness: 8 }, kinds: ['soju'], sites: ['andong'] },
   jeju_millet: { id: 'jeju_millet', nameKo: '제주 차조(좁쌀) — 고소리술 원료', lpaPerKg: 0.42, pricePerKg: 4500, flavor: { nuruk_rice: 15, cereal: 18, earthy: 6, toasted_grain: 6, sweetness: 6 }, kinds: ['soju'], sites: ['jeju'] },
   potato: { id: 'potato', nameKo: '홋카이도 감자', lpaPerKg: 0.11, pricePerKg: 450, flavor: { earthy: 10, sweetness: 8, floral: 6, fresh_fruit: 4 }, kinds: ['soju'], sites: ['hokkaido'] },
 };
 
-/** 한국 전통주(민속주·지역특산주) 자격에 쓸 수 있는 국산 원료 */
-export const KR_DOMESTIC_INGREDIENTS = ['rice_domestic', 'rice_processing', 'nuruk', 'jeju_millet'];
+/** 발효제 — 전통주 자격 판정에서 주원료로 치지 않는다 */
+export const FERMENTATION_STARTERS = ['nuruk', 'daqu', 'rice_koji'];
 
 /** 진 베이스 중성 스피릿(주정 95%) — L당 가격 */
 export const GNS = { nameKo: '주정(95%)', abv: 0.95, pricePerL: 2300, flavor: { harshness: 35, solvent: 8, feinty: 8 } as Flavor };

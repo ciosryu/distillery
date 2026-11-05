@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   advanceMonths, annuityPayment, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, categorize, demandFor, evaluate, evaporate, heartsFraction, spotBidPerLPA, spotQuote,
   makeContractOffer, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
-  appeal, applyEffects, buyersFor, presetRecipes, validateRecipe, type Product,
+  appeal, applyEffects, buyersFor, presetRecipes, suggestedPrice, validateRecipe, type Product,
 } from './index';
 import { EQUIPMENT } from './content/catalog';
 import { BUYERS } from './content/names';
-import { APPLY_KR_BASE_DEDUCTION, consumerPrice, KR_BASE_DEDUCTION_2026, priceForConsumer, REGIONS } from './content/regions';
+import { APPLY_KR_BASE_DEDUCTION, consumerPrice, krImportCompetitionFactor, priceForConsumer, REGIONS, setKrBaseDeduction } from './content/regions';
 import { DEFAULT_SITE, SITES } from './content/sites';
 import {
   applyTerroir, dutyFreeDemand, fermentCapacityFactor, isTraditionalRecipe, migrateState, productConsumerPrice, riskScale, scaleEffects,
@@ -396,27 +396,37 @@ describe('산지 (v0.8, regions.md Tier 1)', () => {
     expect(yearLoss('hokkaido')).toBeLessThan(0.017);
   });
 
-  it('기준판매비율(켰을 때): 한국 국산 위스키는 과세표준이 28% 줄어 소비자가가 낮아지고, 권장가 역산은 그대로 맞는다', () => {
-    const KR = { ...REGIONS.KR, tax: { ...REGIONS.KR.tax, baseDeduction: KR_BASE_DEDUCTION_2026 } };
-    const plain = consumerPrice(KR, 50_000, 700, 0.4);
-    const whisky = consumerPrice(KR, 50_000, 700, 0.4, 1, { category: 'whisky' });
+  it('기준판매비율(결정 #61): 과세표준이 줄지만, 수입 경쟁 기준가·가격 민감도 때문에 국산 마진은 v0.6 수준에 머문다', () => {
+    expect(APPLY_KR_BASE_DEDUCTION).toBe(true);
+    const plain = consumerPrice(REGIONS.KR, 50_000, 700, 0.4);
+    const whisky = consumerPrice(REGIONS.KR, 50_000, 700, 0.4, 1, { category: 'whisky' });
     expect(whisky).toBeLessThan(plain * 0.92);
     expect(consumerPrice(REGIONS.JP, 50_000, 700, 0.4, 1, { category: 'whisky' })).toBeCloseTo(consumerPrice(REGIONS.JP, 50_000, 700, 0.4), 6);
     for (const opts of [{ category: 'whisky' as const }, { category: 'soju_distilled' as const, relief: 0.5 }])
-      expect(priceForConsumer(KR, consumerPrice(KR, 30_000, 700, 0.4, 1, opts), 700, 0.4, opts)).toBeCloseTo(30_000, 0);
-    // v0.8 기본값은 꺼짐 (오너 결정 대기)
-    expect(APPLY_KR_BASE_DEDUCTION).toBe(false);
-    expect(consumerPrice(REGIONS.KR, 50_000, 700, 0.4, 1, { category: 'whisky' })).toBeCloseTo(plain, 6);
+      expect(priceForConsumer(REGIONS.KR, consumerPrice(REGIONS.KR, 30_000, 700, 0.4, 1, opts), 700, 0.4, opts)).toBeCloseTo(30_000, 0);
+    const on = { ref: REGIONS.KR.market.whisky.refConsumerPricePerL, e: REGIONS.KR.market.whisky.elasticity, price: suggestedPrice(REGIONS.KR, 'whisky', 700, 70, 4, 0.46) };
+    setKrBaseDeduction(false);
+    const off = { ref: REGIONS.KR.market.whisky.refConsumerPricePerL, e: REGIONS.KR.market.whisky.elasticity, price: suggestedPrice(REGIONS.KR, 'whisky', 700, 70, 4, 0.46) };
+    setKrBaseDeduction(true);
+    expect(on.ref).toBeCloseTo(off.ref * krImportCompetitionFactor('whisky'), -2);
+    expect(on.e).toBeCloseTo(off.e + 0.2, 6);
+    // 기준판매비율로 생긴 출고가 여유는 수입 경쟁이 상쇄 → 권장 출고가는 거의 같다 (±1%)
+    expect(Math.abs(on.price / off.price - 1)).toBeLessThan(0.01);
   });
 
-  it('전통주 자격: 안동은 국산 원료 소주, 제주는 차조 50% 이상, 경기는 자격 없음', () => {
-    const rice = { kind: 'soju' as const, mashBill: [{ ingredientId: 'rice_domestic', ratio: 0.92 }, { ingredientId: 'nuruk', ratio: 0.08 }] };
+  it('전통주 자격(결정 #62): 안동은 안동 쌀(지역 농산물)만, 수입·타지역 원료가 섞이면 감면 없음. 제주는 차조 50% 이상', () => {
+    const local = { kind: 'soju' as const, mashBill: [{ ingredientId: 'andong_rice', ratio: 0.92 }, { ingredientId: 'nuruk', ratio: 0.08 }] };
+    const korean = { kind: 'soju' as const, mashBill: [{ ingredientId: 'rice_domestic', ratio: 0.92 }, { ingredientId: 'nuruk', ratio: 0.08 }] };
+    const mixed = { kind: 'soju' as const, mashBill: [{ ingredientId: 'andong_rice', ratio: 0.6 }, { ingredientId: 'rice_processing', ratio: 0.32 }, { ingredientId: 'nuruk', ratio: 0.08 }] };
     const millet = { kind: 'soju' as const, mashBill: [{ ingredientId: 'jeju_millet', ratio: 0.9 }, { ingredientId: 'nuruk', ratio: 0.1 }] };
-    expect(isTraditionalRecipe(SITES.andong, rice)).toBe(true);
-    expect(isTraditionalRecipe(SITES.gyeonggi, rice)).toBe(false);
-    expect(isTraditionalRecipe(SITES.jeju, rice)).toBe(false);
-    expect(isTraditionalRecipe(SITES.jeju, millet)).toBe(true);
+    expect(isTraditionalRecipe(SITES.andong, local)).toBe(true);
+    expect(isTraditionalRecipe(SITES.andong, korean)).toBe(false);
+    expect(isTraditionalRecipe(SITES.andong, mixed)).toBe(false);
+    expect(isTraditionalRecipe(SITES.andong, { kind: 'malt', mashBill: [{ ingredientId: 'malt_unpeated', ratio: 1 }] })).toBe(false);
     expect(isTraditionalRecipe(SITES.andong, { kind: 'malt', mashBill: [{ ingredientId: 'malt_korean', ratio: 1 }] })).toBe(false);
+    expect(isTraditionalRecipe(SITES.gyeonggi, local)).toBe(false);
+    expect(isTraditionalRecipe(SITES.jeju, millet)).toBe(true);
+    expect(isTraditionalRecipe(SITES.jeju, korean)).toBe(false);
   });
 
   it('전통주 감면: 안동 소주는 감면으로 소비자가가 낮고, 출고량 구간·전년 실적에 따라 감면율이 바뀐다', () => {

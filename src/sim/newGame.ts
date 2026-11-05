@@ -34,6 +34,7 @@ export function presetRecipes(stillId: string, region: RegionId = 'KR', site: Si
   const gin = (name: string, botanicals: Recipe['botanicals']): Omit<Recipe, 'id'> => ({ ...base, name, kind: 'gin', mashBill: [], botanicalMethod: 'vapor', botanicals, yeast: 'distillers', fermentDays: 0, runs: 1, cut: { c1: 0.08, c2: 0.8 } });
   // 산지 한정 프리셋 — 산지 원료가 정체성인 곳은 그 레시피를 맨 앞에 둔다
   const siteFirst: Omit<Recipe, 'id'>[] = [];
+  if (site === 'andong') siteFirst.push({ ...base, name: '안동소주 — 안동 쌀(전통주)', kind: 'soju', mashBill: [{ ingredientId: 'andong_rice', ratio: 0.92 }, { ingredientId: 'nuruk', ratio: 0.08 }], yeast: 'nuruk_native', fermentDays: 14, runs: 1, cut: { c1: 0.12, c2: 0.7 } });
   if (site === 'jeju') siteFirst.push({ ...base, name: '고소리술 — 제주 차조', kind: 'soju', mashBill: [{ ingredientId: 'jeju_millet', ratio: 0.9 }, { ingredientId: 'nuruk', ratio: 0.1 }], yeast: 'nuruk_native', fermentDays: 14, runs: 1, cut: { c1: 0.12, c2: 0.7 } });
   if (site === 'hokkaido') siteFirst.push({ ...base, name: '본격 쇼추 — 홋카이도 감자', kind: 'soju', mashBill: [{ ingredientId: 'potato', ratio: 0.75 }, { ingredientId: 'rice_koji', ratio: 0.25 }], yeast: 'distillers', fermentDays: 12, runs: 1, cut: { c1: 0.12, c2: 0.7 } });
   return [...siteFirst, ...countryPresets(base, region, londonDry, malts, gin)];

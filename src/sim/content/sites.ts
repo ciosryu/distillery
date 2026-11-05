@@ -47,8 +47,11 @@ export interface SiteDef {
   heating?: { months: number[]; perMonth: number; energyFactor: number };
   /** 겨울 발효 지연: 해당 월 발효조 가동 일수 배수 (온도 제어 설비로 해소) */
   winterFerment?: { months: number[]; capacity: number };
-  /** 한국 전통주 자격: 민속주(국산 원료 증류식 소주) / 지역특산주(지역 원료 비중 조건) */
-  traditional?: { kind: 'folk' | 'regional'; label: string; ingredient?: string; minShare?: number };
+  /**
+   * 한국 전통주 자격 (주세 감면·온라인 직판) — 주원료가 모두 mainIngredients 안에 있고, 발효제는 starters만 허용.
+   * 주종은 가리지 않는다. minShare = 특정 지역 원료의 최소 비중
+   */
+  traditional?: { label: string; mainIngredients: string[]; starters: string[]; minShare?: { ingredient: string; share: number } };
   /** 지정면세점 채널 (제주) */
   dutyFree?: boolean;
   /** 취수 허가: 월 발효 투입 용량 상한(L) + 증량 신청 */
@@ -89,11 +92,13 @@ export const SITES: Record<SiteId, SiteDef> = {
     demandFactor: 1, extraCandidates: 0,
     heating: { months: [12, 1, 2], perMonth: 800_000, energyFactor: 1.2 },
     winterFerment: { months: [12, 1, 2], capacity: 0.85 },
-    traditional: { kind: 'folk', label: '민속주 헤리티지 — 국산 원료 증류식 소주는 전통주' },
+    // 결정 #62: 감면은 지역 농산물(안동 쌀)만 원료로 쓴 술에만. 수입 맥아·타지역 원료가 들어가면 감면 없음
+    traditional: { label: '민속주 헤리티지 — 안동 쌀(지역 농산물)만 원료로 빚은 술은 전통주. 수입 맥아·타지역 원료를 쓰면 감면 없음', mainIngredients: ['andong_rice'], starters: ['nuruk'] },
     starter: { name: '권태호', distillery: '낙강 증류소', casks: [...bourbon(8), 'korean_oak_quarter', 'korean_oak_quarter'] },
     traits: [
-      { tone: 'good', text: '전통주 자격: 국산 원료 증류식 소주는 주세 감면(100kL까지 50%) + 온라인 직판' },
+      { tone: 'good', text: '전통주 자격: 안동 쌀(지역 농산물)로만 빚으면 주세 감면(100kL까지 50%) + 온라인 직판' },
       { tone: 'good', text: '국산 쌀 계약재배 −15%, 관리비 낮음' },
+      { tone: 'bad', text: '감면은 지역 농산물만: 안동 쌀은 일반 국산 쌀보다 비싸고, 수입 맥아·타지역 원료를 쓰면 감면 없음' },
       { tone: 'good', text: '우리술 품평회 수상 기회 ×1.5, 가을 탈춤축제' },
       { tone: 'bad', text: '전년 출고 500kL를 넘으면 감면 자격 상실' },
       { tone: 'bad', text: '대륙성 겨울: 12~2월 발효 효율 −15%(온도 제어 설비로 해소)·난방비' },
@@ -108,7 +113,7 @@ export const SITES: Record<SiteId, SiteDef> = {
     freight: { ingredients: 1.08, packaging: 1.15, casks: 1.1 }, outboundLogistics: 2, ingredientPrice: {}, caskPriceFactor: {}, eventWeights: {},
     eventBoost: { typhoon: 1.3 },
     demandFactor: 1, extraCandidates: 0,
-    traditional: { kind: 'regional', label: '지역특산주 — 제주 차조 50% 이상 증류식 소주(고소리술)는 전통주', ingredient: 'jeju_millet', minShare: 0.5 },
+    traditional: { label: '지역특산주 — 제주 차조 50% 이상 + 나머지 국산 쌀로 빚은 술(고소리술)은 전통주', mainIngredients: ['jeju_millet', 'rice_domestic', 'rice_processing'], starters: ['nuruk'], minShare: { ingredient: 'jeju_millet', share: 0.5 } },
     dutyFree: true,
     // 공정용수 월 15,000L — 실제 허가량(t/일)을 게임 규모로 단순화 [게임적 단순화]
     waterPermit: { baseL: 15_000, stepL: 10_000, cost: 20_000_000, months: [6, 12], chance: 0.6 },
