@@ -1,32 +1,38 @@
 // 헤드리스 밸런스 시뮬레이션 — 전략별 단순 정책으로 N개 시드를 돌려 파산률·흑자 전환 시점·매출 구성을 본다.
-// 실행: npm run balance [-- 시드수 개월수 전략]   전략 = brand | hybrid | expand | grain | all(기본)
-import { advanceMonth, applyAction, bulkValuePerLPA, previewBlend, newGame, type Action, type ContractTerms, type GameState, type ProductCategory } from '../src/sim';
+// 실행: npm run balance [-- 시드수 개월수 전략 지역]   전략 = brand | hybrid | expand | grain | all(기본), 지역 = KR(기본) | JP | TW
+import { advanceMonth, applyAction, bulkValuePerLPA, previewBlend, newGame, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
 
 const SEEDS = Number(process.argv[2] ?? 12);
 const MONTHS = Number(process.argv[3] ?? 120);
 const WHICH = process.argv[4] ?? 'all';
+const REGION = (process.argv[5] ?? 'KR') as RegionId;
+const BRIDGE = process.env.NO_BRIDGE !== '1';
 
 type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain';
 
 const act = (s: GameState, a: Action) => applyAction(s, a).state;
 const stockOf = (s: GameState, cat: ProductCategory) => s.products.filter((p) => p.category === cat).reduce((t, p) => t + p.stockBottles, 0);
-const rid = (s: GameState, prefix: string) => s.recipes.find((r) => r.name.startsWith(prefix))?.id;
+/** 지역마다 프리셋 이름이 다르므로 kind(+피트 여부)로 첫 레시피를 찾는다 */
+const recipeOf = (s: GameState, kind: SpiritKind) => s.recipes.find((r) => r.kind === kind && !r.mashBill.some((m) => m.ingredientId === 'malt_peated'));
+const rid = (s: GameState, kind: SpiritKind) => recipeOf(s, kind)?.id;
 const BIG_RECIPE = 'B2B 몰트';
 
 function bottleCashProducts(s: GameState): GameState {
   for (const lot of [...s.lots]) {
     if (lot.kind === 'soju' && stockOf(s, 'soju_distilled') < 1500 && s.month - lot.createdMonth >= 1)
       s = act(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: lot.volumeL }], options: { name: `소주 ${s.month}`, targetAbv: 0.25, bottleMl: 375, chillFilter: true, packagingId: 'standard' } });
+    if (lot.kind === 'baijiu' && stockOf(s, 'baijiu') < 1500 && s.month - lot.createdMonth >= 1)
+      s = act(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: lot.volumeL }], options: { name: `고량주 ${s.month}`, targetAbv: 0.34, bottleMl: 500, chillFilter: true, packagingId: 'standard' } });
     if (lot.kind === 'gin' && stockOf(s, 'gin') < 1500)
       s = act(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: lot.volumeL }], options: { name: `진 ${s.month}`, targetAbv: 0.43, bottleMl: 700, chillFilter: true, packagingId: 'standard' } });
   }
   return s;
 }
 
-/** 몰트 원액을 최대 maxLPA만큼 캐스크에 통입 (빈 통 부족 시 구매) */
-function fillMalt(s: GameState, maxLPA = Infinity): GameState {
+/** 몰트(또는 그레인) 원액을 최대 maxLPA만큼 캐스크에 통입 (빈 통 부족 시 구매) */
+function fillMalt(s: GameState, maxLPA = Infinity, kind: 'malt' | 'grain' = 'malt'): GameState {
   let budget = maxLPA;
-  for (const lot of s.lots.filter((l) => l.kind === 'malt')) {
+  for (const lot of s.lots.filter((l) => l.kind === kind)) {
     if (budget <= 0) break;
     const lpa = Math.min(budget, lot.volumeL * lot.abv);
     const need = Math.ceil(lpa / (200 * 0.635));
@@ -44,6 +50,33 @@ function bottleWhisky(s: GameState): GameState {
   if (!ready.length) return s;
   const comps = ready.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }));
   const opts = { name: `싱글 몰트 ${s.month}`, targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' };
+  return previewBlend(s, comps, opts).ok ? act(s, { type: 'bottle', components: comps, options: opts }) : s;
+}
+
+/** 공백기 브리지(결정 #20): 자사 위스키가 나오기 전엔 브로커 숙성 원액을 사서 병입한다. 일본은 매입 원액 감점이 커서 효과가 작다 */
+function bridgeSourced(s: GameState): GameState {
+  if (s.month >= 42 || stockOf(s, 'whisky') >= 400 || s.cash < 150_000_000) return s;
+  const owned = s.casks.find((c) => c.contents?.sourced);
+  if (!owned) {
+    const o = [...s.brokerOffers].sort((a, b) => a.price - b.price)[0];
+    if (o && o.price < s.cash - 120_000_000) s = act(s, { type: 'buyBrokerCask', offerId: o.id });
+  }
+  const c = s.casks.find((x) => x.contents?.sourced);
+  if (!c) return s;
+  const comps = [{ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }];
+  const opts = { name: `매입 원액 병입 ${s.month}`, targetAbv: 0.43, bottleMl: 700, chillFilter: true, packagingId: 'standard' };
+  return previewBlend(s, comps, opts).ok ? act(s, { type: 'bottle', components: comps, options: opts }) : s;
+}
+
+/** 그레인 수직계열화: 36개월 이후 그레인 2 + 몰트 1 캐스크로 블렌디드 위스키를 병입 */
+function bottleBlended(s: GameState): GameState {
+  if (stockOf(s, 'blended_whisky') >= 1500) return s;
+  const aged = (k: 'malt' | 'grain') => s.casks.filter((c) => c.contents && c.contents.kind === k && c.contents.oakMonths >= 36 && !c.contents.sourced);
+  const g = aged('grain').slice(0, 2);
+  const m = aged('malt').slice(0, 1);
+  if (g.length < 2 || !m.length) return s;
+  const comps = [...g, ...m].map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }));
+  const opts = { name: `블렌디드 ${s.month}`, targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' };
   return previewBlend(s, comps, opts).ok ? act(s, { type: 'bottle', components: comps, options: opts }) : s;
 }
 
@@ -70,13 +103,18 @@ function start(s: GameState, strategy: Strategy): GameState {
   const sales = s.candidates.filter((c) => c.role === 'sales').sort((a, b) => b.stats.b - a.stats.b)[0];
   if (sales) s = act(s, { type: 'hire', candidateId: sales.id });
   s = act(s, { type: 'setMarketing', amount: 5_000_000 });
-  s = act(s, { type: 'setOrder', recipeId: rid(s, '증류식')!, batchesPerMonth: 2 });
-  s = act(s, { type: 'setOrder', recipeId: rid(s, '런던')!, batchesPerMonth: 1 });
-  if (strategy === 'hybrid') {
-    // 혼합형: 발효조 증설로 몰트 생산을 늘리고, 브랜드가 소화 못 할 몫만 계약으로
+  const soju = rid(s, 'soju');
+  if (soju) s = act(s, { type: 'setOrder', recipeId: soju, batchesPerMonth: 2 });
+  // 한국은 진 시장이 작으므로(결정 #45) 진 대신 고량주를 현금 제품으로 쓴다
+  const baijiu = rid(s, 'baijiu');
+  if (baijiu) s = act(s, { type: 'setOrder', recipeId: baijiu, batchesPerMonth: 1 });
+  else s = act(s, { type: 'setOrder', recipeId: rid(s, 'gin')!, batchesPerMonth: soju ? 1 : 2 });
+  if (strategy === 'hybrid' || strategy === 'brand') {
+    // 브랜드형·혼합형은 같은 생산 능력(발효조 증설 + 몰트 7배치)으로 비교한다 — 차이는 B2B 계약 여부뿐
+    // 혼합형: 브랜드가 소화 못 할 몫만 계약으로
     s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
     s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
-    return act(s, { type: 'setOrder', recipeId: rid(s, '싱글 몰트 — 언')!, batchesPerMonth: 7 });
+    return act(s, { type: 'setOrder', recipeId: rid(s, 'malt')!, batchesPerMonth: 7 });
   }
   if (strategy === 'grain') {
     // 그레인 공급형: 시설자금으로 연속식 증류기를 들여 국내 블렌더에 그레인 원액을 대량 공급
@@ -85,11 +123,11 @@ function start(s: GameState, strategy: Strategy): GameState {
     s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_10000' });
     s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_10000' });
     const col = s.equipment.find((e) => e.catalogId === 'column_2')!;
-    const base = s.recipes.find((r) => r.name.startsWith('싱글 몰트 — 언'))!;
+    const base = recipeOf(s, 'malt')!;
     const { id: _id, ...rest } = base;
     s = act(s, { type: 'saveRecipe', recipe: { ...rest, name: GRAIN_RECIPE, kind: 'grain', stillId: col.id, mashBill: [{ ingredientId: 'corn', ratio: 0.9 }, { ingredientId: 'malt_unpeated', ratio: 0.1 }], fermentDays: 3, runs: 1 } });
   }
-  return act(s, { type: 'setOrder', recipeId: rid(s, '싱글 몰트 — 언')!, batchesPerMonth: 4 });
+  return act(s, { type: 'setOrder', recipeId: rid(s, 'malt')!, batchesPerMonth: 4 });
 }
 
 /** 확장형: 위스키 판매가 자리 잡은 뒤(48개월~, 현금 4억↑) 증류기 1기를 추가해 몰트 B2B 공급을 붙인다 */
@@ -99,7 +137,7 @@ function expand(s: GameState): GameState {
   s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
   s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
   const still = s.equipment.filter((e) => e.catalogId === 'pot_onion_1000').at(-1)!;
-  const base = s.recipes.find((r) => r.name.startsWith('싱글 몰트 — 언'))!;
+  const base = recipeOf(s, 'malt')!;
   const { id: _id, ...rest } = base;
   return act(s, { type: 'saveRecipe', recipe: { ...rest, name: BIG_RECIPE, stillId: still.id } });
 }
@@ -127,8 +165,11 @@ function policy(s: GameState, strategy: Strategy): GameState {
     const col = r && s.equipment.find((e) => e.id === r.stillId);
     if (r && col && col.readyMonth <= s.month && !s.orders.some((o) => o.recipeId === r.id)) s = act(s, { type: 'setOrder', recipeId: r.id, batchesPerMonth: 12 });
     if (col && col.readyMonth <= s.month + 3) s = acceptContracts(s, 6000, 'grain_newmake');
+    // 그레인 일부(월 300 LPA)는 자사 블렌디드용으로 통입, 나머지는 현물 판매
+    s = fillMalt(s, 300, 'grain');
     s = sellLots(s, 'grain');
     s = fillMalt(s);
+    s = bottleBlended(s);
   } else {
     s = expand(s);
     const r = s.recipes.find((x) => x.name === BIG_RECIPE);
@@ -140,6 +181,7 @@ function policy(s: GameState, strategy: Strategy): GameState {
     if (ready) { s = fillMalt(s, 250); s = sellLots(s, 'malt'); } else s = fillMalt(s);
   }
   s = bottleWhisky(s);
+  if (BRIDGE) s = bridgeSourced(s);
   return finance(s);
 }
 
@@ -153,10 +195,17 @@ function netWorth(s: GameState): number {
   return s.cash - s.loans.reduce((t, l) => t + l.balance, 0) + stock + products;
 }
 
-interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWorth: number; firstPositive: number; y5retail: number; y5bulk: number }
+/** 보수적 순자산 = 원액 재고를 시가가 아닌 장부 원가로 평가 (회계상 재고 평가와 같음) */
+function bookWorth(s: GameState): number {
+  const stock = [...s.lots, ...s.casks.flatMap((c) => (c.contents ? [c.contents] : []))].reduce((t, l) => t + l.volumeL * l.abv * l.costPerLPA, 0);
+  const products = s.products.reduce((t, p) => t + p.stockBottles * p.unitCost, 0);
+  return s.cash - s.loans.reduce((t, l) => t + l.balance, 0) + stock + products;
+}
+
+interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWorth: number; bookWorth: number; firstPositive: number; y5retail: number; y5bulk: number }
 
 function play(strategy: Strategy, seed: number): Result {
-  let s = newGame({ seed });
+  let s = newGame({ seed, region: REGION });
   let lo = s.cash;
   for (let m = 0; m < MONTHS && s.status === 'running'; m++) {
     s = advanceMonth(policy(s, strategy));
@@ -167,7 +216,7 @@ function play(strategy: Strategy, seed: number): Result {
   for (let i = 2; i < net.length; i++) if ((net[i]! + net[i - 1]! + net[i - 2]!) / 3 > 0) { fp = i; break; }
   const y5 = s.reports.filter((r) => r.month >= 48 && r.month < 60);
   return {
-    strategy, bankrupt: s.status === 'bankrupt', minCash: lo, netWorth: s.status === 'bankrupt' ? -Infinity : netWorth(s), firstPositive: fp,
+    strategy, bankrupt: s.status === 'bankrupt', minCash: lo, netWorth: s.status === 'bankrupt' ? -Infinity : netWorth(s), bookWorth: s.status === 'bankrupt' ? -Infinity : bookWorth(s), firstPositive: fp,
     y5retail: y5.reduce((t, r) => t + r.revenue, 0), y5bulk: y5.reduce((t, r) => t + r.bulkRevenue, 0),
   };
 }
@@ -175,11 +224,17 @@ function play(strategy: Strategy, seed: number): Result {
 const list: Strategy[] = WHICH === 'all' ? ['brand', 'hybrid', 'expand', 'grain'] : [WHICH as Strategy];
 const results: Record<Strategy, Result[]> = { brand: [], hybrid: [], expand: [], grain: [] };
 const wins: Record<string, number> = {};
+const bookWins: Record<string, number> = {};
+const tally = (rs: Result[], by: 'netWorth' | 'bookWorth', into: Record<string, number>) => {
+  const best = rs.reduce((a, b) => (b[by] > a[by] ? b : a));
+  const key = best.bankrupt ? '전멸' : best.strategy;
+  into[key] = (into[key] ?? 0) + 1;
+};
 for (let seed = 1; seed <= SEEDS; seed++) {
   const rs = list.map((st) => play(st, seed));
   rs.forEach((r) => results[r.strategy].push(r));
-  const best = rs.reduce((a, b) => (b.netWorth > a.netWorth ? b : a));
-  wins[best.strategy] = (wins[best.strategy] ?? 0) + 1;
+  tally(rs, 'netWorth', wins);
+  tally(rs, 'bookWorth', bookWins);
 }
 for (const st of list) {
   const rs = results[st];
@@ -187,6 +242,8 @@ for (const st of list) {
   const nw = alive.map((r) => r.netWorth);
   const sd = Math.sqrt(avg(nw.map((v) => (v - avg(nw)) ** 2)));
   const fps = rs.filter((r) => r.firstPositive >= 0).map((r) => r.firstPositive);
-  console.log(`${st.padEnd(7)} | 파산 ${rs.length - alive.length}/${rs.length} | 순자산(${MONTHS}m) 평균 ${eok(avg(nw))} ±${eok(sd)} | 최저 현금 평균 ${eok(avg(rs.map((r) => r.minCash)))} | 흑자 전환 평균 ${Math.round(avg(fps))}개월 | 5년차 매출 병입 ${eok(avg(rs.map((r) => r.y5retail)))} + B2B ${eok(avg(rs.map((r) => r.y5bulk)))} | 1위 ${wins[st] ?? 0}회`);
+  console.log(`${st.padEnd(7)} | 파산 ${rs.length - alive.length}/${rs.length} | 순자산(${MONTHS}m) 평균 ${eok(avg(nw))} ±${eok(sd)} · 원가기준 ${eok(avg(alive.map((r) => r.bookWorth)))} | 최저 현금 평균 ${eok(avg(rs.map((r) => r.minCash)))} | 흑자 전환 평균 ${Math.round(avg(fps))}개월 | 5년차 매출 병입 ${eok(avg(rs.map((r) => r.y5retail)))} + B2B ${eok(avg(rs.map((r) => r.y5bulk)))} | 1위 ${wins[st] ?? 0}회`);
 }
-console.log(`\n시드별 1위 분포: ${list.map((st) => `${st} ${wins[st] ?? 0}`).join(' · ')} (한 전략이 60% 이상 이기면 지배 전략 의심)`);
+const dist = (w: Record<string, number>) => [...list, '전멸'].map((st) => `${st} ${w[st] ?? 0}`).join(' · ');
+console.log(`\n[${REGION}] 시드별 1위 분포(시가 평가): ${dist(wins)}`);
+console.log(`[${REGION}] 시드별 1위 분포(원가 평가): ${dist(bookWins)}  (한 전략이 60% 이상 이기면 지배 전략 의심)`);

@@ -6,12 +6,13 @@ import {
   type FermenterType, type GameState, type ProductCategory, type Recipe, type SpiritKind, type YeastId,
 } from '../../sim';
 import { useGame } from '../../store/game';
+import { regionOf } from '../../sim/content/regions';
 import { Radar } from '../charts';
 import { liters, num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
 
-const KIND_LABEL: Record<SpiritKind, string> = { soju: '증류식 소주', gin: '진', malt: '몰트', grain: '그레인' };
-const kindCategory = (k: SpiritKind): ProductCategory => (k === 'soju' ? 'soju_distilled' : k === 'gin' ? 'gin' : 'malt_spirit');
+const KIND_LABEL: Record<SpiritKind, string> = { soju: '증류식 소주·쇼추', gin: '진', malt: '몰트', grain: '그레인', baijiu: '백주(고량주)' };
+const kindCategory = (k: SpiritKind): ProductCategory => (k === 'soju' ? 'soju_distilled' : k === 'gin' ? 'gin' : k === 'baijiu' ? 'baijiu' : 'malt_spirit');
 
 function previewOf(s: GameState, r: Recipe) {
   const still = stillDefOf(s, r.stillId);
@@ -54,7 +55,7 @@ function Orders() {
           );
         })}
       </Table>
-      <p className="mt-2 text-xs text-stone-500">원액은 매달 말 탱크에 쌓입니다. 소주·진은 바로 병입할 수 있고, 몰트는 캐스크에 통입해 36개월 이상 숙성해야 "위스키"로 판매할 수 있습니다. 설비·인력 한도는 대시보드의 가동 계획에서 확인하세요.</p>
+      <p className="mt-2 text-xs text-stone-500">원액은 매달 말 탱크에 쌓입니다. 비숙성 주종(소주·진·고량주 등)은 바로 병입할 수 있고, 몰트는 캐스크에 통입해 36개월 이상 숙성해야 "위스키"로 판매할 수 있습니다. 설비·인력 한도는 대시보드의 가동 계획에서 확인하세요.</p>
     </Card>
   );
 }
@@ -64,7 +65,10 @@ type Draft = Omit<Recipe, 'id'> & { id?: string };
 function blankDraft(s: GameState, kind: SpiritKind): Draft {
   const stillId = s.equipment.find((e) => EQUIPMENT[e.catalogId]?.kind === 'still')?.id ?? '';
   const base: Draft = { name: `새 ${KIND_LABEL[kind]} 레시피`, kind, mashBill: [], botanicals: [], botanicalMethod: 'steep', yeast: 'distillers', fermentDays: 4, runs: 1, cut: { c1: 0.12, c2: 0.72 }, pressure: 'atmospheric', stillId };
-  if (kind === 'soju') return { ...base, mashBill: [{ ingredientId: 'rice_domestic', ratio: 0.92 }, { ingredientId: 'nuruk', ratio: 0.08 }], yeast: 'nuruk_native', fermentDays: 14 };
+  if (kind === 'soju') return s.regionId === 'JP'
+    ? { ...base, mashBill: [{ ingredientId: 'sweet_potato', ratio: 0.75 }, { ingredientId: 'rice_koji', ratio: 0.25 }], fermentDays: 14 }
+    : { ...base, mashBill: [{ ingredientId: 'rice_domestic', ratio: 0.92 }, { ingredientId: 'nuruk', ratio: 0.08 }], yeast: 'nuruk_native', fermentDays: 14 };
+  if (kind === 'baijiu') return { ...base, mashBill: [{ ingredientId: 'sorghum', ratio: 0.85 }, { ingredientId: 'daqu', ratio: 0.15 }], yeast: 'nuruk_native', fermentDays: 28, cut: { c1: 0.1, c2: 0.75 } };
   if (kind === 'gin') return { ...base, botanicals: [{ botanicalId: 'juniper', gramsPerL: 20 }, { botanicalId: 'coriander', gramsPerL: 6 }], fermentDays: 0, cut: { c1: 0.08, c2: 0.8 } };
   if (kind === 'grain') {
     const column = s.equipment.find((e) => EQUIPMENT[e.catalogId]?.kind === 'still' && (EQUIPMENT[e.catalogId] as { stillType: string }).stillType === 'column');
@@ -81,7 +85,7 @@ function RecipeEditor() {
   const errs = validateRecipe(s, { ...draft, id: draft.id ?? 'new' } as Recipe);
   const preview = useMemo(() => (errs.length ? null : previewOf(s, { ...draft, id: 'preview' } as Recipe)), [s, draft, errs.length]);
   const stills = s.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'still');
-  const ingOptions = Object.values(INGREDIENTS).filter((i) => draft.kind !== 'gin' && i.kinds.includes(draft.kind as 'soju' | 'malt' | 'grain'));
+  const ingOptions = Object.values(INGREDIENTS).filter((i) => draft.kind !== 'gin' && (i.kinds as string[]).includes(draft.kind));
   const ratioSum = draft.mashBill.reduce((t, m) => t + m.ratio, 0);
 
   return (
@@ -94,7 +98,7 @@ function RecipeEditor() {
             options={[{ value: '', label: '(새 레시피)' }, ...s.recipes.map((r) => ({ value: r.id, label: r.name }))]}
             onChange={(id) => { const r = s.recipes.find((x) => x.id === id); setDraft(r ? { ...r } : blankDraft(s, 'malt')); }}
           />
-          {(['soju', 'gin', 'malt', 'grain'] as SpiritKind[]).map((k) => <Button key={k} small onClick={() => setDraft(blankDraft(s, k))}>+ {KIND_LABEL[k]}</Button>)}
+          {regionOf(s).allowedKinds.map((k) => <Button key={k} small onClick={() => setDraft(blankDraft(s, k))}>+ {KIND_LABEL[k]}</Button>)}
         </div>
       }
     >
@@ -119,7 +123,7 @@ function RecipeEditor() {
               <div><Button small onClick={() => set({ mashBill: [...draft.mashBill, { ingredientId: ingOptions[0]!.id, ratio: 0 }] })}>+ 원재료</Button></div>
               <div className="flex flex-wrap gap-3">
                 <Select label="효모" value={draft.yeast} options={(Object.keys(YEASTS) as YeastId[]).map((y) => ({ value: y, label: YEASTS[y].nameKo }))} onChange={(v) => set({ yeast: v })} />
-                <NumberField label="발효 기간" value={draft.fermentDays} min={2} max={21} width="w-16" suffix="일" onCommit={(v) => set({ fermentDays: v })} />
+                <NumberField label="발효 기간" value={draft.fermentDays} min={2} max={28} width="w-16" suffix="일" onCommit={(v) => set({ fermentDays: v })} />
                 <Select label="증류 횟수" value={String(draft.runs) as '1' | '2'} options={[{ value: '1', label: '1회' }, { value: '2', label: '2회' }]} onChange={(v) => set({ runs: Number(v) as 1 | 2 })} />
                 {draft.kind === 'soju' && <Select label="증류 방식" value={draft.pressure} options={[{ value: 'atmospheric', label: '상압(구수)' }, { value: 'vacuum', label: '감압(깔끔)' }]} onChange={(v) => set({ pressure: v })} />}
               </div>
@@ -129,7 +133,7 @@ function RecipeEditor() {
               <div className="text-xs font-semibold text-stone-500">보태니컬 (g/L — 주니퍼 필수, 주니퍼가 가장 강해야 "진" 표기 가능)</div>
               {draft.botanicals.map((b, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-2">
-                  <Select value={b.botanicalId} options={Object.values(BOTANICALS).map((o) => ({ value: o.id, label: `${o.nameKo}${o.region === 'KR' ? ' (한국)' : ''}` }))} onChange={(v) => set({ botanicals: draft.botanicals.map((x, j) => (j === i ? { ...x, botanicalId: v } : x)) })} />
+                  <Select value={b.botanicalId} options={Object.values(BOTANICALS).filter((o) => !o.regions || o.regions.includes(s.regionId)).map((o) => ({ value: o.id, label: `${o.nameKo}${o.regions ? ' (지역 특산)' : ''}` }))} onChange={(v) => set({ botanicals: draft.botanicals.map((x, j) => (j === i ? { ...x, botanicalId: v } : x)) })} />
                   <NumberField value={b.gramsPerL} min={0} max={60} step={0.5} width="w-16" suffix="g/L" onCommit={(v) => set({ botanicals: draft.botanicals.map((x, j) => (j === i ? { ...x, gramsPerL: v } : x)) })} />
                   <Button small variant="ghost" onClick={() => set({ botanicals: draft.botanicals.filter((_, j) => j !== i) })}>삭제</Button>
                 </div>

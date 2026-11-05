@@ -70,6 +70,19 @@ export const CATEGORY: Record<ProductCategory, CategorySchema> = {
     caps: { oak_tannin: 40 },
     sulfurIsOffnote: false,
   },
+  baijiu: {
+    id: 'baijiu', nameKo: '백주(고량주)',
+    radarAxes: ['sorghum_grain', 'tropical', 'fermented_umami', 'earthy', 'floral', 'fresh_fruit', 'sweetness'],
+    typicityAxis: { axis: 'sorghum_grain', min: 25 },
+    styles: [
+      { id: 'jiang', nameKo: '장향', target: { fermented_umami: 70, earthy: 40, sorghum_grain: 45 } },
+      { id: 'nong', nameKo: '농향', target: { tropical: 70, sweetness: 40, sorghum_grain: 40 } },
+      { id: 'qing', nameKo: '청향', target: { floral: 45, fresh_fruit: 40, sorghum_grain: 35, fermented_umami: 5 } },
+      { id: 'mi', nameKo: '미향', target: { floral: 50, sweetness: 35, fresh_fruit: 30 } },
+    ],
+    caps: { oak_tannin: 20 },
+    sulfurIsOffnote: true,
+  },
   malt_spirit: {
     id: 'malt_spirit', nameKo: '곡물 스피릿(3년 미만)',
     radarAxes: ['fresh_fruit', 'floral', 'cereal', 'peat_smoke', 'vanilla_caramel', 'oak_tannin', 'wood_spice'],

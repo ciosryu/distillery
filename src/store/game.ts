@@ -1,14 +1,14 @@
 import { create } from 'zustand';
-import { advanceMonths, applyAction, newGame, type Action, type GameState } from '../sim';
+import { advanceMonths, applyAction, newGame, type Action, type GameState, type RegionId } from '../sim';
 
-const SAVE_KEY = 'distillery-tycoon/save-v3';
+const SAVE_KEY = 'distillery-tycoon/save-v4';
 
 function load(): GameState | null {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as GameState;
-    return s && s.version === 3 ? s : null;
+    return s && s.version === 4 ? s : null;
   } catch {
     return null;
   }
@@ -29,7 +29,7 @@ interface GameStore {
   toast: Toast | null;
   dispatch: (a: Action) => boolean;
   advance: (months: number) => void;
-  restart: (name?: string) => void;
+  restart: (name?: string, region?: RegionId) => void;
   clearToast: () => void;
 }
 
@@ -53,8 +53,8 @@ export const useGame = create<GameStore>((set, get) => ({
     save(next);
     set({ state: next });
   },
-  restart: (name) => {
-    const s = newGame({ distilleryName: name || undefined });
+  restart: (name, region) => {
+    const s = newGame({ distilleryName: name || undefined, region });
     save(s);
     set({ state: s, toast: { id: ++toastId, kind: 'ok', text: '새 게임을 시작했습니다' } });
   },

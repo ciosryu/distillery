@@ -1,6 +1,6 @@
 import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/catalog';
 import { CATEGORY } from './content/categories';
-import { KOREA, consumerMultiplier, refPricePerL } from './content/korea';
+import { priceForConsumer, refPricePerL, regionOf, type RegionDef } from './content/regions';
 import { clampFlavor, evaluate, weightedAverage, type Evaluation } from './flavor';
 import { emptyCask } from './maturation';
 import { bestBy, nid, staffOf } from './util';
@@ -31,7 +31,7 @@ export interface BlendPreview {
 }
 
 export const WHISKY_MIN_MONTHS = 36;
-export const MIN_BOTTLING_ABV: Record<ProductCategory, number> = { whisky: 0.4, grain_whisky: 0.4, blended_whisky: 0.4, malt_spirit: 0.3, soju_distilled: 0.17, gin: 0.375, flavored_spirit: 0.2 };
+export const MIN_BOTTLING_ABV: Record<ProductCategory, number> = { whisky: 0.4, grain_whisky: 0.4, blended_whisky: 0.4, baijiu: 0.3, malt_spirit: 0.3, soju_distilled: 0.17, gin: 0.375, flavored_spirit: 0.2 };
 
 export function lotOf(s: GameState, c: BlendComponent): SpiritLot | undefined {
   return c.source === 'cask' ? s.casks.find((k) => k.id === c.id)?.contents : s.lots.find((l) => l.id === c.id);
@@ -40,6 +40,7 @@ export function lotOf(s: GameState, c: BlendComponent): SpiritLot | undefined {
 /** 라벨 판정 (대표 법규만) */
 export function categorize(kind: SpiritKind, minOakMonths: number, abv: number, flavor: Flavor, hasGrain = kind === 'grain', hasMalt = kind === 'malt'): ProductCategory {
   if (kind === 'soju') return 'soju_distilled';
+  if (kind === 'baijiu') return 'baijiu';
   if (kind === 'gin') return evaluate(flavor, 'gin').labelOk && abv >= MIN_BOTTLING_ABV.gin ? 'gin' : 'flavored_spirit';
   if (minOakMonths < WHISKY_MIN_MONTHS || abv < MIN_BOTTLING_ABV.whisky) return 'malt_spirit';
   if (hasMalt && hasGrain) return 'blended_whisky';
@@ -52,14 +53,16 @@ export const isWhiskyCategory = (c: ProductCategory) => WHISKY_CATS.includes(c);
 /** 원액(탱크·캐스크)을 지금 병입한다면 받을 카테고리 — 평가 표시용 */
 export function lotCategory(lot: SpiritLot): ProductCategory {
   if (lot.kind === 'soju') return 'soju_distilled';
+  if (lot.kind === 'baijiu') return 'baijiu';
   if (lot.kind === 'gin') return 'gin';
   if (lot.oakMonths < WHISKY_MIN_MONTHS) return 'malt_spirit';
   return lot.kind === 'grain' ? 'grain_whisky' : 'whisky';
 }
 
-export function suggestedPrice(category: ProductCategory, bottleMl: number, quality: number, ageYears: number | null, abv: number): number {
+export function suggestedPrice(region: RegionDef, category: ProductCategory, bottleMl: number, quality: number, ageYears: number | null, abv: number): number {
   const ageBonus = isWhiskyCategory(category) && ageYears ? 1 + 0.06 * Math.min(ageYears, 12) : 1;
-  const p = (refPricePerL(KOREA, category, abv) * (bottleMl / 1000) / consumerMultiplier(KOREA)) * Math.sqrt(Math.max(quality, 20) / 60) * ageBonus;
+  const consumer = refPricePerL(region, category, abv) * (bottleMl / 1000) * Math.sqrt(Math.max(quality, 20) / 60) * ageBonus;
+  const p = priceForConsumer(region, consumer, bottleMl, abv);
   return Math.round(p / 100) * 100;
 }
 
@@ -124,7 +127,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   return {
     ok: errors.length === 0, errors, warnings, kind, category, volumeL: finalVolume, lpa, mixAbv, finalAbv, bottles,
     minOakMonths, ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare,
-    suggestedPrice: suggestedPrice(category, opts.bottleMl, evaluation.quality, ageYears, finalAbv),
+    suggestedPrice: suggestedPrice(regionOf(s), category, opts.bottleMl, evaluation.quality, ageYears, finalAbv),
   };
 }
 

@@ -15,17 +15,20 @@ export type AxisId =
 export type Flavor = Partial<Record<AxisId, number>>;
 
 /** 생산 주종 (원액 기준) */
-export type SpiritKind = 'soju' | 'gin' | 'malt' | 'grain';
+export type SpiritKind = 'soju' | 'gin' | 'malt' | 'grain' | 'baijiu';
+
+/** 시작·운영 지역 */
+export type RegionId = 'KR' | 'JP' | 'TW';
 
 /** 판매 카테고리 (라벨 판정 결과) */
-export type ProductCategory = 'soju_distilled' | 'gin' | 'whisky' | 'grain_whisky' | 'blended_whisky' | 'malt_spirit' | 'flavored_spirit';
+export type ProductCategory = 'soju_distilled' | 'gin' | 'whisky' | 'grain_whisky' | 'blended_whisky' | 'baijiu' | 'malt_spirit' | 'flavored_spirit';
 
 export type YeastId = 'distillers' | 'ale' | 'nuruk_native';
 export type FermenterType = 'stainless' | 'onggi';
 export type StillType = 'pot_onion' | 'pot_lantern' | 'hybrid' | 'vacuum_pot' | 'column';
 export type CondenserType = 'copper_shell' | 'worm_tub';
-export type CaskTypeId = 'ex_bourbon_barrel' | 'oloroso_butt' | 'korean_oak_quarter';
-export type WoodId = 'american_oak' | 'european_oak' | 'korean_oak';
+export type CaskTypeId = 'ex_bourbon_barrel' | 'oloroso_butt' | 'korean_oak_quarter' | 'mizunara_hogshead';
+export type WoodId = 'american_oak' | 'european_oak' | 'korean_oak' | 'mizunara';
 export type StaffRole = 'distiller' | 'warehouse' | 'sales';
 
 export interface Recipe {
@@ -235,13 +238,16 @@ export interface Forecast {
 
 export interface EventLogEntry { month: number; title: string; text: string }
 
+/** 독립 병입자(IB)의 캐스크 매입 제안 */
+export interface CaskBid { id: string; buyerName: string; caskId: string; price: number; expiresMonth: number }
+
 export interface GameState {
-  version: 3;
+  version: 4;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;
   startYear: number;
-  regionId: 'KR';
+  regionId: RegionId;
   distilleryName: string;
   cash: number;
   status: 'running' | 'bankrupt';
@@ -278,6 +284,7 @@ export interface GameState {
   eventLog: EventLogEntry[];
   /** 이벤트별 마지막 발생 월 (쿨다운) */
   eventLastMonth: Record<string, number>;
+  caskBids: CaskBid[];
   /** 지난달 원재료별 실제 구매량(kg) — 대량 구매 할인 등급 */
   ingredientKgLastMonth: Record<string, number>;
   reports: MonthReport[];

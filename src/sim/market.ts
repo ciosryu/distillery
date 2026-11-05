@@ -1,5 +1,5 @@
 import { DISTRIBUTION, PACKAGING, logisticsCost } from './content/catalog';
-import { KOREA, consumerMultiplier, refPricePerL, type RegionDef } from './content/korea';
+import { consumerPrice, refPricePerL, regionOf, type RegionDef } from './content/regions';
 import { clamp } from './flavor';
 import { staffOf } from './util';
 import { mod } from './modifiers';
@@ -13,20 +13,25 @@ export function coverage(s: GameState): number {
   return clamp(0.03 + staffOf(s, 'sales').reduce((t, x) => t + 0.04 + (x.stats.b / 100) * 0.12, 0), 0, 1);
 }
 
-/** 영업 협상 스탯: 유통 마진 최대 10% 절감 */
-export function effectiveConsumerMultiplier(s: GameState, region: RegionDef = KOREA): number {
+/** 영업 협상 스탯: 유통 마진 최대 10% 절감 → 소비자가 배수 */
+export function markupFactor(s: GameState): number {
   const best = Math.max(0, ...staffOf(s, 'sales').map((x) => x.stats.c));
-  const markup = region.retailMarkup * (1 - 0.1 * (best / 100));
-  return consumerMultiplier({ ...region, retailMarkup: markup }) * mod(s, 'consumerPrice:all');
+  return (1 - 0.1 * (best / 100)) * mod(s, 'consumerPrice:all');
 }
 
-export function appeal(p: Product, s?: Pick<GameState, 'modifiers' | 'month'>): number {
+/** 제품의 병당 소비자가 (지역 세제·유통 마진·영업 협상·이벤트 반영) */
+export function productConsumerPrice(s: GameState, p: Pick<Product, 'price' | 'bottleMl' | 'abv'>, region: RegionDef = regionOf(s)): number {
+  return consumerPrice(region, p.price, p.bottleMl, p.abv, markupFactor(s));
+}
+
+export function appeal(p: Product, s?: Pick<GameState, 'modifiers' | 'month' | 'regionId'>): number {
   const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
   const ageBonus = aged && p.ageYears ? 1 + 0.06 * Math.min(p.ageYears, 12) : 1;
   const lux = PACKAGING[p.packagingId]?.luxury ?? 1;
   // 시장 국면: 피트·셰리 유행
   const trend = s ? mod(s, 'appeal:all') * ((p.flavor.peat_smoke ?? 0) >= 25 ? mod(s, 'appeal:peated') : 1) * ((p.flavor.dried_fruit ?? 0) >= 25 ? mod(s, 'appeal:sherried') : 1) : 1;
-  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * (1 - 0.15 * p.sourcedShare) * trend;
+  const sourcedPenalty = s ? regionOf(s).sourcedPenalty : 0.15;
+  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * (1 - sourcedPenalty * p.sourcedShare) * trend;
 }
 
 export interface DemandBreakdown {
@@ -39,17 +44,17 @@ export interface DemandBreakdown {
   demandBottles: number;
 }
 
-export function demandFor(s: GameState, p: Product, sameCategoryCount: number, monthOfYear: number, region: RegionDef = KOREA): DemandBreakdown {
+export function demandFor(s: GameState, p: Product, sameCategoryCount: number, monthOfYear: number, region: RegionDef = regionOf(s)): DemandBreakdown {
   const m = region.market[p.category];
   const marketL = (m.baseCases * 9 / 12) * region.seasonality[monthOfYear - 1]! * (s.trend[p.category] ?? 1) * mod(s, `demand:${p.category}`) * mod(s, 'demand:all');
   const reach = (s.awareness * coverage(s) * m.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
   const a = appeal(p, s);
   const bottleL = p.bottleMl / 1000;
-  const consumerPricePerL = (p.price * effectiveConsumerMultiplier(s, region)) / bottleL;
+  const consumerPricePerL = productConsumerPrice(s, p, region) / bottleL;
   const charm = Math.max(0, ...staffOf(s, 'sales').map((x) => x.stats.a));
   const elasticity = m.elasticity * (1 - 0.15 * (charm / 100));
   const ref = refPricePerL(region, p.category, p.abv);
-  const priceFactor = Math.pow(consumerPricePerL / ref, -elasticity);
+  const priceFactor = m.baseCases > 0 ? Math.pow(consumerPricePerL / ref, -elasticity) : 0;
   const demandBottles = (marketL * reach * a * priceFactor) / bottleL;
   return { marketL, reach, appeal: a, consumerPricePerL, refPricePerL: ref, priceFactor, demandBottles };
 }

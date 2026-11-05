@@ -1,10 +1,13 @@
 import { BOTANICALS, EQUIPMENT, GNS, INGREDIENTS, VOLUME_DISCOUNT_TIERS, YEASTS, type EquipmentDef } from './content/catalog';
 import { addScaled, clampFlavor, distillFlavor, heartsFraction } from './flavor';
+import { regionOf } from './content/regions';
 import type { Flavor, FermenterType, GameState, Recipe, Staff } from './types';
 
 type StillDef = Extract<EquipmentDef, { kind: 'still' }>;
 
-export const WASH_ABV = { malt: 0.08, soju: 0.16, grain: 0.09 } as const;
+export const WASH_ABV = { malt: 0.08, soju: 0.16, grain: 0.09, baijiu: 0.06 } as const;
+/** 백주는 고체 발효 곡물을 증기로 증류 → 한 번에 약 60% */
+export const BAIJIU_ABV = 0.6;
 export const GIN_CHARGE_ABV = 0.45;
 const WASH_RUN_CUT = { c1: 0.02, c2: 0.98 };
 /** 연속식 증류기의 고정 분획 (레시피 컷 무시) */
@@ -33,6 +36,8 @@ export function stillDefOf(state: GameState, stillId: string): StillDef | null {
 /** 레시피 검증 — 문제 목록(빈 배열이면 OK) */
 export function validateRecipe(state: GameState, r: Recipe): string[] {
   const errs: string[] = [];
+  const region = regionOf(state);
+  if (!region.allowedKinds.includes(r.kind)) errs.push(`${region.nameKo}에서는 이 주종을 생산할 수 없습니다`);
   const still = stillDefOf(state, r.stillId);
   if (!still) errs.push('증류기를 선택하세요');
   if (r.cut.c1 < 0 || r.cut.c2 > 1 || r.cut.c1 >= r.cut.c2) errs.push('컷 포인트는 0 ≤ c1 < c2 ≤ 1 이어야 합니다');
@@ -40,15 +45,19 @@ export function validateRecipe(state: GameState, r: Recipe): string[] {
     if (!r.botanicals.length) errs.push('진에는 보태니컬이 필요합니다');
     if (!r.botanicals.some((b) => b.botanicalId === 'juniper')) errs.push('진에는 주니퍼가 반드시 들어가야 합니다');
     if (r.botanicalMethod === 'vapor' && still && !still.ginBasket) errs.push('이 증류기에는 진 바스켓이 없습니다(침지만 가능)');
+    for (const b of r.botanicals) {
+      const def = BOTANICALS[b.botanicalId];
+      if (def?.regions && !def.regions.includes(region.id)) errs.push(`${def.nameKo}은(는) 이 지역에서 구할 수 없습니다`);
+    }
   } else {
     const sum = r.mashBill.reduce((s, m) => s + m.ratio, 0);
     if (Math.abs(sum - 1) > 0.01) errs.push('원재료 비율 합이 100%가 되어야 합니다');
     for (const m of r.mashBill) {
       const ing = INGREDIENTS[m.ingredientId];
       if (!ing) errs.push(`알 수 없는 원재료: ${m.ingredientId}`);
-      else if (!ing.kinds.includes(r.kind)) errs.push(`${ing.nameKo}은(는) 이 주종에 쓸 수 없습니다`);
+      else if (!(ing.kinds as string[]).includes(r.kind)) errs.push(`${ing.nameKo}은(는) 이 주종에 쓸 수 없습니다`);
     }
-    if (r.fermentDays < 2 || r.fermentDays > 21) errs.push('발효 기간은 2~21일');
+    if (r.fermentDays < 2 || r.fermentDays > 28) errs.push('발효 기간은 2~28일');
   }
   if (r.pressure === 'vacuum' && still && !still.vacuum) errs.push('감압 증류는 감압 증류기에서만 가능합니다');
   return errs;
@@ -152,6 +161,12 @@ export function simulateBatch(
     feintsOutLPA = lpa * (1 - hearts) * 0.97;
     lpa = lpa * hearts;
     abv = maxAbv;
+  } else if (r.kind === 'baijiu') {
+    flavor = distillFlavor(flavor, { c1: r.cut.c1, c2: r.cut.c2, reflux: still.reflux, copperContact: still.copperContact });
+    const hearts = heartsFraction(r.cut.c1, r.cut.c2);
+    feintsOutLPA = lpa * (1 - hearts) * 0.97;
+    lpa = lpa * hearts;
+    abv = BAIJIU_ABV;
   } else {
     for (let run = 0; run < r.runs; run++) {
       const final = run === r.runs - 1;

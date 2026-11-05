@@ -1,7 +1,7 @@
-import { EQUIPMENT, ROLE_INFO } from './content/catalog';
-import { KOREA, liquorTaxPerWon } from './content/korea';
+import { CASKS, EQUIPMENT, ROLE_INFO } from './content/catalog';
+import { liquorTaxPerBottle, regionOf } from './content/regions';
 import { refreshBroker } from './broker';
-import { fulfillContracts, refreshContractOffers, updateBulkIndex } from './bulk';
+import { fulfillContracts, refreshCaskBids, refreshContractOffers, updateBulkIndex } from './bulk';
 import { clamp, weightedAverage } from './flavor';
 import { gainXp, refreshCandidates } from './hr';
 import { matureCask, restLot } from './maturation';
@@ -97,7 +97,8 @@ function runProduction(s: GameState, report: MonthReport): { runsUsed: number } 
 }
 
 function runMaturation(s: GameState, report: MonthReport, monthOfYear: number): void {
-  const climate = { tempC: KOREA.tempC[monthOfYear - 1]!, humidity: KOREA.humidity[monthOfYear - 1]! };
+  const region = regionOf(s);
+  const climate = { tempC: region.tempC[monthOfYear - 1]!, humidity: region.humidity[monthOfYear - 1]! };
   const wm = staffOf(s, 'warehouse');
   const control = Math.max(0, ...wm.map((x) => x.stats.b));
   const observe = Math.max(0, ...wm.map((x) => x.stats.a));
@@ -111,7 +112,7 @@ function runMaturation(s: GameState, report: MonthReport, monthOfYear: number): 
     lost += res.lostL;
     let next = res.cask;
     // 누수: 성실 스탯이 확률을, 관찰 스탯이 손실량을 줄임
-    if (rng.chance(0.002 * (1 - diligence / 150))) {
+    if (rng.chance(0.002 * (1 - diligence / 150) * (CASKS[cask.typeId].leakFactor ?? 1))) {
       const lossShare = rng.range(0.03, 0.08) * (1 - observe / 150);
       const c = next.contents!;
       lost += c.volumeL * lossShare;
@@ -131,7 +132,7 @@ function runFinance(s: GameState, report: MonthReport): void {
     report.expenses[key] = (report.expenses[key] ?? 0) + amount;
   };
   pay('salaries', s.staff.reduce((t, x) => t + x.salary, 0));
-  pay('overhead', KOREA.overheadPerMonth);
+  pay('overhead', regionOf(s).overheadPerMonth);
   pay('maintenance', s.equipment.reduce((t, e) => t + (e.readyMonth <= s.month ? (EQUIPMENT[e.catalogId]?.maintenance ?? 0) : 0), 0));
   pay('marketing', s.marketingBudget);
   for (const loan of s.loans) {
@@ -164,7 +165,7 @@ export function advanceMonth(prev: GameState): GameState {
   const sales = runSales(s, rngFor(s.seed, s.month, 'sales'), monthOfYear);
   report.sales = sales;
   report.revenue = sales.reduce((t, x) => t + x.revenue, 0);
-  report.liquorTaxRemitted = Math.round(report.revenue * liquorTaxPerWon(KOREA));
+  report.liquorTaxRemitted = Math.round(sales.reduce((t, x) => { const p = s.products.find((q) => q.id === x.productId); return t + (p ? x.bottles * liquorTaxPerBottle(regionOf(s), p.price, p.bottleMl, p.abv) : 0); }, 0));
   s.cash += report.revenue;
   const distribution = sales.reduce((t, x) => t + x.distribution, 0);
   if (distribution > 0) { s.cash -= distribution; report.expenses.distribution = distribution; }
@@ -182,6 +183,7 @@ export function advanceMonth(prev: GameState): GameState {
   if (s.month % 3 === 2) refreshCandidates(s, rngFor(s.seed, s.month, 'candidates'));
   refreshBroker(s, rngFor(s.seed, s.month, 'broker'));
   refreshContractOffers(s, rngFor(s.seed, s.month, 'contracts'));
+  refreshCaskBids(s, rngFor(s.seed, s.month, 'caskbids'));
   updateBulkIndex(s, rngFor(s.seed, s.month, 'bulk'));
 
   // 원재료 가격 변동 (평균 회귀 랜덤 워크)
@@ -211,7 +213,7 @@ export function advanceMonths(s: GameState, n: number): GameState {
 }
 
 export function monthlyFixedCost(s: GameState): number {
-  return s.staff.reduce((t, x) => t + x.salary, 0) + KOREA.overheadPerMonth + s.marketingBudget +
+  return s.staff.reduce((t, x) => t + x.salary, 0) + regionOf(s).overheadPerMonth + s.marketingBudget +
     s.equipment.reduce((t, e) => t + (EQUIPMENT[e.catalogId]?.maintenance ?? 0), 0) +
     s.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0);
 }
