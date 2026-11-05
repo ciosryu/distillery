@@ -514,7 +514,7 @@ describe('산지 (v0.8, regions.md Tier 1)', () => {
 
   it('산지 고정비: 홋카이도는 1월 난방비가 나가고, 관리비는 간사이가 가장 비싸다', () => {
     const h = advanceMonths(newGame({ seed: 1, site: 'hokkaido' }), 1);
-    expect(h.reports[0]!.expenses.heating).toBe(2_500_000);
+    expect(h.reports[0]!.expenses.heating).toBe(4_000_000);
     expect(advanceMonths(newGame({ seed: 1, site: 'kanto' }), 1).reports[0]!.expenses.heating).toBeUndefined();
     expect(SITES.kansai.overheadPerMonth).toBeGreaterThan(SITES.kanto.overheadPerMonth);
     expect(SITES.hokkaido.overheadPerMonth).toBeLessThan(SITES.kanto.overheadPerMonth);
