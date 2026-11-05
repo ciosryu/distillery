@@ -5,6 +5,7 @@ import { advanceMonth, applyAction, bulkValuePerLPA, capacityReport, previewBlen
 import { DEFAULT_SITE, SITES } from '../src/sim/content/sites';
 import { REGIONS, setKrBaseDeduction } from '../src/sim/content/regions';
 import { HOLDING } from '../src/sim/content/catalog';
+import { OEM } from '../src/sim/deals';
 
 const SEEDS = Number(process.argv[2] ?? 12);
 const MONTHS = Number(process.argv[3] ?? 120);
@@ -18,6 +19,7 @@ if (process.env.KR_DEDUCTION === 'on' || process.env.KR_DEDUCTION === 'off') set
 // 비교 실험용: HOLDING_OFF=1 이면 숙성 재고 보유 비용(결정 #65)을 끈다, HOLDING_GRACE=개월 로 면제 기간 조정
 if (process.env.HOLDING_OFF === '1') { HOLDING.perCaskMonth = 0; HOLDING.insuranceRateMonth = 0; }
 if (process.env.HOLDING_GRACE) HOLDING.graceMonths = Number(process.env.HOLDING_GRACE);
+if (process.env.OEM_FEE) OEM.feePerBatch = Number(process.env.OEM_FEE);
 if (process.env.HOLDING_SCALE) { HOLDING.perCaskMonth *= Number(process.env.HOLDING_SCALE); HOLDING.insuranceRateMonth *= Number(process.env.HOLDING_SCALE); }
 
 type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site';
@@ -33,7 +35,8 @@ const SITE_STRATEGY: Partial<Record<SiteId, string>> = {
 };
 
 const act = (s: GameState, a: Action) => applyAction(s, a).state;
-const stockOf = (s: GameState, cat: ProductCategory) => s.products.filter((p) => p.category === cat).reduce((t, p) => t + p.stockBottles, 0);
+/** 국내 판매용 재고 (면세 전용 한정판 제외) */
+const stockOf = (s: GameState, cat: ProductCategory) => s.products.filter((p) => p.category === cat && !p.dutyFreeOnly).reduce((t, p) => t + p.stockBottles, 0);
 /** 지역마다 프리셋 이름이 다르므로 kind(+피트 여부)로 첫 레시피를 찾는다 */
 const recipeOf = (s: GameState, kind: SpiritKind) => s.recipes.find((r) => r.kind === kind && !r.mashBill.some((m) => m.ingredientId === 'malt_peated'));
 const rid = (s: GameState, kind: SpiritKind) => recipeOf(s, kind)?.id;
@@ -123,7 +126,12 @@ function siteActions(s: GameState): GameState {
       return s;
     }
     case 'kanto': {
-      // 남는 증류기 가동분 안에서만 위탁생산을 받는다 (배치당 2회 증류)
+      // 위탁생산 전용 증류기를 1기 더 들이고(1년 차, 자기 자금 3억↑), 남는 가동분 안에서만 받는다 (배치당 2회 증류)
+      if (s.month >= 12 && s.cash - s.loans.reduce((t, l) => t + l.balance, 0) > 300_000_000 && s.equipment.filter((e) => e.catalogId === 'pot_onion_1000').length < 2) {
+        s = act(s, { type: 'buyEquipment', catalogId: 'pot_onion_1000' });
+        s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
+        s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
+      }
       const cap = capacityReport(s);
       const spare = cap.stills.reduce((t, x) => t + x.cap - x.used, 0) - s.oemContracts.reduce((t, c) => t + c.batchesPerMonth * 2, 0);
       for (const o of [...s.oemOffers]) if (o.batchesPerMonth * 2 <= spare && s.month >= 6) s = act(s, { type: 'acceptOem', offerId: o.id });
