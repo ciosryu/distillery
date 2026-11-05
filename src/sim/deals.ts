@@ -6,6 +6,7 @@ import { siteOf } from './content/sites';
 import { buyersFor } from './bulk';
 import { suggestedPrice } from './blending';
 import { addModifier } from './modifiers';
+import { capacityReport } from './step';
 import type { Rng } from './rng';
 import type { GameState, MonthReport, OemContract, OemOffer, ProductCategory, RetailContract, RetailOffer } from './types';
 import { nid } from './util';
@@ -13,7 +14,8 @@ import { nid } from './util';
 // 산지 대표 거래 (결정 #65, regions.md §6.2) — 경기: 대형 유통 납품 / 간토: 대기업 위탁생산(OEM). 수치 [튜닝]
 
 export const RETAIL = { priceFactor: 0.8, termMonths: 12, paymentDelay: 2, penaltyShare: 0.15, offerChance: 0.15, maxActive: 2, appealPremium: 0.9, awarenessGain: 1.2 };
-export const OEM = { feePerBatch: 900_000, penaltyShare: 1, offerChance: 0.12, maxActive: 2, runs: 2, fermentDays: 4 };
+/** 위탁생산: 남는 증류기 가동분이 있으면 제안이 자주(월 25%), 그 크기에 맞춰 들어온다 — 위탁사는 유휴 설비를 찾는다 */
+export const OEM = { feePerBatch: 900_000, penaltyShare: 1, offerChance: 0.08, offerChanceSpare: 0.25, maxActive: 2, runs: 2, fermentDays: 4 };
 
 /** 대형 유통 납품 규격 (카테고리별 대표 제품) */
 const RETAIL_SPEC: Partial<Record<ProductCategory, { ml: number; abv: number; age: number | null }>> = {
@@ -36,12 +38,21 @@ export function makeRetailOffer(s: GameState, rng: Rng): RetailOffer {
   };
 }
 
+/** 위탁생산에 내줄 수 있는 월 배치 수 = (증류기 가동 여력 − 자사 생산 지시 − 기존 위탁) / 배치당 증류 횟수 */
+export function oemSpareBatches(s: GameState): number {
+  const cap = capacityReport(s);
+  const runs = cap.stills.reduce((t, x) => t + x.cap - x.used, 0) - s.oemContracts.reduce((t, c) => t + c.batchesPerMonth * OEM.runs, 0);
+  return Math.max(0, Math.floor(runs / OEM.runs));
+}
+
 export function makeOemOffer(s: GameState, rng: Rng): OemOffer | null {
   const domestic = buyersFor(s).filter((b) => b.domestic);
   if (!domestic.length) return null;
   const fee = OEM.feePerBatch;
+  const spare = oemSpareBatches(s);
+  const batchesPerMonth = spare >= 2 ? Math.max(2, Math.round(spare * rng.pick([0.5, 0.75, 1]))) : rng.pick([2, 4]);
   return {
-    id: nid(s, 'W'), buyerName: rng.pick(domestic).nameKo, batchesPerMonth: rng.pick([2, 4, 6]), feePerBatch: fee,
+    id: nid(s, 'W'), buyerName: rng.pick(domestic).nameKo, batchesPerMonth, feePerBatch: fee,
     termMonths: rng.pick([12, 24]), penaltyPerBatch: Math.round(fee * OEM.penaltyShare), expiresMonth: s.month + 3,
   };
 }
@@ -52,7 +63,7 @@ export function refreshDeals(s: GameState, rng: Rng): void {
   s.retailOffers = s.retailOffers.filter((o) => o.expiresMonth > s.month);
   s.oemOffers = s.oemOffers.filter((o) => o.expiresMonth > s.month);
   if (deals.includes('retail') && !s.retailOffers.length && s.retailContracts.length < RETAIL.maxActive && rng.chance(RETAIL.offerChance)) s.retailOffers.push(makeRetailOffer(s, rng));
-  if (deals.includes('oem') && !s.oemOffers.length && s.oemContracts.length < OEM.maxActive && rng.chance(OEM.offerChance)) {
+  if (deals.includes('oem') && !s.oemOffers.length && s.oemContracts.length < OEM.maxActive && rng.chance(oemSpareBatches(s) >= 2 ? OEM.offerChanceSpare : OEM.offerChance)) {
     const o = makeOemOffer(s, rng);
     if (o) s.oemOffers.push(o);
   }

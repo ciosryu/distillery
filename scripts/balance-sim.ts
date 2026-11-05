@@ -27,7 +27,7 @@ type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site';
 /** 산지 전용 전략 (결정 #65 대표 결정) — 없는 산지는 site 전략을 돌리지 않는다 */
 const SITE_STRATEGY: Partial<Record<SiteId, string>> = {
   gyeonggi: '브랜드 + 대형 유통 납품 수락',
-  jeju: '브랜드 + 위스키를 면세 전용 한정판(프리미엄 패키징)으로',
+  jeju: '브랜드 + 위스키 일부를 면세 전용 한정판으로',
   kanto: '혼합 + 위탁생산 수락',
   kansai: '브랜드 + 직판장 + 미즈나라 캐스크',
   hokkaido: '브랜드 + 재고 담보대출로 버티기',
@@ -82,7 +82,7 @@ function bottleWhisky(s: GameState): GameState {
   // 면세 전용 한정판은 일부만 (면세 전용 재고 400병 미만일 때) — 국내 판매를 통째로 포기하지 않는다
   const dfStock = s.products.filter((p) => p.dutyFreeOnly).reduce((t, p) => t + p.stockBottles, 0);
   const df = dutyFreeEditions && !!SITES[s.siteId].dutyFree && dfStock < 400;
-  const opts = { name: `싱글 몰트 ${s.month}`, targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: df ? 'premium' : 'standard', dutyFreeOnly: df };
+  const opts = { name: `싱글 몰트 ${s.month}`, targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard', dutyFreeOnly: df };
   return previewBlend(s, comps, opts).ok ? act(s, { type: 'bottle', components: comps, options: opts }) : s;
 }
 
