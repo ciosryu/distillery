@@ -243,7 +243,7 @@ export const DUTY_FREE = {
   refFactor: 0.6,
   /** 1인 구매 한도 미화 400달러 ≒ 55만 원 [환율 가정] — 이보다 비싼 병은 팔 수 없다 */
   maxBottlePrice: 550_000,
-  /** 면세 전용 한정판(결정 #65): 전용 매대 점유 상한 배수, 한정판 매력도 배수 [튜닝] */
-  limitedShareCap: 2,
-  limitedAppeal: 1.15,
+  /** 면세 전용 한정판(결정 #65): 전용 매대 점유 상한 배수, 한정판 매력도 배수 [튜닝] — 첫 밸런스(×2·×1.15)에서 20/20 지배라 하향 */
+  limitedShareCap: 1.5,
+  limitedAppeal: 1.1,
 };

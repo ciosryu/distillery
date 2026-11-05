@@ -61,7 +61,7 @@ export function Bottling() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <label className="inline-flex items-center gap-1 text-sm"><input type="checkbox" checked={opts.chillFilter} onChange={(e) => setOpts({ ...opts, chillFilter: e.target.checked })} className="accent-amber-700" /> 칠 필터링</label>
-            {siteOf(s).dutyFree && <label className="inline-flex items-center gap-1 text-sm" title="국내 판매 없이 지정면세점 전용 매대에서만 판매 — 점유 상한 ×2, 한정판 매력도 ×1.15"><input type="checkbox" checked={!!opts.dutyFreeOnly} onChange={(e) => setOpts({ ...opts, dutyFreeOnly: e.target.checked })} className="accent-amber-700" /> 면세 전용 한정판</label>}
+            {siteOf(s).dutyFree && <label className="inline-flex items-center gap-1 text-sm" title="국내 판매 없이 지정면세점 전용 매대에서만 판매 — 점유 상한 ×1.5, 한정판 매력도 ×1.1"><input type="checkbox" checked={!!opts.dutyFreeOnly} onChange={(e) => setOpts({ ...opts, dutyFreeOnly: e.target.checked })} className="accent-amber-700" /> 면세 전용 한정판</label>}
             <Select label="패키징" value={opts.packagingId} options={Object.entries(PACKAGING).map(([k, v]) => ({ value: k, label: `${v.nameKo} (${won(packagingCost(k, opts.bottleMl))}/병)` }))} onChange={(v) => setOpts({ ...opts, packagingId: v })} />
           </div>
 
