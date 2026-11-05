@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   advanceMonths, annuityPayment, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, categorize, demandFor, evaluate, evaporate, heartsFraction, spotBidPerLPA, spotQuote,
-  makeContractOffer, makeCraftContractOffer, capacityLPA, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
+  makeContractOffer, makeCraftContractOffer, contractAgingImpact, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
   appeal, applyEffects, buyersFor, presetRecipes, validateRecipe, type Product,
   agePerception, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
 } from './index';
@@ -215,14 +215,24 @@ describe('국산 원액 프리미엄', () => {
     expect(Math.max(...crafts.map((o) => o.lpaPerMonth))).toBeLessThan(Math.max(...regular.map((o) => o.lpaPerMonth)));
   });
 
-  it('일본은 B2B 시장이 깊어 계약 물량이 크다 (#79)', () => {
-    const avgLpa = (region: 'KR' | 'JP') => {
-      const s = newGame({ seed: 23, region });
-      const rng = mulberry32(3);
-      const xs = Array.from({ length: 60 }, () => makeContractOffer(s, rng)).filter((o) => o.spirit === 'malt_newmake');
-      return xs.reduce((t, o) => t + o.lpaPerMonth / capacityLPA(s, 'malt'), 0) / xs.length;
-    };
-    expect(avgLpa('JP')).toBeGreaterThan(avgLpa('KR') * 1.5);
+  it('계약 경고: 첫 위스키 전에 끝나면 안전, 넘기면 겹친 개월과 빠지는 원액을 알려 준다 (§16.16)', () => {
+    const s = { ...newGame({ seed: 23 }), month: 10 };
+    // 숙성 중인 자사 몰트가 없으면 첫 위스키는 지금 + 36개월
+    const ok = contractAgingImpact(s, { lpaPerMonth: 100, termMonths: 24, spirit: 'malt_newmake' });
+    expect(ok.endMonth).toBe(34);
+    expect(ok.firstWhiskyMonth).toBe(46);
+    expect(ok.overlapMonths).toBe(0);
+    expect(ok.divertedLPA).toBe(2400);
+    expect(ok.bottleEquivalent).toBe(Math.round(2400 / (0.46 * 0.7)));
+    // 2개월째에 통입한 몰트가 있으면 첫 위스키는 38개월 → 36개월 계약은 8개월 겹친다
+    const cask = { id: 'k', typeId: 'ex_bourbon_barrel', sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 0, recharCount: 0, char: 4, filledMonth: 2,
+      contents: { id: 'l', name: 'm', kind: 'malt', volumeL: 190, abv: 0.635, flavor: {}, createdMonth: 2, oakMonths: 8, sourced: false, costPerLPA: 0 } } as unknown as Cask;
+    const bad = contractAgingImpact({ ...s, casks: [cask] }, { lpaPerMonth: 100, termMonths: 36, spirit: 'malt_newmake' });
+    expect(bad.firstWhiskyMonth).toBe(38);
+    expect(bad.overlapMonths).toBe(8);
+    expect(bad.whiskyGap).toEqual([46, 82]);
+    // 진행 중 계약은 남은 기간만 센다
+    expect(contractAgingImpact(s, { lpaPerMonth: 100, termMonths: 36, spirit: 'malt_newmake', monthsDone: 30 }).divertedLPA).toBe(600);
   });
 });
 

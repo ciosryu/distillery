@@ -187,8 +187,8 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     seasonality: [1.05, 0.95, 1.0, 1.0, 1.0, 1.05, 1.15, 1.15, 0.95, 0.95, 1.0, 1.25],
     // 재패니즈 위스키 표기 기준(일본 내 증류·숙성) 이후 국산 원액이 귀하다
     domesticSpiritPremium: 0.35,
-    // 재패니즈 위스키 표기 기준 이후 대형사·신흥 블렌더 모두 일본산 원액이 모자라다 → 계약 물량 1.5배 (#79)
-    bulkMarketDepth: 1.5,
+    // #79(계약 물량 1.5배)는 철회 — 40시드에서 순자산 변화 없이 그레인형 파산만 늘었다 (§16.16)
+    bulkMarketDepth: 1.0,
     eventWeights: { market: 1.1, supply: 1.0, disaster: 1.4, regulation: 0.8, b2b: 1.1, opportunity: 1.0, people: 1.0 },
     // 수입 원액 병입은 "재패니즈 위스키"가 될 수 없고 하이볼용 저가 위스키로 소비된다
     sourcedPenalty: 0.85,

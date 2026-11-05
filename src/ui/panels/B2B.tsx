@@ -1,10 +1,24 @@
 import { BULK, CASKS } from '../../sim/content/catalog';
-import { cancellationCost, capacityLPA, contractTotalValue, domesticPremium, isNewMake, lotQuality, spotBidPerLPA, spotQuote } from '../../sim';
+import { cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, lotQuality, monthLabel, spotBidPerLPA, spotQuote, type ContractAgingImpact, type GameState } from '../../sim';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';
 
 const STYLE_LABEL = { any: '무관', unpeated: '논피트', peated: '피트' } as const;
+
+/** 계약 종료 경고 (§16.16): 첫 위스키 출시 이후까지 납품이 이어지면 그만큼 3년 뒤 위스키가 빈다 */
+function AgingImpact({ s, i }: { s: GameState; i: ContractAgingImpact }) {
+  const safe = i.overlapMonths === 0;
+  return (
+    <div className="text-xs leading-snug">
+      <div>납품 종료 <b>{monthLabel(s.startYear, i.endMonth)}</b> ({i.endMonth - s.month}개월 후)</div>
+      <div className="text-stone-500">숙성고에 못 들어가는 원액 {num(i.divertedLPA)} LPA ≈ 위스키 {num(i.bottleEquivalent)}병</div>
+      {safe
+        ? <Badge tone="good">첫 위스키({monthLabel(s.startYear, i.firstWhiskyMonth)}) 전에 끝남</Badge>
+        : <Badge tone="bad">첫 위스키 출시 뒤 {i.overlapMonths}개월 더 납품 → {monthLabel(s.startYear, i.whiskyGap[0])}~{monthLabel(s.startYear, i.whiskyGap[1])} 위스키 감소</Badge>}
+    </div>
+  );
+}
 
 export function B2B() {
   const s = useGame((g) => g.state);
@@ -24,7 +38,7 @@ export function B2B() {
 
       <Card title="공급 계약 제안 — 블렌디드 위스키 회사·브로커">
         {!s.contractOffers.length ? <Empty>제안이 없습니다</Empty> : (
-          <Table head={['구매자', '원액', '스타일', '월 물량', '기간', '단가(LPA)', '최소 품질', '선급금', '총액', '미납 위약금', '']}>
+          <Table head={['구매자', '원액', '스타일', '월 물량', '기간', '단가(LPA)', '최소 품질', '선급금', '총액', '미납 위약금', '숙성 영향', '']}>
             {s.contractOffers.map((o) => (
               <tr key={o.id}>
                 <Td className="font-medium">{o.buyerName}{o.domestic && <> <Badge tone="good">국산 프리미엄</Badge></>}{o.craft && <> <Badge tone="good">크래프트 ×{BULK.craftPriceFactor}</Badge></>}</Td>
@@ -37,17 +51,18 @@ export function B2B() {
                 <Td right>{o.prepayShare ? <Badge tone="good">{pct(o.prepayShare, 0)} · {won(contractTotalValue(o) * o.prepayShare)}</Badge> : '—'}</Td>
                 <Td right>{won(contractTotalValue(o))}</Td>
                 <Td right>{won(o.penaltyPerLPA)}/LPA</Td>
+                <Td><AgingImpact s={s} i={contractAgingImpact(s, o)} /></Td>
                 <Td><Button small variant="primary" onClick={() => dispatch({ type: 'acceptContract', offerId: o.id })}>계약</Button></Td>
               </tr>
             ))}
           </Table>
         )}
-        <p className="mt-2 text-xs text-stone-500">계약하면 매달 말 생산이 끝난 뒤 조건에 맞는 탱크 뉴메이크가 오래된 것부터 자동 납품됩니다. 모자라면 위약금을 내고, 누적 미납이 두 달치가 되면 계약이 파기되며 신뢰도가 크게 떨어집니다. 계약 물량만큼 캐스크에 넣을 원액이 줄어든다는 점을 기억하세요.</p>
+        <p className="mt-2 text-xs text-stone-500">계약하면 매달 말 생산이 끝난 뒤 조건에 맞는 탱크 뉴메이크가 오래된 것부터 자동 납품됩니다. 모자라면 위약금을 내고, 누적 미납이 두 달치가 되면 계약이 파기되며 신뢰도가 크게 떨어집니다. 계약 물량만큼 캐스크에 넣을 원액이 줄어듭니다 — LPA당 병입 위스키 가치는 현물 원액의 약 5배이므로, <b>뉴메이크 계약은 첫 위스키가 나오기 전에 끝나게</b> 잡는 것이 좋습니다(빨간 경고).</p>
       </Card>
 
       <Card title="진행 중 계약">
         {!s.contracts.length ? <Empty>진행 중인 계약이 없습니다</Empty> : (
-          <Table head={['구매자', '스타일', '월 물량', '단가', '진행', '누적 납품', '누적 미납', '남은 선급금', '']}>
+          <Table head={['구매자', '스타일', '월 물량', '단가', '진행', '누적 납품', '누적 미납', '남은 선급금', '숙성 영향', '']}>
             {s.contracts.map((c) => (
               <tr key={c.id}>
                 <Td className="font-medium">{c.buyerName}</Td>
@@ -58,6 +73,7 @@ export function B2B() {
                 <Td right>{num(c.deliveredLPA)} LPA</Td>
                 <Td right className={c.shortfallLPA > 0 ? 'text-rose-700 dark:text-rose-400' : ''}>{num(c.shortfallLPA)} LPA</Td>
                 <Td right>{won(c.prepaidRemaining)}</Td>
+                <Td><AgingImpact s={s} i={contractAgingImpact(s, c)} /></Td>
                 <Td><Button small variant="danger" onClick={() => dispatch({ type: 'cancelContract', contractId: c.id })}>해지 ({won(cancellationCost(c))})</Button></Td>
               </tr>
             ))}

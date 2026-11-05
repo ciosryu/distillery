@@ -209,8 +209,8 @@ function policy(s: GameState, strategy: Strategy): GameState {
     // v1.3: 몰트 생산 능력의 절반까지 계약
     // v1.4: 혼합형은 '과도기 전략' — 위스키가 익기 전에만 계약으로 현금을 만든다.
     // 납품이 36개월 안에 끝나는 계약만 받는다: 36개월 뒤까지 이어지는 계약은 4~7년차 위스키를 깎아 먹어 파산을 부른다 (§16.16)
-    // HYB_UNTIL = 수락 마감 월, HYB_END = 납품 종료 기한
-    if (s.month < Number(process.env.HYB_UNTIL ?? 36)) s = acceptContracts(s, capacityLPA(s, 'malt') * 0.5, 'malt_newmake', Number(process.env.HYB_END ?? 36));
+    // HYB_UNTIL = 수락 마감 월, HYB_END = 납품 종료 기한, HYB_CAP = 몰트 생산 능력 대비 계약 한도 (0.5 → 0.25: 일본 파산 15 → 3/40)
+    if (s.month < Number(process.env.HYB_UNTIL ?? 36)) s = acceptContracts(s, capacityLPA(s, 'malt') * Number(process.env.HYB_CAP ?? 0.25), 'malt_newmake', Number(process.env.HYB_END ?? 36));
     s = fillMalt(s);
     if (stockOf(s, 'whisky') > 2000) {
       const old = s.casks.find((c) => c.contents && c.contents.oakMonths >= 48 && !c.contents.sourced);

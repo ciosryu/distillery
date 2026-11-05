@@ -159,6 +159,40 @@ export function refreshContractOffers(s: GameState, rng: Rng): void {
 
 export const contractTotalValue = (c: ContractTerms) => c.lpaPerMonth * c.termMonths * c.pricePerLPA;
 
+/** 계약 경고 기준 숙성 기간 — 봇·플레이어가 싱글 몰트를 처음 내는 3년 */
+export const CONTRACT_AGING_REF_MONTHS = 36;
+
+export interface ContractAgingImpact {
+  /** 납품이 끝나는 게임 월 */
+  endMonth: number;
+  /** 남은 기간 동안 숙성고에 못 들어가는 원액 */
+  divertedLPA: number;
+  /** 그 원액을 46%·700ml로 병입했을 때의 병 수 (증발 전) */
+  bottleEquivalent: number;
+  /** 첫 자사 위스키가 3년 숙성되는 게임 월 */
+  firstWhiskyMonth: number;
+  /** 첫 위스키 출시 이후에도 계속 납품하는 개월 수 (0이면 안전) */
+  overlapMonths: number;
+  /** 계약 때문에 줄어드는 3년 숙성 위스키의 출시 구간 [from, to) */
+  whiskyGap: [number, number];
+}
+
+/** 계약 경고 (§16.16): 뉴메이크 계약은 첫 위스키가 나오기 전에 끝나야 한다.
+ *  더 길게 이어지면 그만큼의 원액이 3년 뒤 위스키 재고에서 빠진다 — LPA당 병입 가치는 현물의 약 5배 */
+export function contractAgingImpact(s: GameState, c: Pick<ContractTerms, 'lpaPerMonth' | 'termMonths' | 'spirit'> & { monthsDone?: number }): ContractAgingImpact {
+  const remaining = Math.max(0, c.termMonths - (c.monthsDone ?? 0));
+  const endMonth = s.month + remaining;
+  const kind = c.spirit === 'grain_newmake' ? 'grain' : 'malt';
+  const filled = s.casks.filter((k) => k.contents && k.contents.kind === kind && !k.contents.sourced).map((k) => k.filledMonth ?? k.contents!.createdMonth);
+  const firstWhiskyMonth = (filled.length ? Math.min(...filled) : s.month) + CONTRACT_AGING_REF_MONTHS;
+  const divertedLPA = c.lpaPerMonth * remaining;
+  return {
+    endMonth, divertedLPA, bottleEquivalent: Math.round(divertedLPA / (0.46 * 0.7)), firstWhiskyMonth,
+    overlapMonths: Math.max(0, endMonth - Math.max(s.month, firstWhiskyMonth)),
+    whiskyGap: [s.month + CONTRACT_AGING_REF_MONTHS, endMonth + CONTRACT_AGING_REF_MONTHS],
+  };
+}
+
 export function startContract(s: GameState, offer: ContractOffer): Contract {
   const prepaid = Math.round(contractTotalValue(offer) * offer.prepayShare);
   const { expiresMonth: _e, ...terms } = offer;
