@@ -1,5 +1,5 @@
 // 헤드리스 밸런스 시뮬레이션 — 전략별 단순 정책으로 N개 시드를 돌려 파산률·흑자 전환 시점·매출 구성을 본다.
-// 실행: npm run balance [-- 시드수 개월수 전략 지역]   전략 = brand | hybrid | expand | grain | all(기본), 지역 = KR(기본) | JP | TW
+// 실행: npm run balance [-- 시드수 개월수 전략 지역 입지]   전략 = brand | hybrid | expand | grain | all(기본), 지역 = KR(기본) | JP | TW
 import { advanceMonth, applyAction, bulkValuePerLPA, previewBlend, newGame, whiskyMinMonths, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
 import { regionOf } from '../src/sim/content/regions';
 
@@ -7,6 +7,8 @@ const SEEDS = Number(process.argv[2] ?? 12);
 const MONTHS = Number(process.argv[3] ?? 120);
 const WHICH = process.argv[4] ?? 'all';
 const REGION = (process.argv[5] ?? 'KR') as RegionId;
+/** 지역 안의 입지 (예: TW kinmen, KR andong). 비우면 기본 입지 */
+const SITE = process.argv[6];
 const BRIDGE = process.env.NO_BRIDGE !== '1';
 const YOUNG = process.env.NO_YOUNG !== '1';
 
@@ -218,7 +220,7 @@ function bookWorth(s: GameState): number {
 interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWorth: number; bookWorth: number; firstPositive: number; y5retail: number; y5bulk: number }
 
 function play(strategy: Strategy, seed: number): Result {
-  let s = newGame({ seed, region: REGION });
+  let s = newGame({ seed, region: REGION, site: SITE });
   let lo = s.cash;
   for (let m = 0; m < MONTHS && s.status === 'running'; m++) {
     s = advanceMonth(policy(s, strategy));
@@ -258,5 +260,5 @@ for (const st of list) {
   console.log(`${st.padEnd(7)} | 파산 ${rs.length - alive.length}/${rs.length} | 순자산(${MONTHS}m) 평균 ${eok(avg(nw))} ±${eok(sd)} · 원가기준 ${eok(avg(alive.map((r) => r.bookWorth)))} | 최저 현금 평균 ${eok(avg(rs.map((r) => r.minCash)))} | 흑자 전환 평균 ${Math.round(avg(fps))}개월 | 5년차 매출 병입 ${eok(avg(rs.map((r) => r.y5retail)))} + B2B ${eok(avg(rs.map((r) => r.y5bulk)))} | 1위 ${wins[st] ?? 0}회`);
 }
 const dist = (w: Record<string, number>) => [...list, '전멸'].map((st) => `${st} ${w[st] ?? 0}`).join(' · ');
-console.log(`\n[${REGION}] 시드별 1위 분포(시가 평가): ${dist(wins)}`);
+console.log(`\n[${REGION}${SITE ? '/' + SITE : ''}] 시드별 1위 분포(시가 평가): ${dist(wins)}`);
 console.log(`[${REGION}] 시드별 1위 분포(원가 평가): ${dist(bookWins)}  (한 전략이 60% 이상 이기면 지배 전략 의심)`);

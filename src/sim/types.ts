@@ -111,7 +111,7 @@ export interface Product {
   sourcedShare: number;
   /** 매입 원액의 브랜드 가치 0~1 — 비싸게 사 온 원액일수록 높다 (매입 원액이 없으면 1) */
   sourcedPrestige?: number;
-  /** 지역 특산물 표기 (예: 대만 진먼식 고량주) */
+  /** 지역 특산물 표기 (예: 대만 진먼섬의 진먼 고량주) */
   specialty?: string;
   /** 지역 프리미엄 표기 충족 여부 (예: 재패니즈 위스키) */
   premiumLabel?: boolean;
@@ -258,6 +258,8 @@ export interface GameState {
   month: number;
   startYear: number;
   regionId: RegionId;
+  /** 지역 안의 증류소 입지 (없으면 지역 기본 입지) — 기후·특산물 자격이 달라진다 */
+  siteId?: string;
   distilleryName: string;
   cash: number;
   status: 'running' | 'bankrupt';

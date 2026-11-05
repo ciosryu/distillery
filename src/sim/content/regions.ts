@@ -46,6 +46,17 @@ export interface SpecialtyDef {
   ingredientId: string;
   minShare: number;
   appealBonus: number;
+  /** 이 입지에서 만든 것만 특산물 표기 (지리적 표시) */
+  siteOnly?: string;
+}
+
+/** 지역 안의 증류소 입지. 세제·시장·인건비는 지역과 같고 기후·특산물 자격만 다르다 */
+export interface SiteDef {
+  id: string;
+  nameKo: string;
+  tempC: number[];
+  humidity: number[];
+  basis: string;
 }
 
 /** 스코틀랜드·EU식 3년 규정 — 지역 정의가 없을 때의 기본값 */
@@ -79,6 +90,8 @@ export interface RegionDef {
   sourcedPenalty: number;
   whisky: WhiskyRules;
   specialties?: SpecialtyDef[];
+  /** 기본 입지(위 tempC·humidity) 외의 선택 입지 */
+  sites?: SiteDef[];
   /** 지역 특산 캐스크는 싸고, 다른 지역 캐스크는 비싸다 */
   caskPriceFactor: Partial<Record<CaskTypeId, number>>;
 }
@@ -119,8 +132,15 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     eventWeights: { market: 1.0, supply: 1.0, disaster: 1.2, regulation: 1.3, b2b: 0.8, opportunity: 1.0, people: 1.0 },
     // 종가세라 수입 완제품은 브랜드 값까지 세금이 붙어 비싸다 → 국내 병입 매입 원액이 가격으로 경쟁할 여지가 크다 (골든블루식 국내 병입)
     sourcedPenalty: 0.4,
-    // 주세법 별표: 위스키 = 나무통에 넣어 저장한 것, 최소 기간 규정 없음 — 법령 원문 미확인 [확인 필요]
-    whisky: { minMonths: 0, requiresOak: true, basis: '주세법: 나무통 저장 요건, 최소 기간 없음 [확인 필요]' },
+    // 나무통 1년 이상 (v0.8 웹 확인: 나무위키 '코리안 위스키'·국세청 관련 보도 — 법령 원문은 미열람) [확인 필요: 조문]
+    whisky: { minMonths: 12, requiresOak: true, basis: '주세법 시행령: 나무통 1년 이상 저장 (2차 자료 2건 일치, 조문 미열람)' },
+    sites: [{
+      id: 'andong', nameKo: '경북 안동',
+      // 안동 ASOS 평년(1991~2020) 연평균 12.2°C·여름 23.9°C·겨울 −0.3°C에 맞춘 월별 근사치. 습도는 추정 [확인 필요: 기상청 월별 평년값]
+      tempC: [-1.9, 0.6, 6.3, 12.4, 17.6, 22.0, 24.9, 24.9, 20.0, 13.4, 6.6, 0.4],
+      humidity: [60, 57, 56, 56, 62, 70, 78, 78, 75, 71, 67, 63],
+      basis: '안동 ASOS 평년값(연·계절 평균) 기반 근사. 김창수위스키 제2증류소(2026-07 준공) 소재지',
+    }],
     caskPriceFactor: { korean_oak_quarter: 1.0, mizunara_hogshead: 1.6 },
   },
   JP: {
@@ -191,9 +211,17 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     eventWeights: { market: 1.3, supply: 1.0, disaster: 1.5, regulation: 0.7, b2b: 0.6, opportunity: 1.1, people: 1.0 },
     // 싱글 몰트 애호 시장이라 매입 원액 병입은 저가 시장에만 머문다
     sourcedPenalty: 0.7,
-    // 2차 자료(위키백과·88bamboo)는 법정 최소 2년이라고 하나 원 법령 미확인 [확인 필요]
-    whisky: { minMonths: 24, requiresOak: true, basis: '2차 자료: 나무통 2년 이상 [확인 필요 — 원 법령 미확인]' },
-    specialties: [{ id: 'kinmen', label: '진먼식 고량주', category: 'baijiu', ingredientId: 'sorghum_kinmen', minShare: 0.6, appealBonus: 1.35 }],
+    // 菸酒管理法施行細則 第3條: 威士忌 = 곡류 원료, 당화·발효·증류 후 나무통 2년 이상 저장, 40% 이상 (v0.8 웹 확인, 법규 전재 사이트)
+    whisky: { minMonths: 24, requiresOak: true, basis: '菸酒管理法施行細則 第3條: 木桶貯存兩年以上, 酒精成分 40% 이상' },
+    // 진먼 고량주는 진먼섬(金門) 입지에서 만든 것만 (결정 #62)
+    specialties: [{ id: 'kinmen', label: '진먼 고량주', category: 'baijiu', ingredientId: 'sorghum_kinmen', minShare: 0.6, appealBonus: 1.35, siteOnly: 'kinmen' }],
+    sites: [{
+      id: 'kinmen', nameKo: '진먼섬(金門)',
+      // 샤먼 앞바다의 섬 — 이란보다 겨울이 서늘하고 바람이 강하다. 월별 근사치 [추정]
+      tempC: [13.0, 13.3, 15.4, 19.4, 23.3, 26.4, 28.4, 28.2, 26.9, 23.6, 19.6, 15.1],
+      humidity: [73, 78, 80, 82, 83, 85, 82, 81, 76, 70, 70, 70],
+      basis: '진먼현 기후 근사치(추정). 금문주창 소재지',
+    }],
     caskPriceFactor: { korean_oak_quarter: 1.6, mizunara_hogshead: 1.4 },
   },
 };
@@ -202,6 +230,12 @@ export const KOREA = REGIONS.KR;
 
 export function regionOf(s: Pick<GameState, 'regionId'>): RegionDef {
   return REGIONS[s.regionId] ?? REGIONS.KR;
+}
+
+/** 현재 증류소 입지 (기본 입지는 지역의 tempC·humidity) */
+export function siteOf(s: Pick<GameState, 'regionId' | 'siteId'>): SiteDef {
+  const r = regionOf(s);
+  return r.sites?.find((x) => x.id === s.siteId) ?? { id: 'default', nameKo: r.nameKo.replace(/^.*\((.*)\)$/, '$1'), tempC: r.tempC, humidity: r.humidity, basis: '지역 기본 입지' };
 }
 
 /** 도수 반영 기준 소비자가(원/L) */

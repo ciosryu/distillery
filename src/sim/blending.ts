@@ -144,7 +144,9 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   if ((hasMalt || hasGrain) && category === 'malt_spirit') warnings.push(minOakMonths < minMonths ? `오크 숙성 ${minOakMonths}개월 — ${region.nameKo}에서는 ${rules.requiresOak && rules.minMonths === 0 ? '나무통 저장' : `${minMonths}개월 이상 숙성`}해야 "위스키" 표기 가능(몰트 스피릿)` : '도수 40% 미만 — 위스키 표기 불가');
   const premiumLabel = !!rules.premiumLabel && isWhiskyCategory(category) && minOakMonths >= rules.premiumLabel.minMonths && sourcedShare === 0;
   if (rules.premiumLabel && isWhiskyCategory(category) && !premiumLabel) warnings.push(`"${rules.premiumLabel.name}" 표기 불가(${rules.premiumLabel.minMonths}개월 이상 자사 원액만) — 매력도 ×${rules.premiumLabel.appealWithout}`);
-  const specialty = region.specialties?.find((sp) => sp.category === category && (mash[sp.ingredientId] ?? 0) >= sp.minShare && sourcedShare === 0) ?? null;
+  const specialty = region.specialties?.find((sp) => sp.category === category && (mash[sp.ingredientId] ?? 0) >= sp.minShare && sourcedShare === 0 && (!sp.siteOnly || sp.siteOnly === s.siteId)) ?? null;
+  const missedSite = region.specialties?.find((sp) => sp.siteOnly && sp.siteOnly !== s.siteId && sp.category === category && (mash[sp.ingredientId] ?? 0) >= sp.minShare);
+  if (missedSite) warnings.push(`"${missedSite.label}" 표기는 ${region.sites?.find((x) => x.id === missedSite.siteOnly)?.nameKo ?? missedSite.siteOnly} 증류소에서 만든 것만 가능`);
   if (sourcedShare > 0 && region.sourcedPenalty > 0) warnings.push(`매입 원액 ${Math.round(sourcedShare * 100)}% · 브랜드 가치 ${Math.round(sourcedPrestige * 100)}점 — 싼 원액일수록 저가 하이볼용으로만 팔린다`);
   if (kind === 'gin' && category === 'flavored_spirit') warnings.push('주니퍼가 지배적이지 않거나 도수 37.5% 미만 — "진" 표기 불가(기타 증류주)');
   if (finalAbv < MIN_BOTTLING_ABV[category]) errors.push(`${CATEGORY[category].nameKo} 최소 병입 도수는 ${(MIN_BOTTLING_ABV[category] * 100).toFixed(1)}%`);

@@ -29,7 +29,7 @@ interface GameStore {
   toast: Toast | null;
   dispatch: (a: Action) => boolean;
   advance: (months: number) => void;
-  restart: (name?: string, region?: RegionId) => void;
+  restart: (name?: string, region?: RegionId, site?: string) => void;
   clearToast: () => void;
 }
 
@@ -53,8 +53,8 @@ export const useGame = create<GameStore>((set, get) => ({
     save(next);
     set({ state: next });
   },
-  restart: (name, region) => {
-    const s = newGame({ distilleryName: name || undefined, region });
+  restart: (name, region, site) => {
+    const s = newGame({ distilleryName: name || undefined, region, site: site || undefined });
     save(s);
     set({ state: s, toast: { id: ++toastId, kind: 'ok', text: '새 게임을 시작했습니다' } });
   },

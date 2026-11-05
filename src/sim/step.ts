@@ -1,7 +1,7 @@
-import { CASKS, EQUIPMENT, ROLE_INFO } from './content/catalog';
-import { liquorTaxPerBottle, regionOf } from './content/regions';
+import { CASK_STORAGE, CASKS, EQUIPMENT, ROLE_INFO } from './content/catalog';
+import { liquorTaxPerBottle, regionOf, siteOf } from './content/regions';
 import { refreshBroker } from './broker';
-import { fulfillContracts, refreshCaskBids, refreshContractOffers, updateBulkIndex } from './bulk';
+import { bulkValuePerLPA, fulfillContracts, refreshCaskBids, refreshContractOffers, updateBulkIndex } from './bulk';
 import { clamp, weightedAverage } from './flavor';
 import { gainXp, refreshCandidates } from './hr';
 import { matureCask, restLot } from './maturation';
@@ -97,8 +97,8 @@ function runProduction(s: GameState, report: MonthReport): { runsUsed: number } 
 }
 
 function runMaturation(s: GameState, report: MonthReport, monthOfYear: number): void {
-  const region = regionOf(s);
-  const climate = { tempC: region.tempC[monthOfYear - 1]!, humidity: region.humidity[monthOfYear - 1]! };
+  const site = siteOf(s);
+  const climate = { tempC: site.tempC[monthOfYear - 1]!, humidity: site.humidity[monthOfYear - 1]! };
   const wm = staffOf(s, 'warehouse');
   const control = Math.max(0, ...wm.map((x) => x.stats.b));
   const observe = Math.max(0, ...wm.map((x) => x.stats.a));
@@ -135,6 +135,7 @@ function runFinance(s: GameState, report: MonthReport): void {
   pay('overhead', regionOf(s).overheadPerMonth);
   pay('maintenance', s.equipment.reduce((t, e) => t + (e.readyMonth <= s.month ? (EQUIPMENT[e.catalogId]?.maintenance ?? 0) : 0), 0));
   pay('marketing', s.marketingBudget);
+  pay('storage', caskStorageCost(s));
   for (const loan of s.loans) {
     const interest = Math.round(loan.balance * (loan.annualRate / 12));
     const inGrace = s.month < loan.startMonth + loan.graceMonths;
@@ -212,8 +213,18 @@ export function advanceMonths(s: GameState, n: number): GameState {
   return cur;
 }
 
+/** 원액이 든 캐스크의 월 보관비 + 보험료 */
+export function caskStorageCost(s: GameState): number {
+  const labor = regionOf(s).laborCost;
+  return Math.round(s.casks.reduce((t, c) => {
+    if (!c.contents) return t;
+    const value = c.contents.volumeL * c.contents.abv * bulkValuePerLPA(s, c.contents);
+    return t + CASK_STORAGE.perCaskPerMonth * labor + value * CASK_STORAGE.insuranceRatePerMonth;
+  }, 0));
+}
+
 export function monthlyFixedCost(s: GameState): number {
-  return s.staff.reduce((t, x) => t + x.salary, 0) + regionOf(s).overheadPerMonth + s.marketingBudget +
+  return s.staff.reduce((t, x) => t + x.salary, 0) + regionOf(s).overheadPerMonth + s.marketingBudget + caskStorageCost(s) +
     s.equipment.reduce((t, e) => t + (EQUIPMENT[e.catalogId]?.maintenance ?? 0), 0) +
     s.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0);
 }

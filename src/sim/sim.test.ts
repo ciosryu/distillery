@@ -3,11 +3,11 @@ import {
   advanceMonths, annuityPayment, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, categorize, demandFor, evaluate, evaporate, heartsFraction, spotBidPerLPA, spotQuote,
   makeContractOffer, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
   appeal, applyEffects, buyersFor, presetRecipes, validateRecipe, type Product,
-  agePerception, sourcedElasticityFactor, sourcedPrestigeOf,
+  agePerception, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost,
 } from './index';
 import { EQUIPMENT } from './content/catalog';
 import { BUYERS } from './content/names';
-import { consumerPrice, priceForConsumer, REGIONS } from './content/regions';
+import { consumerPrice, priceForConsumer, REGIONS, siteOf } from './content/regions';
 
 const recipeId = (s: GameState, prefix: string) => s.recipes.find((r) => r.name.startsWith(prefix))!.id;
 
@@ -290,9 +290,16 @@ describe('지역 (v0.6)', () => {
     expect(tw.recipes.some((r) => r.kind === 'soju')).toBe(false);
   });
 
-  it('진먼 고량은 대만에서만 구할 수 있고, 60% 이상 쓰면 대만에서 "진먼식 고량주" 특산물이 된다', () => {
+  it('진먼 고량은 대만에서만 구할 수 있고, 진먼섬 증류소에서 60% 이상 쓰면 "진먼 고량주" 특산물이 된다', () => {
     const kr = newGame({ seed: 1, region: 'KR' });
-    let tw = newGame({ seed: 1, region: 'TW', startingCash: 5_000_000_000 });
+    const yilan = newGame({ seed: 1, region: 'TW', startingCash: 5_000_000_000 });
+    const yk = yilan.recipes.find((r) => r.kind === 'baijiu')!;
+    const yl = advanceMonths(applyAction(yilan, { type: 'setOrder', recipeId: yk.id, batchesPerMonth: 1 }).state, 1);
+    const ylot = yl.lots.find((l) => l.kind === 'baijiu')!;
+    const ypv = previewBlend(yl, [{ source: 'lot', id: ylot.id, liters: ylot.volumeL }], { name: 'k', targetAbv: 0.58, bottleMl: 600, chillFilter: true, packagingId: 'standard' });
+    expect(ypv.specialty).toBeNull();
+    expect(ypv.warnings.some((w) => w.includes('진먼섬'))).toBe(true);
+    let tw = newGame({ seed: 1, region: 'TW', site: 'kinmen', startingCash: 5_000_000_000 });
     const kinmen = tw.recipes.find((r) => r.kind === 'baijiu')!;
     expect(validateRecipe(kr, { ...kinmen, stillId: kr.equipment[0]!.id })).toContain('진먼 고량(金門 계약재배)은(는) 이 지역에서 구할 수 없습니다');
     tw = advanceMonths(applyAction(tw, { type: 'setOrder', recipeId: kinmen.id, batchesPerMonth: 1 }).state, 1);
@@ -303,10 +310,10 @@ describe('지역 (v0.6)', () => {
     expect(appeal({ ...p, specialty: 'kinmen' }, tw) / appeal(p, tw)).toBeCloseTo(1.35, 5);
   });
 
-  it('최소 숙성 기간은 나라별: 한국·일본은 규정이 없어 바로 위스키, 대만은 2년, 기본은 3년', () => {
+  it('최소 숙성 기간은 나라별: 한국 1년, 일본은 규정이 없어 바로 위스키, 대만 2년, 기본 3년', () => {
     const rules = (r: 'KR' | 'JP' | 'TW') => REGIONS[r].whisky;
-    expect(categorize('malt', 1, 0.46, {}, false, true, rules('KR'))).toBe('whisky');
-    expect(categorize('malt', 0, 0.46, {}, false, true, rules('KR'))).toBe('malt_spirit'); // 나무통 저장 요건
+    expect(categorize('malt', 11, 0.46, {}, false, true, rules('KR'))).toBe('malt_spirit');
+    expect(categorize('malt', 12, 0.46, {}, false, true, rules('KR'))).toBe('whisky');
     expect(categorize('malt', 0, 0.46, {}, false, true, rules('JP'))).toBe('whisky');
     expect(categorize('malt', 23, 0.46, {}, false, true, rules('TW'))).toBe('malt_spirit');
     expect(categorize('malt', 24, 0.46, {}, false, true, rules('TW'))).toBe('whisky');
@@ -359,6 +366,25 @@ describe('증발 보정 (v0.8)', () => {
     expect(rate(REGIONS.TW.tempC, 82)).toBeLessThan(0.14);
     expect(rate(REGIONS.KR.tempC, 68)).toBeGreaterThan(0.045);
     expect(rate([4, 4, 6, 8, 11, 14, 15, 15, 13, 10, 7, 5], 85)).toBeLessThan(0.025);
+  });
+
+  it('입지에 따라 기후가 바뀐다 (안동·진먼섬)', () => {
+    expect(siteOf(newGame({ seed: 1, region: 'KR', site: 'andong' })).nameKo).toBe('경북 안동');
+    expect(siteOf(newGame({ seed: 1, region: 'KR' })).tempC).toEqual(REGIONS.KR.tempC);
+  });
+});
+
+describe('캐스크 보관비 (결정 #61)', () => {
+  it('원액이 든 캐스크만 보관비·보험료가 붙고, 지역 인건비 배수를 따른다', () => {
+    const kr = newGame({ seed: 1, region: 'KR' });
+    expect(caskStorageCost(kr)).toBe(0);
+    const cask = kr.brokerOffers[0]!.cask;
+    kr.casks.push(cask);
+    const value = cask.contents!.volumeL * cask.contents!.abv * bulkValuePerLPA(kr, cask.contents!);
+    expect(caskStorageCost(kr)).toBe(Math.round(5_000 + value * 0.001));
+    const jp = newGame({ seed: 1, region: 'JP' });
+    jp.casks.push(cask);
+    expect(caskStorageCost(jp)).toBeGreaterThan(caskStorageCost(kr));
   });
 
   it('고량주 원액은 백주 카테고리', () => {

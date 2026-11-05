@@ -13,6 +13,8 @@ export interface NewGameOptions {
   startYear?: number;
   startingCash?: number;
   region?: RegionId;
+  /** 지역 안의 입지 (예: 대만 진먼섬, 한국 안동). 없으면 지역 기본 입지 */
+  site?: string;
 }
 
 export const DEFAULT_STARTING_CASH = 500_000_000;
@@ -35,8 +37,8 @@ export function presetRecipes(stillId: string, region: RegionId = 'KR'): Omit<Re
     ...malts,
   ];
   if (region === 'TW') return [
-    // 대만 특산물: 진먼 고량 60% 이상 = 진먼식 고량주 (결정 #58)
-    { ...base, name: '진먼식 고량주 — 청향', kind: 'baijiu', mashBill: [{ ingredientId: 'sorghum_kinmen', ratio: 0.85 }, { ingredientId: 'wheat_qu', ratio: 0.15 }], yeast: 'distillers', fermentDays: 21, runs: 1, cut: { c1: 0.1, c2: 0.72 } },
+    // 대만 특산물: 진먼섬 입지에서 진먼 고량 60% 이상 = 진먼 고량주 (결정 #58·#62)
+    { ...base, name: '진먼 고량 — 청향', kind: 'baijiu', mashBill: [{ ingredientId: 'sorghum_kinmen', ratio: 0.85 }, { ingredientId: 'wheat_qu', ratio: 0.15 }], yeast: 'distillers', fermentDays: 21, runs: 1, cut: { c1: 0.1, c2: 0.72 } },
     gin('대만 보태니컬 진', [{ botanicalId: 'juniper', gramsPerL: 18 }, { botanicalId: 'maqaw', gramsPerL: 3 }, { botanicalId: 'oolong', gramsPerL: 3 }, { botanicalId: 'lemon_peel', gramsPerL: 3 }, { botanicalId: 'coriander', gramsPerL: 4 }]),
     londonDry,
     ...malts,
@@ -74,6 +76,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     month: 0,
     startYear: opts.startYear ?? 2027,
     regionId: opts.region ?? 'KR',
+    ...(opts.site ? { siteId: opts.site } : {}),
     distilleryName: opts.distilleryName ?? STARTER[opts.region ?? 'KR'].distillery,
     cash: opts.startingCash ?? DEFAULT_STARTING_CASH,
     status: 'running',

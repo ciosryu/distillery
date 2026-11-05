@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { monthLabel, type RegionId } from './sim';
-import { REGIONS } from './sim/content/regions';
+import { REGIONS, siteOf } from './sim/content/regions';
 import { useGame } from './store/game';
 import { won } from './ui/format';
 import { Button } from './ui/kit';
@@ -44,6 +44,7 @@ export default function App() {
   const [newGameOpen, setNewGameOpen] = useState(false);
   const [ngName, setNgName] = useState('');
   const [ngRegion, setNgRegion] = useState<RegionId>('KR');
+  const [ngSite, setNgSite] = useState('');
 
   useEffect(() => {
     try { localStorage.setItem('distillery-tycoon/tab', tab); } catch { /* 무시 */ }
@@ -60,7 +61,7 @@ export default function App() {
       <header className="sticky top-0 z-10 border-b border-stone-200 bg-white/90 backdrop-blur dark:border-stone-800 dark:bg-stone-900/90">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div>
-            <h1 className="text-base font-bold">{s.distilleryName} <span className="text-xs font-normal text-stone-500">Distillery Tycoon · {REGIONS[s.regionId].nameKo}</span></h1>
+            <h1 className="text-base font-bold">{s.distilleryName} <span className="text-xs font-normal text-stone-500">Distillery Tycoon · {s.siteId ? `${REGIONS[s.regionId].nameKo.replace(/\s*\(.*\)$/, '')} (${siteOf(s).nameKo})` : REGIONS[s.regionId].nameKo}</span></h1>
             <div className="text-sm text-stone-600 dark:text-stone-300">
               <span className="font-semibold">{monthLabel(s.startYear, s.month)}</span> · 현금 <span className={`font-semibold tabular-nums ${s.cash < 0 ? 'text-rose-700 dark:text-rose-400' : ''}`}>{won(s.cash)}</span>
             </div>
@@ -76,10 +77,16 @@ export default function App() {
           <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-4 pb-3 text-sm">
             <span className="text-stone-600 dark:text-stone-300">새 게임 (현재 진행은 사라집니다):</span>
             <input className="rounded-md border border-stone-300 bg-white px-2 py-1 dark:border-stone-700 dark:bg-stone-800" placeholder="증류소 이름(비우면 기본값)" value={ngName} onChange={(e) => setNgName(e.target.value)} aria-label="증류소 이름" />
-            <select className="rounded-md border border-stone-300 bg-white px-2 py-1 dark:border-stone-700 dark:bg-stone-800" value={ngRegion} onChange={(e) => setNgRegion(e.target.value as RegionId)} aria-label="시작 지역">
+            <select className="rounded-md border border-stone-300 bg-white px-2 py-1 dark:border-stone-700 dark:bg-stone-800" value={ngRegion} onChange={(e) => { setNgRegion(e.target.value as RegionId); setNgSite(''); }} aria-label="시작 지역">
               {(Object.keys(REGIONS) as RegionId[]).map((r) => <option key={r} value={r}>{REGIONS[r].nameKo}</option>)}
             </select>
-            <Button variant="primary" small onClick={() => { restart(ngName, ngRegion); setNewGameOpen(false); setNgName(''); }}>시작</Button>
+            {!!REGIONS[ngRegion].sites?.length && (
+              <select className="rounded-md border border-stone-300 bg-white px-2 py-1 dark:border-stone-700 dark:bg-stone-800" value={ngSite} onChange={(e) => setNgSite(e.target.value)} aria-label="입지">
+                <option value="">{siteOf({ regionId: ngRegion }).nameKo} (기본)</option>
+                {REGIONS[ngRegion].sites!.map((x) => <option key={x.id} value={x.id}>{x.nameKo}</option>)}
+              </select>
+            )}
+            <Button variant="primary" small onClick={() => { restart(ngName, ngRegion, ngSite); setNewGameOpen(false); setNgName(''); }}>시작</Button>
             <Button variant="ghost" small onClick={() => setNewGameOpen(false)}>취소</Button>
           </div>
         )}

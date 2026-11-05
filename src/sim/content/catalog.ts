@@ -134,6 +134,14 @@ export function packagingCost(packagingId: string, bottleMl: number): number {
   return p.costBySize[bottleMl as BottleMl] ?? Math.round(p.costBySize[700] * (bottleMl / 700));
 }
 
+// ── 캐스크 보관비·보험료 (PRD §5.5, 결정 #61) — 숙성 재고를 묵히는 데도 돈이 든다 [튜닝]
+export const CASK_STORAGE = {
+  /** 원액이 든 캐스크 1개당 월 보관비(랙·공간·관리) — 지역 인건비 배수를 곱한다 */
+  perCaskPerMonth: 5_000,
+  /** 월 보험료 = 캐스크 원액 벌크 가치 × 이 비율 (연 1.2%) */
+  insuranceRatePerMonth: 0.001,
+};
+
 // ── 마진 구조 (PRD §9.5) — 병당 고정비가 저가 제품의 마진을 깎는다 [튜닝] ──
 /** 병입 인건비·라인 비용 (병당) */
 export const BOTTLING_LABOR_PER_BOTTLE = 500;
