@@ -46,9 +46,22 @@ export function bulkValuePerLPA(s: Pick<GameState, 'bulkIndex' | 'modifiers' | '
 /** B2B 신뢰도 보정: 0 → −5%, 100 → +5% */
 const trustAdj = (trust: number) => 0.95 + 0.1 * (trust / 100);
 
-/** 현물로 팔 때 받는 단가 — 현물 시장의 절반은 국내 블렌더로 보고 국산 프리미엄의 절반을 반영 */
-export function spotBidPerLPA(s: GameState, lot: SpiritLot): number {
-  return bulkValuePerLPA(s, lot) * BULK.bid * trustAdj(s.b2bTrust) * (lot.sourced ? 1 : 1 + domesticPremium(s) * 0.5);
+/** 그레인 현물 시장 포화 계수 (#81): 1 / (1 + (최근 판매량 + 이번 판매량의 절반) / 시장 깊이). 몰트는 항상 1 */
+export function spotSaturation(s: Pick<GameState, 'spotSoldLPA' | 'regionId'>, lot: SpiritLot, lpa = 0): number {
+  if (lot.kind !== 'grain') return 1;
+  const depth = BULK.grainSpotDepthLPA * regionOf(s).bulkMarketDepth;
+  return 1 / (1 + ((s.spotSoldLPA?.grain ?? 0) + lpa / 2) / depth);
+}
+
+/** 현물로 팔 때 받는 단가 — 현물 시장의 절반은 국내 블렌더로 보고 국산 프리미엄의 절반을 반영. lpa = 이번에 팔 물량(포화 반영) */
+export function spotBidPerLPA(s: GameState, lot: SpiritLot, lpa = 0): number {
+  return bulkValuePerLPA(s, lot) * BULK.bid * trustAdj(s.b2bTrust) * (lot.sourced ? 1 : 1 + domesticPremium(s) * 0.5) * spotSaturation(s, lot, lpa);
+}
+
+/** 현물 판매를 시장에 기록 (포화 누적) */
+export function recordSpotSale(s: GameState, lot: SpiritLot, lpa: number): void {
+  if (lot.kind !== 'grain') return;
+  s.spotSoldLPA = { grain: (s.spotSoldLPA?.grain ?? 0) + lpa };
 }
 
 /** 브로커에게 살 때 내는 단가 (수입 원액 — 국산 프리미엄 없음) */
@@ -63,7 +76,7 @@ export function caskResidual(cask: Cask): number {
 
 export function spotQuote(s: GameState, lot: SpiritLot, liters: number, cask?: Cask): number {
   const lpa = Math.min(liters, lot.volumeL) * lot.abv;
-  return Math.round(lpa * spotBidPerLPA(s, lot) + (cask ? caskResidual(cask) : 0));
+  return Math.round(lpa * spotBidPerLPA(s, lot, lpa) + (cask ? caskResidual(cask) : 0));
 }
 
 // ── 계약 ──

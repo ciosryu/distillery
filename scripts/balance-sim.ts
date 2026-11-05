@@ -3,6 +3,7 @@
 import { advanceMonth, applyAction, bulkValuePerLPA, capacityLPA, lotQuality, previewBlend, newGame, whiskyMinMonths, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
 import { regionOf } from '../src/sim/content/regions';
 import { EVENTS } from '../src/sim/content/events';
+import { BULK } from '../src/sim/content/catalog';
 
 const SEEDS = Number(process.argv[2] ?? 12);
 const MONTHS = Number(process.argv[3] ?? 120);
@@ -14,6 +15,8 @@ const BRIDGE = process.env.NO_BRIDGE !== '1';
 const YOUNG = process.env.NO_YOUNG !== '1';
 const TOUR = process.env.NO_TOUR !== '1';
 const DEFEND = process.env.NO_DEFEND !== '1';
+// 튜닝 실험용: 그레인 현물 시장 깊이 덮어쓰기 (#81)
+if (process.env.GRAIN_DEPTH) BULK.grainSpotDepthLPA = Number(process.env.GRAIN_DEPTH);
 
 type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain';
 
@@ -287,6 +290,17 @@ function diag(strategy: Strategy, seed: number, s: GameState): void {
       return { prod: Object.fromEntries(Object.entries(prod).map(([k, v]) => [k, { lpa: Math.round(v.lpa), perLPA: Math.round(v.cost / Math.max(1, v.lpa)) }])), deliveredLPA: Math.round(dl), contractPerLPA: Math.round(del.reduce((t, b) => t + b.revenue, 0) / Math.max(1, dl)) };
     })(),
     contracts: s.contracts.length, casks: s.casks.filter((c) => c.contents).length,
+    worth: (() => {
+      const val = (l: { volumeL: number; abv: number; kind: string }) => l.volumeL * l.abv * bulkValuePerLPA(s, l as never) * 0.85;
+      const inCasks = s.casks.flatMap((c) => (c.contents ? [c.contents] : []));
+      return {
+        cash: Math.round(s.cash / 1e6), loans: Math.round(s.loans.reduce((t, l) => t + l.balance, 0) / 1e6),
+        maltStock: Math.round(inCasks.filter((l) => l.kind === 'malt').reduce((t, l) => t + val(l), 0) / 1e6),
+        grainStock: Math.round(inCasks.filter((l) => l.kind === 'grain').reduce((t, l) => t + val(l), 0) / 1e6),
+        lots: Math.round(s.lots.reduce((t, l) => t + val(l), 0) / 1e6),
+        products: Math.round(s.products.reduce((t, p) => t + p.stockBottles * p.unitCost, 0) / 1e6),
+      };
+    })(),
   }));
 }
 

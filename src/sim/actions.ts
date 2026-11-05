@@ -1,7 +1,7 @@
 import { BULK, CASK_COST_SHARE_PER_FILL, CASK_MARKET, CASKS, EQUIPMENT, LOAN_OFFERS, RECHAR_COST } from './content/catalog';
 import { assignSlot, handleDeparture, INVESTMENT_OFFERS, masterDistiller, OWNERSHIP, rotateWarehouse, usedCaskPrice } from './ops';
 import { rngFor } from './rng';
-import { cancellationCost, isBulkKind, spotQuote, startContract } from './bulk';
+import { cancellationCost, isBulkKind, recordSpotSale, spotQuote, startContract } from './bulk';
 import { resolvePending } from './events';
 import { mod } from './modifiers';
 import { executeBlend, type BlendComponent, type BottleOptions } from './blending';
@@ -303,6 +303,7 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
         if (cask.owner) return fail(prev, '고객 소유 캐스크입니다');
         if (!isBulkKind(cask.contents)) return fail(prev, '벌크 판매는 몰트·그레인 원액만 가능합니다');
         const amount = spotQuote(s, cask.contents, cask.contents.volumeL, cask);
+        recordSpotSale(s, cask.contents, cask.contents.volumeL * cask.contents.abv);
         s.cash += amount;
         s.casks.splice(ci, 1);
         return { state: s, message: `캐스크 ${cask.id}를 원액째 ${amount.toLocaleString()}원에 판매` };
@@ -314,6 +315,7 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       const liters = Math.min(lot.volumeL, Math.max(0, a.liters ?? lot.volumeL));
       if (liters <= 0) return fail(prev, '판매량을 입력하세요');
       const amount = spotQuote(s, lot, liters);
+      recordSpotSale(s, lot, liters * lot.abv);
       s.cash += amount;
       if (lot.volumeL - liters < 1) s.lots.splice(li, 1);
       else s.lots[li] = { ...lot, volumeL: lot.volumeL - liters };

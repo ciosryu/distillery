@@ -1,4 +1,4 @@
-import { CASK_STORAGE, CASKS, EQUIPMENT, INGREDIENTS, ROLE_INFO } from './content/catalog';
+import { BULK, CASK_STORAGE, CASKS, EQUIPMENT, INGREDIENTS, ROLE_INFO } from './content/catalog';
 import { liquorTaxPerBottle, regionOf, traditionalTaxFactor } from './content/regions';
 import { refreshBroker } from './broker';
 import { bulkValuePerLPA, fulfillContracts, refreshCaskBids, refreshContractOffers, updateBulkIndex } from './bulk';
@@ -227,6 +227,8 @@ export function advanceMonth(prev: GameState): GameState {
   refreshContractOffers(s, rngFor(s.seed, s.month, 'contracts'));
   refreshCaskBids(s, rngFor(s.seed, s.month, 'caskbids'));
   updateBulkIndex(s, rngFor(s.seed, s.month, 'bulk'));
+  // 그레인 현물 시장이 물량을 소화한다 (#81)
+  if (s.spotSoldLPA) s.spotSoldLPA = { grain: s.spotSoldLPA.grain * BULK.spotDecay };
 
   // 원재료 가격 변동 (평균 회귀 랜덤 워크)
   const prng = rngFor(s.seed, s.month, 'prices');
