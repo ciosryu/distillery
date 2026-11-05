@@ -1,5 +1,5 @@
 import { CASKS } from '../../sim/content/catalog';
-import { cancellationCost, contractTotalValue, isNewMake, lotQuality, maltCapacityLPA, spotBidPerLPA, spotQuote } from '../../sim';
+import { cancellationCost, capacityLPA, contractTotalValue, domesticPremium, isNewMake, lotQuality, spotBidPerLPA, spotQuote } from '../../sim';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';
@@ -10,15 +10,15 @@ export function B2B() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
   const committed = s.contracts.reduce((t, c) => t + c.lpaPerMonth, 0);
-  const maltLots = s.lots.filter((l) => l.kind === 'malt');
-  const maltCasks = s.casks.filter((c) => c.contents?.kind === 'malt');
+  const maltLots = s.lots.filter((l) => l.kind === 'malt' || l.kind === 'grain');
+  const maltCasks = s.casks.filter((c) => c.contents?.kind === 'malt' || c.contents?.kind === 'grain');
 
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="벌크 원액 시세 지수" value={s.bulkIndex.toFixed(2)} hint="위스키 트렌드와 연동, 매달 변동" tone={s.bulkIndex >= 1 ? 'good' : 'warn'} />
         <Stat label="B2B 신뢰도" value={Math.round(s.b2bTrust)} hint="납품 실적이 좋으면 상승 → 계약 단가·물량↑" />
-        <Stat label="월 계약 물량" value={`${num(committed)} LPA`} hint={`몰트 생산 여력 약 ${num(maltCapacityLPA(s))} LPA/월`} />
+        <Stat label="월 계약 물량" value={`${num(committed)} LPA`} hint={`생산 여력: 몰트 약 ${num(capacityLPA(s, 'malt'))} · 그레인 약 ${num(capacityLPA(s, 'grain'))} LPA/월 · 국산 프리미엄 ${pct(domesticPremium(s), 0)}`} />
         <Stat label="지난달 원액 매출" value={won(s.reports.at(-1)?.bulkRevenue ?? 0)} hint="계약 납품분 (현물 판매는 즉시 입금)" />
       </div>
 
@@ -27,8 +27,8 @@ export function B2B() {
           <Table head={['구매자', '원액', '스타일', '월 물량', '기간', '단가(LPA)', '최소 품질', '선급금', '총액', '미납 위약금', '']}>
             {s.contractOffers.map((o) => (
               <tr key={o.id}>
-                <Td className="font-medium">{o.buyerName}</Td>
-                <Td>몰트 뉴메이크</Td>
+                <Td className="font-medium">{o.buyerName}{o.domestic && <> <Badge tone="good">국산 프리미엄</Badge></>}</Td>
+                <Td>{o.spirit === 'grain_newmake' ? '그레인 뉴메이크' : '몰트 뉴메이크'}</Td>
                 <Td><Badge>{STYLE_LABEL[o.style]}</Badge></Td>
                 <Td right>{num(o.lpaPerMonth)} LPA</Td>
                 <Td right>{o.termMonths}개월</Td>
@@ -65,8 +65,8 @@ export function B2B() {
         )}
       </Card>
 
-      <Card title="현물 벌크 판매 — 탱크 원액">
-        {!maltLots.length ? <Empty>탱크에 몰트 원액이 없습니다</Empty> : (
+      <Card title="현물 벌크 판매 — 탱크 원액 (몰트·그레인)">
+        {!maltLots.length ? <Empty>탱크에 몰트·그레인 원액이 없습니다</Empty> : (
           <Table head={['원액', '액량', '도수', 'LPA', '품질', '단가(LPA)', '판매 금액', 'LPA당 원가', '']}>
             {maltLots.map((l) => (
               <tr key={l.id}>

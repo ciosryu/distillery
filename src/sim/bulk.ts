@@ -1,4 +1,6 @@
 import { BULK, BULK_BUYERS, CASKS, EQUIPMENT } from './content/catalog';
+import { KOREA } from './content/korea';
+import { mod } from './modifiers';
 import { clamp, evaluate } from './flavor';
 import { lotCategory } from './blending';
 import type { Rng } from './rng';
@@ -8,8 +10,9 @@ import { nid } from './util';
 // 원액 B2B 판매 (PRD §8.6): 블렌디드 위스키 회사·브로커에 현물 벌크 판매 또는 정기 공급 계약.
 // 원칙: 현물 매입가(bid) < 기준가치 < 브로커 판매가(ask) → 사고팔기만으로 차익을 낼 수 없다.
 
-export const isNewMake = (lot: SpiritLot) => lot.kind === 'malt' && lot.oakMonths === 0;
+export const isNewMake = (lot: SpiritLot) => (lot.kind === 'malt' || lot.kind === 'grain') && lot.oakMonths === 0;
 export const isPeated = (lot: SpiritLot) => (lot.flavor.peat_smoke ?? 0) >= 25;
+export const isBulkKind = (lot: SpiritLot) => lot.kind === 'malt' || lot.kind === 'grain';
 
 export function matchesStyle(lot: SpiritLot, style: ContractTerms['style']): boolean {
   if (style === 'any') return true;
@@ -23,23 +26,32 @@ export function lotQuality(lot: SpiritLot): number {
 /** 품질 계수: 35점 → 0.7, 75점 이상 → 1.3 */
 export const qualityFactor = (q: number) => 0.7 + 0.6 * clamp((q - 35) / 40, 0, 1);
 
-/** 벌크 기준가치(원/LPA): 몰트 원액만 거래 */
-export function bulkValuePerLPA(s: Pick<GameState, 'bulkIndex'>, lot: SpiritLot): number {
-  if (lot.kind !== 'malt') return 0;
+/** 국산 원액 프리미엄 비율 (지역 기본값 × 이벤트 보정) */
+export function domesticPremium(s: Pick<GameState, 'modifiers' | 'month'>): number {
+  return KOREA.domesticSpiritPremium * mod(s, 'domestic_premium');
+}
+
+/** 벌크 기준가치(원/LPA): 몰트·그레인 원액만 거래 */
+export function bulkValuePerLPA(s: Pick<GameState, 'bulkIndex' | 'modifiers' | 'month'>, lot: SpiritLot): number {
+  if (!isBulkKind(lot)) return 0;
   const years = lot.oakMonths / 12;
-  return BULK.newMakeBase * (1 + BULK.agePerYear * years) * qualityFactor(lotQuality(lot)) * (isPeated(lot) ? 1 + BULK.peatPremium : 1) * s.bulkIndex;
+  const grain = lot.kind === 'grain';
+  const base = grain ? BULK.grainNewMakeBase : BULK.newMakeBase;
+  const age = 1 + (grain ? BULK.grainAgePerYear : BULK.agePerYear) * years;
+  const peat = isPeated(lot) ? (1 + BULK.peatPremium) * mod(s, 'bulk:peated') : 1;
+  return base * age * qualityFactor(lotQuality(lot)) * peat * s.bulkIndex * mod(s, 'bulk');
 }
 
 /** B2B 신뢰도 보정: 0 → −5%, 100 → +5% */
 const trustAdj = (trust: number) => 0.95 + 0.1 * (trust / 100);
 
-/** 현물로 팔 때 받는 단가 */
+/** 현물로 팔 때 받는 단가 — 현물 시장의 절반은 국내 블렌더로 보고 국산 프리미엄의 절반을 반영 */
 export function spotBidPerLPA(s: GameState, lot: SpiritLot): number {
-  return bulkValuePerLPA(s, lot) * BULK.bid * trustAdj(s.b2bTrust);
+  return bulkValuePerLPA(s, lot) * BULK.bid * trustAdj(s.b2bTrust) * (lot.sourced ? 1 : 1 + domesticPremium(s) * 0.5);
 }
 
-/** 브로커에게 살 때 내는 단가 */
-export function brokerAskPerLPA(s: Pick<GameState, 'bulkIndex'>, lot: SpiritLot): number {
+/** 브로커에게 살 때 내는 단가 (수입 원액 — 국산 프리미엄 없음) */
+export function brokerAskPerLPA(s: Pick<GameState, 'bulkIndex' | 'modifiers' | 'month'>, lot: SpiritLot): number {
   return bulkValuePerLPA(s, lot) * BULK.ask;
 }
 
@@ -55,31 +67,60 @@ export function spotQuote(s: GameState, lot: SpiritLot, liters: number, cask?: C
 
 // ── 계약 ──
 
-/** 설치(또는 설치 중)된 증류기 기준 월 몰트 생산 여력(LPA) — 계약 물량 규모를 정하는 데 사용 */
-export function maltCapacityLPA(s: GameState): number {
+/** 증류기·발효조 기준 월 원액 생산 여력(LPA) — 계약 물량 규모를 정하는 데 사용 */
+export function capacityLPA(s: GameState, kind: 'malt' | 'grain'): number {
+  const fermenters = s.equipment.map((e) => EQUIPMENT[e.catalogId]).filter((d) => d?.kind === 'fermenter') as { capacityL: number }[];
   return s.equipment.reduce((t, e) => {
     const d = EQUIPMENT[e.catalogId];
-    // 2회 증류, 워시 8%, 페인츠 재투입 포함 회수율 약 75%
-    return t + (d?.kind === 'still' ? (d.runsPerMonth / 2) * d.chargeL * 0.08 * 0.75 : 0);
+    if (d?.kind !== 'still') return t;
+    const column = d.stillType === 'column';
+    if (column !== (kind === 'grain')) return t;
+    // 발효조 한도: 그레인 3일+2, 몰트 4일+2
+    const slots = fermenters.filter((f) => f.capacityL >= d.chargeL).length * Math.floor(30 / (column ? 5 : 6));
+    const batches = Math.min(column ? d.runsPerMonth : d.runsPerMonth / 2, slots);
+    // 그레인: 워시 9%, 회수율 약 85% / 몰트: 워시 8%, 2회 증류·페인츠 재투입 포함 약 75%
+    return t + batches * d.chargeL * (column ? 0.09 * 0.85 : 0.08 * 0.75);
   }, 0);
+}
+export const maltCapacityLPA = (s: GameState) => capacityLPA(s, 'malt');
+
+function contractPrice(s: GameState, spirit: ContractTerms['spirit'], style: ContractTerms['style'], minQuality: number, domestic: boolean, prepay: boolean, priceFactor = 1): number {
+  const base = spirit === 'grain_newmake' ? BULK.grainNewMakeBase : BULK.newMakeBase;
+  // 블렌더는 최소 품질보다 약간 높은 원액을 기준으로 값을 매긴다
+  const ref = base * qualityFactor(minQuality + 8) * (style === 'peated' ? 1 + BULK.peatPremium : 1) * s.bulkIndex * mod(s, 'bulk');
+  const p = ref * BULK.contract * trustAdj(s.b2bTrust) * (prepay ? 1 - BULK.prepayDiscount : 1) * (domestic ? 1 + domesticPremium(s) : 1) * priceFactor;
+  return Math.round(p / 100) * 100;
+}
+
+function buildOffer(s: GameState, rng: Rng, spirit: ContractTerms['spirit'], lpaPerMonth: number, termMonths: number, prepayShare: number, priceFactor = 1): ContractOffer {
+  const buyer = rng.pick(BULK_BUYERS);
+  const style = spirit === 'grain_newmake' ? 'any' : rng.pick(['any', 'any', 'unpeated', 'peated'] as const);
+  const minQuality = spirit === 'grain_newmake' ? rng.int(30, 38) : rng.int(35, 46);
+  const pricePerLPA = contractPrice(s, spirit, style, minQuality, buyer.domestic, prepayShare > 0, priceFactor);
+  return {
+    id: nid(s, 'O'), buyerId: buyer.id, buyerName: buyer.nameKo, spirit, domestic: buyer.domestic, style,
+    lpaPerMonth, termMonths, pricePerLPA, minQuality, prepayShare,
+    penaltyPerLPA: Math.round(pricePerLPA * BULK.penaltyRate), expiresMonth: s.month + 3,
+  };
 }
 
 export function makeContractOffer(s: GameState, rng: Rng): ContractOffer {
-  const buyer = rng.pick(BULK_BUYERS);
-  const style = rng.pick(['any', 'any', 'unpeated', 'peated'] as const);
-  const cap = maltCapacityLPA(s);
-  const lpaPerMonth = Math.max(40, Math.round((cap * rng.pick([0.15, 0.25, 0.35, 0.5]) * (0.8 + 0.4 * s.b2bTrust / 100)) / 10) * 10);
-  const termMonths = rng.pick([12, 24, 36]);
-  const minQuality = rng.int(35, 46);
-  const prepay = rng.chance(0.35);
-  // 블렌더는 최소 품질보다 약간 높은 원액을 기준으로 값을 매긴다
-  const ref = BULK.newMakeBase * qualityFactor(minQuality + 8) * (style === 'peated' ? 1 + BULK.peatPremium : 1) * s.bulkIndex;
-  const pricePerLPA = Math.round((ref * BULK.contract * trustAdj(s.b2bTrust) * (prepay ? 1 - BULK.prepayDiscount : 1)) / 100) * 100;
-  return {
-    id: nid(s, 'O'), buyerId: buyer.id, buyerName: buyer.nameKo, spirit: 'malt_newmake', style,
-    lpaPerMonth, termMonths, pricePerLPA, minQuality, prepayShare: prepay ? 0.3 : 0,
-    penaltyPerLPA: Math.round(pricePerLPA * BULK.penaltyRate), expiresMonth: s.month + 3,
-  };
+  const grainCap = capacityLPA(s, 'grain');
+  const spirit: ContractTerms['spirit'] = grainCap > 0 && rng.chance(0.5) ? 'grain_newmake' : 'malt_newmake';
+  const cap = spirit === 'grain_newmake' ? grainCap : capacityLPA(s, 'malt');
+  const lpaPerMonth = Math.max(40, Math.round((cap * rng.pick([0.15, 0.25, 0.35, 0.5]) * (0.8 + 0.4 * s.b2bTrust / 100) * KOREA.bulkMarketDepth) / 10) * 10);
+  return buildOffer(s, rng, spirit, lpaPerMonth, rng.pick([12, 24, 36]), rng.chance(0.35) ? 0.3 : 0);
+}
+
+/** 이벤트용 특별 계약 (대형 블렌더 장기 계약) */
+export function makeSpecialContractOffer(s: GameState, rng: Rng, e: { capacityShare: number; prepayShare: number; priceFactor: number; termMonths: number }): ContractOffer | null {
+  const grainCap = capacityLPA(s, 'grain');
+  const spirit: ContractTerms['spirit'] = grainCap > 0 ? 'grain_newmake' : 'malt_newmake';
+  const cap = spirit === 'grain_newmake' ? grainCap : capacityLPA(s, 'malt');
+  if (cap <= 0) return null;
+  const lpa = Math.round((cap * e.capacityShare) / 10) * 10;
+  const offer = buildOffer(s, rng, spirit, lpa, e.termMonths, e.prepayShare, e.priceFactor);
+  return { ...offer, expiresMonth: s.month + 2 };
 }
 
 export function refreshContractOffers(s: GameState, rng: Rng): void {
@@ -107,7 +148,7 @@ export function fulfillContracts(s: GameState, report: MonthReport): void {
   for (const c of s.contracts) {
     let need = c.lpaPerMonth;
     const eligible = s.lots
-      .filter((l) => isNewMake(l) && !l.sourced && matchesStyle(l, c.style) && lotQuality(l) >= c.minQuality)
+      .filter((l) => isNewMake(l) && !l.sourced && l.kind === (c.spirit === 'grain_newmake' ? 'grain' : 'malt') && matchesStyle(l, c.style) && lotQuality(l) >= c.minQuality)
       .sort((a, b) => a.createdMonth - b.createdMonth);
     for (const lot of eligible) {
       if (need <= 1e-6) break;

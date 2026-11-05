@@ -53,8 +53,25 @@ export const CATEGORY: Record<ProductCategory, CategorySchema> = {
     caps: { oak_tannin: 45 },
     sulfurIsOffnote: false,
   },
+  grain_whisky: {
+    id: 'grain_whisky', nameKo: '싱글 그레인 위스키',
+    radarAxes: ['fresh_fruit', 'floral', 'cereal', 'vanilla_caramel', 'oak_tannin', 'wood_spice', 'sweetness'],
+    styles: [{ id: 'soft_grain', nameKo: '부드러운 그레인', target: { vanilla_caramel: 40, sweetness: 30, fresh_fruit: 15, cereal: 10 } }],
+    caps: { oak_tannin: 40 },
+    sulfurIsOffnote: true,
+  },
+  blended_whisky: {
+    id: 'blended_whisky', nameKo: '블렌디드 위스키',
+    radarAxes: ['fresh_fruit', 'floral', 'cereal', 'peat_smoke', 'dried_fruit', 'vanilla_caramel', 'oak_tannin', 'wood_spice'],
+    styles: [
+      { id: 'smooth', nameKo: '스무스 블렌디드', target: { vanilla_caramel: 35, fresh_fruit: 25, cereal: 15, floral: 15 } },
+      { id: 'smoky_blend', nameKo: '스모키 블렌디드', target: { peat_smoke: 25, vanilla_caramel: 30, fresh_fruit: 20 } },
+    ],
+    caps: { oak_tannin: 40 },
+    sulfurIsOffnote: false,
+  },
   malt_spirit: {
-    id: 'malt_spirit', nameKo: '몰트 스피릿(3년 미만)',
+    id: 'malt_spirit', nameKo: '곡물 스피릿(3년 미만)',
     radarAxes: ['fresh_fruit', 'floral', 'cereal', 'peat_smoke', 'vanilla_caramel', 'oak_tannin', 'wood_spice'],
     styles: [],
     caps: { oak_tannin: 40 },

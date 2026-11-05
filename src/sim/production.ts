@@ -1,12 +1,14 @@
-import { BOTANICALS, EQUIPMENT, GNS, INGREDIENTS, YEASTS, type EquipmentDef } from './content/catalog';
+import { BOTANICALS, EQUIPMENT, GNS, INGREDIENTS, VOLUME_DISCOUNT_TIERS, YEASTS, type EquipmentDef } from './content/catalog';
 import { addScaled, clampFlavor, distillFlavor, heartsFraction } from './flavor';
 import type { Flavor, FermenterType, GameState, Recipe, Staff } from './types';
 
 type StillDef = Extract<EquipmentDef, { kind: 'still' }>;
 
-export const WASH_ABV = { malt: 0.08, soju: 0.16 } as const;
+export const WASH_ABV = { malt: 0.08, soju: 0.16, grain: 0.09 } as const;
 export const GIN_CHARGE_ABV = 0.45;
 const WASH_RUN_CUT = { c1: 0.02, c2: 0.98 };
+/** 연속식 증류기의 고정 분획 (레시피 컷 무시) */
+export const COLUMN_CUT = { c1: 0.1, c2: 0.82 };
 const FEINTS_RECOVERY = 0.9;
 const ENERGY_PER_L_RUN = 60; // 원 / (L·회)
 
@@ -122,7 +124,7 @@ export function simulateBatch(
     // 발효가 만드는 기본 이취·무게감
     flavor.solvent = 30;
     flavor.feinty = 35;
-    flavor.sulfur_meaty = r.kind === 'malt' ? 25 : 12;
+    flavor.sulfur_meaty = r.kind === 'malt' ? 25 : r.kind === 'grain' ? 15 : 12;
     flavor.oily_waxy = 20;
     if (r.kind === 'soju' && r.pressure === 'atmospheric') flavor.toasted_grain = (flavor.toasted_grain ?? 0) + 14;
   }
@@ -140,14 +142,26 @@ export function simulateBatch(
   let abv = r.kind === 'gin' ? GIN_CHARGE_ABV : WASH_ABV[r.kind];
   let feintsOutLPA = 0;
   const maxAbv = 0.82 + 0.1 * still.reflux;
-  for (let run = 0; run < r.runs; run++) {
-    const final = run === r.runs - 1;
-    const cut = final ? r.cut : WASH_RUN_CUT;
-    flavor = distillFlavor(flavor, { c1: cut.c1, c2: cut.c2, reflux: still.reflux, copperContact: still.copperContact });
-    const hearts = heartsFraction(cut.c1, cut.c2);
-    if (final) feintsOutLPA = lpa * (1 - hearts) * 0.97;
+  if (still.stillType === 'column') {
+    // 연속식: 한 번에 고도수로 정류하고, 초류·퓨젤은 별도 인출단으로 빠진다 → 레시피 컷 대신 고정 분획
+    flavor = distillFlavor(flavor, { c1: COLUMN_CUT.c1, c2: COLUMN_CUT.c2, reflux: still.reflux, copperContact: still.copperContact });
+    flavor.solvent = (flavor.solvent ?? 0) * 0.3;
+    flavor.feinty = (flavor.feinty ?? 0) * 0.3;
+    flavor.harshness = (flavor.harshness ?? 0) * 0.8;
+    const hearts = heartsFraction(COLUMN_CUT.c1, COLUMN_CUT.c2);
+    feintsOutLPA = lpa * (1 - hearts) * 0.97;
     lpa = lpa * hearts;
-    abv = Math.min(maxAbv, abv * 2.9 + 0.04 * still.reflux);
+    abv = maxAbv;
+  } else {
+    for (let run = 0; run < r.runs; run++) {
+      const final = run === r.runs - 1;
+      const cut = final ? r.cut : WASH_RUN_CUT;
+      flavor = distillFlavor(flavor, { c1: cut.c1, c2: cut.c2, reflux: still.reflux, copperContact: still.copperContact });
+      const hearts = heartsFraction(cut.c1, cut.c2);
+      if (final) feintsOutLPA = lpa * (1 - hearts) * 0.97;
+      lpa = lpa * hearts;
+      abv = Math.min(maxAbv, abv * 2.9 + 0.04 * still.reflux);
+    }
   }
   if (r.pressure === 'vacuum' && still.vacuum) {
     flavor.toasted_grain = (flavor.toasted_grain ?? 0) * 0.3;
@@ -177,4 +191,14 @@ export function simulateBatch(
     ingredientsKg,
     warnings,
   };
+}
+
+/** 대량 구매 할인 배수 — 지난달 실제 구매량(kg) 기준 공급 등급 (주문만 크게 넣는 꼼수 방지) */
+export function volumeDiscounts(s: GameState): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [id, kg] of Object.entries(s.ingredientKgLastMonth ?? {})) {
+    const tier = VOLUME_DISCOUNT_TIERS.find((t) => kg >= t.minKg);
+    if (tier) out[id] = tier.factor;
+  }
+  return out;
 }

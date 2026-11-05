@@ -7,7 +7,7 @@ import { Radar } from '../charts';
 import { liters, months, num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
 
-const KIND_LABEL: Record<SpiritKind, string> = { soju: '소주', gin: '진', malt: '몰트' };
+const KIND_LABEL: Record<SpiritKind, string> = { soju: '소주', gin: '진', malt: '몰트', grain: '그레인' };
 const ABV_PRESETS = ['cask', '0.25', '0.3', '0.4', '0.43', '0.46'] as const;
 
 export function Bottling() {

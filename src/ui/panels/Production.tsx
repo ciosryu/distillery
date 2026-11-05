@@ -10,7 +10,7 @@ import { Radar } from '../charts';
 import { liters, num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
 
-const KIND_LABEL: Record<SpiritKind, string> = { soju: '증류식 소주', gin: '진', malt: '몰트' };
+const KIND_LABEL: Record<SpiritKind, string> = { soju: '증류식 소주', gin: '진', malt: '몰트', grain: '그레인' };
 const kindCategory = (k: SpiritKind): ProductCategory => (k === 'soju' ? 'soju_distilled' : k === 'gin' ? 'gin' : 'malt_spirit');
 
 function previewOf(s: GameState, r: Recipe) {
@@ -66,6 +66,10 @@ function blankDraft(s: GameState, kind: SpiritKind): Draft {
   const base: Draft = { name: `새 ${KIND_LABEL[kind]} 레시피`, kind, mashBill: [], botanicals: [], botanicalMethod: 'steep', yeast: 'distillers', fermentDays: 4, runs: 1, cut: { c1: 0.12, c2: 0.72 }, pressure: 'atmospheric', stillId };
   if (kind === 'soju') return { ...base, mashBill: [{ ingredientId: 'rice_domestic', ratio: 0.92 }, { ingredientId: 'nuruk', ratio: 0.08 }], yeast: 'nuruk_native', fermentDays: 14 };
   if (kind === 'gin') return { ...base, botanicals: [{ botanicalId: 'juniper', gramsPerL: 20 }, { botanicalId: 'coriander', gramsPerL: 6 }], fermentDays: 0, cut: { c1: 0.08, c2: 0.8 } };
+  if (kind === 'grain') {
+    const column = s.equipment.find((e) => EQUIPMENT[e.catalogId]?.kind === 'still' && (EQUIPMENT[e.catalogId] as { stillType: string }).stillType === 'column');
+    return { ...base, stillId: column?.id ?? stillId, mashBill: [{ ingredientId: 'corn', ratio: 0.9 }, { ingredientId: 'malt_unpeated', ratio: 0.1 }], fermentDays: 3, runs: 1, cut: { c1: 0.05, c2: 0.95 } };
+  }
   return { ...base, mashBill: [{ ingredientId: 'malt_unpeated', ratio: 1 }], runs: 2, cut: { c1: 0.15, c2: 0.72 } };
 }
 
@@ -77,7 +81,7 @@ function RecipeEditor() {
   const errs = validateRecipe(s, { ...draft, id: draft.id ?? 'new' } as Recipe);
   const preview = useMemo(() => (errs.length ? null : previewOf(s, { ...draft, id: 'preview' } as Recipe)), [s, draft, errs.length]);
   const stills = s.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'still');
-  const ingOptions = Object.values(INGREDIENTS).filter((i) => draft.kind !== 'gin' && i.kinds.includes(draft.kind as 'soju' | 'malt'));
+  const ingOptions = Object.values(INGREDIENTS).filter((i) => draft.kind !== 'gin' && i.kinds.includes(draft.kind as 'soju' | 'malt' | 'grain'));
   const ratioSum = draft.mashBill.reduce((t, m) => t + m.ratio, 0);
 
   return (
@@ -90,7 +94,7 @@ function RecipeEditor() {
             options={[{ value: '', label: '(새 레시피)' }, ...s.recipes.map((r) => ({ value: r.id, label: r.name }))]}
             onChange={(id) => { const r = s.recipes.find((x) => x.id === id); setDraft(r ? { ...r } : blankDraft(s, 'malt')); }}
           />
-          {(['soju', 'gin', 'malt'] as SpiritKind[]).map((k) => <Button key={k} small onClick={() => setDraft(blankDraft(s, k))}>+ {KIND_LABEL[k]}</Button>)}
+          {(['soju', 'gin', 'malt', 'grain'] as SpiritKind[]).map((k) => <Button key={k} small onClick={() => setDraft(blankDraft(s, k))}>+ {KIND_LABEL[k]}</Button>)}
         </div>
       }
     >

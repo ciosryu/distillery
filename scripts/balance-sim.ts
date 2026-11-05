@@ -1,12 +1,12 @@
 // 헤드리스 밸런스 시뮬레이션 — 전략별 단순 정책으로 N개 시드를 돌려 파산률·흑자 전환 시점·매출 구성을 본다.
-// 실행: npm run balance [-- 시드수 개월수 전략]   전략 = brand | hybrid | expand | stock | all(기본)
-import { advanceMonth, applyAction, previewBlend, newGame, type Action, type GameState, type ProductCategory } from '../src/sim';
+// 실행: npm run balance [-- 시드수 개월수 전략]   전략 = brand | hybrid | expand | grain | all(기본)
+import { advanceMonth, applyAction, bulkValuePerLPA, previewBlend, newGame, type Action, type ContractTerms, type GameState, type ProductCategory } from '../src/sim';
 
 const SEEDS = Number(process.argv[2] ?? 12);
 const MONTHS = Number(process.argv[3] ?? 120);
 const WHICH = process.argv[4] ?? 'all';
 
-type Strategy = 'brand' | 'hybrid' | 'expand' | 'stock';
+type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain';
 
 const act = (s: GameState, a: Action) => applyAction(s, a).state;
 const stockOf = (s: GameState, cat: ProductCategory) => s.products.filter((p) => p.category === cat).reduce((t, p) => t + p.stockBottles, 0);
@@ -54,13 +54,17 @@ function finance(s: GameState): GameState {
   return s;
 }
 
-function acceptContracts(s: GameState, maxCommittedLPA: number): GameState {
+function acceptContracts(s: GameState, maxCommittedLPA: number, spirit: ContractTerms['spirit'] = 'malt_newmake'): GameState {
   for (const o of [...s.contractOffers]) {
-    const committed = s.contracts.reduce((t, c) => t + c.lpaPerMonth, 0);
-    if (o.style !== 'peated' && o.minQuality <= 42 && committed + o.lpaPerMonth <= maxCommittedLPA) s = act(s, { type: 'acceptContract', offerId: o.id });
+    if (o.spirit !== spirit) continue;
+    const committed = s.contracts.filter((c) => c.spirit === spirit).reduce((t, c) => t + c.lpaPerMonth, 0);
+    const qOk = spirit === 'grain_newmake' ? o.minQuality <= 36 : o.minQuality <= 42;
+    if (o.style !== 'peated' && qOk && committed + o.lpaPerMonth <= maxCommittedLPA) s = act(s, { type: 'acceptContract', offerId: o.id });
   }
   return s;
 }
+
+const GRAIN_RECIPE = '그레인 B2B';
 
 function start(s: GameState, strategy: Strategy): GameState {
   const sales = s.candidates.filter((c) => c.role === 'sales').sort((a, b) => b.stats.b - a.stats.b)[0];
@@ -74,10 +78,21 @@ function start(s: GameState, strategy: Strategy): GameState {
     s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
     return act(s, { type: 'setOrder', recipeId: rid(s, '싱글 몰트 — 언')!, batchesPerMonth: 7 });
   }
+  if (strategy === 'grain') {
+    // 그레인 공급형: 시설자금으로 연속식 증류기를 들여 국내 블렌더에 그레인 원액을 대량 공급
+    s = act(s, { type: 'takeLoan', offerId: 'facility', amount: 1_000_000_000 });
+    s = act(s, { type: 'buyEquipment', catalogId: 'column_2' });
+    s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_10000' });
+    s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_10000' });
+    const col = s.equipment.find((e) => e.catalogId === 'column_2')!;
+    const base = s.recipes.find((r) => r.name.startsWith('싱글 몰트 — 언'))!;
+    const { id: _id, ...rest } = base;
+    s = act(s, { type: 'saveRecipe', recipe: { ...rest, name: GRAIN_RECIPE, kind: 'grain', stillId: col.id, mashBill: [{ ingredientId: 'corn', ratio: 0.9 }, { ingredientId: 'malt_unpeated', ratio: 0.1 }], fermentDays: 3, runs: 1 } });
+  }
   return act(s, { type: 'setOrder', recipeId: rid(s, '싱글 몰트 — 언')!, batchesPerMonth: 4 });
 }
 
-/** 확장형: 위스키 판매가 자리 잡은 뒤(48개월~, 현금 4억↑) 증류기 1기를 추가해 B2B 공급을 붙인다 */
+/** 확장형: 위스키 판매가 자리 잡은 뒤(48개월~, 현금 4억↑) 증류기 1기를 추가해 몰트 B2B 공급을 붙인다 */
 function expand(s: GameState): GameState {
   if (s.recipes.some((r) => r.name === BIG_RECIPE) || s.month < 48 || s.cash < 400_000_000) return s;
   s = act(s, { type: 'buyEquipment', catalogId: 'pot_onion_1000' });
@@ -89,30 +104,31 @@ function expand(s: GameState): GameState {
   return act(s, { type: 'saveRecipe', recipe: { ...rest, name: BIG_RECIPE, stillId: still.id } });
 }
 
+function sellLots(s: GameState, kind: 'malt' | 'grain'): GameState {
+  for (const lot of s.lots.filter((l) => l.kind === kind)) s = act(s, { type: 'sellBulk', source: 'lot', id: lot.id });
+  return s;
+}
+
 function policy(s: GameState, strategy: Strategy): GameState {
   if (s.month === 0) s = start(s, strategy);
   s = bottleCashProducts(s);
   if (strategy === 'brand') {
     s = fillMalt(s);
   } else if (strategy === 'hybrid') {
-    // 몰트 생산의 약 30%까지만 계약, 나머지는 숙성. 위스키 재고가 쌓이면 오래된 캐스크를 현물 판매
+    // 몰트 생산의 일부만 계약, 나머지는 숙성. 위스키 재고가 쌓이면 오래된 캐스크를 현물 판매
     s = acceptContracts(s, 200);
     s = fillMalt(s);
     if (stockOf(s, 'whisky') > 2000) {
       const old = s.casks.find((c) => c.contents && c.contents.oakMonths >= 48 && !c.contents.sourced);
       if (old) s = act(s, { type: 'sellBulk', source: 'cask', id: old.id });
     }
-  } else if (strategy === 'stock') {
-    // 숙성 재고형: 증설분까지 전부 통입해 숙성하고, 48개월 이상 캐스크 중 브랜드가 쓰고 남는 몫을 블렌더에 판매
-    s = expand(s);
-    const r = s.recipes.find((x) => x.name === BIG_RECIPE);
-    const still = r && s.equipment.find((e) => e.id === r.stillId);
-    if (r && still && still.readyMonth <= s.month && !s.orders.some((o) => o.recipeId === r.id)) s = act(s, { type: 'setOrder', recipeId: r.id, batchesPerMonth: 10 });
+  } else if (strategy === 'grain') {
+    const r = s.recipes.find((x) => x.name === GRAIN_RECIPE);
+    const col = r && s.equipment.find((e) => e.id === r.stillId);
+    if (r && col && col.readyMonth <= s.month && !s.orders.some((o) => o.recipeId === r.id)) s = act(s, { type: 'setOrder', recipeId: r.id, batchesPerMonth: 12 });
+    if (col && col.readyMonth <= s.month + 3) s = acceptContracts(s, 6000, 'grain_newmake');
+    s = sellLots(s, 'grain');
     s = fillMalt(s);
-    const aged = s.casks.filter((c) => c.contents && c.contents.oakMonths >= 48 && !c.contents.sourced);
-    const keep = 12; // 브랜드 병입용으로 남겨 둘 캐스크 수
-    for (const c of aged.slice(0, Math.max(0, Math.min(6, aged.length - keep)))) s = act(s, { type: 'sellBulk', source: 'cask', id: c.id });
-    if (s.casks.length > 140 && !s.equipment.some((e) => e.catalogId === 'warehouse_rack_100') && s.cash > 200_000_000) s = act(s, { type: 'buyEquipment', catalogId: 'warehouse_rack_100' });
   } else {
     s = expand(s);
     const r = s.recipes.find((x) => x.name === BIG_RECIPE);
@@ -121,10 +137,7 @@ function policy(s: GameState, strategy: Strategy): GameState {
     if (r && ready && !s.orders.some((o) => o.recipeId === r.id)) s = act(s, { type: 'setOrder', recipeId: r.id, batchesPerMonth: 10 });
     if (r && still && still.readyMonth <= s.month + 3) s = acceptContracts(s, 450);
     // 증설분은 계약 납품, 남는 원액 중 브랜드용 월 250 LPA만 통입하고 나머지는 현물 판매
-    if (ready) {
-      s = fillMalt(s, 250);
-      for (const lot of s.lots.filter((l) => l.kind === 'malt')) s = act(s, { type: 'sellBulk', source: 'lot', id: lot.id });
-    } else s = fillMalt(s);
+    if (ready) { s = fillMalt(s, 250); s = sellLots(s, 'malt'); } else s = fillMalt(s);
   }
   s = bottleWhisky(s);
   return finance(s);
@@ -133,33 +146,47 @@ function policy(s: GameState, strategy: Strategy): GameState {
 const eok = (v: number) => (Number.isFinite(v) ? `${(v / 1e8).toFixed(2)}억` : '—');
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
 
-function run(strategy: Strategy) {
-  let bankrupt = 0;
-  const fp: number[] = [];
-  const minCash: number[] = [];
-  const cash60: number[] = [];
-  const cash120: number[] = [];
-  const y5retail: number[] = [];
-  const y5bulk: number[] = [];
-  for (let seed = 1; seed <= SEEDS; seed++) {
-    let s = newGame({ seed });
-    let lo = s.cash;
-    for (let m = 0; m < MONTHS && s.status === 'running'; m++) {
-      s = advanceMonth(policy(s, strategy));
-      lo = Math.min(lo, s.cash);
-      if (s.month === 60) cash60.push(s.cash);
-      if (s.month === 120) cash120.push(s.cash);
-    }
-    minCash.push(lo);
-    if (s.status === 'bankrupt') bankrupt++;
-    const net = s.reports.map((r) => r.netCash);
-    for (let i = 2; i < net.length; i++) if ((net[i]! + net[i - 1]! + net[i - 2]!) / 3 > 0) { fp.push(i); break; }
-    const y5 = s.reports.filter((r) => r.month >= 48 && r.month < 60);
-    y5retail.push(y5.reduce((t, r) => t + r.revenue, 0));
-    y5bulk.push(y5.reduce((t, r) => t + r.bulkRevenue, 0));
-  }
-  console.log(`${strategy.padEnd(9)} | 파산 ${bankrupt}/${SEEDS} | 흑자 전환 ${fp.length}/${SEEDS} 평균 ${Math.round(avg(fp))}개월 | 최저 현금 평균 ${eok(avg(minCash))} | 60m ${eok(avg(cash60))} | 120m ${eok(avg(cash120))} | 5년차 매출: 병입 ${eok(avg(y5retail))} + 원액 B2B ${eok(avg(y5bulk))}`);
+/** 순자산 = 현금 − 대출 + 원액 재고(벌크 가치의 85%) + 제품 재고(원가) */
+function netWorth(s: GameState): number {
+  const stock = [...s.lots, ...s.casks.flatMap((c) => (c.contents ? [c.contents] : []))].reduce((t, l) => t + l.volumeL * l.abv * bulkValuePerLPA(s, l) * 0.85, 0);
+  const products = s.products.reduce((t, p) => t + p.stockBottles * p.unitCost, 0);
+  return s.cash - s.loans.reduce((t, l) => t + l.balance, 0) + stock + products;
 }
 
-const list: Strategy[] = WHICH === 'all' ? ['brand', 'hybrid', 'expand', 'stock'] : [WHICH as Strategy];
-for (const st of list) run(st);
+interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWorth: number; firstPositive: number; y5retail: number; y5bulk: number }
+
+function play(strategy: Strategy, seed: number): Result {
+  let s = newGame({ seed });
+  let lo = s.cash;
+  for (let m = 0; m < MONTHS && s.status === 'running'; m++) {
+    s = advanceMonth(policy(s, strategy));
+    lo = Math.min(lo, s.cash);
+  }
+  const net = s.reports.map((r) => r.netCash);
+  let fp = -1;
+  for (let i = 2; i < net.length; i++) if ((net[i]! + net[i - 1]! + net[i - 2]!) / 3 > 0) { fp = i; break; }
+  const y5 = s.reports.filter((r) => r.month >= 48 && r.month < 60);
+  return {
+    strategy, bankrupt: s.status === 'bankrupt', minCash: lo, netWorth: s.status === 'bankrupt' ? -Infinity : netWorth(s), firstPositive: fp,
+    y5retail: y5.reduce((t, r) => t + r.revenue, 0), y5bulk: y5.reduce((t, r) => t + r.bulkRevenue, 0),
+  };
+}
+
+const list: Strategy[] = WHICH === 'all' ? ['brand', 'hybrid', 'expand', 'grain'] : [WHICH as Strategy];
+const results: Record<Strategy, Result[]> = { brand: [], hybrid: [], expand: [], grain: [] };
+const wins: Record<string, number> = {};
+for (let seed = 1; seed <= SEEDS; seed++) {
+  const rs = list.map((st) => play(st, seed));
+  rs.forEach((r) => results[r.strategy].push(r));
+  const best = rs.reduce((a, b) => (b.netWorth > a.netWorth ? b : a));
+  wins[best.strategy] = (wins[best.strategy] ?? 0) + 1;
+}
+for (const st of list) {
+  const rs = results[st];
+  const alive = rs.filter((r) => !r.bankrupt);
+  const nw = alive.map((r) => r.netWorth);
+  const sd = Math.sqrt(avg(nw.map((v) => (v - avg(nw)) ** 2)));
+  const fps = rs.filter((r) => r.firstPositive >= 0).map((r) => r.firstPositive);
+  console.log(`${st.padEnd(7)} | 파산 ${rs.length - alive.length}/${rs.length} | 순자산(${MONTHS}m) 평균 ${eok(avg(nw))} ±${eok(sd)} | 최저 현금 평균 ${eok(avg(rs.map((r) => r.minCash)))} | 흑자 전환 평균 ${Math.round(avg(fps))}개월 | 5년차 매출 병입 ${eok(avg(rs.map((r) => r.y5retail)))} + B2B ${eok(avg(rs.map((r) => r.y5bulk)))} | 1위 ${wins[st] ?? 0}회`);
+}
+console.log(`\n시드별 1위 분포: ${list.map((st) => `${st} ${wins[st] ?? 0}`).join(' · ')} (한 전략이 60% 이상 이기면 지배 전략 의심)`);

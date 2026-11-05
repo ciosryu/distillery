@@ -101,7 +101,7 @@ function Casks() {
                 <Td right>{months(lot.oakMonths)}</Td>
                 <Td><Notes lot={lot} /></Td>
                 <Td right>{evaluate(lot.flavor, cat).quality}</Td>
-                <Td>{lot.kind !== 'malt' ? <Badge>숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : lot.oakMonths >= WHISKY_MIN_MONTHS ? <Badge tone="good">위스키 가능</Badge> : <Badge tone="warn">{WHISKY_MIN_MONTHS - lot.oakMonths}개월 남음</Badge>}</Td>
+                <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : lot.oakMonths >= WHISKY_MIN_MONTHS ? <Badge tone="good">{lot.kind === 'grain' ? '그레인 위스키 가능' : '위스키 가능'}</Badge> : <Badge tone="warn">{WHISKY_MIN_MONTHS - lot.oakMonths}개월 남음</Badge>}</Td>
               </tr>
             );
           })}

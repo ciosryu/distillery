@@ -40,7 +40,7 @@ export function emptyCaskOf(s: GameState, typeId: keyof typeof CASKS): Cask {
 export function newGame(opts: NewGameOptions = {}): GameState {
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   const s: GameState = {
-    version: 2,
+    version: 3,
     seed,
     month: 0,
     startYear: opts.startYear ?? 2027,
@@ -67,8 +67,14 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     marketingBudget: 3_000_000,
     awareness: 0.01,
     priceIndex: { ...Object.fromEntries(Object.keys(INGREDIENTS).map((k) => [k, 1])), gns: 1, energy: 1 },
-    trend: { soju_distilled: 1, gin: 1, whisky: 1, malt_spirit: 1, flavored_spirit: 1 },
+    trend: { soju_distilled: 1, gin: 1, whisky: 1, grain_whisky: 1, blended_whisky: 1, malt_spirit: 1, flavored_spirit: 1 },
     flags: { producedSoju: false },
+    modifiers: [],
+    pendingEvents: [],
+    forecasts: [],
+    eventLog: [],
+    eventLastMonth: {},
+    ingredientKgLastMonth: {},
     reports: [],
     nextId: 1,
   };
