@@ -49,7 +49,7 @@ const trustAdj = (trust: number) => 0.95 + 0.1 * (trust / 100);
 /** 그레인 현물 시장 포화 계수 (#81): 1 / (1 + (최근 판매량 + 이번 판매량의 절반) / 시장 깊이). 몰트는 항상 1 */
 export function spotSaturation(s: Pick<GameState, 'spotSoldLPA' | 'regionId'>, lot: SpiritLot, lpa = 0): number {
   if (lot.kind !== 'grain') return 1;
-  const depth = BULK.grainSpotDepthLPA * regionOf(s).bulkMarketDepth;
+  const depth = regionOf(s).grainSpotDepthLPA;
   return 1 / (1 + ((s.spotSoldLPA?.grain ?? 0) + lpa / 2) / depth);
 }
 

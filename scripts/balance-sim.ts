@@ -1,9 +1,8 @@
 // 헤드리스 밸런스 시뮬레이션 — 전략별 단순 정책으로 N개 시드를 돌려 파산률·흑자 전환 시점·매출 구성을 본다.
 // 실행: npm run balance [-- 시드수 개월수 전략 지역 입지]   전략 = brand | hybrid | expand | grain | all(기본), 지역 = KR(기본) | JP | TW
-import { advanceMonth, applyAction, bulkValuePerLPA, capacityLPA, lotQuality, previewBlend, newGame, whiskyMinMonths, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
-import { regionOf } from '../src/sim/content/regions';
+import { advanceMonth, applyAction, bulkValuePerLPA, capacityLPA, spotBidPerLPA, lotQuality, previewBlend, newGame, whiskyMinMonths, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
+import { REGIONS, regionOf } from '../src/sim/content/regions';
 import { EVENTS } from '../src/sim/content/events';
-import { BULK } from '../src/sim/content/catalog';
 
 const SEEDS = Number(process.argv[2] ?? 12);
 const MONTHS = Number(process.argv[3] ?? 120);
@@ -16,7 +15,7 @@ const YOUNG = process.env.NO_YOUNG !== '1';
 const TOUR = process.env.NO_TOUR !== '1';
 const DEFEND = process.env.NO_DEFEND !== '1';
 // 튜닝 실험용: 그레인 현물 시장 깊이 덮어쓰기 (#81)
-if (process.env.GRAIN_DEPTH) BULK.grainSpotDepthLPA = Number(process.env.GRAIN_DEPTH);
+if (process.env.GRAIN_DEPTH) REGIONS[REGION].grainSpotDepthLPA = Number(process.env.GRAIN_DEPTH);
 
 type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain';
 
@@ -202,6 +201,32 @@ function sellLots(s: GameState, kind: 'malt' | 'grain'): GameState {
   return s;
 }
 
+/** v1.4(#81): 그레인 현물은 시장이 포화되면 값이 떨어진다 — 한계 단가가 원가 × 1.5 아래로 내려가면 팔지 않고 탱크에 둔다.
+ *  안 팔린 재고가 쌓이면 생산 배치를 줄이고, 비면 다시 늘린다 */
+function sellGrainSmart(s: GameState, recipeId: string | undefined): GameState {
+  const CHUNK_LPA = 500;
+  for (const lot of s.lots.filter((l) => l.kind === 'grain')) {
+    let left = lot.volumeL;
+    while (left > 1) {
+      const cur = s.lots.find((l) => l.id === lot.id);
+      if (!cur) break;
+      const liters = Math.min(cur.volumeL, CHUNK_LPA / cur.abv);
+      if (spotBidPerLPA(s, cur, liters * cur.abv) < cur.costPerLPA * 1.5) break;
+      s = act(s, { type: 'sellBulk', source: 'lot', id: cur.id, liters });
+      left -= liters;
+    }
+  }
+  const order = recipeId && s.orders.find((o) => o.recipeId === recipeId);
+  if (order) {
+    const unsold = s.lots.filter((l) => l.kind === 'grain').reduce((t, l) => t + l.volumeL * l.abv, 0);
+    const lastLPA = s.reports.at(-1)?.production.find((p) => p.recipeId === recipeId)?.lpa ?? 0;
+    const per = lastLPA / Math.max(1, order.batchesPerMonth);
+    if (per > 0 && unsold > per * 3 && order.batchesPerMonth > 2) s = act(s, { type: 'setOrder', recipeId, batchesPerMonth: order.batchesPerMonth - 1 });
+    else if (per > 0 && unsold < per && order.batchesPerMonth < 12) s = act(s, { type: 'setOrder', recipeId, batchesPerMonth: order.batchesPerMonth + 1 });
+  }
+  return s;
+}
+
 function policy(s: GameState, strategy: Strategy): GameState {
   if (s.month === 0) s = start(s, strategy);
   s = bottleCashProducts(s);
@@ -222,11 +247,11 @@ function policy(s: GameState, strategy: Strategy): GameState {
   } else if (strategy === 'grain') {
     const r = s.recipes.find((x) => x.name === GRAIN_RECIPE);
     const col = r && s.equipment.find((e) => e.id === r.stillId);
-    if (r && col && col.readyMonth <= s.month && !s.orders.some((o) => o.recipeId === r.id)) s = act(s, { type: 'setOrder', recipeId: r.id, batchesPerMonth: 12 });
+    if (r && col && col.readyMonth <= s.month && !s.orders.some((o) => o.recipeId === r.id)) s = act(s, { type: 'setOrder', recipeId: r.id, batchesPerMonth: 12 }); // 이후 배치는 sellGrainSmart가 조절
     if (col && col.readyMonth <= s.month + 3) s = acceptContracts(s, 6000, 'grain_newmake');
     // 그레인 일부(월 300 LPA)는 자사 블렌디드용으로 통입, 나머지는 현물 판매
     s = fillMalt(s, 300, 'grain');
-    s = sellLots(s, 'grain');
+    s = process.env.GRAIN_DUMB === '1' ? sellLots(s, 'grain') : sellGrainSmart(s, r?.id);
     s = fillMalt(s);
     s = bottleBlended(s);
   } else {
