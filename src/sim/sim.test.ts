@@ -7,10 +7,11 @@ import {
 import { EQUIPMENT, INGREDIENTS } from './content/catalog';
 import { BUYERS } from './content/names';
 import { APPLY_KR_BASE_DEDUCTION, consumerPrice, krImportCompetitionFactor, priceForConsumer, REGIONS, setKrBaseDeduction } from './content/regions';
-import { DEFAULT_SITE, SITES } from './content/sites';
+import { DEFAULT_SITE, DUTY_FREE, SITES } from './content/sites';
 import {
   applyTerroir, dutyFreeDemand, fermentCapacityFactor, isTraditionalRecipe, migrateState, productConsumerPrice, riskScale, scaleEffects,
   traditionalReliefRate, waterPermitCap, WATER_EFFECT,
+  dutyFreeSlotBlocker, hasLocalIngredient, resolveDutyFreeEditions, runSales, updateAwareness, executeBlend, mulberry32 as rngSeed, type MonthReport,
   agingOutlook, holdingCost, ingredientSupplyCap, inventoryCollateral, inventoryLoanRoom, makeOemOffer, oemPackageCost, makeRetailOffer, runVisitorSales, startOem, startRetail,
 } from './index';
 import { HOLDING } from './content/catalog';
@@ -656,17 +657,85 @@ describe('보유 비용·산지 대표 결정 (결정 #65)', () => {
     expect(kv[0]!.revenue / kv[0]!.bottles).toBeGreaterThan(60_000);
   });
 
-  it('면세 전용 한정판(제주): 국내에선 안 팔리고 면세 수요는 늘어난다, 제주 밖에선 못 만든다', () => {
+  it('면세 전용 한정판(제주): 제주 원료 기념품만 매력도 보너스, 연속 완판 보너스, 제주 밖에선 못 만든다', () => {
     const j = newGame({ seed: 1, site: 'jeju' });
     j.awareness = 0.3;
     const normal = dutyFreeDemand(j, product(), 1, 8);
-    const limited = dutyFreeDemand(j, product({ dutyFreeOnly: true }), 1, 8);
-    expect(limited).toBeGreaterThan(normal * 1.04);
+    // 위스키 한정판(제주 원료 아님)은 보너스 없음 (결정 #70)
+    expect(dutyFreeDemand(j, product({ dutyFreeOnly: true }), 1, 8)).toBeCloseTo(normal, 6);
+    const souvenir = dutyFreeDemand(j, product({ dutyFreeOnly: true, localIngredient: true }), 1, 8);
+    expect(souvenir / normal).toBeCloseTo(DUTY_FREE.localAppeal, 6);
+    const streak2 = dutyFreeDemand(j, product({ dutyFreeOnly: true, localIngredient: true, dfEdition: { vol: 3, streak: 2 } }), 1, 8);
+    expect(streak2 / souvenir).toBeCloseTo(1 + 2 * DUTY_FREE.streakAppeal, 6);
+    const capped = dutyFreeDemand(j, product({ dutyFreeOnly: true, dfEdition: { vol: 9, streak: 8 } }), 1, 8);
+    expect(capped / normal).toBeCloseTo(1 + DUTY_FREE.maxStreak * DUTY_FREE.streakAppeal, 6);
     expect(dutyFreeDemand(j, product(), 1, 8)).toBeGreaterThan(dutyFreeDemand(j, product(), 1, 3));
     const a = newGame({ seed: 1, site: 'andong' });
     const lot = { ...malt(48), id: 'L1' };
     a.lots = [lot];
     expect(previewBlend(a, [{ source: 'lot', id: 'L1', liters: 100 }], { name: 'x', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard', dutyFreeOnly: true }).errors.some((e) => e.includes('면세'))).toBe(true);
+  });
+
+  it('면세 한정판 시리즈(결정 #70): 전용 매대 1칸, 제주 원료 표시, 6개월 안 완판 → 연속 기록, 12개월 미판매 → 국내 이관', () => {
+    const j = newGame({ seed: 1, site: 'jeju' });
+    const site = SITES.jeju;
+    const gosori = j.recipes.find((r) => r.name.startsWith('고소리술'))!;
+    expect(hasLocalIngredient(site, gosori)).toBe(true);
+    expect(hasLocalIngredient(site, j.recipes.find((r) => r.kind === 'malt')!)).toBe(false);
+    expect(hasLocalIngredient(site, { mashBill: [], botanicals: [{ botanicalId: 'jeju_citrus', gramsPerL: 2 }] })).toBe(true);
+    expect(hasLocalIngredient(SITES.gyeonggi, gosori)).toBe(false);
+
+    const souju: SpiritLot = { ...malt(0, 400), id: 'S1', kind: 'soju', abv: 0.45, localIngredient: true, traditional: true };
+    j.lots = [souju, { ...souju, id: 'S2' }];
+    const opts = { name: 'Vol', targetAbv: 0.4, bottleMl: 500, chillFilter: true, packagingId: 'standard', dutyFreeOnly: true };
+    const pv = previewBlend(j, [{ source: 'lot', id: 'S1', liters: 100 }], opts);
+    expect(pv.ok).toBe(true);
+    expect(pv.localIngredient).toBe(true);
+    expect(pv.dfEdition).toEqual({ vol: 1, streak: 0 });
+    const first = executeBlend(j, [{ source: 'lot', id: 'S1', liters: 100 }], opts).product!;
+    expect(first.dfEdition).toEqual({ vol: 1, streak: 0 });
+    expect(first.localIngredient).toBe(true);
+    // 매대가 찼으면 다음 판을 낼 수 없다
+    expect(dutyFreeSlotBlocker(j)).toContain('1칸');
+    expect(previewBlend(j, [{ source: 'lot', id: 'S2', liters: 100 }], opts).ok).toBe(false);
+    // 일반 제품 병입은 막히지 않는다
+    expect(previewBlend(j, [{ source: 'lot', id: 'S2', liters: 100 }], { ...opts, dutyFreeOnly: false }).ok).toBe(true);
+
+    const report = (): MonthReport => ({ month: j.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] });
+    // 5개월 만에 완판 → 연속 1회, 인지도 +0.5%p
+    j.month = first.createdMonth + 4;
+    first.stockBottles = 0;
+    const aw = j.awareness;
+    resolveDutyFreeEditions(j, report());
+    expect(j.siteState.dfSeries).toEqual({ vol: 1, streak: 1 });
+    expect(j.awareness).toBeCloseTo(aw + DUTY_FREE.sellOutAwareness, 6);
+    expect(dutyFreeSlotBlocker(j)).toBeNull();
+    const second = executeBlend(j, [{ source: 'lot', id: 'S2', liters: 100 }], opts).product!;
+    expect(second.dfEdition).toEqual({ vol: 2, streak: 1 });
+    // 12개월 안에 못 팔면 국내 매대로, 연속 기록 초기화
+    j.month = second.createdMonth + DUTY_FREE.returnMonths - 1;
+    resolveDutyFreeEditions(j, report());
+    expect(second.dutyFreeOnly).toBe(false);
+    expect(j.siteState.dfSeries!.streak).toBe(0);
+    expect(dutyFreeSlotBlocker(j)).toBeNull();
+  });
+
+  it('면세 판매(결정 #70): 전통주 감면 구간 집계에서 빠지고, 입소문은 ×2로 친다', () => {
+    const j = newGame({ seed: 1, site: 'jeju' });
+    j.awareness = 0.3;
+    j.products = [product({ category: 'soju_distilled', abv: 0.4, bottleMl: 500, price: 20_000, traditional: true, localIngredient: true, dutyFreeOnly: true })];
+    const sales = runSales(j, rngSeed(1), 8);
+    expect(sales[0]!.dutyFree).toBeGreaterThan(0);
+    expect(j.siteState.traditionalShipped!.liters).toBe(0);
+    const before = j.awareness;
+    const dfPart = updateAwareness(j, sales);
+    expect(dfPart).toBeGreaterThan(0);
+    expect(j.awareness).toBeGreaterThan(before);
+    // 같은 판매가 국내였다면 입소문 몫이 절반
+    const k = { ...newGame({ seed: 1, site: 'jeju' }), awareness: 0.3, products: j.products };
+    const domestic = sales.map((x) => ({ ...x, dutyFree: 0 }));
+    updateAwareness(k, domestic);
+    expect(j.awareness).toBeGreaterThan(k.awareness);
   });
 
   it('안동 계약재배 확대·원액 운송비(결정 #68): 6개월 뒤 공급 한도 +400kg(최대 3회), 제주는 블렌더 단가 ×0.85', () => {

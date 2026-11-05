@@ -6,6 +6,7 @@ import { DEFAULT_SITE, SITES } from '../src/sim/content/sites';
 import { REGIONS, setKrBaseDeduction } from '../src/sim/content/regions';
 import { HOLDING } from '../src/sim/content/catalog';
 import { OEM, oemPackageCost, oemSpareBatches } from '../src/sim/deals';
+import { dutyFreeSlotBlocker } from '../src/sim/sites';
 
 const SEEDS = Number(process.argv[2] ?? 12);
 const MONTHS = Number(process.argv[3] ?? 120);
@@ -43,7 +44,24 @@ const recipeOf = (s: GameState, kind: SpiritKind) => s.recipes.find((r) => r.kin
 const rid = (s: GameState, kind: SpiritKind) => recipeOf(s, kind)?.id;
 const BIG_RECIPE = 'B2B 몰트';
 
+/** 면세 한정판 (결정 #70): 전용 매대 1칸 — 제주 원료 기념품(고소리술) 또는 위스키 한정판. DF_MODE=soju|whisky|both [실험용] */
+const DF_MODE = process.env.DF_MODE ?? 'soju';
+const DF_SOUVENIR_BOTTLES = Number(process.env.DF_SOUVENIR_BOTTLES ?? 600);
+const dfSlotFree = (s: GameState) => dutyFreeEditions && !!SITES[s.siteId].dutyFree && !dutyFreeSlotBlocker(s);
+
+/** 제주 원료 소주 원액 일부를 면세 기념품 한정판(40%·500ml)으로 */
+function bottleSouvenir(s: GameState): GameState {
+  if (DF_MODE === 'whisky' || !dfSlotFree(s)) return s;
+  const lot = s.lots.find((l) => l.kind === 'soju' && l.localIngredient && s.month - l.createdMonth >= 1);
+  if (!lot) return s;
+  const liters = Math.min(lot.volumeL, (DF_SOUVENIR_BOTTLES * 0.5 * 0.4) / lot.abv);
+  const comps = [{ source: 'lot' as const, id: lot.id, liters }];
+  const opts = { name: `고소리술 면세 한정 ${s.month}`, targetAbv: 0.4, bottleMl: 500, chillFilter: true, packagingId: 'standard', dutyFreeOnly: true };
+  return previewBlend(s, comps, opts).ok ? act(s, { type: 'bottle', components: comps, options: opts }) : s;
+}
+
 function bottleCashProducts(s: GameState): GameState {
+  s = bottleSouvenir(s);
   for (const lot of [...s.lots]) {
     if (lot.kind === 'soju' && stockOf(s, 'soju_distilled') < 1500 + retailBuffer && s.month - lot.createdMonth >= 1)
       s = act(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: lot.volumeL }], options: { name: `소주 ${s.month}`, targetAbv: 0.25, bottleMl: 375, chillFilter: true, packagingId: 'standard' } });
@@ -80,9 +98,8 @@ function bottleWhisky(s: GameState): GameState {
   const ready = s.casks.filter((c) => c.contents && c.contents.oakMonths >= REGIONS[s.regionId].whiskyMinMonths && !c.contents.sourced).slice(0, 3);
   if (!ready.length) return s;
   const comps = ready.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }));
-  // 면세 전용 한정판은 일부만 (면세 전용 재고 400병 미만일 때) — 국내 판매를 통째로 포기하지 않는다
-  const dfStock = s.products.filter((p) => p.dutyFreeOnly).reduce((t, p) => t + p.stockBottles, 0);
-  const df = dutyFreeEditions && !!SITES[s.siteId].dutyFree && dfStock < 400;
+  // 면세 전용 한정판은 매대가 비었을 때만 (DF_MODE=whisky|both)
+  const df = DF_MODE !== 'soju' && dfSlotFree(s);
   const opts = { name: `싱글 몰트 ${s.month}`, targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard', dutyFreeOnly: df };
   return previewBlend(s, comps, opts).ok ? act(s, { type: 'bottle', components: comps, options: opts }) : s;
 }

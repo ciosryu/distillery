@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { BOTTLE_SIZES, PACKAGING, packagingCost } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
-import { previewBlend, topNotes, type BlendComponent, type BottleOptions, type SpiritKind } from '../../sim';
-import { siteOf } from '../../sim/content/sites';
+import { dutyFreeSlotBlocker, nextDutyFreeEdition, previewBlend, topNotes, type BlendComponent, type BottleOptions, type SpiritKind } from '../../sim';
+import { DUTY_FREE, siteOf } from '../../sim/content/sites';
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
 import { liters, months, num, pct, won } from '../format';
@@ -61,10 +61,15 @@ export function Bottling() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <label className="inline-flex items-center gap-1 text-sm"><input type="checkbox" checked={opts.chillFilter} onChange={(e) => setOpts({ ...opts, chillFilter: e.target.checked })} className="accent-amber-700" /> 칠 필터링</label>
-            {siteOf(s).dutyFree && <label className="inline-flex items-center gap-1 text-sm" title="국내 판매 없이 지정면세점 전용 매대에서만 판매 — 한정판 매력도 ×1.05, 관광 성수기 판매"><input type="checkbox" checked={!!opts.dutyFreeOnly} onChange={(e) => setOpts({ ...opts, dutyFreeOnly: e.target.checked })} className="accent-amber-700" /> 면세 전용 한정판</label>}
+            {siteOf(s).dutyFree && <label className="inline-flex items-center gap-1 text-sm" title={`국내 판매 없이 지정면세점 전용 매대(${DUTY_FREE.slots}칸)에서만 판매. 제주 원료(차조·청귤) 기념품은 매력도 ×${DUTY_FREE.localAppeal}. ${DUTY_FREE.sellOutMonths}개월 안에 완판하면 다음 판 매력도 +${DUTY_FREE.streakAppeal * 100}%(최대 ${DUTY_FREE.maxStreak}연속), ${DUTY_FREE.returnMonths}개월 안에 못 팔면 국내 매대로 넘어갑니다`}><input type="checkbox" checked={!!opts.dutyFreeOnly} onChange={(e) => setOpts({ ...opts, dutyFreeOnly: e.target.checked })} className="accent-amber-700" /> 면세 전용 한정판</label>}
             <Select label="패키징" value={opts.packagingId} options={Object.entries(PACKAGING).map(([k, v]) => ({ value: k, label: `${v.nameKo} (${won(packagingCost(k, opts.bottleMl))}/병)` }))} onChange={(v) => setOpts({ ...opts, packagingId: v })} />
           </div>
 
+          {siteOf(s).dutyFree && opts.dutyFreeOnly && (() => {
+            const blocker = dutyFreeSlotBlocker(s);
+            const next = nextDutyFreeEdition(s);
+            return <p className="text-xs text-stone-500">{blocker ?? `다음 판: Vol.${next.vol} · 연속 완판 ${next.streak}회 → 매력도 +${Math.round(Math.min(next.streak, DUTY_FREE.maxStreak) * DUTY_FREE.streakAppeal * 100)}% · ${DUTY_FREE.sellOutMonths}개월 안에 다 팔 수 있는 수량으로 내세요`}</p>;
+          })()}
           {!preview ? <Empty>왼쪽에서 원액을 선택하세요</Empty> : (
             <div className="grid gap-2">
               {preview.category && <Radar flavor={preview.flavor} axes={CATEGORY[preview.category].radarAxes} size={240} />}
@@ -73,6 +78,8 @@ export function Bottling() {
                 {preview.ageYears != null && <Badge tone="good">{preview.ageYears}년</Badge>}
                 {preview.evaluation?.style && <Badge>{preview.evaluation.style}</Badge>}
                 {preview.sourcedShare > 0 && <Badge tone="warn">매입 원액 {pct(preview.sourcedShare, 0)}</Badge>}
+                {preview.localIngredient && siteOf(s).dutyFree && <Badge tone="good">제주 원료</Badge>}
+                {preview.dfEdition && <Badge tone="info">면세 한정판 Vol.{preview.dfEdition.vol}</Badge>}
               </div>
               <dl className="grid grid-cols-2 gap-x-2 text-sm">
                 <dt className="text-stone-500">병 수</dt><dd className="text-right tabular-nums">{num(preview.bottles)}병</dd>

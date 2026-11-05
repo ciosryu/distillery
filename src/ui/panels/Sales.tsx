@@ -1,7 +1,7 @@
 import { CATEGORY } from '../../sim/content/categories';
 import { categoryName, consumerPrice, regionOf } from '../../sim/content/regions';
 import { bottleMargin, calendar, coverage, demandFor, dutyFreeDemand, productConsumerPrice } from '../../sim';
-import { siteOf } from '../../sim/content/sites';
+import { DUTY_FREE, siteOf } from '../../sim/content/sites';
 import { useGame } from '../../store/game';
 import { num, pct, won } from '../format';
 import { Badge, Card, Empty, NumberField, Stat, Table, Td } from '../kit';
@@ -40,7 +40,7 @@ export function Sales() {
               return (
                 <tr key={p.id}>
                   <Td className="font-medium">{p.name}</Td>
-                  <Td><Badge tone="info">{categoryName(region, p.category, CATEGORY[p.category].nameKo)}</Badge>{p.ageYears != null && <> <Badge tone="good">{p.ageYears}년</Badge></>}{p.traditional && <> <Badge tone="good">전통주</Badge></>}</Td>
+                  <Td><Badge tone="info">{categoryName(region, p.category, CATEGORY[p.category].nameKo)}</Badge>{p.ageYears != null && <> <Badge tone="good">{p.ageYears}년</Badge></>}{p.traditional && <> <Badge tone="good">전통주</Badge></>}{p.dutyFreeOnly && p.localIngredient && <> <Badge tone="good">제주 원료</Badge></>}{p.dutyFreeOnly && p.dfEdition && <> <Badge tone="warn">면세 Vol.{p.dfEdition.vol} · {s.month - p.createdMonth + 1}/{DUTY_FREE.sellOutMonths}개월</Badge></>}</Td>
                   <Td className="text-xs">{p.bottleMl}ml · {pct(p.abv)}</Td>
                   <Td right>{p.quality}</Td>
                   <Td right>{num(p.stockBottles)}</Td>

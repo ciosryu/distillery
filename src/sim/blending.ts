@@ -2,7 +2,7 @@ import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/c
 import { CATEGORY } from './content/categories';
 import { priceForConsumer, refPricePerL, regionOf, type RegionDef, type TaxOptions } from './content/regions';
 import { siteOf } from './content/sites';
-import { traditionalReliefRate } from './sites';
+import { dutyFreeSlotBlocker, nextDutyFreeEdition, traditionalReliefRate } from './sites';
 import { clampFlavor, evaluate, weightedAverage, type Evaluation } from './flavor';
 import { emptyCask } from './maturation';
 import { bestBy, nid, staffOf } from './util';
@@ -32,6 +32,10 @@ export interface BlendPreview {
   suggestedPrice: number;
   /** 전통주 자격 (모든 구성 원액이 전통주 원액) */
   traditional: boolean;
+  /** 산지 원료 제품 (면세 기념품 보너스 대상) */
+  localIngredient: boolean;
+  /** 면세 한정판으로 내면 붙을 판 번호·연속 완판 수 */
+  dfEdition: { vol: number; streak: number } | null;
 }
 
 /** 공통 "위스키" 최소 숙성 — 국가별 값은 CountryDef.whiskyMinMonths (대만 24) */
@@ -83,7 +87,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     if (c.liters > lot.volumeL + 1e-6) errors.push(`${lot.name}: 보유량(${lot.volumeL.toFixed(1)}L)보다 많이 선택했습니다`);
     items.push({ lot, liters: Math.min(c.liters, lot.volumeL) });
   }
-  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, suggestedPrice: 0, traditional: false };
+  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, suggestedPrice: 0, traditional: false, localIngredient: false, dfEdition: null };
   if (!items.length) { errors.push('블렌딩할 원액을 선택하세요'); return empty; }
   const kinds = new Set(items.map((i) => i.lot.kind));
   const whiskyMix = [...kinds].every((k) => k === 'malt' || k === 'grain');
@@ -100,6 +104,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   const minOakMonths = Math.min(...items.map((i) => i.lot.oakMonths));
   const sourcedShare = items.reduce((t, i) => t + (i.lot.sourced ? i.liters * i.lot.abv : 0), 0) / lpa;
   const traditional = items.every((i) => i.lot.traditional);
+  const localIngredient = items.every((i) => i.lot.localIngredient);
 
   let flavor = weightedAverage(items.map((i) => ({ flavor: i.lot.flavor, weight: i.liters * i.lot.abv })));
   // 가수: 지각 강도 약화, 자극 완화
@@ -120,6 +125,11 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   const category = categorize(kind, minOakMonths, finalAbv, flavor, hasGrain, hasMalt, minMonths);
   if ((hasMalt || hasGrain) && category === 'malt_spirit') warnings.push(minOakMonths < minMonths ? `오크 숙성 ${minOakMonths}개월 — ${minMonths}개월 미만이라 "위스키" 표기 불가(몰트 스피릿)` : '도수 40% 미만 — 위스키 표기 불가');
   if (opts.dutyFreeOnly && !siteOf(s).dutyFree) errors.push('면세 전용 한정판은 지정면세점이 있는 산지(제주)에서만 만들 수 있습니다');
+  else if (opts.dutyFreeOnly) {
+    const blocker = dutyFreeSlotBlocker(s);
+    if (blocker) errors.push(blocker);
+    else if (!localIngredient) warnings.push('제주 원료(차조·청귤)를 쓰지 않은 한정판 — 기념품 매력도 보너스 없음');
+  }
   if (kind === 'gin' && category === 'flavored_spirit') warnings.push('주니퍼가 지배적이지 않거나 도수 37.5% 미만 — "진" 표기 불가(기타 증류주)');
   if (finalAbv < MIN_BOTTLING_ABV[category]) errors.push(`${CATEGORY[category].nameKo} 최소 병입 도수는 ${(MIN_BOTTLING_ABV[category] * 100).toFixed(1)}%`);
   if (!opts.chillFilter && finalAbv < 0.46 && (hasMalt || hasGrain)) warnings.push('논칠필터 + 46% 미만 — 저온 혼탁 클레임 위험');
@@ -135,7 +145,8 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   const evaluation = evaluate(flavor, category);
   return {
     ok: errors.length === 0, errors, warnings, kind, category, volumeL: finalVolume, lpa, mixAbv, finalAbv, bottles,
-    minOakMonths, ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare, traditional,
+    minOakMonths, ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare, traditional, localIngredient,
+    dfEdition: opts.dutyFreeOnly && siteOf(s).dutyFree ? nextDutyFreeEdition(s) : null,
     suggestedPrice: suggestedPrice(regionOf(s), category, opts.bottleMl, evaluation.quality, ageYears, finalAbv, { category, relief: traditionalReliefRate(s, traditional) }),
   };
 }
@@ -186,8 +197,11 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     lastMonthSold: 0,
     totalSold: 0,
     ...(p.traditional ? { traditional: true } : {}),
+    ...(p.localIngredient ? { localIngredient: true } : {}),
     ...(opts.dutyFreeOnly ? { dutyFreeOnly: true } : {}),
+    ...(p.dfEdition ? { dfEdition: { ...p.dfEdition } } : {}),
   };
+  if (p.dfEdition) s.siteState.dfSeries = { vol: p.dfEdition.vol, streak: p.dfEdition.streak };
   // 포장재·병입 인건비는 병입 시점에 지출
   s.cash -= Math.round((packagingUnitCost(s, opts) + BOTTLING_LABOR_PER_BOTTLE) * p.bottles);
   s.products.push(product);

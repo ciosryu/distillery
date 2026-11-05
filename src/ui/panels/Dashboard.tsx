@@ -1,4 +1,4 @@
-import { calendar, capacityReport, coverage, hasUpgrade, ingredientSupplyCap, monthLabel, monthlyFixedCost, riskScale, traditionalReliefRate, warehouseCapacity, waterPermitCap } from '../../sim';
+import { calendar, capacityReport, coverage, hasUpgrade, ingredientSupplyCap, liveDutyFreeEditions, monthLabel, monthlyFixedCost, riskScale, traditionalReliefRate, warehouseCapacity, waterPermitCap } from '../../sim';
 import { INGREDIENTS } from '../../sim/content/catalog';
 import { REGIONS } from '../../sim/content/regions';
 import { siteOf } from '../../sim/content/sites';
@@ -59,7 +59,19 @@ function SiteCard() {
               </div>
             </div>
           )}
-          {site.dutyFree && <div><b>지정면세점</b> — 지난달 면세 판매 {num(s.reports.at(-1)?.dutyFreeBottles ?? 0)}병 (주세·부가세 없음)</div>}
+          {site.dutyFree && (() => {
+            const last = s.reports.at(-1);
+            const live = liveDutyFreeEditions(s)[0];
+            const series = s.siteState.dfSeries;
+            return (
+              <div>
+                <b>지정면세점</b> — 지난달 면세 판매 {num(last?.dutyFreeBottles ?? 0)}병 (주세·부가세 없음) · 관광객 입소문 인지도 +{((last?.dutyFreeAwareness ?? 0) * 100).toFixed(2)}%p
+                <div className="text-xs text-stone-500">
+                  면세 한정판 매대: {live?.dfEdition ? `Vol.${live.dfEdition.vol} ${live.name} — 출시 ${s.month - live.createdMonth + 1}개월째, 남은 ${num(live.stockBottles)}병` : '비어 있음'} · 연속 완판 {series?.streak ?? 0}회
+                </div>
+              </div>
+            );
+          })()}
           {site.winterFerment && <div><b>겨울 발효</b> — {site.winterFerment.months.join('·')}월 발효조 가동 {pct(site.winterFerment.capacity, 0)} {hasUpgrade(s, 'temp_control') ? <Badge tone="good">온도 제어 설비로 해소</Badge> : <span className="text-xs text-stone-500">(생산 탭에서 온도 제어 설비 발주)</span>}</div>}
           {quake < 1 && <div><b>지진 대비</b> — 피해 {pct(1 - quake, 0)} 경감</div>}
         </div>

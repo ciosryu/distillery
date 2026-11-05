@@ -1,6 +1,6 @@
-import { EQUIPMENT, INGREDIENTS, UPGRADE_RISK_REDUCTION, type EquipmentDef, type UpgradeId } from './content/catalog';
+import { BOTANICALS, EQUIPMENT, INGREDIENTS, UPGRADE_RISK_REDUCTION, type EquipmentDef, type UpgradeId } from './content/catalog';
 import { regionOf } from './content/regions';
-import { siteOf, type SiteDef } from './content/sites';
+import { DUTY_FREE, siteOf, type SiteDef } from './content/sites';
 import { clamp } from './flavor';
 import { rngFor } from './rng';
 import { isUnlocked } from './unlocks';
@@ -192,4 +192,66 @@ export function applyTerroir(site: SiteDef, cask: Cask, tempC: number): Cask {
     if (cur < t.cap) f[t.axis] = clamp(cur + t.perMonth, 0, t.cap);
   }
   return { ...cask, contents: { ...cask.contents, flavor: f } };
+}
+
+// ── 산지 원료 · 면세 한정판 시리즈 (제주, 결정 #70) ──
+
+/** 레시피가 이 산지의 원료(지역 농산물 또는 산지 보태니컬)를 쓰는가 — 제주 차조 고소리술, 청귤 진 */
+export function hasLocalIngredient(site: SiteDef, r: Pick<Recipe, 'mashBill'> & Partial<Pick<Recipe, 'botanicals'>>): boolean {
+  const local = (sites?: string[]) => !!sites?.includes(site.id);
+  if (r.mashBill.some((m) => m.ratio > 0 && INGREDIENTS[m.ingredientId]?.origin === 'local' && local(INGREDIENTS[m.ingredientId]?.sites))) return true;
+  return (r.botanicals ?? []).some((b) => b.gramsPerL > 0 && local(BOTANICALS[b.botanicalId]?.sites));
+}
+
+/** 지금 판매 중인 면세 한정판 (전용 매대를 차지한 제품) */
+export function liveDutyFreeEditions(s: GameState): Product[] {
+  return s.products.filter((p) => p.dutyFreeOnly && p.stockBottles > 0);
+}
+
+/** 면세 한정판을 새로 낼 수 없는 사유 (전용 매대 1칸) — 없으면 null */
+export function dutyFreeSlotBlocker(s: GameState): string | null {
+  const live = liveDutyFreeEditions(s);
+  if (live.length < DUTY_FREE.slots) return null;
+  const p = live[0]!;
+  return `면세 전용 매대는 ${DUTY_FREE.slots}칸입니다 — 지금 판(${p.dfEdition ? `Vol.${p.dfEdition.vol} ` : ''}${p.name})이 다 팔리거나 국내 매대로 넘어간 뒤 낼 수 있습니다`;
+}
+
+/** 다음에 낼 면세 한정판의 판 번호와 연속 완판 수 */
+export function nextDutyFreeEdition(s: GameState): { vol: number; streak: number } {
+  const d = s.siteState.dfSeries;
+  return { vol: (d?.vol ?? 0) + 1, streak: d?.streak ?? 0 };
+}
+
+/** 면세 한정판 매력도 배수 = 산지 원료 기념품 보너스 × 연속 완판 보너스 */
+export function dutyFreeEditionAppeal(p: Pick<Product, 'dutyFreeOnly' | 'localIngredient' | 'dfEdition'>): number {
+  if (!p.dutyFreeOnly) return 1;
+  const streak = Math.min(p.dfEdition?.streak ?? 0, DUTY_FREE.maxStreak);
+  return (p.localIngredient ? DUTY_FREE.localAppeal : 1) * (1 + DUTY_FREE.streakAppeal * streak);
+}
+
+/** 월말: 면세 한정판 완판·국내 이관 판정 */
+export function resolveDutyFreeEditions(s: GameState, report: MonthReport): void {
+  for (const p of s.products) {
+    const ed = p.dfEdition;
+    if (!ed || ed.done) continue;
+    const months = s.month - p.createdMonth + 1;
+    const series = (s.siteState.dfSeries ??= { vol: ed.vol, streak: 0 });
+    if (p.stockBottles <= 0) {
+      ed.done = true;
+      if (months <= DUTY_FREE.sellOutMonths) {
+        series.streak = Math.min(series.streak + 1, DUTY_FREE.maxStreak);
+        s.awareness = clamp(s.awareness + DUTY_FREE.sellOutAwareness, 0.001, 0.95);
+        report.events.push(`면세 한정판 Vol.${ed.vol} 완판`);
+        report.notes.push(`면세 한정판 Vol.${ed.vol} ${months}개월 만에 완판 — 인지도 +${(DUTY_FREE.sellOutAwareness * 100).toFixed(1)}%p, 다음 판 매력도 +${Math.round(series.streak * DUTY_FREE.streakAppeal * 100)}% (연속 ${series.streak}회)`);
+      } else {
+        report.notes.push(`면세 한정판 Vol.${ed.vol} 판매 종료 (${months}개월) — ${DUTY_FREE.sellOutMonths}개월을 넘겨 완판 보너스 없음`);
+      }
+    } else if (p.dutyFreeOnly && months >= DUTY_FREE.returnMonths) {
+      ed.done = true;
+      p.dutyFreeOnly = false;
+      series.streak = 0;
+      report.events.push(`면세 한정판 Vol.${ed.vol} 국내 이관`);
+      report.notes.push(`면세 한정판 Vol.${ed.vol}이 ${DUTY_FREE.returnMonths}개월 안에 다 팔리지 않아 국내 매대로 넘어갔습니다 (남은 ${p.stockBottles.toLocaleString()}병, 연속 완판 기록 초기화)`);
+    }
+  }
 }

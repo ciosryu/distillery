@@ -11,7 +11,7 @@ import { fulfillRetail, OEM, refreshDeals } from './deals';
 import { effectivePriceIndex, mod, pruneModifiers } from './modifiers';
 import { runEvents } from './events';
 import { holdingCost, inventoryMarginCall } from './holding';
-import { applyTerroir, fermentCapacityFactor, heatingCost, ingredientSupplyCap, isTraditionalRecipe, resolveLocalSupply, resolveWaterPermit, seasonalEnergyFactor, waterPermitCap } from './sites';
+import { applyTerroir, fermentCapacityFactor, heatingCost, ingredientSupplyCap, hasLocalIngredient, isTraditionalRecipe, resolveDutyFreeEditions, resolveLocalSupply, resolveWaterPermit, seasonalEnergyFactor, waterPermitCap } from './sites';
 import { rngFor } from './rng';
 import type { FermenterType, GameState, MonthReport, SpiritLot, StaffRole } from './types';
 import { bestBy, calendar, clone, monthLabel, nid, staffOf } from './util';
@@ -137,6 +137,7 @@ function runProduction(s: GameState, report: MonthReport, monthOfYear: number): 
     const volumeL = parts.reduce((t, p) => t + p.lot.volumeL, 0);
     const cost = parts.reduce((t, p) => t + p.cost, 0);
     const traditional = isTraditionalRecipe(site, recipe);
+    const local = hasLocalIngredient(site, recipe);
     s.lots.push({
       ...parts[0]!.lot,
       id: nid(s, 'L'),
@@ -146,6 +147,7 @@ function runProduction(s: GameState, report: MonthReport, monthOfYear: number): 
       flavor: weightedAverage(parts.map((p) => ({ flavor: p.lot.flavor, weight: p.lpa }))),
       costPerLPA: cost / lpa,
       ...(traditional ? { traditional: true } : {}),
+      ...(local ? { localIngredient: true } : {}),
     });
     if (recipe.kind === 'soju') s.flags.producedSoju = true;
     report.production.push({ recipeId: recipe.id, name: recipe.name, batches: parts.length, lpa, cost });
@@ -253,7 +255,8 @@ export function advanceMonth(prev: GameState): GameState {
   s.cash += report.revenue;
   const distribution = sales.reduce((t, x) => t + x.distribution, 0);
   if (distribution > 0) { s.cash -= distribution; report.expenses.distribution = distribution; }
-  updateAwareness(s, sales);
+  report.dutyFreeAwareness = updateAwareness(s, sales);
+  resolveDutyFreeEditions(s, report);
   updateTrends(s, rngFor(s.seed, s.month, 'trend'));
 
   runFinance(s, report, monthOfYear);

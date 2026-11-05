@@ -1,7 +1,7 @@
 import { DISTRIBUTION, PACKAGING, VISITOR, logisticsCost } from './content/catalog';
 import { consumerPrice, liquorTaxPerBottle, refPricePerL, regionOf, type RegionDef } from './content/regions';
 import { DUTY_FREE, siteOf } from './content/sites';
-import { hasUpgrade, onlineCoverageBonus, rollTraditionalYear, traditionalReliefRate } from './sites';
+import { dutyFreeEditionAppeal, hasUpgrade, onlineCoverageBonus, rollTraditionalYear, traditionalReliefRate } from './sites';
 import { clamp } from './flavor';
 import { staffOf } from './util';
 import { mod } from './modifiers';
@@ -43,8 +43,8 @@ export function appeal(p: Product, s?: Pick<GameState, 'modifiers' | 'month' | '
   // 대형 유통 입점(경기)은 숙성 위스키의 프리미엄 이미지를 깎는다 / 미즈나라 백단·인센스 향은 일본 시장 프리미엄
   const premium = s && aged ? mod(s, 'appeal:premium') : 1;
   const incense = s && (p.flavor.incense ?? 0) >= 8 ? regionOf(s).incensePremium ?? 1 : 1;
-  // 면세 전용 한정판(제주)
-  const limited = p.dutyFreeOnly ? DUTY_FREE.limitedAppeal : 1;
+  // 면세 전용 한정판(제주): 산지 원료 기념품 보너스 × 연속 완판 보너스 (결정 #70)
+  const limited = dutyFreeEditionAppeal(p);
   return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * (1 - sourcedPenalty * p.sourcedShare) * trend * premium * incense * limited;
 }
 
@@ -132,7 +132,8 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): SalesResu
     const opts = { category: p.category, relief };
     const tax = domSold * liquorTaxPerBottle(region, p.price, p.bottleMl, p.abv, opts);
     const fullTax = domSold * liquorTaxPerBottle(region, p.price, p.bottleMl, p.abv, { category: p.category });
-    if (p.traditional && shipped) shipped.liters += (sold * p.bottleMl) / 1000;
+    // 면세 판매분은 과세되지 않으므로 전통주 감면 구간 집계에서 뺀다 (결정 #70)
+    if (p.traditional && shipped) shipped.liters += (domSold * p.bottleMl) / 1000;
     p.stockBottles -= sold;
     p.lastMonthSold = sold;
     p.lastMonthDutyFree = dfSold;
@@ -177,13 +178,19 @@ export function runVisitorSales(s: GameState, monthOfYear: number): VisitorSale[
 /** 인지도 계수 [튜닝] — 월 500만 원 마케팅 단독이면 평형 인지도 ≈ 0.4 */
 export const AWARENESS = { marketing: 0.012, wordOfMouth: 0.000003, decay: 0.012 };
 
-/** 인지도 갱신: 마케팅 + 입소문(판매량 × 품질) − 망각 */
-export function updateAwareness(s: GameState, sales: SalesResult[]): void {
-  const bottles = sales.reduce((t, x) => t + x.bottles, 0);
+/**
+ * 인지도 갱신: 마케팅 + 입소문(판매량 × 품질) − 망각.
+ * 면세 판매 1병은 입소문에서 DUTY_FREE.wordOfMouthWeight병으로 친다 — 출도 관광객이 육지로 가져간다 (결정 #70).
+ * 반환: 그중 면세 판매 입소문 몫(인지도 증가분)
+ */
+export function updateAwareness(s: GameState, sales: SalesResult[]): number {
+  const dutyFree = sales.reduce((t, x) => t + x.dutyFree, 0);
+  const bottles = sales.reduce((t, x) => t + x.bottles, 0) + (DUTY_FREE.wordOfMouthWeight - 1) * dutyFree;
   const avgQ = s.products.length ? s.products.reduce((t, p) => t + p.quality, 0) / s.products.length : 50;
   const a = s.awareness;
   const gain = (AWARENESS.marketing * Math.log10(1 + s.marketingBudget / 1_000_000) * mod(s, 'awareness_gain') + AWARENESS.wordOfMouth * bottles * (avgQ / 60)) * (1 - a);
   s.awareness = clamp(a + gain - AWARENESS.decay * a, 0.001, 0.95);
+  return AWARENESS.wordOfMouth * DUTY_FREE.wordOfMouthWeight * dutyFree * (avgQ / 60) * (1 - a);
 }
 
 export function updateTrends(s: GameState, rng: Rng): void {

@@ -79,6 +79,8 @@ export interface SpiritLot {
   recipeId?: string;
   /** 전통주(민속주·지역특산주) 자격으로 생산된 원액 — 한국 주세 감면·온라인 직판 대상 */
   traditional?: boolean;
+  /** 산지 원료(지역 농산물·산지 보태니컬)를 쓴 원액 — 제주 면세 기념품 매력도 */
+  localIngredient?: boolean;
 }
 
 export interface Cask {
@@ -125,6 +127,10 @@ export interface Product {
   lastMonthDutyFree?: number;
   /** 면세 전용 한정판 (제주) — 국내 판매 없음 */
   dutyFreeOnly?: boolean;
+  /** 산지 원료 제품 — 모든 구성 원액이 산지 원료 원액일 때 */
+  localIngredient?: boolean;
+  /** 면세 한정판 시리즈 (결정 #70): 판 번호, 출시 시점 연속 완판 수, 판정 끝남 */
+  dfEdition?: { vol: number; streak: number; done?: boolean };
 }
 
 export interface StaffStats { a: number; b: number; c: number }
@@ -212,6 +218,8 @@ export interface MonthReport {
   taxRelief?: number;
   /** 면세 채널 판매 병수 */
   dutyFreeBottles?: number;
+  /** 면세 판매 입소문으로 오른 인지도 (이번 달) */
+  dutyFreeAwareness?: number;
   /** 직판장 판매 병수·순매출 */
   visitorBottles?: number;
   visitorRevenue?: number;
@@ -304,6 +312,8 @@ export interface SiteState {
   localSupplyPending?: { readyMonth: number; addKg: number };
   /** 전통주 출고량(L) — 연도별 감면 구간 판정 */
   traditionalShipped?: { year: number; liters: number; lastYearLiters: number };
+  /** 면세 한정판 시리즈 — 마지막 판 번호와 연속 완판 수 (제주) */
+  dfSeries?: { vol: number; streak: number };
 }
 
 export interface GameState {
