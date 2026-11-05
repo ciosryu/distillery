@@ -1,6 +1,6 @@
-import { PACKAGING } from './content/catalog';
+import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/catalog';
 import { CATEGORY } from './content/categories';
-import { KOREA, consumerMultiplier } from './content/korea';
+import { KOREA, consumerMultiplier, refPricePerL } from './content/korea';
 import { clampFlavor, evaluate, weightedAverage, type Evaluation } from './flavor';
 import { emptyCask } from './maturation';
 import { bestBy, nid, staffOf } from './util';
@@ -50,10 +50,9 @@ export function lotCategory(lot: SpiritLot): ProductCategory {
   return lot.oakMonths >= WHISKY_MIN_MONTHS ? 'whisky' : 'malt_spirit';
 }
 
-export function suggestedPrice(category: ProductCategory, bottleMl: number, quality: number, ageYears: number | null): number {
-  const m = KOREA.market[category];
+export function suggestedPrice(category: ProductCategory, bottleMl: number, quality: number, ageYears: number | null, abv: number): number {
   const ageBonus = category === 'whisky' && ageYears ? 1 + 0.06 * Math.min(ageYears, 12) : 1;
-  const p = (m.refConsumerPricePerL * (bottleMl / 1000) / consumerMultiplier(KOREA)) * Math.sqrt(Math.max(quality, 20) / 60) * ageBonus;
+  const p = (refPricePerL(KOREA, category, abv) * (bottleMl / 1000) / consumerMultiplier(KOREA)) * Math.sqrt(Math.max(quality, 20) / 60) * ageBonus;
   return Math.round(p / 100) * 100;
 }
 
@@ -109,12 +108,13 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   const bottles = Math.floor(finalVolume / (opts.bottleMl / 1000));
   if (bottles < 1) errors.push('병입할 양이 부족합니다');
   const spiritCost = items.reduce((t, i) => t + i.liters * i.lot.abv * i.lot.costPerLPA, 0);
-  const unitCost = bottles > 0 ? spiritCost / bottles + (PACKAGING[opts.packagingId]?.costPerBottle ?? 0) : 0;
+  const perBottleFixed = packagingCost(opts.packagingId, opts.bottleMl) + BOTTLING_LABOR_PER_BOTTLE;
+  const unitCost = bottles > 0 ? spiritCost / bottles + perBottleFixed : 0;
   const evaluation = evaluate(flavor, category);
   return {
     ok: errors.length === 0, errors, warnings, kind, category, volumeL: finalVolume, lpa, mixAbv, finalAbv, bottles,
     minOakMonths, ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare,
-    suggestedPrice: suggestedPrice(category, opts.bottleMl, evaluation.quality, ageYears),
+    suggestedPrice: suggestedPrice(category, opts.bottleMl, evaluation.quality, ageYears, finalAbv),
   };
 }
 
@@ -159,8 +159,8 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     lastMonthSold: 0,
     totalSold: 0,
   };
-  const packCost = (PACKAGING[opts.packagingId]?.costPerBottle ?? 0) * p.bottles;
-  s.cash -= packCost;
+  // 포장재·병입 인건비는 병입 시점에 지출
+  s.cash -= (packagingCost(opts.packagingId, opts.bottleMl) + BOTTLING_LABOR_PER_BOTTLE) * p.bottles;
   s.products.push(product);
   return { product };
 }

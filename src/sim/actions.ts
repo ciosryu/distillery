@@ -1,4 +1,5 @@
-import { CASKS, EQUIPMENT, LOAN_OFFERS, RECHAR_COST } from './content/catalog';
+import { BULK, CASK_COST_SHARE_PER_FILL, CASKS, EQUIPMENT, LOAN_OFFERS, RECHAR_COST } from './content/catalog';
+import { cancellationCost, spotQuote, startContract } from './bulk';
 import { executeBlend, type BlendComponent, type BottleOptions } from './blending';
 import { MAX_RECHAR, recharCask } from './maturation';
 import { emptyCaskOf } from './newGame';
@@ -21,7 +22,10 @@ export type Action =
   | { type: 'fire'; staffId: string }
   | { type: 'takeLoan'; offerId: string; amount: number }
   | { type: 'repayLoan'; loanId: string }
-  | { type: 'buyBrokerCask'; offerId: string };
+  | { type: 'buyBrokerCask'; offerId: string }
+  | { type: 'sellBulk'; source: 'lot' | 'cask'; id: string; liters?: number }
+  | { type: 'acceptContract'; offerId: string }
+  | { type: 'cancelContract'; contractId: string };
 
 export interface ActionResult { state: GameState; error?: string; message?: string }
 
@@ -88,9 +92,11 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
         const useL = Math.min(needL, lotLeftL);
         const lpa = useL * lot.abv;
         lotLeftL -= useL;
+        // 캐스크 원가의 일부를 이번 회차 원액 원가에 배분
+        const caskShare = CASKS[cask.typeId].price * CASK_COST_SHARE_PER_FILL;
         s.casks[ci] = {
           ...cask, fills: cask.fills + 1, filledMonth: s.month,
-          contents: { ...lot, id: nid(s, 'L'), name: `${lot.name} → ${cask.id}`, volumeL: lpa / entry, abv: entry },
+          contents: { ...lot, id: nid(s, 'L'), name: `${lot.name} → ${cask.id}`, volumeL: lpa / entry, abv: entry, costPerLPA: lot.costPerLPA + caskShare / lpa },
         };
         filled++;
       }
@@ -149,7 +155,7 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       s.cash += amount;
       s.loans.push({
         id: nid(s, 'D'), offerId: offer.id, name: offer.nameKo, principal: amount, balance: amount,
-        annualRate: offer.annualRate, termMonths: offer.termMonths, monthlyPayment: annuityPayment(amount, offer.annualRate, offer.termMonths), startMonth: s.month,
+        annualRate: offer.annualRate, termMonths: offer.termMonths, monthlyPayment: annuityPayment(amount, offer.annualRate, offer.termMonths - offer.graceMonths), graceMonths: offer.graceMonths, startMonth: s.month,
       });
       return { state: s, message: `${offer.nameKo} ${amount.toLocaleString()}원 실행` };
     }
@@ -170,6 +176,48 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       s.casks.push(o.cask);
       s.brokerOffers = s.brokerOffers.filter((x) => x.id !== o.id);
       return { state: s, message: `${o.description} 매입` };
+    }
+    case 'sellBulk': {
+      if (a.source === 'cask') {
+        const ci = s.casks.findIndex((c) => c.id === a.id);
+        const cask = s.casks[ci];
+        if (!cask?.contents) return fail(prev, '원액이 든 캐스크가 없습니다');
+        if (cask.contents.kind !== 'malt') return fail(prev, '벌크 판매는 몰트 원액만 가능합니다');
+        const amount = spotQuote(s, cask.contents, cask.contents.volumeL, cask);
+        s.cash += amount;
+        s.casks.splice(ci, 1);
+        return { state: s, message: `캐스크 ${cask.id}를 원액째 ${amount.toLocaleString()}원에 판매` };
+      }
+      const li = s.lots.findIndex((l) => l.id === a.id);
+      const lot = s.lots[li];
+      if (!lot) return fail(prev, '원액이 없습니다');
+      if (lot.kind !== 'malt') return fail(prev, '벌크 판매는 몰트 원액만 가능합니다');
+      const liters = Math.min(lot.volumeL, Math.max(0, a.liters ?? lot.volumeL));
+      if (liters <= 0) return fail(prev, '판매량을 입력하세요');
+      const amount = spotQuote(s, lot, liters);
+      s.cash += amount;
+      if (lot.volumeL - liters < 1) s.lots.splice(li, 1);
+      else s.lots[li] = { ...lot, volumeL: lot.volumeL - liters };
+      return { state: s, message: `원액 ${Math.round(liters)}L를 ${amount.toLocaleString()}원에 벌크 판매` };
+    }
+    case 'acceptContract': {
+      const offer = s.contractOffers.find((o) => o.id === a.offerId);
+      if (!offer) return fail(prev, '계약 제안이 없습니다');
+      if (s.contracts.length >= BULK.maxActiveContracts) return fail(prev, `동시에 진행할 수 있는 계약은 ${BULK.maxActiveContracts}건까지입니다`);
+      const c = startContract(s, offer);
+      s.cash += c.prepaidRemaining;
+      s.contracts.push(c);
+      s.contractOffers = s.contractOffers.filter((o) => o.id !== offer.id);
+      return { state: s, message: `${offer.buyerName}와 공급 계약 체결${c.prepaidRemaining > 0 ? ` — 선급금 ${c.prepaidRemaining.toLocaleString()}원 입금` : ''}` };
+    }
+    case 'cancelContract': {
+      const c = s.contracts.find((x) => x.id === a.contractId);
+      if (!c) return fail(prev, '계약이 없습니다');
+      const cost = cancellationCost(c);
+      s.cash -= cost;
+      s.b2bTrust = Math.max(0, s.b2bTrust - 10);
+      s.contracts = s.contracts.filter((x) => x.id !== c.id);
+      return { state: s, message: `${c.buyerName} 계약 해지 — 해지 비용 ${cost.toLocaleString()}원, 신뢰도 하락` };
     }
   }
 }

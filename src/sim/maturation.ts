@@ -66,7 +66,11 @@ export function matureCask(cask: Cask, climate: Climate, opts: MatureOptions): {
   if (months > 96) bump('nutty_rancio', 0.15);
   if (cask.wood === 'korean_oak' && months > 72) bump('incense', 0.12);
 
-  const contents: SpiritLot = { ...lot, volumeL: evap.volumeL, abv: evap.abv, flavor: clampFlavor(f), oakMonths: months };
+  // 증발로 LPA가 줄면 남은 원액의 LPA당 원가가 오른다
+  const oldLPA = lot.volumeL * lot.abv;
+  const newLPA = evap.volumeL * evap.abv;
+  const costPerLPA = newLPA > 0 ? (lot.costPerLPA * oldLPA) / newLPA : lot.costPerLPA;
+  const contents: SpiritLot = { ...lot, volumeL: evap.volumeL, abv: evap.abv, flavor: clampFlavor(f), oakMonths: months, costPerLPA };
   return { cask: { ...cask, contents }, lostL: evap.lostL };
 }
 

@@ -1,5 +1,5 @@
-import { PACKAGING } from './content/catalog';
-import { KOREA, consumerMultiplier, type RegionDef } from './content/korea';
+import { DISTRIBUTION, PACKAGING, logisticsCost } from './content/catalog';
+import { KOREA, consumerMultiplier, refPricePerL, type RegionDef } from './content/korea';
 import { clamp } from './flavor';
 import { staffOf } from './util';
 import type { GameState, Product, ProductCategory } from './types';
@@ -44,12 +44,24 @@ export function demandFor(s: GameState, p: Product, sameCategoryCount: number, m
   const consumerPricePerL = (p.price * effectiveConsumerMultiplier(s, region)) / bottleL;
   const charm = Math.max(0, ...staffOf(s, 'sales').map((x) => x.stats.a));
   const elasticity = m.elasticity * (1 - 0.15 * (charm / 100));
-  const priceFactor = Math.pow(consumerPricePerL / m.refConsumerPricePerL, -elasticity);
+  const ref = refPricePerL(region, p.category, p.abv);
+  const priceFactor = Math.pow(consumerPricePerL / ref, -elasticity);
   const demandBottles = (marketL * reach * a * priceFactor) / bottleL;
-  return { marketL, reach, appeal: a, consumerPricePerL, refPricePerL: m.refConsumerPricePerL, priceFactor, demandBottles };
+  return { marketL, reach, appeal: a, consumerPricePerL, refPricePerL: ref, priceFactor, demandBottles };
 }
 
-export interface SalesResult { productId: string; name: string; bottles: number; revenue: number; demandBottles: number }
+export interface SalesResult { productId: string; name: string; bottles: number; revenue: number; demandBottles: number; distribution: number }
+
+/** 병당 유통비 = 채널 수수료(출고가 비례) + 물류비 */
+export function distributionCostPerBottle(price: number, bottleMl: number): number {
+  return price * DISTRIBUTION.channelFeeRate + logisticsCost(bottleMl);
+}
+
+/** 병당 공헌이익과 공헌이익률 (출고가 − 생산 원가 − 유통비) */
+export function bottleMargin(p: Pick<Product, 'price' | 'unitCost' | 'bottleMl'>): { perBottle: number; rate: number } {
+  const perBottle = p.price - p.unitCost - distributionCostPerBottle(p.price, p.bottleMl);
+  return { perBottle, rate: p.price > 0 ? perBottle / p.price : 0 };
+}
 
 export function runSales(s: GameState, rng: Rng, monthOfYear: number): SalesResult[] {
   const counts: Partial<Record<ProductCategory, number>> = {};
@@ -63,7 +75,7 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): SalesResu
     p.stockBottles -= sold;
     p.lastMonthSold = sold;
     p.totalSold += sold;
-    out.push({ productId: p.id, name: p.name, bottles: sold, revenue: sold * p.price, demandBottles: demand });
+    out.push({ productId: p.id, name: p.name, bottles: sold, revenue: sold * p.price, demandBottles: demand, distribution: Math.round(sold * distributionCostPerBottle(p.price, p.bottleMl)) });
   }
   return out;
 }

@@ -1,6 +1,6 @@
 import { CATEGORY } from '../../sim/content/categories';
 import { KOREA } from '../../sim/content/korea';
-import { calendar, coverage, demandFor, effectiveConsumerMultiplier } from '../../sim';
+import { bottleMargin, calendar, coverage, demandFor, effectiveConsumerMultiplier } from '../../sim';
 import { useGame } from '../../store/game';
 import { num, pct, won } from '../format';
 import { Badge, Card, Empty, NumberField, Stat, Table, Td } from '../kit';
@@ -27,7 +27,7 @@ export function Sales() {
 
       <Card title="제품">
         {!active.length ? <Empty>판매 중인 제품이 없습니다. 블렌딩·병입 탭에서 병입하세요.</Empty> : (
-          <Table head={['제품', '카테고리', '규격', '품질', '재고', '출고가(병)', '소비자가', '기준가 대비', '이번 달 예상 수요', '지난달 판매', '누적', '병당 마진']}>
+          <Table head={['제품', '카테고리', '규격', '품질', '재고', '출고가(병)', '소비자가', '기준가 대비', '이번 달 예상 수요', '지난달 판매', '누적', '병당 공헌이익']}>
             {active.map((p) => {
               const d = demandFor(s, p, counts[p.category] ?? 1, monthOfYear);
               const ratio = d.consumerPricePerL / d.refPricePerL;
@@ -44,13 +44,13 @@ export function Sales() {
                   <Td right>{num(d.demandBottles)}병</Td>
                   <Td right>{num(p.lastMonthSold)}</Td>
                   <Td right>{num(p.totalSold)}</Td>
-                  <Td right>{won(p.price - p.unitCost)}</Td>
+                  <Td right>{(() => { const m = bottleMargin(p); return <span className={m.rate < 0.15 ? 'text-rose-700 dark:text-rose-400' : m.rate > 0.5 ? 'text-emerald-700 dark:text-emerald-400' : ''}>{won(m.perBottle)} ({pct(m.rate, 0)})</span>; })()}</Td>
                 </tr>
               );
             })}
           </Table>
         )}
-        <p className="mt-2 text-xs text-stone-500">예상 수요 = 시장 규모 × 계절·트렌드 × 도달률(인지도 × 커버리지 × 점유 상한) × 제품 매력도 × 가격 탄력성. 같은 카테고리 제품이 여러 개면 서로 수요를 나눠 갖습니다.</p>
+        <p className="mt-2 text-xs text-stone-500">병당 공헌이익 = 출고가 − (원액·포장·병입 인건비) − 유통비(채널 수수료 12% + 물류). 진·저가 제품은 가격 결정권이 낮아 마진이 얇고, 숙성 위스키는 두껍습니다. 예상 수요 = 시장 규모 × 계절·트렌드 × 도달률(인지도 × 커버리지 × 점유 상한) × 제품 매력도 × 가격 탄력성. 같은 카테고리 제품이 여러 개면 서로 수요를 나눠 갖습니다.</p>
       </Card>
 
       <Card title="한국 시장 (연간 기본 수요)">

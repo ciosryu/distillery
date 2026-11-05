@@ -1,6 +1,7 @@
 import { EQUIPMENT, ROLE_INFO } from './content/catalog';
 import { KOREA, liquorTaxPerWon } from './content/korea';
 import { refreshBroker } from './broker';
+import { fulfillContracts, refreshContractOffers, updateBulkIndex } from './bulk';
 import { clamp, weightedAverage } from './flavor';
 import { gainXp, refreshCandidates } from './hr';
 import { matureCask, restLot } from './maturation';
@@ -105,7 +106,7 @@ function runMaturation(s: GameState, report: MonthReport, monthOfYear: number): 
       const lossShare = rng.range(0.03, 0.08) * (1 - observe / 150);
       const c = next.contents!;
       lost += c.volumeL * lossShare;
-      next = { ...next, contents: { ...c, volumeL: c.volumeL * (1 - lossShare) } };
+      next = { ...next, contents: { ...c, volumeL: c.volumeL * (1 - lossShare), costPerLPA: c.costPerLPA / (1 - lossShare) } };
       report.notes.push(`캐스크 ${cask.id} 누수 — ${(lossShare * 100).toFixed(1)}% 손실`);
     }
     return next;
@@ -126,7 +127,8 @@ function runFinance(s: GameState, report: MonthReport): void {
   pay('marketing', s.marketingBudget);
   for (const loan of s.loans) {
     const interest = Math.round(loan.balance * (loan.annualRate / 12));
-    const principal = Math.min(loan.balance, loan.monthlyPayment - interest);
+    const inGrace = s.month < loan.startMonth + loan.graceMonths;
+    const principal = inGrace ? 0 : Math.min(loan.balance, loan.monthlyPayment - interest);
     loan.balance -= principal;
     pay('interest', interest);
     pay('principal', principal);
@@ -140,18 +142,21 @@ export function advanceMonth(prev: GameState): GameState {
   const s = clone(prev);
   const { monthOfYear } = calendar(s);
   const cashStart = s.cash;
-  const report: MonthReport = { month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], angelsShareL: 0, liquorTaxRemitted: 0, notes: [] };
+  const report: MonthReport = { month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, notes: [] };
 
   for (const e of s.equipment) if (e.readyMonth === s.month && s.month > 0) report.notes.push(`${EQUIPMENT[e.catalogId]?.nameKo ?? e.catalogId} 설치 완료`);
 
   const { runsUsed } = runProduction(s, report);
   runMaturation(s, report, monthOfYear);
+  fulfillContracts(s, report);
 
   const sales = runSales(s, rngFor(s.seed, s.month, 'sales'), monthOfYear);
   report.sales = sales;
   report.revenue = sales.reduce((t, x) => t + x.revenue, 0);
   report.liquorTaxRemitted = Math.round(report.revenue * liquorTaxPerWon(KOREA));
   s.cash += report.revenue;
+  const distribution = sales.reduce((t, x) => t + x.distribution, 0);
+  if (distribution > 0) { s.cash -= distribution; report.expenses.distribution = distribution; }
   updateAwareness(s, sales);
   updateTrends(s, rngFor(s.seed, s.month, 'trend'));
 
@@ -165,6 +170,8 @@ export function advanceMonth(prev: GameState): GameState {
   report.notes.push(...gainXp(s, rngFor(s.seed, s.month, 'hr'), activity));
   if (s.month % 3 === 2) refreshCandidates(s, rngFor(s.seed, s.month, 'candidates'));
   refreshBroker(s, rngFor(s.seed, s.month, 'broker'));
+  refreshContractOffers(s, rngFor(s.seed, s.month, 'contracts'));
+  updateBulkIndex(s, rngFor(s.seed, s.month, 'bulk'));
 
   // 원재료 가격 변동 (평균 회귀 랜덤 워크)
   const prng = rngFor(s.seed, s.month, 'prices');
@@ -195,10 +202,15 @@ export function advanceMonths(s: GameState, n: number): GameState {
 export function monthlyFixedCost(s: GameState): number {
   return s.staff.reduce((t, x) => t + x.salary, 0) + KOREA.overheadPerMonth + s.marketingBudget +
     s.equipment.reduce((t, e) => t + (EQUIPMENT[e.catalogId]?.maintenance ?? 0), 0) +
-    s.loans.reduce((t, l) => t + l.monthlyPayment, 0);
+    s.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0);
 }
 
 export const roleName = (r: StaffRole) => ROLE_INFO[r].nameKo;
+
+/** 이번 달 대출 납부액 (거치 기간에는 이자만) */
+export function currentLoanPayment(s: GameState, l: GameState['loans'][number]): number {
+  return s.month < l.startMonth + l.graceMonths ? Math.round(l.balance * (l.annualRate / 12)) : l.monthlyPayment;
+}
 
 export interface CapacityReport {
   stills: { id: string; name: string; used: number; cap: number }[];

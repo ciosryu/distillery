@@ -105,6 +105,7 @@ export interface Product {
   stockBottles: number;
   /** 출고가(세전) / 병 */
   price: number;
+  /** 병당 생산 원가 = 원액 + 포장 + 병입 인건비 (유통비 제외) */
   unitCost: number;
   createdMonth: number;
   lastMonthSold: number;
@@ -135,7 +136,9 @@ export interface Loan {
   balance: number;
   annualRate: number;
   termMonths: number;
+  /** 거치 기간 이후 원리금 균등 상환액 */
   monthlyPayment: number;
+  graceMonths: number;
   startMonth: number;
 }
 
@@ -149,6 +152,32 @@ export interface BrokerOffer {
 
 export interface ProductionOrder { recipeId: string; batchesPerMonth: number }
 
+/** 원액 공급 계약 조건 (블렌디드 위스키 회사·브로커) */
+export interface ContractTerms {
+  id: string;
+  buyerId: string;
+  buyerName: string;
+  /** 납품 원액: 몰트 뉴메이크 (Phase 3에서 그레인·버번 추가) */
+  spirit: 'malt_newmake';
+  style: 'any' | 'unpeated' | 'peated';
+  lpaPerMonth: number;
+  termMonths: number;
+  pricePerLPA: number;
+  minQuality: number;
+  /** 계약 총액 중 선급금 비율 (0이면 선급 없음) */
+  prepayShare: number;
+  penaltyPerLPA: number;
+}
+export interface ContractOffer extends ContractTerms { expiresMonth: number }
+export interface Contract extends ContractTerms {
+  startMonth: number;
+  monthsDone: number;
+  deliveredLPA: number;
+  shortfallLPA: number;
+  /** 아직 납품으로 상계되지 않은 선급금 */
+  prepaidRemaining: number;
+}
+
 export interface MonthReport {
   month: number;
   revenue: number;
@@ -156,6 +185,9 @@ export interface MonthReport {
   netCash: number;
   cashEnd: number;
   sales: { productId: string; name: string; bottles: number; revenue: number; demandBottles: number }[];
+  /** 원액 계약 납품 */
+  bulk: { contractId: string; buyerName: string; deliveredLPA: number; revenue: number; penalty: number }[];
+  bulkRevenue: number;
   production: { recipeId: string; name: string; batches: number; lpa: number; cost: number }[];
   angelsShareL: number;
   liquorTaxRemitted: number;
@@ -163,7 +195,7 @@ export interface MonthReport {
 }
 
 export interface GameState {
-  version: 1;
+  version: 2;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;
@@ -185,6 +217,12 @@ export interface GameState {
   candidates: Candidate[];
   loans: Loan[];
   brokerOffers: BrokerOffer[];
+  contracts: Contract[];
+  contractOffers: ContractOffer[];
+  /** B2B 신뢰도 0~100 — 계약 조건·현물 단가에 영향 */
+  b2bTrust: number;
+  /** 벌크 원액 시세 지수 (1 = 기준) */
+  bulkIndex: number;
   marketingBudget: number;
   awareness: number;
   /** 원재료 가격 지수 (1 = 기준가) */

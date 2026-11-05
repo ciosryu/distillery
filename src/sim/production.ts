@@ -164,7 +164,8 @@ export function simulateBatch(
   if (distiller) flavor.fresh_fruit = (flavor.fresh_fruit ?? 0) * (1 + 0.1 * (distiller.stats.a / 100));
   else warnings.push('디스틸러 없이 생산 — 품질 저하');
 
-  cost += r.runs * still.chargeL * ENERGY_PER_L_RUN * (priceIndex.energy ?? 1);
+  // 규모의 경제: 큰 증류기일수록 L당 에너지비가 낮다
+  cost += r.runs * still.chargeL * ENERGY_PER_L_RUN * Math.pow(1000 / still.chargeL, 0.3) * (priceIndex.energy ?? 1);
 
   return {
     lpa,

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { BOTTLE_SIZES, PACKAGING } from '../../sim/content/catalog';
+import { BOTTLE_SIZES, PACKAGING, packagingCost } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { previewBlend, topNotes, type BlendComponent, type BottleOptions, type SpiritKind } from '../../sim';
 import { useGame } from '../../store/game';
@@ -60,7 +60,7 @@ export function Bottling() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <label className="inline-flex items-center gap-1 text-sm"><input type="checkbox" checked={opts.chillFilter} onChange={(e) => setOpts({ ...opts, chillFilter: e.target.checked })} className="accent-amber-700" /> 칠 필터링</label>
-            <Select label="패키징" value={opts.packagingId} options={Object.entries(PACKAGING).map(([k, v]) => ({ value: k, label: `${v.nameKo} (${won(v.costPerBottle)}/병)` }))} onChange={(v) => setOpts({ ...opts, packagingId: v })} />
+            <Select label="패키징" value={opts.packagingId} options={Object.entries(PACKAGING).map(([k, v]) => ({ value: k, label: `${v.nameKo} (${won(packagingCost(k, opts.bottleMl))}/병)` }))} onChange={(v) => setOpts({ ...opts, packagingId: v })} />
           </div>
 
           {!preview ? <Empty>왼쪽에서 원액을 선택하세요</Empty> : (

@@ -1,6 +1,7 @@
 export * from './types';
 export * from './actions';
 export * from './blending';
+export * from './bulk';
 export * from './flavor';
 export * from './market';
 export * from './maturation';

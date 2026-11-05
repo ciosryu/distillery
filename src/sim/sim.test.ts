@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  advanceMonths, annuityPayment, applyAction, categorize, demandFor, evaluate, evaporate, heartsFraction,
+  advanceMonths, annuityPayment, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, categorize, demandFor, evaluate, evaporate, heartsFraction, spotBidPerLPA, spotQuote,
   matureCask, newGame, previewBlend, sizeFactor, simulateBatch, stillDefOf, windowFraction, type Cask, type GameState, type SpiritLot,
 } from './index';
 
@@ -84,6 +84,81 @@ describe('시장', () => {
   it('품질이 높으면 매력도가 높다', () => {
     expect(evaluate({ fresh_fruit: 30, floral: 20, vanilla_caramel: 30, integration: 60, harshness: 20 }, 'whisky').quality)
       .toBeGreaterThan(evaluate({ fresh_fruit: 10, solvent: 20, feinty: 20, harshness: 70 }, 'whisky').quality);
+  });
+});
+
+describe('마진 사다리', () => {
+  const setup = () => {
+    let s = newGame({ seed: 3 });
+    s = applyAction(s, { type: 'setOrder', recipeId: recipeId(s, '런던'), batchesPerMonth: 1 }).state;
+    s = applyAction(s, { type: 'setOrder', recipeId: recipeId(s, '싱글 몰트 — 언'), batchesPerMonth: 2 }).state;
+    return advanceMonths(s, 1);
+  };
+
+  it('진은 권장가에서 마진율이 25% 미만, 숙성 위스키는 60% 이상', () => {
+    const s = setup();
+    const gin = s.lots.find((l) => l.kind === 'gin')!;
+    const g = previewBlend(s, [{ source: 'lot', id: gin.id, liters: gin.volumeL }], { name: 'g', targetAbv: 0.43, bottleMl: 700, chillFilter: true, packagingId: 'standard' });
+    expect(bottleMargin({ price: g.suggestedPrice, unitCost: g.unitCost, bottleMl: 700 }).rate).toBeLessThan(0.25);
+
+    const aged: SpiritLot = { id: 'w', name: 'w', kind: 'malt', volumeL: 180, abv: 0.6, flavor: { fresh_fruit: 30, floral: 15, cereal: 20, vanilla_caramel: 45, oak_tannin: 25, wood_spice: 20, integration: 60, harshness: 25 }, createdMonth: 0, oakMonths: 48, sourced: false, costPerLPA: 8_000 };
+    const s2 = { ...s, casks: [{ ...s.casks[0]!, contents: aged }] };
+    const w = previewBlend(s2, [{ source: 'cask', id: s2.casks[0]!.id, liters: 180 }], { name: 'w', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' });
+    expect(w.category).toBe('whisky');
+    expect(bottleMargin({ price: w.suggestedPrice, unitCost: w.unitCost, bottleMl: 700 }).rate).toBeGreaterThan(0.6);
+  });
+});
+
+describe('원액 B2B', () => {
+  it('같은 원액이면 현물 매입가 < 브로커 판매가 (사고팔기 차익 없음)', () => {
+    const s = newGame({ seed: 9 });
+    const lot = s.brokerOffers[0]!.cask.contents!;
+    expect(spotBidPerLPA(s, lot)).toBeLessThan(brokerAskPerLPA(s, lot));
+    expect(spotQuote(s, lot, lot.volumeL, s.brokerOffers[0]!.cask)).toBeLessThan(s.brokerOffers[0]!.price);
+  });
+
+  it('숙성될수록 벌크 가치가 오른다', () => {
+    const s = newGame({ seed: 10 });
+    const base: SpiritLot = { id: 'n', name: 'n', kind: 'malt', volumeL: 100, abv: 0.635, flavor: { cereal: 30, fresh_fruit: 20 }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 6000 };
+    expect(bulkValuePerLPA(s, { ...base, oakMonths: 48 })).toBeGreaterThan(bulkValuePerLPA(s, base));
+  });
+
+  it('캐스크째 현물 판매하면 캐스크가 사라지고 현금이 들어온다', () => {
+    let s = newGame({ seed: 11 });
+    s = applyAction(s, { type: 'buyBrokerCask', offerId: s.brokerOffers[0]!.id }).state;
+    const cask = s.casks.at(-1)!;
+    const cash = s.cash;
+    s = applyAction(s, { type: 'sellBulk', source: 'cask', id: cask.id }).state;
+    expect(s.casks.some((c) => c.id === cask.id)).toBe(false);
+    expect(s.cash).toBeGreaterThan(cash);
+  });
+
+  it('계약은 매달 탱크 뉴메이크를 자동 납품하고, 부족하면 위약금을 낸다', () => {
+    let s = newGame({ seed: 12 });
+    const offer = { ...s.contractOffers[0]!, style: 'any' as const, minQuality: 30, lpaPerMonth: 60, prepayShare: 0 };
+    s = { ...s, contractOffers: [offer] };
+    s = applyAction(s, { type: 'acceptContract', offerId: offer.id }).state;
+    // 생산 없음 → 첫 달 전량 미납
+    s = advanceMonths(s, 1);
+    expect(s.reports.at(-1)!.bulk[0]!.deliveredLPA).toBe(0);
+    expect(s.reports.at(-1)!.expenses.penalty).toBeGreaterThan(0);
+    // 몰트 생산 → 납품
+    s = applyAction(s, { type: 'setOrder', recipeId: recipeId(s, '싱글 몰트 — 언'), batchesPerMonth: 3 }).state;
+    s = advanceMonths(s, 1);
+    expect(s.reports.at(-1)!.bulk[0]!.deliveredLPA).toBeCloseTo(60, 3);
+    expect(s.reports.at(-1)!.bulkRevenue).toBeCloseTo(60 * offer.pricePerLPA, -1);
+  });
+
+  it('누적 미납이 두 달치가 되면 계약이 파기되고 신뢰도가 떨어진다', () => {
+    let s = newGame({ seed: 13 });
+    const offer = { ...s.contractOffers[0]!, minQuality: 30, prepayShare: 0.3 };
+    s = { ...s, contractOffers: [offer] };
+    const trust = s.b2bTrust;
+    s = applyAction(s, { type: 'acceptContract', offerId: offer.id }).state;
+    expect(s.contracts[0]!.prepaidRemaining).toBeGreaterThan(0);
+    s = advanceMonths(s, 2);
+    expect(s.contracts.length).toBe(0);
+    expect(s.b2bTrust).toBeLessThan(trust - 10);
   });
 });
 

@@ -3,6 +3,7 @@ import { monthLabel } from './sim';
 import { useGame } from './store/game';
 import { won } from './ui/format';
 import { Button } from './ui/kit';
+import { B2B } from './ui/panels/B2B';
 import { Bottling } from './ui/panels/Bottling';
 import { Dashboard } from './ui/panels/Dashboard';
 import { Finance } from './ui/panels/Finance';
@@ -17,6 +18,7 @@ const TABS = [
   { id: 'warehouse', label: '숙성고', el: <Warehouse /> },
   { id: 'bottling', label: '블렌딩·병입', el: <Bottling /> },
   { id: 'sales', label: '판매', el: <Sales /> },
+  { id: 'b2b', label: '원액 B2B', el: <B2B /> },
   { id: 'staff', label: '직원', el: <Staff /> },
   { id: 'finance', label: '재무', el: <Finance /> },
 ] as const;

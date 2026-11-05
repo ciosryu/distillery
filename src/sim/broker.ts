@@ -1,5 +1,5 @@
 import { CASKS } from './content/catalog';
-import { evaluate } from './flavor';
+import { brokerAskPerLPA, caskResidual } from './bulk';
 import { matureCask } from './maturation';
 import type { Rng } from './rng';
 import type { BrokerOffer, Cask, Flavor, GameState } from './types';
@@ -9,7 +9,6 @@ import { nid } from './util';
 
 const SCOTLAND_TEMPS = [4, 4, 6, 8, 11, 14, 15, 15, 13, 10, 7, 5];
 const SCOTLAND_HUMIDITY = 85;
-const BASE_PRICE_PER_LPA = 9_000;
 
 const NEW_MAKE: Flavor = { fresh_fruit: 25, floral: 12, cereal: 25, sulfur_meaty: 10, oily_waxy: 10, solvent: 2, feinty: 4, harshness: 62, body: 20, sweetness: 4 };
 
@@ -34,9 +33,9 @@ export function makeBrokerOffer(s: GameState, rng: Rng): BrokerOffer {
     cask = matureCask(cask, { tempC: SCOTLAND_TEMPS[i % 12]!, humidity: SCOTLAND_HUMIDITY }, { control: 50 }).cask;
   }
   const lot = cask.contents!;
-  const q = evaluate(lot.flavor, 'whisky').quality;
   const lpa = lot.volumeL * lot.abv;
-  const price = Math.round((lpa * BASE_PRICE_PER_LPA * (1 + 0.18 * years) * (0.8 + 0.4 * Math.max(0, Math.min(1, (q - 40) / 40)))) / 10_000) * 10_000;
+  // 브로커 판매가 = 벌크 기준가치 × ask (현물 매입가보다 항상 비쌈) + 캐스크 잔존가치
+  const price = Math.round((lpa * brokerAskPerLPA(s, lot) + caskResidual(cask)) / 10_000) * 10_000;
   const style = sherry ? '셰리 캐스크 스페이사이드 스타일' : peated ? '피티드 아일라 스타일' : '버번 캐스크 하이랜드 스타일';
   lot.name = `매입 원액 — ${style} ${years}년`;
   lot.costPerLPA = price / lpa;

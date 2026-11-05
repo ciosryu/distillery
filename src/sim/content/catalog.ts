@@ -14,9 +14,9 @@ export interface IngredientDef {
 }
 
 export const INGREDIENTS: Record<string, IngredientDef> = {
-  malt_unpeated: { id: 'malt_unpeated', nameKo: '맥아(언피티드, 수입)', lpaPerKg: 0.42, pricePerKg: 1900, flavor: { cereal: 40, sweetness: 10 }, kinds: ['malt'] },
-  malt_peated: { id: 'malt_peated', nameKo: '피티드 맥아(40ppm, 수입)', lpaPerKg: 0.41, pricePerKg: 2600, flavor: { cereal: 35, sweetness: 8, peat_smoke: 70 }, kinds: ['malt'] },
-  malt_korean: { id: 'malt_korean', nameKo: '국산 맥아(소량 생산)', lpaPerKg: 0.39, pricePerKg: 3400, flavor: { cereal: 45, sweetness: 12, fresh_fruit: 4 }, kinds: ['malt'] },
+  malt_unpeated: { id: 'malt_unpeated', nameKo: '맥아(언피티드, 수입)', lpaPerKg: 0.42, pricePerKg: 1600, flavor: { cereal: 40, sweetness: 10 }, kinds: ['malt'] },
+  malt_peated: { id: 'malt_peated', nameKo: '피티드 맥아(40ppm, 수입)', lpaPerKg: 0.41, pricePerKg: 2200, flavor: { cereal: 35, sweetness: 8, peat_smoke: 70 }, kinds: ['malt'] },
+  malt_korean: { id: 'malt_korean', nameKo: '국산 맥아(소량 생산)', lpaPerKg: 0.39, pricePerKg: 3000, flavor: { cereal: 45, sweetness: 12, fresh_fruit: 4 }, kinds: ['malt'] },
   rice_domestic: { id: 'rice_domestic', nameKo: '국산 쌀', lpaPerKg: 0.46, pricePerKg: 2600, flavor: { nuruk_rice: 25, floral: 8, fresh_fruit: 8, sweetness: 8 }, kinds: ['soju'] },
   rice_processing: { id: 'rice_processing', nameKo: '가공용 쌀', lpaPerKg: 0.44, pricePerKg: 1300, flavor: { nuruk_rice: 20, floral: 5, fresh_fruit: 5, sweetness: 6, cereal: 5 }, kinds: ['soju'] },
   nuruk: { id: 'nuruk', nameKo: '전통 누룩', lpaPerKg: 0.1, pricePerKg: 6000, flavor: { nuruk_rice: 40, earthy: 6, fresh_fruit: 6 }, kinds: ['soju'] },
@@ -59,6 +59,8 @@ export const EQUIPMENT: Record<string, EquipmentDef> = {
   pot_worm_1000: { id: 'pot_worm_1000', kind: 'still', nameKo: '단식 증류기 1,000L (스트레이트형 + 웜텁)', cost: 360_000_000, leadMonths: 5, maintenance: 1_800_000, stillType: 'pot_onion', condenser: 'worm_tub', chargeL: 1000, runsPerMonth: 18, reflux: 0.2, copperContact: 0.4, vacuum: false, ginBasket: false },
   hybrid_600: { id: 'hybrid_600', kind: 'still', nameKo: '하이브리드 증류기 600L (포트+컬럼)', cost: 280_000_000, leadMonths: 3, maintenance: 1_300_000, stillType: 'hybrid', condenser: 'copper_shell', chargeL: 600, runsPerMonth: 24, reflux: 0.85, copperContact: 0.9, vacuum: false, ginBasket: true },
   vacuum_1000: { id: 'vacuum_1000', kind: 'still', nameKo: '감압 증류기 1,000L (소주용)', cost: 350_000_000, leadMonths: 4, maintenance: 1_700_000, stillType: 'vacuum_pot', condenser: 'copper_shell', chargeL: 1000, runsPerMonth: 20, reflux: 0.3, copperContact: 0.8, vacuum: true, ginBasket: false },
+  pot_large_5000: { id: 'pot_large_5000', kind: 'still', nameKo: '대형 단식 증류기 5,000L (양파형, B2B 대량 생산용)', cost: 600_000_000, leadMonths: 6, maintenance: 4_000_000, stillType: 'pot_onion', condenser: 'copper_shell', chargeL: 5000, runsPerMonth: 20, reflux: 0.4, copperContact: 1.0, vacuum: false, ginBasket: false },
+  ferm_steel_10000: { id: 'ferm_steel_10000', kind: 'fermenter', nameKo: '대형 스테인리스 발효조 10,000L', cost: 120_000_000, leadMonths: 2, maintenance: 600_000, fermenterType: 'stainless', capacityL: 10000 },
   ferm_steel_2000: { id: 'ferm_steel_2000', kind: 'fermenter', nameKo: '스테인리스 발효조 2,000L', cost: 40_000_000, leadMonths: 1, maintenance: 200_000, fermenterType: 'stainless', capacityL: 2000 },
   ferm_onggi_set: { id: 'ferm_onggi_set', kind: 'fermenter', nameKo: '옹기 발효 세트 (1,200L 상당)', cost: 30_000_000, leadMonths: 1, maintenance: 300_000, fermenterType: 'onggi', capacityL: 1200 },
   warehouse_rack_100: { id: 'warehouse_rack_100', kind: 'warehouse', nameKo: '랙 숙성고 증설 (+100 캐스크)', cost: 150_000_000, leadMonths: 6, maintenance: 800_000, casks: 100 },
@@ -93,20 +95,68 @@ export const SEASONING_EXTRACT: Record<'bourbon' | 'sherry' | 'none', Flavor> = 
 export const RECHAR_COST = 150_000;
 
 // ── 패키징 ──
-export const PACKAGING: Record<string, { nameKo: string; costPerBottle: number; luxury: number }> = {
-  standard: { nameKo: '스탠다드 병 + 코르크', costPerBottle: 3000, luxury: 1.0 },
-  premium: { nameKo: '디캔터 + 케이스', costPerBottle: 12000, luxury: 1.15 },
+export const BOTTLE_SIZES = [375, 500, 700] as const;
+export type BottleMl = (typeof BOTTLE_SIZES)[number];
+
+export const PACKAGING: Record<string, { nameKo: string; costBySize: Record<BottleMl, number>; luxury: number }> = {
+  standard: { nameKo: '스탠다드 병 + 코르크', costBySize: { 375: 1500, 500: 2000, 700: 2800 }, luxury: 1.0 },
+  premium: { nameKo: '디캔터 + 케이스', costBySize: { 375: 6000, 500: 8000, 700: 11000 }, luxury: 1.15 },
 };
 
-export const BOTTLE_SIZES = [375, 500, 700] as const;
+export function packagingCost(packagingId: string, bottleMl: number): number {
+  const p = PACKAGING[packagingId];
+  if (!p) return 0;
+  return p.costBySize[bottleMl as BottleMl] ?? Math.round(p.costBySize[700] * (bottleMl / 700));
+}
+
+// ── 마진 구조 (PRD §9.5) — 병당 고정비가 저가 제품의 마진을 깎는다 [튜닝] ──
+/** 병입 인건비·라인 비용 (병당) */
+export const BOTTLING_LABOR_PER_BOTTLE = 500;
+/** 유통: 채널 수수료(출고가 대비)와 병당 물류비 */
+export const DISTRIBUTION = {
+  channelFeeRate: 0.12,
+  logisticsBySize: { 375: 300, 500: 350, 700: 400 } as Record<BottleMl, number>,
+};
+export function logisticsCost(bottleMl: number): number {
+  return DISTRIBUTION.logisticsBySize[bottleMl as BottleMl] ?? Math.round(400 * (bottleMl / 700));
+}
+/** 캐스크 1회 사용에 배분하는 캐스크 원가 비율 (평균 3회 사용 가정) */
+export const CASK_COST_SHARE_PER_FILL = 1 / 3;
+
+// ── 원액 B2B (PRD §8.6) [튜닝] ──
+export const BULK = {
+  /** 뉴메이크 몰트 기준가(원/LPA) */
+  newMakeBase: 12_500,
+  /** 숙성 1년당 가치 상승 */
+  agePerYear: 0.2,
+  /** 피트 원액 프리미엄 */
+  peatPremium: 0.15,
+  /** 현물 매입가(우리가 팔 때) = 기준가치 × bid, 브로커 판매가(우리가 살 때) = × ask */
+  bid: 0.85,
+  ask: 1.25,
+  /** 계약가 = 기준가치 × contract (현물보다 높지만 고정) */
+  contract: 0.9,
+  /** 선급금을 받으면 단가 할인 */
+  prepayDiscount: 0.05,
+  /** 미납 1 LPA당 위약금 = 계약가 × penaltyRate */
+  penaltyRate: 0.3,
+  maxActiveContracts: 3,
+};
+
+export const BULK_BUYERS = [
+  { id: 'hanra', nameKo: '한라 블렌디드 컴퍼니', kind: 'blender' as const },
+  { id: 'donghae', nameKo: '동해 위스키 블렌더스', kind: 'blender' as const },
+  { id: 'saebyeok', nameKo: '새벽 스피릿 브로커스', kind: 'broker' as const },
+  { id: 'kanto', nameKo: '간토 블렌딩 하우스 (일본)', kind: 'blender' as const },
+];
 
 // ── 대출 상품 ──
-export interface LoanOfferDef { id: string; nameKo: string; annualRate: number; termMonths: number; max: number; requires?: 'producedSoju' }
+export interface LoanOfferDef { id: string; nameKo: string; annualRate: number; termMonths: number; max: number; requires?: 'producedSoju'; /** 원금 거치 기간(이자만 납부) */ graceMonths: number }
 
 export const LOAN_OFFERS: LoanOfferDef[] = [
-  { id: 'facility', nameKo: '시설자금 대출', annualRate: 0.05, termMonths: 120, max: 1_000_000_000 },
-  { id: 'working', nameKo: '운전자금 대출', annualRate: 0.075, termMonths: 36, max: 300_000_000 },
-  { id: 'policy', nameKo: '전통주 육성 정책자금', annualRate: 0.025, termMonths: 60, max: 200_000_000, requires: 'producedSoju' },
+  { id: 'facility', nameKo: '시설자금 대출', annualRate: 0.05, termMonths: 120, max: 1_000_000_000, graceMonths: 24 },
+  { id: 'working', nameKo: '운전자금 대출', annualRate: 0.075, termMonths: 36, max: 300_000_000, graceMonths: 0 },
+  { id: 'policy', nameKo: '전통주 육성 정책자금', annualRate: 0.025, termMonths: 60, max: 200_000_000, requires: 'producedSoju', graceMonths: 12 },
 ];
 
 // ── 직원 ──

@@ -1,5 +1,6 @@
 import { CASKS, INGREDIENTS } from './content/catalog';
 import { refreshBroker } from './broker';
+import { refreshContractOffers } from './bulk';
 import { refreshCandidates, salaryFor } from './hr';
 import { mulberry32 } from './rng';
 import type { Cask, GameState, Recipe } from './types';
@@ -39,7 +40,7 @@ export function emptyCaskOf(s: GameState, typeId: keyof typeof CASKS): Cask {
 export function newGame(opts: NewGameOptions = {}): GameState {
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   const s: GameState = {
-    version: 1,
+    version: 2,
     seed,
     month: 0,
     startYear: opts.startYear ?? 2027,
@@ -59,6 +60,10 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     candidates: [],
     loans: [],
     brokerOffers: [],
+    contracts: [],
+    contractOffers: [],
+    b2bTrust: 50,
+    bulkIndex: 1,
     marketingBudget: 3_000_000,
     awareness: 0.01,
     priceIndex: { ...Object.fromEntries(Object.keys(INGREDIENTS).map((k) => [k, 1])), gns: 1, energy: 1 },
@@ -78,5 +83,6 @@ export function newGame(opts: NewGameOptions = {}): GameState {
   const rng = mulberry32(seed ^ 0x9e3779b9);
   refreshCandidates(s, rng);
   refreshBroker(s, rng);
+  refreshContractOffers(s, rng);
   return s;
 }
