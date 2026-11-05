@@ -35,6 +35,8 @@ export function presetRecipes(stillId: string, region: RegionId = 'KR'): Omit<Re
     ...malts,
   ];
   if (region === 'TW') return [
+    // 대만 특산물: 진먼 고량 60% 이상 = 진먼식 고량주 (결정 #58)
+    { ...base, name: '진먼식 고량주 — 청향', kind: 'baijiu', mashBill: [{ ingredientId: 'sorghum_kinmen', ratio: 0.85 }, { ingredientId: 'wheat_qu', ratio: 0.15 }], yeast: 'distillers', fermentDays: 21, runs: 1, cut: { c1: 0.1, c2: 0.72 } },
     gin('대만 보태니컬 진', [{ botanicalId: 'juniper', gramsPerL: 18 }, { botanicalId: 'maqaw', gramsPerL: 3 }, { botanicalId: 'oolong', gramsPerL: 3 }, { botanicalId: 'lemon_peel', gramsPerL: 3 }, { botanicalId: 'coriander', gramsPerL: 4 }]),
     londonDry,
     ...malts,

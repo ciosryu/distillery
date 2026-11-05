@@ -1,12 +1,14 @@
 // 헤드리스 밸런스 시뮬레이션 — 전략별 단순 정책으로 N개 시드를 돌려 파산률·흑자 전환 시점·매출 구성을 본다.
 // 실행: npm run balance [-- 시드수 개월수 전략 지역]   전략 = brand | hybrid | expand | grain | all(기본), 지역 = KR(기본) | JP | TW
-import { advanceMonth, applyAction, bulkValuePerLPA, previewBlend, newGame, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
+import { advanceMonth, applyAction, bulkValuePerLPA, previewBlend, newGame, whiskyMinMonths, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
+import { regionOf } from '../src/sim/content/regions';
 
 const SEEDS = Number(process.argv[2] ?? 12);
 const MONTHS = Number(process.argv[3] ?? 120);
 const WHICH = process.argv[4] ?? 'all';
 const REGION = (process.argv[5] ?? 'KR') as RegionId;
 const BRIDGE = process.env.NO_BRIDGE !== '1';
+const YOUNG = process.env.NO_YOUNG !== '1';
 
 type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain';
 
@@ -21,8 +23,9 @@ function bottleCashProducts(s: GameState): GameState {
   for (const lot of [...s.lots]) {
     if (lot.kind === 'soju' && stockOf(s, 'soju_distilled') < 1500 && s.month - lot.createdMonth >= 1)
       s = act(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: lot.volumeL }], options: { name: `소주 ${s.month}`, targetAbv: 0.25, bottleMl: 375, chillFilter: true, packagingId: 'standard' } });
+    // 한국은 중식당용 34%·500ml, 대만은 진먼식 58%·600ml
     if (lot.kind === 'baijiu' && stockOf(s, 'baijiu') < 1500 && s.month - lot.createdMonth >= 1)
-      s = act(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: lot.volumeL }], options: { name: `고량주 ${s.month}`, targetAbv: 0.34, bottleMl: 500, chillFilter: true, packagingId: 'standard' } });
+      s = act(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: lot.volumeL }], options: { name: `고량주 ${s.month}`, targetAbv: s.regionId === 'TW' ? 0.58 : 0.34, bottleMl: s.regionId === 'TW' ? 600 : 500, chillFilter: true, packagingId: 'standard' } });
     if (lot.kind === 'gin' && stockOf(s, 'gin') < 1500)
       s = act(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: lot.volumeL }], options: { name: `진 ${s.month}`, targetAbv: 0.43, bottleMl: 700, chillFilter: true, packagingId: 'standard' } });
   }
@@ -53,9 +56,19 @@ function bottleWhisky(s: GameState): GameState {
   return previewBlend(s, comps, opts).ok ? act(s, { type: 'bottle', components: comps, options: opts }) : s;
 }
 
-/** 공백기 브리지(결정 #20): 자사 위스키가 나오기 전엔 브로커 숙성 원액을 사서 병입한다. 일본은 매입 원액 감점이 커서 효과가 작다 */
+/** 공백기 브리지: ① 현금이 모자라면 법정 최소 숙성이 지난 자사 어린 위스키(12개월 이상)를 1캐스크 병입하거나
+ *  ② 브로커 숙성 원액을 사서 병입한다(결정 #20). 매입 원액은 브랜드 가치가 낮아 한국 외에서는 잘 안 팔린다 (v0.8) */
 function bridgeSourced(s: GameState): GameState {
-  if (s.month >= 42 || stockOf(s, 'whisky') >= 400 || s.cash < 150_000_000) return s;
+  if (s.month >= 42 || stockOf(s, 'whisky') >= 400) return s;
+  const minM = Math.max(12, whiskyMinMonths(regionOf(s).whisky));
+  const young = s.casks.find((c) => c.contents && c.contents.kind === 'malt' && !c.contents.sourced && c.contents.oakMonths >= minM);
+  // 어린 위스키 출시는 현금이 모자랄 때만 (숙성 재고를 헐값에 파는 셈이므로)
+  if (YOUNG && young && s.cash < 200_000_000) {
+    const comps = [{ source: 'cask' as const, id: young.id, liters: young.contents!.volumeL }];
+    const opts = { name: `어린 싱글 몰트 ${s.month}`, targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' };
+    if (previewBlend(s, comps, opts).ok) return act(s, { type: 'bottle', components: comps, options: opts });
+  }
+  if (s.cash < 150_000_000) return s;
   const owned = s.casks.find((c) => c.contents?.sourced);
   if (!owned) {
     const o = [...s.brokerOffers].sort((a, b) => a.price - b.price)[0];

@@ -4,14 +4,19 @@ import type { AxisId, Cask, Flavor, SpiritLot } from './types';
 
 // 숙성 모델 (PRD §5.3, flavor-model §4.5). 수치 [튜닝].
 
-/** 200L 배럴 기준, 스코틀랜드형 기후에서 연 2% 증발이 되도록 보정한 월 증발률 */
+/** 200L 배럴 기준, 10°C에서의 월 증발률 (스코틀랜드형 기후에서 연 약 2%) */
 export const R0_EVAP = 0.001684;
+/** 숙성(추출·제거) 속도의 온도 민감도 */
 const TEMP_K = 0.06;
+/** 증발의 온도 민감도 — 스코틀랜드 연 약 2%, 대만(이란) 연 약 12%가 되도록 보정 (v0.8).
+ *  대만은 연 10~15%(카발란 관련 보도), 8~12%라는 자료도 있음. 한국은 "연 10% 가까이"라는 2차 자료가 있으나 모델은 약 5~6% [확인 필요] */
+const EVAP_TEMP_K = 0.13;
 
 export interface Climate { tempC: number; humidity: number }
 
 export const sizeFactor = (sizeL: number) => Math.cbrt(200 / sizeL);
 export const tempFactor = (tempC: number) => Math.exp(TEMP_K * (tempC - 10));
+export const evapTempFactor = (tempC: number) => Math.exp(EVAP_TEMP_K * (tempC - 10));
 
 /** 습도에 따른 증발 증기의 알코올 비율 배수: >1이면 도수 하락 */
 export const humidityK = (humidity: number) => 1 + 0.01 * (humidity - 65);
@@ -37,7 +42,7 @@ export function matureCask(cask: Cask, climate: Climate, opts: MatureOptions): {
   if (!lot) return { cask, lostL: 0 };
   const sf = sizeFactor(cask.sizeL);
   const tf = tempFactor(climate.tempC);
-  const rate = R0_EVAP * tf * sf * (1 - 0.2 * (opts.control / 100)) * (opts.evaporationFactor ?? 1);
+  const rate = R0_EVAP * evapTempFactor(climate.tempC) * sf * (1 - 0.2 * (opts.control / 100)) * (opts.evaporationFactor ?? 1);
   const evap = evaporate(lot.volumeL, lot.abv, rate, climate.humidity);
   const m = sf * tf;
   const act = cask.activity;

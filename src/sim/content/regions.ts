@@ -26,6 +26,31 @@ export interface MarketDef {
   shareCap: number;
 }
 
+/** 위스키 표기 규칙. 법정 최소 숙성 규정이 없으면 minMonths = 0 → 바로 상품화 가능 (결정 #60) */
+export interface WhiskyRules {
+  /** "위스키"로 팔 수 있는 최소 오크 숙성 개월 */
+  minMonths: number;
+  /** 나무통 저장 자체가 요건인지 (true면 최소 1개월은 캐스크에 있어야 한다) */
+  requiresOak: boolean;
+  /** 근거와 확인 상태 */
+  basis: string;
+  /** 지역 프리미엄 표기(예: 재패니즈 위스키) — 못 채우면 매력도 × appealWithout */
+  premiumLabel?: { name: string; minMonths: number; appealWithout: number };
+}
+
+/** 지역 특산물: 특정 원재료를 일정 비율 이상 쓰면 특산물 표기와 매력도 보너스 */
+export interface SpecialtyDef {
+  id: string;
+  label: string;
+  category: ProductCategory;
+  ingredientId: string;
+  minShare: number;
+  appealBonus: number;
+}
+
+/** 스코틀랜드·EU식 3년 규정 — 지역 정의가 없을 때의 기본값 */
+export const DEFAULT_WHISKY_RULES: WhiskyRules = { minMonths: 36, requiresOak: true, basis: '스코틀랜드·EU식 3년 규정' };
+
 export interface RegionDef {
   id: RegionId;
   nameKo: string;
@@ -49,8 +74,11 @@ export interface RegionDef {
   /** 원액 B2B 시장 깊이 — 계약 제안 물량 배수 */
   bulkMarketDepth: number;
   eventWeights: Partial<Record<EventCategory, number>>;
-  /** 매입(수입) 원액 비중에 대한 매력도 감점 계수 (일본: 재패니즈 위스키 표기 기준) */
+  /** 매입 원액 병입의 브랜드 가치 감점 계수 — 싸게 사 온 원액일수록 감점이 그대로 적용된다 (v0.8)
+   *  매력도 × (1 − sourcedPenalty × 매입 비중 × (1 − 매입 원액 브랜드 가치)) */
   sourcedPenalty: number;
+  whisky: WhiskyRules;
+  specialties?: SpecialtyDef[];
   /** 지역 특산 캐스크는 싸고, 다른 지역 캐스크는 비싸다 */
   caskPriceFactor: Partial<Record<CaskTypeId, number>>;
 }
@@ -58,7 +86,7 @@ export interface RegionDef {
 const zero = (src: string): MarketDef => ({ baseCases: 0, baseSource: src, refConsumerPricePerL: 50_000, refAbv: 0.4, elasticity: 1.5, shareCap: 0 });
 
 const krWhisky = casesOf('KR.whisky_total.imports.2024');
-const jpWhisky = casesOf('JP.whisky_total.tax_volume.FY2024?');
+const jpWhisky = casesOf('JP.whisky_total.tax_volume.FY2024');
 const twWhisky = casesOf('TW.whisky_total.imports.2023');
 
 export const REGIONS: Record<RegionId, RegionDef> = {
@@ -74,13 +102,13 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     allowedKinds: ['soju', 'gin', 'malt', 'grain', 'baijiu'],
     market: {
       soju_distilled: { baseCases: casesOf('KR.soju_distilled.domestic_release.2025'), baseSource: 'KR.soju_distilled (TASIS 2025)', refConsumerPricePerL: 40_000, refAbv: 0.25, elasticity: 1.6, shareCap: 0.2 },
-      // 한국 진 시장은 작다 — 칵테일 바에서 제한적으로 쓰이는 정도 [결정 #45, 수치 튜닝]
-      gin: { baseCases: 15_000, baseSource: '추정: 칵테일용 소규모 시장', refConsumerPricePerL: 32_000, refAbv: 0.43, elasticity: 2.2, shareCap: 0.2 },
+      // 한국 진 시장은 작다 — 칵테일 바에서 제한적으로 쓰이는 정도 [결정 #45]. 규모는 관세청 원표 진 수입 576.7t(4차) — 수입 브랜드 중심이라 점유 상한 낮음
+      gin: { baseCases: casesOf('KR.gin.imports.2024'), baseSource: 'KR.gin 수입 576.7t (관세청 원표 2024, 750L/톤 가정)', refConsumerPricePerL: 32_000, refAbv: 0.43, elasticity: 2.2, shareCap: 0.1 },
       whisky: { baseCases: Math.round(krWhisky * 0.4), baseSource: 'KR.whisky_total × 40% (싱글 몰트 몫, 추정)', refConsumerPricePerL: 170_000, refAbv: 0.43, elasticity: 1.1, shareCap: 0.01 },
       blended_whisky: { baseCases: Math.round(krWhisky * 0.5), baseSource: 'KR.whisky_total × 50% (블렌디드 몫, 추정)', refConsumerPricePerL: 90_000, refAbv: 0.4, elasticity: 1.5, shareCap: 0.012 },
       grain_whisky: { baseCases: Math.round(krWhisky * 0.1), baseSource: 'KR.whisky_total × 10% (추정)', refConsumerPricePerL: 100_000, refAbv: 0.43, elasticity: 1.3, shareCap: 0.02 },
-      // 중식당 중심의 고량주 시장 (수입 고량주 중심) [추정]
-      baijiu: { baseCases: 350_000, baseSource: '추정: 고량주(중식당 중심)', refConsumerPricePerL: 25_000, refAbv: 0.34, elasticity: 1.8, shareCap: 0.05 },
+      // 중식당 중심의 고량주 시장 — 중국산 기타 증류주 수입 7,915t(관세청 원표, 4차)을 대리값으로
+      baijiu: { baseCases: casesOf('KR.baijiu.imports_proxy.2024'), baseSource: 'KR.baijiu 대리값: HS 2208.90 중국산 7,915t (750L/톤 가정)', refConsumerPricePerL: 25_000, refAbv: 0.34, elasticity: 1.8, shareCap: 0.03 },
       malt_spirit: { baseCases: 20_000, baseSource: '추정', refConsumerPricePerL: 70_000, refAbv: 0.46, elasticity: 1.3, shareCap: 0.3 },
       flavored_spirit: { baseCases: 50_000, baseSource: '추정', refConsumerPricePerL: 28_000, refAbv: 0.4, elasticity: 2.2, shareCap: 0.2 },
     },
@@ -89,7 +117,10 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     domesticSpiritPremium: 0.25,
     bulkMarketDepth: 0.8,
     eventWeights: { market: 1.0, supply: 1.0, disaster: 1.2, regulation: 1.3, b2b: 0.8, opportunity: 1.0, people: 1.0 },
-    sourcedPenalty: 0.15,
+    // 종가세라 수입 완제품은 브랜드 값까지 세금이 붙어 비싸다 → 국내 병입 매입 원액이 가격으로 경쟁할 여지가 크다 (골든블루식 국내 병입)
+    sourcedPenalty: 0.4,
+    // 주세법 별표: 위스키 = 나무통에 넣어 저장한 것, 최소 기간 규정 없음 — 법령 원문 미확인 [확인 필요]
+    whisky: { minMonths: 0, requiresOak: true, basis: '주세법: 나무통 저장 요건, 최소 기간 없음 [확인 필요]' },
     caskPriceFactor: { korean_oak_quarter: 1.0, mizunara_hogshead: 1.6 },
   },
   JP: {
@@ -106,24 +137,27 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     market: {
       // 본격 쇼추: 거대하지만 저가·파편화 시장
       soju_distilled: { baseCases: casesOf('JP.shochu_honkaku.tax_volume.FY2024'), baseSource: 'JP.shochu_honkaku (국세청 과세수량 FY2024)', refConsumerPricePerL: 13_000, refAbv: 0.25, elasticity: 2.0, shareCap: 0.004 },
-      // 크래프트 진이 이미 포화 — 신규 브랜드 점유 상한이 낮다 [추정]
-      gin: { baseCases: 400_000, baseSource: '추정: 크래프트 진 붐 이후 시장(포화)', refConsumerPricePerL: 40_000, refAbv: 0.43, elasticity: 1.8, shareCap: 0.02 },
+      // 수입 진 295만 L(재무성 원표 CY2024) + 국산 진(수이·로쿠 등)이 수입과 비슷하다고 가정 [추정]. 크래프트 진 포화 → 점유 상한 낮음
+      gin: { baseCases: Math.round(casesOf('JP.gin.imports.CY2024') * 2), baseSource: 'JP.gin 수입(CY2024) × 2 (국산 ≈ 수입 가정)', refConsumerPricePerL: 40_000, refAbv: 0.43, elasticity: 1.8, shareCap: 0.015 },
       // 재패니즈 싱글 몰트는 프리미엄이지만 물량은 작다(대부분 하이볼용 블렌디드). 크래프트 증류소 다수가 경쟁 [추정]
-      // 일본은 세금이 가벼워 같은 술의 소비자가가 한국보다 훨씬 낮다 — 크래프트 3년 숙성 700ml ≒ ¥6,000~10,000 [추정]
-      whisky: { baseCases: Math.round(jpWhisky * 0.04), baseSource: 'JP.whisky_total × 4% (싱글 몰트 몫, 추정)', refConsumerPricePerL: 110_000, refAbv: 0.43, elasticity: 1.0, shareCap: 0.01 },
+      // 일본은 세금이 가벼워 같은 술의 소비자가가 한국보다 낮다 — 크래프트 3년 700ml ≒ ¥6,000~10,000, 주요 브랜드 12년급은 그 이상 → 카테고리 평균 12만 원/L [추정]
+      whisky: { baseCases: Math.round(jpWhisky * 0.04), baseSource: 'JP.whisky_total × 4% (싱글 몰트 몫, 추정)', refConsumerPricePerL: 120_000, refAbv: 0.43, elasticity: 1.0, shareCap: 0.01 },
       blended_whisky: { baseCases: Math.round(jpWhisky * 0.78), baseSource: 'JP.whisky_total × 78% (블렌디드·하이볼용, 추정)', refConsumerPricePerL: 28_000, refAbv: 0.4, elasticity: 2.0, shareCap: 0.003 },
       grain_whisky: { baseCases: Math.round(jpWhisky * 0.1), baseSource: 'JP.whisky_total × 10% (추정)', refConsumerPricePerL: 70_000, refAbv: 0.43, elasticity: 1.5, shareCap: 0.01 },
       baijiu: zero('일본에서는 생산 불가'),
       malt_spirit: { baseCases: 50_000, baseSource: '추정', refConsumerPricePerL: 60_000, refAbv: 0.46, elasticity: 1.3, shareCap: 0.3 },
       flavored_spirit: { baseCases: 200_000, baseSource: '추정', refConsumerPricePerL: 30_000, refAbv: 0.4, elasticity: 2.0, shareCap: 0.1 },
     },
-    categoryNames: { soju_distilled: '본격 쇼추', whisky: '재패니즈 싱글 몰트' },
+    categoryNames: { soju_distilled: '본격 쇼추' },
     seasonality: [1.05, 0.95, 1.0, 1.0, 1.0, 1.05, 1.15, 1.15, 0.95, 0.95, 1.0, 1.25],
     // 재패니즈 위스키 표기 기준(일본 내 증류·숙성) 이후 국산 원액이 귀하다
     domesticSpiritPremium: 0.35,
     bulkMarketDepth: 1.0,
     eventWeights: { market: 1.1, supply: 1.0, disaster: 1.4, regulation: 0.8, b2b: 1.1, opportunity: 1.0, people: 1.0 },
-    sourcedPenalty: 0.5,
+    // 수입 원액 병입은 "재패니즈 위스키"가 될 수 없고 하이볼용 저가 위스키로 소비된다
+    sourcedPenalty: 0.85,
+    // 주세법(酒税法)은 숙성 규정이 없다 → 바로 "위스키" 판매 가능. 일본양주주조조합 자율 기준: 일본 내 나무통 3년 이상 → "재패니즈 위스키" (3차 검색 확인)
+    whisky: { minMonths: 0, requiresOak: false, basis: '주세법: 숙성 규정 없음. 재패니즈 위스키 표기는 업계 자율 기준 3년', premiumLabel: { name: '재패니즈 위스키', minMonths: 36, appealWithout: 0.7 } },
     caskPriceFactor: { mizunara_hogshead: 0.6, korean_oak_quarter: 1.6 },
   },
   TW: {
@@ -136,7 +170,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     retailMarkup: 1.35,
     overheadPerMonth: 7_000_000,
     laborCost: 0.8,
-    allowedKinds: ['gin', 'malt', 'grain'],
+    allowedKinds: ['gin', 'malt', 'grain', 'baijiu'],
     market: {
       soju_distilled: zero('대만에서는 생산 불가'),
       gin: { baseCases: 40_000, baseSource: '추정: 소규모 칵테일 시장', refConsumerPricePerL: 45_000, refAbv: 0.43, elasticity: 1.8, shareCap: 0.1 },
@@ -145,15 +179,21 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       whisky: { baseCases: Math.round(twWhisky * 0.6), baseSource: 'TW.whisky_total(2023) × 60% (싱글 몰트 몫, 추정)', refConsumerPricePerL: 110_000, refAbv: 0.46, elasticity: 1.0, shareCap: 0.012 },
       blended_whisky: { baseCases: Math.round(twWhisky * 0.35), baseSource: 'TW.whisky_total(2023) × 35% (추정)', refConsumerPricePerL: 40_000, refAbv: 0.4, elasticity: 1.6, shareCap: 0.01 },
       grain_whisky: { baseCases: Math.round(twWhisky * 0.05), baseSource: 'TW.whisky_total(2023) × 5% (추정)', refConsumerPricePerL: 70_000, refAbv: 0.43, elasticity: 1.3, shareCap: 0.02 },
-      baijiu: zero('대만에서는 생산 불가 (결정 #41)'),
+      // 금문주창(金門酒廠)이 약 80%를 쥔 고량주 시장 — 매출로 역산한 추정치. 진먼식 고량주는 특산물(아래 specialties)
+      baijiu: { baseCases: casesOf('TW.baijiu.sales_proxy.2024'), baseSource: 'TW.baijiu 추정: 금문주창 매출 121억 대만달러 ÷ 평균가, 점유율 80%', refConsumerPricePerL: 32_000, refAbv: 0.58, elasticity: 1.4, shareCap: 0.008 },
       malt_spirit: { baseCases: 20_000, baseSource: '추정', refConsumerPricePerL: 70_000, refAbv: 0.46, elasticity: 1.3, shareCap: 0.3 },
       flavored_spirit: { baseCases: 50_000, baseSource: '추정', refConsumerPricePerL: 35_000, refAbv: 0.4, elasticity: 1.8, shareCap: 0.15 },
     },
+    categoryNames: { baijiu: '고량주(백주)' },
     seasonality: [1.25, 1.2, 0.9, 0.9, 0.95, 0.9, 0.85, 0.9, 1.15, 1.0, 0.95, 1.15],
     domesticSpiritPremium: 0.1,
     bulkMarketDepth: 0.5,
     eventWeights: { market: 1.3, supply: 1.0, disaster: 1.5, regulation: 0.7, b2b: 0.6, opportunity: 1.1, people: 1.0 },
-    sourcedPenalty: 0.2,
+    // 싱글 몰트 애호 시장이라 매입 원액 병입은 저가 시장에만 머문다
+    sourcedPenalty: 0.7,
+    // 2차 자료(위키백과·88bamboo)는 법정 최소 2년이라고 하나 원 법령 미확인 [확인 필요]
+    whisky: { minMonths: 24, requiresOak: true, basis: '2차 자료: 나무통 2년 이상 [확인 필요 — 원 법령 미확인]' },
+    specialties: [{ id: 'kinmen', label: '진먼식 고량주', category: 'baijiu', ingredientId: 'sorghum_kinmen', minShare: 0.6, appealBonus: 1.35 }],
     caskPriceFactor: { korean_oak_quarter: 1.6, mizunara_hogshead: 1.4 },
   },
 };

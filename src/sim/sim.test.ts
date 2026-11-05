@@ -3,6 +3,7 @@ import {
   advanceMonths, annuityPayment, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, categorize, demandFor, evaluate, evaporate, heartsFraction, spotBidPerLPA, spotQuote,
   makeContractOffer, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
   appeal, applyEffects, buyersFor, presetRecipes, validateRecipe, type Product,
+  agePerception, sourcedElasticityFactor, sourcedPrestigeOf,
 } from './index';
 import { EQUIPMENT } from './content/catalog';
 import { BUYERS } from './content/names';
@@ -277,15 +278,87 @@ describe('결정론', () => {
 describe('지역 (v0.6)', () => {
   const asRecipe = (s: GameState, kind: string) => ({ ...presetRecipes(s.equipment[0]!.id, 'KR').find((r) => r.kind === kind)!, id: 'X' });
 
-  it('주종 생산 지역 규칙: 소주는 한국·일본, 백주는 한국만(중국은 추후), 대만은 둘 다 불가', () => {
+  it('주종 생산 지역 규칙: 소주는 한국·일본, 백주는 한국·대만(중국은 추후), 일본은 백주 불가', () => {
     const kr = newGame({ seed: 1, region: 'KR' });
     const jp = newGame({ seed: 1, region: 'JP' });
     const tw = newGame({ seed: 1, region: 'TW' });
     expect(validateRecipe(kr, asRecipe(kr, 'baijiu'))).toEqual([]);
+    expect(validateRecipe(tw, asRecipe(tw, 'baijiu'))).toEqual([]);
     expect(validateRecipe(jp, asRecipe(jp, 'baijiu')).length).toBeGreaterThan(0);
     expect(validateRecipe(tw, asRecipe(tw, 'soju')).length).toBeGreaterThan(0);
     expect(jp.recipes.some((r) => r.kind === 'soju')).toBe(true);
-    expect(tw.recipes.some((r) => r.kind === 'soju' || r.kind === 'baijiu')).toBe(false);
+    expect(tw.recipes.some((r) => r.kind === 'soju')).toBe(false);
+  });
+
+  it('진먼 고량은 대만에서만 구할 수 있고, 60% 이상 쓰면 대만에서 "진먼식 고량주" 특산물이 된다', () => {
+    const kr = newGame({ seed: 1, region: 'KR' });
+    let tw = newGame({ seed: 1, region: 'TW', startingCash: 5_000_000_000 });
+    const kinmen = tw.recipes.find((r) => r.kind === 'baijiu')!;
+    expect(validateRecipe(kr, { ...kinmen, stillId: kr.equipment[0]!.id })).toContain('진먼 고량(金門 계약재배)은(는) 이 지역에서 구할 수 없습니다');
+    tw = advanceMonths(applyAction(tw, { type: 'setOrder', recipeId: kinmen.id, batchesPerMonth: 1 }).state, 1);
+    const lot = tw.lots.find((l) => l.kind === 'baijiu')!;
+    const pv = previewBlend(tw, [{ source: 'lot', id: lot.id, liters: lot.volumeL }], { name: 'k', targetAbv: 0.58, bottleMl: 600, chillFilter: true, packagingId: 'standard' });
+    expect(pv.specialty).toBe('kinmen');
+    const p = { category: 'baijiu', ageYears: null, packagingId: 'standard', flavor: {}, quality: 60, typicity: 80, sourcedShare: 0 } as unknown as Product;
+    expect(appeal({ ...p, specialty: 'kinmen' }, tw) / appeal(p, tw)).toBeCloseTo(1.35, 5);
+  });
+
+  it('최소 숙성 기간은 나라별: 한국·일본은 규정이 없어 바로 위스키, 대만은 2년, 기본은 3년', () => {
+    const rules = (r: 'KR' | 'JP' | 'TW') => REGIONS[r].whisky;
+    expect(categorize('malt', 1, 0.46, {}, false, true, rules('KR'))).toBe('whisky');
+    expect(categorize('malt', 0, 0.46, {}, false, true, rules('KR'))).toBe('malt_spirit'); // 나무통 저장 요건
+    expect(categorize('malt', 0, 0.46, {}, false, true, rules('JP'))).toBe('whisky');
+    expect(categorize('malt', 23, 0.46, {}, false, true, rules('TW'))).toBe('malt_spirit');
+    expect(categorize('malt', 24, 0.46, {}, false, true, rules('TW'))).toBe('whisky');
+    expect(categorize('malt', 35, 0.46, {})).toBe('malt_spirit');
+  });
+
+  it('어린 위스키는 소비자 인식이 낮다 — 3년 미만은 크게 깎이고 3년에서 연속', () => {
+    expect(agePerception(0)).toBeCloseTo(0.472, 2);
+    expect(agePerception(12)).toBeLessThan(0.8);
+    expect(agePerception(35.999)).toBeCloseTo(agePerception(36), 2);
+    expect(agePerception(144)).toBeCloseTo(1.72, 5);
+  });
+
+  it('일본: 3년 미만 자사 위스키는 "재패니즈 위스키" 표기를 못 해 매력도가 깎인다', () => {
+    const jp = newGame({ seed: 1, region: 'JP' });
+    const p = { category: 'whisky', ageYears: 3, oakMonths: 40, packagingId: 'standard', flavor: {}, quality: 70, typicity: 80, sourcedShare: 0 } as unknown as Product;
+    expect(appeal({ ...p, premiumLabel: false }, jp) / appeal({ ...p, premiumLabel: true }, jp)).toBeCloseTo(0.7, 5);
+  });
+});
+
+describe('매입 원액 브랜드 가치 (v0.8)', () => {
+  const sourced = (prestige: number) => ({ category: 'whisky', ageYears: 5, oakMonths: 60, packagingId: 'standard', flavor: {}, quality: 75, typicity: 80, sourcedShare: 1, sourcedPrestige: prestige }) as unknown as Product;
+  it('비싸게 사 온 원액일수록 브랜드 가치가 높다', () => {
+    expect(sourcedPrestigeOf(35_000)).toBe(0);
+    expect(sourcedPrestigeOf(58_000)).toBeGreaterThan(0.4);
+    expect(sourcedPrestigeOf(90_000)).toBe(1);
+    const kr = newGame({ seed: 1, region: 'KR' });
+    expect(appeal(sourced(1), kr)).toBeGreaterThan(appeal(sourced(0), kr) * 1.5);
+  });
+  it('싼 매입 원액 병입은 한국에서 가장 덜 깎이고(종가세), 일본·대만에서는 거의 안 팔린다', () => {
+    const own = { ...sourced(0), sourcedShare: 0 };
+    const ratio = (r: 'KR' | 'JP' | 'TW') => { const g = newGame({ seed: 1, region: r }); return appeal(sourced(0), g) / appeal(own, g); };
+    expect(ratio('KR')).toBeCloseTo(0.6, 5);
+    expect(ratio('TW')).toBeCloseTo(0.3, 5);
+    expect(ratio('JP')).toBeLessThan(0.2);
+    expect(sourcedElasticityFactor(sourced(0))).toBeCloseTo(1.6, 5);
+    expect(sourcedElasticityFactor(sourced(1))).toBe(1);
+  });
+});
+
+describe('증발 보정 (v0.8)', () => {
+  it('200L 배럴 연 증발: 대만 약 10~12%, 한국·일본 약 5%, 스코틀랜드형 약 2%', () => {
+    const rate = (temps: number[], hum: number) => {
+      const s = newGame({ seed: 1 });
+      let cask: Cask = { ...s.casks[0]!, contents: { id: 'L', name: '', kind: 'malt', volumeL: 190, abv: 0.635, flavor: {}, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 0 } };
+      for (let m = 0; m < 36; m++) cask = matureCask(cask, { tempC: temps[m % 12]!, humidity: hum }, { control: 0 }).cask;
+      return 1 - Math.pow(cask.contents!.volumeL / 190, 1 / 3);
+    };
+    expect(rate(REGIONS.TW.tempC, 82)).toBeGreaterThan(0.095);
+    expect(rate(REGIONS.TW.tempC, 82)).toBeLessThan(0.14);
+    expect(rate(REGIONS.KR.tempC, 68)).toBeGreaterThan(0.045);
+    expect(rate([4, 4, 6, 8, 11, 14, 15, 15, 13, 10, 7, 5], 85)).toBeLessThan(0.025);
   });
 
   it('고량주 원액은 백주 카테고리', () => {

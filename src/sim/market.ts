@@ -1,5 +1,6 @@
 import { DISTRIBUTION, PACKAGING, logisticsCost } from './content/catalog';
 import { consumerPrice, refPricePerL, regionOf, type RegionDef } from './content/regions';
+import { agePerception } from './blending';
 import { clamp } from './flavor';
 import { staffOf } from './util';
 import { mod } from './modifiers';
@@ -26,13 +27,22 @@ export function productConsumerPrice(s: GameState, p: Pick<Product, 'price' | 'b
 
 export function appeal(p: Product, s?: Pick<GameState, 'modifiers' | 'month' | 'regionId'>): number {
   const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
-  const ageBonus = aged && p.ageYears ? 1 + 0.06 * Math.min(p.ageYears, 12) : 1;
+  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12) : 1;
   const lux = PACKAGING[p.packagingId]?.luxury ?? 1;
   // 시장 국면: 피트·셰리 유행
   const trend = s ? mod(s, 'appeal:all') * ((p.flavor.peat_smoke ?? 0) >= 25 ? mod(s, 'appeal:peated') : 1) * ((p.flavor.dried_fruit ?? 0) >= 25 ? mod(s, 'appeal:sherried') : 1) : 1;
-  const sourcedPenalty = s ? regionOf(s).sourcedPenalty : 0.15;
-  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * (1 - sourcedPenalty * p.sourcedShare) * trend;
+  const region = s ? regionOf(s) : null;
+  // 매입 원액 병입의 브랜드 가치: 싸게 사 온 원액일수록 감점, 비싼 원액이면 감점이 줄어든다
+  const brand = 1 - (region?.sourcedPenalty ?? 0.4) * p.sourcedShare * (1 - (p.sourcedPrestige ?? 0));
+  // 지역 프리미엄 표기(재패니즈 위스키 등)를 못 채운 위스키
+  const label = region?.whisky.premiumLabel && aged && !p.premiumLabel ? region.whisky.premiumLabel.appealWithout : 1;
+  // 지역 특산물
+  const specialty = p.specialty ? region?.specialties?.find((x) => x.id === p.specialty)?.appealBonus ?? 1 : 1;
+  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * brand * label * specialty * trend;
 }
+
+/** 브랜드 가치가 낮은 매입 원액 병입은 저가 하이볼 수요라 가격에 훨씬 민감하다 */
+export const sourcedElasticityFactor = (p: Pick<Product, 'sourcedShare' | 'sourcedPrestige'>) => 1 + 0.6 * p.sourcedShare * (1 - (p.sourcedPrestige ?? 0));
 
 export interface DemandBreakdown {
   marketL: number;
@@ -52,7 +62,7 @@ export function demandFor(s: GameState, p: Product, sameCategoryCount: number, m
   const bottleL = p.bottleMl / 1000;
   const consumerPricePerL = productConsumerPrice(s, p, region) / bottleL;
   const charm = Math.max(0, ...staffOf(s, 'sales').map((x) => x.stats.a));
-  const elasticity = m.elasticity * (1 - 0.15 * (charm / 100));
+  const elasticity = m.elasticity * (1 - 0.15 * (charm / 100)) * sourcedElasticityFactor(p);
   const ref = refPricePerL(region, p.category, p.abv);
   const priceFactor = m.baseCases > 0 ? Math.pow(consumerPricePerL / ref, -elasticity) : 0;
   const demandBottles = (marketL * reach * a * priceFactor) / bottleL;

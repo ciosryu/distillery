@@ -56,6 +56,7 @@ export function validateRecipe(state: GameState, r: Recipe): string[] {
       const ing = INGREDIENTS[m.ingredientId];
       if (!ing) errs.push(`알 수 없는 원재료: ${m.ingredientId}`);
       else if (!(ing.kinds as string[]).includes(r.kind)) errs.push(`${ing.nameKo}은(는) 이 주종에 쓸 수 없습니다`);
+      else if (ing.regions && !ing.regions.includes(region.id)) errs.push(`${ing.nameKo}은(는) 이 지역에서 구할 수 없습니다`);
     }
     if (r.fermentDays < 2 || r.fermentDays > 28) errs.push('발효 기간은 2~28일');
   }

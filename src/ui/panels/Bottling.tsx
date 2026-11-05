@@ -2,13 +2,14 @@ import { useMemo, useState } from 'react';
 import { BOTTLE_SIZES, PACKAGING, packagingCost } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { previewBlend, topNotes, type BlendComponent, type BottleOptions, type SpiritKind } from '../../sim';
+import { regionOf } from '../../sim/content/regions';
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
 import { liters, months, num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
 
 const KIND_LABEL: Record<SpiritKind, string> = { soju: '소주', gin: '진', malt: '몰트', grain: '그레인', baijiu: '백주' };
-const ABV_PRESETS = ['cask', '0.25', '0.3', '0.4', '0.43', '0.46'] as const;
+const ABV_PRESETS = ['cask', '0.25', '0.3', '0.34', '0.38', '0.4', '0.43', '0.46', '0.58'] as const;
 
 export function Bottling() {
   const s = useGame((g) => g.state);
@@ -70,7 +71,9 @@ export function Bottling() {
                 {preview.category && <Badge tone="info">{CATEGORY[preview.category].nameKo}</Badge>}
                 {preview.ageYears != null && <Badge tone="good">{preview.ageYears}년</Badge>}
                 {preview.evaluation?.style && <Badge>{preview.evaluation.style}</Badge>}
-                {preview.sourcedShare > 0 && <Badge tone="warn">매입 원액 {pct(preview.sourcedShare, 0)}</Badge>}
+                {preview.sourcedShare > 0 && <Badge tone="warn">매입 원액 {pct(preview.sourcedShare, 0)} · 브랜드 가치 {Math.round(preview.sourcedPrestige * 100)}</Badge>}
+                {preview.premiumLabel && <Badge tone="good">{regionOf(s).whisky.premiumLabel?.name}</Badge>}
+                {preview.specialty && <Badge tone="good">{regionOf(s).specialties?.find((x) => x.id === preview.specialty)?.label}</Badge>}
               </div>
               <dl className="grid grid-cols-2 gap-x-2 text-sm">
                 <dt className="text-stone-500">병 수</dt><dd className="text-right tabular-nums">{num(preview.bottles)}병</dd>

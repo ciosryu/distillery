@@ -73,6 +73,8 @@ export interface SpiritLot {
   /** 누적 원가(원/LPA) — 원재료·에너지·매입가 */
   costPerLPA: number;
   recipeId?: string;
+  /** 원재료 배합 비율(레시피 기준) — 특산물·버번 옥수수 51% 같은 원료 규정 판정용 */
+  mashShare?: Record<string, number>;
 }
 
 export interface Cask {
@@ -96,6 +98,8 @@ export interface Product {
   name: string;
   category: ProductCategory;
   ageYears: number | null;
+  /** 최저 오크 숙성 개월 (어린 위스키 인식 할인용) */
+  oakMonths?: number;
   abv: number;
   bottleMl: number;
   chillFiltered: boolean;
@@ -105,6 +109,12 @@ export interface Product {
   typicity: number;
   style: string | null;
   sourcedShare: number;
+  /** 매입 원액의 브랜드 가치 0~1 — 비싸게 사 온 원액일수록 높다 (매입 원액이 없으면 1) */
+  sourcedPrestige?: number;
+  /** 지역 특산물 표기 (예: 대만 진먼식 고량주) */
+  specialty?: string;
+  /** 지역 프리미엄 표기 충족 여부 (예: 재패니즈 위스키) */
+  premiumLabel?: boolean;
   stockBottles: number;
   /** 출고가(세전) / 병 */
   price: number;

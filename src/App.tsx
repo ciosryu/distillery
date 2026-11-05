@@ -105,7 +105,7 @@ export default function App() {
         )}
         {running && s.month === 0 && (
           <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-            <b>시작 가이드</b> — ① <b>생산</b>에서 월 배치 수를 정하고 ② 한 달을 진행하면 원액이 탱크에 쌓입니다. ③ 소주·진 같은 비숙성 주종은 <b>블렌딩·병입</b>에서 바로 병입해 팔고, 몰트는 <b>숙성고</b>에서 캐스크에 통입해 36개월을 버티세요. 그동안은 <b>숙성고</b>의 브로커에게 숙성 원액을 사서 병입하거나 <b>원액 B2B</b> 계약으로 현금을 만들 수 있습니다. ④ <b>직원</b>에서 영업 직원을 뽑으면 유통이 넓어집니다. 자금이 모자라면 <b>재무</b>의 대출을 쓰세요.
+            <b>시작 가이드</b> — ① <b>생산</b>에서 월 배치 수를 정하고 ② 한 달을 진행하면 원액이 탱크에 쌓입니다. ③ 소주·진 같은 비숙성 주종은 <b>블렌딩·병입</b>에서 바로 병입해 팔고, 몰트는 <b>숙성고</b>에서 캐스크에 통입해 숙성하세요({REGIONS[s.regionId].whisky.minMonths > 0 ? `${REGIONS[s.regionId].whisky.minMonths}개월부터 위스키` : '이 나라는 법정 최소 숙성이 없어 바로 위스키 표기 가능 — 단 3년 미만은 값을 덜 받는다'}). 그동안은 <b>숙성고</b>의 브로커에게 숙성 원액을 사서 병입하거나 <b>원액 B2B</b> 계약으로 현금을 만들 수 있습니다. ④ <b>직원</b>에서 영업 직원을 뽑으면 유통이 넓어집니다. 자금이 모자라면 <b>재무</b>의 대출을 쓰세요.
           </div>
         )}
         {TABS.find((t) => t.id === tab)!.el}

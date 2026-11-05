@@ -11,6 +11,8 @@ export interface IngredientDef {
   flavor: Flavor;
   /** 매시에 쓰는 주종 */
   kinds: ('soju' | 'malt' | 'grain' | 'baijiu')[];
+  /** 이 지역에서만 구할 수 있는 원재료 (지역 특산물) */
+  regions?: RegionId[];
 }
 
 export const INGREDIENTS: Record<string, IngredientDef> = {
@@ -26,6 +28,9 @@ export const INGREDIENTS: Record<string, IngredientDef> = {
   // 백주(고량주)용
   sorghum: { id: 'sorghum', nameKo: '고량(수수)', lpaPerKg: 0.36, pricePerKg: 900, flavor: { sorghum_grain: 45, earthy: 8 }, kinds: ['baijiu'] },
   daqu: { id: 'daqu', nameKo: '대곡(밀 누룩, 曲)', lpaPerKg: 0.15, pricePerKg: 3000, flavor: { fermented_umami: 25, tropical: 20, earthy: 10, sorghum_grain: 5 }, kinds: ['baijiu'] },
+  // 대만 특산: 진먼(금문) 계약재배 고량 + 보리·밀 곡 → 청향형 58도 (결정 #58)
+  sorghum_kinmen: { id: 'sorghum_kinmen', nameKo: '진먼 고량(金門 계약재배)', lpaPerKg: 0.37, pricePerKg: 1600, flavor: { sorghum_grain: 50, floral: 10, fresh_fruit: 8 }, kinds: ['baijiu'], regions: ['TW'] },
+  wheat_qu: { id: 'wheat_qu', nameKo: '맥곡(麥麴, 청향용)', lpaPerKg: 0.15, pricePerKg: 2600, flavor: { floral: 22, fresh_fruit: 20, sorghum_grain: 4, fermented_umami: 3 }, kinds: ['baijiu'] },
   rice_domestic: { id: 'rice_domestic', nameKo: '국산 쌀', lpaPerKg: 0.46, pricePerKg: 2600, flavor: { nuruk_rice: 25, floral: 8, fresh_fruit: 8, sweetness: 8 }, kinds: ['soju'] },
   rice_processing: { id: 'rice_processing', nameKo: '가공용 쌀', lpaPerKg: 0.44, pricePerKg: 1300, flavor: { nuruk_rice: 20, floral: 5, fresh_fruit: 5, sweetness: 6, cereal: 5 }, kinds: ['soju'] },
   nuruk: { id: 'nuruk', nameKo: '전통 누룩', lpaPerKg: 0.1, pricePerKg: 6000, flavor: { nuruk_rice: 40, earthy: 6, fresh_fruit: 6 }, kinds: ['soju'] },
@@ -114,12 +119,13 @@ export const SEASONING_EXTRACT: Record<'bourbon' | 'sherry' | 'none', Flavor> = 
 export const RECHAR_COST = 150_000;
 
 // ── 패키징 ──
-export const BOTTLE_SIZES = [375, 500, 700] as const;
+/** 600ml = 대만 고량주 표준 병 */
+export const BOTTLE_SIZES = [375, 500, 600, 700] as const;
 export type BottleMl = (typeof BOTTLE_SIZES)[number];
 
 export const PACKAGING: Record<string, { nameKo: string; costBySize: Record<BottleMl, number>; luxury: number }> = {
-  standard: { nameKo: '스탠다드 병 + 코르크', costBySize: { 375: 1500, 500: 2000, 700: 2800 }, luxury: 1.0 },
-  premium: { nameKo: '디캔터 + 케이스', costBySize: { 375: 6000, 500: 8000, 700: 11000 }, luxury: 1.15 },
+  standard: { nameKo: '스탠다드 병 + 코르크', costBySize: { 375: 1500, 500: 2000, 600: 2400, 700: 2800 }, luxury: 1.0 },
+  premium: { nameKo: '디캔터 + 케이스', costBySize: { 375: 6000, 500: 8000, 600: 9500, 700: 11000 }, luxury: 1.15 },
 };
 
 export function packagingCost(packagingId: string, bottleMl: number): number {
