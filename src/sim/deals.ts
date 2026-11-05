@@ -1,4 +1,5 @@
-import { logisticsCost } from './content/catalog';
+import { EQUIPMENT, logisticsCost } from './content/catalog';
+import { equipmentCost } from './sites';
 import { CATEGORY } from './content/categories';
 import { displayName, RETAILERS } from './content/names';
 import { regionOf } from './content/regions';
@@ -15,7 +16,11 @@ import { nid } from './util';
 
 export const RETAIL = { priceFactor: 0.8, termMonths: 12, paymentDelay: 2, penaltyShare: 0.15, offerChance: 0.15, maxActive: 2, appealPremium: 0.9, awarenessGain: 1.2 };
 /** 위탁생산: 남는 증류기 가동분이 있으면 제안이 자주(월 25%), 그 크기에 맞춰 들어온다 — 위탁사는 유휴 설비를 찾는다 */
-export const OEM = { feePerBatch: 900_000, penaltyShare: 1, offerChance: 0.08, offerChanceSpare: 0.25, maxActive: 2, runs: 2, fermentDays: 4 };
+export const OEM = {
+  feePerBatch: 900_000, penaltyShare: 1, offerChance: 0.08, offerChanceSpare: 0.25, maxActive: 2, runs: 2, fermentDays: 4,
+  /** 전용 증류기 설치 지원형 (결정 #66): 설비 패키지·지원 비율·물량·기간 [튜닝] */
+  dedicated: { package: ['pot_onion_1000', 'ferm_steel_2000', 'ferm_steel_2000'], supportShare: 0.6, batchesPerMonth: 6, termMonths: 36 },
+};
 
 /** 대형 유통 납품 규격 (카테고리별 대표 제품) */
 const RETAIL_SPEC: Partial<Record<ProductCategory, { ml: number; abv: number; age: number | null }>> = {
@@ -38,6 +43,11 @@ export function makeRetailOffer(s: GameState, rng: Rng): RetailOffer {
   };
 }
 
+/** 전용 증류기 설비 패키지 설치비 (산지 건설비 반영) */
+export function oemPackageCost(s: GameState): number {
+  return OEM.dedicated.package.reduce((t, id) => t + equipmentCost(s, EQUIPMENT[id]!), 0);
+}
+
 /** 위탁생산에 내줄 수 있는 월 배치 수 = (증류기 가동 여력 − 자사 생산 지시 − 기존 위탁) / 배치당 증류 횟수 */
 export function oemSpareBatches(s: GameState): number {
   const cap = capacityReport(s);
@@ -50,9 +60,18 @@ export function makeOemOffer(s: GameState, rng: Rng): OemOffer | null {
   if (!domestic.length) return null;
   const fee = OEM.feePerBatch;
   const spare = oemSpareBatches(s);
-  const batchesPerMonth = spare >= 2 ? Math.max(2, Math.round(spare * rng.pick([0.5, 0.75, 1]))) : rng.pick([2, 4]);
+  const buyerName = rng.pick(domestic).nameKo;
+  // 남는 설비가 없으면 위탁사가 전용 증류기 설치비 일부를 지원하는 제안을 한다
+  if (spare < 2) {
+    const d = OEM.dedicated;
+    return {
+      id: nid(s, 'W'), buyerName, batchesPerMonth: d.batchesPerMonth, feePerBatch: fee, termMonths: d.termMonths, penaltyPerBatch: Math.round(fee * OEM.penaltyShare),
+      dedicated: true, capexSupport: Math.round(oemPackageCost(s) * d.supportShare / 1_000_000) * 1_000_000, expiresMonth: s.month + 3,
+    };
+  }
+  const batchesPerMonth = Math.max(2, Math.round(spare * rng.pick([0.5, 0.75, 1])));
   return {
-    id: nid(s, 'W'), buyerName: rng.pick(domestic).nameKo, batchesPerMonth, feePerBatch: fee,
+    id: nid(s, 'W'), buyerName, batchesPerMonth, feePerBatch: fee,
     termMonths: rng.pick([12, 24]), penaltyPerBatch: Math.round(fee * OEM.penaltyShare), expiresMonth: s.month + 3,
   };
 }
@@ -77,9 +96,24 @@ export function startRetail(s: GameState, o: RetailOffer): RetailContract {
   return { ...terms, startMonth: s.month, monthsDone: 0, delivered: 0, shortfall: 0 };
 }
 
-export function startOem(s: GameState, o: OemOffer): OemContract {
+/** 위탁생산 계약 시작. 전용 증류기 지원형은 설비 패키지를 발주하고(설치비 − 지원금을 우리가 낸다) 설치가 끝나면 계약이 시작된다.
+ *  s는 변경 가능한 복제본, 현금이 부족하면 null */
+export function startOem(s: GameState, o: OemOffer): OemContract | null {
   const { expiresMonth: _e, ...terms } = o;
-  return { ...terms, startMonth: s.month, monthsDone: 0, missed: 0 };
+  if (!o.dedicated) return { ...terms, startMonth: s.month, monthsDone: 0, missed: 0 };
+  const net = oemPackageCost(s) - (o.capexSupport ?? 0);
+  if (s.cash < net) return null;
+  s.cash -= net;
+  let stillId: string | undefined;
+  let ready = s.month;
+  for (const id of OEM.dedicated.package) {
+    const def = EQUIPMENT[id]!;
+    const inst = { id: nid(s, 'E'), catalogId: id, readyMonth: s.month + def.leadMonths, ...(def.kind === 'still' ? { feintsLPA: 0 } : {}) };
+    s.equipment.push(inst);
+    if (def.kind === 'still') stillId = inst.id;
+    ready = Math.max(ready, inst.readyMonth);
+  }
+  return { ...terms, startMonth: ready, monthsDone: 0, missed: 0, stillId };
 }
 
 /** 월간 대형 유통 납품 (일반 판매보다 먼저 재고를 가져간다). 대금은 paymentDelay개월 뒤 입금 */

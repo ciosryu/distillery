@@ -11,7 +11,7 @@ import { DEFAULT_SITE, SITES } from './content/sites';
 import {
   applyTerroir, dutyFreeDemand, fermentCapacityFactor, isTraditionalRecipe, migrateState, productConsumerPrice, riskScale, scaleEffects,
   traditionalReliefRate, waterPermitCap, WATER_EFFECT,
-  agingOutlook, holdingCost, inventoryCollateral, inventoryLoanRoom, makeOemOffer, makeRetailOffer, runVisitorSales, startOem, startRetail,
+  agingOutlook, holdingCost, inventoryCollateral, inventoryLoanRoom, makeOemOffer, oemPackageCost, makeRetailOffer, runVisitorSales, startOem, startRetail,
 } from './index';
 import { HOLDING } from './content/catalog';
 
@@ -619,10 +619,28 @@ describe('보유 비용·산지 대표 결정 (결정 #65)', () => {
     let s = newGame({ seed: 2, site: 'kanto' });
     expect(makeOemOffer(s, mulberry32(1))).not.toBeNull();
     const o = { ...makeOemOffer(s, mulberry32(1))!, batchesPerMonth: 2 };
-    s.oemContracts = [startOem(s, o)];
+    s.oemContracts = [startOem(s, o)!];
     s = advanceMonths(s, 1);
     expect(s.reports.at(-1)!.oemRevenue).toBe(2 * o.feePerBatch);
     expect(s.oemContracts[0]!.missed).toBe(0);
+  });
+
+  it('위탁생산 전용 증류기 지원형(결정 #66): 남는 설비가 없으면 설치비 60% 지원 제안, 설치 후 시작, 파기 시 지원금 일부 반환', () => {
+    let s = newGame({ seed: 2, site: 'kanto' });
+    const malt = s.recipes.find((r) => r.kind === 'malt')!;
+    s = applyAction(s, { type: 'setOrder', recipeId: malt.id, batchesPerMonth: 10 }).state;
+    const o = makeOemOffer(s, mulberry32(3))!;
+    expect(o.dedicated).toBe(true);
+    expect(o.capexSupport).toBeCloseTo(oemPackageCost(s) * 0.6, -6);
+    s.oemOffers = [o];
+    const cash = s.cash;
+    s = applyAction(s, { type: 'acceptOem', offerId: o.id }).state;
+    expect(cash - s.cash).toBeCloseTo(oemPackageCost(s) - o.capexSupport!, -1);
+    const c = s.oemContracts[0]!;
+    expect(c.startMonth).toBeGreaterThan(s.month);
+    expect(s.equipment.some((e) => e.id === c.stillId)).toBe(true);
+    s = advanceMonths(applyAction(s, { type: 'setOrder', recipeId: malt.id, batchesPerMonth: 0 }).state, c.startMonth + 1);
+    expect(s.reports.some((r) => (r.oemRevenue ?? 0) > 0)).toBe(true);
   });
 
   it('직판장: 숙성고 40자리를 쓰고, 관광객이 소비자가로 사 간다(오사카·교토가 경기보다 많이)', () => {

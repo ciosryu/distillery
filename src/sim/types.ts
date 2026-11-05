@@ -280,9 +280,14 @@ export interface RetailOffer extends RetailTerms { expiresMonth: number }
 export interface RetailContract extends RetailTerms { startMonth: number; monthsDone: number; delivered: number; shortfall: number }
 
 /** 대기업 위탁생산(OEM) 계약 (간토) — 원료는 위탁사 부담, 가공비를 받고 증류 설비를 내준다 */
-export interface OemTerms { id: string; buyerName: string; batchesPerMonth: number; feePerBatch: number; termMonths: number; penaltyPerBatch: number }
+export interface OemTerms {
+  id: string; buyerName: string; batchesPerMonth: number; feePerBatch: number; termMonths: number; penaltyPerBatch: number;
+  /** 전용 증류기 설치 지원형 (결정 #66): 위탁사가 설비 패키지(증류기 + 발효조 2기) 설치비 일부를 체결 시 지원 */
+  dedicated?: boolean;
+  capexSupport?: number;
+}
 export interface OemOffer extends OemTerms { expiresMonth: number }
-export interface OemContract extends OemTerms { startMonth: number; monthsDone: number; missed: number }
+export interface OemContract extends OemTerms { startMonth: number; monthsDone: number; missed: number; /** 전용 증류기 설비 id */ stillId?: string }
 
 /** 매출채권 — 결제 지연 대금 */
 export interface Receivable { dueMonth: number; amount: number; label: string }

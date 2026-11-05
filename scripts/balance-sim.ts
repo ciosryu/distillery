@@ -1,11 +1,11 @@
 // 헤드리스 밸런스 시뮬레이션 — 전략별 단순 정책으로 N개 시드를 돌려 파산률·흑자 전환 시점·매출 구성을 본다.
 // 실행: npm run balance [-- 시드수 개월수 전략 지역]   전략 = brand | hybrid | expand | grain | all(기본)
 //       지역 = 국가(KR | JP | TW → 표준 산지) 또는 산지(gyeonggi | andong | jeju | kanto | kansai | hokkaido | yilan)
-import { advanceMonth, applyAction, bulkValuePerLPA, capacityReport, previewBlend, newGame, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SiteId, type SpiritKind } from '../src/sim';
+import { advanceMonth, applyAction, bulkValuePerLPA, previewBlend, newGame, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SiteId, type SpiritKind } from '../src/sim';
 import { DEFAULT_SITE, SITES } from '../src/sim/content/sites';
 import { REGIONS, setKrBaseDeduction } from '../src/sim/content/regions';
 import { HOLDING } from '../src/sim/content/catalog';
-import { OEM } from '../src/sim/deals';
+import { OEM, oemPackageCost, oemSpareBatches } from '../src/sim/deals';
 
 const SEEDS = Number(process.argv[2] ?? 12);
 const MONTHS = Number(process.argv[3] ?? 120);
@@ -28,7 +28,7 @@ type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site';
 const SITE_STRATEGY: Partial<Record<SiteId, string>> = {
   gyeonggi: '브랜드 + 대형 유통 납품 수락',
   jeju: '브랜드 + 위스키 일부를 면세 전용 한정판으로',
-  kanto: '혼합 + 위탁생산 수락',
+  kanto: '혼합 + 위탁생산(전용 증류기 지원형 포함) 수락',
   kansai: '브랜드 + 직판장 + 미즈나라 캐스크',
   hokkaido: '브랜드 + 재고 담보대출로 버티기',
   yilan: '브랜드 + 수집가 캐스크 매입 제안 수락',
@@ -126,15 +126,11 @@ function siteActions(s: GameState): GameState {
       return s;
     }
     case 'kanto': {
-      // 위탁생산 전용 증류기를 1기 더 들이고(1년 차, 자기 자금 3억↑), 남는 가동분 안에서만 받는다 (배치당 2회 증류)
-      if (s.month >= 12 && s.cash - s.loans.reduce((t, l) => t + l.balance, 0) > 300_000_000 && s.equipment.filter((e) => e.catalogId === 'pot_onion_1000').length < 2) {
-        s = act(s, { type: 'buyEquipment', catalogId: 'pot_onion_1000' });
-        s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
-        s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
+      // 위탁생산: 전용 증류기 지원형(결정 #66)은 자기 자금이 충분하면 받고, 일반형은 남는 가동분 안에서만 받는다
+      const equity = s.cash - s.loans.reduce((t, l) => t + l.balance, 0);
+      for (const o of [...s.oemOffers]) {
+        if (o.dedicated ? equity - (oemPackageCost(s) - (o.capexSupport ?? 0)) > 150_000_000 : o.batchesPerMonth <= oemSpareBatches(s)) s = act(s, { type: 'acceptOem', offerId: o.id });
       }
-      const cap = capacityReport(s);
-      const spare = cap.stills.reduce((t, x) => t + x.cap - x.used, 0) - s.oemContracts.reduce((t, c) => t + c.batchesPerMonth * 2, 0);
-      for (const o of [...s.oemOffers]) if (o.batchesPerMonth * 2 <= spare && s.month >= 6) s = act(s, { type: 'acceptOem', offerId: o.id });
       return s;
     }
     case 'kansai':
@@ -308,10 +304,14 @@ const results: Record<Strategy, Result[]> = { brand: [], hybrid: [], expand: [],
 if (SITE_STRATEGY[SITE]) console.log(`site 전략 = ${SITE_STRATEGY[SITE]}`);
 const wins: Record<string, number> = {};
 const bookWins: Record<string, number> = {};
+/** 시드별 1위 집계 (결정 #67): 1위 순자산의 95% 이상인 전략은 공동 1위로 보고 1점을 나눠 갖는다 —
+ *  "브랜드형 + 한 가지" 같은 변형 전략은 같은 시드에서 함께 움직여, 근소한 평균 우위만으로 대부분 1위가 되는 과장을 막는다 */
+const TIE_BAND = 0.95;
 const tally = (rs: Result[], by: 'netWorth' | 'bookWorth', into: Record<string, number>) => {
   const best = rs.reduce((a, b) => (b[by] > a[by] ? b : a));
-  const key = best.bankrupt ? '전멸' : best.strategy;
-  into[key] = (into[key] ?? 0) + 1;
+  if (best.bankrupt || !Number.isFinite(best[by])) { into['전멸'] = (into['전멸'] ?? 0) + 1; return; }
+  const winners = rs.filter((r) => !r.bankrupt && r[by] >= (best[by] >= 0 ? best[by] * TIE_BAND : best[by] / TIE_BAND));
+  for (const w of winners) into[w.strategy] = (into[w.strategy] ?? 0) + 1 / winners.length;
 };
 for (let seed = 1; seed <= SEEDS; seed++) {
   const rs = list.map((st) => play(st, seed));
@@ -325,8 +325,8 @@ for (const st of list) {
   const nw = alive.map((r) => r.netWorth);
   const sd = Math.sqrt(avg(nw.map((v) => (v - avg(nw)) ** 2)));
   const fps = rs.filter((r) => r.firstPositive >= 0).map((r) => r.firstPositive);
-  console.log(`${st.padEnd(7)} | 파산 ${rs.length - alive.length}/${rs.length} | 순자산(${MONTHS}m) 평균 ${eok(avg(nw))} ±${eok(sd)} · 원가기준 ${eok(avg(alive.map((r) => r.bookWorth)))} | 최저 현금 평균 ${eok(avg(rs.map((r) => r.minCash)))} | 흑자 전환 평균 ${Math.round(avg(fps))}개월 | 5년차 매출 병입 ${eok(avg(rs.map((r) => r.y5retail)))} + B2B ${eok(avg(rs.map((r) => r.y5bulk)))} | 1위 ${wins[st] ?? 0}회`);
+  console.log(`${st.padEnd(7)} | 파산 ${rs.length - alive.length}/${rs.length} | 순자산(${MONTHS}m) 평균 ${eok(avg(nw))} ±${eok(sd)} · 원가기준 ${eok(avg(alive.map((r) => r.bookWorth)))} | 최저 현금 평균 ${eok(avg(rs.map((r) => r.minCash)))} | 흑자 전환 평균 ${Math.round(avg(fps))}개월 | 5년차 매출 병입 ${eok(avg(rs.map((r) => r.y5retail)))} + B2B ${eok(avg(rs.map((r) => r.y5bulk)))} | 1위 ${Number((wins[st] ?? 0).toFixed(1))}회`);
 }
-const dist = (w: Record<string, number>) => [...list, '전멸'].map((st) => `${st} ${w[st] ?? 0}`).join(' · ');
+const dist = (w: Record<string, number>) => [...list, '전멸'].map((st) => `${st} ${Number((w[st] ?? 0).toFixed(1))}`).join(' · ');
 console.log(`\n[${REGION}] 시드별 1위 분포(시가 평가): ${dist(wins)}`);
-console.log(`[${REGION}] 시드별 1위 분포(원가 평가): ${dist(bookWins)}  (한 전략이 60% 이상 이기면 지배 전략 의심)`);
+console.log(`[${REGION}] 시드별 1위 분포(원가 평가): ${dist(bookWins)}  (1위의 95% 이내는 공동 1위로 나눠 집계 — 한 전략이 60% 이상이면 지배 전략 의심)`);

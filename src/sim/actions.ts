@@ -264,9 +264,11 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       const o = s.oemOffers.find((x) => x.id === a.offerId);
       if (!o) return fail(prev, '위탁생산 제안이 없습니다');
       if (s.oemContracts.length >= OEM.maxActive) return fail(prev, `위탁생산 계약은 ${OEM.maxActive}건까지입니다`);
-      s.oemContracts.push(startOem(s, o));
+      const c = startOem(s, o);
+      if (!c) return fail(prev, '현금이 부족합니다 (설비 패키지 설치비 − 지원금)');
+      s.oemContracts.push(c);
       s.oemOffers = s.oemOffers.filter((x) => x.id !== o.id);
-      return { state: s, message: `${o.buyerName} 위탁생산 계약 — 월 ${o.batchesPerMonth}배치, 배치당 ${o.feePerBatch.toLocaleString()}원` };
+      return { state: s, message: `${o.buyerName} 위탁생산 계약 — 월 ${o.batchesPerMonth}배치, 배치당 ${o.feePerBatch.toLocaleString()}원${o.dedicated ? ` · 전용 증류기 설치 지원 ${(o.capexSupport ?? 0).toLocaleString()}원 (설치 후 시작)` : ''}` };
     }
     case 'applyWaterPermit': {
       const err = applyWaterPermit(s);

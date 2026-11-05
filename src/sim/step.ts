@@ -51,11 +51,16 @@ function runProduction(s: GameState, report: MonthReport, monthOfYear: number): 
   // 위탁생산(OEM, 간토) — 자사 생산보다 먼저 설비를 내준다. 원료는 위탁사 부담, 에너지비만 우리 몫
   const oemDone: string[] = [];
   for (const c of s.oemContracts) {
-    const stillInst = s.equipment.find((e) => e.readyMonth <= s.month && EQUIPMENT[e.catalogId]?.kind === 'still' && (EQUIPMENT[e.catalogId] as { stillType: string }).stillType !== 'column');
-    const still = stillInst ? stillDefOf(s, stillInst.id) : null;
+    if (s.month < c.startMonth) continue; // 전용 증류기 설치 중
+    // 전용 증류기가 있으면 그것부터, 없으면 가동 여력이 남은 단식 증류기
+    const stills = s.equipment
+      .filter((e) => e.readyMonth <= s.month && EQUIPMENT[e.catalogId]?.kind === 'still' && (EQUIPMENT[e.catalogId] as { stillType: string }).stillType !== 'column')
+      .sort((a, b) => (a.id === c.stillId ? -1 : 0) - (b.id === c.stillId ? -1 : 0));
     let done = 0;
-    for (let b = 0; b < c.batchesPerMonth && still && stillInst; b++) {
-      if ((stillRuns.get(stillInst.id) ?? 0) < OEM.runs || distillerRuns < OEM.runs || waterLeftL < still.chargeL) break;
+    for (let b = 0; b < c.batchesPerMonth; b++) {
+      const stillInst = stills.find((e) => (stillRuns.get(e.id) ?? 0) >= OEM.runs);
+      const still = stillInst ? stillDefOf(s, stillInst.id) : null;
+      if (!stillInst || !still || distillerRuns < OEM.runs || waterLeftL < still.chargeL) break;
       const ferm = fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= OEM.fermentDays + 2 && f.type !== 'onggi');
       if (!ferm) break;
       ferm.daysLeft -= OEM.fermentDays + 2;
@@ -76,7 +81,13 @@ function runProduction(s: GameState, report: MonthReport, monthOfYear: number): 
     if (penalty > 0) { report.expenses.penalty = (report.expenses.penalty ?? 0) + penalty; report.notes.push(`${c.buyerName} 위탁생산 ${missed}배치 미이행 — 위약금`); }
     c.monthsDone += 1;
     c.missed += missed;
-    if (c.missed >= 2 * c.batchesPerMonth) { report.notes.push(`${c.buyerName} 위탁생산 계약 파기 — 누적 미이행 과다`); oemDone.push(c.id); }
+    if (c.missed >= 2 * c.batchesPerMonth) {
+      // 전용 증류기 지원금은 남은 기간 비율만큼 돌려준다 (설비는 우리 것으로 남는다)
+      const refund = Math.round((c.capexSupport ?? 0) * Math.max(0, c.termMonths - c.monthsDone) / c.termMonths);
+      s.cash -= refund;
+      report.notes.push(`${c.buyerName} 위탁생산 계약 파기 — 누적 미이행 과다${refund ? `, 설비 지원금 ${refund.toLocaleString()}원 반환` : ''}`);
+      oemDone.push(c.id);
+    }
     else if (c.monthsDone >= c.termMonths) { report.notes.push(`${c.buyerName} 위탁생산 계약 만료`); oemDone.push(c.id); }
   }
   s.oemContracts = s.oemContracts.filter((c) => !oemDone.includes(c.id));
