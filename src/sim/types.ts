@@ -298,6 +298,10 @@ export interface SiteState {
   waterPermitL?: number;
   /** 취수 증량 신청 — 결정 월에 승인 여부가 정해진다 */
   permitApplication?: { decideMonth: number; addL: number; chance: number };
+  /** 지역 원료 계약재배 확대분(kg/월)과 진행 중인 확대 */
+  localSupplyKg?: number;
+  localSupplySteps?: number;
+  localSupplyPending?: { readyMonth: number; addKg: number };
   /** 전통주 출고량(L) — 연도별 감면 구간 판정 */
   traditionalShipped?: { year: number; liters: number; lastYearLiters: number };
 }

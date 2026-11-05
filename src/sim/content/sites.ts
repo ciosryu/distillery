@@ -64,6 +64,10 @@ export interface SiteDef {
   dutyFreeSeasonality?: number[];
   /** 숙성 재고 담보대출 담보 인정 비율 (기본 0.4) */
   inventoryLtv?: number;
+  /** 원액 B2B 운송비 — 섬·원거리 산지는 블렌더 매입 단가(현물·계약)가 깎인다 (결정 #68) */
+  bulkFreight?: number;
+  /** 지역 원료 계약재배 확대 (결정 #68): 비용을 내면 leadMonths 뒤 월 공급 한도 +stepKg, 최대 maxSteps회 */
+  localSupply?: { ingredient: string; stepKg: number; cost: number; leadMonths: number; maxSteps: number };
   /** 숙성 테루아: 월평균 기온이 minTempC 이상인 달마다 축이 쌓인다 */
   terroir?: { axis: AxisId; perMonth: number; cap: number; minTempC: number }[];
   starter: { name: string; distillery: string; casks: CaskTypeId[] };
@@ -104,12 +108,14 @@ export const SITES: Record<SiteId, SiteDef> = {
     // 결정 #62: 감면은 지역 농산물(안동 쌀)만 원료로 쓴 술에만. 수입 맥아·타지역 원료가 들어가면 감면 없음
     traditional: { label: '민속주 헤리티지 — 안동 쌀(지역 농산물)만 원료로 빚은 술은 전통주. 수입 맥아·타지역 원료를 쓰면 감면 없음', mainIngredients: ['andong_rice'], starters: ['nuruk'] },
     tourism: 1200,
+    localSupply: { ingredient: 'andong_rice', stepKg: 400, cost: 20_000_000, leadMonths: 6, maxSteps: 3 },
     starter: { name: '권태호', distillery: '낙강 증류소', casks: [...bourbon(8), 'korean_oak_quarter', 'korean_oak_quarter'] },
     traits: [
       { tone: 'good', text: '전통주 자격: 안동 쌀(지역 농산물)로만 빚으면 주세 감면(연 5kL까지 50%·10kL까지 30%) + 온라인 직판' },
       { tone: 'good', text: '국산 쌀 계약재배 −15%, 관리비 낮음' },
       { tone: 'bad', text: '감면은 지역 농산물만: 안동 쌀은 비싸고(3,200원/kg) 계약재배 물량이 월 800kg(소주 약 2배치)뿐. 국산·수입 쌀이나 수입 맥아를 쓰면 감면 없음' },
       { tone: 'bad', text: '감면 구간이 작다: 연 10kL를 넘으면 감면 없음, 전년 25kL 초과 시 자격 상실' },
+      { tone: 'good', text: '안동 쌀 계약재배 확대: 2,000만 원·6개월 뒤 월 +400kg (최대 3회) — 감면 구간을 넘어 키울지 선택' },
       { tone: 'good', text: '우리술 품평회 수상 기회 ×1.5, 가을 탈춤축제' },
       { tone: 'bad', text: '전년 출고 500kL를 넘으면 감면 자격 상실' },
       { tone: 'bad', text: '대륙성 겨울: 12~2월 발효 효율 −15%(온도 제어 설비로 해소)·난방비' },
@@ -129,12 +135,14 @@ export const SITES: Record<SiteId, SiteDef> = {
     // 공정용수 월 15,000L — 실제 허가량(t/일)을 게임 규모로 단순화 [게임적 단순화]
     waterPermit: { baseL: 15_000, stepL: 10_000, cost: 20_000_000, months: [6, 12], chance: 0.6 },
     tourism: 2000, dutyFreeSeasonality: [1.15, 1.0, 0.75, 0.85, 1.0, 0.9, 1.4, 1.5, 0.9, 1.15, 0.75, 0.95],
+    bulkFreight: 0.85,
     starter: { name: '고은별', distillery: '오름 증류소', casks: bourbon(10) },
     traits: [
       { tone: 'good', text: '화산암반수: 발효 이취 −20%, 과일향↑, 수율 +3%' },
       { tone: 'good', text: '지정면세점 채널: 관광객에게 주세·부가세 없이 판매 (1인 2L·미화 400달러 한도)' },
       { tone: 'good', text: '고소리술(제주 차조) 지역특산주 감면, 청귤 보태니컬' },
       { tone: 'bad', text: '지하수 취수 허가: 월 발효 투입 15,000L 상한 (증량 신청 가능)' },
+      { tone: 'bad', text: '원액 B2B 운송비: 블렌더 매입 단가 ×0.85' },
       { tone: 'bad', text: '해운 물류: 국내 출고 물류비 ×2, 원료·포장재·캐스크 운송 할증, 건설비 +20%' },
       { tone: 'bad', text: '태풍 가중 ×1.3' },
     ],
@@ -181,13 +189,14 @@ export const SITES: Record<SiteId, SiteDef> = {
     demandFactor: 1, extraCandidates: 0,
     heating: { months: [11, 12, 1, 2, 3], perMonth: 4_000_000, energyFactor: 1.6 },
     tourism: 900, inventoryLtv: 0.6,
+    bulkFreight: 0.85,
     starter: { name: '오노 다이치', distillery: '시라카바 증류소', casks: bourbon(10) },
     traits: [
       { tone: 'good', text: '싼 땅: 관리비 ×0.9, 숙성고 증설비 ×0.7' },
       { tone: 'good', text: '낮은 증발(연 약 1.5%) — 장기 숙성 손실이 가장 적다' },
       { tone: 'good', text: '감자 쇼추, 석탄 직화 증류기(바디·오일리↑, 숙련 요구)' },
       { tone: 'bad', text: '난방: 11~3월 난방비 월 400만 원 + 증류 에너지비 ×1.6' },
-      { tone: 'bad', text: '본토 출고 물류비 +25% (해협 운송)' },
+      { tone: 'bad', text: '본토 출고 물류비 +25% (해협 운송), 원액 B2B 단가 ×0.85' },
       { tone: 'bad', text: '숙성이 느리다 (간토의 약 70%) — 데스밸리가 길다' },
       { tone: 'bad', text: '폭설: 1~2월 생산 중단 위험' },
     ],
@@ -243,7 +252,7 @@ export const DUTY_FREE = {
   refFactor: 0.6,
   /** 1인 구매 한도 미화 400달러 ≒ 55만 원 [환율 가정] — 이보다 비싼 병은 팔 수 없다 */
   maxBottlePrice: 550_000,
-  /** 면세 전용 한정판(결정 #65): 전용 매대 점유 상한 배수, 한정판 매력도 배수 [튜닝] — 첫 밸런스(×2·×1.15)에서 20/20 지배라 하향 */
-  limitedShareCap: 1.5,
+  /** 면세 전용 한정판(결정 #65): 전용 매대 점유 상한 배수, 한정판 매력도 배수 [튜닝] — 첫 밸런스(×2·×1.15) 20/20, ×1.5 16/20 지배라 ×1.3으로 하향 (결정 #68) */
+  limitedShareCap: 1.3,
   limitedAppeal: 1.1,
 };

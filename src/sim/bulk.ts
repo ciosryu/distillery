@@ -1,6 +1,7 @@
 import { BULK, CASKS, EQUIPMENT } from './content/catalog';
 import { BUYERS, displayName, INDEPENDENT_BOTTLERS } from './content/names';
 import { regionOf } from './content/regions';
+import { siteOf } from './content/sites';
 import { mod } from './modifiers';
 import { clamp, evaluate } from './flavor';
 import { lotCategory } from './blending';
@@ -48,7 +49,7 @@ const trustAdj = (trust: number) => 0.95 + 0.1 * (trust / 100);
 
 /** 현물로 팔 때 받는 단가 — 현물 시장의 절반은 국내 블렌더로 보고 국산 프리미엄의 절반을 반영 */
 export function spotBidPerLPA(s: GameState, lot: SpiritLot): number {
-  return bulkValuePerLPA(s, lot) * BULK.bid * trustAdj(s.b2bTrust) * (lot.sourced ? 1 : 1 + domesticPremium(s) * 0.5);
+  return bulkValuePerLPA(s, lot) * BULK.bid * trustAdj(s.b2bTrust) * (lot.sourced ? 1 : 1 + domesticPremium(s) * 0.5) * (siteOf(s).bulkFreight ?? 1);
 }
 
 /** 브로커에게 살 때 내는 단가 (수입 원액 — 국산 프리미엄 없음) */
@@ -89,7 +90,7 @@ function contractPrice(s: GameState, spirit: ContractTerms['spirit'], style: Con
   const base = spirit === 'grain_newmake' ? BULK.grainNewMakeBase : BULK.newMakeBase;
   // 블렌더는 최소 품질보다 약간 높은 원액을 기준으로 값을 매긴다
   const ref = base * qualityFactor(minQuality + 8) * (style === 'peated' ? 1 + BULK.peatPremium : 1) * s.bulkIndex * mod(s, 'bulk');
-  const p = ref * BULK.contract * trustAdj(s.b2bTrust) * (prepay ? 1 - BULK.prepayDiscount : 1) * (domestic ? 1 + domesticPremium(s) : 1) * priceFactor;
+  const p = ref * BULK.contract * trustAdj(s.b2bTrust) * (prepay ? 1 - BULK.prepayDiscount : 1) * (domestic ? 1 + domesticPremium(s) : 1) * priceFactor * (siteOf(s).bulkFreight ?? 1);
   return Math.round(p / 100) * 100;
 }
 

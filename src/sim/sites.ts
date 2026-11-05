@@ -1,4 +1,4 @@
-import { EQUIPMENT, UPGRADE_RISK_REDUCTION, type EquipmentDef, type UpgradeId } from './content/catalog';
+import { EQUIPMENT, INGREDIENTS, UPGRADE_RISK_REDUCTION, type EquipmentDef, type UpgradeId } from './content/catalog';
 import { regionOf } from './content/regions';
 import { siteOf, type SiteDef } from './content/sites';
 import { clamp } from './flavor';
@@ -125,6 +125,39 @@ export function resolveWaterPermit(s: GameState, report: MonthReport): void {
     report.events.push('취수 증량 불허');
     report.notes.push('취수 허가 증량 신청이 불허됐습니다 (다시 신청할 수 있습니다)');
   }
+}
+
+// ── 지역 원료 계약재배 (안동, 결정 #68) ──
+
+/** 원재료 월 공급 한도(kg) — 기본 한도 + 계약재배 확대분. 한도 없는 원료는 Infinity */
+export function ingredientSupplyCap(s: GameState, ingredientId: string): number {
+  const base = INGREDIENTS[ingredientId]?.monthlySupplyKg;
+  if (base == null) return Infinity;
+  const ls = siteOf(s).localSupply;
+  return base + (ls?.ingredient === ingredientId ? s.siteState.localSupplyKg ?? 0 : 0);
+}
+
+/** 계약재배 확대 신청 — 오류 문구 또는 null */
+export function expandLocalSupply(s: GameState): string | null {
+  const ls = siteOf(s).localSupply;
+  if (!ls) return '이 산지에는 지역 원료 계약재배가 없습니다';
+  if (s.siteState.localSupplyPending) return '이미 진행 중인 계약재배 확대가 있습니다';
+  if ((s.siteState.localSupplySteps ?? 0) >= ls.maxSteps) return `계약재배 확대는 최대 ${ls.maxSteps}회입니다`;
+  if (s.cash < ls.cost) return '현금이 부족합니다';
+  s.cash -= ls.cost;
+  s.siteState.localSupplyPending = { readyMonth: s.month + ls.leadMonths, addKg: ls.stepKg };
+  s.siteState.localSupplySteps = (s.siteState.localSupplySteps ?? 0) + 1;
+  return null;
+}
+
+/** 월초: 계약재배 확대분 반영 */
+export function resolveLocalSupply(s: GameState, report: MonthReport): void {
+  const p = s.siteState.localSupplyPending;
+  if (!p || s.month < p.readyMonth) return;
+  s.siteState.localSupplyPending = undefined;
+  s.siteState.localSupplyKg = (s.siteState.localSupplyKg ?? 0) + p.addKg;
+  const ls = siteOf(s).localSupply!;
+  report.notes.push(`${INGREDIENTS[ls.ingredient]?.nameKo ?? ls.ingredient} 계약재배 확대 — 월 ${ingredientSupplyCap(s, ls.ingredient).toLocaleString()}kg`);
 }
 
 // ── 계절 ──

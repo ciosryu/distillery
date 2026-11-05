@@ -6,7 +6,7 @@ import { executeBlend, type BlendComponent, type BottleOptions } from './blendin
 import { MAX_RECHAR, recharCask } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
-import { applyWaterPermit, equipmentBlocker, equipmentCost } from './sites';
+import { applyWaterPermit, equipmentBlocker, equipmentCost, expandLocalSupply } from './sites';
 import { inventoryLoanRoom } from './holding';
 import { OEM, RETAIL, startOem, startRetail } from './deals';
 import type { CaskTypeId, GameState, Recipe } from './types';
@@ -38,7 +38,9 @@ export type Action =
   /** 산지 대표 거래 수락: 대형 유통 납품(경기) / 위탁생산(간토) */
   | { type: 'acceptRetail'; offerId: string }
   | { type: 'cancelRetail'; contractId: string }
-  | { type: 'acceptOem'; offerId: string };
+  | { type: 'acceptOem'; offerId: string }
+  /** 지역 원료 계약재배 확대 (안동) */
+  | { type: 'expandLocalSupply' };
 
 export interface ActionResult { state: GameState; error?: string; message?: string }
 
@@ -269,6 +271,11 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       s.oemContracts.push(c);
       s.oemOffers = s.oemOffers.filter((x) => x.id !== o.id);
       return { state: s, message: `${o.buyerName} 위탁생산 계약 — 월 ${o.batchesPerMonth}배치, 배치당 ${o.feePerBatch.toLocaleString()}원${o.dedicated ? ` · 전용 증류기 설치 지원 ${(o.capexSupport ?? 0).toLocaleString()}원 (설치 후 시작)` : ''}` };
+    }
+    case 'expandLocalSupply': {
+      const err = expandLocalSupply(s);
+      if (err) return fail(prev, err);
+      return { state: s, message: `계약재배 확대 계약 — ${s.siteState.localSupplyPending!.readyMonth - s.month}개월 뒤 월 +${s.siteState.localSupplyPending!.addKg.toLocaleString()}kg` };
     }
     case 'applyWaterPermit': {
       const err = applyWaterPermit(s);

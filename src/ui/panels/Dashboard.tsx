@@ -1,4 +1,4 @@
-import { calendar, capacityReport, coverage, hasUpgrade, monthLabel, monthlyFixedCost, riskScale, traditionalReliefRate, warehouseCapacity, waterPermitCap } from '../../sim';
+import { calendar, capacityReport, coverage, hasUpgrade, ingredientSupplyCap, monthLabel, monthlyFixedCost, riskScale, traditionalReliefRate, warehouseCapacity, waterPermitCap } from '../../sim';
 import { INGREDIENTS } from '../../sim/content/catalog';
 import { REGIONS } from '../../sim/content/regions';
 import { siteOf } from '../../sim/content/sites';
@@ -38,8 +38,15 @@ function SiteCard() {
               <b>전통주</b> — 올해 출고 {liters(thisYear)} · 현재 감면율 {pct(traditionalReliefRate(s, true), 0)}
               <div className="text-xs text-stone-500">{country.traditional.label}. 전년 출고 {liters(country.traditional.eligibleMaxLastYearL)} 초과 시 자격 상실</div>
               {Object.values(INGREDIENTS).filter((i) => i.monthlySupplyKg && i.sites?.includes(site.id)).map((i) => (
-                <div key={i.id} className="text-xs text-stone-500">{i.nameKo}: 지난달 {num(Math.round(s.ingredientKgLastMonth[i.id] ?? 0))} / 월 {num(i.monthlySupplyKg!)}kg 공급 한도</div>
+                <div key={i.id} className="text-xs text-stone-500">{i.nameKo}: 지난달 {num(Math.round(s.ingredientKgLastMonth[i.id] ?? 0))} / 월 {num(ingredientSupplyCap(s, i.id))}kg 공급 한도</div>
               ))}
+              {site.localSupply && (
+                <div className="mt-1">
+                  {s.siteState.localSupplyPending
+                    ? <Badge tone="warn">계약재배 확대 중 · {monthLabel(s.startYear, s.siteState.localSupplyPending.readyMonth)}부터 +{num(s.siteState.localSupplyPending.addKg)}kg</Badge>
+                    : <Button small disabled={(s.siteState.localSupplySteps ?? 0) >= site.localSupply.maxSteps || s.cash < site.localSupply.cost} onClick={() => dispatch({ type: 'expandLocalSupply' })}>계약재배 확대 (+{num(site.localSupply.stepKg)}kg/월, {won(site.localSupply.cost)}, {site.localSupply.leadMonths}개월 · {s.siteState.localSupplySteps ?? 0}/{site.localSupply.maxSteps}회)</Button>}
+                </div>
+              )}
             </div>
           )}
           {wp && (

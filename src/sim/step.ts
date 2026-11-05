@@ -11,7 +11,7 @@ import { fulfillRetail, OEM, refreshDeals } from './deals';
 import { effectivePriceIndex, mod, pruneModifiers } from './modifiers';
 import { runEvents } from './events';
 import { holdingCost, inventoryMarginCall } from './holding';
-import { applyTerroir, fermentCapacityFactor, heatingCost, isTraditionalRecipe, resolveWaterPermit, seasonalEnergyFactor, waterPermitCap } from './sites';
+import { applyTerroir, fermentCapacityFactor, heatingCost, ingredientSupplyCap, isTraditionalRecipe, resolveLocalSupply, resolveWaterPermit, seasonalEnergyFactor, waterPermitCap } from './sites';
 import { rngFor } from './rng';
 import type { FermenterType, GameState, MonthReport, SpiritLot, StaffRole } from './types';
 import { bestBy, calendar, clone, monthLabel, nid, staffOf } from './util';
@@ -115,10 +115,9 @@ function runProduction(s: GameState, report: MonthReport, monthOfYear: number): 
       const res = simulateBatch(recipe, still, ferm?.type ?? null, lead, prices, stillInst.feintsLPA ?? 0, site.water);
       // 원료 월 공급 한도 (지역 계약재배 물량 등)
       const short = Object.entries(res.ingredientsKg).find(([id, kg]) => {
-        const cap = INGREDIENTS[id]?.monthlySupplyKg;
-        return cap != null && (boughtKg[id] ?? 0) + kg > cap + 1e-6;
+        return (boughtKg[id] ?? 0) + kg > ingredientSupplyCap(s, id) + 1e-6;
       });
-      if (short) { blocked = `${INGREDIENTS[short[0]]!.nameKo} 공급 한도(월 ${INGREDIENTS[short[0]]!.monthlySupplyKg!.toLocaleString()}kg)`; break; }
+      if (short) { blocked = `${INGREDIENTS[short[0]]!.nameKo} 공급 한도(월 ${ingredientSupplyCap(s, short[0]).toLocaleString()}kg)`; break; }
       if (ferm) { ferm.daysLeft -= recipe.fermentDays + 2; waterLeftL -= still.chargeL; }
       stillRuns.set(stillInst.id, (stillRuns.get(stillInst.id) ?? 0) - recipe.runs);
       distillerRuns -= recipe.runs;
@@ -231,6 +230,7 @@ export function advanceMonth(prev: GameState): GameState {
 
   pruneModifiers(s);
   resolveWaterPermit(s, report);
+  resolveLocalSupply(s, report);
   runEvents(s, report, monthOfYear);
   for (const e of s.equipment) if (e.readyMonth === s.month && s.month > 0) report.notes.push(`${EQUIPMENT[e.catalogId]?.nameKo ?? e.catalogId} 가동 시작`);
 
