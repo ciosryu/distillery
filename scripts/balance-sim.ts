@@ -3,7 +3,8 @@
 //       지역 = 국가(KR | JP | TW → 표준 산지) 또는 산지(gyeonggi | andong | jeju | kanto | kansai | hokkaido | yilan)
 import { advanceMonth, applyAction, bulkValuePerLPA, previewBlend, newGame, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SiteId, type SpiritKind } from '../src/sim';
 import { DEFAULT_SITE, SITES } from '../src/sim/content/sites';
-import { setKrBaseDeduction } from '../src/sim/content/regions';
+import { REGIONS, setKrBaseDeduction } from '../src/sim/content/regions';
+import { HOLDING } from '../src/sim/content/catalog';
 
 const SEEDS = Number(process.argv[2] ?? 12);
 const MONTHS = Number(process.argv[3] ?? 120);
@@ -14,8 +15,21 @@ const REGION = `${SITES[SITE].country}/${SITE}`;
 const BRIDGE = process.env.NO_BRIDGE !== '1';
 // 비교 실험용: KR_DEDUCTION=on|off 로 한국 세제 체계(기준판매비율 + 고세율 시장 보정, 결정 #61)를 덮어쓴다
 if (process.env.KR_DEDUCTION === 'on' || process.env.KR_DEDUCTION === 'off') setKrBaseDeduction(process.env.KR_DEDUCTION === 'on');
+// 비교 실험용: HOLDING_OFF=1 이면 숙성 재고 보유 비용(결정 #65)을 끈다, HOLDING_GRACE=개월 로 면제 기간 조정
+if (process.env.HOLDING_OFF === '1') { HOLDING.perCaskMonth = 0; HOLDING.insuranceRateMonth = 0; }
+if (process.env.HOLDING_GRACE) HOLDING.graceMonths = Number(process.env.HOLDING_GRACE);
 
-type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain';
+type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site';
+
+/** 산지 전용 전략 (결정 #65 대표 결정) — 없는 산지는 site 전략을 돌리지 않는다 */
+const SITE_STRATEGY: Partial<Record<SiteId, string>> = {
+  gyeonggi: '브랜드 + 대형 유통 납품 수락',
+  jeju: '브랜드 + 위스키를 면세 전용 한정판(프리미엄 패키징)으로',
+  kanto: '혼합 + 위탁생산 수락',
+  kansai: '브랜드 + 직판장 + 미즈나라 캐스크',
+  hokkaido: '브랜드 + 재고 담보대출로 버티기',
+  yilan: '브랜드 + 수집가 캐스크 매입 제안 수락',
+};
 
 const act = (s: GameState, a: Action) => applyAction(s, a).state;
 const stockOf = (s: GameState, cat: ProductCategory) => s.products.filter((p) => p.category === cat).reduce((t, p) => t + p.stockBottles, 0);
@@ -51,12 +65,16 @@ function fillMalt(s: GameState, maxLPA = Infinity, kind: 'malt' | 'grain' = 'mal
   return s;
 }
 
+let dutyFreeEditions = false;
+
 function bottleWhisky(s: GameState): GameState {
   if (stockOf(s, 'whisky') >= 800) return s;
-  const ready = s.casks.filter((c) => c.contents && c.contents.oakMonths >= 36 && !c.contents.sourced).slice(0, 3);
+  // 국가 최소 숙성(대만 24개월)을 따른다
+  const ready = s.casks.filter((c) => c.contents && c.contents.oakMonths >= REGIONS[s.regionId].whiskyMinMonths && !c.contents.sourced).slice(0, 3);
   if (!ready.length) return s;
   const comps = ready.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }));
-  const opts = { name: `싱글 몰트 ${s.month}`, targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' };
+  const df = dutyFreeEditions && SITES[s.siteId].dutyFree;
+  const opts = { name: `싱글 몰트 ${s.month}`, targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: df ? 'premium' : 'standard', dutyFreeOnly: df };
   return previewBlend(s, comps, opts).ok ? act(s, { type: 'bottle', components: comps, options: opts }) : s;
 }
 
@@ -85,6 +103,31 @@ function bottleBlended(s: GameState): GameState {
   const comps = [...g, ...m].map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }));
   const opts = { name: `블렌디드 ${s.month}`, targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' };
   return previewBlend(s, comps, opts).ok ? act(s, { type: 'bottle', components: comps, options: opts }) : s;
+}
+
+/** 산지 전용 전략의 추가 행동 */
+function siteActions(s: GameState): GameState {
+  switch (s.siteId) {
+    case 'gyeonggi':
+      for (const o of [...s.retailOffers]) s = act(s, { type: 'acceptRetail', offerId: o.id });
+      return s;
+    case 'kanto':
+      for (const o of [...s.oemOffers]) s = act(s, { type: 'acceptOem', offerId: o.id });
+      return s;
+    case 'kansai':
+      // 2년 차 이후 현금 여유가 생기면 직판장, 미즈나라는 소량씩
+      if (s.month >= 24 && s.cash > 400_000_000 && !s.equipment.some((e) => e.catalogId === 'upg_visitor')) s = act(s, { type: 'buyEquipment', catalogId: 'upg_visitor' });
+      if (s.month % 12 === 6 && s.cash > 200_000_000) s = act(s, { type: 'buyCasks', caskType: 'mizunara_hogshead', qty: 2 });
+      return s;
+    case 'hokkaido':
+      if (s.cash < 150_000_000) s = act(s, { type: 'takeLoan', offerId: 'inventory', amount: 200_000_000 });
+      return s;
+    case 'yilan':
+      for (const b of [...s.caskBids]) s = act(s, { type: 'acceptCaskBid', bidId: b.id });
+      return s;
+    default:
+      return s;
+  }
 }
 
 function finance(s: GameState): GameState {
@@ -155,6 +198,14 @@ function sellLots(s: GameState, kind: 'malt' | 'grain'): GameState {
 }
 
 function policy(s: GameState, strategy: Strategy): GameState {
+  if (strategy === 'site') {
+    dutyFreeEditions = true;
+    // 산지 전용: 간토는 혼합형, 나머지는 브랜드형 위에 대표 결정을 얹는다
+    s = siteActions(s);
+    const out = policy(s, s.siteId === 'kanto' ? 'hybrid' : 'brand');
+    dutyFreeEditions = false;
+    return out;
+  }
   if (s.month === 0) s = start(s, strategy);
   s = bottleCashProducts(s);
   if (strategy === 'brand') {
@@ -199,7 +250,7 @@ const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.le
 function netWorth(s: GameState): number {
   const stock = [...s.lots, ...s.casks.flatMap((c) => (c.contents ? [c.contents] : []))].reduce((t, l) => t + l.volumeL * l.abv * bulkValuePerLPA(s, l) * 0.85, 0);
   const products = s.products.reduce((t, p) => t + p.stockBottles * p.unitCost, 0);
-  return s.cash - s.loans.reduce((t, l) => t + l.balance, 0) + stock + products;
+  return s.cash - s.loans.reduce((t, l) => t + l.balance, 0) + stock + products + s.receivables.reduce((t, r) => t + r.amount, 0);
 }
 
 /** 보수적 순자산 = 원액 재고를 시가가 아닌 장부 원가로 평가 (회계상 재고 평가와 같음) */
@@ -228,8 +279,9 @@ function play(strategy: Strategy, seed: number): Result {
   };
 }
 
-const list: Strategy[] = WHICH === 'all' ? ['brand', 'hybrid', 'expand', 'grain'] : [WHICH as Strategy];
-const results: Record<Strategy, Result[]> = { brand: [], hybrid: [], expand: [], grain: [] };
+const list: Strategy[] = WHICH === 'all' ? ['brand', 'hybrid', 'expand', 'grain', ...(SITE_STRATEGY[SITE] ? ['site' as const] : [])] : [WHICH as Strategy];
+const results: Record<Strategy, Result[]> = { brand: [], hybrid: [], expand: [], grain: [], site: [] };
+if (SITE_STRATEGY[SITE]) console.log(`site 전략 = ${SITE_STRATEGY[SITE]}`);
 const wins: Record<string, number> = {};
 const bookWins: Record<string, number> = {};
 const tally = (rs: Result[], by: 'netWorth' | 'bookWorth', into: Record<string, number>) => {
