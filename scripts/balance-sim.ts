@@ -207,7 +207,8 @@ function policy(s: GameState, strategy: Strategy): GameState {
   } else if (strategy === 'hybrid') {
     // 몰트 생산의 일부만 계약, 나머지는 숙성. 위스키 재고가 쌓이면 오래된 캐스크를 현물 판매
     // v1.3: 몰트 생산 능력의 절반까지 계약
-    s = acceptContracts(s, capacityLPA(s, 'malt') * 0.5);
+    // v1.4: 혼합형은 '과도기 전략' — 위스키가 익기 전 첫 36개월만 계약으로 현금을 만든다 (HYB_UNTIL로 바꿀 수 있음)
+    if (s.month < Number(process.env.HYB_UNTIL ?? 36)) s = acceptContracts(s, capacityLPA(s, 'malt') * 0.5);
     s = fillMalt(s);
     if (stockOf(s, 'whisky') > 2000) {
       const old = s.casks.find((c) => c.contents && c.contents.oakMonths >= 48 && !c.contents.sourced);
