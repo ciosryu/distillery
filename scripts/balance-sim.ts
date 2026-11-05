@@ -29,7 +29,7 @@ type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site';
 const SITE_STRATEGY: Partial<Record<SiteId, string>> = {
   andong: '브랜드 + 안동 쌀 계약재배 1회 확대(소주 3배치)',
   gyeonggi: '브랜드 + 대형 유통 납품 수락',
-  jeju: '브랜드 + 위스키 일부를 면세 전용 한정판으로',
+  jeju: '브랜드 + 고소리술 면세 기념품 한정판(매대 1칸, 판당 300병)',
   kanto: '혼합 + 위탁생산(전용 증류기 지원형 포함) 수락',
   kansai: '브랜드 + 직판장 + 미즈나라 캐스크',
   hokkaido: '혼합 + 재고 담보대출로 버티기',
@@ -46,7 +46,7 @@ const BIG_RECIPE = 'B2B 몰트';
 
 /** 면세 한정판 (결정 #70): 전용 매대 1칸 — 제주 원료 기념품(고소리술) 또는 위스키 한정판. DF_MODE=soju|whisky|both [실험용] */
 const DF_MODE = process.env.DF_MODE ?? 'soju';
-const DF_SOUVENIR_BOTTLES = Number(process.env.DF_SOUVENIR_BOTTLES ?? 600);
+const DF_SOUVENIR_BOTTLES = Number(process.env.DF_SOUVENIR_BOTTLES ?? 300);
 const dfSlotFree = (s: GameState) => dutyFreeEditions && !!SITES[s.siteId].dutyFree && !dutyFreeSlotBlocker(s);
 
 /** 제주 원료 소주 원액 일부를 면세 기념품 한정판(40%·500ml)으로 */
