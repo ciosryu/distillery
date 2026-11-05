@@ -1,6 +1,6 @@
 import { CATEGORY } from '../../sim/content/categories';
 import { categoryName, consumerPrice, regionOf } from '../../sim/content/regions';
-import { bottleMargin, calendar, coverage, demandFor, dutyFreeDemand, productConsumerPrice } from '../../sim';
+import { bottleMargin, calendar, coverage, demandFor, dutyFreeConsumerPrice, dutyFreeDemand, productConsumerPrice } from '../../sim';
 import { DUTY_FREE, siteOf } from '../../sim/content/sites';
 import { useGame } from '../../store/game';
 import { num, pct, won } from '../format';
@@ -36,7 +36,11 @@ export function Sales() {
             {active.map((p) => {
               const d = demandFor(s, p, counts[p.category] ?? 1, monthOfYear);
               const df = site.dutyFree ? dutyFreeDemand(s, p, counts[p.category] ?? 1, monthOfYear) : 0;
-              const ratio = d.consumerPricePerL / d.refPricePerL;
+              // 면세 전용 한정판은 국내 매대에 없다 → 면세 소비자가·면세 기준가로 보여 준다
+              const dfOnly = !!p.dutyFreeOnly;
+              const consumer = dfOnly ? dutyFreeConsumerPrice(p) : productConsumerPrice(s, p);
+              const ratio = dfOnly ? consumer / (p.bottleMl / 1000) / (d.refPricePerL * DUTY_FREE.refFactor) : d.consumerPricePerL / d.refPricePerL;
+              const domestic = dfOnly ? 0 : d.demandBottles;
               return (
                 <tr key={p.id}>
                   <Td className="font-medium">{p.name}</Td>
@@ -45,9 +49,9 @@ export function Sales() {
                   <Td right>{p.quality}</Td>
                   <Td right>{num(p.stockBottles)}</Td>
                   <Td><NumberField value={p.price} min={100} step={100} width="w-24" onCommit={(v) => dispatch({ type: 'setPrice', productId: p.id, price: v })} /></Td>
-                  <Td right>{won(productConsumerPrice(s, p))}</Td>
+                  <Td right>{won(consumer)}{dfOnly && <div className="text-xs text-stone-500">면세가</div>}</Td>
                   <Td right className={ratio > 1.3 ? 'text-rose-700 dark:text-rose-400' : ratio < 0.8 ? 'text-emerald-700 dark:text-emerald-400' : ''}>{pct(ratio, 0)}</Td>
-                  <Td right>{num(d.demandBottles)}병{df > 0 && <div className="text-xs text-stone-500">+ 면세 {num(df)}병</div>}</Td>
+                  <Td right>{dfOnly ? <>면세 {num(df)}병</> : <>{num(domestic)}병{df > 0 && <div className="text-xs text-stone-500">+ 면세 {num(df)}병</div>}</>}</Td>
                   <Td right>{num(p.lastMonthSold)}{(p.lastMonthDutyFree ?? 0) > 0 && <div className="text-xs text-stone-500">면세 {num(p.lastMonthDutyFree!)}</div>}</Td>
                   <Td right>{num(p.totalSold)}</Td>
                   <Td right>{(() => { const m = bottleMargin(p, site.outboundLogistics); return <span className={m.rate < 0.15 ? 'text-rose-700 dark:text-rose-400' : m.rate > 0.5 ? 'text-emerald-700 dark:text-emerald-400' : ''}>{won(m.perBottle)} ({pct(m.rate, 0)})</span>; })()}</Td>
@@ -68,7 +72,7 @@ export function Sales() {
                 <Td>{categoryName(region, k, CATEGORY[k].nameKo)}</Td>
                 <Td right>{num(m.baseCases)}</Td>
                 <Td right>{won(m.refConsumerPricePerL)}</Td>
-                <Td right>{m.elasticity}</Td>
+                <Td right>{Number(m.elasticity.toFixed(2))}</Td>
                 <Td right>{pct(m.shareCap, m.shareCap < 0.01 ? 1 : 0)}</Td>
                 <Td right>{(s.trend[k] ?? 1).toFixed(2)}</Td>
                 <Td className="text-xs text-stone-500">{m.baseSource}</Td>

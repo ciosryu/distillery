@@ -65,7 +65,7 @@ function SiteCard() {
             const series = s.siteState.dfSeries;
             return (
               <div>
-                <b>지정면세점</b> — 지난달 면세 판매 {num(last?.dutyFreeBottles ?? 0)}병 (주세·부가세 없음) · 관광객 입소문 인지도 +{((last?.dutyFreeAwareness ?? 0) * 100).toFixed(2)}%p
+                <b>지정면세점</b> — 지난달 면세 판매 {num(last?.dutyFreeBottles ?? 0)}병 (주세·부가세 없음) · 관광객 입소문 인지도 {(() => { const v = (last?.dutyFreeAwareness ?? 0) * 100; return v > 0 && v < 0.01 ? '+0.01%p 미만' : `+${v.toFixed(2)}%p`; })()}
                 <div className="text-xs text-stone-500">
                   면세 한정판 매대: {live?.dfEdition ? `Vol.${live.dfEdition.vol} ${live.name} — 출시 ${s.month - live.createdMonth + 1}개월째, 남은 ${num(live.stockBottles)}병` : '비어 있음'} · 연속 완판 {series?.streak ?? 0}회
                 </div>

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { BOTTLE_SIZES, PACKAGING, packagingCost } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
-import { dutyFreeSlotBlocker, nextDutyFreeEdition, previewBlend, topNotes, type BlendComponent, type BottleOptions, type SpiritKind } from '../../sim';
+import { calendar, dutyFreeDemand, dutyFreeSlotBlocker, nextDutyFreeEdition, previewBlend, topNotes, type Product, type BlendComponent, type BottleOptions, type SpiritKind } from '../../sim';
 import { DUTY_FREE, siteOf } from '../../sim/content/sites';
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
@@ -27,6 +27,19 @@ export function Bottling() {
     return { source, id, liters: l };
   });
   const preview = components.length ? previewBlend(s, components, opts) : null;
+  // 면세 한정판 예상 판매 — 이번 달 기준 면세 수요(권장 출고가)로 출시 후 완판 기한 안에 몇 병 팔릴지
+  const dfForecast = (() => {
+    if (!preview?.ok || !preview.dfEdition || !preview.category || !preview.evaluation) return null;
+    const p: Product = {
+      id: 'preview', name: '', category: preview.category, ageYears: preview.ageYears, abv: preview.finalAbv, bottleMl: opts.bottleMl, chillFiltered: opts.chillFilter, packagingId: opts.packagingId,
+      flavor: preview.flavor, quality: preview.evaluation.quality, typicity: preview.evaluation.typicity, style: preview.evaluation.style, sourcedShare: preview.sourcedShare,
+      stockBottles: preview.bottles, price: preview.suggestedPrice, unitCost: preview.unitCost, createdMonth: s.month, lastMonthSold: 0, totalSold: 0,
+      dutyFreeOnly: true, localIngredient: preview.localIngredient, dfEdition: preview.dfEdition,
+    };
+    const same = s.products.filter((x) => x.stockBottles > 0 && x.category === p.category).length + 1;
+    const perMonth = dutyFreeDemand(s, p, same, calendar(s).monthOfYear);
+    return { perMonth, window: perMonth * DUTY_FREE.sellOutMonths };
+  })();
   const toggle = (key: string, vol: number) => setPicked((p) => { const n = { ...p }; if (n[key] != null) delete n[key]; else n[key] = Math.floor(vol * 10) / 10; return n; });
   const abvValue = opts.targetAbv === 'cask' ? 'cask' : String(opts.targetAbv);
 
@@ -87,7 +100,9 @@ export function Bottling() {
                 <dt className="text-stone-500">품질 / 전형성</dt><dd className="text-right tabular-nums">{preview.evaluation?.quality ?? '—'} / {preview.evaluation?.typicity ?? '—'}</dd>
                 <dt className="text-stone-500">병당 원가</dt><dd className="text-right tabular-nums">{won(preview.unitCost)}</dd>
                 <dt className="text-stone-500">권장 출고가</dt><dd className="text-right tabular-nums">{won(preview.suggestedPrice)}</dd>
+                {dfForecast && <><dt className="text-stone-500">예상 면세 판매</dt><dd className={`text-right tabular-nums ${dfForecast.window < preview.bottles ? 'text-amber-800 dark:text-amber-300' : ''}`}>월 {num(dfForecast.perMonth)}병 · {DUTY_FREE.sellOutMonths}개월 {num(dfForecast.window)}병</dd></>}
               </dl>
+              {dfForecast && dfForecast.window < preview.bottles && <p className="text-xs text-amber-800 dark:text-amber-300">⚠ 이번 달 수요(계절·인지도 반영)로는 {DUTY_FREE.sellOutMonths}개월 안에 {num(preview.bottles)}병을 다 팔기 어렵습니다 — 사용량을 줄이면 완판 보너스를 노릴 수 있습니다</p>}
               {preview.warnings.map((w) => <p key={w} className="text-xs text-amber-800 dark:text-amber-300">⚠ {w}</p>)}
               {preview.errors.map((e) => <p key={e} className="text-xs text-rose-700 dark:text-rose-400">✕ {e}</p>)}
               <Button variant="primary" disabled={!preview.ok} onClick={() => { if (dispatch({ type: 'bottle', components, options: opts })) { setPicked({}); setOpts({ ...opts, name: '' }); } }}>병입하기</Button>
