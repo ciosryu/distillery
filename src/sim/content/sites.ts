@@ -189,14 +189,13 @@ export const SITES: Record<SiteId, SiteDef> = {
     demandFactor: 1, extraCandidates: 0,
     heating: { months: [11, 12, 1, 2, 3], perMonth: 4_000_000, energyFactor: 1.6 },
     tourism: 900, inventoryLtv: 0.6,
-    bulkFreight: 0.85,
     starter: { name: '오노 다이치', distillery: '시라카바 증류소', casks: bourbon(10) },
     traits: [
       { tone: 'good', text: '싼 땅: 관리비 ×0.9, 숙성고 증설비 ×0.7' },
       { tone: 'good', text: '낮은 증발(연 약 1.5%) — 장기 숙성 손실이 가장 적다' },
       { tone: 'good', text: '감자 쇼추, 석탄 직화 증류기(바디·오일리↑, 숙련 요구)' },
       { tone: 'bad', text: '난방: 11~3월 난방비 월 400만 원 + 증류 에너지비 ×1.6' },
-      { tone: 'bad', text: '본토 출고 물류비 +25% (해협 운송), 원액 B2B 단가 ×0.85' },
+      { tone: 'bad', text: '본토 출고 물류비 +25% (해협 운송)' },
       { tone: 'bad', text: '숙성이 느리다 (간토의 약 70%) — 데스밸리가 길다' },
       { tone: 'bad', text: '폭설: 1~2월 생산 중단 위험' },
     ],
@@ -252,7 +251,7 @@ export const DUTY_FREE = {
   refFactor: 0.6,
   /** 1인 구매 한도 미화 400달러 ≒ 55만 원 [환율 가정] — 이보다 비싼 병은 팔 수 없다 */
   maxBottlePrice: 550_000,
-  /** 면세 전용 한정판(결정 #65): 전용 매대 점유 상한 배수, 한정판 매력도 배수 [튜닝] — 첫 밸런스(×2·×1.15) 20/20, ×1.5 16/20 지배라 ×1.3으로 하향 (결정 #68) */
-  limitedShareCap: 1.3,
-  limitedAppeal: 1.1,
+  /** 면세 전용 한정판(결정 #65): 전용 매대 점유 상한 배수, 한정판 매력도 배수 [튜닝] — 첫 밸런스(×2·×1.15) 20/20, ×1.5 16/20, ×1.3 14.5/20 지배라 ×1.15·×1.05로 하향 (결정 #68) */
+  limitedShareCap: 1.15,
+  limitedAppeal: 1.05,
 };

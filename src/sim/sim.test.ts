@@ -661,7 +661,7 @@ describe('보유 비용·산지 대표 결정 (결정 #65)', () => {
     j.awareness = 0.3;
     const normal = dutyFreeDemand(j, product(), 1, 8);
     const limited = dutyFreeDemand(j, product({ dutyFreeOnly: true }), 1, 8);
-    expect(limited).toBeGreaterThan(normal * 1.3);
+    expect(limited).toBeGreaterThan(normal * 1.15);
     expect(dutyFreeDemand(j, product(), 1, 8)).toBeGreaterThan(dutyFreeDemand(j, product(), 1, 3));
     const a = newGame({ seed: 1, site: 'andong' });
     const lot = { ...malt(48), id: 'L1' };
@@ -669,7 +669,7 @@ describe('보유 비용·산지 대표 결정 (결정 #65)', () => {
     expect(previewBlend(a, [{ source: 'lot', id: 'L1', liters: 100 }], { name: 'x', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard', dutyFreeOnly: true }).errors.some((e) => e.includes('면세'))).toBe(true);
   });
 
-  it('안동 계약재배 확대·원액 운송비(결정 #68): 6개월 뒤 공급 한도 +400kg(최대 3회), 섬 산지는 블렌더 단가 ×0.85', () => {
+  it('안동 계약재배 확대·원액 운송비(결정 #68): 6개월 뒤 공급 한도 +400kg(최대 3회), 제주는 블렌더 단가 ×0.85', () => {
     let a = newGame({ seed: 1, site: 'andong' });
     expect(ingredientSupplyCap(a, 'andong_rice')).toBe(800);
     a = applyAction(a, { type: 'expandLocalSupply' }).state;
@@ -681,9 +681,9 @@ describe('보유 비용·산지 대표 결정 (결정 #65)', () => {
     expect(ingredientSupplyCap(a, 'rice_domestic')).toBe(Infinity);
     expect(ingredientSupplyCap(newGame({ seed: 1, site: 'gyeonggi' }), 'andong_rice')).toBe(800);
     const lot = malt(0);
-    const h = newGame({ seed: 1, site: 'hokkaido' });
-    const k = newGame({ seed: 1, site: 'kanto' });
-    expect(spotBidPerLPA(h, lot) / spotBidPerLPA(k, lot)).toBeCloseTo(0.85, 6);
+    const j = newGame({ seed: 1, site: 'jeju' });
+    const g = newGame({ seed: 1, site: 'gyeonggi' });
+    expect(spotBidPerLPA(j, lot) / spotBidPerLPA(g, lot)).toBeCloseTo(0.85, 6);
   });
 
   it('대만은 24개월이면 위스키, 수집가는 열대향 캐스크에 더 쳐준다 / 일본은 미즈나라 인센스 프리미엄', () => {

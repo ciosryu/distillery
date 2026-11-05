@@ -26,12 +26,12 @@ type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site';
 
 /** 산지 전용 전략 (결정 #65 대표 결정) — 없는 산지는 site 전략을 돌리지 않는다 */
 const SITE_STRATEGY: Partial<Record<SiteId, string>> = {
-  andong: '브랜드 + 안동 쌀 계약재배 확대(감면 구간 넘어 소주 증산)',
+  andong: '브랜드 + 안동 쌀 계약재배 1회 확대(소주 3배치)',
   gyeonggi: '브랜드 + 대형 유통 납품 수락',
   jeju: '브랜드 + 위스키 일부를 면세 전용 한정판으로',
   kanto: '혼합 + 위탁생산(전용 증류기 지원형 포함) 수락',
   kansai: '브랜드 + 직판장 + 미즈나라 캐스크',
-  hokkaido: '브랜드 + 재고 담보대출로 버티기',
+  hokkaido: '혼합 + 재고 담보대출로 버티기',
   yilan: '브랜드 + 수집가 캐스크 매입 제안 수락',
 };
 
@@ -127,8 +127,8 @@ function siteActions(s: GameState): GameState {
       return s;
     }
     case 'andong': {
-      // 계약재배를 늘려 안동 쌀 소주를 증산한다 (감면 구간 10kL를 넘어서는 선택)
-      if (s.month % 12 === 0 && s.cash > 150_000_000) s = act(s, { type: 'expandLocalSupply' });
+      // 계약재배를 한 번 늘려 안동 쌀 소주를 3배치로 (감면 구간 경계 근처에서 증산)
+      if (s.month === 0) s = act(s, { type: 'expandLocalSupply' });
       const local = s.recipes.find((r) => r.mashBill.some((m) => m.ingredientId === 'andong_rice'));
       const batches = 2 + Math.floor((s.siteState.localSupplyKg ?? 0) / 400);
       if (local) s = act(s, { type: 'setOrder', recipeId: local.id, batchesPerMonth: batches });
@@ -232,7 +232,8 @@ function policy(s: GameState, strategy: Strategy): GameState {
     dutyFreeEditions = true;
     // 산지 전용: 간토는 혼합형, 나머지는 브랜드형 위에 대표 결정을 얹는다
     s = siteActions(s);
-    const out = policy(s, s.siteId === 'kanto' ? 'hybrid' : 'brand');
+    // 일본 간토·홋카이도는 일본의 기본 전략인 혼합형 위에 대표 결정을 얹는다
+    const out = policy(s, s.siteId === 'kanto' || s.siteId === 'hokkaido' ? 'hybrid' : 'brand');
     dutyFreeEditions = false;
     return out;
   }
