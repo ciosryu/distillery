@@ -131,9 +131,9 @@ function finance(s: GameState): GameState {
   return s;
 }
 
-function acceptContracts(s: GameState, maxCommittedLPA: number, spirit: ContractTerms['spirit'] = 'malt_newmake'): GameState {
+function acceptContracts(s: GameState, maxCommittedLPA: number, spirit: ContractTerms['spirit'] = 'malt_newmake', endBy = Infinity): GameState {
   for (const o of [...s.contractOffers]) {
-    if (o.spirit !== spirit) continue;
+    if (o.spirit !== spirit || s.month + o.termMonths > endBy) continue;
     // 크래프트 계약(#78)은 일반 계약과 별도 한도(몰트 생산 능력의 25%)를 쓰고, 최근 몰트 뉴메이크 품질로 판단
     const craft = !!o.craft;
     const committed = s.contracts.filter((c) => c.spirit === spirit && !!c.craft === craft).reduce((t, c) => t + c.lpaPerMonth, 0);
@@ -207,8 +207,10 @@ function policy(s: GameState, strategy: Strategy): GameState {
   } else if (strategy === 'hybrid') {
     // 몰트 생산의 일부만 계약, 나머지는 숙성. 위스키 재고가 쌓이면 오래된 캐스크를 현물 판매
     // v1.3: 몰트 생산 능력의 절반까지 계약
-    // v1.4: 혼합형은 '과도기 전략' — 위스키가 익기 전 첫 36개월만 계약으로 현금을 만든다 (HYB_UNTIL로 바꿀 수 있음)
-    if (s.month < Number(process.env.HYB_UNTIL ?? 36)) s = acceptContracts(s, capacityLPA(s, 'malt') * 0.5);
+    // v1.4: 혼합형은 '과도기 전략' — 위스키가 익기 전에만 계약으로 현금을 만든다.
+    // 납품이 36개월 안에 끝나는 계약만 받는다: 36개월 뒤까지 이어지는 계약은 4~7년차 위스키를 깎아 먹어 파산을 부른다 (§16.16)
+    // HYB_UNTIL = 수락 마감 월, HYB_END = 납품 종료 기한
+    if (s.month < Number(process.env.HYB_UNTIL ?? 36)) s = acceptContracts(s, capacityLPA(s, 'malt') * 0.5, 'malt_newmake', Number(process.env.HYB_END ?? 36));
     s = fillMalt(s);
     if (stockOf(s, 'whisky') > 2000) {
       const old = s.casks.find((c) => c.contents && c.contents.oakMonths >= 48 && !c.contents.sourced);
@@ -257,6 +259,37 @@ function bookWorth(s: GameState): number {
   return s.cash - s.loans.reduce((t, l) => t + l.balance, 0) + stock + products;
 }
 
+/** DIAG=1: 판마다 현금 흐름 진단을 stderr에 JSON 한 줄로 남긴다 (파산 원인 분석용) */
+const DIAG = process.env.DIAG === '1';
+function diag(strategy: Strategy, seed: number, s: GameState): void {
+  const sumBy = (from: number, to: number) => {
+    const rs = s.reports.filter((r) => r.month >= from && r.month < to);
+    const exp: Record<string, number> = {};
+    for (const r of rs) for (const [k, v] of Object.entries(r.expenses)) exp[k] = (exp[k] ?? 0) + v;
+    return {
+      retail: rs.reduce((t, r) => t + r.revenue, 0), bulk: rs.reduce((t, r) => t + r.bulkRevenue, 0), tourism: rs.reduce((t, r) => t + (r.tourismRevenue ?? 0), 0),
+      penalty: rs.reduce((t, r) => t + r.bulk.reduce((u, b) => u + b.penalty, 0), 0), exp,
+    };
+  };
+  const cash = s.reports.map((r) => Math.round(r.cashEnd / 1e6));
+  const firstNeg = cash.findIndex((c) => c < 0);
+  console.error(JSON.stringify({
+    strategy, seed, region: REGION, site: SITE ?? null, bankrupt: s.status === 'bankrupt', endMonth: s.month, firstNeg,
+    cash, rev: s.reports.map((r) => Math.round(r.revenue / 1e6)), debt: s.reports.map((r) => Math.round(((r.expenses.principal ?? 0) + (r.expenses.interest ?? 0)) / 1e6)),
+    loans: s.loans.map((l) => ({ id: l.offerId, bal: Math.round(l.balance / 1e6), start: l.startMonth, pay: Math.round(l.monthlyPayment / 1e6), grace: l.graceMonths })), investorShare: s.investorShare,
+    y1_3: sumBy(0, 36), y4_5: sumBy(36, 60), all: sumBy(0, s.month),
+    events: s.reports.flatMap((r) => r.events.map((e) => `${r.month}:${e}`)),
+    unit: (() => {
+      const prod: Record<string, { lpa: number; cost: number }> = {};
+      for (const r of s.reports) for (const p of r.production) { const x = (prod[p.name] ??= { lpa: 0, cost: 0 }); x.lpa += p.lpa; x.cost += p.cost; }
+      const del = s.reports.flatMap((r) => r.bulk);
+      const dl = del.reduce((t, b) => t + b.deliveredLPA, 0);
+      return { prod: Object.fromEntries(Object.entries(prod).map(([k, v]) => [k, { lpa: Math.round(v.lpa), perLPA: Math.round(v.cost / Math.max(1, v.lpa)) }])), deliveredLPA: Math.round(dl), contractPerLPA: Math.round(del.reduce((t, b) => t + b.revenue, 0) / Math.max(1, dl)) };
+    })(),
+    contracts: s.contracts.length, casks: s.casks.filter((c) => c.contents).length,
+  }));
+}
+
 interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWorth: number; bookWorth: number; firstPositive: number; y5retail: number; y5bulk: number }
 
 function play(strategy: Strategy, seed: number): Result {
@@ -270,6 +303,7 @@ function play(strategy: Strategy, seed: number): Result {
   let fp = -1;
   for (let i = 2; i < net.length; i++) if ((net[i]! + net[i - 1]! + net[i - 2]!) / 3 > 0) { fp = i; break; }
   const y5 = s.reports.filter((r) => r.month >= 48 && r.month < 60);
+  if (DIAG) diag(strategy, seed, s);
   return {
     strategy, bankrupt: s.status === 'bankrupt', minCash: lo, netWorth: s.status === 'bankrupt' ? -Infinity : netWorth(s), bookWorth: s.status === 'bankrupt' ? -Infinity : bookWorth(s), firstPositive: fp,
     y5retail: y5.reduce((t, r) => t + r.revenue, 0), y5bulk: y5.reduce((t, r) => t + r.bulkRevenue, 0),
