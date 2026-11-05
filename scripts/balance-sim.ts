@@ -19,7 +19,13 @@ if (process.env.GRAIN_DEPTH) REGIONS[REGION].grainSpotDepthLPA = Number(process.
 
 type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain';
 
-const act = (s: GameState, a: Action) => applyAction(s, a).state;
+/** 현물 판매 수입 — 턴 사이 행동이라 월간 보고서에 안 잡히므로 따로 센다 (월 → 원) */
+let spotIncome: number[] = [];
+const act = (s: GameState, a: Action) => {
+  const next = applyAction(s, a).state;
+  if (a.type === 'sellBulk' || a.type === 'acceptCaskBid') spotIncome[s.month] = (spotIncome[s.month] ?? 0) + (next.cash - s.cash);
+  return next;
+};
 const stockOf = (s: GameState, cat: ProductCategory) => s.products.filter((p) => p.category === cat).reduce((t, p) => t + p.stockBottles, 0);
 /** 지역마다 프리셋 이름이 다르므로 kind(+피트 여부)로 첫 레시피를 찾는다 */
 const recipeOf = (s: GameState, kind: SpiritKind) => s.recipes.find((r) => r.kind === kind && !r.mashBill.some((m) => m.ingredientId === 'malt_peated'));
@@ -303,7 +309,7 @@ function diag(strategy: Strategy, seed: number, s: GameState): void {
   const firstNeg = cash.findIndex((c) => c < 0);
   console.error(JSON.stringify({
     strategy, seed, region: REGION, site: SITE ?? null, bankrupt: s.status === 'bankrupt', endMonth: s.month, firstNeg,
-    cash, rev: s.reports.map((r) => Math.round(r.revenue / 1e6)), debt: s.reports.map((r) => Math.round(((r.expenses.principal ?? 0) + (r.expenses.interest ?? 0)) / 1e6)),
+    cash, rev: s.reports.map((r) => Math.round(r.revenue / 1e6)), spot: s.reports.map((r) => Math.round((spotIncome[r.month] ?? 0) / 1e6)), bulkRev: s.reports.map((r) => Math.round(r.bulkRevenue / 1e6)), debt: s.reports.map((r) => Math.round(((r.expenses.principal ?? 0) + (r.expenses.interest ?? 0)) / 1e6)),
     loans: s.loans.map((l) => ({ id: l.offerId, bal: Math.round(l.balance / 1e6), start: l.startMonth, pay: Math.round(l.monthlyPayment / 1e6), grace: l.graceMonths })), investorShare: s.investorShare,
     y1_3: sumBy(0, 36), y4_5: sumBy(36, 60), all: sumBy(0, s.month),
     events: s.reports.flatMap((r) => r.events.map((e) => `${r.month}:${e}`)),
@@ -333,6 +339,7 @@ interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWo
 
 function play(strategy: Strategy, seed: number): Result {
   let s = newGame({ seed, region: REGION, site: SITE });
+  spotIncome = [];
   let lo = s.cash;
   for (let m = 0; m < MONTHS && s.status === 'running'; m++) {
     s = advanceMonth(policy(s, strategy));
