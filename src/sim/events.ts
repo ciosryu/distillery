@@ -1,5 +1,6 @@
 import { EVENT, EVENTS, type Effect, type EventDef, type Requirement } from './content/events';
-import { KOREA } from './content/korea';
+import { regionOf } from './content/regions';
+import { BUYERS, COMPETITIONS, CRITICS, displayName } from './content/names';
 import { makeSpecialContractOffer } from './bulk';
 import { clamp } from './flavor';
 import { addModifier } from './modifiers';
@@ -16,7 +17,7 @@ const LOG_KEPT = 60;
 
 function meets(s: GameState, r: Requirement): boolean {
   switch (r) {
-    case 'activeContract': return s.contracts.length > 0;
+    case 'activeContract': return s.contracts.some((c) => BUYERS.find((b) => b.id === c.buyerId)?.canDefault);
     case 'filledCasks': return s.casks.some((c) => c.contents);
     case 'whiskyStock': return s.products.filter((p) => p.category === 'whisky' || p.category === 'blended_whisky').reduce((t, p) => t + p.stockBottles, 0) >= 300;
     case 'twoStaff': return s.staff.length >= 2;
@@ -27,6 +28,7 @@ function meets(s: GameState, r: Requirement): boolean {
 }
 
 function eligible(s: GameState, def: EventDef, monthOfYear: number): boolean {
+  if (def.regions && !def.regions.includes(s.regionId)) return false;
   if (def.minMonth != null && s.month < def.minMonth) return false;
   if (def.months && !def.months.includes(monthOfYear)) return false;
   const last = s.eventLastMonth[def.id];
@@ -80,8 +82,10 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         break;
       }
       case 'buyerDefault': {
-        if (!s.contracts.length) break;
-        const c = rng.pick(s.contracts);
+        // 부정적 이벤트는 가상 회사에만 (실존 기업 명예 보호)
+        const risky = s.contracts.filter((c) => BUYERS.find((b) => b.id === c.buyerId)?.canDefault);
+        if (!risky.length) break;
+        const c = rng.pick(risky);
         const unpaid = Math.round(c.lpaPerMonth * c.pricePerLPA * (1 - c.prepayShare));
         s.cash -= unpaid;
         s.contracts = s.contracts.filter((x) => x.id !== c.id);
@@ -137,7 +141,13 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
   return notes;
 }
 
-function fire(s: GameState, def: EventDef, rng: Rng, report: MonthReport): void {
+/** 이벤트 문구의 {competition} {critic} 자리에 실명(또는 가상명)을 넣는다 */
+function fill(text: string, rng: Rng): string {
+  return text.replace('{competition}', displayName(rng.pick(COMPETITIONS))).replace('{critic}', displayName(rng.pick(CRITICS)));
+}
+
+function fire(s: GameState, base: EventDef, rng: Rng, report: MonthReport): void {
+  const def = { ...base, title: fill(base.title, rng), text: fill(base.text, rng) };
   if (def.choices?.length) {
     s.pendingEvents.push({
       id: nid(s, 'V'), defId: def.id, title: def.title, text: def.text, month: s.month,
@@ -183,7 +193,7 @@ export function runEvents(s: GameState, report: MonthReport, monthOfYear: number
   for (const def of order) {
     if (fired >= MAX_NEW_EVENTS_PER_MONTH) break;
     if (!eligible(s, def, monthOfYear)) continue;
-    const weight = KOREA.eventWeights[def.category] ?? 1;
+    const weight = regionOf(s).eventWeights[def.category] ?? 1;
     if (!rng.chance(def.chance * weight * EVENT_RATE)) continue;
     s.eventLastMonth[def.id] = s.month;
     fired++;

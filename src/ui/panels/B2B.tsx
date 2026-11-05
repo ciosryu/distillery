@@ -85,6 +85,27 @@ export function B2B() {
         )}
       </Card>
 
+      <Card title="독립 병입자(IB) 캐스크 매입 제안 — 5년 이상·품질 70 이상 캐스크">
+        {!s.caskBids.length ? <Empty>제안이 없습니다 (조건에 맞는 캐스크가 있으면 가끔 들어옵니다)</Empty> : (
+          <Table head={['병입자', '캐스크', '숙성', '품질', '제안가(현물가의 135%)', '만료', '']}>
+            {s.caskBids.map((b) => {
+              const c = s.casks.find((x) => x.id === b.caskId);
+              return (
+                <tr key={b.id}>
+                  <Td className="font-medium">{b.buyerName}</Td>
+                  <Td>{b.caskId}</Td>
+                  <Td right>{c?.contents ? months(c.contents.oakMonths) : '—'}</Td>
+                  <Td right>{c?.contents ? lotQuality(c.contents) : '—'}</Td>
+                  <Td right>{won(b.price)}</Td>
+                  <Td right>{b.expiresMonth - s.month}개월 후</Td>
+                  <Td><Button small variant="primary" onClick={() => dispatch({ type: 'acceptCaskBid', bidId: b.id })}>판매</Button></Td>
+                </tr>
+              );
+            })}
+          </Table>
+        )}
+      </Card>
+
       <Card title="현물 벌크 판매 — 숙성 캐스크 (캐스크째)">
         {!maltCasks.length ? <Empty>숙성 중인 몰트 캐스크가 없습니다</Empty> : (
           <Table head={['캐스크', '종류', '숙성', '액량', '도수', '품질', '단가(LPA)', '판매 금액(캐스크 포함)', 'LPA당 원가', '']}>

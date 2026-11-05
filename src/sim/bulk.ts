@@ -1,5 +1,6 @@
-import { BULK, BULK_BUYERS, CASKS, EQUIPMENT } from './content/catalog';
-import { KOREA } from './content/korea';
+import { BULK, CASKS, EQUIPMENT } from './content/catalog';
+import { BUYERS, displayName, INDEPENDENT_BOTTLERS } from './content/names';
+import { regionOf } from './content/regions';
 import { mod } from './modifiers';
 import { clamp, evaluate } from './flavor';
 import { lotCategory } from './blending';
@@ -27,8 +28,8 @@ export function lotQuality(lot: SpiritLot): number {
 export const qualityFactor = (q: number) => 0.7 + 0.6 * clamp((q - 35) / 40, 0, 1);
 
 /** 국산 원액 프리미엄 비율 (지역 기본값 × 이벤트 보정) */
-export function domesticPremium(s: Pick<GameState, 'modifiers' | 'month'>): number {
-  return KOREA.domesticSpiritPremium * mod(s, 'domestic_premium');
+export function domesticPremium(s: Pick<GameState, 'modifiers' | 'month' | 'regionId'>): number {
+  return regionOf(s).domesticSpiritPremium * mod(s, 'domestic_premium');
 }
 
 /** 벌크 기준가치(원/LPA): 몰트·그레인 원액만 거래 */
@@ -92,8 +93,14 @@ function contractPrice(s: GameState, spirit: ContractTerms['spirit'], style: Con
   return Math.round(p / 100) * 100;
 }
 
-function buildOffer(s: GameState, rng: Rng, spirit: ContractTerms['spirit'], lpaPerMonth: number, termMonths: number, prepayShare: number, priceFactor = 1): ContractOffer {
-  const buyer = rng.pick(BULK_BUYERS);
+/** 이 지역에서 원액을 사는 회사: 현지 회사(국산 프리미엄) + 글로벌 회사. 가상 회사는 부정적 이벤트용으로 섞여 있다 */
+export function buyersFor(s: GameState) {
+  return BUYERS.filter((b) => b.country === s.regionId || b.country === 'GLOBAL').map((b) => ({ id: b.id, nameKo: displayName(b), domestic: b.country === s.regionId, canDefault: !!b.canDefault }));
+}
+
+function buildOffer(s: GameState, rng: Rng, spirit: ContractTerms['spirit'], lpaPerMonth: number, termMonths: number, prepayShare: number, priceFactor = 1, buyerFilter?: (b: { canDefault: boolean }) => boolean): ContractOffer {
+  const pool = buyersFor(s).filter((b) => (buyerFilter ? buyerFilter(b) : true));
+  const buyer = rng.pick(pool.length ? pool : buyersFor(s));
   const style = spirit === 'grain_newmake' ? 'any' : rng.pick(['any', 'any', 'unpeated', 'peated'] as const);
   const minQuality = spirit === 'grain_newmake' ? rng.int(30, 38) : rng.int(35, 46);
   const pricePerLPA = contractPrice(s, spirit, style, minQuality, buyer.domestic, prepayShare > 0, priceFactor);
@@ -108,7 +115,7 @@ export function makeContractOffer(s: GameState, rng: Rng): ContractOffer {
   const grainCap = capacityLPA(s, 'grain');
   const spirit: ContractTerms['spirit'] = grainCap > 0 && rng.chance(0.5) ? 'grain_newmake' : 'malt_newmake';
   const cap = spirit === 'grain_newmake' ? grainCap : capacityLPA(s, 'malt');
-  const lpaPerMonth = Math.max(40, Math.round((cap * rng.pick([0.15, 0.25, 0.35, 0.5]) * (0.8 + 0.4 * s.b2bTrust / 100) * KOREA.bulkMarketDepth) / 10) * 10);
+  const lpaPerMonth = Math.max(40, Math.round((cap * rng.pick([0.15, 0.25, 0.35, 0.5]) * (0.8 + 0.4 * s.b2bTrust / 100) * regionOf(s).bulkMarketDepth) / 10) * 10);
   return buildOffer(s, rng, spirit, lpaPerMonth, rng.pick([12, 24, 36]), rng.chance(0.35) ? 0.3 : 0);
 }
 
@@ -119,7 +126,8 @@ export function makeSpecialContractOffer(s: GameState, rng: Rng, e: { capacitySh
   const cap = spirit === 'grain_newmake' ? grainCap : capacityLPA(s, 'malt');
   if (cap <= 0) return null;
   const lpa = Math.round((cap * e.capacityShare) / 10) * 10;
-  const offer = buildOffer(s, rng, spirit, lpa, e.termMonths, e.prepayShare, e.priceFactor);
+  // 대형 장기 계약은 실존 대형 블렌더가 제안한다
+  const offer = buildOffer(s, rng, spirit, lpa, e.termMonths, e.prepayShare, e.priceFactor, (b) => !b.canDefault);
   return { ...offer, expiresMonth: s.month + 2 };
 }
 
@@ -197,3 +205,17 @@ export function updateBulkIndex(s: GameState, rng: Rng): void {
   const target = 0.5 + 0.5 * (s.trend.whisky ?? 1);
   s.bulkIndex = clamp(v * Math.exp(rng.normal(0, 0.03)) + 0.08 * (target - v), 0.6, 1.5);
 }
+
+// ── 독립 병입자(IB) 캐스크 매입 제안 ──
+
+/** 5년 이상·품질 70 이상인 자사 캐스크가 있으면 IB가 현물가의 135%에 캐스크째 사겠다고 제안한다 */
+export function refreshCaskBids(s: GameState, rng: Rng): void {
+  s.caskBids = s.caskBids.filter((b) => b.expiresMonth > s.month && s.casks.some((c) => c.id === b.caskId && c.contents));
+  if (s.caskBids.length >= 2 || !rng.chance(0.25)) return;
+  const candidates = s.casks.filter((c) => c.contents && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= 60 && lotQuality(c.contents) >= 70 && !s.caskBids.some((b) => b.caskId === c.id));
+  if (!candidates.length) return;
+  const cask = rng.pick(candidates);
+  const ib = rng.pick(INDEPENDENT_BOTTLERS);
+  s.caskBids.push({ id: nid(s, 'I'), buyerName: displayName(ib), caskId: cask.id, price: Math.round(spotQuote(s, cask.contents!, cask.contents!.volumeL, cask) * 1.35), expiresMonth: s.month + 2 });
+}
+

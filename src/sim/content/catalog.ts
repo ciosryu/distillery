@@ -1,4 +1,4 @@
-import type { CaskTypeId, CondenserType, Flavor, FermenterType, StillType, WoodId, YeastId } from '../types';
+import type { CaskTypeId, CondenserType, Flavor, FermenterType, RegionId, StillType, WoodId, YeastId } from '../types';
 
 // 콘텐츠 카탈로그 — 모든 수치 [튜닝]. 가격은 KRW.
 
@@ -10,7 +10,7 @@ export interface IngredientDef {
   pricePerKg: number;
   flavor: Flavor;
   /** 매시에 쓰는 주종 */
-  kinds: ('soju' | 'malt' | 'grain')[];
+  kinds: ('soju' | 'malt' | 'grain' | 'baijiu')[];
 }
 
 export const INGREDIENTS: Record<string, IngredientDef> = {
@@ -19,6 +19,13 @@ export const INGREDIENTS: Record<string, IngredientDef> = {
   malt_korean: { id: 'malt_korean', nameKo: '국산 맥아(소량 생산)', lpaPerKg: 0.39, pricePerKg: 3000, flavor: { cereal: 45, sweetness: 12, fresh_fruit: 4 }, kinds: ['malt'] },
   corn: { id: 'corn', nameKo: '옥수수(수입)', lpaPerKg: 0.38, pricePerKg: 450, flavor: { sweetness: 25, cereal: 12 }, kinds: ['grain'] },
   wheat: { id: 'wheat', nameKo: '밀(수입)', lpaPerKg: 0.37, pricePerKg: 500, flavor: { sweetness: 15, cereal: 10, floral: 3 }, kinds: ['grain'] },
+  // 일본 본격 쇼추용
+  rice_koji: { id: 'rice_koji', nameKo: '쌀 코지(입국)', lpaPerKg: 0.4, pricePerKg: 4000, flavor: { nuruk_rice: 60, fresh_fruit: 8, floral: 6 }, kinds: ['soju'] },
+  sweet_potato: { id: 'sweet_potato', nameKo: '고구마', lpaPerKg: 0.13, pricePerKg: 600, flavor: { earthy: 15, sweetness: 22, floral: 10, fresh_fruit: 4 }, kinds: ['soju'] },
+  barley_raw: { id: 'barley_raw', nameKo: '보리(비맥아)', lpaPerKg: 0.38, pricePerKg: 900, flavor: { cereal: 25, toasted_grain: 10 }, kinds: ['soju'] },
+  // 백주(고량주)용
+  sorghum: { id: 'sorghum', nameKo: '고량(수수)', lpaPerKg: 0.36, pricePerKg: 900, flavor: { sorghum_grain: 45, earthy: 8 }, kinds: ['baijiu'] },
+  daqu: { id: 'daqu', nameKo: '대곡(밀 누룩, 曲)', lpaPerKg: 0.15, pricePerKg: 3000, flavor: { fermented_umami: 25, tropical: 20, earthy: 10, sorghum_grain: 5 }, kinds: ['baijiu'] },
   rice_domestic: { id: 'rice_domestic', nameKo: '국산 쌀', lpaPerKg: 0.46, pricePerKg: 2600, flavor: { nuruk_rice: 25, floral: 8, fresh_fruit: 8, sweetness: 8 }, kinds: ['soju'] },
   rice_processing: { id: 'rice_processing', nameKo: '가공용 쌀', lpaPerKg: 0.44, pricePerKg: 1300, flavor: { nuruk_rice: 20, floral: 5, fresh_fruit: 5, sweetness: 6, cereal: 5 }, kinds: ['soju'] },
   nuruk: { id: 'nuruk', nameKo: '전통 누룩', lpaPerKg: 0.1, pricePerKg: 6000, flavor: { nuruk_rice: 40, earthy: 6, fresh_fruit: 6 }, kinds: ['soju'] },
@@ -27,20 +34,25 @@ export const INGREDIENTS: Record<string, IngredientDef> = {
 /** 진 베이스 중성 스피릿(주정 95%) — L당 가격 */
 export const GNS = { nameKo: '주정(95%)', abv: 0.95, pricePerL: 2300, flavor: { harshness: 35, solvent: 8, feinty: 8 } as Flavor };
 
-export interface BotanicalDef { id: string; nameKo: string; pricePerKg: number; perGram: Flavor; region: 'base' | 'KR' }
+/** regions가 없으면 모든 지역에서 구할 수 있다 */
+export interface BotanicalDef { id: string; nameKo: string; pricePerKg: number; perGram: Flavor; regions?: RegionId[] }
 
 export const BOTANICALS: Record<string, BotanicalDef> = {
-  juniper: { id: 'juniper', nameKo: '주니퍼', pricePerKg: 32000, perGram: { juniper: 2.0, herbal: 0.3 }, region: 'base' },
-  coriander: { id: 'coriander', nameKo: '고수씨', pricePerKg: 12000, perGram: { botanical_spice: 2.0, citrus: 1.0, floral: 0.5 }, region: 'base' },
-  angelica: { id: 'angelica', nameKo: '안젤리카 뿌리', pricePerKg: 60000, perGram: { herbal: 4.0, earthy: 1.0, body: 1.0 }, region: 'base' },
-  orris: { id: 'orris', nameKo: '오리스 뿌리', pricePerKg: 80000, perGram: { floral: 5.0, body: 1.0 }, region: 'base' },
-  lemon_peel: { id: 'lemon_peel', nameKo: '레몬 껍질', pricePerKg: 20000, perGram: { citrus: 4.0 }, region: 'base' },
-  cassia: { id: 'cassia', nameKo: '카시아', pricePerKg: 25000, perGram: { botanical_spice: 3.5, sweetness: 0.5 }, region: 'base' },
-  yuzu: { id: 'yuzu', nameKo: '유자 껍질', pricePerKg: 40000, perGram: { citrus: 4.5, floral: 1.5 }, region: 'KR' },
-  omija: { id: 'omija', nameKo: '오미자', pricePerKg: 50000, perGram: { fresh_fruit: 2.5, botanical_spice: 2.0, sweetness: 0.5 }, region: 'KR' },
-  pine_needle: { id: 'pine_needle', nameKo: '솔잎', pricePerKg: 15000, perGram: { herbal: 3.0, juniper: 0.8 }, region: 'KR' },
-  sancho: { id: 'sancho', nameKo: '산초', pricePerKg: 70000, perGram: { botanical_spice: 4.0, citrus: 1.0 }, region: 'KR' },
-  green_tea: { id: 'green_tea', nameKo: '녹차', pricePerKg: 60000, perGram: { herbal: 3.0, floral: 1.0 }, region: 'KR' },
+  juniper: { id: 'juniper', nameKo: '주니퍼', pricePerKg: 32000, perGram: { juniper: 2.0, herbal: 0.3 } },
+  coriander: { id: 'coriander', nameKo: '고수씨', pricePerKg: 12000, perGram: { botanical_spice: 2.0, citrus: 1.0, floral: 0.5 } },
+  angelica: { id: 'angelica', nameKo: '안젤리카 뿌리', pricePerKg: 60000, perGram: { herbal: 4.0, earthy: 1.0, body: 1.0 } },
+  orris: { id: 'orris', nameKo: '오리스 뿌리', pricePerKg: 80000, perGram: { floral: 5.0, body: 1.0 } },
+  lemon_peel: { id: 'lemon_peel', nameKo: '레몬 껍질', pricePerKg: 20000, perGram: { citrus: 4.0 } },
+  cassia: { id: 'cassia', nameKo: '카시아', pricePerKg: 25000, perGram: { botanical_spice: 3.5, sweetness: 0.5 } },
+  yuzu: { id: 'yuzu', nameKo: '유자 껍질', pricePerKg: 40000, perGram: { citrus: 4.5, floral: 1.5 }, regions: ['KR', 'JP'] },
+  omija: { id: 'omija', nameKo: '오미자', pricePerKg: 50000, perGram: { fresh_fruit: 2.5, botanical_spice: 2.0, sweetness: 0.5 }, regions: ['KR'] },
+  pine_needle: { id: 'pine_needle', nameKo: '솔잎', pricePerKg: 15000, perGram: { herbal: 3.0, juniper: 0.8 }, regions: ['KR'] },
+  sancho: { id: 'sancho', nameKo: '산초', pricePerKg: 70000, perGram: { botanical_spice: 4.0, citrus: 1.0 }, regions: ['KR', 'JP'] },
+  green_tea: { id: 'green_tea', nameKo: '녹차', pricePerKg: 60000, perGram: { herbal: 3.0, floral: 1.0 }, regions: ['KR', 'JP', 'TW'] },
+  sakura: { id: 'sakura', nameKo: '벚꽃(사쿠라)', pricePerKg: 90000, perGram: { floral: 5.0, sweetness: 0.5 }, regions: ['JP'] },
+  hinoki: { id: 'hinoki', nameKo: '히노키', pricePerKg: 40000, perGram: { herbal: 2.5, earthy: 1.0, juniper: 0.5 }, regions: ['JP'] },
+  maqaw: { id: 'maqaw', nameKo: '마고(산후추, 馬告)', pricePerKg: 80000, perGram: { citrus: 3.0, botanical_spice: 2.0 }, regions: ['TW'] },
+  oolong: { id: 'oolong', nameKo: '우롱차', pricePerKg: 70000, perGram: { floral: 2.0, herbal: 2.0, toasted_grain: 0.5 }, regions: ['TW'] },
 };
 
 export const YEASTS: Record<YeastId, { nameKo: string; yieldFactor: number; ester: number; tropical: number; acetic: number }> = {
@@ -73,12 +85,15 @@ export const EQUIPMENT: Record<string, EquipmentDef> = {
 export interface CaskDef {
   id: CaskTypeId; nameKo: string; sizeL: number; wood: WoodId; price: number;
   activity: number; seasoning: number; seasoningType: 'bourbon' | 'sherry' | 'none'; char: number;
+  /** 누수 위험 배수 (미즈나라는 결이 성겨 잘 샌다) */
+  leakFactor?: number;
 }
 
 export const CASKS: Record<CaskTypeId, CaskDef> = {
   ex_bourbon_barrel: { id: 'ex_bourbon_barrel', nameKo: 'ex-버번 배럴 200L', sizeL: 200, wood: 'american_oak', price: 350_000, activity: 1.0, seasoning: 1.0, seasoningType: 'bourbon', char: 3 },
   oloroso_butt: { id: 'oloroso_butt', nameKo: '올로로소 셰리 벗 500L', sizeL: 500, wood: 'european_oak', price: 1_800_000, activity: 1.0, seasoning: 1.0, seasoningType: 'sherry', char: 1 },
   korean_oak_quarter: { id: 'korean_oak_quarter', nameKo: '한국 참나무(신갈나무) 쿼터 125L, 신품', sizeL: 125, wood: 'korean_oak', price: 900_000, activity: 1.3, seasoning: 0, seasoningType: 'none', char: 3 },
+  mizunara_hogshead: { id: 'mizunara_hogshead', nameKo: '미즈나라 혹스헤드 250L, 신품', sizeL: 250, wood: 'mizunara', price: 3_500_000, activity: 1.2, seasoning: 0, seasoningType: 'none', char: 2, leakFactor: 3 },
 };
 
 /** 목재별 월간 추출 기여 (activity·속도 1 기준) */
@@ -86,6 +101,7 @@ export const WOOD_EXTRACT: Record<WoodId, Flavor> = {
   american_oak: { vanilla_caramel: 1.6, oak_tannin: 0.6, wood_spice: 0.5, color: 1.2, sweetness: 0.4 },
   european_oak: { vanilla_caramel: 0.7, oak_tannin: 1.3, wood_spice: 0.8, color: 1.5 },
   korean_oak: { vanilla_caramel: 0.9, oak_tannin: 1.2, wood_spice: 1.0, color: 1.3 },
+  mizunara: { vanilla_caramel: 0.6, oak_tannin: 1.0, wood_spice: 0.8, color: 1.0, sweetness: 0.2 },
 };
 
 /** 시즈닝 향 월간 기여 (seasoning 1 기준) */
@@ -145,7 +161,7 @@ export const BULK = {
   penaltyRate: 0.3,
   maxActiveContracts: 3,
   /** 그레인 뉴메이크 기준가(원/LPA) — 대량·저가 */
-  grainNewMakeBase: 5_500,
+  grainNewMakeBase: 7_000,
   grainAgePerYear: 0.12,
 };
 
@@ -156,12 +172,8 @@ export const VOLUME_DISCOUNT_TIERS: { minKg: number; factor: number }[] = [
   { minKg: 5_000, factor: 0.95 },
 ];
 
-export const BULK_BUYERS = [
-  { id: 'hanra', nameKo: '한라 블렌디드 컴퍼니', kind: 'blender' as const, domestic: true },
-  { id: 'donghae', nameKo: '동해 위스키 블렌더스', kind: 'blender' as const, domestic: true },
-  { id: 'saebyeok', nameKo: '새벽 스피릿 브로커스', kind: 'broker' as const, domestic: true },
-  { id: 'kanto', nameKo: '간토 블렌딩 하우스 (일본)', kind: 'blender' as const, domestic: false },
-];
+// 원액 구매자 목록은 content/names.ts (BUYERS)로 이동 — 실명/가상명 전환 지원
+
 
 // ── 대출 상품 ──
 export interface LoanOfferDef { id: string; nameKo: string; annualRate: number; termMonths: number; max: number; requires?: 'producedSoju'; /** 원금 거치 기간(이자만 납부) */ graceMonths: number }
@@ -179,5 +191,10 @@ export const ROLE_INFO: Record<'distiller' | 'warehouse' | 'sales', { nameKo: st
   sales: { nameKo: '영업', stats: ['친화', '네트워크', '협상'], baseSalary: 3_800_000 },
 };
 
+export const NAME_POOLS: Record<'KR' | 'JP' | 'TW', { surnames: string[]; given: string[] }> = {
+  KR: { surnames: ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '한', '오', '서', '신', '권', '황'], given: ['민준', '서연', '도윤', '지우', '하준', '서윤', '은우', '하은', '지호', '수아', '현우', '지민', '예준', '채원', '건우', '다은'] },
+  JP: { surnames: ['사토 ', '스즈키 ', '다카하시 ', '다나카 ', '와타나베 ', '이토 ', '야마모토 ', '나카무라 '], given: ['하루토', '유이', '소타', '미오', '렌', '히나', '유토', '사쿠라'] },
+  TW: { surnames: ['천', '린', '황', '장', '리', '왕', '우', '류'], given: ['즈하오', '이팅', '젠훙', '샤오웨이', '자오', '옌쥔', '이린', '웨이훙'] },
+};
 export const SURNAMES = ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '한', '오', '서', '신', '권', '황'];
 export const GIVEN_NAMES = ['민준', '서연', '도윤', '지우', '하준', '서윤', '은우', '하은', '지호', '수아', '현우', '지민', '예준', '채원', '건우', '다은', '우진', '소율', '선우', '윤서'];

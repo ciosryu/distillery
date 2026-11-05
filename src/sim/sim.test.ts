@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   advanceMonths, annuityPayment, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, categorize, demandFor, evaluate, evaporate, heartsFraction, spotBidPerLPA, spotQuote,
   makeContractOffer, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
+  appeal, applyEffects, buyersFor, presetRecipes, validateRecipe, type Product,
 } from './index';
 import { EQUIPMENT } from './content/catalog';
+import { BUYERS } from './content/names';
+import { consumerPrice, priceForConsumer, REGIONS } from './content/regions';
 
 const recipeId = (s: GameState, prefix: string) => s.recipes.find((r) => r.name.startsWith(prefix))!.id;
 
@@ -268,5 +271,81 @@ describe('결정론', () => {
     applyAction(s, { type: 'buyCasks', caskType: 'ex_bourbon_barrel', qty: 2 });
     advanceMonths(s, 2);
     expect(JSON.stringify(s)).toBe(before);
+  });
+});
+
+describe('지역 (v0.6)', () => {
+  const asRecipe = (s: GameState, kind: string) => ({ ...presetRecipes(s.equipment[0]!.id, 'KR').find((r) => r.kind === kind)!, id: 'X' });
+
+  it('주종 생산 지역 규칙: 소주는 한국·일본, 백주는 한국만(중국은 추후), 대만은 둘 다 불가', () => {
+    const kr = newGame({ seed: 1, region: 'KR' });
+    const jp = newGame({ seed: 1, region: 'JP' });
+    const tw = newGame({ seed: 1, region: 'TW' });
+    expect(validateRecipe(kr, asRecipe(kr, 'baijiu'))).toEqual([]);
+    expect(validateRecipe(jp, asRecipe(jp, 'baijiu')).length).toBeGreaterThan(0);
+    expect(validateRecipe(tw, asRecipe(tw, 'soju')).length).toBeGreaterThan(0);
+    expect(jp.recipes.some((r) => r.kind === 'soju')).toBe(true);
+    expect(tw.recipes.some((r) => r.kind === 'soju' || r.kind === 'baijiu')).toBe(false);
+  });
+
+  it('고량주 원액은 백주 카테고리', () => {
+    expect(categorize('baijiu', 0, 0.5, {})).toBe('baijiu');
+  });
+
+  it('종량세(일본) vs 종가세(한국): 같은 출고가면 한국 소비자가가 훨씬 높고, 권장가 역산이 맞는다', () => {
+    const jp = consumerPrice(REGIONS.JP, 10_000, 700, 0.4);
+    const kr = consumerPrice(REGIONS.KR, 10_000, 700, 0.4);
+    expect(jp).toBeCloseTo((10_000 + 9_000 * 0.28) * 1.1 * 1.3, 0);
+    expect(kr).toBeGreaterThan(jp * 1.4);
+    for (const r of [REGIONS.KR, REGIONS.JP, REGIONS.TW]) expect(priceForConsumer(r, consumerPrice(r, 30_000, 700, 0.46), 700, 0.46)).toBeCloseTo(30_000, 0);
+  });
+
+  it('일본은 매입(수입) 원액 비중 감점이 크다 (재패니즈 위스키 표기 기준)', () => {
+    const p = { category: 'whisky', ageYears: 5, packagingId: 'standard', flavor: {}, quality: 70, typicity: 80, sourcedShare: 1 } as unknown as Product;
+    const own = { ...p, sourcedShare: 0 };
+    const kr = newGame({ seed: 1, region: 'KR' });
+    const jp = newGame({ seed: 1, region: 'JP' });
+    expect(appeal(p, jp) / appeal(own, jp)).toBeLessThan(appeal(p, kr) / appeal(own, kr));
+  });
+
+  it('지역 한정 이벤트는 그 지역에서만 일어난다', () => {
+    const titles = (region: 'KR' | 'TW') => new Set(advanceMonths(newGame({ seed: 7, region, startingCash: 50_000_000_000 }), 240).eventLog.map((e) => e.title));
+    const tw = titles('TW');
+    const kr = titles('KR');
+    for (const t of ['전통주 재조명', '정부 가공용 쌀 할인 공급', '지진', '본격 쇼추 붐']) expect(tw.has(t)).toBe(false);
+    for (const t of ['지진', '대만 위스키 투기 거품 붕괴', '태풍 상륙']) expect(kr.has(t)).toBe(false);
+  });
+});
+
+describe('실명 레지스트리 (결정 #44)', () => {
+  it('실존 회사는 부도 이벤트 대상이 아니다 — 가상 회사 계약만 끊긴다', () => {
+    const s = newGame({ seed: 1, region: 'KR' });
+    const terms = { spirit: 'malt_newmake' as const, domestic: true, style: 'any' as const, lpaPerMonth: 100, termMonths: 12, pricePerLPA: 15_000, minQuality: 40, prepayShare: 0, penaltyPerLPA: 4_500, startMonth: 0, monthsDone: 0, deliveredLPA: 0, shortfallLPA: 0, prepaidRemaining: 0 };
+    s.contracts = [
+      { ...terms, id: 'C1', buyerId: 'goldenblue', buyerName: '골든블루' },
+      { ...terms, id: 'C2', buyerId: 'hanra', buyerName: '한라 블렌디드 컴퍼니' },
+    ];
+    applyEffects(s, [{ type: 'buyerDefault' }], mulberry32(1), 'test');
+    expect(s.contracts.map((c) => c.id)).toEqual(['C1']);
+    applyEffects(s, [{ type: 'buyerDefault' }], mulberry32(2), 'test');
+    expect(s.contracts.map((c) => c.id)).toEqual(['C1']);
+  });
+
+  it('실존 회사는 모두 canDefault가 아니고, 지역마다 현지 구매자가 있다', () => {
+    const real = BUYERS.filter((b) => b.real !== b.fictional);
+    expect(real.every((b) => !b.canDefault)).toBe(true);
+    for (const region of ['KR', 'JP', 'TW'] as const) expect(buyersFor(newGame({ seed: 1, region })).some((b) => b.domestic)).toBe(true);
+  });
+
+  it('독립 병입자 캐스크 매입 제안을 수락하면 현금이 들어오고 캐스크가 빠진다', () => {
+    let s = newGame({ seed: 1, region: 'KR' });
+    const cask = s.brokerOffers[0]!.cask;
+    s.casks.push(cask);
+    s.caskBids = [{ id: 'I1', buyerName: '고든 앤 맥페일', caskId: cask.id, price: 12_000_000, expiresMonth: s.month + 2 }];
+    const cash = s.cash;
+    s = applyAction(s, { type: 'acceptCaskBid', bidId: 'I1' }).state;
+    expect(s.cash).toBe(cash + 12_000_000);
+    expect(s.casks.some((c) => c.id === cask.id)).toBe(false);
+    expect(s.caskBids).toEqual([]);
   });
 });

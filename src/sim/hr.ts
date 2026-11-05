@@ -1,4 +1,5 @@
-import { GIVEN_NAMES, ROLE_INFO, SURNAMES } from './content/catalog';
+import { NAME_POOLS, ROLE_INFO } from './content/catalog';
+import { regionOf } from './content/regions';
 import { clamp } from './flavor';
 import type { Rng } from './rng';
 import type { Candidate, GameState, Staff, StaffRole } from './types';
@@ -6,9 +7,9 @@ import { nid } from './util';
 
 const ROLES: StaffRole[] = ['distiller', 'warehouse', 'sales'];
 
-export function salaryFor(role: StaffRole, stats: Staff['stats'], level: number): number {
+export function salaryFor(role: StaffRole, stats: Staff['stats'], level: number, laborCost = 1): number {
   const avg = (stats.a + stats.b + stats.c) / 3;
-  const raw = ROLE_INFO[role].baseSalary * (0.8 + (avg / 100) * 0.8) * (1 + 0.05 * (level - 1));
+  const raw = ROLE_INFO[role].baseSalary * laborCost * (0.8 + (avg / 100) * 0.8) * (1 + 0.05 * (level - 1));
   return Math.round(raw / 10_000) * 10_000;
 }
 
@@ -17,10 +18,11 @@ export function makeCandidate(s: GameState, rng: Rng, role?: StaffRole): Candida
   const stat = () => Math.round(clamp(rng.normal(45, 15), 15, 90));
   const stats = { a: stat(), b: stat(), c: stat() };
   const level = 1 + Math.floor(((stats.a + stats.b + stats.c) / 3) / 30);
-  const salary = salaryFor(r, stats, level);
+  const salary = salaryFor(r, stats, level, regionOf(s).laborCost);
+  const pool = NAME_POOLS[s.regionId] ?? NAME_POOLS.KR;
   return {
     id: nid(s, 'C'),
-    name: `${rng.pick(SURNAMES)}${rng.pick(GIVEN_NAMES)}`,
+    name: `${rng.pick(pool.surnames)}${rng.pick(pool.given)}`,
     role: r, level, xp: 0, stats, salary, askSalary: salary, hiredMonth: -1,
   };
 }

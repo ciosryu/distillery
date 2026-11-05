@@ -4,7 +4,7 @@ import { resolvePending } from './events';
 import { mod } from './modifiers';
 import { executeBlend, type BlendComponent, type BottleOptions } from './blending';
 import { MAX_RECHAR, recharCask } from './maturation';
-import { emptyCaskOf } from './newGame';
+import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
 import type { CaskTypeId, GameState, Recipe } from './types';
 import { annuityPayment, clone, nid, warehouseCapacity } from './util';
@@ -28,7 +28,8 @@ export type Action =
   | { type: 'sellBulk'; source: 'lot' | 'cask'; id: string; liters?: number }
   | { type: 'acceptContract'; offerId: string }
   | { type: 'cancelContract'; contractId: string }
-  | { type: 'resolveEvent'; eventId: string; choice: number };
+  | { type: 'resolveEvent'; eventId: string; choice: number }
+  | { type: 'acceptCaskBid'; bidId: string };
 
 export interface ActionResult { state: GameState; error?: string; message?: string }
 
@@ -73,7 +74,7 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       const qty = Math.max(1, Math.floor(a.qty));
       if (!def) return fail(prev, '알 수 없는 캐스크');
       if (s.casks.length + qty > warehouseCapacity(s)) return fail(prev, `숙성고 용량 부족 (${s.casks.length}/${warehouseCapacity(s)})`);
-      const unit = Math.round(def.price * mod(s, `cask:${def.id}`));
+      const unit = Math.round(regionalCaskPrice(s, def.id) * mod(s, `cask:${def.id}`));
       if (s.cash < unit * qty) return fail(prev, '현금이 부족합니다');
       s.cash -= unit * qty;
       for (let i = 0; i < qty; i++) s.casks.push(emptyCaskOf(s, a.caskType));
@@ -213,6 +214,16 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       s.contracts.push(c);
       s.contractOffers = s.contractOffers.filter((o) => o.id !== offer.id);
       return { state: s, message: `${offer.buyerName}와 공급 계약 체결${c.prepaidRemaining > 0 ? ` — 선급금 ${c.prepaidRemaining.toLocaleString()}원 입금` : ''}` };
+    }
+    case 'acceptCaskBid': {
+      const bid = s.caskBids.find((b) => b.id === a.bidId);
+      const ci = bid ? s.casks.findIndex((c) => c.id === bid.caskId && c.contents) : -1;
+      if (!bid || ci < 0) return fail(prev, '제안이 없거나 캐스크가 비었습니다');
+      s.cash += bid.price;
+      s.casks.splice(ci, 1);
+      s.caskBids = s.caskBids.filter((b) => b.id !== bid.id);
+      s.b2bTrust = Math.min(100, s.b2bTrust + 2);
+      return { state: s, message: `${bid.buyerName}에 캐스크 ${bid.caskId}를 ${bid.price.toLocaleString()}원에 판매` };
     }
     case 'resolveEvent': {
       const text = resolvePending(s, a.eventId, a.choice);

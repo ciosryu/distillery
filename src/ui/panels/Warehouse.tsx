@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CASKS, RECHAR_COST } from '../../sim/content/catalog';
-import { evaluate, lotCategory, MAX_RECHAR, topNotes, warehouseCapacity, WHISKY_MIN_MONTHS, type CaskTypeId, type SpiritLot } from '../../sim';
+import { evaluate, lotCategory, MAX_RECHAR, regionalCaskPrice, topNotes, warehouseCapacity, WHISKY_MIN_MONTHS, type CaskTypeId, type SpiritLot } from '../../sim';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Select, Table, Td } from '../kit';
@@ -73,9 +73,9 @@ function Casks() {
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Select value={filter} options={[{ value: 'filled', label: `숙성 중 (${s.casks.filter((c) => c.contents).length})` }, { value: 'empty', label: `빈 통 (${s.casks.filter((c) => !c.contents).length})` }]} onChange={setFilter} />
-          <Select value={buyType} options={(Object.keys(CASKS) as CaskTypeId[]).map((k) => ({ value: k, label: `${CASKS[k].nameKo} — ${won(CASKS[k].price)}` }))} onChange={setBuyType} />
+          <Select value={buyType} options={(Object.keys(CASKS) as CaskTypeId[]).map((k) => ({ value: k, label: `${CASKS[k].nameKo} — ${won(regionalCaskPrice(s, k))}` }))} onChange={setBuyType} />
           <NumberField value={qty} min={1} max={100} width="w-16" onCommit={setQty} />
-          <Button small onClick={() => dispatch({ type: 'buyCasks', caskType: buyType, qty })}>구매 ({won(CASKS[buyType].price * qty)})</Button>
+          <Button small onClick={() => dispatch({ type: 'buyCasks', caskType: buyType, qty })}>구매 ({won(regionalCaskPrice(s, buyType) * qty)})</Button>
         </div>
       }
     >

@@ -66,7 +66,7 @@ export function matureCask(cask: Cask, climate: Climate, opts: MatureOptions): {
   bump('floral', 0.05, 80);
   bump('integration', 0.9);
   if (months > 96) bump('nutty_rancio', 0.15);
-  if (cask.wood === 'korean_oak' && months > 72) bump('incense', 0.12);
+  if ((cask.wood === 'korean_oak' || cask.wood === 'mizunara') && months > 72) bump('incense', cask.wood === 'mizunara' ? 0.18 : 0.12);
 
   // 증발로 LPA가 줄면 남은 원액의 LPA당 원가가 오른다
   const oldLPA = lot.volumeL * lot.abv;
