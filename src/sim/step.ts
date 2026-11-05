@@ -6,7 +6,9 @@ import { clamp, weightedAverage } from './flavor';
 import { gainXp, refreshCandidates } from './hr';
 import { matureCask, restLot } from './maturation';
 import { runSales, updateAwareness, updateTrends } from './market';
-import { simulateBatch, stillDefOf } from './production';
+import { simulateBatch, stillDefOf, volumeDiscounts } from './production';
+import { effectivePriceIndex, mod, pruneModifiers } from './modifiers';
+import { runEvents } from './events';
 import { rngFor } from './rng';
 import type { FermenterType, GameState, MonthReport, SpiritLot, StaffRole } from './types';
 import { bestBy, calendar, clone, monthLabel, nid, staffOf } from './util';
@@ -34,6 +36,10 @@ function runProduction(s: GameState, report: MonthReport): { runsUsed: number } 
   // 소주는 옹기 우선
   fermenters.sort((a, b) => (a.type === 'onggi' ? -1 : 0) - (b.type === 'onggi' ? -1 : 0));
   let runsUsed = 0;
+  if (mod(s, 'production') === 0) { if (s.orders.length) report.notes.push('생산 중단 — 이번 달은 증류하지 못했습니다'); return { runsUsed }; }
+  // 원재료 가격 = 시세 지수 × 이벤트 보정 × 대량 구매 할인
+  const prices = effectivePriceIndex(s, volumeDiscounts(s));
+  const boughtKg: Record<string, number> = {};
 
   for (const order of s.orders) {
     if (order.batchesPerMonth <= 0) continue;
@@ -58,9 +64,10 @@ function runProduction(s: GameState, report: MonthReport): { runsUsed: number } 
       stillRuns.set(stillInst.id, (stillRuns.get(stillInst.id) ?? 0) - recipe.runs);
       distillerRuns -= recipe.runs;
       runsUsed += recipe.runs;
-      const res = simulateBatch(recipe, still, ferm?.type ?? null, lead, s.priceIndex, stillInst.feintsLPA ?? 0);
+      const res = simulateBatch(recipe, still, ferm?.type ?? null, lead, prices, stillInst.feintsLPA ?? 0);
       stillInst.feintsLPA = res.feintsOutLPA;
       s.cash -= res.cost;
+      for (const [id, kg] of Object.entries(res.ingredientsKg)) boughtKg[id] = (boughtKg[id] ?? 0) + kg;
       parts.push({
         lpa: res.lpa, cost: res.cost,
         lot: { kind: recipe.kind, volumeL: res.volumeL, abv: res.abv, flavor: res.flavor, createdMonth: s.month, oakMonths: 0, sourced: false, costPerLPA: res.cost / res.lpa, recipeId: recipe.id },
@@ -85,6 +92,7 @@ function runProduction(s: GameState, report: MonthReport): { runsUsed: number } 
     report.production.push({ recipeId: recipe.id, name: recipe.name, batches: parts.length, lpa, cost });
     report.expenses.production = (report.expenses.production ?? 0) + cost;
   }
+  s.ingredientKgLastMonth = boughtKg;
   return { runsUsed };
 }
 
@@ -95,10 +103,11 @@ function runMaturation(s: GameState, report: MonthReport, monthOfYear: number): 
   const observe = Math.max(0, ...wm.map((x) => x.stats.a));
   const diligence = Math.max(0, ...wm.map((x) => x.stats.c));
   const rng = rngFor(s.seed, s.month, 'maturation');
+  const evap = mod(s, 'evaporation');
   let lost = 0;
   s.casks = s.casks.map((cask) => {
     if (!cask.contents) return cask;
-    const res = matureCask(cask, climate, { control });
+    const res = matureCask(cask, climate, { control, evaporationFactor: evap });
     lost += res.lostL;
     let next = res.cask;
     // 누수: 성실 스탯이 확률을, 관찰 스탯이 손실량을 줄임
@@ -142,9 +151,11 @@ export function advanceMonth(prev: GameState): GameState {
   const s = clone(prev);
   const { monthOfYear } = calendar(s);
   const cashStart = s.cash;
-  const report: MonthReport = { month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, notes: [] };
+  const report: MonthReport = { month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] };
 
-  for (const e of s.equipment) if (e.readyMonth === s.month && s.month > 0) report.notes.push(`${EQUIPMENT[e.catalogId]?.nameKo ?? e.catalogId} 설치 완료`);
+  pruneModifiers(s);
+  runEvents(s, report, monthOfYear);
+  for (const e of s.equipment) if (e.readyMonth === s.month && s.month > 0) report.notes.push(`${EQUIPMENT[e.catalogId]?.nameKo ?? e.catalogId} 가동 시작`);
 
   const { runsUsed } = runProduction(s, report);
   runMaturation(s, report, monthOfYear);

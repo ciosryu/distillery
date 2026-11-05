@@ -1,5 +1,7 @@
 import { BULK, CASK_COST_SHARE_PER_FILL, CASKS, EQUIPMENT, LOAN_OFFERS, RECHAR_COST } from './content/catalog';
-import { cancellationCost, spotQuote, startContract } from './bulk';
+import { cancellationCost, isBulkKind, spotQuote, startContract } from './bulk';
+import { resolvePending } from './events';
+import { mod } from './modifiers';
 import { executeBlend, type BlendComponent, type BottleOptions } from './blending';
 import { MAX_RECHAR, recharCask } from './maturation';
 import { emptyCaskOf } from './newGame';
@@ -25,7 +27,8 @@ export type Action =
   | { type: 'buyBrokerCask'; offerId: string }
   | { type: 'sellBulk'; source: 'lot' | 'cask'; id: string; liters?: number }
   | { type: 'acceptContract'; offerId: string }
-  | { type: 'cancelContract'; contractId: string };
+  | { type: 'cancelContract'; contractId: string }
+  | { type: 'resolveEvent'; eventId: string; choice: number };
 
 export interface ActionResult { state: GameState; error?: string; message?: string }
 
@@ -70,8 +73,9 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       const qty = Math.max(1, Math.floor(a.qty));
       if (!def) return fail(prev, '알 수 없는 캐스크');
       if (s.casks.length + qty > warehouseCapacity(s)) return fail(prev, `숙성고 용량 부족 (${s.casks.length}/${warehouseCapacity(s)})`);
-      if (s.cash < def.price * qty) return fail(prev, '현금이 부족합니다');
-      s.cash -= def.price * qty;
+      const unit = Math.round(def.price * mod(s, `cask:${def.id}`));
+      if (s.cash < unit * qty) return fail(prev, '현금이 부족합니다');
+      s.cash -= unit * qty;
       for (let i = 0; i < qty; i++) s.casks.push(emptyCaskOf(s, a.caskType));
       return { state: s, message: `${def.nameKo} ${qty}개 구매` };
     }
@@ -182,7 +186,7 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
         const ci = s.casks.findIndex((c) => c.id === a.id);
         const cask = s.casks[ci];
         if (!cask?.contents) return fail(prev, '원액이 든 캐스크가 없습니다');
-        if (cask.contents.kind !== 'malt') return fail(prev, '벌크 판매는 몰트 원액만 가능합니다');
+        if (!isBulkKind(cask.contents)) return fail(prev, '벌크 판매는 몰트·그레인 원액만 가능합니다');
         const amount = spotQuote(s, cask.contents, cask.contents.volumeL, cask);
         s.cash += amount;
         s.casks.splice(ci, 1);
@@ -191,7 +195,7 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       const li = s.lots.findIndex((l) => l.id === a.id);
       const lot = s.lots[li];
       if (!lot) return fail(prev, '원액이 없습니다');
-      if (lot.kind !== 'malt') return fail(prev, '벌크 판매는 몰트 원액만 가능합니다');
+      if (!isBulkKind(lot)) return fail(prev, '벌크 판매는 몰트·그레인 원액만 가능합니다');
       const liters = Math.min(lot.volumeL, Math.max(0, a.liters ?? lot.volumeL));
       if (liters <= 0) return fail(prev, '판매량을 입력하세요');
       const amount = spotQuote(s, lot, liters);
@@ -209,6 +213,11 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       s.contracts.push(c);
       s.contractOffers = s.contractOffers.filter((o) => o.id !== offer.id);
       return { state: s, message: `${offer.buyerName}와 공급 계약 체결${c.prepaidRemaining > 0 ? ` — 선급금 ${c.prepaidRemaining.toLocaleString()}원 입금` : ''}` };
+    }
+    case 'resolveEvent': {
+      const text = resolvePending(s, a.eventId, a.choice);
+      if (!text) return fail(prev, '처리할 이벤트가 없습니다');
+      return { state: s, message: text };
     }
     case 'cancelContract': {
       const c = s.contracts.find((x) => x.id === a.contractId);

@@ -10,13 +10,15 @@ export interface IngredientDef {
   pricePerKg: number;
   flavor: Flavor;
   /** 매시에 쓰는 주종 */
-  kinds: ('soju' | 'malt')[];
+  kinds: ('soju' | 'malt' | 'grain')[];
 }
 
 export const INGREDIENTS: Record<string, IngredientDef> = {
-  malt_unpeated: { id: 'malt_unpeated', nameKo: '맥아(언피티드, 수입)', lpaPerKg: 0.42, pricePerKg: 1600, flavor: { cereal: 40, sweetness: 10 }, kinds: ['malt'] },
+  malt_unpeated: { id: 'malt_unpeated', nameKo: '맥아(언피티드, 수입)', lpaPerKg: 0.42, pricePerKg: 1600, flavor: { cereal: 40, sweetness: 10 }, kinds: ['malt', 'grain'] },
   malt_peated: { id: 'malt_peated', nameKo: '피티드 맥아(40ppm, 수입)', lpaPerKg: 0.41, pricePerKg: 2200, flavor: { cereal: 35, sweetness: 8, peat_smoke: 70 }, kinds: ['malt'] },
   malt_korean: { id: 'malt_korean', nameKo: '국산 맥아(소량 생산)', lpaPerKg: 0.39, pricePerKg: 3000, flavor: { cereal: 45, sweetness: 12, fresh_fruit: 4 }, kinds: ['malt'] },
+  corn: { id: 'corn', nameKo: '옥수수(수입)', lpaPerKg: 0.38, pricePerKg: 450, flavor: { sweetness: 25, cereal: 12 }, kinds: ['grain'] },
+  wheat: { id: 'wheat', nameKo: '밀(수입)', lpaPerKg: 0.37, pricePerKg: 500, flavor: { sweetness: 15, cereal: 10, floral: 3 }, kinds: ['grain'] },
   rice_domestic: { id: 'rice_domestic', nameKo: '국산 쌀', lpaPerKg: 0.46, pricePerKg: 2600, flavor: { nuruk_rice: 25, floral: 8, fresh_fruit: 8, sweetness: 8 }, kinds: ['soju'] },
   rice_processing: { id: 'rice_processing', nameKo: '가공용 쌀', lpaPerKg: 0.44, pricePerKg: 1300, flavor: { nuruk_rice: 20, floral: 5, fresh_fruit: 5, sweetness: 6, cereal: 5 }, kinds: ['soju'] },
   nuruk: { id: 'nuruk', nameKo: '전통 누룩', lpaPerKg: 0.1, pricePerKg: 6000, flavor: { nuruk_rice: 40, earthy: 6, fresh_fruit: 6 }, kinds: ['soju'] },
@@ -60,6 +62,7 @@ export const EQUIPMENT: Record<string, EquipmentDef> = {
   hybrid_600: { id: 'hybrid_600', kind: 'still', nameKo: '하이브리드 증류기 600L (포트+컬럼)', cost: 280_000_000, leadMonths: 3, maintenance: 1_300_000, stillType: 'hybrid', condenser: 'copper_shell', chargeL: 600, runsPerMonth: 24, reflux: 0.85, copperContact: 0.9, vacuum: false, ginBasket: true },
   vacuum_1000: { id: 'vacuum_1000', kind: 'still', nameKo: '감압 증류기 1,000L (소주용)', cost: 350_000_000, leadMonths: 4, maintenance: 1_700_000, stillType: 'vacuum_pot', condenser: 'copper_shell', chargeL: 1000, runsPerMonth: 20, reflux: 0.3, copperContact: 0.8, vacuum: true, ginBasket: false },
   pot_large_5000: { id: 'pot_large_5000', kind: 'still', nameKo: '대형 단식 증류기 5,000L (양파형, B2B 대량 생산용)', cost: 600_000_000, leadMonths: 6, maintenance: 4_000_000, stillType: 'pot_onion', condenser: 'copper_shell', chargeL: 5000, runsPerMonth: 20, reflux: 0.4, copperContact: 1.0, vacuum: false, ginBasket: false },
+  column_2: { id: 'column_2', kind: 'still', nameKo: '연속식 증류기 (2컬럼, 그레인 위스키용)', cost: 700_000_000, leadMonths: 8, maintenance: 3_500_000, stillType: 'column', condenser: 'copper_shell', chargeL: 8000, runsPerMonth: 25, reflux: 0.95, copperContact: 0.8, vacuum: false, ginBasket: false },
   ferm_steel_10000: { id: 'ferm_steel_10000', kind: 'fermenter', nameKo: '대형 스테인리스 발효조 10,000L', cost: 120_000_000, leadMonths: 2, maintenance: 600_000, fermenterType: 'stainless', capacityL: 10000 },
   ferm_steel_2000: { id: 'ferm_steel_2000', kind: 'fermenter', nameKo: '스테인리스 발효조 2,000L', cost: 40_000_000, leadMonths: 1, maintenance: 200_000, fermenterType: 'stainless', capacityL: 2000 },
   ferm_onggi_set: { id: 'ferm_onggi_set', kind: 'fermenter', nameKo: '옹기 발효 세트 (1,200L 상당)', cost: 30_000_000, leadMonths: 1, maintenance: 300_000, fermenterType: 'onggi', capacityL: 1200 },
@@ -141,13 +144,23 @@ export const BULK = {
   /** 미납 1 LPA당 위약금 = 계약가 × penaltyRate */
   penaltyRate: 0.3,
   maxActiveContracts: 3,
+  /** 그레인 뉴메이크 기준가(원/LPA) — 대량·저가 */
+  grainNewMakeBase: 5_500,
+  grainAgePerYear: 0.12,
 };
 
+/** 대량 구매 할인 (원재료별 월 구매량 kg 기준) */
+export const VOLUME_DISCOUNT_TIERS: { minKg: number; factor: number }[] = [
+  { minKg: 40_000, factor: 0.85 },
+  { minKg: 15_000, factor: 0.9 },
+  { minKg: 5_000, factor: 0.95 },
+];
+
 export const BULK_BUYERS = [
-  { id: 'hanra', nameKo: '한라 블렌디드 컴퍼니', kind: 'blender' as const },
-  { id: 'donghae', nameKo: '동해 위스키 블렌더스', kind: 'blender' as const },
-  { id: 'saebyeok', nameKo: '새벽 스피릿 브로커스', kind: 'broker' as const },
-  { id: 'kanto', nameKo: '간토 블렌딩 하우스 (일본)', kind: 'blender' as const },
+  { id: 'hanra', nameKo: '한라 블렌디드 컴퍼니', kind: 'blender' as const, domestic: true },
+  { id: 'donghae', nameKo: '동해 위스키 블렌더스', kind: 'blender' as const, domestic: true },
+  { id: 'saebyeok', nameKo: '새벽 스피릿 브로커스', kind: 'broker' as const, domestic: true },
+  { id: 'kanto', nameKo: '간토 블렌딩 하우스 (일본)', kind: 'blender' as const, domestic: false },
 ];
 
 // ── 대출 상품 ──

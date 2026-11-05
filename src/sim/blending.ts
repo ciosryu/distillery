@@ -4,6 +4,7 @@ import { KOREA, consumerMultiplier, refPricePerL } from './content/korea';
 import { clampFlavor, evaluate, weightedAverage, type Evaluation } from './flavor';
 import { emptyCask } from './maturation';
 import { bestBy, nid, staffOf } from './util';
+import { mod } from './modifiers';
 import type { AxisId, Flavor, GameState, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
 
 export interface BlendComponent { source: 'cask' | 'lot'; id: string; liters: number }
@@ -30,28 +31,34 @@ export interface BlendPreview {
 }
 
 export const WHISKY_MIN_MONTHS = 36;
-export const MIN_BOTTLING_ABV: Record<ProductCategory, number> = { whisky: 0.4, malt_spirit: 0.3, soju_distilled: 0.17, gin: 0.375, flavored_spirit: 0.2 };
+export const MIN_BOTTLING_ABV: Record<ProductCategory, number> = { whisky: 0.4, grain_whisky: 0.4, blended_whisky: 0.4, malt_spirit: 0.3, soju_distilled: 0.17, gin: 0.375, flavored_spirit: 0.2 };
 
 export function lotOf(s: GameState, c: BlendComponent): SpiritLot | undefined {
   return c.source === 'cask' ? s.casks.find((k) => k.id === c.id)?.contents : s.lots.find((l) => l.id === c.id);
 }
 
 /** 라벨 판정 (대표 법규만) */
-export function categorize(kind: SpiritKind, minOakMonths: number, abv: number, flavor: Flavor): ProductCategory {
+export function categorize(kind: SpiritKind, minOakMonths: number, abv: number, flavor: Flavor, hasGrain = kind === 'grain', hasMalt = kind === 'malt'): ProductCategory {
   if (kind === 'soju') return 'soju_distilled';
   if (kind === 'gin') return evaluate(flavor, 'gin').labelOk && abv >= MIN_BOTTLING_ABV.gin ? 'gin' : 'flavored_spirit';
-  return minOakMonths >= WHISKY_MIN_MONTHS && abv >= MIN_BOTTLING_ABV.whisky ? 'whisky' : 'malt_spirit';
+  if (minOakMonths < WHISKY_MIN_MONTHS || abv < MIN_BOTTLING_ABV.whisky) return 'malt_spirit';
+  if (hasMalt && hasGrain) return 'blended_whisky';
+  return hasGrain ? 'grain_whisky' : 'whisky';
 }
+
+const WHISKY_CATS: ProductCategory[] = ['whisky', 'grain_whisky', 'blended_whisky'];
+export const isWhiskyCategory = (c: ProductCategory) => WHISKY_CATS.includes(c);
 
 /** 원액(탱크·캐스크)을 지금 병입한다면 받을 카테고리 — 평가 표시용 */
 export function lotCategory(lot: SpiritLot): ProductCategory {
   if (lot.kind === 'soju') return 'soju_distilled';
   if (lot.kind === 'gin') return 'gin';
-  return lot.oakMonths >= WHISKY_MIN_MONTHS ? 'whisky' : 'malt_spirit';
+  if (lot.oakMonths < WHISKY_MIN_MONTHS) return 'malt_spirit';
+  return lot.kind === 'grain' ? 'grain_whisky' : 'whisky';
 }
 
 export function suggestedPrice(category: ProductCategory, bottleMl: number, quality: number, ageYears: number | null, abv: number): number {
-  const ageBonus = category === 'whisky' && ageYears ? 1 + 0.06 * Math.min(ageYears, 12) : 1;
+  const ageBonus = isWhiskyCategory(category) && ageYears ? 1 + 0.06 * Math.min(ageYears, 12) : 1;
   const p = (refPricePerL(KOREA, category, abv) * (bottleMl / 1000) / consumerMultiplier(KOREA)) * Math.sqrt(Math.max(quality, 20) / 60) * ageBonus;
   return Math.round(p / 100) * 100;
 }
@@ -70,8 +77,11 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, suggestedPrice: 0 };
   if (!items.length) { errors.push('블렌딩할 원액을 선택하세요'); return empty; }
   const kinds = new Set(items.map((i) => i.lot.kind));
-  if (kinds.size > 1) { errors.push('서로 다른 주종은 섞을 수 없습니다'); return { ...empty, errors }; }
-  const kind = items[0]!.lot.kind;
+  const whiskyMix = [...kinds].every((k) => k === 'malt' || k === 'grain');
+  if (kinds.size > 1 && !whiskyMix) { errors.push('서로 다른 주종은 섞을 수 없습니다 (몰트+그레인 블렌디드만 가능)'); return { ...empty, errors }; }
+  const hasMalt = kinds.has('malt');
+  const hasGrain = kinds.has('grain');
+  const kind = hasMalt ? 'malt' : items[0]!.lot.kind;
 
   const volumeL = items.reduce((t, i) => t + i.liters, 0);
   const lpa = items.reduce((t, i) => t + i.liters * i.lot.abv, 0);
@@ -96,19 +106,19 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   if (opts.chillFilter) { f.body = (f.body ?? 0) - 8; f.oily_waxy = (f.oily_waxy ?? 0) * 0.8; }
   flavor = clampFlavor(f);
 
-  const category = categorize(kind, minOakMonths, finalAbv, flavor);
-  if (kind === 'malt' && category === 'malt_spirit') warnings.push(minOakMonths < WHISKY_MIN_MONTHS ? `오크 숙성 ${minOakMonths}개월 — 36개월 미만이라 "위스키" 표기 불가(몰트 스피릿)` : '도수 40% 미만 — 위스키 표기 불가');
+  const category = categorize(kind, minOakMonths, finalAbv, flavor, hasGrain, hasMalt);
+  if ((hasMalt || hasGrain) && category === 'malt_spirit') warnings.push(minOakMonths < WHISKY_MIN_MONTHS ? `오크 숙성 ${minOakMonths}개월 — 36개월 미만이라 "위스키" 표기 불가(몰트 스피릿)` : '도수 40% 미만 — 위스키 표기 불가');
   if (kind === 'gin' && category === 'flavored_spirit') warnings.push('주니퍼가 지배적이지 않거나 도수 37.5% 미만 — "진" 표기 불가(기타 증류주)');
   if (finalAbv < MIN_BOTTLING_ABV[category]) errors.push(`${CATEGORY[category].nameKo} 최소 병입 도수는 ${(MIN_BOTTLING_ABV[category] * 100).toFixed(1)}%`);
-  if (!opts.chillFilter && finalAbv < 0.46 && kind === 'malt') warnings.push('논칠필터 + 46% 미만 — 저온 혼탁 클레임 위험');
+  if (!opts.chillFilter && finalAbv < 0.46 && (hasMalt || hasGrain)) warnings.push('논칠필터 + 46% 미만 — 저온 혼탁 클레임 위험');
   if (!PACKAGING[opts.packagingId]) errors.push('패키징을 선택하세요');
 
-  const ageYears = category === 'whisky' ? Math.floor(minOakMonths / 12) : null;
+  const ageYears = isWhiskyCategory(category) ? Math.floor(minOakMonths / 12) : null;
   const finalVolume = lpa / finalAbv;
   const bottles = Math.floor(finalVolume / (opts.bottleMl / 1000));
   if (bottles < 1) errors.push('병입할 양이 부족합니다');
   const spiritCost = items.reduce((t, i) => t + i.liters * i.lot.abv * i.lot.costPerLPA, 0);
-  const perBottleFixed = packagingCost(opts.packagingId, opts.bottleMl) + BOTTLING_LABOR_PER_BOTTLE;
+  const perBottleFixed = packagingCost(opts.packagingId, opts.bottleMl) * mod(s, 'packaging') + BOTTLING_LABOR_PER_BOTTLE;
   const unitCost = bottles > 0 ? spiritCost / bottles + perBottleFixed : 0;
   const evaluation = evaluate(flavor, category);
   return {
@@ -160,7 +170,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     totalSold: 0,
   };
   // 포장재·병입 인건비는 병입 시점에 지출
-  s.cash -= (packagingCost(opts.packagingId, opts.bottleMl) + BOTTLING_LABOR_PER_BOTTLE) * p.bottles;
+  s.cash -= Math.round((packagingCost(opts.packagingId, opts.bottleMl) * mod(s, 'packaging') + BOTTLING_LABOR_PER_BOTTLE) * p.bottles);
   s.products.push(product);
   return { product };
 }

@@ -1,14 +1,14 @@
 import { create } from 'zustand';
 import { advanceMonths, applyAction, newGame, type Action, type GameState } from '../sim';
 
-const SAVE_KEY = 'distillery-tycoon/save-v2';
+const SAVE_KEY = 'distillery-tycoon/save-v3';
 
 function load(): GameState | null {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as GameState;
-    return s && s.version === 2 ? s : null;
+    return s && s.version === 3 ? s : null;
   } catch {
     return null;
   }

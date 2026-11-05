@@ -15,14 +15,14 @@ export type AxisId =
 export type Flavor = Partial<Record<AxisId, number>>;
 
 /** 생산 주종 (원액 기준) */
-export type SpiritKind = 'soju' | 'gin' | 'malt';
+export type SpiritKind = 'soju' | 'gin' | 'malt' | 'grain';
 
 /** 판매 카테고리 (라벨 판정 결과) */
-export type ProductCategory = 'soju_distilled' | 'gin' | 'whisky' | 'malt_spirit' | 'flavored_spirit';
+export type ProductCategory = 'soju_distilled' | 'gin' | 'whisky' | 'grain_whisky' | 'blended_whisky' | 'malt_spirit' | 'flavored_spirit';
 
 export type YeastId = 'distillers' | 'ale' | 'nuruk_native';
 export type FermenterType = 'stainless' | 'onggi';
-export type StillType = 'pot_onion' | 'pot_lantern' | 'hybrid' | 'vacuum_pot';
+export type StillType = 'pot_onion' | 'pot_lantern' | 'hybrid' | 'vacuum_pot' | 'column';
 export type CondenserType = 'copper_shell' | 'worm_tub';
 export type CaskTypeId = 'ex_bourbon_barrel' | 'oloroso_butt' | 'korean_oak_quarter';
 export type WoodId = 'american_oak' | 'european_oak' | 'korean_oak';
@@ -157,8 +157,10 @@ export interface ContractTerms {
   id: string;
   buyerId: string;
   buyerName: string;
-  /** 납품 원액: 몰트 뉴메이크 (Phase 3에서 그레인·버번 추가) */
-  spirit: 'malt_newmake';
+  /** 납품 원액: 몰트·그레인 뉴메이크 (버번은 켄터키 지역과 함께) */
+  spirit: 'malt_newmake' | 'grain_newmake';
+  /** 국내 블렌더 — 국산 원액 프리미엄 적용 */
+  domestic: boolean;
   style: 'any' | 'unpeated' | 'peated';
   lpaPerMonth: number;
   termMonths: number;
@@ -191,11 +193,50 @@ export interface MonthReport {
   production: { recipeId: string; name: string; batches: number; lpa: number; cost: number }[];
   angelsShareL: number;
   liquorTaxRemitted: number;
+  /** 이번 달 발생한 이벤트 제목 */
+  events: string[];
   notes: string[];
 }
 
+/** 기간 한정 보정치 — 이벤트·시장 국면이 만든다. key 예: 'ingredient:malt_unpeated', 'demand:whisky', 'appeal:peated' */
+export interface Modifier {
+  id: string;
+  key: string;
+  factor: number;
+  /** 적용 시작 월(포함) */
+  fromMonth: number;
+  /** 적용 종료 월(미포함) */
+  untilMonth: number;
+  label: string;
+}
+
+export interface EventChoiceView { label: string; detail: string }
+
+/** 플레이어 선택을 기다리는 이벤트 (다음 턴까지 고르지 않으면 기본 선택지 적용) */
+export interface PendingEvent {
+  id: string;
+  defId: string;
+  title: string;
+  text: string;
+  month: number;
+  choices: EventChoiceView[];
+  defaultChoice: number;
+}
+
+/** 예보 — 이벤트가 몇 달 앞서 예고된다. 빗나갈 수 있다 */
+export interface Forecast {
+  id: string;
+  defId: string;
+  title: string;
+  text: string;
+  fireMonth: number;
+  certainty: number;
+}
+
+export interface EventLogEntry { month: number; title: string; text: string }
+
 export interface GameState {
-  version: 2;
+  version: 3;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;
@@ -231,6 +272,14 @@ export interface GameState {
   trend: Record<ProductCategory, number>;
   /** 정책자금 자격 등 플래그 */
   flags: { producedSoju: boolean };
+  modifiers: Modifier[];
+  pendingEvents: PendingEvent[];
+  forecasts: Forecast[];
+  eventLog: EventLogEntry[];
+  /** 이벤트별 마지막 발생 월 (쿨다운) */
+  eventLastMonth: Record<string, number>;
+  /** 지난달 원재료별 실제 구매량(kg) — 대량 구매 할인 등급 */
+  ingredientKgLastMonth: Record<string, number>;
   reports: MonthReport[];
   nextId: number;
 }

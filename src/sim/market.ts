@@ -2,6 +2,7 @@ import { DISTRIBUTION, PACKAGING, logisticsCost } from './content/catalog';
 import { KOREA, consumerMultiplier, refPricePerL, type RegionDef } from './content/korea';
 import { clamp } from './flavor';
 import { staffOf } from './util';
+import { mod } from './modifiers';
 import type { GameState, Product, ProductCategory } from './types';
 import type { Rng } from './rng';
 
@@ -16,13 +17,16 @@ export function coverage(s: GameState): number {
 export function effectiveConsumerMultiplier(s: GameState, region: RegionDef = KOREA): number {
   const best = Math.max(0, ...staffOf(s, 'sales').map((x) => x.stats.c));
   const markup = region.retailMarkup * (1 - 0.1 * (best / 100));
-  return consumerMultiplier({ ...region, retailMarkup: markup });
+  return consumerMultiplier({ ...region, retailMarkup: markup }) * mod(s, 'consumerPrice:all');
 }
 
-export function appeal(p: Product): number {
-  const ageBonus = p.category === 'whisky' && p.ageYears ? 1 + 0.06 * Math.min(p.ageYears, 12) : 1;
+export function appeal(p: Product, s?: Pick<GameState, 'modifiers' | 'month'>): number {
+  const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
+  const ageBonus = aged && p.ageYears ? 1 + 0.06 * Math.min(p.ageYears, 12) : 1;
   const lux = PACKAGING[p.packagingId]?.luxury ?? 1;
-  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * (1 - 0.15 * p.sourcedShare);
+  // 시장 국면: 피트·셰리 유행
+  const trend = s ? mod(s, 'appeal:all') * ((p.flavor.peat_smoke ?? 0) >= 25 ? mod(s, 'appeal:peated') : 1) * ((p.flavor.dried_fruit ?? 0) >= 25 ? mod(s, 'appeal:sherried') : 1) : 1;
+  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * (1 - 0.15 * p.sourcedShare) * trend;
 }
 
 export interface DemandBreakdown {
@@ -37,9 +41,9 @@ export interface DemandBreakdown {
 
 export function demandFor(s: GameState, p: Product, sameCategoryCount: number, monthOfYear: number, region: RegionDef = KOREA): DemandBreakdown {
   const m = region.market[p.category];
-  const marketL = (m.baseCases * 9 / 12) * region.seasonality[monthOfYear - 1]! * (s.trend[p.category] ?? 1);
+  const marketL = (m.baseCases * 9 / 12) * region.seasonality[monthOfYear - 1]! * (s.trend[p.category] ?? 1) * mod(s, `demand:${p.category}`) * mod(s, 'demand:all');
   const reach = (s.awareness * coverage(s) * m.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
-  const a = appeal(p);
+  const a = appeal(p, s);
   const bottleL = p.bottleMl / 1000;
   const consumerPricePerL = (p.price * effectiveConsumerMultiplier(s, region)) / bottleL;
   const charm = Math.max(0, ...staffOf(s, 'sales').map((x) => x.stats.a));
@@ -88,7 +92,7 @@ export function updateAwareness(s: GameState, sales: SalesResult[]): void {
   const bottles = sales.reduce((t, x) => t + x.bottles, 0);
   const avgQ = s.products.length ? s.products.reduce((t, p) => t + p.quality, 0) / s.products.length : 50;
   const a = s.awareness;
-  const gain = (AWARENESS.marketing * Math.log10(1 + s.marketingBudget / 1_000_000) + AWARENESS.wordOfMouth * bottles * (avgQ / 60)) * (1 - a);
+  const gain = (AWARENESS.marketing * Math.log10(1 + s.marketingBudget / 1_000_000) * mod(s, 'awareness_gain') + AWARENESS.wordOfMouth * bottles * (avgQ / 60)) * (1 - a);
   s.awareness = clamp(a + gain - AWARENESS.decay * a, 0.001, 0.95);
 }
 

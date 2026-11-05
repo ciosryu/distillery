@@ -3,6 +3,7 @@ import { useGame } from '../../store/game';
 import { Sparkline } from '../charts';
 import { won, pct, liters, num } from '../format';
 import { Card, Empty, Meter, Stat, Table, Td } from '../kit';
+import { EventsCard } from './Events';
 
 const EXPENSE_LABEL: Record<string, string> = {
   production: '생산(원재료·에너지)', distribution: '유통비(채널·물류)', penalty: '계약 위약금', salaries: '급여', overhead: '관리비', maintenance: '설비 유지비', marketing: '마케팅', interest: '이자', principal: '원금 상환',
@@ -30,6 +31,8 @@ export function Dashboard() {
         <Stat label="판매 중 제품" value={s.products.filter((p) => p.stockBottles > 0).length} hint={`재고 ${num(s.products.reduce((t, p) => t + p.stockBottles, 0))}병`} />
         <Stat label="대출 잔액" value={won(s.loans.reduce((t, l) => t + l.balance, 0))} hint={`${s.loans.length}건`} />
       </div>
+
+      <EventsCard />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card title="현금 추이" className="lg:col-span-2">

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   advanceMonths, annuityPayment, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, categorize, demandFor, evaluate, evaporate, heartsFraction, spotBidPerLPA, spotQuote,
-  matureCask, newGame, previewBlend, sizeFactor, simulateBatch, stillDefOf, windowFraction, type Cask, type GameState, type SpiritLot,
+  makeContractOffer, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
 } from './index';
+import { EQUIPMENT } from './content/catalog';
 
 const recipeId = (s: GameState, prefix: string) => s.recipes.find((r) => r.name.startsWith(prefix))!.id;
 
@@ -159,6 +160,77 @@ describe('원액 B2B', () => {
     s = advanceMonths(s, 2);
     expect(s.contracts.length).toBe(0);
     expect(s.b2bTrust).toBeLessThan(trust - 10);
+  });
+});
+
+describe('그레인·블렌디드', () => {
+  it('연속식 증류기는 한 번에 고도수 그레인 원액을 만든다', () => {
+    const s = newGame({ seed: 21 });
+    const r = { ...s.recipes[0]!, kind: 'grain' as const, mashBill: [{ ingredientId: 'corn', ratio: 0.9 }, { ingredientId: 'malt_unpeated', ratio: 0.1 }], fermentDays: 3, runs: 1 as const };
+    const b = simulateBatch(r, EQUIPMENT.column_2 as never, 'stainless', s.staff[0], s.priceIndex, 0);
+    expect(b.abv).toBeGreaterThan(0.88);
+    expect(b.cost / b.lpa).toBeLessThan(3000);
+  });
+
+  it('몰트 + 그레인 3년 이상 = 블렌디드 위스키', () => {
+    expect(categorize('malt', 40, 0.4, {}, true, true)).toBe('blended_whisky');
+    expect(categorize('grain', 40, 0.4, {}, true, false)).toBe('grain_whisky');
+    expect(categorize('malt', 20, 0.4, {}, true, true)).toBe('malt_spirit');
+  });
+
+  it('대량 구매하면 원재료 할인이 붙는다', () => {
+    const s = newGame({ seed: 22 });
+    expect(volumeDiscounts(s).malt_unpeated).toBeUndefined();
+    expect(volumeDiscounts({ ...s, ingredientKgLastMonth: { malt_unpeated: 20_000 } }).malt_unpeated).toBeLessThan(1);
+  });
+});
+
+describe('국산 원액 프리미엄', () => {
+  it('국내 블렌더 계약은 해외 블렌더보다 단가가 높다', () => {
+    const s = newGame({ seed: 23 });
+    const rng = mulberry32(1);
+    const offers = Array.from({ length: 40 }, () => makeContractOffer(s, rng)).filter((o) => o.style === 'any');
+    const dom = offers.filter((o) => o.domestic && o.prepayShare === 0);
+    const foreign = offers.filter((o) => !o.domestic && o.prepayShare === 0);
+    const avg = (xs: typeof offers) => xs.reduce((t, o) => t + o.pricePerLPA / qualityFactor(o.minQuality + 8), 0) / xs.length;
+    expect(dom.length && foreign.length).toBeTruthy();
+    expect(avg(dom)).toBeGreaterThan(avg(foreign));
+  });
+});
+
+describe('변동 요소', () => {
+  it('수요 보정치가 활성 기간에만 수요를 바꾼다', () => {
+    const s = newGame({ seed: 24 });
+    const p = { id: 'p', name: 'p', category: 'gin' as const, ageYears: null, abv: 0.43, bottleMl: 700, chillFiltered: true, packagingId: 'standard', flavor: {}, quality: 55, typicity: 100, style: null, sourcedShare: 0, stockBottles: 100, price: 8000, unitCost: 0, createdMonth: 0, lastMonthSold: 0, totalSold: 0 };
+    const base = demandFor(s, p, 1, 1).demandBottles;
+    const s2 = { ...s, modifiers: [{ id: 'm', key: 'demand:gin', factor: 0.5, fromMonth: 0, untilMonth: 3, label: 't' }] };
+    expect(demandFor(s2, p, 1, 1).demandBottles).toBeCloseTo(base * 0.5, 6);
+    expect(demandFor({ ...s2, month: 3 }, p, 1, 1).demandBottles).toBeCloseTo(base, 6);
+  });
+
+  it('10년이면 이벤트가 여러 번 일어나고, 선택 이벤트는 기본값으로 처리된다', () => {
+    let s = newGame({ seed: 25, startingCash: 50_000_000_000 });
+    s = applyAction(s, { type: 'setOrder', recipeId: recipeId(s, '싱글 몰트 — 언'), batchesPerMonth: 2 }).state;
+    s = advanceMonths(s, 120);
+    expect(s.eventLog.length).toBeGreaterThan(20);
+    expect(s.pendingEvents.every((p) => p.month >= s.month - 1)).toBe(true);
+  });
+
+  it('예보된 이벤트는 예고 월이 지나면 발생하거나 빗나간다', () => {
+    let s = newGame({ seed: 26 });
+    s = { ...s, forecasts: [{ id: 'f', defId: 'barley_failure', title: '보리 흉작', text: 't', fireMonth: 1, certainty: 1 }] };
+    s = advanceMonths(s, 2);
+    expect(s.forecasts.length === 0 || s.forecasts.every((f) => f.defId !== 'barley_failure' || f.fireMonth > 1)).toBe(true);
+    expect(s.modifiers.some((m) => m.key === 'ingredient:malt_unpeated' && m.factor > 1)).toBe(true);
+  });
+
+  it('선택 이벤트를 고르면 효과가 적용된다', () => {
+    let s = newGame({ seed: 27 });
+    s = { ...s, pendingEvents: [{ id: 'v', defId: 'export_support', title: 't', text: 't', month: 0, choices: [], defaultChoice: 1 }] };
+    const cash = s.cash;
+    s = applyAction(s, { type: 'resolveEvent', eventId: 'v', choice: 0 }).state;
+    expect(s.pendingEvents.length).toBe(0);
+    expect(s.cash).not.toBe(cash);
   });
 });
 

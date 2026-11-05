@@ -27,6 +27,8 @@ export function evaporate(volumeL: number, abv: number, rate: number, humidity: 
 export interface MatureOptions {
   /** 숙성고 매니저 환경통제 스탯(0~100) — 증발 최대 20% 감소 */
   control: number;
+  /** 이벤트 보정 (폭염 등) */
+  evaporationFactor?: number;
 }
 
 /** 캐스크 1개월 숙성. 새 Cask를 반환 */
@@ -35,7 +37,7 @@ export function matureCask(cask: Cask, climate: Climate, opts: MatureOptions): {
   if (!lot) return { cask, lostL: 0 };
   const sf = sizeFactor(cask.sizeL);
   const tf = tempFactor(climate.tempC);
-  const rate = R0_EVAP * tf * sf * (1 - 0.2 * (opts.control / 100));
+  const rate = R0_EVAP * tf * sf * (1 - 0.2 * (opts.control / 100)) * (opts.evaporationFactor ?? 1);
   const evap = evaporate(lot.volumeL, lot.abv, rate, climate.humidity);
   const m = sf * tf;
   const act = cask.activity;

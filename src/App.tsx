@@ -83,6 +83,11 @@ export default function App() {
             파산했습니다 — 현금 부족이 3개월 이어졌습니다. "새 게임"으로 다시 시작하세요.
           </div>
         )}
+        {running && s.pendingEvents.length > 0 && tab !== 'dashboard' && (
+          <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+            선택이 필요한 이벤트 {s.pendingEvents.length}건 — <button className="font-semibold underline" onClick={() => setTab('dashboard')}>대시보드에서 결정하기</button> (고르지 않으면 다음 달 기본값 적용)
+          </div>
+        )}
         {running && s.month === 0 && (
           <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
             <b>시작 가이드</b> — ① <b>생산</b>에서 월 배치 수를 정하고 ② 한 달을 진행하면 원액이 탱크에 쌓입니다. ③ 소주·진은 <b>블렌딩·병입</b>에서 바로 병입해 팔고, 몰트는 <b>숙성고</b>에서 캐스크에 통입해 36개월을 버티세요. ④ <b>직원</b>에서 영업 직원을 뽑으면 유통이 넓어집니다. 자금이 모자라면 <b>재무</b>의 대출을 쓰세요.
