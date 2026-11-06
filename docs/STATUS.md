@@ -19,7 +19,7 @@
 | 공정관리 | PM | `claude/hopeful-tesla-n0kk50` | 진행 중 |
 | 설계 | ARCH | `claude/arch-*` | 진행 중 — #14~#17 머지 완료(결정 #117·#139~#144). 다음: S-4 파일 쪼개기 실행 |
 | 스코틀랜드 | (규칙 이전 세션) | `claude/hopeful-pascal-wm32n3` | ciosryu/distillery#9 WIP — 아래 "열린 PR" 참고 |
-| 병 가격 숙성 | (규칙 이전 세션) | `claude/fervent-mccarthy-anosrs` | ciosryu/distillery#6 |
+| 병 가격 숙성 | (규칙 이전 세션) | `claude/fervent-mccarthy-anosrs` | PR #6 닫힘 → **종료 대상** |
 | 확장형 안전장치 | (규칙 이전 세션) | `claude/expand-stage-fix` | ciosryu/distillery#5 |
 | 아키텍처 재편 | (규칙 이전 세션) | `claude/distillery-tycoon-architecture-11o9nq` | ciosryu/distillery#7 머지 완료 → **종료 대상** |
 
@@ -28,7 +28,7 @@
 | PR | 내용 | 공정상 위치 | 제안 |
 |---|---|---|---|
 | ciosryu/distillery#9 | 스코틀랜드(영국)·스페이사이드 (예약 #110~#116), WIP | 단계 P/Phase 3 콘텐츠. 뼈대 결정 S-3(지역 추가 = 데이터 추가)에 걸린다 | **일시 정지 권장.** v5 코드라 `main`을 받으려면 코드모드가 필요하다. S-3 결정 뒤 재개 |
-| ciosryu/distillery#6 | 병 가격 숙성 프리미엄 (예약 #117) | **대체됨** — 같은 규칙을 ciosryu/distillery#15가 `main`에 구현했고 #117을 발급했다 | **닫기 제안** (오너 확인 필요). 봇 전략 `aged`·`twin`과 실험 스위치는 단계 T에서 참고 |
+| ciosryu/distillery#6 | 병 가격 숙성 프리미엄 | **닫힘(2026-11-06, 오너 결정)** — ciosryu/distillery#15가 같은 규칙을 구현, #117 발급 | 봇 전략 `aged`·`twin`·실험 스위치는 단계 T에서 브랜치 `claude/fervent-mccarthy-anosrs`를 참고 |
 | ciosryu/distillery#5 | 확장형 안전장치 (예약 #97) | 단계 T 봇 정책(BAL) | **보류.** 단계 T에서 `main` 기준으로 다시 올린다. §16.26 → 새 절 번호 |
 
 ## 따라잡기 필요 (`main`이 바뀐 뒤 각 브랜치가 할 일)
@@ -49,7 +49,7 @@
 
 | # | 질문 | 권장안 | 누가 묻나 |
 |---|---|---|---|
-| 1 | ciosryu/distillery#6을 닫을까? (#15가 같은 규칙을 구현, #117 발급) | 닫는다 | PM |
+| 1 | ~~PR #6 닫기~~ → 닫음(2026-11-06) | — | — |
 | 2 | 시작 대출 슬라이더가 봇 기준으로 결과를 거의 바꾸지 않는다 — 그대로 둘지, 자본금에 비용(지분 희석)을 줄지 (mvp.md §6.3) | 사람 플레이테스트 뒤 판단 | 설계 |
 | 3 | 소규모 티어에서 비지터 센터가 사실상 필수(안 지으면 목표 3/20), 목표 ×3이 소규모엔 쉽고 표준엔 어렵다 (mvp.md §6.3) | 단계 T 튜닝 항목으로 넘김 | 설계 |
 | 4 | 재고 평가액 곡선(#138)의 평가 방식 — 숙성고 전체를 병 가격으로 매기면 그만큼 팔 수요가 없다 | MVP 화면 작업 때 설계 세션이 제안 | 설계 |
@@ -73,3 +73,4 @@
 | 2026-11-06 | MVP v0.2 — 오너 보완안 4가지 승인, 결정 #135~#138 발급 |
 | 2026-11-06 | MVP 생존 실험 — 한국 경기 소주 + 몰트로는 70~100% 파산. `scripts/experiments/mvp-survival.ts` |
 | 2026-11-06 | 설계 세션 PR 4개 머지(ciosryu/distillery#14~#17): MVP 경제·MVP 모드·사업 계획서(#139~#142), 병 가격 숙성(#117), 숙성 용기·샘플 기록(#143), 파일 쪼개기 계획(#144). 스키마 v9 |
+| 2026-11-06 | ciosryu/distillery#6 닫음 (#15로 대체). 설계 세션 질문 2~4는 설계 세션에서 진행 |
