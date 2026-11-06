@@ -243,8 +243,9 @@ function start(s: GameState, strategy: Strategy): GameState {
 /** 확장형: 위스키 판매가 자리 잡은 뒤(48개월~, 현금 4억↑) 증류기 1기를 추가해 몰트 B2B 공급을 붙인다 */
 /** v1.4(#83) 공격적 증설형: 브랜드형과 같이 시작해, 위스키 수요가 공급을 넘으면 증류기·발효조를 단계적으로 늘린다.
  *  늘린 원액은 전부 자사 위스키로 숙성한다(v1.3까지는 뉴메이크 B2B로 팔아 LPA당 가치가 1/5이었다).
- *  자금이 모자라면 시설자금을 끌어 쓴다 — 빚과 3년 숙성 대기가 위험이다. OLD_EXPAND=1이면 옛 정책 */
-const OLD_EXPAND = process.env.OLD_EXPAND === '1';
+ *  자금이 모자라면 시설자금을 끌어 쓴다 — 빚과 3년 숙성 대기가 위험이다.
+ *  결정 #90: 이 재설계는 거의 모든 입지에서 1위(지배 전략)가 되어 철회 — 기본은 옛 확장형(48개월 이후 증설분 B2B). NEW_EXPAND=1이면 재설계 */
+const OLD_EXPAND = process.env.NEW_EXPAND !== '1';
 const EXPAND_RECIPE = '증설 몰트';
 const EXPAND_FROM = Number(process.env.EXPAND_FROM ?? 37);
 const EXPAND_MAX_STAGES = Number(process.env.EXPAND_STAGES ?? 2);

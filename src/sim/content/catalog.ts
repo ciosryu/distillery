@@ -107,8 +107,9 @@ export const EQUIPMENT: Record<string, EquipmentDef> = {
   facility_seismic: { id: 'facility_seismic', kind: 'facility', nameKo: '내진 랙 보강', cost: 80_000_000, leadMonths: 3, maintenance: 200_000, defends: ['earthquake'], note: '지진에 랙이 무너지는 것을 막는다' },
   // ── 비지터 센터 ──
   visitor_basic: { id: 'visitor_basic', kind: 'visitor', nameKo: '비지터 센터 — 베이직 투어', cost: 80_000_000, leadMonths: 4, maintenance: 3_000_000, tier: 1, visitorsPerMonth: 600, spendPerVisitor: 15_000, buzzQuality: 0.6 },
-  visitor_vip: { id: 'visitor_vip', kind: 'visitor', nameKo: '비지터 센터 — VIP 테이스팅 라운지', cost: 200_000_000, leadMonths: 6, maintenance: 6_000_000, tier: 2, visitorsPerMonth: 400, spendPerVisitor: 60_000, buzzQuality: 1.2, requires: 'visitor_basic' },
-  visitor_restaurant: { id: 'visitor_restaurant', kind: 'visitor', nameKo: '비지터 센터 — 레스토랑 결합형', cost: 500_000_000, leadMonths: 9, maintenance: 15_000_000, tier: 3, visitorsPerMonth: 800, spendPerVisitor: 45_000, buzzQuality: 1.5, requires: 'visitor_vip' },
+  // 결정 #91: VIP·레스토랑은 소수 고객 상품 — v1.4 수치(VIP 월 400명 × 6만 원)는 관광 배수가 높은 입지에서 본업보다 많이 벌어(오사카·교토 순자산 54억) 방문객·객단가를 낮췄다 [튜닝]
+  visitor_vip: { id: 'visitor_vip', kind: 'visitor', nameKo: '비지터 센터 — VIP 테이스팅 라운지', cost: 200_000_000, leadMonths: 6, maintenance: 4_000_000, tier: 2, visitorsPerMonth: 150, spendPerVisitor: 50_000, buzzQuality: 1.2, requires: 'visitor_basic' },
+  visitor_restaurant: { id: 'visitor_restaurant', kind: 'visitor', nameKo: '비지터 센터 — 레스토랑 결합형', cost: 500_000_000, leadMonths: 9, maintenance: 8_000_000, tier: 3, visitorsPerMonth: 300, spendPerVisitor: 40_000, buzzQuality: 1.5, requires: 'visitor_vip' },
 };
 
 // ── 캐스크 ──

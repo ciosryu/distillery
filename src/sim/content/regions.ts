@@ -299,7 +299,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       tempC: [4.8, 5.4, 8.8, 14.4, 19.5, 23.2, 27.3, 28.5, 24.4, 18.4, 12.5, 7.2],
       humidity: [66, 65, 63, 63, 66, 72, 76, 72, 73, 72, 70, 68],
       basis: '오사카·교토 평년값 근사(추정)',
-      tourism: 1.5, water: 'soft', overheadFactor: 1.1, warehouseCostFactor: 1.3, demandFactor: 1.1,
+      tourism: 1.15, water: 'soft', overheadFactor: 1.25, warehouseCostFactor: 1.3, demandFactor: 1.05,
       caskPriceFactor: { mizunara_hogshead: 0.8 }, eventBoost: { earthquake: 1.5 },
       starter: { name: '야마다 유키', distillery: '미오 증류소' },
       traits: [
@@ -316,8 +316,8 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       tempC: [-3.5, -3, 0.5, 6, 11, 15, 19.5, 21, 17, 10.5, 4, -1],
       humidity: [76, 74, 70, 68, 72, 78, 82, 81, 78, 74, 74, 76],
       basis: '홋카이도 내륙 평년값 근사(추정)',
-      tourism: 1.0, overheadFactor: 0.9, warehouseCostFactor: 0.7, outboundLogistics: 1.25, inventoryLtv: 0.6,
-      heating: { months: [11, 12, 1, 2, 3], perMonth: 4_000_000, energyFactor: 1.6 },
+      tourism: 0.9, overheadFactor: 1.0, warehouseCostFactor: 0.7, outboundLogistics: 1.5, inventoryLtv: 0.6,
+      heating: { months: [11, 12, 1, 2, 3], perMonth: 8_000_000, energyFactor: 1.6 },
       eventBoost: { snowstorm: 1.5, cold_wave: 1.3 },
       starter: { name: '오노 다이치', distillery: '시라카바 증류소' },
       traits: [
