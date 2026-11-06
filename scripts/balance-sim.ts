@@ -127,11 +127,6 @@ function operations(s: GameState, strategy: Strategy): GameState {
   for (const c of s.casks.filter((x) => !x.contents && x.contamination && x.recharCount < 2)) if (s.cash > 100_000_000) s = act(s, { type: 'rechar', caskId: c.id });
   const empty = s.casks.filter((c) => !c.contents && !c.contamination).length + s.caskOrders.reduce((t, o) => t + o.qty, 0);
   if (empty < 12 && s.cash > 150_000_000) s = act(s, { type: 'buyCasks', caskType: 'ex_bourbon_barrel', qty: 12 });
-  // v1.4: 원액이 든 캐스크가 숙성고의 85%를 넘으면 빈 통부터 중고로 팔고, 그래도 차면 랙 숙성고(+100 캐스크)를 늘린다
-  const filled = s.casks.filter((c) => c.contents).length;
-  if (s.casks.length >= warehouseCapacity(s) - 2) for (const c of s.casks.filter((x) => !x.contents).slice(12)) s = act(s, { type: 'sellUsedCask', caskId: c.id });
-  const building = s.equipment.some((e) => EQUIPMENT_KIND(e.catalogId) === 'warehouse' && e.readyMonth > s.month);
-  if (!building && filled >= warehouseCapacity(s) * 0.85 && s.cash > 300_000_000) s = act(s, { type: 'buyEquipment', catalogId: 'warehouse_rack_100' });
   const last = s.reports.at(-1);
   const sales = s.staff.filter((x) => x.role === 'sales').length;
   if (last?.overflowCases && last.overflowCases > 20 && sales < 4 && s.cash > 150_000_000) {
@@ -216,7 +211,7 @@ function start(s: GameState, strategy: Strategy): GameState {
 const OLD_EXPAND = process.env.OLD_EXPAND === '1';
 const EXPAND_RECIPE = '증설 몰트';
 const EXPAND_FROM = Number(process.env.EXPAND_FROM ?? 37);
-const EXPAND_MAX_STAGES = Number(process.env.EXPAND_STAGES ?? 2);
+const EXPAND_MAX_STAGES = Number(process.env.EXPAND_STAGES ?? 1);
 /** 숙성·증발 뒤 1 LPA에서 나오는 46%·700ml 병 수 (증발 약 15% 가정) */
 const BOTTLES_PER_LPA_AGED = 0.85 / (0.46 * 0.7);
 function maltLPALastMonth(s: GameState): number {
@@ -224,7 +219,8 @@ function maltLPALastMonth(s: GameState): number {
   return s.reports.at(-1)?.production.filter((p) => ids.has(p.recipeId)).reduce((t, p) => t + p.lpa, 0) ?? 0;
 }
 function expandStaged(s: GameState): GameState {
-  const stages = s.equipment.filter((e) => e.catalogId === 'pot_onion_1000');
+  // 증설 단계 = 처음 증류기(같은 1,000L 양파형) 말고 새로 들인 증류기
+  const stages = s.equipment.filter((e) => e.catalogId === 'pot_onion_1000' && e.readyMonth > 0);
   // 지어 놓은 증설 단계는 다 돌린다
   for (const still of stages) {
     const r = s.recipes.find((x) => x.stillId === still.id);
@@ -244,6 +240,16 @@ function expandStaged(s: GameState): GameState {
   const still = s.equipment.filter((e) => e.catalogId === 'pot_onion_1000').at(-1)!;
   const { id: _id, ...rest } = recipeOf(s, 'malt')!;
   return act(s, { type: 'saveRecipe', recipe: { ...rest, name: `${EXPAND_RECIPE} ${stages.length + 1}`, stillId: still.id } });
+}
+
+/** 증설형만: 원액이 든 캐스크가 숙성고의 85%를 넘으면 빈 통부터 중고로 팔고, 그래도 차면 랙 숙성고(+100 캐스크)를 늘린다.
+ *  고정 규모 전략(브랜드·혼합·그레인)에 넣으면 10년 안에 회수가 안 돼 순자산이 1.7~3억 줄었다 */
+function growWarehouse(s: GameState): GameState {
+  const filled = s.casks.filter((c) => c.contents).length;
+  if (s.casks.length >= warehouseCapacity(s) - 2) for (const c of s.casks.filter((x) => !x.contents).slice(12)) s = act(s, { type: 'sellUsedCask', caskId: c.id });
+  const building = s.equipment.some((e) => EQUIPMENT_KIND(e.catalogId) === 'warehouse' && e.readyMonth > s.month);
+  if (!building && filled >= warehouseCapacity(s) * 0.85 && s.cash > 300_000_000) s = act(s, { type: 'buyEquipment', catalogId: 'warehouse_rack_100' });
+  return s;
 }
 
 function expand(s: GameState): GameState {
@@ -317,6 +323,7 @@ function policy(s: GameState, strategy: Strategy): GameState {
     s = bottleBlended(s);
   } else if (!OLD_EXPAND) {
     s = expandStaged(s);
+    s = growWarehouse(s);
     s = fillMalt(s);
   } else {
     s = expand(s);
