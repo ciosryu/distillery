@@ -1,13 +1,14 @@
-import { capacityReport, coverage, monthLabel, monthlyFixedCost, warehouseCapacity } from '../../sim';
+import { capacityReport, coverage, inventoryLoanRoom, inventoryLtv, liveDutyFreeEditions, monthLabel, monthlyFixedCost, siteOverhead, warehouseCapacity, waterPermitCap } from '../../sim';
+import { REGIONS, siteOf } from '../../sim/content/regions';
 import { hasPremiumChannel, retailCapacityCases, visitorTiers } from '../../sim/ops';
 import { useGame } from '../../store/game';
 import { Sparkline } from '../charts';
 import { won, pct, liters, num } from '../format';
-import { Card, Empty, Meter, Stat, Table, Td } from '../kit';
+import { Badge, Button, Card, Empty, Meter, Stat, Table, Td } from '../kit';
 import { EventsCard } from './Events';
 
 const EXPENSE_LABEL: Record<string, string> = {
-  production: '생산(원재료·에너지)', distribution: '유통비(채널·물류)', penalty: '계약 위약금', salaries: '급여', overhead: '관리비', maintenance: '설비 유지비', marketing: '마케팅', interest: '이자', principal: '원금 상환',
+  production: '생산(원재료·에너지)', distribution: '유통비(채널·물류)', penalty: '계약 위약금', salaries: '급여', overhead: '관리비', heating: '난방비', storage: '캐스크 보관비·보험', maintenance: '설비 유지비', marketing: '마케팅', interest: '이자', principal: '원금 상환',
 };
 
 export function Dashboard() {
@@ -34,6 +35,8 @@ export function Dashboard() {
         <Stat label="소매 처리 역량 (지난달)" value={last?.retailCapacityCases != null ? `${num(last.retailSoldCases ?? 0)} / ${num(last.retailCapacityCases)} 케이스` : `${num(retailCapacityCases(s))} 케이스/월`} tone={last?.overflowCases ? 'warn' : undefined} hint={last?.overflowCases ? `초과 ${num(last.overflowCases)}케이스 고비용 채널${last.lostSalesBottles ? ` · ${num(last.lostSalesBottles)}병 못 팔음` : ''}` : `영업 직원·네트워크로 늘어남${hasPremiumChannel(s) ? ' · 고급 유통망 확보' : ''}`} />
         <Stat label="비지터 센터 (지난달)" value={visitorTiers(s).length ? `${num(last?.visitors ?? 0)}명 · ${won(last?.tourismRevenue ?? 0)}` : '없음'} hint={`입소문 ${pct(s.localBuzz)} — 첫 위스키 출시 때 오픈런 확률`} />
       </div>
+
+      <SiteCard />
 
       <EventsCard />
 
@@ -62,7 +65,9 @@ export function Dashboard() {
             <div>
               <h3 className="mb-1 text-xs font-semibold text-stone-500">현금 흐름</h3>
               <Table head={['항목', '금액']}>
-                <tr><Td>제품 매출</Td><Td right>{won(last.revenue)}</Td></tr>
+                <tr><Td>제품 매출</Td><Td right>{won(last.revenue - (last.oemRevenue ?? 0) - (last.receivablesCollected ?? 0))}</Td></tr>
+                {(last.oemRevenue ?? 0) > 0 && <tr><Td>위탁생산 가공비</Td><Td right>{won(last.oemRevenue!)}</Td></tr>}
+                {(last.receivablesCollected ?? 0) > 0 && <tr><Td>납품 대금 입금</Td><Td right>{won(last.receivablesCollected!)}</Td></tr>}
                 {last.bulkRevenue > 0 && <tr><Td>원액 계약 납품</Td><Td right>{won(last.bulkRevenue)}</Td></tr>}
                 {Object.entries(last.expenses).map(([k, v]) => <tr key={k}><Td>{EXPENSE_LABEL[k] ?? k}</Td><Td right>−{won(v)}</Td></tr>)}
                 <tr className="font-semibold"><Td>순현금</Td><Td right>{won(last.netCash)}</Td></tr>
@@ -95,5 +100,49 @@ export function Dashboard() {
         )}
       </Card>
     </div>
+  );
+}
+
+/** 입지 카드 (결정 #86~): 특성 요약 + 취수 허가·면세 매대·난방·담보대출 상태 */
+function SiteCard() {
+  const s = useGame((g) => g.state);
+  const dispatch = useGame((g) => g.dispatch);
+  const site = siteOf(s);
+  const last = s.reports.at(-1);
+  if (!site.traits?.length) return null;
+  const wp = site.waterPermit;
+  const app = s.siteState.permitApplication;
+  const live = liveDutyFreeEditions(s)[0];
+  const dfAw = (last?.dutyFreeAwareness ?? 0) * 100;
+  return (
+    <Card title={`입지 — ${REGIONS[s.regionId].nameKo.replace(/\s*\(.*\)$/, '')} · ${site.nameKo}${site.difficulty ? ` ${'★'.repeat(site.difficulty)}` : ''}`}>
+      {site.tagline && <p className="mb-2 text-sm text-stone-600 dark:text-stone-300">{site.tagline}</p>}
+      <div className="grid gap-4 md:grid-cols-2">
+        <ul className="grid gap-1 text-sm">
+          {site.traits.map((t) => <li key={t.text} className={t.tone === 'good' ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}>{t.tone === 'good' ? '+' : '−'} {t.text}</li>)}
+        </ul>
+        <div className="grid content-start gap-2 text-sm">
+          <div className="text-stone-600 dark:text-stone-300">관리비 월 {won(siteOverhead(s))}{site.water && site.water !== 'medium' ? ` · 물 ${site.water === 'volcanic' ? '화산암반수' : '연수'}` : ''}</div>
+          {wp && (
+            <div>
+              <b>취수 허가</b> — 월 발효 투입 {liters(waterPermitCap(s))} 상한
+              <div className="mt-1">
+                {app
+                  ? <Badge tone="warn">증량 심사 중 · {monthLabel(s.startYear, app.decideMonth)} 결과 · 승인 확률 {pct(app.chance, 0)}</Badge>
+                  : <Button small disabled={s.cash < wp.cost} onClick={() => dispatch({ type: 'applyWaterPermit' })}>증량 신청 (+{liters(wp.stepL)}, {won(wp.cost)}, {wp.months[0]}~{wp.months[1]}개월, 승인 {pct(wp.chance, 0)})</Button>}
+              </div>
+            </div>
+          )}
+          {site.dutyFree && (
+            <div>
+              <b>지정면세점</b> — 지난달 면세 판매 {num(last?.dutyFreeBottles ?? 0)}병 (주세·부가세 없음) · 관광객 입소문 인지도 {dfAw > 0 && dfAw < 0.01 ? '+0.01%p 미만' : `+${dfAw.toFixed(2)}%p`}
+              <div className="text-xs text-stone-500">면세 한정판 매대: {live?.dfEdition ? `Vol.${live.dfEdition.vol} ${live.name} — 출시 ${s.month - live.createdMonth + 1}개월째, 남은 ${num(live.stockBottles)}병` : '비어 있음'} · 연속 완판 {s.siteState.dfSeries?.streak ?? 0}회</div>
+            </div>
+          )}
+          {site.heating && <div><b>겨울 난방</b> — {site.heating.months.join('·')}월 난방비 월 {won(site.heating.perMonth)}, 증류 에너지비 ×{site.heating.energyFactor}</div>}
+          {inventoryLtv(s) > 0 && <div><b>재고 담보대출</b> — 담보 인정 {pct(inventoryLtv(s), 0)}, 지금 더 빌릴 수 있는 한도 {won(inventoryLoanRoom(s))} (재무 탭)</div>}
+        </div>
+      </div>
+    </Card>
   );
 }

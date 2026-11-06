@@ -75,6 +75,8 @@ export interface SpiritLot {
   recipeId?: string;
   /** 원재료 배합 비율(레시피 기준) — 특산물·버번 옥수수 51% 같은 원료 규정 판정용 */
   mashShare?: Record<string, number>;
+  /** 입지 원료(제주 차조·청귤 등)를 쓴 원액 — 면세 기념품 매력도 (결정 #87) */
+  localIngredient?: boolean;
 }
 
 export interface Cask {
@@ -138,6 +140,14 @@ export interface Product {
   salesEma?: number;
   /** 첫 위스키 출시 오픈런 효과 */
   launchBoost?: { factor: number; untilMonth: number };
+  /** 면세 전용 한정판 (제주, 결정 #87) — 국내 판매 없음 */
+  dutyFreeOnly?: boolean;
+  /** 입지 원료 제품 — 모든 구성 원액이 입지 원료 원액일 때 */
+  localIngredient?: boolean;
+  /** 면세 한정판 시리즈: 판 번호, 출시 시점 연속 완판 수, 판정 끝남 */
+  dfEdition?: { vol: number; streak: number; done?: boolean };
+  /** 지난달 판매 중 면세 채널 몫 */
+  lastMonthDutyFree?: number;
 }
 
 export interface StaffStats { a: number; b: number; c: number }
@@ -236,7 +246,54 @@ export interface MonthReport {
   lostSalesBottles?: number;
   visitors?: number;
   tourismRevenue?: number;
+  /** 입지 특성 (결정 #86~) */
+  dutyFreeBottles?: number;
+  /** 면세 판매 입소문으로 오른 인지도 */
+  dutyFreeAwareness?: number;
+  retailDealRevenue?: number;
+  oemRevenue?: number;
+  /** 매출채권 입금 (대형 유통 납품 대금) */
+  receivablesCollected?: number;
   notes: string[];
+}
+
+/** 대형 유통 납품 계약 (경기, 결정 #88) — 정해진 물량을 할인 단가에 납품, 대금은 몇 달 뒤 */
+export interface RetailTerms {
+  id: string;
+  partner: string;
+  category: ProductCategory;
+  bottlesPerMonth: number;
+  /** 납품 단가 = 제품 출고가 × priceFactor */
+  priceFactor: number;
+  termMonths: number;
+  /** 대금 지급까지 개월 수 */
+  paymentDelay: number;
+  penaltyPerBottle: number;
+}
+export interface RetailOffer extends RetailTerms { expiresMonth: number }
+export interface RetailContract extends RetailTerms { startMonth: number; monthsDone: number; delivered: number; shortfall: number }
+
+/** 위탁생산(OEM) 계약 (간토, 결정 #89) — 원료는 위탁사 부담, 가공비를 받고 증류 설비를 내준다 */
+export interface OemTerms {
+  id: string; buyerName: string; batchesPerMonth: number; feePerBatch: number; termMonths: number; penaltyPerBatch: number;
+  /** 전용 증류기 설치 지원형: 위탁사가 설비 패키지(증류기 + 발효조 2기) 설치비 일부를 체결 시 지원 */
+  dedicated?: boolean;
+  capexSupport?: number;
+}
+export interface OemOffer extends OemTerms { expiresMonth: number }
+export interface OemContract extends OemTerms { startMonth: number; monthsDone: number; missed: number; /** 전용 증류기 설비 id */ stillId?: string }
+
+/** 매출채권 — 결제 지연 대금 */
+export interface Receivable { dueMonth: number; amount: number; label: string }
+
+/** 입지 고유 상태 (결정 #86~) */
+export interface SiteState {
+  /** 취수 허가량 — 월 발효 투입 용량 상한(L). 제주 */
+  waterPermitL?: number;
+  /** 취수 증량 신청 — 결정 월에 승인 여부가 정해진다 */
+  permitApplication?: { decideMonth: number; addL: number; chance: number };
+  /** 면세 한정판 시리즈 — 마지막 판 번호와 연속 완판 수 (제주) */
+  dfSeries?: { vol: number; streak: number };
 }
 
 /** 기간 한정 보정치 — 이벤트·시장 국면이 만든다. key 예: 'ingredient:malt_unpeated', 'demand:whisky', 'appeal:peated' */
@@ -354,6 +411,13 @@ export interface GameState {
   traditionalReleasedL: number;
   /** 작년 전통주 경감 대상 출고량(L) — 500㎘ 넘으면 올해 경감 없음 */
   traditionalPrevYearL: number;
+  /** 입지 특성 (결정 #86~) — 옛 저장에는 없을 수 있다 → normalizeState가 채운다 */
+  siteState: SiteState;
+  retailOffers: RetailOffer[];
+  retailContracts: RetailContract[];
+  oemOffers: OemOffer[];
+  oemContracts: OemContract[];
+  receivables: Receivable[];
   reports: MonthReport[];
   nextId: number;
 }

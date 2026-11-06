@@ -5,12 +5,13 @@ import { DEFAULT_WHISKY_RULES, priceForConsumer, refPricePerL, regionOf, traditi
 import { clampFlavor, evaluate, weightedAverage, type Evaluation } from './flavor';
 import { emptyCask } from './maturation';
 import { ownsFacility } from './ops';
+import { dutyFreeAgedAppeal, dutyFreeSlotBlocker, dutyFreeSuggestedPrice, hasDutyFree, nextDutyFreeEdition, siteFreight, DUTY_FREE } from './sites';
 import { bestBy, nid, staffOf } from './util';
 import { mod } from './modifiers';
 import type { AxisId, Flavor, GameState, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
 
 export interface BlendComponent { source: 'cask' | 'lot'; id: string; liters: number }
-export interface BottleOptions { name: string; targetAbv: number | 'cask'; bottleMl: number; chillFilter: boolean; packagingId: string }
+export interface BottleOptions { name: string; targetAbv: number | 'cask'; bottleMl: number; chillFilter: boolean; packagingId: string; /** 면세 전용 한정판(제주, 결정 #87) */ dutyFreeOnly?: boolean }
 
 export interface BlendPreview {
   ok: boolean;
@@ -35,6 +36,10 @@ export interface BlendPreview {
   premiumLabel: boolean;
   traditional: boolean;
   suggestedPrice: number;
+  /** 입지 원료 제품 (면세 기념품 보너스 대상, 결정 #87) */
+  localIngredient: boolean;
+  /** 면세 한정판으로 내면 붙을 판 번호·연속 완판 수 */
+  dfEdition: { vol: number; streak: number } | null;
 }
 
 /** 기본(스코틀랜드·EU식) 위스키 최소 숙성. 지역별 규칙은 RegionDef.whisky */
@@ -102,7 +107,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     if (c.liters > lot.volumeL + 1e-6) errors.push(`${lot.name}: 보유량(${lot.volumeL.toFixed(1)}L)보다 많이 선택했습니다`);
     items.push({ lot, liters: Math.min(c.liters, lot.volumeL) });
   }
-  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, sourcedPrestige: 1, specialty: null, premiumLabel: false, traditional: false, suggestedPrice: 0 };
+  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, sourcedPrestige: 1, specialty: null, premiumLabel: false, traditional: false, suggestedPrice: 0, localIngredient: false, dfEdition: null };
   const region = regionOf(s);
   const rules = region.whisky;
   if (!items.length) { errors.push('블렌딩할 원액을 선택하세요'); return empty; }
@@ -163,18 +168,41 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   if (!PACKAGING[opts.packagingId]) errors.push('패키징을 선택하세요');
 
   const ageYears = isWhiskyCategory(category) ? Math.floor(minOakMonths / 12) : null;
+  // 면세 전용 한정판 (제주, 결정 #87): 전용 매대 1칸, 제주 원료 기념품 / 위스키는 숙성 연수 보너스
+  const localIngredient = items.every((i) => i.lot.localIngredient);
+  const dutyFree = !!opts.dutyFreeOnly;
+  if (dutyFree && !hasDutyFree(s)) errors.push('면세 전용 한정판은 지정면세점이 있는 입지(제주)에서만 만들 수 있습니다');
+  else if (dutyFree) {
+    const blocker = dutyFreeSlotBlocker(s);
+    if (blocker) errors.push(blocker);
+    else if (!localIngredient) {
+      const minAged = DUTY_FREE.agedTiers.at(-1)!;
+      if (ageYears == null) warnings.push('제주 원료(차조·청귤)를 쓰지 않은 한정판 — 기념품 매력도 보너스 없음');
+      else if (dutyFreeAgedAppeal(ageYears) <= 1) warnings.push(`숙성 ${ageYears}년 — ${minAged.years}년 이상이면 숙성 한정판 수요 ×${minAged.appeal} (가격 프리미엄은 없음)`);
+    }
+  }
   const finalVolume = lpa / finalAbv;
   const bottles = Math.floor(finalVolume / (opts.bottleMl / 1000));
   if (bottles < 1) errors.push('병입할 양이 부족합니다');
   const spiritCost = items.reduce((t, i) => t + i.liters * i.lot.abv * i.lot.costPerLPA, 0);
-  const perBottleFixed = packagingCost(opts.packagingId, opts.bottleMl) * mod(s, 'packaging') + BOTTLING_LABOR_PER_BOTTLE;
+  const perBottleFixed = packagingUnitCost(s, opts) + BOTTLING_LABOR_PER_BOTTLE;
   const unitCost = bottles > 0 ? spiritCost / bottles + perBottleFixed : 0;
   const evaluation = evaluate(flavor, category);
   return {
     ok: errors.length === 0, errors, warnings, kind, category, volumeL: finalVolume, lpa, mixAbv, finalAbv, bottles,
     minOakMonths, ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare, sourcedPrestige, specialty: specialty?.id ?? null, premiumLabel, traditional,
-    suggestedPrice: suggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? minOakMonths : null, finalAbv, traditionalTaxFactor(region, traditional, s.traditionalReleasedL, s.traditionalPrevYearL)),
+    // 면세 전용 한정판은 면세 기준가로 권장가를 잡는다 (주세·부가세 없음)
+    suggestedPrice: dutyFree && hasDutyFree(s)
+      ? dutyFreeSuggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? agePerception(minOakMonths) : 1, finalAbv)
+      : suggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? minOakMonths : null, finalAbv, traditionalTaxFactor(region, traditional, s.traditionalReleasedL, s.traditionalPrevYearL)),
+    localIngredient,
+    dfEdition: dutyFree && hasDutyFree(s) ? nextDutyFreeEdition(s) : null,
   };
+}
+
+/** 병당 포장재 원가 — 이벤트 보정 × 입지 운송 할증 (결정 #86) */
+function packagingUnitCost(s: GameState, opts: Pick<BottleOptions, 'packagingId' | 'bottleMl'>): number {
+  return packagingCost(opts.packagingId, opts.bottleMl) * mod(s, 'packaging') * siteFreight(s, 'packaging');
 }
 
 /** 블렌딩·병입 실행 (s는 변경 가능한 복제본) */
@@ -222,13 +250,16 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     createdMonth: s.month,
     lastMonthSold: 0,
     totalSold: 0,
+    ...(p.localIngredient ? { localIngredient: true } : {}),
+    ...(opts.dutyFreeOnly && p.dfEdition ? { dutyFreeOnly: true, dfEdition: { ...p.dfEdition } } : {}),
   };
+  if (p.dfEdition && opts.dutyFreeOnly) s.siteState.dfSeries = { vol: p.dfEdition.vol, streak: p.dfEdition.streak };
   // 첫 위스키 출시: 비지터 센터 입소문이 높으면 오픈런 (3개월간 수요 × (1 + 2 × 입소문))
   if (isWhiskyCategory(product.category) && !s.products.some((x) => isWhiskyCategory(x.category)) && s.localBuzz > 0.05) {
     product.launchBoost = { factor: 1 + 2 * s.localBuzz, untilMonth: s.month + 3 };
   }
   // 포장재·병입 인건비는 병입 시점에 지출
-  s.cash -= Math.round((packagingCost(opts.packagingId, opts.bottleMl) * mod(s, 'packaging') + BOTTLING_LABOR_PER_BOTTLE) * p.bottles);
+  s.cash -= Math.round((packagingUnitCost(s, opts) + BOTTLING_LABOR_PER_BOTTLE) * p.bottles);
   s.products.push(product);
   return { product };
 }
