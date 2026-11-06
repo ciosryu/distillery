@@ -11,6 +11,7 @@
 //     Bg  시설·지자체·창업 대출 거치 +24개월, 상환 기간 +24개월
 //     C   비지터 센터 베이직 투어를 시작 때 짓는다
 //     D   위스키 점유 상한 0.0055 → 0.01 (#85 이전 값)
+//   CASH=<원> 시작 자본을 직접 정한다 (규모 티어 검토용, B보다 우선)
 //
 // MVP 근사:
 // - 한국 경기 기본 입지, 증류식 소주 + 싱글 몰트만. 고량주·진·비지터 센터·원액 계약·수출·브로커·매입 원액 없음
@@ -35,7 +36,7 @@ const KR = REGIONS.KR;
 if (VARIANT.has('A1')) KR.overheadPerMonth = 5_000_000;
 if (VARIANT.has('A2')) { KR.overheadPerMonth = 4_000_000; KR.laborCost = 0.8; }
 const MARKETING = VARIANT.has('A2') ? 3_000_000 : 5_000_000;
-const STARTING_CASH = VARIANT.has('B') ? 1_000_000_000 : undefined;
+const STARTING_CASH = process.env.CASH ? Number(process.env.CASH) : VARIANT.has('B') ? 1_000_000_000 : undefined;
 if (VARIANT.has('Bg')) for (const o of LOAN_OFFERS) if (['facility', 'kr_regional', 'kr_startup'].includes(o.id)) { o.graceMonths += 24; o.termMonths += 24; }
 if (VARIANT.has('D')) KR.market.whisky!.shareCap = 0.01;
 
