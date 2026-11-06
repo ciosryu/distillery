@@ -442,6 +442,8 @@ export interface GameState {
   /** 외부 투자자 지분 (0~1) */
   investorShare: number;
   investmentsTaken: string[];
+  /** 해외 명성 0~1 (#96) — 품평회·평론으로 오르고 매달 식는다 */
+  acclaim?: number;
   /** 수출 시장 (#95) — 옛 저장에는 없을 수 있다 */
   exports?: ExportEntry[];
   /** 비지터 센터 입소문(로컬 인지도) 0~1 */
