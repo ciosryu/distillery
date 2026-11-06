@@ -3,6 +3,7 @@ import { addScaled, clamp, clampFlavor, distillFlavor, heartsFraction } from './
 import { GI_LOCK, logisticsMultiplier, regionOf, siteOf, type WaterId } from './content/regions';
 import type { Rng } from './rng';
 import type { Flavor, FermenterType, GameState, Recipe, RegionId, Staff } from './types';
+import { weatherOffset } from './weather';
 
 type StillDef = Extract<EquipmentDef, { kind: 'still' }>;
 
@@ -53,7 +54,8 @@ export const WATER_EFFECT: Record<WaterId, { offnote: number; fruity: number; fr
 export function fermentationClimate(s: GameState, monthOfYear: number): number {
   const site = siteOf(s);
   const tm = site.tempC.reduce((a, b) => a + b, 0) / 12;
-  return tm + 0.8 * (site.tempC[monthOfYear - 1]! - tm) + 2;
+  // 발효실도 이번 달 기상 이상치·이벤트 충격을 받는다 (결정 #97)
+  return tm + 0.8 * (site.tempC[monthOfYear - 1]! + weatherOffset(s).tempC - tm) + 2;
 }
 
 /** 발효 기간: 10°C 미만이면 1°C마다 3% 늘고, 25°C 초과면 1°C마다 2% 준다(최대 30%) (결정 #67) */

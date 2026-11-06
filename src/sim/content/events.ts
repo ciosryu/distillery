@@ -8,6 +8,8 @@ export type EventCategory = 'market' | 'supply' | 'disaster' | 'regulation' | 'b
 
 export type Effect =
   | { type: 'modifier'; key: string; factor: number; months: [number, number]; delay?: number; label?: string }
+  /** 기상 충격 — 결과(증발 배수)가 아니라 입력(외기 기온·습도)을 바꾼다 (결정 #97) */
+  | { type: 'weather'; tempC: number; humidity?: number; months: [number, number]; label?: string }
   | { type: 'cash'; amount: number }
   | { type: 'awareness'; delta: number }
   | { type: 'trust'; delta: number }
@@ -112,7 +114,8 @@ export const EVENTS: EventDef[] = [
   { id: 'flood', title: '집중호우 침수', category: 'disaster', chance: 0.02, cooldown: 24, months: [7, 8], regions: ['KR', 'JP'], defense: 'facility_storm', text: '집중호우로 공장이 침수되어 한 달간 생산이 멈춥니다.',
     effects: [{ type: 'caskVolumeLoss', share: 0.02 }, m('production', 0, [1, 1], '침수 복구'), { type: 'cash', amount: -10_000_000 }] },
   { id: 'heatwave', title: '기록적 폭염', category: 'disaster', chance: 0.06, cooldown: 12, months: [7, 8], text: '폭염으로 숙성고 온도가 치솟아 증발이 늘어납니다.',
-    effects: [m('evaporation', 1.7, [2, 2], '폭염')] },
+    // v1.6(#97): 증발 ×1.7(결과) → 외기 +4°C 2개월(입력). 증발은 exp(0.13×4) ≈ 1.68배로 비슷하고, 추출·발효·도수도 함께 바뀐다
+    effects: [{ type: 'weather', tempC: 4, humidity: -5, months: [2, 2], label: '폭염' }] },
   { id: 'still_breakdown', title: '증류기 고장', category: 'disaster', chance: 0.015, cooldown: 12, requires: ['still'], text: '증류기 하나가 고장 났습니다.',
     choices: [
       { label: '긴급 수리', detail: '3,000만 원 — 생산 중단 없음', effects: [{ type: 'cash', amount: -30_000_000 }] },
@@ -157,7 +160,7 @@ export const EVENTS: EventDef[] = [
   { id: 'snowstorm', title: '폭설', category: 'disaster', chance: 0.03, cooldown: 24, months: [12, 1, 2], regions: ['KR', 'JP'], requires: ['filledCasks'], defense: 'facility_snow', text: '폭설로 숙성고 지붕 일부가 무너졌습니다.',
     effects: [{ type: 'caskLoss', share: [0.01, 0.03] }, { type: 'stillDown', months: 1 }, { type: 'cash', amount: -20_000_000 }] },
   { id: 'cold_wave', title: '한파', category: 'disaster', chance: 0.05, cooldown: 12, months: [12, 1, 2], regions: ['KR', 'JP'], defense: 'facility_heating', text: '기록적인 한파로 배관이 얼어 터졌습니다. 한 달간 생산이 멈춥니다.',
-    effects: [m('production', 0, [1, 1], '한파 동파 복구'), { type: 'cash', amount: -8_000_000 }] },
+    effects: [m('production', 0, [1, 1], '한파 동파 복구'), { type: 'cash', amount: -8_000_000 }, { type: 'weather', tempC: -6, months: [1, 1], label: '한파' }] },
   { id: 'mold_outbreak', title: '곰팡이 증식', category: 'disaster', chance: 0.04, cooldown: 12, months: [6, 7, 8, 9], requires: ['filledCasks'], defense: 'facility_dehumid', text: '장마철 습기로 숙성고에 곰팡이가 번졌습니다. 일부 캐스크가 오염됐습니다.',
     effects: [{ type: 'contaminate', share: [0.03, 0.08], kind: 'mold' }] },
   // ── v1.0 글로벌 경제 ──

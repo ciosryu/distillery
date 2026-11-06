@@ -9,6 +9,7 @@ import { assignSlot, deliverOwnedCasks, runContamination, runOffice, runStaffLif
 import { emptyCaskOf } from './newGame';
 import { fermentDaysAt } from './production';
 import { buildTickContext, type TickContext } from './tick';
+import { updateWeather, weatherOffset } from './weather';
 import { runSales, updateAwareness, updateTrends } from './market';
 import { batchEnergyCost, simulateBatch, stillDefOf, volumeDiscounts } from './production';
 import { siteOf } from './content/regions';
@@ -215,7 +216,7 @@ function runFinance(s: GameState, report: MonthReport, monthOfYear: number): voi
 }
 
 // ───────────── 월 틱 파이프라인 (architecture §3.5, PRD §2.2) ─────────────
-// 0 준비 → 1 이벤트 → [틱 컨텍스트] → 2 생산 → 3 숙성 → 4 계약 납품 → 5 판매·주세 → 6 운영 → 7 재무 → 8 성장 → 9 판정·리포트
+// 0 준비(기상 이상치 포함) → 1 이벤트 → [틱 컨텍스트] → 2 생산 → 3 숙성 → 4 계약 납품 → 5 판매·주세 → 6 운영 → 7 재무 → 8 성장 → 9 판정·리포트
 // 각 단계는 같은 상태 사본(s)을 차례로 고친다. 난수는 단계마다 독립 스트림(rngFor(seed, month, 이름))이라 단계를 더해도 다른 단계 결과가 바뀌지 않는다.
 
 const newReport = (s: GameState): MonthReport => ({ month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] });
@@ -235,6 +236,8 @@ function phasePrepare(s: GameState, report: MonthReport): void {
   }
   s.inventory.caskOrders = s.inventory.caskOrders.filter((x) => x.arriveMonth > s.month);
   resolveWaterPermit(s, report);
+  // 이번 달 기상 이상치 (AR(1), 결정 #97) — 이벤트 충격은 다음 단계에서 더해진다
+  updateWeather(s);
 }
 
 /** 1 이벤트: 예보 → 발생 → 보정치 등록 (이번 달부터 적용), 설비 가동 시작 알림 */
@@ -323,6 +326,8 @@ function phaseSettle(s: GameState, report: MonthReport, cashStart: number): void
     report.notes.push(`현금 부족 ${s.finance.negativeCashMonths}개월째 — ${BANKRUPT_AFTER_MONTHS}개월 지속 시 파산`);
     if (s.finance.negativeCashMonths >= BANKRUPT_AFTER_MONTHS) { s.status = 'bankrupt'; report.notes.push('파산했습니다'); }
   } else s.finance.negativeCashMonths = 0;
+  const off = weatherOffset(s);
+  report.weather = { tempAnom: Math.round(off.tempC * 10) / 10, humidAnom: Math.round(off.humidity * 10) / 10, shocks: s.world.weather.shocks.filter((x) => x.fromMonth <= s.month && s.month < x.untilMonth).map((x) => x.label) };
   report.netCash = s.finance.cash - cashStart;
   report.cashEnd = s.finance.cash;
   s.history.reports = [...s.history.reports, report].slice(-REPORTS_KEPT);

@@ -5,6 +5,7 @@ import type { Climate } from './maturation';
 import type { Rng } from './rng';
 import type { Cask, GameState, MonthReport, Staff } from './types';
 import { staffOf } from './util';
+import { weatherOffset } from './weather';
 
 // 운영 시스템 (PRD v1.0): 숙성고 공간·내부 기후, 소매 처리 역량, 비지터 센터, 인사 생애주기, 캐스크 오염, 사무직, 투자. 수치 [튜닝]
 
@@ -61,8 +62,10 @@ export function assignSlot(s: GameState, cask: Cask, preferW?: string, index: Sl
  */
 export function slotClimate(s: GameState, cask: Cask | null, monthOfYear: number): Climate {
   const site = siteOf(s);
-  const to = site.tempC[monthOfYear - 1]!;
-  const ho = site.humidity[monthOfYear - 1]!;
+  // 외기 = 입지 평년값 + 이번 달 기상 이상치·이벤트 충격 (결정 #97)
+  const off = weatherOffset(s);
+  const to = site.tempC[monthOfYear - 1]! + off.tempC;
+  const ho = clamp(site.humidity[monthOfYear - 1]! + off.humidity, 20, 100);
   const tm = site.tempC.reduce((a, b) => a + b, 0) / 12;
   const w = warehousesOf(s).find((x) => x.id === cask?.slot?.w) ?? warehousesOf(s)[0]!;
   const tierFrac = w.tiers > 1 ? clamp((cask?.slot?.tier ?? 0) / (w.tiers - 1), 0, 1) : 0;

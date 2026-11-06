@@ -9,6 +9,7 @@ import { addModifier } from './modifiers';
 import { rngFor, type Rng } from './rng';
 import type { GameState, MonthReport } from './types';
 import { nid } from './util';
+import { addWeatherShock } from './weather';
 
 // 이벤트 엔진: 예보 → 발생 → (선택지) → 효과. 결정론적 난수 스트림 사용.
 
@@ -54,6 +55,12 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
       case 'modifier': {
         const months = rng.int(e.months[0], e.months[1]);
         addModifier(s, e.key, e.factor, months, e.label ?? label, e.delay ?? 0);
+        break;
+      }
+      case 'weather': {
+        const months = rng.int(e.months[0], e.months[1]);
+        addWeatherShock(s, `W${s.month}-${e.label ?? label}`, e.label ?? label, e.tempC, e.humidity ?? 0, months);
+        notes.push(`외기 ${e.tempC > 0 ? '+' : ''}${e.tempC}°C${e.humidity ? ` · 습도 ${e.humidity > 0 ? '+' : ''}${e.humidity}%p` : ''} (${months}개월)`);
         break;
       }
       case 'cash': s.finance.cash += e.amount; if (e.amount) notes.push(`현금 ${e.amount > 0 ? '+' : ''}${e.amount.toLocaleString()}원`); break;

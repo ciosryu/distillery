@@ -245,6 +245,8 @@ export interface MonthReport {
   overflowCases?: number;
   lostSalesBottles?: number;
   visitors?: number;
+  /** 이번 달 평년 대비 외기 편차 (기상 이상치 + 이벤트 충격, 결정 #97) */
+  weather?: { tempAnom: number; humidAnom: number; shocks: string[] };
   tourismRevenue?: number;
   /** 입지 특성 (결정 #86~) */
   dutyFreeBottles?: number;
