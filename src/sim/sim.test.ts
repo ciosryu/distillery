@@ -833,7 +833,8 @@ describe('수출 (#95)', () => {
 
 describe('해외 명성 (#96)', () => {
   it('명성이 오르면 진출 시장 인지도가 뛰고 상한이 오르며, 매달 식는다', () => {
-    const s = newGame({ seed: 51 });
+    // 일본 = 5대 산지(신흥 산지 보너스 없음, #115)
+    const s = newGame({ seed: 51, region: 'JP' });
     s.exports = [{ marketId: 'US', openedMonth: 0, readyMonth: 0, awareness: 0.05, totalBottles: 0 }];
     const base = exportAwarenessMax(s, 'US');
     applyEffects(s, [{ type: 'acclaim', delta: 0.35 }], mulberry32(1), 't');

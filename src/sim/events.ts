@@ -7,6 +7,7 @@ import { ownsFacility, taxAuditDefense } from './ops';
 import { clamp } from './flavor';
 import { addModifier } from './modifiers';
 import { exportAwarenessMax } from './market';
+import { EMERGING_ACCLAIM } from './content/exports';
 import { rngFor, type Rng } from './rng';
 import type { GameState, MonthReport } from './types';
 import { nid } from './util';
@@ -64,10 +65,13 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
       case 'awareness': s.awareness = clamp(s.awareness + e.delta, 0.001, 0.95); notes.push(`인지도 ${e.delta > 0 ? '+' : ''}${(e.delta * 100).toFixed(0)}%p`); break;
       case 'trust': s.b2bTrust = clamp(s.b2bTrust + e.delta, 0, 100); break;
       case 'acclaim': {
-        s.acclaim = clamp((s.acclaim ?? 0) + e.delta, 0, 1);
+        // 신흥 산지 보너스 (#115): 5대 산지가 아닌 곳의 호평은 화제가 더 크다 (오를 때만)
+        const boost = e.delta > 0 ? EMERGING_ACCLAIM[s.regionId] ?? 1 : 1;
+        const delta = e.delta * boost;
+        s.acclaim = clamp((s.acclaim ?? 0) + delta, 0, 1);
         // 이미 진출한 시장은 곧바로 현지 인지도가 뛴다 (상한은 명성만큼 올라간다)
-        for (const x of s.exports ?? []) x.awareness = clamp(x.awareness + Math.max(0, e.delta), 0, exportAwarenessMax(s, x.marketId));
-        notes.push(`해외 명성 ${e.delta > 0 ? '+' : ''}${(e.delta * 100).toFixed(0)}%p → ${((s.acclaim ?? 0) * 100).toFixed(0)}%`);
+        for (const x of s.exports ?? []) x.awareness = clamp(x.awareness + Math.max(0, delta), 0, exportAwarenessMax(s, x.marketId));
+        notes.push(`해외 명성 ${delta > 0 ? '+' : ''}${(delta * 100).toFixed(0)}%p${boost > 1 ? ` (신흥 산지 화제성 ×${boost})` : ''} → ${((s.acclaim ?? 0) * 100).toFixed(0)}%`);
         break;
       }
       case 'caskLoss': {

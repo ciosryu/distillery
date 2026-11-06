@@ -1,4 +1,4 @@
-import { EXPORT_MARKETS, exportMarketsFor } from './content/exports';
+import { EXPORT_MARKETS, ORIGIN_HALO, exportMarketsFor } from './content/exports';
 import { exportEligible } from './market';
 import type { Rng } from './rng';
 import type { ExportEntry, ExportOffer, GameState, MonthReport } from './types';
@@ -64,7 +64,9 @@ export function acceptExportOffer(s: GameState, offerId: string): string | null 
   s.cash -= o.entryCost;
   const { id: _id, expiresMonth: _e, marketId, ...terms } = o;
   const ready = s.month + (o.entryCost > 0 ? m.entryMonths : 1);
-  (s.exports ??= []).push({ marketId, ...terms, openedMonth: s.month, readyMonth: ready, awareness: m.awareness.start, totalBottles: 0, yearStartMonth: ready, bottlesThisYear: 0 });
+  // 원산지 후광(#114): 스카치·재패니즈 위스키는 해외 인지도가 더 높은 데서 시작 (면세점은 국내 인지도를 그대로 쓴다)
+  const start = marketId === 'DF' ? m.awareness.start : Math.max(m.awareness.start, ORIGIN_HALO[s.regionId]?.startAwareness ?? 0);
+  (s.exports ??= []).push({ marketId, ...terms, openedMonth: s.month, readyMonth: ready, awareness: start, totalBottles: 0, yearStartMonth: ready, bottlesThisYear: 0 });
   (s.exportEntered ??= []).includes(marketId) || s.exportEntered.push(marketId);
   s.exportOffers = (s.exportOffers ?? []).filter((x) => x.id !== offerId);
   return null;

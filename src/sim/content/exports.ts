@@ -282,6 +282,15 @@ export const EXPORT_MARKET_IDS = Object.keys(EXPORT_MARKETS) as ExportMarketId[]
 export const exportMarketsFor = (regionId: RegionId): ExportMarketId[] => EXPORT_MARKET_IDS.filter((id) => id !== regionId);
 /** 미국 추가 관세 등 관세 이벤트는 modifier 'tariff:<시장>'로 (1 + 관세)에 곱한다 (#103) */
 export const tariffKey = (id: ExportMarketId) => `tariff:${id}`;
+/** 원산지 카테고리 후광 (#114): 스카치·재패니즈 위스키는 해외에서 카테고리가 이미 팔린다 → 해외 시장(면세점 제외)의 위스키 시장 규모 × marketScale,
+ *  수입사 계약 때 현지 인지도가 startAwareness에서 시작. 지역 프리미엄 표기(재패니즈 위스키)가 있으면 그 표기를 단 제품만 (오너 결정, scotland.md Q1) */
+export const ORIGIN_HALO: Partial<Record<RegionId, { name: string; marketScale: number; startAwareness: number }>> = {
+  UK: { name: '스카치', marketScale: 2, startAwareness: 0.05 },
+  JP: { name: '재패니즈 위스키', marketScale: 2, startAwareness: 0.05 },
+};
+/** 신흥 산지 명성 보너스 (#115): 위스키 5대 산지(스코틀랜드·미국·아일랜드·캐나다·일본)가 아닌 곳의 수상·호평은 화제가 더 크다 → 해외 명성 증가 × 배수 (오너 결정, scotland.md Q4) [튜닝] */
+export const EMERGING_ACCLAIM: Partial<Record<RegionId, number>> = { KR: 2, TW: 2 };
+
 /** 재고가 모자랄 때 국내·수출 배분 — 'margin' = 병당 순수입(수출가 − 운임 / 출고가 − 유통비)이 높은 판로부터(#109, 기본),
  *  'domestic' = 국내 먼저(#105, 실험용), 'proportional' = 수요 비율(#95 원래 규칙, 실험용) */
 export const EXPORT_SALES: { allocation: 'margin' | 'domestic' | 'proportional' } = { allocation: 'margin' };
