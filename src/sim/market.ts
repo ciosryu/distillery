@@ -81,7 +81,7 @@ export function demandFor(s: GameState, p: Product, sameCategoryCount: number, m
   return { marketL, reach, appeal: a, consumerPricePerL, refPricePerL: ref, priceFactor, demandBottles };
 }
 
-// ── 수출 (#86) ──
+// ── 수출 (#95) ──
 
 const AGED_CATEGORIES: ProductCategory[] = ['whisky', 'blended_whisky', 'grain_whisky'];
 
@@ -155,7 +155,7 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
     const demand = Math.round(d.demandBottles * rng.range(0.9, 1.1));
     wants.push({ p, demand, want: Math.min(p.stockBottles, demand) });
   }
-  // 1-b) 수출 수요 (#86): 재고가 모자라면 국내·수출에 수요 비율대로 나눈다. 수출은 수입상이 받아 가므로 소매 처리 역량을 쓰지 않는다
+  // 1-b) 수출 수요 (#95): 재고가 모자라면 국내·수출에 수요 비율대로 나눈다. 수출은 수입상이 받아 가므로 소매 처리 역량을 쓰지 않는다
   const exportWants = new Map<string, { entry: ExportEntry; demand: number; want: number }[]>();
   const active = (s.exports ?? []).filter((e) => e.readyMonth <= s.month);
   for (const w of wants) {

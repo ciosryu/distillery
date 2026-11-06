@@ -3,7 +3,7 @@ import { useGame } from '../../store/game';
 import { num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';
 
-/** 수출 시장 (#86): 진출·철수, 시장 조건, 제품별 현지 소비자가와 판매 */
+/** 수출 시장 (#95): 진출·철수, 시장 조건, 제품별 현지 소비자가와 판매 */
 export function Exports() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);

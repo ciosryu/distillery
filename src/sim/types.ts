@@ -246,7 +246,7 @@ export interface MonthReport {
   lostSalesBottles?: number;
   visitors?: number;
   tourismRevenue?: number;
-  /** 수출 판매 (#86) */
+  /** 수출 판매 (#95) */
   exports?: ExportSale[];
   exportRevenue?: number;
   /** 입지 특성 (결정 #86~) */
@@ -347,7 +347,7 @@ export interface CaskOrder {
 
 export interface CaskBid { id: string; buyerName: string; caskId: string; price: number; expiresMonth: number }
 
-/** 진출한 수출 시장 (#86) */
+/** 진출한 수출 시장 (#95) */
 export interface ExportEntry {
   marketId: 'US' | 'UK' | 'DF';
   openedMonth: number;
@@ -417,7 +417,7 @@ export interface GameState {
   /** 외부 투자자 지분 (0~1) */
   investorShare: number;
   investmentsTaken: string[];
-  /** 수출 시장 (#86) — 옛 저장에는 없을 수 있다 */
+  /** 수출 시장 (#95) — 옛 저장에는 없을 수 있다 */
   exports?: ExportEntry[];
   /** 비지터 센터 입소문(로컬 인지도) 0~1 */
   localBuzz: number;

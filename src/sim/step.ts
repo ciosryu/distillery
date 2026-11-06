@@ -248,7 +248,7 @@ export function advanceMonth(prev: GameState): GameState {
   fulfillRetail(s, report);
   updateExportAwareness(s); // 판매 전에 갱신 — 면세는 국내 인지도가 첫 달부터 넘어온다
   const { results: sales, retail, exports } = runSales(s, rngFor(s.seed, s.month, 'sales'), monthOfYear);
-  // 수출 (#86): 출고가가 그대로 들어오고(국내 주세 면세) 운임은 우리가, 현지 비용은 매달 낸다
+  // 수출 (#95): 출고가가 그대로 들어오고(국내 주세 면세) 운임은 우리가, 현지 비용은 매달 낸다
   if (s.exports?.length) {
     report.exports = exports;
     report.exportRevenue = exports.reduce((t, x) => t + x.revenue, 0);
