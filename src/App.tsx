@@ -72,7 +72,7 @@ export default function App() {
             <Button disabled={!running || !!advancing} onClick={() => advance(12)}>1년 진행</Button>
             {advancing
               ? <Button variant="ghost" onClick={cancelAdvance}>자동 진행 중 {advancing.done}/{advancing.total} — 멈춤</Button>
-              : <Button disabled={!running} onClick={() => void advanceUntil(24)} title="선택 이벤트·예보·현금 경고·설비 가동 시작 중 하나가 생기면 멈춘다 (최대 24개월)">다음 알림까지</Button>}
+              : <Button disabled={!running} onClick={() => void advanceUntil(24)} title="선택 이벤트·예보·현금 경고·설비 가동 시작·블렌딩 의뢰 중 하나가 생기면 멈춘다 (최대 24개월)">다음 알림까지</Button>}
             <Button variant="ghost" onClick={() => setNewGameOpen((v) => !v)}>새 게임</Button>
           </div>
         </div>

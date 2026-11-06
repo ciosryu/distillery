@@ -7,9 +7,9 @@ import type { GameState, MonthReport } from './types';
 // Godot 이식(Phase G)에서는 C# 라이브러리가 같은 모양을 구현한다. 화면·store는 이 계약만 안다.
 
 /** 자동 진행이 멈추는 이유 (PRD §2.1 "다음 이벤트·알림까지 진행") */
-export type StopReason = 'pendingEvent' | 'cashWarning' | 'bankrupt' | 'equipmentReady' | 'forecast' | 'maxMonths';
+export type StopReason = 'pendingEvent' | 'cashWarning' | 'bankrupt' | 'equipmentReady' | 'forecast' | 'commission' | 'maxMonths';
 
-export const DEFAULT_STOPS: StopReason[] = ['pendingEvent', 'cashWarning', 'bankrupt', 'equipmentReady', 'forecast'];
+export const DEFAULT_STOPS: StopReason[] = ['pendingEvent', 'cashWarning', 'bankrupt', 'equipmentReady', 'forecast', 'commission'];
 
 export interface AdvanceOptions {
   /** 최대 진행 개월 */
@@ -34,6 +34,8 @@ export function stopReasonOf(prev: GameState, next: GameState, stopOn: StopReaso
   if (on.has('cashWarning') && next.finance.negativeCashMonths > prev.finance.negativeCashMonths) return 'cashWarning';
   if (on.has('equipmentReady') && next.production.equipment.some((e) => e.readyMonth === next.month && e.readyMonth > prev.month)) return 'equipmentReady';
   if (on.has('forecast') && next.events.forecasts.some((f) => !prev.events.forecasts.some((g) => g.id === f.id))) return 'forecast';
+  // 블렌딩 의뢰는 6개월 마감이라 놓치지 않게 (결정 #102)
+  if (on.has('commission') && next.commerce.commissions.some((c) => !prev.commerce.commissions.some((d) => d.id === c.id))) return 'commission';
   return null;
 }
 

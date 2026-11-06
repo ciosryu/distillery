@@ -12,6 +12,7 @@ const STOP_LABEL: Record<StopReason, string> = {
   bankrupt: '파산',
   equipmentReady: '설비 가동 시작',
   forecast: '새 예보',
+  commission: '새 블렌딩 의뢰',
   maxMonths: '',
 };
 
