@@ -26,6 +26,8 @@ function meets(s: GameState, r: Requirement): boolean {
     case 'still': return s.equipment.some((e) => e.readyMonth <= s.month && e.feintsLPA != null);
     case 'products': return s.products.some((p) => p.stockBottles > 0);
     case 'highQualityProduct': return s.products.some((p) => p.stockBottles > 0 && p.quality >= 72);
+    case 'exportUS': return (s.exports ?? []).some((e) => e.marketId === 'US');
+    case 'exportCN': return (s.exports ?? []).some((e) => e.marketId === 'CN');
   }
 }
 

@@ -6,7 +6,7 @@ import { dutyFreeSlotBlocker, inventoryLoanRoom, inventoryLtv, OEM, oemPackageCo
 import { EVENTS } from '../src/sim/content/events';
 import { RETAIL } from '../src/sim/ops';
 import { EQUIPMENT } from '../src/sim/content/catalog';
-import { EXPORT_MARKETS, type ExportMarketId } from '../src/sim/content/exports';
+import { EXPORT_MARKETS } from '../src/sim/content/exports';
 const EQUIPMENT_KIND = (id: string) => EQUIPMENT[id]?.kind;
 
 const SEEDS = Number(process.argv[2] ?? 12);
@@ -173,17 +173,20 @@ function exportPolicy(s: GameState): GameState {
   if (NO_EXPORT) return s;
   const whisky = s.products.filter((p) => p.category === 'whisky' && p.stockBottles > 0);
   const aged36 = whisky.some((p) => (p.oakMonths ?? 0) >= 36);
-  const open = new Set((s.exports ?? []).map((e) => e.marketId));
-  const plan: [ExportMarketId, number, boolean][] = [['DF', 36, whisky.length > 0], ['US', 48, aged36], ['UK', 48, aged36]];
-  for (const [id, from, ok] of plan) {
-    if (open.has(id) || !ok || s.month < from) continue;
-    if (s.cash > EXPORT_MARKETS[id].entryCost + 200_000_000) s = act(s, { type: 'openExport', marketId: id });
+  // #101: 수입사 제안이 오면 받는다 — 면세점은 위스키가 나온 뒤(36개월~), 해외는 3년 숙성 재고가 생긴 뒤(48개월~). 동시에 최대 EXPORT_MAX곳
+  const MAX = Number(process.env.EXPORT_MAX ?? 3);
+  for (const o of [...(s.exportOffers ?? [])]) {
+    if ((s.exports ?? []).length >= MAX) break;
+    const from = o.marketId === 'DF' ? 36 : 48;
+    const ok = o.marketId === 'DF' ? whisky.length > 0 : aged36;
+    if (!ok || s.month < from) continue;
+    if (s.cash > o.entryCost + 200_000_000) s = act(s, { type: 'acceptExportOffer', offerId: o.id });
   }
   for (const e of s.exports ?? []) {
     if (s.month - e.readyMonth < 12) continue;
     const recent = s.reports.slice(-6).flatMap((r) => (r.exports ?? []).filter((x) => x.marketId === e.marketId));
     const margin = recent.reduce((t, x) => t + x.revenue - x.freight - x.bottles * (s.products.find((p) => p.id === x.productId)?.unitCost ?? 0), 0) / 6;
-    if (margin < EXPORT_MARKETS[e.marketId].monthlyCost) s = act(s, { type: 'closeExport', marketId: e.marketId });
+    if (margin < (e.marketingPerMonth ?? EXPORT_MARKETS[e.marketId].monthlyCost)) s = act(s, { type: 'closeExport', marketId: e.marketId });
   }
   return s;
 }

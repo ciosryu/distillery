@@ -15,5 +15,6 @@ export * from './ops';
 export * from './content/exports';
 export * from './sites';
 export * from './deals';
+export * from './exportDeals';
 export { rngFor, mulberry32 } from './rng';
 export * as content from './content';
