@@ -7,18 +7,19 @@ import { fail, type ActionResult, type Handlers } from './actionKit';
 import { MGT_CASH_KEY, MGT_HANDLERS, type MgtAction } from './actions.mgt';
 import { MKT_CASH_KEY, MKT_HANDLERS, type MktAction } from './actions.mkt';
 import { PROD_CASH_KEY, PROD_HANDLERS, type ProdAction } from './actions.prod';
+import { META_CASH_KEY, META_HANDLERS, type MetaAction } from './actions.meta';
 
 // 플레이어 행동의 입구 (코어, 결정 #144) — 행동 타입 합집합 · 공통 관문(게임 종료·테크 게이트·시나리오 잠금) · 현금 흐름 기록 · 처리기 표.
-// 처리 규칙은 파트별 파일에 있다: actions.prod.ts(PROD) · actions.mkt.ts(MKT) · actions.mgt.ts(MGT)
+// 처리 규칙은 파트별 파일에 있다: actions.prod.ts(PROD) · actions.mkt.ts(MKT) · actions.mgt.ts(MGT) · actions.meta.ts(META)
 
-export type Action = ProdAction | MktAction | MgtAction;
+export type Action = ProdAction | MktAction | MgtAction | MetaAction;
 export type { ActionResult } from './actionKit';
 
 /** 행동별 현금 흐름 항목 */
-const ACTION_CASH_KEY: Record<Action['type'], CashFlowKey | null> = { ...PROD_CASH_KEY, ...MKT_CASH_KEY, ...MGT_CASH_KEY };
+const ACTION_CASH_KEY: Record<Action['type'], CashFlowKey | null> = { ...PROD_CASH_KEY, ...MKT_CASH_KEY, ...MGT_CASH_KEY, ...META_CASH_KEY };
 
 /** 처리기 표 — 빠진 행동이 있으면 타입 오류 */
-const HANDLERS: Handlers<Action> = { ...PROD_HANDLERS, ...MKT_HANDLERS, ...MGT_HANDLERS };
+const HANDLERS: Handlers<Action> = { ...PROD_HANDLERS, ...MKT_HANDLERS, ...MGT_HANDLERS, ...META_HANDLERS };
 
 /** 행동 적용. 행동으로 움직인 현금은 pendingCash에 기록돼 다음 결산 보고서(offTurn·netCash)에 합쳐진다 */
 export function applyAction(prev: GameState, a: Action): ActionResult {

@@ -5,6 +5,7 @@ import { REGIONS, siteOf } from './sim/content/regions';
 const stars = (n?: number) => (n ? ` ${'★'.repeat(n)}` : '');
 import { startedFresh, useGame } from './store/game';
 import { BusinessPlan } from './ui/BusinessPlan';
+import { Verdict } from './ui/Verdict';
 import { useUi } from './store/ui';
 import { won } from './ui/format';
 import { Button } from './ui/kit';
@@ -68,6 +69,7 @@ export default function App() {
             <h1 className="text-base font-bold">{s.distilleryName} <span className="text-xs font-normal text-stone-500">Distillery Tycoon · {s.siteId ? `${REGIONS[s.regionId].nameKo.replace(/\s*\(.*\)$/, '')} (${siteOf(s).nameKo})` : REGIONS[s.regionId].nameKo}</span></h1>
             <div className="text-sm text-stone-600 dark:text-stone-300">
               <span className="font-semibold">{monthLabel(s.startYear, s.month)}</span> · 현금 <span className={`font-semibold tabular-nums ${s.finance.cash < 0 ? 'text-rose-700 dark:text-rose-400' : ''}`}>{won(s.finance.cash)}</span>
+              {s.scenario && !s.progress.verdict && <> · 15년 목표까지 <span className="tabular-nums">{s.scenario.goal.months - s.month}개월</span></>}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -120,6 +122,11 @@ export default function App() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-4">
+        {s.progress.verdict && !s.progress.verdict.acknowledged && !planOpen && (
+          <div className="mb-4">
+            <Verdict s={s} onNewGame={() => setPlanOpen(true)} />
+          </div>
+        )}
         {planOpen && (
           <div className="mb-4">
             <BusinessPlan onClose={() => setPlanOpen(false)} onSandbox={() => { setPlanOpen(false); setNewGameOpen(true); }} />
@@ -127,7 +134,7 @@ export default function App() {
         )}
         {!running && (
           <div className="mb-4 rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200">
-            파산했습니다 — 현금 부족이 3개월 이어졌습니다. "새 게임"으로 다시 시작하세요.
+            {s.status === 'bankrupt' ? '파산했습니다 — 현금 부족이 3개월 이어졌습니다.' : '게임이 끝났습니다.'} "새 게임"으로 다시 시작하세요.
           </div>
         )}
         {running && s.events.pending.length > 0 && tab !== 'dashboard' && (

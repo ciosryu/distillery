@@ -24,11 +24,11 @@
 | 항목 | 내용 | 근거 |
 |---|---|---|
 | 플랫폼 | Godot 4 + C#, PC(Steam). TS는 설계 실험실·기준 구현 | #34·#35·#40·#122 |
-| 상태 | 단일 `GameState` v9 = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history) | #118, [architecture.md §3](architecture.md) |
+| 상태 | 단일 `GameState` v10 = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history·progress) | #118, [architecture.md §3](architecture.md) |
 | 시간 | 1턴 = 1개월. 월 틱 0~9단계 파이프라인 + 틱 컨텍스트 | #1·#26, PRD §2.2 |
 | 경계 | `GameEngine` 계약 (명령 → 스냅샷) | architecture.md §3.2 |
 | 난수 | mulberry32, `rngFor(seed, month, stream)` 독립 스트림 | PRD §13.2 |
-| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8 → v9) | #118, S-8, S-10 |
+| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8 → v9 → v10) | #118, S-8, S-10, S-9 |
 | 테크 게이트 | `isUnlocked(state, key)` 하나로 판정, 키 규칙 고정, Phase 1은 꺼짐 | #118, tech-tree §7 |
 | 설계 규모 | 30년(360턴) · 원액 든 캐스크 2,500개 | #119 |
 | 기후 | 입지 평년값 + AR(1) 이상치, 이벤트는 입력(기온·습도) 충격 | #120 |
@@ -61,7 +61,7 @@
 | 관광·비지터 센터 | §16.8 | `commerce.localBuzz` | 6 | `ops.ts`(일부) | ● | MKT |
 | 리포트·연 요약·데이터 수명 | §13 | `history` | 9 | `lifecycle.ts`, `step.ts` | ● | 코어 |
 | 시나리오 모드·초기화·기능 플래그·가상 이력 생성기 | §12.2 | 헤더 `scenario` (v8) | 1·8 (끈 시스템 건너뜀) | `content/scenarios.ts`, `scenario.ts`(잠금), `newScenario.ts`(사업 계획서 입구·미리보기), 화면 `ui/BusinessPlan.tsx` | ◐ (입구·플래그·MVP 시나리오 구현, 가상 이력 생성기·JSON 파일 형식은 자리만) | 코어 → META |
-| 승패·업적·마일스톤 | §12.1 | 헤더 `status`만 | 9 | — | ✕ (한 줄 정의뿐) | META |
+| 승패·업적·마일스톤·목표 판정 | §12.1, [mvp.md](mvp.md) §3 | 헤더 `status`(끝난 이유) + `progress` 슬라이스(v10) | 9 (`updateProgress`) | `progress.ts`, `content/milestones.ts`, 행동 `actions.meta.ts`, 화면 `ui/Verdict.tsx` | ◐ (마일스톤 9개·MVP 목표 판정·결과 화면 구현. 면허 취소·해임은 자리만, 여러 판에 걸친 업적은 단계 V) | META |
 | 다지역 경영(해외 증류소 인수) | §3.4 | — (증류소 1개 전제) | — | — | ○ | 코어 결정 → META |
 | 경쟁 AI 증류소 | §9.4 | — | — | — | ○ | META |
 | 추가 지역·주종(스코틀랜드 등) | §14 Phase 3 | (콘텐츠) | — | — | ○ (스코틀랜드 설계 v0.2 [scotland.md](scotland.md), 구현은 ciosryu/distillery#9 진행 중) | 콘텐츠 |
@@ -81,7 +81,7 @@
 | **PROD** 생산·숙성·블렌딩 | 피니싱, 정보 불확실성(샘플링), 블렌딩 테이블 화면·보상 연결, 생산 테크 노드의 효과 데이터 | `production.ts`(+ 생산 단계 `runProduction`)·`maturation.ts`·**`warehouse.ts`**(+ 숙성 단계)·**`casks.ts`**·**`waterPermit.ts`**·`flavor.ts`·`blending.ts`·`blendTable.ts`·`blendRadar.ts`·`weather.ts`·**`actions.prod.ts`**, **`content/production.ts`**·`content/axes.ts`·`categories.ts`, 테스트 **`production.test.ts`**·`vessel.test.ts`·`blendTable.test.ts`, 화면 `Production`·`Warehouse`·`Bottling`·`BlendLab` | §4~§6, flavor-model, blending-minigame |
 | **MKT** 시장·판매·B2B·수출 | 브랜드 라인(브랜드별 인지도), 수요 공식 정리(SKU √n) | `market.ts`·**`sales.ts`**(판매·주세 단계)·**`retail.ts`**·**`tourism.ts`**·**`dutyFree.ts`**·`bulk.ts`·`broker.ts`·`deals.ts`·`exportDeals.ts`·**`actions.mkt.ts`**, **`content/market.ts`**·`content/exports.ts`·`names.ts`, `data/market/`, 테스트 **`market.test.ts`**·`exports.test.ts`, 화면 `Sales`·`B2B`·`Exports` | §8.3, §8.5~§8.6, §9, §11 |
 | **MGT** 재무·HR·이벤트·연구 | 연구 진행 시스템 + 공통 테크 4계통, 재무 확장(이사회·헷징·보험), 이벤트 난수 스트림 분리 구현 | `cashflow.ts`·**`loans.ts`**(+ 재무 단계)·**`investment.ts`**·`hr.ts`(+ 생애주기·사무직)·`events.ts`·`research.ts`·**`actions.mgt.ts`**, **`content/finance.ts`**·`content/events.ts`·`tech.ts`, 테스트 **`finance.test.ts`**, 화면 `Finance`·`Staff`·`Events`·`Dashboard` | §7, §8.1~§8.2, §8.4, §10, tech-tree |
-| **META** 시나리오·진행·경쟁 | 시나리오 초기화·가상 이력 생성기, 업적·마일스톤, (후속) 경쟁 AI | (새 파일) | §12, §9.4 |
+| **META** 시나리오·진행·경쟁 | 가상 이력 생성기, 면허 취소 규칙, 마일스톤 추가·업적(단계 V), (후속) 경쟁 AI | `progress.ts`·`actions.meta.ts`·`content/milestones.ts`, 테스트 `progress.test.ts`, 화면 `Verdict` | §12, §9.4 |
 
 ### 3.3 여러 파트가 나눠 쓰던 파일 — **쪼갰다 (S-4, 결정 #144, 2026-11-06)**
 
@@ -115,7 +115,7 @@
 | **S-6** | **연구 시스템 뼈대** — 연구 진행 틱 단계, 담당자·기간·비용 흐름, 노드 데이터 스키마(4개 → 전체를 넣을 그릇) | Phase 2 핵심. 게이트만 있고 진행이 없다 | 필수 | tech-tree §2·§7, #46 |
 | **S-7** | **콘텐츠를 엔진 중립 데이터로** — 원재료·설비·캐스크·지역·이벤트·테크를 JSON 스키마로. 시점(지금 대 단계 G 직전) | 파트가 콘텐츠를 늘리기 전에 형식을 정하면 이식 비용이 준다 | 필수 (형식·시점만) | §13.1 이식 계획 ②, #40 |
 | **S-8** | **시나리오 초기화 경로** — JSON 시나리오 파일로 `GameState`를 만드는 입구 + 가상 이력 생성기의 자리 | §12.2가 "샌드박스 단계부터 지킬 아키텍처 요구사항"이라고 못 박았다 | 필수 (입구·스텁) — **구현, `[결정 #142]`** ([mvp.md §6.3](mvp.md)). 파일 형식(JSON)은 S-7과 함께 | §12.2 |
-| **S-9** | **승패·진행 구조** — 파산 외 실패 조건(면허 취소·해임), 업적·마일스톤의 데이터 모양, 플레이어 목표 | 게임 루프의 끝이 정의돼 있지 않다 | 필수 (모양만) | §12.1 |
+| **S-9** | **승패·진행 구조** — 파산 외 실패 조건(면허 취소·해임), 업적·마일스톤의 데이터 모양, 플레이어 목표 | 게임 루프의 끝이 정의돼 있지 않다 | 필수 (모양만) — **구현, `[결정 #145]`** (§4.4) | §12.1 |
 | **S-10** | **숙성 용기 일반화 + 피니싱·정보 불확실성의 자리** — 지금 숙성 상태는 목재 캐스크 전제다. 크래프팅 자유 원칙(#134)에 따라 ① 비목재 용기(옹기·스테인리스 휴지 — 화이트 스피릿의 숙성 방식·기간) ② 피니싱(캐스크 이력의 단계) ③ 샘플링으로 얻은 "아는 값" 대 "참값"을 담을 상태 모양을 정한다 | 숙성·블렌딩·판매가 모두 읽는다. 옹기 숙성은 flavor-model §4.5 확장 필요(tech-tree §10 #7) | 필수 — **자리 구현, `[결정 #143]`** (§4.3) | §5.2, §5.6, #134 |
 | S-11 | 재무 확장의 자리 — 이사회(지분·해임), 헷징 계약, 보험 | Phase 2 범위. 슬라이스 필드·명령 타입만 | 권장 | §8.2, §8.4 |
 | S-12 | 경쟁 AI의 자리 — 시장 점유를 나눌 "다른 공급자" 훅 | Phase 5지만 수요 공식에 들어갈 자리가 필요 | 권장 | §9.4, #28 |
@@ -153,6 +153,19 @@
 - **발견 (단계 P PROD로 넘김, 오너 동의):** 블렌딩 테이블(`readCask`)은 아직 실시간 읽기라 위 누수가 있다. 기록(`sampleLog`)으로 옮길지는 블렌딩 미니게임 규칙과 함께 정한다
 - 추정 품질 오차 = 읽기 오차 × 1(`QUALITY_SIGMA_PER_HEX`) `[튜닝]`. 옹기·스테인리스 수치(`NON_WOOD_VESSEL`)는 근거 없는 자리표시 `[확인 불가]`
 - 스키마 v9 (모든 새 필드는 선택값) + v8 세이브 픽스처
+
+### 4.4 S-9 구조 — `[결정 #145]` (2026-11-06, 오너 승인)
+
+MVP 완료 기준 1(15년 목표 → 결과 화면 → 계속 운영)이 이 위에 서서, "모양"에 더해 MVP에 필요한 만큼은 동작하게 했다. 돈·재고는 바꾸지 않는다 — 시나리오 없는 게임은 밸런스 골든이 바이트 동일.
+
+| 항목 | 정한 모양 | 대안 (기각 이유) |
+|---|---|---|
+| ① 끝나는 이유 | `status` = `'running' \| 'bankrupt' \| 'licenseRevoked' \| 'dismissed'` + `progress.ending { reason, month }`. 끝내기는 `endGame(s, 이유)` 하나. 면허 취소·해임은 **자리만**(발동 규칙 없음 — 해임은 이사회 S-11과, 면허 취소는 단계 P META) | `status: 'running' \| 'over'` + 사유 따로 — 옛 세이브의 `'bankrupt'`를 바꾸는 마이그레이션과 코드 수정이 는다 |
+| ② 진행 슬라이스 | `progress { milestones[], verdict?, ending? }` (스키마 v10). 마일스톤 9개(첫 증류·첫 통입·첫 대출·첫 소주 판매·첫 위스키 병입·첫 위스키 판매·첫 현금 위기·플래그십 병입·플래그십 판매)를 틱 9단계에서 처음 일어난 달에 한 번 기록 + 월 리포트 메모. 정의(이름·연표 표시)는 `content/milestones.ts` | 리포트에서 매번 다시 찾기 — 리포트는 최근 120개월만 상세라 15년 연표를 못 만든다 |
+| ③ 목표 판정 | 시나리오가 있을 때만, 목표 기간(180개월)이 끝나거나 게임이 끝나면 **한 번**: 확인 3개(파산 안 함·12년 이상 위스키 판매·순자산 ≥ 자기자본 × 3) → `heritage`·`missed`·`failed` + 등급 S·A·B·C. 자동 진행은 판정에서 멈춘다(`verdict` 멈춤 사유). 기준은 `GRADE` `[튜닝]` | 매달 판정 — 15년 목표의 "한 판의 끝"이 흐려진다 |
+| ④ 순자산 정의 | **지금 정리하면 받는 돈:** 현금 − 대출 + 매출채권 + 몰트·그레인 원액 현물 매각가 + 제품 재고 × 원가 (소주 원액은 현물 시장이 없어 0) | 병 가격 평가 — 수요 상한 때문에 실현할 수 없다. 재고 평가액 곡선(#138) 평가 방식이 정해지면(오너 결정 대기) 맞춘다 |
+| ⑤ 계속 운영 | 결과 화면에서 확인(`acknowledgeVerdict`, META 행동) → 판정은 남고 목표 없이 계속. 파산이면 새 게임만 | 화면 상태로만 — 새로고침하면 결과 화면이 다시 뜬다 |
+| ⑥ 업적 | 게임 상태에 두지 않는다. 마일스톤 id를 조건으로 단계 V(Steam)에서 붙인다 | 지금 업적 목록 — 플랫폼 연동 전에는 쓸 곳이 없다 |
 
 ## 5. 다음 행동 (설계 세션)
 

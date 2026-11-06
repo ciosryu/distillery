@@ -83,7 +83,7 @@ export function emptyCaskOf(s: GameState, typeId: keyof typeof CASKS): Cask {
 export function newGame(opts: NewGameOptions = {}): GameState {
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   const s: GameState = {
-    version: 9,
+    version: 10,
     seed,
     month: 0,
     startYear: opts.startYear ?? 2027,
@@ -109,6 +109,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     research: { unlocked: [], active: [], slots: 1 },
     site: {},
     history: { reports: [], years: [] },
+    progress: { milestones: [] },
   };
   // 초기 설비: 단식 증류기 1기 + 스테인리스 발효조 2기
   const still = { id: nid(s, 'E'), catalogId: 'pot_onion_1000', readyMonth: 0, feintsLPA: 0 };
