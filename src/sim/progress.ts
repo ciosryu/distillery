@@ -3,7 +3,7 @@ import { isBulkKind, spotBidPerLPA } from './bulk';
 import { MILESTONES } from './content/milestones';
 import type { GameEnding, GameState, GoalCheck, GoalVerdict, MilestoneId, MonthReport, Product } from './types';
 
-// 진행 — 마일스톤·목표 판정·게임이 끝난 이유 (파트 META, skeleton S-9, P-ARCH-8)
+// 진행 — 마일스톤·목표 판정·게임이 끝난 이유 (파트 META, skeleton S-9, #145)
 // 틱 9단계(판정)에서 updateProgress가 한 번 부른다. 돈·재고를 바꾸지 않는다 — 기록과 판정만 한다
 
 /** 플래그십 최소 숙성 — 시나리오가 없으면(샌드박스) 12년 */
