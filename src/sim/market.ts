@@ -35,6 +35,37 @@ export function productConsumerPrice(s: GameState, p: Pick<Product, 'price' | 'b
   return consumerPrice(region, p.price, p.bottleMl, p.abv, markupFactor(s), traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL));
 }
 
+/** 소비자가 내역 (병당) — 판매 화면의 주세 내역. 합계는 productConsumerPrice와 같다 */
+export interface PriceBreakdown {
+  /** 출고가 — 우리가 받는 값(매출) */
+  price: number;
+  /** 종가세(출고가 × 세율 × 경감) */
+  adValoremTax: number;
+  /** 교육세(주세의 n%) */
+  educationTax: number;
+  /** 종량세(LPA당) */
+  specificTax: number;
+  /** 주세 경감 배수 (전통주 구간 경감, 없으면 1) */
+  reliefFactor: number;
+  /** 부가세 */
+  vat: number;
+  /** 도소매 마진 (영업 협상·이벤트 반영) */
+  retail: number;
+  consumer: number;
+}
+
+export function priceBreakdown(s: GameState, p: Pick<Product, 'price' | 'bottleMl' | 'abv' | 'traditional'>, region: RegionDef = regionOf(s)): PriceBreakdown {
+  const relief = traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL);
+  const lpa = (p.bottleMl / 1000) * p.abv;
+  const adValoremTax = p.price * region.tax.adValorem * relief;
+  const educationTax = adValoremTax * region.tax.education;
+  const specificTax = region.tax.specificPerLPA * lpa * relief;
+  const taxed = p.price + adValoremTax + educationTax + specificTax;
+  const vat = taxed * region.tax.vat;
+  const consumer = productConsumerPrice(s, p, region);
+  return { price: p.price, adValoremTax, educationTax, specificTax, reliefFactor: relief, vat, retail: consumer - taxed - vat, consumer };
+}
+
 export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId'>): number {
   const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
   const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : 1;
@@ -93,6 +124,18 @@ export function demandFor(s: GameState, p: Product, sameCategoryCount: number, m
   const oversold = ownershipOversold(s) ? OWNERSHIP.oversellAppeal : 1;
   const demandBottles = (marketL * reach * a * priceFactor * overhangFactor(p, s.month) * launch * oversold) / bottleL;
   return { marketL, reach, appeal: a, consumerPricePerL, refPricePerL: ref, priceFactor, demandBottles };
+}
+
+/** 가격을 바꾸면 — 판매 화면의 가격 비교. 판매 가능 = min(재고, 수요 기댓값). 소매 처리 역량·±10% 난수는 넣지 않는다 */
+export interface PriceOption { price: number; consumer: number; demandBottles: number; sellBottles: number; revenue: number; contribution: number }
+
+export function priceOptions(s: GameState, p: Product, sameCategoryCount: number, monthOfYear: number, factors: readonly number[] = [0.8, 0.9, 1, 1.1, 1.25, 1.5]): PriceOption[] {
+  return factors.map((f) => {
+    const q: Product = { ...p, price: Math.max(100, Math.round((p.price * f) / 100) * 100) };
+    const d = demandFor(s, q, sameCategoryCount, monthOfYear);
+    const sell = Math.min(q.stockBottles, Math.round(d.demandBottles));
+    return { price: q.price, consumer: productConsumerPrice(s, q), demandBottles: d.demandBottles, sellBottles: sell, revenue: sell * q.price, contribution: sell * bottleMargin(q, outboundLogistics(s)).perBottle };
+  });
 }
 
 // ── 수출 (#95) ──

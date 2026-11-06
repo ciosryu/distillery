@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { houseBrand } from './brands';
 import { advanceMonths, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, demandFor, evaluate, spotBidPerLPA, spotQuote, makeContractOffer, makeCraftContractOffer, contractAgingImpact, mulberry32, newGame, previewBlend, qualityFactor, type Cask, type GameState, type SpiritLot, appeal, applyEffects, buyersFor, type Product, agePerception, suggestedPrice, spotSaturation, sourcedElasticityFactor, sourcedPrestigeOf, executeBlend, runSales, updateAwareness, DUTY_FREE, dutyFreeSlotBlocker, makeOemOffer, makeRetailOffer, oemPackageCost, OEM, productDutyFreeDemand, resolveDutyFreeEditions, startOem, startRetail, type MonthReport } from './index';
 import { overhangFactor, retailCapacityCases } from './retail';
+import { priceBreakdown, priceOptions } from './market';
 import { BULK } from './content/catalog';
 import { BUYERS } from './content/names';
 import { REGIONS, traditionalTaxFactor, refPricePerL } from './content/regions';
@@ -455,5 +456,44 @@ describe('간토 위탁생산 (결정 #89)', () => {
     expect(r.oemRevenue).toBe(2 * OEM.feePerBatch);
     expect(r.expenses.production ?? 0).toBeGreaterThan(0);
     expect(r.expenses.production ?? 0).toBeLessThan(OEM.feePerBatch);
+  });
+});
+
+describe('판매 화면 — 소비자가 내역·가격 비교 (MVP 판매 화면)', () => {
+  it('한국 위스키: 종가세 72% + 교육세(주세의 30%) + 부가세 10% + 도소매 마진 = 소비자가', () => {
+    const s = newGame({ seed: 1, region: 'KR' });
+    const p = product({ price: 50_000 });
+    const b = priceBreakdown(s, p);
+    expect(b.adValoremTax).toBeCloseTo(50_000 * 0.72, 6);
+    expect(b.educationTax).toBeCloseTo(50_000 * 0.72 * 0.3, 6);
+    expect(b.specificTax).toBe(0);
+    expect(b.vat).toBeCloseTo((50_000 + b.adValoremTax + b.educationTax) * 0.1, 6);
+    expect(b.price + b.adValoremTax + b.educationTax + b.specificTax + b.vat + b.retail).toBeCloseTo(b.consumer, 6);
+    expect(b.reliefFactor).toBe(1);
+  });
+
+  it('전통주 경감 대상 소주는 주세·교육세가 경감 배수만큼 준다', () => {
+    const s = newGame({ seed: 1, region: 'KR' });
+    const soju = product({ category: 'soju_distilled', ageYears: null, oakMonths: 0, abv: 0.25, bottleMl: 375, price: 8_000 });
+    const plain = priceBreakdown(s, soju);
+    const relief = priceBreakdown(s, { ...soju, traditional: true });
+    expect(relief.reliefFactor).toBe(0.5);
+    expect(relief.adValoremTax + relief.educationTax).toBeCloseTo((plain.adValoremTax + plain.educationTax) * 0.5, 6);
+    expect(relief.consumer).toBeLessThan(plain.consumer);
+  });
+
+  it('종량세 지역(일본)은 LPA당 세금이 붙는다', () => {
+    const s = newGame({ seed: 1, region: 'JP' });
+    const b = priceBreakdown(s, product({ price: 50_000 }));
+    expect(b.adValoremTax).toBe(0);
+    expect(b.specificTax).toBeCloseTo(REGIONS.JP.tax.specificPerLPA * 0.7 * 0.46, 6);
+  });
+
+  it('가격 비교: 값을 올리면 수요 한도가 줄고, 판매 가능량은 재고를 넘지 않는다', () => {
+    const s = newGame({ seed: 1, region: 'KR' });
+    const opts = priceOptions(s, product({ stockBottles: 30 }), 1, 1);
+    for (let i = 1; i < opts.length; i++) expect(opts[i]!.demandBottles).toBeLessThan(opts[i - 1]!.demandBottles);
+    for (const o of opts) expect(o.sellBottles).toBeLessThanOrEqual(30);
+    expect(opts.find((o) => o.price === 60_000)).toBeTruthy();
   });
 });
