@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { advanceMonths, applyAction, migrateSave, newGame, newScenarioGame, rivalShare, SAVE_VERSION } from '.';
 import fixture from './fixtures/save-v12.json';
 
-// 재무 확장(S-11)·경쟁 AI(S-12)의 자리 — 동작 불변 (P-ARCH-15)
+// 재무 확장(S-11)·경쟁 AI(S-12)의 자리 — 동작 불변 (#152)
 
 describe('세이브 v12 → v13', () => {
   it('선도계약·보험·경쟁 증류소는 빈 목록으로 채우고, 진행 결과가 v12 코드와 같다', () => {
