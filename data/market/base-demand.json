@@ -1,0 +1,3998 @@
+{
+  "meta": {
+    "title": "Distillery Tycoon — 국가·지역 × 주종 기본 수요",
+    "version": "0.1.0",
+    "generatedBy": "scripts/build-demand-data.mjs",
+    "accessed": "2026-11-05",
+    "baseYear": 2024,
+    "unit": "9L 케이스/년 (제품 액량 기준). litres = 제품 액량 L",
+    "roles": {
+      "base": "게임 수요 셀로 바로 사용",
+      "total": "상위 합계. 하위 base와 중복되므로 합산 금지 — 하위가 비어 있는 부분(잔여)을 계산할 때 사용",
+      "reference": "참고값(수출·생산·대체값·권역). 수요로 직접 사용하지 않음"
+    },
+    "confidence": [
+      "official",
+      "official-cited",
+      "industry-assoc",
+      "press-report",
+      "aggregator",
+      "estimate"
+    ],
+    "verified": {
+      "primary": "원문 열람",
+      "snippet": "검색 요약만 확인"
+    },
+    "warnings": [
+      "시장마다 지표가 다름(출고·과세·수입·공급·소비·수출국 선적). 시장 간 절대값 직접 비교 금지",
+      "수출국 기준 값(SWA·BNIC·CRT)은 재고 조정·재수출이 섞여 해당 연도 소비와 1:1 아님 → 게임에서는 3~5년 평활화 권장",
+      "중국 백주는 65도 환산 액량, 영국은 순수알코올 → 40% 가정 환산",
+      "독일은 벌크 이중계산 포함 공급량 → 실소비보다 큼. 프랑스 일부는 대형마트 채널 한정 → 과소"
+    ]
+  },
+  "markets": {
+    "KR": "한국",
+    "JP": "일본",
+    "CN": "중국",
+    "TW": "대만",
+    "US": "미국",
+    "MX": "멕시코",
+    "CA": "캐나다",
+    "UK": "영국",
+    "FR": "프랑스",
+    "DE": "독일",
+    "ES": "스페인",
+    "IN": "인도",
+    "PH": "필리핀",
+    "TH": "태국",
+    "VN": "베트남",
+    "TRAVEL_RETAIL": "면세·여행 리테일",
+    "BR": "브라질",
+    "PL": "폴란드",
+    "TR": "튀르키예",
+    "SG": "싱가포르",
+    "NA_REGION": "북미(미·캐·멕) 권역",
+    "FAR_EAST": "극동 권역",
+    "EUROPE_REGION": "유럽 권역",
+    "GLOBAL": "세계"
+  },
+  "gameMarkets": [
+    "KR",
+    "JP",
+    "CN",
+    "TW",
+    "US",
+    "MX",
+    "CA",
+    "UK",
+    "FR",
+    "DE",
+    "ES",
+    "IN",
+    "PH",
+    "TH",
+    "VN",
+    "TRAVEL_RETAIL"
+  ],
+  "categories": {
+    "spirits_total": {
+      "nameKo": "스피릿 전체",
+      "parent": null
+    },
+    "whisky_total": {
+      "nameKo": "위스키 전체",
+      "parent": "spirits_total"
+    },
+    "scotch": {
+      "nameKo": "스카치",
+      "parent": "whisky_total"
+    },
+    "american_whiskey": {
+      "nameKo": "아메리칸 위스키(버번 포함)",
+      "parent": "whisky_total"
+    },
+    "canadian": {
+      "nameKo": "캐나디안 위스키",
+      "parent": "whisky_total"
+    },
+    "irish": {
+      "nameKo": "아이리시 위스키",
+      "parent": "whisky_total"
+    },
+    "japanese_whisky": {
+      "nameKo": "재패니즈 위스키",
+      "parent": "whisky_total"
+    },
+    "whisky_other": {
+      "nameKo": "기타 위스키",
+      "parent": "whisky_total"
+    },
+    "vodka": {
+      "nameKo": "보드카",
+      "parent": "spirits_total"
+    },
+    "gin": {
+      "nameKo": "진",
+      "parent": "spirits_total"
+    },
+    "rum": {
+      "nameKo": "럼",
+      "parent": "spirits_total"
+    },
+    "agave_total": {
+      "nameKo": "아가베 스피릿(테킬라+메스칼)",
+      "parent": "spirits_total"
+    },
+    "tequila": {
+      "nameKo": "테킬라",
+      "parent": "agave_total"
+    },
+    "mezcal": {
+      "nameKo": "메스칼",
+      "parent": "agave_total"
+    },
+    "brandy_total": {
+      "nameKo": "브랜디 전체",
+      "parent": "spirits_total"
+    },
+    "cognac": {
+      "nameKo": "코냑",
+      "parent": "brandy_total"
+    },
+    "armagnac": {
+      "nameKo": "아르마냑",
+      "parent": "brandy_total"
+    },
+    "calvados": {
+      "nameKo": "칼바도스",
+      "parent": "brandy_total"
+    },
+    "fruit_brandy": {
+      "nameKo": "과실 브랜디(Obstbrand)",
+      "parent": "spirits_total"
+    },
+    "soju_diluted": {
+      "nameKo": "희석식 소주",
+      "parent": "spirits_total"
+    },
+    "soju_distilled": {
+      "nameKo": "증류식 소주",
+      "parent": "spirits_total"
+    },
+    "baijiu": {
+      "nameKo": "백주",
+      "parent": "spirits_total"
+    },
+    "shochu_korui": {
+      "nameKo": "쇼추(연속식·갑류)",
+      "parent": "spirits_total"
+    },
+    "shochu_honkaku": {
+      "nameKo": "쇼추(단식·본격)",
+      "parent": "spirits_total"
+    },
+    "korn_clear": {
+      "nameKo": "코른·기타 클리어 스피릿",
+      "parent": "spirits_total"
+    },
+    "white_spirits": {
+      "nameKo": "화이트 스피릿(보드카+진)",
+      "parent": "spirits_total"
+    },
+    "anise": {
+      "nameKo": "아니스주(파스티스 등)",
+      "parent": "spirits_total"
+    },
+    "liqueur": {
+      "nameKo": "리큐르",
+      "parent": "spirits_total"
+    },
+    "spirits_other": {
+      "nameKo": "기타 스피릿",
+      "parent": "spirits_total"
+    },
+    "rtd": {
+      "nameKo": "RTD(스피릿 기반)",
+      "parent": null
+    },
+    "all_alcohol": {
+      "nameKo": "주류 전체(맥주·와인 포함)",
+      "parent": null
+    }
+  },
+  "sources": {
+    "KR_FN_2025": {
+      "publisher": "파이낸셜뉴스",
+      "title": "소맥 누른 하이볼… 주류시장 세대교체 바람 (aT 2025 주류산업정보 실태조사 인용)",
+      "url": "https://www.fnnews.com/news/202508031844037459",
+      "accessed": "2026-11-05"
+    },
+    "KR_DATANEWS": {
+      "publisher": "데이터뉴스",
+      "title": "술 소비 줄었다…국내 주류 출고량 10년 새 21% 감소 (국세통계포털 분석)",
+      "url": "https://datanews.co.kr/news/article.html?no=146553",
+      "accessed": "2026-11-05"
+    },
+    "KR_DAILIAN": {
+      "publisher": "데일리안",
+      "title": "국세통계포털(TASIS) 2025 소주 출고량 보도",
+      "url": "https://m.dailian.co.kr/news/view/1684511",
+      "accessed": "2026-11-05"
+    },
+    "KR_DATAGO": {
+      "publisher": "공공데이터포털",
+      "title": "국세청_주류별 지역별 주세 신고 현황 (유의사항: 수입분 합산)",
+      "url": "https://www.data.go.kr/data/15070737/fileData.do",
+      "accessed": "2026-11-05"
+    },
+    "KR_ASIAE_WHISKY": {
+      "publisher": "아시아경제",
+      "title": "Last Year, Whiskey Imports Fell 10% in Volume and 4% in Value (관세청 인용)",
+      "url": "https://www.asiae.co.kr/en/article/2025012016055142932",
+      "accessed": "2026-11-05"
+    },
+    "KR_SATECO": {
+      "publisher": "서울경제(sateconomy)",
+      "title": "위스키 수입량 (관세청 인용)",
+      "url": "https://sateconomy.co.kr/news/view/1065573709960731",
+      "accessed": "2026-11-05"
+    },
+    "KR_FN_2026": {
+      "publisher": "파이낸셜뉴스",
+      "title": "위스키 수입액 (관세청 인용)",
+      "url": "https://www.fnnews.com/news/202610041613167063",
+      "accessed": "2026-11-05"
+    },
+    "KR_CUSTOMS_SOJU": {
+      "publisher": "관세청",
+      "title": "케이(K)-소주 수출 상한가 (보도자료)",
+      "url": "https://www.customs.go.kr/kcs/na/ntt/selectNttInfo.do?mi=2891&bbsId=1362&nttSn=10133374&nttSnUrl=9afad13a4d2a5843dc601661494cb61a",
+      "accessed": "2026-11-05"
+    },
+    "KR_STOCKPLUS": {
+      "publisher": "stockplus",
+      "title": "일반소주 수출량 7만 62톤 (관세청 통계 인용)",
+      "url": "https://news.stockplus.com/m?news_id=14197603",
+      "accessed": "2026-11-05"
+    },
+    "KR_FOODTODAY": {
+      "publisher": "푸드투데이",
+      "title": "aT 2025 주류산업정보 실태조사 보도",
+      "url": "https://www.foodtoday.or.kr/news/article.html?no=204014",
+      "accessed": "2026-11-05"
+    },
+    "JP_MAFF": {
+      "publisher": "농림수산성(MAFF)",
+      "title": "(12) 焼酎の出荷状況 ア 酒類課税数量の推移 (국세청 데이터)",
+      "url": "https://www.maff.go.jp/j/seisan/tokusan/imo/attach/pdf/r7shiryo-15.pdf",
+      "accessed": "2026-11-05"
+    },
+    "JP_NTA_SHIORI": {
+      "publisher": "국세청(NTA)",
+      "title": "酒のしおり（令和8年7月） — N년 7월판 = FY(N−2)",
+      "url": "https://www.nta.go.jp/taxes/sake/shiori-gaikyo/shiori/2026/index.htm",
+      "accessed": "2026-11-05"
+    },
+    "JP_NTA_EXPORT": {
+      "publisher": "국세청(NTA)",
+      "title": "酒のしおり 輸出 (財務省貿易統計)",
+      "url": "https://www.nta.go.jp/taxes/sake/shiori-gaikyo/shiori/2025/pdf/0023-1.pdf",
+      "accessed": "2026-11-05"
+    },
+    "JP_JWIC": {
+      "publisher": "일본위스키정보센터(JWIC)",
+      "title": "ジャパニーズウイスキー輸出状況【2024年12月度】",
+      "url": "https://jwic.jp/img/202412_whisky_statistical_data.pdf",
+      "accessed": "2026-11-05"
+    },
+    "CN_NBS_163": {
+      "publisher": "酒业家(국가통계국 발표 인용)",
+      "title": "国家统计局：2024年规上企业白酒产量414.5万千升，同比下降1.8%",
+      "url": "https://www.163.com/dy/article/JMJ4FDUK053804DM.html",
+      "accessed": "2026-11-05"
+    },
+    "CN_KPMG": {
+      "publisher": "KPMG",
+      "title": "2025中国白酒市场中期研究报告",
+      "url": "https://assets.kpmg.com/content/dam/kpmg/cn/pdf/zh/2025/06/mid-term-research-report-on-the-chinese-baijiu-market-2025.pdf",
+      "accessed": "2026-11-05"
+    },
+    "CN_PEOPLE": {
+      "publisher": "人民日报",
+      "title": "提升国际标准制定话语权，让中国白酒更好走向世界",
+      "url": "https://paper.people.com.cn/mszk/pc/content/202503/17/content_30065168.html",
+      "accessed": "2026-11-05"
+    },
+    "CN_WBO": {
+      "publisher": "葡萄酒商业观察(WBO)",
+      "title": "2024年烈酒进口数据出炉 (海关总署 데이터)",
+      "url": "https://www.wbo529.com/info/3871",
+      "accessed": "2026-11-05"
+    },
+    "CN_HUXIU": {
+      "publisher": "虎嗅",
+      "title": "中国烈酒进口状况蓝皮书—威士忌精华版",
+      "url": "https://www.huxiu.com/article/4832816.html",
+      "accessed": "2026-11-05"
+    },
+    "TW_CH9": {
+      "publisher": "酒訊網",
+      "title": "2024年酒市景氣展望 (財政部關務署 통계 인용)",
+      "url": "https://ch-9.net/article/I7tL5alc7a",
+      "accessed": "2026-11-05"
+    },
+    "TW_INDEXBOX": {
+      "publisher": "IndexBox",
+      "title": "Asia-Pacific's Whisky Market Expected to Grow at +0.9% CAGR",
+      "url": "https://www.indexbox.io/blog/whisky-asia-pacific-market-overview-2024-2/",
+      "accessed": "2026-11-05"
+    },
+    "US_DISCUS": {
+      "publisher": "DISCUS",
+      "title": "Annual Economic Briefing Support Tables (Feb 2025, 2024 data)",
+      "url": "https://distilledspirits.org/wp-content/uploads/2025/02/DISCUS-AEB-Support-Tables-February-13-2025.pdf",
+      "accessed": "2026-11-05"
+    },
+    "US_DISCUS_ALT": {
+      "publisher": "DISCUS",
+      "title": "2025 AEB Support Tables (2차 조사 URL)",
+      "url": "https://distilledspirits.org/wp-content/uploads/2025/02/2025-AEB-Support-Tables.pdf",
+      "accessed": "2026-11-05"
+    },
+    "US_KDA": {
+      "publisher": "Kentucky Distillers’ Association",
+      "title": "Economic Impact Report (Feb 2026)",
+      "url": "https://kybourbon.com/wp-content/uploads/2026/02/FINAL-KDA-Economic-Impact-Report-2.2.26.pdf",
+      "accessed": "2026-11-05"
+    },
+    "MX_CRT": {
+      "publisher": "테킬라규제위원회(CRT)",
+      "title": "Continuará el trabajo coordinado para fortalecer a la agroindustria tequilera",
+      "url": "https://www.crt.org.mx/2025/03/05/continuara-el-trabajo-coordinado-para-fortalecer-a-la-agroindustria-tequilera/",
+      "accessed": "2026-11-05"
+    },
+    "MX_INFORMADOR": {
+      "publisher": "El Informador",
+      "title": "Incrementó la exportación y la producción de tequila en 2025 (CRT 기록)",
+      "url": "https://www.informador.mx/economia/industria-incremento-la-exportacion-y-laproduccion-de-tequila-en-2025-20260112-0016.html",
+      "accessed": "2026-11-05"
+    },
+    "MX_MEZCALISTAS": {
+      "publisher": "Mezcalistas (COMERCAM 수치)",
+      "title": "2024 mezcal sales and export numbers",
+      "url": "https://www.mezcalistas.com/2024-mezcal-sales-and-export-numbers/",
+      "accessed": "2026-11-05"
+    },
+    "MX_ELFIN": {
+      "publisher": "El Financiero",
+      "title": "Altos impuestos y exportación impulsan cambios en el mezcal",
+      "url": "https://www.elfinanciero.com.mx/empresas/2025/12/29/altos-impuestos-y-exportacion-impulsan-cambios-en-el-mezcal/",
+      "accessed": "2026-11-05"
+    },
+    "CA_STATCAN": {
+      "publisher": "캐나다 통계청",
+      "title": "The Daily — Control and sale of alcoholic beverages and cannabis (2026-03-05)",
+      "url": "https://www150.statcan.gc.ca/n1/daily-quotidien/260305/dq260305b-eng.pdf",
+      "accessed": "2026-11-05"
+    },
+    "CA_STATISTA_WHISKY": {
+      "publisher": "Statista (캐나다 통계청 기반)",
+      "title": "Whisky sales volume in Canada",
+      "url": "https://statista.com/statistics/861123/whiskey-sales-volume-canada",
+      "accessed": "2026-11-05"
+    },
+    "CA_STATISTA_RUM": {
+      "publisher": "Statista (캐나다 통계청 기반)",
+      "title": "Volume of rum sold in Canada",
+      "url": "https://statista.com/statistics/334076/volume-of-rum-sold-in-canada",
+      "accessed": "2026-11-05"
+    },
+    "UK_SHELFDROP": {
+      "publisher": "Shelfdrop (HMRC Alcohol Bulletin 가공)",
+      "title": "UK alcohol statistics and sales 2026",
+      "url": "https://www.shelfdrop.com/data/uk-alcohol-statistics",
+      "accessed": "2026-11-05"
+    },
+    "FR_FRANCEAGRIMER": {
+      "publisher": "FranceAgriMer",
+      "title": "Fiche filière spiritueux 2026",
+      "url": "https://www.franceagrimer.fr/sites/default/files/2026-02/09_FICHE_FILIERE_SPIRITUEUX_2026.pdf",
+      "accessed": "2026-11-05"
+    },
+    "FR_BOTTL": {
+      "publisher": "Bottl",
+      "title": "La France est la nation du whisky",
+      "url": "https://www.bottl.fr/blog/la-france-est-la-nation-du-whisky/",
+      "accessed": "2026-11-05"
+    },
+    "FR_ITM": {
+      "publisher": "IntoTheMinds (FFS 인용)",
+      "title": "Étude de marché des spiritueux",
+      "url": "https://www.intotheminds.com/blog/etude-marche-spiritueux/",
+      "accessed": "2026-11-05"
+    },
+    "FR_SIDELY": {
+      "publisher": "Sidely (NielsenIQ 데이터)",
+      "title": "Le marché de la vodka",
+      "url": "https://www.go-sidely.com/post/le-marche-de-la-vodka",
+      "accessed": "2026-11-05"
+    },
+    "FR_RAYON": {
+      "publisher": "Rayon Boissons (Circana 데이터)",
+      "title": "Le top des gins en grande distribution",
+      "url": "https://www.rayon-boissons.com/spiritueux/le-top-des-gins-en-grande-distribution2",
+      "accessed": "2026-11-05"
+    },
+    "DE_BSI": {
+      "publisher": "독일주류산업협회(BSI)",
+      "title": "Daten aus der Alkoholwirtschaft 2025",
+      "url": "https://www.spirituosen-verband.de/fileadmin/Datenablage/downloads/BSI-Datenbroschuere_2025.pdf",
+      "accessed": "2026-11-05"
+    },
+    "ES_EE": {
+      "publisher": "스페인주류협회(Espirituosos España)",
+      "title": "Informe Socioeconómico del Sector de Bebidas Espirituosas 2024 (보도자료 2025-06-13)",
+      "url": "https://www.espirituosos.es/Prensa/Comunicados-de-prensa/prensa-detalle.aspx?p=2421",
+      "accessed": "2026-11-05"
+    },
+    "ES_MERCASA": {
+      "publisher": "Mercasa",
+      "title": "Alimentación en España – Bebidas espirituosas",
+      "url": "https://www.mercasa.es/publicaciones/alimentacion-en-espana/bebidas-espirituosas/",
+      "accessed": "2026-11-05"
+    },
+    "ES_DBK": {
+      "publisher": "Empresa Actual (DBK de INFORMA)",
+      "title": "El consumo de bebidas espirituosas cae en 2024",
+      "url": "https://www.empresaactual.com/retroceso-consumo-bebidas-espirituosas-arrastra-la-facturacion-del-sector/",
+      "accessed": "2026-11-05"
+    },
+    "SWA_2024": {
+      "publisher": "스카치위스키협회(SWA)",
+      "title": "Scotch Whisky 2024 Exports (인포그래픽)",
+      "url": "https://www.scotch-whisky.org.uk/media/2414/2024-export-figures-long-infographic.pdf",
+      "accessed": "2026-11-05"
+    },
+    "SWA_NEWS": {
+      "publisher": "스카치위스키협회(SWA)",
+      "title": "2024 export figures",
+      "url": "https://www.scotch-whisky.org.uk/newsroom/2024-export-figures/",
+      "accessed": "2026-11-05"
+    },
+    "SWA_TSB_VALUE": {
+      "publisher": "The Spirits Business (SWA 데이터)",
+      "title": "Scotch whisky's 10 most valuable export markets in 2024",
+      "url": "https://www.thespiritsbusiness.com/2025/02/scotch-whiskys-10-most-valuable-export-markets-in-2024/",
+      "accessed": "2026-11-05"
+    },
+    "BNIC_TSB": {
+      "publisher": "The Spirits Business (BNIC 데이터)",
+      "title": "Cognac exports plunge in 2024 as China bites",
+      "url": "https://www.thespiritsbusiness.com/2025/02/cognac-exports-plunge-in-2024-as-china-bites/",
+      "accessed": "2026-11-05"
+    },
+    "IDAC_DISTILNEWS": {
+      "publisher": "Distilnews (IDAC 수치)",
+      "title": "Les expéditions de Calvados progressent en France mais reculent à l’export en 2024",
+      "url": "https://distilnews.fr/calvados-expeditions-2024-croissance-france-repli-export/",
+      "accessed": "2026-11-05"
+    },
+    "BNIA_F3": {
+      "publisher": "France 3 Occitanie",
+      "title": "Mercosur : pourquoi les producteurs d’armagnac pourraient être les gagnants",
+      "url": "https://france3-regions.franceinfo.fr/occitanie/gers/auch/mercosur-on-ne-va-pas-se-plaindre-pourquoi-les-producteurs-d-armagnac-pourraient-etre-les-gagnants-de-l-accord-3284057.html",
+      "accessed": "2026-11-05"
+    },
+    "FEVS_2024": {
+      "publisher": "FEVS",
+      "title": "Bilan 2024 export vins et spiritueux",
+      "url": "https://www.fevs.com/wp-content/uploads/2025/02/20250211-dp-fevs-bilan-2024-export-vins-spiritueux-vf-complet.pdf",
+      "accessed": "2026-11-05"
+    },
+    "IN_CIABC": {
+      "publisher": "Daily Excelsior (CIABC/PTI)",
+      "title": "IMFL 판매량 FY25 40.17 crore cases",
+      "url": "https://www.dailyexcelsior.com/?p=2073435",
+      "accessed": "2026-11-05"
+    },
+    "IN_CRISIL": {
+      "publisher": "Crisil Ratings",
+      "title": "In high spirits (2026-05)",
+      "url": "https://www.crisil.com/content/dam/crisil/mailers/rating-newsletter/2026/may/pdf/in-high-spirits.pdf",
+      "accessed": "2026-11-05"
+    },
+    "PH_DI_GIN": {
+      "publisher": "Drinks International",
+      "title": "The Millionaires' Club 2026: gin",
+      "url": "https://drinksint.com/the-millionaires-clubs-2026-the-worlds-bestselling-gin-brands/",
+      "accessed": "2026-11-05"
+    },
+    "PH_TSB_RUM": {
+      "publisher": "The Spirits Business",
+      "title": "Top 10 best-selling rum Brand Champions 2025",
+      "url": "https://www.thespiritsbusiness.com/2025/07/top-10-best-selling-rum-brand-champions-2025/",
+      "accessed": "2026-11-05"
+    },
+    "PH_STATISTA": {
+      "publisher": "Statista Market Insights",
+      "title": "Spirits – Philippines",
+      "url": "https://www.statista.com/outlook/cmo/alcoholic-drinks/spirits/philippines",
+      "accessed": "2026-11-05"
+    },
+    "TH_EUROMONITOR": {
+      "publisher": "Euromonitor (리포트 목록 페이지)",
+      "title": "Spirits in Thailand",
+      "url": "https://www.marketresearch.com/Euromonitor-International-v746/Spirits-Thailand-34522863",
+      "accessed": "2026-11-05"
+    },
+    "VN_STATISTA": {
+      "publisher": "Statista Market Insights",
+      "title": "Spirits – Vietnam",
+      "url": "https://www.statista.com/outlook/10020000/127/spirits/vietnam",
+      "accessed": "2026-11-05"
+    },
+    "GL_TSB_WHISKY": {
+      "publisher": "The Spirits Business (Euromonitor)",
+      "title": "Brand Champions 2025 — whisky (URL 미확정)",
+      "url": "https://www.thespiritsbusiness.com/?p=882935",
+      "accessed": "2026-11-05"
+    },
+    "GL_TSB_VODKA": {
+      "publisher": "The Spirits Business (Euromonitor)",
+      "title": "Brand Champions 2025 — vodka (URL 미확정)",
+      "url": "https://www.thespiritsbusiness.com/?p=882623",
+      "accessed": "2026-11-05"
+    },
+    "GL_TSB_GIN": {
+      "publisher": "The Spirits Business (Euromonitor)",
+      "title": "Brand Champions 2025 — gin (URL 미확정)",
+      "url": "https://www.thespiritsbusiness.com/?p=883609",
+      "accessed": "2026-11-05"
+    },
+    "GL_TSB_BRANDY": {
+      "publisher": "The Spirits Business (Euromonitor)",
+      "title": "World Spirits Report 2025 — brandy (URL 미확정)",
+      "url": "https://www.thespiritsbusiness.com/?p=904205",
+      "accessed": "2026-11-05"
+    },
+    "GL_TSB_LIQUEUR": {
+      "publisher": "The Spirits Business (Euromonitor)",
+      "title": "Brand Champions 2025 — liqueurs (URL 미확정)",
+      "url": "https://www.thespiritsbusiness.com/?p=860293",
+      "accessed": "2026-11-05"
+    },
+    "GL_TSB_SCOTCH": {
+      "publisher": "The Spirits Business (Euromonitor)",
+      "title": "World Spirits Report 2025: Scotch whisky",
+      "url": "https://www.thespiritsbusiness.com/2025/12/world-spirits-report-2025-scotch-whisky/",
+      "accessed": "2026-11-05"
+    },
+    "TR_IWSR_2019": {
+      "publisher": "IWSR",
+      "title": "Spirits in Global Travel Retail (2019 보도자료, 2018 데이터)",
+      "url": "https://theiwsr.com/wp-content/uploads/2024/05/Press-Release-IWSR-Spirits-in-Global-Travel-Retail.pdf",
+      "accessed": "2026-11-05"
+    },
+    "KR_TRADEDATA": {
+      "publisher": "관세청",
+      "title": "수출입무역통계 「수출입 실적(품목별+국가별)」 HS 2208 하위품목, 2024, 수리일 기준 (4차 원표 조회)",
+      "url": "https://tradedata.go.kr/cts/index.do",
+      "accessed": "2026-11-05"
+    },
+    "KR_HANKYUNG": {
+      "publisher": "한국경제",
+      "title": "위스키 수입량 −10.3% (관세청 수출입 무역통계 인용)",
+      "url": "https://www.hankyung.com/article/2025012609321",
+      "accessed": "2026-11-05"
+    },
+    "KR_SEGYE": {
+      "publisher": "세계일보",
+      "title": "맥주·소주 3년째 감소… (TASIS 인용)",
+      "url": "https://segye.com/newsView/20260823504121",
+      "accessed": "2026-11-05"
+    },
+    "JP_MOF_TRADE": {
+      "publisher": "재무성(財務省)",
+      "title": "貿易統計 品別国別表 2024年12月 累計 (4차 원표 조회)",
+      "url": "https://www.customs.go.jp/toukei/srch/index.htm",
+      "accessed": "2026-11-05"
+    },
+    "TW_IEAT": {
+      "publisher": "台北市進出口商業同業公會(IEAT)",
+      "title": "台灣酒市疫後出發 尋求突破創新 (關務署 통계 인용)",
+      "url": "https://www.ieatpe.org.tw/magazine/ebook397/coverstory-3.html",
+      "accessed": "2026-11-05"
+    },
+    "TW_CTEE": {
+      "publisher": "工商時報",
+      "title": "金門酒廠 2025年營收約116億元·2024年121億元, 台灣白酒市占率約八成",
+      "url": "https://www.ctee.com.tw/news/20260728701728-430503",
+      "accessed": "2026-11-05"
+    },
+    "CA_STATCAN_TBL": {
+      "publisher": "캐나다 통계청",
+      "title": "Table 10-10-0011-01 Value of sales of alcoholic beverages… by beverage type (WDS API, 4차 조회)",
+      "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1010001101",
+      "accessed": "2026-11-05"
+    },
+    "US_DISCUS_AGAVE": {
+      "publisher": "DISCUS",
+      "title": "2024 Tequila/Mezcal in the U.S. Fact Sheet",
+      "url": "https://www.distilledspirits.org/wp-content/uploads/2025/02/Copy-of-2024-TequilaMezcal-in-the-U.S.-Fact-Sheet-NEW1-2.pdf",
+      "accessed": "2026-11-05"
+    },
+    "US_SHANKEN_MEZCAL": {
+      "publisher": "Shanken News Daily (Impact Databank)",
+      "title": "Mezcal depletions 2024",
+      "url": "https://www.shankennewsdaily.com/?p=37015",
+      "accessed": "2026-11-05"
+    },
+    "GL_TSB_WHISKY_2025": {
+      "publisher": "The Spirits Business (Euromonitor)",
+      "title": "Top 10 biggest-selling Scotch Brand Champions (2025-06-19)",
+      "url": "https://www.thespiritsbusiness.com/2025/06/top-10-biggest-selling-scotch-brand-champions/",
+      "accessed": "2026-11-05"
+    },
+    "GL_TSB_GIN_IWSR": {
+      "publisher": "The Spirits Business (IWSR)",
+      "title": "Gin category 2024 (IWSR 인용)",
+      "url": "https://www.thespiritsbusiness.com/?p=890983",
+      "accessed": "2026-11-05"
+    },
+    "IN_BS_FY23": {
+      "publisher": "Business Standard (CIABC)",
+      "title": "Liquor sales volume grows 14% in FY23",
+      "url": "https://www.business-standard.com/industry/news/liquor-sales-volume-grows-14-in-fy23-premium-segment-over-rs-1k-grows-48-123062700574_1.html",
+      "accessed": "2026-11-05"
+    },
+    "FR_LINFO": {
+      "publisher": "L'Info Durable (FFS·세관 인용)",
+      "title": "En difficulté à l’export, les spiritueux perdent encore du terrain en France",
+      "url": "https://www.linfodurable.fr/en-difficulte-lexport-les-spiritueux-perdent-encore-du-terrain-en-france-51350",
+      "accessed": "2026-11-05"
+    }
+  },
+  "records": [
+    {
+      "id": "KR.soju_diluted.domestic_release.2024",
+      "market": "KR",
+      "category": "soju_diluted",
+      "metric": "domestic_release",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 815712,
+        "unit": "kL"
+      },
+      "litres": 815712000,
+      "cases9L": 90634667,
+      "confidence": "official-cited",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "데이터뉴스 원문(81.6만㎘)과 일치. 출고량에는 수입분 포함(KR_DATAGO 유의사항)",
+      "sources": [
+        "KR_FN_2025",
+        "KR_DATANEWS",
+        "KR_DATAGO"
+      ]
+    },
+    {
+      "id": "KR.soju_distilled.domestic_release.2025",
+      "market": "KR",
+      "category": "soju_distilled",
+      "metric": "domestic_release",
+      "period": "2025",
+      "role": "base",
+      "original": {
+        "value": 4611,
+        "unit": "kL"
+      },
+      "litres": 4611000,
+      "cases9L": 512333,
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "2024 값 미확보 → 2025 값으로 대용. 단일 출처",
+      "sources": [
+        "KR_DAILIAN"
+      ]
+    },
+    {
+      "id": "KR.whisky_total.imports.2024",
+      "market": "KR",
+      "category": "whisky_total",
+      "metric": "imports",
+      "period": "2024",
+      "role": "total",
+      "original": {
+        "value": 27440.9,
+        "unit": "t"
+      },
+      "litres": 20580675,
+      "cases9L": 2286742,
+      "money": {
+        "amount": 249413000,
+        "currency": "USD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": true,
+      "conversionNote": "1톤 ≈ 750L 가정 — 순중량(≈1,050L)과 병 포함 총중량(≈550L)의 중간값, 오차 ±30%",
+      "note": "HS 2208.30. 언론(27,441t·2억 4,941.9만 달러, KR_HANKYUNG·KR_FN_2026)과 정합. 국내 생산 위스키는 미미하다고 보고 수입량을 수요 대리값으로 사용. 위스키 수출 230.5t",
+      "sources": [
+        "KR_TRADEDATA"
+      ]
+    },
+    {
+      "id": "KR.scotch.imports.2024",
+      "market": "KR",
+      "category": "scotch",
+      "metric": "imports",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 21658.8,
+        "unit": "t"
+      },
+      "litres": 16244100,
+      "cases9L": 1804900,
+      "money": {
+        "amount": 204051000,
+        "currency": "USD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": true,
+      "conversionNote": "1톤 ≈ 750L 가정 — 순중량(≈1,050L)과 병 포함 총중량(≈550L)의 중간값, 오차 ±30%",
+      "note": "원산지 영국(스카치 대리값), 전체의 78.9%",
+      "sources": [
+        "KR_TRADEDATA"
+      ]
+    },
+    {
+      "id": "KR.american_whiskey.imports.2024",
+      "market": "KR",
+      "category": "american_whiskey",
+      "metric": "imports",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 3165.8,
+        "unit": "t"
+      },
+      "litres": 2374350,
+      "cases9L": 263817,
+      "money": {
+        "amount": 24346000,
+        "currency": "USD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": true,
+      "conversionNote": "1톤 ≈ 750L 가정 — 순중량(≈1,050L)과 병 포함 총중량(≈550L)의 중간값, 오차 ±30%",
+      "note": "원산지 미국 11.5%",
+      "sources": [
+        "KR_TRADEDATA"
+      ]
+    },
+    {
+      "id": "KR.japanese_whisky.imports.2024",
+      "market": "KR",
+      "category": "japanese_whisky",
+      "metric": "imports",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 1336.1,
+        "unit": "t"
+      },
+      "litres": 1002075,
+      "cases9L": 111342,
+      "money": {
+        "amount": 9285000,
+        "currency": "USD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": true,
+      "conversionNote": "1톤 ≈ 750L 가정 — 순중량(≈1,050L)과 병 포함 총중량(≈550L)의 중간값, 오차 ±30%",
+      "note": "원산지 일본 4.9%, 양 +48.9%",
+      "sources": [
+        "KR_TRADEDATA"
+      ]
+    },
+    {
+      "id": "KR.irish.imports.2024",
+      "market": "KR",
+      "category": "irish",
+      "metric": "imports",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 637,
+        "unit": "t"
+      },
+      "litres": 477750,
+      "cases9L": 53083,
+      "money": {
+        "amount": 4106000,
+        "currency": "USD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": true,
+      "conversionNote": "1톤 ≈ 750L 가정 — 순중량(≈1,050L)과 병 포함 총중량(≈550L)의 중간값, 오차 ±30%",
+      "note": "원산지 아일랜드 2.3%",
+      "sources": [
+        "KR_TRADEDATA"
+      ]
+    },
+    {
+      "id": "KR.whisky_other.imports.2024",
+      "market": "KR",
+      "category": "whisky_other",
+      "metric": "imports",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 643.2,
+        "unit": "t"
+      },
+      "litres": 482400,
+      "cases9L": 53600,
+      "confidence": "estimate",
+      "verified": "primary",
+      "conversionEstimate": true,
+      "conversionNote": "1톤 ≈ 750L 가정 — 순중량(≈1,050L)과 병 포함 총중량(≈550L)의 중간값, 오차 ±30%",
+      "formula": "27,440.9 − 21,658.8 − 3,165.8 − 1,336.1 − 637.0 (대만 310.5·독일 47.0 등)",
+      "sources": [
+        "KR_TRADEDATA"
+      ]
+    },
+    {
+      "id": "KR.brandy_total.imports.2024",
+      "market": "KR",
+      "category": "brandy_total",
+      "metric": "imports",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 577.1,
+        "unit": "t"
+      },
+      "litres": 432825,
+      "cases9L": 48092,
+      "money": {
+        "amount": 11592000,
+        "currency": "USD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": true,
+      "conversionNote": "1톤 ≈ 750L 가정 — 순중량(≈1,050L)과 병 포함 총중량(≈550L)의 중간값, 오차 ±30%",
+      "note": "HS 2208.20. 프랑스 375.3t(코냑 주력 추정). 언론 보도 863만 달러와 충돌 → 원표 채택",
+      "sources": [
+        "KR_TRADEDATA"
+      ]
+    },
+    {
+      "id": "KR.rum.imports.2024",
+      "market": "KR",
+      "category": "rum",
+      "metric": "imports",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 825.4,
+        "unit": "t"
+      },
+      "litres": 619050,
+      "cases9L": 68783,
+      "money": {
+        "amount": 2351000,
+        "currency": "USD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": true,
+      "conversionNote": "1톤 ≈ 750L 가정 — 순중량(≈1,050L)과 병 포함 총중량(≈550L)의 중간값, 오차 ±30%",
+      "sources": [
+        "KR_TRADEDATA"
+      ]
+    },
+    {
+      "id": "KR.gin.imports.2024",
+      "market": "KR",
+      "category": "gin",
+      "metric": "imports",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 576.7,
+        "unit": "t"
+      },
+      "litres": 432525,
+      "cases9L": 48058,
+      "money": {
+        "amount": 3500000,
+        "currency": "USD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": true,
+      "conversionNote": "1톤 ≈ 750L 가정 — 순중량(≈1,050L)과 병 포함 총중량(≈550L)의 중간값, 오차 ±30%",
+      "note": "HS 2208.50. 영국 371.1t. 국산 크래프트 진은 소량 → 수입량을 시장 대리값으로 사용",
+      "sources": [
+        "KR_TRADEDATA"
+      ]
+    },
+    {
+      "id": "KR.vodka.imports.2024",
+      "market": "KR",
+      "category": "vodka",
+      "metric": "imports",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 1746.7,
+        "unit": "t"
+      },
+      "litres": 1310025,
+      "cases9L": 145558,
+      "money": {
+        "amount": 4991000,
+        "currency": "USD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": true,
+      "conversionNote": "1톤 ≈ 750L 가정 — 순중량(≈1,050L)과 병 포함 총중량(≈550L)의 중간값, 오차 ±30%",
+      "sources": [
+        "KR_TRADEDATA"
+      ]
+    },
+    {
+      "id": "KR.liqueur.imports.2024",
+      "market": "KR",
+      "category": "liqueur",
+      "metric": "imports",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 14047.4,
+        "unit": "t"
+      },
+      "litres": 10535550,
+      "cases9L": 1170617,
+      "money": {
+        "amount": 28271000,
+        "currency": "USD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": true,
+      "conversionNote": "1톤 ≈ 750L 가정 — 순중량(≈1,050L)과 병 포함 총중량(≈550L)의 중간값, 오차 ±30%",
+      "note": "일본산 9,456.9t(하이볼·츄하이류 추정)",
+      "sources": [
+        "KR_TRADEDATA"
+      ]
+    },
+    {
+      "id": "KR.baijiu.imports_proxy.2024",
+      "market": "KR",
+      "category": "baijiu",
+      "metric": "imports_proxy",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 7915.1,
+        "unit": "t"
+      },
+      "litres": 5936325,
+      "cases9L": 659592,
+      "money": {
+        "amount": 19133000,
+        "currency": "USD"
+      },
+      "confidence": "estimate",
+      "verified": "primary",
+      "conversionEstimate": true,
+      "conversionNote": "1톤 ≈ 750L 가정 — 순중량(≈1,050L)과 병 포함 총중량(≈550L)의 중간값, 오차 ±30%",
+      "note": "HS 2208.90(기타 증류주) 중 중국 원산지 = 고량주 대리값. 3차 보도 \"중국 고량주 1,831만 달러\"와 정합",
+      "sources": [
+        "KR_TRADEDATA"
+      ]
+    },
+    {
+      "id": "KR.tequila.imports_proxy.2024",
+      "market": "KR",
+      "category": "tequila",
+      "metric": "imports_proxy",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 672.5,
+        "unit": "t"
+      },
+      "litres": 504375,
+      "cases9L": 56042,
+      "money": {
+        "amount": 6264000,
+        "currency": "USD"
+      },
+      "confidence": "estimate",
+      "verified": "primary",
+      "conversionEstimate": true,
+      "conversionNote": "1톤 ≈ 750L 가정 — 순중량(≈1,050L)과 병 포함 총중량(≈550L)의 중간값, 오차 ±30%",
+      "note": "HS 2208.90 중 멕시코 원산지(메스칼 포함 가능)",
+      "sources": [
+        "KR_TRADEDATA"
+      ]
+    },
+    {
+      "id": "KR.spirits_total.imports.2024",
+      "market": "KR",
+      "category": "spirits_total",
+      "metric": "imports",
+      "period": "2024",
+      "role": "total",
+      "original": {
+        "value": 59907.8,
+        "unit": "t"
+      },
+      "litres": 44930850,
+      "cases9L": 4992317,
+      "money": {
+        "amount": 336271000,
+        "currency": "USD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": true,
+      "conversionNote": "1톤 ≈ 750L 가정 — 순중량(≈1,050L)과 병 포함 총중량(≈550L)의 중간값, 오차 ±30%",
+      "note": "HS 2208 전체. 수출 126,863.7t",
+      "sources": [
+        "KR_TRADEDATA"
+      ]
+    },
+    {
+      "id": "KR.soju_diluted.exports.2024",
+      "market": "KR",
+      "category": "soju_diluted",
+      "metric": "exports",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 70062,
+        "unit": "t"
+      },
+      "litres": 52546500,
+      "cases9L": 5838500,
+      "money": {
+        "amount": 104000000,
+        "currency": "USD"
+      },
+      "confidence": "official-cited",
+      "verified": "snippet",
+      "conversionEstimate": true,
+      "conversionNote": "1톤 ≈ 750L 가정 — 순중량(≈1,050L)과 병 포함 총중량(≈550L)의 중간값, 오차 ±30%",
+      "note": "일반소주 단일 품목(금액: 관세청, 톤: 관세청 통계 인용 보도). 과일소주(혼성주) 9,600만 달러 별도. 소주류 합계 2억 달러·12.4만 톤은 과일소주 포함",
+      "sources": [
+        "KR_CUSTOMS_SOJU",
+        "KR_STOCKPLUS"
+      ]
+    },
+    {
+      "id": "KR.all_alcohol.domestic_release.2025",
+      "market": "KR",
+      "category": "all_alcohol",
+      "metric": "domestic_release",
+      "period": "2025",
+      "role": "reference",
+      "original": {
+        "value": 2988000,
+        "unit": "kL"
+      },
+      "litres": 2988000000,
+      "cases9L": 332000000,
+      "confidence": "official-cited",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "TASIS. 희석식소주 2025 79.3만㎘. 위스키 등 개별 출고량은 미공개",
+      "sources": [
+        "KR_SEGYE"
+      ]
+    },
+    {
+      "id": "KR.all_alcohol.domestic_release.2024",
+      "market": "KR",
+      "category": "all_alcohol",
+      "metric": "domestic_release",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 3151371,
+        "unit": "kL"
+      },
+      "litres": 3151371000,
+      "cases9L": 350152333,
+      "confidence": "official-cited",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "맥주·탁주 포함 전 주종. 일반증류주 출고량은 +113.2%(절대량 미확보)",
+      "sources": [
+        "KR_FOODTODAY"
+      ]
+    },
+    {
+      "id": "JP.whisky_total.tax_volume.FY2024",
+      "market": "JP",
+      "category": "whisky_total",
+      "metric": "tax_volume",
+      "period": "FY2024",
+      "role": "total",
+      "original": {
+        "value": 205736,
+        "unit": "kL"
+      },
+      "litres": 205736000,
+      "cases9L": 22859556,
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "令和6年度(2024.4~2025.3)로 확정(3차). 국산 171,464 / 수입 34,272. FY2023 205,418",
+      "sources": [
+        "JP_MAFF",
+        "JP_NTA_SHIORI"
+      ]
+    },
+    {
+      "id": "JP.whisky_total.imports.CY2024",
+      "market": "JP",
+      "category": "whisky_total",
+      "metric": "imports",
+      "period": "CY2024",
+      "role": "reference",
+      "original": {
+        "value": 71105896,
+        "unit": "L"
+      },
+      "litres": 71105896,
+      "cases9L": 7900655,
+      "money": {
+        "amount": 74626535000,
+        "currency": "JPY"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "영국 3,930만·미국 1,768만·캐나다 1,055만 L. 국내 블렌딩용 벌크 원주 포함 → 소비량 아님(과세수량 사용)",
+      "sources": [
+        "JP_MOF_TRADE"
+      ]
+    },
+    {
+      "id": "JP.spirits_total.tax_volume.FY2024",
+      "market": "JP",
+      "category": "spirits_total",
+      "metric": "tax_volume",
+      "period": "FY2024",
+      "role": "reference",
+      "original": {
+        "value": 1155038,
+        "unit": "kL"
+      },
+      "litres": 1155038000,
+      "cases9L": 128337556,
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "スピリッツ等 — 原料用アルコール 포함. RTD 제외 순수 스피릿 값 없음",
+      "sources": [
+        "JP_MAFF"
+      ]
+    },
+    {
+      "id": "JP.gin.imports.CY2024",
+      "market": "JP",
+      "category": "gin",
+      "metric": "imports",
+      "period": "CY2024",
+      "role": "base",
+      "original": {
+        "value": 2954095,
+        "unit": "L"
+      },
+      "litres": 2954095,
+      "cases9L": 328233,
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "영국 92%. 수입분만 → 국산 진(수이·로쿠 등) 미포함 하한",
+      "sources": [
+        "JP_MOF_TRADE"
+      ]
+    },
+    {
+      "id": "JP.rum.imports.CY2024",
+      "market": "JP",
+      "category": "rum",
+      "metric": "imports",
+      "period": "CY2024",
+      "role": "base",
+      "original": {
+        "value": 1967471,
+        "unit": "L"
+      },
+      "litres": 1967471,
+      "cases9L": 218608,
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "수입분만(하한)",
+      "sources": [
+        "JP_MOF_TRADE"
+      ]
+    },
+    {
+      "id": "JP.vodka.imports.CY2024",
+      "market": "JP",
+      "category": "vodka",
+      "metric": "imports",
+      "period": "CY2024",
+      "role": "base",
+      "original": {
+        "value": 1886364,
+        "unit": "L"
+      },
+      "litres": 1886364,
+      "cases9L": 209596,
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "수입분만(하한)",
+      "sources": [
+        "JP_MOF_TRADE"
+      ]
+    },
+    {
+      "id": "JP.tequila.imports_proxy.CY2024",
+      "market": "JP",
+      "category": "tequila",
+      "metric": "imports_proxy",
+      "period": "CY2024",
+      "role": "base",
+      "original": {
+        "value": 3629477,
+        "unit": "L"
+      },
+      "litres": 3629477,
+      "cases9L": 403275,
+      "confidence": "estimate",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "2208.90-129 멕시코 원산지(메스칼 포함 가능)",
+      "sources": [
+        "JP_MOF_TRADE"
+      ]
+    },
+    {
+      "id": "JP.brandy_total.imports.CY2024",
+      "market": "JP",
+      "category": "brandy_total",
+      "metric": "imports",
+      "period": "CY2024",
+      "role": "reference",
+      "original": {
+        "value": 1959298,
+        "unit": "L"
+      },
+      "litres": 1959298,
+      "cases9L": 217700,
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "프랑스 93%. 수요는 과세수량 4,085kL 사용",
+      "sources": [
+        "JP_MOF_TRADE"
+      ]
+    },
+    {
+      "id": "JP.scotch.exports_to_market.2024",
+      "market": "JP",
+      "category": "scotch",
+      "metric": "exports_to_market",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 74,
+        "unit": "Mbottles70"
+      },
+      "litres": 51800000,
+      "cases9L": 5755556,
+      "confidence": "industry-assoc",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "SWA 수출(수출국 기준 선적량 — 소비와 1:1 아님)",
+      "sources": [
+        "SWA_2024"
+      ]
+    },
+    {
+      "id": "JP.brandy_total.tax_volume.FY2024",
+      "market": "JP",
+      "category": "brandy_total",
+      "metric": "tax_volume",
+      "period": "FY2024",
+      "role": "base",
+      "original": {
+        "value": 4085,
+        "unit": "kL"
+      },
+      "litres": 4085000,
+      "cases9L": 453889,
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "국산 3,036 / 수입 1,049 (3차 검증)",
+      "sources": [
+        "JP_MAFF"
+      ]
+    },
+    {
+      "id": "JP.shochu_korui.tax_volume.FY2024",
+      "market": "JP",
+      "category": "shochu_korui",
+      "metric": "tax_volume",
+      "period": "FY2024",
+      "role": "base",
+      "original": {
+        "value": 295410,
+        "unit": "kL"
+      },
+      "litres": 295410000,
+      "cases9L": 32823333,
+      "confidence": "official",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "국내 264,762 + 수입 30,648",
+      "sources": [
+        "JP_MAFF"
+      ]
+    },
+    {
+      "id": "JP.shochu_honkaku.tax_volume.FY2024",
+      "market": "JP",
+      "category": "shochu_honkaku",
+      "metric": "tax_volume",
+      "period": "FY2024",
+      "role": "base",
+      "original": {
+        "value": 353062,
+        "unit": "kL"
+      },
+      "litres": 353062000,
+      "cases9L": 39229111,
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "単式蒸留焼酎(아와모리 포함), 수입 185",
+      "sources": [
+        "JP_MAFF"
+      ]
+    },
+    {
+      "id": "JP.japanese_whisky.exports.2024",
+      "market": "JP",
+      "category": "japanese_whisky",
+      "metric": "exports",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 11.28,
+        "unit": "ML"
+      },
+      "litres": 11280000,
+      "cases9L": 1253333,
+      "money": {
+        "amount": 43635000000,
+        "currency": "JPY"
+      },
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "sources": [
+        "JP_JWIC",
+        "JP_NTA_EXPORT"
+      ]
+    },
+    {
+      "id": "CN.baijiu.production.2024",
+      "market": "CN",
+      "category": "baijiu",
+      "metric": "production",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 414.5,
+        "unit": "man_kL"
+      },
+      "litres": 4145000000,
+      "cases9L": 460555556,
+      "abvBasis": 0.65,
+      "confidence": "official-cited",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "규모 이상 기업, 65도 환산. 2023 449.2는 집계 범위가 달라 연결 금지(비교 기준 2023 ≈ 422.1)",
+      "sources": [
+        "CN_NBS_163",
+        "CN_KPMG"
+      ]
+    },
+    {
+      "id": "CN.baijiu.exports.2024",
+      "market": "CN",
+      "category": "baijiu",
+      "metric": "exports",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 1.64,
+        "unit": "man_kL"
+      },
+      "litres": 16400000,
+      "cases9L": 1822222,
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "생산량의 0.39%",
+      "sources": [
+        "CN_PEOPLE"
+      ]
+    },
+    {
+      "id": "CN.baijiu.consumption_proxy.2024",
+      "market": "CN",
+      "category": "baijiu",
+      "metric": "consumption_proxy",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 412.86,
+        "unit": "man_kL"
+      },
+      "litres": 4128600000,
+      "cases9L": 458733333,
+      "abvBasis": 0.65,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "생산 414.5 − 수출 1.64",
+      "note": "65도 환산 액량. 실제 제품 액량은 더 큼(평균 도수 가정 필요). IWSR: 2024 소비 −5%",
+      "sources": [
+        "CN_NBS_163",
+        "CN_PEOPLE"
+      ]
+    },
+    {
+      "id": "CN.whisky_total.imports.2024",
+      "market": "CN",
+      "category": "whisky_total",
+      "metric": "imports",
+      "period": "2024",
+      "role": "total",
+      "original": {
+        "value": 2919,
+        "unit": "man_L"
+      },
+      "litres": 29190000,
+      "cases9L": 3243333,
+      "money": {
+        "amount": 451000000,
+        "currency": "USD"
+      },
+      "confidence": "official-cited",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "해관 데이터, 전년 대비 −10.5%",
+      "sources": [
+        "CN_WBO"
+      ]
+    },
+    {
+      "id": "CN.scotch.imports.2024",
+      "market": "CN",
+      "category": "scotch",
+      "metric": "imports",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 2380,
+        "unit": "man_L"
+      },
+      "litres": 23800000,
+      "cases9L": 2644444,
+      "money": {
+        "amount": 391000000,
+        "currency": "USD"
+      },
+      "confidence": "official-cited",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "원산지 영국",
+      "sources": [
+        "CN_WBO"
+      ]
+    },
+    {
+      "id": "CN.american_whiskey.imports.2024",
+      "market": "CN",
+      "category": "american_whiskey",
+      "metric": "imports",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 289,
+        "unit": "man_L"
+      },
+      "litres": 2890000,
+      "cases9L": 321111,
+      "money": {
+        "amount": 14480000,
+        "currency": "USD"
+      },
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "sources": [
+        "CN_HUXIU"
+      ]
+    },
+    {
+      "id": "CN.japanese_whisky.imports.2024",
+      "market": "CN",
+      "category": "japanese_whisky",
+      "metric": "imports",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 101,
+        "unit": "man_L"
+      },
+      "litres": 1010000,
+      "cases9L": 112222,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "2025 132万升 ÷ 1.3073 (같은 방식의 미국 역산 288 ≈ 공표 289)",
+      "sources": [
+        "CN_HUXIU"
+      ]
+    },
+    {
+      "id": "CN.whisky_other.imports.2024",
+      "market": "CN",
+      "category": "whisky_other",
+      "metric": "imports",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 149,
+        "unit": "man_L"
+      },
+      "litres": 1490000,
+      "cases9L": 165556,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "2,919 − 2,380 − 289 − 101 = 149 (대만 등)",
+      "sources": [
+        "CN_WBO",
+        "CN_HUXIU"
+      ]
+    },
+    {
+      "id": "CN.brandy_total.imports.2024",
+      "market": "CN",
+      "category": "brandy_total",
+      "metric": "imports",
+      "period": "2024",
+      "role": "total",
+      "original": {
+        "value": 3502,
+        "unit": "man_L"
+      },
+      "litres": 35020000,
+      "cases9L": 3891111,
+      "money": {
+        "amount": 1234000000,
+        "currency": "USD"
+      },
+      "confidence": "official-cited",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "프랑스산 비중 99%대 → 대부분 코냑으로 추정. 코냑 선적량(2,028만 L)보다 커서 벌크·기타 포함 가능",
+      "sources": [
+        "CN_WBO"
+      ]
+    },
+    {
+      "id": "CN.cognac.shipments.2024",
+      "market": "CN",
+      "category": "cognac",
+      "metric": "shipments",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 28.97,
+        "unit": "Mbottles70"
+      },
+      "litres": 20279000,
+      "cases9L": 2253222,
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "BNIC 중국행 선적, −9.6%",
+      "sources": [
+        "BNIC_TSB"
+      ]
+    },
+    {
+      "id": "CN.spirits_total.imports.2024",
+      "market": "CN",
+      "category": "spirits_total",
+      "metric": "imports",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 1.14,
+        "unit": "yi_L"
+      },
+      "litres": 114000000,
+      "cases9L": 12666667,
+      "money": {
+        "amount": 2125000000,
+        "currency": "USD"
+      },
+      "confidence": "official-cited",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "수입 스피릿 전체(백주 미포함)",
+      "sources": [
+        "CN_WBO"
+      ]
+    },
+    {
+      "id": "TW.whisky_total.imports.2023",
+      "market": "TW",
+      "category": "whisky_total",
+      "metric": "imports",
+      "period": "2023",
+      "role": "base",
+      "original": {
+        "value": 2735,
+        "unit": "man_L"
+      },
+      "litres": 27350000,
+      "cases9L": 3038889,
+      "money": {
+        "amount": 22543000000,
+        "currency": "TWD"
+      },
+      "confidence": "official-cited",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "2024 공식값 미확보 → 2023 값. 2024 SWA→대만 물량 −17%, IndexBox 2024 추정 2,600만 L",
+      "sources": [
+        "TW_CH9",
+        "TW_IEAT"
+      ]
+    },
+    {
+      "id": "TW.whisky_total.imports.2024",
+      "market": "TW",
+      "category": "whisky_total",
+      "metric": "imports",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 26,
+        "unit": "ML"
+      },
+      "litres": 26000000,
+      "cases9L": 2888889,
+      "money": {
+        "amount": 644000000,
+        "currency": "USD"
+      },
+      "confidence": "aggregator",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "sources": [
+        "TW_INDEXBOX"
+      ]
+    },
+    {
+      "id": "TW.baijiu.revenue_kkl.2024",
+      "market": "TW",
+      "category": "baijiu",
+      "metric": "revenue_kkl",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": null,
+        "unit": "money_only"
+      },
+      "litres": null,
+      "cases9L": null,
+      "money": {
+        "amount": 12100000000,
+        "currency": "TWD"
+      },
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "금문주창(金門酒廠) 매출. 2025 116억. 대만 백주 시장 점유율 약 80%",
+      "sources": [
+        "TW_CTEE"
+      ]
+    },
+    {
+      "id": "TW.baijiu.sales_proxy.2024",
+      "market": "TW",
+      "category": "baijiu",
+      "metric": "sales_proxy",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 25,
+        "unit": "ML"
+      },
+      "litres": 25000000,
+      "cases9L": 2777778,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "금문 매출 121억 대만달러 ÷ 평균 출고가 약 NT$600/L ≈ 2,000만 L, ÷ 점유율 80% ≈ 2,500만 L",
+      "note": "물량 공식값 없음 — 신뢰도 낮음. \"하루 소비 4.5만 L\" 언급(연도 불명)으로 환산해도 약 1,600만 L/80% ≈ 2,000만 L로 같은 규모",
+      "sources": [
+        "TW_CTEE"
+      ]
+    },
+    {
+      "id": "TW.scotch.exports_to_market.2024",
+      "market": "TW",
+      "category": "scotch",
+      "metric": "exports_to_market",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": null,
+        "unit": "money_only"
+      },
+      "litres": null,
+      "cases9L": null,
+      "money": {
+        "amount": 298000000,
+        "currency": "GBP"
+      },
+      "confidence": "industry-assoc",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "가치 4위. 병 수 미공표",
+      "sources": [
+        "SWA_2024",
+        "SWA_TSB_VALUE"
+      ]
+    },
+    {
+      "id": "US.spirits_total.supplier_sales.2024",
+      "market": "US",
+      "category": "spirits_total",
+      "metric": "supplier_sales",
+      "period": "2024",
+      "role": "total",
+      "original": {
+        "value": 312162,
+        "unit": "k9L"
+      },
+      "litres": 2809458000,
+      "cases9L": 312162000,
+      "money": {
+        "amount": 37200000000,
+        "currency": "USD"
+      },
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "RTD 포함. 카테고리 합계 검증됨",
+      "sources": [
+        "US_DISCUS",
+        "US_DISCUS_ALT"
+      ]
+    },
+    {
+      "id": "US.vodka.supplier_sales.2024",
+      "market": "US",
+      "category": "vodka",
+      "metric": "supplier_sales",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 74119,
+        "unit": "k9L"
+      },
+      "litres": 667071000,
+      "cases9L": 74119000,
+      "money": {
+        "amount": 7227000000,
+        "currency": "USD"
+      },
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "sources": [
+        "US_DISCUS",
+        "US_DISCUS_ALT"
+      ]
+    },
+    {
+      "id": "US.agave_total.supplier_sales.2024",
+      "market": "US",
+      "category": "agave_total",
+      "metric": "supplier_sales",
+      "period": "2024",
+      "role": "total",
+      "original": {
+        "value": 32199,
+        "unit": "k9L"
+      },
+      "litres": 289791000,
+      "cases9L": 32199000,
+      "money": {
+        "amount": 6715000000,
+        "currency": "USD"
+      },
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "테킬라+메스칼",
+      "sources": [
+        "US_DISCUS",
+        "US_DISCUS_AGAVE"
+      ]
+    },
+    {
+      "id": "US.mezcal.depletions.2024",
+      "market": "US",
+      "category": "mezcal",
+      "metric": "depletions",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 580,
+        "unit": "k9L"
+      },
+      "litres": 5220000,
+      "cases9L": 580000,
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "−5.5만 케이스. 집계 기관이 DISCUS와 다름",
+      "sources": [
+        "US_SHANKEN_MEZCAL"
+      ]
+    },
+    {
+      "id": "US.tequila.supplier_sales.2024",
+      "market": "US",
+      "category": "tequila",
+      "metric": "supplier_sales",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 31619,
+        "unit": "k9L"
+      },
+      "litres": 284571000,
+      "cases9L": 31619000,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "32,199 − 메스칼 580 (기관 혼합 근사)",
+      "sources": [
+        "US_DISCUS",
+        "US_DISCUS_ALT"
+      ]
+    },
+    {
+      "id": "US.whisky_total.supplier_sales.2024",
+      "market": "US",
+      "category": "whisky_total",
+      "metric": "supplier_sales",
+      "period": "2024",
+      "role": "total",
+      "original": {
+        "value": 71948,
+        "unit": "k9L"
+      },
+      "litres": 647532000,
+      "cases9L": 71948000,
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "sources": [
+        "US_DISCUS",
+        "US_DISCUS_ALT"
+      ]
+    },
+    {
+      "id": "US.american_whiskey.supplier_sales.2024",
+      "market": "US",
+      "category": "american_whiskey",
+      "metric": "supplier_sales",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 30284,
+        "unit": "k9L"
+      },
+      "litres": 272556000,
+      "cases9L": 30284000,
+      "money": {
+        "amount": 5175000000,
+        "currency": "USD"
+      },
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "버번·테네시·라이 미분리",
+      "sources": [
+        "US_DISCUS",
+        "US_DISCUS_ALT"
+      ]
+    },
+    {
+      "id": "US.whisky_other.supplier_sales.2024",
+      "market": "US",
+      "category": "whisky_other",
+      "metric": "supplier_sales",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 11656,
+        "unit": "k9L"
+      },
+      "litres": 104904000,
+      "cases9L": 11656000,
+      "money": {
+        "amount": 963000000,
+        "currency": "USD"
+      },
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "DISCUS \"Blended whiskey\". 재패니즈 위스키가 별도 항목이 없어 여기 포함된 것으로 추정",
+      "sources": [
+        "US_DISCUS",
+        "US_DISCUS_ALT"
+      ]
+    },
+    {
+      "id": "US.canadian.supplier_sales.2024",
+      "market": "US",
+      "category": "canadian",
+      "metric": "supplier_sales",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 17339,
+        "unit": "k9L"
+      },
+      "litres": 156051000,
+      "cases9L": 17339000,
+      "money": {
+        "amount": 2330000000,
+        "currency": "USD"
+      },
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "sources": [
+        "US_DISCUS",
+        "US_DISCUS_ALT"
+      ]
+    },
+    {
+      "id": "US.scotch.supplier_sales.2024",
+      "market": "US",
+      "category": "scotch",
+      "metric": "supplier_sales",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 7868,
+        "unit": "k9L"
+      },
+      "litres": 70812000,
+      "cases9L": 7868000,
+      "money": {
+        "amount": 2228000000,
+        "currency": "USD"
+      },
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "블렌디드 6,158 + 싱글몰트 1,710",
+      "sources": [
+        "US_DISCUS",
+        "US_DISCUS_ALT"
+      ]
+    },
+    {
+      "id": "US.irish.supplier_sales.2024",
+      "market": "US",
+      "category": "irish",
+      "metric": "supplier_sales",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 4801,
+        "unit": "k9L"
+      },
+      "litres": 43209000,
+      "cases9L": 4801000,
+      "money": {
+        "amount": 1157000000,
+        "currency": "USD"
+      },
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "sources": [
+        "US_DISCUS",
+        "US_DISCUS_ALT"
+      ]
+    },
+    {
+      "id": "US.rum.supplier_sales.2024",
+      "market": "US",
+      "category": "rum",
+      "metric": "supplier_sales",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 20677,
+        "unit": "k9L"
+      },
+      "litres": 186093000,
+      "cases9L": 20677000,
+      "money": {
+        "amount": 2231000000,
+        "currency": "USD"
+      },
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "sources": [
+        "US_DISCUS",
+        "US_DISCUS_ALT"
+      ]
+    },
+    {
+      "id": "US.gin.supplier_sales.2024",
+      "market": "US",
+      "category": "gin",
+      "metric": "supplier_sales",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 8322,
+        "unit": "k9L"
+      },
+      "litres": 74898000,
+      "cases9L": 8322000,
+      "money": {
+        "amount": 957000000,
+        "currency": "USD"
+      },
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "sources": [
+        "US_DISCUS",
+        "US_DISCUS_ALT"
+      ]
+    },
+    {
+      "id": "US.brandy_total.supplier_sales.2024",
+      "market": "US",
+      "category": "brandy_total",
+      "metric": "supplier_sales",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 11706,
+        "unit": "k9L"
+      },
+      "litres": 105354000,
+      "cases9L": 11706000,
+      "money": {
+        "amount": 2133000000,
+        "currency": "USD"
+      },
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "코냑 포함, 미분리",
+      "sources": [
+        "US_DISCUS",
+        "US_DISCUS_ALT"
+      ]
+    },
+    {
+      "id": "US.liqueur.supplier_sales.2024",
+      "market": "US",
+      "category": "liqueur",
+      "metric": "supplier_sales",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 20079,
+        "unit": "k9L"
+      },
+      "litres": 180711000,
+      "cases9L": 20079000,
+      "money": {
+        "amount": 2809000000,
+        "currency": "USD"
+      },
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "sources": [
+        "US_DISCUS",
+        "US_DISCUS_ALT"
+      ]
+    },
+    {
+      "id": "US.rtd.supplier_sales.2024",
+      "market": "US",
+      "category": "rtd",
+      "metric": "supplier_sales",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 73110,
+        "unit": "k9L"
+      },
+      "litres": 657990000,
+      "cases9L": 73110000,
+      "money": {
+        "amount": 3299000000,
+        "currency": "USD"
+      },
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "스피릿 수요에서 제외",
+      "sources": [
+        "US_DISCUS",
+        "US_DISCUS_ALT"
+      ]
+    },
+    {
+      "id": "US.scotch.exports_to_market.2024",
+      "market": "US",
+      "category": "scotch",
+      "metric": "exports_to_market",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 132,
+        "unit": "Mbottles70"
+      },
+      "litres": 92400000,
+      "cases9L": 10266667,
+      "money": {
+        "amount": 971000000,
+        "currency": "GBP"
+      },
+      "confidence": "industry-assoc",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "SWA 기준(벌크·재고 포함) — 미국 수요는 DISCUS 값 사용",
+      "sources": [
+        "SWA_2024"
+      ]
+    },
+    {
+      "id": "US.american_whiskey.production.2024",
+      "market": "US",
+      "category": "american_whiskey",
+      "metric": "production",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 3.03,
+        "unit": "barrels_M"
+      },
+      "litres": null,
+      "cases9L": null,
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "켄터키 버번 통입 배럴 수. 숙성 재고 1,610만 배럴(2025.1.1)",
+      "sources": [
+        "US_KDA"
+      ]
+    },
+    {
+      "id": "MX.tequila.production.2024",
+      "market": "MX",
+      "category": "tequila",
+      "metric": "production",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 495.8,
+        "unit": "ML"
+      },
+      "litres": 495800000,
+      "cases9L": 55088889,
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "40% 기준",
+      "sources": [
+        "MX_CRT"
+      ]
+    },
+    {
+      "id": "MX.tequila.exports.2024",
+      "market": "MX",
+      "category": "tequila",
+      "metric": "exports",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 402.7,
+        "unit": "ML"
+      },
+      "litres": 402700000,
+      "cases9L": 44744444,
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "CRT 수정치 채택(잠정 400.3). 미국행 334.9",
+      "sources": [
+        "MX_INFORMADOR"
+      ]
+    },
+    {
+      "id": "MX.tequila.consumption_proxy.2024",
+      "market": "MX",
+      "category": "tequila",
+      "metric": "consumption_proxy",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 93.1,
+        "unit": "ML"
+      },
+      "litres": 93100000,
+      "cases9L": 10344444,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "생산 495.8 − 수출 402.7",
+      "note": "재고 변동 무시. CRT 공식 국내시장 값 미확보",
+      "sources": [
+        "MX_CRT",
+        "MX_INFORMADOR"
+      ]
+    },
+    {
+      "id": "MX.mezcal.domestic_sales.2024",
+      "market": "MX",
+      "category": "mezcal",
+      "metric": "domestic_sales",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 3.1,
+        "unit": "ML"
+      },
+      "litres": 3100000,
+      "cases9L": 344444,
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "국내용 병입량, −16.7%",
+      "sources": [
+        "MX_ELFIN",
+        "MX_MEZCALISTAS"
+      ]
+    },
+    {
+      "id": "MX.tequila.agave_use.2024",
+      "market": "MX",
+      "category": "tequila",
+      "metric": "agave_use",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 1.8,
+        "unit": "Mt"
+      },
+      "litres": null,
+      "cases9L": null,
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "아가베 사용량 — 공급 사이클 이벤트 기준값",
+      "sources": [
+        "MX_CRT",
+        "MX_INFORMADOR"
+      ]
+    },
+    {
+      "id": "CA.spirits_total.sales.FY2024/25",
+      "market": "CA",
+      "category": "spirits_total",
+      "metric": "sales",
+      "period": "FY2024/25",
+      "role": "total",
+      "original": {
+        "value": 176733,
+        "unit": "kL"
+      },
+      "litres": 176733000,
+      "cases9L": 19637000,
+      "money": {
+        "amount": 6669532000,
+        "currency": "CAD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "국산 96,630 / 수입 80,103. 주종 8개 합계와 일치(검산). FY2023/24 184,854",
+      "sources": [
+        "CA_STATCAN_TBL",
+        "CA_STATCAN"
+      ]
+    },
+    {
+      "id": "CA.vodka.sales.FY2024/25",
+      "market": "CA",
+      "category": "vodka",
+      "metric": "sales",
+      "period": "FY2024/25",
+      "role": "base",
+      "original": {
+        "value": 48062,
+        "unit": "kL"
+      },
+      "litres": 48062000,
+      "cases9L": 5340222,
+      "money": {
+        "amount": 1525330000,
+        "currency": "CAD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "sources": [
+        "CA_STATCAN_TBL"
+      ]
+    },
+    {
+      "id": "CA.whisky_total.sales.FY2024/25",
+      "market": "CA",
+      "category": "whisky_total",
+      "metric": "sales",
+      "period": "FY2024/25",
+      "role": "base",
+      "original": {
+        "value": 46671,
+        "unit": "kL"
+      },
+      "litres": 46671000,
+      "cases9L": 5185667,
+      "money": {
+        "amount": 1977096000,
+        "currency": "CAD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "국산 28,920(대부분 캐나디안 추정) / 수입 17,751. 원산지 국가별 구분 없음",
+      "sources": [
+        "CA_STATCAN_TBL",
+        "CA_STATISTA_WHISKY"
+      ]
+    },
+    {
+      "id": "CA.liqueur.sales.FY2024/25",
+      "market": "CA",
+      "category": "liqueur",
+      "metric": "sales",
+      "period": "FY2024/25",
+      "role": "base",
+      "original": {
+        "value": 28731,
+        "unit": "kL"
+      },
+      "litres": 28731000,
+      "cases9L": 3192333,
+      "money": {
+        "amount": 1027216000,
+        "currency": "CAD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "sources": [
+        "CA_STATCAN_TBL"
+      ]
+    },
+    {
+      "id": "CA.rum.sales.FY2024/25",
+      "market": "CA",
+      "category": "rum",
+      "metric": "sales",
+      "period": "FY2024/25",
+      "role": "base",
+      "original": {
+        "value": 26029,
+        "unit": "kL"
+      },
+      "litres": 26029000,
+      "cases9L": 2892111,
+      "money": {
+        "amount": 908799000,
+        "currency": "CAD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "sources": [
+        "CA_STATCAN_TBL",
+        "CA_STATISTA_RUM"
+      ]
+    },
+    {
+      "id": "CA.spirits_other.sales.FY2024/25",
+      "market": "CA",
+      "category": "spirits_other",
+      "metric": "sales",
+      "period": "FY2024/25",
+      "role": "base",
+      "original": {
+        "value": 11962,
+        "unit": "kL"
+      },
+      "litres": 11962000,
+      "cases9L": 1329111,
+      "money": {
+        "amount": 573052000,
+        "currency": "CAD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "테킬라 포함(단독 값 없음)",
+      "sources": [
+        "CA_STATCAN_TBL"
+      ]
+    },
+    {
+      "id": "CA.gin.sales.FY2024/25",
+      "market": "CA",
+      "category": "gin",
+      "metric": "sales",
+      "period": "FY2024/25",
+      "role": "base",
+      "original": {
+        "value": 10481,
+        "unit": "kL"
+      },
+      "litres": 10481000,
+      "cases9L": 1164556,
+      "money": {
+        "amount": 408308000,
+        "currency": "CAD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "sources": [
+        "CA_STATCAN_TBL"
+      ]
+    },
+    {
+      "id": "CA.brandy_total.sales.FY2024/25",
+      "market": "CA",
+      "category": "brandy_total",
+      "metric": "sales",
+      "period": "FY2024/25",
+      "role": "base",
+      "original": {
+        "value": 4389,
+        "unit": "kL"
+      },
+      "litres": 4389000,
+      "cases9L": 487667,
+      "money": {
+        "amount": 233828000,
+        "currency": "CAD"
+      },
+      "confidence": "official",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "코냑 구분 없음",
+      "sources": [
+        "CA_STATCAN_TBL"
+      ]
+    },
+    {
+      "id": "UK.spirits_total.domestic_release.2024",
+      "market": "UK",
+      "category": "spirits_total",
+      "metric": "domestic_release",
+      "period": "2024",
+      "role": "total",
+      "original": {
+        "value": 130.4,
+        "unit": "ML_LPA"
+      },
+      "litres": 326000000,
+      "cases9L": 36222222,
+      "abvAssumed": 0.4,
+      "confidence": "aggregator",
+      "verified": "snippet",
+      "conversionEstimate": true,
+      "note": "HMRC 출고(순수알코올, RTD 포함). 제품 액량 = LPA ÷ 0.40 가정",
+      "sources": [
+        "UK_SHELFDROP"
+      ]
+    },
+    {
+      "id": "UK.cognac.shipments.2024",
+      "market": "UK",
+      "category": "cognac",
+      "metric": "shipments",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 7.8,
+        "unit": "Mbottles70"
+      },
+      "litres": 5460000,
+      "cases9L": 606667,
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "sources": [
+        "BNIC_TSB"
+      ]
+    },
+    {
+      "id": "FR.spirits_total.sales_gms.2024",
+      "market": "FR",
+      "category": "spirits_total",
+      "metric": "sales_gms",
+      "period": "2024",
+      "role": "total",
+      "original": {
+        "value": 247,
+        "unit": "ML"
+      },
+      "litres": 247000000,
+      "cases9L": 27444444,
+      "money": {
+        "amount": 4900000000,
+        "currency": "EUR"
+      },
+      "confidence": "official",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "대형마트(GMS) 채널만",
+      "sources": [
+        "FR_FRANCEAGRIMER"
+      ]
+    },
+    {
+      "id": "FR.whisky_total.sales_gms.2024",
+      "market": "FR",
+      "category": "whisky_total",
+      "metric": "sales_gms",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 93.86,
+        "unit": "ML"
+      },
+      "litres": 93860000,
+      "cases9L": 10428889,
+      "confidence": "estimate",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "formula": "247 × 38% (FranceAgriMer GMS 물량 비중)",
+      "note": "GMS 한정 → SWA 스카치 값보다 작음",
+      "sources": [
+        "FR_FRANCEAGRIMER",
+        "FR_BOTTL"
+      ]
+    },
+    {
+      "id": "FR.spirits_total.sales_all_channels.2024",
+      "market": "FR",
+      "category": "spirits_total",
+      "metric": "sales_all_channels",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 267.8,
+        "unit": "ML"
+      },
+      "litres": 267800000,
+      "cases9L": 29755556,
+      "confidence": "estimate",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "formula": "GMS 247 + CHR 20.8(단위 미기재 → L 가정)",
+      "note": "순수알코올 기준 소비 −2.6%",
+      "sources": [
+        "FR_FRANCEAGRIMER",
+        "FR_LINFO"
+      ]
+    },
+    {
+      "id": "FR.scotch.exports_to_market.2024",
+      "market": "FR",
+      "category": "scotch",
+      "metric": "exports_to_market",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 177,
+        "unit": "Mbottles70"
+      },
+      "litres": 123900000,
+      "cases9L": 13766667,
+      "money": {
+        "amount": 419000000,
+        "currency": "GBP"
+      },
+      "confidence": "industry-assoc",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "전 채널 대리값(수출국 기준)",
+      "sources": [
+        "SWA_2024"
+      ]
+    },
+    {
+      "id": "FR.anise.sales_gms.2024",
+      "market": "FR",
+      "category": "anise",
+      "metric": "sales_gms",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 47.671,
+        "unit": "ML"
+      },
+      "litres": 47671000,
+      "cases9L": 5296778,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "247 × 19.3% (점유율 연도 불확실)",
+      "note": "GMS 한정 → 과소",
+      "sources": [
+        "FR_ITM"
+      ]
+    },
+    {
+      "id": "FR.rum.sales_gms.2024",
+      "market": "FR",
+      "category": "rum",
+      "metric": "sales_gms",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 35.074,
+        "unit": "ML"
+      },
+      "litres": 35074000,
+      "cases9L": 3897111,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "247 × 14.2%",
+      "note": "GMS 한정 → 과소",
+      "sources": [
+        "FR_ITM"
+      ]
+    },
+    {
+      "id": "FR.vodka.sales_gms.2024",
+      "market": "FR",
+      "category": "vodka",
+      "metric": "sales_gms",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 22.5,
+        "unit": "ML"
+      },
+      "litres": 22500000,
+      "cases9L": 2500000,
+      "confidence": "aggregator",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "GMS 한정 → 과소",
+      "sources": [
+        "FR_SIDELY"
+      ]
+    },
+    {
+      "id": "FR.gin.sales_gms.2024",
+      "market": "FR",
+      "category": "gin",
+      "metric": "sales_gms",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 5.25,
+        "unit": "ML"
+      },
+      "litres": 5250000,
+      "cases9L": 583333,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "Gibson’s 210만 L ÷ 40% 점유 = 상한",
+      "note": "상한 추정, 신뢰도 낮음",
+      "sources": [
+        "FR_RAYON"
+      ]
+    },
+    {
+      "id": "FR.cognac.shipments.2024",
+      "market": "FR",
+      "category": "cognac",
+      "metric": "shipments",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 5.3,
+        "unit": "Mbottles70"
+      },
+      "litres": 3710000,
+      "cases9L": 412222,
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "sources": [
+        "BNIC_TSB"
+      ]
+    },
+    {
+      "id": "FR.armagnac.sales.2024",
+      "market": "FR",
+      "category": "armagnac",
+      "metric": "sales",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 1.4,
+        "unit": "Mbottles70"
+      },
+      "litres": 980000,
+      "cases9L": 108889,
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "신뢰도 낮음(같은 기사에 총량 300만/280만 병 혼재)",
+      "sources": [
+        "BNIA_F3"
+      ]
+    },
+    {
+      "id": "FR.calvados.sales.2024",
+      "market": "FR",
+      "category": "calvados",
+      "metric": "sales",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 2.446,
+        "unit": "Mbottles70"
+      },
+      "litres": 1712200,
+      "cases9L": 190244,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "461.5만 병 × 국내 53%",
+      "sources": [
+        "IDAC_DISTILNEWS"
+      ]
+    },
+    {
+      "id": "DE.spirits_total.market_supply.2024",
+      "market": "DE",
+      "category": "spirits_total",
+      "metric": "market_supply",
+      "period": "2024",
+      "role": "total",
+      "original": {
+        "value": 683,
+        "unit": "Mbottles70"
+      },
+      "litres": 478100000,
+      "cases9L": 53122222,
+      "confidence": "industry-assoc",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "생산 571 − 수출 339 + 수입 451. 벌크 이중계산 1.1억 병 이상 포함 → 실소비보다 큼",
+      "sources": [
+        "DE_BSI"
+      ]
+    },
+    {
+      "id": "DE.liqueur.market_supply.2024",
+      "market": "DE",
+      "category": "liqueur",
+      "metric": "market_supply",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 193.972,
+        "unit": "Mbottles70"
+      },
+      "litres": 135780400,
+      "cases9L": 15086711,
+      "confidence": "estimate",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "formula": "683 × 28.4%",
+      "sources": [
+        "DE_BSI"
+      ]
+    },
+    {
+      "id": "DE.vodka.market_supply.2024",
+      "market": "DE",
+      "category": "vodka",
+      "metric": "market_supply",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 109.28,
+        "unit": "Mbottles70"
+      },
+      "litres": 76496000,
+      "cases9L": 8499556,
+      "confidence": "estimate",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "formula": "683 × 16.0%",
+      "sources": [
+        "DE_BSI"
+      ]
+    },
+    {
+      "id": "DE.korn_clear.market_supply.2024",
+      "market": "DE",
+      "category": "korn_clear",
+      "metric": "market_supply",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 101.084,
+        "unit": "Mbottles70"
+      },
+      "litres": 70758800,
+      "cases9L": 7862089,
+      "confidence": "estimate",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "formula": "683 × 14.8%",
+      "sources": [
+        "DE_BSI"
+      ]
+    },
+    {
+      "id": "DE.whisky_total.market_supply.2024",
+      "market": "DE",
+      "category": "whisky_total",
+      "metric": "market_supply",
+      "period": "2024",
+      "role": "total",
+      "original": {
+        "value": 84.692,
+        "unit": "Mbottles70"
+      },
+      "litres": 59284400,
+      "cases9L": 6587156,
+      "confidence": "estimate",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "formula": "683 × 12.4%",
+      "sources": [
+        "DE_BSI"
+      ]
+    },
+    {
+      "id": "DE.scotch.exports_to_market.2024",
+      "market": "DE",
+      "category": "scotch",
+      "metric": "exports_to_market",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 56,
+        "unit": "Mbottles70"
+      },
+      "litres": 39200000,
+      "cases9L": 4355556,
+      "money": {
+        "amount": 169000000,
+        "currency": "GBP"
+      },
+      "confidence": "industry-assoc",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "sources": [
+        "SWA_2024"
+      ]
+    },
+    {
+      "id": "DE.rum.market_supply.2024",
+      "market": "DE",
+      "category": "rum",
+      "metric": "market_supply",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 69.666,
+        "unit": "Mbottles70"
+      },
+      "litres": 48766200,
+      "cases9L": 5418467,
+      "confidence": "estimate",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "formula": "683 × 10.2% (Rum, Arrak, Taffia)",
+      "sources": [
+        "DE_BSI"
+      ]
+    },
+    {
+      "id": "DE.spirits_other.market_supply.2024",
+      "market": "DE",
+      "category": "spirits_other",
+      "metric": "market_supply",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 42.346,
+        "unit": "Mbottles70"
+      },
+      "litres": 29642200,
+      "cases9L": 3293578,
+      "confidence": "estimate",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "formula": "683 × 6.2%",
+      "sources": [
+        "DE_BSI"
+      ]
+    },
+    {
+      "id": "DE.fruit_brandy.market_supply.2024",
+      "market": "DE",
+      "category": "fruit_brandy",
+      "metric": "market_supply",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 35.516,
+        "unit": "Mbottles70"
+      },
+      "litres": 24861200,
+      "cases9L": 2762356,
+      "confidence": "estimate",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "formula": "683 × 5.2%",
+      "sources": [
+        "DE_BSI"
+      ]
+    },
+    {
+      "id": "DE.gin.market_supply.2024",
+      "market": "DE",
+      "category": "gin",
+      "metric": "market_supply",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 25.271,
+        "unit": "Mbottles70"
+      },
+      "litres": 17689700,
+      "cases9L": 1965522,
+      "confidence": "estimate",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "formula": "683 × 3.7% (Gin, Genever, Wacholder)",
+      "sources": [
+        "DE_BSI"
+      ]
+    },
+    {
+      "id": "DE.brandy_total.market_supply.2024",
+      "market": "DE",
+      "category": "brandy_total",
+      "metric": "market_supply",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 21.173,
+        "unit": "Mbottles70"
+      },
+      "litres": 14821100,
+      "cases9L": 1646789,
+      "confidence": "estimate",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "formula": "683 × 3.1% (Weinbrand, Cognac/Armagnac)",
+      "sources": [
+        "DE_BSI"
+      ]
+    },
+    {
+      "id": "ES.spirits_total.consumption.2024",
+      "market": "ES",
+      "category": "spirits_total",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "total",
+      "original": {
+        "value": 180,
+        "unit": "ML"
+      },
+      "litres": 180000000,
+      "cases9L": 20000000,
+      "money": {
+        "amount": 2075000000,
+        "currency": "EUR"
+      },
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "−3.7%. 금액은 DBK 시장가치",
+      "sources": [
+        "ES_EE",
+        "ES_DBK"
+      ]
+    },
+    {
+      "id": "ES.whisky_total.consumption.2024",
+      "market": "ES",
+      "category": "whisky_total",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "total",
+      "original": {
+        "value": 43.2,
+        "unit": "ML"
+      },
+      "litres": 43200000,
+      "cases9L": 4800000,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "180 × 24% (DBK는 27%)",
+      "sources": [
+        "ES_EE",
+        "ES_MERCASA"
+      ]
+    },
+    {
+      "id": "ES.scotch.exports_to_market.2024",
+      "market": "ES",
+      "category": "scotch",
+      "metric": "exports_to_market",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 59,
+        "unit": "Mbottles70"
+      },
+      "litres": 41300000,
+      "cases9L": 4588889,
+      "money": {
+        "amount": 196000000,
+        "currency": "GBP"
+      },
+      "confidence": "industry-assoc",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "sources": [
+        "SWA_2024"
+      ]
+    },
+    {
+      "id": "ES.liqueur.consumption.2024",
+      "market": "ES",
+      "category": "liqueur",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 39.6,
+        "unit": "ML"
+      },
+      "litres": 39600000,
+      "cases9L": 4400000,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "180 × 22% (DBK 20%)",
+      "sources": [
+        "ES_EE",
+        "ES_MERCASA"
+      ]
+    },
+    {
+      "id": "ES.gin.consumption.2024",
+      "market": "ES",
+      "category": "gin",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 34.2,
+        "unit": "ML"
+      },
+      "litres": 34200000,
+      "cases9L": 3800000,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "180 × 19% (DBK 23%)",
+      "sources": [
+        "ES_EE",
+        "ES_MERCASA"
+      ]
+    },
+    {
+      "id": "ES.rum.consumption.2024",
+      "market": "ES",
+      "category": "rum",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 27,
+        "unit": "ML"
+      },
+      "litres": 27000000,
+      "cases9L": 3000000,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "180 × 15% (DBK 16%)",
+      "sources": [
+        "ES_EE",
+        "ES_MERCASA"
+      ]
+    },
+    {
+      "id": "ES.brandy_total.consumption.2024",
+      "market": "ES",
+      "category": "brandy_total",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 14.4,
+        "unit": "ML"
+      },
+      "litres": 14400000,
+      "cases9L": 1600000,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "180 × 8% (DBK 4%)",
+      "sources": [
+        "ES_EE",
+        "ES_MERCASA"
+      ]
+    },
+    {
+      "id": "ES.vodka.consumption.2024",
+      "market": "ES",
+      "category": "vodka",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 9,
+        "unit": "ML"
+      },
+      "litres": 9000000,
+      "cases9L": 1000000,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "180 × 5% (DBK 3%)",
+      "sources": [
+        "ES_EE",
+        "ES_MERCASA"
+      ]
+    },
+    {
+      "id": "ES.anise.consumption.2024",
+      "market": "ES",
+      "category": "anise",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 9,
+        "unit": "ML"
+      },
+      "litres": 9000000,
+      "cases9L": 1000000,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "180 × 5%",
+      "sources": [
+        "ES_EE",
+        "ES_MERCASA"
+      ]
+    },
+    {
+      "id": "IN.spirits_total.sales.FY2025",
+      "market": "IN",
+      "category": "spirits_total",
+      "metric": "sales",
+      "period": "FY2025",
+      "role": "total",
+      "original": {
+        "value": 401.7,
+        "unit": "M9L"
+      },
+      "litres": 3615300000,
+      "cases9L": 401700000,
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "IMFL 40.17 crore cases. 케이스=9L 가정",
+      "sources": [
+        "IN_CIABC"
+      ]
+    },
+    {
+      "id": "IN.whisky_total.sales.FY2025",
+      "market": "IN",
+      "category": "whisky_total",
+      "metric": "sales",
+      "period": "FY2025",
+      "role": "base",
+      "original": {
+        "value": 261.105,
+        "unit": "M9L"
+      },
+      "litres": 2349945000,
+      "cases9L": 261105000,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "401.7 × 65% (Crisil 믹스)",
+      "sources": [
+        "IN_CIABC",
+        "IN_CRISIL"
+      ]
+    },
+    {
+      "id": "IN.brandy_total.sales.FY2025",
+      "market": "IN",
+      "category": "brandy_total",
+      "metric": "sales",
+      "period": "FY2025",
+      "role": "base",
+      "original": {
+        "value": 80.34,
+        "unit": "M9L"
+      },
+      "litres": 723060000,
+      "cases9L": 80340000,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "401.7 × 20%",
+      "sources": [
+        "IN_CIABC",
+        "IN_CRISIL"
+      ]
+    },
+    {
+      "id": "IN.rum.sales.FY2025",
+      "market": "IN",
+      "category": "rum",
+      "metric": "sales",
+      "period": "FY2025",
+      "role": "base",
+      "original": {
+        "value": 48.204,
+        "unit": "M9L"
+      },
+      "litres": 433836000,
+      "cases9L": 48204000,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "401.7 × 12%",
+      "sources": [
+        "IN_CIABC",
+        "IN_CRISIL"
+      ]
+    },
+    {
+      "id": "IN.white_spirits.sales.FY2025",
+      "market": "IN",
+      "category": "white_spirits",
+      "metric": "sales",
+      "period": "FY2025",
+      "role": "base",
+      "original": {
+        "value": 12.051,
+        "unit": "M9L"
+      },
+      "litres": 108459000,
+      "cases9L": 12051000,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "401.7 × 3% (보드카+진)",
+      "sources": [
+        "IN_CIABC",
+        "IN_CRISIL"
+      ]
+    },
+    {
+      "id": "IN.whisky_total.sales.FY2023",
+      "market": "IN",
+      "category": "whisky_total",
+      "metric": "sales",
+      "period": "FY2023",
+      "role": "reference",
+      "original": {
+        "value": 243,
+        "unit": "M9L"
+      },
+      "litres": 2187000000,
+      "cases9L": 243000000,
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "IMFL 385M의 63%. FY2025에 63%를 적용하면 약 253M(3차) vs Crisil 65% 261M",
+      "sources": [
+        "IN_BS_FY23"
+      ]
+    },
+    {
+      "id": "IN.scotch.exports_to_market.2024",
+      "market": "IN",
+      "category": "scotch",
+      "metric": "exports_to_market",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 192,
+        "unit": "Mbottles70"
+      },
+      "litres": 134400000,
+      "cases9L": 14933333,
+      "money": {
+        "amount": 248000000,
+        "currency": "GBP"
+      },
+      "confidence": "industry-assoc",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "벌크 포함(IMFL 블렌딩용) → 위스키 수요와 중복",
+      "sources": [
+        "SWA_2024"
+      ]
+    },
+    {
+      "id": "PH.spirits_total.consumption.2024",
+      "market": "PH",
+      "category": "spirits_total",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "total",
+      "original": {
+        "value": 633.6,
+        "unit": "ML"
+      },
+      "litres": 633600000,
+      "cases9L": 70400000,
+      "confidence": "aggregator",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "sources": [
+        "PH_STATISTA"
+      ]
+    },
+    {
+      "id": "PH.gin.brand_sales.2024?",
+      "market": "PH",
+      "category": "gin",
+      "metric": "brand_sales",
+      "period": "2024?",
+      "role": "base",
+      "original": {
+        "value": 39.8,
+        "unit": "M9L"
+      },
+      "litres": 358200000,
+      "cases9L": 39800000,
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "Ginebra San Miguel 단일 브랜드 → 카테고리 하한",
+      "sources": [
+        "PH_DI_GIN"
+      ]
+    },
+    {
+      "id": "PH.rum.brand_sales.2024",
+      "market": "PH",
+      "category": "rum",
+      "metric": "brand_sales",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 23.8,
+        "unit": "M9L"
+      },
+      "litres": 214200000,
+      "cases9L": 23800000,
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "Tanduay 단일 브랜드 → 카테고리 하한",
+      "sources": [
+        "PH_TSB_RUM"
+      ]
+    },
+    {
+      "id": "TH.spirits_total.consumption.2024",
+      "market": "TH",
+      "category": "spirits_total",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 737,
+        "unit": "ML"
+      },
+      "litres": 737000000,
+      "cases9L": 81888889,
+      "confidence": "aggregator",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "주종 분리 없음",
+      "sources": [
+        "TH_EUROMONITOR"
+      ]
+    },
+    {
+      "id": "VN.spirits_total.consumption.2024",
+      "market": "VN",
+      "category": "spirits_total",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "base",
+      "original": {
+        "value": 49.2,
+        "unit": "ML"
+      },
+      "litres": 49200000,
+      "cases9L": 5466667,
+      "confidence": "aggregator",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "비공식(가양주) 물량 미포함",
+      "sources": [
+        "VN_STATISTA"
+      ]
+    },
+    {
+      "id": "TRAVEL_RETAIL.spirits_total.sales.2018",
+      "market": "TRAVEL_RETAIL",
+      "category": "spirits_total",
+      "metric": "sales",
+      "period": "2018",
+      "role": "base",
+      "original": {
+        "value": 24.5,
+        "unit": "M9L"
+      },
+      "litres": 220500000,
+      "cases9L": 24500000,
+      "money": {
+        "amount": 9200000000,
+        "currency": "USD"
+      },
+      "confidence": "aggregator",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "최신 공개 절대값이 2018년 → 오래됨. 2023 물량 +4%, 2024 +5%(IWSR)",
+      "sources": [
+        "TR_IWSR_2019"
+      ]
+    },
+    {
+      "id": "BR.scotch.exports_to_market.2024",
+      "market": "BR",
+      "category": "scotch",
+      "metric": "exports_to_market",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 52,
+        "unit": "Mbottles70"
+      },
+      "litres": 36400000,
+      "cases9L": 4044444,
+      "confidence": "industry-assoc",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "sources": [
+        "SWA_2024"
+      ]
+    },
+    {
+      "id": "PL.scotch.exports_to_market.2024",
+      "market": "PL",
+      "category": "scotch",
+      "metric": "exports_to_market",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 48,
+        "unit": "Mbottles70"
+      },
+      "litres": 33600000,
+      "cases9L": 3733333,
+      "confidence": "industry-assoc",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "sources": [
+        "SWA_2024"
+      ]
+    },
+    {
+      "id": "TR.scotch.exports_to_market.2024",
+      "market": "TR",
+      "category": "scotch",
+      "metric": "exports_to_market",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 47,
+        "unit": "Mbottles70"
+      },
+      "litres": 32900000,
+      "cases9L": 3655556,
+      "money": {
+        "amount": 178000000,
+        "currency": "GBP"
+      },
+      "confidence": "industry-assoc",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "sources": [
+        "SWA_2024"
+      ]
+    },
+    {
+      "id": "CN.scotch.exports_to_market.2024",
+      "market": "CN",
+      "category": "scotch",
+      "metric": "exports_to_market",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 30,
+        "unit": "Mbottles70"
+      },
+      "litres": 21000000,
+      "cases9L": 2333333,
+      "money": {
+        "amount": 161000000,
+        "currency": "GBP"
+      },
+      "confidence": "industry-assoc",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "중국 수요는 해관 수입값 사용",
+      "sources": [
+        "SWA_2024"
+      ]
+    },
+    {
+      "id": "SG.scotch.exports_to_market.2024",
+      "market": "SG",
+      "category": "scotch",
+      "metric": "exports_to_market",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": null,
+        "unit": "money_only"
+      },
+      "litres": null,
+      "cases9L": null,
+      "money": {
+        "amount": 310000000,
+        "currency": "GBP"
+      },
+      "confidence": "industry-assoc",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "재수출 허브",
+      "sources": [
+        "SWA_2024"
+      ]
+    },
+    {
+      "id": "NA_REGION.cognac.shipments.2024",
+      "market": "NA_REGION",
+      "category": "cognac",
+      "metric": "shipments",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 70.6,
+        "unit": "Mbottles70"
+      },
+      "litres": 49420000,
+      "cases9L": 5491111,
+      "money": {
+        "amount": 1120000000,
+        "currency": "EUR"
+      },
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "미국 단독 미공표",
+      "sources": [
+        "BNIC_TSB"
+      ]
+    },
+    {
+      "id": "FAR_EAST.cognac.shipments.2024",
+      "market": "FAR_EAST",
+      "category": "cognac",
+      "metric": "shipments",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 47.5,
+        "unit": "Mbottles70"
+      },
+      "litres": 33250000,
+      "cases9L": 3694444,
+      "money": {
+        "amount": 1120000000,
+        "currency": "EUR"
+      },
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "sources": [
+        "BNIC_TSB"
+      ]
+    },
+    {
+      "id": "EUROPE_REGION.cognac.shipments.2024",
+      "market": "EUROPE_REGION",
+      "category": "cognac",
+      "metric": "shipments",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 31.6,
+        "unit": "Mbottles70"
+      },
+      "litres": 22120000,
+      "cases9L": 2457778,
+      "money": {
+        "amount": 461000000,
+        "currency": "EUR"
+      },
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "프랑스 포함 여부 미확인",
+      "sources": [
+        "BNIC_TSB"
+      ]
+    },
+    {
+      "id": "GLOBAL.whisky_total.consumption.2024",
+      "market": "GLOBAL",
+      "category": "whisky_total",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 480,
+        "unit": "M9L"
+      },
+      "litres": 4320000000,
+      "cases9L": 480000000,
+      "confidence": "aggregator",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "Euromonitor 추정치(원문 \"estimated\"). 2023 463. URL 확정(3차)",
+      "sources": [
+        "GL_TSB_WHISKY_2025"
+      ]
+    },
+    {
+      "id": "GLOBAL.vodka.consumption.2024",
+      "market": "GLOBAL",
+      "category": "vodka",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 338.4,
+        "unit": "M9L"
+      },
+      "litres": 3045600000,
+      "cases9L": 338400000,
+      "confidence": "aggregator",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "Euromonitor(원문 \"expected\"). URL 확정(3차)",
+      "sources": [
+        "GL_TSB_VODKA"
+      ]
+    },
+    {
+      "id": "GLOBAL.gin.consumption.2024",
+      "market": "GLOBAL",
+      "category": "gin",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 107,
+        "unit": "M9L"
+      },
+      "litres": 963000000,
+      "cases9L": 107000000,
+      "confidence": "aggregator",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "IWSR 값(3차 채택). Euromonitor 108.2는 기사 미확인 — 다른 주종(Euromonitor)과 기관 혼용 주의",
+      "sources": [
+        "GL_TSB_GIN_IWSR"
+      ]
+    },
+    {
+      "id": "GLOBAL.rum.consumption.2024",
+      "market": "GLOBAL",
+      "category": "rum",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 165,
+        "unit": "M9L"
+      },
+      "litres": 1485000000,
+      "cases9L": 165000000,
+      "confidence": "aggregator",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "Euromonitor. 2023 160. URL 확정(3차)",
+      "sources": [
+        "PH_TSB_RUM"
+      ]
+    },
+    {
+      "id": "GLOBAL.brandy_total.consumption.2024",
+      "market": "GLOBAL",
+      "category": "brandy_total",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 165.2,
+        "unit": "M9L"
+      },
+      "litres": 1486800000,
+      "cases9L": 165200000,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "2025 예측 166.9 ÷ 1.01",
+      "sources": [
+        "GL_TSB_BRANDY"
+      ]
+    },
+    {
+      "id": "GLOBAL.liqueur.consumption.2024",
+      "market": "GLOBAL",
+      "category": "liqueur",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 130.7,
+        "unit": "M9L"
+      },
+      "litres": 1176300000,
+      "cases9L": 130700000,
+      "confidence": "aggregator",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "URL 미확정",
+      "sources": [
+        "GL_TSB_LIQUEUR"
+      ]
+    },
+    {
+      "id": "GLOBAL.scotch.consumption.2024",
+      "market": "GLOBAL",
+      "category": "scotch",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 96.8,
+        "unit": "M9L"
+      },
+      "litres": 871200000,
+      "cases9L": 96800000,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "2025 예측 98.1 ÷ 1.0138 (사전 예측 101.4와 충돌)",
+      "sources": [
+        "GL_TSB_SCOTCH"
+      ]
+    },
+    {
+      "id": "GLOBAL.scotch.exports.2024",
+      "market": "GLOBAL",
+      "category": "scotch",
+      "metric": "exports",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 1400,
+        "unit": "Mbottles70"
+      },
+      "litres": 980000000,
+      "cases9L": 108888889,
+      "money": {
+        "amount": 5400000000,
+        "currency": "GBP"
+      },
+      "confidence": "industry-assoc",
+      "verified": "primary",
+      "conversionEstimate": false,
+      "note": "병입 블렌디드 811 / 병입 싱글몰트 127 / 기타(벌크 포함) 464 백만 병",
+      "sources": [
+        "SWA_2024",
+        "SWA_NEWS"
+      ]
+    },
+    {
+      "id": "GLOBAL.cognac.shipments.2024",
+      "market": "GLOBAL",
+      "category": "cognac",
+      "metric": "shipments",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 166,
+        "unit": "Mbottles70"
+      },
+      "litres": 116200000,
+      "cases9L": 12911111,
+      "money": {
+        "amount": 3000000000,
+        "currency": "EUR"
+      },
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "VS +13.7%, VSOP −8.6%, XO −26.4%",
+      "sources": [
+        "BNIC_TSB"
+      ]
+    },
+    {
+      "id": "GLOBAL.calvados.sales.2024",
+      "market": "GLOBAL",
+      "category": "calvados",
+      "metric": "sales",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 4.615,
+        "unit": "Mbottles70"
+      },
+      "litres": 3230500,
+      "cases9L": 358944,
+      "confidence": "industry-assoc",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "12,909 hl AP. 수출 47%",
+      "sources": [
+        "IDAC_DISTILNEWS"
+      ]
+    },
+    {
+      "id": "GLOBAL.armagnac.sales.2024",
+      "market": "GLOBAL",
+      "category": "armagnac",
+      "metric": "sales",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 3,
+        "unit": "Mbottles70"
+      },
+      "litres": 2100000,
+      "cases9L": 233333,
+      "confidence": "press-report",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "note": "신뢰도 낮음. FEVS 수출 14.6만 케이스(12병)",
+      "sources": [
+        "BNIA_F3",
+        "FEVS_2024"
+      ]
+    },
+    {
+      "id": "GLOBAL.agave_total.consumption.2024",
+      "market": "GLOBAL",
+      "category": "agave_total",
+      "metric": "consumption",
+      "period": "2024",
+      "role": "reference",
+      "original": {
+        "value": 48.4,
+        "unit": "M9L"
+      },
+      "litres": 435600000,
+      "cases9L": 48400000,
+      "confidence": "estimate",
+      "verified": "snippet",
+      "conversionEstimate": false,
+      "formula": "미국 32.3 ÷ (미국 비중 2/3) = 상한",
+      "sources": [
+        "US_DISCUS"
+      ]
+    }
+  ]
+}
