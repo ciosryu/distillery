@@ -9,6 +9,7 @@ import { Button } from './ui/kit';
 import { B2B } from './ui/panels/B2B';
 import { Bottling } from './ui/panels/Bottling';
 import { Dashboard } from './ui/panels/Dashboard';
+import { Exports } from './ui/panels/Exports';
 import { Finance } from './ui/panels/Finance';
 import { Production } from './ui/panels/Production';
 import { Sales } from './ui/panels/Sales';
@@ -22,6 +23,7 @@ const TABS = [
   { id: 'bottling', label: '블렌딩·병입', el: <Bottling /> },
   { id: 'sales', label: '판매', el: <Sales /> },
   { id: 'b2b', label: '원액 B2B', el: <B2B /> },
+  { id: 'exports', label: '수출', el: <Exports /> },
   { id: 'staff', label: '직원', el: <Staff /> },
   { id: 'finance', label: '재무', el: <Finance /> },
 ] as const;

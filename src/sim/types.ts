@@ -226,7 +226,7 @@ export interface Contract extends ContractTerms {
 
 /** 턴 사이 행동(즉시 입출금)의 현금 흐름 항목 — 분류는 cashflow.ts의 CASH_FLOW_LINES */
 export type CashFlowKey =
-  | 'spotBulk' | 'caskBid' | 'caskOwnership' | 'contractPrepay' | 'contractCancel' | 'bottling' | 'severance' | 'rotation' | 'event' | 'brokerCask' | 'other'
+  | 'spotBulk' | 'caskBid' | 'caskOwnership' | 'contractPrepay' | 'contractCancel' | 'bottling' | 'severance' | 'rotation' | 'event' | 'brokerCask' | 'export' | 'other'
   | 'casks' | 'usedCask' | 'equipment'
   | 'loan' | 'loanRepay' | 'investment';
 /** 항목별 현금 흐름. 부호: 입금 +, 출금 − */
@@ -269,6 +269,9 @@ export interface MonthReport {
   lostSalesBottles?: number;
   visitors?: number;
   tourismRevenue?: number;
+  /** 수출 판매 (#95) */
+  exports?: ExportSale[];
+  exportRevenue?: number;
   /** 입지 특성 (결정 #86~) */
   dutyFreeBottles?: number;
   /** 면세 판매 입소문으로 오른 인지도 */
@@ -367,6 +370,19 @@ export interface CaskOrder {
 
 export interface CaskBid { id: string; buyerName: string; caskId: string; price: number; expiresMonth: number }
 
+/** 진출한 수출 시장 (#95) */
+export interface ExportEntry {
+  marketId: 'US' | 'UK' | 'DF';
+  openedMonth: number;
+  /** 이 달부터 판매 (라벨 승인·수입상 계약 기간) */
+  readyMonth: number;
+  /** 현지 인지도 0~1 */
+  awareness: number;
+  totalBottles: number;
+}
+
+export interface ExportSale { marketId: 'US' | 'UK' | 'DF'; productId: string; name: string; bottles: number; revenue: number; demandBottles: number; freight: number }
+
 export interface GameState {
   version: 5;
   seed: number;
@@ -424,6 +440,8 @@ export interface GameState {
   /** 외부 투자자 지분 (0~1) */
   investorShare: number;
   investmentsTaken: string[];
+  /** 수출 시장 (#95) — 옛 저장에는 없을 수 있다 */
+  exports?: ExportEntry[];
   /** 비지터 센터 입소문(로컬 인지도) 0~1 */
   localBuzz: number;
   /** 사무직이 타결한 폐기물(드래프·지게미) 유상 판매 단가(원/kg) */

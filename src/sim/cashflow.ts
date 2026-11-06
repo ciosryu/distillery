@@ -16,6 +16,7 @@ export const CASH_FLOW_LINES: Record<CashFlowKey, { label: string; group: CashFl
   rotation: { label: '캐스크 로테이션', group: 'operating' },
   event: { label: '이벤트 대응', group: 'operating' },
   brokerCask: { label: '브로커 원액 매입', group: 'operating' },
+  export: { label: '수출 시장 진출·철수', group: 'operating' },
   other: { label: '기타 행동 (취수 신청 등)', group: 'operating' },
   casks: { label: '빈 캐스크 구매·재탄화', group: 'investing' },
   usedCask: { label: '중고 캐스크 매각', group: 'investing' },
