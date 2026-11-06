@@ -243,6 +243,8 @@ export const AGE_PREMIUM = {
   capYears: 18,
   /** 3년 이후 연 상승률 = 같은 원액의 벌크 숙성 상승률. 블렌디드는 몰트와 그레인의 중간. 그 밖(카테고리 미지정)은 몰트 */
   perYear: { whisky: BULK.agePerYear, grain_whisky: BULK.grainAgePerYear, blended_whisky: (BULK.agePerYear + BULK.grainAgePerYear) / 2 } as Partial<Record<ProductCategory, number>>,
+  /** 3년 이후 상승률 배수 — 1이면 벌크와 같은 비율 [튜닝] */
+  rateScale: 1,
   /** 실험용: true면 결정 #95 이전 공식(3년 1.18, 이후 연 +0.06, 12년 상한) */
   legacy: false,
 };

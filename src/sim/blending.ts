@@ -88,7 +88,7 @@ export function agePerception(oakMonths: number, category?: ProductCategory): nu
   if (oakMonths < 36) return AGE_PREMIUM.base * (0.4 + 0.6 * Math.pow(Math.max(0, oakMonths) / 36, 0.8));
   const years = Math.floor(oakMonths / 12);
   if (AGE_PREMIUM.legacy) return 1 + 0.06 * Math.min(years, 12);
-  const r = (category && AGE_PREMIUM.perYear[category]) ?? BULK.agePerYear;
+  const r = ((category && AGE_PREMIUM.perYear[category]) ?? BULK.agePerYear) * AGE_PREMIUM.rateScale;
   const y = Math.min(years, AGE_PREMIUM.capYears);
   return (AGE_PREMIUM.base * (1 + r * y)) / (1 + r * AGE_PREMIUM.baseYears);
 }

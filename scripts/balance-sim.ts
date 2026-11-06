@@ -25,6 +25,7 @@ if (process.env.OVERFLOW_SHARE) RETAIL.overflowShare = Number(process.env.OVERFL
 if (process.env.GRAIN_DEPTH) REGIONS[REGION].grainSpotDepthLPA = Number(process.env.GRAIN_DEPTH);
 // 비교 실험용: AGE_PREMIUM=old 면 결정 #95 이전의 병 숙성 프리미엄(3년 이후 연 +0.06, 12년 상한)
 if (process.env.AGE_PREMIUM === 'old') AGE_PREMIUM.legacy = true;
+if (process.env.AGE_RATE) AGE_PREMIUM.rateScale = Number(process.env.AGE_RATE);
 // 튜닝 실험용: 캐스크 보관비 배수 (#61 보유 비용)
 if (process.env.STORAGE_SCALE) CASK_STORAGE.perCaskPerMonth *= Number(process.env.STORAGE_SCALE);
 // 튜닝 실험용: 원액 공급 계약 단가 배수 (BULK.contract, #77)
