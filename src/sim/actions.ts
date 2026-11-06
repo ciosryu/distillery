@@ -8,7 +8,11 @@ import { executeBlend, type BlendComponent, type BottleOptions } from './blendin
 import { MAX_RECHAR, recharCask } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
-import type { CaskTypeId, GameState, Recipe } from './types';
+import { recordPendingCash, sumCashFlows } from './cashflow';
+import { EXPORT_MARKETS, type ExportMarketId } from './content/exports';
+import { applyWaterPermit, equipmentCost, inventoryLoanRoom, inventoryLtv } from './sites';
+import { OEM, RETAIL_DEAL, startOem, startRetail } from './deals';
+import type { CashFlowKey, CaskTypeId, GameState, Recipe } from './types';
 import { annuityPayment, clone, nid, staffOf, warehouseCapacity } from './util';
 
 export type Action =
@@ -27,6 +31,9 @@ export type Action =
   /** 오염 캐스크 원액 폐기 */
   | { type: 'dumpCask'; caskId: string }
   | { type: 'takeInvestment'; offerId: string }
+  | { type: 'openExport'; marketId: ExportMarketId }
+  | { type: 'closeExport'; marketId: ExportMarketId }
+  | { type: 'setExportPrice'; marketId: ExportMarketId; priceFactor: number }
   | { type: 'sellCaskOwnership'; caskId: string }
   | { type: 'rechar'; caskId: string }
   | { type: 'bottle'; components: BlendComponent[]; options: BottleOptions }
@@ -41,13 +48,43 @@ export type Action =
   | { type: 'acceptContract'; offerId: string }
   | { type: 'cancelContract'; contractId: string }
   | { type: 'resolveEvent'; eventId: string; choice: number }
-  | { type: 'acceptCaskBid'; bidId: string };
+  | { type: 'acceptCaskBid'; bidId: string }
+  /** 입지 특성 (결정 #86~): 취수 증량 신청(제주), 대형 유통 납품(경기), 위탁생산(간토) */
+  | { type: 'applyWaterPermit' }
+  | { type: 'acceptRetail'; offerId: string }
+  | { type: 'cancelRetail'; contractId: string }
+  | { type: 'acceptOem'; offerId: string };
 
 export interface ActionResult { state: GameState; error?: string; message?: string }
 
 const fail = (state: GameState, error: string): ActionResult => ({ state, error });
 
+/** 행동별 현금 흐름 항목 — 턴 사이 입출금을 다음 결산 보고서에 싣기 위한 분류 (null = 현금이 움직이지 않는 행동) */
+const ACTION_CASH_KEY: Record<Action['type'], CashFlowKey | null> = {
+  setOrder: null, saveRecipe: null, deleteRecipe: null, fillCasks: null, dumpCask: null, setPrice: null, setMarketing: null, hire: null,
+  buyEquipment: 'equipment', buyCasks: 'casks', buySpotCasks: 'casks', orderSeasoning: 'casks', rechar: 'casks', sellUsedCask: 'usedCask',
+  rotateWarehouse: 'rotation', takeInvestment: 'investment', sellCaskOwnership: 'caskOwnership', bottle: 'bottling', fire: 'severance',
+  takeLoan: 'loan', repayLoan: 'loanRepay', buyBrokerCask: 'brokerCask', sellBulk: 'spotBulk', acceptContract: 'contractPrepay',
+  cancelContract: 'contractCancel', resolveEvent: 'event', acceptCaskBid: 'caskBid',
+  // 입지 특성 (#86~): 취수 증량 신청비, 납품 계약 해지 비용, 위탁생산 설비 패키지(설치비 − 지원금)
+  applyWaterPermit: 'other', acceptRetail: null, cancelRetail: 'contractCancel', acceptOem: 'equipment',
+  // 수출 (#95): 시장 진출비·철수
+  openExport: 'export', closeExport: 'export', setExportPrice: null,
+};
+
+/** 행동 적용. 행동으로 움직인 현금은 pendingCash에 기록돼 다음 결산 보고서(offTurn·netCash)에 합쳐진다 */
 export function applyAction(prev: GameState, a: Action): ActionResult {
+  const res = applyActionRaw(prev, a);
+  if (res.error) return res;
+  // 행동 안에서 따로 기록한 몫(예: 계약 해지 비용 중 선급금 반환)을 뺀 나머지를 행동 항목으로 기록.
+  // 분류가 없는 행동이 현금을 움직여도 순현금에서 빠지지 않도록 '기타'로 기록
+  const recorded = sumCashFlows(res.state.pendingCash ?? {}) - sumCashFlows(prev.pendingCash ?? {});
+  const rest = res.state.cash - prev.cash - recorded;
+  if (Math.abs(rest) > 1e-6) recordPendingCash(res.state, ACTION_CASH_KEY[a.type] ?? 'other', rest);
+  return res;
+}
+
+function applyActionRaw(prev: GameState, a: Action): ActionResult {
   if (prev.status !== 'running') return fail(prev, '게임이 종료되었습니다');
   const s = clone(prev);
   switch (a.type) {
@@ -79,8 +116,10 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       if (def.kind === 'visitor' && def.requires && !s.equipment.some((e) => e.catalogId === def.requires)) return fail(prev, `${EQUIPMENT[def.requires]?.nameKo}부터 지어야 합니다`);
       if ((def.kind === 'visitor' || def.kind === 'facility') && s.equipment.some((e) => e.catalogId === def.id)) return fail(prev, '이미 있습니다');
       if (def.kind === 'facility' && def.regions && !def.regions.includes(s.regionId)) return fail(prev, '이 지역에서는 해당 없는 설비입니다');
-      if (s.cash < def.cost) return fail(prev, '현금이 부족합니다');
-      s.cash -= def.cost;
+      // 입지 건설비·땅값 반영 (결정 #86)
+      const cost = equipmentCost(s, def);
+      if (s.cash < cost) return fail(prev, '현금이 부족합니다');
+      s.cash -= cost;
       s.equipment.push({ id: nid(s, 'E'), catalogId: def.id, readyMonth: s.month + def.leadMonths, ...(def.kind === 'still' ? { feintsLPA: 0 } : {}) });
       return { state: s, message: `${def.nameKo} 발주 — ${def.leadMonths}개월 후 설치` };
     }
@@ -157,6 +196,28 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       const { contents: _c, contamination: _t, contaminationKnown: _k, slot: _s, ...rest } = cask;
       s.casks[ci] = { ...rest, activity: cask.contamination ? cask.activity * 0.5 : cask.activity };
       return { state: s, message: `캐스크 ${cask.id} 원액 폐기${cask.contamination ? ' — 오염 통은 활성도 절반' : ''}` };
+    }
+    case 'openExport': {
+      const m = EXPORT_MARKETS[a.marketId];
+      if (!m) return fail(prev, '없는 시장입니다');
+      s.exports ??= [];
+      if (s.exports.some((e) => e.marketId === a.marketId)) return fail(prev, `이미 ${m.nameKo}에 진출했습니다`);
+      if (s.cash < m.entryCost) return fail(prev, '현금이 부족합니다');
+      s.cash -= m.entryCost;
+      s.exports.push({ marketId: a.marketId, openedMonth: s.month, readyMonth: s.month + m.entryMonths, awareness: m.awareness.start, totalBottles: 0 });
+      return { state: s, message: `${m.nameKo} 진출 준비 시작 — ${m.entryMonths}개월 뒤 판매` };
+    }
+    case 'setExportPrice': {
+      const e = s.exports?.find((x) => x.marketId === a.marketId);
+      if (!e) return fail(prev, '진출하지 않은 시장입니다');
+      e.priceFactor = Math.max(0.5, Math.min(3, Math.round(a.priceFactor * 100) / 100));
+      return { state: s, message: `${EXPORT_MARKETS[a.marketId].nameKo} 수출가를 출고가의 ×${e.priceFactor}로 정했습니다` };
+    }
+    case 'closeExport': {
+      const before = s.exports?.length ?? 0;
+      s.exports = (s.exports ?? []).filter((e) => e.marketId !== a.marketId);
+      if (s.exports.length === before) return fail(prev, '진출하지 않은 시장입니다');
+      return { state: s, message: `${EXPORT_MARKETS[a.marketId].nameKo}에서 철수했습니다 (진입 비용은 돌려받지 못합니다)` };
     }
     case 'takeInvestment': {
       const o = INVESTMENT_OFFERS.find((x) => x.id === a.offerId);
@@ -269,7 +330,13 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       if (offer.requires === 'producedSoju' && !s.flags.producedSoju) return fail(prev, '전통주(증류식 소주) 생산 실적이 있어야 신청할 수 있습니다');
       if (offer.regions && !offer.regions.includes(s.regionId)) return fail(prev, '이 지역에서는 신청할 수 없는 정책자금입니다');
       if (s.loans.some((l) => l.offerId === offer.id)) return fail(prev, '같은 상품을 이미 이용 중입니다');
-      const amount = Math.min(offer.max, Math.max(10_000_000, Math.round(a.amount / 1_000_000) * 1_000_000));
+      let max = offer.max;
+      if (offer.collateral === 'inventory') {
+        if (inventoryLtv(s) <= 0) return fail(prev, '이 입지에서는 재고 담보대출을 받을 수 없습니다');
+        max = Math.min(max, inventoryLoanRoom(s));
+        if (max < 10_000_000) return fail(prev, '담보로 잡을 숙성 재고가 부족합니다');
+      }
+      const amount = Math.min(max, Math.max(10_000_000, Math.round(a.amount / 1_000_000) * 1_000_000));
       s.cash += amount;
       s.loans.push({
         id: nid(s, 'D'), offerId: offer.id, name: offer.nameKo, principal: amount, balance: amount,
@@ -331,6 +398,38 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       s.contractOffers = s.contractOffers.filter((o) => o.id !== offer.id);
       return { state: s, message: `${offer.buyerName}와 공급 계약 체결${c.prepaidRemaining > 0 ? ` — 선급금 ${c.prepaidRemaining.toLocaleString()}원 입금` : ''}` };
     }
+    case 'acceptRetail': {
+      const o = s.retailOffers.find((x) => x.id === a.offerId);
+      if (!o) return fail(prev, '납품 제안이 없습니다');
+      if (s.retailContracts.length >= RETAIL_DEAL.maxActive) return fail(prev, `납품 계약은 ${RETAIL_DEAL.maxActive}건까지입니다`);
+      s.retailContracts.push(startRetail(s, o));
+      s.retailOffers = s.retailOffers.filter((x) => x.id !== o.id);
+      return { state: s, message: `${o.partner} 납품 계약 체결 — 월 ${o.bottlesPerMonth.toLocaleString()}병, 대금은 ${o.paymentDelay}개월 뒤` };
+    }
+    case 'cancelRetail': {
+      const c = s.retailContracts.find((x) => x.id === a.contractId);
+      if (!c) return fail(prev, '계약이 없습니다');
+      const cost = Math.round((c.termMonths - c.monthsDone) * c.bottlesPerMonth * c.penaltyPerBottle * 0.5);
+      s.cash -= cost;
+      s.retailContracts = s.retailContracts.filter((x) => x.id !== c.id);
+      return { state: s, message: `${c.partner} 납품 계약 해지 — 해지 비용 ${cost.toLocaleString()}원` };
+    }
+    case 'acceptOem': {
+      const o = s.oemOffers.find((x) => x.id === a.offerId);
+      if (!o) return fail(prev, '위탁생산 제안이 없습니다');
+      if (s.oemContracts.length >= OEM.maxActive) return fail(prev, `위탁생산 계약은 ${OEM.maxActive}건까지입니다`);
+      const c = startOem(s, o);
+      if (!c) return fail(prev, '현금이 부족합니다 (설비 패키지 설치비 − 지원금)');
+      s.oemContracts.push(c);
+      s.oemOffers = s.oemOffers.filter((x) => x.id !== o.id);
+      return { state: s, message: `${o.buyerName} 위탁생산 계약 — 월 ${o.batchesPerMonth}배치, 배치당 ${o.feePerBatch.toLocaleString()}원${o.dedicated ? ` · 전용 증류기 설치 지원 ${(o.capexSupport ?? 0).toLocaleString()}원 (설치 후 시작)` : ''}` };
+    }
+    case 'applyWaterPermit': {
+      const err = applyWaterPermit(s);
+      if (err) return fail(prev, err);
+      const app = s.siteState.permitApplication!;
+      return { state: s, message: `취수 증량 신청 접수 — 약 ${app.decideMonth - s.month}개월 뒤 결과 (승인 확률 ${Math.round(app.chance * 100)}%)` };
+    }
     case 'acceptCaskBid': {
       const bid = s.caskBids.find((b) => b.id === a.bidId);
       const ci = bid ? s.casks.findIndex((c) => c.id === bid.caskId && c.contents && !c.owner) : -1;
@@ -351,6 +450,8 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       if (!c) return fail(prev, '계약이 없습니다');
       const cost = cancellationCost(c);
       s.cash -= cost;
+      // 해지 비용 = 위약금(영업) + 남은 선급금 반환(재무)
+      recordPendingCash(s, 'contractPrepay', -Math.round(c.prepaidRemaining));
       s.b2bTrust = Math.max(0, s.b2bTrust - 10);
       s.contracts = s.contracts.filter((x) => x.id !== c.id);
       return { state: s, message: `${c.buyerName} 계약 해지 — 해지 비용 ${cost.toLocaleString()}원, 신뢰도 하락` };

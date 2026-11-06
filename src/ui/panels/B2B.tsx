@@ -1,6 +1,7 @@
 import { BULK, CASKS } from '../../sim/content/catalog';
-import { regionOf } from '../../sim/content/regions';
-import { cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, lotQuality, monthLabel, spotBidPerLPA, spotQuote, spotSaturation, type ContractAgingImpact, type GameState } from '../../sim';
+import { regionOf, siteOf } from '../../sim/content/regions';
+import { CATEGORY } from '../../sim/content/categories';
+import { oemPackageCost, cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, lotQuality, monthLabel, spotBidPerLPA, spotQuote, spotSaturation, type ContractAgingImpact, type GameState } from '../../sim';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';
@@ -34,8 +35,10 @@ export function B2B() {
         <Stat label="벌크 원액 시세 지수" value={s.bulkIndex.toFixed(2)} hint="위스키 트렌드와 연동, 매달 변동" tone={s.bulkIndex >= 1 ? 'good' : 'warn'} />
         <Stat label="B2B 신뢰도" value={Math.round(s.b2bTrust)} hint="납품 실적이 좋으면 상승 → 계약 단가·물량↑" />
         <Stat label="월 계약 물량" value={`${num(committed)} LPA`} hint={`생산 여력: 몰트 약 ${num(capacityLPA(s, 'malt'))} · 그레인 약 ${num(capacityLPA(s, 'grain'))} LPA/월 · 국산 프리미엄 ${pct(domesticPremium(s), 0)}`} />
-        <Stat label="지난달 원액 매출" value={won(s.reports.at(-1)?.bulkRevenue ?? 0)} hint="계약 납품분 (현물 판매는 즉시 입금)" />
+        <Stat label="지난달 원액 매출" value={won((s.reports.at(-1)?.bulkRevenue ?? 0) + (s.reports.at(-1)?.spotBulkRevenue ?? 0))} hint={`계약 납품 ${won(s.reports.at(-1)?.bulkRevenue ?? 0)} + 현물·IB 매각 ${won(s.reports.at(-1)?.spotBulkRevenue ?? 0)} (현물 판매는 즉시 입금, 다음 결산에 집계)`} />
       </div>
+
+      <SiteDeals />
 
       <Card title="공급 계약 제안 — 블렌디드 위스키 회사·브로커">
         {!s.contractOffers.length ? <Empty>제안이 없습니다</Empty> : (
@@ -149,5 +152,67 @@ export function B2B() {
         <p className="mt-2 text-xs text-stone-500">벌크 단가 = 기준가 × 숙성 연수 × 품질 × 피트 × 시세 지수 × 현물 할인(85%). 같은 원액을 브로커에게 살 때는 125%를 내므로 사고팔기만으로는 차익이 나지 않습니다. 숙성할수록 벌크 가치가 오르지만, 자사 브랜드로 병입하면 LPA당 수익이 훨씬 큽니다(대신 판매량이 브랜드 인지도에 묶입니다).</p>
       </Card>
     </div>
+  );
+}
+
+/** 입지 대표 거래 (결정 #88·#89): 경기 대형 유통 납품 / 간토 위탁생산 + 받을 대금 */
+function SiteDeals() {
+  const s = useGame((g) => g.state);
+  const dispatch = useGame((g) => g.dispatch);
+  const deals = siteOf(s).deals ?? [];
+  if (!deals.length && !s.receivables.length) return null;
+  return (
+    <>
+      {deals.includes('retail') && (
+        <Card title="대형 유통 납품 — 큰 물량·출고가의 80%·대금 2개월 뒤, 계약 중 숙성 위스키 매력도 ×0.9·인지도 상승 ×1.2">
+          <Table head={['유통사', '카테고리', '월 납품', '단가', '기간', '병당 위약금', '상태', '']}>
+            {s.retailOffers.map((o) => (
+              <tr key={o.id}>
+                <Td className="font-medium">{o.partner}</Td><Td>{CATEGORY[o.category].nameKo}</Td><Td right>{num(o.bottlesPerMonth)}병</Td>
+                <Td right>출고가 × {pct(o.priceFactor, 0)}</Td><Td right>{o.termMonths}개월</Td><Td right>{won(o.penaltyPerBottle)}</Td>
+                <Td><Badge tone="info">제안 · {o.expiresMonth - s.month}개월 후 만료</Badge></Td>
+                <Td><Button small variant="primary" onClick={() => dispatch({ type: 'acceptRetail', offerId: o.id })}>체결</Button></Td>
+              </tr>
+            ))}
+            {s.retailContracts.map((c) => (
+              <tr key={c.id}>
+                <Td className="font-medium">{c.partner}</Td><Td>{CATEGORY[c.category].nameKo}</Td><Td right>{num(c.bottlesPerMonth)}병</Td>
+                <Td right>출고가 × {pct(c.priceFactor, 0)}</Td><Td right>{c.monthsDone}/{c.termMonths}개월</Td><Td right>{won(c.penaltyPerBottle)}</Td>
+                <Td><Badge tone={c.shortfall ? 'warn' : 'good'}>진행 중 · 누적 미납 {num(c.shortfall)}병</Badge></Td>
+                <Td><Button small variant="danger" onClick={() => dispatch({ type: 'cancelRetail', contractId: c.id })}>해지</Button></Td>
+              </tr>
+            ))}
+          </Table>
+          {!s.retailOffers.length && !s.retailContracts.length && <Empty>제안이 없습니다 (가끔 들어옵니다)</Empty>}
+        </Card>
+      )}
+      {deals.includes('oem') && (
+        <Card title="위탁생산(OEM) — 원료는 위탁사 부담, 가공비를 받고 증류 설비를 먼저 내준다 (몰트 2회 증류 배치). 남는 설비가 없으면 위탁사가 전용 증류기 설치비 60% 지원">
+          <Table head={['위탁사', '월 배치', '배치당 가공비', '기간', '배치당 위약금', '상태', '']}>
+            {s.oemOffers.map((o) => (
+              <tr key={o.id}>
+                <Td className="font-medium">{o.buyerName}{o.dedicated && <div className="text-xs text-stone-500">전용 증류기 패키지: 설치비 {won(oemPackageCost(s))} 중 위탁사 지원 {won(o.capexSupport ?? 0)} → 우리 부담 {won(oemPackageCost(s) - (o.capexSupport ?? 0))}, 설치 후 시작</div>}</Td><Td right>{o.batchesPerMonth}</Td><Td right>{won(o.feePerBatch)}</Td><Td right>{o.termMonths}개월</Td><Td right>{won(o.penaltyPerBatch)}</Td>
+                <Td><Badge tone="info">제안 · {o.expiresMonth - s.month}개월 후 만료</Badge></Td>
+                <Td><Button small variant="primary" onClick={() => dispatch({ type: 'acceptOem', offerId: o.id })}>체결</Button></Td>
+              </tr>
+            ))}
+            {s.oemContracts.map((c) => (
+              <tr key={c.id}>
+                <Td className="font-medium">{c.buyerName}</Td><Td right>{c.batchesPerMonth}</Td><Td right>{won(c.feePerBatch)}</Td><Td right>{c.monthsDone}/{c.termMonths}개월</Td><Td right>{won(c.penaltyPerBatch)}</Td>
+                <Td><Badge tone={c.missed ? 'warn' : 'good'}>{s.month < c.startMonth ? `전용 증류기 설치 중 · ${monthLabel(s.startYear, c.startMonth)} 시작` : `진행 중 · 누적 미이행 ${c.missed}배치`}</Badge></Td><Td />
+              </tr>
+            ))}
+          </Table>
+          {!s.oemOffers.length && !s.oemContracts.length && <Empty>제안이 없습니다 (가끔 들어옵니다)</Empty>}
+        </Card>
+      )}
+      {s.receivables.length > 0 && (
+        <Card title="받을 대금 (매출채권)">
+          <Table head={['내용', '입금 예정', '금액']}>
+            {s.receivables.map((r, i) => <tr key={i}><Td>{r.label}</Td><Td right>{r.dueMonth - s.month}개월 후</Td><Td right>{won(r.amount)}</Td></tr>)}
+          </Table>
+        </Card>
+      )}
+    </>
   );
 }

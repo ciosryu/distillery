@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { monthLabel, type RegionId } from './sim';
 import { REGIONS, siteOf } from './sim/content/regions';
+
+const stars = (n?: number) => (n ? ` ${'★'.repeat(n)}` : '');
 import { useGame } from './store/game';
 import { won } from './ui/format';
 import { Button } from './ui/kit';
 import { B2B } from './ui/panels/B2B';
 import { Bottling } from './ui/panels/Bottling';
 import { Dashboard } from './ui/panels/Dashboard';
+import { Exports } from './ui/panels/Exports';
 import { Finance } from './ui/panels/Finance';
 import { Production } from './ui/panels/Production';
 import { Sales } from './ui/panels/Sales';
@@ -20,6 +23,7 @@ const TABS = [
   { id: 'bottling', label: '블렌딩·병입', el: <Bottling /> },
   { id: 'sales', label: '판매', el: <Sales /> },
   { id: 'b2b', label: '원액 B2B', el: <B2B /> },
+  { id: 'exports', label: '수출', el: <Exports /> },
   { id: 'staff', label: '직원', el: <Staff /> },
   { id: 'finance', label: '재무', el: <Finance /> },
 ] as const;
@@ -82,12 +86,25 @@ export default function App() {
             </select>
             {!!REGIONS[ngRegion].sites?.length && (
               <select className="rounded-md border border-stone-300 bg-white px-2 py-1 dark:border-stone-700 dark:bg-stone-800" value={ngSite} onChange={(e) => setNgSite(e.target.value)} aria-label="입지">
-                <option value="">{siteOf({ regionId: ngRegion }).nameKo} (기본)</option>
-                {REGIONS[ngRegion].sites!.map((x) => <option key={x.id} value={x.id}>{x.nameKo}</option>)}
+                <option value="">{siteOf({ regionId: ngRegion }).nameKo} (기본){stars(siteOf({ regionId: ngRegion }).difficulty)}</option>
+                {REGIONS[ngRegion].sites!.map((x) => <option key={x.id} value={x.id}>{x.nameKo}{stars(x.difficulty)}</option>)}
               </select>
             )}
             <Button variant="primary" small onClick={() => { restart(ngName, ngRegion, ngSite); setNewGameOpen(false); setNgName(''); }}>시작</Button>
             <Button variant="ghost" small onClick={() => setNewGameOpen(false)}>취소</Button>
+            {(() => {
+              // 입지 특성 미리보기 (결정 #86)
+              const site = siteOf({ regionId: ngRegion, siteId: ngSite || undefined });
+              if (!site.traits?.length) return null;
+              return (
+                <div className="w-full text-xs">
+                  {site.tagline && <div className="text-stone-600 dark:text-stone-300">{site.tagline}</div>}
+                  <ul className="mt-1 grid gap-x-4 sm:grid-cols-2">
+                    {site.traits.map((t) => <li key={t.text} className={t.tone === 'good' ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}>{t.tone === 'good' ? '+' : '−'} {t.text}</li>)}
+                  </ul>
+                </div>
+              );
+            })()}
           </div>
         )}
         <nav className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4" aria-label="메뉴">

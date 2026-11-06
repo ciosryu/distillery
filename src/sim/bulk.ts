@@ -1,6 +1,6 @@
 import { BULK, CASKS, EQUIPMENT } from './content/catalog';
 import { BUYERS, displayName, INDEPENDENT_BOTTLERS } from './content/names';
-import { regionOf } from './content/regions';
+import { regionOf, siteOf } from './content/regions';
 import { mod } from './modifiers';
 import { clamp, evaluate } from './flavor';
 import { lotCategory } from './blending';
@@ -55,7 +55,8 @@ export function spotSaturation(s: Pick<GameState, 'spotSoldLPA' | 'regionId'>, l
 
 /** 현물로 팔 때 받는 단가 — 현물 시장의 절반은 국내 블렌더로 보고 국산 프리미엄의 절반을 반영. lpa = 이번에 팔 물량(포화 반영) */
 export function spotBidPerLPA(s: GameState, lot: SpiritLot, lpa = 0): number {
-  return bulkValuePerLPA(s, lot) * BULK.bid * trustAdj(s.b2bTrust) * (lot.sourced ? 1 : 1 + domesticPremium(s) * 0.5) * spotSaturation(s, lot, lpa);
+  // 입지 원액 운송비 (제주 섬 운송, 결정 #86)
+  return bulkValuePerLPA(s, lot) * BULK.bid * trustAdj(s.b2bTrust) * (lot.sourced ? 1 : 1 + domesticPremium(s) * 0.5) * spotSaturation(s, lot, lpa) * (siteOf(s).bulkFreight ?? 1);
 }
 
 /** 현물 판매를 시장에 기록 (포화 누적) */
@@ -103,7 +104,8 @@ function contractPrice(s: GameState, spirit: ContractTerms['spirit'], style: Con
   // 블렌더는 최소 품질보다 약간 높은 원액을 기준으로 값을 매긴다
   const ref = base * qualityFactor(minQuality + 8) * (style === 'peated' ? 1 + BULK.peatPremium : 1) * s.bulkIndex * mod(s, 'bulk');
   const p = ref * BULK.contract * (1 + BULK.termPremiumPer12 * Math.max(0, termMonths / 12 - 1)) * trustAdj(s.b2bTrust) * (prepay ? 1 - BULK.prepayDiscount : 1) * (domestic ? 1 + domesticPremium(s) : 1) * priceFactor;
-  return Math.round(p / 100) * 100;
+  // 입지 원액 운송비 (제주 섬 운송, 결정 #86)
+  return Math.round((p * (siteOf(s).bulkFreight ?? 1)) / 100) * 100;
 }
 
 /** 이 지역에서 원액을 사는 회사: 현지 회사(국산 프리미엄) + 글로벌 회사. 가상 회사는 부정적 이벤트용으로 섞여 있다 */
@@ -239,6 +241,7 @@ export function fulfillContracts(s: GameState, report: MonthReport): void {
     const offset = Math.min(c.prepaidRemaining, gross * c.prepayShare);
     const cashIn = Math.round(gross - offset);
     c.prepaidRemaining -= offset;
+    report.prepayApplied = (report.prepayApplied ?? 0) + offset;
     const penalty = Math.round(need * c.penaltyPerLPA);
     s.cash += cashIn - penalty;
     c.deliveredLPA += delivered;
@@ -254,11 +257,15 @@ export function fulfillContracts(s: GameState, report: MonthReport): void {
 
     if (c.shortfallLPA >= 2 * c.lpaPerMonth) {
       s.cash -= Math.round(c.prepaidRemaining);
+      report.prepayRefunded = (report.prepayRefunded ?? 0) + Math.round(c.prepaidRemaining);
       s.b2bTrust = clamp(s.b2bTrust - 15, 0, 100);
       report.notes.push(`${c.buyerName} 계약 파기 — 누적 미납 과다. 남은 선급금 반환, 신뢰도 하락`);
       done.push(c.id);
     } else if (c.monthsDone >= c.termMonths) {
-      if (c.prepaidRemaining > 0) s.cash -= Math.round(c.prepaidRemaining);
+      if (c.prepaidRemaining > 0) {
+        s.cash -= Math.round(c.prepaidRemaining);
+        report.prepayRefunded = (report.prepayRefunded ?? 0) + Math.round(c.prepaidRemaining);
+      }
       s.b2bTrust = clamp(s.b2bTrust + 5, 0, 100);
       report.notes.push(`${c.buyerName} 공급 계약 만료 — 총 ${Math.round(c.deliveredLPA)} LPA 납품`);
       done.push(c.id);

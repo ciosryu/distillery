@@ -75,6 +75,8 @@ export interface SpiritLot {
   recipeId?: string;
   /** 원재료 배합 비율(레시피 기준) — 특산물·버번 옥수수 51% 같은 원료 규정 판정용 */
   mashShare?: Record<string, number>;
+  /** 입지 원료(제주 차조·청귤 등)를 쓴 원액 — 면세 기념품 매력도 (결정 #87) */
+  localIngredient?: boolean;
 }
 
 export interface Cask {
@@ -138,6 +140,14 @@ export interface Product {
   salesEma?: number;
   /** 첫 위스키 출시 오픈런 효과 */
   launchBoost?: { factor: number; untilMonth: number };
+  /** 면세 전용 한정판 (제주, 결정 #87) — 국내 판매 없음 */
+  dutyFreeOnly?: boolean;
+  /** 입지 원료 제품 — 모든 구성 원액이 입지 원료 원액일 때 */
+  localIngredient?: boolean;
+  /** 면세 한정판 시리즈: 판 번호, 출시 시점 연속 완판 수, 판정 끝남 */
+  dfEdition?: { vol: number; streak: number; done?: boolean };
+  /** 지난달 판매 중 면세 채널 몫 */
+  lastMonthDutyFree?: number;
 }
 
 export interface StaffStats { a: number; b: number; c: number }
@@ -214,16 +224,39 @@ export interface Contract extends ContractTerms {
   prepaidRemaining: number;
 }
 
+/** 턴 사이 행동(즉시 입출금)의 현금 흐름 항목 — 분류는 cashflow.ts의 CASH_FLOW_LINES */
+export type CashFlowKey =
+  | 'spotBulk' | 'caskBid' | 'caskOwnership' | 'contractPrepay' | 'contractCancel' | 'bottling' | 'severance' | 'rotation' | 'event' | 'brokerCask' | 'export' | 'other'
+  | 'casks' | 'usedCask' | 'equipment'
+  | 'loan' | 'loanRepay' | 'investment';
+/** 항목별 현금 흐름. 부호: 입금 +, 출금 − */
+export type CashFlows = Partial<Record<CashFlowKey, number>>;
+
 export interface MonthReport {
   month: number;
+  /** 제품(병입) 매출 */
   revenue: number;
   expenses: Record<string, number>;
+  /** 직전 결산 이후 현금 변화 = 이번 결산 월말 현금 − 직전 결산 월말 현금 (턴 사이 행동 포함) */
   netCash: number;
   cashEnd: number;
   sales: { productId: string; name: string; bottles: number; revenue: number; demandBottles: number }[];
   /** 원액 계약 납품 */
   bulk: { contractId: string; buyerName: string; deliveredLPA: number; revenue: number; penalty: number }[];
+  /** 원액 계약 납품 매출 (현물 판매는 spotBulkRevenue) */
   bulkRevenue: number;
+  /** 원액 현물 판매(탱크 로트·캐스크째, sellBulk) + 독립 병입자 캐스크 매각(acceptCaskBid). 구버전 세이브의 보고서에는 없다 */
+  spotBulkRevenue?: number;
+  /** 직전 결산 이후 턴 사이 행동으로 생긴 현금 흐름 (부호: 입금 +, 출금 −). 구버전 세이브의 보고서에는 없다 */
+  offTurn?: CashFlows;
+  /** 순현금 분해: 영업 + 투자 + 재무 = netCash. 투자 = 설비·빈 캐스크 매매, 재무 = 대출 실행·상환(정기 원금 포함)·투자 유치 */
+  operatingCash?: number;
+  investingCash?: number;
+  financingCash?: number;
+  /** 계약 납품 중 선급금으로 상계한 금액 (현금은 안 들어옴) — 영업에는 납품 매출로, 재무에는 선급금 상환으로 잡는다 */
+  prepayApplied?: number;
+  /** 계약 만료·파기 때 돌려준 남은 선급금 (재무) */
+  prepayRefunded?: number;
   production: { recipeId: string; name: string; batches: number; lpa: number; cost: number }[];
   angelsShareL: number;
   liquorTaxRemitted: number;
@@ -236,7 +269,57 @@ export interface MonthReport {
   lostSalesBottles?: number;
   visitors?: number;
   tourismRevenue?: number;
+  /** 수출 판매 (#95) */
+  exports?: ExportSale[];
+  exportRevenue?: number;
+  /** 입지 특성 (결정 #86~) */
+  dutyFreeBottles?: number;
+  /** 면세 판매 입소문으로 오른 인지도 */
+  dutyFreeAwareness?: number;
+  retailDealRevenue?: number;
+  oemRevenue?: number;
+  /** 매출채권 입금 (대형 유통 납품 대금) */
+  receivablesCollected?: number;
   notes: string[];
+}
+
+/** 대형 유통 납품 계약 (경기, 결정 #88) — 정해진 물량을 할인 단가에 납품, 대금은 몇 달 뒤 */
+export interface RetailTerms {
+  id: string;
+  partner: string;
+  category: ProductCategory;
+  bottlesPerMonth: number;
+  /** 납품 단가 = 제품 출고가 × priceFactor */
+  priceFactor: number;
+  termMonths: number;
+  /** 대금 지급까지 개월 수 */
+  paymentDelay: number;
+  penaltyPerBottle: number;
+}
+export interface RetailOffer extends RetailTerms { expiresMonth: number }
+export interface RetailContract extends RetailTerms { startMonth: number; monthsDone: number; delivered: number; shortfall: number }
+
+/** 위탁생산(OEM) 계약 (간토, 결정 #89) — 원료는 위탁사 부담, 가공비를 받고 증류 설비를 내준다 */
+export interface OemTerms {
+  id: string; buyerName: string; batchesPerMonth: number; feePerBatch: number; termMonths: number; penaltyPerBatch: number;
+  /** 전용 증류기 설치 지원형: 위탁사가 설비 패키지(증류기 + 발효조 2기) 설치비 일부를 체결 시 지원 */
+  dedicated?: boolean;
+  capexSupport?: number;
+}
+export interface OemOffer extends OemTerms { expiresMonth: number }
+export interface OemContract extends OemTerms { startMonth: number; monthsDone: number; missed: number; /** 전용 증류기 설비 id */ stillId?: string }
+
+/** 매출채권 — 결제 지연 대금 */
+export interface Receivable { dueMonth: number; amount: number; label: string }
+
+/** 입지 고유 상태 (결정 #86~) */
+export interface SiteState {
+  /** 취수 허가량 — 월 발효 투입 용량 상한(L). 제주 */
+  waterPermitL?: number;
+  /** 취수 증량 신청 — 결정 월에 승인 여부가 정해진다 */
+  permitApplication?: { decideMonth: number; addL: number; chance: number };
+  /** 면세 한정판 시리즈 — 마지막 판 번호와 연속 완판 수 (제주) */
+  dfSeries?: { vol: number; streak: number };
 }
 
 /** 기간 한정 보정치 — 이벤트·시장 국면이 만든다. key 예: 'ingredient:malt_unpeated', 'demand:whisky', 'appeal:peated' */
@@ -286,6 +369,21 @@ export interface CaskOrder {
 }
 
 export interface CaskBid { id: string; buyerName: string; caskId: string; price: number; expiresMonth: number }
+
+/** 진출한 수출 시장 (#95) */
+export interface ExportEntry {
+  marketId: 'US' | 'UK' | 'DF';
+  openedMonth: number;
+  /** 이 달부터 판매 (라벨 승인·수입상 계약 기간) */
+  readyMonth: number;
+  /** 현지 인지도 0~1 */
+  awareness: number;
+  totalBottles: number;
+  /** 수출가 배수: FOB = 출고가 × 배수 (기본 1). 공급이 모자라면 올려서 적게 팔고 많이 남긴다 */
+  priceFactor?: number;
+}
+
+export interface ExportSale { marketId: 'US' | 'UK' | 'DF'; productId: string; name: string; bottles: number; revenue: number; demandBottles: number; freight: number }
 
 export interface GameState {
   version: 5;
@@ -344,6 +442,8 @@ export interface GameState {
   /** 외부 투자자 지분 (0~1) */
   investorShare: number;
   investmentsTaken: string[];
+  /** 수출 시장 (#95) — 옛 저장에는 없을 수 있다 */
+  exports?: ExportEntry[];
   /** 비지터 센터 입소문(로컬 인지도) 0~1 */
   localBuzz: number;
   /** 사무직이 타결한 폐기물(드래프·지게미) 유상 판매 단가(원/kg) */
@@ -354,6 +454,16 @@ export interface GameState {
   traditionalReleasedL: number;
   /** 작년 전통주 경감 대상 출고량(L) — 500㎘ 넘으면 올해 경감 없음 */
   traditionalPrevYearL: number;
+  /** 입지 특성 (결정 #86~) — 옛 저장에는 없을 수 있다 → normalizeState가 채운다 */
+  siteState: SiteState;
+  retailOffers: RetailOffer[];
+  retailContracts: RetailContract[];
+  oemOffers: OemOffer[];
+  oemContracts: OemContract[];
+  receivables: Receivable[];
+  /** 직전 결산 이후 턴 사이 행동으로 생긴 현금 흐름 — 다음 결산 보고서(offTurn)로 넘어가고 비워진다.
+   *  구버전(v5 초기) 세이브에는 없을 수 있어 선택 필드로 둔다 */
+  pendingCash?: CashFlows;
   reports: MonthReport[];
   nextId: number;
 }

@@ -35,6 +35,13 @@ export const BUYERS: NamedEntity[] = [
 ];
 
 /** 독립 병입자 — 우수 캐스크 매입 제안 */
+/** 대형 유통사 (경기 대형 유통 납품, 결정 #88) — 가상 회사 */
+export const RETAILERS: NamedEntity[] = [
+  { id: 'saenal', real: '새날 편의점', fictional: '새날 편의점', country: 'KR', canDefault: true },
+  { id: 'gaon', real: '가온마트', fictional: '가온마트', country: 'KR', canDefault: true },
+  { id: 'dodam', real: '도담 리테일', fictional: '도담 리테일', country: 'KR', canDefault: true },
+];
+
 export const INDEPENDENT_BOTTLERS: NamedEntity[] = [
   { id: 'gm', real: '고든 앤 맥페일', fictional: '엘긴 보틀러스' },
   { id: 'signatory', real: '시그나토리 빈티지', fictional: '시그니처 캐스크' },

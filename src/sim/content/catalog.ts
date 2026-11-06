@@ -13,6 +13,8 @@ export interface IngredientDef {
   kinds: ('soju' | 'malt' | 'grain' | 'baijiu')[];
   /** 자생지(현지 조달 지역). 다른 지역에서 쓰면 물류 배수가 붙는다. 없으면 세계 상품 (결정 #67) */
   native?: string[];
+  /** 입지 전용 원료 — 이 입지에서만 레시피에 쓸 수 있다 (결정 #87, 제주 차조·홋카이도 감자) */
+  sites?: string[];
 }
 
 export const INGREDIENTS: Record<string, IngredientDef> = {
@@ -34,13 +36,16 @@ export const INGREDIENTS: Record<string, IngredientDef> = {
   rice_domestic: { id: 'rice_domestic', nameKo: '국산 쌀', lpaPerKg: 0.46, pricePerKg: 2600, flavor: { nuruk_rice: 25, floral: 8, fresh_fruit: 8, sweetness: 8 }, kinds: ['soju'], native: ['KR'] },
   rice_processing: { id: 'rice_processing', nameKo: '가공용 쌀', lpaPerKg: 0.44, pricePerKg: 1300, flavor: { nuruk_rice: 20, floral: 5, fresh_fruit: 5, sweetness: 6, cereal: 5 }, kinds: ['soju'], native: ['KR'] },
   nuruk: { id: 'nuruk', nameKo: '전통 누룩', lpaPerKg: 0.1, pricePerKg: 6000, flavor: { nuruk_rice: 40, earthy: 6, fresh_fruit: 6 }, kinds: ['soju'], native: ['KR'] },
+  // 입지 전용 원료 (결정 #87)
+  jeju_millet: { id: 'jeju_millet', nameKo: '제주 차조(좁쌀) — 고소리술 원료', lpaPerKg: 0.42, pricePerKg: 4500, flavor: { nuruk_rice: 15, cereal: 18, earthy: 6, toasted_grain: 6, sweetness: 6 }, kinds: ['soju'], native: ['KR'], sites: ['jeju'] },
+  potato: { id: 'potato', nameKo: '홋카이도 감자', lpaPerKg: 0.11, pricePerKg: 450, flavor: { earthy: 10, sweetness: 8, floral: 6, fresh_fruit: 4 }, kinds: ['soju'], native: ['JP'], sites: ['hokkaido'] },
 };
 
 /** 진 베이스 중성 스피릿(주정 95%) — L당 가격 */
 export const GNS = { nameKo: '주정(95%)', abv: 0.95, pricePerL: 2300, flavor: { harshness: 35, solvent: 8, feinty: 8 } as Flavor };
 
 /** native = 자생지. 다른 지역에서는 수입(물류 배수). 없으면 세계 상품 */
-export interface BotanicalDef { id: string; nameKo: string; pricePerKg: number; perGram: Flavor; native?: string[] }
+export interface BotanicalDef { id: string; nameKo: string; pricePerKg: number; perGram: Flavor; native?: string[]; /** 입지 전용 (결정 #87) */ sites?: string[] }
 
 export const BOTANICALS: Record<string, BotanicalDef> = {
   juniper: { id: 'juniper', nameKo: '주니퍼', pricePerKg: 32000, perGram: { juniper: 2.0, herbal: 0.3 } },
@@ -58,6 +63,7 @@ export const BOTANICALS: Record<string, BotanicalDef> = {
   hinoki: { id: 'hinoki', nameKo: '히노키', pricePerKg: 40000, perGram: { herbal: 2.5, earthy: 1.0, juniper: 0.5 }, native: ['JP'] },
   maqaw: { id: 'maqaw', nameKo: '마고(산후추, 馬告)', pricePerKg: 80000, perGram: { citrus: 3.0, botanical_spice: 2.0 }, native: ['TW'] },
   oolong: { id: 'oolong', nameKo: '우롱차', pricePerKg: 70000, perGram: { floral: 2.0, herbal: 2.0, toasted_grain: 0.5 }, native: ['TW'] },
+  jeju_citrus: { id: 'jeju_citrus', nameKo: '제주 청귤 껍질', pricePerKg: 35000, perGram: { citrus: 4.5, fresh_fruit: 1.0, floral: 0.5 }, native: ['KR'], sites: ['jeju'] },
 };
 
 export const YEASTS: Record<YeastId, { nameKo: string; yieldFactor: number; ester: number; tropical: number; acetic: number }> = {
@@ -101,8 +107,9 @@ export const EQUIPMENT: Record<string, EquipmentDef> = {
   facility_seismic: { id: 'facility_seismic', kind: 'facility', nameKo: '내진 랙 보강', cost: 80_000_000, leadMonths: 3, maintenance: 200_000, defends: ['earthquake'], note: '지진에 랙이 무너지는 것을 막는다' },
   // ── 비지터 센터 ──
   visitor_basic: { id: 'visitor_basic', kind: 'visitor', nameKo: '비지터 센터 — 베이직 투어', cost: 80_000_000, leadMonths: 4, maintenance: 3_000_000, tier: 1, visitorsPerMonth: 600, spendPerVisitor: 15_000, buzzQuality: 0.6 },
-  visitor_vip: { id: 'visitor_vip', kind: 'visitor', nameKo: '비지터 센터 — VIP 테이스팅 라운지', cost: 200_000_000, leadMonths: 6, maintenance: 6_000_000, tier: 2, visitorsPerMonth: 400, spendPerVisitor: 60_000, buzzQuality: 1.2, requires: 'visitor_basic' },
-  visitor_restaurant: { id: 'visitor_restaurant', kind: 'visitor', nameKo: '비지터 센터 — 레스토랑 결합형', cost: 500_000_000, leadMonths: 9, maintenance: 15_000_000, tier: 3, visitorsPerMonth: 800, spendPerVisitor: 45_000, buzzQuality: 1.5, requires: 'visitor_vip' },
+  // 결정 #92: VIP·레스토랑은 소수 고객 상품 — v1.4 수치(VIP 월 400명 × 6만 원)는 관광 배수가 높은 입지에서 본업보다 많이 벌어(오사카·교토 순자산 54억) 방문객·객단가를 낮췄다 [튜닝]
+  visitor_vip: { id: 'visitor_vip', kind: 'visitor', nameKo: '비지터 센터 — VIP 테이스팅 라운지', cost: 200_000_000, leadMonths: 6, maintenance: 4_000_000, tier: 2, visitorsPerMonth: 150, spendPerVisitor: 50_000, buzzQuality: 1.2, requires: 'visitor_basic' },
+  visitor_restaurant: { id: 'visitor_restaurant', kind: 'visitor', nameKo: '비지터 센터 — 레스토랑 결합형', cost: 500_000_000, leadMonths: 9, maintenance: 8_000_000, tier: 3, visitorsPerMonth: 300, spendPerVisitor: 40_000, buzzQuality: 1.5, requires: 'visitor_vip' },
 };
 
 // ── 캐스크 ──
@@ -235,7 +242,7 @@ export const VOLUME_DISCOUNT_TIERS: { minKg: number; factor: number }[] = [
 
 
 // ── 대출 상품 ──
-export interface LoanOfferDef { id: string; nameKo: string; annualRate: number; termMonths: number; max: number; requires?: 'producedSoju'; /** 원금 거치 기간(이자만 납부) */ graceMonths: number; /** 이 지역에서만 신청 가능 */ regions?: RegionId[]; note?: string }
+export interface LoanOfferDef { id: string; nameKo: string; annualRate: number; termMonths: number; max: number; requires?: 'producedSoju'; /** 원금 거치 기간(이자만 납부) */ graceMonths: number; /** 이 지역에서만 신청 가능 */ regions?: RegionId[]; note?: string; /** 숙성 재고 담보 — 담보 인정 비율이 있는 입지에서만, 한도 = 재고 시가 × 비율 (결정 #90) */ collateral?: 'inventory' }
 
 export const LOAN_OFFERS: LoanOfferDef[] = [
   { id: 'facility', nameKo: '시설자금 대출', annualRate: 0.05, termMonths: 120, max: 1_000_000_000, graceMonths: 24 },
@@ -244,6 +251,8 @@ export const LOAN_OFFERS: LoanOfferDef[] = [
   // 한국 완화책(#73) — 고난도 지역은 유지하되 정책 융자로 버틸 길을 준다. 금리·조건은 게임 단순화 [확인 필요]
   { id: 'kr_regional', nameKo: 'K-위스키 지역 특화 산업 육성자금 (지자체)', annualRate: 0.02, termMonths: 96, max: 300_000_000, graceMonths: 24, regions: ['KR'], note: '경북 등 지자체의 K-위스키 산업 육성 기조를 단순화' },
   { id: 'kr_startup', nameKo: '창업기반지원자금 (중소벤처기업진흥공단)', annualRate: 0.025, termMonths: 72, max: 200_000_000, graceMonths: 18, regions: ['KR'], note: '창업 7년 이내 중소기업 정책 융자를 단순화' },
+  // 재고 담보대출 (결정 #90, 홋카이도) — 숙성 원액 시가를 담보로. 시가가 떨어지면 추가 상환 요구 [튜닝]
+  { id: 'inventory', nameKo: '숙성 재고 담보대출', annualRate: 0.06, termMonths: 60, max: 2_000_000_000, graceMonths: 12, collateral: 'inventory', note: '담보 인정 비율이 있는 입지(홋카이도)에서만' },
 ];
 
 // ── 직원 ──
