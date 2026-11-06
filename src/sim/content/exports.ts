@@ -280,4 +280,6 @@ export const EXPORT_MARKET_IDS = Object.keys(EXPORT_MARKETS) as ExportMarketId[]
 export const exportMarketsFor = (regionId: RegionId): ExportMarketId[] => EXPORT_MARKET_IDS.filter((id) => id !== regionId);
 /** 미국 추가 관세 등 관세 이벤트는 modifier 'tariff:<시장>'로 (1 + 관세)에 곱한다 (#103) */
 export const tariffKey = (id: ExportMarketId) => `tariff:${id}`;
+/** 재고가 모자랄 때 국내·수출 배분 — 'proportional' = 수요 비율(#95), 'domestic' = 국내를 먼저 채우고 남는 재고를 수출에 나눈다 [실험 스위치] */
+export const EXPORT_SALES: { allocation: 'proportional' | 'domestic' } = { allocation: 'proportional' };
 export { KRW_PER_GBP, KRW_PER_USD };

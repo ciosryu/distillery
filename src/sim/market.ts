@@ -7,7 +7,7 @@ import { clamp } from './flavor';
 import { staffOf } from './util';
 import { mod } from './modifiers';
 import type { ExportEntry, ExportSale, GameState, Product, ProductCategory } from './types';
-import { EXPORT_MARKETS, tariffKey, type ExportMarketDef } from './content/exports';
+import { EXPORT_MARKETS, EXPORT_SALES, tariffKey, type ExportMarketDef } from './content/exports';
 import type { Rng } from './rng';
 
 // 수요 공식 (PRD §9.2) — 수치 [튜닝]
@@ -173,11 +173,12 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
   for (const w of wants) {
     const list = active.map((entry) => ({ entry, demand: Math.round(exportDemandFor(s, w.p, entry, counts[w.p.category] ?? 1) * rng.range(0.9, 1.1)), want: 0 })).filter((x) => x.demand > 0);
     if (!list.length) continue;
+    exportWants.set(w.p.id, list);
+    if (EXPORT_SALES.allocation === 'domestic') continue; // 수출 몫은 국내 판매 뒤 남은 재고로 (아래)
     const total = w.demand + list.reduce((t, x) => t + x.demand, 0);
     const f = Math.min(1, w.p.stockBottles / Math.max(1, total));
     w.want = Math.floor(w.demand * f);
     for (const x of list) x.want = Math.floor(x.demand * f);
-    exportWants.set(w.p.id, list);
   }
   // 2) 소매 처리 역량 (결정 #65): 역량까지는 정상 채널, 역량의 2배까지는 고비용 채널(할인·추가 수수료), 그 너머는 못 판다
   //    영업은 케이스당 공헌이익이 큰 제품부터 민다 → 역량이 모자라면 저마진 제품부터 밀려난다
@@ -228,7 +229,12 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
   }
   const exports: ExportSale[] = [];
   for (const { p } of wants) {
-    for (const x of exportWants.get(p.id) ?? []) {
+    const list = exportWants.get(p.id) ?? [];
+    if (EXPORT_SALES.allocation === 'domestic' && list.length) {
+      const f = Math.min(1, p.stockBottles / Math.max(1, list.reduce((t, x) => t + x.demand, 0)));
+      for (const x of list) x.want = Math.floor(x.demand * f);
+    }
+    for (const x of list) {
       const bottles = Math.min(x.want, p.stockBottles);
       if (bottles <= 0 && x.demand <= 0) continue;
       p.stockBottles -= bottles;

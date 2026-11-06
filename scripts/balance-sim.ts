@@ -6,7 +6,7 @@ import { dutyFreeSlotBlocker, inventoryLoanRoom, inventoryLtv, OEM, oemPackageCo
 import { EVENTS } from '../src/sim/content/events';
 import { RETAIL } from '../src/sim/ops';
 import { EQUIPMENT } from '../src/sim/content/catalog';
-import { EXPORT_MARKETS } from '../src/sim/content/exports';
+import { EXPORT_MARKETS, EXPORT_SALES } from '../src/sim/content/exports';
 const EQUIPMENT_KIND = (id: string) => EQUIPMENT[id]?.kind;
 
 const SEEDS = Number(process.argv[2] ?? 12);
@@ -24,6 +24,8 @@ const DEFEND = process.env.NO_DEFEND !== '1';
 if (process.env.OVERFLOW_FEE) RETAIL.overflowFeeRate = Number(process.env.OVERFLOW_FEE);
 if (process.env.OVERFLOW_SHARE) RETAIL.overflowShare = Number(process.env.OVERFLOW_SHARE);
 if (process.env.GRAIN_DEPTH) REGIONS[REGION].grainSpotDepthLPA = Number(process.env.GRAIN_DEPTH);
+// 실험용: 재고 부족 시 국내·수출 배분 (proportional | domestic)
+if (process.env.EXPORT_ALLOC) EXPORT_SALES.allocation = process.env.EXPORT_ALLOC as typeof EXPORT_SALES.allocation;
 
 type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site';
 
@@ -166,21 +168,48 @@ function bottleBlended(s: GameState): GameState {
 }
 
 /** v1.0 운영: 빈 통을 미리 쿠퍼리지에 주문하고, 소매 역량이 넘치면 영업 직원을 늘린다 */
-/** v1.5(#95) 수출: 위스키가 나오면 면세점(36개월~), 3년 숙성 재고가 생기면 미국·영국(48개월~)에 진출한다.
- *  진출 12개월 뒤에도 최근 6개월 공헌이익(출고가 − 운임 − 원가)이 월 현지 비용보다 작으면 철수. NO_EXPORT=1이면 수출 안 함 */
+/** v1.5(#95) 수출 → v1.6(#104) 재고 여유 기준: 숙성 원액은 정해진 양뿐이라, 국내 수요를 못 채우는데 수출하면
+ *  정가 판매를 매입가(출고가의 55~75%)로 바꾸는 셈이다. 그래서 병입 가능한 3년 숙성 원액이 국내 수요 EXPORT_SURPLUS개월 치를
+ *  넘을 때만 제안을 받고(면세점은 36개월~, 해외는 48개월~, 최대 EXPORT_MAX곳), 여유가 EXPORT_SHORT개월 치 아래로 줄면
+ *  병당 순수입이 가장 낮은 시장부터 하나씩 철수한다. 진출 12개월 뒤 최근 6개월 공헌이익(매입가 − 운임 − 원가)이 마케팅 분담보다 작아도 철수.
+ *  EXPORT_NAIVE=1이면 v1.5 정책(재고 여유를 보지 않음). NO_EXPORT=1이면 수출 안 함 */
 const NO_EXPORT = process.env.NO_EXPORT === '1';
+const EXPORT_NAIVE = process.env.EXPORT_NAIVE === '1';
+const EXPORT_SURPLUS = Number(process.env.EXPORT_SURPLUS ?? 12);
+const EXPORT_SHORT = Number(process.env.EXPORT_SHORT ?? 4);
+/** 최근 3개월 국내(수출 제외) 위스키 월 수요 */
+function domesticWhiskyDemand(s: GameState): number {
+  const ids = new Set(s.products.filter((p) => p.category === 'whisky').map((p) => p.id));
+  const rs = s.reports.slice(-3);
+  return rs.length ? rs.reduce((t, r) => t + r.sales.filter((x) => ids.has(x.productId)).reduce((u, x) => u + x.demandBottles, 0), 0) / rs.length : 0;
+}
+/** 병입 가능한 숙성 원액(3년 이상 자사 몰트 캐스크 + 병입 재고)이 국내 수요 몇 개월 치인가 */
+function whiskySurplusMonths(s: GameState): number {
+  const ready = s.casks.filter((c) => c.contents && c.contents.oakMonths >= 36 && !c.contents.sourced).length * BOTTLES_PER_CASK + stockOf(s, 'whisky');
+  return ready / Math.max(100, domesticWhiskyDemand(s));
+}
 function exportPolicy(s: GameState): GameState {
   if (NO_EXPORT) return s;
   const whisky = s.products.filter((p) => p.category === 'whisky' && p.stockBottles > 0);
   const aged36 = whisky.some((p) => (p.oakMonths ?? 0) >= 36);
-  // #101: 수입사 제안이 오면 받는다 — 면세점은 위스키가 나온 뒤(36개월~), 해외는 3년 숙성 재고가 생긴 뒤(48개월~). 동시에 최대 EXPORT_MAX곳
   const MAX = Number(process.env.EXPORT_MAX ?? 3);
+  const surplus = whiskySurplusMonths(s);
   for (const o of [...(s.exportOffers ?? [])]) {
     if ((s.exports ?? []).length >= MAX) break;
     const from = o.marketId === 'DF' ? 36 : 48;
     const ok = o.marketId === 'DF' ? whisky.length > 0 : aged36;
     if (!ok || s.month < from) continue;
+    if (!EXPORT_NAIVE && surplus < EXPORT_SURPLUS) continue;
     if (s.cash > o.entryCost + 200_000_000) s = act(s, { type: 'acceptExportOffer', offerId: o.id });
+  }
+  const netPerBottle = (e: NonNullable<GameState['exports']>[number]) => {
+    const xs = s.reports.slice(-6).flatMap((r) => (r.exports ?? []).filter((x) => x.marketId === e.marketId));
+    const b = xs.reduce((t, x) => t + x.bottles, 0);
+    return b ? xs.reduce((t, x) => t + x.revenue - x.freight, 0) / b : 0;
+  };
+  if (!EXPORT_NAIVE && surplus < EXPORT_SHORT && (s.exports ?? []).length) {
+    const worst = [...s.exports!].sort((a, b) => netPerBottle(a) - netPerBottle(b))[0]!;
+    s = act(s, { type: 'closeExport', marketId: worst.marketId });
   }
   for (const e of s.exports ?? []) {
     if (s.month - e.readyMonth < 12) continue;
@@ -550,7 +579,8 @@ function play(strategy: Strategy, seed: number): Result {
     strategy, bankrupt: s.status === 'bankrupt', minCash: lo, netWorth: s.status === 'bankrupt' ? -Infinity : netWorth(s), bookWorth: s.status === 'bankrupt' ? -Infinity : bookWorth(s), firstPositive: fp,
     y5retail: y5.reduce((t, r) => t + r.revenue, 0), y5bulk: y5.reduce((t, r) => t + r.bulkRevenue, 0),
     // 수출 지표 (#104): 전 기간 병입 매출 중 수출(수입사 매입가) 비중, 한 번이라도 진출한 시장 수
-    exportShare: (() => { const ex = s.reports.reduce((t, r) => t + (r.exportRevenue ?? 0), 0); const all = s.reports.reduce((t, r) => t + r.revenue, 0) + ex; return all > 0 ? ex / all : 0; })(),
+    // report.revenue에는 회수한 외상(수출 대금 포함)이 섞여 있으므로 국내 병입 매출은 sales에서 직접 센다
+    exportShare: (() => { const ex = s.reports.reduce((t, r) => t + (r.exportRevenue ?? 0), 0); const dom = s.reports.reduce((t, r) => t + r.sales.reduce((u, x) => u + x.revenue, 0), 0); return dom + ex > 0 ? ex / (dom + ex) : 0; })(),
     markets: (s.exportEntered ?? []).length,
   };
 }
