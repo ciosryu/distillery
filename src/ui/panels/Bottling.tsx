@@ -27,7 +27,7 @@ export function Bottling() {
     return { source, id, liters: l };
   });
   const preview = components.length ? previewBlend(s, components, opts) : null;
-  // 면세 한정판 예상 판매 (결정 #85) — 이번 달 면세 수요(권장 출고가)로 완판 기한 안에 몇 병 팔릴지
+  // 면세 한정판 예상 판매 (결정 #87) — 이번 달 면세 수요(권장 출고가)로 완판 기한 안에 몇 병 팔릴지
   const dfForecast = (() => {
     if (!preview?.ok || !preview.dfEdition || !preview.category || !preview.evaluation) return null;
     const p: Product = {

@@ -48,13 +48,13 @@ function runProduction(s: GameState, report: MonthReport, monthOfYear: number): 
   // 원재료 가격 = 시세 지수 × 이벤트 보정 × 대량 구매 할인
   const prices = effectivePriceIndex(s, volumeDiscounts(s));
   const boughtKg: Record<string, number> = {};
-  // 입지 특성 (결정 #84): 물·입고 운송 할증·겨울 에너지비, 취수 허가(제주) = 월 발효 투입 용량 상한
+  // 입지 특성 (결정 #86): 물·입고 운송 할증·겨울 에너지비, 취수 허가(제주) = 월 발효 투입 용량 상한
   const site = siteOf(s);
   const energyFactor = seasonalEnergyFactor(s, monthOfYear);
   let waterLeftL = waterPermitCap(s);
   let waterBlocked = false;
 
-  // 위탁생산(OEM, 간토, 결정 #87) — 자사 생산보다 먼저 설비를 내준다. 원료는 위탁사 부담, 에너지비만 우리 몫
+  // 위탁생산(OEM, 간토, 결정 #89) — 자사 생산보다 먼저 설비를 내준다. 원료는 위탁사 부담, 에너지비만 우리 몫
   const oemDone: string[] = [];
   for (const c of s.oemContracts) {
     if (s.month < c.startMonth) continue; // 전용 증류기 설치 중
@@ -211,7 +211,7 @@ function runFinance(s: GameState, report: MonthReport, monthOfYear: number): voi
     pay('interest', interest);
     pay('principal', principal);
   }
-  // 재고 담보대출(홋카이도, 결정 #88): 시가가 떨어지면 추가 상환 요구
+  // 재고 담보대출(홋카이도, 결정 #90): 시가가 떨어지면 추가 상환 요구
   pay('principal', inventoryMarginCall(s, report));
   s.loans = s.loans.filter((l) => l.balance > 0);
 }
@@ -261,7 +261,7 @@ export function advanceMonth(prev: GameState): GameState {
   for (const x of sales) {
     const p = s.products.find((q) => q.id === x.productId);
     if (!p) continue;
-    // 면세 판매분은 주세가 없고 전통주 경감 출고량에도 잡지 않는다 (결정 #85)
+    // 면세 판매분은 주세가 없고 전통주 경감 출고량에도 잡지 않는다 (결정 #87)
     const domestic = x.bottles - (x.dutyFree ?? 0);
     tax += domestic * liquorTaxPerBottle(region, p.price, p.bottleMl, p.abv, traditionalTaxFactor(region, p.traditional, s.traditionalReleasedL, s.traditionalPrevYearL));
     if (p.traditional) s.traditionalReleasedL += (domestic * p.bottleMl) / 1000;

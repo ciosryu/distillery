@@ -11,7 +11,7 @@ import { mod } from './modifiers';
 import type { AxisId, Flavor, GameState, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
 
 export interface BlendComponent { source: 'cask' | 'lot'; id: string; liters: number }
-export interface BottleOptions { name: string; targetAbv: number | 'cask'; bottleMl: number; chillFilter: boolean; packagingId: string; /** 면세 전용 한정판(제주, 결정 #85) */ dutyFreeOnly?: boolean }
+export interface BottleOptions { name: string; targetAbv: number | 'cask'; bottleMl: number; chillFilter: boolean; packagingId: string; /** 면세 전용 한정판(제주, 결정 #87) */ dutyFreeOnly?: boolean }
 
 export interface BlendPreview {
   ok: boolean;
@@ -36,7 +36,7 @@ export interface BlendPreview {
   premiumLabel: boolean;
   traditional: boolean;
   suggestedPrice: number;
-  /** 입지 원료 제품 (면세 기념품 보너스 대상, 결정 #85) */
+  /** 입지 원료 제품 (면세 기념품 보너스 대상, 결정 #87) */
   localIngredient: boolean;
   /** 면세 한정판으로 내면 붙을 판 번호·연속 완판 수 */
   dfEdition: { vol: number; streak: number } | null;
@@ -168,7 +168,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   if (!PACKAGING[opts.packagingId]) errors.push('패키징을 선택하세요');
 
   const ageYears = isWhiskyCategory(category) ? Math.floor(minOakMonths / 12) : null;
-  // 면세 전용 한정판 (제주, 결정 #85): 전용 매대 1칸, 제주 원료 기념품 / 위스키는 숙성 연수 보너스
+  // 면세 전용 한정판 (제주, 결정 #87): 전용 매대 1칸, 제주 원료 기념품 / 위스키는 숙성 연수 보너스
   const localIngredient = items.every((i) => i.lot.localIngredient);
   const dutyFree = !!opts.dutyFreeOnly;
   if (dutyFree && !hasDutyFree(s)) errors.push('면세 전용 한정판은 지정면세점이 있는 입지(제주)에서만 만들 수 있습니다');
@@ -200,7 +200,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   };
 }
 
-/** 병당 포장재 원가 — 이벤트 보정 × 입지 운송 할증 (결정 #84) */
+/** 병당 포장재 원가 — 이벤트 보정 × 입지 운송 할증 (결정 #86) */
 function packagingUnitCost(s: GameState, opts: Pick<BottleOptions, 'packagingId' | 'bottleMl'>): number {
   return packagingCost(opts.packagingId, opts.bottleMl) * mod(s, 'packaging') * siteFreight(s, 'packaging');
 }

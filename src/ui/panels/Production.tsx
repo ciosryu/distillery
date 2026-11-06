@@ -85,7 +85,7 @@ function RecipeEditor() {
   const errs = validateRecipe(s, { ...draft, id: draft.id ?? 'new' } as Recipe);
   const preview = useMemo(() => (errs.length ? null : previewOf(s, { ...draft, id: 'preview' } as Recipe)), [s, draft, errs.length]);
   const stills = s.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'still');
-  // 입지 전용 원료(결정 #85)는 그 입지에서만 보인다
+  // 입지 전용 원료(결정 #87)는 그 입지에서만 보인다
   const siteId = siteOf(s).id;
   const ingOptions = Object.values(INGREDIENTS).filter((i) => draft.kind !== 'gin' && (i.kinds as string[]).includes(draft.kind) && (!i.sites || i.sites.includes(siteId)));
   const ratioSum = draft.mashBill.reduce((t, m) => t + m.ratio, 0);

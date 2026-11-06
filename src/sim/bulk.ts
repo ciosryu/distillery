@@ -55,7 +55,7 @@ export function spotSaturation(s: Pick<GameState, 'spotSoldLPA' | 'regionId'>, l
 
 /** 현물로 팔 때 받는 단가 — 현물 시장의 절반은 국내 블렌더로 보고 국산 프리미엄의 절반을 반영. lpa = 이번에 팔 물량(포화 반영) */
 export function spotBidPerLPA(s: GameState, lot: SpiritLot, lpa = 0): number {
-  // 입지 원액 운송비 (제주 섬 운송, 결정 #84)
+  // 입지 원액 운송비 (제주 섬 운송, 결정 #86)
   return bulkValuePerLPA(s, lot) * BULK.bid * trustAdj(s.b2bTrust) * (lot.sourced ? 1 : 1 + domesticPremium(s) * 0.5) * spotSaturation(s, lot, lpa) * (siteOf(s).bulkFreight ?? 1);
 }
 
@@ -104,7 +104,7 @@ function contractPrice(s: GameState, spirit: ContractTerms['spirit'], style: Con
   // 블렌더는 최소 품질보다 약간 높은 원액을 기준으로 값을 매긴다
   const ref = base * qualityFactor(minQuality + 8) * (style === 'peated' ? 1 + BULK.peatPremium : 1) * s.bulkIndex * mod(s, 'bulk');
   const p = ref * BULK.contract * (1 + BULK.termPremiumPer12 * Math.max(0, termMonths / 12 - 1)) * trustAdj(s.b2bTrust) * (prepay ? 1 - BULK.prepayDiscount : 1) * (domestic ? 1 + domesticPremium(s) : 1) * priceFactor;
-  // 입지 원액 운송비 (제주 섬 운송, 결정 #84)
+  // 입지 원액 운송비 (제주 섬 운송, 결정 #86)
   return Math.round((p * (siteOf(s).bulkFreight ?? 1)) / 100) * 100;
 }
 

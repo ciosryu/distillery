@@ -75,7 +75,7 @@ export interface SpiritLot {
   recipeId?: string;
   /** 원재료 배합 비율(레시피 기준) — 특산물·버번 옥수수 51% 같은 원료 규정 판정용 */
   mashShare?: Record<string, number>;
-  /** 입지 원료(제주 차조·청귤 등)를 쓴 원액 — 면세 기념품 매력도 (결정 #85) */
+  /** 입지 원료(제주 차조·청귤 등)를 쓴 원액 — 면세 기념품 매력도 (결정 #87) */
   localIngredient?: boolean;
 }
 
@@ -140,7 +140,7 @@ export interface Product {
   salesEma?: number;
   /** 첫 위스키 출시 오픈런 효과 */
   launchBoost?: { factor: number; untilMonth: number };
-  /** 면세 전용 한정판 (제주, 결정 #85) — 국내 판매 없음 */
+  /** 면세 전용 한정판 (제주, 결정 #87) — 국내 판매 없음 */
   dutyFreeOnly?: boolean;
   /** 입지 원료 제품 — 모든 구성 원액이 입지 원료 원액일 때 */
   localIngredient?: boolean;
@@ -246,7 +246,7 @@ export interface MonthReport {
   lostSalesBottles?: number;
   visitors?: number;
   tourismRevenue?: number;
-  /** 입지 특성 (결정 #84~) */
+  /** 입지 특성 (결정 #86~) */
   dutyFreeBottles?: number;
   /** 면세 판매 입소문으로 오른 인지도 */
   dutyFreeAwareness?: number;
@@ -257,7 +257,7 @@ export interface MonthReport {
   notes: string[];
 }
 
-/** 대형 유통 납품 계약 (경기, 결정 #86) — 정해진 물량을 할인 단가에 납품, 대금은 몇 달 뒤 */
+/** 대형 유통 납품 계약 (경기, 결정 #88) — 정해진 물량을 할인 단가에 납품, 대금은 몇 달 뒤 */
 export interface RetailTerms {
   id: string;
   partner: string;
@@ -273,7 +273,7 @@ export interface RetailTerms {
 export interface RetailOffer extends RetailTerms { expiresMonth: number }
 export interface RetailContract extends RetailTerms { startMonth: number; monthsDone: number; delivered: number; shortfall: number }
 
-/** 위탁생산(OEM) 계약 (간토, 결정 #87) — 원료는 위탁사 부담, 가공비를 받고 증류 설비를 내준다 */
+/** 위탁생산(OEM) 계약 (간토, 결정 #89) — 원료는 위탁사 부담, 가공비를 받고 증류 설비를 내준다 */
 export interface OemTerms {
   id: string; buyerName: string; batchesPerMonth: number; feePerBatch: number; termMonths: number; penaltyPerBatch: number;
   /** 전용 증류기 설치 지원형: 위탁사가 설비 패키지(증류기 + 발효조 2기) 설치비 일부를 체결 시 지원 */
@@ -286,7 +286,7 @@ export interface OemContract extends OemTerms { startMonth: number; monthsDone: 
 /** 매출채권 — 결제 지연 대금 */
 export interface Receivable { dueMonth: number; amount: number; label: string }
 
-/** 입지 고유 상태 (결정 #84~) */
+/** 입지 고유 상태 (결정 #86~) */
 export interface SiteState {
   /** 취수 허가량 — 월 발효 투입 용량 상한(L). 제주 */
   waterPermitL?: number;
@@ -411,7 +411,7 @@ export interface GameState {
   traditionalReleasedL: number;
   /** 작년 전통주 경감 대상 출고량(L) — 500㎘ 넘으면 올해 경감 없음 */
   traditionalPrevYearL: number;
-  /** 입지 특성 (결정 #84~) — 옛 저장에는 없을 수 있다 → normalizeState가 채운다 */
+  /** 입지 특성 (결정 #86~) — 옛 저장에는 없을 수 있다 → normalizeState가 채운다 */
   siteState: SiteState;
   retailOffers: RetailOffer[];
   retailContracts: RetailContract[];

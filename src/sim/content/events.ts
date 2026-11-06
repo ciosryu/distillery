@@ -47,7 +47,7 @@ export interface EventDef {
   months?: number[];
   /** 발생 가능한 지역 (없으면 모든 지역) */
   regions?: RegionId[];
-  /** 이 입지에서도 발생 (regions에 없어도) / sitesOnly면 이 입지에서만 — 결정 #84 */
+  /** 이 입지에서도 발생 (regions에 없어도) / sitesOnly면 이 입지에서만 — 결정 #86 */
   sites?: string[];
   sitesOnly?: boolean;
   requires?: Requirement[];
@@ -176,7 +176,7 @@ export const EVENTS: EventDef[] = [
   { id: 'tax_audit', title: '세무조사', category: 'regulation', chance: 0.008, cooldown: 48, minMonth: 24, requires: ['products'], text: '국세청 세무조사가 나왔습니다. 주세 신고 내역을 검증합니다.',
     effects: [{ type: 'taxAudit', rate: 0.15 }] },
   // ── 지역 고유 ──
-  // 입지 고유 이벤트 (결정 #84~)
+  // 입지 고유 이벤트 (결정 #86~)
   { id: 'jeju_tourism_boom', title: '제주 관광객 급증', category: 'market', chance: 0.02, cooldown: 36, sites: ['jeju'], sitesOnly: true, text: '제주 관광객이 크게 늘어 지정면세점 매출이 오릅니다.',
     effects: [m('dutyfree', 1.4, [12, 18], '제주 관광 호황')] },
   { id: 'jeju_tourism_slump', title: '제주 관광객 감소', category: 'market', chance: 0.015, cooldown: 36, sites: ['jeju'], sitesOnly: true, text: '항공편 감소와 고물가로 제주 관광객이 줄어듭니다.',

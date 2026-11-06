@@ -44,7 +44,7 @@ export type Action =
   | { type: 'cancelContract'; contractId: string }
   | { type: 'resolveEvent'; eventId: string; choice: number }
   | { type: 'acceptCaskBid'; bidId: string }
-  /** 입지 특성 (결정 #84~): 취수 증량 신청(제주), 대형 유통 납품(경기), 위탁생산(간토) */
+  /** 입지 특성 (결정 #86~): 취수 증량 신청(제주), 대형 유통 납품(경기), 위탁생산(간토) */
   | { type: 'applyWaterPermit' }
   | { type: 'acceptRetail'; offerId: string }
   | { type: 'cancelRetail'; contractId: string }
@@ -86,7 +86,7 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       if (def.kind === 'visitor' && def.requires && !s.equipment.some((e) => e.catalogId === def.requires)) return fail(prev, `${EQUIPMENT[def.requires]?.nameKo}부터 지어야 합니다`);
       if ((def.kind === 'visitor' || def.kind === 'facility') && s.equipment.some((e) => e.catalogId === def.id)) return fail(prev, '이미 있습니다');
       if (def.kind === 'facility' && def.regions && !def.regions.includes(s.regionId)) return fail(prev, '이 지역에서는 해당 없는 설비입니다');
-      // 입지 건설비·땅값 반영 (결정 #84)
+      // 입지 건설비·땅값 반영 (결정 #86)
       const cost = equipmentCost(s, def);
       if (s.cash < cost) return fail(prev, '현금이 부족합니다');
       s.cash -= cost;

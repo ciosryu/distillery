@@ -10,7 +10,7 @@ import type { Rng } from './rng';
 import type { GameState, MonthReport, OemContract, OemOffer, ProductCategory, RetailContract, RetailOffer } from './types';
 import { nid } from './util';
 
-// 입지 대표 거래 (결정 #86·#87, docs/design/regions.md §6.2) — 경기: 대형 유통 납품 / 간토: 위탁생산(OEM). 수치 [튜닝]
+// 입지 대표 거래 (결정 #88·#89, docs/design/regions.md §6.2) — 경기: 대형 유통 납품 / 간토: 위탁생산(OEM). 수치 [튜닝]
 
 /** 대형 유통 납품: 출고가 80%, 12개월, 대금 2개월 뒤, 미납 위약금 15%. 계약 중 숙성 위스키 매력도 ×0.9, 인지도 상승 ×1.2 */
 export const RETAIL_DEAL = { priceFactor: 0.8, termMonths: 12, paymentDelay: 2, penaltyShare: 0.15, offerChance: 0.15, maxActive: 2, appealPremium: 0.9, awarenessGain: 1.2 };

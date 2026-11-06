@@ -16,7 +16,7 @@ export const COLUMN_CUT = { c1: 0.1, c2: 0.82 };
 const FEINTS_RECOVERY = 0.9;
 const ENERGY_PER_L_RUN = 60; // 원 / (L·회)
 
-/** 배치 에너지비 — 위탁생산(OEM)처럼 원료 없이 증류만 할 때 (결정 #87) */
+/** 배치 에너지비 — 위탁생산(OEM)처럼 원료 없이 증류만 할 때 (결정 #89) */
 export function batchEnergyCost(still: StillDef, runs: number, energyIndex: number, factor = 1): number {
   return runs * still.chargeL * ENERGY_PER_L_RUN * Math.pow(1000 / still.chargeL, 0.3) * energyIndex * factor;
 }
@@ -35,14 +35,14 @@ export interface BatchResult {
 /** 배치 환경: 발효실 온도(°C), 난수(수율 편차·산패), 생산 지역(물류 배수) */
 export interface BatchEnv {
   tempC: number; rng?: Rng; regionId?: RegionId;
-  /** 입지 물 (결정 #84) */
+  /** 입지 물 (결정 #86) */
   water?: WaterId;
   /** 입지 입고 운송 할증(원재료) · 에너지비 배수(겨울 난방) */
   freight?: number;
   energyFactor?: number;
 }
 
-/** 물 효과 (결정 #84): 연수 = 이취↓·과일↑, 화산암반수 = 이취↓·과일 가산·수율↑ */
+/** 물 효과 (결정 #86): 연수 = 이취↓·과일↑, 화산암반수 = 이취↓·과일 가산·수율↑ */
 export const WATER_EFFECT: Record<WaterId, { offnote: number; fruity: number; fruitAdd: number; yield: number }> = {
   medium: { offnote: 1, fruity: 1, fruitAdd: 0, yield: 1 },
   soft: { offnote: 0.7, fruity: 1.1, fruitAdd: 0, yield: 1 },
@@ -200,7 +200,7 @@ export function simulateBatch(
     flavor.sulfur_meaty = r.kind === 'malt' ? 25 : r.kind === 'grain' ? 15 : 12;
     flavor.oily_waxy = 20;
     if (r.kind === 'soju' && r.pressure === 'atmospheric') flavor.toasted_grain = (flavor.toasted_grain ?? 0) + 14;
-    // 입지 물 (결정 #84)
+    // 입지 물 (결정 #86)
     const w = WATER_EFFECT[env?.water ?? 'medium'];
     flavor.solvent *= w.offnote;
     flavor.feinty *= w.offnote;

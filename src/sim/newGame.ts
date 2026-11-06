@@ -21,7 +21,7 @@ export const DEFAULT_STARTING_CASH = 500_000_000;
 
 export function presetRecipes(stillId: string, region: RegionId = 'KR', site?: string): Omit<Recipe, 'id'>[] {
   const base = { botanicals: [], botanicalMethod: 'steep' as const, pressure: 'atmospheric' as const, stillId };
-  // 입지 원료 프리셋 (결정 #85): 제주 고소리술·청귤 진, 홋카이도 감자 쇼추
+  // 입지 원료 프리셋 (결정 #87): 제주 고소리술·청귤 진, 홋카이도 감자 쇼추
   const siteFirst: Omit<Recipe, 'id'>[] = [];
   if (site === 'jeju') siteFirst.push(
     { ...base, name: '고소리술 — 제주 차조', kind: 'soju', mashBill: [{ ingredientId: 'jeju_millet', ratio: 0.9 }, { ingredientId: 'nuruk', ratio: 0.1 }], yeast: 'nuruk_native', fermentDays: 14, runs: 1, cut: { c1: 0.12, c2: 0.7 } },
@@ -63,7 +63,7 @@ function regionPresets(base: Pick<Recipe, 'botanicals' | 'botanicalMethod' | 'pr
   ];
 }
 
-/** 지역 특산 캐스크는 싸고, 다른 지역 캐스크는 비싸다 × 입지 단가·운송 할증 (결정 #84) (+ 이벤트 보정은 호출 측에서) */
+/** 지역 특산 캐스크는 싸고, 다른 지역 캐스크는 비싸다 × 입지 단가·운송 할증 (결정 #86) (+ 이벤트 보정은 호출 측에서) */
 export function regionalCaskPrice(s: Pick<GameState, 'regionId' | 'siteId'>, typeId: CaskTypeId): number {
   const site = siteOf(s);
   return Math.round(CASKS[typeId].price * (regionOf(s).caskPriceFactor[typeId] ?? 1) * (site.caskPriceFactor?.[typeId] ?? 1) * (site.freight?.casks ?? 1));
@@ -154,7 +154,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
   return s;
 }
 
-/** 옛 저장(입지 특성 이전)에 없는 필드를 채운다 (결정 #84~). 순수 — 새 객체를 돌려준다 */
+/** 옛 저장(입지 특성 이전)에 없는 필드를 채운다 (결정 #86~). 순수 — 새 객체를 돌려준다 */
 export function normalizeState(s: GameState): GameState {
   return {
     ...s,

@@ -155,7 +155,7 @@ export function B2B() {
   );
 }
 
-/** 입지 대표 거래 (결정 #86·#87): 경기 대형 유통 납품 / 간토 위탁생산 + 받을 대금 */
+/** 입지 대표 거래 (결정 #88·#89): 경기 대형 유통 납품 / 간토 위탁생산 + 받을 대금 */
 function SiteDeals() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);

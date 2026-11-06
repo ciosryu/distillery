@@ -6,7 +6,7 @@ import { mod } from './modifiers';
 import { rngFor } from './rng';
 import type { GameState, MonthReport, Product, ProductCategory, Recipe } from './types';
 
-// 입지 특성 규칙 (결정 #84~, docs/design/regions.md) — 기후·특산물(v0.9 #62) 위에 얹는 물·고정비·물류·취수·면세·담보대출
+// 입지 특성 규칙 (결정 #86~, docs/design/regions.md) — 기후·특산물(v0.9 #62) 위에 얹는 물·고정비·물류·취수·면세·담보대출
 
 // ───────────── 고정비·건설비·물류 ─────────────
 
@@ -41,7 +41,7 @@ export function seasonalEnergyFactor(s: Pick<GameState, 'regionId' | 'siteId'>, 
 /** 발주 목록에서 숨길 설비가 생기면 여기서 거른다 (지금은 전부 허용) */
 export const equipmentAvailable = (): EquipmentDef[] => Object.values(EQUIPMENT);
 
-// ───────────── 입지 원료 (결정 #85) ─────────────
+// ───────────── 입지 원료 (결정 #87) ─────────────
 
 /** 레시피가 이 입지의 원료(입지 전용 원재료·보태니컬)를 쓰는가 — 제주 차조 고소리술, 청귤 진 */
 export function hasLocalIngredient(site: Pick<SiteDef, 'id'>, r: Pick<Recipe, 'mashBill'> & Partial<Pick<Recipe, 'botanicals'>>): boolean {
@@ -85,7 +85,7 @@ export function resolveWaterPermit(s: GameState, report: MonthReport): void {
   }
 }
 
-// ───────────── 지정면세점 채널·면세 한정판 시리즈 (제주, 결정 #85) ─────────────
+// ───────────── 지정면세점 채널·면세 한정판 시리즈 (제주, 결정 #87) ─────────────
 
 /**
  * 지정면세점 [추정·튜닝]: JDC 지정면세점 주류 매출을 연 약 24만 케이스로 추정. 출도 내국인 대상, 주류 2L·미화 400달러 한도.
@@ -200,7 +200,7 @@ export function resolveDutyFreeEditions(s: GameState, report: MonthReport): void
   }
 }
 
-// ───────────── 재고 담보대출 (홋카이도, 결정 #88) ─────────────
+// ───────────── 재고 담보대출 (홋카이도, 결정 #90) ─────────────
 
 /** 담보 가치 = 숙성 중인 몰트·그레인 원액의 현물 시가 (오너십 캐스크 제외) */
 export function inventoryCollateral(s: GameState): number {

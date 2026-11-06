@@ -19,14 +19,14 @@ const YOUNG = process.env.NO_YOUNG !== '1';
 const TOUR = process.env.NO_TOUR !== '1';
 const DEFEND = process.env.NO_DEFEND !== '1';
 // 튜닝 실험용: 그레인 현물 시장 깊이 덮어쓰기 (#81)
-// 튜닝 실험용: 소매 역량 초과분 수수료·한도 (#93)
+// 튜닝 실험용: 소매 역량 초과분 수수료·한도 (#94)
 if (process.env.OVERFLOW_FEE) RETAIL.overflowFeeRate = Number(process.env.OVERFLOW_FEE);
 if (process.env.OVERFLOW_SHARE) RETAIL.overflowShare = Number(process.env.OVERFLOW_SHARE);
 if (process.env.GRAIN_DEPTH) REGIONS[REGION].grainSpotDepthLPA = Number(process.env.GRAIN_DEPTH);
 
 type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site';
 
-/** 입지 대표 결정 전략 (결정 #84~#88) — 지역 기본 전략(한국 브랜드형·일본 혼합형) 위에 입지 고유 결정 하나를 얹는다 */
+/** 입지 대표 결정 전략 (결정 #86~#90) — 지역 기본 전략(한국 브랜드형·일본 혼합형) 위에 입지 고유 결정 하나를 얹는다 */
 const SITE_KEY = `${REGION}/${SITE ?? 'default'}`;
 const SITE_STRATEGY: Record<string, string> = {
   'KR/default': '브랜드 + 대형 유통 납품(소주)',
@@ -158,7 +158,7 @@ function operations(s: GameState, strategy: Strategy): GameState {
   // 비운 오염 통은 재탄화해서 다시 쓴다
   for (const c of s.casks.filter((x) => !x.contents && x.contamination && x.recharCount < 2)) if (s.cash > 100_000_000) s = act(s, { type: 'rechar', caskId: c.id });
   const empty = s.casks.filter((c) => !c.contents && !c.contamination).length + s.caskOrders.reduce((t, o) => t + o.qty, 0);
-  // 오사카·교토 입지 전략: 싼 미즈나라 캐스크로 인센스 프리미엄을 노린다 (결정 #84)
+  // 오사카·교토 입지 전략: 싼 미즈나라 캐스크로 인센스 프리미엄을 노린다 (결정 #86)
   const caskType = siteMode && SITE_KEY === 'JP/kansai' && process.env.SITE_NO_MIZ !== '1' ? 'mizunara_hogshead' : 'ex_bourbon_barrel';
   if (empty < 12 && s.cash > 150_000_000) s = act(s, { type: 'buyCasks', caskType, qty: 12 });
   // v1.4: 원액이 든 캐스크가 숙성고의 85%를 넘으면 빈 통부터 중고로 팔고, 그래도 차면 랙 숙성고(+100 캐스크)를 늘린다
@@ -248,7 +248,7 @@ function start(s: GameState, strategy: Strategy): GameState {
 /** v1.4(#83) 공격적 증설형: 브랜드형과 같이 시작해, 위스키 수요가 공급을 넘으면 증류기·발효조를 단계적으로 늘린다.
  *  늘린 원액은 전부 자사 위스키로 숙성한다(v1.3까지는 뉴메이크 B2B로 팔아 LPA당 가치가 1/5이었다).
  *  자금이 모자라면 시설자금을 끌어 쓴다 — 빚과 3년 숙성 대기가 위험이다.
- *  결정 #90: 이 재설계는 거의 모든 입지에서 1위(지배 전략)가 되어 철회 — 기본은 옛 확장형(48개월 이후 증설분 B2B). NEW_EXPAND=1이면 재설계 */
+ *  (머지 때 기준 브랜치 #83 정책으로 교체) */
 const OLD_EXPAND = process.env.NEW_EXPAND !== '1';
 const EXPAND_RECIPE = '증설 몰트';
 const EXPAND_FROM = Number(process.env.EXPAND_FROM ?? 37);
@@ -505,7 +505,7 @@ const tally = (rs: Result[], by: 'netWorth' | 'bookWorth', into: Record<string, 
   const key = best.bankrupt ? '전멸' : best.strategy;
   into[key] = (into[key] ?? 0) + 1;
 };
-/** 공동 1위 집계 (결정 #89): 1위 순자산의 95% 이상인 전략은 공동 1위로 보고 1점을 나눠 갖는다 —
+/** 공동 1위 집계 (결정 #91): 1위 순자산의 95% 이상인 전략은 공동 1위로 보고 1점을 나눠 갖는다 —
  *  "기본 전략 + 한 가지"인 site 전략은 같은 시드에서 함께 움직여, 근소한 평균 우위만으로 대부분 1위가 되는 과장을 막는다 */
 const TIE_BAND = 0.95;
 const tallyTie = (rs: Result[], into: Record<string, number>) => {
@@ -532,4 +532,4 @@ for (const st of list) {
 const dist = (w: Record<string, number>) => [...list, '전멸'].map((st) => `${st} ${w[st] ?? 0}`).join(' · ');
 console.log(`\n[${REGION}${SITE ? '/' + SITE : ''}] 시드별 1위 분포(시가 평가): ${dist(wins)}`);
 console.log(`[${REGION}] 시드별 1위 분포(원가 평가): ${dist(bookWins)}  (한 전략이 60% 이상 이기면 지배 전략 의심)`);
-console.log(`[${REGION}${SITE ? '/' + SITE : ''}] 공동 1위 집계(1위의 95% 이내 나눔, #89): ${[...list, '전멸'].map((st) => `${st} ${Number((tieWins[st] ?? 0).toFixed(1))}`).join(' · ')}`);
+console.log(`[${REGION}${SITE ? '/' + SITE : ''}] 공동 1위 집계(1위의 95% 이내 나눔, #91): ${[...list, '전멸'].map((st) => `${st} ${Number((tieWins[st] ?? 0).toFixed(1))}`).join(' · ')}`);

@@ -30,7 +30,7 @@ function meets(s: GameState, r: Requirement): boolean {
 }
 
 function eligible(s: GameState, def: EventDef, monthOfYear: number): boolean {
-  // 입지 이벤트 (결정 #84): sites에 있으면 지역과 무관하게 발생, sitesOnly면 그 입지에서만
+  // 입지 이벤트 (결정 #86): sites에 있으면 지역과 무관하게 발생, sitesOnly면 그 입지에서만
   const atSite = !!def.sites?.includes(siteOf(s).id);
   if (def.sitesOnly && !atSite) return false;
   if (!atSite && def.regions && !def.regions.includes(s.regionId)) return false;

@@ -35,7 +35,7 @@ export const BUYERS: NamedEntity[] = [
 ];
 
 /** 독립 병입자 — 우수 캐스크 매입 제안 */
-/** 대형 유통사 (경기 대형 유통 납품, 결정 #86) — 가상 회사 */
+/** 대형 유통사 (경기 대형 유통 납품, 결정 #88) — 가상 회사 */
 export const RETAILERS: NamedEntity[] = [
   { id: 'saenal', real: '새날 편의점', fictional: '새날 편의점', country: 'KR', canDefault: true },
   { id: 'gaon', real: '가온마트', fictional: '가온마트', country: 'KR', canDefault: true },

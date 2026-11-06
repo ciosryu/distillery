@@ -40,7 +40,7 @@ export function appeal(p: Product, s?: Pick<GameState, 'modifiers' | 'month' | '
   const label = region?.whisky.premiumLabel && aged && !p.premiumLabel ? region.whisky.premiumLabel.appealWithout : 1;
   // 지역 특산물
   const specialty = p.specialty ? region?.specialties?.find((x) => x.id === p.specialty)?.appealBonus ?? 1 : 1;
-  // 입지 특성 (결정 #84~): 대형 유통 입점은 숙성 위스키의 프리미엄 이미지를 깎는다 / 미즈나라 인센스 향은 일본 프리미엄 / 면세 한정판
+  // 입지 특성 (결정 #86~): 대형 유통 입점은 숙성 위스키의 프리미엄 이미지를 깎는다 / 미즈나라 인센스 향은 일본 프리미엄 / 면세 한정판
   const premium = s && aged ? mod(s, 'appeal:premium') : 1;
   const incense = region?.incensePremium && (p.flavor.incense ?? 0) >= 8 ? region.incensePremium : 1;
   const edition = dutyFreeEditionAppeal(p);
@@ -62,7 +62,7 @@ export interface DemandBreakdown {
 
 export function demandFor(s: GameState, p: Product, sameCategoryCount: number, monthOfYear: number, region: RegionDef = regionOf(s)): DemandBreakdown {
   const m = region.market[p.category];
-  // 면세 전용 한정판은 국내 매대에 없다 (결정 #85). 입지 수요 배수(관광·인바운드, 결정 #84)
+  // 면세 전용 한정판은 국내 매대에 없다 (결정 #87). 입지 수요 배수(관광·인바운드, 결정 #86)
   if (p.dutyFreeOnly) return { marketL: 0, reach: 0, appeal: appeal(p, s), consumerPricePerL: 0, refPricePerL: refPricePerL(region, p.category, p.abv), priceFactor: 0, demandBottles: 0 };
   const marketL = (m.baseCases * 9 / 12) * region.seasonality[monthOfYear - 1]! * (s.trend[p.category] ?? 1) * mod(s, `demand:${p.category}`) * mod(s, 'demand:all') * (siteOf(s).demandFactor ?? 1);
   const reach = (s.awareness * coverage(s) * m.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
@@ -80,12 +80,12 @@ export function demandFor(s: GameState, p: Product, sameCategoryCount: number, m
   return { marketL, reach, appeal: a, consumerPricePerL, refPricePerL: ref, priceFactor, demandBottles };
 }
 
-export interface SalesResult { productId: string; name: string; bottles: number; revenue: number; demandBottles: number; distribution: number; overflowBottles?: number; /** 면세 채널 판매 병수 (bottles에 포함, 주세 없음) — 결정 #85 */ dutyFree?: number }
+export interface SalesResult { productId: string; name: string; bottles: number; revenue: number; demandBottles: number; distribution: number; overflowBottles?: number; /** 면세 채널 판매 병수 (bottles에 포함, 주세 없음) — 결정 #87 */ dutyFree?: number }
 
 /** 소매 처리 역량 집계 (runSales가 채운다) */
 export interface RetailSummary { capacityCases: number; soldCases: number; overflowCases: number; lostBottles: number }
 
-/** 병당 유통비 = 채널 수수료(출고가 비례) + 물류비 × 입지 출고 물류 배수 (결정 #84) */
+/** 병당 유통비 = 채널 수수료(출고가 비례) + 물류비 × 입지 출고 물류 배수 (결정 #86) */
 export function distributionCostPerBottle(price: number, bottleMl: number, outbound = 1): number {
   return price * DISTRIBUTION.channelFeeRate + logisticsCost(bottleMl) * outbound;
 }
@@ -143,7 +143,7 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
     const extraFee = over * p.price * (RETAIL.overflowFeeRate - DISTRIBUTION.channelFeeRate);
     out.push({ productId: p.id, name: p.name, bottles: sold, revenue: sold * p.price, demandBottles: demand, distribution: Math.round(sold * distributionCostPerBottle(p.price, p.bottleMl, outboundLogistics(s)) + extraFee), overflowBottles: over });
   }
-  // 3) 지정면세점 채널 (제주, 결정 #85) — 면세점이 진열·판매하므로 소매 처리 역량을 쓰지 않고, 섬 안에서 팔려 육지 출고 물류 할증도 없다
+  // 3) 지정면세점 채널 (제주, 결정 #87) — 면세점이 진열·판매하므로 소매 처리 역량을 쓰지 않고, 섬 안에서 팔려 육지 출고 물류 할증도 없다
   if (siteOf(s).dutyFree) {
     for (const p of s.products) {
       if (p.stockBottles <= 0) { p.lastMonthDutyFree = 0; continue; }
@@ -167,7 +167,7 @@ export const AWARENESS = { marketing: 0.012, wordOfMouth: 0.000003, decay: 0.012
 
 /**
  * 인지도 갱신: 마케팅 + 입소문(판매량 × 품질) − 망각.
- * 면세 판매 1병은 입소문에서 DUTY_FREE.wordOfMouthWeight병으로 친다 — 출도 관광객이 육지로 가져간다 (결정 #85).
+ * 면세 판매 1병은 입소문에서 DUTY_FREE.wordOfMouthWeight병으로 친다 — 출도 관광객이 육지로 가져간다 (결정 #87).
  * 반환: 그중 면세 판매 입소문 몫(인지도 증가분)
  */
 export function updateAwareness(s: GameState, sales: SalesResult[]): number {

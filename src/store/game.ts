@@ -8,7 +8,7 @@ function load(): GameState | null {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as GameState;
-    // 입지 특성(결정 #84~) 이전 저장은 빠진 필드를 채워 읽는다
+    // 입지 특성(결정 #86~) 이전 저장은 빠진 필드를 채워 읽는다
     return s && s.version === 5 ? normalizeState(s) : null;
   } catch {
     return null;

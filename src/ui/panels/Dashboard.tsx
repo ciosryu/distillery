@@ -103,7 +103,7 @@ export function Dashboard() {
   );
 }
 
-/** 입지 카드 (결정 #84~): 특성 요약 + 취수 허가·면세 매대·난방·담보대출 상태 */
+/** 입지 카드 (결정 #86~): 특성 요약 + 취수 허가·면세 매대·난방·담보대출 상태 */
 function SiteCard() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);

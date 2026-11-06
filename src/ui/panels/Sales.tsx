@@ -31,7 +31,7 @@ export function Sales() {
           <Table head={['제품', '카테고리', '규격', '품질', '재고', '출고가(병)', '소비자가', '기준가 대비', '이번 달 예상 수요', '지난달 판매', '누적', '병당 공헌이익']}>
             {active.map((p) => {
               const d = demandFor(s, p, counts[p.category] ?? 1, monthOfYear);
-              // 면세 채널(제주, 결정 #85): 면세 전용 한정판은 국내 매대에 없다 → 면세가·면세 기준가로 보여 준다
+              // 면세 채널(제주, 결정 #87): 면세 전용 한정판은 국내 매대에 없다 → 면세가·면세 기준가로 보여 준다
               const df = hasDutyFree(s) ? productDutyFreeDemand(s, p, counts[p.category] ?? 1, monthOfYear) : 0;
               const dfOnly = !!p.dutyFreeOnly;
               const consumer = dfOnly ? dutyFreeConsumerPrice(p) : productConsumerPrice(s, p);

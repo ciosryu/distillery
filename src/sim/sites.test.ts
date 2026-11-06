@@ -8,13 +8,13 @@ import {
 import { EQUIPMENT } from './content/catalog';
 import { refPricePerL, REGIONS, siteOf, sitesOfRegion } from './content/regions';
 
-// 입지 특성 이식 (결정 #84~#88) — docs/design/regions.md
+// 입지 특성 이식 (결정 #86~#90) — docs/design/regions.md
 
 const product = (over: Partial<Product> = {}): Product => ({ id: 'p', name: 'p', category: 'whisky', ageYears: 4, oakMonths: 48, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 80, style: null, sourcedShare: 0, stockBottles: 5000, price: 60_000, unitCost: 20_000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, ...over });
 const lot = (over: Partial<SpiritLot> = {}): SpiritLot => ({ id: 'L1', name: 'l', kind: 'soju', volumeL: 400, abv: 0.45, flavor: { nuruk_rice: 30, fresh_fruit: 20 }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 9_000, ...over });
 const report = (s: GameState): MonthReport => ({ month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] });
 
-describe('입지 목록 (결정 #84)', () => {
+describe('입지 목록 (결정 #86)', () => {
   it('한국 경기·안동·제주, 일본 간토·오사카교토·홋카이도, 대만 이란·진먼섬', () => {
     expect(sitesOfRegion('KR').map((x) => x.id)).toEqual(['default', 'andong', 'jeju']);
     expect(sitesOfRegion('JP').map((x) => x.id)).toEqual(['default', 'kansai', 'hokkaido']);
@@ -77,7 +77,7 @@ describe('입지 목록 (결정 #84)', () => {
   });
 });
 
-describe('제주 — 취수 허가·면세 한정판 (결정 #85)', () => {
+describe('제주 — 취수 허가·면세 한정판 (결정 #87)', () => {
   it('취수 허가: 월 15,000L 상한, 증량 신청은 심사 후 승인/불허', () => {
     let j = newGame({ seed: 3, region: 'KR', site: 'jeju' });
     expect(waterPermitCap(j)).toBe(15_000);
@@ -160,7 +160,7 @@ describe('제주 — 취수 허가·면세 한정판 (결정 #85)', () => {
   });
 });
 
-describe('경기 대형 유통 납품 (결정 #86)', () => {
+describe('경기 대형 유통 납품 (결정 #88)', () => {
   it('계약: 매달 출고가 80%로 가져가고 대금은 2개월 뒤, 숙성 위스키 매력도 ×0.9', () => {
     let g = newGame({ seed: 1, region: 'KR' });
     g.products = [product({ id: 'P1', category: 'soju_distilled', ageYears: null, abv: 0.25, bottleMl: 375, price: 8_000, stockBottles: 2000 })];
@@ -189,7 +189,7 @@ describe('경기 대형 유통 납품 (결정 #86)', () => {
   });
 });
 
-describe('간토 위탁생산 (결정 #87)', () => {
+describe('간토 위탁생산 (결정 #89)', () => {
   it('남는 설비가 있으면 그 크기, 없으면 전용 증류기 지원형 — 지원금만큼 덜 내고 설치 후 시작', () => {
     const k = newGame({ seed: 1, region: 'JP' });
     const o = makeOemOffer(k, mulberry32(1))!;
@@ -218,7 +218,7 @@ describe('간토 위탁생산 (결정 #87)', () => {
   });
 });
 
-describe('홋카이도 재고 담보대출 (결정 #88)', () => {
+describe('홋카이도 재고 담보대출 (결정 #90)', () => {
   it('숙성 재고 시가 × 60%까지, 다른 입지는 불가, 시가가 떨어지면 추가 상환', () => {
     const h = newGame({ seed: 1, region: 'JP', site: 'hokkaido' });
     const k = newGame({ seed: 1, region: 'JP' });

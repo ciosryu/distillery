@@ -50,12 +50,12 @@ export interface SpecialtyDef {
   siteOnly?: string;
 }
 
-/** 물: 연수 = 과일·플로럴↑·이취↓, 화산암반수 = 이취↓·수율 소폭↑ (결정 #84) */
+/** 물: 연수 = 과일·플로럴↑·이취↓, 화산암반수 = 이취↓·수율 소폭↑ (결정 #86) */
 export type WaterId = 'medium' | 'soft' | 'volcanic';
 
 /**
  * 지역 안의 증류소 입지. 세제·시장·인건비는 지역과 같고 기후·특산물 자격이 다르다 (v0.9 #62).
- * 산지 특성(결정 #84~, docs/design/regions.md): 물·고정비·건설비·물류·수요·난방·취수 허가·면세 채널·대표 결정. 모두 선택 항목 [튜닝]
+ * 산지 특성(결정 #86~, docs/design/regions.md): 물·고정비·건설비·물류·수요·난방·취수 허가·면세 채널·대표 결정. 모두 선택 항목 [튜닝]
  */
 export interface SiteDef {
   id: string;
@@ -138,7 +138,7 @@ export interface RegionDef {
   sites?: SiteDef[];
   /** 기본 입지의 산지 특성 (기후는 지역 값을 쓴다) */
   defaultSite?: Omit<Partial<SiteDef>, 'id' | 'tempC' | 'humidity'>;
-  /** 일본 미즈나라 백단·인센스 향(incense ≥ 8) 매력도 배수 (결정 #84) */
+  /** 일본 미즈나라 백단·인센스 향(incense ≥ 8) 매력도 배수 (결정 #86) */
   incensePremium?: number;
   /** 비지터 센터 관광 잠재력 (한국 = 1) */
   tourism?: number;
@@ -194,7 +194,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     // 완화책(#73): 전통주 주세 경감 — 증류주 연 100㎘까지 50%, 100~200㎘ 30% (2025 시행령 개정안 보도 기준) [확인 필요: 최종 조문]
     // 요건 강화(#75): 지역 농산물 70% 이상 + 농업경영체 등록(원료 계약재배) + 전년 경감 대상 출고 500㎘ 이하
     traditionalRelief: { nativeShare: 0.7, tiers: [{ upToL: 100_000, factor: 0.5 }, { upToL: 200_000, factor: 0.7 }], label: '전통주 주세 경감', basis: '주세법: 전통주 세율 100분의 50 범위 경감, 시행령 개정안: 증류주 100㎘ 이하 50%·100~200㎘ 30%, 대상 출고량 500㎘ 이하. 지역특산주는 농업경영체·생산자단체 요건', requiresFacility: 'kr_farm_registration', maxPrevYearL: 500_000 },
-    // 경기 내륙 (기본 입지) — 수도권 시장 접근, 대표 결정: 대형 유통 납품 (결정 #84)
+    // 경기 내륙 (기본 입지) — 수도권 시장 접근, 대표 결정: 대형 유통 납품 (결정 #86)
     defaultSite: {
       tagline: '수도권 시장 접근 — 균형형·튜토리얼', difficulty: 2, outboundLogistics: 0.9, deals: ['retail'],
       traits: [
@@ -217,7 +217,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       basis: '안동 ASOS 평년값(연·계절 평균) 기반 근사. 김창수위스키 제2증류소(2026-07 준공) 소재지',
       tourism: 1.2,
     }, {
-      // 제주 (결정 #84): 화산암반수·지정면세점, 대신 취수 허가·해운 물류
+      // 제주 (결정 #86): 화산암반수·지정면세점, 대신 취수 허가·해운 물류
       id: 'jeju', nameKo: '제주',
       tagline: '화산암반수와 면세점, 대신 물을 마음대로 퍼 올릴 수 없다', difficulty: 3,
       // 제주 평년값 근사 [확인 필요: 기상청 월별 평년값]
@@ -281,9 +281,9 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     eventWeights: { market: 1.1, supply: 1.0, disaster: 1.4, regulation: 0.8, b2b: 1.1, opportunity: 1.0, people: 1.0 },
     // 수입 원액 병입은 "재패니즈 위스키"가 될 수 없고 하이볼용 저가 위스키로 소비된다
     sourcedPenalty: 0.85,
-    // 미즈나라 백단·인센스 향은 일본 시장 프리미엄 (결정 #84)
+    // 미즈나라 백단·인센스 향은 일본 시장 프리미엄 (결정 #86)
     incensePremium: 1.25,
-    // 간토 내륙 (기본 입지) — 대표 결정: 위탁생산(OEM) (결정 #84)
+    // 간토 내륙 (기본 입지) — 대표 결정: 위탁생산(OEM) (결정 #86)
     defaultSite: {
       tagline: '원액 공급 계약·위탁생산으로 버티는 표준형', difficulty: 3, deals: ['oem'],
       traits: [
@@ -293,7 +293,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       ],
     },
     sites: [{
-      // 오사카·교토 (결정 #84): 명수·미즈나라·관광, 대신 지진과 땅값
+      // 오사카·교토 (결정 #86): 명수·미즈나라·관광, 대신 지진과 땅값
       id: 'kansai', nameKo: '오사카·교토',
       tagline: '명수·미즈나라·관광의 땅, 대신 지진과 땅값', difficulty: 3,
       tempC: [4.8, 5.4, 8.8, 14.4, 19.5, 23.2, 27.3, 28.5, 24.4, 18.4, 12.5, 7.2],
@@ -310,7 +310,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
         { tone: 'bad', text: '땅값: 숙성고 증설비 ×1.3, 기후가 따뜻해 증발이 간토보다 많다' },
       ],
     }, {
-      // 홋카이도 (결정 #84): 싸고 느린 땅, 재고 담보대출로 버티는 장기 숙성
+      // 홋카이도 (결정 #86): 싸고 느린 땅, 재고 담보대출로 버티는 장기 숙성
       id: 'hokkaido', nameKo: '홋카이도',
       tagline: '싸고 느린 땅에 오래 묵히는 재고전', difficulty: 3,
       tempC: [-3.5, -3, 0.5, 6, 11, 15, 19.5, 21, 17, 10.5, 4, -1],

@@ -91,7 +91,7 @@ export default function App() {
             <Button variant="primary" small onClick={() => { restart(ngName, ngRegion, ngSite); setNewGameOpen(false); setNgName(''); }}>시작</Button>
             <Button variant="ghost" small onClick={() => setNewGameOpen(false)}>취소</Button>
             {(() => {
-              // 입지 특성 미리보기 (결정 #84)
+              // 입지 특성 미리보기 (결정 #86)
               const site = siteOf({ regionId: ngRegion, siteId: ngSite || undefined });
               if (!site.traits?.length) return null;
               return (
