@@ -172,7 +172,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       soju_distilled: { baseCases: casesOf('KR.soju_distilled.domestic_release.2025'), baseSource: 'KR.soju_distilled (TASIS 2025) — 희석식(81.6만㎘)의 0.6%', refConsumerPricePerL: 40_000, refAbv: 0.25, elasticity: 2.0, shareCap: 0.03 },
       // 한국 진 시장은 작다 — 칵테일 바에서 제한적으로 쓰이는 정도 [결정 #45]. 규모는 관세청 원표 진 수입 576.7t(4차) — 수입 브랜드 중심이라 점유 상한 낮음
       gin: { baseCases: casesOf('KR.gin.imports.2024'), baseSource: 'KR.gin 수입 576.7t (관세청 원표 2024, 750L/톤 가정)', refConsumerPricePerL: 32_000, refAbv: 0.43, elasticity: 2.2, shareCap: 0.1 },
-      whisky: { baseCases: Math.round(krWhisky * 0.4), baseSource: 'KR.whisky_total × 40% (싱글 몰트 몫, 추정)', refConsumerPricePerL: 170_000, refAbv: 0.43, elasticity: 1.1, shareCap: 0.0055 }, // #85: 0.01 → 0.0055 — 크래프트 싱글몰트 4~10년차 국내 판매 현실 범위 0.8만~2.5만 병/년 (§16.20)
+      whisky: { baseCases: Math.round(krWhisky * 0.4), baseSource: 'KR.whisky_total × 40% (싱글 몰트 몫, 추정)', refConsumerPricePerL: 170_000, refAbv: 0.43, elasticity: 1.1, shareCap: 0.0055 }, // #85: 0.01 → 0.0055 — 크래프트 싱글몰트 4~10년차 국내 판매 현실 범위 0.8만~2.5만 병/년 (§16.22)
       blended_whisky: { baseCases: Math.round(krWhisky * 0.5), baseSource: 'KR.whisky_total × 50% (블렌디드 몫, 추정)', refConsumerPricePerL: 90_000, refAbv: 0.4, elasticity: 1.5, shareCap: 0.012 },
       grain_whisky: { baseCases: Math.round(krWhisky * 0.1), baseSource: 'KR.whisky_total × 10% (추정)', refConsumerPricePerL: 100_000, refAbv: 0.43, elasticity: 1.3, shareCap: 0.02 },
       // 중식당 중심의 고량주 시장 — 중국산 기타 증류주 수입 7,915t(관세청 원표, 4차)을 대리값으로
@@ -261,7 +261,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       gin: { baseCases: Math.round(casesOf('JP.gin.imports.CY2024') * 2), baseSource: 'JP.gin 수입(CY2024) × 2 (국산 ≈ 수입 가정)', refConsumerPricePerL: 40_000, refAbv: 0.43, elasticity: 1.8, shareCap: 0.015 },
       // 재패니즈 싱글 몰트는 프리미엄이지만 물량은 작다(대부분 하이볼용 블렌디드). 크래프트 증류소 다수가 경쟁 [추정]
       // 일본은 세금이 가벼워 같은 술의 소비자가가 한국보다 낮다 — 크래프트 3년 700ml ≒ ¥6,000~10,000, 주요 브랜드 12년급은 그 이상 → 카테고리 평균 12만 원/L [추정]
-      whisky: { baseCases: Math.round(jpWhisky * 0.04), baseSource: 'JP.whisky_total × 4% (싱글 몰트 몫, 추정)', refConsumerPricePerL: 120_000, refAbv: 0.43, elasticity: 1.0, shareCap: 0.008 }, // #85: 0.01 → 0.008 — 현실 범위 1.5만~5만 병/년, 증류소 101곳 경쟁 (§16.20)
+      whisky: { baseCases: Math.round(jpWhisky * 0.04), baseSource: 'JP.whisky_total × 4% (싱글 몰트 몫, 추정)', refConsumerPricePerL: 120_000, refAbv: 0.43, elasticity: 1.0, shareCap: 0.008 }, // #85: 0.01 → 0.008 — 현실 범위 1.5만~5만 병/년, 증류소 101곳 경쟁 (§16.22)
       blended_whisky: { baseCases: Math.round(jpWhisky * 0.78), baseSource: 'JP.whisky_total × 78% (블렌디드·하이볼용, 추정)', refConsumerPricePerL: 28_000, refAbv: 0.4, elasticity: 2.0, shareCap: 0.003 },
       grain_whisky: { baseCases: Math.round(jpWhisky * 0.1), baseSource: 'JP.whisky_total × 10% (추정)', refConsumerPricePerL: 70_000, refAbv: 0.43, elasticity: 1.5, shareCap: 0.01 },
       // 교차 생산(#67): 중화요리점 중심의 작은 시장 [추정]
@@ -351,7 +351,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       gin: { baseCases: 40_000, baseSource: '추정: 소규모 칵테일 시장', refConsumerPricePerL: 45_000, refAbv: 0.43, elasticity: 1.8, shareCap: 0.1 },
       // 싱글 몰트 애호 시장 — 자국 브랜드 수용도가 높다(카발란 선례). 점유 상한은 한국보다 약간 높게
       // 세금이 낮아 소비자가는 한국보다 낮다 — 카발란 클래식 700ml ≒ NT$1,500~2,000 [추정]
-      whisky: { baseCases: Math.round(twWhisky * 0.6), baseSource: 'TW.whisky_total(2023) × 60% (싱글 몰트 몫, 추정)', refConsumerPricePerL: 110_000, refAbv: 0.46, elasticity: 1.0, shareCap: 0.005 }, // #85: 0.012 → 0.005 — 카발란이 국내 시장 장악, 현실 범위 0.5만~1.5만 병/년 (§16.20)
+      whisky: { baseCases: Math.round(twWhisky * 0.6), baseSource: 'TW.whisky_total(2023) × 60% (싱글 몰트 몫, 추정)', refConsumerPricePerL: 110_000, refAbv: 0.46, elasticity: 1.0, shareCap: 0.005 }, // #85: 0.012 → 0.005 — 카발란이 국내 시장 장악, 현실 범위 0.5만~1.5만 병/년 (§16.22)
       blended_whisky: { baseCases: Math.round(twWhisky * 0.35), baseSource: 'TW.whisky_total(2023) × 35% (추정)', refConsumerPricePerL: 40_000, refAbv: 0.4, elasticity: 1.6, shareCap: 0.01 },
       grain_whisky: { baseCases: Math.round(twWhisky * 0.05), baseSource: 'TW.whisky_total(2023) × 5% (추정)', refConsumerPricePerL: 70_000, refAbv: 0.43, elasticity: 1.3, shareCap: 0.02 },
       // 금문주창(金門酒廠)이 약 80%를 쥔 고량주 시장 — 매출로 역산한 추정치. 진먼식 고량주는 특산물(아래 specialties)
