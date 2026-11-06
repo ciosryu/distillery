@@ -92,7 +92,9 @@ export interface SiteDef {
   /** 원액 B2B 운송비 — 섬·원거리 입지는 블렌더 매입 단가(현물·계약)가 깎인다 */
   bulkFreight?: number;
   /** 입지 대표 거래: 대형 유통 납품 / 위탁생산 */
-  deals?: ('retail' | 'oem')[];
+  deals?: ('retail' | 'oem' | 'filling')[];
+  /** 쿠퍼리지 주문 납품 개월 (없으면 시장 기본) — 스페이사이드 쿠퍼리지 클러스터 (#113) */
+  cooperageLeadMonths?: number;
   /** 이벤트별 가중치 배수 (이벤트 id → 배수) */
   eventBoost?: Partial<Record<string, number>>;
   /** 입지 캐스크 단가 배수 (지역 배수에 곱한다) */
@@ -395,6 +397,69 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     }],
     caskPriceFactor: { korean_oak_quarter: 1.6, mizunara_hogshead: 1.4 },
   },
+  // 영국 (#110, docs/design/scotland.md) — 기본 입지 스페이사이드, 아일라는 다음 PR. 런던(진)은 Tier 3
+  UK: {
+    id: 'UK',
+    nameKo: '영국 (스코틀랜드 스페이사이드)',
+    // 스페이사이드 평년값 근사 — regions.md §3 숙성 보정(3~14.5°C, 증발 2.0%)과 맞춘다 [조사 대기: Met Office 평년값]
+    tempC: [3.0, 3.4, 5.0, 7.0, 9.8, 12.5, 14.5, 14.2, 12.0, 8.8, 5.5, 3.3],
+    humidity: [86, 84, 81, 79, 78, 79, 80, 82, 83, 85, 86, 87],
+    // 종량세 £33.99/LPA(2026-02-01, 22% 초과) × 1,800원/£ + 부가세 20% — 기준 브랜치 수출 시장 '영국'과 같은 값
+    tax: { adValorem: 0, education: 0, specificPerLPA: 61_200, vat: 0.2, label: '종량세 약 61,200원/LPA (£33.99) + 부가세 20%' },
+    retailMarkup: 1.35,
+    overheadPerMonth: 14_000_000,
+    laborCost: 1.4,
+    allowedKinds: ALL_KINDS,
+    // 증류소 방문 연 200만 명(SWA 2018) — 위스키 관광이 가장 큰 나라
+    tourism: 1.3,
+    market: {
+      // [조사 대기] 아래 시장 규모는 임시값 — 영국 증류주 출고 130.4M LPA(HMRC 2024) 중 위스키 몫을 조사로 채운다
+      whisky: { baseCases: 1_200_000, baseSource: '임시: 영국 싱글몰트 내수 (조사 대기)', refConsumerPricePerL: 90_000, refAbv: 0.43, elasticity: 1.3, shareCap: 0.005 },
+      blended_whisky: { baseCases: 6_000_000, baseSource: '임시: 영국 블렌디드 스카치 내수 (조사 대기)', refConsumerPricePerL: 40_000, refAbv: 0.4, elasticity: 2.0, shareCap: 0.002 },
+      grain_whisky: { baseCases: 150_000, baseSource: '임시 (조사 대기)', refConsumerPricePerL: 70_000, refAbv: 0.43, elasticity: 1.5, shareCap: 0.01 },
+      gin: { baseCases: 5_000_000, baseSource: '임시: 영국 진 내수 (조사 대기)', refConsumerPricePerL: 50_000, refAbv: 0.4, elasticity: 2.0, shareCap: 0.003 },
+      soju_distilled: { baseCases: 5_000, baseSource: '추정: K-주류 틈새', refConsumerPricePerL: 30_000, refAbv: 0.25, elasticity: 2.0, shareCap: 0.05 },
+      baijiu: { baseCases: 10_000, baseSource: '추정: 중식당 중심 소규모', refConsumerPricePerL: 45_000, refAbv: 0.45, elasticity: 1.8, shareCap: 0.02 },
+      malt_spirit: { baseCases: 20_000, baseSource: '추정', refConsumerPricePerL: 70_000, refAbv: 0.46, elasticity: 1.3, shareCap: 0.2 },
+      flavored_spirit: { baseCases: 300_000, baseSource: '추정', refConsumerPricePerL: 35_000, refAbv: 0.37, elasticity: 2.0, shareCap: 0.05 },
+    },
+    categoryNames: { whisky: '스카치 싱글 몰트', blended_whisky: '블렌디드 스카치', grain_whisky: '싱글 그레인 스카치' },
+    // 크리스마스 성수기, 1월 번스 나이트 뒤 비수기 [추정]
+    seasonality: [0.85, 0.85, 0.95, 0.95, 1.0, 1.05, 0.95, 0.95, 0.95, 1.0, 1.15, 1.4],
+    // 원액이 넘친다 — 국산 원액 프리미엄 없음 (regions.md §4.4)
+    domesticSpiritPremium: 0,
+    // 블렌더 생태계가 세계에서 가장 깊다 (스페이사이드 블렌더 밀집 ×1.5, regions.md §4.4.2)
+    bulkMarketDepth: 1.5,
+    grainSpotDepthLPA: Infinity,
+    // 공급 과잉·관세 같은 시장 이벤트와 블렌더 거래가 잦고, 태풍·지진은 없다
+    eventWeights: { market: 1.2, supply: 1.0, disaster: 0.6, regulation: 1.0, b2b: 1.3, opportunity: 1.0, people: 1.2 },
+    // 독립 병입자가 매입 스카치를 병입하는 문화 — 매입 원액 병입의 브랜드 감점이 작다
+    sourcedPenalty: 0.3,
+    // Scotch Whisky Regulations 2009: 스코틀랜드에서 700L 이하 오크통 3년 이상, 병입 40% 이상(전역 규칙 MIN_BOTTLING_ABV와 같다)
+    whisky: { minMonths: 36, requiresOak: true, basis: 'Scotch Whisky Regulations 2009: 스코틀랜드 오크통(700L 이하) 3년 이상, 병입 40% 이상' },
+    // 스페이사이드 (기본 입지, #110) — 대표 결정: 필링 계약(#112), 인재 쟁탈·쿠퍼리지 클러스터(#113)
+    defaultSite: {
+      tagline: '블렌더가 줄 선 동네 — 원액은 잘 팔리지만 브랜드로 튀기는 어렵다', difficulty: 2, water: 'soft',
+      deals: ['filling'],
+      // 블렌더 밀집: 운송이 짧아 원액 B2B 단가 +5% (bulkFreight는 B2B 단가 배수)
+      bulkFreight: 1.05,
+      // 쿠퍼리지 클러스터: 캐스크 −20%, 쿠퍼리지 주문 1개월 만에 도착 (#113)
+      caskPriceFactor: { ex_bourbon_barrel: 0.8, oloroso_butt: 0.8, mizunara_hogshead: 0.8, korean_oak_quarter: 0.8 },
+      cooperageLeadMonths: 1,
+      // 공급 과잉(#116)·인재 쟁탈(#113)
+      eventBoost: { whisky_glut: 2, staff_poaching: 1.5, rival_scout: 3 },
+      starter: { name: '이언 매커디', distillery: '킬도니 증류소' },
+      traits: [
+        { tone: 'good', text: '필링 계약: 블렌더가 빈 캐스크를 대고, 우리 원액을 채운 블렌더 캐스크를 맡아 월 보관료를 받는다 (숙성고 자리를 내준다)' },
+        { tone: 'good', text: '블렌더 밀집: 원액 B2B 시장 깊이 ×1.5, 단가 +5%' },
+        { tone: 'good', text: '쿠퍼리지 클러스터: 캐스크 −20%, 쿠퍼리지 주문 1개월 만에 도착' },
+        { tone: 'good', text: '스카치 후광: 해외 위스키 시장 ×2, 해외 인지도 0.05에서 시작 · 연수(스페이 강) · 위스키 관광' },
+        { tone: 'bad', text: '경쟁 과밀: 내수 점유 상한이 낮다 · 주세 £33.99/LPA(싼 술일수록 세금 비중↑)' },
+        { tone: 'bad', text: '공급 과잉 이벤트 ×2 · 이웃 증류소가 직원을 빼 간다(대신 빼 올 기회도 있다)' },
+      ],
+    },
+    caskPriceFactor: { ex_bourbon_barrel: 0.9, oloroso_butt: 0.95, mizunara_hogshead: 1.8, korean_oak_quarter: 1.8 },
+  },
 };
 
 export const KOREA = REGIONS.KR;
@@ -407,6 +472,7 @@ const DISTANCE: Record<string, Record<string, number>> = {
   KR: { JP: 1.2, TW: 1.3, CN: 1.15, US: 1.5, MX: 1.8, UK: 1.6 },
   JP: { KR: 1.2, TW: 1.3, CN: 1.3, US: 1.5, MX: 1.8, UK: 1.6 },
   TW: { KR: 1.3, JP: 1.3, CN: 1.15, US: 1.5, MX: 1.8, UK: 1.6 },
+  UK: { KR: 1.6, JP: 1.6, TW: 1.6, CN: 1.6, US: 1.3, MX: 1.5 },
 };
 export const FAR_LOGISTICS = 1.8;
 

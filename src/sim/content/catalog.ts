@@ -232,7 +232,7 @@ export const BULK = {
 };
 
 /**
- * 병 가격·매력도의 숙성 프리미엄 (결정 #108) [튜닝]. 3년(×1.18)까지는 그대로(`agePerception`의 어린 위스키 구간),
+ * 병 가격·매력도의 숙성 프리미엄 (결정 #117) [튜닝]. 3년(×1.18)까지는 그대로(`agePerception`의 어린 위스키 구간),
  * 그 뒤로는 캐스크 원액의 벌크 기준가치(BULK.agePerYear·grainAgePerYear)와 같은 비율로 오른다 —
  * 오래 묵힌 원액을 병에 담아도 캐스크로 두는 것보다 가치가 덜 오르지 않게. 몰트 6년 ×1.62, 10년 ×2.21, 12년 ×2.51 (이전 연 6%·12년 상한: ×1.36·×1.60·×1.72).
  * capYears 이후로는 오르지 않는다 (게임 10년 안에는 닿지 않는 상한)
@@ -245,7 +245,7 @@ export const AGE_PREMIUM = {
   perYear: { whisky: BULK.agePerYear, grain_whisky: BULK.grainAgePerYear, blended_whisky: (BULK.agePerYear + BULK.grainAgePerYear) / 2 } as Partial<Record<ProductCategory, number>>,
   /** 3년 이후 상승률 배수 — 1이면 벌크와 같은 비율 [튜닝] */
   rateScale: 1,
-  /** 실험용: true면 결정 #108 이전 공식(3년 1.18, 이후 연 +0.06, 12년 상한) */
+  /** 실험용: true면 결정 #117 이전 공식(3년 1.18, 이후 연 +0.06, 12년 상한) */
   legacy: false,
 };
 
@@ -281,10 +281,12 @@ export const ROLE_INFO: Record<'distiller' | 'warehouse' | 'sales' | 'office', {
   sales: { nameKo: '영업', stats: ['친화', '네트워크', '협상'], baseSalary: 3_800_000 },
 };
 
-export const NAME_POOLS: Record<'KR' | 'JP' | 'TW', { surnames: string[]; given: string[] }> = {
+export const NAME_POOLS: Record<RegionId, { surnames: string[]; given: string[] }> = {
   KR: { surnames: ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '한', '오', '서', '신', '권', '황'], given: ['민준', '서연', '도윤', '지우', '하준', '서윤', '은우', '하은', '지호', '수아', '현우', '지민', '예준', '채원', '건우', '다은'] },
   JP: { surnames: ['사토 ', '스즈키 ', '다카하시 ', '다나카 ', '와타나베 ', '이토 ', '야마모토 ', '나카무라 '], given: ['하루토', '유이', '소타', '미오', '렌', '히나', '유토', '사쿠라'] },
   TW: { surnames: ['천', '린', '황', '장', '리', '왕', '우', '류'], given: ['즈하오', '이팅', '젠훙', '샤오웨이', '자오', '옌쥔', '이린', '웨이훙'] },
+  // 영국은 이름이 앞에 온다 — surnames 칸에 이름(+공백), given 칸에 성을 둔다 (이름 = surnames + given)
+  UK: { surnames: ['이언 ', '피오나 ', '앵거스 ', '케이티 ', '유언 ', '모라그 ', '캘럼 ', '아일라 '], given: ['매커디', '그랜트', '캠벨', '로스', '프레이저', '매켄지', '스튜어트', '머리'] },
 };
 export const SURNAMES = ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '한', '오', '서', '신', '권', '황'];
 export const GIVEN_NAMES = ['민준', '서연', '도윤', '지우', '하준', '서윤', '은우', '하은', '지호', '수아', '현우', '지민', '예준', '채원', '건우', '다은', '우진', '소율', '선우', '윤서'];

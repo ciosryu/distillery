@@ -18,7 +18,7 @@ export type Flavor = Partial<Record<AxisId, number>>;
 export type SpiritKind = 'soju' | 'gin' | 'malt' | 'grain' | 'baijiu';
 
 /** 시작·운영 지역 */
-export type RegionId = 'KR' | 'JP' | 'TW';
+export type RegionId = 'KR' | 'JP' | 'TW' | 'UK';
 
 /** 판매 카테고리 (라벨 판정 결과) */
 export type ProductCategory = 'soju_distilled' | 'gin' | 'whisky' | 'grain_whisky' | 'blended_whisky' | 'baijiu' | 'malt_spirit' | 'flavored_spirit';
@@ -100,8 +100,8 @@ export interface Cask {
   /** 오염(TCA·곰팡이) — 숙성고 QC가 찾아내기 전까지는 모른다 */
   contamination?: 'tca' | 'mold';
   contaminationKnown?: boolean;
-  /** 캐스크 오너십으로 판 통 — 고객 소유, 병입·판매 불가 */
-  owner?: { name: string; soldMonth: number; deliverMonth: number };
+  /** 캐스크 오너십으로 판 통 — 고객 소유, 병입·판매 불가. filling = 필링 계약(#112)으로 채운 블렌더 소유 통 — 보관료를 받고, 인도 월에 블렌더가 가져간다 */
+  owner?: { name: string; soldMonth: number; deliverMonth: number; filling?: { contractId: string; storagePerMonth: number } };
 }
 
 export interface Product {
@@ -213,6 +213,9 @@ export interface ContractTerms {
   /** 계약 총액 중 선급금 비율 (0이면 선급 없음) */
   prepayShare: number;
   penaltyPerLPA: number;
+  /** 필링 계약 (#112, 스페이사이드): 블렌더가 빈 캐스크를 대고, 납품 원액을 블렌더 소유 캐스크에 채워 우리 숙성고에 보관한다.
+   *  캐스크당 월 보관료를 받고, holdMonths 뒤 블렌더가 가져간다. 숙성고가 꽉 차면 탱크로 넘긴다(보관료 없음) */
+  filling?: { storagePerCaskMonth: number; holdMonths: number };
 }
 export interface ContractOffer extends ContractTerms { expiresMonth: number }
 export interface Contract extends ContractTerms {
@@ -224,16 +227,39 @@ export interface Contract extends ContractTerms {
   prepaidRemaining: number;
 }
 
+/** 턴 사이 행동(즉시 입출금)의 현금 흐름 항목 — 분류는 cashflow.ts의 CASH_FLOW_LINES */
+export type CashFlowKey =
+  | 'spotBulk' | 'caskBid' | 'caskOwnership' | 'contractPrepay' | 'contractCancel' | 'bottling' | 'severance' | 'rotation' | 'event' | 'brokerCask' | 'export' | 'other'
+  | 'casks' | 'usedCask' | 'equipment'
+  | 'loan' | 'loanRepay' | 'investment';
+/** 항목별 현금 흐름. 부호: 입금 +, 출금 − */
+export type CashFlows = Partial<Record<CashFlowKey, number>>;
+
 export interface MonthReport {
   month: number;
+  /** 제품(병입) 매출 */
   revenue: number;
   expenses: Record<string, number>;
+  /** 직전 결산 이후 현금 변화 = 이번 결산 월말 현금 − 직전 결산 월말 현금 (턴 사이 행동 포함) */
   netCash: number;
   cashEnd: number;
   sales: { productId: string; name: string; bottles: number; revenue: number; demandBottles: number }[];
   /** 원액 계약 납품 */
   bulk: { contractId: string; buyerName: string; deliveredLPA: number; revenue: number; penalty: number }[];
+  /** 원액 계약 납품 매출 (현물 판매는 spotBulkRevenue) */
   bulkRevenue: number;
+  /** 원액 현물 판매(탱크 로트·캐스크째, sellBulk) + 독립 병입자 캐스크 매각(acceptCaskBid). 구버전 세이브의 보고서에는 없다 */
+  spotBulkRevenue?: number;
+  /** 직전 결산 이후 턴 사이 행동으로 생긴 현금 흐름 (부호: 입금 +, 출금 −). 구버전 세이브의 보고서에는 없다 */
+  offTurn?: CashFlows;
+  /** 순현금 분해: 영업 + 투자 + 재무 = netCash. 투자 = 설비·빈 캐스크 매매, 재무 = 대출 실행·상환(정기 원금 포함)·투자 유치 */
+  operatingCash?: number;
+  investingCash?: number;
+  financingCash?: number;
+  /** 계약 납품 중 선급금으로 상계한 금액 (현금은 안 들어옴) — 영업에는 납품 매출로, 재무에는 선급금 상환으로 잡는다 */
+  prepayApplied?: number;
+  /** 계약 만료·파기 때 돌려준 남은 선급금 (재무) */
+  prepayRefunded?: number;
   production: { recipeId: string; name: string; batches: number; lpa: number; cost: number }[];
   angelsShareL: number;
   liquorTaxRemitted: number;
@@ -380,6 +406,9 @@ export interface ExportEntry extends Partial<Omit<ExportTerms, 'marketId'>> {
   /** 수입사 계약 연차 집계 (#101): 이번 계약 연도 시작 월·판매 병수 */
   yearStartMonth?: number;
   bottlesThisYear?: number;
+  /** 수출가 배수: FOB = 출고가 × 배수. 수입사 계약의 제안가로 시작하고(#101·#106), 플레이어가 조정한다(#108, 0.5~3).
+   *  올리면 현지 소비자가가 올라 적게 팔리고 병당 많이 남는다 — 연 최소 물량 의무와 맞바꾼다 */
+  priceFactor?: number;
 }
 
 export interface ExportSale { marketId: ExportMarketId; productId: string; name: string; bottles: number; revenue: number; demandBottles: number; freight: number }
@@ -441,6 +470,8 @@ export interface GameState {
   /** 외부 투자자 지분 (0~1) */
   investorShare: number;
   investmentsTaken: string[];
+  /** 해외 명성 0~1 (#96) — 품평회·평론으로 오르고 매달 식는다 */
+  acclaim?: number;
   /** 수출 시장 (#95) — 옛 저장에는 없을 수 있다 */
   exports?: ExportEntry[];
   /** 수입사 계약 제안 (#101) */
@@ -464,6 +495,9 @@ export interface GameState {
   oemOffers: OemOffer[];
   oemContracts: OemContract[];
   receivables: Receivable[];
+  /** 직전 결산 이후 턴 사이 행동으로 생긴 현금 흐름 — 다음 결산 보고서(offTurn)로 넘어가고 비워진다.
+   *  구버전(v5 초기) 세이브에는 없을 수 있어 선택 필드로 둔다 */
+  pendingCash?: CashFlows;
   reports: MonthReport[];
   nextId: number;
 }

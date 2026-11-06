@@ -83,7 +83,7 @@ export function lotCategory(lot: SpiritLot, rules: WhiskyRules = DEFAULT_WHISKY_
 
 /** 숙성 연수에 대한 소비자 인식 (위스키류) — 권장가(국내·면세)와 매력도에 같은 값을 쓴다.
  *  3년 미만은 법적으로 위스키라도 "어린 위스키"로 보고 크게 깎는다 — 0개월 0.47, 12개월 0.77, 24개월 0.98 (v0.8).
- *  3년 = 1.18. 그 뒤로는 벌크 기준가치와 같은 비율(결정 #108): 1.18 × (1 + r·연수) / (1 + r·3), r = 카테고리의 벌크 숙성 상승률, 18년 상한 */
+ *  3년 = 1.18. 그 뒤로는 벌크 기준가치와 같은 비율(결정 #117): 1.18 × (1 + r·연수) / (1 + r·3), r = 카테고리의 벌크 숙성 상승률, 18년 상한 */
 export function agePerception(oakMonths: number, category?: ProductCategory): number {
   if (oakMonths < 36) return AGE_PREMIUM.base * (0.4 + 0.6 * Math.pow(Math.max(0, oakMonths) / 36, 0.8));
   const years = Math.floor(oakMonths / 12);
