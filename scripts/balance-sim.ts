@@ -558,7 +558,7 @@ function play(strategy: Strategy, seed: number): Result {
   for (let i = 2; i < net.length; i++) if ((net[i]! + net[i - 1]! + net[i - 2]!) / 3 > 0) { fp = i; break; }
   const y5 = s.reports.filter((r) => r.month >= 48 && r.month < 60);
   if (DIAG) diag(strategy, seed, s);
-  if (process.env.DBG_EXPORT) console.error(strategy, seed, exportLog.join(' | '), '| 수출 누적', (s.exports ?? []).map((e) => `${e.marketId}:${e.totalBottles}병 aw${e.awareness.toFixed(2)}`).join(' '));
+  if (process.env.DBG_EXPORT) console.error(strategy, seed, exportLog.join(' | '), '| 명성', (s.acclaim ?? 0).toFixed(2), '| 수출 누적', (s.exports ?? []).map((e) => `${e.marketId}:${e.totalBottles}병 aw${e.awareness.toFixed(2)}`).join(' '));
   return {
     strategy, bankrupt: s.status === 'bankrupt', minCash: lo, netWorth: s.status === 'bankrupt' ? -Infinity : netWorth(s), bookWorth: s.status === 'bankrupt' ? -Infinity : bookWorth(s), firstPositive: fp,
     y5retail: y5.reduce((t, r) => t + r.revenue, 0), y5bulk: y5.reduce((t, r) => t + r.bulkRevenue + (r.spotBulkRevenue ?? 0), 0),
