@@ -131,7 +131,7 @@ type StopReason = 'pendingEvent' | 'cashWarning' | 'bankrupt' | 'researchDone' |
 
 ```ts
 interface GameState {
-  meta;        // 버전·시드·월·지역·입지·이름·상태·nextId (+ v8: scenario — 시나리오 잠금 키·경제 값·목표, skeleton S-8. v9: 숙성 용기 재질·피니싱 이력·샘플 기록의 자리, S-10. v10: progress 슬라이스 — 마일스톤·목표 판정·끝난 이유, S-9. v11: commerce.brands — 브랜드 라인별 인지도, S-2)
+  meta;        // 버전·시드·월·지역·입지·이름·상태·nextId (+ v8: scenario — 시나리오 잠금 키·경제 값·목표, skeleton S-8. v9: 숙성 용기 재질·피니싱 이력·샘플 기록의 자리, S-10. v10: progress 슬라이스 — 마일스톤·목표 판정·끝난 이유, S-9. v11: commerce.brands — 브랜드 라인별 인지도, S-2. v12: 연구 진행 — research.active에 시작 달·누적 연구비, S-6)
   world;       // 날씨·원재료 시세·트렌드·벌크 지수·보정치
   finance;     // 현금·대출·투자·마케팅 예산·연속 적자 월
   hr;          // 직원·후보·하우스 스타일

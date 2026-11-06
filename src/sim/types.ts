@@ -454,7 +454,8 @@ export interface WeatherState {
 export interface ResearchState {
   /** 완료한 테크 노드 id */
   unlocked: string[];
-  active: { techId: string; progress: number; leadStaffId?: string; paused: boolean }[];
+  /** 진행 중인 연구 (S-6). progress 0~1. 담당자가 없거나 일시정지면 진행·비용이 멈춘다 */
+  active: { techId: string; progress: number; leadStaffId?: string; paused: boolean; startedMonth?: number; spent?: number }[];
   /** 동시 연구 슬롯 */
   slots: number;
 }
@@ -732,7 +733,7 @@ export interface ScenarioState {
 }
 
 export interface GameState {
-  version: 11;
+  version: 12;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;

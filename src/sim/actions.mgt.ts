@@ -8,12 +8,18 @@ import { resolvePending } from './events';
 import { inventoryLoanRoom, inventoryLtv } from './loans';
 import { annuityPayment, nid } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
+import { TECH_BY_ID } from './content/tech';
+import { researchBlocker } from './research';
 
 // 플레이어 행동 — 재무·인사·이벤트 (MGT) (결정 #144 — 파일 쪼개기로 actions.ts에서 옮겨 왔다. 규칙 불변)
 // 행동을 더할 때: 아래 타입·처리기·현금 분류 세 곳만 고친다. 코어(actions.ts)는 이 파일의 타입을 통째로 합친다
 
 export type MgtAction =
-  /** 오염 캐스크 원액 폐기 */
+  /** 연구 (S-6, tech-tree §2.1) — 시작 / 일시정지·재개·담당자 교체 / 포기(진행도를 잃는다) */
+  | { type: 'startResearch'; techId: string; leadStaffId: string }
+  | { type: 'setResearch'; techId: string; paused?: boolean; leadStaffId?: string }
+  | { type: 'cancelResearch'; techId: string }
+  /** 투자 유치 */
   | { type: 'takeInvestment'; offerId: string }
   /** 수출 (#95·#101): 수입사 제안 수락 / 계약 해지 */
   | { type: 'sellCaskOwnership'; caskId: string }
@@ -25,6 +31,10 @@ export type MgtAction =
   | { type: 'resolveEvent'; eventId: string; choice: number };
 
 export const MGT_CASH_KEY: CashKeys<MgtAction> = {
+  // 연구비는 행동이 아니라 매달 틱에서 나간다 (월 리포트 expenses.research)
+  startResearch: null,
+  setResearch: null,
+  cancelResearch: null,
   hire: null,
   takeInvestment: 'investment',
   sellCaskOwnership: 'caskOwnership',
@@ -35,6 +45,31 @@ export const MGT_CASH_KEY: CashKeys<MgtAction> = {
 };
 
 export const MGT_HANDLERS: Handlers<MgtAction> = {
+  startResearch: (s, prev, a) => {
+    const why = researchBlocker(s, a.techId, a.leadStaffId);
+    if (why) return fail(prev, why);
+    s.research.active.push({ techId: a.techId, progress: 0, leadStaffId: a.leadStaffId, paused: false, startedMonth: s.month, spent: 0 });
+    const node = TECH_BY_ID[a.techId]!;
+    return { state: s, message: `연구 시작: ${node.nameKo} — 월 ${node.research.monthlyCost.toLocaleString()}원, 약 ${node.research.baseMonths}개월` };
+  },
+  setResearch: (s, prev, a) => {
+    const r = s.research.active.find((x) => x.techId === a.techId);
+    if (!r) return fail(prev, '진행 중인 연구가 아닙니다');
+    if (a.leadStaffId !== undefined) {
+      const lead = s.hr.staff.find((x) => x.id === a.leadStaffId);
+      if (!lead) return fail(prev, '담당자가 없습니다');
+      if (!TECH_BY_ID[a.techId]!.research.leadRoles.includes(lead.role)) return fail(prev, '담당 직군이 아닙니다');
+      if (s.research.active.some((x) => x !== r && x.leadStaffId === a.leadStaffId)) return fail(prev, '이 직원은 이미 다른 연구를 맡고 있습니다');
+      r.leadStaffId = a.leadStaffId;
+    }
+    if (a.paused !== undefined) r.paused = a.paused;
+    return { state: s, message: r.paused ? '연구 일시정지 — 진행도는 남고 연구비는 멈춘다' : '연구 진행' };
+  },
+  cancelResearch: (s, prev, a) => {
+    if (!s.research.active.some((x) => x.techId === a.techId)) return fail(prev, '진행 중인 연구가 아닙니다');
+    s.research.active = s.research.active.filter((x) => x.techId !== a.techId);
+    return { state: s, message: '연구를 포기했습니다 — 진행도는 사라진다 (멈추기만 하려면 일시정지)' };
+  },
   takeInvestment: (s, prev, a) => {
     const o = INVESTMENT_OFFERS.find((x) => x.id === a.offerId);
     if (!o) return fail(prev, '투자 제안이 없습니다');

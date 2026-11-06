@@ -84,7 +84,7 @@ export function emptyCaskOf(s: GameState, typeId: keyof typeof CASKS): Cask {
 export function newGame(opts: NewGameOptions = {}): GameState {
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   const s: GameState = {
-    version: 11,
+    version: 12,
     seed,
     month: 0,
     startYear: opts.startYear ?? 2027,

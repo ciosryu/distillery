@@ -24,11 +24,11 @@
 | 항목 | 내용 | 근거 |
 |---|---|---|
 | 플랫폼 | Godot 4 + C#, PC(Steam). TS는 설계 실험실·기준 구현 | #34·#35·#40·#122 |
-| 상태 | 단일 `GameState` v11 = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history·progress) | #118, [architecture.md §3](architecture.md) |
+| 상태 | 단일 `GameState` v12 = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history·progress) | #118, [architecture.md §3](architecture.md) |
 | 시간 | 1턴 = 1개월. 월 틱 0~9단계 파이프라인 + 틱 컨텍스트 | #1·#26, PRD §2.2 |
 | 경계 | `GameEngine` 계약 (명령 → 스냅샷) | architecture.md §3.2 |
 | 난수 | mulberry32, `rngFor(seed, month, stream)` 독립 스트림 | PRD §13.2 |
-| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8 → v9 → v10 → v11) | #118, S-8, S-10, S-9, S-2 |
+| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8 → v9 → v10 → v11 → v12) | #118, S-8, S-10, S-9, S-2, S-6 |
 | 테크 게이트 | `isUnlocked(state, key)` 하나로 판정, 키 규칙 고정, Phase 1은 꺼짐 | #118, tech-tree §7 |
 | 설계 규모 | 30년(360턴) · 원액 든 캐스크 2,500개 | #119 |
 | 기후 | 입지 평년값 + AR(1) 이상치, 이벤트는 입력(기온·습도) 충격 | #120 |
@@ -57,7 +57,7 @@
 | 재무 확장(이사회·헷징·보험) | §8.2, §8.4 | — | — | — | ○ | MGT |
 | HR(직군·에이징·하우스 스타일·마스터 블렌더) | §7, §16.6 | `hr` | 6·8 | `hr.ts`, `ops.ts`(일부) | ● | MGT |
 | 이벤트·예보·보정치 | §10 | `events`, `world.modifiers` | 1 | `events.ts`, `content/events.ts`, `modifiers.ts` | ● | MGT |
-| 연구·테크트리 | [tech-tree](tech-tree.md) | `research` | — (진행 없음) | `research.ts`, `content/tech.ts`(노드 4개) | ◐ (게이트만) | MGT |
+| 연구·테크트리 | [tech-tree](tech-tree.md) | `research` | 8 (`runResearch`) | `research.ts`(게이트·시작 조건·진행), `content/tech.ts`(노드 스키마 + 4개), 행동 `startResearch`·`setResearch`·`cancelResearch` | ◐ (진행 규칙 구현 — 기간·연구비·담당자·일시정지·이탈. 노드 4개뿐, 게이트 꺼짐, 실적 보너스·본업 효율 −30%·실험실 슬롯·화면은 단계 P) | MGT |
 | 관광·비지터 센터 | §16.8 | `commerce.localBuzz` | 6 | `ops.ts`(일부) | ● | MKT |
 | 리포트·연 요약·데이터 수명 | §13 | `history` | 9 | `lifecycle.ts`, `step.ts` | ● | 코어 |
 | 시나리오 모드·초기화·기능 플래그·가상 이력 생성기 | §12.2 | 헤더 `scenario` (v8) | 1·8 (끈 시스템 건너뜀) | `content/scenarios.ts`, `scenario.ts`(잠금), `newScenario.ts`(사업 계획서 입구·미리보기), 화면 `ui/BusinessPlan.tsx` | ◐ (입구·플래그·MVP 시나리오 구현, 가상 이력 생성기·JSON 파일 형식은 자리만) | 코어 → META |
@@ -80,7 +80,7 @@
 |---|---|---|---|
 | **PROD** 생산·숙성·블렌딩 | 피니싱, 정보 불확실성(샘플링), 블렌딩 테이블 화면·보상 연결, 생산 테크 노드의 효과 데이터 | `production.ts`(+ 생산 단계 `runProduction`)·`maturation.ts`·**`warehouse.ts`**(+ 숙성 단계)·**`casks.ts`**·**`waterPermit.ts`**·`flavor.ts`·`blending.ts`·`blendTable.ts`·`blendRadar.ts`·`weather.ts`·**`actions.prod.ts`**, **`content/production.ts`**·`content/axes.ts`·`categories.ts`, 테스트 **`production.test.ts`**·`vessel.test.ts`·`blendTable.test.ts`, 화면 `Production`·`Warehouse`·`Bottling`·`BlendLab` | §4~§6, flavor-model, blending-minigame |
 | **MKT** 시장·판매·B2B·수출 | 브랜드 라인(세컨드 브랜드 개설·배정·브랜드별 인지도 성장·B_brand), 수요 공식 정리(SKU √n) | `market.ts`·**`brands.ts`**·**`sales.ts`**(판매·주세 단계)·**`retail.ts`**·**`tourism.ts`**·**`dutyFree.ts`**·`bulk.ts`·`broker.ts`·`deals.ts`·`exportDeals.ts`·**`actions.mkt.ts`**, **`content/market.ts`**·`content/exports.ts`·`names.ts`, `data/market/`, 테스트 **`market.test.ts`**·`exports.test.ts`·**`brands.test.ts`**, 화면 `Sales`·`B2B`·`Exports` | §8.3, §8.5~§8.6, §9, §11 |
-| **MGT** 재무·HR·이벤트·연구 | 연구 진행 시스템 + 공통 테크 4계통, 재무 확장(이사회·헷징·보험), 이벤트 난수 스트림 분리 구현 | `cashflow.ts`·**`loans.ts`**(+ 재무 단계)·**`investment.ts`**·`hr.ts`(+ 생애주기·사무직)·`events.ts`·`research.ts`·**`actions.mgt.ts`**, **`content/finance.ts`**·`content/events.ts`·`tech.ts`, 테스트 **`finance.test.ts`**, 화면 `Finance`·`Staff`·`Events`·`Dashboard` | §7, §8.1~§8.2, §8.4, §10, tech-tree |
+| **MGT** 재무·HR·이벤트·연구 | 연구 노드 전체(공통 4계통 + 주종 브랜치)·효과·실적 보너스·연구 화면·게이트 켜기(`TECH_GATING`), 재무 확장(이사회·헷징·보험) | `cashflow.ts`·**`loans.ts`**(+ 재무 단계)·**`investment.ts`**·`hr.ts`(+ 생애주기·사무직)·`events.ts`·`research.ts`·**`actions.mgt.ts`**, **`content/finance.ts`**·`content/events.ts`·`tech.ts`, 테스트 **`finance.test.ts`**, 화면 `Finance`·`Staff`·`Events`·`Dashboard` | §7, §8.1~§8.2, §8.4, §10, tech-tree |
 | **META** 시나리오·진행·경쟁 | 가상 이력 생성기, 면허 취소 규칙, 마일스톤 추가·업적(단계 V), (후속) 경쟁 AI | `progress.ts`·`actions.meta.ts`·`content/milestones.ts`, 테스트 `progress.test.ts`, 화면 `Verdict` | §12, §9.4 |
 
 ### 3.3 여러 파트가 나눠 쓰던 파일 — **쪼갰다 (S-4, 결정 #144, 2026-11-06)**
@@ -112,7 +112,7 @@
 | **S-3** | **지역·주종 추가가 데이터만으로 되는가** — 스코틀랜드(ciosryu/distillery#9)가 지금 옛 구조(v5) 위에서 구현 중이다. "지역 추가 = 데이터 추가"(PRD §13.2) 원칙대로 코드 수정 없이 들어가는지, 지역별 특수 규칙(세제·숙성 규정·입지 대표 결정)을 담을 데이터 모양이 충분한지 정한다 | Phase 3 콘텐츠 확장과 열린 PR #9의 정리 방향이 걸려 있다 | 필수 | §3, §13.2, [scotland.md](scotland.md) |
 | **S-4** | **파트 경계대로 파일 쪼개기** — `ops.ts`·`sites.ts`·`actions.ts`(행동 처리기를 파트별 모듈로)·`catalog.ts`·`sim.test.ts` (§3.3) | 단계 P 병렬 개발의 충돌을 막는 전제 | 필수 — **완료** (결정 #144, [split-plan.md](split-plan.md) §7) | PROCESS §7.3 |
 | **S-5** | **이벤트 난수를 이벤트별 스트림으로** — 지금은 매달 목록 전체를 섞어서 이벤트 하나만 더해도 모든 시드 결과가 바뀐다 | 밸런스가 한 번 바뀌므로 튜닝(T) 전에 해야 한다 | 필수 — **구현, `[결정 #147]`** (§4.5) | architecture §9.3 |
-| **S-6** | **연구 시스템 뼈대** — 연구 진행 틱 단계, 담당자·기간·비용 흐름, 노드 데이터 스키마(4개 → 전체를 넣을 그릇) | Phase 2 핵심. 게이트만 있고 진행이 없다 | 필수 | tech-tree §2·§7, #46 |
+| **S-6** | **연구 시스템 뼈대** — 연구 진행 틱 단계, 담당자·기간·비용 흐름, 노드 데이터 스키마(4개 → 전체를 넣을 그릇) | Phase 2 핵심. 게이트만 있고 진행이 없다 | 필수 — **구현, `[제안 P-ARCH-12]`** (§4.7) | tech-tree §2·§7, #46 |
 | **S-7** | **콘텐츠를 엔진 중립 데이터로** — 원재료·설비·캐스크·지역·이벤트·테크를 JSON 스키마로. 시점(지금 대 단계 G 직전) | 파트가 콘텐츠를 늘리기 전에 형식을 정하면 이식 비용이 준다 | 필수 (형식·시점만) | §13.1 이식 계획 ②, #40 |
 | **S-8** | **시나리오 초기화 경로** — JSON 시나리오 파일로 `GameState`를 만드는 입구 + 가상 이력 생성기의 자리 | §12.2가 "샌드박스 단계부터 지킬 아키텍처 요구사항"이라고 못 박았다 | 필수 (입구·스텁) — **구현, `[결정 #142]`** ([mvp.md §6.3](mvp.md)). 파일 형식(JSON)은 S-7과 함께 | §12.2 |
 | **S-9** | **승패·진행 구조** — 파산 외 실패 조건(면허 취소·해임), 업적·마일스톤의 데이터 모양, 플레이어 목표 | 게임 루프의 끝이 정의돼 있지 않다 | 필수 (모양만) — **구현, `[결정 #145]`** (§4.4) | §12.1 |
@@ -194,6 +194,22 @@ MVP 완료 기준 1(15년 목표 → 결과 화면 → 계속 운영)이 이 위
 | ⑤ 아직 회사 단위인 것 | 마케팅 예산(`commerce.marketingBudget`), 수출 시장 인지도(`exports[].awareness`), 인지도 성장식(하우스에 적용). PRD §11.2 ④의 브랜드별 마케팅·브랜드 × 시장 인지도·50% 연계(#52·#53)는 규칙이라 단계 P(MKT) | 지금 다 나누기 — 규칙(성장 연계·개설 비용)이 정해지지 않아 빈 필드만 는다 |
 | ⑥ 행동 | `openBrand`·`setProductBrand` — 타입만, 지금은 항상 실패, MVP 잠금 | — |
 | ⑦ 럭셔리 | `BrandLine.luxury`(B_brand, 0~100) 자리만 — 계산(PRD §11.2 ③)은 단계 P | — |
+
+### 4.7 S-6 연구 시스템 뼈대 — `[제안 P-ARCH-12]` (2026-11-06, 설계 세션)
+
+규칙 자체는 tech-tree §2.1(결정 #46·#56)을 그대로 구현했다. 이 결정은 **틀**이다 — 어디에 무엇을 두는가. 아무도 연구를 시작하지 않으면 아무 일도 없어 동작 불변(밸런스 골든 5입지·MVP 실험 바이트 동일).
+
+| 항목 | 정한 모양 | 대안 (기각 이유) |
+|---|---|---|
+| ① 노드 스키마 (그릇) | `TechNodeDef` = tech-tree §7 `TechNode`에서 **게이트는 `unlockKeys`(isUnlocked 키, #118 키 규칙)**, 게이트가 아닌 효과(손실 감소·리스크 배수·정보 정밀도)는 `effects`(타입만, 아직 적용 안 함)로 나눈다. `research.leadStat`(담당 직군 스탯 칸), `milestone`(실적 보너스 기준), `requires`(설비·가동 개월) | §7의 `unlocks: TechUnlock[]` 하나로 — 게이트 판정이 효과 종류마다 갈라진다. 키 문자열이면 `isUnlocked` 하나로 끝난다 |
+| ② 틱 | 8단계(성장)에서 `runResearch`: 담당자 확인(떠났으면 −25%) → 월 연구비(현금, 리포트 `expenses.research`) → 진행 → 완료 시 `research.unlocked`. 시나리오 시스템 `research` | 7단계(재무)에서 연구비 — 진행과 비용이 다른 단계로 갈라진다 |
+| ③ 행동 (MGT) | `startResearch`(노드·담당자) · `setResearch`(일시정지·재개·담당자 교체) · `cancelResearch`(포기 — 진행도 사라짐). 연구비는 행동이 아니라 틱에서 | 일시정지·교체를 따로 — 행동만 는다 |
+| ④ 담당자 | 한 사람은 연구 하나만. 담당자가 없으면 진행·비용 정지 | 담당자 없이 느리게 — tech-tree §2.2가 "담당자 불필요"를 컨설턴트(외부 획득)의 대가로 둔다 |
+| ⑤ 게이트 | `TECH_GATING`은 **그대로 꺼 둔다** — 해금해도 아직 잠긴 기능이 없다. 노드가 채워지는 단계 P(MGT)에서 켠다 | 지금 켜기 — 오너십·로테이션이 연구 전까지 잠겨 기존 봇·밸런스가 바뀐다 |
+| ⑥ 단계 P로 넘김 | 노드 38개 추가·효과 적용·실적 보너스 지표·연구 중 본업 효율 −30%·실험실 슬롯 +1·외부 획득(컨설턴트·경력직)·연구 화면 | — |
+
+- MVP는 연구 OUT(#130) — 행동 3개와 틱 시스템을 잠갔다
+- 스키마 v12: 진행 중 연구에 `startedMonth`·`spent`(선택값). 옛 세이브는 버전만 올린다 + v11 픽스처
 
 ## 5. 다음 행동 (설계 세션)
 
