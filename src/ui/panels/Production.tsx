@@ -7,7 +7,7 @@ import {
 } from '../../sim';
 import { isLocked } from '../../sim/scenario';
 import { useGame } from '../../store/game';
-import { logisticsMultiplier, regionOf, siteOf } from '../../sim/content/regions';
+import { logisticsMultiplier, regionOf, REGIONS, siteOf } from '../../sim/content/regions';
 import { Radar } from '../charts';
 import { liters, num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
@@ -66,9 +66,11 @@ type Draft = Omit<Recipe, 'id'> & { id?: string };
 function blankDraft(s: GameState, kind: SpiritKind): Draft {
   const stillId = s.production.equipment.find((e) => EQUIPMENT[e.catalogId]?.kind === 'still')?.id ?? '';
   const base: Draft = { name: `새 ${KIND_LABEL[kind]} 레시피`, kind, mashBill: [], botanicals: [], botanicalMethod: 'steep', yeast: 'distillers', fermentDays: 4, runs: 1, cut: { c1: 0.12, c2: 0.72 }, pressure: 'atmospheric', stillId };
-  if (kind === 'soju') return s.regionId === 'JP'
-    ? { ...base, mashBill: [{ ingredientId: 'sweet_potato', ratio: 0.75 }, { ingredientId: 'rice_koji', ratio: 0.25 }], fermentDays: 14 }
-    : { ...base, mashBill: [{ ingredientId: 'rice_domestic', ratio: 0.92 }, { ingredientId: 'nuruk', ratio: 0.08 }], yeast: 'nuruk_native', fermentDays: 14 };
+  // 지역 첫 소주 프리셋의 원료·효모·발효 기간 (지역 데이터, S-3). 소주 프리셋이 없는 지역은 한국식 기본값
+  if (kind === 'soju') {
+    const p = regionOf(s).presets.find((x) => x.kind === 'soju') ?? REGIONS.KR.presets.find((x) => x.kind === 'soju')!;
+    return { ...base, mashBill: p.mashBill.map((m) => ({ ...m })), yeast: p.yeast, fermentDays: p.fermentDays };
+  }
   if (kind === 'baijiu') return { ...base, mashBill: [{ ingredientId: 'sorghum', ratio: 0.85 }, { ingredientId: 'daqu', ratio: 0.15 }], yeast: 'nuruk_native', fermentDays: 28, cut: { c1: 0.1, c2: 0.75 } };
   if (kind === 'gin') return { ...base, botanicals: [{ botanicalId: 'juniper', gramsPerL: 20 }, { botanicalId: 'coriander', gramsPerL: 6 }], fermentDays: 0, cut: { c1: 0.08, c2: 0.8 } };
   if (kind === 'grain') {
