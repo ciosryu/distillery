@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { BOTTLE_SIZES, PACKAGING, packagingCost } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
-import { previewBlend, topNotes, type BlendComponent, type BottleOptions, type SpiritKind } from '../../sim';
+import { calendar, DUTY_FREE, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind } from '../../sim';
 import { regionOf } from '../../sim/content/regions';
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
@@ -27,6 +27,19 @@ export function Bottling() {
     return { source, id, liters: l };
   });
   const preview = components.length ? previewBlend(s, components, opts) : null;
+  // 면세 한정판 예상 판매 (결정 #85) — 이번 달 면세 수요(권장 출고가)로 완판 기한 안에 몇 병 팔릴지
+  const dfForecast = (() => {
+    if (!preview?.ok || !preview.dfEdition || !preview.category || !preview.evaluation) return null;
+    const p: Product = {
+      id: 'preview', name: '', category: preview.category, ageYears: preview.ageYears, oakMonths: preview.minOakMonths, abv: preview.finalAbv, bottleMl: opts.bottleMl, chillFiltered: opts.chillFilter, packagingId: opts.packagingId,
+      flavor: preview.flavor, quality: preview.evaluation.quality, typicity: preview.evaluation.typicity, style: preview.evaluation.style, sourcedShare: preview.sourcedShare,
+      stockBottles: preview.bottles, price: preview.suggestedPrice, unitCost: preview.unitCost, createdMonth: s.month, lastMonthSold: 0, totalSold: 0,
+      dutyFreeOnly: true, localIngredient: preview.localIngredient, dfEdition: preview.dfEdition,
+    };
+    const same = s.products.filter((x) => x.stockBottles > 0 && x.category === p.category).length + 1;
+    const perMonth = productDutyFreeDemand(s, p, same, calendar(s).monthOfYear);
+    return { perMonth, window: perMonth * DUTY_FREE.sellOutMonths };
+  })();
   const toggle = (key: string, vol: number) => setPicked((p) => { const n = { ...p }; if (n[key] != null) delete n[key]; else n[key] = Math.floor(vol * 10) / 10; return n; });
   const abvValue = opts.targetAbv === 'cask' ? 'cask' : String(opts.targetAbv);
 
@@ -61,9 +74,15 @@ export function Bottling() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <label className="inline-flex items-center gap-1 text-sm"><input type="checkbox" checked={opts.chillFilter} onChange={(e) => setOpts({ ...opts, chillFilter: e.target.checked })} className="accent-amber-700" /> 칠 필터링</label>
+            {hasDutyFree(s) && <label className="inline-flex items-center gap-1 text-sm" title={`국내 판매 없이 지정면세점 전용 매대(${DUTY_FREE.slots}칸)에서만 판매. 제주 원료(차조·청귤) 기념품은 매력도 ×${DUTY_FREE.localAppeal}, 위스키는 숙성 ${DUTY_FREE.agedTiers.map((t) => `${t.years}년 ×${t.appeal}`).join(' · ')}. ${DUTY_FREE.sellOutMonths}개월 안에 완판하면 다음 판 매력도 +${Math.round(DUTY_FREE.streakAppeal * 100)}%(최대 ${DUTY_FREE.maxStreak}연속), ${DUTY_FREE.returnMonths}개월 안에 못 팔면 국내 매대로 넘어갑니다`}><input type="checkbox" checked={!!opts.dutyFreeOnly} onChange={(e) => setOpts({ ...opts, dutyFreeOnly: e.target.checked })} className="accent-amber-700" /> 면세 전용 한정판</label>}
             <Select label="패키징" value={opts.packagingId} options={Object.entries(PACKAGING).map(([k, v]) => ({ value: k, label: `${v.nameKo} (${won(packagingCost(k, opts.bottleMl))}/병)` }))} onChange={(v) => setOpts({ ...opts, packagingId: v })} />
           </div>
 
+          {hasDutyFree(s) && opts.dutyFreeOnly && (() => {
+            const blocker = dutyFreeSlotBlocker(s);
+            const next = nextDutyFreeEdition(s);
+            return <p className="text-xs text-stone-500">{blocker ?? `다음 판: Vol.${next.vol} · 연속 완판 ${next.streak}회 → 매력도 +${Math.round(Math.min(next.streak, DUTY_FREE.maxStreak) * DUTY_FREE.streakAppeal * 100)}% · ${DUTY_FREE.sellOutMonths}개월 안에 다 팔 수 있는 수량으로 내세요`}</p>;
+          })()}
           {!preview ? <Empty>왼쪽에서 원액을 선택하세요</Empty> : (
             <div className="grid gap-2">
               {preview.category && <Radar flavor={preview.flavor} axes={CATEGORY[preview.category].radarAxes} size={240} />}
@@ -75,14 +94,20 @@ export function Bottling() {
                 {preview.premiumLabel && <Badge tone="good">{regionOf(s).whisky.premiumLabel?.name}</Badge>}
                 {preview.traditional && <Badge tone="good">{regionOf(s).traditionalRelief?.label}</Badge>}
                 {preview.specialty && <Badge tone="good">{regionOf(s).specialties?.find((x) => x.id === preview.specialty)?.label}</Badge>}
+                {preview.localIngredient && hasDutyFree(s) && <Badge tone="good">제주 원료</Badge>}
+                {preview.dfEdition && !preview.localIngredient && dutyFreeAgedAppeal(preview.ageYears) > 1 && <Badge tone="good">숙성 한정 · 수요 ×{dutyFreeAgedAppeal(preview.ageYears)}</Badge>}
+                {preview.dfEdition && <Badge tone="info">면세 한정판 Vol.{preview.dfEdition.vol}</Badge>}
               </div>
               <dl className="grid grid-cols-2 gap-x-2 text-sm">
                 <dt className="text-stone-500">병 수</dt><dd className="text-right tabular-nums">{num(preview.bottles)}병</dd>
                 <dt className="text-stone-500">도수</dt><dd className="text-right tabular-nums">{pct(preview.finalAbv)} (원액 {pct(preview.mixAbv)})</dd>
                 <dt className="text-stone-500">품질 / 전형성</dt><dd className="text-right tabular-nums">{preview.evaluation?.quality ?? '—'} / {preview.evaluation?.typicity ?? '—'}</dd>
                 <dt className="text-stone-500">병당 원가</dt><dd className="text-right tabular-nums">{won(preview.unitCost)}</dd>
-                <dt className="text-stone-500">권장 출고가</dt><dd className="text-right tabular-nums">{won(preview.suggestedPrice)}</dd>
+                <dt className="text-stone-500">권장 출고가</dt><dd className="text-right tabular-nums">{won(preview.suggestedPrice)}{preview.dfEdition ? ' (면세 기준)' : ''}</dd>
+                {dfForecast && <><dt className="text-stone-500">예상 면세 판매</dt><dd className={`text-right tabular-nums ${dfForecast.window < preview.bottles ? 'text-amber-800 dark:text-amber-300' : ''}`}>월 {num(dfForecast.perMonth)}병 · {DUTY_FREE.sellOutMonths}개월 {num(dfForecast.window)}병</dd></>}
               </dl>
+              {preview.dfEdition && !preview.localIngredient && dutyFreeAgedAppeal(preview.ageYears) > 1 && <p className="text-xs text-stone-500">숙성 한정판 보너스는 수요만 올립니다. 권장 출고가에는 숙성 프리미엄이 거의 반영되지 않으니 출고가는 직접 조정하세요 — 오래된 원액은 병입보다 원액 시가가 빨리 오릅니다</p>}
+              {dfForecast && dfForecast.window < preview.bottles && <p className="text-xs text-amber-800 dark:text-amber-300">⚠ 이번 달 수요(계절·인지도 반영)로는 {DUTY_FREE.sellOutMonths}개월 안에 {num(preview.bottles)}병을 다 팔기 어렵습니다 — 사용량을 줄이면 완판 보너스를 노릴 수 있습니다</p>}
               {preview.warnings.map((w) => <p key={w} className="text-xs text-amber-800 dark:text-amber-300">⚠ {w}</p>)}
               {preview.errors.map((e) => <p key={e} className="text-xs text-rose-700 dark:text-rose-400">✕ {e}</p>)}
               <Button variant="primary" disabled={!preview.ok} onClick={() => { if (dispatch({ type: 'bottle', components, options: opts })) { setPicked({}); setOpts({ ...opts, name: '' }); } }}>병입하기</Button>

@@ -252,6 +252,8 @@ export interface MonthReport {
   dutyFreeAwareness?: number;
   retailDealRevenue?: number;
   oemRevenue?: number;
+  /** 매출채권 입금 (대형 유통 납품 대금) */
+  receivablesCollected?: number;
   notes: string[];
 }
 

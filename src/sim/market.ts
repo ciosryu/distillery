@@ -96,8 +96,8 @@ export function productDutyFreeDemand(s: GameState, p: Product, sameCategoryCoun
 }
 
 /** 병당 공헌이익과 공헌이익률 (출고가 − 생산 원가 − 유통비) */
-export function bottleMargin(p: Pick<Product, 'price' | 'unitCost' | 'bottleMl'>): { perBottle: number; rate: number } {
-  const perBottle = p.price - p.unitCost - distributionCostPerBottle(p.price, p.bottleMl);
+export function bottleMargin(p: Pick<Product, 'price' | 'unitCost' | 'bottleMl'>, outbound = 1): { perBottle: number; rate: number } {
+  const perBottle = p.price - p.unitCost - distributionCostPerBottle(p.price, p.bottleMl, outbound);
   return { perBottle, rate: p.price > 0 ? perBottle / p.price : 0 };
 }
 

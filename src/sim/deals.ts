@@ -162,5 +162,6 @@ export function collectReceivables(s: GameState, report: MonthReport): void {
   const amount = due.reduce((t, r) => t + r.amount, 0);
   s.cash += amount;
   report.revenue += amount;
+  report.receivablesCollected = (report.receivablesCollected ?? 0) + amount;
   s.receivables = s.receivables.filter((r) => r.dueMonth > s.month);
 }
