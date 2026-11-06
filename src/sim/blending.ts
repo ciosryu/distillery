@@ -8,11 +8,22 @@ import { ownsFacility } from './ops';
 import { dutyFreeAgedAppeal, dutyFreeSlotBlocker, dutyFreeSuggestedPrice, hasDutyFree, nextDutyFreeEdition, siteFreight, DUTY_FREE } from './sites';
 import { bestBy, nid, staffOf } from './util';
 import { mod } from './modifiers';
+import { hexOf, matchScore, mixHex, perceivedHex } from './blendRadar';
+import { blenderOf, COMMISSION, findTarget, readCask, revealNotes } from './blendTable';
 import { productCountEver } from './lifecycle';
-import type { AxisId, Flavor, GameState, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
+import type { AxisId, Flavor, GameState, Hex, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
 
 export interface BlendComponent { source: 'cask' | 'lot'; id: string; liters: number }
-export interface BottleOptions { name: string; targetAbv: number | 'cask'; bottleMl: number; chillFilter: boolean; packagingId: string; /** 면세 전용 한정판(제주, 결정 #87) */ dutyFreeOnly?: boolean }
+export interface BottleOptions {
+  name: string; targetAbv: number | 'cask'; bottleMl: number; chillFilter: boolean; packagingId: string;
+  /** 면세 전용 한정판(제주, 결정 #87) */ dutyFreeOnly?: boolean;
+  /** 블렌딩 테이블 (결정 #102): 맞출 목표 — 'trend' · 의뢰 id · 'line:<이름>' */ targetId?: string;
+  /** 코어 레인지 라인 — 처음이면 이 배치가 기준 육각형이 되고, 다음 배치부터 일관성으로 평가 */ line?: string;
+  /** 블렌더에게 맡긴 배팅 */ delegated?: boolean;
+}
+
+/** 배팅 결과 공개 (P6) */
+export interface BlendReveal { targetLabel: string | null; score: number | null; predicted: Hex; actual: Hex; notes: string[]; rewardNote?: string }
 
 export interface BlendPreview {
   ok: boolean;
@@ -207,9 +218,21 @@ function packagingUnitCost(s: GameState, opts: Pick<BottleOptions, 'packagingId'
 }
 
 /** 블렌딩·병입 실행 (s는 변경 가능한 복제본) */
-export function executeBlend(s: GameState, components: BlendComponent[], opts: BottleOptions): { error?: string; product?: Product } {
+export function executeBlend(s: GameState, components: BlendComponent[], opts: BottleOptions): { error?: string; product?: Product; reveal?: BlendReveal } {
   const p = previewBlend(s, components, opts);
   if (!p.ok || !p.category || !p.evaluation) return { error: p.errors.join(' / ') || '병입할 수 없습니다' };
+  // 블렌딩 테이블 (결정 #102): 원액을 빼기 전에 블렌더가 읽은 값으로 예상 육각형을 만든다 (공개 연출용)
+  const blender = blenderOf(s);
+  const parts = components.filter((c) => c.liters > 0).map((c) => {
+    const lot = lotOf(s, c)!;
+    const cask = c.source === 'cask' ? s.inventory.casks.find((k) => k.id === c.id) : undefined;
+    const seen = cask ? readCask(s, cask)! : perceivedHex(hexOf(lot.flavor), s.seed, lot.id, blender, 0);
+    return { seen, share: c.liters * lot.abv, cask };
+  });
+  const predicted = mixHex(parts.map((x) => ({ hex: x.seen, share: x.share })));
+  const single = parts.length === 1 ? parts[0]!.cask : undefined;
+  const lineTarget = opts.line && s.commerce.lines[opts.line] ? findTarget(s, `line:${opts.line}`) : undefined;
+  const target = lineTarget ?? findTarget(s, opts.targetId);
   for (const c of components) {
     if (c.liters <= 0) continue;
     if (c.source === 'cask') {
@@ -262,5 +285,38 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   // 포장재·병입 인건비는 병입 시점에 지출
   s.finance.cash -= Math.round((packagingUnitCost(s, opts) + BOTTLING_LABOR_PER_BOTTLE) * p.bottles);
   s.commerce.products.push(product);
-  return { product };
+  // 결과 공개·채점·보상 (결정 #102 P5·P6·P8)
+  const actual = hexOf(product.flavor);
+  product.hex = actual;
+  if (single?.rare && single.rareKnown) product.rareSingleCask = true;
+  let rewardNote: string | undefined;
+  let score: number | null = null;
+  if (target) {
+    score = matchScore(actual, target);
+    product.blend = { targetId: target.id, source: target.source, label: target.label, score, delegated: !!opts.delegated };
+    if (target.source === 'critic') {
+      const c = s.commerce.commissions.find((x) => x.id === target.id);
+      if (c && score >= COMMISSION.minScore) {
+        c.fulfilledBy = product.id;
+        const k = score / 100;
+        s.commerce.awareness = Math.min(0.95, s.commerce.awareness + c.reward.awareness * k);
+        product.blend.appealBonus = c.reward.appealBonus * k;
+        product.blend.untilMonth = s.month + c.reward.months;
+        rewardNote = `${c.client}가 받아들였다 — 인지도 +${(c.reward.awareness * k * 100).toFixed(1)}%p, ${c.reward.months}개월간 매력도 +${(c.reward.appealBonus * k * 100).toFixed(0)}%`;
+      } else if (c) rewardNote = `${c.client}가 받지 않았다 (${COMMISSION.minScore}점 미만) — 의뢰는 마감까지 남아 있다`;
+    }
+    if (target.source === 'core' && opts.line && lineTarget) {
+      const l = s.commerce.lines[opts.line]!;
+      l.batches += 1;
+      l.lastScore = score;
+      product.line = opts.line;
+      rewardNote = `코어 레인지 일관성 ${score}점 — 매력도 ×${(0.9 + 0.2 * score / 100).toFixed(2)}`;
+    }
+  }
+  if (opts.line && !s.commerce.lines[opts.line]) {
+    s.commerce.lines[opts.line] = { refHex: actual, batches: 1, lastScore: null, createdMonth: s.month };
+    product.line = opts.line;
+    rewardNote = [rewardNote, `코어 레인지 「${opts.line}」 기준 배치로 등록 — 다음 배치부터 이 육각형과 비교한다`].filter(Boolean).join(' · ');
+  }
+  return { product, reveal: { targetLabel: target?.label ?? null, score, predicted, actual, notes: revealNotes(predicted, actual), ...(rewardNote ? { rewardNote } : {}) } };
 }

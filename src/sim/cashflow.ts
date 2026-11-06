@@ -12,6 +12,7 @@ export const CASH_FLOW_LINES: Record<CashFlowKey, { label: string; group: CashFl
   caskOwnership: { label: '캐스크 오너십 판매', group: 'operating' },
   contractCancel: { label: '계약 해지 비용', group: 'operating' },
   bottling: { label: '병입(포장·인건비)', group: 'operating' },
+  blending: { label: '블렌딩 샘플·분석', group: 'operating' },
   severance: { label: '퇴직 위로금', group: 'operating' },
   rotation: { label: '캐스크 로테이션', group: 'operating' },
   event: { label: '이벤트 대응', group: 'operating' },

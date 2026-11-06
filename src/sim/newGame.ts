@@ -83,7 +83,7 @@ export function emptyCaskOf(s: GameState, typeId: keyof typeof CASKS): Cask {
 export function newGame(opts: NewGameOptions = {}): GameState {
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   const s: GameState = {
-    version: 6,
+    version: 7,
     seed,
     month: 0,
     startYear: opts.startYear ?? 2027,
@@ -97,12 +97,13 @@ export function newGame(opts: NewGameOptions = {}): GameState {
       trend: { soju_distilled: 1, gin: 1, whisky: 1, grain_whisky: 1, blended_whisky: 1, baijiu: 1, malt_spirit: 1, flavored_spirit: 1 },
       modifiers: [],
       weather: { tempAnom: 0, humidAnom: 0, shocks: [] },
+      flavorTrend: { shifts: [] },
     },
     finance: { cash: opts.startingCash ?? DEFAULT_STARTING_CASH, negativeCashMonths: 0, loans: [], investorShare: 0, investmentsTaken: [], receivables: [], pendingCash: {} },
     hr: { staff: [], candidates: [], houseStyle: 0 },
     production: { equipment: [], recipes: [], orders: [], ingredientKgLastMonth: {}, flags: { producedSoju: false }, wasteContractPerKg: 0 },
-    inventory: { lots: [], casks: [], caskOrders: [], warehouseBase: 150, rotatedThisMonth: 0 },
-    commerce: { products: [], productArchive: [], awareness: 0.01, localBuzz: 0, marketingBudget: 3_000_000, traditionalReleasedL: 0, traditionalPrevYearL: 0, retailOffers: [], retailContracts: [], exports: [] },
+    inventory: { lots: [], casks: [], caskOrders: [], warehouseBase: 150, rotatedThisMonth: 0, samplesThisMonth: 0 },
+    commerce: { products: [], productArchive: [], awareness: 0.01, localBuzz: 0, marketingBudget: 3_000_000, traditionalReleasedL: 0, traditionalPrevYearL: 0, retailOffers: [], retailContracts: [], exports: [], commissions: [], lines: {} },
     b2b: { trust: 50, bulkIndex: 1, spotSoldLPA: { grain: 0 }, contracts: [], contractOffers: [], brokerOffers: [], caskBids: [], oemOffers: [], oemContracts: [] },
     events: { pending: [], forecasts: [], log: [], lastFired: {} },
     research: { unlocked: [], active: [], slots: 1 },

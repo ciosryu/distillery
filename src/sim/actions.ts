@@ -5,7 +5,8 @@ import { rngFor } from './rng';
 import { cancellationCost, isBulkKind, recordSpotSale, spotQuote, startContract } from './bulk';
 import { resolvePending } from './events';
 import { mod } from './modifiers';
-import { executeBlend, type BlendComponent, type BottleOptions } from './blending';
+import { executeBlend, type BlendComponent, type BlendReveal, type BottleOptions } from './blending';
+import { blenderOf, delegatePlan, findTarget, LAB, RARE, SAMPLING, samplingCapacity } from './blendTable';
 import { MAX_RECHAR, recharCask } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
@@ -13,7 +14,7 @@ import { recordPendingCash, sumCashFlows } from './cashflow';
 import { EXPORT_MARKETS, type ExportMarketId } from './content/exports';
 import { applyWaterPermit, equipmentCost, inventoryLoanRoom, inventoryLtv } from './sites';
 import { OEM, RETAIL_DEAL, startOem, startRetail } from './deals';
-import type { CashFlowKey, CaskTypeId, GameState, Recipe } from './types';
+import type { Cask, CashFlowKey, CaskTypeId, GameState, Product, Recipe } from './types';
 import { annuityPayment, clone, nid, staffOf, warehouseCapacity } from './util';
 
 export type Action =
@@ -38,6 +39,10 @@ export type Action =
   | { type: 'sellCaskOwnership'; caskId: string }
   | { type: 'rechar'; caskId: string }
   | { type: 'bottle'; components: BlendComponent[]; options: BottleOptions }
+  /** 블렌딩 테이블 (결정 #102): 샘플링(읽는 오차↓·레어 발견) · 실험실 분석(피트·우디 정확) · 블렌더에게 맡기기 */
+  | { type: 'sampleCask'; caskIds: string[] }
+  | { type: 'labAnalyze'; caskIds: string[] }
+  | { type: 'delegateBlend'; targetId: string; caskIds: string[]; bottles: number; options: BottleOptions }
   | { type: 'setPrice'; productId: string; price: number }
   | { type: 'setMarketing'; amount: number }
   | { type: 'hire'; candidateId: string; asApprentice?: boolean }
@@ -71,7 +76,19 @@ const ACTION_CASH_KEY: Record<Action['type'], CashFlowKey | null> = {
   applyWaterPermit: 'other', acceptRetail: null, cancelRetail: 'contractCancel', acceptOem: 'equipment',
   // 수출 (#95): 시장 진출비·철수
   openExport: 'export', closeExport: 'export', setExportPrice: null,
+  // 블렌딩 테이블 (#102)
+  sampleCask: 'blending', labAnalyze: 'blending', delegateBlend: 'bottling',
 };
+
+/** 병입 결과 문구 — 블렌딩 테이블 결과 공개(결정 #102 P6) 포함 */
+function bottleMessage(p: Product, r?: BlendReveal): string {
+  const parts = [`${p.name} ${p.stockBottles.toLocaleString()}병 병입`];
+  if (r?.score != null) parts.push(`목표 일치 ${r.score}점 (${r.targetLabel})`);
+  if (r?.notes.length) parts.push(r.notes.join(', '));
+  if (p.rareSingleCask) parts.push('레어 싱글 캐스크');
+  if (r?.rewardNote) parts.push(r.rewardNote);
+  return parts.join(' · ');
+}
 
 /** 행동 적용. 행동으로 움직인 현금은 pendingCash에 기록돼 다음 결산 보고서(offTurn·netCash)에 합쳐진다 */
 export function applyAction(prev: GameState, a: Action): ActionResult {
@@ -264,8 +281,10 @@ function applyActionRaw(prev: GameState, a: Action): ActionResult {
         lotLeftL -= useL;
         // 캐스크 원가의 일부를 이번 회차 원액 원가에 배분
         const caskShare = CASKS[cask.typeId].price * CASK_COST_SHARE_PER_FILL;
+        // 레어 캐스크 (결정 #102 P8): 통입할 때 정해지는 숨김값 — 캐스크·회차마다 고정된 난수
+        const rare = rngFor(s.seed, 0, `rare:${cask.id}:${cask.fills + 1}`).chance(RARE.chance);
         s.inventory.casks[ci] = {
-          ...cask, fills: cask.fills + 1, filledMonth: s.month,
+          ...cask, fills: cask.fills + 1, filledMonth: s.month, rare: rare || undefined, rareKnown: undefined, samples: undefined, labAnalyzed: undefined,
           contents: { ...lot, id: nid(s, 'L'), name: `${lot.name} → ${cask.id}`, volumeL: lpa / entry, abv: entry, costPerLPA: lot.costPerLPA + caskShare / lpa },
         };
         s.inventory.casks[ci]!.slot = undefined;
@@ -291,7 +310,44 @@ function applyActionRaw(prev: GameState, a: Action): ActionResult {
     case 'bottle': {
       const res = executeBlend(s, a.components, a.options);
       if (res.error) return fail(prev, res.error);
-      return { state: s, message: `${res.product!.name} ${res.product!.stockBottles.toLocaleString()}병 병입` };
+      return { state: s, message: bottleMessage(res.product!, res.reveal) };
+    }
+    case 'sampleCask': {
+      const cap = samplingCapacity(s) - s.inventory.samplesThisMonth;
+      const casks = a.caskIds.map((id) => s.inventory.casks.find((c) => c.id === id)).filter((c): c is Cask => !!c?.contents && (c.samples ?? 0) < SAMPLING.maxSamples);
+      if (!casks.length) return fail(prev, '샘플을 뜰 캐스크가 없습니다 (빈 통이거나 이미 충분히 샘플링했다)');
+      if (casks.length > cap) return fail(prev, `이번 달 샘플링 여력 부족 (${Math.max(0, cap)}회 남음) — 마스터 블렌더를 두면 늘어난다`);
+      const blender = blenderOf(s);
+      const found: string[] = [];
+      for (const c of casks) {
+        const n = (c.samples ?? 0) + 1;
+        c.samples = n;
+        c.contents = { ...c.contents!, volumeL: Math.max(0, c.contents!.volumeL - SAMPLING.lossL) };
+        // 레어 캐스크는 샘플을 뜰 때 드러날 수 있다 (감정력)
+        if (c.rare && !c.rareKnown && rngFor(s.seed, s.month, `rarefind:${c.id}:${n}`).chance(blender ? RARE.findBase + RARE.findPerAppraisal * (blender.appraisal / 100) : RARE.findOwner)) {
+          c.rareKnown = true;
+          found.push(c.id);
+        }
+      }
+      s.inventory.samplesThisMonth += casks.length;
+      s.finance.cash -= casks.length * SAMPLING.cost;
+      return { state: s, message: `캐스크 ${casks.length}개 샘플링${found.length ? ` — 레어 캐스크 발견: ${found.join(', ')}` : ''}` };
+    }
+    case 'labAnalyze': {
+      const casks = a.caskIds.map((id) => s.inventory.casks.find((c) => c.id === id)).filter((c): c is Cask => !!c?.contents && !c.labAnalyzed);
+      if (!casks.length) return fail(prev, '분석할 캐스크가 없습니다');
+      for (const c of casks) c.labAnalyzed = true;
+      s.finance.cash -= casks.length * LAB.cost;
+      return { state: s, message: `실험실 분석 ${casks.length}건 — 피트·우디는 이제 정확히 안다` };
+    }
+    case 'delegateBlend': {
+      const target = findTarget(s, a.targetId);
+      if (!target) return fail(prev, '목표가 없습니다');
+      const plan = delegatePlan(s, target, a.caskIds, a.bottles, a.options);
+      if ('error' in plan) return fail(prev, plan.error);
+      const res = executeBlend(s, plan.components, { ...a.options, targetId: target.source === 'core' ? undefined : target.id, line: target.source === 'core' ? target.id.slice(5) : a.options.line, delegated: true });
+      if (res.error) return fail(prev, res.error);
+      return { state: s, message: `블렌더에게 맡김 — ${bottleMessage(res.product!, res.reveal)}` };
     }
     case 'setPrice': {
       const p = s.commerce.products.find((x) => x.id === a.productId);

@@ -9,6 +9,7 @@ import { won } from './ui/format';
 import { Button } from './ui/kit';
 import { B2B } from './ui/panels/B2B';
 import { Bottling } from './ui/panels/Bottling';
+import { BlendLab } from './ui/panels/BlendLab';
 import { Dashboard } from './ui/panels/Dashboard';
 import { Exports } from './ui/panels/Exports';
 import { Finance } from './ui/panels/Finance';
@@ -22,6 +23,7 @@ const TABS = [
   { id: 'production', label: '생산', el: <Production /> },
   { id: 'warehouse', label: '숙성고', el: <Warehouse /> },
   { id: 'bottling', label: '블렌딩·병입', el: <Bottling /> },
+  { id: 'blendlab', label: '블렌딩 테이블', el: <BlendLab /> },
   { id: 'sales', label: '판매', el: <Sales /> },
   { id: 'b2b', label: '원액 B2B', el: <B2B /> },
   { id: 'exports', label: '수출', el: <Exports /> },

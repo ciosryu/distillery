@@ -1,5 +1,5 @@
 import { rngFor } from './rng';
-import type { AxisId, Flavor } from './types';
+import type { AxisId, Flavor, Hex, HexAxis, TargetSource } from './types';
 
 // 블렌딩 레이더 미니게임 코어 — "The Art of Blending" (PRD 결정 #99, docs/design/blending-minigame.md)
 //
@@ -10,11 +10,9 @@ import type { AxisId, Flavor } from './types';
 //    지각 오차는 캐스크·블렌더·샘플 횟수마다 고정 → 슬라이더를 움직여도 다시 굴려지지 않는다(세이브 스커밍 방지).
 // 수치는 모두 [튜닝].
 
-export type HexAxis = 'peat' | 'fruit' | 'floral' | 'spicy' | 'woody' | 'sweet';
 export const HEX_AXES: HexAxis[] = ['peat', 'fruit', 'floral', 'spicy', 'woody', 'sweet'];
 export const HEX_LABEL: Record<HexAxis, string> = { peat: '피트', fruit: '과일', floral: '플로럴', spicy: '스파이시', woody: '우디', sweet: '스위트' };
 
-export type Hex = Record<HexAxis, number>;
 
 /** 위스키 계열 투영 가중치 — 36축 → 6스탯. 진·소주는 주종별 육각형을 따로 둔다(설계 문서 §2.1 제안) */
 export const HEX_PROJECTION: Record<HexAxis, Partial<Record<AxisId, number>>> = {
@@ -116,7 +114,6 @@ export function previewVat(parts: VatComponent[], seed: number, blender: Blender
 
 // ───────────── 목표 매칭 ─────────────
 
-export type TargetSource = 'trend' | 'critic' | 'core';
 
 export interface BlendTarget {
   id: string;

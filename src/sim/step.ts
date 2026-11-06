@@ -12,6 +12,7 @@ import { fermentDaysAt } from './production';
 import { buildTickContext, type TickContext } from './tick';
 import { updateWeather, weatherOffset } from './weather';
 import { archiveSoldOutProducts, rollupYear } from './lifecycle';
+import { pruneTrendsAndCommissions, refreshCommissions } from './blendTable';
 import { runSales, updateAwareness, updateExportAwareness, updateTrends } from './market';
 import { EXPORT_MARKETS } from './content/exports';
 import { batchEnergyCost, simulateBatch, stillDefOf, volumeDiscounts } from './production';
@@ -230,6 +231,8 @@ const newReport = (s: GameState, offTurn: CashFlows): MonthReport => ({ month: s
 function phasePrepare(s: GameState, report: MonthReport): void {
   pruneModifiers(s);
   s.inventory.rotatedThisMonth = 0;
+  s.inventory.samplesThisMonth = 0;
+  pruneTrendsAndCommissions(s, report);
   // 주문한 캐스크 도착 (쿠퍼리지·시즈닝 계약)
   for (const o of s.inventory.caskOrders.filter((x) => x.arriveMonth <= s.month)) {
     for (let i = 0; i < o.qty; i++) {
@@ -318,6 +321,8 @@ function phaseGrowth(s: GameState, report: MonthReport, runsUsed: number, sales:
     warehouse: s.inventory.casks.filter((c) => c.contents).length / 5,
     sales: sales.reduce((t, x) => t + x.bottles, 0) / 200,
     office: 10,
+    // 블렌더: 이번 달 병입·샘플링 횟수만큼 배운다 (결정 #101)
+    blender: s.commerce.products.filter((p) => p.createdMonth === s.month).length * 15 + s.inventory.samplesThisMonth * 2,
   };
   report.notes.push(...gainXp(s, rngFor(s.seed, s.month, 'hr'), activity));
   if (s.month % 3 === 2) refreshCandidates(s, rngFor(s.seed, s.month, 'candidates'));
@@ -326,6 +331,7 @@ function phaseGrowth(s: GameState, report: MonthReport, runsUsed: number, sales:
   refreshCaskBids(s, rngFor(s.seed, s.month, 'caskbids'));
   updateBulkIndex(s, rngFor(s.seed, s.month, 'bulk'));
   refreshDeals(s, rngFor(s.seed, s.month, 'deals'));
+  refreshCommissions(s, rngFor(s.seed, s.month, 'commissions'), report);
   // 그레인 현물 시장이 물량을 소화한다 (#81)
   if (s.b2b.spotSoldLPA) s.b2b.spotSoldLPA = { grain: s.b2b.spotSoldLPA.grain * BULK.spotDecay };
   // 원재료 가격 변동 (평균 회귀 랜덤 워크)

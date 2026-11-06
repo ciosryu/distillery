@@ -4,6 +4,8 @@ import { DUTY_FREE, dutyFreeDemand, dutyFreeEditionAppeal, outboundLogistics } f
 import { agePerception } from './blending';
 import { overhangFactor, ownershipOversold, OWNERSHIP, retailCapacityCases, RETAIL } from './ops';
 import { clamp } from './flavor';
+import { hexOf } from './blendRadar';
+import { RARE, trendFactor } from './blendTable';
 import { allProductQualities } from './lifecycle';
 import { staffOf } from './util';
 import { mod } from './modifiers';
@@ -34,7 +36,14 @@ export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regi
   const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12) : 1;
   const lux = PACKAGING[p.packagingId]?.luxury ?? 1;
   // 시장 국면: 피트·셰리 유행
-  const trend = s ? mod(s, 'appeal:all') * ((p.flavor.peat_smoke ?? 0) >= 25 ? mod(s, 'appeal:peated') : 1) * ((p.flavor.dried_fruit ?? 0) >= 25 ? mod(s, 'appeal:sherried') : 1) : 1;
+  // 시장 국면: 향미 트렌드 이동 (결정 #103 — 옛 피트·셰리 계단식 보정치를 육각형 축 기반 연속 배수로 대체)
+  const trend = s ? mod(s, 'appeal:all') * trendFactor(s, p.hex ?? hexOf(p.flavor)) : 1;
+  // 블렌딩 테이블 (결정 #102): 평론가 의뢰 블렌드는 기간 한정 가산, 코어 레인지는 일관성(0.9~1.1), 레어 싱글 캐스크
+  const blendBonus = !p.blend ? 1
+    : p.blend.source === 'critic' ? (s && p.blend.untilMonth != null && s.month < p.blend.untilMonth ? 1 + (p.blend.appealBonus ?? 0) : 1)
+    : p.blend.source === 'core' ? 0.9 + 0.2 * (p.blend.score / 100)
+    : 1;
+  const rare = p.rareSingleCask ? RARE.singleCaskAppeal : 1;
   const region = s ? regionOf(s) : null;
   // 매입 원액 병입의 브랜드 가치: 싸게 사 온 원액일수록 감점, 비싼 원액이면 감점이 줄어든다
   const brand = 1 - (region?.sourcedPenalty ?? 0.4) * p.sourcedShare * (1 - (p.sourcedPrestige ?? 0));
@@ -46,7 +55,7 @@ export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regi
   const premium = s && aged ? mod(s, 'appeal:premium') : 1;
   const incense = region?.incensePremium && (p.flavor.incense ?? 0) >= 8 ? region.incensePremium : 1;
   const edition = dutyFreeEditionAppeal(p);
-  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * brand * label * specialty * trend * premium * incense * edition;
+  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * brand * label * specialty * trend * premium * incense * edition * blendBonus * rare;
 }
 
 /** 브랜드 가치가 낮은 매입 원액 병입은 저가 하이볼 수요라 가격에 훨씬 민감하다 */

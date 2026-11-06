@@ -4,6 +4,9 @@ import type { AxisId, Cask, Flavor, SpiritLot } from './types';
 
 // 숙성 모델 (PRD §5.3, flavor-model §4.5). 수치 [튜닝].
 
+/** 레어 캐스크 추출 배수 — blendTable.RARE.extractBoost와 같은 값(순환 참조를 피해 여기 둔다) */
+export const RARE_EXTRACT_BOOST = 1.3;
+
 /** 200L 배럴 기준, 10°C에서의 월 증발률 (스코틀랜드형 기후에서 연 약 2%) */
 export const R0_EVAP = 0.001684;
 /** 숙성(추출·제거) 속도의 온도 민감도 */
@@ -49,7 +52,8 @@ export function matureCask(cask: Cask, climate: Climate, opts: MatureOptions): {
   const rate = R0_EVAP * evapTempFactor(climate.tempC) * sf * (1 - 0.2 * (opts.control / 100)) * (opts.evaporationFactor ?? 1);
   const evap = evaporate(lot.volumeL, lot.abv, rate, climate.humidity);
   const m = sf * tf;
-  const act = cask.activity;
+  // 레어 캐스크(결정 #102 P8)는 목재 추출이 남달리 강하다 — 진한 프로파일, 육각형의 꼭짓점
+  const act = cask.activity * (cask.rare ? RARE_EXTRACT_BOOST : 1);
   const f: Flavor = { ...lot.flavor };
   const bump = (k: AxisId, amount: number, cap = 100) => {
     const cur = f[k] ?? 0;
@@ -102,7 +106,7 @@ export function restLot(lot: SpiritLot): SpiritLot {
 /** 캐스크를 비울 때: 재사용 시 활성도·시즈닝 감소 */
 export function emptyCask(cask: Cask): Cask {
   // 오염 통은 비우면서 오염이 드러난다(재탄화로 제거). 숙성고 자리도 비운다
-  return { ...cask, contents: undefined, filledMonth: undefined, slot: undefined, activity: cask.activity * 0.6, seasoning: cask.seasoning * 0.35, ...(cask.contamination ? { contaminationKnown: true } : {}) };
+  return { ...cask, contents: undefined, filledMonth: undefined, slot: undefined, samples: undefined, labAnalyzed: undefined, rare: undefined, rareKnown: undefined, activity: cask.activity * 0.6, seasoning: cask.seasoning * 0.35, ...(cask.contamination ? { contaminationKnown: true } : {}) };
 }
 
 /** 재탄화: 활성도 0.7까지 회복 (시즈닝은 회복 안 됨). 최대 2회 */

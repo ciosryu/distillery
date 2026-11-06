@@ -14,6 +14,10 @@ export type AxisId =
 
 export type Flavor = Partial<Record<AxisId, number>>;
 
+/** 블렌딩 레이더 6스탯 (결정 #99) — 36축 향미의 선형 투영. 투영 가중치는 blendRadar.ts */
+export type HexAxis = 'peat' | 'fruit' | 'floral' | 'spicy' | 'woody' | 'sweet';
+export type Hex = Record<HexAxis, number>;
+
 /** 생산 주종 (원액 기준) */
 export type SpiritKind = 'soju' | 'gin' | 'malt' | 'grain' | 'baijiu';
 
@@ -29,7 +33,7 @@ export type StillType = 'pot_onion' | 'pot_lantern' | 'hybrid' | 'vacuum_pot' | 
 export type CondenserType = 'copper_shell' | 'worm_tub';
 export type CaskTypeId = 'ex_bourbon_barrel' | 'oloroso_butt' | 'korean_oak_quarter' | 'mizunara_hogshead';
 export type WoodId = 'american_oak' | 'european_oak' | 'korean_oak' | 'mizunara';
-export type StaffRole = 'distiller' | 'warehouse' | 'sales' | 'office';
+export type StaffRole = 'distiller' | 'warehouse' | 'sales' | 'office' | 'blender';
 
 export interface Recipe {
   id: string;
@@ -104,6 +108,13 @@ export interface Cask {
   contaminationKnown?: boolean;
   /** 캐스크 오너십으로 판 통 — 고객 소유, 병입·판매 불가 */
   owner?: { name: string; soldMonth: number; deliverMonth: number };
+  /** 블렌딩 테이블 (결정 #102): 블렌더가 이 캐스크에서 샘플을 뜬 횟수 — 읽는 오차가 1/√(1+n)로 준다 */
+  samples?: number;
+  /** 실험실(GC) 분석을 맡겼다 — 피트·우디 두 축은 정확히 안다 */
+  labAnalyzed?: boolean;
+  /** 레어 캐스크 (숨김값) — 추출이 남달리 강해 육각형의 꼭짓점이 된다. 통입 때 정해지고 샘플링·감정력으로 드러난다 */
+  rare?: boolean;
+  rareKnown?: boolean;
 }
 
 export interface Product {
@@ -142,6 +153,14 @@ export interface Product {
   salesEma?: number;
   /** 첫 위스키 출시 오픈런 효과 */
   launchBoost?: { factor: number; untilMonth: number };
+  /** 블렌딩 결과 육각형 (실제값, 결정 #102) */
+  hex?: Hex;
+  /** 목표 매칭 결과 — 트렌드·평론가 의뢰·코어 레인지 */
+  blend?: { targetId: string; source: TargetSource; label: string; score: number; delegated: boolean; untilMonth?: number; appealBonus?: number };
+  /** 코어 레인지 라인 이름 */
+  line?: string;
+  /** 레어 캐스크 싱글 캐스크 병입 */
+  rareSingleCask?: boolean;
   /** 면세 전용 한정판 (제주, 결정 #87) — 국내 판매 없음 */
   dutyFreeOnly?: boolean;
   /** 입지 원료 제품 — 모든 구성 원액이 입지 원료 원액일 때 */
@@ -160,7 +179,7 @@ export interface Staff {
   role: StaffRole;
   level: number;
   xp: number;
-  /** 직군별 스탯: distiller(후각, 공정, 직관) / warehouse(관찰, 환경통제, 성실) / sales(친화, 네트워크, 협상) */
+  /** 직군별 스탯: distiller(후각, 공정, 직관) / warehouse(관찰, 환경통제, 성실) / sales(친화, 네트워크, 협상) / office(세무, 협상, 행정) / blender(후각, 미각, 감정력 — 결정 #101) */
   stats: StaffStats;
   salary: number;
   hiredMonth: number;
@@ -228,7 +247,7 @@ export interface Contract extends ContractTerms {
 
 /** 턴 사이 행동(즉시 입출금)의 현금 흐름 항목 — 분류는 cashflow.ts의 CASH_FLOW_LINES */
 export type CashFlowKey =
-  | 'spotBulk' | 'caskBid' | 'caskOwnership' | 'contractPrepay' | 'contractCancel' | 'bottling' | 'severance' | 'rotation' | 'event' | 'brokerCask' | 'export' | 'other'
+  | 'spotBulk' | 'caskBid' | 'caskOwnership' | 'contractPrepay' | 'contractCancel' | 'bottling' | 'blending' | 'severance' | 'rotation' | 'event' | 'brokerCask' | 'export' | 'other'
   | 'casks' | 'usedCask' | 'equipment'
   | 'loan' | 'loanRepay' | 'investment';
 /** 항목별 현금 흐름. 부호: 입금 +, 출금 − */
@@ -422,6 +441,41 @@ export interface YearSummary {
   filledCasksEnd: number;
 }
 
+/** 블렌딩 목표의 출처 (결정 #102) */
+export type TargetSource = 'trend' | 'critic' | 'core';
+
+/** 향미 트렌드 이동 — 시장 국면 이벤트가 만든다 (결정 #103: 옛 appeal:peated·appeal:sherried 보정치를 대체).
+ *  제품 육각형의 axis 값이 lo 이하면 효과 없음, hi 이상이면 매력도 × (1 + strength), 사이는 선형 */
+export interface TrendShift {
+  id: string;
+  label: string;
+  axis: HexAxis;
+  strength: number;
+  lo: number;
+  hi: number;
+  fromMonth: number;
+  untilMonth: number;
+}
+
+/** 평론가·바·매체의 블렌딩 의뢰 (결정 #102) — 가상 의뢰처만 쓴다(실존 인물 발언 금지, PRD §11.1) */
+export interface BlendCommission {
+  id: string;
+  client: string;
+  label: string;
+  hex: Hex;
+  /** 이 거리에서 약 61점 — 좁을수록 까다롭다 */
+  tolerance: number;
+  weights?: Partial<Record<HexAxis, number>>;
+  expiresMonth: number;
+  /** 보상: 인지도 + 그 제품의 매력도 가산(점수 비례, months개월) */
+  reward: { awareness: number; appealBonus: number; months: number };
+  /** 이 의뢰로 병입한 제품 */
+  fulfilledBy?: string;
+}
+
+/** 코어 레인지 — 같은 라인의 다음 배치는 기준 육각형과의 일관성으로 평가된다 */
+export interface CoreLine { refHex: Hex; batches: number; lastScore: number | null; createdMonth: number }
+
 export interface WorldSlice {
   /** 원재료 가격 지수 (1 = 기준가) */
   priceIndex: Record<string, number>;
@@ -430,6 +484,8 @@ export interface WorldSlice {
   /** 기간 한정 보정치 — 이벤트·시장 국면이 만든다 */
   modifiers: Modifier[];
   weather: WeatherState;
+  /** 향미 트렌드 이동 (결정 #103) */
+  flavorTrend: { shifts: TrendShift[] };
 }
 
 export interface FinanceSlice {
@@ -475,6 +531,8 @@ export interface InventorySlice {
   warehouseBase: number;
   /** 이번 달 로테이션한 캐스크 수 */
   rotatedThisMonth: number;
+  /** 이번 달 샘플링 횟수 — 블렌더 여력 (결정 #102) */
+  samplesThisMonth: number;
 }
 
 export interface CommerceSlice {
@@ -493,6 +551,10 @@ export interface CommerceSlice {
   retailContracts: RetailContract[];
   /** 진출한 수출 시장 (수출 결정 — PRD §16.25) */
   exports?: ExportEntry[];
+  /** 진행 중인 블렌딩 의뢰 (결정 #102) */
+  commissions: BlendCommission[];
+  /** 코어 레인지 — 라인 이름 → 기준 육각형 */
+  lines: Record<string, CoreLine>;
 }
 
 export interface B2bSlice {
@@ -541,7 +603,7 @@ export interface ExportEntry {
 export interface ExportSale { marketId: 'US' | 'UK' | 'DF'; productId: string; name: string; bottles: number; revenue: number; demandBottles: number; freight: number }
 
 export interface GameState {
-  version: 6;
+  version: 7;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;

@@ -1,4 +1,4 @@
-import type { ProductCategory, RegionId } from '../types';
+import type { HexAxis, ProductCategory, RegionId } from '../types';
 
 // 이벤트 정의 — 선언형 데이터 (Godot 이식 시 JSON으로 옮길 수 있게 함수 없이 작성). 확률·수치 [튜닝]
 // 원칙: ① 큰 악재는 예보(빗나갈 수 있음)로 대비할 시간을 준다 ② 호재와 악재를 섞는다
@@ -10,6 +10,8 @@ export type Effect =
   | { type: 'modifier'; key: string; factor: number; months: [number, number]; delay?: number; label?: string }
   /** 기상 충격 — 결과(증발 배수)가 아니라 입력(외기 기온·습도)을 바꾼다 (결정 #98) */
   | { type: 'weather'; tempC: number; humidity?: number; months: [number, number]; label?: string }
+  /** 향미 트렌드 이동 (결정 #103) — 제품 육각형 axis가 lo~hi 구간에서 매력도 × (1 + strength)까지 선형으로 오른다 */
+  | { type: 'flavorTrend'; axis: HexAxis; strength: number; lo: number; hi: number; months: [number, number]; label?: string }
   | { type: 'cash'; amount: number }
   | { type: 'awareness'; delta: number }
   | { type: 'trust'; delta: number }
@@ -69,9 +71,11 @@ export const EVENTS: EventDef[] = [
   { id: 'highball_boom', title: '하이볼 열풍', category: 'market', chance: 0.018, cooldown: 48, text: '하이볼이 유행하며 위스키와 진 수요가 늘어납니다.',
     effects: [m('demand:whisky', 1.25, [12, 24], '하이볼 열풍'), m('demand:blended_whisky', 1.35, [12, 24], '하이볼 열풍'), m('demand:gin', 1.15, [12, 24], '하이볼 열풍')] },
   { id: 'peat_craze', title: '피트 위스키 열풍', category: 'market', chance: 0.014, cooldown: 48, text: '스모키한 위스키가 화제입니다. 피트 원액의 매력도와 벌크 시세가 오릅니다.',
-    effects: [m('appeal:peated', 1.4, [18, 30], '피트 열풍'), m('bulk:peated', 1.2, [18, 30], '피트 열풍')] },
+    // v1.6(#103): appeal:peated ×1.4(피트 25↑ 계단) → 육각형 피트 15~25 구간 연속 배수
+    effects: [{ type: 'flavorTrend', axis: 'peat', strength: 0.4, lo: 15, hi: 25, months: [18, 30], label: '피트 열풍' }, m('bulk:peated', 1.2, [18, 30], '피트 열풍')] },
   { id: 'sherry_trend', title: '셰리 캐스크 인기', category: 'market', chance: 0.014, cooldown: 48, text: '셰리 캐스크 숙성 위스키가 인기를 끕니다.',
-    effects: [m('appeal:sherried', 1.3, [18, 30], '셰리 캐스크 인기')] },
+    // v1.6(#103): appeal:sherried ×1.3(건과일 25↑ 계단) → 육각형 스파이시 15~30 구간 연속 배수(셰리 캐스크는 건과일·오크 스파이스가 함께 오른다)
+    effects: [{ type: 'flavorTrend', axis: 'spicy', strength: 0.3, lo: 15, hi: 30, months: [18, 30], label: '셰리 캐스크 인기' }] },
   { id: 'whisky_boom', title: '위스키 붐', category: 'market', chance: 0.01, cooldown: 72, minMonth: 24, text: '위스키 소비가 급증하고 블렌더들이 원액 확보 경쟁에 나섭니다.',
     forecast: { months: 3, certainty: 0.7, text: '업계 보고서: 위스키 수요가 크게 늘 조짐이 보입니다.' },
     effects: [m('demand:whisky', 1.25, [24, 36], '위스키 붐'), m('demand:blended_whisky', 1.2, [24, 36], '위스키 붐'), m('bulk', 1.35, [24, 36], '위스키 붐')] },
@@ -169,7 +173,7 @@ export const EVENTS: EventDef[] = [
     effects: [m('ingredient:malt_unpeated', 1.15, [12, 24], '보복 관세'), m('ingredient:malt_peated', 1.15, [12, 24], '보복 관세'), m('cask:ex_bourbon_barrel', 1.3, [12, 24], '보복 관세'), m('bulk', 0.9, [12, 24], '수출 위축')] },
   { id: 'spain_drought', title: '스페인 가뭄 — 셰리통 파동', category: 'supply', chance: 0.008, cooldown: 72, text: '스페인 가뭄으로 셰리 생산이 줄어 시즈닝된 셰리 캐스크가 귀해졌습니다.',
     forecast: { months: 4, certainty: 0.7, text: '헤레스 지역 가뭄으로 포도 작황이 나쁘다는 소식입니다.' },
-    effects: [m('cask:oloroso_butt', 1.8, [24, 36], '셰리통 파동'), m('appeal:sherried', 1.1, [24, 36], '셰리 희소성')] },
+    effects: [m('cask:oloroso_butt', 1.8, [24, 36], '셰리통 파동'), { type: 'flavorTrend', axis: 'spicy', strength: 0.1, lo: 15, hi: 30, months: [24, 36], label: '셰리 희소성' }] },
   // ── v1.0 평론가·세무 ──
   { id: 'murray_visit', title: '짐 머레이 기습 방문', category: 'opportunity', chance: 0.006, cooldown: 36, requires: ['products'], text: '평론가 짐 머레이가 예고 없이 찾아와 대표 제품을 시음했습니다.',
     effects: [{ type: 'criticVerdict', rave: 82, pan: 68,

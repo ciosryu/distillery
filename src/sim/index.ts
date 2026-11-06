@@ -20,6 +20,7 @@ export * from './weather';
 export * from './lifecycle';
 export * from './engine';
 export * from './blendRadar';
+export * from './blendTable';
 export * from './content/exports';
 export * from './sites';
 export * from './deals';

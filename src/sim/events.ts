@@ -10,6 +10,8 @@ import { rngFor, type Rng } from './rng';
 import type { GameState, MonthReport } from './types';
 import { nid } from './util';
 import { addWeatherShock } from './weather';
+import { addTrendShift } from './blendTable';
+import { HEX_LABEL } from './blendRadar';
 
 // 이벤트 엔진: 예보 → 발생 → (선택지) → 효과. 결정론적 난수 스트림 사용.
 
@@ -61,6 +63,12 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         const months = rng.int(e.months[0], e.months[1]);
         addWeatherShock(s, `W${s.month}-${e.label ?? label}`, e.label ?? label, e.tempC, e.humidity ?? 0, months);
         notes.push(`외기 ${e.tempC > 0 ? '+' : ''}${e.tempC}°C${e.humidity ? ` · 습도 ${e.humidity > 0 ? '+' : ''}${e.humidity}%p` : ''} (${months}개월)`);
+        break;
+      }
+      case 'flavorTrend': {
+        const months = rng.int(e.months[0], e.months[1]);
+        addTrendShift(s, e.label ?? label, e.axis, e.strength, e.lo, e.hi, months);
+        notes.push(`${HEX_LABEL[e.axis]} 향 유행 — 최대 매력도 ×${(1 + e.strength).toFixed(2)} (${months}개월)`);
         break;
       }
       case 'cash': s.finance.cash += e.amount; if (e.amount) notes.push(`현금 ${e.amount > 0 ? '+' : ''}${e.amount.toLocaleString()}원`); break;
