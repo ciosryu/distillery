@@ -1,8 +1,8 @@
 import { HEX_AXES, HEX_LABEL, hexDistance, hexOf, matchScore, mixHex, perceivedHex, sampledSigma, type BlenderSkill, type BlendTarget } from './blendRadar';
 import { clamp } from './flavor';
 import { RARE_EXTRACT_BOOST } from './maturation';
-import type { Rng } from './rng';
-import type { BlendCommission, Cask, GameState, Hex, HexAxis, MonthReport, Staff, TrendShift } from './types';
+import { rngFor, type Rng } from './rng';
+import type { BlendCommission, Cask, GameState, Hex, HexAxis, MonthReport, SampleRecord, Staff, TrendShift } from './types';
 import type { BlendComponent, BottleOptions } from './blending';
 import { nid, staffOf } from './util';
 
@@ -60,6 +60,37 @@ export function readCask(s: GameState, cask: Cask): Hex | null {
   const seen = perceivedHex(actual, s.seed, cask.id, blenderOf(s), cask.samples ?? 0);
   if (cask.labAnalyzed) for (const a of LAB.axes) seen[a] = actual[a];
   return seen;
+}
+
+// ───────────── 샘플 기록 — "아는 값" (S-10, #136) ─────────────
+// readCask는 지금의 참 향미에 고정된 오차를 더해 매번 다시 계산한다 → 샘플 뒤에도 추정치가 참값을 따라 움직인다(정보 누수).
+// MVP 숙성고 화면은 대신 샘플을 뜬 그 순간의 읽기를 남긴 기록(sampleLog)만 보여 준다. 블렌딩 테이블을 기록으로 옮길지는 단계 P(PROD)
+
+/** 남기는 샘플 기록 수 — 마지막 샘플과 그 직전(변화 화살표용) */
+export const SAMPLE_LOG_KEPT = 2;
+/** 추정 품질의 오차 = 읽기 오차(육각형 점수 σ) × 이 값 `[튜닝]` */
+export const QUALITY_SIGMA_PER_HEX = 1;
+
+/** 샘플을 뜬 순간의 읽기를 기록한다 (sampleCask가 부른다). trueQuality는 호출 측이 계산한 참 품질 */
+export function recordSample(s: GameState, cask: Cask, trueQuality: number): SampleRecord {
+  const hex = readCask(s, cask)!;
+  const sigma = readSigma(s, cask);
+  const r = rngFor(s.seed, 0, `sample-quality:${cask.id}:${cask.samples ?? 0}`);
+  const rec: SampleRecord = { month: s.month, hex, sigma, estQuality: Math.round(clamp(trueQuality + r.normal(0, sigma * QUALITY_SIGMA_PER_HEX), 0, 100)) };
+  cask.sampleLog = [...(cask.sampleLog ?? []), rec].slice(-SAMPLE_LOG_KEPT);
+  return rec;
+}
+
+/** 마지막 샘플 기록과 직전 대비 변화(축별 차이·품질 차이). 기록이 없으면 null — 화면은 "샘플 없음" */
+export function lastSample(cask: Pick<Cask, 'sampleLog'>): { last: SampleRecord; delta: { hex: Hex; quality: number } | null } | null {
+  const log = cask.sampleLog ?? [];
+  const last = log.at(-1);
+  if (!last) return null;
+  const prev = log.length >= 2 ? log.at(-2)! : null;
+  if (!prev) return { last, delta: null };
+  const hex = {} as Hex;
+  for (const a of HEX_AXES) hex[a] = last.hex[a] - prev.hex[a];
+  return { last, delta: { hex, quality: last.estQuality - prev.estQuality } };
 }
 
 /** 캐스크 1개를 읽는 오차(1σ) — 실험실 분석 축 제외 평균 */

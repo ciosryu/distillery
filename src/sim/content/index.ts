@@ -4,3 +4,4 @@ export * from './categories';
 export * from './regions';
 export * from './events';
 export * from './tech';
+export * from './scenarios';

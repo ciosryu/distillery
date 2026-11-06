@@ -93,15 +93,30 @@ export function lotCategory(lot: SpiritLot, rules: WhiskyRules = DEFAULT_WHISKY_
   return lot.kind === 'grain' ? 'grain_whisky' : 'whisky';
 }
 
-/** 숙성 연수에 대한 소비자 인식 (위스키류). 3년 = 1.18, 이후 1년마다 +0.06(12년까지).
- *  3년 미만은 법적으로 위스키라도 "어린 위스키"로 보고 크게 깎는다 — 0개월 0.47, 12개월 0.77, 24개월 0.98 (v0.8) */
-export function agePerception(oakMonths: number): number {
-  if (oakMonths >= 36) return 1 + 0.06 * Math.min(Math.floor(oakMonths / 12), 12);
-  return 1.18 * (0.4 + 0.6 * Math.pow(Math.max(0, oakMonths) / 36, 0.8));
+/** 병 숙성 프리미엄이 끝나는 연수 — 그 뒤로는 연수 표기가 값을 더 올리지 않는다 (§6.2.1) [튜닝] */
+export const AGE_PREMIUM_CAP_YEARS = 18;
+
+/** 숙성 1년당 병 프리미엄 상승률 = 같은 원액의 현물 시가 상승률(BULK). 블렌디드는 몰트·그레인 평균 (§6.2.1, #117)
+ *  한 곳(BULK)에서 읽어 두 곡선이 다시 어긋나지 않게 한다 — 원액 시가와 병 가격이 같은 속도로 오른다 */
+export function agePremiumRate(category: ProductCategory): number {
+  if (category === 'grain_whisky') return BULK.grainAgePerYear;
+  if (category === 'blended_whisky') return (BULK.agePerYear + BULK.grainAgePerYear) / 2;
+  return BULK.agePerYear;
+}
+
+/** 숙성 연수에 대한 소비자 인식 (위스키류) — 권장가·면세 권장가·매력도가 함께 쓴다.
+ *  3년 미만은 법적으로 위스키라도 "어린 위스키"로 보고 크게 깎는다 — 0개월 0.47, 12개월 0.77, 24개월 0.98 (v0.8, 그대로)
+ *  3년 = 1.18, 그 뒤는 원액 시가와 같은 비율로 오른다: 1.18 × (1 + r·연수) / (1 + 3r), 18년 상한 (§6.2.1, 예약 #117의 규칙)
+ *  몰트(r = 0.2): 6년 1.62 · 10년 2.21 · 12년 2.51 · 18년 3.39 (옛 공식: 연 +0.06, 12년 상한 1.72) */
+export function agePerception(oakMonths: number, category: ProductCategory = 'whisky'): number {
+  if (oakMonths < 36) return 1.18 * (0.4 + 0.6 * Math.pow(Math.max(0, oakMonths) / 36, 0.8));
+  const r = agePremiumRate(category);
+  const years = Math.min(Math.floor(oakMonths / 12), AGE_PREMIUM_CAP_YEARS);
+  return (1.18 * (1 + r * years)) / (1 + 3 * r);
 }
 
 export function suggestedPrice(region: RegionDef, category: ProductCategory, bottleMl: number, quality: number, oakMonths: number | null, abv: number, taxFactor = 1): number {
-  const ageBonus = isWhiskyCategory(category) && oakMonths != null ? agePerception(oakMonths) : 1;
+  const ageBonus = isWhiskyCategory(category) && oakMonths != null ? agePerception(oakMonths, category) : 1;
   const consumer = refPricePerL(region, category, abv) * (bottleMl / 1000) * Math.sqrt(Math.max(quality, 20) / 60) * ageBonus;
   const p = priceForConsumer(region, consumer, bottleMl, abv, taxFactor);
   return Math.round(p / 100) * 100;
@@ -205,7 +220,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     minOakMonths, ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare, sourcedPrestige, specialty: specialty?.id ?? null, premiumLabel, traditional,
     // 면세 전용 한정판은 면세 기준가로 권장가를 잡는다 (주세·부가세 없음)
     suggestedPrice: dutyFree && hasDutyFree(s)
-      ? dutyFreeSuggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? agePerception(minOakMonths) : 1, finalAbv)
+      ? dutyFreeSuggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? agePerception(minOakMonths, category) : 1, finalAbv)
       : suggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? minOakMonths : null, finalAbv, traditionalTaxFactor(region, traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL)),
     localIngredient,
     dfEdition: dutyFree && hasDutyFree(s) ? nextDutyFreeEdition(s) : null,

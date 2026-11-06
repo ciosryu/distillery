@@ -3,10 +3,10 @@ import {
   advanceMonths, annuityPayment, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, categorize, demandFor, evaluate, evaporate, heartsFraction, spotBidPerLPA, spotQuote,
   makeContractOffer, makeCraftContractOffer, contractAgingImpact, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
   appeal, applyEffects, buyersFor, presetRecipes, validateRecipe, type Product,
-  agePerception, spotSaturation, exportAwarenessMax, updateExportAwareness, EXPORT_MARKETS, exportShelfPrice, exportEligible, exportDemandFor, makeExportOffer, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
+  agePerception, suggestedPrice, spotSaturation, exportAwarenessMax, updateExportAwareness, EXPORT_MARKETS, exportShelfPrice, exportEligible, exportDemandFor, makeExportOffer, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
 } from './index';
 import { overhangFactor, ownsFacility, retailCapacityCases, slotClimate } from './ops';
-import { EQUIPMENT } from './content/catalog';
+import { BULK, EQUIPMENT } from './content/catalog';
 import { BUYERS } from './content/names';
 import { consumerPrice, logisticsMultiplier, priceForConsumer, REGIONS, siteOf, traditionalTaxFactor } from './content/regions';
 
@@ -379,7 +379,34 @@ describe('지역 (v0.6)', () => {
     expect(agePerception(0)).toBeCloseTo(0.472, 2);
     expect(agePerception(12)).toBeLessThan(0.8);
     expect(agePerception(35.999)).toBeCloseTo(agePerception(36), 2);
-    expect(agePerception(144)).toBeCloseTo(1.72, 5);
+  });
+
+  it('3년 뒤 병 숙성 프리미엄은 같은 원액의 현물 시가와 같은 비율로 오른다, 18년 상한 (§6.2.1)', () => {
+    // 몰트: 12년/3년 = 현물 시가 (1 + 0.2·12)/(1 + 0.2·3)
+    expect(agePerception(144) / agePerception(36)).toBeCloseTo((1 + BULK.agePerYear * 12) / (1 + BULK.agePerYear * 3), 10);
+    expect(agePerception(144)).toBeCloseTo(2.5075, 3);
+    expect(agePerception(36)).toBeCloseTo(1.18, 10);
+    // 그레인·블렌디드는 각자의 원액 상승률
+    expect(agePerception(144, 'grain_whisky') / agePerception(36, 'grain_whisky')).toBeCloseTo((1 + BULK.grainAgePerYear * 12) / (1 + BULK.grainAgePerYear * 3), 10);
+    expect(agePerception(144, 'blended_whisky')).toBeGreaterThan(agePerception(144, 'grain_whisky'));
+    expect(agePerception(144, 'blended_whisky')).toBeLessThan(agePerception(144));
+    // 연 단위 계단·단조 증가·상한
+    for (let m = 36; m < 18 * 12; m += 12) expect(agePerception(m + 12)).toBeGreaterThan(agePerception(m));
+    expect(agePerception(18 * 12)).toBe(agePerception(30 * 12));
+    expect(agePerception(12 * 12 + 11)).toBe(agePerception(12 * 12));
+  });
+
+  it('숙성 프리미엄은 권장가와 매력도에 같이 들어간다 — 권장가로 내면 오래된 위스키도 수요(병)가 크게 줄지 않는다', () => {
+    const kr = REGIONS.KR;
+    const p3 = suggestedPrice(kr, 'whisky', 700, 75, 36, 0.46);
+    const p12 = suggestedPrice(kr, 'whisky', 700, 75, 144, 0.46);
+    expect(p12 / p3).toBeCloseTo(agePerception(144) / agePerception(36), 1);
+    // 수요(병) ∝ 매력도 × (가격)^−탄력성 — 매력도도 같은 배수로 오르므로 한국(탄력성 1.1)에서 12년 대 3년 수요는 약 0.9배
+    const base = { category: 'whisky', ageYears: 3, packagingId: 'standard', flavor: {}, quality: 75, typicity: 80, sourcedShare: 0 } as unknown as Product;
+    const appealRatio = appeal({ ...base, oakMonths: 144, ageYears: 12 }) / appeal({ ...base, oakMonths: 36 });
+    const demandRatio = appealRatio * Math.pow(p12 / p3, -kr.market.whisky!.elasticity);
+    expect(demandRatio).toBeGreaterThan(0.85);
+    expect(demandRatio).toBeLessThan(1);
   });
 
   it('일본: 3년 미만 자사 위스키는 "재패니즈 위스키" 표기를 못 해 매력도가 깎인다', () => {

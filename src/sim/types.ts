@@ -31,6 +31,8 @@ export type YeastId = 'distillers' | 'ale' | 'nuruk_native';
 export type FermenterType = 'stainless' | 'onggi';
 export type StillType = 'pot_onion' | 'pot_lantern' | 'hybrid' | 'vacuum_pot' | 'column';
 export type CondenserType = 'copper_shell' | 'worm_tub';
+/** 숙성 용기 재질 (S-10, #143) — 나무 캐스크 외에 옹기·스테인리스 휴지. 재질은 콘텐츠(CaskDef.material)에 있고 캐스크 인스턴스는 typeId로 찾는다 */
+export type VesselMaterial = 'wood' | 'onggi' | 'steel';
 export type CaskTypeId = 'ex_bourbon_barrel' | 'oloroso_butt' | 'korean_oak_quarter' | 'mizunara_hogshead';
 export type WoodId = 'american_oak' | 'european_oak' | 'korean_oak' | 'mizunara';
 export type StaffRole = 'distiller' | 'warehouse' | 'sales' | 'office' | 'blender';
@@ -73,6 +75,10 @@ export interface SpiritLot {
   createdMonth: number;
   /** 오크 숙성 개월 (탱크 원액은 0). 블렌딩 시 최저값이 숙성 연수 */
   oakMonths: number;
+  /** 나무가 아닌 용기(옹기·스테인리스)에서 쉰 개월 — oakMonths와 따로 센다. 위스키 법정 숙성(나무통)에는 들어가지 않는다 (S-10) */
+  restMonths?: number;
+  /** 거쳐 온 숙성 용기 (피니싱 이력, S-10). 없으면 지금 캐스크 하나뿐 */
+  caskHistory?: CaskStint[];
   sourced: boolean;
   /** 누적 원가(원/LPA) — 원재료·에너지·매입가 */
   costPerLPA: number;
@@ -83,6 +89,26 @@ export interface SpiritLot {
   mashShare?: Record<string, number>;
   /** 입지 원료(제주 차조·청귤 등)를 쓴 원액 — 면세 기념품 매력도 (결정 #87) */
   localIngredient?: boolean;
+}
+
+/** 원액이 거쳐 간 숙성 용기 한 구간 — 피니싱(다른 캐스크로 옮겨 마무리)의 이력 (S-10, #143). 원액이 들고 다닌다 */
+export interface CaskStint {
+  typeId: CaskTypeId;
+  /** 이 용기에 들어간 달 */
+  fromMonth: number;
+  /** 이 용기에서 보낸 개월 (옮길 때 확정) */
+  months: number;
+}
+
+/** 샘플 한 번으로 알게 된 것 (#136, S-10) — 참값이 아니라 그때 읽은 추정치를 **그대로 남긴다**. 다음 샘플 전까지 갱신되지 않는다 */
+export interface SampleRecord {
+  month: number;
+  /** 읽은 육각형 (지각 오차 포함) */
+  hex: Hex;
+  /** 그 읽기의 오차(1σ, 육각형 점수) */
+  sigma: number;
+  /** 추정 품질 (참 품질 + 오차) */
+  estQuality: number;
 }
 
 export interface Cask {
@@ -115,6 +141,8 @@ export interface Cask {
   /** 레어 캐스크 (숨김값) — 추출이 남달리 강해 육각형의 꼭짓점이 된다. 통입 때 정해지고 샘플링·감정력으로 드러난다 */
   rare?: boolean;
   rareKnown?: boolean;
+  /** 최근 샘플 기록 (최대 SAMPLE_LOG_KEPT개, 오래된 것부터) — MVP 숙성고 화면은 참값 대신 이것만 보여 준다 (#136) */
+  sampleLog?: SampleRecord[];
 }
 
 export interface Product {
@@ -633,8 +661,23 @@ export interface ExportEntry extends Partial<Omit<ExportTerms, 'marketId'>> {
 
 export interface ExportSale { marketId: ExportMarketId; productId: string; name: string; bottles: number; revenue: number; demandBottles: number; freight: number }
 
+/** 시나리오 (skeleton S-8, #140) — 새 게임 때 시나리오 정의를 복사해 둔다. 없으면 샌드박스(모든 시스템 켬) */
+export interface ScenarioState {
+  /** content/scenarios.ts의 id */
+  id: string;
+  /** 규모 티어 (micro·standard) */
+  tierId: string;
+  /** 잠긴 키 — 테크 게이트와 같은 규칙('action:'·'facility:') + 'system:<틱 시스템>'·'kind:<주종>' */
+  locked: string[];
+  /** 경제 값 덮어쓰기 */
+  economy: { overheadPerMonth?: number };
+  /** 시작 자기자본 — 순자산 목표의 기준 (#141) */
+  equity: number;
+  goal: { months: number; netWorthMultiple: number; flagshipMinMonths: number };
+}
+
 export interface GameState {
-  version: 7;
+  version: 9;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;
@@ -645,6 +688,8 @@ export interface GameState {
   distilleryName: string;
   status: 'running' | 'bankrupt';
   nextId: number;
+  /** 시나리오 (v8). 없으면 샌드박스 — 옛 세이브·개발자 새 게임 */
+  scenario?: ScenarioState;
 
   world: WorldSlice;
   finance: FinanceSlice;

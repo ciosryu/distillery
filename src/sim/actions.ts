@@ -1,12 +1,13 @@
 import { BULK, CASK_COST_SHARE_PER_FILL, CASK_MARKET, CASKS, EQUIPMENT, LOAN_OFFERS, RECHAR_COST } from './content/catalog';
 import { assignSlot, handleDeparture, INVESTMENT_OFFERS, masterDistiller, OWNERSHIP, rotateWarehouse, SlotIndex, usedCaskPrice } from './ops';
 import { isUnlocked, unlockingNodes } from './research';
+import { isLocked, LOCKED_MESSAGE } from './scenario';
 import { rngFor } from './rng';
-import { cancellationCost, isBulkKind, recordSpotSale, spotQuote, startContract } from './bulk';
+import { cancellationCost, isBulkKind, lotQuality, recordSpotSale, spotQuote, startContract } from './bulk';
 import { resolvePending } from './events';
 import { mod } from './modifiers';
 import { executeBlend, type BlendComponent, type BlendReveal, type BottleOptions } from './blending';
-import { blenderOf, delegatePlan, findTarget, LAB, RARE, SAMPLING, samplingCapacity } from './blendTable';
+import { blenderOf, delegatePlan, findTarget, LAB, RARE, recordSample, SAMPLING, samplingCapacity } from './blendTable';
 import { MAX_RECHAR, recharCask } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
@@ -43,6 +44,8 @@ export type Action =
   | { type: 'bottle'; components: BlendComponent[]; options: BottleOptions }
   /** 블렌딩 테이블 (결정 #124): 샘플링(읽는 오차↓·레어 발견) · 실험실 분석(피트·우디 정확) · 블렌더에게 맡기기 */
   | { type: 'sampleCask'; caskIds: string[] }
+  /** 피니싱 (S-10 자리) — 캐스크 원액을 빈 캐스크로 옮겨 마무리한다. 규칙은 단계 P(PROD): 지금은 항상 실패 */
+  | { type: 'transferCask'; fromCaskId: string; toCaskId: string }
   | { type: 'labAnalyze'; caskIds: string[] }
   | { type: 'delegateBlend'; targetId: string; caskIds: string[]; bottles: number; options: BottleOptions }
   | { type: 'setPrice'; productId: string; price: number }
@@ -80,6 +83,8 @@ const ACTION_CASH_KEY: Record<Action['type'], CashFlowKey | null> = {
   acceptExportOffer: 'export', closeExport: 'export', setExportPrice: null,
   // 블렌딩 테이블 (#124)
   sampleCask: 'blending', labAnalyze: 'blending', delegateBlend: 'bottling',
+  // 피니싱 (S-10 자리)
+  transferCask: null,
 };
 
 /** 병입 결과 문구 — 블렌딩 테이블 결과 공개(결정 #124 P6) 포함 */
@@ -108,16 +113,21 @@ function applyActionRaw(prev: GameState, a: Action): ActionResult {
   if (prev.status !== 'running') return fail(prev, '게임이 종료되었습니다');
   // 테크 게이트 (tech-tree §7) — Phase 1은 TECH_GATING = false라 항상 통과
   if (!isUnlocked(prev, `action:${a.type}`)) return fail(prev, `연구가 필요합니다: ${unlockingNodes(`action:${a.type}`).map((n) => `${n.id} ${n.nameKo}`).join(' 또는 ')}`);
+  // 시나리오 잠금 (S-8) — 시나리오가 없으면 항상 통과
+  if (isLocked(prev, `action:${a.type}`)) return fail(prev, LOCKED_MESSAGE);
   const s = clone(prev);
   switch (a.type) {
     case 'setOrder': {
-      if (!s.production.recipes.some((r) => r.id === a.recipeId)) return fail(prev, '레시피가 없습니다');
+      const recipe = s.production.recipes.find((r) => r.id === a.recipeId);
+      if (!recipe) return fail(prev, '레시피가 없습니다');
+      if (a.batchesPerMonth > 0 && isLocked(s, `kind:${recipe.kind}`)) return fail(prev, LOCKED_MESSAGE);
       const n = Math.max(0, Math.min(60, Math.floor(a.batchesPerMonth)));
       s.production.orders = s.production.orders.filter((o) => o.recipeId !== a.recipeId);
       if (n > 0) s.production.orders.push({ recipeId: a.recipeId, batchesPerMonth: n });
       return { state: s };
     }
     case 'saveRecipe': {
+      if (isLocked(s, `kind:${a.recipe.kind}`)) return fail(prev, LOCKED_MESSAGE);
       const errs = validateRecipe(s, { ...a.recipe, id: a.recipe.id ?? 'new' } as Recipe);
       if (errs.length) return fail(prev, errs.join(' / '));
       if (a.recipe.id) {
@@ -135,6 +145,7 @@ function applyActionRaw(prev: GameState, a: Action): ActionResult {
     case 'buyEquipment': {
       const def = EQUIPMENT[a.catalogId];
       if (!def) return fail(prev, '알 수 없는 설비');
+      if (isLocked(s, `facility:${def.id}`)) return fail(prev, LOCKED_MESSAGE);
       if (def.kind === 'visitor' && def.requires && !s.production.equipment.some((e) => e.catalogId === def.requires)) return fail(prev, `${EQUIPMENT[def.requires]?.nameKo}부터 지어야 합니다`);
       if ((def.kind === 'visitor' || def.kind === 'facility') && s.production.equipment.some((e) => e.catalogId === def.id)) return fail(prev, '이미 있습니다');
       if (def.kind === 'facility' && def.regions && !def.regions.includes(s.regionId)) return fail(prev, '이 지역에서는 해당 없는 설비입니다');
@@ -321,6 +332,8 @@ function applyActionRaw(prev: GameState, a: Action): ActionResult {
         const n = (c.samples ?? 0) + 1;
         c.samples = n;
         c.contents = { ...c.contents!, volumeL: Math.max(0, c.contents!.volumeL - SAMPLING.lossL) };
+        // 이번 읽기를 남긴다 — 다음 샘플 전까지 화면의 추정치는 이 값이다 (S-10, #136)
+        recordSample(s, c, lotQuality(c.contents));
         // 레어 캐스크는 샘플을 뜰 때 드러날 수 있다 (감정력)
         if (c.rare && !c.rareKnown && rngFor(s.seed, s.month, `rarefind:${c.id}:${n}`).chance(blender ? RARE.findBase + RARE.findPerAppraisal * (blender.appraisal / 100) : RARE.findOwner)) {
           c.rareKnown = true;
@@ -331,6 +344,9 @@ function applyActionRaw(prev: GameState, a: Action): ActionResult {
       s.finance.cash -= casks.length * SAMPLING.cost;
       return { state: s, message: `캐스크 ${casks.length}개 샘플링${found.length ? ` — 레어 캐스크 발견: ${found.join(', ')}` : ''}` };
     }
+    case 'transferCask':
+      // 자리만 있다 — 원액의 caskHistory에 지금 캐스크 구간을 닫고 새 캐스크 구간을 여는 규칙은 단계 P(PROD), PRD §5.2
+      return fail(prev, '피니싱은 아직 없습니다 (다음 단계)');
     case 'labAnalyze': {
       const casks = a.caskIds.map((id) => s.inventory.casks.find((c) => c.id === id)).filter((c): c is Cask => !!c?.contents && !c.labAnalyzed);
       if (!casks.length) return fail(prev, '분석할 캐스크가 없습니다');

@@ -10,8 +10,8 @@ import type { GameState, MonthReport, Product, ProductCategory, Recipe } from '.
 
 // ───────────── 고정비·건설비·물류 ─────────────
 
-/** 이 입지의 월 관리비 = 지역 관리비 × 입지 배수 */
-export const siteOverhead = (s: Pick<GameState, 'regionId' | 'siteId'>) => Math.round(regionOf(s).overheadPerMonth * (siteOf(s).overheadFactor ?? 1));
+/** 이 입지의 월 관리비 = (시나리오 관리비 또는 지역 관리비) × 입지 배수 — 시나리오 규모 티어가 관리비를 정한다 (S-8, #139·2) */
+export const siteOverhead = (s: Pick<GameState, 'regionId' | 'siteId'> & Partial<Pick<GameState, 'scenario'>>) => Math.round((s.scenario?.economy.overheadPerMonth ?? regionOf(s).overheadPerMonth) * (siteOf(s).overheadFactor ?? 1));
 
 /** 입지 건설비 반영 설비 단가 (숙성고는 땅값 배수를 한 번 더) */
 export function equipmentCost(s: Pick<GameState, 'regionId' | 'siteId'>, def: EquipmentDef): number {

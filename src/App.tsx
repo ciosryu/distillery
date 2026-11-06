@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
-import { monthLabel, type RegionId } from './sim';
+import { useEffect, useState, type ReactElement } from 'react';
+import { isLocked, monthLabel, type GameState, type RegionId } from './sim';
 import { REGIONS, siteOf } from './sim/content/regions';
 
 const stars = (n?: number) => (n ? ` ${'★'.repeat(n)}` : '');
-import { useGame } from './store/game';
+import { startedFresh, useGame } from './store/game';
+import { BusinessPlan } from './ui/BusinessPlan';
 import { useUi } from './store/ui';
 import { won } from './ui/format';
 import { Button } from './ui/kit';
@@ -18,19 +19,20 @@ import { Sales } from './ui/panels/Sales';
 import { Staff } from './ui/panels/Staff';
 import { Warehouse } from './ui/panels/Warehouse';
 
-const TABS = [
+/** 시나리오가 끈 시스템의 탭은 숨긴다 (S-8) — 키가 없으면 늘 보인다 */
+const TABS: readonly { id: string; label: string; el: ReactElement; lockKey?: string }[] = [
   { id: 'dashboard', label: '대시보드', el: <Dashboard /> },
   { id: 'production', label: '생산', el: <Production /> },
   { id: 'warehouse', label: '숙성고', el: <Warehouse /> },
   { id: 'bottling', label: '블렌딩·병입', el: <Bottling /> },
-  { id: 'blendlab', label: '블렌딩 테이블', el: <BlendLab /> },
+  { id: 'blendlab', label: '블렌딩 테이블', el: <BlendLab />, lockKey: 'system:commissions' },
   { id: 'sales', label: '판매', el: <Sales /> },
   { id: 'b2b', label: '원액 B2B', el: <B2B /> },
-  { id: 'exports', label: '수출', el: <Exports /> },
+  { id: 'exports', label: '수출', el: <Exports />, lockKey: 'system:exports' },
   { id: 'staff', label: '직원', el: <Staff /> },
   { id: 'finance', label: '재무', el: <Finance /> },
-] as const;
-type TabId = (typeof TABS)[number]['id'];
+];
+const visibleTabs = (s: GameState) => TABS.filter((t) => !t.lockKey || !isLocked(s, t.lockKey));
 
 export default function App() {
   const s = useGame((g) => g.state);
@@ -43,7 +45,9 @@ export default function App() {
   const clearToast = useUi((u) => u.clearToast);
   const rawTab = useUi((u) => u.tab);
   const setTab = useUi((u) => u.setTab);
-  const tab: TabId = TABS.some((x) => x.id === rawTab) ? (rawTab as TabId) : 'dashboard';
+  const tabs = visibleTabs(s);
+  const tab = tabs.some((x) => x.id === rawTab) ? rawTab : 'dashboard';
+  const [planOpen, setPlanOpen] = useState(startedFresh);
   const [newGameOpen, setNewGameOpen] = useState(false);
   const [ngName, setNgName] = useState('');
   const [ngRegion, setNgRegion] = useState<RegionId>('KR');
@@ -73,12 +77,12 @@ export default function App() {
             {advancing
               ? <Button variant="ghost" onClick={cancelAdvance}>자동 진행 중 {advancing.done}/{advancing.total} — 멈춤</Button>
               : <Button disabled={!running} onClick={() => void advanceUntil(24)} title="선택 이벤트·예보·현금 경고·설비 가동 시작·블렌딩 의뢰 중 하나가 생기면 멈춘다 (최대 24개월)">다음 알림까지</Button>}
-            <Button variant="ghost" onClick={() => setNewGameOpen((v) => !v)}>새 게임</Button>
+            <Button variant="ghost" onClick={() => { setPlanOpen((v) => !v); setNewGameOpen(false); }}>새 게임</Button>
           </div>
         </div>
         {newGameOpen && (
           <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-4 pb-3 text-sm">
-            <span className="text-stone-600 dark:text-stone-300">새 게임 (현재 진행은 사라집니다):</span>
+            <span className="text-stone-600 dark:text-stone-300">개발자 샌드박스 — 모든 시스템 켬 (현재 진행은 사라집니다):</span>
             <input className="rounded-md border border-stone-300 bg-white px-2 py-1 dark:border-stone-700 dark:bg-stone-800" placeholder="증류소 이름(비우면 기본값)" value={ngName} onChange={(e) => setNgName(e.target.value)} aria-label="증류소 이름" />
             <select className="rounded-md border border-stone-300 bg-white px-2 py-1 dark:border-stone-700 dark:bg-stone-800" value={ngRegion} onChange={(e) => { setNgRegion(e.target.value as RegionId); setNgSite(''); }} aria-label="시작 지역">
               {(Object.keys(REGIONS) as RegionId[]).map((r) => <option key={r} value={r}>{REGIONS[r].nameKo}</option>)}
@@ -107,7 +111,7 @@ export default function App() {
           </div>
         )}
         <nav className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4" aria-label="메뉴">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <button key={t.id} onClick={() => setTab(t.id)} className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm ${tab === t.id ? 'border-amber-700 font-semibold text-amber-800 dark:border-amber-400 dark:text-amber-300' : 'border-transparent text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100'}`}>
               {t.label}
             </button>
@@ -116,6 +120,11 @@ export default function App() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-4">
+        {planOpen && (
+          <div className="mb-4">
+            <BusinessPlan onClose={() => setPlanOpen(false)} onSandbox={() => { setPlanOpen(false); setNewGameOpen(true); }} />
+          </div>
+        )}
         {!running && (
           <div className="mb-4 rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200">
             파산했습니다 — 현금 부족이 3개월 이어졌습니다. "새 게임"으로 다시 시작하세요.
@@ -126,12 +135,17 @@ export default function App() {
             선택이 필요한 이벤트 {s.events.pending.length}건 — <button className="font-semibold underline" onClick={() => setTab('dashboard')}>대시보드에서 결정하기</button> (고르지 않으면 다음 달 기본값 적용)
           </div>
         )}
-        {running && s.month === 0 && (
+        {running && s.month === 0 && s.scenario && (
+          <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+            <b>시작 가이드</b> — ① <b>생산</b>에서 소주·몰트 월 배치 수를 정한다 ② 한 달을 진행하면 원액이 탱크에 쌓인다 ③ 소주는 <b>블렌딩·병입</b>에서 바로 병입해 팔고, 몰트는 <b>숙성고</b>에서 캐스크에 통입한다({REGIONS[s.regionId].whisky.minMonths}개월부터 위스키) ④ 비지터 센터 베이직 투어는 <b>생산</b>의 설비에서 짓는다 ⑤ 현금이 위급하면 <b>원액 B2B</b>에서 뉴메이크를 현물로 팔거나 <b>재무</b>에서 대출을 받는다.
+          </div>
+        )}
+        {running && s.month === 0 && !s.scenario && (
           <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
             <b>시작 가이드</b> — ① <b>생산</b>에서 월 배치 수를 정하고 ② 한 달을 진행하면 원액이 탱크에 쌓입니다. ③ 소주·진 같은 비숙성 주종은 <b>블렌딩·병입</b>에서 바로 병입해 팔고, 몰트는 <b>숙성고</b>에서 캐스크에 통입해 숙성하세요({REGIONS[s.regionId].whisky.minMonths > 0 ? `${REGIONS[s.regionId].whisky.minMonths}개월부터 위스키` : '이 나라는 법정 최소 숙성이 없어 바로 위스키 표기 가능 — 단 3년 미만은 값을 덜 받는다'}). 그동안은 <b>숙성고</b>의 브로커에게 숙성 원액을 사서 병입하거나 <b>원액 B2B</b> 계약으로 현금을 만들 수 있습니다. ④ <b>직원</b>에서 영업 직원을 뽑으면 유통이 넓어집니다. 자금이 모자라면 <b>재무</b>의 대출을 쓰세요.
           </div>
         )}
-        {TABS.find((t) => t.id === tab)!.el}
+        {tabs.find((t) => t.id === tab)!.el}
       </main>
 
       {toast && (

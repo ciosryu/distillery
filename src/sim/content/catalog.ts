@@ -1,4 +1,4 @@
-import type { CaskTypeId, CondenserType, Flavor, FermenterType, RegionId, StillType, WoodId, YeastId, StaffRole } from '../types';
+import type { VesselMaterial, CaskTypeId, CondenserType, Flavor, FermenterType, RegionId, StillType, WoodId, YeastId, StaffRole } from '../types';
 
 // 콘텐츠 카탈로그 — 모든 수치 [튜닝]. 가격은 KRW.
 
@@ -118,7 +118,17 @@ export interface CaskDef {
   activity: number; seasoning: number; seasoningType: 'bourbon' | 'sherry' | 'none'; char: number;
   /** 누수 위험 배수 (미즈나라는 결이 성겨 잘 샌다) */
   leakFactor?: number;
+  /** 용기 재질 (S-10). 없으면 나무 — 지금 콘텐츠는 모두 나무다. 옹기·스테인리스 용기는 단계 P(PROD)에서 향미 모델(flavor-model §4.5 확장)과 함께 넣는다 */
+  material?: VesselMaterial;
 }
+
+/** 나무가 아닌 용기의 숙성 (S-10 자리) — 추출 없이 숨쉬기·안정화만. 값은 자리표시 `[튜닝]`, 근거 없음 `[확인 불가]` — flavor-model §4.5 확장 때 정한다 */
+export const NON_WOOD_VESSEL: Record<Exclude<VesselMaterial, 'wood'>, { evapFactor: number; integrationPerMonth: number; harshnessKeep: number }> = {
+  /** 옹기: 미세 기공으로 숨을 쉰다 — 증발이 조금 있고 거친 맛이 나무보다 천천히 풀린다 */
+  onggi: { evapFactor: 0.3, integrationPerMonth: 0.6, harshnessKeep: 0.98 },
+  /** 스테인리스 휴지: 증발 없음, 탱크 보관(restLot)과 같은 안정화 */
+  steel: { evapFactor: 0, integrationPerMonth: 0.5, harshnessKeep: 0.985 },
+};
 
 export const CASKS: Record<CaskTypeId, CaskDef> = {
   ex_bourbon_barrel: { id: 'ex_bourbon_barrel', nameKo: 'ex-버번 배럴 200L', sizeL: 200, wood: 'american_oak', price: 350_000, activity: 1.0, seasoning: 1.0, seasoningType: 'bourbon', char: 3 },

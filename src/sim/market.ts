@@ -33,7 +33,7 @@ export function productConsumerPrice(s: GameState, p: Pick<Product, 'price' | 'b
 
 export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId'>): number {
   const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
-  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12) : 1;
+  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : 1;
   const lux = PACKAGING[p.packagingId]?.luxury ?? 1;
   // 시장 국면: 피트·셰리 유행
   // 시장 국면: 향미 트렌드 이동 (결정 #125 — 옛 피트·셰리 계단식 보정치를 육각형 축 기반 연속 배수로 대체)
