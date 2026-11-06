@@ -8,7 +8,8 @@ import { matureCask, restLot } from './maturation';
 import { assignSlot, deliverOwnedCasks, runContamination, runOffice, runStaffLifecycle, runTourism, slotClimate } from './ops';
 import { emptyCaskOf } from './newGame';
 import { fermentationClimate, fermentDaysAt } from './production';
-import { runSales, updateAwareness, updateTrends } from './market';
+import { runSales, updateAwareness, updateExportAwareness, updateTrends } from './market';
+import { EXPORT_MARKETS } from './content/exports';
 import { simulateBatch, stillDefOf, volumeDiscounts } from './production';
 import { effectivePriceIndex, mod, pruneModifiers } from './modifiers';
 import { runEvents } from './events';
@@ -184,7 +185,18 @@ export function advanceMonth(prev: GameState): GameState {
   runMaturation(s, report, monthOfYear);
   fulfillContracts(s, report);
 
-  const { results: sales, retail } = runSales(s, rngFor(s.seed, s.month, 'sales'), monthOfYear);
+  updateExportAwareness(s); // 판매 전에 갱신 — 면세는 국내 인지도가 첫 달부터 넘어온다
+  const { results: sales, retail, exports } = runSales(s, rngFor(s.seed, s.month, 'sales'), monthOfYear);
+  // 수출 (#86): 출고가가 그대로 들어오고(국내 주세 면세) 운임은 우리가, 현지 비용은 매달 낸다
+  if (s.exports?.length) {
+    report.exports = exports;
+    report.exportRevenue = exports.reduce((t, x) => t + x.revenue, 0);
+    s.cash += report.exportRevenue;
+    const freight = exports.reduce((t, x) => t + x.freight, 0);
+    if (freight > 0) { s.cash -= freight; report.expenses.export_freight = freight; }
+    const fixed = s.exports.reduce((t, e) => t + EXPORT_MARKETS[e.marketId].monthlyCost, 0);
+    if (fixed > 0) { s.cash -= fixed; report.expenses.export_fixed = fixed; }
+  }
   report.sales = sales.map(({ overflowBottles: _o, distribution: _d, ...x }) => x);
   report.retailCapacityCases = retail.capacityCases;
   report.retailSoldCases = retail.soldCases;

@@ -8,6 +8,7 @@ import { executeBlend, type BlendComponent, type BottleOptions } from './blendin
 import { MAX_RECHAR, recharCask } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
+import { EXPORT_MARKETS, type ExportMarketId } from './content/exports';
 import type { CaskTypeId, GameState, Recipe } from './types';
 import { annuityPayment, clone, nid, staffOf, warehouseCapacity } from './util';
 
@@ -27,6 +28,8 @@ export type Action =
   /** 오염 캐스크 원액 폐기 */
   | { type: 'dumpCask'; caskId: string }
   | { type: 'takeInvestment'; offerId: string }
+  | { type: 'openExport'; marketId: ExportMarketId }
+  | { type: 'closeExport'; marketId: ExportMarketId }
   | { type: 'sellCaskOwnership'; caskId: string }
   | { type: 'rechar'; caskId: string }
   | { type: 'bottle'; components: BlendComponent[]; options: BottleOptions }
@@ -157,6 +160,22 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       const { contents: _c, contamination: _t, contaminationKnown: _k, slot: _s, ...rest } = cask;
       s.casks[ci] = { ...rest, activity: cask.contamination ? cask.activity * 0.5 : cask.activity };
       return { state: s, message: `캐스크 ${cask.id} 원액 폐기${cask.contamination ? ' — 오염 통은 활성도 절반' : ''}` };
+    }
+    case 'openExport': {
+      const m = EXPORT_MARKETS[a.marketId];
+      if (!m) return fail(prev, '없는 시장입니다');
+      s.exports ??= [];
+      if (s.exports.some((e) => e.marketId === a.marketId)) return fail(prev, `이미 ${m.nameKo}에 진출했습니다`);
+      if (s.cash < m.entryCost) return fail(prev, '현금이 부족합니다');
+      s.cash -= m.entryCost;
+      s.exports.push({ marketId: a.marketId, openedMonth: s.month, readyMonth: s.month + m.entryMonths, awareness: m.awareness.start, totalBottles: 0 });
+      return { state: s, message: `${m.nameKo} 진출 준비 시작 — ${m.entryMonths}개월 뒤 판매` };
+    }
+    case 'closeExport': {
+      const before = s.exports?.length ?? 0;
+      s.exports = (s.exports ?? []).filter((e) => e.marketId !== a.marketId);
+      if (s.exports.length === before) return fail(prev, '진출하지 않은 시장입니다');
+      return { state: s, message: `${EXPORT_MARKETS[a.marketId].nameKo}에서 철수했습니다 (진입 비용은 돌려받지 못합니다)` };
     }
     case 'takeInvestment': {
       const o = INVESTMENT_OFFERS.find((x) => x.id === a.offerId);

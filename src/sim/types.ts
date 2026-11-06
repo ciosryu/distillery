@@ -236,6 +236,9 @@ export interface MonthReport {
   lostSalesBottles?: number;
   visitors?: number;
   tourismRevenue?: number;
+  /** 수출 판매 (#86) */
+  exports?: ExportSale[];
+  exportRevenue?: number;
   notes: string[];
 }
 
@@ -286,6 +289,19 @@ export interface CaskOrder {
 }
 
 export interface CaskBid { id: string; buyerName: string; caskId: string; price: number; expiresMonth: number }
+
+/** 진출한 수출 시장 (#86) */
+export interface ExportEntry {
+  marketId: 'US' | 'UK' | 'DF';
+  openedMonth: number;
+  /** 이 달부터 판매 (라벨 승인·수입상 계약 기간) */
+  readyMonth: number;
+  /** 현지 인지도 0~1 */
+  awareness: number;
+  totalBottles: number;
+}
+
+export interface ExportSale { marketId: 'US' | 'UK' | 'DF'; productId: string; name: string; bottles: number; revenue: number; demandBottles: number; freight: number }
 
 export interface GameState {
   version: 5;
@@ -344,6 +360,8 @@ export interface GameState {
   /** 외부 투자자 지분 (0~1) */
   investorShare: number;
   investmentsTaken: string[];
+  /** 수출 시장 (#86) — 옛 저장에는 없을 수 있다 */
+  exports?: ExportEntry[];
   /** 비지터 센터 입소문(로컬 인지도) 0~1 */
   localBuzz: number;
   /** 사무직이 타결한 폐기물(드래프·지게미) 유상 판매 단가(원/kg) */
