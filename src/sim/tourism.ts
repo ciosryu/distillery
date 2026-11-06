@@ -1,4 +1,5 @@
 import { EQUIPMENT } from './content/catalog';
+import { awarenessOf, houseBrand } from './brands';
 import { regionOf, siteOf } from './content/regions';
 import { clamp } from './flavor';
 import type { GameState, MonthReport } from './types';
@@ -21,7 +22,7 @@ export function runTourism(s: GameState, report: MonthReport, monthOfYear: numbe
   const tiers = visitorTiers(s);
   s.commerce.localBuzz = clamp(s.commerce.localBuzz * (1 - 0.015), 0, 1);
   if (!tiers.length) return;
-  const draw = TOUR_SEASON[monthOfYear - 1]! * tourismFactor(s) * clamp(0.6 + 0.8 * s.commerce.awareness + s.commerce.localBuzz, 0.4, 2);
+  const draw = TOUR_SEASON[monthOfYear - 1]! * tourismFactor(s) * clamp(0.6 + 0.8 * awarenessOf(s) + s.commerce.localBuzz, 0.4, 2);
   let visitors = 0;
   let revenue = 0;
   let buzz = 0;
@@ -43,7 +44,8 @@ export function runTourism(s: GameState, report: MonthReport, monthOfYear: numbe
   s.inventory.lots = s.inventory.lots.filter((l) => l.volumeL > 1);
   s.finance.cash += revenue;
   s.commerce.localBuzz = clamp(s.commerce.localBuzz + buzz / 200_000, 0, 1);
-  s.commerce.awareness = clamp(s.commerce.awareness + 0.004 * s.commerce.localBuzz * (1 - s.commerce.awareness), 0.001, 0.95);
+  const house = houseBrand(s);
+  house.awareness = clamp(house.awareness + 0.004 * s.commerce.localBuzz * (1 - house.awareness), 0.001, 0.95);
   report.visitors = visitors;
   report.tourismRevenue = revenue;
 }

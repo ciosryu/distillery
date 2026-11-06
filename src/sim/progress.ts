@@ -1,4 +1,5 @@
 import { isWhiskyCategory } from './blending';
+import { awarenessOf } from './brands';
 import { isBulkKind, spotBidPerLPA } from './bulk';
 import { MILESTONES } from './content/milestones';
 import type { GameEnding, GameState, GoalCheck, GoalVerdict, MilestoneId, MonthReport, Product } from './types';
@@ -73,11 +74,11 @@ export function judgeGoal(s: GameState, month: number): GoalVerdict | null {
   const result = !survive ? 'failed' : checks.every((c) => c.ok) ? 'heritage' : 'missed';
   let grade: GoalVerdict['grade'] = null;
   if (result === 'heritage') {
-    grade = nw >= target * GRADE.sNetWorthRatio && (flag?.value ?? 0) >= GRADE.sFlagshipQuality && s.commerce.awareness >= GRADE.sAwareness ? 'S' : 'A';
+    grade = nw >= target * GRADE.sNetWorthRatio && (flag?.value ?? 0) >= GRADE.sFlagshipQuality && awarenessOf(s) >= GRADE.sAwareness ? 'S' : 'A';
   } else if (result === 'missed') {
     grade = checks.filter((c) => c.id !== 'survive' && c.ok).length >= 1 ? 'B' : 'C';
   }
-  return { month, result, grade, checks, netWorth: nw, ...(flag?.value != null ? { flagshipQuality: flag.value } : {}), awareness: s.commerce.awareness };
+  return { month, result, grade, checks, netWorth: nw, ...(flag?.value != null ? { flagshipQuality: flag.value } : {}), awareness: awarenessOf(s) };
 }
 
 /** 게임을 끝낸다 — 끝난 이유를 남긴다 (파산은 step.ts가, 면허 취소·해임은 단계 P의 규칙이 부른다) */

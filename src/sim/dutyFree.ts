@@ -1,4 +1,5 @@
 import { regionOf, siteOf, refPricePerL, type RegionDef } from './content/regions';
+import { awarenessOf, brandOf } from './brands';
 import { clamp } from './flavor';
 import type { GameState, MonthReport, Product, ProductCategory } from './types';
 import { mod } from './modifiers';
@@ -72,7 +73,7 @@ export function dutyFreeDemand(s: GameState, p: Product, sameCategoryCount: numb
   if (base <= 0 || consumer > DUTY_FREE.maxBottlePrice) return 0;
   const marketL = (base * 9 / 12) * site.dutyFree.seasonality[monthOfYear - 1]! * (s.world.trend[p.category] ?? 1) * mod(s, 'dutyfree');
   // 면세점 입점은 지역 상품 진열이 기본 → 영업 커버리지의 영향이 작다
-  const reach = (s.commerce.awareness * (0.3 + 0.5 * coverage) * DUTY_FREE.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
+  const reach = (awarenessOf(s, p) * (0.3 + 0.5 * coverage) * DUTY_FREE.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
   const bottleL = p.bottleMl / 1000;
   const ref = refPricePerL(region, p.category, p.abv) * DUTY_FREE.refFactor;
   const priceFactor = Math.pow(consumer / bottleL / ref, -region.market[p.category].elasticity);
@@ -106,7 +107,8 @@ export function resolveDutyFreeEditions(s: GameState, report: MonthReport): void
       ed.done = true;
       if (months <= DUTY_FREE.sellOutMonths) {
         series.streak = Math.min(series.streak + 1, DUTY_FREE.maxStreak);
-        s.commerce.awareness = clamp(s.commerce.awareness + DUTY_FREE.sellOutAwareness, 0.001, 0.95);
+        const brand = brandOf(s, p);
+        brand.awareness = clamp(brand.awareness + DUTY_FREE.sellOutAwareness, 0.001, 0.95);
         report.events.push(`면세 한정판 Vol.${ed.vol} 완판`);
         report.notes.push(`면세 한정판 Vol.${ed.vol} ${months}개월 만에 완판 — 인지도 +${(DUTY_FREE.sellOutAwareness * 100).toFixed(1)}%p, 다음 판 매력도 +${Math.round(series.streak * DUTY_FREE.streakAppeal * 100)}% (연속 ${series.streak}회)`);
       } else {

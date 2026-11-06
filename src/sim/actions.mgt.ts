@@ -1,4 +1,5 @@
 import { LOAN_OFFERS } from './content/catalog';
+import { awarenessOf } from './brands';
 import { handleDeparture, masterDistiller } from './hr';
 import { INVESTMENT_OFFERS } from './content/catalog';
 import { OWNERSHIP } from './investment';
@@ -50,7 +51,7 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     if (cask.owner) return fail(prev, '이미 판매한 캐스크입니다');
     if (cask.contents.sourced) return fail(prev, '자사 증류 원액만 오너십으로 팔 수 있습니다');
     if (!isBulkKind(cask.contents)) return fail(prev, '몰트·그레인 캐스크만 가능합니다');
-    const price = Math.round(spotQuote(s, cask.contents, cask.contents.volumeL, cask) * (OWNERSHIP.premiumBase + OWNERSHIP.premiumAwareness * s.commerce.awareness) * (0.9 + s.hr.houseStyle / 500));
+    const price = Math.round(spotQuote(s, cask.contents, cask.contents.volumeL, cask) * (OWNERSHIP.premiumBase + OWNERSHIP.premiumAwareness * awarenessOf(s)) * (0.9 + s.hr.houseStyle / 500));
     s.finance.cash += price;
     cask.owner = { name: `개인 고객 ${cask.id}`, soldMonth: s.month, deliverMonth: s.month + Math.max(OWNERSHIP.minDeliverWait, OWNERSHIP.deliverAtMonths - cask.contents.oakMonths) };
     return { state: s, message: `캐스크 ${cask.id} 오너십 판매 ${price.toLocaleString()}원 — ${cask.owner.deliverMonth - s.month}개월 뒤 인도` };

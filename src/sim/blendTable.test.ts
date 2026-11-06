@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { houseBrand } from './brands';
 import {
   addTrendShift, appeal, applyAction, blenderOf, blendTargets, hexOf, matchScore, migrateSave, newGame, readCask, readSigma, samplingCapacity, trendFactor,
   type Flavor, type GameState, type Staff,
@@ -137,7 +138,7 @@ describe('목표 3종·결과 공개·위임 (P5·P6·P7)', () => {
     let s = withCasks();
     const hex = hexOf(SHERRY);
     s.commerce.commissions.push({ id: 'Q1', client: '위스키 매거진 편집부', label: '셰리 중심', hex, tolerance: 7, expiresMonth: 6, reward: { awareness: 0.02, appealBonus: 0.25, months: 24 } });
-    const aw0 = s.commerce.awareness;
+    const aw0 = houseBrand(s).awareness;
     const res = applyAction(s, { type: 'bottle', components: caskIdsOf(s, 'S').map((id) => ({ source: 'cask' as const, id, liters: 150 })), options: { ...opts, targetId: 'Q1' } });
     expect(res.message).toMatch(/목표 일치 \d+/);
     s = res.state;
@@ -145,7 +146,7 @@ describe('목표 3종·결과 공개·위임 (P5·P6·P7)', () => {
     expect(p.blend!.source).toBe('critic');
     expect(p.blend!.score).toBeGreaterThan(80);
     expect(s.commerce.commissions[0]!.fulfilledBy).toBe(p.id);
-    expect(s.commerce.awareness).toBeGreaterThan(aw0);
+    expect(houseBrand(s).awareness).toBeGreaterThan(aw0);
     expect(appeal(p, s) / appeal({ ...p, blend: undefined }, s)).toBeCloseTo(1 + p.blend!.appealBonus!, 6);
   });
 
