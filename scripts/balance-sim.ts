@@ -2,7 +2,7 @@
 // 실행: npm run balance [-- 시드수 개월수 전략 지역 입지]   전략 = brand | hybrid | expand | grain | all(기본), 지역 = KR(기본) | JP | TW
 import { advanceMonth, applyAction, bulkValuePerLPA, capacityLPA, spotBidPerLPA, lotQuality, previewBlend, newGame, warehouseCapacity, whiskyMinMonths, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
 import { REGIONS, regionOf, siteOf } from '../src/sim/content/regions';
-import { dutyFreeSlotBlocker, inventoryLoanRoom, inventoryLtv, OEM, oemPackageCost } from '../src/sim';
+import { DUTY_FREE, dutyFreeSlotBlocker, inventoryLoanRoom, inventoryLtv, OEM, oemPackageCost } from '../src/sim';
 import { EVENTS } from '../src/sim/content/events';
 import { RETAIL } from '../src/sim/ops';
 import { EQUIPMENT } from '../src/sim/content/catalog';
@@ -24,6 +24,11 @@ const DEFEND = process.env.NO_DEFEND !== '1';
 if (process.env.OVERFLOW_FEE) RETAIL.overflowFeeRate = Number(process.env.OVERFLOW_FEE);
 if (process.env.OVERFLOW_SHARE) RETAIL.overflowShare = Number(process.env.OVERFLOW_SHARE);
 if (process.env.GRAIN_DEPTH) REGIONS[REGION].grainSpotDepthLPA = Number(process.env.GRAIN_DEPTH);
+// 튜닝 실험용 (결정 #104): 제주 면세 채널 — 면세 마진, 연속 완판 보너스, 면세 입소문 가중, 단일 브랜드 점유 상한
+if (process.env.DF_MARKUP) DUTY_FREE.markup = Number(process.env.DF_MARKUP);
+if (process.env.DF_STREAK) DUTY_FREE.streakAppeal = Number(process.env.DF_STREAK);
+if (process.env.DF_WOM) DUTY_FREE.wordOfMouthWeight = Number(process.env.DF_WOM);
+if (process.env.DF_SHARE) DUTY_FREE.shareCap = Number(process.env.DF_SHARE);
 
 type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site';
 
