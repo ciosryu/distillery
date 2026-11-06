@@ -1,6 +1,6 @@
 import { EXPORT_MARKETS, domesticNetPerBottle, effectiveTariff, exportEligible, exportFob, exportMarketsFor, exportNetPerBottle, exportShelfPrice, productConsumerPrice } from '../../sim';
 import { useGame } from '../../store/game';
-import { num, pct, won } from '../format';
+import { num, pct, won, wonFull } from '../format';
 import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';
 
 /** 수출 시장 (#95, 확장 #100~#109): 수입사 제안·계약·해지, 수출가 조정, 시장 조건, 제품별 현지 소비자가와 판매 */
@@ -76,9 +76,9 @@ export function Exports() {
                       <Td className="max-w-56 truncate text-xs font-medium">{p.name}{!ok && <> <Badge tone="bad">숙성 기준 미달</Badge></>}</Td>
                       <Td right>{won(p.price)}</Td>
                       <Td right>{won(productConsumerPrice(s, p))}</Td>
-                      <Td right>{won(exportFob(p, factor))}</Td>
+                      <Td right>{wonFull(exportFob(p, factor))}</Td>
                       <Td right>{won(exportShelfPrice(s, p, m, factor))}</Td>
-                      <Td right><span className={exNet > domNet ? 'text-emerald-700 dark:text-emerald-400' : ''}>{won(exNet)}</span> / {won(domNet)}</Td>
+                      <Td right><span className={exNet > domNet ? 'text-emerald-700 dark:text-emerald-400' : ''}>{wonFull(exNet)}</span> / {wonFull(domNet)}</Td>
                       <Td right>{sale ? num(sale.demandBottles) : '—'}</Td>
                       <Td right>{sale ? num(sale.bottles) : '—'}</Td>
                     </tr>
