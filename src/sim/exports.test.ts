@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addModifier, advanceMonths, applyAction, effectiveTariff, EXPORT_MARKETS, EXPORT_SALES, exportMarketsFor, exportShelfPrice, makeExportOffer, mulberry32, newGame, runExportContracts, runSales, updateExportAwareness,
+  addModifier, advanceMonths, applyAction, domesticNetPerBottle, effectiveTariff, EXPORT_MARKETS, EXPORT_SALES, exportDemandFor, exportMarketsFor, exportNetPerBottle, exportShelfPrice, makeExportOffer, mulberry32, newGame, runExportContracts, runSales, updateExportAwareness,
   type GameState, type MonthReport, type Product,
 } from './index';
 
@@ -101,23 +101,41 @@ describe('수입사 계약 (#101)·인지도 후광 (#102)', () => {
   });
 });
 
-describe('재고 배분 (#105)·매입가 (#106)', () => {
-  const setup = (stock: number) => {
+describe('재고 배분 (#109)·수출가 (#106·#108)', () => {
+  const setup = (stock: number, priceFactor = 0.95) => {
     const s = { ...newGame({ seed: 7 }), awareness: 0.6, month: 60, products: [whisky({ stockBottles: stock })] };
-    s.exports = [{ marketId: 'DF', openedMonth: 0, readyMonth: 0, awareness: 0.6, totalBottles: 0, priceFactor: 0.95, marketingPerMonth: 2_000_000 }];
+    s.exports = [{ marketId: 'DF', openedMonth: 0, readyMonth: 0, awareness: 0.6, totalBottles: 0, priceFactor, marketingPerMonth: 2_000_000 }];
     return s;
   };
   const exported = (r: ReturnType<typeof runSales>) => r.exports.reduce((t, x) => t + x.bottles, 0);
 
-  it('재고가 국내 수요보다 적으면 국내를 먼저 채우고 수출은 남는 재고만 가져간다', () => {
-    const r = runSales(setup(5), mulberry32(1), 6);
-    expect(r.results[0]!.demandBottles).toBeGreaterThan(5);
-    expect(r.results[0]!.bottles).toBe(5);
-    expect(exported(r)).toBe(0);
-    // 재고가 넉넉하면 수출도 수요만큼 나간다
+  it('재고가 모자라면 병당 순수입이 높은 판로부터 채운다 — 수출가가 낮으면 국내, 높으면 수출 먼저', () => {
+    const s = setup(5, 0.8);
+    expect(exportNetPerBottle(s, s.products[0]!, EXPORT_MARKETS.DF, 0.8)).toBeLessThan(domesticNetPerBottle(s, s.products[0]!));
+    const low = runSales(s, mulberry32(1), 6);
+    expect(low.results[0]!.demandBottles).toBeGreaterThan(5);
+    expect(low.results[0]!.bottles).toBe(5);
+    expect(exported(low)).toBe(0);
+    // 수출가를 ×1.5로 올리면 수출이 먼저 채워지고 국내는 남는 만큼만
+    const high = runSales(setup(5, 1.5), mulberry32(1), 6);
+    expect(exported(high)).toBe(5);
+    expect(high.results[0]?.bottles ?? 0).toBe(0);
+    // 재고가 넉넉하면 둘 다 수요만큼 나간다
     const big = runSales(setup(100_000), mulberry32(1), 6);
     expect(exported(big)).toBeGreaterThan(0);
     expect(big.results[0]!.bottles).toBe(big.results[0]!.demandBottles);
+  });
+
+  it('수출가 조정(#108): 계약 뒤 0.5~3 사이로, 올리면 현지 수요가 준다', () => {
+    const s = { ...newGame({ seed: 2 }), cash: 1e10, products: [whisky()] };
+    const o = makeExportOffer(s, 'US', mulberry32(3));
+    s.exportOffers = [o];
+    let t = applyAction(s, { type: 'acceptExportOffer', offerId: o.id }).state;
+    expect(t.exports![0]!.priceFactor).toBe(o.priceFactor);
+    t = applyAction(t, { type: 'setExportPrice', marketId: 'US', priceFactor: 9 }).state;
+    expect(t.exports![0]!.priceFactor).toBe(3);
+    const e = { ...t.exports![0]!, readyMonth: 0, awareness: 0.2 };
+    expect(exportDemandFor(t, t.products[0]!, { ...e, priceFactor: 1.5 }, 1)).toBeLessThan(exportDemandFor(t, t.products[0]!, { ...e, priceFactor: 1 }, 1));
   });
 
   it('수요 비율 배분(#95 원래 규칙)으로 바꾸면 모자란 재고를 수출과 나눈다 — 실험용 스위치', () => {
@@ -127,11 +145,11 @@ describe('재고 배분 (#105)·매입가 (#106)', () => {
       expect(exported(r)).toBeGreaterThan(0);
       expect(r.results[0]!.bottles).toBeLessThan(200);
     } finally {
-      EXPORT_SALES.allocation = 'domestic';
+      EXPORT_SALES.allocation = 'margin';
     }
   });
 
-  it('매입가 비율은 출고가에 가깝다 — 수입상 마진은 유통 배수에 이미 들어 있다', () => {
+  it('수입사 제안 수출가는 출고가에 가깝다 — 수입상 마진은 유통 배수에 이미 들어 있다 (#106)', () => {
     for (const id of exportMarketsFor('KR')) {
       const [lo, hi] = EXPORT_MARKETS[id].offer.priceFactor;
       expect(lo).toBeGreaterThanOrEqual(0.85);

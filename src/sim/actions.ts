@@ -9,10 +9,11 @@ import { MAX_RECHAR, recharCask } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
 import { acceptExportOffer, cancelExport } from './exportDeals';
+import { recordPendingCash, sumCashFlows } from './cashflow';
 import { EXPORT_MARKETS, type ExportMarketId } from './content/exports';
 import { applyWaterPermit, equipmentCost, inventoryLoanRoom, inventoryLtv } from './sites';
 import { OEM, RETAIL_DEAL, startOem, startRetail } from './deals';
-import type { CaskTypeId, GameState, Recipe } from './types';
+import type { CashFlowKey, CaskTypeId, GameState, Recipe } from './types';
 import { annuityPayment, clone, nid, staffOf, warehouseCapacity } from './util';
 
 export type Action =
@@ -34,6 +35,7 @@ export type Action =
   /** 수출 (#95·#101): 수입사 제안 수락 / 계약 해지 */
   | { type: 'acceptExportOffer'; offerId: string }
   | { type: 'closeExport'; marketId: ExportMarketId }
+  | { type: 'setExportPrice'; marketId: ExportMarketId; priceFactor: number }
   | { type: 'sellCaskOwnership'; caskId: string }
   | { type: 'rechar'; caskId: string }
   | { type: 'bottle'; components: BlendComponent[]; options: BottleOptions }
@@ -59,7 +61,32 @@ export interface ActionResult { state: GameState; error?: string; message?: stri
 
 const fail = (state: GameState, error: string): ActionResult => ({ state, error });
 
+/** 행동별 현금 흐름 항목 — 턴 사이 입출금을 다음 결산 보고서에 싣기 위한 분류 (null = 현금이 움직이지 않는 행동) */
+const ACTION_CASH_KEY: Record<Action['type'], CashFlowKey | null> = {
+  setOrder: null, saveRecipe: null, deleteRecipe: null, fillCasks: null, dumpCask: null, setPrice: null, setMarketing: null, hire: null,
+  buyEquipment: 'equipment', buyCasks: 'casks', buySpotCasks: 'casks', orderSeasoning: 'casks', rechar: 'casks', sellUsedCask: 'usedCask',
+  rotateWarehouse: 'rotation', takeInvestment: 'investment', sellCaskOwnership: 'caskOwnership', bottle: 'bottling', fire: 'severance',
+  takeLoan: 'loan', repayLoan: 'loanRepay', buyBrokerCask: 'brokerCask', sellBulk: 'spotBulk', acceptContract: 'contractPrepay',
+  cancelContract: 'contractCancel', resolveEvent: 'event', acceptCaskBid: 'caskBid',
+  // 입지 특성 (#86~): 취수 증량 신청비, 납품 계약 해지 비용, 위탁생산 설비 패키지(설치비 − 지원금)
+  applyWaterPermit: 'other', acceptRetail: null, cancelRetail: 'contractCancel', acceptOem: 'equipment',
+  // 수출 (#95·#101): 수입사 계약 체결(시장 개척비)·해지(위약금)
+  acceptExportOffer: 'export', closeExport: 'export', setExportPrice: null,
+};
+
+/** 행동 적용. 행동으로 움직인 현금은 pendingCash에 기록돼 다음 결산 보고서(offTurn·netCash)에 합쳐진다 */
 export function applyAction(prev: GameState, a: Action): ActionResult {
+  const res = applyActionRaw(prev, a);
+  if (res.error) return res;
+  // 행동 안에서 따로 기록한 몫(예: 계약 해지 비용 중 선급금 반환)을 뺀 나머지를 행동 항목으로 기록.
+  // 분류가 없는 행동이 현금을 움직여도 순현금에서 빠지지 않도록 '기타'로 기록
+  const recorded = sumCashFlows(res.state.pendingCash ?? {}) - sumCashFlows(prev.pendingCash ?? {});
+  const rest = res.state.cash - prev.cash - recorded;
+  if (Math.abs(rest) > 1e-6) recordPendingCash(res.state, ACTION_CASH_KEY[a.type] ?? 'other', rest);
+  return res;
+}
+
+function applyActionRaw(prev: GameState, a: Action): ActionResult {
   if (prev.status !== 'running') return fail(prev, '게임이 종료되었습니다');
   const s = clone(prev);
   switch (a.type) {
@@ -178,6 +205,12 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       if (err || !o) return fail(prev, err ?? '수입사 제안이 없습니다');
       const e = s.exports!.find((x) => x.marketId === o.marketId)!;
       return { state: s, message: `${o.partner}(${EXPORT_MARKETS[o.marketId].nameKo}) 수입사 계약 — 매입가 출고가의 ${Math.round(o.priceFactor * 100)}%, ${e.readyMonth - s.month}개월 뒤 판매 시작` };
+    }
+    case 'setExportPrice': {
+      const e = s.exports?.find((x) => x.marketId === a.marketId);
+      if (!e) return fail(prev, '진출하지 않은 시장입니다');
+      e.priceFactor = Math.max(0.5, Math.min(3, Math.round(a.priceFactor * 100) / 100));
+      return { state: s, message: `${EXPORT_MARKETS[a.marketId].nameKo} 수출가를 출고가의 ×${e.priceFactor}로 정했습니다` };
     }
     case 'closeExport': {
       const fee = cancelExport(s, a.marketId);
@@ -415,6 +448,8 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       if (!c) return fail(prev, '계약이 없습니다');
       const cost = cancellationCost(c);
       s.cash -= cost;
+      // 해지 비용 = 위약금(영업) + 남은 선급금 반환(재무)
+      recordPendingCash(s, 'contractPrepay', -Math.round(c.prepaidRemaining));
       s.b2bTrust = Math.max(0, s.b2bTrust - 10);
       s.contracts = s.contracts.filter((x) => x.id !== c.id);
       return { state: s, message: `${c.buyerName} 계약 해지 — 해지 비용 ${cost.toLocaleString()}원, 신뢰도 하락` };

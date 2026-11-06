@@ -88,8 +88,8 @@ const AGED_CATEGORIES: ProductCategory[] = ['whisky', 'blended_whisky', 'grain_w
 /** 수출 1병 운임 (700ml 기준 운임을 병 크기로 비례) */
 export const exportFreightPerBottle = (s: Pick<GameState, 'regionId'>, p: Pick<Product, 'bottleMl'>, m: ExportMarketDef) => Math.round(m.freightPerBottle[s.regionId] * (p.bottleMl / 700));
 
-/** 수입사 매입가(FOB) — 출고가 × 계약 매입가 비율 (#101). 계약 전 미리보기는 1 */
-export const exportFob = (p: Pick<Product, 'price'>, priceFactor = 1) => p.price * priceFactor;
+/** 수출가(FOB, 병당 우리가 받는 값) = 출고가 × 수출가 배수 — 수입사 제안가로 시작해 플레이어가 조정 (#95·#101·#108). 계약 전 미리보기는 1 */
+export const exportFob = (p: Pick<Product, 'price'>, priceFactor = 1) => Math.round(p.price * priceFactor);
 
 /** 관세 이벤트(#103) 반영 실효 관세율 */
 export function effectiveTariff(s: Pick<GameState, 'regionId'> & Partial<Pick<GameState, 'modifiers' | 'month'>>, m: ExportMarketDef): number {
@@ -102,6 +102,11 @@ export function exportShelfPrice(s: Pick<GameState, 'regionId'> & Partial<Pick<G
   const lpa = (p.bottleMl / 1000) * p.abv;
   return ((exportFob(p, priceFactor) + exportFreightPerBottle(s, p, m)) * (1 + effectiveTariff(s, m)) * (1 + (m.adValorem ?? 0)) + m.excisePerLPA * lpa) * m.channelMultiple * (1 + m.vat);
 }
+
+/** 수출 1병 순수입 = 수출가 − 운임 (#109 판로 배분 기준. 현지 마케팅 분담은 고정비라 뺀다) */
+export const exportNetPerBottle = (s: Pick<GameState, 'regionId'>, p: Pick<Product, 'price' | 'bottleMl'>, m: ExportMarketDef, priceFactor = 1) => exportFob(p, priceFactor) - exportFreightPerBottle(s, p, m);
+/** 국내 1병 순수입 = 출고가 − 유통비(채널 수수료 + 출고 물류). 주세는 소비자에게 넘어가므로 빼지 않는다 (#109) */
+export const domesticNetPerBottle = (s: Pick<GameState, 'regionId' | 'siteId'>, p: Pick<Product, 'price' | 'bottleMl'>) => p.price - distributionCostPerBottle(p.price, p.bottleMl, outboundLogistics(s));
 
 /** 이 시장에 팔 수 있는 제품인가 (주종·현지 위스키 숙성 규정) */
 export function exportEligible(p: Pick<Product, 'category' | 'oakMonths' | 'ageYears'>, m: ExportMarketDef): boolean {
@@ -167,14 +172,24 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
     const demand = Math.round(d.demandBottles * rng.range(0.9, 1.1));
     wants.push({ p, demand, want: Math.min(p.stockBottles, demand) });
   }
-  // 1-b) 수출 수요 (#95·#105): 재고가 모자라면 국내를 먼저 채우고 남는 재고를 수출에 나눈다(EXPORT_SALES.allocation).
-  //      숙성 원액은 정해진 양뿐이라, 수요 비율로 나누면 수출 1병이 국내 정가 판매 1병을 빼앗는다. 수출은 수입상이 받아 가므로 소매 처리 역량을 쓰지 않는다
+  // 1-b) 수출 수요 (#95·#109): 재고가 모자라면 병당 순수입이 높은 판로부터 채운다(EXPORT_SALES.allocation, 같으면 국내 먼저).
+  //      숙성 원액은 정해진 양뿐이라, 수요 비율로 나누면 싸게 파는 판로가 비싸게 파는 판로의 몫을 빼앗는다.
+  //      수출가를 올리면(#108) 수출이 먼저 채워진다. 수출은 수입상이 받아 가므로 소매 처리 역량을 쓰지 않는다
   const exportWants = new Map<string, { entry: ExportEntry; demand: number; want: number }[]>();
   const active = (s.exports ?? []).filter((e) => e.readyMonth <= s.month);
   for (const w of wants) {
     const list = active.map((entry) => ({ entry, demand: Math.round(exportDemandFor(s, w.p, entry, counts[w.p.category] ?? 1) * rng.range(0.9, 1.1)), want: 0 })).filter((x) => x.demand > 0);
     if (!list.length) continue;
     exportWants.set(w.p.id, list);
+    if (EXPORT_SALES.allocation === 'margin') {
+      const chans = [
+        { net: domesticNetPerBottle(s, w.p), demand: w.demand, set: (n: number) => { w.want = n; } },
+        ...list.map((x) => ({ net: exportNetPerBottle(s, w.p, EXPORT_MARKETS[x.entry.marketId], x.entry.priceFactor ?? 1), demand: x.demand, set: (n: number) => { x.want = n; } })),
+      ].sort((a, b) => b.net - a.net); // 안정 정렬 — 같으면 국내 먼저
+      let left = w.p.stockBottles;
+      for (const c of chans) { const n = Math.min(left, c.demand); c.set(n); left -= n; }
+      continue;
+    }
     if (EXPORT_SALES.allocation === 'domestic') continue; // 수출 몫은 국내 판매 뒤 남은 재고로 (아래)
     const total = w.demand + list.reduce((t, x) => t + x.demand, 0);
     const f = Math.min(1, w.p.stockBottles / Math.max(1, total));
@@ -244,7 +259,7 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
       x.entry.totalBottles += bottles;
       const m = EXPORT_MARKETS[x.entry.marketId];
       x.entry.bottlesThisYear = (x.entry.bottlesThisYear ?? 0) + bottles;
-      exports.push({ marketId: x.entry.marketId, productId: p.id, name: p.name, bottles, revenue: Math.round(bottles * exportFob(p, x.entry.priceFactor ?? 1)), demandBottles: x.demand, freight: bottles * exportFreightPerBottle(s, p, m) });
+      exports.push({ marketId: x.entry.marketId, productId: p.id, name: p.name, bottles, revenue: bottles * exportFob(p, x.entry.priceFactor ?? 1), demandBottles: x.demand, freight: bottles * exportFreightPerBottle(s, p, m) });
     }
   }
   return { results: out, retail: { capacityCases: cap, soldCases: Math.round(soldCases), overflowCases: Math.round(overflowCases), lostBottles: lost }, exports };

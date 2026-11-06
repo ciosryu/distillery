@@ -1,5 +1,6 @@
 // 수출 시장 (#95, PRD §16.25) — 수치는 전부 [튜닝]. 조사 근거는 PRD §16.25
-// 확장 (#100~#104, PRD §17, docs/design/export.md): EU·중국·동남아·한일대 상호 수출, 수입사 계약, 인지도 후광은 면세점만
+// 수출 시장 (#95, PRD §16.25) + 확장 (#100~#108, PRD §17, docs/design/export.md): EU·중국·동남아·한일대 상호 수출, 수입사 계약, 인지도 후광은 면세점만
+// 수입 프리미엄 위스키는 스카치·재패니즈와 경쟁해 가격 탄력성이 크다(2.0) — 1.1~1.2로 두면 수출가를 2배로 올려도 잘 팔려 순자산이 4배가 됐다
 import type { ExportMarketId, ProductCategory, RegionId } from '../types';
 
 export type { ExportMarketId };
@@ -66,7 +67,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     nameKo: '미국',
     descKo: '3단계 유통(수입상·도매·소매)이라 마진이 두껍다. 연방 주세는 낮고 시장은 크지만 신생 브랜드는 묻히기 쉽다',
     categories: {
-      whisky: { baseCases: 400_000, baseSource: '재패니즈·월드 위스키 수입 틈새 — 신생 브랜드 연 500~5,000병, 자리 잡으면 1만~5만병이 되도록 (추정, §16.25)', refConsumerPricePerL: 95_000, refAbv: 0.46, elasticity: 1.2, shareCap: 0.03 },
+      whisky: { baseCases: 400_000, baseSource: '재패니즈·월드 위스키 수입 틈새 — 신생 브랜드 연 500~5,000병, 자리 잡으면 1만~5만병이 되도록 (추정, §16.25)', refConsumerPricePerL: 95_000, refAbv: 0.46, elasticity: 2.0, shareCap: 0.03 },
       blended_whisky: { baseCases: 300_000, baseSource: '아시아 블렌디드 수입 틈새 (추정)', refConsumerPricePerL: 55_000, refAbv: 0.43, elasticity: 1.6, shareCap: 0.01 },
       gin: { baseCases: 150_000, baseSource: '크래프트 수입 진 틈새 (추정)', refConsumerPricePerL: 50_000, refAbv: 0.43, elasticity: 1.8, shareCap: 0.02 },
     },
@@ -82,8 +83,8 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     entryMonths: 5,
     monthlyCost: 4_000_000, // 현지 브랜드 앰배서더·판촉 지원 [추측]
     minWhiskyMonths: 0,
-    // 국내 인지도 후광 없음 (#102) — 해외는 0에서 시작
-    awareness: { start: 0.02, perMonth: 0.01, domesticSpill: 0, max: 0.6 },
+    // 신생 수입 브랜드는 묻힌다 — 수상·평론 없이 오르는 인지도는 낮다 (연 500~5,000병 → 자리 잡으면 1만~5만). 국내 인지도 후광 없음 (#102)
+    awareness: { start: 0.02, perMonth: 0.006, domesticSpill: 0, max: 0.35 },
     offer: { priceFactor: [0.85, 0.95], minBottlesPerYear: 1_200 },
     partners: ['파이어니어 스피릿 임포츠', '노스스타 브랜즈', '하버라인 와인앤스피릿'],
   },
@@ -92,7 +93,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     nameKo: '영국',
     descKo: '주세가 무겁고(순수 알코올 1L당 약 32파운드) 위스키는 3년 숙성 이상만 "위스키"다. 전문점·온라인 애호가 층이 두텁다',
     categories: {
-      whisky: { baseCases: 60_000, baseSource: '월드·재패니즈 위스키 애호가 시장 — 신생 브랜드 연 300~3,000병이 되도록 (추정, §16.25)', refConsumerPricePerL: 110_000, refAbv: 0.46, elasticity: 1.1, shareCap: 0.03 },
+      whisky: { baseCases: 60_000, baseSource: '월드·재패니즈 위스키 애호가 시장 — 신생 브랜드 연 300~3,000병이 되도록 (추정, §16.25)', refConsumerPricePerL: 110_000, refAbv: 0.46, elasticity: 2.0, shareCap: 0.03 },
       gin: { baseCases: 80_000, baseSource: '프리미엄 진 수입 틈새 (추정)', refConsumerPricePerL: 55_000, refAbv: 0.43, elasticity: 1.9, shareCap: 0.01 },
     },
     tariff: { KR: 0, JP: 0, TW: 0 }, // 위스키 제3국 관세 0% (진도 0% 추정)
@@ -105,7 +106,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     entryMonths: 3,
     monthlyCost: 3_000_000,
     minWhiskyMonths: 36,
-    awareness: { start: 0.03, perMonth: 0.012, domesticSpill: 0, max: 0.6 },
+    awareness: { start: 0.02, perMonth: 0.006, domesticSpill: 0, max: 0.35 },
     offer: { priceFactor: [0.85, 0.95], minBottlesPerYear: 600 },
     partners: ['스페이 앤 템스 임포터스', '오크하트 디스트리뷰션'],
   },
@@ -114,7 +115,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     nameKo: '공항 면세점',
     descKo: '자국 국제공항 출국 면세점(제주 지정면세점과 별개). 세금이 없지만 운영사 마진이 크고 입점비가 든다. 국내 인지도가 그대로 넘어온다',
     categories: {
-      whisky: { baseCases: 25_000, baseSource: '공항 면세 싱글몰트 중 로컬 크래프트 몫 (추정, §16.25)', refConsumerPricePerL: 100_000, refAbv: 0.46, elasticity: 1.0, shareCap: 0.05 },
+      whisky: { baseCases: 25_000, baseSource: '공항 면세 싱글몰트 중 로컬 크래프트 몫 (추정, §16.25)', refConsumerPricePerL: 100_000, refAbv: 0.46, elasticity: 1.5, shareCap: 0.05 },
       gin: { baseCases: 8_000, baseSource: '공항 면세 진 중 로컬 몫 (추정)', refConsumerPricePerL: 45_000, refAbv: 0.43, elasticity: 1.6, shareCap: 0.05 },
       soju_distilled: { baseCases: 12_000, baseSource: '공항 면세 전통주·증류식 소주 (추정)', refConsumerPricePerL: 35_000, refAbv: 0.25, elasticity: 1.8, shareCap: 0.05 },
     },
@@ -140,7 +141,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     nameKo: 'EU (프랑스 기준)',
     descKo: '스카치 2위 수출 시장(프랑스 2024 £419m). 관세는 없지만 회원국 주세·부가세가 무겁다. 3년 숙성 이상만 위스키',
     categories: {
-      whisky: { baseCases: 250_000, baseSource: '월드·재패니즈 위스키 수입 틈새 — 프랑스·독일·네덜란드 애호가 (추정)', refConsumerPricePerL: 100_000, refAbv: 0.46, elasticity: 1.1, shareCap: 0.03 },
+      whisky: { baseCases: 250_000, baseSource: '월드·재패니즈 위스키 수입 틈새 — 프랑스·독일·네덜란드 애호가 (추정)', refConsumerPricePerL: 100_000, refAbv: 0.46, elasticity: 2.0, shareCap: 0.03 },
       blended_whisky: { baseCases: 200_000, baseSource: '아시아 블렌디드 틈새 (추정)', refConsumerPricePerL: 50_000, refAbv: 0.4, elasticity: 1.6, shareCap: 0.01 },
       gin: { baseCases: 150_000, baseSource: '크래프트 수입 진 틈새 (추정)', refConsumerPricePerL: 50_000, refAbv: 0.43, elasticity: 1.8, shareCap: 0.01 },
     },
@@ -155,7 +156,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     entryMonths: 4,
     monthlyCost: 3_000_000,
     minWhiskyMonths: 36,
-    awareness: { start: 0.02, perMonth: 0.01, domesticSpill: 0, max: 0.6 },
+    awareness: { start: 0.02, perMonth: 0.006, domesticSpill: 0, max: 0.35 },
     offer: { priceFactor: [0.85, 0.95], minBottlesPerYear: 900 },
     partners: ['메종 데 스피리튜', '라인 앤 론 임포트'],
   },
@@ -164,8 +165,8 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     nameKo: '중국',
     descKo: '선물·연회 수요로 비싼 병이 팔린다. 2026년 2월부터 위스키 관세 잠정 5%, 소비세 20%. 경기·정책 변동이 크다',
     categories: {
-      whisky: { baseCases: 150_000, baseSource: '수입 싱글몰트 시장 — 스카치 대중 수출 2024 −31.5% (추정)', refConsumerPricePerL: 190_000, refAbv: 0.43, elasticity: 1.0, shareCap: 0.02 },
-      blended_whisky: { baseCases: 100_000, baseSource: '수입 블렌디드 틈새 (추정)', refConsumerPricePerL: 80_000, refAbv: 0.4, elasticity: 1.4, shareCap: 0.01 },
+      whisky: { baseCases: 150_000, baseSource: '수입 싱글몰트 시장 — 스카치 대중 수출 2024 −31.5% (추정)', refConsumerPricePerL: 190_000, refAbv: 0.43, elasticity: 2.0, shareCap: 0.02 },
+      blended_whisky: { baseCases: 100_000, baseSource: '수입 블렌디드 틈새 (추정)', refConsumerPricePerL: 80_000, refAbv: 0.4, elasticity: 1.6, shareCap: 0.01 },
     },
     // 2026-02-02부터 잠정 5% (2025년 MFN 10%)
     tariff: { KR: 0.05, JP: 0.05, TW: 0.05 },
@@ -179,7 +180,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     entryMonths: 5,
     monthlyCost: 4_000_000,
     minWhiskyMonths: 0,
-    awareness: { start: 0.01, perMonth: 0.01, domesticSpill: 0, max: 0.5 },
+    awareness: { start: 0.01, perMonth: 0.006, domesticSpill: 0, max: 0.35 },
     offer: { priceFactor: [0.85, 0.95], minBottlesPerYear: 1_200 },
     partners: ['화하 진구 무역', '동방 주업 수입'],
   },
@@ -188,7 +189,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     nameKo: '동남아 (싱가포르 허브)',
     descKo: '관세는 없지만 주세가 순수 알코올 1L당 88싱가포르달러로 무겁다. 재수출·면세 허브라 고급 병이 잘 팔린다',
     categories: {
-      whisky: { baseCases: 50_000, baseSource: '싱가포르 허브 싱글몰트 틈새 — 스카치 수출 2024 £310m (추정)', refConsumerPricePerL: 195_000, refAbv: 0.43, elasticity: 1.0, shareCap: 0.03 },
+      whisky: { baseCases: 50_000, baseSource: '싱가포르 허브 싱글몰트 틈새 — 스카치 수출 2024 £310m (추정)', refConsumerPricePerL: 195_000, refAbv: 0.43, elasticity: 2.0, shareCap: 0.03 },
       gin: { baseCases: 20_000, baseSource: '크래프트 진 틈새 (추정)', refConsumerPricePerL: 90_000, refAbv: 0.43, elasticity: 1.6, shareCap: 0.02 },
     },
     tariff: { KR: 0, JP: 0, TW: 0 },
@@ -200,7 +201,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     entryMonths: 3,
     monthlyCost: 2_000_000,
     minWhiskyMonths: 0,
-    awareness: { start: 0.02, perMonth: 0.012, domesticSpill: 0, max: 0.6 },
+    awareness: { start: 0.02, perMonth: 0.006, domesticSpill: 0, max: 0.35 },
     offer: { priceFactor: [0.88, 1], minBottlesPerYear: 400 },
     partners: ['머라이언 셀러스', '스트레이츠 스피릿 하우스'],
   },
@@ -210,7 +211,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     nameKo: '한국',
     descKo: '주세 72% + 교육세(주세의 30%) + 부가세 10%가 수입 신고가에 붙는다. 관세는 국제협력관세 20%, FTA 0%',
     categories: {
-      whisky: { baseCases: 60_000, baseSource: '수입 싱글몰트 중 신생 아시아 브랜드 틈새 (추정)', refConsumerPricePerL: 170_000, refAbv: 0.43, elasticity: 1.1, shareCap: 0.02 },
+      whisky: { baseCases: 60_000, baseSource: '수입 싱글몰트 중 신생 아시아 브랜드 틈새 (추정)', refConsumerPricePerL: 170_000, refAbv: 0.43, elasticity: 2.0, shareCap: 0.02 },
       soju_distilled: { baseCases: 20_000, baseSource: '일본 본격 쇼추 등 수입 증류식 소주 틈새 (추정)', refConsumerPricePerL: 40_000, refAbv: 0.25, elasticity: 2.0, shareCap: 0.03 },
       gin: { baseCases: 20_000, baseSource: '크래프트 수입 진 틈새 (추정)', refConsumerPricePerL: 32_000, refAbv: 0.43, elasticity: 2.2, shareCap: 0.03 },
     },
@@ -225,7 +226,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     entryMonths: 3,
     monthlyCost: 2_000_000,
     minWhiskyMonths: 0,
-    awareness: { start: 0.02, perMonth: 0.01, domesticSpill: 0, max: 0.6 },
+    awareness: { start: 0.02, perMonth: 0.006, domesticSpill: 0, max: 0.35 },
     offer: { priceFactor: [0.88, 1], minBottlesPerYear: 600 },
     partners: ['한강 주류 수입', '새벽 리큐르'],
   },
@@ -234,7 +235,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     nameKo: '일본',
     descKo: '위스키 관세 0%, 주세는 가볍다(LPA당 약 1,000엔). 증류소 100곳 이상이 경쟁하는 시장',
     categories: {
-      whisky: { baseCases: 80_000, baseSource: '월드 위스키 수입 틈새 (추정)', refConsumerPricePerL: 120_000, refAbv: 0.43, elasticity: 1.0, shareCap: 0.02 },
+      whisky: { baseCases: 80_000, baseSource: '월드 위스키 수입 틈새 (추정)', refConsumerPricePerL: 120_000, refAbv: 0.43, elasticity: 2.0, shareCap: 0.02 },
       soju_distilled: { baseCases: 30_000, baseSource: '한국 소주 인기 — 수입 증류식 소주 틈새 (추정)', refConsumerPricePerL: 13_000, refAbv: 0.25, elasticity: 2.0, shareCap: 0.02 },
       gin: { baseCases: 20_000, baseSource: '크래프트 수입 진 틈새 (추정)', refConsumerPricePerL: 40_000, refAbv: 0.43, elasticity: 1.8, shareCap: 0.02 },
     },
@@ -247,7 +248,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     entryMonths: 3,
     monthlyCost: 2_000_000,
     minWhiskyMonths: 0,
-    awareness: { start: 0.02, perMonth: 0.01, domesticSpill: 0, max: 0.6 },
+    awareness: { start: 0.02, perMonth: 0.006, domesticSpill: 0, max: 0.35 },
     offer: { priceFactor: [0.88, 1], minBottlesPerYear: 600 },
     partners: ['아사히야 양주 수입', '미나토 트레이딩'],
   },
@@ -256,7 +257,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     nameKo: '대만',
     descKo: '증류주 관세 0%, 주세는 1L·도수 1%당 2.5대만달러, 영업세 5%. 싱글몰트 애호가와 한국 소주 팬이 두텁다',
     categories: {
-      whisky: { baseCases: 100_000, baseSource: '싱글몰트 애호 시장 중 수입 아시아 브랜드 틈새 (추정)', refConsumerPricePerL: 110_000, refAbv: 0.46, elasticity: 1.0, shareCap: 0.02 },
+      whisky: { baseCases: 100_000, baseSource: '싱글몰트 애호 시장 중 수입 아시아 브랜드 틈새 (추정)', refConsumerPricePerL: 110_000, refAbv: 0.46, elasticity: 2.0, shareCap: 0.02 },
       soju_distilled: { baseCases: 20_000, baseSource: '한국 소주 인기 — 증류식 틈새 (추정)', refConsumerPricePerL: 35_000, refAbv: 0.25, elasticity: 1.8, shareCap: 0.03 },
       gin: { baseCases: 10_000, baseSource: '크래프트 진 틈새 (추정)', refConsumerPricePerL: 45_000, refAbv: 0.43, elasticity: 1.8, shareCap: 0.03 },
     },
@@ -270,7 +271,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     entryMonths: 3,
     monthlyCost: 2_000_000,
     minWhiskyMonths: 0,
-    awareness: { start: 0.02, perMonth: 0.01, domesticSpill: 0, max: 0.6 },
+    awareness: { start: 0.02, perMonth: 0.006, domesticSpill: 0, max: 0.35 },
     offer: { priceFactor: [0.88, 1], minBottlesPerYear: 600 },
     partners: ['북회귀선 주류', '단수이 수입상사'],
   },
@@ -281,7 +282,7 @@ export const EXPORT_MARKET_IDS = Object.keys(EXPORT_MARKETS) as ExportMarketId[]
 export const exportMarketsFor = (regionId: RegionId): ExportMarketId[] => EXPORT_MARKET_IDS.filter((id) => id !== regionId);
 /** 미국 추가 관세 등 관세 이벤트는 modifier 'tariff:<시장>'로 (1 + 관세)에 곱한다 (#103) */
 export const tariffKey = (id: ExportMarketId) => `tariff:${id}`;
-/** 재고가 모자랄 때 국내·수출 배분 (#105) — 'domestic' = 국내를 먼저 채우고 남는 재고를 수출에 수요 비율로 나눈다(기본),
- *  'proportional' = 국내·수출에 수요 비율로 나눈다(#95 원래 규칙, 실험용) */
-export const EXPORT_SALES: { allocation: 'proportional' | 'domestic' } = { allocation: 'domestic' };
+/** 재고가 모자랄 때 국내·수출 배분 — 'margin' = 병당 순수입(수출가 − 운임 / 출고가 − 유통비)이 높은 판로부터(#109, 기본),
+ *  'domestic' = 국내 먼저(#105, 실험용), 'proportional' = 수요 비율(#95 원래 규칙, 실험용) */
+export const EXPORT_SALES: { allocation: 'margin' | 'domestic' | 'proportional' } = { allocation: 'margin' };
 export { KRW_PER_GBP, KRW_PER_USD };
