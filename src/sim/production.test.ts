@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { advanceMonths, applyAction, bulkValuePerLPA, categorize, evaporate, heartsFraction, matureCask, newGame, previewBlend, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type SpiritLot, appeal, type Product, caskStorageCost, fermentDaysAt, waterPermitCap } from './index';
+import { HEX_AXES, basePresetOf, craftPresets, flavorProfile, leverEffects, leverSummary, newScenarioGame, presetAsRecipe, previewBatch, type GameState, type Recipe, advanceMonths, applyAction, bulkValuePerLPA, categorize, evaporate, heartsFraction, matureCask, newGame, previewBlend, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type SpiritLot, appeal, type Product, caskStorageCost, fermentDaysAt, waterPermitCap } from './index';
 import { slotClimate } from './warehouse';
 import { EQUIPMENT } from './content/catalog';
 import { consumerPrice, priceForConsumer, REGIONS, siteOf } from './content/regions';
@@ -247,5 +247,64 @@ describe('제주 — 취수 허가·면세 한정판 (결정 #87)', () => {
     j = advanceMonths(j, 13);
     expect(j.site.permitApplication).toBeUndefined();
     expect([15_000, 25_000]).toContain(waterPermitCap(j));
+  });
+});
+
+describe('크래프팅 레버 미리보기 (mvp.md §1.2, P-PROD-1)', () => {
+  const mvp = () => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+  const malt = (s: GameState) => s.production.recipes.find((r) => r.kind === 'malt')!;
+  const soju = (s: GameState) => s.production.recipes.find((r) => r.kind === 'soju')!;
+  const baseOf = (s: GameState, r: Recipe) => presetAsRecipe(s, basePresetOf(s, r)!, r);
+
+  it('MVP 프리셋은 잠긴 주종(진·고량주)을 빼고, 레시피는 같은 이름의 프리셋에서 출발한 것으로 본다', () => {
+    const s = mvp();
+    expect(new Set(craftPresets(s).map((p) => p.kind))).toEqual(new Set(['soju', 'malt']));
+    expect(basePresetOf(s, malt(s))!.name).toBe(malt(s).name);
+    // 이름을 바꿔도 같은 주원료의 프리셋으로 찾는다
+    expect(basePresetOf(s, { ...malt(s), name: '내 몰트' })!.mashBill[0]!.ingredientId).toBe(malt(s).mashBill[0]!.ingredientId);
+  });
+
+  it('프리셋 그대로면 효과가 없고, 한 줄은 "프리셋 그대로"라고 쓴다', () => {
+    const s = mvp();
+    expect(leverEffects(s, baseOf(s, malt(s)), malt(s))).toEqual([]);
+    expect(leverSummary([])).toContain('프리셋 그대로');
+  });
+
+  it('바꾼 레버만 효과로 나오고, 한 줄에 레버·전후 값·품질 변화가 들어간다', () => {
+    const s = mvp();
+    const r = malt(s);
+    const fx = leverEffects(s, baseOf(s, r), { ...r, fermentDays: r.fermentDays + 3, cut: { c1: r.cut.c1 - 0.04, c2: r.cut.c2 + 0.08 } });
+    expect(fx.map((e) => e.lever).sort()).toEqual(['cut', 'fermentDays']);
+    const cut = fx.find((e) => e.lever === 'cut')!;
+    expect(cut.dYield).toBeGreaterThan(0); // 본류를 넓히면 수율↑
+    expect(cut.dOffnotes).toBeGreaterThan(0); // 이취↑
+    expect(leverSummary(fx)).toMatch(/발효 기간 \d+일→\d+일: .*품질 [+−±]\d/);
+  });
+
+  it('감압은 감압 증류기와 함께 하나의 레버로 본다 — 깔끔해진다(누룽지 향↓)', () => {
+    const s = mvp();
+    s.production.equipment.push({ id: 'EV', catalogId: 'vacuum_1000', readyMonth: 0, feintsLPA: 0 });
+    const r = soju(s);
+    const fx = leverEffects(s, baseOf(s, r), { ...r, pressure: 'vacuum', stillId: 'EV' });
+    expect(fx.map((e) => e.lever)).toEqual(['pressure']);
+    expect(fx[0]!.from).toBe('상압');
+    expect(fx[0]!.to).toBe('감압');
+    const v = previewBatch(s, { ...r, pressure: 'vacuum', stillId: 'EV' })!;
+    const a = previewBatch(s, r)!;
+    expect(v.flavor.toasted_grain ?? 0).toBeLessThan(a.flavor.toasted_grain ?? 0);
+  });
+
+  it('향미 프로필: 몰트는 블렌딩 육각형 6축(샘플 기록과 같은 축), 소주는 주종 레이더 축', () => {
+    const s = mvp();
+    expect(flavorProfile('malt', previewBatch(s, malt(s))!.flavor).map((a) => a.id)).toEqual([...HEX_AXES]);
+    expect(flavorProfile('soju', previewBatch(s, soju(s))!.flavor).map((a) => a.id)).toContain('nuruk_rice');
+  });
+
+  it('미리보기는 게임 상태를 바꾸지 않는다', () => {
+    const s = mvp();
+    const before = JSON.stringify(s);
+    const r = malt(s);
+    leverEffects(s, baseOf(s, r), { ...r, yeast: 'ale', runs: 1, mashBill: [{ ingredientId: 'malt_korean', ratio: 1 }] });
+    expect(JSON.stringify(s)).toBe(before);
   });
 });

@@ -11,7 +11,7 @@ import { dutyFreeAgedAppeal, dutyFreeSlotBlocker, dutyFreeSuggestedPrice, hasDut
 import { bestBy, nid, staffOf } from './util';
 import { mod } from './modifiers';
 import { hexOf, matchScore, mixHex, perceivedHex } from './blendRadar';
-import { blenderOf, COMMISSION, findTarget, readCask, revealNotes } from './blendTable';
+import { blenderOf, COMMISSION, findTarget, knownReads, revealNotes } from './blendTable';
 import { productCountEver } from './lifecycle';
 import type { AxisId, Flavor, GameState, Hex, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
 
@@ -25,7 +25,8 @@ export interface BottleOptions {
 }
 
 /** 배팅 결과 공개 (P6) */
-export interface BlendReveal { targetLabel: string | null; score: number | null; predicted: Hex; actual: Hex; notes: string[]; rewardNote?: string }
+/** predicted = 블렌더가 아는 값(샘플 기록)으로 만든 예상. 아는 원액이 하나도 없으면 null (P-PROD-2) */
+export interface BlendReveal { targetLabel: string | null; score: number | null; predicted: Hex | null; actual: Hex; notes: string[]; rewardNote?: string }
 
 export interface BlendPreview {
   ok: boolean;
@@ -238,15 +239,19 @@ function packagingUnitCost(s: GameState, opts: Pick<BottleOptions, 'packagingId'
 export function executeBlend(s: GameState, components: BlendComponent[], opts: BottleOptions): { error?: string; product?: Product; reveal?: BlendReveal } {
   const p = previewBlend(s, components, opts);
   if (!p.ok || !p.category || !p.evaluation) return { error: p.errors.join(' / ') || '병입할 수 없습니다' };
-  // 블렌딩 테이블 (결정 #124): 원액을 빼기 전에 블렌더가 읽은 값으로 예상 육각형을 만든다 (공개 연출용)
+  // 블렌딩 테이블 (결정 #124): 원액을 빼기 전에 블렌더가 아는 값으로 예상 육각형을 만든다 (공개 연출용).
+  // 캐스크는 샘플 기록(P-PROD-2) — 기록이 없는 캐스크는 예상에서 빠진다. 탱크 원액은 우리가 막 만든 것이라 처음 읽기로 안다
   const blender = blenderOf(s);
+  const known = knownReads(s);
   const parts = components.filter((c) => c.liters > 0).map((c) => {
     const lot = lotOf(s, c)!;
     const cask = c.source === 'cask' ? s.inventory.casks.find((k) => k.id === c.id) : undefined;
-    const seen = cask ? readCask(s, cask)! : perceivedHex(hexOf(lot.flavor), s.seed, lot.id, blender, 0);
+    const seen = cask ? known.get(cask.id)?.hex ?? null : perceivedHex(hexOf(lot.flavor), s.seed, lot.id, blender, 0);
     return { seen, share: c.liters * lot.abv, cask };
   });
-  const predicted = mixHex(parts.map((x) => ({ hex: x.seen, share: x.share })));
+  const seenParts = parts.filter((x): x is typeof x & { seen: Hex } => !!x.seen);
+  const unknownShare = parts.reduce((t, x) => t + (x.seen ? 0 : x.share), 0) / Math.max(1e-9, parts.reduce((t, x) => t + x.share, 0));
+  const predicted = seenParts.length ? mixHex(seenParts.map((x) => ({ hex: x.seen, share: x.share }))) : null;
   const single = parts.length === 1 ? parts[0]!.cask : undefined;
   const lineTarget = opts.line && s.commerce.lines[opts.line] ? findTarget(s, `line:${opts.line}`) : undefined;
   const target = lineTarget ?? findTarget(s, opts.targetId);
@@ -336,5 +341,5 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     product.line = opts.line;
     rewardNote = [rewardNote, `코어 레인지 「${opts.line}」 기준 배치로 등록 — 다음 배치부터 이 육각형과 비교한다`].filter(Boolean).join(' · ');
   }
-  return { product, reveal: { targetLabel: target?.label ?? null, score, predicted, actual, notes: revealNotes(predicted, actual), ...(rewardNote ? { rewardNote } : {}) } };
+  return { product, reveal: { targetLabel: target?.label ?? null, score, predicted, actual, notes: predicted ? [...revealNotes(predicted, actual), ...(unknownShare >= 0.05 ? [`샘플 기록 없는 원액 ${Math.round(unknownShare * 100)}%는 예상 밖이었다`] : [])] : ['샘플 기록 없이 병입 — 예상 없이 섞었다'], ...(rewardNote ? { rewardNote } : {}) } };
 }

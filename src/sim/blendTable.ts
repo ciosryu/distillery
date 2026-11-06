@@ -53,7 +53,10 @@ export const LAB = {
   axes: ['peat', 'woody'] as HexAxis[],
 };
 
-/** 블렌더가 읽은 캐스크 육각형 (실험실 분석 축은 정확) */
+/**
+ * 블렌더가 **지금** 캐스크를 맛보면 읽을 육각형 (실험실 분석 축은 정확). 지금의 참 향미에 고정 오차를 더한다 —
+ * 샘플을 뜨는 순간(recordSample)에만 쓴다. 화면·블렌딩 판단은 이 값이 아니라 기록(knownRead)을 읽는다(P-PROD-2, #143 정보 누수)
+ */
 export function readCask(s: GameState, cask: Cask): Hex | null {
   if (!cask.contents) return null;
   const actual = hexOf(cask.contents.flavor);
@@ -64,7 +67,7 @@ export function readCask(s: GameState, cask: Cask): Hex | null {
 
 // ───────────── 샘플 기록 — "아는 값" (S-10, #136) ─────────────
 // readCask는 지금의 참 향미에 고정된 오차를 더해 매번 다시 계산한다 → 샘플 뒤에도 추정치가 참값을 따라 움직인다(정보 누수).
-// MVP 숙성고 화면은 대신 샘플을 뜬 그 순간의 읽기를 남긴 기록(sampleLog)만 보여 준다. 블렌딩 테이블을 기록으로 옮길지는 단계 P(PROD)
+// MVP 숙성고 화면과 블렌딩 테이블(P-PROD-2)은 대신 샘플을 뜬 그 순간의 읽기를 남긴 기록(sampleLog)만 본다
 
 /** 남기는 샘플 기록 수 — 마지막 샘플과 그 직전(변화 화살표용) */
 export const SAMPLE_LOG_KEPT = 2;
@@ -91,6 +94,49 @@ export function lastSample(cask: Pick<Cask, 'sampleLog'>): { last: SampleRecord;
   const hex = {} as Hex;
   for (const a of HEX_AXES) hex[a] = last.hex[a] - prev.hex[a];
   return { last, delta: { hex, quality: last.estQuality - prev.estQuality } };
+}
+
+// ───────────── 블렌딩 테이블이 아는 값 (P-PROD-2) ─────────────
+// 블렌딩 테이블·위임·결과 공개는 샘플 기록만 읽는다. 기록은 다음 샘플 전까지 움직이지 않는다 → 오래된 샘플은 오래된 정보다(다시 떠야 한다).
+// 같은 배치를 같은 종류 캐스크에 나눠 담은 형제 캐스크는 서로의 기록을 빌린다 — 블렌더는 한 배치에서 대표 통 몇 개만 맛본다.
+// 레어 캐스크처럼 형제와 다른 통은 자기 샘플을 떠야 드러난다
+
+export interface KnownRead {
+  hex: Hex;
+  sigma: number;
+  /** 기록한 달 — 지금과의 차이가 정보의 나이 */
+  month: number;
+  estQuality: number;
+  /** 자기 기록인지, 형제 캐스크(같은 배치·같은 캐스크 종류)의 기록을 빌렸는지 */
+  from: 'own' | 'sibling';
+}
+
+const siblingKey = (c: Cask) => (c.contents?.batchId ? `${c.contents.batchId}:${c.typeId}` : null);
+
+/** 모든 캐스크의 아는 값 (기록이 없고 형제도 없으면 빠진다). 한 번에 계산 — 캐스크가 수천 개여도 O(n) */
+export function knownReads(s: GameState): Map<string, KnownRead> {
+  const bySibling = new Map<string, SampleRecord>();
+  for (const c of s.inventory.casks) {
+    const last = c.contents ? c.sampleLog?.at(-1) : undefined;
+    const k = siblingKey(c);
+    if (!last || !k) continue;
+    const prev = bySibling.get(k);
+    if (!prev || last.month > prev.month) bySibling.set(k, last);
+  }
+  const out = new Map<string, KnownRead>();
+  for (const c of s.inventory.casks) {
+    if (!c.contents) continue;
+    const own = c.sampleLog?.at(-1);
+    const k = siblingKey(c);
+    const rec = own ?? (k ? bySibling.get(k) : undefined);
+    if (rec) out.set(c.id, { hex: rec.hex, sigma: rec.sigma, month: rec.month, estQuality: rec.estQuality, from: own ? 'own' : 'sibling' });
+  }
+  return out;
+}
+
+/** 캐스크 하나의 아는 값 — 자기 기록 → 형제 기록 → 없음(null = 모른다) */
+export function knownRead(s: GameState, cask: Cask): KnownRead | null {
+  return knownReads(s).get(cask.id) ?? null;
 }
 
 /** 캐스크 1개를 읽는 오차(1σ) — 실험실 분석 축 제외 평균 */
@@ -259,14 +305,18 @@ export { hexDistance, matchScore };
 // ───────────── P7 위임 — 블렌더가 비율을 정한다 ─────────────
 
 /**
- * 목표에 맞춰 블렌더가 고른 캐스크별 사용량(L). 블렌더가 "읽은" 육각형으로 최적화하므로, 서툰 블렌더의 계획은 실제로는 빗나간다.
- * 병 수가 재고보다 많으면 가능한 만큼만 쓴다
+ * 목표에 맞춰 블렌더가 고른 캐스크별 사용량(L). 블렌더가 기록해 둔 육각형(knownReads)으로 최적화하므로, 서툰 블렌더나 오래된 샘플의 계획은 실제로는 빗나간다.
+ * 기록이 없는 캐스크는 뺀다(unknown = 뺀 수). 병 수가 재고보다 많으면 가능한 만큼만 쓴다
  */
-export function delegatePlan(s: GameState, target: BlendTarget, caskIds: string[], bottles: number, opts: BottleOptions): { components: BlendComponent[] } | { error: string } {
-  const casks = caskIds.map((id) => s.inventory.casks.find((c) => c.id === id)).filter((c): c is Cask => !!c?.contents && !c.owner && !(c.contamination && c.contaminationKnown));
-  if (!casks.length) return { error: '맡길 캐스크가 없습니다' };
+export function delegatePlan(s: GameState, target: BlendTarget, caskIds: string[], bottles: number, opts: BottleOptions): { components: BlendComponent[]; unknown: number } | { error: string } {
+  const usable = caskIds.map((id) => s.inventory.casks.find((c) => c.id === id)).filter((c): c is Cask => !!c?.contents && !c.owner && !(c.contamination && c.contaminationKnown));
+  if (!usable.length) return { error: '맡길 캐스크가 없습니다' };
   if (bottles <= 0) return { error: '병 수를 정하세요' };
-  const shares = optimizeShares(casks.map((c) => readCask(s, c)!), target);
+  // 블렌더는 맛본(기록이 있는) 원액만 섞는다 (P-PROD-2)
+  const known = knownReads(s);
+  const casks = usable.filter((c) => known.has(c.id));
+  if (!casks.length) return { error: '샘플 기록이 있는 캐스크가 없습니다 — 블렌더는 맛본 원액만 섞는다. 먼저 샘플을 뜨세요' };
+  const shares = optimizeShares(casks.map((c) => known.get(c.id)!.hex), target);
   const total = shares.reduce((t, x) => t + x, 0) || 1;
   const avgAbv = casks.reduce((t, c, i) => t + c.contents!.abv * shares[i]!, 0) / total;
   const abv = opts.targetAbv === 'cask' ? avgAbv : opts.targetAbv;
@@ -282,5 +332,5 @@ export function delegatePlan(s: GameState, target: BlendTarget, caskIds: string[
     .map((c, i) => ({ source: 'cask' as const, id: c.id, liters: Math.floor(((shares[i]! / total) * needLPA / c.contents!.abv) * 10) / 10 }))
     .filter((x) => x.liters >= 0.5);
   if (!components.length) return { error: '블렌더가 쓸 만한 조합을 찾지 못했습니다' };
-  return { components };
+  return { components, unknown: usable.length - casks.length };
 }
