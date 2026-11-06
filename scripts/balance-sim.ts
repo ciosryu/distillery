@@ -127,9 +127,11 @@ function operations(s: GameState, strategy: Strategy): GameState {
   for (const c of s.casks.filter((x) => !x.contents && x.contamination && x.recharCount < 2)) if (s.cash > 100_000_000) s = act(s, { type: 'rechar', caskId: c.id });
   const empty = s.casks.filter((c) => !c.contents && !c.contamination).length + s.caskOrders.reduce((t, o) => t + o.qty, 0);
   if (empty < 12 && s.cash > 150_000_000) s = act(s, { type: 'buyCasks', caskType: 'ex_bourbon_barrel', qty: 12 });
-  // v1.4: 숙성고가 90% 차면 랙 숙성고(+100 캐스크)를 늘린다 (짓는 중이면 기다린다)
+  // v1.4: 원액이 든 캐스크가 숙성고의 85%를 넘으면 빈 통부터 중고로 팔고, 그래도 차면 랙 숙성고(+100 캐스크)를 늘린다
+  const filled = s.casks.filter((c) => c.contents).length;
+  if (s.casks.length >= warehouseCapacity(s) - 2) for (const c of s.casks.filter((x) => !x.contents).slice(12)) s = act(s, { type: 'sellUsedCask', caskId: c.id });
   const building = s.equipment.some((e) => EQUIPMENT_KIND(e.catalogId) === 'warehouse' && e.readyMonth > s.month);
-  if (!building && s.casks.length >= warehouseCapacity(s) * 0.9 && s.cash > 300_000_000) s = act(s, { type: 'buyEquipment', catalogId: 'warehouse_rack_100' });
+  if (!building && filled >= warehouseCapacity(s) * 0.85 && s.cash > 300_000_000) s = act(s, { type: 'buyEquipment', catalogId: 'warehouse_rack_100' });
   const last = s.reports.at(-1);
   const sales = s.staff.filter((x) => x.role === 'sales').length;
   if (last?.overflowCases && last.overflowCases > 20 && sales < 4 && s.cash > 150_000_000) {
@@ -232,7 +234,7 @@ function expandStaged(s: GameState): GameState {
   if (stages.some((e) => e.readyMonth > s.month - 12)) return s; // 단계 사이 최소 12개월
   const demand = whiskyDemandLastMonth(s);
   const supply = maltLPALastMonth(s) * BOTTLES_PER_LPA_AGED;
-  if (demand < supply * 1.3) return s;
+  if (demand < supply * Number(process.env.EXPAND_TRIGGER ?? 1.3)) return s;
   const cost = 300_000_000 + 2 * 40_000_000;
   if (s.cash < cost + 150_000_000 && !s.loans.some((l) => l.offerId === 'facility')) s = act(s, { type: 'takeLoan', offerId: 'facility', amount: 500_000_000 });
   if (s.cash < cost + 100_000_000) return s;
