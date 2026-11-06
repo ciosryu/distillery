@@ -13,7 +13,7 @@ export function Exports() {
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="진출 시장" value={`${opened.length} / ${EXPORT_MARKET_IDS.length}`} />
+        <Stat label="해외 명성" value={pct(s.acclaim ?? 0, 0)} hint="품평회·평론으로 오르고 매달 식는다 — 현지 인지도 상한·바닥을 올린다" tone={(s.acclaim ?? 0) >= 0.2 ? 'good' : undefined} />
         <Stat label="지난달 수출 매출" value={won(last?.exportRevenue ?? 0)} hint="출고가 그대로 — 국내 주세는 수출 면세" />
         <Stat label="지난달 수출 운임" value={won(last?.expenses.export_freight ?? 0)} />
         <Stat label="월 현지 비용" value={won(last?.expenses.export_fixed ?? 0)} hint="현지 브랜드 담당·수입상 지원비" />

@@ -172,7 +172,9 @@ function exportPolicy(s: GameState, strategy: Strategy): GameState {
   const aged36 = whisky.some((p) => (p.oakMonths ?? 0) >= 36);
   // 남는 물량이 있을 때만: 3년 넘은 자사 몰트 캐스크가 EXPORT_SURPLUS개(약 330병/캐스크) 넘게 쌓였을 때.
   // 공급이 국내 수요에 묶여 있으면 수출은 국내 판매를 빼앗고 현지 비용만 늘린다 (§16.25)
-  const surplus = process.env.EXPORT_GATE === '0' || s.casks.filter((c) => c.contents?.kind === 'malt' && !c.contents.sourced && c.contents.oakMonths >= 36).length >= Number(process.env.EXPORT_SURPLUS ?? 20);
+  // 해외 명성(#96)이 0.2를 넘으면(품평회 수상·평론 고득점 뒤) 남는 물량이 없어도 판로를 연다
+  const acclaimed = (s.acclaim ?? 0) >= Number(process.env.ACCLAIM_OPEN ?? 0.2);
+  const surplus = process.env.EXPORT_GATE === '0' || acclaimed || s.casks.filter((c) => c.contents?.kind === 'malt' && !c.contents.sourced && c.contents.oakMonths >= 36).length >= Number(process.env.EXPORT_SURPLUS ?? 20);
   // 확장형은 성장 전략이라 남는 재고를 기다리지 않고 해외 판로를 먼저 연다 — 수출 수요가 증설 판단에 들어간다
   const growth = strategy === 'expand' && process.env.EXPAND_EXPORT === '1';
   if (!surplus && !growth && !(s.exports ?? []).length) return s;
