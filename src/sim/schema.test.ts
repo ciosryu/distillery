@@ -6,6 +6,7 @@ import { addWeatherShock, updateWeather, WEATHER } from './weather';
 import { evapTempFactor } from './maturation';
 import { categorize, previewBlend, simulateBatch, stillDefOf, type GameState, appeal, presetRecipes, validateRecipe, type Product } from './index';
 import { logisticsMultiplier, REGIONS } from './content/regions';
+import fixtureV13 from './fixtures/save-v13.json';
 
 // v5 세이브 픽스처는 리팩터 전 코드로 만들었다(옛 코드가 실제로 쓴 세이브 모양).
 
@@ -309,5 +310,16 @@ describe('지역 (v0.6)', () => {
     expect(categorize('malt', 23, 0.46, {}, false, true, rules('TW'))).toBe('malt_spirit');
     expect(categorize('malt', 24, 0.46, {}, false, true, rules('TW'))).toBe('whisky');
     expect(categorize('malt', 35, 0.46, {})).toBe('malt_spirit');
+  });
+});
+
+describe('세이브 v13 → v14 (제품 피니싱 표기 자리, P-PROD-3 코어)', () => {
+  it('버전만 오르고 옛 제품은 피니싱이 없으며, 진행 결과가 v13 코드와 같다', () => {
+    const s = migrateSave(structuredClone(fixtureV13.save))!;
+    expect(s.version).toBe(SAVE_VERSION);
+    expect(s.commerce.products.length).toBeGreaterThan(0);
+    expect(s.commerce.products.every((p) => p.finish === undefined)).toBe(true);
+    const t = advanceMonths(s, 3);
+    expect({ month: t.month, cash: t.finance.cash }).toEqual(fixtureV13.expectedAfter3);
   });
 });
