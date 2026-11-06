@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CATEGORY } from '../../sim/content/categories';
 import { categoryName, consumerPrice, regionOf, traditionalTaxFactor } from '../../sim/content/regions';
-import { bottleMargin, calendar, coverage, demandFor, DUTY_FREE, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, priceOptions, productConsumerPrice, productDutyFreeDemand, retailCapacityCases, suggestedPrice, type GameState, type Product } from '../../sim';
+import { bottleMargin, calendar, coverage, demandFor, domesticDemands, DUTY_FREE, dutyFreeDemands, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, priceOptions, productConsumerPrice, retailCapacityCases, suggestedPrice, type GameState, type Product } from '../../sim';
 import { awarenessOf } from '../../sim/brands';
 import { useGame } from '../../store/game';
 import { num, pct, won, wonFull } from '../format';
@@ -11,7 +11,6 @@ import { Badge, Button, Card, Empty, Meter, NumberField, Stat, Table, Td } from 
 // PriceDesk는 MVP 단일 화면(설계 세션)이 그대로 끼워 쓸 수 있게 따로 내보낸다
 
 const sellingProducts = (s: GameState) => s.commerce.products.filter((p) => p.stockBottles > 0 || p.lastMonthSold > 0);
-const categoryCounts = (s: GameState) => s.commerce.products.reduce<Record<string, number>>((m, p) => { if (p.stockBottles > 0) m[p.category] = (m[p.category] ?? 0) + 1; return m; }, {});
 const lastReport = (s: GameState) => s.history.reports.at(-1);
 
 /** 지금 조건(품질·숙성·주세 경감)으로 다시 계산한 권장 출고가 — 병입 때 값과 다를 수 있다 */
@@ -29,7 +28,9 @@ export function PriceDesk() {
   const { monthOfYear } = calendar(s);
   const region = regionOf(s);
   const active = sellingProducts(s);
-  const counts = categoryCounts(s);
+  // 같은 카테고리 제품끼리 나눈 이번 달 수요 (P-MKT-1). 재고 없는 제품은 혼자일 때의 수요(다시 채우면)
+  const domestic = domesticDemands(s, monthOfYear);
+  const dutyFree = dutyFreeDemands(s, monthOfYear);
   const last = lastReport(s);
   const selected = active.find((p) => p.id === picked) ?? active[0];
 
@@ -39,9 +40,9 @@ export function PriceDesk() {
         {!active.length ? <Empty>판매 중인 제품이 없습니다. 블렌딩·병입 탭에서 병입하세요.</Empty> : (
           <Table head={['제품', '재고', '출고가(병)', '소비자가', '이번 달 수요 한도', '지난달 수요 → 판매', '예상 월 매출', '병당 공헌이익', '']}>
             {active.map((p) => {
-              const d = demandFor(s, p, counts[p.category] ?? 1, monthOfYear);
+              const d = domestic.get(p.id) ?? demandFor(s, p, 1, monthOfYear);
               // 면세 채널(제주, 결정 #87): 면세 전용 한정판은 국내 매대에 없다 → 면세가·면세 기준가로 보여 준다
-              const df = hasDutyFree(s) ? productDutyFreeDemand(s, p, counts[p.category] ?? 1, monthOfYear) : 0;
+              const df = dutyFree.get(p.id) ?? 0;
               const dfOnly = !!p.dutyFreeOnly;
               const consumer = dfOnly ? dutyFreeConsumerPrice(p) : productConsumerPrice(s, p);
               const ratio = dfOnly ? consumer / (p.bottleMl / 1000) / (d.refPricePerL * DUTY_FREE.refFactor) : d.consumerPricePerL / d.refPricePerL;
@@ -82,6 +83,7 @@ export function PriceDesk() {
                   <Td right>
                     <span className="font-semibold">{num(demand)}병</span>
                     {df > 0 && !dfOnly && <div className="text-xs text-stone-500">면세 {num(df)}병 포함</div>}
+                    {d.split < 0.995 && !dfOnly && <div className="text-xs text-stone-500" title="같은 카테고리 제품끼리 수요를 나눈다 — 단독 수요가 클수록 몫이 크다">같은 카테고리 나눔 ×{d.split.toFixed(2)}</div>}
                     {p.stockBottles > 0 && p.stockBottles < demand && <div className="text-xs text-rose-700 dark:text-rose-400">재고 부족 — 값을 올려도 된다</div>}
                   </Td>
                   <Td right>
@@ -98,25 +100,25 @@ export function PriceDesk() {
         )}
         <p className="mt-2 text-xs text-stone-500">
           수요 한도 = 시장 규모 × 계절·트렌드 × 도달률(인지도 × 유통 커버리지 × 점유 상한) × 제품 매력도 × 가격 계수. 값을 올리면 병당 이익은 늘고 한도는 줄어든다 — 재고가 한도보다 적으면 값을 올려도 다 팔린다.
-          같은 카테고리 제품이 여러 개면 서로 수요를 나눠 갖습니다. 병당 공헌이익 = 출고가 − (원액·포장·병입 인건비) − 유통비(채널 수수료 + 물류).
+          같은 카테고리 제품이 여러 개면 수요를 나눠 갖는다 — 총수요는 조금만 늘고(똑같은 제품 2개면 약 1.26배), 단독 수요가 큰 제품이 더 큰 몫을 가진다. 병당 공헌이익 = 출고가 − (원액·포장·병입 인건비) − 유통비(채널 수수료 + 물류).
           {hasDutyFree(s) && ' 지정면세점 판매분은 주세·부가세가 없고, 소매 처리 역량과 육지 출고 물류 할증을 쓰지 않습니다.'}
         </p>
       </Card>
-      {selected && <ProductDetail p={selected} sameCategoryCount={counts[selected.category] ?? 1} />}
+      {selected && <ProductDetail p={selected} />}
     </div>
   );
 }
 
 /** 고른 제품: 소비자가가 어떻게 만들어지는지(주세 내역) · 수요 분해 · 가격을 바꾸면 */
-function ProductDetail({ p, sameCategoryCount }: { p: Product; sameCategoryCount: number }) {
+function ProductDetail({ p }: { p: Product }) {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
   const { monthOfYear } = calendar(s);
   const region = regionOf(s);
   if (p.dutyFreeOnly) return <Card title={`${p.name} — 면세 전용`}><p className="text-sm text-stone-600 dark:text-stone-300">면세 전용 한정판은 주세·부가세가 없습니다. 면세가 = 출고가 × 면세점 마진 {DUTY_FREE.markup}.</p></Card>;
   const b = priceBreakdown(s, p, region);
-  const d = demandFor(s, p, sameCategoryCount, monthOfYear);
-  const opts = priceOptions(s, p, sameCategoryCount, monthOfYear);
+  const d = domesticDemands(s, monthOfYear, region).get(p.id) ?? demandFor(s, p, 1, monthOfYear, region);
+  const opts = priceOptions(s, p, monthOfYear);
   const best = opts.reduce((a, x) => (x.contribution > a.contribution ? x : a), opts[0]!);
   const t = region.tax;
   const rows: [string, number, string?][] = [
@@ -149,7 +151,8 @@ function ProductDetail({ p, sameCategoryCount }: { p: Product; sameCategoryCount
       <Card title="수요 한도 분해 · 가격을 바꾸면">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           <dt className="text-stone-500">이번 달 시장 ({categoryName(region, p.category, CATEGORY[p.category].nameKo)})</dt><dd className="text-right tabular-nums">{num(d.marketL)}L</dd>
-          <dt className="text-stone-500">도달률 (인지도 {pct(awarenessOf(s, p), 1)} × 커버리지 {pct(coverage(s), 0)} × 점유 상한{sameCategoryCount > 1 ? ' ÷ 같은 카테고리 제품 나눔' : ''})</dt><dd className="text-right tabular-nums">{pct(d.reach, 4)} → {num(d.marketL * d.reach, 1)}L</dd>
+          <dt className="text-stone-500">도달률 (인지도 {pct(awarenessOf(s, p), 1)} × 커버리지 {pct(coverage(s), 0)} × 점유 상한)</dt><dd className="text-right tabular-nums">{pct(d.reach, 4)} → {num(d.marketL * d.reach, 1)}L</dd>
+          {d.split < 0.995 && <><dt className="text-stone-500">같은 카테고리 제품끼리 나눔</dt><dd className="text-right tabular-nums">× {d.split.toFixed(2)}</dd></>}
           <dt className="text-stone-500">매력도 (품질·전형성·숙성·포장)</dt><dd className="text-right tabular-nums">× {d.appeal.toFixed(2)}</dd>
           <dt className="text-stone-500">가격 계수 (소비자가 / 기준가 {wonFull(d.refPricePerL * p.bottleMl / 1000)})</dt><dd className="text-right tabular-nums">× {d.priceFactor.toFixed(2)}</dd>
           <dt className="font-medium">수요 한도</dt><dd className="text-right font-medium tabular-nums">{num(d.demandBottles)}병</dd>
