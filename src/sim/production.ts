@@ -482,7 +482,7 @@ export function capacityReport(s: GameState): CapacityReport {
   return { stills, fermenterDaysUsed, fermenterDaysCap, distillerRunsUsed, distillerRunsCap: Math.floor(distillerRunsCap) };
 }
 
-// ───────────── 크래프팅 레버 (mvp.md §1.2, 결정 #134 — 제안 P-PROD-1) ─────────────
+// ───────────── 크래프팅 레버 (mvp.md §1.2, 결정 #134 — 결정 P-PROD-1) ─────────────
 // 생산 화면이 "프리셋으로 시작 → 고급 설정에서 레버를 바꾼다 → 향미 육각형 + 품질 + 무엇이 무엇을 바꿨나 한 줄"을 보여 주는 데 쓰는 순수 함수.
 // 게임 상태를 바꾸지 않는다(미리보기 전용) — 틱·봇·세이브 동작은 그대로다.
 
