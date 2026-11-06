@@ -79,7 +79,7 @@
 | 파트 | 범위 (단계 P에서 할 일 — 초안) | 소유 파일 | PRD 절 |
 |---|---|---|---|
 | **PROD** 생산·숙성·블렌딩 | 피니싱, 정보 불확실성(샘플링), 블렌딩 테이블 화면·보상 연결, 생산 테크 노드의 효과 데이터 | `production.ts`·`maturation.ts`·`flavor.ts`·`blending.ts`·`blendTable.ts`·`blendRadar.ts`·`weather.ts`, `content/axes.ts`·`categories.ts`, 화면 `Production`·`Warehouse`·`Bottling`·`BlendLab` | §4~§6, flavor-model, blending-minigame |
-| **MKT** 시장·판매·B2B·수출 | 브랜드 라인(브랜드별 인지도), 수요 공식 정리(SKU √n), 병 가격 숙성 반영(PR #6 = 예약 #117) | `market.ts`·`bulk.ts`·`broker.ts`·`deals.ts`·`exportDeals.ts`, `content/exports.ts`·`names.ts`, `data/market/`, 화면 `Sales`·`B2B`·`Exports` | §8.3, §8.5~§8.6, §9, §11 |
+| **MKT** 시장·판매·B2B·수출 | 브랜드 라인(브랜드별 인지도), 수요 공식 정리(SKU √n) | `market.ts`·`bulk.ts`·`broker.ts`·`deals.ts`·`exportDeals.ts`, `content/exports.ts`·`names.ts`, `data/market/`, 화면 `Sales`·`B2B`·`Exports` | §8.3, §8.5~§8.6, §9, §11 |
 | **MGT** 재무·HR·이벤트·연구 | 연구 진행 시스템 + 공통 테크 4계통, 재무 확장(이사회·헷징·보험), 이벤트 난수 스트림 분리 구현 | `cashflow.ts`·`hr.ts`·`events.ts`·`research.ts`, `content/events.ts`·`tech.ts`, 화면 `Finance`·`Staff`·`Events`·`Dashboard` | §7, §8.1~§8.2, §8.4, §10, tech-tree |
 | **META** 시나리오·진행·경쟁 | 시나리오 초기화·가상 이력 생성기, 업적·마일스톤, (후속) 경쟁 AI | (새 파일) | §12, §9.4 |
 
@@ -123,7 +123,7 @@
 | 항목 | 파트 | 출처 |
 |---|---|---|
 | SKU 수만큼 총수요가 늘어나는 수요 공식 | MKT | PRD §15.3 #12 |
-| 병 가격의 숙성 반영 (PR #6) | MKT | §15.3 #13 |
+| ~~병 가격의 숙성 반영 (PR #6)~~ → 단계 S에서 설계 세션이 구현 (MVP 필수 #133, P-ARCH-5) | ARCH | PRD §NEW-ARCH-1 |
 | 입소문 평균 품질의 기준 기간 | MKT | §15.3 #18 |
 | 제주 면세점 두 종류(#87 지정면세점·#95 공항 면세점) 정리 | MKT | §16.25 |
 | 수출 확장의 열린 문제(수출로 돈을 버는 전략은 스코틀랜드에서, #107) | MKT | §17.5 |
