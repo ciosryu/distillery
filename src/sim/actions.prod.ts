@@ -276,9 +276,10 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
   labAnalyze: (s, prev, a) => {
     const casks = a.caskIds.map((id) => s.inventory.casks.find((c) => c.id === id)).filter((c): c is Cask => !!c?.contents && !c.labAnalyzed);
     if (!casks.length) return fail(prev, '분석할 캐스크가 없습니다');
-    for (const c of casks) c.labAnalyzed = true;
+    // 분석은 떠 간 시료로 한다 → 이번 읽기를 기록으로 남긴다(피트·우디는 정확, 나머지 축은 지금 샘플 횟수의 읽기 오차). 샘플 횟수·월 여력은 쓰지 않는다 (P-PROD-2)
+    for (const c of casks) { c.labAnalyzed = true; recordSample(s, c, lotQuality(c.contents!)); }
     s.finance.cash -= casks.length * LAB.cost;
-    return { state: s, message: `실험실 분석 ${casks.length}건 — 피트·우디는 이제 정확히 안다` };
+    return { state: s, message: `실험실 분석 ${casks.length}건 — 피트·우디는 이제 정확히 안다(분석 결과를 샘플 기록에 남겼다)` };
   },
   delegateBlend: (s, prev, a) => {
     const target = findTarget(s, a.targetId);
@@ -287,7 +288,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if ('error' in plan) return fail(prev, plan.error);
     const res = executeBlend(s, plan.components, { ...a.options, targetId: target.source === 'core' ? undefined : target.id, line: target.source === 'core' ? target.id.slice(5) : a.options.line, delegated: true });
     if (res.error) return fail(prev, res.error);
-    return { state: s, message: `블렌더에게 맡김 — ${bottleMessage(res.product!, res.reveal)}` };
+    return { state: s, message: `블렌더에게 맡김 — ${bottleMessage(res.product!, res.reveal)}${plan.unknown ? ` · 샘플 기록이 없는 ${plan.unknown}통은 뺐다` : ''}` };
   },
   applyWaterPermit: (s, prev, _a) => {
     const err = applyWaterPermit(s);

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  blendTargets, blenderOf, HEX_AXES, HEX_LABEL, LAB, matchScore, mixHex, optimizeShares, readCask, readSigma, reachableEnvelope, SAMPLING, samplingCapacity,
+  blendTargets, blenderOf, HEX_AXES, HEX_LABEL, knownReads, LAB, matchScore, mixHex, optimizeShares, reachableEnvelope, SAMPLING, samplingCapacity,
   type BlendComponent, type BlendTarget, type Cask, type Hex,
 } from '../../sim';
 import { useGame } from '../../store/game';
@@ -10,7 +10,10 @@ import { Badge, Button, Card, Empty, NumberField, Table, Td, TextField } from '.
 // 블렌딩 테이블 (결정 #124, docs/design/blending-minigame.md) — 웹 프로토타입(와이어프레임). 최종 화면은 Godot에서 만든다(결정 #122).
 // 캐스크는 같은 배치·같은 캐스크 종류끼리 묶어(코호트) 보여 준다 — 2,500개를 한 줄씩 보여 주지 않는다.
 
-interface Cohort { key: string; label: string; casks: Cask[]; read: Hex; sigma: number; lpa: number; oakMonths: number; rare: boolean; samples: number; lab: boolean }
+/** read = 샘플 기록(형제 기록 포함)의 평균 — 기록이 하나도 없으면 null(모른다, P-PROD-2). known = 기록을 아는 통 수, readMonth = 가장 오래된 기록의 달 */
+interface Cohort { key: string; label: string; casks: Cask[]; read: Hex | null; sigma: number; known: number; readMonth: number | null; lpa: number; oakMonths: number; rare: boolean; samples: number; lab: boolean }
+type KnownCohort = Cohort & { read: Hex };
+const isKnown = (c: Cohort): c is KnownCohort => c.read != null;
 
 const SOURCE_LABEL: Record<BlendTarget['source'], string> = { trend: '트렌드', critic: '의뢰', core: '코어 레인지' };
 
@@ -23,13 +26,16 @@ function cohortsOf(s: ReturnType<typeof useGame.getState>['state']): Cohort[] {
     const key = c.rare && c.rareKnown ? `rare:${c.id}` : `${l.batchId ?? `${l.recipeId}:${c.filledMonth}`}:${c.typeId}`;
     groups.set(key, [...(groups.get(key) ?? []), c]);
   }
+  const known = knownReads(s);
   return [...groups.entries()].map(([key, casks]) => {
-    const reads = casks.map((c) => readCask(s, c)!);
-    const read = mixHex(reads.map((h) => ({ hex: h, share: 1 })));
+    const reads = casks.map((c) => known.get(c.id)).filter((r) => r != null);
+    const read = reads.length ? mixHex(reads.map((r) => ({ hex: r.hex, share: 1 }))) : null;
     const first = casks[0]!;
     return {
       key, casks, read,
-      sigma: casks.reduce((t, c) => t + readSigma(s, c), 0) / casks.length,
+      sigma: reads.length ? reads.reduce((t, r) => t + r.sigma, 0) / reads.length : 0,
+      known: reads.length,
+      readMonth: reads.length ? Math.min(...reads.map((r) => r.month)) : null,
       lpa: casks.reduce((t, c) => t + c.contents!.volumeL * c.contents!.abv, 0),
       oakMonths: Math.min(...casks.map((c) => c.contents!.oakMonths)),
       rare: key.startsWith('rare:'),
@@ -82,16 +88,20 @@ export function BlendLab() {
   const blender = blenderOf(s);
   const target = targets.find((t) => t.id === targetId) ?? targets[0]!;
 
-  const picked = cohorts.filter((c) => (shares[c.key] ?? 0) > 0);
+  // 비율은 기록이 있는 코호트에만 줄 수 있다 — 맛보지 않은 원액은 예상을 만들 수 없다 (P-PROD-2)
+  const knownCohorts = cohorts.filter(isKnown);
+  const picked = knownCohorts.filter((c) => (shares[c.key] ?? 0) > 0);
   const total = picked.reduce((t, c) => t + shares[c.key]!, 0);
   const predicted = picked.length ? mixHex(picked.map((c) => ({ hex: c.read, share: shares[c.key]! }))) : undefined;
   const band = picked.length ? Math.sqrt(picked.reduce((t, c) => t + ((shares[c.key]! / total) * c.sigma) ** 2, 0)) : undefined;
-  const envelope = reachableEnvelope(cohorts.map((c) => c.read));
+  const envelope = reachableEnvelope(knownCohorts.map((c) => c.read));
   const best = useMemo(() => {
-    if (!cohorts.length) return null;
-    const x = optimizeShares(cohorts.map((c) => c.read), target);
-    return { score: matchScore(mixHex(cohorts.map((c, i) => ({ hex: c.read, share: x[i]! }))), target), shares: Object.fromEntries(cohorts.map((c, i) => [c.key, Math.round(x[i]! * 100)]).filter(([, v]) => (v as number) > 0)) };
+    const ks = cohorts.filter(isKnown);
+    if (!ks.length) return null;
+    const x = optimizeShares(ks.map((c) => c.read), target);
+    return { score: matchScore(mixHex(ks.map((c, i) => ({ hex: c.read, share: x[i]! }))), target), shares: Object.fromEntries(ks.map((c, i) => [c.key, Math.round(x[i]! * 100)]).filter(([, v]) => (v as number) > 0)) };
   }, [cohorts, target]);
+  const unknownCount = cohorts.length - knownCohorts.length;
   const lastBlend = [...s.commerce.products].reverse().find((p) => p.hex && p.createdMonth === s.month);
 
   // 비율(알코올 기준) → 캐스크별 사용량(L). 코호트 안에서는 원액 양에 비례해 나눈다
@@ -130,7 +140,8 @@ export function BlendLab() {
               <div>예상 일치 <b className="tabular-nums">{predicted ? `${matchScore(predicted, target)}점` : '—'}</b> {band != null && <span className="text-xs text-stone-500">(예상 오차 ±{num(band, 1)})</span>}</div>
               <div>이 재고의 최고 점수(블렌더 추정) <b className="tabular-nums">{best ? `${best.score}점` : '—'}</b></div>
             </div>
-            <p className="text-xs text-stone-500">빨간 점선 = 목표 · 주황 = 예상(띠 = 오차) · 파란 점선 = 지금 재고로 닿는 축별 최대 · 초록 = 이번 달 병입 결과(공개). 실제 결과는 결정론이고, 틀리는 건 블렌더가 읽은 값이다.</p>
+            <p className="text-xs text-stone-500">빨간 점선 = 목표 · 주황 = 예상(띠 = 오차) · 파란 점선 = 샘플 기록으로 닿는 축별 최대 · 초록 = 이번 달 병입 결과(공개). 실제 결과는 결정론이고, 틀리는 건 블렌더가 읽은 값과 <b>샘플 뒤에 숙성이 바꾼 만큼</b>이다 — 오래된 샘플은 다시 떠야 한다.</p>
+            {unknownCount > 0 && <p className="text-xs text-amber-700 dark:text-amber-400">샘플 기록이 없는 코호트 {unknownCount}개는 비율을 줄 수 없고 위임에서도 빠진다 — 아래에서 샘플을 뜨세요.</p>}
             <div className="flex flex-wrap items-end gap-2">
               <NumberField label="병 수" value={bottles} min={50} max={50_000} step={50} onCommit={setBottles} />
               <NumberField label="도수" value={abv} min={40} max={65} step={0.5} suffix="%" onCommit={setAbv} />
@@ -139,7 +150,7 @@ export function BlendLab() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="primary" disabled={!components.length} onClick={() => dispatch({ type: 'bottle', components, options })}>배팅 확정·병입</Button>
-              <Button disabled={!cohorts.length} title="선택한 코호트(없으면 전체) 안에서 블렌더가 비율을 정한다 — 서툴면 빗나간다" onClick={() => dispatch({ type: 'delegateBlend', targetId: target.id, caskIds: (picked.length ? picked : cohorts).flatMap((c) => c.casks.map((k) => k.id)), bottles, options })}>블렌더에게 맡기기</Button>
+              <Button disabled={!knownCohorts.length} title="선택한 코호트(없으면 샘플 기록이 있는 전체) 안에서 블렌더가 기록을 보고 비율을 정한다 — 서툴거나 샘플이 오래되면 빗나간다" onClick={() => dispatch({ type: 'delegateBlend', targetId: target.id, caskIds: (picked.length ? picked : knownCohorts).flatMap((c) => c.casks.map((k) => k.id)), bottles, options })}>블렌더에게 맡기기</Button>
               {best && <Button variant="ghost" onClick={() => setShares(best.shares)}>블렌더 추천 비율 불러오기</Button>}
               <Button variant="ghost" onClick={() => setShares({})}>비율 초기화</Button>
             </div>
@@ -149,19 +160,23 @@ export function BlendLab() {
 
       <Card title={`숙성 원액 코호트 — 샘플링 여력 ${Math.max(0, capLeft)}/${samplingCapacity(s)}회 (회당 ${won(SAMPLING.cost)}·${SAMPLING.lossL}L) · 실험실 분석 ${won(LAB.cost)}/캐스크`}>
         {!cohorts.length ? <Empty>몰트·그레인 원액이 든 캐스크가 없습니다</Empty> : (
-          <Table head={['코호트', '숙성', 'LPA', '읽은 육각형 (피트·과일·플로럴·스파이시·우디·스위트)', '오차', '정보', '비율(%)', '']}>
+          <Table head={['코호트', '숙성', 'LPA', '샘플 기록 육각형 (피트·과일·플로럴·스파이시·우디·스위트)', '오차', '정보', '비율(%)', '']}>
             {cohorts.map((c) => (
               <tr key={c.key}>
                 <Td className="text-xs">{c.label} {c.rare && <Badge tone="good">레어</Badge>}</Td>
                 <Td right>{months(c.oakMonths)}</Td>
                 <Td right>{num(c.lpa)}</Td>
-                <Td className="text-xs tabular-nums">{hexRow(c.read)}</Td>
-                <Td right>±{num(c.sigma, 1)}</Td>
-                <Td className="text-xs">샘플 {c.samples}{c.lab ? ' · GC' : ''}</Td>
-                <Td><NumberField value={shares[c.key] ?? 0} min={0} max={100} width="w-16" onCommit={(v) => setShares({ ...shares, [c.key]: v })} /></Td>
+                <Td className="text-xs tabular-nums">{c.read ? hexRow(c.read) : <span className="text-stone-500">샘플 없음 — 모른다</span>}</Td>
+                <Td right>{c.read ? `±${num(c.sigma, 1)}` : '—'}</Td>
+                <Td className="text-xs">
+                  {c.casks.length > 1 ? `직접 샘플 ${c.casks.filter((k) => k.sampleLog?.length).length}/${c.casks.length}통` : `샘플 ${c.casks[0]!.samples ?? 0}회`}{c.lab ? ' · GC' : ''}
+                  {c.readMonth != null && <div className={s.month - c.readMonth >= 12 ? 'text-amber-700 dark:text-amber-400' : 'text-stone-500'}>기록 {s.month - c.readMonth > 0 ? `${months(s.month - c.readMonth)} 전` : '이번 달'}{c.known > c.casks.filter((k) => k.sampleLog?.length).length ? ' (나머지는 빌린 기록)' : ''}</div>}
+                </Td>
+                <Td>{c.read ? <NumberField value={shares[c.key] ?? 0} min={0} max={100} width="w-16" onCommit={(v) => setShares({ ...shares, [c.key]: v })} /> : <span className="text-xs text-stone-500">—</span>}</Td>
                 <Td>
                   <div className="flex gap-1">
-                    <Button small disabled={capLeft < c.casks.length} title="코호트 안 캐스크 전부에서 1회씩" onClick={() => dispatch({ type: 'sampleCask', caskIds: c.casks.map((k) => k.id) })}>샘플</Button>
+                    {c.casks.length > 1 && <Button small disabled={capLeft < 1} title="샘플을 가장 적게 뜬 1통만 — 같은 묶음의 다른 통은 이 기록을 빌린다" onClick={() => dispatch({ type: 'sampleCask', caskIds: [[...c.casks].sort((x, y) => (x.samples ?? 0) - (y.samples ?? 0))[0]!.id] })}>1통</Button>}
+                    <Button small disabled={capLeft < c.casks.length} title="코호트 안 캐스크 전부에서 1회씩" onClick={() => dispatch({ type: 'sampleCask', caskIds: c.casks.map((k) => k.id) })}>{c.casks.length > 1 ? '전부' : '샘플'}</Button>
                     <Button small disabled={c.lab} onClick={() => dispatch({ type: 'labAnalyze', caskIds: c.casks.map((k) => k.id) })}>GC</Button>
                   </div>
                 </Td>
@@ -169,7 +184,7 @@ export function BlendLab() {
             ))}
           </Table>
         )}
-        <p className="mt-2 text-xs text-stone-500">같은 배치를 같은 캐스크에 나눠 담은 묶음은 한 줄로 보인다. 레어 캐스크는 샘플을 뜰 때 감정력으로 드러나고, 혼자 병입하면 레어 싱글 캐스크가 된다.</p>
+        <p className="mt-2 text-xs text-stone-500">같은 배치를 같은 캐스크에 나눠 담은 묶음은 한 줄로 보인다. 육각형은 마지막 샘플을 뜬 순간의 기록이고 다음 샘플 전까지 움직이지 않는다 — 한 통만 떠도 같은 묶음의 다른 통은 그 기록을 빌린다. 레어 캐스크는 샘플을 뜰 때 감정력으로 드러나고, 혼자 병입하면 레어 싱글 캐스크가 된다.</p>
       </Card>
     </div>
   );
