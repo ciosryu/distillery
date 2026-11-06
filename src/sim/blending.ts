@@ -145,7 +145,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   if (opts.dutyFreeOnly && siteOf(s).dutyFree && !localIngredient && !errors.some((e) => e.includes('매대'))) {
     const minAged = DUTY_FREE.agedTiers.at(-1)!;
     if (ageYears == null) warnings.push('제주 원료(차조·청귤)를 쓰지 않은 한정판 — 기념품 매력도 보너스 없음');
-    else if (dutyFreeAgedAppeal(ageYears) <= 1) warnings.push(`숙성 ${ageYears}년 — ${minAged.years}년 이상이면 숙성 한정판 매력도 ×${minAged.appeal}`);
+    else if (dutyFreeAgedAppeal(ageYears) <= 1) warnings.push(`숙성 ${ageYears}년 — ${minAged.years}년 이상이면 숙성 한정판 수요 ×${minAged.appeal} (가격 프리미엄은 없음)`);
   }
   const finalVolume = lpa / finalAbv;
   const bottles = Math.floor(finalVolume / (opts.bottleMl / 1000));
