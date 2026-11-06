@@ -13,7 +13,7 @@ import { fail, type CashKeys, type Handlers } from './actionKit';
 // 행동을 더할 때: 아래 타입·처리기·현금 분류 세 곳만 고친다. 코어(actions.ts)는 이 파일의 타입을 통째로 합친다
 
 export type MktAction =
-  /** 브랜드 라인 (PRD §11.2 ④, 제안 P-MKT-2) — 세컨드 브랜드 개설(개설비) / 제품을 브랜드에 배정(판 적 있으면 리브랜딩 비용) / 세컨드 브랜드 폐지 */
+  /** 브랜드 라인 (PRD §11.2 ④, 결정 P-MKT-2) — 세컨드 브랜드 개설(개설비) / 제품을 브랜드에 배정(판 적 있으면 리브랜딩 비용) / 세컨드 브랜드 폐지 */
   | { type: 'openBrand'; name: string }
   | { type: 'setProductBrand'; productId: string; brandId: string }
   | { type: 'closeBrand'; brandId: string }

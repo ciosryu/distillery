@@ -73,7 +73,7 @@ export const VISITOR_EQUIPMENT: Record<string, EquipmentDef> = {
   visitor_restaurant: { id: 'visitor_restaurant', kind: 'visitor', nameKo: '비지터 센터 — 레스토랑 결합형', cost: 500_000_000, leadMonths: 9, maintenance: 8_000_000, tier: 3, visitorsPerMonth: 300, spendPerVisitor: 40_000, buzzQuality: 1.5, requires: 'visitor_vip' },
 };
 
-// ── 같은 카테고리 제품끼리 수요 나눔 (PRD §9.2, §15.3 #12 → 제안 P-MKT-1) [튜닝] ──
+// ── 같은 카테고리 제품끼리 수요 나눔 (PRD §9.2, §15.3 #12 → 결정 P-MKT-1) [튜닝] ──
 /**
  * CES 지수 ρ — 같은 카테고리 제품들의 총수요 = (Σ 단독 수요^ρ)^(1/ρ).
  * 똑같은 제품 n개면 총수요 n^(1/ρ)배: ρ = 2 → √n(옛 공식과 같음), ρ = 3 → ∛n, ρ → ∞ → 늘지 않음.
@@ -81,7 +81,7 @@ export const VISITOR_EQUIPMENT: Record<string, EquipmentDef> = {
  */
 export const SKU = { rho: 3 };
 
-// ── 브랜드 라인 — 세컨드 브랜드 (PRD §11.2 ④, 결정 #51~#55 → 제안 P-MKT-2) [튜닝] ──
+// ── 브랜드 라인 — 세컨드 브랜드 (PRD §11.2 ④, 결정 #51~#55 → 결정 P-MKT-2) [튜닝] ──
 export const BRANDS = {
   /** 개설비 — 상표 출원·브랜드 디자인 (원) */
   openCost: 20_000_000,

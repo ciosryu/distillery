@@ -3,7 +3,7 @@ import { nid } from './util';
 import type { BrandLine, GameState, Product } from './types';
 
 // 브랜드 라인 (파트 MKT, skeleton S-2 #148 · PRD §11.2 ④) — 인지도를 읽고 쓰는 곳은 모두 이 접근자를 거친다.
-// 세컨드 브랜드 규칙(개설·배정·폐지·브랜드별 마케팅비·유지비)은 제안 P-MKT-2. 인지도 성장식은 market.ts updateAwareness
+// 세컨드 브랜드 규칙(개설·배정·폐지·브랜드별 마케팅비·유지비)은 결정 P-MKT-2. 인지도 성장식은 market.ts updateAwareness
 
 /** 하우스 브랜드 id — 고정값이라 세이브·마이그레이션 사이에 안 바뀐다 */
 export const HOUSE_BRAND_ID = 'house';

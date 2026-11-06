@@ -397,7 +397,7 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
 export const AWARENESS = { marketing: 0.012, wordOfMouth: 0.000003, decay: 0.012 };
 
 /**
- * 인지도 갱신 — 브랜드 라인별 (PRD §11.2 ④, 제안 P-MKT-2). 브랜드 b의 자체 성장
+ * 인지도 갱신 — 브랜드 라인별 (PRD §11.2 ④, 결정 P-MKT-2). 브랜드 b의 자체 성장
  *   G_b = 마케팅(브랜드 b의 마케팅비) + 입소문(브랜드 b 제품의 이번 달 판매량 × 품질)
  *   하우스  A_h ← A_h + (G_h + s × Σ G_세컨드) × (1 − A_h) − 망각 × A_h
  *   세컨드  A_b ← A_b + (G_b + s × G_h) × (1 − A_b) − 망각 × A_b          s = BRANDS.spillover (#52·#53)
