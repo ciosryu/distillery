@@ -26,6 +26,9 @@ if (process.env.OVERFLOW_SHARE) RETAIL.overflowShare = Number(process.env.OVERFL
 if (process.env.GRAIN_DEPTH) REGIONS[REGION].grainSpotDepthLPA = Number(process.env.GRAIN_DEPTH);
 // 실험용: 재고 부족 시 국내·수출 배분 (proportional | domestic)
 if (process.env.EXPORT_ALLOC) EXPORT_SALES.allocation = process.env.EXPORT_ALLOC as typeof EXPORT_SALES.allocation;
+// 실험용: 수입사 매입가 비율 범위(예: 0.85,0.95)·마케팅 분담 배수 덮어쓰기
+if (process.env.EXPORT_PF) { const [lo, hi] = process.env.EXPORT_PF.split(',').map(Number); for (const m of Object.values(EXPORT_MARKETS)) m.offer.priceFactor = [lo!, hi!]; }
+if (process.env.EXPORT_MKT) for (const m of Object.values(EXPORT_MARKETS)) m.monthlyCost *= Number(process.env.EXPORT_MKT);
 
 type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site';
 
