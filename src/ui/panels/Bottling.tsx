@@ -18,9 +18,9 @@ export function Bottling() {
   const [opts, setOpts] = useState<BottleOptions>({ name: '', targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' });
 
   const sources = useMemo(() => [
-    ...s.lots.map((l) => ({ key: `lot:${l.id}`, source: 'lot' as const, id: l.id, lot: l, where: '탱크' })),
-    ...s.casks.filter((c) => c.contents).map((c) => ({ key: `cask:${c.id}`, source: 'cask' as const, id: c.id, lot: c.contents!, where: `캐스크 ${c.id}` })),
-  ], [s.lots, s.casks]);
+    ...s.inventory.lots.map((l) => ({ key: `lot:${l.id}`, source: 'lot' as const, id: l.id, lot: l, where: '탱크' })),
+    ...s.inventory.casks.filter((c) => c.contents).map((c) => ({ key: `cask:${c.id}`, source: 'cask' as const, id: c.id, lot: c.contents!, where: `캐스크 ${c.id}` })),
+  ], [s.inventory.lots, s.inventory.casks]);
 
   const components: BlendComponent[] = Object.entries(picked).map(([key, l]) => {
     const [source, id] = key.split(':') as ['lot' | 'cask', string];
@@ -36,7 +36,7 @@ export function Bottling() {
       stockBottles: preview.bottles, price: preview.suggestedPrice, unitCost: preview.unitCost, createdMonth: s.month, lastMonthSold: 0, totalSold: 0,
       dutyFreeOnly: true, localIngredient: preview.localIngredient, dfEdition: preview.dfEdition,
     };
-    const same = s.products.filter((x) => x.stockBottles > 0 && x.category === p.category).length + 1;
+    const same = s.commerce.products.filter((x) => x.stockBottles > 0 && x.category === p.category).length + 1;
     const perMonth = productDutyFreeDemand(s, p, same, calendar(s).monthOfYear);
     return { perMonth, window: perMonth * DUTY_FREE.sellOutMonths };
   })();

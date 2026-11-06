@@ -3,6 +3,7 @@ import { addScaled, clamp, clampFlavor, distillFlavor, heartsFraction } from './
 import { GI_LOCK, logisticsMultiplier, regionOf, siteOf, type WaterId } from './content/regions';
 import type { Rng } from './rng';
 import type { Flavor, FermenterType, GameState, Recipe, RegionId, Staff } from './types';
+import { weatherOffset } from './weather';
 
 type StillDef = Extract<EquipmentDef, { kind: 'still' }>;
 
@@ -53,7 +54,8 @@ export const WATER_EFFECT: Record<WaterId, { offnote: number; fruity: number; fr
 export function fermentationClimate(s: GameState, monthOfYear: number): number {
   const site = siteOf(s);
   const tm = site.tempC.reduce((a, b) => a + b, 0) / 12;
-  return tm + 0.8 * (site.tempC[monthOfYear - 1]! - tm) + 2;
+  // 발효실도 이번 달 기상 이상치·이벤트 충격을 받는다 (결정 #120)
+  return tm + 0.8 * (site.tempC[monthOfYear - 1]! + weatherOffset(s).tempC - tm) + 2;
 }
 
 /** 발효 기간: 10°C 미만이면 1°C마다 3% 늘고, 25°C 초과면 1°C마다 2% 준다(최대 30%) (결정 #67) */
@@ -64,7 +66,7 @@ export function fermentDaysAt(days: number, tempC: number): number {
 }
 
 export function stillDefOf(state: GameState, stillId: string): StillDef | null {
-  const inst = state.equipment.find((e) => e.id === stillId);
+  const inst = state.production.equipment.find((e) => e.id === stillId);
   if (!inst) return null;
   const def = EQUIPMENT[inst.catalogId];
   return def && def.kind === 'still' ? def : null;
@@ -284,7 +286,7 @@ export function simulateBatch(
 /** 대량 구매 할인 배수 — 지난달 실제 구매량(kg) 기준 공급 등급 (주문만 크게 넣는 꼼수 방지) */
 export function volumeDiscounts(s: GameState): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const [id, kg] of Object.entries(s.ingredientKgLastMonth ?? {})) {
+  for (const [id, kg] of Object.entries(s.production.ingredientKgLastMonth ?? {})) {
     const tier = VOLUME_DISCOUNT_TIERS.find((t) => kg >= t.minKg);
     if (tier) out[id] = tier.factor;
   }

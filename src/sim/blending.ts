@@ -8,10 +8,22 @@ import { ownsFacility } from './ops';
 import { dutyFreeAgedAppeal, dutyFreeSlotBlocker, dutyFreeSuggestedPrice, hasDutyFree, nextDutyFreeEdition, siteFreight, DUTY_FREE } from './sites';
 import { bestBy, nid, staffOf } from './util';
 import { mod } from './modifiers';
-import type { AxisId, Flavor, GameState, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
+import { hexOf, matchScore, mixHex, perceivedHex } from './blendRadar';
+import { blenderOf, COMMISSION, findTarget, readCask, revealNotes } from './blendTable';
+import { productCountEver } from './lifecycle';
+import type { AxisId, Flavor, GameState, Hex, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
 
 export interface BlendComponent { source: 'cask' | 'lot'; id: string; liters: number }
-export interface BottleOptions { name: string; targetAbv: number | 'cask'; bottleMl: number; chillFilter: boolean; packagingId: string; /** 면세 전용 한정판(제주, 결정 #87) */ dutyFreeOnly?: boolean }
+export interface BottleOptions {
+  name: string; targetAbv: number | 'cask'; bottleMl: number; chillFilter: boolean; packagingId: string;
+  /** 면세 전용 한정판(제주, 결정 #87) */ dutyFreeOnly?: boolean;
+  /** 블렌딩 테이블 (결정 #124): 맞출 목표 — 'trend' · 의뢰 id · 'line:<이름>' */ targetId?: string;
+  /** 코어 레인지 라인 — 처음이면 이 배치가 기준 육각형이 되고, 다음 배치부터 일관성으로 평가 */ line?: string;
+  /** 블렌더에게 맡긴 배팅 */ delegated?: boolean;
+}
+
+/** 배팅 결과 공개 (P6) */
+export interface BlendReveal { targetLabel: string | null; score: number | null; predicted: Hex; actual: Hex; notes: string[]; rewardNote?: string }
 
 export interface BlendPreview {
   ok: boolean;
@@ -56,7 +68,7 @@ export function sourcedPrestigeOf(costPerLPA: number): number {
 export const MIN_BOTTLING_ABV: Record<ProductCategory, number> = { whisky: 0.4, grain_whisky: 0.4, blended_whisky: 0.4, baijiu: 0.3, malt_spirit: 0.3, soju_distilled: 0.17, gin: 0.375, flavored_spirit: 0.2 };
 
 export function lotOf(s: GameState, c: BlendComponent): SpiritLot | undefined {
-  return c.source === 'cask' ? s.casks.find((k) => k.id === c.id)?.contents : s.lots.find((l) => l.id === c.id);
+  return c.source === 'cask' ? s.inventory.casks.find((k) => k.id === c.id)?.contents : s.inventory.lots.find((l) => l.id === c.id);
 }
 
 /** 라벨 판정 (대표 법규만) */
@@ -103,7 +115,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     if (c.liters <= 0) continue;
     const lot = lotOf(s, c);
     if (!lot) { errors.push('원액을 찾을 수 없습니다'); continue; }
-    if (c.source === 'cask' && s.casks.find((k) => k.id === c.id)?.owner) { errors.push('고객 소유(캐스크 오너십) 캐스크는 병입할 수 없습니다'); continue; }
+    if (c.source === 'cask' && s.inventory.casks.find((k) => k.id === c.id)?.owner) { errors.push('고객 소유(캐스크 오너십) 캐스크는 병입할 수 없습니다'); continue; }
     if (c.liters > lot.volumeL + 1e-6) errors.push(`${lot.name}: 보유량(${lot.volumeL.toFixed(1)}L)보다 많이 선택했습니다`);
     items.push({ lot, liters: Math.min(c.liters, lot.volumeL) });
   }
@@ -145,7 +157,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   const blender = bestBy(staffOf(s, 'distiller'), 'c');
   if (blender && items.length > 1) f.integration = (f.integration ?? 0) + blender.stats.c / 20;
   // 하우스 스타일: 마스터 디스틸러가 쌓은 증류소 고유의 블렌딩 감각 (부사수 없이 은퇴하면 사라진다)
-  if (s.houseStyle > 0) f.integration = (f.integration ?? 0) + s.houseStyle / 25;
+  if (s.hr.houseStyle > 0) f.integration = (f.integration ?? 0) + s.hr.houseStyle / 25;
   if (opts.chillFilter) { f.body = (f.body ?? 0) - 8; f.oily_waxy = (f.oily_waxy ?? 0) * 0.8; }
   flavor = clampFlavor(f);
 
@@ -194,7 +206,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     // 면세 전용 한정판은 면세 기준가로 권장가를 잡는다 (주세·부가세 없음)
     suggestedPrice: dutyFree && hasDutyFree(s)
       ? dutyFreeSuggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? agePerception(minOakMonths) : 1, finalAbv)
-      : suggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? minOakMonths : null, finalAbv, traditionalTaxFactor(region, traditional, s.traditionalReleasedL, s.traditionalPrevYearL)),
+      : suggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? minOakMonths : null, finalAbv, traditionalTaxFactor(region, traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL)),
     localIngredient,
     dfEdition: dutyFree && hasDutyFree(s) ? nextDutyFreeEdition(s) : null,
   };
@@ -206,28 +218,40 @@ function packagingUnitCost(s: GameState, opts: Pick<BottleOptions, 'packagingId'
 }
 
 /** 블렌딩·병입 실행 (s는 변경 가능한 복제본) */
-export function executeBlend(s: GameState, components: BlendComponent[], opts: BottleOptions): { error?: string; product?: Product } {
+export function executeBlend(s: GameState, components: BlendComponent[], opts: BottleOptions): { error?: string; product?: Product; reveal?: BlendReveal } {
   const p = previewBlend(s, components, opts);
   if (!p.ok || !p.category || !p.evaluation) return { error: p.errors.join(' / ') || '병입할 수 없습니다' };
+  // 블렌딩 테이블 (결정 #124): 원액을 빼기 전에 블렌더가 읽은 값으로 예상 육각형을 만든다 (공개 연출용)
+  const blender = blenderOf(s);
+  const parts = components.filter((c) => c.liters > 0).map((c) => {
+    const lot = lotOf(s, c)!;
+    const cask = c.source === 'cask' ? s.inventory.casks.find((k) => k.id === c.id) : undefined;
+    const seen = cask ? readCask(s, cask)! : perceivedHex(hexOf(lot.flavor), s.seed, lot.id, blender, 0);
+    return { seen, share: c.liters * lot.abv, cask };
+  });
+  const predicted = mixHex(parts.map((x) => ({ hex: x.seen, share: x.share })));
+  const single = parts.length === 1 ? parts[0]!.cask : undefined;
+  const lineTarget = opts.line && s.commerce.lines[opts.line] ? findTarget(s, `line:${opts.line}`) : undefined;
+  const target = lineTarget ?? findTarget(s, opts.targetId);
   for (const c of components) {
     if (c.liters <= 0) continue;
     if (c.source === 'cask') {
-      const idx = s.casks.findIndex((k) => k.id === c.id);
-      const cask = s.casks[idx]!;
+      const idx = s.inventory.casks.findIndex((k) => k.id === c.id);
+      const cask = s.inventory.casks[idx]!;
       const lot = cask.contents!;
       const remain = lot.volumeL - c.liters;
-      s.casks[idx] = remain < 1 ? emptyCask(cask) : { ...cask, contents: { ...lot, volumeL: remain } };
+      s.inventory.casks[idx] = remain < 1 ? emptyCask(cask) : { ...cask, contents: { ...lot, volumeL: remain } };
     } else {
-      const idx = s.lots.findIndex((l) => l.id === c.id);
-      const lot = s.lots[idx]!;
+      const idx = s.inventory.lots.findIndex((l) => l.id === c.id);
+      const lot = s.inventory.lots[idx]!;
       const remain = lot.volumeL - c.liters;
-      if (remain < 1) s.lots.splice(idx, 1);
-      else s.lots[idx] = { ...lot, volumeL: remain };
+      if (remain < 1) s.inventory.lots.splice(idx, 1);
+      else s.inventory.lots[idx] = { ...lot, volumeL: remain };
     }
   }
   const product: Product = {
     id: nid(s, 'P'),
-    name: opts.name.trim() || `${CATEGORY[p.category].nameKo} ${s.products.length + 1}`,
+    name: opts.name.trim() || `${CATEGORY[p.category].nameKo} ${productCountEver(s) + 1}`,
     category: p.category,
     ageYears: p.ageYears,
     oakMonths: p.minOakMonths,
@@ -253,13 +277,46 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     ...(p.localIngredient ? { localIngredient: true } : {}),
     ...(opts.dutyFreeOnly && p.dfEdition ? { dutyFreeOnly: true, dfEdition: { ...p.dfEdition } } : {}),
   };
-  if (p.dfEdition && opts.dutyFreeOnly) s.siteState.dfSeries = { vol: p.dfEdition.vol, streak: p.dfEdition.streak };
+  if (p.dfEdition && opts.dutyFreeOnly) s.site.dfSeries = { vol: p.dfEdition.vol, streak: p.dfEdition.streak };
   // 첫 위스키 출시: 비지터 센터 입소문이 높으면 오픈런 (3개월간 수요 × (1 + 2 × 입소문))
-  if (isWhiskyCategory(product.category) && !s.products.some((x) => isWhiskyCategory(x.category)) && s.localBuzz > 0.05) {
-    product.launchBoost = { factor: 1 + 2 * s.localBuzz, untilMonth: s.month + 3 };
+  if (isWhiskyCategory(product.category) && !s.commerce.products.some((x) => isWhiskyCategory(x.category)) && !s.commerce.productArchive.some((x) => isWhiskyCategory(x.category)) && s.commerce.localBuzz > 0.05) {
+    product.launchBoost = { factor: 1 + 2 * s.commerce.localBuzz, untilMonth: s.month + 3 };
   }
   // 포장재·병입 인건비는 병입 시점에 지출
-  s.cash -= Math.round((packagingUnitCost(s, opts) + BOTTLING_LABOR_PER_BOTTLE) * p.bottles);
-  s.products.push(product);
-  return { product };
+  s.finance.cash -= Math.round((packagingUnitCost(s, opts) + BOTTLING_LABOR_PER_BOTTLE) * p.bottles);
+  s.commerce.products.push(product);
+  // 결과 공개·채점·보상 (결정 #124 P5·P6·P8)
+  const actual = hexOf(product.flavor);
+  product.hex = actual;
+  if (single?.rare && single.rareKnown) product.rareSingleCask = true;
+  let rewardNote: string | undefined;
+  let score: number | null = null;
+  if (target) {
+    score = matchScore(actual, target);
+    product.blend = { targetId: target.id, source: target.source, label: target.label, score, delegated: !!opts.delegated };
+    if (target.source === 'critic') {
+      const c = s.commerce.commissions.find((x) => x.id === target.id);
+      if (c && score >= COMMISSION.minScore) {
+        c.fulfilledBy = product.id;
+        const k = score / 100;
+        s.commerce.awareness = Math.min(0.95, s.commerce.awareness + c.reward.awareness * k);
+        product.blend.appealBonus = c.reward.appealBonus * k;
+        product.blend.untilMonth = s.month + c.reward.months;
+        rewardNote = `${c.client}가 받아들였다 — 인지도 +${(c.reward.awareness * k * 100).toFixed(1)}%p, ${c.reward.months}개월간 매력도 +${(c.reward.appealBonus * k * 100).toFixed(0)}%`;
+      } else if (c) rewardNote = `${c.client}가 받지 않았다 (${COMMISSION.minScore}점 미만) — 의뢰는 마감까지 남아 있다`;
+    }
+    if (target.source === 'core' && opts.line && lineTarget) {
+      const l = s.commerce.lines[opts.line]!;
+      l.batches += 1;
+      l.lastScore = score;
+      product.line = opts.line;
+      rewardNote = `코어 레인지 일관성 ${score}점 — 매력도 ×${(0.9 + 0.2 * score / 100).toFixed(2)}`;
+    }
+  }
+  if (opts.line && !s.commerce.lines[opts.line]) {
+    s.commerce.lines[opts.line] = { refHex: actual, batches: 1, lastScore: null, createdMonth: s.month };
+    product.line = opts.line;
+    rewardNote = [rewardNote, `코어 레인지 「${opts.line}」 기준 배치로 등록 — 다음 배치부터 이 육각형과 비교한다`].filter(Boolean).join(' · ');
+  }
+  return { product, reveal: { targetLabel: target?.label ?? null, score, predicted, actual, notes: revealNotes(predicted, actual), ...(rewardNote ? { rewardNote } : {}) } };
 }

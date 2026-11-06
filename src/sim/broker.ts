@@ -44,6 +44,6 @@ export function makeBrokerOffer(s: GameState, rng: Rng): BrokerOffer {
 }
 
 export function refreshBroker(s: GameState, rng: Rng): void {
-  s.brokerOffers = s.brokerOffers.filter((o) => o.expiresMonth > s.month);
-  while (s.brokerOffers.length < 3) s.brokerOffers.push(makeBrokerOffer(s, rng));
+  s.b2b.brokerOffers = s.b2b.brokerOffers.filter((o) => o.expiresMonth > s.month);
+  while (s.b2b.brokerOffers.length < 3) s.b2b.brokerOffers.push(makeBrokerOffer(s, rng));
 }

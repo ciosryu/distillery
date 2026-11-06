@@ -20,19 +20,19 @@ export function monthLabel(startYear: number, month: number): string {
 }
 
 export function isReady(s: GameState, equipmentId: string): boolean {
-  const e = s.equipment.find((x) => x.id === equipmentId);
+  const e = s.production.equipment.find((x) => x.id === equipmentId);
   return !!e && e.readyMonth <= s.month;
 }
 
 export function warehouseCapacity(s: GameState): number {
-  return s.warehouseBase + s.equipment.reduce((sum, e) => {
+  return s.inventory.warehouseBase + s.production.equipment.reduce((sum, e) => {
     const def = EQUIPMENT[e.catalogId];
     return sum + (def?.kind === 'warehouse' && e.readyMonth <= s.month ? def.casks : 0);
   }, 0);
 }
 
 export function staffOf(s: GameState, role: StaffRole): Staff[] {
-  return s.staff.filter((x) => x.role === role);
+  return s.hr.staff.filter((x) => x.role === role);
 }
 
 export function bestBy(list: Staff[], key: 'a' | 'b' | 'c'): Staff | undefined {

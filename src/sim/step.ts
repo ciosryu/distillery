@@ -6,9 +6,13 @@ import { bulkValuePerLPA, fulfillContracts, refreshCaskBids, refreshContractOffe
 import { clamp, weightedAverage } from './flavor';
 import { gainXp, refreshCandidates } from './hr';
 import { matureCask, restLot } from './maturation';
-import { assignSlot, deliverOwnedCasks, runContamination, runOffice, runStaffLifecycle, runTourism, slotClimate } from './ops';
+import { assignSlot, deliverOwnedCasks, runContamination, runOffice, runStaffLifecycle, runTourism } from './ops';
 import { emptyCaskOf } from './newGame';
-import { fermentationClimate, fermentDaysAt } from './production';
+import { fermentDaysAt } from './production';
+import { buildTickContext, type TickContext } from './tick';
+import { updateWeather, weatherOffset } from './weather';
+import { archiveSoldOutProducts, rollupYear } from './lifecycle';
+import { pruneTrendsAndCommissions, refreshCommissions } from './blendTable';
 import { runSales, updateAwareness, updateExportAwareness, updateTrends } from './market';
 import { EXPORT_MARKETS } from './content/exports';
 import { refreshExportOffers, runExportContracts } from './exportDeals';
@@ -19,7 +23,7 @@ import { hasLocalIngredient, heatingCost, inventoryMarginCall, resolveDutyFreeEd
 import { effectivePriceIndex, mod, pruneModifiers } from './modifiers';
 import { runEvents } from './events';
 import { rngFor } from './rng';
-import type { FermenterType, GameState, MonthReport, SpiritLot, StaffRole } from './types';
+import type { CashFlows, FermenterType, GameState, MonthReport, SpiritLot, StaffRole } from './types';
 import { bestBy, calendar, clone, monthLabel, nid, staffOf } from './util';
 
 export const BANKRUPT_AFTER_MONTHS = 3;
@@ -30,15 +34,15 @@ export const distillerRunCapacity = (process: number) => 20 + process / 5;
 
 interface FermenterSlot { id: string; type: FermenterType; capacityL: number; daysLeft: number }
 
-function runProduction(s: GameState, report: MonthReport, monthOfYear: number): { runsUsed: number; mashKg: number } {
-  const fermC = fermentationClimate(s, monthOfYear);
+function runProduction(s: GameState, report: MonthReport, ctx: TickContext): { runsUsed: number; mashKg: number } {
+  const { monthOfYear, fermentC: fermC } = ctx;
   const prodRng = rngFor(s.seed, s.month, 'production');
   const distillers = staffOf(s, 'distiller');
   let distillerRuns = distillers.reduce((t, d) => t + distillerRunCapacity(d.stats.b), 0);
   const lead = bestBy(distillers, 'b');
   const stillRuns = new Map<string, number>();
   const fermenters: FermenterSlot[] = [];
-  for (const e of s.equipment) {
+  for (const e of s.production.equipment) {
     if (e.readyMonth > s.month) continue;
     const def = EQUIPMENT[e.catalogId];
     if (def?.kind === 'still') stillRuns.set(e.id, def.runsPerMonth);
@@ -47,7 +51,7 @@ function runProduction(s: GameState, report: MonthReport, monthOfYear: number): 
   // 소주는 옹기 우선
   fermenters.sort((a, b) => (a.type === 'onggi' ? -1 : 0) - (b.type === 'onggi' ? -1 : 0));
   let runsUsed = 0;
-  if (mod(s, 'production') === 0) { if (s.orders.length || s.oemContracts.length) report.notes.push('생산 중단 — 이번 달은 증류하지 못했습니다'); return { runsUsed, mashKg: 0 }; }
+  if (mod(s, 'production') === 0) { if (s.production.orders.length || s.b2b.oemContracts.length) report.notes.push('생산 중단 — 이번 달은 증류하지 못했습니다'); return { runsUsed, mashKg: 0 }; }
   // 원재료 가격 = 시세 지수 × 이벤트 보정 × 대량 구매 할인
   const prices = effectivePriceIndex(s, volumeDiscounts(s));
   const boughtKg: Record<string, number> = {};
@@ -59,9 +63,9 @@ function runProduction(s: GameState, report: MonthReport, monthOfYear: number): 
 
   // 위탁생산(OEM, 간토, 결정 #89) — 자사 생산보다 먼저 설비를 내준다. 원료는 위탁사 부담, 에너지비만 우리 몫
   const oemDone: string[] = [];
-  for (const c of s.oemContracts) {
+  for (const c of s.b2b.oemContracts) {
     if (s.month < c.startMonth) continue; // 전용 증류기 설치 중
-    const stills = s.equipment
+    const stills = s.production.equipment
       .filter((e) => e.readyMonth <= s.month && EQUIPMENT[e.catalogId]?.kind === 'still' && (EQUIPMENT[e.catalogId] as { stillType: string }).stillType !== 'column')
       .sort((a, b) => (a.id === c.stillId ? -1 : 0) - (b.id === c.stillId ? -1 : 0));
     let done = 0;
@@ -78,14 +82,14 @@ function runProduction(s: GameState, report: MonthReport, monthOfYear: number): 
       distillerRuns -= OEM.runs;
       runsUsed += OEM.runs;
       const energy = Math.round(batchEnergyCost(still, OEM.runs, prices.energy ?? 1, energyFactor));
-      s.cash -= energy;
+      s.finance.cash -= energy;
       report.expenses.production = (report.expenses.production ?? 0) + energy;
       done++;
     }
     const missed = c.batchesPerMonth - done;
     const fee = done * c.feePerBatch;
     const penalty = missed * c.penaltyPerBatch;
-    s.cash += fee - penalty;
+    s.finance.cash += fee - penalty;
     report.oemRevenue = (report.oemRevenue ?? 0) + fee;
     report.revenue += fee;
     if (penalty > 0) { report.expenses.penalty = (report.expenses.penalty ?? 0) + penalty; report.notes.push(`${c.buyerName} 위탁생산 ${missed}배치 미이행 — 위약금`); }
@@ -94,19 +98,19 @@ function runProduction(s: GameState, report: MonthReport, monthOfYear: number): 
     if (c.missed >= 2 * c.batchesPerMonth) {
       // 전용 증류기 지원금은 남은 기간 비율만큼 돌려준다 (설비는 우리 것으로 남는다)
       const refund = Math.round(((c.capexSupport ?? 0) * Math.max(0, c.termMonths - c.monthsDone)) / c.termMonths);
-      s.cash -= refund;
+      s.finance.cash -= refund;
       report.notes.push(`${c.buyerName} 위탁생산 계약 파기 — 누적 미이행 과다${refund ? `, 설비 지원금 ${refund.toLocaleString()}원 반환` : ''}`);
       oemDone.push(c.id);
     } else if (c.monthsDone >= c.termMonths) { report.notes.push(`${c.buyerName} 위탁생산 계약 만료`); oemDone.push(c.id); }
   }
-  s.oemContracts = s.oemContracts.filter((c) => !oemDone.includes(c.id));
+  s.b2b.oemContracts = s.b2b.oemContracts.filter((c) => !oemDone.includes(c.id));
 
-  for (const order of s.orders) {
+  for (const order of s.production.orders) {
     if (order.batchesPerMonth <= 0) continue;
-    const recipe = s.recipes.find((r) => r.id === order.recipeId);
+    const recipe = s.production.recipes.find((r) => r.id === order.recipeId);
     if (!recipe) continue;
     const still = stillDefOf(s, recipe.stillId);
-    const stillInst = s.equipment.find((e) => e.id === recipe.stillId);
+    const stillInst = s.production.equipment.find((e) => e.id === recipe.stillId);
     if (!still || !stillInst || stillInst.readyMonth > s.month) { report.notes.push(`${recipe.name}: 증류기가 준비되지 않아 생산 중단`); continue; }
     const parts: { lot: Omit<SpiritLot, 'id' | 'name'>; lpa: number; cost: number }[] = [];
     let blocked = '';
@@ -129,7 +133,7 @@ function runProduction(s: GameState, report: MonthReport, monthOfYear: number): 
       runsUsed += recipe.runs;
       const res = simulateBatch(recipe, still, ferm?.type ?? null, lead, prices, stillInst.feintsLPA ?? 0, { tempC: fermC, rng: prodRng, regionId: s.regionId, water: site.water, freight: siteFreight(s, 'ingredients'), energyFactor });
       stillInst.feintsLPA = res.feintsOutLPA;
-      s.cash -= res.cost;
+      s.finance.cash -= res.cost;
       for (const [id, kg] of Object.entries(res.ingredientsKg)) boughtKg[id] = (boughtKg[id] ?? 0) + kg;
       parts.push({
         lpa: res.lpa, cost: res.cost,
@@ -142,9 +146,11 @@ function runProduction(s: GameState, report: MonthReport, monthOfYear: number): 
     const lpa = parts.reduce((t, p) => t + p.lpa, 0);
     const volumeL = parts.reduce((t, p) => t + p.lot.volumeL, 0);
     const cost = parts.reduce((t, p) => t + p.cost, 0);
-    s.lots.push({
+    const lotId = nid(s, 'L');
+    s.inventory.lots.push({
       ...parts[0]!.lot,
-      id: nid(s, 'L'),
+      id: lotId,
+      batchId: lotId,
       name: `${recipe.name} · ${monthLabel(s.startYear, s.month)}`,
       volumeL,
       abv: lpa / volumeL,
@@ -152,29 +158,26 @@ function runProduction(s: GameState, report: MonthReport, monthOfYear: number): 
       costPerLPA: cost / lpa,
       ...(hasLocalIngredient(site, recipe) ? { localIngredient: true } : {}),
     });
-    if (recipe.kind === 'soju') s.flags.producedSoju = true;
+    if (recipe.kind === 'soju') s.production.flags.producedSoju = true;
     report.production.push({ recipeId: recipe.id, name: recipe.name, batches: parts.length, lpa, cost });
     report.expenses.production = (report.expenses.production ?? 0) + cost;
   }
   if (waterBlocked) report.notes.push(`취수 허가량(월 ${waterPermitCap(s).toLocaleString()}L)에 막혀 일부 배치를 못 만들었습니다 — 증량 신청을 검토하세요`);
-  s.ingredientKgLastMonth = boughtKg;
+  s.production.ingredientKgLastMonth = boughtKg;
   const mashKg = Object.entries(boughtKg).filter(([k]) => k !== 'gns' && INGREDIENTS[k]).reduce((t, [, v]) => t + v, 0);
   return { runsUsed, mashKg };
 }
 
-function runMaturation(s: GameState, report: MonthReport, monthOfYear: number): void {
-  const wm = staffOf(s, 'warehouse');
-  const control = Math.max(0, ...wm.map((x) => x.stats.b));
-  const observe = Math.max(0, ...wm.map((x) => x.stats.a));
-  const diligence = Math.max(0, ...wm.map((x) => x.stats.c));
+function runMaturation(s: GameState, report: MonthReport, ctx: TickContext): void {
+  const { control, observe, diligence } = ctx.warehouse;
   const rng = rngFor(s.seed, s.month, 'maturation');
   const evap = mod(s, 'evaporation');
   let lost = 0;
-  s.casks = s.casks.map((cask) => {
+  s.inventory.casks = s.inventory.casks.map((cask) => {
     if (!cask.contents) return cask;
-    // 숙성고 내부 기후: 숙성고 종류·단에 따라 다르다 (결정 #65)
-    if (!cask.slot) assignSlot(s, cask);
-    const res = matureCask(cask, slotClimate(s, cask, monthOfYear), { control, evaporationFactor: evap });
+    // 숙성고 내부 기후: 숙성고 종류·단에 따라 다르다 (결정 #65) — 칸별 기후표 조회
+    if (!cask.slot) assignSlot(s, cask, undefined, ctx.slots);
+    const res = matureCask(cask, ctx.climateOf(cask), { control, evaporationFactor: evap });
     // 스팟 매입 통의 활성도는 6개월 숙성하면 드러난다
     if (cask.activityKnown === false && cask.contents.oakMonths + 1 >= 6) res.cask.activityKnown = true;
     lost += res.lostL;
@@ -189,24 +192,24 @@ function runMaturation(s: GameState, report: MonthReport, monthOfYear: number): 
     }
     return next;
   });
-  s.lots = s.lots.map(restLot);
-  runContamination(s, report, rngFor(s.seed, s.month, 'contamination'), monthOfYear);
+  s.inventory.lots = s.inventory.lots.map(restLot);
+  runContamination(s, report, rngFor(s.seed, s.month, 'contamination'), ctx.monthOfYear, ctx.climateOf);
   report.angelsShareL = lost;
 }
 
 function runFinance(s: GameState, report: MonthReport, monthOfYear: number): void {
   const pay = (key: string, amount: number) => {
     if (amount <= 0) return;
-    s.cash -= amount;
+    s.finance.cash -= amount;
     report.expenses[key] = (report.expenses[key] ?? 0) + amount;
   };
-  pay('salaries', s.staff.reduce((t, x) => t + x.salary, 0));
+  pay('salaries', s.hr.staff.reduce((t, x) => t + x.salary, 0));
   pay('overhead', siteOverhead(s));
   pay('heating', heatingCost(s, monthOfYear));
-  pay('maintenance', s.equipment.reduce((t, e) => t + (e.readyMonth <= s.month ? (EQUIPMENT[e.catalogId]?.maintenance ?? 0) : 0), 0));
-  pay('marketing', s.marketingBudget);
+  pay('maintenance', s.production.equipment.reduce((t, e) => t + (e.readyMonth <= s.month ? (EQUIPMENT[e.catalogId]?.maintenance ?? 0) : 0), 0));
+  pay('marketing', s.commerce.marketingBudget);
   pay('storage', caskStorageCost(s));
-  for (const loan of s.loans) {
+  for (const loan of s.finance.loans) {
     const interest = Math.round(loan.balance * (loan.annualRate / 12));
     const inGrace = s.month < loan.startMonth + loan.graceMonths;
     const principal = inGrace ? 0 : Math.min(loan.balance, loan.monthlyPayment - interest);
@@ -216,58 +219,67 @@ function runFinance(s: GameState, report: MonthReport, monthOfYear: number): voi
   }
   // 재고 담보대출(홋카이도, 결정 #90): 시가가 떨어지면 추가 상환 요구
   pay('principal', inventoryMarginCall(s, report));
-  s.loans = s.loans.filter((l) => l.balance > 0);
+  s.finance.loans = s.finance.loans.filter((l) => l.balance > 0);
 }
 
-/** 1개월 진행 (순수 함수) */
-export function advanceMonth(prev: GameState): GameState {
-  if (prev.status !== 'running') return prev;
-  const s = clone(prev);
-  const { monthOfYear } = calendar(s);
-  const cashStart = s.cash;
-  // 직전 결산 이후 턴 사이 행동(현물 판매·대출·설비 구매 등)으로 움직인 현금 — 이번 보고서에 합치고 비운다
-  const offTurn = { ...(s.pendingCash ?? {}) };
-  s.pendingCash = {};
-  const report: MonthReport = { month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, prepayApplied: 0, prepayRefunded: 0, spotBulkRevenue: (offTurn.spotBulk ?? 0) + (offTurn.caskBid ?? 0), offTurn, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] };
+// ───────────── 월 틱 파이프라인 (architecture §3.5, PRD §2.2) ─────────────
+// 0 준비(기상 이상치 포함) → 1 이벤트 → [틱 컨텍스트] → 2 생산 → 3 숙성 → 4 계약 납품 → 5 판매·주세 → 6 운영 → 7 재무 → 8 성장 → 9 판정·리포트
+// 각 단계는 같은 상태 사본(s)을 차례로 고친다. 난수는 단계마다 독립 스트림(rngFor(seed, month, 이름))이라 단계를 더해도 다른 단계 결과가 바뀌지 않는다.
 
+const newReport = (s: GameState, offTurn: CashFlows): MonthReport => ({ month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, prepayApplied: 0, prepayRefunded: 0, spotBulkRevenue: (offTurn.spotBulk ?? 0) + (offTurn.caskBid ?? 0), offTurn, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] });
+
+/** 0 준비: 지난 보정치 정리, 주문 캐스크 도착, 입지 인허가 */
+function phasePrepare(s: GameState, report: MonthReport): void {
   pruneModifiers(s);
-  s.rotatedThisMonth = 0;
+  s.inventory.rotatedThisMonth = 0;
+  s.inventory.samplesThisMonth = 0;
+  pruneTrendsAndCommissions(s, report);
   // 주문한 캐스크 도착 (쿠퍼리지·시즈닝 계약)
-  for (const o of s.caskOrders.filter((x) => x.arriveMonth <= s.month)) {
+  for (const o of s.inventory.caskOrders.filter((x) => x.arriveMonth <= s.month)) {
     for (let i = 0; i < o.qty; i++) {
       const c = emptyCaskOf(s, o.typeId);
       if (o.source === 'seasoning') { c.seasoning = Math.min(1.3, c.seasoning * 1.2); c.activity = Math.min(1.2, c.activity * 1.1); }
-      s.casks.push(c);
+      s.inventory.casks.push(c);
     }
     report.notes.push(`${o.source === 'seasoning' ? '시즈닝 계약' : '쿠퍼리지 주문'} 캐스크 ${o.qty}개 도착`);
   }
-  s.caskOrders = s.caskOrders.filter((x) => x.arriveMonth > s.month);
+  s.inventory.caskOrders = s.inventory.caskOrders.filter((x) => x.arriveMonth > s.month);
   resolveWaterPermit(s, report);
-  runEvents(s, report, monthOfYear);
-  for (const e of s.equipment) if (e.readyMonth === s.month && s.month > 0) report.notes.push(`${EQUIPMENT[e.catalogId]?.nameKo ?? e.catalogId} 가동 시작`);
+  // 이번 달 기상 이상치 (AR(1), 결정 #120) — 이벤트 충격은 다음 단계에서 더해진다
+  updateWeather(s);
+}
 
-  const { runsUsed, mashKg } = runProduction(s, report, monthOfYear);
-  runMaturation(s, report, monthOfYear);
+/** 1 이벤트: 예보 → 발생 → 보정치 등록 (이번 달부터 적용), 설비 가동 시작 알림 */
+function phaseEvents(s: GameState, report: MonthReport): void {
+  runEvents(s, report, calendar(s).monthOfYear);
+  for (const e of s.production.equipment) if (e.readyMonth === s.month && s.month > 0) report.notes.push(`${EQUIPMENT[e.catalogId]?.nameKo ?? e.catalogId} 가동 시작`);
+}
+
+/** 4 계약 납품: 원액 B2B 계약, 대형 유통 납품 */
+function phaseContracts(s: GameState, report: MonthReport): void {
   fulfillContracts(s, report);
-
   fulfillRetail(s, report);
+}
+
+/** 5 판매·주세 — 이번 달 판매 결과를 돌려준다(성장 단계의 XP에 쓰임) */
+function phaseSales(s: GameState, report: MonthReport, ctx: TickContext): ReturnType<typeof runSales>['results'] {
   updateExportAwareness(s); // 판매 전에 갱신 — 면세는 국내 인지도가 첫 달부터 넘어온다
-  const { results: sales, retail, exports } = runSales(s, rngFor(s.seed, s.month, 'sales'), monthOfYear);
+  const { results: sales, retail, exports } = runSales(s, rngFor(s.seed, s.month, 'sales'), ctx.monthOfYear);
   // 수출 (#95·#101): 수입사 매입가(출고가 × 계약 비율)가 대금 지급 기한 뒤 들어오고(국내 주세 면세), 운임은 우리가, 마케팅 분담은 매달 낸다
-  if (s.exports?.length) {
+  if (s.commerce.exports?.length) {
     report.exports = exports;
     report.exportRevenue = exports.reduce((t, x) => t + x.revenue, 0);
     for (const m of new Set(exports.map((x) => x.marketId))) {
-      const e = s.exports.find((x) => x.marketId === m);
+      const e = s.commerce.exports.find((x) => x.marketId === m);
       const amount = exports.filter((x) => x.marketId === m).reduce((t, x) => t + x.revenue, 0);
       if (amount <= 0) continue;
-      if (e?.paymentDelay) s.receivables.push({ dueMonth: s.month + e.paymentDelay, amount, label: `${e.partner ?? EXPORT_MARKETS[m].nameKo} 수출 대금` });
-      else s.cash += amount;
+      if (e?.paymentDelay) s.finance.receivables.push({ dueMonth: s.month + e.paymentDelay, amount, label: `${e.partner ?? EXPORT_MARKETS[m].nameKo} 수출 대금` });
+      else s.finance.cash += amount;
     }
     const freight = exports.reduce((t, x) => t + x.freight, 0);
-    if (freight > 0) { s.cash -= freight; report.expenses.export_freight = freight; }
+    if (freight > 0) { s.finance.cash -= freight; report.expenses.export_freight = freight; }
     const fixed = runExportContracts(s, report);
-    if (fixed > 0) { s.cash -= fixed; report.expenses.export_fixed = fixed; }
+    if (fixed > 0) { s.finance.cash -= fixed; report.expenses.export_fixed = fixed; }
   }
   report.sales = sales.map(({ overflowBottles: _o, distribution: _d, ...x }) => x);
   report.retailCapacityCases = retail.capacityCases;
@@ -279,36 +291,45 @@ export function advanceMonth(prev: GameState): GameState {
   report.dutyFreeBottles = sales.reduce((t, x) => t + (x.dutyFree ?? 0), 0);
   // 주세 납부 — 전통주는 연 누적 출고량 구간별 경감 (한국 완화책 #73)
   const region = regionOf(s);
-  if (monthOfYear === 1) { s.traditionalPrevYearL = s.traditionalReleasedL; s.traditionalReleasedL = 0; }
+  if (ctx.monthOfYear === 1) { s.commerce.traditionalPrevYearL = s.commerce.traditionalReleasedL; s.commerce.traditionalReleasedL = 0; }
   let tax = 0;
   for (const x of sales) {
-    const p = s.products.find((q) => q.id === x.productId);
+    const p = s.commerce.products.find((q) => q.id === x.productId);
     if (!p) continue;
     // 면세 판매분은 주세가 없고 전통주 경감 출고량에도 잡지 않는다 (결정 #87)
     const domestic = x.bottles - (x.dutyFree ?? 0);
-    tax += domestic * liquorTaxPerBottle(region, p.price, p.bottleMl, p.abv, traditionalTaxFactor(region, p.traditional, s.traditionalReleasedL, s.traditionalPrevYearL));
-    if (p.traditional) s.traditionalReleasedL += (domestic * p.bottleMl) / 1000;
+    tax += domestic * liquorTaxPerBottle(region, p.price, p.bottleMl, p.abv, traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL));
+    if (p.traditional) s.commerce.traditionalReleasedL += (domestic * p.bottleMl) / 1000;
   }
   report.liquorTaxRemitted = Math.round(tax);
-  s.cash += sales.reduce((t, x) => t + x.revenue, 0);
+  s.finance.cash += sales.reduce((t, x) => t + x.revenue, 0);
   const distribution = sales.reduce((t, x) => t + x.distribution, 0);
-  if (distribution > 0) { s.cash -= distribution; report.expenses.distribution = distribution; }
+  if (distribution > 0) { s.finance.cash -= distribution; report.expenses.distribution = distribution; }
   report.dutyFreeAwareness = updateAwareness(s, sales);
+  return sales;
+}
+
+/** 6 운영: 면세 한정판·매출채권, 트렌드, 관광, 캐스크 오너십 인도, 사무직, 직원 생애주기(에이징 커브·은퇴), 품절 제품 아카이브 */
+function phaseOperations(s: GameState, report: MonthReport, ctx: TickContext, mashKg: number): void {
   resolveDutyFreeEditions(s, report);
   collectReceivables(s, report);
   updateTrends(s, rngFor(s.seed, s.month, 'trend'));
-  runTourism(s, report, monthOfYear);
+  runTourism(s, report, ctx.monthOfYear);
   deliverOwnedCasks(s, report);
   runOffice(s, report, rngFor(s.seed, s.month, 'office'), mashKg);
   runStaffLifecycle(s, report, rngFor(s.seed, s.month, 'lifecycle'));
+  archiveSoldOutProducts(s);
+}
 
-  runFinance(s, report, monthOfYear);
-
+/** 8 성장: XP, 후보·브로커·계약·입찰·거래 제안 갱신, 시세 랜덤 워크 */
+function phaseGrowth(s: GameState, report: MonthReport, runsUsed: number, sales: ReturnType<typeof runSales>['results']): void {
   const activity: Record<StaffRole, number> = {
     distiller: runsUsed / 2,
-    warehouse: s.casks.filter((c) => c.contents).length / 5,
+    warehouse: s.inventory.casks.filter((c) => c.contents).length / 5,
     sales: sales.reduce((t, x) => t + x.bottles, 0) / 200,
     office: 10,
+    // 블렌더: 이번 달 병입·샘플링 횟수만큼 배운다 (결정 #123)
+    blender: s.commerce.products.filter((p) => p.createdMonth === s.month).length * 15 + s.inventory.samplesThisMonth * 2,
   };
   report.notes.push(...gainXp(s, rngFor(s.seed, s.month, 'hr'), activity));
   if (s.month % 3 === 2) refreshCandidates(s, rngFor(s.seed, s.month, 'candidates'));
@@ -317,32 +338,59 @@ export function advanceMonth(prev: GameState): GameState {
   refreshCaskBids(s, rngFor(s.seed, s.month, 'caskbids'));
   updateBulkIndex(s, rngFor(s.seed, s.month, 'bulk'));
   refreshDeals(s, rngFor(s.seed, s.month, 'deals'));
+  refreshCommissions(s, rngFor(s.seed, s.month, 'commissions'), report);
   refreshExportOffers(s, rngFor(s.seed, s.month, 'export-offers'));
   // 그레인 현물 시장이 물량을 소화한다 (#81)
-  if (s.spotSoldLPA) s.spotSoldLPA = { grain: s.spotSoldLPA.grain * BULK.spotDecay };
-
+  if (s.b2b.spotSoldLPA) s.b2b.spotSoldLPA = { grain: s.b2b.spotSoldLPA.grain * BULK.spotDecay };
   // 원재료 가격 변동 (평균 회귀 랜덤 워크)
   const prng = rngFor(s.seed, s.month, 'prices');
-  for (const k of Object.keys(s.priceIndex)) {
-    const v = s.priceIndex[k]!;
-    s.priceIndex[k] = clamp(v * Math.exp(prng.normal(0, 0.02)) + 0.05 * (1 - v), 0.6, 1.8);
+  for (const k of Object.keys(s.world.priceIndex)) {
+    const v = s.world.priceIndex[k]!;
+    s.world.priceIndex[k] = clamp(v * Math.exp(prng.normal(0, 0.02)) + 0.05 * (1 - v), 0.6, 1.8);
   }
+}
 
-  if (s.cash < 0) {
-    s.negativeCashMonths += 1;
-    report.notes.push(`현금 부족 ${s.negativeCashMonths}개월째 — ${BANKRUPT_AFTER_MONTHS}개월 지속 시 파산`);
-    if (s.negativeCashMonths >= BANKRUPT_AFTER_MONTHS) { s.status = 'bankrupt'; report.notes.push('파산했습니다'); }
-  } else s.negativeCashMonths = 0;
-
-  // 순현금 = 이번 턴 안의 변화 + 턴 사이 행동 → 직전 결산 이후 현금 변화 전체
-  report.netCash = s.cash - cashStart + sumCashFlows(offTurn);
-  report.cashEnd = s.cash;
+/** 9 판정·리포트: 지급 능력(연속 적자 → 파산), 리포트 기록, 월 넘김 */
+function phaseSettle(s: GameState, report: MonthReport, cashStart: number, offTurn: CashFlows): void {
+  if (s.finance.cash < 0) {
+    s.finance.negativeCashMonths += 1;
+    report.notes.push(`현금 부족 ${s.finance.negativeCashMonths}개월째 — ${BANKRUPT_AFTER_MONTHS}개월 지속 시 파산`);
+    if (s.finance.negativeCashMonths >= BANKRUPT_AFTER_MONTHS) { s.status = 'bankrupt'; report.notes.push('파산했습니다'); }
+  } else s.finance.negativeCashMonths = 0;
+  const off = weatherOffset(s);
+  report.weather = { tempAnom: Math.round(off.tempC * 10) / 10, humidAnom: Math.round(off.humidity * 10) / 10, shocks: s.world.weather.shocks.filter((x) => x.fromMonth <= s.month && s.month < x.untilMonth).map((x) => x.label) };
+  // 순현금 = 이번 턴 안의 변화 + 턴 사이 행동 → 직전 결산 이후 현금 변화 전체 (§16.20)
+  report.netCash = s.finance.cash - cashStart + sumCashFlows(offTurn);
+  report.cashEnd = s.finance.cash;
   report.investingCash = sumCashFlows(offTurn, 'investing');
   // 선급금 상계분은 영업(납품 매출)으로 올리고 같은 금액을 재무(선급금 상환)로 뺀다
   report.financingCash = sumCashFlows(offTurn, 'financing') - (report.expenses.principal ?? 0) - (report.prepayApplied ?? 0) - (report.prepayRefunded ?? 0);
   report.operatingCash = report.netCash - report.investingCash - report.financingCash;
-  s.reports = [...s.reports, report].slice(-REPORTS_KEPT);
+  s.history.reports = [...s.history.reports, report].slice(-REPORTS_KEPT);
+  if (calendar(s).monthOfYear === 12) rollupYear(s, calendar(s).year);
   s.month += 1;
+}
+
+/** 1개월 진행 (순수 함수 — 입력 상태를 바꾸지 않고 새 상태를 돌려준다) */
+export function advanceMonth(prev: GameState): GameState {
+  if (prev.status !== 'running') return prev;
+  const s = clone(prev);
+  const cashStart = s.finance.cash;
+  // 직전 결산 이후 턴 사이 행동(현물 판매·대출·설비 구매 등)으로 움직인 현금 — 이번 보고서에 합치고 비운다 (§16.20)
+  const offTurn: CashFlows = { ...(s.finance.pendingCash ?? {}) };
+  s.finance.pendingCash = {};
+  const report = newReport(s, offTurn);
+  phasePrepare(s, report);                                   // 0
+  phaseEvents(s, report);                                    // 1
+  const ctx = buildTickContext(s);                           //   이번 달 조건 확정
+  const { runsUsed, mashKg } = runProduction(s, report, ctx); // 2
+  runMaturation(s, report, ctx);                             // 3 엔젤스 셰어·도수·향미
+  phaseContracts(s, report);                                 // 4
+  const sales = phaseSales(s, report, ctx);                  // 5
+  phaseOperations(s, report, ctx, mashKg);                   // 6
+  runFinance(s, report, ctx.monthOfYear);                    // 7
+  phaseGrowth(s, report, runsUsed, sales);                   // 8
+  phaseSettle(s, report, cashStart, offTurn);                // 9
   return s;
 }
 
@@ -355,7 +403,7 @@ export function advanceMonths(s: GameState, n: number): GameState {
 /** 원액이 든 캐스크의 월 보관비 + 보험료 */
 export function caskStorageCost(s: GameState): number {
   const labor = regionOf(s).laborCost;
-  return Math.round(s.casks.reduce((t, c) => {
+  return Math.round(s.inventory.casks.reduce((t, c) => {
     if (!c.contents || c.owner) return t; // 오너십 캐스크는 고객이 보관비를 낸다
     const value = c.contents.volumeL * c.contents.abv * bulkValuePerLPA(s, c.contents);
     return t + CASK_STORAGE.perCaskPerMonth * labor + value * CASK_STORAGE.insuranceRatePerMonth;
@@ -363,15 +411,15 @@ export function caskStorageCost(s: GameState): number {
 }
 
 export function monthlyFixedCost(s: GameState): number {
-  return s.staff.reduce((t, x) => t + x.salary, 0) + siteOverhead(s) + s.marketingBudget + caskStorageCost(s) +
-    s.equipment.reduce((t, e) => t + (EQUIPMENT[e.catalogId]?.maintenance ?? 0), 0) +
-    s.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0);
+  return s.hr.staff.reduce((t, x) => t + x.salary, 0) + siteOverhead(s) + s.commerce.marketingBudget + caskStorageCost(s) +
+    s.production.equipment.reduce((t, e) => t + (EQUIPMENT[e.catalogId]?.maintenance ?? 0), 0) +
+    s.finance.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0);
 }
 
 export const roleName = (r: StaffRole) => ROLE_INFO[r].nameKo;
 
 /** 이번 달 대출 납부액 (거치 기간에는 이자만) */
-export function currentLoanPayment(s: GameState, l: GameState['loans'][number]): number {
+export function currentLoanPayment(s: GameState, l: GameState['finance']['loans'][number]): number {
   return s.month < l.startMonth + l.graceMonths ? Math.round(l.balance * (l.annualRate / 12)) : l.monthlyPayment;
 }
 
@@ -385,7 +433,7 @@ export interface CapacityReport {
 
 /** 현재 생산 지시 기준의 설비·인력 가동 예상 (UI 미리보기용) */
 export function capacityReport(s: GameState): CapacityReport {
-  const stills = s.equipment
+  const stills = s.production.equipment
     .filter((e) => EQUIPMENT[e.catalogId]?.kind === 'still')
     .map((e) => {
       const def = EQUIPMENT[e.catalogId]!;
@@ -393,15 +441,15 @@ export function capacityReport(s: GameState): CapacityReport {
     });
   let fermenterDaysUsed = 0;
   let distillerRunsUsed = 0;
-  for (const o of s.orders) {
-    const r = s.recipes.find((x) => x.id === o.recipeId);
+  for (const o of s.production.orders) {
+    const r = s.production.recipes.find((x) => x.id === o.recipeId);
     if (!r) continue;
     const st = stills.find((x) => x.id === r.stillId);
     if (st) st.used += o.batchesPerMonth * r.runs;
     distillerRunsUsed += o.batchesPerMonth * r.runs;
     if (r.kind !== 'gin') fermenterDaysUsed += o.batchesPerMonth * (r.fermentDays + 2);
   }
-  const fermenterDaysCap = s.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'fermenter' && e.readyMonth <= s.month).length * 30;
+  const fermenterDaysCap = s.production.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'fermenter' && e.readyMonth <= s.month).length * 30;
   const distillerRunsCap = staffOf(s, 'distiller').reduce((t, d) => t + distillerRunCapacity(d.stats.b), 0);
   return { stills, fermenterDaysUsed, fermenterDaysCap, distillerRunsUsed, distillerRunsCap: Math.floor(distillerRunsCap) };
 }

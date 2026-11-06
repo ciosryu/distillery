@@ -1,4 +1,4 @@
-import type { ProductCategory, RegionId } from '../types';
+import type { HexAxis, ProductCategory, RegionId } from '../types';
 
 // 이벤트 정의 — 선언형 데이터 (Godot 이식 시 JSON으로 옮길 수 있게 함수 없이 작성). 확률·수치 [튜닝]
 // 원칙: ① 큰 악재는 예보(빗나갈 수 있음)로 대비할 시간을 준다 ② 호재와 악재를 섞는다
@@ -8,6 +8,10 @@ export type EventCategory = 'market' | 'supply' | 'disaster' | 'regulation' | 'b
 
 export type Effect =
   | { type: 'modifier'; key: string; factor: number; months: [number, number]; delay?: number; label?: string }
+  /** 기상 충격 — 결과(증발 배수)가 아니라 입력(외기 기온·습도)을 바꾼다 (결정 #120) */
+  | { type: 'weather'; tempC: number; humidity?: number; months: [number, number]; label?: string }
+  /** 향미 트렌드 이동 (결정 #125) — 제품 육각형 axis가 lo~hi 구간에서 매력도 × (1 + strength)까지 선형으로 오른다 */
+  | { type: 'flavorTrend'; axis: HexAxis; strength: number; lo: number; hi: number; months: [number, number]; label?: string }
   | { type: 'cash'; amount: number }
   | { type: 'awareness'; delta: number }
   /** 해외 명성 (#96) — 수출 시장 현지 인지도를 끌어올리고 상한을 높인다 */
@@ -69,9 +73,11 @@ export const EVENTS: EventDef[] = [
   { id: 'highball_boom', title: '하이볼 열풍', category: 'market', chance: 0.018, cooldown: 48, text: '하이볼이 유행하며 위스키와 진 수요가 늘어납니다.',
     effects: [m('demand:whisky', 1.25, [12, 24], '하이볼 열풍'), m('demand:blended_whisky', 1.35, [12, 24], '하이볼 열풍'), m('demand:gin', 1.15, [12, 24], '하이볼 열풍')] },
   { id: 'peat_craze', title: '피트 위스키 열풍', category: 'market', chance: 0.014, cooldown: 48, text: '스모키한 위스키가 화제입니다. 피트 원액의 매력도와 벌크 시세가 오릅니다.',
-    effects: [m('appeal:peated', 1.4, [18, 30], '피트 열풍'), m('bulk:peated', 1.2, [18, 30], '피트 열풍')] },
+    // v1.6(#125): appeal:peated ×1.4(피트 25↑ 계단) → 육각형 피트 15~25 구간 연속 배수
+    effects: [{ type: 'flavorTrend', axis: 'peat', strength: 0.4, lo: 15, hi: 25, months: [18, 30], label: '피트 열풍' }, m('bulk:peated', 1.2, [18, 30], '피트 열풍')] },
   { id: 'sherry_trend', title: '셰리 캐스크 인기', category: 'market', chance: 0.014, cooldown: 48, text: '셰리 캐스크 숙성 위스키가 인기를 끕니다.',
-    effects: [m('appeal:sherried', 1.3, [18, 30], '셰리 캐스크 인기')] },
+    // v1.6(#125): appeal:sherried ×1.3(건과일 25↑ 계단) → 육각형 스파이시 15~30 구간 연속 배수(셰리 캐스크는 건과일·오크 스파이스가 함께 오른다)
+    effects: [{ type: 'flavorTrend', axis: 'spicy', strength: 0.3, lo: 15, hi: 30, months: [18, 30], label: '셰리 캐스크 인기' }] },
   { id: 'whisky_boom', title: '위스키 붐', category: 'market', chance: 0.01, cooldown: 72, minMonth: 24, text: '위스키 소비가 급증하고 블렌더들이 원액 확보 경쟁에 나섭니다.',
     forecast: { months: 3, certainty: 0.7, text: '업계 보고서: 위스키 수요가 크게 늘 조짐이 보입니다.' },
     effects: [m('demand:whisky', 1.25, [24, 36], '위스키 붐'), m('demand:blended_whisky', 1.2, [24, 36], '위스키 붐'), m('bulk', 1.35, [24, 36], '위스키 붐')] },
@@ -114,7 +120,8 @@ export const EVENTS: EventDef[] = [
   { id: 'flood', title: '집중호우 침수', category: 'disaster', chance: 0.02, cooldown: 24, months: [7, 8], regions: ['KR', 'JP'], defense: 'facility_storm', text: '집중호우로 공장이 침수되어 한 달간 생산이 멈춥니다.',
     effects: [{ type: 'caskVolumeLoss', share: 0.02 }, m('production', 0, [1, 1], '침수 복구'), { type: 'cash', amount: -10_000_000 }] },
   { id: 'heatwave', title: '기록적 폭염', category: 'disaster', chance: 0.06, cooldown: 12, months: [7, 8], text: '폭염으로 숙성고 온도가 치솟아 증발이 늘어납니다.',
-    effects: [m('evaporation', 1.7, [2, 2], '폭염')] },
+    // v1.6(#120): 증발 ×1.7(결과) → 외기 +4°C 2개월(입력). 증발은 exp(0.13×4) ≈ 1.68배로 비슷하고, 추출·발효·도수도 함께 바뀐다
+    effects: [{ type: 'weather', tempC: 4, humidity: -5, months: [2, 2], label: '폭염' }] },
   { id: 'still_breakdown', title: '증류기 고장', category: 'disaster', chance: 0.015, cooldown: 12, requires: ['still'], text: '증류기 하나가 고장 났습니다.',
     choices: [
       { label: '긴급 수리', detail: '3,000만 원 — 생산 중단 없음', effects: [{ type: 'cash', amount: -30_000_000 }] },
@@ -159,7 +166,7 @@ export const EVENTS: EventDef[] = [
   { id: 'snowstorm', title: '폭설', category: 'disaster', chance: 0.03, cooldown: 24, months: [12, 1, 2], regions: ['KR', 'JP'], requires: ['filledCasks'], defense: 'facility_snow', text: '폭설로 숙성고 지붕 일부가 무너졌습니다.',
     effects: [{ type: 'caskLoss', share: [0.01, 0.03] }, { type: 'stillDown', months: 1 }, { type: 'cash', amount: -20_000_000 }] },
   { id: 'cold_wave', title: '한파', category: 'disaster', chance: 0.05, cooldown: 12, months: [12, 1, 2], regions: ['KR', 'JP'], defense: 'facility_heating', text: '기록적인 한파로 배관이 얼어 터졌습니다. 한 달간 생산이 멈춥니다.',
-    effects: [m('production', 0, [1, 1], '한파 동파 복구'), { type: 'cash', amount: -8_000_000 }] },
+    effects: [m('production', 0, [1, 1], '한파 동파 복구'), { type: 'cash', amount: -8_000_000 }, { type: 'weather', tempC: -6, months: [1, 1], label: '한파' }] },
   { id: 'mold_outbreak', title: '곰팡이 증식', category: 'disaster', chance: 0.04, cooldown: 12, months: [6, 7, 8, 9], requires: ['filledCasks'], defense: 'facility_dehumid', text: '장마철 습기로 숙성고에 곰팡이가 번졌습니다. 일부 캐스크가 오염됐습니다.',
     effects: [{ type: 'contaminate', share: [0.03, 0.08], kind: 'mold' }] },
   // ── v1.0 글로벌 경제 ──
@@ -168,7 +175,7 @@ export const EVENTS: EventDef[] = [
     effects: [m('ingredient:malt_unpeated', 1.15, [12, 24], '보복 관세'), m('ingredient:malt_peated', 1.15, [12, 24], '보복 관세'), m('cask:ex_bourbon_barrel', 1.3, [12, 24], '보복 관세'), m('bulk', 0.9, [12, 24], '수출 위축')] },
   { id: 'spain_drought', title: '스페인 가뭄 — 셰리통 파동', category: 'supply', chance: 0.008, cooldown: 72, text: '스페인 가뭄으로 셰리 생산이 줄어 시즈닝된 셰리 캐스크가 귀해졌습니다.',
     forecast: { months: 4, certainty: 0.7, text: '헤레스 지역 가뭄으로 포도 작황이 나쁘다는 소식입니다.' },
-    effects: [m('cask:oloroso_butt', 1.8, [24, 36], '셰리통 파동'), m('appeal:sherried', 1.1, [24, 36], '셰리 희소성')] },
+    effects: [m('cask:oloroso_butt', 1.8, [24, 36], '셰리통 파동'), { type: 'flavorTrend', axis: 'spicy', strength: 0.1, lo: 15, hi: 30, months: [24, 36], label: '셰리 희소성' }] },
   // ── v1.0 평론가·세무 ──
   { id: 'murray_visit', title: '짐 머레이 기습 방문', category: 'opportunity', chance: 0.006, cooldown: 36, requires: ['products'], text: '평론가 짐 머레이가 예고 없이 찾아와 대표 제품을 시음했습니다.',
     effects: [{ type: 'criticVerdict', rave: 82, pan: 68,

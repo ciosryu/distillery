@@ -1,4 +1,4 @@
-import type { CaskTypeId, CondenserType, Flavor, FermenterType, RegionId, StillType, WoodId, YeastId } from '../types';
+import type { CaskTypeId, CondenserType, Flavor, FermenterType, RegionId, StillType, WoodId, YeastId, StaffRole } from '../types';
 
 // 콘텐츠 카탈로그 — 모든 수치 [튜닝]. 가격은 KRW.
 
@@ -256,11 +256,13 @@ export const LOAN_OFFERS: LoanOfferDef[] = [
 ];
 
 // ── 직원 ──
-export const ROLE_INFO: Record<'distiller' | 'warehouse' | 'sales' | 'office', { nameKo: string; stats: [string, string, string]; baseSalary: number }> = {
+export const ROLE_INFO: Record<StaffRole, { nameKo: string; stats: [string, string, string]; baseSalary: number }> = {
   office: { nameKo: '사무(백오피스)', stats: ['세무', '협상', '행정'], baseSalary: 3_200_000 },
   distiller: { nameKo: '마스터 디스틸러', stats: ['후각', '공정', '직관'], baseSalary: 4_500_000 },
   warehouse: { nameKo: '숙성고 매니저', stats: ['관찰', '환경통제', '성실'], baseSalary: 3_500_000 },
   sales: { nameKo: '영업', stats: ['친화', '네트워크', '협상'], baseSalary: 3_800_000 },
+  /** 마스터 블렌더 (결정 #123) — 후각: 원액을 읽는 정확도, 미각: 블렌드 예측(띠 폭), 감정력: 레어 캐스크 발견 [튜닝] */
+  blender: { nameKo: '마스터 블렌더', stats: ['후각', '미각', '감정력'], baseSalary: 4_200_000 },
 };
 
 export const NAME_POOLS: Record<'KR' | 'JP' | 'TW', { surnames: string[]; given: string[] }> = {

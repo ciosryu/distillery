@@ -1,7 +1,7 @@
 import { NAME_POOLS, ROLE_INFO } from './content/catalog';
 import { regionOf } from './content/regions';
 import { clamp } from './flavor';
-import type { Rng } from './rng';
+import { rngFor, type Rng } from './rng';
 import type { Candidate, GameState, Staff, StaffRole } from './types';
 import { nid } from './util';
 
@@ -30,13 +30,15 @@ export function makeCandidate(s: GameState, rng: Rng, role?: StaffRole): Candida
 }
 
 export function refreshCandidates(s: GameState, rng: Rng): void {
-  s.candidates = ROLES.map((r) => makeCandidate(s, rng, r)).concat([makeCandidate(s, rng)]);
+  s.hr.candidates = ROLES.map((r) => makeCandidate(s, rng, r)).concat([makeCandidate(s, rng)]);
+  // 마스터 블렌더 후보 (결정 #123) — 독립 난수 스트림으로 뽑아 기존 직군 후보는 그대로 둔다
+  s.hr.candidates.push(makeCandidate(s, rngFor(s.seed, s.month, 'candidates:blender'), 'blender'));
 }
 
 /** 월간 XP와 레벨업 */
 export function gainXp(s: GameState, rng: Rng, activity: Record<StaffRole, number>): string[] {
   const notes: string[] = [];
-  for (const x of s.staff) {
+  for (const x of s.hr.staff) {
     x.xp += 10 + activity[x.role];
     while (x.xp >= 100 * x.level) {
       x.xp -= 100 * x.level;
