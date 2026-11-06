@@ -219,15 +219,16 @@ function maltLPALastMonth(s: GameState): number {
   return s.reports.at(-1)?.production.filter((p) => ids.has(p.recipeId)).reduce((t, p) => t + p.lpa, 0) ?? 0;
 }
 function expandStaged(s: GameState): GameState {
-  // 증설 단계 = 처음 증류기(같은 1,000L 양파형) 말고 새로 들인 증류기
-  const stages = s.equipment.filter((e) => e.catalogId === 'pot_onion_1000' && e.readyMonth > 0);
+  // 증설 단계 = 증설 레시피가 쓰는 증류기 (처음 증류기는 고장·수리로 readyMonth가 바뀌므로 readyMonth로 가리면 안 된다)
+  const stageIds = new Set(s.recipes.filter((r) => r.name.startsWith(EXPAND_RECIPE)).map((r) => r.stillId));
+  const stages = s.equipment.filter((e) => stageIds.has(e.id));
   // 지어 놓은 증설 단계는 다 돌린다
   for (const still of stages) {
-    const r = s.recipes.find((x) => x.stillId === still.id);
-    if (r && still.readyMonth <= s.month && !s.orders.some((o) => o.recipeId === r.id)) s = act(s, { type: 'setOrder', recipeId: r.id, batchesPerMonth: 7 });
+    const r = s.recipes.find((x) => x.stillId === still.id && x.name.startsWith(EXPAND_RECIPE));
+    if (r && !s.orders.some((o) => o.recipeId === r.id)) s = act(s, { type: 'setOrder', recipeId: r.id, batchesPerMonth: 7 });
   }
   if (s.month < EXPAND_FROM || stages.length >= EXPAND_MAX_STAGES) return s;
-  if (stages.some((e) => e.readyMonth > s.month - 12)) return s; // 단계 사이 최소 12개월
+  if (stages.length && s.month - Math.max(...stages.map((e) => e.readyMonth)) < 12) return s; // 단계 사이 최소 12개월
   const demand = whiskyDemandLastMonth(s);
   const supply = maltLPALastMonth(s) * BOTTLES_PER_LPA_AGED;
   if (demand < supply * Number(process.env.EXPAND_TRIGGER ?? 1.3)) return s;
@@ -325,6 +326,12 @@ function policy(s: GameState, strategy: Strategy): GameState {
     s = expandStaged(s);
     s = growWarehouse(s);
     s = fillMalt(s);
+    if (process.env.DBG_EXP && s.month % 6 === 0) {
+      const stills = s.equipment.filter((e) => e.catalogId === 'pot_onion_1000').map((e) => e.readyMonth).join(',');
+      const tank = s.lots.filter((l) => l.kind === 'malt').reduce((t, l) => t + l.volumeL * l.abv, 0);
+      const blocked = s.reports.at(-1)?.notes.filter((n) => n.includes('한도') || n.includes('없음')).slice(0, 1).join('') ?? '';
+      console.error(`m${s.month} cash ${(s.cash / 1e8).toFixed(2)} loans ${s.loans.map((l) => l.offerId).join('/')} stills[${stills}] maltLPA/mo ${Math.round(maltLPALastMonth(s))} tank ${Math.round(tank)} filled ${s.casks.filter((c) => c.contents).length}/${warehouseCapacity(s)} empty ${s.casks.filter((c) => !c.contents).length} demand ${Math.round(whiskyDemandLastMonth(s))} supply ${Math.round(maltLPALastMonth(s) * BOTTLES_PER_LPA_AGED)} whiskyStock ${stockOf(s, 'whisky')} ${blocked}`);
+    }
   } else {
     s = expand(s);
     const r = s.recipes.find((x) => x.name === BIG_RECIPE);
