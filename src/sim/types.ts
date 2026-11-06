@@ -341,6 +341,8 @@ export interface GameState {
   b2bTrust: number;
   /** 벌크 원액 시세 지수 (1 = 기준) */
   bulkIndex: number;
+  /** 최근 현물 판매량(LPA, 매달 감쇠) — 그레인 현물 시장 포화 (#81). 옛 저장에는 없을 수 있다 */
+  spotSoldLPA?: { grain: number };
   marketingBudget: number;
   awareness: number;
   /** 원재료 가격 지수 (1 = 기준가) */

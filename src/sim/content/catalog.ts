@@ -218,6 +218,10 @@ export const BULK = {
   /** 그레인 뉴메이크 기준가(원/LPA) — 대량·저가 */
   grainNewMakeBase: 7_000,
   grainAgePerYear: 0.12,
+  /** 그레인 현물 시장 포화(#81) — 깊이는 지역별(RegionDef.grainSpotDepthLPA). 그레인 원액은 대형 블렌더가 자체 증류소에서
+   *  만들어 외부 구매자가 적다. 몰트 현물(브로커) 시장은 깊어서 포화 없음.
+   *  현물 판매량 기억의 월 감쇠 — 시장이 물량을 소화하는 속도 */
+  spotDecay: 0.6,
 };
 
 /** 대량 구매 할인 (원재료별 월 구매량 kg 기준) */

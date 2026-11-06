@@ -96,6 +96,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     contractOffers: [],
     b2bTrust: 50,
     bulkIndex: 1,
+    spotSoldLPA: { grain: 0 },
     marketingBudget: 3_000_000,
     awareness: 0.01,
     priceIndex: { ...Object.fromEntries(Object.keys(INGREDIENTS).map((k) => [k, 1])), gns: 1, energy: 1 },

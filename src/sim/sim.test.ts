@@ -3,7 +3,7 @@ import {
   advanceMonths, annuityPayment, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, categorize, demandFor, evaluate, evaporate, heartsFraction, spotBidPerLPA, spotQuote,
   makeContractOffer, makeCraftContractOffer, contractAgingImpact, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
   appeal, applyEffects, buyersFor, presetRecipes, validateRecipe, type Product,
-  agePerception, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
+  agePerception, spotSaturation, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
 } from './index';
 import { overhangFactor, ownsFacility, retailCapacityCases, slotClimate } from './ops';
 import { EQUIPMENT } from './content/catalog';
@@ -213,6 +213,23 @@ describe('국산 원액 프리미엄', () => {
     expect(crafts.every((o) => o.craft && o.lpaPerMonth >= 20)).toBe(true);
     expect(avg(crafts)).toBeGreaterThan(avg(regular) * 1.3);
     expect(Math.max(...crafts.map((o) => o.lpaPerMonth))).toBeLessThan(Math.max(...regular.map((o) => o.lpaPerMonth)));
+  });
+
+  it('그레인 현물은 많이 팔수록 단가가 떨어지고, 시장이 매달 회복한다 (#81)', () => {
+    const s = newGame({ seed: 31, region: 'TW' });
+    const grain = { id: 'g', name: 'g', kind: 'grain', volumeL: 10_000, abv: 0.94, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 1800 } as SpiritLot;
+    const malt = { ...grain, id: 'm', kind: 'malt' } as SpiritLot;
+    expect(spotSaturation(s, grain)).toBe(1);
+    expect(spotSaturation(s, grain, 20_000 * 2)).toBeCloseTo(0.5, 6); // 시장 깊이만큼(절반 지점) 팔면 단가 절반
+    expect(spotSaturation({ ...s, spotSoldLPA: { grain: 1e9 } }, malt)).toBe(1); // 몰트는 포화 없음
+    expect(spotSaturation({ ...s, regionId: 'JP', spotSoldLPA: { grain: 1e9 } }, grain)).toBe(1); // 일본·한국은 무한
+    const sold = applyAction(s, { type: 'sellBulk', source: 'lot', id: 'x' }).state; // 없는 원액 → 변화 없음
+    expect(sold.spotSoldLPA?.grain).toBe(0);
+    const s2 = applyAction({ ...s, lots: [grain] }, { type: 'sellBulk', source: 'lot', id: 'g' }).state;
+    expect(s2.spotSoldLPA!.grain).toBeCloseTo(9400, 6);
+    expect(spotBidPerLPA(s2, grain)).toBeLessThan(spotBidPerLPA(s, grain));
+    const s3 = advanceMonths(s2, 1);
+    expect(s3.spotSoldLPA!.grain).toBeLessThan(s2.spotSoldLPA!.grain);
   });
 
   it('계약 경고: 첫 위스키 전에 끝나면 안전, 넘기면 겹친 개월과 빠지는 원액을 알려 준다 (§16.16)', () => {
