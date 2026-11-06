@@ -178,15 +178,20 @@ function exportPolicy(s: GameState, strategy: Strategy): GameState {
   const aged36 = whisky.some((p) => (p.oakMonths ?? 0) >= 36);
   // 남는 물량이 있을 때만: 3년 넘은 자사 몰트 캐스크가 EXPORT_SURPLUS개(약 330병/캐스크) 넘게 쌓였을 때.
   // 공급이 국내 수요에 묶여 있으면 수출은 국내 판매를 빼앗고 현지 비용만 늘린다 (§16.25)
-  const surplus = s.casks.filter((c) => c.contents?.kind === 'malt' && !c.contents.sourced && c.contents.oakMonths >= 36).length >= Number(process.env.EXPORT_SURPLUS ?? 20);
+  const surplus = process.env.EXPORT_GATE === '0' || s.casks.filter((c) => c.contents?.kind === 'malt' && !c.contents.sourced && c.contents.oakMonths >= 36).length >= Number(process.env.EXPORT_SURPLUS ?? 20);
   // 확장형은 성장 전략이라 남는 재고를 기다리지 않고 해외 판로를 먼저 연다 — 수출 수요가 증설 판단에 들어간다
-  const growth = strategy === 'expand' && process.env.EXPAND_EXPORT !== '0';
+  const growth = strategy === 'expand' && process.env.EXPAND_EXPORT === '1';
   if (!surplus && !growth && !(s.exports ?? []).length) return s;
   const open = new Set((s.exports ?? []).map((e) => e.marketId));
   const plan: [ExportMarketId, number, boolean][] = [['DF', 36, whisky.length > 0], ['US', 48, aged36], ['UK', 48, aged36]];
   for (const [id, from, ok] of plan) {
     if (open.has(id) || closedMarkets.has(id) || !ok || !(surplus || growth) || s.month < from) continue;
-    if (s.cash > EXPORT_MARKETS[id].entryCost + 200_000_000) { s = act(s, { type: 'openExport', marketId: id }); exportLog.push(`m${s.month} open ${id}`); }
+    if (s.cash > EXPORT_MARKETS[id].entryCost + 200_000_000) {
+      s = act(s, { type: 'openExport', marketId: id });
+      // 공급이 묶여 있으니 수출가를 올려 적게 팔고 많이 남긴다 (EXPORT_PRICE, 기본 ×1.5)
+      s = act(s, { type: 'setExportPrice', marketId: id, priceFactor: Number(process.env.EXPORT_PRICE ?? 1.5) });
+      exportLog.push(`m${s.month} open ${id}`);
+    }
   }
   for (const e of s.exports ?? []) {
     if (s.month - e.readyMonth < 12) continue;

@@ -89,10 +89,13 @@ const AGED_CATEGORIES: ProductCategory[] = ['whisky', 'blended_whisky', 'grain_w
 export const exportFreightPerBottle = (s: Pick<GameState, 'regionId'>, p: Pick<Product, 'bottleMl'>, m: ExportMarketDef) => Math.round(m.freightPerBottle[s.regionId] * (p.bottleMl / 700));
 
 /** 수출 시장 소비자가 (병당): ((출고가 + 운임) × (1 + 관세) + 현지 주세) × 유통 배수 × (1 + 부가세). 국내 주세는 수출 면세 */
-export function exportShelfPrice(s: Pick<GameState, 'regionId'>, p: Pick<Product, 'price' | 'bottleMl' | 'abv'>, m: ExportMarketDef): number {
+export function exportShelfPrice(s: Pick<GameState, 'regionId'>, p: Pick<Product, 'price' | 'bottleMl' | 'abv'>, m: ExportMarketDef, priceFactor = 1): number {
   const lpa = (p.bottleMl / 1000) * p.abv;
-  return ((p.price + exportFreightPerBottle(s, p, m)) * (1 + m.tariff[s.regionId]) + m.excisePerLPA * lpa) * m.channelMultiple * (1 + m.vat);
+  return ((exportFob(p, priceFactor) + exportFreightPerBottle(s, p, m)) * (1 + m.tariff[s.regionId]) + m.excisePerLPA * lpa) * m.channelMultiple * (1 + m.vat);
 }
+
+/** 수출 FOB(병당 우리가 받는 값) = 출고가 × 시장별 수출가 배수 */
+export const exportFob = (p: Pick<Product, 'price'>, priceFactor = 1) => Math.round(p.price * priceFactor);
 
 /** 이 시장에 팔 수 있는 제품인가 (주종·현지 위스키 숙성 규정) */
 export function exportEligible(p: Pick<Product, 'category' | 'oakMonths' | 'ageYears'>, m: ExportMarketDef): boolean {
@@ -109,7 +112,7 @@ export function exportDemandFor(s: GameState, p: Product, entry: ExportEntry, sa
   const reach = (entry.awareness * c.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
   const bottleL = p.bottleMl / 1000;
   const ref = c.refConsumerPricePerL * Math.pow(p.abv / c.refAbv, 0.7);
-  const priceFactor = Math.pow(exportShelfPrice(s, p, m) / bottleL / ref, -c.elasticity * sourcedElasticityFactor(p));
+  const priceFactor = Math.pow(exportShelfPrice(s, p, m, entry.priceFactor ?? 1) / bottleL / ref, -c.elasticity * sourcedElasticityFactor(p));
   return (marketL * reach * appeal(p, s) * priceFactor * overhangFactor(p, s.month)) / bottleL;
 }
 
@@ -224,7 +227,7 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
       p.totalSold += bottles;
       x.entry.totalBottles += bottles;
       const m = EXPORT_MARKETS[x.entry.marketId];
-      exports.push({ marketId: x.entry.marketId, productId: p.id, name: p.name, bottles, revenue: bottles * p.price, demandBottles: x.demand, freight: bottles * exportFreightPerBottle(s, p, m) });
+      exports.push({ marketId: x.entry.marketId, productId: p.id, name: p.name, bottles, revenue: bottles * exportFob(p, x.entry.priceFactor ?? 1), demandBottles: x.demand, freight: bottles * exportFreightPerBottle(s, p, m) });
     }
   }
   return { results: out, retail: { capacityCases: cap, soldCases: Math.round(soldCases), overflowCases: Math.round(overflowCases), lostBottles: lost }, exports };

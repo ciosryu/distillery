@@ -32,6 +32,7 @@ export type Action =
   | { type: 'takeInvestment'; offerId: string }
   | { type: 'openExport'; marketId: ExportMarketId }
   | { type: 'closeExport'; marketId: ExportMarketId }
+  | { type: 'setExportPrice'; marketId: ExportMarketId; priceFactor: number }
   | { type: 'sellCaskOwnership'; caskId: string }
   | { type: 'rechar'; caskId: string }
   | { type: 'bottle'; components: BlendComponent[]; options: BottleOptions }
@@ -179,6 +180,12 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       s.cash -= m.entryCost;
       s.exports.push({ marketId: a.marketId, openedMonth: s.month, readyMonth: s.month + m.entryMonths, awareness: m.awareness.start, totalBottles: 0 });
       return { state: s, message: `${m.nameKo} 진출 준비 시작 — ${m.entryMonths}개월 뒤 판매` };
+    }
+    case 'setExportPrice': {
+      const e = s.exports?.find((x) => x.marketId === a.marketId);
+      if (!e) return fail(prev, '진출하지 않은 시장입니다');
+      e.priceFactor = Math.max(0.5, Math.min(3, Math.round(a.priceFactor * 100) / 100));
+      return { state: s, message: `${EXPORT_MARKETS[a.marketId].nameKo} 수출가를 출고가의 ×${e.priceFactor}로 정했습니다` };
     }
     case 'closeExport': {
       const before = s.exports?.length ?? 0;

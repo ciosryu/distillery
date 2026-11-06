@@ -1,4 +1,4 @@
-import { EXPORT_MARKET_IDS, EXPORT_MARKETS, exportEligible, exportFreightPerBottle, exportShelfPrice, productConsumerPrice } from '../../sim';
+import { EXPORT_MARKET_IDS, EXPORT_MARKETS, exportEligible, exportFob, exportFreightPerBottle, exportShelfPrice, productConsumerPrice } from '../../sim';
 import { useGame } from '../../store/game';
 import { num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';
@@ -43,9 +43,16 @@ export function Exports() {
               <div>월 비용 <b>{won(m.monthlyCost)}</b></div>
               {m.minWhiskyMonths > 0 && <div className="col-span-2">위스키는 <b>{m.minWhiskyMonths / 12}년 숙성 이상</b>만</div>}
               {entry && <div className="col-span-2">현지 인지도 <b>{pct(entry.awareness, 1)}</b> · 누적 {num(entry.totalBottles)}병</div>}
+              {entry && (
+                <div className="col-span-2 flex items-center gap-1">
+                  수출가 ×<b>{(entry.priceFactor ?? 1).toFixed(2)}</b>
+                  <Button small onClick={() => dispatch({ type: 'setExportPrice', marketId: id, priceFactor: (entry.priceFactor ?? 1) - 0.1 })}>−</Button>
+                  <Button small onClick={() => dispatch({ type: 'setExportPrice', marketId: id, priceFactor: (entry.priceFactor ?? 1) + 0.1 })}>+</Button>
+                </div>
+              )}
             </div>
             {!products.length ? <Empty>이 시장에 팔 수 있는 재고가 없습니다 ({Object.keys(m.categories).length}개 주종 취급)</Empty> : (
-              <Table head={['제품', '출고가', '국내 소비자가', '현지 소비자가', '병당 순수입', '지난달 수요', '지난달 판매']}>
+              <Table head={['제품', '출고가', '국내 소비자가', '수출가(FOB)', '현지 소비자가', '병당 순수입', '지난달 수요', '지난달 판매']}>
                 {products.map((p) => {
                   const ok = exportEligible(p, m);
                   const sale = sales.find((x) => x.productId === p.id);
@@ -54,8 +61,9 @@ export function Exports() {
                       <Td className="max-w-56 truncate text-xs font-medium">{p.name}{!ok && <> <Badge tone="bad">숙성 기준 미달</Badge></>}</Td>
                       <Td right>{won(p.price)}</Td>
                       <Td right>{won(productConsumerPrice(s, p))}</Td>
-                      <Td right>{won(exportShelfPrice(s, p, m))}</Td>
-                      <Td right>{won(p.price - exportFreightPerBottle(s, p, m))}</Td>
+                      <Td right>{won(exportFob(p, entry?.priceFactor ?? 1))}</Td>
+                      <Td right>{won(exportShelfPrice(s, p, m, entry?.priceFactor ?? 1))}</Td>
+                      <Td right>{won(exportFob(p, entry?.priceFactor ?? 1) - exportFreightPerBottle(s, p, m))}</Td>
                       <Td right>{sale ? num(sale.demandBottles) : '—'}</Td>
                       <Td right>{sale ? num(sale.bottles) : '—'}</Td>
                     </tr>

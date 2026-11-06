@@ -356,6 +356,8 @@ export interface ExportEntry {
   /** 현지 인지도 0~1 */
   awareness: number;
   totalBottles: number;
+  /** 수출가 배수: FOB = 출고가 × 배수 (기본 1). 공급이 모자라면 올려서 적게 팔고 많이 남긴다 */
+  priceFactor?: number;
 }
 
 export interface ExportSale { marketId: 'US' | 'UK' | 'DF'; productId: string; name: string; bottles: number; revenue: number; demandBottles: number; freight: number }
