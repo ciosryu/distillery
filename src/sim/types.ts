@@ -371,19 +371,44 @@ export interface CaskOrder {
 export interface CaskBid { id: string; buyerName: string; caskId: string; price: number; expiresMonth: number }
 
 /** 진출한 수출 시장 (#95) */
-export interface ExportEntry {
-  marketId: 'US' | 'UK' | 'DF';
+/** 수출 시장 (#95, 확장 #100) */
+export type ExportMarketId = 'US' | 'UK' | 'DF' | 'EU' | 'CN' | 'SEA' | 'KR' | 'JP' | 'TW';
+
+/** 수입사 계약 조건 (#101) */
+export interface ExportTerms {
+  marketId: ExportMarketId;
+  partner: string;
+  /** 수입사 매입가 = 출고가 × priceFactor */
+  priceFactor: number;
+  /** 매달 우리가 내는 현지 마케팅 분담 — 많을수록 현지 인지도가 빨리 오른다 */
+  marketingPerMonth: number;
+  termMonths: number;
+  /** 연 최소 물량 — 1년 단위로 못 채우면 수입사가 계약을 끝낸다 */
+  minBottlesPerYear: number;
+  /** 대금 지급까지 개월 */
+  paymentDelay: number;
+  /** 시장 개척비 (처음 들어가는 시장만) */
+  entryCost: number;
+}
+export interface ExportOffer extends ExportTerms { id: string; expiresMonth: number }
+
+export interface ExportEntry extends Partial<Omit<ExportTerms, 'marketId'>> {
+  marketId: ExportMarketId;
   openedMonth: number;
   /** 이 달부터 판매 (라벨 승인·수입상 계약 기간) */
   readyMonth: number;
   /** 현지 인지도 0~1 */
   awareness: number;
   totalBottles: number;
-  /** 수출가 배수: FOB = 출고가 × 배수 (기본 1). 공급이 모자라면 올려서 적게 팔고 많이 남긴다 */
+  /** 수입사 계약 연차 집계 (#101): 이번 계약 연도 시작 월·판매 병수 */
+  yearStartMonth?: number;
+  bottlesThisYear?: number;
+  /** 수출가 배수: FOB = 출고가 × 배수. 수입사 계약의 제안가로 시작하고(#101·#106), 플레이어가 조정한다(#108, 0.5~3).
+   *  올리면 현지 소비자가가 올라 적게 팔리고 병당 많이 남는다 — 연 최소 물량 의무와 맞바꾼다 */
   priceFactor?: number;
 }
 
-export interface ExportSale { marketId: 'US' | 'UK' | 'DF'; productId: string; name: string; bottles: number; revenue: number; demandBottles: number; freight: number }
+export interface ExportSale { marketId: ExportMarketId; productId: string; name: string; bottles: number; revenue: number; demandBottles: number; freight: number }
 
 export interface GameState {
   version: 5;
@@ -446,6 +471,10 @@ export interface GameState {
   acclaim?: number;
   /** 수출 시장 (#95) — 옛 저장에는 없을 수 있다 */
   exports?: ExportEntry[];
+  /** 수입사 계약 제안 (#101) */
+  exportOffers?: ExportOffer[];
+  /** 한 번이라도 들어간 수출 시장 — 시장 개척비는 처음 한 번만 */
+  exportEntered?: ExportMarketId[];
   /** 비지터 센터 입소문(로컬 인지도) 0~1 */
   localBuzz: number;
   /** 사무직이 타결한 폐기물(드래프·지게미) 유상 판매 단가(원/kg) */

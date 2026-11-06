@@ -7,7 +7,7 @@ import { clamp } from './flavor';
 import { staffOf } from './util';
 import { mod } from './modifiers';
 import type { ExportEntry, ExportSale, GameState, Product, ProductCategory } from './types';
-import { EXPORT_MARKETS, type ExportMarketDef } from './content/exports';
+import { EXPORT_MARKETS, EXPORT_SALES, tariffKey, type ExportMarketDef } from './content/exports';
 import type { Rng } from './rng';
 
 // 수요 공식 (PRD §9.2) — 수치 [튜닝]
@@ -88,14 +88,25 @@ const AGED_CATEGORIES: ProductCategory[] = ['whisky', 'blended_whisky', 'grain_w
 /** 수출 1병 운임 (700ml 기준 운임을 병 크기로 비례) */
 export const exportFreightPerBottle = (s: Pick<GameState, 'regionId'>, p: Pick<Product, 'bottleMl'>, m: ExportMarketDef) => Math.round(m.freightPerBottle[s.regionId] * (p.bottleMl / 700));
 
-/** 수출 시장 소비자가 (병당): ((출고가 + 운임) × (1 + 관세) + 현지 주세) × 유통 배수 × (1 + 부가세). 국내 주세는 수출 면세 */
-export function exportShelfPrice(s: Pick<GameState, 'regionId'>, p: Pick<Product, 'price' | 'bottleMl' | 'abv'>, m: ExportMarketDef, priceFactor = 1): number {
-  const lpa = (p.bottleMl / 1000) * p.abv;
-  return ((exportFob(p, priceFactor) + exportFreightPerBottle(s, p, m)) * (1 + m.tariff[s.regionId]) + m.excisePerLPA * lpa) * m.channelMultiple * (1 + m.vat);
+/** 수출가(FOB, 병당 우리가 받는 값) = 출고가 × 수출가 배수 — 수입사 제안가로 시작해 플레이어가 조정 (#95·#101·#108). 계약 전 미리보기는 1 */
+export const exportFob = (p: Pick<Product, 'price'>, priceFactor = 1) => Math.round(p.price * priceFactor);
+
+/** 관세 이벤트(#103) 반영 실효 관세율 */
+export function effectiveTariff(s: Pick<GameState, 'regionId'> & Partial<Pick<GameState, 'modifiers' | 'month'>>, m: ExportMarketDef): number {
+  const k = s.modifiers && s.month != null ? mod(s as GameState, tariffKey(m.id)) : 1;
+  return (1 + m.tariff[s.regionId]) * k - 1;
 }
 
-/** 수출 FOB(병당 우리가 받는 값) = 출고가 × 시장별 수출가 배수 */
-export const exportFob = (p: Pick<Product, 'price'>, priceFactor = 1) => Math.round(p.price * priceFactor);
+/** 수출 시장 소비자가 (병당): ((FOB + 운임) × (1 + 관세) × (1 + 현지 종가세) + 현지 주세) × 유통 배수 × (1 + 부가세). 국내 주세는 수출 면세 */
+export function exportShelfPrice(s: Pick<GameState, 'regionId'> & Partial<Pick<GameState, 'modifiers' | 'month'>>, p: Pick<Product, 'price' | 'bottleMl' | 'abv'>, m: ExportMarketDef, priceFactor = 1): number {
+  const lpa = (p.bottleMl / 1000) * p.abv;
+  return ((exportFob(p, priceFactor) + exportFreightPerBottle(s, p, m)) * (1 + effectiveTariff(s, m)) * (1 + (m.adValorem ?? 0)) + m.excisePerLPA * lpa) * m.channelMultiple * (1 + m.vat);
+}
+
+/** 수출 1병 순수입 = 수출가 − 운임 (#109 판로 배분 기준. 현지 마케팅 분담은 고정비라 뺀다) */
+export const exportNetPerBottle = (s: Pick<GameState, 'regionId'>, p: Pick<Product, 'price' | 'bottleMl'>, m: ExportMarketDef, priceFactor = 1) => exportFob(p, priceFactor) - exportFreightPerBottle(s, p, m);
+/** 국내 1병 순수입 = 출고가 − 유통비(채널 수수료 + 출고 물류). 주세는 소비자에게 넘어가므로 빼지 않는다 (#109) */
+export const domesticNetPerBottle = (s: Pick<GameState, 'regionId' | 'siteId'>, p: Pick<Product, 'price' | 'bottleMl'>) => p.price - distributionCostPerBottle(p.price, p.bottleMl, outboundLogistics(s));
 
 /** 이 시장에 팔 수 있는 제품인가 (주종·현지 위스키 숙성 규정) */
 export function exportEligible(p: Pick<Product, 'category' | 'oakMonths' | 'ageYears'>, m: ExportMarketDef): boolean {
@@ -120,13 +131,16 @@ export function exportDemandFor(s: GameState, p: Product, entry: ExportEntry, sa
 export const ACCLAIM = { maxBonus: 0.4, floor: 0.5, decay: 0.015 };
 export const exportAwarenessMax = (s: Pick<GameState, 'acclaim'>, id: keyof typeof EXPORT_MARKETS) => Math.min(0.95, EXPORT_MARKETS[id].awareness.max + ACCLAIM.maxBonus * (s.acclaim ?? 0));
 
-/** 수출 인지도: 매달 상승 + 국내 인지도가 넘어옴 (면세는 국내 인지도 그대로) + 해외 명성 바닥 */
+/** 수출 인지도: 매달 상승(계약 마케팅 분담이 클수록 빠르게, #101) + 국내 인지도 후광(면세점만, #102) + 해외 명성 상한·바닥(#96) */
 export function updateExportAwareness(s: GameState): void {
   for (const e of s.exports ?? []) {
     if (e.readyMonth > s.month) continue;
-    const a = EXPORT_MARKETS[e.marketId].awareness;
+    const m = EXPORT_MARKETS[e.marketId];
+    const a = m.awareness;
     const max = exportAwarenessMax(s, e.marketId);
-    const target = Math.min(max, e.awareness + a.perMonth * (1 - e.awareness) * mod(s, 'awareness_gain'));
+    // 마케팅 분담 = 시장 기준 월 비용이면 ×1, 0이면 ×0.3, 2배면 ×1.5 (체감)
+    const push = e.marketingPerMonth == null ? 1 : 0.3 + 0.7 * Math.sqrt(e.marketingPerMonth / m.monthlyCost) * (e.marketingPerMonth > m.monthlyCost ? 0.85 : 1);
+    const target = Math.min(max, e.awareness + a.perMonth * push * (1 - e.awareness) * mod(s, 'awareness_gain'));
     e.awareness = clamp(Math.max(target, s.awareness * a.domesticSpill, (s.acclaim ?? 0) * ACCLAIM.floor), 0, max);
   }
   if (s.acclaim) s.acclaim = Math.max(0, s.acclaim * (1 - ACCLAIM.decay));
@@ -164,17 +178,29 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
     const demand = Math.round(d.demandBottles * rng.range(0.9, 1.1));
     wants.push({ p, demand, want: Math.min(p.stockBottles, demand) });
   }
-  // 1-b) 수출 수요 (#95): 재고가 모자라면 국내·수출에 수요 비율대로 나눈다. 수출은 수입상이 받아 가므로 소매 처리 역량을 쓰지 않는다
+  // 1-b) 수출 수요 (#95·#109): 재고가 모자라면 병당 순수입이 높은 판로부터 채운다(EXPORT_SALES.allocation, 같으면 국내 먼저).
+  //      숙성 원액은 정해진 양뿐이라, 수요 비율로 나누면 싸게 파는 판로가 비싸게 파는 판로의 몫을 빼앗는다.
+  //      수출가를 올리면(#108) 수출이 먼저 채워진다. 수출은 수입상이 받아 가므로 소매 처리 역량을 쓰지 않는다
   const exportWants = new Map<string, { entry: ExportEntry; demand: number; want: number }[]>();
   const active = (s.exports ?? []).filter((e) => e.readyMonth <= s.month);
   for (const w of wants) {
     const list = active.map((entry) => ({ entry, demand: Math.round(exportDemandFor(s, w.p, entry, counts[w.p.category] ?? 1) * rng.range(0.9, 1.1)), want: 0 })).filter((x) => x.demand > 0);
     if (!list.length) continue;
+    exportWants.set(w.p.id, list);
+    if (EXPORT_SALES.allocation === 'margin') {
+      const chans = [
+        { net: domesticNetPerBottle(s, w.p), demand: w.demand, set: (n: number) => { w.want = n; } },
+        ...list.map((x) => ({ net: exportNetPerBottle(s, w.p, EXPORT_MARKETS[x.entry.marketId], x.entry.priceFactor ?? 1), demand: x.demand, set: (n: number) => { x.want = n; } })),
+      ].sort((a, b) => b.net - a.net); // 안정 정렬 — 같으면 국내 먼저
+      let left = w.p.stockBottles;
+      for (const c of chans) { const n = Math.min(left, c.demand); c.set(n); left -= n; }
+      continue;
+    }
+    if (EXPORT_SALES.allocation === 'domestic') continue; // 수출 몫은 국내 판매 뒤 남은 재고로 (아래)
     const total = w.demand + list.reduce((t, x) => t + x.demand, 0);
     const f = Math.min(1, w.p.stockBottles / Math.max(1, total));
     w.want = Math.floor(w.demand * f);
     for (const x of list) x.want = Math.floor(x.demand * f);
-    exportWants.set(w.p.id, list);
   }
   // 2) 소매 처리 역량 (결정 #65): 역량까지는 정상 채널, 역량의 2배까지는 고비용 채널(할인·추가 수수료), 그 너머는 못 판다
   //    영업은 케이스당 공헌이익이 큰 제품부터 민다 → 역량이 모자라면 저마진 제품부터 밀려난다
@@ -225,7 +251,12 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
   }
   const exports: ExportSale[] = [];
   for (const { p } of wants) {
-    for (const x of exportWants.get(p.id) ?? []) {
+    const list = exportWants.get(p.id) ?? [];
+    if (EXPORT_SALES.allocation === 'domestic' && list.length) {
+      const f = Math.min(1, p.stockBottles / Math.max(1, list.reduce((t, x) => t + x.demand, 0)));
+      for (const x of list) x.want = Math.floor(x.demand * f);
+    }
+    for (const x of list) {
       const bottles = Math.min(x.want, p.stockBottles);
       if (bottles <= 0 && x.demand <= 0) continue;
       p.stockBottles -= bottles;
@@ -233,6 +264,7 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
       p.totalSold += bottles;
       x.entry.totalBottles += bottles;
       const m = EXPORT_MARKETS[x.entry.marketId];
+      x.entry.bottlesThisYear = (x.entry.bottlesThisYear ?? 0) + bottles;
       exports.push({ marketId: x.entry.marketId, productId: p.id, name: p.name, bottles, revenue: bottles * exportFob(p, x.entry.priceFactor ?? 1), demandBottles: x.demand, freight: bottles * exportFreightPerBottle(s, p, m) });
     }
   }

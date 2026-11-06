@@ -6,7 +6,8 @@ import { dutyFreeSlotBlocker, inventoryLoanRoom, inventoryLtv, OEM, oemPackageCo
 import { EVENTS } from '../src/sim/content/events';
 import { RETAIL } from '../src/sim/ops';
 import { EQUIPMENT } from '../src/sim/content/catalog';
-import { EXPORT_MARKETS, type ExportMarketId } from '../src/sim/content/exports';
+import { EXPORT_MARKETS, EXPORT_SALES } from '../src/sim/content/exports';
+import type { ExportMarketId } from '../src/sim/types';
 const EQUIPMENT_KIND = (id: string) => EQUIPMENT[id]?.kind;
 
 const SEEDS = Number(process.argv[2] ?? 12);
@@ -24,6 +25,11 @@ const DEFEND = process.env.NO_DEFEND !== '1';
 if (process.env.OVERFLOW_FEE) RETAIL.overflowFeeRate = Number(process.env.OVERFLOW_FEE);
 if (process.env.OVERFLOW_SHARE) RETAIL.overflowShare = Number(process.env.OVERFLOW_SHARE);
 if (process.env.GRAIN_DEPTH) REGIONS[REGION].grainSpotDepthLPA = Number(process.env.GRAIN_DEPTH);
+// 실험용: 재고 부족 시 국내·수출 배분 (proportional | domestic)
+if (process.env.EXPORT_ALLOC) EXPORT_SALES.allocation = process.env.EXPORT_ALLOC as typeof EXPORT_SALES.allocation;
+// 실험용: 수입사 매입가 비율 범위(예: 0.85,0.95)·마케팅 분담 배수 덮어쓰기
+if (process.env.EXPORT_PF) { const [lo, hi] = process.env.EXPORT_PF.split(',').map(Number); for (const m of Object.values(EXPORT_MARKETS)) m.offer.priceFactor = [lo!, hi!]; }
+if (process.env.EXPORT_MKT) for (const m of Object.values(EXPORT_MARKETS)) m.monthlyCost *= Number(process.env.EXPORT_MKT);
 
 type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site';
 
@@ -160,9 +166,12 @@ function bottleBlended(s: GameState): GameState {
 }
 
 /** v1.0 운영: 빈 통을 미리 쿠퍼리지에 주문하고, 소매 역량이 넘치면 영업 직원을 늘린다 */
-/** v1.5(#95) 수출: 위스키가 나오면 면세점(36개월~), 3년 숙성 재고가 생기면 미국·영국(48개월~)에 진출한다.
- *  진출 12개월 뒤에도 최근 6개월 공헌이익(출고가 − 운임 − 원가)이 월 현지 비용보다 작으면 철수. NO_EXPORT=1이면 수출 안 함 */
+/** 수출 봇 (#95·#104·#108): 남는 숙성 재고(3년 넘은 자사 몰트 캐스크 EXPORT_SURPLUS개, 기본 20)가 있을 때만 수입사 제안을 받고
+ *  (면세점은 36개월~, 해외는 48개월~, 최대 EXPORT_MAX곳), 수출가를 ×EXPORT_PRICE(기본 1.5)로 올린다.
+ *  진출 12개월 뒤 최근 6개월 공헌이익(수출가 − 운임 − 원가)이 마케팅 분담보다 작으면 철수하고 다시 들어가지 않는다.
+ *  EXPORT_NAIVE=1이면 남는 재고를 보지 않고 제안을 받는다. NO_EXPORT=1이면 수출 안 함 */
 const NO_EXPORT = process.env.NO_EXPORT === '1';
+const EXPORT_NAIVE = process.env.EXPORT_NAIVE === '1';
 /** 이번 판에서 철수한 시장 — 다시 들어가지 않는다 (진입 비용을 반복해서 내는 버그 방지) */
 let closedMarkets = new Set<ExportMarketId>();
 let exportLog: string[] = [];
@@ -171,29 +180,32 @@ function exportPolicy(s: GameState, strategy: Strategy): GameState {
   const whisky = s.products.filter((p) => p.category === 'whisky' && p.stockBottles > 0);
   const aged36 = whisky.some((p) => (p.oakMonths ?? 0) >= 36);
   // 남는 물량이 있을 때만: 3년 넘은 자사 몰트 캐스크가 EXPORT_SURPLUS개(약 330병/캐스크) 넘게 쌓였을 때.
-  // 공급이 국내 수요에 묶여 있으면 수출은 국내 판매를 빼앗고 현지 비용만 늘린다 (§16.25)
+  // 공급이 국내 수요에 묶여 있으면 수출은 국내 판매를 빼앗고 현지 비용만 늘린다 (§16.25·§17.2). EXPORT_NAIVE=1이면 이 조건 없이 제안을 받는다
   // 해외 명성(#96)이 0.2를 넘으면(품평회 수상·평론 고득점 뒤) 남는 물량이 없어도 판로를 연다
   const acclaimed = (s.acclaim ?? 0) >= Number(process.env.ACCLAIM_OPEN ?? 0.2);
-  const surplus = process.env.EXPORT_GATE === '0' || acclaimed || s.casks.filter((c) => c.contents?.kind === 'malt' && !c.contents.sourced && c.contents.oakMonths >= 36).length >= Number(process.env.EXPORT_SURPLUS ?? 20);
-  // 확장형은 성장 전략이라 남는 재고를 기다리지 않고 해외 판로를 먼저 연다 — 수출 수요가 증설 판단에 들어간다
+  const surplus = EXPORT_NAIVE || process.env.EXPORT_GATE === '0' || acclaimed || s.casks.filter((c) => c.contents?.kind === 'malt' && !c.contents.sourced && c.contents.oakMonths >= 36).length >= Number(process.env.EXPORT_SURPLUS ?? 20);
+  // 확장형은 성장 전략이라 남는 재고를 기다리지 않고 해외 판로를 먼저 연다 — 실험 결과 기각, EXPAND_EXPORT=1로만 (§16.25)
   const growth = strategy === 'expand' && process.env.EXPAND_EXPORT === '1';
-  if (!surplus && !growth && !(s.exports ?? []).length) return s;
-  const open = new Set((s.exports ?? []).map((e) => e.marketId));
-  const plan: [ExportMarketId, number, boolean][] = [['DF', 36, whisky.length > 0], ['US', 48, aged36], ['UK', 48, aged36]];
-  for (const [id, from, ok] of plan) {
-    if (open.has(id) || closedMarkets.has(id) || !ok || !(surplus || growth) || s.month < from) continue;
-    if (s.cash > EXPORT_MARKETS[id].entryCost + 200_000_000) {
-      s = act(s, { type: 'openExport', marketId: id });
-      // 공급이 묶여 있으니 수출가를 올려 적게 팔고 많이 남긴다 (EXPORT_PRICE, 기본 ×1.5)
-      s = act(s, { type: 'setExportPrice', marketId: id, priceFactor: Number(process.env.EXPORT_PRICE ?? 1.5) });
-      exportLog.push(`m${s.month} open ${id}`);
-    }
+  const MAX = Number(process.env.EXPORT_MAX ?? 3);
+  // #101: 수입사 제안이 오면 받는다 — 면세점은 위스키가 나온 뒤(36개월~), 해외는 3년 숙성 재고가 생긴 뒤(48개월~). 동시에 최대 EXPORT_MAX곳
+  for (const o of [...(s.exportOffers ?? [])]) {
+    if ((s.exports ?? []).length >= MAX) break;
+    const from = o.marketId === 'DF' ? 36 : 48;
+    const ok = o.marketId === 'DF' ? whisky.length > 0 : aged36;
+    if (closedMarkets.has(o.marketId) || !ok || !(surplus || growth) || s.month < from) continue;
+    if (s.cash <= o.entryCost + 200_000_000) continue;
+    s = act(s, { type: 'acceptExportOffer', offerId: o.id });
+    if (!(s.exports ?? []).some((e) => e.marketId === o.marketId)) continue;
+    // 공급이 묶여 있으니 수출가를 올려 적게 팔고 많이 남긴다 (EXPORT_PRICE, 기본 ×1.5, #108). 0이면 제안가 그대로
+    const price = Number(process.env.EXPORT_PRICE ?? 1.5);
+    if (price > 0) s = act(s, { type: 'setExportPrice', marketId: o.marketId, priceFactor: price });
+    exportLog.push(`m${s.month} open ${o.marketId} ×${s.exports!.find((e) => e.marketId === o.marketId)!.priceFactor}`);
   }
   for (const e of s.exports ?? []) {
     if (s.month - e.readyMonth < 12) continue;
     const recent = s.reports.slice(-6).flatMap((r) => (r.exports ?? []).filter((x) => x.marketId === e.marketId));
     const margin = recent.reduce((t, x) => t + x.revenue - x.freight - x.bottles * (s.products.find((p) => p.id === x.productId)?.unitCost ?? 0), 0) / 6;
-    if (margin < EXPORT_MARKETS[e.marketId].monthlyCost) { s = act(s, { type: 'closeExport', marketId: e.marketId }); closedMarkets.add(e.marketId); exportLog.push(`m${s.month} close ${e.marketId} margin ${Math.round(margin / 1e4)}만`); }
+    if (margin < (e.marketingPerMonth ?? EXPORT_MARKETS[e.marketId].monthlyCost)) { s = act(s, { type: 'closeExport', marketId: e.marketId }); closedMarkets.add(e.marketId); exportLog.push(`m${s.month} close ${e.marketId} margin ${Math.round(margin / 1e4)}만`); }
   }
   return s;
 }
@@ -497,7 +509,7 @@ function diag(strategy: Strategy, seed: number, s: GameState): void {
     for (const r of rs) for (const [k, v] of Object.entries(r.expenses)) exp[k] = (exp[k] ?? 0) + v;
     for (const r of rs) for (const [k, v] of Object.entries(r.offTurn ?? {})) offTurn[k] = (offTurn[k] ?? 0) + v;
     return {
-      retail: rs.reduce((t, r) => t + r.revenue, 0), bulk: rs.reduce((t, r) => t + r.bulkRevenue, 0), spot: rs.reduce((t, r) => t + (r.spotBulkRevenue ?? 0), 0), tourism: rs.reduce((t, r) => t + (r.tourismRevenue ?? 0), 0),
+      retail: rs.reduce((t, r) => t + r.revenue, 0), bulk: rs.reduce((t, r) => t + r.bulkRevenue, 0), spot: rs.reduce((t, r) => t + (r.spotBulkRevenue ?? 0), 0), tourism: rs.reduce((t, r) => t + (r.tourismRevenue ?? 0), 0), export: rs.reduce((t, r) => t + (r.exportRevenue ?? 0), 0),
       penalty: rs.reduce((t, r) => t + r.bulk.reduce((u, b) => u + b.penalty, 0), 0), exp, offTurn,
     };
   };
@@ -540,7 +552,7 @@ function diag(strategy: Strategy, seed: number, s: GameState): void {
   }));
 }
 
-interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWorth: number; bookWorth: number; firstPositive: number; y5retail: number; y5bulk: number }
+interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWorth: number; bookWorth: number; firstPositive: number; y5retail: number; y5bulk: number; exportShare: number; markets: number }
 
 function play(strategy: Strategy, seed: number): Result {
   let s = newGame({ seed, region: REGION, site: SITE });
@@ -562,6 +574,10 @@ function play(strategy: Strategy, seed: number): Result {
   return {
     strategy, bankrupt: s.status === 'bankrupt', minCash: lo, netWorth: s.status === 'bankrupt' ? -Infinity : netWorth(s), bookWorth: s.status === 'bankrupt' ? -Infinity : bookWorth(s), firstPositive: fp,
     y5retail: y5.reduce((t, r) => t + r.revenue, 0), y5bulk: y5.reduce((t, r) => t + r.bulkRevenue + (r.spotBulkRevenue ?? 0), 0),
+    // 수출 지표 (#104): 전 기간 병입 매출 중 수출(수입사 매입가) 비중, 한 번이라도 진출한 시장 수
+    // report.revenue에는 회수한 외상(수출 대금 포함)이 섞여 있으므로 국내 병입 매출은 sales에서 직접 센다
+    exportShare: (() => { const ex = s.reports.reduce((t, r) => t + (r.exportRevenue ?? 0), 0); const dom = s.reports.reduce((t, r) => t + r.sales.reduce((u, x) => u + x.revenue, 0), 0); return dom + ex > 0 ? ex / (dom + ex) : 0; })(),
+    markets: (s.exportEntered ?? []).length,
   };
 }
 
@@ -598,7 +614,7 @@ for (const st of list) {
   const nw = alive.map((r) => r.netWorth);
   const sd = Math.sqrt(avg(nw.map((v) => (v - avg(nw)) ** 2)));
   const fps = rs.filter((r) => r.firstPositive >= 0).map((r) => r.firstPositive);
-  console.log(`${st.padEnd(7)} | 파산 ${rs.length - alive.length}/${rs.length} | 순자산(${MONTHS}m) 평균 ${eok(avg(nw))} ±${eok(sd)} · 원가기준 ${eok(avg(alive.map((r) => r.bookWorth)))} | 최저 현금 평균 ${eok(avg(rs.map((r) => r.minCash)))} | 흑자 전환 평균 ${Math.round(avg(fps))}개월 | 5년차 매출 병입 ${eok(avg(rs.map((r) => r.y5retail)))} + B2B(계약+현물) ${eok(avg(rs.map((r) => r.y5bulk)))} | 1위 ${wins[st] ?? 0}회`);
+  console.log(`${st.padEnd(7)} | 파산 ${rs.length - alive.length}/${rs.length} | 순자산(${MONTHS}m) 평균 ${eok(avg(nw))} ±${eok(sd)} · 원가기준 ${eok(avg(alive.map((r) => r.bookWorth)))} | 최저 현금 평균 ${eok(avg(rs.map((r) => r.minCash)))} | 흑자 전환 평균 ${Math.round(avg(fps))}개월 | 5년차 매출 병입 ${eok(avg(rs.map((r) => r.y5retail)))} + B2B(계약+현물) ${eok(avg(rs.map((r) => r.y5bulk)))} | 수출 비중 ${(avg(rs.map((r) => r.exportShare)) * 100).toFixed(1)}% · 진출 ${avg(rs.map((r) => r.markets)).toFixed(1)}곳 | 1위 ${wins[st] ?? 0}회`);
 }
 const dist = (w: Record<string, number>) => [...list, '전멸'].map((st) => `${st} ${w[st] ?? 0}`).join(' · ');
 console.log(`\n[${REGION}${SITE ? '/' + SITE : ''}] 시드별 1위 분포(시가 평가): ${dist(wins)}`);

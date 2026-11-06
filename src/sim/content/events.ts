@@ -32,7 +32,7 @@ export type Effect =
   /** 세무조사: 최근 3개월 주세 × rate 추징, 사무직 세무 스탯으로 감면 */
   | { type: 'taxAudit'; rate: number };
 
-export type Requirement = 'activeContract' | 'filledCasks' | 'whiskyStock' | 'twoStaff' | 'still' | 'products' | 'highQualityProduct' | 'agedWhisky';
+export type Requirement = 'activeContract' | 'filledCasks' | 'whiskyStock' | 'twoStaff' | 'still' | 'products' | 'highQualityProduct' | 'agedWhisky' | 'exportUS' | 'exportCN';
 
 export interface EventChoiceDef { label: string; detail: string; effects: Effect[] }
 
@@ -194,6 +194,15 @@ export const EVENTS: EventDef[] = [
   { id: 'tax_audit', title: '세무조사', category: 'regulation', chance: 0.008, cooldown: 48, minMonth: 24, requires: ['products'], text: '국세청 세무조사가 나왔습니다. 주세 신고 내역을 검증합니다.',
     effects: [{ type: 'taxAudit', rate: 0.15 }] },
   // ── 지역 고유 ──
+  // 수출 관세 이벤트 (#103) — 기본 관세는 content/exports.ts(2026-07-24 Section 301), 변동은 이벤트로
+  { id: 'us_tariff_hike', title: '미국 추가 관세', category: 'regulation', chance: 0.012, cooldown: 48, requires: ['exportUS'], text: '미국이 과잉생산 조사(Section 301)를 근거로 수입 주류에 추가 관세를 매깁니다.',
+    forecast: { months: 3, certainty: 0.6, text: '무역 동향: 미국 무역대표부가 주요 교역국 과잉생산 조사를 시작했습니다.' },
+    effects: [m('tariff:US', 1.1, [12, 24], '미국 추가 관세')] },
+  { id: 'us_tariff_relief', title: '미국 관세 인하 합의', category: 'opportunity', chance: 0.008, cooldown: 60, requires: ['exportUS'], text: '양자 협상으로 미국이 주류 관세를 일부 낮춥니다.',
+    effects: [m('tariff:US', 0.93, [24, 36], '미국 관세 인하')] },
+  { id: 'cn_tariff_retaliation', title: '중국 보복 관세', category: 'regulation', chance: 0.01, cooldown: 60, requires: ['exportCN'], text: '무역 분쟁으로 중국이 수입 증류주 관세를 올립니다.',
+    forecast: { months: 2, certainty: 0.5, text: '무역 동향: 중국 상무부가 수입 증류주 반덤핑 조사를 예고했습니다.' },
+    effects: [m('tariff:CN', 1.15, [12, 18], '중국 보복 관세')] },
   // 입지 고유 이벤트 (결정 #86~)
   { id: 'jeju_tourism_boom', title: '제주 관광객 급증', category: 'market', chance: 0.02, cooldown: 36, sites: ['jeju'], sitesOnly: true, text: '제주 관광객이 크게 늘어 지정면세점 매출이 오릅니다.',
     effects: [m('dutyfree', 1.4, [12, 18], '제주 관광 호황')] },
