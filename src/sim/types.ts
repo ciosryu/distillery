@@ -156,6 +156,8 @@ export interface BrandLine {
   awareness: number;
   /** 브랜드 럭셔리 B_brand 0~100 (PRD §11.2 ③) — 자리만, 아직 계산하지 않는다(0) */
   luxury: number;
+  /** 세컨드 브랜드의 월 마케팅비(원, PRD §11.2 ④ "브랜드별 집행"). 하우스는 쓰지 않는다 — 하우스 예산은 commerce.marketingBudget. 없으면 0 */
+  marketingBudget?: number;
 }
 
 export interface Product {
