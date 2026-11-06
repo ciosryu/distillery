@@ -2,3 +2,5 @@ node_modules/
 dist/
 *.log
 .DS_Store
+# 콘텐츠 JSON 생성물 (npm run content:export, S-7)
+data/content/
