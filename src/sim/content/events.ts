@@ -10,6 +10,8 @@ export type Effect =
   | { type: 'modifier'; key: string; factor: number; months: [number, number]; delay?: number; label?: string }
   | { type: 'cash'; amount: number }
   | { type: 'awareness'; delta: number }
+  /** 해외 명성 (#96) — 수출 시장 현지 인지도를 끌어올리고 상한을 높인다 */
+  | { type: 'acclaim'; delta: number }
   | { type: 'trust'; delta: number }
   | { type: 'caskLoss'; share: [number, number] }
   | { type: 'caskVolumeLoss'; share: number }
@@ -30,7 +32,7 @@ export type Effect =
   /** 세무조사: 최근 3개월 주세 × rate 추징, 사무직 세무 스탯으로 감면 */
   | { type: 'taxAudit'; rate: number };
 
-export type Requirement = 'activeContract' | 'filledCasks' | 'whiskyStock' | 'twoStaff' | 'still' | 'products' | 'highQualityProduct' | 'exportUS' | 'exportCN';
+export type Requirement = 'activeContract' | 'filledCasks' | 'whiskyStock' | 'twoStaff' | 'still' | 'products' | 'highQualityProduct' | 'agedWhisky' | 'exportUS' | 'exportCN';
 
 export interface EventChoiceDef { label: string; detail: string; effects: Effect[] }
 
@@ -173,6 +175,22 @@ export const EVENTS: EventDef[] = [
       raveEffects: [{ type: 'awareness', delta: 0.1 }, m('demand:all', 1.8, [12, 12], '짐 머레이 극찬'), m('consumerPrice:all', 0.92, [12, 12], '극찬 프리미엄')],
       panEffects: [m('demand:all', 0.45, [12, 12], '짐 머레이 혹평')],
       mildEffects: [{ type: 'awareness', delta: 0.02 }] }] },
+  // ── v1.5 해외 명성 (#96, §16.27) — 실제: 카발란은 2010 블라인드 테이스팅에서 스카치를 이긴 뒤 판매 약 3배 ──
+  { id: 'intl_competition', title: '국제 품평회 출품 결과', category: 'opportunity', chance: 0.012, cooldown: 24, minMonth: 36, requires: ['agedWhisky'], text: '{competition}에 대표 위스키를 출품했습니다.',
+    effects: [{ type: 'criticVerdict', rave: 75, pan: 58,
+      raveEffects: [{ type: 'acclaim', delta: 0.15 }, { type: 'awareness', delta: 0.03 }],
+      panEffects: [],
+      mildEffects: [{ type: 'acclaim', delta: 0.04 }] }] },
+  { id: 'blind_tasting_upset', title: '블라인드 테이스팅 이변', category: 'opportunity', chance: 0.004, cooldown: 60, minMonth: 48, requires: ['agedWhisky'], text: '해외 블라인드 테이스팅에 유명 스카치와 함께 올랐습니다.',
+    effects: [{ type: 'criticVerdict', rave: 80, pan: 62,
+      raveEffects: [{ type: 'acclaim', delta: 0.35 }, { type: 'awareness', delta: 0.05 }, m('export:all', 1.5, [12, 12], '블라인드 테이스팅 이변')],
+      panEffects: [{ type: 'acclaim', delta: -0.05 }],
+      mildEffects: [{ type: 'acclaim', delta: 0.05 }] }] },
+  { id: 'overseas_critic', title: '해외 평론가 시음', category: 'opportunity', chance: 0.01, cooldown: 24, minMonth: 36, requires: ['agedWhisky'], text: '{critic}이(가) 대표 위스키를 시음했습니다.',
+    effects: [{ type: 'criticVerdict', rave: 72, pan: 60,
+      raveEffects: [{ type: 'acclaim', delta: 0.08 }, m('export:all', 1.2, [6, 6], '해외 평론 고득점')],
+      panEffects: [{ type: 'acclaim', delta: -0.04 }],
+      mildEffects: [{ type: 'acclaim', delta: 0.02 }] }] },
   { id: 'tax_audit', title: '세무조사', category: 'regulation', chance: 0.008, cooldown: 48, minMonth: 24, requires: ['products'], text: '국세청 세무조사가 나왔습니다. 주세 신고 내역을 검증합니다.',
     effects: [{ type: 'taxAudit', rate: 0.15 }] },
   // ── 지역 고유 ──

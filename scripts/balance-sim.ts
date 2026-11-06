@@ -181,7 +181,9 @@ function exportPolicy(s: GameState, strategy: Strategy): GameState {
   const aged36 = whisky.some((p) => (p.oakMonths ?? 0) >= 36);
   // 남는 물량이 있을 때만: 3년 넘은 자사 몰트 캐스크가 EXPORT_SURPLUS개(약 330병/캐스크) 넘게 쌓였을 때.
   // 공급이 국내 수요에 묶여 있으면 수출은 국내 판매를 빼앗고 현지 비용만 늘린다 (§16.25·§17.2). EXPORT_NAIVE=1이면 이 조건 없이 제안을 받는다
-  const surplus = EXPORT_NAIVE || process.env.EXPORT_GATE === '0' || s.casks.filter((c) => c.contents?.kind === 'malt' && !c.contents.sourced && c.contents.oakMonths >= 36).length >= Number(process.env.EXPORT_SURPLUS ?? 20);
+  // 해외 명성(#96)이 0.2를 넘으면(품평회 수상·평론 고득점 뒤) 남는 물량이 없어도 판로를 연다
+  const acclaimed = (s.acclaim ?? 0) >= Number(process.env.ACCLAIM_OPEN ?? 0.2);
+  const surplus = EXPORT_NAIVE || process.env.EXPORT_GATE === '0' || acclaimed || s.casks.filter((c) => c.contents?.kind === 'malt' && !c.contents.sourced && c.contents.oakMonths >= 36).length >= Number(process.env.EXPORT_SURPLUS ?? 20);
   // 확장형은 성장 전략이라 남는 재고를 기다리지 않고 해외 판로를 먼저 연다 — 실험 결과 기각, EXPAND_EXPORT=1로만 (§16.25)
   const growth = strategy === 'expand' && process.env.EXPAND_EXPORT === '1';
   const MAX = Number(process.env.EXPORT_MAX ?? 3);
@@ -568,7 +570,7 @@ function play(strategy: Strategy, seed: number): Result {
   for (let i = 2; i < net.length; i++) if ((net[i]! + net[i - 1]! + net[i - 2]!) / 3 > 0) { fp = i; break; }
   const y5 = s.reports.filter((r) => r.month >= 48 && r.month < 60);
   if (DIAG) diag(strategy, seed, s);
-  if (process.env.DBG_EXPORT) console.error(strategy, seed, exportLog.join(' | '), '| 수출 누적', (s.exports ?? []).map((e) => `${e.marketId}:${e.totalBottles}병 aw${e.awareness.toFixed(2)}`).join(' '));
+  if (process.env.DBG_EXPORT) console.error(strategy, seed, exportLog.join(' | '), '| 명성', (s.acclaim ?? 0).toFixed(2), '| 위스키 최고 품질', Math.max(0, ...s.products.filter((p) => p.category === 'whisky').map((p) => p.quality)), '| 수출 누적', (s.exports ?? []).map((e) => `${e.marketId}:${e.totalBottles}병 aw${e.awareness.toFixed(2)}`).join(' '));
   return {
     strategy, bankrupt: s.status === 'bankrupt', minCash: lo, netWorth: s.status === 'bankrupt' ? -Infinity : netWorth(s), bookWorth: s.status === 'bankrupt' ? -Infinity : bookWorth(s), firstPositive: fp,
     y5retail: y5.reduce((t, r) => t + r.revenue, 0), y5bulk: y5.reduce((t, r) => t + r.bulkRevenue + (r.spotBulkRevenue ?? 0), 0),

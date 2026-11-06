@@ -119,7 +119,7 @@ export function exportDemandFor(s: GameState, p: Product, entry: ExportEntry, sa
   const m = EXPORT_MARKETS[entry.marketId];
   const c = m.categories[p.category];
   if (!c || !exportEligible(p, m)) return 0;
-  const marketL = (c.baseCases * 9 / 12) * (m.regionScale?.[s.regionId] ?? 1) * (s.trend[p.category] ?? 1) * mod(s, 'demand:all') * mod(s, `export:${m.id}`);
+  const marketL = (c.baseCases * 9 / 12) * (m.regionScale?.[s.regionId] ?? 1) * (s.trend[p.category] ?? 1) * mod(s, 'demand:all') * mod(s, `export:${m.id}`) * mod(s, 'export:all');
   const reach = (entry.awareness * c.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
   const bottleL = p.bottleMl / 1000;
   const ref = c.refConsumerPricePerL * Math.pow(p.abv / c.refAbv, 0.7);
@@ -127,17 +127,23 @@ export function exportDemandFor(s: GameState, p: Product, entry: ExportEntry, sa
   return (marketL * reach * appeal(p, s) * priceFactor * overhangFactor(p, s.month)) / bottleL;
 }
 
-/** 수출 인지도: 매달 상승(계약 마케팅 분담이 클수록 빠르게, #101) + 국내 인지도 후광(면세점만, #102) */
+/** 해외 명성 (#96): 진출 시장의 현지 인지도 상한을 높이고, 바닥(명성 × 0.5)을 깐다. 매달 1.5%씩 식는다 */
+export const ACCLAIM = { maxBonus: 0.4, floor: 0.5, decay: 0.015 };
+export const exportAwarenessMax = (s: Pick<GameState, 'acclaim'>, id: keyof typeof EXPORT_MARKETS) => Math.min(0.95, EXPORT_MARKETS[id].awareness.max + ACCLAIM.maxBonus * (s.acclaim ?? 0));
+
+/** 수출 인지도: 매달 상승(계약 마케팅 분담이 클수록 빠르게, #101) + 국내 인지도 후광(면세점만, #102) + 해외 명성 상한·바닥(#96) */
 export function updateExportAwareness(s: GameState): void {
   for (const e of s.exports ?? []) {
     if (e.readyMonth > s.month) continue;
     const m = EXPORT_MARKETS[e.marketId];
     const a = m.awareness;
+    const max = exportAwarenessMax(s, e.marketId);
     // 마케팅 분담 = 시장 기준 월 비용이면 ×1, 0이면 ×0.3, 2배면 ×1.5 (체감)
     const push = e.marketingPerMonth == null ? 1 : 0.3 + 0.7 * Math.sqrt(e.marketingPerMonth / m.monthlyCost) * (e.marketingPerMonth > m.monthlyCost ? 0.85 : 1);
-    const target = Math.min(a.max, e.awareness + a.perMonth * push * (1 - e.awareness) * mod(s, 'awareness_gain'));
-    e.awareness = clamp(Math.max(target, s.awareness * a.domesticSpill), 0, a.max);
+    const target = Math.min(max, e.awareness + a.perMonth * push * (1 - e.awareness) * mod(s, 'awareness_gain'));
+    e.awareness = clamp(Math.max(target, s.awareness * a.domesticSpill, (s.acclaim ?? 0) * ACCLAIM.floor), 0, max);
   }
+  if (s.acclaim) s.acclaim = Math.max(0, s.acclaim * (1 - ACCLAIM.decay));
 }
 
 export interface SalesResult { productId: string; name: string; bottles: number; revenue: number; demandBottles: number; distribution: number; overflowBottles?: number; /** 면세 채널 판매 병수 (bottles에 포함, 주세 없음) — 결정 #87 */ dutyFree?: number }

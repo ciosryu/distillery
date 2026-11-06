@@ -3,7 +3,7 @@ import {
   advanceMonths, annuityPayment, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, categorize, demandFor, evaluate, evaporate, heartsFraction, spotBidPerLPA, spotQuote,
   makeContractOffer, makeCraftContractOffer, contractAgingImpact, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
   appeal, applyEffects, buyersFor, presetRecipes, validateRecipe, type Product,
-  agePerception, spotSaturation, EXPORT_MARKETS, exportShelfPrice, exportEligible, exportDemandFor, makeExportOffer, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
+  agePerception, spotSaturation, exportAwarenessMax, updateExportAwareness, EXPORT_MARKETS, exportShelfPrice, exportEligible, exportDemandFor, makeExportOffer, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
 } from './index';
 import { overhangFactor, ownsFacility, retailCapacityCases, slotClimate } from './ops';
 import { EQUIPMENT } from './content/catalog';
@@ -617,16 +617,19 @@ describe('v1.0 운영 시스템', () => {
     let s = newGame({ seed: 3 });
     s.cash = 1e11; // 매출 없이 4년을 돌리므로 파산해서 진행이 멈추지 않게
     const x = s.staff[0]!;
+    const id = x.id; // 퇴사 이벤트로 순서가 바뀔 수 있어 id로 추적한다
+    const me = (g: GameState) => g.staff.find((y) => y.id === id)!;
     x.ageAtHire = 20;
+    s.cash = 1e12; // 개월을 건너뛰는 시나리오라 파산으로 진행이 멈추지 않게 한다
     s.month = 200; x.hiredMonth = 0; const before = { ...x.stats };
     s = advanceMonths(s, 24);
-    const st = s.staff[0]!.stats;
+    const st = me(s).stats;
     expect(st.a >= before.a && st.b >= before.b && st.c >= before.c).toBe(true); // 레벨업으로 오를 수는 있어도 꺾이지 않는다
     s.month = 300;
-    s.staff[0]!.level = 1000; // 레벨업(스탯 상승)이 하락을 가리지 않게
-    const mid = { ...s.staff[0]!.stats };
+    me(s).level = 1000; // 에이징만 보려고 레벨업을 막는다
+    const mid = { ...me(s).stats };
     s = advanceMonths(s, 24);
-    const after = s.staff[0]!.stats;
+    const after = me(s).stats;
     expect(after.a + after.b + after.c).toBeLessThan(mid.a + mid.b + mid.c);
   });
 
@@ -825,5 +828,24 @@ describe('수출 (#95)', () => {
     expect(r.expenses.export_freight).toBe(sold * EXPORT_MARKETS.DF.freightPerBottle.KR);
     expect(after.receivables.some((x) => x.dueMonth === after.month - 1 + 3 && x.label.includes('수출'))).toBe(true);
     expect(exportDemandFor(after, after.products[0]!, after.exports![0]!, 1)).toBeGreaterThan(0);
+  });
+});
+
+describe('해외 명성 (#96)', () => {
+  it('명성이 오르면 진출 시장 인지도가 뛰고 상한이 오르며, 매달 식는다', () => {
+    const s = newGame({ seed: 51 });
+    s.exports = [{ marketId: 'US', openedMonth: 0, readyMonth: 0, awareness: 0.05, totalBottles: 0 }];
+    const base = exportAwarenessMax(s, 'US');
+    applyEffects(s, [{ type: 'acclaim', delta: 0.35 }], mulberry32(1), 't');
+    expect(s.acclaim).toBeCloseTo(0.35, 6);
+    expect(s.exports[0]!.awareness).toBeCloseTo(0.4, 6);
+    expect(exportAwarenessMax(s, 'US')).toBeCloseTo(base + 0.4 * 0.35, 6);
+    updateExportAwareness(s);
+    expect(s.acclaim!).toBeLessThan(0.35);
+    // 나중에 진출해도 명성만큼 바닥이 깔린다
+    s.exports.push({ marketId: 'UK', openedMonth: 1, readyMonth: 1, awareness: 0.02, totalBottles: 0 });
+    s.month = 1;
+    updateExportAwareness(s);
+    expect(s.exports[1]!.awareness).toBeGreaterThanOrEqual(0.15);
   });
 });

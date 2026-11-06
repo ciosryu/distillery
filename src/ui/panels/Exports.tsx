@@ -14,8 +14,9 @@ export function Exports() {
 
   return (
     <div className="grid gap-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Stat label="계약 시장" value={`${opened.length} / ${markets.length}`} hint={offers.length ? `수입사 제안 ${offers.length}건` : '제안은 가끔 들어옵니다'} />
+        <Stat label="해외 명성" value={pct(s.acclaim ?? 0, 0)} hint="품평회·평론으로 오르고 매달 식는다 — 현지 인지도 상한·바닥을 올린다" tone={(s.acclaim ?? 0) >= 0.2 ? 'good' : undefined} />
         <Stat label="지난달 수출 매출" value={won(last?.exportRevenue ?? 0)} hint="수출가(FOB = 출고가 × 수출가 배수) — 대금은 계약의 지급 기한 뒤 입금" />
         <Stat label="지난달 수출 운임" value={won(last?.expenses.export_freight ?? 0)} />
         <Stat label="월 현지 마케팅 분담" value={won(last?.expenses.export_fixed ?? 0)} hint="많이 낼수록 현지 인지도가 빨리 오른다" />

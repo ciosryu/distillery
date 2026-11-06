@@ -6,6 +6,7 @@ import { EQUIPMENT } from './content/catalog';
 import { ownsFacility, taxAuditDefense } from './ops';
 import { clamp } from './flavor';
 import { addModifier } from './modifiers';
+import { exportAwarenessMax } from './market';
 import { rngFor, type Rng } from './rng';
 import type { GameState, MonthReport } from './types';
 import { nid } from './util';
@@ -28,6 +29,7 @@ function meets(s: GameState, r: Requirement): boolean {
     case 'highQualityProduct': return s.products.some((p) => p.stockBottles > 0 && p.quality >= 72);
     case 'exportUS': return (s.exports ?? []).some((e) => e.marketId === 'US');
     case 'exportCN': return (s.exports ?? []).some((e) => e.marketId === 'CN');
+    case 'agedWhisky': return s.products.some((p) => p.stockBottles > 0 && p.category === 'whisky' && (p.oakMonths ?? 0) >= 36);
   }
 }
 
@@ -61,6 +63,13 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
       case 'cash': s.cash += e.amount; if (e.amount) notes.push(`현금 ${e.amount > 0 ? '+' : ''}${e.amount.toLocaleString()}원`); break;
       case 'awareness': s.awareness = clamp(s.awareness + e.delta, 0.001, 0.95); notes.push(`인지도 ${e.delta > 0 ? '+' : ''}${(e.delta * 100).toFixed(0)}%p`); break;
       case 'trust': s.b2bTrust = clamp(s.b2bTrust + e.delta, 0, 100); break;
+      case 'acclaim': {
+        s.acclaim = clamp((s.acclaim ?? 0) + e.delta, 0, 1);
+        // 이미 진출한 시장은 곧바로 현지 인지도가 뛴다 (상한은 명성만큼 올라간다)
+        for (const x of s.exports ?? []) x.awareness = clamp(x.awareness + Math.max(0, e.delta), 0, exportAwarenessMax(s, x.marketId));
+        notes.push(`해외 명성 ${e.delta > 0 ? '+' : ''}${(e.delta * 100).toFixed(0)}%p → ${((s.acclaim ?? 0) * 100).toFixed(0)}%`);
+        break;
+      }
       case 'caskLoss': {
         const filled = s.casks.filter((c) => c.contents);
         const n = Math.max(1, Math.round(filled.length * rng.range(e.share[0], e.share[1])));
