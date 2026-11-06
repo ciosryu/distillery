@@ -1,4 +1,4 @@
-import { NAME_POOLS, ROLE_INFO } from './content/catalog';
+import { ROLE_INFO } from './content/catalog';
 import { regionOf } from './content/regions';
 import { clamp } from './flavor';
 import { rngFor, type Rng } from './rng';
@@ -21,7 +21,7 @@ export function makeCandidate(s: GameState, rng: Rng, role?: StaffRole): Candida
   const stats = { a: stat(), b: stat(), c: stat() };
   const level = 1 + Math.floor(((stats.a + stats.b + stats.c) / 3) / 30);
   const salary = salaryFor(r, stats, level, regionOf(s).laborCost);
-  const pool = NAME_POOLS[s.regionId] ?? NAME_POOLS.KR;
+  const pool = regionOf(s).namePool;
   return {
     id: nid(s, 'C'),
     name: `${rng.pick(pool.surnames)}${rng.pick(pool.given)}`,
