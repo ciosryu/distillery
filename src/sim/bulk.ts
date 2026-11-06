@@ -165,8 +165,8 @@ export function makeCraftContractOffer(s: GameState, rng: Rng): ContractOffer | 
 }
 
 /** 필링 계약 (#112, 스페이사이드 대표 결정) [튜닝] — 블렌더가 빈 캐스크(ex-버번 배럴)를 대고, 납품 원액을 그 캐스크에 63.5%로 채워 우리 숙성고에 맡긴다.
- *  원액값은 일반 계약의 ×0.95(캐스크를 블렌더가 대므로 통값을 덜 받는다), 캐스크당 월 보관료, 36~60개월 뒤 블렌더가 가져간다 */
-export const FILLING = { offerChance: 0.3, priceFactor: 0.95, storagePerCaskMonth: 9_000, holdMonths: [36, 48, 60], fillAbv: 0.635, caskType: 'ex_bourbon_barrel' as const };
+ *  원액값은 일반 계약의 ×0.95(캐스크를 블렌더가 대므로 통값을 덜 받는다), 캐스크당 월 보관료(5,000원 × 인건비 — 투자자 보관료 £34~65/통·년 ≈ 월 £3~5), 36~60개월 뒤 블렌더가 가져간다 */
+export const FILLING = { offerChance: 0.3, priceFactor: 0.95, storagePerCaskMonth: 5_000, holdMonths: [36, 48, 60], fillAbv: 0.635, caskType: 'ex_bourbon_barrel' as const };
 
 export function makeFillingOffer(s: GameState, rng: Rng): ContractOffer | null {
   const cap = capacityLPA(s, 'malt');

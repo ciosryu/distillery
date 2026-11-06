@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyAction, applyEffects, capacityLPA, collectFillingStorage, deliverOwnedCasks, EXPORT_MARKETS, exportMarketsFor, FILLING, fillingCaskLPA, fulfillContracts,
+  applyAction, applyEffects, capacityLPA, effectivePriceIndex, collectFillingStorage, deliverOwnedCasks, EXPORT_MARKETS, exportMarketsFor, FILLING, fillingCaskLPA, fulfillContracts,
   makeFillingOffer, mulberry32, newGame, ownershipOversold, refreshContractOffers, regionalCaskPrice, startContract, warehouseCapacity,
   type GameState, type MonthReport, type SpiritLot,
 } from './index';
@@ -24,6 +24,12 @@ describe('영국 국가 (#110)', () => {
     expect(s.casks.filter((c) => c.typeId === 'oloroso_butt')).toHaveLength(2);
   });
 
+  it('스코틀랜드 맥아는 수입 맥아보다 싸다 (지역 원료 단가 ×0.6)', () => {
+    const uk = newGame({ seed: 1, region: 'UK' });
+    const kr = newGame({ seed: 1, region: 'KR' });
+    expect(effectivePriceIndex(uk).malt_unpeated).toBeCloseTo(effectivePriceIndex(kr).malt_unpeated! * 0.6, 9);
+  });
+
   it('영국에서는 수출 시장 영국이 국내라 빠지고, 영국산 위스키의 미국 관세는 0%', () => {
     expect(exportMarketsFor('UK')).not.toContain('UK');
     expect(EXPORT_MARKETS.US.tariff.UK).toBe(0);
@@ -31,10 +37,10 @@ describe('영국 국가 (#110)', () => {
     expect(EXPORT_MARKETS.KR.tariff.UK).toBe(0);
   });
 
-  it('쿠퍼리지 클러스터 (#113): 캐스크 −20%(지역 0.9 × 입지 0.8), 쿠퍼리지 주문이 1개월 만에 온다', () => {
+  it('쿠퍼리지 클러스터 (#113): 캐스크 −20%, 쿠퍼리지 주문이 1개월 만에 온다', () => {
     const uk = newGame({ seed: 1, region: 'UK' });
     const kr = newGame({ seed: 1, region: 'KR' });
-    expect(regionalCaskPrice(uk, 'ex_bourbon_barrel')).toBe(Math.round(regionalCaskPrice(kr, 'ex_bourbon_barrel') * 0.9 * 0.8));
+    expect(regionalCaskPrice(uk, 'ex_bourbon_barrel')).toBe(Math.round(regionalCaskPrice(kr, 'ex_bourbon_barrel') * 0.8));
     const s = applyAction({ ...uk, cash: 1e10 }, { type: 'buyCasks', caskType: 'ex_bourbon_barrel', qty: 5 }).state;
     expect(s.caskOrders.at(-1)!.arriveMonth).toBe(uk.month + 1);
     const k = applyAction({ ...kr, cash: 1e10 }, { type: 'buyCasks', caskType: 'ex_bourbon_barrel', qty: 5 }).state;

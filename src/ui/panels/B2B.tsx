@@ -31,10 +31,11 @@ export function B2B() {
 
   return (
     <div className="grid gap-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className={`grid grid-cols-2 gap-3 ${siteOf(s).deals?.includes('filling') ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
         <Stat label="벌크 원액 시세 지수" value={s.bulkIndex.toFixed(2)} hint="위스키 트렌드와 연동, 매달 변동" tone={s.bulkIndex >= 1 ? 'good' : 'warn'} />
         <Stat label="B2B 신뢰도" value={Math.round(s.b2bTrust)} hint="납품 실적이 좋으면 상승 → 계약 단가·물량↑" />
         <Stat label="월 계약 물량" value={`${num(committed)} LPA`} hint={`생산 여력: 몰트 약 ${num(capacityLPA(s, 'malt'))} · 그레인 약 ${num(capacityLPA(s, 'grain'))} LPA/월 · 국산 프리미엄 ${pct(domesticPremium(s), 0)}`} />
+        {siteOf(s).deals?.includes('filling') && <Stat label="필링 캐스크 (블렌더 소유)" value={`${num(s.casks.filter((k) => k.owner?.filling).length)}통`} hint={`지난달 보관료 ${won(s.reports.at(-1)?.fillingStorageRevenue ?? 0)} — 숙성고 자리를 차지한다 (인도 월에 블렌더가 가져간다)`} />}
         <Stat label="지난달 원액 매출" value={won((s.reports.at(-1)?.bulkRevenue ?? 0) + (s.reports.at(-1)?.spotBulkRevenue ?? 0))} hint={`계약 납품 ${won(s.reports.at(-1)?.bulkRevenue ?? 0)} + 현물·IB 매각 ${won(s.reports.at(-1)?.spotBulkRevenue ?? 0)} (현물 판매는 즉시 입금, 다음 결산에 집계)`} />
       </div>
 
@@ -45,7 +46,7 @@ export function B2B() {
           <Table head={['구매자', '원액', '스타일', '월 물량', '기간', '단가(LPA)', '최소 품질', '선급금', '총액', '미납 위약금', '숙성 영향', '']}>
             {s.contractOffers.map((o) => (
               <tr key={o.id}>
-                <Td className="font-medium">{o.buyerName}{o.domestic && <> <Badge tone="good">국산 프리미엄</Badge></>}{o.craft && <> <Badge tone="good">크래프트 ×{BULK.craftPriceFactor}</Badge></>}</Td>
+                <Td className="font-medium">{o.buyerName}{o.domestic && <> <Badge tone="good">국산 프리미엄</Badge></>}{o.craft && <> <Badge tone="good">크래프트 ×{BULK.craftPriceFactor}</Badge></>}{o.filling && <> <Badge tone="info">필링 · 보관료 {won(o.filling.storagePerCaskMonth)}/통·월 · {o.filling.holdMonths}개월 보관</Badge></>}</Td>
                 <Td>{o.spirit === 'grain_newmake' ? '그레인 뉴메이크' : '몰트 뉴메이크'}</Td>
                 <Td><Badge>{STYLE_LABEL[o.style]}</Badge></Td>
                 <Td right>{num(o.lpaPerMonth)} LPA</Td>
@@ -61,7 +62,7 @@ export function B2B() {
             ))}
           </Table>
         )}
-        <p className="mt-2 text-xs text-stone-500">계약하면 매달 말 생산이 끝난 뒤 조건에 맞는 탱크 뉴메이크가 오래된 것부터 자동 납품됩니다. 모자라면 위약금을 내고, 누적 미납이 두 달치가 되면 계약이 파기되며 신뢰도가 크게 떨어집니다. 계약 물량만큼 캐스크에 넣을 원액이 줄어듭니다 — LPA당 병입 위스키 가치는 현물 원액의 약 5배이므로, <b>뉴메이크 계약은 첫 위스키가 나오기 전에 끝나게</b> 잡는 것이 좋습니다(빨간 경고).</p>
+        <p className="mt-2 text-xs text-stone-500">계약하면 매달 말 생산이 끝난 뒤 조건에 맞는 탱크 뉴메이크가 오래된 것부터 자동 납품됩니다.{siteOf(s).deals?.includes('filling') && <> <b>필링 계약</b>은 납품 원액을 블렌더가 댄 ex-버번 배럴(63.5%)에 채워 우리 숙성고에 맡기고 통마다 월 보관료를 받습니다 — 숙성고 자리를 내주는 대신 캐스크값이 들지 않습니다. 숙성고가 차면 탱크로 넘깁니다(보관료 없음).</>} 모자라면 위약금을 내고, 누적 미납이 두 달치가 되면 계약이 파기되며 신뢰도가 크게 떨어집니다. 계약 물량만큼 캐스크에 넣을 원액이 줄어듭니다 — LPA당 병입 위스키 가치는 현물 원액의 약 5배이므로, <b>뉴메이크 계약은 첫 위스키가 나오기 전에 끝나게</b> 잡는 것이 좋습니다(빨간 경고).</p>
       </Card>
 
       <Card title="진행 중 계약">
@@ -69,7 +70,7 @@ export function B2B() {
           <Table head={['구매자', '스타일', '월 물량', '단가', '진행', '누적 납품', '누적 미납', '남은 선급금', '숙성 영향', '']}>
             {s.contracts.map((c) => (
               <tr key={c.id}>
-                <Td className="font-medium">{c.buyerName}</Td>
+                <Td className="font-medium">{c.buyerName}{c.filling && <> <Badge tone="info">필링 · 보관 {s.casks.filter((k) => k.owner?.filling?.contractId === c.id).length}통</Badge></>}</Td>
                 <Td><Badge>{STYLE_LABEL[c.style]}</Badge> q≥{c.minQuality}</Td>
                 <Td right>{num(c.lpaPerMonth)} LPA</Td>
                 <Td right>{won(c.pricePerLPA)}</Td>

@@ -147,6 +147,8 @@ export interface RegionDef {
   /** 전통주(지역특산주) 주세 경감: 자국 자생 원재료 비율이 nativeShare 이상인 자사 제품. 연 누적 출고량(L) 구간별 세율 배수 */
   traditionalRelief?: { nativeShare: number; tiers: { upToL: number; factor: number }[]; label: string; basis: string; requiresFacility: string; maxPrevYearL: number };
   /** 지역 특산 캐스크는 싸고, 다른 지역 캐스크는 비싸다 */
+  /** 지역 원료 단가 배수 (원료 id → 배수). 스코틀랜드 맥아처럼 현지 산업이 큰 원료 (#110) */
+  ingredientPriceFactor?: Partial<Record<string, number>>;
   caskPriceFactor: Partial<Record<CaskTypeId, number>>;
 }
 
@@ -156,6 +158,8 @@ const ALL_KINDS: SpiritKind[] = ['soju', 'gin', 'malt', 'grain', 'baijiu'];
 const krWhisky = casesOf('KR.whisky_total.imports.2024');
 const jpWhisky = casesOf('JP.whisky_total.tax_volume.FY2024');
 const twWhisky = casesOf('TW.whisky_total.imports.2023');
+// 영국: 증류주 출고(HMRC 2024, 40% 환산 3,622만 케이스)의 25%를 위스키로 가정 [추정, scotland.md §2]
+const ukWhisky = casesOf('UK.spirits_total.domestic_release.2024') * 0.25;
 
 export const REGIONS: Record<RegionId, RegionDef> = {
   KR: {
@@ -401,9 +405,9 @@ export const REGIONS: Record<RegionId, RegionDef> = {
   UK: {
     id: 'UK',
     nameKo: '영국 (스코틀랜드 스페이사이드)',
-    // 스페이사이드 평년값 근사 — regions.md §3 숙성 보정(3~14.5°C, 증발 2.0%)과 맞춘다 [조사 대기: Met Office 평년값]
-    tempC: [3.0, 3.4, 5.0, 7.0, 9.8, 12.5, 14.5, 14.2, 12.0, 8.8, 5.5, 3.3],
-    humidity: [86, 84, 81, 79, 78, 79, 80, 82, 83, 85, 86, 87],
+    // 기온: Met Office 로시머스 평년값(1991~2020, (최고+최저)/2). 습도: 엘긴 두 자료(NASA POWER 82~94%, climate-data 75~82%)의 중간 [추정]
+    tempC: [3.8, 4.2, 5.7, 7.8, 10.1, 12.7, 14.8, 14.5, 12.6, 9.4, 6.2, 3.8],
+    humidity: [87, 86, 83, 80, 78, 79, 80, 81, 83, 85, 87, 88],
     // 종량세 £33.99/LPA(2026-02-01, 22% 초과) × 1,800원/£ + 부가세 20% — 기준 브랜치 수출 시장 '영국'과 같은 값
     tax: { adValorem: 0, education: 0, specificPerLPA: 61_200, vat: 0.2, label: '종량세 약 61,200원/LPA (£33.99) + 부가세 20%' },
     retailMarkup: 1.35,
@@ -413,11 +417,14 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     // 증류소 방문 연 200만 명(SWA 2018) — 위스키 관광이 가장 큰 나라
     tourism: 1.3,
     market: {
-      // [조사 대기] 아래 시장 규모는 임시값 — 영국 증류주 출고 130.4M LPA(HMRC 2024) 중 위스키 몫을 조사로 채운다
-      whisky: { baseCases: 1_200_000, baseSource: '임시: 영국 싱글몰트 내수 (조사 대기)', refConsumerPricePerL: 90_000, refAbv: 0.43, elasticity: 1.3, shareCap: 0.005 },
-      blended_whisky: { baseCases: 6_000_000, baseSource: '임시: 영국 블렌디드 스카치 내수 (조사 대기)', refConsumerPricePerL: 40_000, refAbv: 0.4, elasticity: 2.0, shareCap: 0.002 },
-      grain_whisky: { baseCases: 150_000, baseSource: '임시 (조사 대기)', refConsumerPricePerL: 70_000, refAbv: 0.43, elasticity: 1.5, shareCap: 0.01 },
-      gin: { baseCases: 5_000_000, baseSource: '임시: 영국 진 내수 (조사 대기)', refConsumerPricePerL: 50_000, refAbv: 0.4, elasticity: 2.0, shareCap: 0.003 },
+      // 영국 내수 위스키 물량은 공식 수치를 못 찾았다(HMRC 위스키 출고 표 미열람) → 증류주 출고(HMRC 2024, 130.4M LPA)의 25%를 위스키로 [추정],
+      // 그중 싱글몰트 12%(펍 매출의 31.8%가 몰트 — CGA 2023, 물량 비중은 더 낮다), 블렌디드 85%, 그레인 3% [추정]
+      // 소비자가: 신생 크래프트 싱글몰트 £50~68·12년 £37~43 → 평균 £45/70cl ≈ 11.6만 원/L, 블렌디드 £16~18.5 ≈ 4.4만 원/L, 진 £28~45(크래프트)·대중 진 포함 ≈ 5.5만 원/L
+      whisky: { baseCases: Math.round(ukWhisky * 0.12), baseSource: 'UK.spirits_total(HMRC 2024) × 위스키 25% × 싱글몰트 12% (추정)', refConsumerPricePerL: 116_000, refAbv: 0.43, elasticity: 1.3, shareCap: 0.004 },
+      blended_whisky: { baseCases: Math.round(ukWhisky * 0.85), baseSource: 'UK.spirits_total × 위스키 25% × 블렌디드 85% (추정)', refConsumerPricePerL: 44_000, refAbv: 0.4, elasticity: 2.0, shareCap: 0.002 },
+      grain_whisky: { baseCases: Math.round(ukWhisky * 0.03), baseSource: 'UK.spirits_total × 위스키 25% × 그레인 3% (추정)', refConsumerPricePerL: 70_000, refAbv: 0.43, elasticity: 1.5, shareCap: 0.01 },
+      // 진: 2019년 정점 약 8,300만 병(WSTA) → 2025년 정점의 약 60%(IWSR −40%) ≈ 5,000만 병 = 390만 케이스 [추정]
+      gin: { baseCases: 3_900_000, baseSource: 'WSTA 2019 정점 8,300만 병 × 0.6 (IWSR 2025 −40%) (추정)', refConsumerPricePerL: 55_000, refAbv: 0.4, elasticity: 2.0, shareCap: 0.003 },
       soju_distilled: { baseCases: 5_000, baseSource: '추정: K-주류 틈새', refConsumerPricePerL: 30_000, refAbv: 0.25, elasticity: 2.0, shareCap: 0.05 },
       baijiu: { baseCases: 10_000, baseSource: '추정: 중식당 중심 소규모', refConsumerPricePerL: 45_000, refAbv: 0.45, elasticity: 1.8, shareCap: 0.02 },
       malt_spirit: { baseCases: 20_000, baseSource: '추정', refConsumerPricePerL: 70_000, refAbv: 0.46, elasticity: 1.3, shareCap: 0.2 },
@@ -458,7 +465,10 @@ export const REGIONS: Record<RegionId, RegionDef> = {
         { tone: 'bad', text: '공급 과잉 이벤트 ×2 · 이웃 증류소가 직원을 빼 간다(대신 빼 올 기회도 있다)' },
       ],
     },
-    caskPriceFactor: { ex_bourbon_barrel: 0.9, oloroso_butt: 0.95, mizunara_hogshead: 1.8, korean_oak_quarter: 1.8 },
+    // 버번 배럴 £237(2024, 켄터키 출고)·셰리 벗 약 £1,200 — 기본 단가와 비슷해 배수 1. 미즈나라·한국 참나무는 멀다
+    caskPriceFactor: { ex_bourbon_barrel: 1.0, oloroso_butt: 1.0, mizunara_hogshead: 1.8, korean_oak_quarter: 1.8 },
+    // 스코틀랜드 몰팅 산업: 맥아용 보리 £157~185/t(2025~26, 과잉으로 프리미엄 £5~15) — 수입 맥아 단가의 약 60% [추정]
+    ingredientPriceFactor: { malt_unpeated: 0.6, malt_peated: 0.65 },
   },
 };
 

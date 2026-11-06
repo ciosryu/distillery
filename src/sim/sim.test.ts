@@ -489,7 +489,7 @@ describe('실명 레지스트리 (결정 #44)', () => {
   it('실존 회사는 모두 canDefault가 아니고, 지역마다 현지 구매자가 있다', () => {
     const real = BUYERS.filter((b) => b.real !== b.fictional);
     expect(real.every((b) => !b.canDefault)).toBe(true);
-    for (const region of ['KR', 'JP', 'TW'] as const) expect(buyersFor(newGame({ seed: 1, region })).some((b) => b.domestic)).toBe(true);
+    for (const region of ['KR', 'JP', 'TW', 'UK'] as const) expect(buyersFor(newGame({ seed: 1, region })).some((b) => b.domestic)).toBe(true);
   });
 
   it('독립 병입자 캐스크 매입 제안을 수락하면 현금이 들어오고 캐스크가 빠진다', () => {

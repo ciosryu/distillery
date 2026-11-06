@@ -1,3 +1,4 @@
+import { regionOf } from './content/regions';
 import type { GameState, Modifier } from './types';
 import { nid } from './util';
 
@@ -31,7 +32,8 @@ export function effectivePriceIndex(s: GameState, volumeDiscount: Record<string,
   const out: Record<string, number> = {};
   for (const [k, v] of Object.entries(s.priceIndex)) {
     const key = k === 'energy' ? 'energy' : `ingredient:${k}`;
-    out[k] = v * mod(s, key) * (volumeDiscount[k] ?? 1);
+    // 지역 원료 단가 (스코틀랜드 맥아 등, #110)
+    out[k] = v * mod(s, key) * (volumeDiscount[k] ?? 1) * (regionOf(s).ingredientPriceFactor?.[k] ?? 1);
   }
   return out;
 }
