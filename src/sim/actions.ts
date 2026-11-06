@@ -69,7 +69,7 @@ const ACTION_CASH_KEY: Record<Action['type'], CashFlowKey | null> = {
   // 입지 특성 (#86~): 취수 증량 신청비, 납품 계약 해지 비용, 위탁생산 설비 패키지(설치비 − 지원금)
   applyWaterPermit: 'other', acceptRetail: null, cancelRetail: 'contractCancel', acceptOem: 'equipment',
   // 수출 (#95): 시장 진출비·철수
-  openExport: 'export', closeExport: 'export',
+  openExport: 'export', closeExport: 'export', setExportPrice: null,
 };
 
 /** 행동 적용. 행동으로 움직인 현금은 pendingCash에 기록돼 다음 결산 보고서(offTurn·netCash)에 합쳐진다 */
