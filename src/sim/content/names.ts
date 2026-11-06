@@ -32,6 +32,9 @@ export const BUYERS: NamedEntity[] = [
   { id: 'saebyeok', real: '새벽 스피릿 브로커스', fictional: '새벽 스피릿 브로커스', country: 'KR', canDefault: true },
   { id: 'kanto', real: '간토 블렌딩 하우스', fictional: '간토 블렌딩 하우스', country: 'JP', canDefault: true },
   { id: 'formosa', real: '포모사 캐스크 트레이딩', fictional: '포모사 캐스크 트레이딩', country: 'TW', canDefault: true },
+  // 영국 (#110): 스페이사이드 블렌더·브로커 (가상)
+  { id: 'speyblend', real: '스페이 블렌딩 컴퍼니', fictional: '스페이 블렌딩 컴퍼니', country: 'UK', canDefault: true },
+  { id: 'aberdeen_brokers', real: '애버딘 캐스크 브로커스', fictional: '애버딘 캐스크 브로커스', country: 'UK', canDefault: true },
 ];
 
 /** 독립 병입자 — 우수 캐스크 매입 제안 */

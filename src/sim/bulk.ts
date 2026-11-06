@@ -6,7 +6,8 @@ import { clamp, evaluate } from './flavor';
 import { lotCategory } from './blending';
 import type { Rng } from './rng';
 import type { Cask, Contract, ContractOffer, ContractTerms, GameState, MonthReport, SpiritLot } from './types';
-import { nid } from './util';
+import { nid, warehouseCapacity } from './util';
+import { assignSlot } from './ops';
 
 // 원액 B2B 판매 (PRD §8.6): 블렌디드 위스키 회사·브로커에 현물 벌크 판매 또는 정기 공급 계약.
 // 원칙: 현물 매입가(bid) < 기준가치 < 브로커 판매가(ask) → 사고팔기만으로 차익을 낼 수 없다.
@@ -163,9 +164,29 @@ export function makeCraftContractOffer(s: GameState, rng: Rng): ContractOffer | 
   };
 }
 
+/** 필링 계약 (#112, 스페이사이드 대표 결정) [튜닝] — 블렌더가 빈 캐스크(ex-버번 배럴)를 대고, 납품 원액을 그 캐스크에 63.5%로 채워 우리 숙성고에 맡긴다.
+ *  원액값은 일반 계약의 ×0.95(캐스크를 블렌더가 대므로 통값을 덜 받는다), 캐스크당 월 보관료(5,000원 × 인건비 — 투자자 보관료 £34~65/통·년 ≈ 월 £3~5), 36~60개월 뒤 블렌더가 가져간다 */
+export const FILLING = { offerChance: 0.3, priceFactor: 0.95, storagePerCaskMonth: 5_000, holdMonths: [36, 48, 60], fillAbv: 0.635, caskType: 'ex_bourbon_barrel' as const };
+
+export function makeFillingOffer(s: GameState, rng: Rng): ContractOffer | null {
+  const cap = capacityLPA(s, 'malt');
+  if (cap <= 0) return null;
+  const lpaPerMonth = Math.max(60, Math.round((cap * rng.pick([0.35, 0.5, 0.7]) * regionOf(s).bulkMarketDepth) / 10) * 10);
+  const o = buildOffer(s, rng, 'malt_newmake', lpaPerMonth, rng.pick([12, 24, 36]), rng.chance(0.35) ? 0.3 : 0, FILLING.priceFactor);
+  return { ...o, id: nid(s, 'F'), filling: { storagePerCaskMonth: Math.round(FILLING.storagePerCaskMonth * regionOf(s).laborCost / 100) * 100, holdMonths: rng.pick(FILLING.holdMonths) } };
+}
+
+/** 필링 캐스크 1개에 들어가는 순수 알코올 */
+export const fillingCaskLPA = () => CASKS[FILLING.caskType].sizeL * FILLING.fillAbv;
+
 export function refreshContractOffers(s: GameState, rng: Rng): void {
   s.contractOffers = s.contractOffers.filter((o) => o.expiresMonth > s.month);
-  while (s.contractOffers.filter((o) => !o.craft).length < 2) s.contractOffers.push(makeContractOffer(s, rng));
+  while (s.contractOffers.filter((o) => !o.craft && !o.filling).length < 2) s.contractOffers.push(makeContractOffer(s, rng));
+  // 필링 계약: 입지 대표 거래가 'filling'인 곳(스페이사이드)에서만
+  if ((siteOf(s).deals ?? []).includes('filling') && !s.contractOffers.some((o) => o.filling) && rng.chance(FILLING.offerChance)) {
+    const o = makeFillingOffer(s, rng);
+    if (o) s.contractOffers.push(o);
+  }
   if (!s.contractOffers.some((o) => o.craft) && rng.chance(BULK.craftChance)) {
     const o = makeCraftContractOffer(s, rng);
     if (o) s.contractOffers.push(o);
@@ -220,6 +241,39 @@ export function cancellationCost(c: Contract): number {
   return Math.round(remainingLPA * c.penaltyPerLPA * 0.5 + c.prepaidRemaining);
 }
 
+/** 필링 납품: 원액을 블렌더 소유 캐스크(63.5%)에 채워 우리 숙성고에 둔다. 숙성고가 차면 남는 원액은 탱크로 넘긴다(보관료 없음) */
+function fillBlenderCasks(s: GameState, c: Contract, taken: { lot: SpiritLot; lpa: number }[], report: MonthReport): void {
+  const per = fillingCaskLPA();
+  const def = CASKS[FILLING.caskType];
+  let filled = 0;
+  for (const t of taken) {
+    for (let n = Math.floor(t.lpa / per + 1e-9); n > 0; n--) {
+      if (s.casks.length >= warehouseCapacity(s)) break;
+      const id = nid(s, 'K');
+      const cask: Cask = {
+        id, typeId: def.id, sizeL: def.sizeL, wood: def.wood, activity: def.activity, seasoning: def.seasoning, fills: 1, recharCount: 0, char: def.char, filledMonth: s.month,
+        contents: { ...t.lot, id: nid(s, 'L'), name: `${t.lot.name} → ${id} (필링)`, volumeL: per / FILLING.fillAbv, abv: FILLING.fillAbv },
+        owner: { name: c.buyerName, soldMonth: s.month, deliverMonth: s.month + c.filling!.holdMonths, filling: { contractId: c.id, storagePerMonth: c.filling!.storagePerCaskMonth } },
+      };
+      assignSlot(s, cask);
+      s.casks.push(cask);
+      filled++;
+    }
+  }
+  if (filled) report.notes.push(`필링 계약: ${c.buyerName} 캐스크 ${filled}개를 채워 숙성고에 보관 (${c.filling!.holdMonths}개월 뒤 인도)`);
+  else report.notes.push(`필링 계약: 숙성고가 차서 ${c.buyerName} 원액을 탱크로 넘겼다 (보관료 없음)`);
+}
+
+/** 필링 캐스크 보관료 (월) — 블렌더가 낸다 */
+export function collectFillingStorage(s: GameState, report: MonthReport): number {
+  const fee = s.casks.reduce((t, k) => t + (k.owner?.filling?.storagePerMonth ?? 0), 0);
+  if (fee <= 0) return 0;
+  s.cash += fee;
+  report.fillingStorageRevenue = fee;
+  report.bulkRevenue += fee;
+  return fee;
+}
+
 /** 월말 자동 납품: 조건에 맞는 탱크 뉴메이크를 오래된 것부터 출하 */
 export function fulfillContracts(s: GameState, report: MonthReport): void {
   const done: string[] = [];
@@ -228,15 +282,18 @@ export function fulfillContracts(s: GameState, report: MonthReport): void {
     const eligible = s.lots
       .filter((l) => isNewMake(l) && !l.sourced && l.kind === (c.spirit === 'grain_newmake' ? 'grain' : 'malt') && matchesStyle(l, c.style) && lotQuality(l) >= c.minQuality)
       .sort((a, b) => a.createdMonth - b.createdMonth);
+    const taken: { lot: SpiritLot; lpa: number }[] = [];
     for (const lot of eligible) {
       if (need <= 1e-6) break;
       const lotLPA = lot.volumeL * lot.abv;
       const take = Math.min(need, lotLPA);
+      if (c.filling) taken.push({ lot: { ...lot }, lpa: take });
       lot.volumeL -= take / lot.abv;
       need -= take;
     }
     s.lots = s.lots.filter((l) => l.volumeL >= 1);
     const delivered = c.lpaPerMonth - need;
+    if (c.filling && delivered > 0) fillBlenderCasks(s, c, taken, report);
     const gross = delivered * c.pricePerLPA;
     const offset = Math.min(c.prepaidRemaining, gross * c.prepayShare);
     const cashIn = Math.round(gross - offset);

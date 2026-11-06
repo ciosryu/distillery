@@ -2,7 +2,7 @@
 // 실행: npm run balance [-- 시드수 개월수 전략 지역 입지]   전략 = brand | hybrid | expand | grain | all(기본), 지역 = KR(기본) | JP | TW
 import { advanceMonth, applyAction, bulkValuePerLPA, capacityLPA, spotBidPerLPA, lotQuality, previewBlend, newGame, warehouseCapacity, whiskyMinMonths, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
 import { REGIONS, regionOf, siteOf } from '../src/sim/content/regions';
-import { dutyFreeSlotBlocker, inventoryLoanRoom, inventoryLtv, OEM, oemPackageCost } from '../src/sim';
+import { dutyFreeSlotBlocker, fillingCaskLPA, inventoryLoanRoom, inventoryLtv, OEM, oemPackageCost } from '../src/sim';
 import { EVENTS } from '../src/sim/content/events';
 import { RETAIL } from '../src/sim/ops';
 import { EQUIPMENT } from '../src/sim/content/catalog';
@@ -31,18 +31,19 @@ if (process.env.EXPORT_ALLOC) EXPORT_SALES.allocation = process.env.EXPORT_ALLOC
 if (process.env.EXPORT_PF) { const [lo, hi] = process.env.EXPORT_PF.split(',').map(Number); for (const m of Object.values(EXPORT_MARKETS)) m.offer.priceFactor = [lo!, hi!]; }
 if (process.env.EXPORT_MKT) for (const m of Object.values(EXPORT_MARKETS)) m.monthlyCost *= Number(process.env.EXPORT_MKT);
 
-type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site';
+type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site' | 'export';
 
 /** 입지 대표 결정 전략 (결정 #86~#90) — 지역 기본 전략(한국 브랜드형·일본 혼합형) 위에 입지 고유 결정 하나를 얹는다 */
 const SITE_KEY = `${REGION}/${SITE ?? 'default'}`;
 const SITE_STRATEGY: Record<string, string> = {
   'KR/default': '브랜드 + 대형 유통 납품(소주)',
+  'UK/default': '브랜드 + 필링 계약(블렌더 캐스크 보관)',
   'KR/jeju': '브랜드 + 고소리술 면세 기념품 한정판(매대 1칸, 판당 300병) + 취수 증량',
   'JP/default': '혼합 + 위탁생산(전용 증류기 지원형 포함)',
   'JP/kansai': process.env.SITE_VIP === '1' ? '혼합 + 미즈나라 캐스크(인센스 프리미엄) + VIP 비지터 센터' : '혼합 + 미즈나라 캐스크(인센스 프리미엄)',
   'JP/hokkaido': '혼합 + 재고 담보대출로 버티기',
 };
-const SITE_BASE: Record<string, Exclude<Strategy, 'site'>> = { KR: 'brand', JP: 'hybrid', TW: 'brand' };
+const SITE_BASE: Record<string, Exclude<Strategy, 'site'>> = { KR: 'brand', JP: 'hybrid', TW: 'brand', UK: 'brand' };
 let siteMode = false;
 /** 대형 유통 납품으로 나갈 소주 병수 — 병입 기준 재고에 더한다 */
 let retailBuffer = 0;
@@ -185,7 +186,7 @@ function exportPolicy(s: GameState, strategy: Strategy): GameState {
   const acclaimed = (s.acclaim ?? 0) >= Number(process.env.ACCLAIM_OPEN ?? 0.2);
   const surplus = EXPORT_NAIVE || process.env.EXPORT_GATE === '0' || acclaimed || s.casks.filter((c) => c.contents?.kind === 'malt' && !c.contents.sourced && c.contents.oakMonths >= 36).length >= Number(process.env.EXPORT_SURPLUS ?? 20);
   // 확장형은 성장 전략이라 남는 재고를 기다리지 않고 해외 판로를 먼저 연다 — 실험 결과 기각, EXPAND_EXPORT=1로만 (§16.25)
-  const growth = strategy === 'expand' && process.env.EXPAND_EXPORT === '1';
+  const growth = strategy === 'export' || (strategy === 'expand' && process.env.EXPAND_EXPORT === '1');
   const MAX = Number(process.env.EXPORT_MAX ?? 3);
   // #101: 수입사 제안이 오면 받는다 — 면세점은 위스키가 나온 뒤(36개월~), 해외는 3년 숙성 재고가 생긴 뒤(48개월~). 동시에 최대 EXPORT_MAX곳
   for (const o of [...(s.exportOffers ?? [])]) {
@@ -239,6 +240,7 @@ function finance(s: GameState): GameState {
   // 한국 완화책(#73): 저리 지역 정책자금을 먼저 쓴다
   if (s.regionId === 'KR' && s.cash < 200_000_000 && !s.loans.some((l) => l.offerId === 'kr_regional')) s = act(s, { type: 'takeLoan', offerId: 'kr_regional', amount: 300_000_000 });
   if (s.regionId === 'KR' && s.cash < 100_000_000 && !s.loans.some((l) => l.offerId === 'kr_startup')) s = act(s, { type: 'takeLoan', offerId: 'kr_startup', amount: 200_000_000 });
+  if (s.regionId === 'UK' && s.cash < 200_000_000 && !s.loans.some((l) => l.offerId === 'uk_regional')) s = act(s, { type: 'takeLoan', offerId: 'uk_regional', amount: 300_000_000 });
   if (s.cash < 100_000_000 && !s.loans.some((l) => l.offerId === 'working')) s = act(s, { type: 'takeLoan', offerId: 'working', amount: 300_000_000 });
   if (s.cash < 50_000_000 && !s.loans.some((l) => l.offerId === 'facility')) s = act(s, { type: 'takeLoan', offerId: 'facility', amount: 500_000_000 });
   if (s.flags.producedSoju && !s.loans.some((l) => l.offerId === 'policy') && s.cash < 300_000_000) s = act(s, { type: 'takeLoan', offerId: 'policy', amount: 200_000_000 });
@@ -275,7 +277,7 @@ function start(s: GameState, strategy: Strategy): GameState {
   const baijiu = rid(s, 'baijiu');
   if (baijiu) s = act(s, { type: 'setOrder', recipeId: baijiu, batchesPerMonth: 1 });
   else s = act(s, { type: 'setOrder', recipeId: rid(s, 'gin')!, batchesPerMonth: soju ? 1 : 2 });
-  if (strategy === 'hybrid' || strategy === 'brand' || (strategy === 'expand' && !OLD_EXPAND)) {
+  if (strategy === 'hybrid' || strategy === 'brand' || strategy === 'export' || (strategy === 'expand' && !OLD_EXPAND)) {
     // 브랜드형·혼합형은 같은 생산 능력(발효조 증설 + 몰트 7배치)으로 비교한다 — 차이는 B2B 계약 여부뿐
     // 혼합형: 브랜드가 소화 못 할 몫만 계약으로
     s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
@@ -317,7 +319,7 @@ function maltLPALastMonth(s: GameState): number {
   const ids = new Set(s.recipes.filter((r) => r.kind === 'malt').map((r) => r.id));
   return s.reports.at(-1)?.production.filter((p) => ids.has(p.recipeId)).reduce((t, p) => t + p.lpa, 0) ?? 0;
 }
-function expandStaged(s: GameState): GameState {
+function expandStaged(s: GameState, strategy: Strategy = 'expand'): GameState {
   // 증설 단계 = 증설 레시피가 쓰는 증류기 (처음 증류기는 고장·수리로 readyMonth가 바뀌므로 readyMonth로 가리면 안 된다)
   const stageIds = new Set(s.recipes.filter((r) => r.name.startsWith(EXPAND_RECIPE)).map((r) => r.stillId));
   const stages = s.equipment.filter((e) => stageIds.has(e.id));
@@ -326,7 +328,9 @@ function expandStaged(s: GameState): GameState {
     const r = s.recipes.find((x) => x.stillId === still.id && x.name.startsWith(EXPAND_RECIPE));
     if (r && !s.orders.some((o) => o.recipeId === r.id)) s = act(s, { type: 'setOrder', recipeId: r.id, batchesPerMonth: 7 });
   }
-  if (s.month < EXPAND_FROM || stages.length >= EXPAND_MAX_STAGES) return s;
+  // 수출형(#107)은 해외 판로를 여는 48개월부터 증설을 검토한다
+  const from = strategy === 'export' ? Number(process.env.EXPORT_EXPAND_FROM ?? 48) : EXPAND_FROM;
+  if (s.month < from || stages.length >= EXPAND_MAX_STAGES) return s;
   if (stages.length && s.month - Math.max(...stages.map((e) => e.readyMonth)) < 12) return s; // 단계 사이 최소 12개월
   const demand = whiskyDemandLastMonth(s);
   const supply = maltLPALastMonth(s) * BOTTLES_PER_LPA_AGED;
@@ -412,6 +416,16 @@ function siteActions(s: GameState): GameState {
       if (!o.dedicated || s.cash > oemPackageCost(s) - (o.capexSupport ?? 0) + 300_000_000) s = act(s, { type: 'acceptOem', offerId: o.id });
     }
   }
+  // 스페이사이드: 필링 계약 (#112) — 숙성고 자리가 넉넉하면 받고(FILL_UNTIL개월까지, 한 번에 1건), 블렌더 캐스크가 쌓이면 숙성고를 늘린다
+  if (site.deals?.includes('filling')) {
+    const per = fillingCaskLPA();
+    for (const o of [...s.contractOffers]) {
+      if (!o.filling || s.month >= Number(process.env.FILL_UNTIL ?? 48) || s.contracts.some((c) => c.filling)) continue;
+      const casks = Math.ceil((o.lpaPerMonth * o.termMonths) / per);
+      if (warehouseCapacity(s) - s.casks.length - casks >= 20 || process.env.FILL_ANY === '1') s = act(s, { type: 'acceptContract', offerId: o.id });
+    }
+    if (s.casks.some((c) => c.owner?.filling)) s = growWarehouse(s);
+  }
   // 제주: 취수 허가에 막히면 증량 신청
   if (site.waterPermit && !s.siteState.permitApplication && s.cash > 150_000_000 && s.reports.at(-1)?.notes.some((n) => n.includes('취수 허가량'))) s = act(s, { type: 'applyWaterPermit' });
   // 오사카·교토: SITE_VIP=1이면 숙성 위스키가 나온 뒤 VIP 테이스팅 라운지 — v1.4 VIP 등급이 그 자체로 과하게 강해(월 수천만 원) 기본은 끈다 (PRD §15.3 #15)
@@ -456,8 +470,9 @@ function policy(s: GameState, strategy: Strategy): GameState {
     s = process.env.GRAIN_DUMB === '1' ? sellLots(s, 'grain') : sellGrainSmart(s, r?.id);
     s = fillMalt(s);
     s = bottleBlended(s);
-  } else if (!OLD_EXPAND) {
-    s = expandStaged(s);
+  } else if (!OLD_EXPAND || strategy === 'export') {
+    // export(#107 검증): 확장형 + 남는 재고를 기다리지 않고 48개월부터 해외 판로를 연다(exportPolicy) — 수출 수요가 증설 판단(whiskyDemandLastMonth)에 들어간다
+    s = expandStaged(s, strategy);
     s = growWarehouse(s);
     s = fillMalt(s);
     if (process.env.DBG_EXP && s.month % 6 === 0) {
@@ -581,8 +596,9 @@ function play(strategy: Strategy, seed: number): Result {
   };
 }
 
-const list: Strategy[] = WHICH === 'all' ? ['brand', 'hybrid', 'expand', 'grain', ...(SITE_STRATEGY[SITE_KEY] ? ['site' as const] : [])] : [WHICH as Strategy];
-const results: Record<Strategy, Result[]> = { brand: [], hybrid: [], expand: [], grain: [], site: [] };
+// EXTRA_EXPORT=1이면 'all'에 수출형(export, #107 검증)을 더한다
+const list: Strategy[] = WHICH === 'all' ? ['brand', 'hybrid', 'expand', 'grain', ...(SITE_STRATEGY[SITE_KEY] ? ['site' as const] : []), ...(process.env.EXTRA_EXPORT === '1' ? ['export' as const] : [])] : [WHICH as Strategy];
+const results: Record<Strategy, Result[]> = { brand: [], hybrid: [], expand: [], grain: [], site: [], export: [] };
 if (SITE_STRATEGY[SITE_KEY]) console.log(`site 전략 = ${SITE_STRATEGY[SITE_KEY]}`);
 const wins: Record<string, number> = {};
 const bookWins: Record<string, number> = {};

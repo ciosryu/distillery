@@ -30,7 +30,9 @@ export type Effect =
   /** 평론가 판정: 최고 제품 품질 ≥ rave면 극찬, < pan이면 혹평 */
   | { type: 'criticVerdict'; rave: number; pan: number; raveEffects: Effect[]; panEffects: Effect[]; mildEffects: Effect[] }
   /** 세무조사: 최근 3개월 주세 × rate 추징, 사무직 세무 스탯으로 감면 */
-  | { type: 'taxAudit'; rate: number };
+  | { type: 'taxAudit'; rate: number }
+  /** 이웃 증류소 숙련자 스카우트 (#113): 스탯 minStat 이상 직원을 월급 +salaryPremium로 채용, 계약금 = 월급 × signingMonths */
+  | { type: 'scoutStaff'; minStat: number; salaryPremium: number; signingMonths: number };
 
 export type Requirement = 'activeContract' | 'filledCasks' | 'whiskyStock' | 'twoStaff' | 'still' | 'products' | 'highQualityProduct' | 'agedWhisky' | 'exportUS' | 'exportCN';
 
@@ -232,6 +234,12 @@ export const EVENTS: EventDef[] = [
       { label: '연봉 20% 인상', detail: '직원 한 명의 연봉을 20% 올려 붙잡는다', effects: [{ type: 'raiseSalary', share: 0.2 }] },
       { label: '보낸다', detail: '직원 한 명이 퇴사한다', effects: [{ type: 'loseStaff' }] },
     ], defaultChoice: 0 },
+  // 인재 쟁탈 (#113, 스페이사이드 ×3): 증류소가 붙어 있어 이직이 쉽다 — 빼앗기기도(staff_poaching ×1.5) 하고 빼 오기도 한다
+  { id: 'rival_scout', title: '이웃 증류소 숙련자 스카우트 기회', category: 'people', chance: 0.005, cooldown: 24, minMonth: 6, regions: ['UK'], text: '이웃 증류소의 숙련 직원이 이직을 고민한다는 소식이 들립니다. 웃돈을 주면 데려올 수 있습니다.',
+    choices: [
+      { label: '웃돈을 주고 데려온다', detail: '스탯 70 이상 숙련 직원 채용 — 급여 +30%, 계약금 급여 3개월 치', effects: [{ type: 'scoutStaff', minStat: 70, salaryPremium: 0.3, signingMonths: 3 }] },
+      { label: '이웃과 척지지 않는다', detail: '아무 일도 없다', effects: [] },
+    ], defaultChoice: 1 },
 ];
 
 export const EVENT: Record<string, EventDef> = Object.fromEntries(EVENTS.map((e) => [e.id, e]));

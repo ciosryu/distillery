@@ -261,12 +261,16 @@ export const OWNERSHIP = { premiumBase: 1.3, premiumAwareness: 0.8, deliverAtMon
 
 export function ownershipOversold(s: GameState): boolean {
   const filled = s.casks.filter((c) => c.contents);
-  return filled.length > 0 && filled.filter((c) => c.owner).length / filled.length > OWNERSHIP.oversellShare;
+  // 필링 캐스크(#112)는 블렌더 원액이라 오너십 과다 판매(브랜드 희소성)와 무관하다
+  const own = filled.filter((c) => !c.owner?.filling);
+  return own.length > 0 && own.filter((c) => c.owner).length / own.length > OWNERSHIP.oversellShare;
 }
 
 export function deliverOwnedCasks(s: GameState, report: MonthReport): void {
   const due = s.casks.filter((c) => c.owner && c.owner.deliverMonth <= s.month);
-  for (const c of due) report.notes.push(`캐스크 오너십: ${c.owner!.name} 고객에게 캐스크 ${c.id} 인도`);
+  const fillings = due.filter((c) => c.owner!.filling);
+  if (fillings.length) report.notes.push(`필링 계약: ${fillings[0]!.owner!.name} 등에 캐스크 ${fillings.length}개 인도 — 숙성고 자리가 빈다`);
+  for (const c of due.filter((x) => !x.owner!.filling)) report.notes.push(`캐스크 오너십: ${c.owner!.name} 고객에게 캐스크 ${c.id} 인도`);
   if (due.length) s.casks = s.casks.filter((c) => !due.includes(c));
 }
 

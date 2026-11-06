@@ -251,6 +251,8 @@ export const LOAN_OFFERS: LoanOfferDef[] = [
   // 한국 완화책(#73) — 고난도 지역은 유지하되 정책 융자로 버틸 길을 준다. 금리·조건은 게임 단순화 [확인 필요]
   { id: 'kr_regional', nameKo: 'K-위스키 지역 특화 산업 육성자금 (지자체)', annualRate: 0.02, termMonths: 96, max: 300_000_000, graceMonths: 24, regions: ['KR'], note: '경북 등 지자체의 K-위스키 산업 육성 기조를 단순화' },
   { id: 'kr_startup', nameKo: '창업기반지원자금 (중소벤처기업진흥공단)', annualRate: 0.025, termMonths: 72, max: 200_000_000, graceMonths: 18, regions: ['KR'], note: '창업 7년 이내 중소기업 정책 융자를 단순화' },
+  // 영국(#110): 스코틀랜드 공공 지원(지역 개발 기관·국립투자은행 등)을 하나로 묶은 저리 융자 — 기관·금리는 게임 단순화 [확인 필요]
+  { id: 'uk_regional', nameKo: '스코틀랜드 지역 개발 융자 (공공 지원)', annualRate: 0.03, termMonths: 96, max: 300_000_000, graceMonths: 24, regions: ['UK'], note: '스코틀랜드 신생 증류소의 공공 지원·저리 융자를 단순화' },
   // 재고 담보대출 (결정 #90, 홋카이도) — 숙성 원액 시가를 담보로. 시가가 떨어지면 추가 상환 요구 [튜닝]
   { id: 'inventory', nameKo: '숙성 재고 담보대출', annualRate: 0.06, termMonths: 60, max: 2_000_000_000, graceMonths: 12, collateral: 'inventory', note: '담보 인정 비율이 있는 입지(홋카이도)에서만' },
 ];
@@ -263,10 +265,12 @@ export const ROLE_INFO: Record<'distiller' | 'warehouse' | 'sales' | 'office', {
   sales: { nameKo: '영업', stats: ['친화', '네트워크', '협상'], baseSalary: 3_800_000 },
 };
 
-export const NAME_POOLS: Record<'KR' | 'JP' | 'TW', { surnames: string[]; given: string[] }> = {
+export const NAME_POOLS: Record<RegionId, { surnames: string[]; given: string[] }> = {
   KR: { surnames: ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '한', '오', '서', '신', '권', '황'], given: ['민준', '서연', '도윤', '지우', '하준', '서윤', '은우', '하은', '지호', '수아', '현우', '지민', '예준', '채원', '건우', '다은'] },
   JP: { surnames: ['사토 ', '스즈키 ', '다카하시 ', '다나카 ', '와타나베 ', '이토 ', '야마모토 ', '나카무라 '], given: ['하루토', '유이', '소타', '미오', '렌', '히나', '유토', '사쿠라'] },
   TW: { surnames: ['천', '린', '황', '장', '리', '왕', '우', '류'], given: ['즈하오', '이팅', '젠훙', '샤오웨이', '자오', '옌쥔', '이린', '웨이훙'] },
+  // 영국은 이름이 앞에 온다 — surnames 칸에 이름(+공백), given 칸에 성을 둔다 (이름 = surnames + given)
+  UK: { surnames: ['이언 ', '피오나 ', '앵거스 ', '케이티 ', '유언 ', '모라그 ', '캘럼 ', '아일라 '], given: ['매커디', '그랜트', '캠벨', '로스', '프레이저', '매켄지', '스튜어트', '머리'] },
 };
 export const SURNAMES = ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '한', '오', '서', '신', '권', '황'];
 export const GIVEN_NAMES = ['민준', '서연', '도윤', '지우', '하준', '서윤', '은우', '하은', '지호', '수아', '현우', '지민', '예준', '채원', '건우', '다은', '우진', '소율', '선우', '윤서'];

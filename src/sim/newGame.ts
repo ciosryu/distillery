@@ -47,6 +47,12 @@ function regionPresets(base: Pick<Recipe, 'botanicals' | 'botanicalMethod' | 'pr
     gin('재패니즈 보태니컬 진', [{ botanicalId: 'juniper', gramsPerL: 18 }, { botanicalId: 'yuzu', gramsPerL: 4 }, { botanicalId: 'sancho', gramsPerL: 2 }, { botanicalId: 'sakura', gramsPerL: 2 }, { botanicalId: 'green_tea', gramsPerL: 2 }, { botanicalId: 'coriander', gramsPerL: 3 }]),
     ...malts,
   ];
+  if (region === 'UK') return [
+    // 스카치 싱글 몰트가 본업 — 몰트를 먼저
+    ...malts,
+    londonDry,
+    gin('스코티시 보태니컬 진', [{ botanicalId: 'juniper', gramsPerL: 20 }, { botanicalId: 'pine_needle', gramsPerL: 3 }, { botanicalId: 'coriander', gramsPerL: 6 }, { botanicalId: 'angelica', gramsPerL: 2 }, { botanicalId: 'lemon_peel', gramsPerL: 3 }]),
+  ];
   if (region === 'TW') return [
     // 대만 특산물: 진먼섬 입지에서 진먼 고량 60% 이상 = 진먼 고량주 (결정 #58·#62)
     { ...base, name: '진먼 고량 — 청향', kind: 'baijiu', mashBill: [{ ingredientId: 'sorghum_kinmen', ratio: 0.85 }, { ingredientId: 'wheat_qu', ratio: 0.15 }], yeast: 'distillers', fermentDays: 21, runs: 1, cut: { c1: 0.1, c2: 0.72 } },
@@ -73,6 +79,8 @@ const STARTER: Record<RegionId, { name: string; casks: CaskTypeId[]; distillery:
   KR: { name: '윤도현', distillery: '한빛 증류소', casks: Array(10).fill('ex_bourbon_barrel') },
   JP: { name: '사토 겐타', distillery: '아카리 증류소', casks: [...Array(8).fill('ex_bourbon_barrel'), 'mizunara_hogshead', 'mizunara_hogshead'] },
   TW: { name: '린즈하오', distillery: '란양 증류소', casks: Array(10).fill('ex_bourbon_barrel') },
+  // 스페이사이드 전통: 버번 배럴 + 셰리 벗
+  UK: { name: '이언 매커디', distillery: '킬도니 증류소', casks: [...Array(8).fill('ex_bourbon_barrel'), 'oloroso_butt', 'oloroso_butt'] },
 };
 
 export function emptyCaskOf(s: GameState, typeId: keyof typeof CASKS): Cask {

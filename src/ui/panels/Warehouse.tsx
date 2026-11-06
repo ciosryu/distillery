@@ -134,7 +134,7 @@ function Casks() {
                 <Td className="text-xs">{CASKS[c.typeId].nameKo}</Td>
                 <Td className="text-xs">{(() => { const w = warehousesOf(s).find((x) => x.id === c.slot?.w); const cl = slotClimate(s, c, calendar(s).monthOfYear); return w ? `${w.type === 'dunnage' ? '더니지' : '랙'} ${c.slot!.tier + 1}/${w.tiers}단 · ${cl.tempC.toFixed(0)}°C ${Math.round(cl.humidity)}%` : '—'; })()}</Td>
                 <Td right>{c.fills}필</Td>
-                <Td className="max-w-56 truncate text-xs" >{lot.name}{lot.sourced && <> <Badge tone="info">매입</Badge></>}{c.owner && <> <Badge tone="info">고객 소유 · {c.owner.deliverMonth - s.month}개월 뒤 인도</Badge></>}{c.contaminationKnown && <> <Badge tone="bad">{c.contamination === 'tca' ? 'TCA 오염' : '곰팡이 오염'}</Badge></>}</Td>
+                <Td className="max-w-56 truncate text-xs" >{lot.name}{lot.sourced && <> <Badge tone="info">매입</Badge></>}{c.owner && <> <Badge tone="info">{c.owner.filling ? `필링(${c.owner.name})` : '고객 소유'} · {c.owner.deliverMonth - s.month}개월 뒤 인도</Badge></>}{c.contaminationKnown && <> <Badge tone="bad">{c.contamination === 'tca' ? 'TCA 오염' : '곰팡이 오염'}</Badge></>}</Td>
                 <Td right>{liters(lot.volumeL)}</Td>
                 <Td right>{pct(lot.abv)}</Td>
                 <Td right>{months(lot.oakMonths)}</Td>

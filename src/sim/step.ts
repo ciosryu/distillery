@@ -2,7 +2,7 @@ import { BULK, CASK_STORAGE, CASKS, EQUIPMENT, INGREDIENTS, ROLE_INFO } from './
 import { liquorTaxPerBottle, regionOf, traditionalTaxFactor } from './content/regions';
 import { refreshBroker } from './broker';
 import { sumCashFlows } from './cashflow';
-import { bulkValuePerLPA, fulfillContracts, refreshCaskBids, refreshContractOffers, updateBulkIndex } from './bulk';
+import { bulkValuePerLPA, collectFillingStorage, fulfillContracts, refreshCaskBids, refreshContractOffers, updateBulkIndex } from './bulk';
 import { clamp, weightedAverage } from './flavor';
 import { gainXp, refreshCandidates } from './hr';
 import { matureCask, restLot } from './maturation';
@@ -298,6 +298,7 @@ export function advanceMonth(prev: GameState): GameState {
   collectReceivables(s, report);
   updateTrends(s, rngFor(s.seed, s.month, 'trend'));
   runTourism(s, report, monthOfYear);
+  collectFillingStorage(s, report);
   deliverOwnedCasks(s, report);
   runOffice(s, report, rngFor(s.seed, s.month, 'office'), mashKg);
   runStaffLifecycle(s, report, rngFor(s.seed, s.month, 'lifecycle'));

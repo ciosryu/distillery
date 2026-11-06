@@ -7,7 +7,7 @@ import { clamp } from './flavor';
 import { staffOf } from './util';
 import { mod } from './modifiers';
 import type { ExportEntry, ExportSale, GameState, Product, ProductCategory } from './types';
-import { EXPORT_MARKETS, EXPORT_SALES, tariffKey, type ExportMarketDef } from './content/exports';
+import { EXPORT_MARKETS, EXPORT_SALES, ORIGIN_HALO, tariffKey, type ExportMarketDef } from './content/exports';
 import type { Rng } from './rng';
 
 // 수요 공식 (PRD §9.2) — 수치 [튜닝]
@@ -115,11 +115,18 @@ export function exportEligible(p: Pick<Product, 'category' | 'oakMonths' | 'ageY
   return true;
 }
 
+/** 원산지 카테고리 후광 (#114): 스카치·재패니즈 위스키는 해외 위스키 시장이 그만큼 크다 (면세점 제외, 지역 프리미엄 표기가 있으면 표기 제품만) */
+export function originHaloScale(s: Pick<GameState, 'regionId'>, p: Pick<Product, 'category' | 'premiumLabel'>, m: Pick<ExportMarketDef, 'id'>): number {
+  const halo = ORIGIN_HALO[s.regionId];
+  if (!halo || m.id === 'DF' || !AGED_CATEGORIES.includes(p.category)) return 1;
+  return regionOf(s).whisky.premiumLabel && !p.premiumLabel ? 1 : halo.marketScale;
+}
+
 export function exportDemandFor(s: GameState, p: Product, entry: ExportEntry, sameCategoryCount: number): number {
   const m = EXPORT_MARKETS[entry.marketId];
   const c = m.categories[p.category];
   if (!c || !exportEligible(p, m)) return 0;
-  const marketL = (c.baseCases * 9 / 12) * (m.regionScale?.[s.regionId] ?? 1) * (s.trend[p.category] ?? 1) * mod(s, 'demand:all') * mod(s, `export:${m.id}`) * mod(s, 'export:all');
+  const marketL = (c.baseCases * 9 / 12) * (m.regionScale?.[s.regionId] ?? 1) * originHaloScale(s, p, m) * (s.trend[p.category] ?? 1) * mod(s, 'demand:all') * mod(s, `export:${m.id}`) * mod(s, 'export:all');
   const reach = (entry.awareness * c.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
   const bottleL = p.bottleMl / 1000;
   const ref = c.refConsumerPricePerL * Math.pow(p.abv / c.refAbv, 0.7);

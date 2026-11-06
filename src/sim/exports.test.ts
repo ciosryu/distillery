@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addModifier, advanceMonths, applyAction, domesticNetPerBottle, effectiveTariff, EXPORT_MARKETS, EXPORT_SALES, exportDemandFor, exportMarketsFor, exportNetPerBottle, exportShelfPrice, makeExportOffer, mulberry32, newGame, runExportContracts, runSales, updateExportAwareness,
+  addModifier, advanceMonths, applyAction, applyEffects, domesticNetPerBottle, originHaloScale, ORIGIN_HALO, EMERGING_ACCLAIM, effectiveTariff, EXPORT_MARKETS, EXPORT_SALES, exportDemandFor, exportMarketsFor, exportNetPerBottle, exportShelfPrice, makeExportOffer, mulberry32, newGame, runExportContracts, runSales, updateExportAwareness,
   type GameState, type MonthReport, type Product,
 } from './index';
 
@@ -155,5 +155,43 @@ describe('재고 배분 (#109)·수출가 (#106·#108)', () => {
       expect(lo).toBeGreaterThanOrEqual(0.85);
       expect(hi).toBeLessThanOrEqual(1);
     }
+  });
+});
+
+describe('원산지 후광 (#114)·신흥 산지 명성 (#115)', () => {
+  it('스카치·재패니즈 위스키는 해외 위스키 시장 ×2, 출발 인지도 0.05 — 면세점·비위스키·재패니즈 표기 없는 제품은 제외', () => {
+    const uk = { ...newGame({ seed: 3, region: 'UK' }), products: [whisky()] };
+    const kr = { ...newGame({ seed: 3, region: 'KR' }), products: [whisky()] };
+    const p = uk.products[0]!;
+    expect(originHaloScale(uk, p, EXPORT_MARKETS.US)).toBe(2);
+    expect(originHaloScale(uk, p, EXPORT_MARKETS.DF)).toBe(1);
+    expect(originHaloScale(uk, { ...p, category: 'gin' }, EXPORT_MARKETS.US)).toBe(1);
+    expect(originHaloScale(kr, p, EXPORT_MARKETS.US)).toBe(1);
+    const jp = { ...newGame({ seed: 3, region: 'JP' }), products: [whisky()] };
+    expect(originHaloScale(jp, { ...p, premiumLabel: false }, EXPORT_MARKETS.US)).toBe(1);
+    expect(originHaloScale(jp, { ...p, premiumLabel: true }, EXPORT_MARKETS.US)).toBe(2);
+    // 같은 조건이면 스카치의 미국 수요가 한국 위스키의 2배 이상(관세 0% vs 12.5%까지 더해)
+    const e = { marketId: 'US' as const, openedMonth: 0, readyMonth: 0, awareness: 0.1, totalBottles: 0, priceFactor: 1 };
+    expect(exportDemandFor(uk, p, e, 1)).toBeGreaterThan(exportDemandFor(kr, kr.products[0]!, e, 1) * 2);
+    // 수입사 계약 시 출발 인지도
+    const o = makeExportOffer(uk, 'US', mulberry32(1));
+    uk.cash = 1e10; uk.exportOffers = [o];
+    const t = applyAction(uk, { type: 'acceptExportOffer', offerId: o.id }).state;
+    expect(t.exports![0]!.awareness).toBe(ORIGIN_HALO.UK!.startAwareness);
+  });
+
+  it('신흥 산지(한국·대만)의 호평은 해외 명성이 두 배로 오른다 — 혹평은 그대로', () => {
+    const gain = (region: 'KR' | 'TW' | 'JP' | 'UK', delta: number) => {
+      const s = newGame({ seed: 4, region });
+      applyEffects(s, [{ type: 'acclaim', delta: 0.1 }], mulberry32(1), 't');
+      if (delta < 0) applyEffects(s, [{ type: 'acclaim', delta }], mulberry32(1), 't');
+      return s.acclaim ?? 0;
+    };
+    expect(EMERGING_ACCLAIM.KR).toBe(2);
+    expect(gain('KR', 0)).toBeCloseTo(0.2, 9);
+    expect(gain('TW', 0)).toBeCloseTo(0.2, 9);
+    expect(gain('JP', 0)).toBeCloseTo(0.1, 9);
+    expect(gain('UK', 0)).toBeCloseTo(0.1, 9);
+    expect(gain('KR', -0.05)).toBeCloseTo(0.15, 9);
   });
 });
