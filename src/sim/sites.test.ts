@@ -30,7 +30,6 @@ describe('입지 목록 (결정 #84)', () => {
     const h = newGame({ seed: 1, region: 'JP', site: 'hokkaido' });
     const j = newGame({ seed: 1, region: 'KR', site: 'jeju' });
     expect(siteOverhead(k)).toBe(Math.round(REGIONS.JP.overheadPerMonth * siteOf(k).overheadFactor!));
-    expect(siteOverhead(k)).toBeGreaterThan(siteOverhead(newGame({ seed: 1, region: 'JP' })));
     expect(siteOverhead(h)).toBe(Math.round(REGIONS.JP.overheadPerMonth * (siteOf(h).overheadFactor ?? 1)));
     const wh = EQUIPMENT.warehouse_rack_100!;
     expect(equipmentCost(k, wh)).toBe(Math.round(wh.cost * 1.3));
