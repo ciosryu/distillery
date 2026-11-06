@@ -1,0 +1,116 @@
+import { LOAN_OFFERS } from './content/catalog';
+import { handleDeparture, masterDistiller } from './hr';
+import { INVESTMENT_OFFERS } from './content/catalog';
+import { OWNERSHIP } from './investment';
+import { isBulkKind, spotQuote } from './bulk';
+import { resolvePending } from './events';
+import { inventoryLoanRoom, inventoryLtv } from './loans';
+import { annuityPayment, nid } from './util';
+import { fail, type CashKeys, type Handlers } from './actionKit';
+
+// 플레이어 행동 — 재무·인사·이벤트 (MGT) (결정 #144 — 파일 쪼개기로 actions.ts에서 옮겨 왔다. 규칙 불변)
+// 행동을 더할 때: 아래 타입·처리기·현금 분류 세 곳만 고친다. 코어(actions.ts)는 이 파일의 타입을 통째로 합친다
+
+export type MgtAction =
+  /** 오염 캐스크 원액 폐기 */
+  | { type: 'takeInvestment'; offerId: string }
+  /** 수출 (#95·#101): 수입사 제안 수락 / 계약 해지 */
+  | { type: 'sellCaskOwnership'; caskId: string }
+  /** 피니싱 (S-10 자리) — 캐스크 원액을 빈 캐스크로 옮겨 마무리한다. 규칙은 단계 P(PROD): 지금은 항상 실패 */
+  | { type: 'hire'; candidateId: string; asApprentice?: boolean }
+  | { type: 'fire'; staffId: string }
+  | { type: 'takeLoan'; offerId: string; amount: number }
+  | { type: 'repayLoan'; loanId: string }
+  | { type: 'resolveEvent'; eventId: string; choice: number };
+
+export const MGT_CASH_KEY: CashKeys<MgtAction> = {
+  hire: null,
+  takeInvestment: 'investment',
+  sellCaskOwnership: 'caskOwnership',
+  fire: 'severance',
+  takeLoan: 'loan',
+  repayLoan: 'loanRepay',
+  resolveEvent: 'event',
+};
+
+export const MGT_HANDLERS: Handlers<MgtAction> = {
+  takeInvestment: (s, prev, a) => {
+    const o = INVESTMENT_OFFERS.find((x) => x.id === a.offerId);
+    if (!o) return fail(prev, '투자 제안이 없습니다');
+    if (s.finance.investmentsTaken.includes(o.id)) return fail(prev, '이미 받은 투자입니다');
+    if (s.month < o.minMonth || s.month > o.maxMonth) return fail(prev, '지금은 받을 수 없는 투자입니다');
+    s.finance.cash += o.amount;
+    s.finance.investorShare = 1 - (1 - s.finance.investorShare) * (1 - o.share);
+    s.finance.investmentsTaken.push(o.id);
+    return { state: s, message: `${o.nameKo} ${o.amount.toLocaleString()}원 유치 — 외부 지분 ${(s.finance.investorShare * 100).toFixed(1)}%` };
+  },
+  sellCaskOwnership: (s, prev, a) => {
+    const cask = s.inventory.casks.find((c) => c.id === a.caskId);
+    if (!cask?.contents) return fail(prev, '원액이 든 캐스크가 없습니다');
+    if (cask.owner) return fail(prev, '이미 판매한 캐스크입니다');
+    if (cask.contents.sourced) return fail(prev, '자사 증류 원액만 오너십으로 팔 수 있습니다');
+    if (!isBulkKind(cask.contents)) return fail(prev, '몰트·그레인 캐스크만 가능합니다');
+    const price = Math.round(spotQuote(s, cask.contents, cask.contents.volumeL, cask) * (OWNERSHIP.premiumBase + OWNERSHIP.premiumAwareness * s.commerce.awareness) * (0.9 + s.hr.houseStyle / 500));
+    s.finance.cash += price;
+    cask.owner = { name: `개인 고객 ${cask.id}`, soldMonth: s.month, deliverMonth: s.month + Math.max(OWNERSHIP.minDeliverWait, OWNERSHIP.deliverAtMonths - cask.contents.oakMonths) };
+    return { state: s, message: `캐스크 ${cask.id} 오너십 판매 ${price.toLocaleString()}원 — ${cask.owner.deliverMonth - s.month}개월 뒤 인도` };
+  },
+  hire: (s, prev, a) => {
+    const c = s.hr.candidates.find((x) => x.id === a.candidateId);
+    if (!c) return fail(prev, '후보가 없습니다');
+    s.hr.candidates = s.hr.candidates.filter((x) => x.id !== c.id);
+    const { askSalary: _ask, ...staff } = c;
+    if (a.asApprentice) {
+      const master = masterDistiller(s);
+      if (c.role !== 'distiller') return fail(prev, '부사수는 디스틸러 후보만 가능합니다');
+      if (!master) return fail(prev, '가르칠 마스터 디스틸러가 없습니다');
+      // 부사수: 급여 60%, 마스터 곁에서 24개월 이상 배워야 하우스 스타일을 잇는다
+      s.hr.staff.push({ ...staff, salary: Math.round(c.askSalary * 0.6), hiredMonth: s.month, apprenticeOf: master.id });
+      return { state: s, message: `${c.name}을(를) ${master.name}의 부사수로 채용` };
+    }
+    s.hr.staff.push({ ...staff, salary: c.askSalary, hiredMonth: s.month });
+    return { state: s, message: `${c.name} 채용` };
+  },
+  fire: (s, prev, a) => {
+    const x = s.hr.staff.find((y) => y.id === a.staffId);
+    if (!x) return fail(prev, '직원이 없습니다');
+    s.finance.cash -= x.salary; // 퇴직 위로금 1개월분
+    const notes: string[] = [];
+    handleDeparture(s, x, notes);
+    s.hr.staff = s.hr.staff.filter((y) => y.id !== x.id);
+    return { state: s, message: [`${x.name} 퇴사 (위로금 1개월분 지급)`, ...notes].join(' — ') };
+  },
+  takeLoan: (s, prev, a) => {
+    const offer = LOAN_OFFERS.find((o) => o.id === a.offerId);
+    if (!offer) return fail(prev, '대출 상품이 없습니다');
+    if (offer.requires === 'producedSoju' && !s.production.flags.producedSoju) return fail(prev, '전통주(증류식 소주) 생산 실적이 있어야 신청할 수 있습니다');
+    if (offer.regions && !offer.regions.includes(s.regionId)) return fail(prev, '이 지역에서는 신청할 수 없는 정책자금입니다');
+    if (s.finance.loans.some((l) => l.offerId === offer.id)) return fail(prev, '같은 상품을 이미 이용 중입니다');
+    let max = offer.max;
+    if (offer.collateral === 'inventory') {
+      if (inventoryLtv(s) <= 0) return fail(prev, '이 입지에서는 재고 담보대출을 받을 수 없습니다');
+      max = Math.min(max, inventoryLoanRoom(s));
+      if (max < 10_000_000) return fail(prev, '담보로 잡을 숙성 재고가 부족합니다');
+    }
+    const amount = Math.min(max, Math.max(10_000_000, Math.round(a.amount / 1_000_000) * 1_000_000));
+    s.finance.cash += amount;
+    s.finance.loans.push({
+      id: nid(s, 'D'), offerId: offer.id, name: offer.nameKo, principal: amount, balance: amount,
+      annualRate: offer.annualRate, termMonths: offer.termMonths, monthlyPayment: annuityPayment(amount, offer.annualRate, offer.termMonths - offer.graceMonths), graceMonths: offer.graceMonths, startMonth: s.month,
+    });
+    return { state: s, message: `${offer.nameKo} ${amount.toLocaleString()}원 실행` };
+  },
+  repayLoan: (s, prev, a) => {
+    const loan = s.finance.loans.find((l) => l.id === a.loanId);
+    if (!loan) return fail(prev, '대출이 없습니다');
+    if (s.finance.cash < loan.balance) return fail(prev, '현금이 부족합니다');
+    s.finance.cash -= loan.balance;
+    s.finance.loans = s.finance.loans.filter((l) => l.id !== loan.id);
+    return { state: s, message: '대출 전액 상환' };
+  },
+  resolveEvent: (s, prev, a) => {
+    const text = resolvePending(s, a.eventId, a.choice);
+    if (!text) return fail(prev, '처리할 이벤트가 없습니다');
+    return { state: s, message: text };
+  },
+};
