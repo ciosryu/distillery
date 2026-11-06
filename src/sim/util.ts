@@ -44,3 +44,8 @@ export function annuityPayment(principal: number, annualRate: number, termMonths
   if (r === 0) return Math.ceil(principal / termMonths);
   return Math.ceil((principal * r) / (1 - Math.pow(1 + r, -termMonths)));
 }
+
+// ───────────── 설비 보유 조회 (옛 ops.ts) (결정 #144 — 파일 쪼개기로 옮겨 왔다) ─────────────
+
+/** 이 설비를 갖고 있고 가동 중인가 (생산·이벤트·블렌딩이 함께 쓴다) */
+export const ownsFacility = (s: GameState, id: string) => s.production.equipment.some((e) => e.catalogId === id && e.readyMonth <= s.month);

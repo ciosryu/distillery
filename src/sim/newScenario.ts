@@ -4,7 +4,7 @@ import { scenarioLockedKeys, SCENARIOS, type ScenarioDef, type ScenarioTierDef }
 import { regionOf } from './content/regions';
 import { salaryFor } from './hr';
 import { newGame } from './newGame';
-import { currentLoanPayment, monthlyFixedCost } from './step';
+import { currentLoanPayment, monthlyFixedCost } from './loans';
 import type { GameState } from './types';
 import { nid } from './util';
 

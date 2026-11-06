@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { LOAN_OFFERS } from '../../sim/content/catalog';
-import { INVESTMENT_OFFERS } from '../../sim/ops';
+import { INVESTMENT_OFFERS } from '../../sim/content/catalog';
 import { annuityPayment, currentLoanPayment, inventoryCollateral, inventoryLoanRoom, inventoryLtv, monthLabel } from '../../sim';
 import { useGame } from '../../store/game';
 import { pct, won } from '../format';

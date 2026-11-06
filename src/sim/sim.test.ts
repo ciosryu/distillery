@@ -5,7 +5,9 @@ import {
   appeal, applyEffects, buyersFor, presetRecipes, validateRecipe, type Product,
   agePerception, suggestedPrice, spotSaturation, exportAwarenessMax, updateExportAwareness, EXPORT_MARKETS, exportShelfPrice, exportEligible, exportDemandFor, makeExportOffer, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
 } from './index';
-import { overhangFactor, ownsFacility, retailCapacityCases, slotClimate } from './ops';
+import { overhangFactor, retailCapacityCases } from './retail';
+import { ownsFacility } from './util';
+import { slotClimate } from './warehouse';
 import { BULK, EQUIPMENT } from './content/catalog';
 import { BUYERS } from './content/names';
 import { consumerPrice, logisticsMultiplier, priceForConsumer, REGIONS, siteOf, traditionalTaxFactor } from './content/regions';

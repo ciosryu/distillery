@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonths, advanceUntil, applyAction, createLocalEngine, DEFAULT_STOPS, HEX_AXES, hexOf, matchScore, mixHex, perceivedHex, perceptionSigma, previewVat, sampledSigma, weightedAverage, type BlendTarget, type Flavor, isGated, isUnlocked, migrateSave, newGame, productCountEver, SAVE_VERSION, unlockingNodes, V5_FIELD_MAP } from '.';
 import fixture from './fixtures/save-v5.json';
-import { slotClimate } from './ops';
+import { slotClimate } from './warehouse';
 import { addWeatherShock, updateWeather, WEATHER } from './weather';
 import { evapTempFactor } from './maturation';
 
