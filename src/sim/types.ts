@@ -243,6 +243,10 @@ export interface MonthReport {
   operatingCash?: number;
   investingCash?: number;
   financingCash?: number;
+  /** 계약 납품 중 선급금으로 상계한 금액 (현금은 안 들어옴) — 영업에는 납품 매출로, 재무에는 선급금 상환으로 잡는다 */
+  prepayApplied?: number;
+  /** 계약 만료·파기 때 돌려준 남은 선급금 (재무) */
+  prepayRefunded?: number;
   production: { recipeId: string; name: string; batches: number; lpa: number; cost: number }[];
   angelsShareL: number;
   liquorTaxRemitted: number;

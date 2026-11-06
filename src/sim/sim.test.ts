@@ -727,6 +727,38 @@ describe('월간 보고서 — 턴 사이 현금 흐름', () => {
     expect(r.financingCash).toBe(-(r.expenses.principal ?? 0));
   });
 
+  it('계약 선급금은 재무로 잡혀 영업 현금흐름에서 빠지고, 납품 때 상계분은 영업 매출로 돌아온다', () => {
+    let s = newGame({ seed: 24 });
+    const offer = { ...s.contractOffers[0]!, style: 'any' as const, minQuality: 30, lpaPerMonth: 60, prepayShare: 0.3 };
+    s = { ...s, contractOffers: [offer] };
+    s = applyAction(s, { type: 'setOrder', recipeId: recipeId(s, '싱글 몰트 — 언'), batchesPerMonth: 3 }).state;
+    s = applyAction(s, { type: 'acceptContract', offerId: offer.id }).state;
+    const prepaid = s.pendingCash!.contractPrepay!;
+    expect(prepaid).toBeGreaterThan(0);
+    s = advanceMonths(s, 1);
+    const r = s.reports.at(-1)!;
+    // 생산한 달에 바로 납품 → 상계분은 현금이 아니지만 영업 매출로, 같은 금액은 재무(선급금 상환)로
+    expect(r.prepayApplied).toBeGreaterThan(0);
+    expect(r.financingCash).toBeCloseTo(prepaid - r.prepayApplied!, 0);
+    expect(r.operatingCash! + r.investingCash! + r.financingCash!).toBeCloseTo(r.netCash, 0);
+    // 선급금 없이 같은 납품을 했을 때와 영업 현금흐름이 같다 (상계분 = 납품 총액 − 받은 현금)
+    expect(r.bulkRevenue + r.prepayApplied!).toBeCloseTo(r.bulk[0]!.deliveredLPA * offer.pricePerLPA, -1);
+  });
+
+  it('계약 해지 비용은 위약금(영업)과 남은 선급금 반환(재무)으로 나뉜다', () => {
+    let s = newGame({ seed: 25 });
+    const offer = { ...s.contractOffers[0]!, minQuality: 30, prepayShare: 0.3 };
+    s = { ...s, contractOffers: [offer] };
+    s = applyAction(s, { type: 'acceptContract', offerId: offer.id }).state;
+    const remaining = s.contracts[0]!.prepaidRemaining;
+    const before = s.cash;
+    s = applyAction(s, { type: 'cancelContract', contractId: s.contracts[0]!.id }).state;
+    const cost = before - s.cash;
+    expect(s.pendingCash!.contractPrepay).toBeCloseTo(remaining - Math.round(remaining), 0); // 입금 − 반환 ≈ 0
+    expect(s.pendingCash!.contractCancel).toBeCloseTo(-(cost - Math.round(remaining)), 0);
+    expect(s.pendingCash!.contractCancel).toBeLessThan(0);
+  });
+
   it('구버전 세이브(pendingCash 없음)도 그대로 진행된다', () => {
     const { pendingCash: _p, ...old } = newGame({ seed: 23 });
     let s = old as GameState;

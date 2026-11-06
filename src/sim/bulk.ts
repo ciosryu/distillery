@@ -226,6 +226,7 @@ export function fulfillContracts(s: GameState, report: MonthReport): void {
     const offset = Math.min(c.prepaidRemaining, gross * c.prepayShare);
     const cashIn = Math.round(gross - offset);
     c.prepaidRemaining -= offset;
+    report.prepayApplied = (report.prepayApplied ?? 0) + offset;
     const penalty = Math.round(need * c.penaltyPerLPA);
     s.cash += cashIn - penalty;
     c.deliveredLPA += delivered;
@@ -241,11 +242,15 @@ export function fulfillContracts(s: GameState, report: MonthReport): void {
 
     if (c.shortfallLPA >= 2 * c.lpaPerMonth) {
       s.cash -= Math.round(c.prepaidRemaining);
+      report.prepayRefunded = (report.prepayRefunded ?? 0) + Math.round(c.prepaidRemaining);
       s.b2bTrust = clamp(s.b2bTrust - 15, 0, 100);
       report.notes.push(`${c.buyerName} 계약 파기 — 누적 미납 과다. 남은 선급금 반환, 신뢰도 하락`);
       done.push(c.id);
     } else if (c.monthsDone >= c.termMonths) {
-      if (c.prepaidRemaining > 0) s.cash -= Math.round(c.prepaidRemaining);
+      if (c.prepaidRemaining > 0) {
+        s.cash -= Math.round(c.prepaidRemaining);
+        report.prepayRefunded = (report.prepayRefunded ?? 0) + Math.round(c.prepaidRemaining);
+      }
       s.b2bTrust = clamp(s.b2bTrust + 5, 0, 100);
       report.notes.push(`${c.buyerName} 공급 계약 만료 — 총 ${Math.round(c.deliveredLPA)} LPA 납품`);
       done.push(c.id);

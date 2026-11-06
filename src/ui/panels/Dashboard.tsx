@@ -15,10 +15,11 @@ function cashFlowRows(r: MonthReport): [string, number][] {
   const rows: [string, number][] = [['제품 매출', r.revenue]];
   if (r.bulkRevenue) rows.push(['원액 계약 납품', r.bulkRevenue]);
   if (r.tourismRevenue) rows.push(['비지터 센터', r.tourismRevenue]);
+  if (r.prepayRefunded) rows.push(['계약 선급금 반환', -r.prepayRefunded]);
   for (const [k, v] of Object.entries(r.offTurn ?? {}) as [CashFlowKey, number][]) if (v) rows.push([`${CASH_FLOW_LINES[k].label} (턴 사이)`, v]);
   for (const [k, v] of Object.entries(r.expenses)) rows.push([EXPENSE_LABEL[k] ?? k, -v]);
   const rest = r.netCash - rows.reduce((t, [, v]) => t + v, 0);
-  if (Math.abs(rest) >= 1) rows.push(['기타 (이벤트·폐기물 판매·선급금 정산 등)', rest]);
+  if (Math.abs(rest) >= 1) rows.push(['기타 (이벤트·폐기물 판매 등)', rest]);
   return rows;
 }
 
@@ -26,7 +27,7 @@ export function Dashboard() {
   const s = useGame((g) => g.state);
   const last = s.reports.at(-1);
   const recent = s.reports.slice(-3);
-  // 대출 실행·투자 유치로 들어온 돈은 빼고 본다 (차입한 달이 흑자로 보이지 않게)
+  // 대출 실행·투자 유치·계약 선급금으로 들어온 돈은 빼고 본다 (차입한 달이 흑자로 보이지 않게)
   const avgNet = recent.length ? recent.reduce((t, r) => t + selfFundedCash(r), 0) / recent.length : 0;
   const runway = avgNet < 0 ? Math.floor(s.cash / -avgNet) : null;
   const filled = s.casks.filter((c) => c.contents).length;
@@ -37,7 +38,7 @@ export function Dashboard() {
     <div className="grid gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="현금" value={won(s.cash)} tone={s.cash < 0 ? 'bad' : undefined} hint={s.negativeCashMonths ? `현금 부족 ${s.negativeCashMonths}개월째` : undefined} />
-        <Stat label="최근 3개월 평균 순현금(차입·투자 제외)" value={recent.length ? won(avgNet) : '—'} tone={!recent.length ? undefined : avgNet >= 0 ? 'good' : 'bad'} hint={!recent.length ? '기록 없음' : runway != null ? `이 속도면 약 ${runway}개월 버팀` : '현금 흐름 흑자'} />
+        <Stat label="최근 3개월 평균 순현금(차입·투자·선급금 제외)" value={recent.length ? won(avgNet) : '—'} tone={!recent.length ? undefined : avgNet >= 0 ? 'good' : 'bad'} hint={!recent.length ? '기록 없음' : runway != null ? `이 속도면 약 ${runway}개월 버팀` : '현금 흐름 흑자'} />
         <Stat label="월 고정비(예상)" value={won(monthlyFixedCost(s))} hint="급여·관리비·유지비·마케팅·대출" />
         <Stat label="브랜드 인지도" value={pct(s.awareness)} hint={`유통 커버리지 ${pct(coverage(s))}`} />
         <Stat label="숙성 중 캐스크" value={`${filled} / ${warehouseCapacity(s)}`} hint={`빈 캐스크 ${s.casks.length - filled}개`} />

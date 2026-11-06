@@ -8,7 +8,7 @@ import { executeBlend, type BlendComponent, type BottleOptions } from './blendin
 import { MAX_RECHAR, recharCask } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
-import { recordPendingCash } from './cashflow';
+import { recordPendingCash, sumCashFlows } from './cashflow';
 import type { CashFlowKey, CaskTypeId, GameState, Recipe } from './types';
 import { annuityPayment, clone, nid, staffOf, warehouseCapacity } from './util';
 
@@ -61,9 +61,11 @@ const ACTION_CASH_KEY: Record<Action['type'], CashFlowKey | null> = {
 export function applyAction(prev: GameState, a: Action): ActionResult {
   const res = applyActionRaw(prev, a);
   if (res.error) return res;
-  const delta = res.state.cash - prev.cash;
+  // 행동 안에서 따로 기록한 몫(예: 계약 해지 비용 중 선급금 반환)을 뺀 나머지를 행동 항목으로 기록.
   // 분류가 없는 행동이 현금을 움직여도 순현금에서 빠지지 않도록 '기타'로 기록
-  if (delta) recordPendingCash(res.state, ACTION_CASH_KEY[a.type] ?? 'other', delta);
+  const recorded = sumCashFlows(res.state.pendingCash ?? {}) - sumCashFlows(prev.pendingCash ?? {});
+  const rest = res.state.cash - prev.cash - recorded;
+  if (Math.abs(rest) > 1e-6) recordPendingCash(res.state, ACTION_CASH_KEY[a.type] ?? 'other', rest);
   return res;
 }
 
@@ -369,6 +371,8 @@ function applyActionRaw(prev: GameState, a: Action): ActionResult {
       if (!c) return fail(prev, '계약이 없습니다');
       const cost = cancellationCost(c);
       s.cash -= cost;
+      // 해지 비용 = 위약금(영업) + 남은 선급금 반환(재무)
+      recordPendingCash(s, 'contractPrepay', -Math.round(c.prepaidRemaining));
       s.b2bTrust = Math.max(0, s.b2bTrust - 10);
       s.contracts = s.contracts.filter((x) => x.id !== c.id);
       return { state: s, message: `${c.buyerName} 계약 해지 — 해지 비용 ${cost.toLocaleString()}원, 신뢰도 하락` };

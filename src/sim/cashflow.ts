@@ -10,7 +10,6 @@ export const CASH_FLOW_LINES: Record<CashFlowKey, { label: string; group: CashFl
   spotBulk: { label: '원액 현물 판매', group: 'operating' },
   caskBid: { label: 'IB 캐스크 매각', group: 'operating' },
   caskOwnership: { label: '캐스크 오너십 판매', group: 'operating' },
-  contractPrepay: { label: '계약 선급금', group: 'operating' },
   contractCancel: { label: '계약 해지 비용', group: 'operating' },
   bottling: { label: '병입(포장·인건비)', group: 'operating' },
   severance: { label: '퇴직 위로금', group: 'operating' },
@@ -24,6 +23,8 @@ export const CASH_FLOW_LINES: Record<CashFlowKey, { label: string; group: CashFl
   loan: { label: '대출 실행', group: 'financing' },
   loanRepay: { label: '대출 조기 상환', group: 'financing' },
   investment: { label: '투자 유치', group: 'financing' },
+  // 선급금은 나중 납품으로 갚는 고객 선수금 → 대출처럼 재무로 본다 (흑자 전환 지표에서 제외, §16.18)
+  contractPrepay: { label: '계약 선급금 (입금·반환)', group: 'financing' },
 };
 
 /** 턴 사이 현금 흐름을 기록한다 (현금 자체는 호출 측에서 이미 움직였다) */
@@ -37,5 +38,6 @@ export function recordPendingCash(s: GameState, key: CashFlowKey, amount: number
 export const sumCashFlows = (f: CashFlows, group?: CashFlowGroup): number =>
   (Object.entries(f) as [CashFlowKey, number][]).reduce((t, [k, v]) => t + (!group || CASH_FLOW_LINES[k].group === group ? v : 0), 0);
 
-/** 외부 자금(대출 실행·투자 유치)을 뺀 순현금 — 런웨이 계산용 (설비 투자·상환은 포함) */
-export const selfFundedCash = (r: MonthReport): number => r.netCash - (r.offTurn?.loan ?? 0) - (r.offTurn?.investment ?? 0);
+/** 외부 자금(대출 실행·투자 유치·계약 선급금 입금)을 뺀 순현금 — 런웨이 계산용 (설비 투자·상환은 포함) */
+export const selfFundedCash = (r: MonthReport): number =>
+  r.netCash - (r.offTurn?.loan ?? 0) - (r.offTurn?.investment ?? 0) - Math.max(0, r.offTurn?.contractPrepay ?? 0);

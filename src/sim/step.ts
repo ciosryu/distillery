@@ -167,7 +167,7 @@ export function advanceMonth(prev: GameState): GameState {
   // 직전 결산 이후 턴 사이 행동(현물 판매·대출·설비 구매 등)으로 움직인 현금 — 이번 보고서에 합치고 비운다
   const offTurn = { ...(s.pendingCash ?? {}) };
   s.pendingCash = {};
-  const report: MonthReport = { month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, spotBulkRevenue: (offTurn.spotBulk ?? 0) + (offTurn.caskBid ?? 0), offTurn, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] };
+  const report: MonthReport = { month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, prepayApplied: 0, prepayRefunded: 0, spotBulkRevenue: (offTurn.spotBulk ?? 0) + (offTurn.caskBid ?? 0), offTurn, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] };
 
   pruneModifiers(s);
   s.rotatedThisMonth = 0;
@@ -249,7 +249,8 @@ export function advanceMonth(prev: GameState): GameState {
   report.netCash = s.cash - cashStart + sumCashFlows(offTurn);
   report.cashEnd = s.cash;
   report.investingCash = sumCashFlows(offTurn, 'investing');
-  report.financingCash = sumCashFlows(offTurn, 'financing') - (report.expenses.principal ?? 0);
+  // 선급금 상계분은 영업(납품 매출)으로 올리고 같은 금액을 재무(선급금 상환)로 뺀다
+  report.financingCash = sumCashFlows(offTurn, 'financing') - (report.expenses.principal ?? 0) - (report.prepayApplied ?? 0) - (report.prepayRefunded ?? 0);
   report.operatingCash = report.netCash - report.investingCash - report.financingCash;
   s.reports = [...s.reports, report].slice(-REPORTS_KEPT);
   s.month += 1;
