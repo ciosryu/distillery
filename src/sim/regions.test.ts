@@ -3,7 +3,7 @@ import { advanceMonths, applyAction, EXPORT_MARKETS, newGame, type RegionId } fr
 import { REGIONS, type RegionDef } from './content/regions';
 import { EXPORT_MARKET_IDS } from './content/exports';
 
-// 지역 추가 = 데이터 추가 (skeleton S-3, P-ARCH-13, PRD §13.2)
+// 지역 추가 = 데이터 추가 (skeleton S-3, #150, PRD §13.2)
 // 지역에 묶인 값은 모두 RegionDef·SiteDef 한 곳에 있다. 코드는 지역 id로 분기하지 않는다.
 
 const FAKE = 'XX' as RegionId;

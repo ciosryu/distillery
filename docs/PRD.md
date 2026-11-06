@@ -184,7 +184,7 @@
 
 **지역별 밸런스 검증 (`npm run balance -- 20 120 all <지역>`, 20시드 × 10년)** — 아래 §3.5.1
 
-- 구현 방식: `RegionDef`(`src/sim/content/regions.ts`)에 기후, 세제(`adValorem`·`education`·`specificPerLPA`·`vat`), 인건비 배수, 고정비, **생산 가능 주종(`allowedKinds`)**, 시장, 지역 관용 카테고리명(예: 일본 "본격 쇼추"), `domesticSpiritPremium`, `bulkMarketDepth`, `eventWeights`, **`sourcedPenalty`(매입 원액 감점)**, **`caskPriceFactor`(지역 특산 캐스크 가격)** 를 둔다. 보태니컬은 `regions`로 지역 한정(일본 사쿠라·히노키, 대만 마가오·우롱차 등). 이벤트도 `regions`로 지역 한정(일본 지진, 대만 거품 붕괴 등). 지역 추가 = 데이터 추가 — 새 게임 프리셋 레시피·창업 정보·직원 이름 풀도 지역 정의에 있다(단계 S, `[제안 P-ARCH-13]`). 새 주종과 입지 고유 메커니즘은 코드(파트 모듈)다. 추가 체크리스트는 [skeleton.md §4.8](design/skeleton.md)
+- 구현 방식: `RegionDef`(`src/sim/content/regions.ts`)에 기후, 세제(`adValorem`·`education`·`specificPerLPA`·`vat`), 인건비 배수, 고정비, **생산 가능 주종(`allowedKinds`)**, 시장, 지역 관용 카테고리명(예: 일본 "본격 쇼추"), `domesticSpiritPremium`, `bulkMarketDepth`, `eventWeights`, **`sourcedPenalty`(매입 원액 감점)**, **`caskPriceFactor`(지역 특산 캐스크 가격)** 를 둔다. 보태니컬은 `regions`로 지역 한정(일본 사쿠라·히노키, 대만 마가오·우롱차 등). 이벤트도 `regions`로 지역 한정(일본 지진, 대만 거품 붕괴 등). 지역 추가 = 데이터 추가 — 새 게임 프리셋 레시피·창업 정보·직원 이름 풀도 지역 정의에 있다(단계 S, `[결정 #150]`). 새 주종과 입지 고유 메커니즘은 코드(파트 모듈)다. 추가 체크리스트는 [skeleton.md §4.8](design/skeleton.md)
 - 지역별 시작 조건: 한국 윤도현·한빛 증류소(버번 배럴 10), 일본 사토 겐타·아카리 증류소(버번 배럴 8 + 미즈나라 2), 대만 린즈하오·란양 증류소(버번 배럴 10). 이름 풀·프리셋 레시피도 지역별
 
 #### 3.5.1 지역별 밸런스 검증 결과 `[튜닝]` (v0.9, 20시드 × 10년, 캐스크 보관비 포함)
