@@ -96,8 +96,10 @@ export const DUTY_FREE = {
   market: { whisky: 120_000, blended_whisky: 60_000, grain_whisky: 10_000, soju_distilled: 25_000, gin: 10_000, malt_spirit: 5_000, flavored_spirit: 10_000, baijiu: 0 } as Record<ProductCategory, number>,
   /** 단일 브랜드 점유 상한 — 지역 상품 진열 */
   shareCap: 0.02,
-  /** 면세 소비자가 = 출고가 × 면세점 마진 (주세·부가세 없음) */
-  markup: 1.6,
+  /** 면세 소비자가 = 출고가 × 면세점 마진 (주세·부가세 없음).
+   *  v1.6(#104): 1.6 → 1.9 — 면세 기념품 한정판(site)이 40·60시드에서 1위 70~75%를 차지하는 지배 전략이었다.
+   *  1.9에서 60시드 57%(통과). 공항 면세 수출 유통 배수 2.5(§16.25)와도 방향이 맞다. 실제 지정면세점 마진은 확인 못 함 [튜닝] */
+  markup: 1.9,
   /** 면세 기준가 = 국내 기준 소비자가 × 이 비율 */
   refFactor: 0.6,
   /** 1인 구매 한도 미화 400달러 ≒ 55만 원 [환율 가정] */
