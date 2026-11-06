@@ -10,7 +10,7 @@
 - 새 행에는 **구분**을 붙인다: `[구조]` 상태·틱·명령·콘텐츠 스키마 · `[규칙]` 게임 규칙·공식 · `[튜닝]` 수치만 · `[방법]` 검증·개발 방법 · `[범위]` 플랫폼·로드맵·범위
 - "반영 위치"의 `§n`은 PRD 절이다
 
-**다음 번호: #146**
+**다음 번호: #148**
 
 ## 예약 (이 규칙 이전에 열린 PR이 이미 쓰는 번호)
 
@@ -27,6 +27,7 @@
 
 | 날짜 | 머지 | 바뀐 번호 | 이유 |
 |---|---|---|---|
+| 2026-11-06 | ciosryu/distillery#24 (설계 세션) | P-ARCH-9 → **#146**, P-ARCH-10 → **#147** | 머지 순서대로 발급 |
 | 2026-11-06 | ciosryu/distillery#22 (설계 세션) | P-ARCH-8 → **#145** | 머지 순서대로 발급 |
 | 2026-11-06 | ciosryu/distillery#14~#17 (설계 세션) | 임시 ID P-ARCH-1~4 → **#139~#142**, P-ARCH-5 → **#117**(예약 번호 발급 — PR #6과 같은 규칙), P-ARCH-6·7 → **#143·#144**, PRD §NEW-ARCH-1 → **§6.2.1** | 머지 순서대로 발급 |
 | 2026-11-06 | ciosryu/distillery#11 (개발 공정·MVP) | 임시 ID P-ARCH-1~5 → **#128~#132**, 승인 2건 → #133·#134, 공정 채택 → #127 | 첫 정상 발급 |
@@ -171,3 +172,5 @@
 | 143 | [구조] **숙성 용기 일반화·피니싱·샘플 기록의 자리** (S-10, 스키마 v9) — `CaskDef.material`, 틱 3단계 `matureVessel` → 나무 `matureCask` / 비목재 `matureNonWood` 스텁, `SpiritLot.restMonths`·`caskHistory`, `transferCask` 스텁(MVP 잠금), `Cask.sampleLog` 최근 2개·`lastSample`. 동작 불변 (v1.6) | PRD §5.2·§5.6, [skeleton.md](design/skeleton.md) §4.3 |
 | 144 | [방법] **파일 쪼개기 계획** (S-4) — 평면 구조(섞인 파일만 쪼갬), PR 한 개에 단계별 커밋(단계마다 골든 동일), 밸런스 스크립트는 단계 T에서 BAL이, `content/catalog.ts`는 재수출 껍데기로 유지 (v1.6) | [split-plan.md](design/split-plan.md) |
 | 145 | [구조] **승패·진행 구조** (S-9, 스키마 v10) — 끝나는 이유는 `status`(파산·`licenseRevoked`·`dismissed` 자리)·`progress.ending`, 게임을 끝내는 함수는 `endGame` 하나(면허 취소·해임은 자리만). 마일스톤 9개를 처음 일어난 달에 기록. 시나리오 목표는 180개월(또는 게임 종료) 때 한 번 판정 → 헤리티지·미달·실패 + 등급 S·A·B·C, 결과 화면 확인 뒤 목표 없이 계속 운영. 순자산 = 지금 정리하면 받는 돈. 업적은 상태에 넣지 않고 단계 V에서 마일스톤 id로 붙인다 (v1.6) | PRD §12.1, [skeleton.md](design/skeleton.md) §4.4, [mvp.md](design/mvp.md) §3 |
+| 146 | [규칙] **재고 평가액 곡선 = 목표 판정 순자산** — 재고 평가액 곡선(#138)도 15년 목표 판정(#145)과 같은 정의(`netWorth`, 지금 정리하면 받는 돈)를 쓴다. 화면 숫자와 판정 숫자를 하나로 (v1.6) | [mvp.md](design/mvp.md) §1.3, [skeleton.md](design/skeleton.md) §4.4 ④ |
+| 147 | [구조] **이벤트 난수를 이벤트별 스트림으로** (S-5) — 발생 판정 `event-roll:<id>`(모든 이벤트가 매달 굴림), 월 상한 2개는 `event-rank:<id>` 순서로 그 순간 조건 확인, 예보 확정 `forecast:<이벤트 id>:<확정 달>`. 이벤트를 더해도 다른 이벤트 결과가 바뀌지 않는다. 이벤트가 켜진 판의 밸런스가 한 번 바뀜(재측정은 단계 T) (v1.6) | PRD §10.0, [skeleton.md](design/skeleton.md) §4.5, architecture §9.3 |
