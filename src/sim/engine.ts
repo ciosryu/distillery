@@ -7,9 +7,9 @@ import type { GameState, MonthReport } from './types';
 // Godot 이식(Phase G)에서는 C# 라이브러리가 같은 모양을 구현한다. 화면·store는 이 계약만 안다.
 
 /** 자동 진행이 멈추는 이유 (PRD §2.1 "다음 이벤트·알림까지 진행") */
-export type StopReason = 'pendingEvent' | 'cashWarning' | 'bankrupt' | 'equipmentReady' | 'forecast' | 'commission' | 'maxMonths';
+export type StopReason = 'pendingEvent' | 'cashWarning' | 'bankrupt' | 'gameOver' | 'verdict' | 'equipmentReady' | 'forecast' | 'commission' | 'maxMonths';
 
-export const DEFAULT_STOPS: StopReason[] = ['pendingEvent', 'cashWarning', 'bankrupt', 'equipmentReady', 'forecast', 'commission'];
+export const DEFAULT_STOPS: StopReason[] = ['pendingEvent', 'cashWarning', 'bankrupt', 'gameOver', 'verdict', 'equipmentReady', 'forecast', 'commission'];
 
 export interface AdvanceOptions {
   /** 최대 진행 개월 */
@@ -30,6 +30,10 @@ export interface AdvanceResult {
 export function stopReasonOf(prev: GameState, next: GameState, stopOn: StopReason[]): StopReason | null {
   const on = new Set(stopOn);
   if (next.status === 'bankrupt') return 'bankrupt';
+  // 면허 취소·해임 (S-9 자리) — 끝나면 항상 멈춘다
+  if (next.status !== 'running') return 'gameOver';
+  // 목표 판정이 막 나왔다 (S-9) — 결과 화면
+  if (on.has('verdict') && next.progress.verdict && !prev.progress.verdict) return 'verdict';
   if (on.has('pendingEvent') && next.events.pending.some((p) => !prev.events.pending.some((q) => q.id === p.id))) return 'pendingEvent';
   if (on.has('cashWarning') && next.finance.negativeCashMonths > prev.finance.negativeCashMonths) return 'cashWarning';
   if (on.has('equipmentReady') && next.production.equipment.some((e) => e.readyMonth === next.month && e.readyMonth > prev.month)) return 'equipmentReady';
@@ -45,7 +49,7 @@ export function advanceUntil(s: GameState, opts: AdvanceOptions): AdvanceResult 
   const reports: MonthReport[] = [];
   let cur = s;
   for (let i = 0; i < opts.months; i++) {
-    if (cur.status !== 'running') return { state: cur, months: i, stoppedBy: 'bankrupt', reports };
+    if (cur.status !== 'running') return { state: cur, months: i, stoppedBy: cur.status === 'bankrupt' ? 'bankrupt' : 'gameOver', reports };
     const next = advanceMonth(cur);
     reports.push(next.history.reports.at(-1)!);
     const why = stopReasonOf(cur, next, stopOn);

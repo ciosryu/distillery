@@ -4,7 +4,7 @@ import type { GameState } from './types';
 // 옛 세이브는 버리지 않고 v5 → v6 → … 순서로 올린다. 각 단계는 순수 함수(입력을 바꾸지 않는다).
 // 새 버전을 만들면: GameState.version을 올리고, MIGRATIONS에 `[이전 버전]: (s) => 다음 버전` 한 줄을 더한다.
 
-export const SAVE_VERSION = 9 as const;
+export const SAVE_VERSION = 10 as const;
 
 type AnySave = Record<string, any>;
 
@@ -100,12 +100,19 @@ function v8to9(s: AnySave): AnySave {
   return { ...s, version: 9 };
 }
 
+/** v9 → v10: 진행 슬라이스(S-9). 옛 세이브는 마일스톤 기록이 없는 채로 시작한다 — 이미 지난 일(첫 증류 등)은 다음 달 판정 때 그 달 날짜로 잡힌다.
+ *  옛 파산 세이브는 끝난 이유를 채운다 */
+function v9to10(s: AnySave): AnySave {
+  return { ...s, version: 10, progress: { milestones: [], ...(s.status === 'bankrupt' ? { ending: { reason: 'bankrupt', month: s.month } } : {}) } };
+}
+
 /** 버전 n 세이브 → 버전 n+1 */
 const MIGRATIONS: Record<number, (s: AnySave) => AnySave> = {
   5: v5to6,
   6: v6to7,
   7: v7to8,
   8: v8to9,
+  9: v9to10,
 };
 
 /**

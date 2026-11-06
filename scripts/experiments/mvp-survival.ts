@@ -102,8 +102,10 @@ function bottle(s: GameState, t: Track): GameState {
       s = act(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: lot.volumeL }], options: { name: `소주 ${s.month}`, targetAbv: 0.25, bottleMl: 375, chillFilter: true, packagingId: 'standard' } });
   }
   // 12년 플래그십
-  if (!t.flagshipBottled && s.month >= 144) {
-    const fl = s.inventory.casks.filter((c) => t.flagship.has(c.id) && c.contents);
+  // 모든 플래그십 캐스크가 12년(144개월)을 채운 뒤 — 라벨 연수는 가장 어린 원액 기준이다 (경과 144개월이 아니라 숙성 144개월)
+  const flAll = s.inventory.casks.filter((c) => t.flagship.has(c.id) && c.contents);
+  if (!t.flagshipBottled && flAll.length && flAll.every((c) => c.contents!.oakMonths >= 144)) {
+    const fl = flAll;
     const comps = fl.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }));
     const opts = { name: '12년 플래그십', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' };
     if (comps.length && previewBlend(s, comps, opts).ok) { s = act(s, { type: 'bottle', components: comps, options: opts }); t.flagshipBottled = true; }
@@ -135,7 +137,7 @@ function finance(s: GameState, t: Track): GameState {
   return s;
 }
 
-interface Row { goal: boolean; plan: string; seed: number; bankrupt: boolean; bankruptMonth: number; minCash: number; minCashMonth: number; firstWhisky: number; flagship: boolean; netWorth: number; spotSoldL: number; sojuShare3y: number; capBlocked: number; loansMax: number }
+interface Row { verdict: string; goal: boolean; plan: string; seed: number; bankrupt: boolean; bankruptMonth: number; minCash: number; minCashMonth: number; firstWhisky: number; flagship: boolean; netWorth: number; spotSoldL: number; sojuShare3y: number; capBlocked: number; loansMax: number }
 
 function netWorth(s: GameState): number {
   const stock = [...s.inventory.lots, ...s.inventory.casks.flatMap((c) => (c.contents ? [c.contents] : []))].reduce((t, l) => t + l.volumeL * l.abv * bulkValuePerLPA(s, l) * 0.85, 0);
@@ -177,7 +179,8 @@ function play(p: Plan, seed: number): Row {
   const soju = r3.filter((x) => cats.get(x.productId) === 'soju_distilled').reduce((a, x) => a + x.revenue, 0);
   const all = r3.reduce((a, x) => a + x.revenue, 0);
   const nw = s.status === 'bankrupt' ? NaN : netWorth(s);
-  return { goal: !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, plan: p.name, seed, bankrupt: s.status === 'bankrupt', bankruptMonth: s.status === 'bankrupt' ? s.month : -1, minCash, minCashMonth, firstWhisky: t.firstWhiskyMonth, flagship: t.flagshipBottled, netWorth: nw, spotSoldL: t.spotSoldL, sojuShare3y: all ? soju / all : 0, capBlocked: t.capBlocked, loansMax };
+  const v = s.progress.verdict;
+  return { verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', goal: !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, plan: p.name, seed, bankrupt: s.status === 'bankrupt', bankruptMonth: s.status === 'bankrupt' ? s.month : -1, minCash, minCashMonth, firstWhisky: t.firstWhiskyMonth, flagship: t.flagshipBottled, netWorth: nw, spotSoldL: t.spotSoldL, sojuShare3y: all ? soju / all : 0, capBlocked: t.capBlocked, loansMax };
 }
 
 const eok = (v: number) => (Number.isFinite(v) ? `${(v / 1e8).toFixed(2)}억` : '—');
@@ -201,6 +204,14 @@ for (const p of PLANS) {
   const br = rs.filter((r) => r.bankrupt);
   const alive = rs.filter((r) => !r.bankrupt);
   console.log(`| ${p.name} (소주 ${p.soju} · 몰트 ${p.malt}배치) | ${br.length}/${rs.length}${br.length ? ` (${Math.round(avg(br.map((r) => r.bankruptMonth)))}월)` : ''} | ${eok(med(rs.map((r) => r.minCash)))} (${Math.round(med(rs.map((r) => r.minCashMonth)))}월) | ${eok(avg(rs.map((r) => r.loansMax)))} | ${Math.round(med(rs.filter((r) => r.firstWhisky >= 0).map((r) => r.firstWhisky)))}월 | ${rs.filter((r) => r.flagship).length}/${rs.length} | ${Math.round(avg(rs.map((r) => r.spotSoldL))).toLocaleString()} | ${(avg(rs.map((r) => r.sojuShare3y)) * 100).toFixed(0)}% | ${eok(avg(alive.map((r) => r.netWorth)))} | ${avg(rs.map((r) => r.capBlocked)).toFixed(0)} |`);
+}
+if (MVP) {
+  // 게임의 실제 목표 판정 (S-9 progress.ts) — 결과·등급 분포
+  for (const p of PLANS) {
+    const c: Record<string, number> = {};
+    for (const r of byPlan[p.name]!) c[r.verdict] = (c[r.verdict] ?? 0) + 1;
+    console.log(`판정 ${p.name}: ${Object.entries(c).sort().map(([k, v]) => `${k} ${v}`).join(' · ')}`);
+  }
 }
 console.log(`\n시드별 1위(생존 중 순자산): ${Object.entries(wins).map(([k, v]) => `${k} ${v}`).join(' · ')}`);
 // 변형 비교표용 한 줄: 변형 | 전략별 파산 | 1위 분포 | 전략별 생존 순자산 평균 | 첫 위스키 병입 월(중앙값)

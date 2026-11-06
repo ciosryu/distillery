@@ -22,6 +22,7 @@ export * from './dutyFree';
 export * from './loans';
 export * from './sales';
 export * from './hr';
+export * from './progress';
 export * from './migrate';
 export * from './research';
 export * from './tick';
