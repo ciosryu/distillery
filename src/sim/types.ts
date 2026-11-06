@@ -246,8 +246,10 @@ export interface MonthReport {
   sales: { productId: string; name: string; bottles: number; revenue: number; demandBottles: number }[];
   /** 원액 계약 납품 */
   bulk: { contractId: string; buyerName: string; deliveredLPA: number; revenue: number; penalty: number }[];
-  /** 원액 계약 납품 매출 (현물 판매는 spotBulkRevenue) */
+  /** 원액 계약 납품 매출 (현물 판매는 spotBulkRevenue). 필링 캐스크 보관료(#112)를 포함한다 */
   bulkRevenue: number;
+  /** 필링 캐스크 보관료 (#112) — bulkRevenue에 포함 */
+  fillingStorageRevenue?: number;
   /** 원액 현물 판매(탱크 로트·캐스크째, sellBulk) + 독립 병입자 캐스크 매각(acceptCaskBid). 구버전 세이브의 보고서에는 없다 */
   spotBulkRevenue?: number;
   /** 직전 결산 이후 턴 사이 행동으로 생긴 현금 흐름 (부호: 입금 +, 출금 −). 구버전 세이브의 보고서에는 없다 */

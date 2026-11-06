@@ -12,6 +12,7 @@ import { acceptExportOffer, cancelExport } from './exportDeals';
 import { recordPendingCash, sumCashFlows } from './cashflow';
 import { EXPORT_MARKETS, type ExportMarketId } from './content/exports';
 import { applyWaterPermit, equipmentCost, inventoryLoanRoom, inventoryLtv } from './sites';
+import { siteOf } from './content/regions';
 import { OEM, RETAIL_DEAL, startOem, startRetail } from './deals';
 import type { CashFlowKey, CaskTypeId, GameState, Recipe } from './types';
 import { annuityPayment, clone, nid, staffOf, warehouseCapacity } from './util';
@@ -135,8 +136,10 @@ function applyActionRaw(prev: GameState, a: Action): ActionResult {
       if (s.cash < unit * qty) return fail(prev, '현금이 부족합니다');
       s.cash -= unit * qty;
       // 쿠퍼리지 정상 주문: 카탈로그가, 2개월 뒤 도착 (결정 #66)
-      s.caskOrders.push({ id: nid(s, 'O'), typeId: a.caskType, qty, arriveMonth: s.month + CASK_MARKET.cooperageLeadMonths, source: 'cooperage' });
-      return { state: s, message: `${def.nameKo} ${qty}개 쿠퍼리지 주문 — ${CASK_MARKET.cooperageLeadMonths}개월 뒤 도착` };
+      // 쿠퍼리지 클러스터(스페이사이드, #113)는 납품이 빠르다
+      const lead = siteOf(s).cooperageLeadMonths ?? CASK_MARKET.cooperageLeadMonths;
+      s.caskOrders.push({ id: nid(s, 'O'), typeId: a.caskType, qty, arriveMonth: s.month + lead, source: 'cooperage' });
+      return { state: s, message: `${def.nameKo} ${qty}개 쿠퍼리지 주문 — ${lead}개월 뒤 도착` };
     }
     case 'buySpotCasks': {
       const def = CASKS[a.caskType];
