@@ -1,11 +1,11 @@
 // 헤드리스 밸런스 시뮬레이션 — 전략별 단순 정책으로 N개 시드를 돌려 파산률·흑자 전환 시점·매출 구성을 본다.
-// 실행: npm run balance [-- 시드수 개월수 전략 지역 입지]   전략 = brand | hybrid | expand | grain | all(기본), 지역 = KR(기본) | JP | TW
+// 실행: npm run balance [-- 시드수 개월수 전략 지역 입지]   전략 = brand | hybrid | expand | grain | site | aged | twin | all(기본) — 쉼표로 여러 개, 지역 = KR(기본) | JP | TW
 import { advanceMonth, applyAction, bulkValuePerLPA, capacityLPA, spotBidPerLPA, lotQuality, previewBlend, newGame, warehouseCapacity, whiskyMinMonths, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
 import { REGIONS, regionOf, siteOf } from '../src/sim/content/regions';
 import { dutyFreeSlotBlocker, inventoryLoanRoom, inventoryLtv, OEM, oemPackageCost } from '../src/sim';
 import { EVENTS } from '../src/sim/content/events';
 import { RETAIL } from '../src/sim/ops';
-import { EQUIPMENT } from '../src/sim/content/catalog';
+import { AGE_PREMIUM, BULK, CASK_STORAGE, EQUIPMENT } from '../src/sim/content/catalog';
 const EQUIPMENT_KIND = (id: string) => EQUIPMENT[id]?.kind;
 
 const SEEDS = Number(process.argv[2] ?? 12);
@@ -23,8 +23,14 @@ const DEFEND = process.env.NO_DEFEND !== '1';
 if (process.env.OVERFLOW_FEE) RETAIL.overflowFeeRate = Number(process.env.OVERFLOW_FEE);
 if (process.env.OVERFLOW_SHARE) RETAIL.overflowShare = Number(process.env.OVERFLOW_SHARE);
 if (process.env.GRAIN_DEPTH) REGIONS[REGION].grainSpotDepthLPA = Number(process.env.GRAIN_DEPTH);
+// 비교 실험용: AGE_PREMIUM=old 면 결정 #95 이전의 병 숙성 프리미엄(3년 이후 연 +0.06, 12년 상한)
+if (process.env.AGE_PREMIUM === 'old') AGE_PREMIUM.legacy = true;
+// 튜닝 실험용: 캐스크 보관비 배수 (#61 보유 비용)
+if (process.env.STORAGE_SCALE) CASK_STORAGE.perCaskPerMonth *= Number(process.env.STORAGE_SCALE);
+// 튜닝 실험용: 원액 공급 계약 단가 배수 (BULK.contract, #77)
+if (process.env.CONTRACT_PRICE) BULK.contract = Number(process.env.CONTRACT_PRICE);
 
-type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site';
+type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site' | 'aged' | 'twin';
 
 /** 입지 대표 결정 전략 (결정 #86~#90) — 지역 기본 전략(한국 브랜드형·일본 혼합형) 위에 입지 고유 결정 하나를 얹는다 */
 const SITE_KEY = `${REGION}/${SITE ?? 'default'}`;
@@ -55,8 +61,11 @@ const rid = (s: GameState, kind: SpiritKind) => recipeOf(s, kind)?.id;
 const BIG_RECIPE = 'B2B 몰트';
 
 /** 제주: 입지 원료 소주 원액 일부를 면세 기념품 한정판(40%·500ml)으로 — 매대가 비었을 때만 */
+/** 면세 한정판 종류 (결정 #95 검증용) — soju(기본: 고소리술 기념품) | whisky(위스키 한정판만) | both. 위스키 한정판은 DF_WHISKY_YEARS년 이상 캐스크로 [실험용] */
+const DF_MODE = process.env.DF_MODE ?? 'soju';
+const DF_WHISKY_YEARS = Number(process.env.DF_WHISKY_YEARS ?? 0);
 function bottleSouvenir(s: GameState): GameState {
-  if (!siteMode || !siteOf(s).dutyFree || dutyFreeSlotBlocker(s)) return s;
+  if (!siteMode || DF_MODE === 'whisky' || !siteOf(s).dutyFree || dutyFreeSlotBlocker(s)) return s;
   const lot = s.lots.find((l) => l.kind === 'soju' && l.localIngredient && s.month - l.createdMonth >= 1);
   if (!lot) return s;
   const liters = Math.min(lot.volumeL, (DF_SOUVENIR_BOTTLES * 0.5 * 0.4) / lot.abv);
@@ -105,16 +114,42 @@ function whiskyDemandLastMonth(s: GameState): number {
   const ids = new Set(s.products.filter((p) => p.category === 'whisky').map((p) => p.id));
   return s.reports.at(-1)?.sales.filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0) ?? 0;
 }
+/** 숙성 라인 (결정 #95 검증용): aged = 국내 싱글 몰트와 별도로 AGED_YEARS(기본 6)년 이상 캐스크만 쓰는 고연산 제품,
+ *  twin = 같은 방식의 두 번째 라인을 연수 조건 없이(대조군 — 제품 하나를 더 내는 효과만). 둘 다 수요를 따라 병입한다 */
+const AGED_LINE_YEARS = Number(process.env.AGED_YEARS ?? 6);
+let agedYears = 0;
+const AGED_PREFIX = '고연산 싱글 몰트';
+const isAgedLine = (name: string) => name.startsWith(AGED_PREFIX);
+function lineDemandLastMonth(s: GameState, aged: boolean): number {
+  const ids = new Set(s.products.filter((p) => p.category === 'whisky' && isAgedLine(p.name) === aged).map((p) => p.id));
+  return s.reports.at(-1)?.sales.filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0) ?? 0;
+}
+const lineStock = (s: GameState, aged: boolean) => s.products.filter((p) => p.category === 'whisky' && !p.dutyFreeOnly && isAgedLine(p.name) === aged).reduce((t, p) => t + p.stockBottles, 0);
+const ownAged = (s: GameState, minMonths: number) => s.casks.filter((c) => c.contents && c.contents.oakMonths >= minMonths && !c.contents.sourced);
+const byAge = (cs: GameState['casks'], oldest: boolean) => [...cs].sort((a, b) => (oldest ? -1 : 1) * (a.contents!.oakMonths - b.contents!.oakMonths));
+function bottleCasks(s: GameState, casks: GameState['casks'], name: string, dutyFreeOnly = false): GameState {
+  if (!casks.length) return s;
+  const comps = casks.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }));
+  const opts = { name, targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard', ...(dutyFreeOnly ? { dutyFreeOnly: true } : {}) };
+  return previewBlend(s, comps, opts).ok ? act(s, { type: 'bottle', components: comps, options: opts }) : s;
+}
 function bottleWhisky(s: GameState): GameState {
-  const stock = stockOf(s, 'whisky');
-  const target = OLD_BOTTLE ? 800 : Math.max(800, whiskyDemandLastMonth(s) * 1.5);
+  // 면세 위스키 한정판(제주 site, DF_MODE=whisky|both): 매대가 비면 오래된 캐스크 3통 — 국내 병입에 더해 낸다
+  if (siteMode && DF_MODE !== 'soju' && siteOf(s).dutyFree && !dutyFreeSlotBlocker(s))
+    s = bottleCasks(s, byAge(ownAged(s, Math.max(36, DF_WHISKY_YEARS * 12)), true).slice(0, 3), `싱글 몰트 면세 한정 ${s.month}`, true);
+  if (agedYears > 0) {
+    const stock = lineStock(s, true);
+    const target = Math.max(300, lineDemandLastMonth(s, true) * 1.5);
+    if (stock < target) s = bottleCasks(s, byAge(ownAged(s, agedYears * 12), true).slice(0, Math.min(10, Math.max(1, Math.ceil((target - stock) / BOTTLES_PER_CASK)))), `${AGED_PREFIX} ${s.month}`);
+  }
+  const stock = agedYears > 0 ? lineStock(s, false) : stockOf(s, 'whisky');
+  const target = OLD_BOTTLE ? 800 : Math.max(800, (agedYears > 0 ? lineDemandLastMonth(s, false) : whiskyDemandLastMonth(s)) * 1.5);
   if (stock >= target) return s;
   const n = OLD_BOTTLE ? 3 : Math.min(10, Math.max(1, Math.ceil((target - stock) / BOTTLES_PER_CASK)));
-  const ready = s.casks.filter((c) => c.contents && c.contents.oakMonths >= 36 && !c.contents.sourced).slice(0, n);
-  if (!ready.length) return s;
-  const comps = ready.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }));
-  const opts = { name: `싱글 몰트 ${s.month}`, targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' };
-  return previewBlend(s, comps, opts).ok ? act(s, { type: 'bottle', components: comps, options: opts }) : s;
+  // 숙성 라인·숙성 한정판을 노릴 때 국내 기본 라인은 어린 캐스크부터 써서 오래된 캐스크를 남긴다
+  const reserve = agedYears > 0 || (siteMode && DF_MODE !== 'soju' && DF_WHISKY_YEARS > 0);
+  const eligible = ownAged(s, 36);
+  return bottleCasks(s, (reserve ? byAge(eligible, false) : eligible).slice(0, n), `싱글 몰트 ${s.month}`);
 }
 
 /** 공백기 브리지: ① 현금이 모자라면 법정 최소 숙성이 지난 자사 어린 위스키(12개월 이상)를 1캐스크 병입하거나
@@ -374,6 +409,13 @@ function siteActions(s: GameState): GameState {
 }
 
 function policy(s: GameState, strategy: Strategy): GameState {
+  if (strategy === 'aged' || strategy === 'twin') {
+    // 비교용 (all에 넣지 않음): 브랜드형 + 두 번째 위스키 라인. twin은 연수 조건이 3년이라 사실상 "제품 하나 더"
+    agedYears = strategy === 'aged' ? AGED_LINE_YEARS : 3;
+    const out = policy(s, 'brand');
+    agedYears = 0;
+    return out;
+  }
   if (strategy === 'site') {
     siteMode = true;
     s = siteActions(s);
@@ -523,8 +565,9 @@ function play(strategy: Strategy, seed: number): Result {
   };
 }
 
-const list: Strategy[] = WHICH === 'all' ? ['brand', 'hybrid', 'expand', 'grain', ...(SITE_STRATEGY[SITE_KEY] ? ['site' as const] : [])] : [WHICH as Strategy];
-const results: Record<Strategy, Result[]> = { brand: [], hybrid: [], expand: [], grain: [], site: [] };
+// 전략은 쉼표로 여러 개 지정할 수 있다 (예: brand,aged,twin). aged·twin(결정 #95 검증용)은 all에 넣지 않는다
+const list: Strategy[] = WHICH === 'all' ? ['brand', 'hybrid', 'expand', 'grain', ...(SITE_STRATEGY[SITE_KEY] ? ['site' as const] : [])] : (WHICH.split(',') as Strategy[]);
+const results: Record<Strategy, Result[]> = { brand: [], hybrid: [], expand: [], grain: [], site: [], aged: [], twin: [] };
 if (SITE_STRATEGY[SITE_KEY]) console.log(`site 전략 = ${SITE_STRATEGY[SITE_KEY]}`);
 const wins: Record<string, number> = {};
 const bookWins: Record<string, number> = {};

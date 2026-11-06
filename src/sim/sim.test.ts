@@ -3,10 +3,10 @@ import {
   advanceMonths, annuityPayment, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, categorize, demandFor, evaluate, evaporate, heartsFraction, spotBidPerLPA, spotQuote,
   makeContractOffer, makeCraftContractOffer, contractAgingImpact, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
   appeal, applyEffects, buyersFor, presetRecipes, validateRecipe, type Product,
-  agePerception, spotSaturation, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
+  agePerception, suggestedPrice, dutyFreeSuggestedPrice, spotSaturation, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
 } from './index';
 import { overhangFactor, ownsFacility, retailCapacityCases, slotClimate } from './ops';
-import { EQUIPMENT } from './content/catalog';
+import { AGE_PREMIUM, EQUIPMENT } from './content/catalog';
 import { BUYERS } from './content/names';
 import { consumerPrice, logisticsMultiplier, priceForConsumer, REGIONS, siteOf, traditionalTaxFactor } from './content/regions';
 
@@ -379,7 +379,8 @@ describe('지역 (v0.6)', () => {
     expect(agePerception(0)).toBeCloseTo(0.472, 2);
     expect(agePerception(12)).toBeLessThan(0.8);
     expect(agePerception(35.999)).toBeCloseTo(agePerception(36), 2);
-    expect(agePerception(144)).toBeCloseTo(1.72, 5);
+    // 3년 이후는 벌크 가치와 같은 비율 (결정 #95, 이전 12년 ×1.72)
+    expect(agePerception(144)).toBeCloseTo(1.18 * 3.4 / 1.6, 5);
   });
 
   it('일본: 3년 미만 자사 위스키는 "재패니즈 위스키" 표기를 못 해 매력도가 깎인다', () => {
@@ -690,5 +691,61 @@ describe('v1.0 운영 시스템', () => {
     s = advanceMonths(s, 12);
     expect(s.reports.at(-1)!.visitors).toBeGreaterThan(0);
     expect(s.localBuzz).toBeGreaterThan(0);
+  });
+});
+
+describe('병 가격의 숙성 프리미엄 (결정 #95)', () => {
+  const lot = (oakMonths: number, kind: 'malt' | 'grain' = 'malt'): SpiritLot => ({ id: 'm', name: 'm', kind, volumeL: 190, abv: 0.6, flavor: { fresh_fruit: 30, cereal: 20, vanilla_caramel: 40, integration: 50, harshness: 25 }, createdMonth: 0, oakMonths, sourced: false, costPerLPA: 9_000 });
+  const product = (over: Partial<Product> = {}): Product => ({ id: 'p', name: 'p', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 80, style: null, sourcedShare: 0, stockBottles: 5000, price: 60_000, unitCost: 20_000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, ...over });
+  const at = (y: number) => ({ ageYears: y, oakMonths: y * 12 });
+
+  it('3년까지(어린 위스키 구간 포함)는 그대로, 3년 = 1.18', () => {
+    expect(agePerception(36)).toBeCloseTo(1.18, 9);
+    expect(agePerception(36, 'grain_whisky')).toBeCloseTo(1.18, 9);
+    expect(agePerception(24, 'whisky')).toBe(agePerception(24));
+  });
+
+  it('3년 이후 배수는 같은 원액의 벌크 기준가치와 같은 비율로 오른다 (몰트·그레인), 블렌디드는 그 사이', () => {
+    const s = newGame({ seed: 1 });
+    for (const y of [4, 6, 10, 12]) {
+      expect(agePerception(y * 12, 'whisky') / agePerception(36, 'whisky')).toBeCloseTo(bulkValuePerLPA(s, lot(y * 12)) / bulkValuePerLPA(s, lot(36)), 6);
+      expect(agePerception(y * 12, 'grain_whisky') / agePerception(36, 'grain_whisky')).toBeCloseTo(bulkValuePerLPA(s, lot(y * 12, 'grain')) / bulkValuePerLPA(s, lot(36, 'grain')), 6);
+      expect(agePerception(y * 12, 'blended_whisky')).toBeGreaterThan(agePerception(y * 12, 'grain_whisky'));
+      expect(agePerception(y * 12, 'blended_whisky')).toBeLessThan(agePerception(y * 12, 'whisky'));
+    }
+    // 이전(연 6%)보다 가파르다: 3년 → 10년 ×1.36 → ×1.875
+    expect(agePerception(120, 'whisky') / agePerception(36, 'whisky')).toBeCloseTo(1.875, 6);
+  });
+
+  it('상한은 18년 — 12년 상한이 없어졌다. 실험용 legacy 스위치는 옛 공식', () => {
+    expect(agePerception(180)).toBeGreaterThan(agePerception(144));
+    expect(agePerception(25 * 12)).toBe(agePerception(AGE_PREMIUM.capYears * 12));
+    AGE_PREMIUM.legacy = true;
+    try {
+      expect(agePerception(144)).toBeCloseTo(1.72, 9);
+      expect(agePerception(180)).toBeCloseTo(1.72, 9);
+    } finally {
+      AGE_PREMIUM.legacy = false;
+    }
+  });
+
+  it('국내·면세 권장가와 매력도에 같은 배수 — 권장가로 팔면 수요량은 배수^(1−탄력성)만 변한다', () => {
+    const kr = REGIONS.KR;
+    const ratio = agePerception(120, 'whisky') / agePerception(36, 'whisky');
+    expect(suggestedPrice(kr, 'whisky', 700, 70, 120, 0.46) / suggestedPrice(kr, 'whisky', 700, 70, 36, 0.46)).toBeCloseTo(ratio, 2);
+    expect(dutyFreeSuggestedPrice(kr, 'whisky', 700, 70, agePerception(120, 'whisky'), 0.46) / dutyFreeSuggestedPrice(kr, 'whisky', 700, 70, agePerception(36, 'whisky'), 0.46)).toBeCloseTo(ratio, 2);
+    const s = newGame({ seed: 1 });
+    expect(appeal(product(at(10)), s) / appeal(product(at(3)), s)).toBeCloseTo(ratio, 6);
+    const demand = (y: number) => demandFor(s, product({ ...at(y), price: suggestedPrice(kr, 'whisky', 700, 70, y * 12, 0.46) }), 1, 6).demandBottles;
+    expect(demand(10) / demand(3)).toBeCloseTo(Math.pow(ratio, 1 - kr.market.whisky.elasticity), 2);
+  });
+
+  it('병입 미리보기의 권장가도 숙성이 길수록 벌크 비율만큼 오른다', () => {
+    const s = newGame({ seed: 1 });
+    s.lots = [{ ...lot(48), id: 'A' }, { ...lot(120), id: 'B' }];
+    const opts = { name: 'x', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' };
+    const a = previewBlend(s, [{ source: 'lot', id: 'A', liters: 100 }], opts);
+    const b = previewBlend(s, [{ source: 'lot', id: 'B', liters: 100 }], opts);
+    expect(b.suggestedPrice / a.suggestedPrice).toBeGreaterThan(1.5);
   });
 });

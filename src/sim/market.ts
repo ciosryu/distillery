@@ -29,7 +29,8 @@ export function productConsumerPrice(s: GameState, p: Pick<Product, 'price' | 'b
 
 export function appeal(p: Product, s?: Pick<GameState, 'modifiers' | 'month' | 'regionId'>): number {
   const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
-  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12) : 1;
+  // 권장가와 같은 숙성 배수 (결정 #95) — 가격이 오른 만큼 매력도도 올라, 권장가로 팔면 수요량은 배수^(1−탄력성)만 변한다
+  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : 1;
   const lux = PACKAGING[p.packagingId]?.luxury ?? 1;
   // 시장 국면: 피트·셰리 유행
   const trend = s ? mod(s, 'appeal:all') * ((p.flavor.peat_smoke ?? 0) >= 25 ? mod(s, 'appeal:peated') : 1) * ((p.flavor.dried_fruit ?? 0) >= 25 ? mod(s, 'appeal:sherried') : 1) : 1;

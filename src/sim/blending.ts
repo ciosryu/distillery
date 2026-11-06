@@ -1,6 +1,6 @@
 import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/catalog';
 import { CATEGORY } from './content/categories';
-import { BULK, INGREDIENTS } from './content/catalog';
+import { AGE_PREMIUM, BULK, INGREDIENTS } from './content/catalog';
 import { DEFAULT_WHISKY_RULES, priceForConsumer, refPricePerL, regionOf, traditionalTaxFactor, type RegionDef, type WhiskyRules } from './content/regions';
 import { clampFlavor, evaluate, weightedAverage, type Evaluation } from './flavor';
 import { emptyCask } from './maturation';
@@ -81,15 +81,20 @@ export function lotCategory(lot: SpiritLot, rules: WhiskyRules = DEFAULT_WHISKY_
   return lot.kind === 'grain' ? 'grain_whisky' : 'whisky';
 }
 
-/** 숙성 연수에 대한 소비자 인식 (위스키류). 3년 = 1.18, 이후 1년마다 +0.06(12년까지).
- *  3년 미만은 법적으로 위스키라도 "어린 위스키"로 보고 크게 깎는다 — 0개월 0.47, 12개월 0.77, 24개월 0.98 (v0.8) */
-export function agePerception(oakMonths: number): number {
-  if (oakMonths >= 36) return 1 + 0.06 * Math.min(Math.floor(oakMonths / 12), 12);
-  return 1.18 * (0.4 + 0.6 * Math.pow(Math.max(0, oakMonths) / 36, 0.8));
+/** 숙성 연수에 대한 소비자 인식 (위스키류) — 권장가(국내·면세)와 매력도에 같은 값을 쓴다.
+ *  3년 미만은 법적으로 위스키라도 "어린 위스키"로 보고 크게 깎는다 — 0개월 0.47, 12개월 0.77, 24개월 0.98 (v0.8).
+ *  3년 = 1.18. 그 뒤로는 벌크 기준가치와 같은 비율(결정 #95): 1.18 × (1 + r·연수) / (1 + r·3), r = 카테고리의 벌크 숙성 상승률, 18년 상한 */
+export function agePerception(oakMonths: number, category?: ProductCategory): number {
+  if (oakMonths < 36) return AGE_PREMIUM.base * (0.4 + 0.6 * Math.pow(Math.max(0, oakMonths) / 36, 0.8));
+  const years = Math.floor(oakMonths / 12);
+  if (AGE_PREMIUM.legacy) return 1 + 0.06 * Math.min(years, 12);
+  const r = (category && AGE_PREMIUM.perYear[category]) ?? BULK.agePerYear;
+  const y = Math.min(years, AGE_PREMIUM.capYears);
+  return (AGE_PREMIUM.base * (1 + r * y)) / (1 + r * AGE_PREMIUM.baseYears);
 }
 
 export function suggestedPrice(region: RegionDef, category: ProductCategory, bottleMl: number, quality: number, oakMonths: number | null, abv: number, taxFactor = 1): number {
-  const ageBonus = isWhiskyCategory(category) && oakMonths != null ? agePerception(oakMonths) : 1;
+  const ageBonus = isWhiskyCategory(category) && oakMonths != null ? agePerception(oakMonths, category) : 1;
   const consumer = refPricePerL(region, category, abv) * (bottleMl / 1000) * Math.sqrt(Math.max(quality, 20) / 60) * ageBonus;
   const p = priceForConsumer(region, consumer, bottleMl, abv, taxFactor);
   return Math.round(p / 100) * 100;
@@ -178,7 +183,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     else if (!localIngredient) {
       const minAged = DUTY_FREE.agedTiers.at(-1)!;
       if (ageYears == null) warnings.push('제주 원료(차조·청귤)를 쓰지 않은 한정판 — 기념품 매력도 보너스 없음');
-      else if (dutyFreeAgedAppeal(ageYears) <= 1) warnings.push(`숙성 ${ageYears}년 — ${minAged.years}년 이상이면 숙성 한정판 수요 ×${minAged.appeal} (가격 프리미엄은 없음)`);
+      else if (dutyFreeAgedAppeal(ageYears) <= 1) warnings.push(`숙성 ${ageYears}년 — ${minAged.years}년 이상이면 숙성 한정판 수요 ×${minAged.appeal} (연수 가격 프리미엄은 권장가에 별도 반영)`);
     }
   }
   const finalVolume = lpa / finalAbv;
@@ -193,7 +198,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     minOakMonths, ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare, sourcedPrestige, specialty: specialty?.id ?? null, premiumLabel, traditional,
     // 면세 전용 한정판은 면세 기준가로 권장가를 잡는다 (주세·부가세 없음)
     suggestedPrice: dutyFree && hasDutyFree(s)
-      ? dutyFreeSuggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? agePerception(minOakMonths) : 1, finalAbv)
+      ? dutyFreeSuggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? agePerception(minOakMonths, category) : 1, finalAbv)
       : suggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? minOakMonths : null, finalAbv, traditionalTaxFactor(region, traditional, s.traditionalReleasedL, s.traditionalPrevYearL)),
     localIngredient,
     dfEdition: dutyFree && hasDutyFree(s) ? nextDutyFreeEdition(s) : null,

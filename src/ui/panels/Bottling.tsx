@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { BOTTLE_SIZES, PACKAGING, packagingCost } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
-import { calendar, DUTY_FREE, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind } from '../../sim';
+import { agePerception, calendar, DUTY_FREE, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind } from '../../sim';
 import { regionOf } from '../../sim/content/regions';
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
@@ -104,9 +104,10 @@ export function Bottling() {
                 <dt className="text-stone-500">품질 / 전형성</dt><dd className="text-right tabular-nums">{preview.evaluation?.quality ?? '—'} / {preview.evaluation?.typicity ?? '—'}</dd>
                 <dt className="text-stone-500">병당 원가</dt><dd className="text-right tabular-nums">{won(preview.unitCost)}</dd>
                 <dt className="text-stone-500">권장 출고가</dt><dd className="text-right tabular-nums">{won(preview.suggestedPrice)}{preview.dfEdition ? ' (면세 기준)' : ''}</dd>
+                {preview.category && preview.ageYears != null && preview.minOakMonths >= 36 && <><dt className="text-stone-500">숙성 프리미엄</dt><dd className="text-right tabular-nums">×{agePerception(preview.minOakMonths, preview.category).toFixed(2)} (권장가·매력도)</dd></>}
                 {dfForecast && <><dt className="text-stone-500">예상 면세 판매</dt><dd className={`text-right tabular-nums ${dfForecast.window < preview.bottles ? 'text-amber-800 dark:text-amber-300' : ''}`}>월 {num(dfForecast.perMonth)}병 · {DUTY_FREE.sellOutMonths}개월 {num(dfForecast.window)}병</dd></>}
               </dl>
-              {preview.dfEdition && !preview.localIngredient && dutyFreeAgedAppeal(preview.ageYears) > 1 && <p className="text-xs text-stone-500">숙성 한정판 보너스는 수요만 올립니다. 권장 출고가에는 숙성 프리미엄이 거의 반영되지 않으니 출고가는 직접 조정하세요 — 오래된 원액은 병입보다 원액 시가가 빨리 오릅니다</p>}
+              {preview.dfEdition && !preview.localIngredient && dutyFreeAgedAppeal(preview.ageYears) > 1 && <p className="text-xs text-stone-500">숙성 한정판 보너스는 면세 수요를 ×{dutyFreeAgedAppeal(preview.ageYears)} 더 올립니다. 연수에 따른 가격 프리미엄(3년 이후 원액 시가와 같은 비율)은 권장 출고가에 이미 들어 있습니다</p>}
               {dfForecast && dfForecast.window < preview.bottles && <p className="text-xs text-amber-800 dark:text-amber-300">⚠ 이번 달 수요(계절·인지도 반영)로는 {DUTY_FREE.sellOutMonths}개월 안에 {num(preview.bottles)}병을 다 팔기 어렵습니다 — 사용량을 줄이면 완판 보너스를 노릴 수 있습니다</p>}
               {preview.warnings.map((w) => <p key={w} className="text-xs text-amber-800 dark:text-amber-300">⚠ {w}</p>)}
               {preview.errors.map((e) => <p key={e} className="text-xs text-rose-700 dark:text-rose-400">✕ {e}</p>)}
