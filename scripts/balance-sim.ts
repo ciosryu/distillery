@@ -42,13 +42,7 @@ let siteMode = false;
 let retailBuffer = 0;
 const DF_SOUVENIR_BOTTLES = Number(process.env.DF_SOUVENIR_BOTTLES ?? 300);
 
-/** 현물 판매 수입 — 턴 사이 행동이라 월간 보고서에 안 잡히므로 따로 센다 (월 → 원) */
-let spotIncome: number[] = [];
-const act = (s: GameState, a: Action) => {
-  const next = applyAction(s, a).state;
-  if (a.type === 'sellBulk' || a.type === 'acceptCaskBid') spotIncome[s.month] = (spotIncome[s.month] ?? 0) + (next.cash - s.cash);
-  return next;
-};
+const act = (s: GameState, a: Action) => applyAction(s, a).state;
 const stockOf = (s: GameState, cat: ProductCategory) => s.products.filter((p) => p.category === cat && !p.dutyFreeOnly).reduce((t, p) => t + p.stockBottles, 0);
 /** 지역마다 프리셋 이름이 다르므로 kind(+피트 여부)로 첫 레시피를 찾는다 */
 const recipeOf = (s: GameState, kind: SpiritKind) => s.recipes.find((r) => r.kind === kind && !r.mashBill.some((m) => m.ingredientId === 'malt_peated'));
@@ -497,17 +491,19 @@ function diag(strategy: Strategy, seed: number, s: GameState): void {
   const sumBy = (from: number, to: number) => {
     const rs = s.reports.filter((r) => r.month >= from && r.month < to);
     const exp: Record<string, number> = {};
+    const offTurn: Record<string, number> = {};
     for (const r of rs) for (const [k, v] of Object.entries(r.expenses)) exp[k] = (exp[k] ?? 0) + v;
+    for (const r of rs) for (const [k, v] of Object.entries(r.offTurn ?? {})) offTurn[k] = (offTurn[k] ?? 0) + v;
     return {
-      retail: rs.reduce((t, r) => t + r.revenue, 0), bulk: rs.reduce((t, r) => t + r.bulkRevenue, 0), tourism: rs.reduce((t, r) => t + (r.tourismRevenue ?? 0), 0),
-      penalty: rs.reduce((t, r) => t + r.bulk.reduce((u, b) => u + b.penalty, 0), 0), exp,
+      retail: rs.reduce((t, r) => t + r.revenue, 0), bulk: rs.reduce((t, r) => t + r.bulkRevenue, 0), spot: rs.reduce((t, r) => t + (r.spotBulkRevenue ?? 0), 0), tourism: rs.reduce((t, r) => t + (r.tourismRevenue ?? 0), 0),
+      penalty: rs.reduce((t, r) => t + r.bulk.reduce((u, b) => u + b.penalty, 0), 0), exp, offTurn,
     };
   };
   const cash = s.reports.map((r) => Math.round(r.cashEnd / 1e6));
   const firstNeg = cash.findIndex((c) => c < 0);
   console.error(JSON.stringify({
     strategy, seed, region: REGION, site: SITE ?? null, bankrupt: s.status === 'bankrupt', endMonth: s.month, firstNeg,
-    cash, rev: s.reports.map((r) => Math.round(r.revenue / 1e6)), spot: s.reports.map((r) => Math.round((spotIncome[r.month] ?? 0) / 1e6)), bulkRev: s.reports.map((r) => Math.round(r.bulkRevenue / 1e6)), debt: s.reports.map((r) => Math.round(((r.expenses.principal ?? 0) + (r.expenses.interest ?? 0)) / 1e6)),
+    cash, rev: s.reports.map((r) => Math.round(r.revenue / 1e6)), spot: s.reports.map((r) => Math.round((r.spotBulkRevenue ?? 0) / 1e6)), bulkRev: s.reports.map((r) => Math.round(r.bulkRevenue / 1e6)), debt: s.reports.map((r) => Math.round(((r.expenses.principal ?? 0) + (r.expenses.interest ?? 0)) / 1e6)),
     loans: s.loans.map((l) => ({ id: l.offerId, bal: Math.round(l.balance / 1e6), start: l.startMonth, pay: Math.round(l.monthlyPayment / 1e6), grace: l.graceMonths })), investorShare: s.investorShare,
     y1_3: sumBy(0, 36), y4_5: sumBy(36, 60), all: sumBy(0, s.month),
     events: s.reports.flatMap((r) => r.events.map((e) => `${r.month}:${e}`)),
@@ -546,7 +542,6 @@ interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWo
 
 function play(strategy: Strategy, seed: number): Result {
   let s = newGame({ seed, region: REGION, site: SITE });
-  spotIncome = [];
   closedMarkets = new Set();
   exportLog = [];
   let lo = s.cash;
@@ -554,7 +549,9 @@ function play(strategy: Strategy, seed: number): Result {
     s = advanceMonth(policy(s, strategy));
     lo = Math.min(lo, s.cash);
   }
-  const net = s.reports.map((r) => r.netCash);
+  // 흑자 전환 = 영업 현금흐름 − 정기 원금 상환 (3개월 평균). 대출 실행·투자 유치·설비·캐스크 투자는 빼고,
+  // 현물 판매·병입비 같은 턴 사이 영업 흐름은 넣는다 (예전 순현금은 턴 사이 행동이 통째로 빠져 있었다)
+  const net = s.reports.map((r) => (r.operatingCash ?? r.netCash) - (r.expenses.principal ?? 0));
   let fp = -1;
   for (let i = 2; i < net.length; i++) if ((net[i]! + net[i - 1]! + net[i - 2]!) / 3 > 0) { fp = i; break; }
   const y5 = s.reports.filter((r) => r.month >= 48 && r.month < 60);
@@ -562,7 +559,7 @@ function play(strategy: Strategy, seed: number): Result {
   if (process.env.DBG_EXPORT) console.error(strategy, seed, exportLog.join(' | '), '| 수출 누적', (s.exports ?? []).map((e) => `${e.marketId}:${e.totalBottles}병 aw${e.awareness.toFixed(2)}`).join(' '));
   return {
     strategy, bankrupt: s.status === 'bankrupt', minCash: lo, netWorth: s.status === 'bankrupt' ? -Infinity : netWorth(s), bookWorth: s.status === 'bankrupt' ? -Infinity : bookWorth(s), firstPositive: fp,
-    y5retail: y5.reduce((t, r) => t + r.revenue, 0), y5bulk: y5.reduce((t, r) => t + r.bulkRevenue, 0),
+    y5retail: y5.reduce((t, r) => t + r.revenue, 0), y5bulk: y5.reduce((t, r) => t + r.bulkRevenue + (r.spotBulkRevenue ?? 0), 0),
   };
 }
 
@@ -599,7 +596,7 @@ for (const st of list) {
   const nw = alive.map((r) => r.netWorth);
   const sd = Math.sqrt(avg(nw.map((v) => (v - avg(nw)) ** 2)));
   const fps = rs.filter((r) => r.firstPositive >= 0).map((r) => r.firstPositive);
-  console.log(`${st.padEnd(7)} | 파산 ${rs.length - alive.length}/${rs.length} | 순자산(${MONTHS}m) 평균 ${eok(avg(nw))} ±${eok(sd)} · 원가기준 ${eok(avg(alive.map((r) => r.bookWorth)))} | 최저 현금 평균 ${eok(avg(rs.map((r) => r.minCash)))} | 흑자 전환 평균 ${Math.round(avg(fps))}개월 | 5년차 매출 병입 ${eok(avg(rs.map((r) => r.y5retail)))} + B2B ${eok(avg(rs.map((r) => r.y5bulk)))} | 1위 ${wins[st] ?? 0}회`);
+  console.log(`${st.padEnd(7)} | 파산 ${rs.length - alive.length}/${rs.length} | 순자산(${MONTHS}m) 평균 ${eok(avg(nw))} ±${eok(sd)} · 원가기준 ${eok(avg(alive.map((r) => r.bookWorth)))} | 최저 현금 평균 ${eok(avg(rs.map((r) => r.minCash)))} | 흑자 전환 평균 ${Math.round(avg(fps))}개월 | 5년차 매출 병입 ${eok(avg(rs.map((r) => r.y5retail)))} + B2B(계약+현물) ${eok(avg(rs.map((r) => r.y5bulk)))} | 1위 ${wins[st] ?? 0}회`);
 }
 const dist = (w: Record<string, number>) => [...list, '전멸'].map((st) => `${st} ${w[st] ?? 0}`).join(' · ');
 console.log(`\n[${REGION}${SITE ? '/' + SITE : ''}] 시드별 1위 분포(시가 평가): ${dist(wins)}`);

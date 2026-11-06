@@ -77,28 +77,33 @@ export function Finance() {
 
       <Card title="월별 현금 흐름 (최근 24개월)">
         {!rows.length ? <Empty>기록이 없습니다</Empty> : (
-          <Table head={['월', '제품 매출', '원액 B2B', '생산', '유통', '급여', '관리·유지', '마케팅', '이자·원금', '순현금', '월말 현금']}>
+          <Table head={['월', '제품 매출', '원액 계약', '원액 현물', '생산', '유통', '급여', '관리·유지', '마케팅', '이자·원금', '설비·캐스크', '차입·투자·선급금', '순현금', '영업 현금흐름', '월말 현금']}>
             {rows.map((r) => {
               const e = r.expenses;
+              const f = r.offTurn;
               return (
                 <tr key={r.month}>
                   <Td>{monthLabel(s.startYear, r.month)}</Td>
                   <Td right>{won(r.revenue)}</Td>
                   <Td right>{won(r.bulkRevenue ?? 0)}</Td>
+                  <Td right>{r.spotBulkRevenue != null ? won(r.spotBulkRevenue) : '—'}</Td>
                   <Td right>{won(e.production ?? 0)}</Td>
                   <Td right>{won(e.distribution ?? 0)}</Td>
                   <Td right>{won(e.salaries ?? 0)}</Td>
                   <Td right>{won((e.overhead ?? 0) + (e.maintenance ?? 0))}</Td>
                   <Td right>{won(e.marketing ?? 0)}</Td>
                   <Td right>{won((e.interest ?? 0) + (e.principal ?? 0))}</Td>
+                  <Td right>{r.investingCash != null ? won(r.investingCash) : '—'}</Td>
+                  <Td right>{f ? won((f.loan ?? 0) + (f.investment ?? 0) + (f.loanRepay ?? 0) + (f.contractPrepay ?? 0)) : '—'}</Td>
                   <Td right className={r.netCash >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}>{won(r.netCash)}</Td>
+                  <Td right>{r.operatingCash != null ? won(r.operatingCash) : '—'}</Td>
                   <Td right>{won(r.cashEnd)}</Td>
                 </tr>
               );
             })}
           </Table>
         )}
-        <p className="mt-2 text-xs text-stone-500">캐스크·설비 구매와 병입 포장비는 행동 시점에 바로 현금에서 빠지므로 월별 표에는 포함되지 않습니다.</p>
+        <p className="mt-2 text-xs text-stone-500">턴 사이 행동(원액 현물 판매·IB 캐스크 매각·병입 포장비·설비·캐스크 구매·대출·투자 유치 등)은 행동 시점에 현금이 움직이고, 그다음 결산 달에 합산됩니다. 순현금 = 직전 결산 이후 현금 변화 전체(표에 따로 없는 병입비·이벤트 등 포함). 영업 현금흐름 = 순현금 − 설비·캐스크 투자 − 차입·상환·투자 유치·계약 선급금(입금·상계·반환). '—'는 구버전 세이브의 기록입니다.</p>
       </Card>
     </div>
   );
