@@ -205,8 +205,9 @@ function start(s: GameState, strategy: Strategy): GameState {
     const { id: _id, ...rest } = base;
     s = act(s, { type: 'saveRecipe', recipe: { ...rest, name: GRAIN_RECIPE, kind: 'grain', stillId: col.id, mashBill: [{ ingredientId: 'corn', ratio: 0.9 }, { ingredientId: 'malt_unpeated', ratio: 0.1 }], fermentDays: 3, runs: 1 } });
   }
-  // v1.4(#84): 그레인형도 몰트는 브랜드형과 같은 7배치(발효조 2기 추가) — 4배치면 #82 이후 위스키 판매에서 뒤처진다
-  if (strategy === 'grain' && !OLD_GRAIN) {
+  // 실험(#84, 기각): 그레인형 몰트 7배치 — 디스틸러 운전 한도를 몰트가 차지해 그레인 계약을 못 채우고(1~3년차 위약금 약 1억)
+  // 한국 파산 5 → 19/20, 일본 9 → 16/20. GRAIN_MALT7=1로만 켠다
+  if (strategy === 'grain' && process.env.GRAIN_MALT7 === '1') {
     s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
     s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
     return act(s, { type: 'setOrder', recipeId: rid(s, 'malt')!, batchesPerMonth: 7 });
