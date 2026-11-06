@@ -27,7 +27,7 @@ export function Finance() {
                 <Td right>{o.termMonths / 12}년</Td>
                 <Td right>{o.graceMonths ? `${o.graceMonths}개월` : '—'}</Td>
                 <Td right>{o.collateral === 'inventory' ? <>{won(inventoryLoanRoom(s))}<div className="text-xs text-stone-500">숙성 재고 시가 {won(inventoryCollateral(s))} × {pct(inventoryLtv(s), 0)}</div></> : won(o.max)}</Td>
-                <Td>{o.collateral === 'inventory' ? <Badge tone="info">재고 담보 · 시가 하락 시 추가 상환</Badge> : o.requires ? <Badge tone={locked ? 'warn' : 'good'}>증류식 소주 생산 실적</Badge> : o.regions ? <Badge tone="info" >지역 정책자금</Badge> : '—'}</Td>
+                <Td>{o.emergency ? <Badge tone="bad">고금리 · 마지막 수단</Badge> : o.collateral === 'inventory' ? <Badge tone="info">재고 담보 · 시가 하락 시 추가 상환</Badge> : o.requires ? <Badge tone={locked ? 'warn' : 'good'}>증류식 소주 생산 실적</Badge> : o.regions ? <Badge tone="info" >지역 정책자금</Badge> : '—'}</Td>
                 <Td><NumberField value={amounts[o.id] ?? 0} min={10} max={o.max / 1e6} width="w-20" suffix="백만" onCommit={(v) => setAmounts({ ...amounts, [o.id]: v })} /></Td>
                 <Td right>{won(annuityPayment(amt, o.annualRate, o.termMonths - o.graceMonths))}</Td>
                 <Td><Button small variant="primary" disabled={using || locked} onClick={() => dispatch({ type: 'takeLoan', offerId: o.id, amount: amt })}>{using ? '이용 중' : '실행'}</Button></Td>

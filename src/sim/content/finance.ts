@@ -4,7 +4,7 @@ import type { EquipmentDef } from './production';
 // 경영 콘텐츠 (파트 MGT, 결정 #144) — 대출 상품·직원 직군·이름 풀·방재 설비. 모든 수치 [튜닝]
 
 // ── 대출 상품 ──
-export interface LoanOfferDef { id: string; nameKo: string; annualRate: number; termMonths: number; max: number; requires?: 'producedSoju'; /** 원금 거치 기간(이자만 납부) */ graceMonths: number; /** 이 지역에서만 신청 가능 */ regions?: RegionId[]; note?: string; /** 숙성 재고 담보 — 담보 인정 비율이 있는 입지에서만, 한도 = 재고 시가 × 비율 (결정 #90) */ collateral?: 'inventory' }
+export interface LoanOfferDef { id: string; nameKo: string; annualRate: number; termMonths: number; max: number; requires?: 'producedSoju'; /** 원금 거치 기간(이자만 납부) */ graceMonths: number; /** 이 지역에서만 신청 가능 */ regions?: RegionId[]; note?: string; /** 숙성 재고 담보 — 담보 인정 비율이 있는 입지에서만, 한도 = 재고 시가 × 비율 (결정 #90) */ collateral?: 'inventory'; /** 고금리 급전 (#133) — 화면이 '마지막 수단'으로 표시한다. 규칙은 다른 상품과 같다 */ emergency?: boolean }
 
 export const LOAN_OFFERS: LoanOfferDef[] = [
   { id: 'facility', nameKo: '시설자금 대출', annualRate: 0.05, termMonths: 120, max: 1_000_000_000, graceMonths: 24 },
@@ -14,6 +14,9 @@ export const LOAN_OFFERS: LoanOfferDef[] = [
   { id: 'kr_regional', nameKo: 'K-위스키 지역 특화 산업 육성자금 (지자체)', annualRate: 0.02, termMonths: 96, max: 300_000_000, graceMonths: 24, regions: ['KR'], note: '경북 등 지자체의 K-위스키 산업 육성 기조를 단순화' },
   { id: 'kr_startup', nameKo: '창업기반지원자금 (중소벤처기업진흥공단)', annualRate: 0.025, termMonths: 72, max: 200_000_000, graceMonths: 18, regions: ['KR'], note: '창업 7년 이내 중소기업 정책 융자를 단순화' },
   // 재고 담보대출 (결정 #90, 홋카이도) — 숙성 원액 시가를 담보로. 시가가 떨어지면 추가 상환 요구 [튜닝]
+  // 고금리 급전 (#133, MVP) — 은행 상품을 다 쓴 뒤 현금 공백을 메우는 마지막 수단. 금리는 한국 법정 최고금리(연 20%, 2021-07~) 수준, 기간·한도는 [튜닝].
+  // 다른 상품과 같은 규칙(상품당 1건, 조기 상환 가능)이다. 은행 심사(적자·현금 부족이면 거절)는 MGT 재무 확장 몫 — 그게 생겨야 급전만 남는 순간이 실제로 온다
+  { id: 'emergency', nameKo: '고금리 급전 (대부업)', annualRate: 0.2, termMonths: 12, max: 100_000_000, graceMonths: 0, emergency: true, note: '심사 없이 바로 — 연 20%, 12개월 원리금 균등' },
   { id: 'inventory', nameKo: '숙성 재고 담보대출', annualRate: 0.06, termMonths: 60, max: 2_000_000_000, graceMonths: 12, collateral: 'inventory', note: '담보 인정 비율이 있는 입지(홋카이도)에서만' },
 ];
 
