@@ -72,13 +72,13 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
       gin: { baseCases: 150_000, baseSource: '크래프트 수입 진 틈새 (추정)', refConsumerPricePerL: 50_000, refAbv: 0.43, elasticity: 1.8, shareCap: 0.02 },
     },
     // 기본관세(MFN)는 위스키·진 무관세. 2026-07-24부터 Section 301 관세 한국·일본 12.5%, 대만 10% (주류 면제 여부 미확인)
-    tariff: { KR: 0.125, JP: 0.125, TW: 0.1 },
+    tariff: { KR: 0.125, JP: 0.125, TW: 0.1, UK: 0 }, // 영국산 위스키는 2026-04-30 관세 철폐, 2026-07-24 Section 301에서도 제외 (scotland.md §2)
     // 연방: 소규모 생산자 감면(CBMA) $2.70/proof gallon — 수입품도 해외 생산자가 수입상에 배정해 적용. 주세: 평균 약 $4/gal(제품) [추측]
     excisePerLPA: Math.round((2.7 / 1.8927) * KRW_PER_USD + (4 / (3.785 * 0.46)) * KRW_PER_USD),
     vat: 0.07, // 주별 판매세 0~10% [추측]
     // 3단계 유통: 수입상 ~24%·도매 ~33%·소매 ~33% 마진 → 소비자가 ≈ FOB × 4
     channelMultiple: 3.0,
-    freightPerBottle: { KR: 2_700, JP: 2_700, TW: 2_800 }, // 소량 혼적 + 부대비용 병당 $1~3 [추측]
+    freightPerBottle: { KR: 2_700, JP: 2_700, TW: 2_800, UK: 2_000 }, // 소량 혼적 + 부대비용 병당 $1~3 [추측]
     entryCost: 20_000_000, // COLA(무료)·수입상 허가·FDA 등록, $5k~20k [추측]
     entryMonths: 5,
     monthlyCost: 4_000_000, // 현지 브랜드 앰배서더·판촉 지원 [추측]
@@ -96,12 +96,12 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
       whisky: { baseCases: 60_000, baseSource: '월드·재패니즈 위스키 애호가 시장 — 신생 브랜드 연 300~3,000병이 되도록 (추정, §16.25)', refConsumerPricePerL: 110_000, refAbv: 0.46, elasticity: 2.0, shareCap: 0.03 },
       gin: { baseCases: 80_000, baseSource: '프리미엄 진 수입 틈새 (추정)', refConsumerPricePerL: 55_000, refAbv: 0.43, elasticity: 1.9, shareCap: 0.01 },
     },
-    tariff: { KR: 0, JP: 0, TW: 0 }, // 위스키 제3국 관세 0% (진도 0% 추정)
+    tariff: { KR: 0, JP: 0, TW: 0, UK: 0 }, // 위스키 제3국 관세 0% (진도 0% 추정)
     excisePerLPA: Math.round(33.99 * KRW_PER_GBP), // 2026-02부터 £33.99/LPA (2027-02 £35.54 예정)
     vat: 0.2,
     // 유통 5~40% + 소매 25~35% — 주세가 병당 고정이라 싼 병일수록 소비자가/FOB 배수가 커진다
     channelMultiple: 1.7,
-    freightPerBottle: { KR: 3_600, JP: 3_600, TW: 3_700 }, // 병당 £1~3, 6~8주 [추측]
+    freightPerBottle: { KR: 3_600, JP: 3_600, TW: 3_700, UK: 0 }, // 병당 £1~3, 6~8주 [추측]
     entryCost: 10_000_000, // 수입상·보세창고·영국 표기 라벨, £2k~10k [추측]
     entryMonths: 3,
     monthlyCost: 3_000_000,
@@ -119,18 +119,18 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
       gin: { baseCases: 8_000, baseSource: '공항 면세 진 중 로컬 몫 (추정)', refConsumerPricePerL: 45_000, refAbv: 0.43, elasticity: 1.6, shareCap: 0.05 },
       soju_distilled: { baseCases: 12_000, baseSource: '공항 면세 전통주·증류식 소주 (추정)', refConsumerPricePerL: 35_000, refAbv: 0.25, elasticity: 1.8, shareCap: 0.05 },
     },
-    tariff: { KR: 0, JP: 0, TW: 0 },
+    tariff: { KR: 0, JP: 0, TW: 0, UK: 0 },
     excisePerLPA: 0,
     vat: 0,
     // 운영사 매출총이익률 65%(Avolta 2024) + 공항 임대료 → 공급가는 소비자가의 35~50%
     channelMultiple: 2.5,
-    freightPerBottle: { KR: 400, JP: 400, TW: 400 },
+    freightPerBottle: { KR: 400, JP: 400, TW: 400, UK: 400 },
     entryCost: 30_000_000, // 입점비 — 대형 브랜드와 같은 금액이라 소형 브랜드에 불리 [추측]
     entryMonths: 3,
     monthlyCost: 2_000_000,
     minWhiskyMonths: 0,
     awareness: { start: 0, perMonth: 0, domesticSpill: 1, max: 0.95 },
-    regionScale: { KR: 1.0, JP: 0.8, TW: 0.5 },
+    regionScale: { KR: 1.0, JP: 0.8, TW: 0.5, UK: 1.5 },
     // 면세 운영사 입점 계약 — 국내 여행객 시장이라 국내 인지도가 그대로 넘어온다 (#102)
     offer: { priceFactor: [0.9, 1], minBottlesPerYear: 600 },
     partners: ['게이트원 듀티프리', '스카이라운지 리테일'],
@@ -146,12 +146,12 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
       gin: { baseCases: 150_000, baseSource: '크래프트 수입 진 틈새 (추정)', refConsumerPricePerL: 50_000, refAbv: 0.43, elasticity: 1.8, shareCap: 0.01 },
     },
     // 한-EU FTA·일-EU EPA 0%, 대만산 위스키 MFN 0% [확인 필요]
-    tariff: { KR: 0, JP: 0, TW: 0 },
+    tariff: { KR: 0, JP: 0, TW: 0, UK: 0 },
     // 회원국 평균 약 €18/LPA (프랑스는 사회보장 부담금 포함 약 €25) [추정]
     excisePerLPA: Math.round(18 * KRW_PER_EUR),
     vat: 0.2,
     channelMultiple: 2.0,
-    freightPerBottle: { KR: 3_600, JP: 3_600, TW: 3_700 },
+    freightPerBottle: { KR: 3_600, JP: 3_600, TW: 3_700, UK: 1_500 },
     entryCost: 15_000_000,
     entryMonths: 4,
     monthlyCost: 3_000_000,
@@ -169,13 +169,13 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
       blended_whisky: { baseCases: 100_000, baseSource: '수입 블렌디드 틈새 (추정)', refConsumerPricePerL: 80_000, refAbv: 0.4, elasticity: 1.6, shareCap: 0.01 },
     },
     // 2026-02-02부터 잠정 5% (2025년 MFN 10%)
-    tariff: { KR: 0.05, JP: 0.05, TW: 0.05 },
+    tariff: { KR: 0.05, JP: 0.05, TW: 0.05, UK: 0.05 },
     // 소비세 20%(과세표준이 세금 포함 → 실효 25%) + 0.912위안/L [단순화: 종량분은 LPA로 환산]
     adValorem: 0.25,
     excisePerLPA: Math.round((0.912 / 0.43) * KRW_PER_CNY),
     vat: 0.13,
     channelMultiple: 2.5,
-    freightPerBottle: { KR: 1_200, JP: 1_200, TW: 1_100 },
+    freightPerBottle: { KR: 1_200, JP: 1_200, TW: 1_100, UK: 3_000 },
     entryCost: 20_000_000, // 수입 라벨 등록·CIQ [추측]
     entryMonths: 5,
     monthlyCost: 4_000_000,
@@ -192,11 +192,11 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
       whisky: { baseCases: 50_000, baseSource: '싱가포르 허브 싱글몰트 틈새 — 스카치 수출 2024 £310m (추정)', refConsumerPricePerL: 195_000, refAbv: 0.43, elasticity: 2.0, shareCap: 0.03 },
       gin: { baseCases: 20_000, baseSource: '크래프트 진 틈새 (추정)', refConsumerPricePerL: 90_000, refAbv: 0.43, elasticity: 1.6, shareCap: 0.02 },
     },
-    tariff: { KR: 0, JP: 0, TW: 0 },
+    tariff: { KR: 0, JP: 0, TW: 0, UK: 0 },
     excisePerLPA: Math.round(88 * KRW_PER_SGD),
     vat: 0.09,
     channelMultiple: 1.8,
-    freightPerBottle: { KR: 1_500, JP: 1_500, TW: 1_300 },
+    freightPerBottle: { KR: 1_500, JP: 1_500, TW: 1_300, UK: 3_000 },
     entryCost: 10_000_000,
     entryMonths: 3,
     monthlyCost: 2_000_000,
@@ -216,12 +216,12 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
       gin: { baseCases: 20_000, baseSource: '크래프트 수입 진 틈새 (추정)', refConsumerPricePerL: 32_000, refAbv: 0.43, elasticity: 2.2, shareCap: 0.03 },
     },
     // 위스키: WTO 양허 30%, 국제협력관세 20%(일반 수입), FTA 0% (오너 확인). 일본(RCEP 양허 일정 미반영)·대만은 FTA 없음 → 20%
-    tariff: { KR: 0, JP: 0.2, TW: 0.2 },
+    tariff: { KR: 0, JP: 0.2, TW: 0.2, UK: 0 },
     adValorem: 0.72 * 1.3,
     excisePerLPA: 0,
     vat: 0.1,
     channelMultiple: 1.6,
-    freightPerBottle: { KR: 0, JP: 900, TW: 1_100 },
+    freightPerBottle: { KR: 0, JP: 900, TW: 1_100, UK: 3_500 },
     entryCost: 10_000_000,
     entryMonths: 3,
     monthlyCost: 2_000_000,
@@ -239,11 +239,11 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
       soju_distilled: { baseCases: 30_000, baseSource: '한국 소주 인기 — 수입 증류식 소주 틈새 (추정)', refConsumerPricePerL: 13_000, refAbv: 0.25, elasticity: 2.0, shareCap: 0.02 },
       gin: { baseCases: 20_000, baseSource: '크래프트 수입 진 틈새 (추정)', refConsumerPricePerL: 40_000, refAbv: 0.43, elasticity: 1.8, shareCap: 0.02 },
     },
-    tariff: { KR: 0, JP: 0, TW: 0 },
+    tariff: { KR: 0, JP: 0, TW: 0, UK: 0 },
     excisePerLPA: 9_000,
     vat: 0.1,
     channelMultiple: 1.8,
-    freightPerBottle: { KR: 900, JP: 0, TW: 1_000 },
+    freightPerBottle: { KR: 900, JP: 0, TW: 1_000, UK: 3_500 },
     entryCost: 10_000_000,
     entryMonths: 3,
     monthlyCost: 2_000_000,
@@ -262,11 +262,11 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
       gin: { baseCases: 10_000, baseSource: '크래프트 진 틈새 (추정)', refConsumerPricePerL: 45_000, refAbv: 0.43, elasticity: 1.8, shareCap: 0.03 },
     },
     // 증류주 관세 0% (발효주 10%·니혼슈 20%·맥주 0%), 주세 NT$2.5/L/도 = NT$250/LPA, 영업세 5% (오너 확인)
-    tariff: { KR: 0, JP: 0, TW: 0 },
+    tariff: { KR: 0, JP: 0, TW: 0, UK: 0 },
     excisePerLPA: Math.round(250 * KRW_PER_TWD),
     vat: 0.05,
     channelMultiple: 1.8,
-    freightPerBottle: { KR: 1_100, JP: 1_000, TW: 0 },
+    freightPerBottle: { KR: 1_100, JP: 1_000, TW: 0, UK: 3_500 },
     entryCost: 10_000_000,
     entryMonths: 3,
     monthlyCost: 2_000_000,

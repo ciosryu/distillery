@@ -18,7 +18,7 @@ export type Flavor = Partial<Record<AxisId, number>>;
 export type SpiritKind = 'soju' | 'gin' | 'malt' | 'grain' | 'baijiu';
 
 /** 시작·운영 지역 */
-export type RegionId = 'KR' | 'JP' | 'TW';
+export type RegionId = 'KR' | 'JP' | 'TW' | 'UK';
 
 /** 판매 카테고리 (라벨 판정 결과) */
 export type ProductCategory = 'soju_distilled' | 'gin' | 'whisky' | 'grain_whisky' | 'blended_whisky' | 'baijiu' | 'malt_spirit' | 'flavored_spirit';
@@ -100,8 +100,8 @@ export interface Cask {
   /** 오염(TCA·곰팡이) — 숙성고 QC가 찾아내기 전까지는 모른다 */
   contamination?: 'tca' | 'mold';
   contaminationKnown?: boolean;
-  /** 캐스크 오너십으로 판 통 — 고객 소유, 병입·판매 불가 */
-  owner?: { name: string; soldMonth: number; deliverMonth: number };
+  /** 캐스크 오너십으로 판 통 — 고객 소유, 병입·판매 불가. filling = 필링 계약(#112)으로 채운 블렌더 소유 통 — 보관료를 받고, 인도 월에 블렌더가 가져간다 */
+  owner?: { name: string; soldMonth: number; deliverMonth: number; filling?: { contractId: string; storagePerMonth: number } };
 }
 
 export interface Product {
@@ -213,6 +213,9 @@ export interface ContractTerms {
   /** 계약 총액 중 선급금 비율 (0이면 선급 없음) */
   prepayShare: number;
   penaltyPerLPA: number;
+  /** 필링 계약 (#112, 스페이사이드): 블렌더가 빈 캐스크를 대고, 납품 원액을 블렌더 소유 캐스크에 채워 우리 숙성고에 보관한다.
+   *  캐스크당 월 보관료를 받고, holdMonths 뒤 블렌더가 가져간다. 숙성고가 꽉 차면 탱크로 넘긴다(보관료 없음) */
+  filling?: { storagePerCaskMonth: number; holdMonths: number };
 }
 export interface ContractOffer extends ContractTerms { expiresMonth: number }
 export interface Contract extends ContractTerms {
