@@ -4,7 +4,7 @@ import { CATEGORY } from './content/categories';
 import { BULK, INGREDIENTS } from './content/catalog';
 import { DEFAULT_WHISKY_RULES, priceForConsumer, refPricePerL, regionOf, traditionalTaxFactor, type RegionDef, type WhiskyRules } from './content/regions';
 import { clampFlavor, evaluate, weightedAverage, type Evaluation } from './flavor';
-import { emptyCask } from './maturation';
+import { emptyCask, finishLabel, finishOf } from './maturation';
 import { ownsFacility } from './util';
 import { siteFreight } from './sites';
 import { dutyFreeAgedAppeal, dutyFreeSlotBlocker, dutyFreeSuggestedPrice, hasDutyFree, nextDutyFreeEdition, DUTY_FREE } from './dutyFree';
@@ -13,7 +13,7 @@ import { mod } from './modifiers';
 import { hexOf, matchScore, mixHex, perceivedHex } from './blendRadar';
 import { blenderOf, COMMISSION, findTarget, knownReads, revealNotes } from './blendTable';
 import { productCountEver } from './lifecycle';
-import type { AxisId, Flavor, GameState, Hex, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
+import type { AxisId, CaskTypeId, Flavor, GameState, Hex, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
 
 export interface BlendComponent { source: 'cask' | 'lot'; id: string; liters: number }
 export interface BottleOptions {
@@ -55,6 +55,8 @@ export interface BlendPreview {
   localIngredient: boolean;
   /** 면세 한정판으로 내면 붙을 판 번호·연속 완판 수 */
   dfEdition: { vol: number; streak: number } | null;
+  /** 라벨 "○○ 캐스크 피니시" — 모든 원액이 같은 종류 캐스크로 피니싱됐을 때만 (P-PROD-3) */
+  finish: CaskTypeId | null;
 }
 
 /** 기본(스코틀랜드·EU식) 위스키 최소 숙성. 지역별 규칙은 RegionDef.whisky */
@@ -137,7 +139,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     if (c.liters > lot.volumeL + 1e-6) errors.push(`${lot.name}: 보유량(${lot.volumeL.toFixed(1)}L)보다 많이 선택했습니다`);
     items.push({ lot, liters: Math.min(c.liters, lot.volumeL) });
   }
-  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, sourcedPrestige: 1, specialty: null, premiumLabel: false, traditional: false, suggestedPrice: 0, localIngredient: false, dfEdition: null };
+  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, sourcedPrestige: 1, specialty: null, premiumLabel: false, traditional: false, suggestedPrice: 0, localIngredient: false, dfEdition: null, finish: null };
   const region = regionOf(s);
   const rules = region.whisky;
   if (!items.length) { errors.push('블렌딩할 원액을 선택하세요'); return empty; }
@@ -154,6 +156,9 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   let finalAbv = opts.targetAbv === 'cask' ? mixAbv : opts.targetAbv;
   if (finalAbv > mixAbv + 1e-6) { errors.push(`목표 도수(${(finalAbv * 100).toFixed(1)}%)가 원액 도수(${(mixAbv * 100).toFixed(1)}%)보다 높습니다`); finalAbv = mixAbv; }
   const minOakMonths = Math.min(...items.map((i) => i.lot.oakMonths));
+  // 피니시 라벨: 섞은 원액이 모두 같은 종류 캐스크로 피니싱됐을 때만 붙인다 — 피니싱 안 한 원액이 섞이면 라벨 없음 (P-PROD-3)
+  const finishes = items.map((i) => finishOf(i.lot)?.typeId ?? null);
+  const finish = finishes.every((f) => f && f === finishes[0]) ? finishes[0]! : null;
   const sourcedLPA = items.reduce((t, i) => t + (i.lot.sourced ? i.liters * i.lot.abv : 0), 0);
   const sourcedShare = sourcedLPA / lpa;
   // 매입 원액 브랜드 가치 = 매입 원액들의 LPA당 매입가로 정한 값의 LPA 가중 평균
@@ -227,6 +232,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
       : suggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? minOakMonths : null, finalAbv, traditionalTaxFactor(region, traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL)),
     localIngredient,
     dfEdition: dutyFree && hasDutyFree(s) ? nextDutyFreeEdition(s) : null,
+    finish,
   };
 }
 
@@ -273,7 +279,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   }
   const product: Product = {
     id: nid(s, 'P'),
-    name: opts.name.trim() || `${CATEGORY[p.category].nameKo} ${productCountEver(s) + 1}`,
+    name: opts.name.trim() || `${CATEGORY[p.category].nameKo} ${productCountEver(s) + 1}${p.finish ? ` ${finishLabel(p.finish)}` : ''}`,
     category: p.category,
     ageYears: p.ageYears,
     oakMonths: p.minOakMonths,
@@ -297,6 +303,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     lastMonthSold: 0,
     totalSold: 0,
     ...(p.localIngredient ? { localIngredient: true } : {}),
+    ...(p.finish ? { finish: p.finish } : {}),
     ...(opts.dutyFreeOnly && p.dfEdition ? { dutyFreeOnly: true, dfEdition: { ...p.dfEdition } } : {}),
   };
   if (p.dfEdition && opts.dutyFreeOnly) s.site.dfSeries = { vol: p.dfEdition.vol, streak: p.dfEdition.streak };

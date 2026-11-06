@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { advanceMonth, advanceMonths, applyAction, lastSample, lotQuality, matureCask, matureNonWood, matureVessel, migrateSave, newGame, newScenarioGame, readCask, SAMPLE_LOG_KEPT, SAVE_VERSION, vesselMaterial, emptyCask, type GameState } from '.';
+import { emptyCaskOf, FINISH, finishOf, advanceMonth, advanceMonths, applyAction, lastSample, lotQuality, matureCask, matureNonWood, matureVessel, migrateSave, newGame, newScenarioGame, readCask, SAMPLE_LOG_KEPT, SAVE_VERSION, vesselMaterial, emptyCask, type GameState } from '.';
 import fixture from './fixtures/save-v8.json';
 
 /** 몰트 원액을 캐스크 1통에 넣은 게임 */
@@ -107,5 +107,91 @@ describe('피니싱 (S-10 자리)', () => {
     expect(applyAction(s, { type: 'transferCask', fromCaskId: caskId, toCaskId: to }).error).toMatch(/피니싱/);
     const mvp = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     expect(applyAction(mvp, { type: 'transferCask', fromCaskId: 'x', toCaskId: 'y' }).error).toMatch(/시나리오/);
+  });
+});
+
+describe('피니싱 (PRD §5.2, P-PROD-3)', () => {
+  /** withFilledCask + 숙성 n개월 + 빈 올로로소 벗·버번 배럴 1통씩 */
+  function ready(monthsAged = 12) {
+    const { s: s0, caskId } = withFilledCask();
+    let s = advanceMonths(s0, monthsAged);
+    const sherry = emptyCaskOf(s, 'oloroso_butt');
+    const bourbon = emptyCaskOf(s, 'ex_bourbon_barrel');
+    const quarter = emptyCaskOf(s, 'korean_oak_quarter');
+    s.inventory.casks.push(sherry, bourbon, quarter);
+    return { s, caskId, sherry: sherry.id, bourbon: bourbon.id, quarter: quarter.id };
+  }
+
+  it('셰리 벗으로 옮기면 이력이 생기고, 숙성 연수는 그대로, 손실은 0.75%, 원래 통은 비고 자리는 이어받는다', () => {
+    const { s, caskId, sherry } = ready();
+    const from = caskOf(s, caskId);
+    const before = from.contents!;
+    expect(caskOf(s, caskId).typeId).not.toBe('oloroso_butt');
+    const r = applyAction(s, { type: 'transferCask', fromCaskId: caskId, toCaskId: sherry });
+    expect(r.error).toBeUndefined();
+    const t = r.state;
+    const lot = caskOf(t, sherry).contents!;
+    expect(lot.oakMonths).toBe(before.oakMonths);
+    expect(lot.volumeL).toBeCloseTo(before.volumeL * (1 - FINISH.lossShare), 6);
+    expect(lot.caskHistory).toEqual([
+      { typeId: from.typeId, fromMonth: t.month - before.oakMonths, months: before.oakMonths },
+      { typeId: 'oloroso_butt', fromMonth: t.month, months: 0 },
+    ]);
+    expect(caskOf(t, caskId).contents).toBeUndefined();
+    expect(caskOf(t, sherry).slot).toEqual(from.slot);
+    expect(finishOf(lot)).toEqual({ typeId: 'oloroso_butt', months: 0 });
+  });
+
+  it('규칙: 시즈닝 없는 통·같은 종류·작은 통·두 번째 피니싱은 안 되고, MVP에서는 잠겨 있다', () => {
+    const { s, caskId, sherry, quarter } = ready();
+    expect(applyAction(s, { type: 'transferCask', fromCaskId: caskId, toCaskId: quarter }).error).toMatch(/버번·셰리/);
+    const same = emptyCaskOf(s, caskOf(s, caskId).typeId);
+    s.inventory.casks.push(same);
+    expect(applyAction(s, { type: 'transferCask', fromCaskId: caskId, toCaskId: same.id }).error).toMatch(/같은 종류/);
+    const t = applyAction(s, { type: 'transferCask', fromCaskId: caskId, toCaskId: sherry }).state;
+    const back = emptyCaskOf(t, 'ex_bourbon_barrel');
+    t.inventory.casks.push(back);
+    expect(applyAction(t, { type: 'transferCask', fromCaskId: sherry, toCaskId: back.id }).error).toMatch(/한 번만|들어가지/);
+    // 500L 벗을 가득 채운 원액은 200L 배럴에 안 들어간다
+    const big = structuredClone(t);
+    caskOf(big, sherry).contents!.caskHistory = undefined;
+    caskOf(big, sherry).contents!.volumeL = 480;
+    expect(applyAction(big, { type: 'transferCask', fromCaskId: sherry, toCaskId: back.id }).error).toMatch(/들어가지/);
+    const mvp = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    expect(applyAction(mvp, { type: 'transferCask', fromCaskId: 'x', toCaskId: 'y' }).error).toBeDefined();
+  });
+
+  it('시즈닝 향은 처음에 빠르게 옮겨 오고 점점 느려진다 — 같은 통에 처음 통입했을 때보다 첫 달이 빠르다', () => {
+    const { s, caskId, sherry } = ready();
+    const t = applyAction(s, { type: 'transferCask', fromCaskId: caskId, toCaskId: sherry }).state;
+    const cask = caskOf(t, sherry);
+    const climate = { tempC: 15, humidity: 70 };
+    const opts = { control: 0 };
+    const gain = (c: typeof cask) => { const r = matureCask(c, climate, opts).cask; return (r.contents!.flavor.dried_fruit ?? 0) - (c.contents!.flavor.dried_fruit ?? 0); };
+    const first = gain(cask);
+    // 같은 원액이 처음부터 이 통에 있었다면(피니싱 아님)
+    const plain = { ...cask, contents: { ...cask.contents!, caskHistory: undefined } };
+    expect(first).toBeGreaterThan(gain(plain) * 2);
+    // 12개월 피니싱 뒤에는 처음 통입보다 느리다
+    const late = { ...cask, contents: { ...cask.contents!, oakMonths: cask.contents!.oakMonths + 12 } };
+    expect(gain(late)).toBeLessThan(gain(plain));
+  });
+
+  it('병입: 모두 같은 피니싱이면 제품에 피니시 라벨, 피니싱 안 한 원액이 섞이면 라벨 없음', () => {
+    const { s, caskId, sherry } = ready(13);
+    let t = applyAction(s, { type: 'transferCask', fromCaskId: caskId, toCaskId: sherry }).state;
+    t = advanceMonths(t, 4);
+    const opts = { name: '', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' };
+    const alone = applyAction(t, { type: 'bottle', components: [{ source: 'cask', id: sherry, liters: 20 }], options: opts });
+    expect(alone.error).toBeUndefined();
+    const p = alone.state.commerce.products.at(-1)!;
+    expect(p.finish).toBe('oloroso_butt');
+    expect(p.name).toContain('셰리 캐스크 피니시');
+    // 피니싱 안 한 원액(탱크 몰트를 다른 통에)과 섞으면 라벨 없음
+    const lot = { ...caskOf(t, sherry).contents!, id: 'PLAIN', caskHistory: undefined };
+    t.inventory.lots.push(lot);
+    const mixed = applyAction(t, { type: 'bottle', components: [{ source: 'cask', id: sherry, liters: 20 }, { source: 'lot', id: 'PLAIN', liters: 20 }], options: opts });
+    expect(mixed.error).toBeUndefined();
+    expect(mixed.state.commerce.products.at(-1)!.finish).toBeUndefined();
   });
 });
