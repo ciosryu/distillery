@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { advanceMonths, newGame, type GameState } from '.';
 import { EVENTS, type EventDef } from './content/events';
 
-// 이벤트 난수 — 이벤트별 스트림 (skeleton S-5, P-ARCH-10)
+// 이벤트 난수 — 이벤트별 스트림 (skeleton S-5, #147)
 // 옛 방식은 매달 목록 전체를 한 스트림으로 섞어 판정해서, 이벤트를 하나만 더해도 모든 시드의 결과가 바뀌었다
 
 const play = (seed: number, months = 60): GameState => advanceMonths(newGame({ seed, region: 'KR' }), months);

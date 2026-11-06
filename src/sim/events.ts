@@ -245,7 +245,7 @@ export function runEvents(s: GameState, report: MonthReport, monthOfYear: number
   }
   s.events.forecasts = s.events.forecasts.filter((x) => x.fireMonth > s.month);
 
-  // 신규 발생 (S-5, P-ARCH-10): 이벤트마다 독립 스트림으로 굴린다 — 이벤트를 더하거나 빼도 다른 이벤트의 결과는 그대로다.
+  // 신규 발생 (S-5, #147): 이벤트마다 독립 스트림으로 굴린다 — 이벤트를 더하거나 빼도 다른 이벤트의 결과는 그대로다.
   // ① 발생 판정 'event-roll:<id>' (모든 이벤트가 매달 한 번씩 굴린다) ② 성공한 것을 이벤트별 순위 키 'event-rank:<id>' 순으로 보며
   // ③ 그 순간 발생 조건을 확인하고 월 상한까지 발생시킨다 — 옛 방식(무작위 순서로 조건 확인 → 판정 → 상한)과 같은 의미다
   const region = regionOf(s);
