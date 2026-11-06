@@ -1,4 +1,5 @@
 // 수출 시장 (#95, PRD §16.25) — 수치는 전부 [튜닝]. 조사 근거는 PRD §16.25
+// 수입 프리미엄 위스키는 스카치·재패니즈와 경쟁해 가격 탄력성이 크다(2.0) — 1.1~1.2로 두면 수출가를 2배로 올려도 잘 팔려 순자산이 4배가 됐다
 import type { ProductCategory, RegionId } from '../types';
 
 export type ExportMarketId = 'US' | 'UK' | 'DF';
@@ -53,7 +54,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     nameKo: '미국',
     descKo: '3단계 유통(수입상·도매·소매)이라 마진이 두껍다. 연방 주세는 낮고 시장은 크지만 신생 브랜드는 묻히기 쉽다',
     categories: {
-      whisky: { baseCases: 400_000, baseSource: '재패니즈·월드 위스키 수입 틈새 — 신생 브랜드 연 500~5,000병, 자리 잡으면 1만~5만병이 되도록 (추정, §16.25)', refConsumerPricePerL: 95_000, refAbv: 0.46, elasticity: 1.2, shareCap: 0.03 },
+      whisky: { baseCases: 400_000, baseSource: '재패니즈·월드 위스키 수입 틈새 — 신생 브랜드 연 500~5,000병, 자리 잡으면 1만~5만병이 되도록 (추정, §16.25)', refConsumerPricePerL: 95_000, refAbv: 0.46, elasticity: 2.0, shareCap: 0.03 },
       blended_whisky: { baseCases: 300_000, baseSource: '아시아 블렌디드 수입 틈새 (추정)', refConsumerPricePerL: 55_000, refAbv: 0.43, elasticity: 1.6, shareCap: 0.01 },
       gin: { baseCases: 150_000, baseSource: '크래프트 수입 진 틈새 (추정)', refConsumerPricePerL: 50_000, refAbv: 0.43, elasticity: 1.8, shareCap: 0.02 },
     },
@@ -69,14 +70,15 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     entryMonths: 5,
     monthlyCost: 4_000_000, // 현지 브랜드 앰배서더·판촉 지원 [추측]
     minWhiskyMonths: 0,
-    awareness: { start: 0.02, perMonth: 0.01, domesticSpill: 0.1, max: 0.6 },
+    // 신생 수입 브랜드는 묻힌다 — 수상·평론 없이 오르는 인지도는 낮다 (연 500~5,000병 → 자리 잡으면 1만~5만)
+    awareness: { start: 0.02, perMonth: 0.006, domesticSpill: 0.05, max: 0.35 },
   },
   UK: {
     id: 'UK',
     nameKo: '영국',
     descKo: '주세가 무겁고(순수 알코올 1L당 약 32파운드) 위스키는 3년 숙성 이상만 "위스키"다. 전문점·온라인 애호가 층이 두텁다',
     categories: {
-      whisky: { baseCases: 60_000, baseSource: '월드·재패니즈 위스키 애호가 시장 — 신생 브랜드 연 300~3,000병이 되도록 (추정, §16.25)', refConsumerPricePerL: 110_000, refAbv: 0.46, elasticity: 1.1, shareCap: 0.03 },
+      whisky: { baseCases: 60_000, baseSource: '월드·재패니즈 위스키 애호가 시장 — 신생 브랜드 연 300~3,000병이 되도록 (추정, §16.25)', refConsumerPricePerL: 110_000, refAbv: 0.46, elasticity: 2.0, shareCap: 0.03 },
       gin: { baseCases: 80_000, baseSource: '프리미엄 진 수입 틈새 (추정)', refConsumerPricePerL: 55_000, refAbv: 0.43, elasticity: 1.9, shareCap: 0.01 },
     },
     tariff: { KR: 0, JP: 0, TW: 0 }, // 위스키 제3국 관세 0% (진도 0% 추정)
@@ -89,14 +91,14 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     entryMonths: 3,
     monthlyCost: 3_000_000,
     minWhiskyMonths: 36,
-    awareness: { start: 0.03, perMonth: 0.012, domesticSpill: 0.1, max: 0.6 },
+    awareness: { start: 0.02, perMonth: 0.006, domesticSpill: 0.05, max: 0.35 },
   },
   DF: {
     id: 'DF',
     nameKo: '공항 면세점',
     descKo: '자국 국제공항 출국 면세점(제주 지정면세점과 별개). 세금이 없지만 운영사 마진이 크고 입점비가 든다. 국내 인지도가 그대로 넘어온다',
     categories: {
-      whisky: { baseCases: 25_000, baseSource: '공항 면세 싱글몰트 중 로컬 크래프트 몫 (추정, §16.25)', refConsumerPricePerL: 100_000, refAbv: 0.46, elasticity: 1.0, shareCap: 0.05 },
+      whisky: { baseCases: 25_000, baseSource: '공항 면세 싱글몰트 중 로컬 크래프트 몫 (추정, §16.25)', refConsumerPricePerL: 100_000, refAbv: 0.46, elasticity: 1.5, shareCap: 0.05 },
       gin: { baseCases: 8_000, baseSource: '공항 면세 진 중 로컬 몫 (추정)', refConsumerPricePerL: 45_000, refAbv: 0.43, elasticity: 1.6, shareCap: 0.05 },
       soju_distilled: { baseCases: 12_000, baseSource: '공항 면세 전통주·증류식 소주 (추정)', refConsumerPricePerL: 35_000, refAbv: 0.25, elasticity: 1.8, shareCap: 0.05 },
     },
