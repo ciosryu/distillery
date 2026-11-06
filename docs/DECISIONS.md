@@ -10,7 +10,7 @@
 - 새 행에는 **구분**을 붙인다: `[구조]` 상태·틱·명령·콘텐츠 스키마 · `[규칙]` 게임 규칙·공식 · `[튜닝]` 수치만 · `[방법]` 검증·개발 방법 · `[범위]` 플랫폼·로드맵·범위
 - "반영 위치"의 `§n`은 PRD 절이다
 
-**다음 번호: #151**
+**다음 번호: #152**
 
 ## 예약 (이 규칙 이전에 열린 PR이 이미 쓰는 번호)
 
@@ -27,6 +27,7 @@
 
 | 날짜 | 머지 | 바뀐 번호 | 이유 |
 |---|---|---|---|
+| 2026-11-06 | ciosryu/distillery#32 (설계 세션) | P-ARCH-14 → **#151** | 머지 순서대로 발급 |
 | 2026-11-06 | ciosryu/distillery#30 (설계 세션) | P-ARCH-13 → **#150** | 머지 순서대로 발급 |
 | 2026-11-06 | ciosryu/distillery#28 (설계 세션) | P-ARCH-12 → **#149** | 머지 순서대로 발급 |
 | 2026-11-06 | ciosryu/distillery#26 (설계 세션) | P-ARCH-11 → **#148** | 머지 순서대로 발급 |
@@ -180,3 +181,4 @@
 | 148 | [구조] **브랜드 단위 상태** (S-2, 스키마 v11) — `commerce.brands[]`(하우스 `'house'` + 세컨드 브랜드: id·이름·개설 월·인지도·럭셔리). 인지도의 정본은 브랜드에만 두고 `commerce.awareness`는 없앤다(마이그레이션이 하우스로 옮김). 제품 맥락(국내·면세 수요·의뢰·완판 보상)은 제품의 브랜드, 회사 맥락(관광·이벤트·캐스크 오너십·수출 후광·목표 판정)은 하우스 브랜드. `Product.brandId?`(없으면 하우스). `openBrand`·`setProductBrand`는 스텁(MVP 잠금). 마케팅 예산·수출 인지도·성장식은 아직 회사 단위 — 브랜드별 규칙은 단계 P(MKT). 동작 불변 (v1.6) | PRD §11.2 ④, [skeleton.md](design/skeleton.md) §4.6 |
 | 149 | [구조] **연구 시스템 뼈대** (S-6, 스키마 v12) — 연구 = 기간 + 월 연구비 + 담당자(#46). 노드 스키마: 게이트는 `unlockKeys`, 게이트가 아닌 효과는 `effects`(타입만), `leadStat`·`milestone`·`requires`. 틱 8단계 `runResearch`: 담당자 확인(떠나면 진행도 −25%) → 연구비 지출 → 진행도 `(1/기간) × (1 + 스탯/200)` → 완료 시 해금. 행동 `startResearch`·`setResearch`·`cancelResearch`(MGT). `TECH_GATING`은 계속 꺼 둠(켜기는 단계 P MGT). MVP는 연구 잠금. 동작 불변 (v1.6) | [skeleton.md](design/skeleton.md) §4.7, tech-tree §2.1·§8 |
 | 150 | [구조] **지역 추가 = 데이터 추가** (S-3) — 지역·입지에 묶인 값은 `RegionDef`·`SiteDef` 한 곳에 둔다(프리셋 레시피·창업자·시작 캐스크·직원 이름 풀을 코드 분기에서 데이터로 옮김). 새 주종과 입지 대표 결정은 파트의 규칙 모듈(코드)이고 입지 데이터가 어느 모듈을 켤지 고른다. `RegionId`는 유니언 타입 유지(S-7 때 재검토). 지역 추가 체크리스트를 문서화(스코틀랜드가 첫 사용처). `RegionDef.whiskyOrigin` 자리 추가. 동작 불변 (v1.6) | PRD §3, [skeleton.md](design/skeleton.md) §4.8 |
+| 151 | [구조] **콘텐츠 = 엔진 중립 JSON** (S-7) — 형식은 JSON. TS 콘텐츠가 원본이고 JSON은 생성물(`npm run content:export` → `data/content/<표>.json` + `manifest.json`, 저장소에 넣지 않음). 콘텐츠 표에는 JSON으로 그대로 오가는 값만 둔다(`content.test.ts`가 표 44개 검사, 새 표 자동 포함). `grainSpotDepthLPA: Infinity` → `null`(포화 없음). 규칙 함수 13개는 내보내기에서 빠지고 C#에서 다시 짠다. 로더·골든 테스트는 단계 G. 동작 불변 (v1.6) | PRD §13.1, [skeleton.md](design/skeleton.md) §4.9, architecture §9.2 |

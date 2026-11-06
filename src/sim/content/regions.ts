@@ -129,8 +129,8 @@ export interface RegionDef {
   domesticSpiritPremium: number;
   /** 원액 B2B 시장 깊이 — 계약 제안 물량 배수 */
   bulkMarketDepth: number;
-  /** 그레인 현물 시장 깊이(LPA, #81) — 최근 현물 판매량이 이만큼이면 현물 단가가 절반이 된다 */
-  grainSpotDepthLPA: number;
+  /** 그레인 현물 시장 깊이(LPA, #81) — 최근 현물 판매량이 이만큼이면 현물 단가가 절반이 된다. null = 포화 없음 (JSON에 Infinity가 없어서, S-7) */
+  grainSpotDepthLPA: number | null;
   eventWeights: Partial<Record<EventCategory, number>>;
   /** 매입 원액 병입의 브랜드 가치 감점 계수 — 싸게 사 온 원액일수록 감점이 그대로 적용된다 (v0.8)
    *  매력도 × (1 − sourcedPenalty × 매입 비중 × (1 − 매입 원액 브랜드 가치)) */
@@ -200,7 +200,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     domesticSpiritPremium: 0.25,
     bulkMarketDepth: 0.8,
     // 포화 없음(무한) — 한국 국내 그레인 수요 근거 없음 `[확인 필요]`. 일본과 함께 밸런스가 경계선이라 보류 (§16.18)
-    grainSpotDepthLPA: Infinity,
+    grainSpotDepthLPA: null,
     eventWeights: { market: 1.0, supply: 1.0, disaster: 1.2, regulation: 1.3, b2b: 0.8, opportunity: 1.0, people: 1.0 },
     // 종가세라 수입 완제품은 브랜드 값까지 세금이 붙어 비싸다 → 국내 병입 매입 원액이 가격으로 경쟁할 여지가 크다 (골든블루식 국내 병입)
     sourcedPenalty: 0.4,
@@ -296,7 +296,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     bulkMarketDepth: 1.0,
     // 포화 없음(무한) — 재패니즈 위스키 표기 기준(일본 내 증류) 이후 국산 그레인이 귀하다.
     // 깊이 80,000만 줘도 그레인형 파산이 8 → 13/20으로 늘 만큼 일본 그레인은 경계선이다 (§16.18)
-    grainSpotDepthLPA: Infinity,
+    grainSpotDepthLPA: null,
     eventWeights: { market: 1.1, supply: 1.0, disaster: 1.4, regulation: 0.8, b2b: 1.1, opportunity: 1.0, people: 1.0 },
     // 수입 원액 병입은 "재패니즈 위스키"가 될 수 없고 하이볼용 저가 위스키로 소비된다
     sourcedPenalty: 0.85,
