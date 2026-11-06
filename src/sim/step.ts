@@ -13,7 +13,7 @@ import { updateWeather, weatherOffset } from './weather';
 import { archiveSoldOutProducts, rollupYear } from './lifecycle';
 import { pruneTrendsAndCommissions, refreshCommissions } from './blendTable';
 import { systemOn } from './scenario';
-import { endGame, updateProgress } from './progress';
+import { endGame, netWorth, updateProgress } from './progress';
 import { runResearch } from './research';
 import { runMaturation } from './warehouse';
 import { runProduction } from './production';
@@ -133,6 +133,8 @@ function phaseSettle(s: GameState, report: MonthReport, cashStart: number, offTu
   // 순현금 = 이번 턴 안의 변화 + 턴 사이 행동 → 직전 결산 이후 현금 변화 전체 (§16.20)
   report.netCash = s.finance.cash - cashStart + sumCashFlows(offTurn);
   report.cashEnd = s.finance.cash;
+  // 현금·평가액 곡선 (#138·#146) — 기록만 한다
+  report.netWorth = netWorth(s);
   report.investingCash = sumCashFlows(offTurn, 'investing');
   // 선급금 상계분은 영업(납품 매출)으로 올리고 같은 금액을 재무(선급금 상환)로 뺀다
   report.financingCash = sumCashFlows(offTurn, 'financing') - (report.expenses.principal ?? 0) - (report.prepayApplied ?? 0) - (report.prepayRefunded ?? 0);

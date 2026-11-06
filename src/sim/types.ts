@@ -304,6 +304,8 @@ export interface MonthReport {
   /** 직전 결산 이후 현금 변화 = 이번 결산 월말 현금 − 직전 결산 월말 현금 (턴 사이 행동 포함) */
   netCash: number;
   cashEnd: number;
+  /** 월말 순자산 (#146, progress.netWorth) — MVP 화면의 현금·평가액 곡선(#138). 구버전 세이브의 보고서에는 없다 */
+  netWorth?: number;
   sales: { productId: string; name: string; bottles: number; revenue: number; demandBottles: number }[];
   /** 원액 계약 납품 */
   bulk: { contractId: string; buyerName: string; deliveredLPA: number; revenue: number; penalty: number }[];
@@ -479,6 +481,8 @@ export interface YearSummary {
   bulkRevenue: number;
   expenses: number;
   cashEnd: number;
+  /** 연말 순자산 (#146). 구버전 세이브에는 없다 */
+  netWorthEnd?: number;
   bottlesSold: number;
   lpaProduced: number;
   angelsShareL: number;

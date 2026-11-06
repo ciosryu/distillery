@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { advanceMonths, allocateFunding, applyAction, isLocked, migrateSave, MVP_KR, newGame, newScenarioGame, previewPlan, SAVE_VERSION, siteOverhead, systemOn, monthlyFixedCost, currentLoanPayment } from '.';
+import { advanceMonth, advanceMonths, allocateFunding, applyAction, isLocked, migrateSave, MVP_KR, netWorth, newGame, newScenarioGame, previewPlan, SAVE_VERSION, siteOverhead, systemOn, monthlyFixedCost, currentLoanPayment } from '.';
 import fixture from './fixtures/save-v7.json';
 
 const micro = (loanAmount = 0, seed = 3) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount, seed });
@@ -106,5 +106,20 @@ describe('시작 자금 조달 — 기존 대출 상품을 미리 당겨 받는�
     expect(p0.runwayMonths).toBeGreaterThan(0);
     expect(p5.runwayMonths).toBeGreaterThan(p0.runwayMonths);
     expect(p0.goalNetWorth).toBe(tier.equity * MVP_KR.goal.netWorthMultiple);
+  });
+});
+
+describe('MVP 화면의 현금·순자산 곡선 기록 (#138·#146)', () => {
+  it('월 보고서에 그 달 말 순자산이, 연 요약에 연말 순자산이 남는다 (구버전 보고서에는 없어도 된다)', () => {
+    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 4 });
+    const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
+    s = applyAction(s, { type: 'setOrder', recipeId: malt.id, batchesPerMonth: 2 }).state;
+    for (let m = 0; m < 12; m++) {
+      s = advanceMonth(s);
+      expect(s.history.reports.at(-1)!.netWorth).toBe(netWorth(s));
+    }
+    expect(s.history.years.at(-1)!.netWorthEnd).toBe(s.history.reports.at(-1)!.netWorth);
+    // 몰트 뉴메이크는 현물가가 있어 순자산이 현금보다 크다 (대출 없음)
+    expect(s.history.reports.at(-1)!.netWorth!).toBeGreaterThan(s.finance.cash);
   });
 });

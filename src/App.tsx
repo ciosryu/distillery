@@ -5,6 +5,7 @@ import { REGIONS, siteOf } from './sim/content/regions';
 const stars = (n?: number) => (n ? ` ${'★'.repeat(n)}` : '');
 import { startedFresh, useGame } from './store/game';
 import { BusinessPlan } from './ui/BusinessPlan';
+import { MvpHome } from './ui/MvpHome';
 import { Verdict } from './ui/Verdict';
 import { useUi } from './store/ui';
 import { won } from './ui/format';
@@ -20,11 +21,15 @@ import { Sales } from './ui/panels/Sales';
 import { Staff } from './ui/panels/Staff';
 import { Warehouse } from './ui/panels/Warehouse';
 
-/** 시나리오가 끈 시스템의 탭은 숨긴다 (S-8) — 키가 없으면 늘 보인다 */
-const TABS: readonly { id: string; label: string; el: ReactElement; lockKey?: string }[] = [
+/**
+ * 시나리오가 끈 시스템의 탭은 숨긴다 (S-8) — 키가 없으면 늘 보인다.
+ * mode: 'scenario' = 시나리오 게임에서만(MVP 단일 화면), 'sandbox' = 샌드박스에서만(참값을 보여 주는 개발자 숙성고 — #136)
+ */
+const TABS: readonly { id: string; label: string; el: ReactElement; lockKey?: string; mode?: 'scenario' | 'sandbox' }[] = [
+  { id: 'home', label: '증류소', el: <MvpHome />, mode: 'scenario' },
   { id: 'dashboard', label: '대시보드', el: <Dashboard /> },
   { id: 'production', label: '생산', el: <Production /> },
-  { id: 'warehouse', label: '숙성고', el: <Warehouse /> },
+  { id: 'warehouse', label: '숙성고', el: <Warehouse />, mode: 'sandbox' },
   { id: 'bottling', label: '블렌딩·병입', el: <Bottling /> },
   { id: 'blendlab', label: '블렌딩 테이블', el: <BlendLab />, lockKey: 'system:commissions' },
   { id: 'sales', label: '판매', el: <Sales /> },
@@ -33,7 +38,7 @@ const TABS: readonly { id: string; label: string; el: ReactElement; lockKey?: st
   { id: 'staff', label: '직원', el: <Staff /> },
   { id: 'finance', label: '재무', el: <Finance /> },
 ];
-const visibleTabs = (s: GameState) => TABS.filter((t) => !t.lockKey || !isLocked(s, t.lockKey));
+const visibleTabs = (s: GameState) => TABS.filter((t) => (!t.lockKey || !isLocked(s, t.lockKey)) && (!t.mode || (t.mode === 'scenario') === !!s.scenario));
 
 export default function App() {
   const s = useGame((g) => g.state);
@@ -47,7 +52,7 @@ export default function App() {
   const rawTab = useUi((u) => u.tab);
   const setTab = useUi((u) => u.setTab);
   const tabs = visibleTabs(s);
-  const tab = tabs.some((x) => x.id === rawTab) ? rawTab : 'dashboard';
+  const tab = tabs.some((x) => x.id === rawTab) ? rawTab : tabs[0]!.id;
   const [planOpen, setPlanOpen] = useState(startedFresh);
   const [newGameOpen, setNewGameOpen] = useState(false);
   const [ngName, setNgName] = useState('');
@@ -144,7 +149,7 @@ export default function App() {
         )}
         {running && s.month === 0 && s.scenario && (
           <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-            <b>시작 가이드</b> — ① <b>생산</b>에서 소주·몰트 월 배치 수를 정한다 ② 한 달을 진행하면 원액이 탱크에 쌓인다 ③ 소주는 <b>블렌딩·병입</b>에서 바로 병입해 팔고, 몰트는 <b>숙성고</b>에서 캐스크에 통입한다({REGIONS[s.regionId].whisky.minMonths}개월부터 위스키) ④ 비지터 센터 베이직 투어는 <b>생산</b>의 설비에서 짓는다 ⑤ 현금이 위급하면 <b>원액 B2B</b>에서 뉴메이크를 현물로 팔거나 <b>재무</b>에서 대출을 받는다.
+            <b>시작 가이드</b> — ① <b>생산</b>에서 소주·몰트 월 배치 수를 정한다 ② 한 달을 진행하면 원액이 탱크에 쌓인다 ③ 소주는 <b>블렌딩·병입</b>에서 바로 병입해 팔고, 몰트는 <b>증류소</b> 화면에서 빈 통에 통입하고 샘플을 떠 숙성을 확인한다({REGIONS[s.regionId].whisky.minMonths}개월부터 위스키) ④ 비지터 센터 베이직 투어는 <b>생산</b>의 설비에서 짓는다 ⑤ 현금이 위급하면 <b>원액 B2B</b>에서 뉴메이크를 현물로 팔거나 <b>재무</b>에서 대출을 받는다.
           </div>
         )}
         {running && s.month === 0 && !s.scenario && (
