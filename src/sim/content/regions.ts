@@ -411,8 +411,9 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     // 종량세 £33.99/LPA(2026-02-01, 22% 초과) × 1,800원/£ + 부가세 20% — 기준 브랜치 수출 시장 '영국'과 같은 값
     tax: { adValorem: 0, education: 0, specificPerLPA: 61_200, vat: 0.2, label: '종량세 약 61,200원/LPA (£33.99) + 부가세 20%' },
     retailMarkup: 1.35,
-    overheadPerMonth: 14_000_000,
-    laborCost: 1.4,
+    // 스페이사이드 농촌 입지 — 증류소 작업자 £2.6만~3.1만/년(Glassdoor) ≈ 한국 평균 임금, 숙련직은 더 높다 → ×1.15. 관리비는 간토(1,200만)보다 약간 낮게 [추정]
+    overheadPerMonth: 11_000_000,
+    laborCost: 1.15,
     allowedKinds: ALL_KINDS,
     // 증류소 방문 연 200만 명(SWA 2018) — 위스키 관광이 가장 큰 나라
     tourism: 1.3,
@@ -424,7 +425,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       blended_whisky: { baseCases: Math.round(ukWhisky * 0.85), baseSource: 'UK.spirits_total × 위스키 25% × 블렌디드 85% (추정)', refConsumerPricePerL: 44_000, refAbv: 0.4, elasticity: 2.0, shareCap: 0.002 },
       grain_whisky: { baseCases: Math.round(ukWhisky * 0.03), baseSource: 'UK.spirits_total × 위스키 25% × 그레인 3% (추정)', refConsumerPricePerL: 70_000, refAbv: 0.43, elasticity: 1.5, shareCap: 0.01 },
       // 진: 2019년 정점 약 8,300만 병(WSTA) → 2025년 정점의 약 60%(IWSR −40%) ≈ 5,000만 병 = 390만 케이스 [추정]
-      gin: { baseCases: 3_900_000, baseSource: 'WSTA 2019 정점 8,300만 병 × 0.6 (IWSR 2025 −40%) (추정)', refConsumerPricePerL: 55_000, refAbv: 0.4, elasticity: 2.0, shareCap: 0.003 },
+      gin: { baseCases: 3_900_000, baseSource: 'WSTA 2019 정점 8,300만 병 × 0.6 (IWSR 2025 −40%) (추정)', refConsumerPricePerL: 65_000, refAbv: 0.4, elasticity: 2.0, shareCap: 0.003 },
       soju_distilled: { baseCases: 5_000, baseSource: '추정: K-주류 틈새', refConsumerPricePerL: 30_000, refAbv: 0.25, elasticity: 2.0, shareCap: 0.05 },
       baijiu: { baseCases: 10_000, baseSource: '추정: 중식당 중심 소규모', refConsumerPricePerL: 45_000, refAbv: 0.45, elasticity: 1.8, shareCap: 0.02 },
       malt_spirit: { baseCases: 20_000, baseSource: '추정', refConsumerPricePerL: 70_000, refAbv: 0.46, elasticity: 1.3, shareCap: 0.2 },

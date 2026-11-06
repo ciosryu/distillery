@@ -251,6 +251,8 @@ export const LOAN_OFFERS: LoanOfferDef[] = [
   // 한국 완화책(#73) — 고난도 지역은 유지하되 정책 융자로 버틸 길을 준다. 금리·조건은 게임 단순화 [확인 필요]
   { id: 'kr_regional', nameKo: 'K-위스키 지역 특화 산업 육성자금 (지자체)', annualRate: 0.02, termMonths: 96, max: 300_000_000, graceMonths: 24, regions: ['KR'], note: '경북 등 지자체의 K-위스키 산업 육성 기조를 단순화' },
   { id: 'kr_startup', nameKo: '창업기반지원자금 (중소벤처기업진흥공단)', annualRate: 0.025, termMonths: 72, max: 200_000_000, graceMonths: 18, regions: ['KR'], note: '창업 7년 이내 중소기업 정책 융자를 단순화' },
+  // 영국(#110): 스코틀랜드 공공 지원(지역 개발 기관·국립투자은행 등)을 하나로 묶은 저리 융자 — 기관·금리는 게임 단순화 [확인 필요]
+  { id: 'uk_regional', nameKo: '스코틀랜드 지역 개발 융자 (공공 지원)', annualRate: 0.03, termMonths: 96, max: 300_000_000, graceMonths: 24, regions: ['UK'], note: '스코틀랜드 신생 증류소의 공공 지원·저리 융자를 단순화' },
   // 재고 담보대출 (결정 #90, 홋카이도) — 숙성 원액 시가를 담보로. 시가가 떨어지면 추가 상환 요구 [튜닝]
   { id: 'inventory', nameKo: '숙성 재고 담보대출', annualRate: 0.06, termMonths: 60, max: 2_000_000_000, graceMonths: 12, collateral: 'inventory', note: '담보 인정 비율이 있는 입지(홋카이도)에서만' },
 ];

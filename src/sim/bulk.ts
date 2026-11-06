@@ -171,7 +171,7 @@ export const FILLING = { offerChance: 0.3, priceFactor: 0.95, storagePerCaskMont
 export function makeFillingOffer(s: GameState, rng: Rng): ContractOffer | null {
   const cap = capacityLPA(s, 'malt');
   if (cap <= 0) return null;
-  const lpaPerMonth = Math.max(60, Math.round((cap * rng.pick([0.25, 0.35, 0.5]) * regionOf(s).bulkMarketDepth) / 10) * 10);
+  const lpaPerMonth = Math.max(60, Math.round((cap * rng.pick([0.35, 0.5, 0.7]) * regionOf(s).bulkMarketDepth) / 10) * 10);
   const o = buildOffer(s, rng, 'malt_newmake', lpaPerMonth, rng.pick([12, 24, 36]), rng.chance(0.35) ? 0.3 : 0, FILLING.priceFactor);
   return { ...o, id: nid(s, 'F'), filling: { storagePerCaskMonth: Math.round(FILLING.storagePerCaskMonth * regionOf(s).laborCost / 100) * 100, holdMonths: rng.pick(FILLING.holdMonths) } };
 }
