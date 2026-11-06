@@ -25,6 +25,9 @@ interface UiStore {
   clearToast: () => void;
   selection: Selection;
   select: (sel: Selection) => void;
+  /** 자동 진행 중이면 진행도 */
+  advancing: { done: number; total: number } | null;
+  setAdvancing: (p: { done: number; total: number } | null) => void;
 }
 
 let toastId = 0;
@@ -40,4 +43,6 @@ export const useUi = create<UiStore>((set) => ({
   clearToast: () => set({ toast: null }),
   selection: null,
   select: (selection) => set({ selection }),
+  advancing: null,
+  setAdvancing: (advancing) => set({ advancing }),
 }));

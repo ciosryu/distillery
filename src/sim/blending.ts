@@ -8,6 +8,7 @@ import { ownsFacility } from './ops';
 import { dutyFreeAgedAppeal, dutyFreeSlotBlocker, dutyFreeSuggestedPrice, hasDutyFree, nextDutyFreeEdition, siteFreight, DUTY_FREE } from './sites';
 import { bestBy, nid, staffOf } from './util';
 import { mod } from './modifiers';
+import { productCountEver } from './lifecycle';
 import type { AxisId, Flavor, GameState, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
 
 export interface BlendComponent { source: 'cask' | 'lot'; id: string; liters: number }
@@ -227,7 +228,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   }
   const product: Product = {
     id: nid(s, 'P'),
-    name: opts.name.trim() || `${CATEGORY[p.category].nameKo} ${s.commerce.products.length + 1}`,
+    name: opts.name.trim() || `${CATEGORY[p.category].nameKo} ${productCountEver(s) + 1}`,
     category: p.category,
     ageYears: p.ageYears,
     oakMonths: p.minOakMonths,
@@ -255,7 +256,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   };
   if (p.dfEdition && opts.dutyFreeOnly) s.site.dfSeries = { vol: p.dfEdition.vol, streak: p.dfEdition.streak };
   // 첫 위스키 출시: 비지터 센터 입소문이 높으면 오픈런 (3개월간 수요 × (1 + 2 × 입소문))
-  if (isWhiskyCategory(product.category) && !s.commerce.products.some((x) => isWhiskyCategory(x.category)) && s.commerce.localBuzz > 0.05) {
+  if (isWhiskyCategory(product.category) && !s.commerce.products.some((x) => isWhiskyCategory(x.category)) && !s.commerce.productArchive.some((x) => isWhiskyCategory(x.category)) && s.commerce.localBuzz > 0.05) {
     product.launchBoost = { factor: 1 + 2 * s.commerce.localBuzz, untilMonth: s.month + 3 };
   }
   // 포장재·병입 인건비는 병입 시점에 지출

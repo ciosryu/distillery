@@ -481,7 +481,7 @@ function diag(strategy: Strategy, seed: number, s: GameState): void {
     })(),
     contracts: s.b2b.contracts.length, casks: s.inventory.casks.filter((c) => c.contents).length,
     whisky: (() => {
-      const cat = new Map(s.commerce.products.map((p) => [p.id, p.category]));
+      const cat = new Map([...s.commerce.products, ...s.commerce.productArchive].map((p) => [p.id, p.category]));
       return s.history.reports.map((r) => {
         const w = r.sales.filter((x) => cat.get(x.productId) === 'whisky');
         return [w.reduce((t, x) => t + x.demandBottles, 0), w.reduce((t, x) => t + x.bottles, 0)];

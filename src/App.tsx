@@ -31,6 +31,9 @@ type TabId = (typeof TABS)[number]['id'];
 export default function App() {
   const s = useGame((g) => g.state);
   const advance = useGame((g) => g.advance);
+  const advanceUntil = useGame((g) => g.advanceUntil);
+  const cancelAdvance = useGame((g) => g.cancelAdvance);
+  const advancing = useUi((u) => u.advancing);
   const restart = useGame((g) => g.restart);
   const toast = useUi((u) => u.toast);
   const clearToast = useUi((u) => u.clearToast);
@@ -60,9 +63,12 @@ export default function App() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="primary" disabled={!running} onClick={() => advance(1)}>1개월 진행</Button>
-            <Button disabled={!running} onClick={() => advance(3)}>분기 진행</Button>
-            <Button disabled={!running} onClick={() => advance(12)}>1년 진행</Button>
+            <Button variant="primary" disabled={!running || !!advancing} onClick={() => advance(1)}>1개월 진행</Button>
+            <Button disabled={!running || !!advancing} onClick={() => advance(3)}>분기 진행</Button>
+            <Button disabled={!running || !!advancing} onClick={() => advance(12)}>1년 진행</Button>
+            {advancing
+              ? <Button variant="ghost" onClick={cancelAdvance}>자동 진행 중 {advancing.done}/{advancing.total} — 멈춤</Button>
+              : <Button disabled={!running} onClick={() => void advanceUntil(24)} title="선택 이벤트·예보·현금 경고·설비 가동 시작 중 하나가 생기면 멈춘다 (최대 24개월)">다음 알림까지</Button>}
             <Button variant="ghost" onClick={() => setNewGameOpen((v) => !v)}>새 게임</Button>
           </div>
         </div>

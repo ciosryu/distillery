@@ -10,6 +10,7 @@ import { emptyCaskOf } from './newGame';
 import { fermentDaysAt } from './production';
 import { buildTickContext, type TickContext } from './tick';
 import { updateWeather, weatherOffset } from './weather';
+import { archiveSoldOutProducts, rollupYear } from './lifecycle';
 import { runSales, updateAwareness, updateTrends } from './market';
 import { batchEnergyCost, simulateBatch, stillDefOf, volumeDiscounts } from './production';
 import { siteOf } from './content/regions';
@@ -141,9 +142,11 @@ function runProduction(s: GameState, report: MonthReport, ctx: TickContext): { r
     const lpa = parts.reduce((t, p) => t + p.lpa, 0);
     const volumeL = parts.reduce((t, p) => t + p.lot.volumeL, 0);
     const cost = parts.reduce((t, p) => t + p.cost, 0);
+    const lotId = nid(s, 'L');
     s.inventory.lots.push({
       ...parts[0]!.lot,
-      id: nid(s, 'L'),
+      id: lotId,
+      batchId: lotId,
       name: `${recipe.name} · ${monthLabel(s.startYear, s.month)}`,
       volumeL,
       abv: lpa / volumeL,
@@ -283,7 +286,7 @@ function phaseSales(s: GameState, report: MonthReport, ctx: TickContext): Return
   return sales;
 }
 
-/** 6 운영: 면세 한정판·매출채권, 트렌드, 관광, 캐스크 오너십 인도, 사무직, 직원 생애주기(에이징 커브·은퇴) */
+/** 6 운영: 면세 한정판·매출채권, 트렌드, 관광, 캐스크 오너십 인도, 사무직, 직원 생애주기(에이징 커브·은퇴), 품절 제품 아카이브 */
 function phaseOperations(s: GameState, report: MonthReport, ctx: TickContext, mashKg: number): void {
   resolveDutyFreeEditions(s, report);
   collectReceivables(s, report);
@@ -292,6 +295,7 @@ function phaseOperations(s: GameState, report: MonthReport, ctx: TickContext, ma
   deliverOwnedCasks(s, report);
   runOffice(s, report, rngFor(s.seed, s.month, 'office'), mashKg);
   runStaffLifecycle(s, report, rngFor(s.seed, s.month, 'lifecycle'));
+  archiveSoldOutProducts(s);
 }
 
 /** 8 성장: XP, 후보·브로커·계약·입찰·거래 제안 갱신, 시세 랜덤 워크 */
@@ -331,6 +335,7 @@ function phaseSettle(s: GameState, report: MonthReport, cashStart: number): void
   report.netCash = s.finance.cash - cashStart;
   report.cashEnd = s.finance.cash;
   s.history.reports = [...s.history.reports, report].slice(-REPORTS_KEPT);
+  if (calendar(s).monthOfYear === 12) rollupYear(s, calendar(s).year);
   s.month += 1;
 }
 

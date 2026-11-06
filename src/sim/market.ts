@@ -4,6 +4,7 @@ import { DUTY_FREE, dutyFreeDemand, dutyFreeEditionAppeal, outboundLogistics } f
 import { agePerception } from './blending';
 import { overhangFactor, ownershipOversold, OWNERSHIP, retailCapacityCases, RETAIL } from './ops';
 import { clamp } from './flavor';
+import { allProductQualities } from './lifecycle';
 import { staffOf } from './util';
 import { mod } from './modifiers';
 import type { GameState, Product, ProductCategory } from './types';
@@ -173,7 +174,8 @@ export const AWARENESS = { marketing: 0.012, wordOfMouth: 0.000003, decay: 0.012
 export function updateAwareness(s: GameState, sales: SalesResult[]): number {
   const dutyFree = sales.reduce((t, x) => t + (x.dutyFree ?? 0), 0);
   const bottles = sales.reduce((t, x) => t + x.bottles, 0) + (DUTY_FREE.wordOfMouthWeight - 1) * dutyFree;
-  const avgQ = s.commerce.products.length ? s.commerce.products.reduce((t, p) => t + p.quality, 0) / s.commerce.products.length : 50;
+  const qs = allProductQualities(s); // 역대 전 제품(아카이브 포함) 평균 — lifecycle.ts의 [열린 문제] 참고
+  const avgQ = qs.length ? qs.reduce((t, q) => t + q, 0) / qs.length : 50;
   const a = s.commerce.awareness;
   const gain = (AWARENESS.marketing * Math.log10(1 + s.commerce.marketingBudget / 1_000_000) * mod(s, 'awareness_gain') + AWARENESS.wordOfMouth * bottles * (avgQ / 60)) * (1 - a);
   s.commerce.awareness = clamp(a + gain - AWARENESS.decay * a, 0.001, 0.95);

@@ -33,6 +33,7 @@ export function Dashboard() {
         <Stat label="판매 중 제품" value={s.commerce.products.filter((p) => p.stockBottles > 0).length} hint={`재고 ${num(s.commerce.products.reduce((t, p) => t + p.stockBottles, 0))}병`} />
         <Stat label="대출 잔액" value={won(s.finance.loans.reduce((t, l) => t + l.balance, 0))} hint={`${s.finance.loans.length}건`} />
         <Stat label="소매 처리 역량 (지난달)" value={last?.retailCapacityCases != null ? `${num(last.retailSoldCases ?? 0)} / ${num(last.retailCapacityCases)} 케이스` : `${num(retailCapacityCases(s))} 케이스/월`} tone={last?.overflowCases ? 'warn' : undefined} hint={last?.overflowCases ? `초과 ${num(last.overflowCases)}케이스 고비용 채널${last.lostSalesBottles ? ` · ${num(last.lostSalesBottles)}병 못 팔음` : ''}` : `영업 직원·네트워크로 늘어남${hasPremiumChannel(s) ? ' · 고급 유통망 확보' : ''}`} />
+        <Stat label="기상 (지난달, 평년 대비)" value={last?.weather ? `${last.weather.tempAnom > 0 ? '+' : ''}${last.weather.tempAnom.toFixed(1)}°C · 습도 ${last.weather.humidAnom > 0 ? '+' : ''}${last.weather.humidAnom.toFixed(0)}%p` : '—'} tone={last?.weather && Math.abs(last.weather.tempAnom) >= 2.5 ? 'warn' : undefined} hint={last?.weather?.shocks.length ? `이상 기후: ${last.weather.shocks.join(', ')}` : '더우면 증발(엔젤스 셰어)·숙성이 빨라진다'} />
         <Stat label="비지터 센터 (지난달)" value={visitorTiers(s).length ? `${num(last?.visitors ?? 0)}명 · ${won(last?.tourismRevenue ?? 0)}` : '없음'} hint={`입소문 ${pct(s.commerce.localBuzz)} — 첫 위스키 출시 때 오픈런 확률`} />
       </div>
 

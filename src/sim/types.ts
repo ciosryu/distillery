@@ -73,6 +73,8 @@ export interface SpiritLot {
   /** 누적 원가(원/LPA) — 원재료·에너지·매입가 */
   costPerLPA: number;
   recipeId?: string;
+  /** 생산 배치 id — 같은 배치에서 나눠 통입한 캐스크를 묶어(코호트) 보여 주는 키 (architecture §3.4). 옛 세이브·매입 원액은 없다 */
+  batchId?: string;
   /** 원재료 배합 비율(레시피 기준) — 특산물·버번 옥수수 51% 같은 원료 규정 판정용 */
   mashShare?: Record<string, number>;
   /** 입지 원료(제주 차조·청귤 등)를 쓴 원액 — 면세 기념품 매력도 (결정 #87) */

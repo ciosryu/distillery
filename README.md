@@ -63,22 +63,30 @@ npm run bench      # 틱 성능 측정 — 캐스크 수별 월 처리·복제·
 ## 구조
 
 ```
-src/sim/      순수 TypeScript 시뮬레이션 코어 (React 의존 없음)
-  content/    콘텐츠 데이터 (향미 축, 원재료·설비·캐스크, 주종 스키마, 지역(regions.ts), 이벤트, 실존 이름(names.ts))
-  step.ts     advanceMonth(state) — 월간 처리
-  actions.ts  applyAction(state, action) — 플레이어 행동
-src/store/    Zustand 스토어 (시뮬레이션 래핑 + 저장)
-src/ui/       React + Tailwind 화면
-scripts/      밸런스 시뮬레이션, 수요 데이터 빌더
+src/sim/        순수 TypeScript 시뮬레이션 코어 (React 의존 없음)
+  types.ts      GameState v6 — 헤더(시간·지역·시드) + 도메인 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history)
+  step.ts       advanceMonth — 월 틱 파이프라인 0~9단계 (PRD §2.2)
+  tick.ts       틱 컨텍스트 — 칸(숙성고×단) 기후표·칸 점유·QC 스탯을 한 달에 한 번
+  engine.ts     GameEngine 계약(명령 → 스냅샷), advanceUntil(멈춤 조건)
+  actions.ts    applyAction — 플레이어 행동 (입구에서 isUnlocked)
+  migrate.ts    세이브 마이그레이션 체인 (v5 → v6)
+  weather.ts    기상 이상치 AR(1)·이벤트 충격
+  lifecycle.ts  제품 아카이브·연 요약
+  blendRadar.ts 블렌딩 레이더 미니게임 코어
+  content/      콘텐츠 데이터 (향미 축, 원재료·설비·캐스크, 주종 스키마, 지역, 이벤트, 테크 노드, 실존 이름)
+src/store/      Zustand — 엔진 스냅샷 읽기 모델(game.ts) + 비영속 UI 상태(ui.ts) + 셀렉터 + 세이브(persist.ts)
+src/ui/         React + Tailwind 화면
+scripts/        밸런스 시뮬레이션, 틱 벤치마크, 수요 데이터 빌더, 코드모드
 ```
 
 ## 문서
 
 | 문서 | 내용 |
 |---|---|
-| [docs/PRD.md](docs/PRD.md) | 제품 요구사항 문서 v1.4 — 결정 로그(#1~85), 운영 시스템(§16), 한국 완화책(§16.10), 지역(한국·일본·대만)과 국가별 전략 정체성, 나라별 숙성 규칙, 매입 원액 브랜드 가치, 실존 이름 정책, Godot(C#) 이식 계획, 변동 설계, 원액 B2B·마진 사다리, 럭셔리 지수·브랜드 라인, 로드맵 |
+| [docs/PRD.md](docs/PRD.md) | 제품 요구사항 문서 v1.6 — 결정 로그(#1~98), 운영 시스템(§16), 한국 완화책(§16.10), 지역(한국·일본·대만)과 국가별 전략 정체성, 나라별 숙성 규칙, 매입 원액 브랜드 가치, 실존 이름 정책, Godot(C#) 이식 계획, 변동 설계, 원액 B2B·마진 사다리, 럭셔리 지수·브랜드 라인, 로드맵 |
 | [docs/design/flavor-model.md](docs/design/flavor-model.md) | 향미 모델 설계 — 전역 축 레지스트리, 주종별 스키마, 공정 변환, 평가 함수 |
-| [docs/design/architecture.md](docs/design/architecture.md) | 아키텍처 역제시 v0.1 `[제안 — 승인 요청]` — 실측(캐스크 규모·틱 비용·세이브 크기), 단일 상태 + 도메인 슬라이스, 틱 컨텍스트, 엔진 계약, 세이브 마이그레이션, 단계별 도입 트리거 |
+| [docs/design/architecture.md](docs/design/architecture.md) | 아키텍처 v0.2 — 실측(캐스크 규모·틱 비용·세이브 크기), 단일 상태 + 도메인 슬라이스(#95), 틱 파이프라인·컨텍스트, 엔진 계약, 세이브 마이그레이션, 30년·2,500캐스크 기준 도입 트리거(#96) |
+| [docs/design/blending-minigame.md](docs/design/blending-minigame.md) | 블렌딩 레이더 미니게임 v0.1 (#98) — 6스탯 육각형 투영, 블렌더 지각 오차, 목표 매칭, 재미 제안 `[승인 요청]` |
 | [docs/design/tech-tree.md](docs/design/tech-tree.md) | 테크트리 설계 — 연구 시스템, 공통 4계통 + 주종 브랜치 6개, 라벨 속성 → 수요 연결 |
 | [docs/research/demand-data.md](docs/research/demand-data.md) | 국가·지역 × 주종 기본 수요 조사 v0.2 (출처·방법론·공백, 3·4차 조사 반영) |
 | [data/market/base-demand.json](data/market/base-demand.json) | 게임에 투입할 기본 수요 데이터 (`npm run data:demand`로 생성) |
