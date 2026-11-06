@@ -299,15 +299,15 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       tempC: [4.8, 5.4, 8.8, 14.4, 19.5, 23.2, 27.3, 28.5, 24.4, 18.4, 12.5, 7.2],
       humidity: [66, 65, 63, 63, 66, 72, 76, 72, 73, 72, 70, 68],
       basis: '오사카·교토 평년값 근사(추정)',
-      tourism: 1.15, water: 'soft', overheadFactor: 1.25, warehouseCostFactor: 1.3, demandFactor: 1.05,
+      tourism: 1.15, water: 'soft', overheadFactor: 1.0, warehouseCostFactor: 1.3, demandFactor: 1.1,
       caskPriceFactor: { mizunara_hogshead: 0.8 }, eventBoost: { earthquake: 1.5 },
       starter: { name: '야마다 유키', distillery: '미오 증류소' },
       traits: [
         { tone: 'good', text: '연수 명수: 발효 이취 −30%, 과일·플로럴 +10%' },
         { tone: 'good', text: '미즈나라 캐스크 추가 −20%, 인센스 향 일본 프리미엄 ×1.25(지역 공통)' },
-        { tone: 'good', text: '간사이 인바운드: 국내 수요 +10%, 관광 잠재력 ×1.5' },
+        { tone: 'good', text: '간사이 인바운드: 국내 수요 +10%, 관광 잠재력 ×1.15' },
         { tone: 'bad', text: '지진 가중 ×1.5 — 내진 랙 보강이 사실상 필수' },
-        { tone: 'bad', text: '땅값: 관리비 ×1.1, 숙성고 증설비 ×1.3' },
+        { tone: 'bad', text: '땅값: 숙성고 증설비 ×1.3, 기후가 따뜻해 증발이 간토보다 많다' },
       ],
     }, {
       // 홋카이도 (결정 #84): 싸고 느린 땅, 재고 담보대출로 버티는 장기 숙성
@@ -321,11 +321,11 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       eventBoost: { snowstorm: 1.5, cold_wave: 1.3 },
       starter: { name: '오노 다이치', distillery: '시라카바 증류소' },
       traits: [
-        { tone: 'good', text: '싼 땅: 관리비 ×0.9, 숙성고 증설비 ×0.7' },
+        { tone: 'good', text: '싼 땅: 숙성고 증설비 ×0.7' },
         { tone: 'good', text: '재고 담보대출: 숙성 재고 시가의 60%까지 빌린다(시가가 떨어지면 추가 상환)' },
         { tone: 'good', text: '감자 쇼추, 서늘해서 증발이 적다' },
-        { tone: 'bad', text: '난방: 11~3월 난방비 월 400만 원 + 증류 에너지비 ×1.6' },
-        { tone: 'bad', text: '본토 출고 물류비 +25%, 숙성이 느리다' },
+        { tone: 'bad', text: '난방: 11~3월 난방비 월 800만 원 + 증류 에너지비 ×1.6' },
+        { tone: 'bad', text: '본토 출고 물류비 +50%, 관광 ×0.9, 숙성이 느리다' },
         { tone: 'bad', text: '폭설·한파 가중' },
       ],
     }],
