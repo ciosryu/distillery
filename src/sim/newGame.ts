@@ -131,6 +131,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     rotatedThisMonth: 0,
     traditionalReleasedL: 0,
     traditionalPrevYearL: 0,
+    pendingCash: {},
     siteState: {},
     retailOffers: [],
     retailContracts: [],

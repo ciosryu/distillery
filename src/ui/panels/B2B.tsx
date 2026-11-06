@@ -35,7 +35,7 @@ export function B2B() {
         <Stat label="벌크 원액 시세 지수" value={s.bulkIndex.toFixed(2)} hint="위스키 트렌드와 연동, 매달 변동" tone={s.bulkIndex >= 1 ? 'good' : 'warn'} />
         <Stat label="B2B 신뢰도" value={Math.round(s.b2bTrust)} hint="납품 실적이 좋으면 상승 → 계약 단가·물량↑" />
         <Stat label="월 계약 물량" value={`${num(committed)} LPA`} hint={`생산 여력: 몰트 약 ${num(capacityLPA(s, 'malt'))} · 그레인 약 ${num(capacityLPA(s, 'grain'))} LPA/월 · 국산 프리미엄 ${pct(domesticPremium(s), 0)}`} />
-        <Stat label="지난달 원액 매출" value={won(s.reports.at(-1)?.bulkRevenue ?? 0)} hint="계약 납품분 (현물 판매는 즉시 입금)" />
+        <Stat label="지난달 원액 매출" value={won((s.reports.at(-1)?.bulkRevenue ?? 0) + (s.reports.at(-1)?.spotBulkRevenue ?? 0))} hint={`계약 납품 ${won(s.reports.at(-1)?.bulkRevenue ?? 0)} + 현물·IB 매각 ${won(s.reports.at(-1)?.spotBulkRevenue ?? 0)} (현물 판매는 즉시 입금, 다음 결산에 집계)`} />
       </div>
 
       <SiteDeals />
