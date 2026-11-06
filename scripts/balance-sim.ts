@@ -172,18 +172,20 @@ const NO_EXPORT = process.env.NO_EXPORT === '1';
 /** 이번 판에서 철수한 시장 — 다시 들어가지 않는다 (진입 비용을 반복해서 내는 버그 방지) */
 let closedMarkets = new Set<ExportMarketId>();
 let exportLog: string[] = [];
-function exportPolicy(s: GameState): GameState {
+function exportPolicy(s: GameState, strategy: Strategy): GameState {
   if (NO_EXPORT) return s;
   const whisky = s.products.filter((p) => p.category === 'whisky' && p.stockBottles > 0);
   const aged36 = whisky.some((p) => (p.oakMonths ?? 0) >= 36);
   // 남는 물량이 있을 때만: 3년 넘은 자사 몰트 캐스크가 EXPORT_SURPLUS개(약 330병/캐스크) 넘게 쌓였을 때.
   // 공급이 국내 수요에 묶여 있으면 수출은 국내 판매를 빼앗고 현지 비용만 늘린다 (§16.25)
   const surplus = s.casks.filter((c) => c.contents?.kind === 'malt' && !c.contents.sourced && c.contents.oakMonths >= 36).length >= Number(process.env.EXPORT_SURPLUS ?? 20);
-  if (!surplus && !(s.exports ?? []).length) return s;
+  // 확장형은 성장 전략이라 남는 재고를 기다리지 않고 해외 판로를 먼저 연다 — 수출 수요가 증설 판단에 들어간다
+  const growth = strategy === 'expand' && process.env.EXPAND_EXPORT !== '0';
+  if (!surplus && !growth && !(s.exports ?? []).length) return s;
   const open = new Set((s.exports ?? []).map((e) => e.marketId));
   const plan: [ExportMarketId, number, boolean][] = [['DF', 36, whisky.length > 0], ['US', 48, aged36], ['UK', 48, aged36]];
   for (const [id, from, ok] of plan) {
-    if (open.has(id) || closedMarkets.has(id) || !ok || !surplus || s.month < from) continue;
+    if (open.has(id) || closedMarkets.has(id) || !ok || !(surplus || growth) || s.month < from) continue;
     if (s.cash > EXPORT_MARKETS[id].entryCost + 200_000_000) { s = act(s, { type: 'openExport', marketId: id }); exportLog.push(`m${s.month} open ${id}`); }
   }
   for (const e of s.exports ?? []) {
@@ -215,7 +217,7 @@ function operations(s: GameState, strategy: Strategy): GameState {
     const need = EVENTS.filter((e) => e.defense && (atSite(e) || (!e.sitesOnly && (!e.regions || e.regions.includes(s.regionId))))).map((e) => e.defense!).find((id) => !s.equipment.some((x) => x.catalogId === id));
     if (need) s = act(s, { type: 'buyEquipment', catalogId: need });
   }
-  s = exportPolicy(s);
+  s = exportPolicy(s, strategy);
   void strategy;
   return s;
 }
