@@ -41,7 +41,7 @@ export function emptyCaskOf(s: GameState, typeId: keyof typeof CASKS): Cask {
 export function newGame(opts: NewGameOptions = {}): GameState {
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   const s: GameState = {
-    version: 12,
+    version: 13,
     seed,
     month: 0,
     startYear: opts.startYear ?? 2027,
@@ -56,8 +56,9 @@ export function newGame(opts: NewGameOptions = {}): GameState {
       modifiers: [],
       weather: { tempAnom: 0, humidAnom: 0, shocks: [] },
       flavorTrend: { shifts: [] },
+      rivals: [],
     },
-    finance: { cash: opts.startingCash ?? DEFAULT_STARTING_CASH, negativeCashMonths: 0, loans: [], investorShare: 0, investmentsTaken: [], receivables: [], pendingCash: {} },
+    finance: { cash: opts.startingCash ?? DEFAULT_STARTING_CASH, negativeCashMonths: 0, loans: [], investorShare: 0, investmentsTaken: [], receivables: [], pendingCash: {}, hedges: [], insurance: [] },
     hr: { staff: [], candidates: [], houseStyle: 0 },
     production: { equipment: [], recipes: [], orders: [], ingredientKgLastMonth: {}, flags: { producedSoju: false }, wasteContractPerKg: 0 },
     inventory: { lots: [], casks: [], caskOrders: [], warehouseBase: 150, rotatedThisMonth: 0, samplesThisMonth: 0 },

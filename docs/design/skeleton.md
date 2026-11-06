@@ -24,11 +24,11 @@
 | 항목 | 내용 | 근거 |
 |---|---|---|
 | 플랫폼 | Godot 4 + C#, PC(Steam). TS는 설계 실험실·기준 구현 | #34·#35·#40·#122 |
-| 상태 | 단일 `GameState` v12 = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history·progress) | #118, [architecture.md §3](architecture.md) |
+| 상태 | 단일 `GameState` v13 = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history·progress) | #118, [architecture.md §3](architecture.md) |
 | 시간 | 1턴 = 1개월. 월 틱 0~9단계 파이프라인 + 틱 컨텍스트 | #1·#26, PRD §2.2 |
 | 경계 | `GameEngine` 계약 (명령 → 스냅샷) | architecture.md §3.2 |
 | 난수 | mulberry32, `rngFor(seed, month, stream)` 독립 스트림 | PRD §13.2 |
-| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8 → v9 → v10 → v11 → v12) | #118, S-8, S-10, S-9, S-2, S-6 |
+| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8 → v9 → v10 → v11 → v12 → v13) | #118, S-8, S-10, S-9, S-2, S-6, S-11·S-12 |
 | 테크 게이트 | `isUnlocked(state, key)` 하나로 판정, 키 규칙 고정, Phase 1은 꺼짐 | #118, tech-tree §7 |
 | 설계 규모 | 30년(360턴) · 원액 든 캐스크 2,500개 | #119 |
 | 기후 | 입지 평년값 + AR(1) 이상치, 이벤트는 입력(기온·습도) 충격 | #120 |
@@ -54,7 +54,7 @@
 | 입지 대표 거래(유통 납품·OEM·면세) | §16.21 | `commerce.retail*`, `b2b.oem*`, `site` | 4·6 | `deals.ts`, `sites.ts`(일부) | ● | MKT |
 | 수출·해외 명성 | §16.25, §16.27, §17 | `commerce.exports`·`exportOffers`·`exportEntered`·`acclaim` | 5·6·8 | `market.ts`, `exportDeals.ts`, `content/exports.ts` | ● (9개 시장·수입사 계약 #100~#109) | MKT |
 | 재무(대출·투자·캐스크 오너십·담보대출) | §8 | `finance` | 7 | `cashflow.ts`, `actions.ts`, `sites.ts`(담보) | ● | MGT |
-| 재무 확장(이사회·헷징·보험) | §8.2, §8.4 | — | — | — | ○ | MGT |
+| 재무 확장(이사회·헷징·보험) | §8.2, §8.4 | `finance.hedges`·`insurance`·`board?` (v13) | 2(선도계약 원가)·7(보험료·이사회) — 규칙 생길 때 | 행동 `signForward`·`buyInsurance`·`cancelInsurance`(자리), 해임 = `GameEnding 'dismissed'`(S-9) | ○ (자리만) | MGT |
 | HR(직군·에이징·하우스 스타일·마스터 블렌더) | §7, §16.6 | `hr` | 6·8 | `hr.ts`, `ops.ts`(일부) | ● | MGT |
 | 이벤트·예보·보정치 | §10 | `events`, `world.modifiers` | 1 | `events.ts`, `content/events.ts`, `modifiers.ts` | ● | MGT |
 | 연구·테크트리 | [tech-tree](tech-tree.md) | `research` | 8 (`runResearch`) | `research.ts`(게이트·시작 조건·진행), `content/tech.ts`(노드 스키마 + 4개), 행동 `startResearch`·`setResearch`·`cancelResearch` | ◐ (진행 규칙 구현 — 기간·연구비·담당자·일시정지·이탈. 노드 4개뿐, 게이트 꺼짐, 실적 보너스·본업 효율 −30%·실험실 슬롯·화면은 단계 P) | MGT |
@@ -62,8 +62,8 @@
 | 리포트·연 요약·데이터 수명 | §13 | `history` | 9 | `lifecycle.ts`, `step.ts` | ● | 코어 |
 | 시나리오 모드·초기화·기능 플래그·가상 이력 생성기 | §12.2 | 헤더 `scenario` (v8) | 1·8 (끈 시스템 건너뜀) | `content/scenarios.ts`, `scenario.ts`(잠금), `newScenario.ts`(사업 계획서 입구·미리보기), 화면 `ui/BusinessPlan.tsx` | ◐ (입구·플래그·MVP 시나리오 구현, 가상 이력 생성기·JSON 파일 형식은 자리만) | 코어 → META |
 | 승패·업적·마일스톤·목표 판정 | §12.1, [mvp.md](mvp.md) §3 | 헤더 `status`(끝난 이유) + `progress` 슬라이스(v10) | 9 (`updateProgress`) | `progress.ts`, `content/milestones.ts`, 행동 `actions.meta.ts`, 화면 `ui/Verdict.tsx` | ◐ (마일스톤 9개·MVP 목표 판정·결과 화면 구현. 면허 취소·해임은 자리만, 여러 판에 걸친 업적은 단계 V) | META |
-| 다지역 경영(해외 증류소 인수) | §3.4 | — (증류소 1개 전제) | — | — | ○ | 코어 결정 → META |
-| 경쟁 AI 증류소 | §9.4 | — | — | — | ○ | META |
+| 다지역 경영(해외 증류소 인수) | §3.4 | 지금은 증류소 1개. 슬라이스를 회사/증류소 단위로 분류해 둠(§4.10 ③) | — | 인수 시 시작 상태 = 시나리오 입구(`newScenarioGame`, S-8)와 같은 구조 | ○ (분류만, #128) | 코어 결정 → META |
+| 경쟁 AI 증류소 | §9.4 | `world.rivals` (v13, 비어 있음) | 5(수요 공식 훅 `rivalShare`)·8(경쟁사 행동 — 규칙 생길 때) | `rivals.ts` | ○ (자리·훅만, 배경 공급이 대신함) | META |
 | 추가 지역·주종(스코틀랜드 등) | §14 Phase 3 | (콘텐츠) | — | 지역 = `content/regions.ts`(+ `presets.ts`), 주종 = 공정 모델 코드 | ○ (지역 추가 = 데이터 — §4.8 체크리스트. 스코틀랜드 설계 v0.2 [scotland.md](scotland.md), ciosryu/distillery#9는 옛 구조라 이 체크리스트로 다시 한다) | 콘텐츠 |
 
 ---
@@ -117,8 +117,8 @@
 | **S-8** | **시나리오 초기화 경로** — JSON 시나리오 파일로 `GameState`를 만드는 입구 + 가상 이력 생성기의 자리 | §12.2가 "샌드박스 단계부터 지킬 아키텍처 요구사항"이라고 못 박았다 | 필수 (입구·스텁) — **구현, `[결정 #142]`** ([mvp.md §6.3](mvp.md)). 파일 형식(JSON)은 S-7과 함께 | §12.2 |
 | **S-9** | **승패·진행 구조** — 파산 외 실패 조건(면허 취소·해임), 업적·마일스톤의 데이터 모양, 플레이어 목표 | 게임 루프의 끝이 정의돼 있지 않다 | 필수 (모양만) — **구현, `[결정 #145]`** (§4.4) | §12.1 |
 | **S-10** | **숙성 용기 일반화 + 피니싱·정보 불확실성의 자리** — 지금 숙성 상태는 목재 캐스크 전제다. 크래프팅 자유 원칙(#134)에 따라 ① 비목재 용기(옹기·스테인리스 휴지 — 화이트 스피릿의 숙성 방식·기간) ② 피니싱(캐스크 이력의 단계) ③ 샘플링으로 얻은 "아는 값" 대 "참값"을 담을 상태 모양을 정한다 | 숙성·블렌딩·판매가 모두 읽는다. 옹기 숙성은 flavor-model §4.5 확장 필요(tech-tree §10 #7) | 필수 — **자리 구현, `[결정 #143]`** (§4.3) | §5.2, §5.6, #134 |
-| S-11 | 재무 확장의 자리 — 이사회(지분·해임), 헷징 계약, 보험 | Phase 2 범위. 슬라이스 필드·명령 타입만 | 권장 | §8.2, §8.4 |
-| S-12 | 경쟁 AI의 자리 — 시장 점유를 나눌 "다른 공급자" 훅 | Phase 5지만 수요 공식에 들어갈 자리가 필요 | 권장 | §9.4, #28 |
+| S-11 | 재무 확장의 자리 — 이사회(지분·해임), 헷징 계약, 보험 | Phase 2 범위. 슬라이스 필드·명령 타입만 | 권장 — **구현, `[제안 P-ARCH-15]`** (§4.10) | §8.2, §8.4 |
+| S-12 | 경쟁 AI의 자리 — 시장 점유를 나눌 "다른 공급자" 훅 | Phase 5지만 수요 공식에 들어갈 자리가 필요 | 권장 — **구현, `[제안 P-ARCH-15]`** (§4.10) | §9.4, #28 |
 | S-13 | 웹 프로토타입 화면 범위 — Godot가 최종이므로 웹 UI를 어디까지 만들지 | 파트마다 화면 작업량이 달라진다 | 권장 | #122 |
 | S-14 | 밸런스 판정 방법 고정 — 시드 수(40), 판정 지표, 난이도 목표(★)를 정량으로 | 단계 T의 완료 기준 | 권장 (T 전까지) | §16.27 노이즈 경고 |
 
@@ -248,6 +248,24 @@ MVP 완료 기준 1(15년 목표 → 결과 화면 → 계속 운영)이 이 위
 
 - 계산으로 만든 값(`casesOf(...)`, `Array(10).fill(...)`)은 내보낼 때 평가된 결과가 들어간다 — 문제없다
 - `RegionId` 같은 유니언 타입은 단계 G에서 "문자열 + 로드 때 검증"이 된다(§4.8 ④)
+
+### 4.10 남은 자리 — 재무 확장·경쟁 AI·다지역 분류 — `[제안 P-ARCH-15]` (2026-11-06, 설계 세션)
+
+단계 S 완료 기준 ②("모든 시스템이 지도에 자리를 가진다")의 마지막 빈칸 3개. 동작 불변(밸런스 골든 5입지·MVP 바이트 동일).
+
+| 시스템 | 자리 | 대안 (기각 이유) |
+|---|---|---|
+| ① 재무 확장 (S-11, MGT) | `finance.hedges: ForwardContract[]`(원재료 선도계약 — 품목·월 kg·고정 가격 지수·기간) · `finance.insurance: InsurancePolicy[]`(재산·재고·영업중단·제조물·신용 — 월 보험료·보상 한도) · `finance.board?`(외부 지분 25%↑일 때 생김 — 신뢰·분기 목표). 행동 `signForward`·`buyInsurance`·`cancelInsurance`(항상 실패, MVP 잠금). 틱: 선도계약은 2단계 원가, 보험료·이사회는 7단계(재무). 해임은 S-9의 `GameEnding 'dismissed'` | 이사회를 항상 두기 — 외부 지분이 없으면 의미가 없다. PRD §8.4의 고급 상품(선물환·금리 스왑·신용보험·팩토링)은 테크 BIZ-2b 해금(#49) — 같은 `insurance`·`hedges` 모양에 종류만 더한다 |
+| ② 경쟁 AI (S-12, META) | `world.rivals: RivalDistillery[]`(비어 있음 — 지역·카테고리·인지도·품질) + 국내 수요 공식에 **`× (1 − rivalShare)`** 훅. 경쟁사가 없으면 0이라 값이 정확히 같다. 지금은 PRD §9.4대로 배경 공급(시세 랜덤 워크·공급 과잉 이벤트)이 시장을 대신한다 | 수요 공식의 `shareCap`(점유 상한)을 경쟁사 몫으로 보기 — 상한은 조사로 맞춘 "신생 브랜드가 닿을 수 있는 몫"이라(#85) 뜻이 다르다 |
+| ③ 다지역 경영 (S-1, #128) | **문서에서 분류만** (#128의 준비안) — 아래 표. 증류소를 여럿 둘 때 증류소 단위 슬라이스를 `distilleries[]`로 옮기고 회사 단위는 그대로 둔다. 인수한 증류소의 시작 상태는 시나리오 입구(S-8)와 같은 구조로 만든다(PRD §3.4) | 지금 `distilleries[]`로 — 증류소 1개인 동안 모든 접근이 한 단계 깊어지고 얻는 것이 없다 |
+
+**슬라이스 분류 (다지역 경영 대비, v13 기준)**
+
+| 단위 | 슬라이스·필드 |
+|---|---|
+| **회사** (하나) | `finance` 전부(연결 재무 — 사이트별 손익은 리포트 태그로) · `commerce.brands`·`products`·`productArchive`·`exports`·`commissions`·`lines` · `b2b.trust` · `research`(회사 단위 지식, tech-tree §2.3) · `progress` · `scenario` · 헤더 `seed`·`month`·`startYear`·`status` |
+| **증류소** (사이트마다) | 헤더 `regionId`·`siteId`·`distilleryName` · `production` · `inventory` · `site` · `hr`(직원은 사이트 소속, 하우스 스타일 포함) · `commerce.localBuzz`(비지터 센터)·`traditionalReleasedL`·`retailOffers/Contracts`(입지 대표 거래) · `b2b.contracts`(납품 사이트가 필요) · `world.weather`(입지 기후) |
+| **세계** (공유) | `world.priceIndex`·`trend`·`flavorTrend`·`modifiers`(지역 한정 이벤트는 보정치에 지역 태그) · `world.rivals` · `events`(재해는 사이트 태그) · `history`(연결 + 사이트 태그) |
 
 ## 5. 다음 행동 (설계 세션)
 
