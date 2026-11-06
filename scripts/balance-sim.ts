@@ -4,7 +4,7 @@ import { advanceMonth, applyAction, bulkValuePerLPA, capacityLPA, spotBidPerLPA,
 import { REGIONS, regionOf, siteOf } from '../src/sim/content/regions';
 import { DUTY_FREE, dutyFreeSlotBlocker, inventoryLoanRoom, inventoryLtv, OEM, oemPackageCost } from '../src/sim';
 import { EVENTS } from '../src/sim/content/events';
-import { RETAIL } from '../src/sim/ops';
+import { RETAIL } from '../src/sim/retail';
 import { EQUIPMENT } from '../src/sim/content/catalog';
 import { EXPORT_MARKETS, EXPORT_SALES } from '../src/sim/content/exports';
 import type { ExportMarketId } from '../src/sim/types';

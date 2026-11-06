@@ -1,6 +1,7 @@
 import { CASH_FLOW_LINES, capacityReport, coverage, inventoryLoanRoom, inventoryLtv, liveDutyFreeEditions, monthLabel, monthlyFixedCost, selfFundedCash, siteOverhead, warehouseCapacity, waterPermitCap, type CashFlowKey, type MonthReport } from '../../sim';
 import { REGIONS, siteOf } from '../../sim/content/regions';
-import { hasPremiumChannel, retailCapacityCases, visitorTiers } from '../../sim/ops';
+import { hasPremiumChannel, retailCapacityCases } from '../../sim/retail';
+import { visitorTiers } from '../../sim/tourism';
 import { useGame } from '../../store/game';
 import { Sparkline } from '../charts';
 import { won, pct, liters, num } from '../format';

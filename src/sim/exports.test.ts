@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  addModifier, advanceMonths, applyAction, domesticNetPerBottle, effectiveTariff, EXPORT_MARKETS, EXPORT_SALES, exportDemandFor, exportMarketsFor, exportNetPerBottle, exportShelfPrice, makeExportOffer, mulberry32, newGame, runExportContracts, runSales, updateExportAwareness,
-  type GameState, type MonthReport, type Product,
-} from './index';
+import { addModifier, advanceMonths, applyAction, domesticNetPerBottle, effectiveTariff, EXPORT_MARKETS, EXPORT_SALES, exportDemandFor, exportMarketsFor, exportNetPerBottle, exportShelfPrice, makeExportOffer, mulberry32, newGame, runExportContracts, runSales, updateExportAwareness, type GameState, type MonthReport, type Product } from './index';
+import { applyEffects, exportAwarenessMax, exportEligible } from './index';
 
 // 수출 확장 (#100~#104, docs/design/export.md)
 
@@ -155,5 +153,68 @@ describe('재고 배분 (#109)·수출가 (#106·#108)', () => {
       expect(lo).toBeGreaterThanOrEqual(0.85);
       expect(hi).toBeLessThanOrEqual(1);
     }
+  });
+});
+
+// ───────────── 수출·해외 명성 (결정 #144 — sim.test.ts에서 옮겨 왔다) ─────────────
+
+
+describe('수출 (#95)', () => {
+  const whisky = (over: Partial<Product> = {}): Product => ({ id: 'w', name: 'w', category: 'whisky', ageYears: 3, oakMonths: 40, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 100, style: null, sourcedShare: 0, stockBottles: 1000, price: 40_000, unitCost: 12_000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, ...over });
+
+  it('수출 소비자가 = ((출고가+운임)×(1+관세) + 현지 주세) × 유통 배수 × (1+부가세)', () => {
+    const m = EXPORT_MARKETS.UK;
+    const p = whisky();
+    const lpa = 0.7 * 0.46;
+    const expected = ((40_000 + m.freightPerBottle.KR) * (1 + m.tariff.KR) + m.excisePerLPA * lpa) * m.channelMultiple * (1 + m.vat);
+    expect(exportShelfPrice({ regionId: 'KR' }, p, m)).toBeCloseTo(expected, 6);
+    // 면세점은 세금이 없어 같은 출고가라도 영국보다 싸다
+    expect(exportShelfPrice({ regionId: 'KR' }, p, EXPORT_MARKETS.DF)).toBeLessThan(exportShelfPrice({ regionId: 'KR' }, p, m));
+  });
+
+  it('영국은 3년 미만 위스키를 받지 않는다', () => {
+    expect(exportEligible(whisky({ oakMonths: 24 }), EXPORT_MARKETS.UK)).toBe(false);
+    expect(exportEligible(whisky({ oakMonths: 24 }), EXPORT_MARKETS.US)).toBe(true);
+    expect(exportEligible(whisky({ category: 'baijiu' }), EXPORT_MARKETS.US)).toBe(false);
+  });
+
+  it('수입사 계약(#101) → 준비 기간 뒤 판매, 수출분은 국내 주세가 없고 매입가는 출고가 × 계약 비율, 대금은 3개월 뒤', () => {
+    let s = newGame({ seed: 41 });
+    s = { ...s, finance: { ...s.finance, cash: 1e10 }, commerce: { ...s.commerce, awareness: 0.5, products: [whisky({ stockBottles: 5000 })] } };
+    const offer = makeExportOffer(s, 'DF', mulberry32(1));
+    s.commerce.exportOffers = [offer];
+    s = applyAction(s, { type: 'acceptExportOffer', offerId: offer.id }).state;
+    expect(s.commerce.exports).toHaveLength(1);
+    expect(s.finance.cash).toBe(1e10 - EXPORT_MARKETS.DF.entryCost);
+    const before = advanceMonths(s, 1);
+    expect(before.history.reports.at(-1)!.exports?.reduce((t, x) => t + x.bottles, 0) ?? 0).toBe(0); // 아직 준비 중
+    expect(before.history.reports.at(-1)!.expenses.export_fixed).toBe(offer.marketingPerMonth);
+    const after = advanceMonths(s, EXPORT_MARKETS.DF.entryMonths + 1);
+    const r = after.history.reports.at(-1)!;
+    const sold = r.exports!.reduce((t, x) => t + x.bottles, 0);
+    expect(sold).toBeGreaterThan(0);
+    expect(r.exportRevenue).toBe(Math.round(sold * 40_000 * offer.priceFactor));
+    expect(r.expenses.export_freight).toBe(sold * EXPORT_MARKETS.DF.freightPerBottle.KR);
+    expect(after.finance.receivables.some((x) => x.dueMonth === after.month - 1 + 3 && x.label.includes('수출'))).toBe(true);
+    expect(exportDemandFor(after, after.commerce.products[0]!, after.commerce.exports![0]!, 1)).toBeGreaterThan(0);
+  });
+});
+
+describe('해외 명성 (#96)', () => {
+  it('명성이 오르면 진출 시장 인지도가 뛰고 상한이 오르며, 매달 식는다', () => {
+    const s = newGame({ seed: 51 });
+    s.commerce.exports = [{ marketId: 'US', openedMonth: 0, readyMonth: 0, awareness: 0.05, totalBottles: 0 }];
+    const base = exportAwarenessMax(s, 'US');
+    applyEffects(s, [{ type: 'acclaim', delta: 0.35 }], mulberry32(1), 't');
+    expect(s.commerce.acclaim).toBeCloseTo(0.35, 6);
+    expect(s.commerce.exports[0]!.awareness).toBeCloseTo(0.4, 6);
+    expect(exportAwarenessMax(s, 'US')).toBeCloseTo(base + 0.4 * 0.35, 6);
+    updateExportAwareness(s);
+    expect(s.commerce.acclaim!).toBeLessThan(0.35);
+    // 나중에 진출해도 명성만큼 바닥이 깔린다
+    s.commerce.exports.push({ marketId: 'UK', openedMonth: 1, readyMonth: 1, awareness: 0.02, totalBottles: 0 });
+    s.month = 1;
+    updateExportAwareness(s);
+    expect(s.commerce.exports[1]!.awareness).toBeGreaterThanOrEqual(0.15);
   });
 });

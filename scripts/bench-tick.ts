@@ -4,7 +4,7 @@
 // 브라우저(V8 같은 계열이라도 기기·탭 상태에 따라)와 Node의 수치는 다르다 — 추세 비교용이다.
 import { advanceMonth, applyAction, newGame, type GameState } from '../src/sim';
 import { emptyCaskOf } from '../src/sim/newGame';
-import { assignSlot, SlotIndex } from '../src/sim/ops';
+import { assignSlot, SlotIndex } from '../src/sim/warehouse';
 
 const SIZES = process.argv.slice(2).map(Number).filter((n) => n > 0);
 const ns = SIZES.length ? SIZES : [250, 1000, 2000, 5000];

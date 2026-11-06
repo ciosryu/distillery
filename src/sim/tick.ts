@@ -1,5 +1,5 @@
 import type { Climate } from './maturation';
-import { climateTable, SlotIndex } from './ops';
+import { climateTable, SlotIndex } from './warehouse';
 import { fermentationClimate } from './production';
 import type { Cask, GameState } from './types';
 import { calendar, staffOf } from './util';

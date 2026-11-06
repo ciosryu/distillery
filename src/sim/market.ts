@@ -1,8 +1,10 @@
 import { DISTRIBUTION, PACKAGING, logisticsCost } from './content/catalog';
 import { consumerPrice, refPricePerL, regionOf, siteOf, traditionalTaxFactor, type RegionDef } from './content/regions';
-import { DUTY_FREE, dutyFreeDemand, dutyFreeEditionAppeal, outboundLogistics } from './sites';
+import { outboundLogistics } from './sites';
+import { DUTY_FREE, dutyFreeDemand, dutyFreeEditionAppeal } from './dutyFree';
 import { agePerception } from './blending';
-import { overhangFactor, ownershipOversold, OWNERSHIP, retailCapacityCases, RETAIL } from './ops';
+import { overhangFactor, retailCapacityCases, RETAIL } from './retail';
+import { ownershipOversold, OWNERSHIP } from './investment';
 import { clamp } from './flavor';
 import { hexOf } from './blendRadar';
 import { RARE, trendFactor } from './blendTable';

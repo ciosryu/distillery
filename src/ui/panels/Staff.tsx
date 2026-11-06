@@ -1,6 +1,6 @@
 import { ROLE_INFO } from '../../sim/content/catalog';
 import type { Staff as StaffT } from '../../sim';
-import { ageOf, AGING_TENURE_MONTHS, APPRENTICE_MONTHS, masterDistiller, RETIRE_AGE, tenureOf } from '../../sim/ops';
+import { ageOf, AGING_TENURE_MONTHS, APPRENTICE_MONTHS, masterDistiller, RETIRE_AGE, tenureOf } from '../../sim/hr';
 import { useGame } from '../../store/game';
 import { won } from '../format';
 import { Badge, Button, Card, Empty } from '../kit';

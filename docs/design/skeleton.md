@@ -72,20 +72,22 @@
 
 ### 3.1 코어 — 설계 세션 소유 (단계 P에서는 코어 PR로만 변경, PROCESS §7.3)
 
-`src/sim/types.ts` · `step.ts` · `tick.ts` · `engine.ts` · `migrate.ts` · `newGame.ts` · `scenario.ts` · `newScenario.ts` · `content/scenarios.ts` · `rng.ts` · `util.ts` · `modifiers.ts` · `lifecycle.ts` · `index.ts` · `content/index.ts` · `content/regions.ts` · `schema.test.ts` · `fixtures/` · `src/store/*` · `src/App.tsx` · `src/ui/BusinessPlan.tsx` · `src/ui/kit.tsx`·`format.ts`·`charts.tsx`
+`src/sim/types.ts` · `step.ts`(단계 순서만) · `tick.ts` · `engine.ts` · **`actions.ts`(행동 입구)** · **`actionKit.ts`** · `migrate.ts` · `newGame.ts` · `scenario.ts` · `newScenario.ts` · **`sites.ts`(입지 데이터 접근)** · `rng.ts` · `util.ts` · `modifiers.ts` · `lifecycle.ts` · `index.ts` · `content/index.ts` · **`content/catalog.ts`(재수출·설비 조립)** · `content/regions.ts` · `content/scenarios.ts` · `schema.test.ts` · **`sites.test.ts`** · `scenario.test.ts` · `fixtures/` · `src/store/*` · `src/App.tsx` · `src/ui/BusinessPlan.tsx` · `src/ui/kit.tsx`·`format.ts`·`charts.tsx`
 
 ### 3.2 파트별 소유 파일
 
 | 파트 | 범위 (단계 P에서 할 일 — 초안) | 소유 파일 | PRD 절 |
 |---|---|---|---|
-| **PROD** 생산·숙성·블렌딩 | 피니싱, 정보 불확실성(샘플링), 블렌딩 테이블 화면·보상 연결, 생산 테크 노드의 효과 데이터 | `production.ts`·`maturation.ts`·`flavor.ts`·`blending.ts`·`blendTable.ts`·`blendRadar.ts`·`weather.ts`, `content/axes.ts`·`categories.ts`, 화면 `Production`·`Warehouse`·`Bottling`·`BlendLab` | §4~§6, flavor-model, blending-minigame |
-| **MKT** 시장·판매·B2B·수출 | 브랜드 라인(브랜드별 인지도), 수요 공식 정리(SKU √n) | `market.ts`·`bulk.ts`·`broker.ts`·`deals.ts`·`exportDeals.ts`, `content/exports.ts`·`names.ts`, `data/market/`, 화면 `Sales`·`B2B`·`Exports` | §8.3, §8.5~§8.6, §9, §11 |
-| **MGT** 재무·HR·이벤트·연구 | 연구 진행 시스템 + 공통 테크 4계통, 재무 확장(이사회·헷징·보험), 이벤트 난수 스트림 분리 구현 | `cashflow.ts`·`hr.ts`·`events.ts`·`research.ts`, `content/events.ts`·`tech.ts`, 화면 `Finance`·`Staff`·`Events`·`Dashboard` | §7, §8.1~§8.2, §8.4, §10, tech-tree |
+| **PROD** 생산·숙성·블렌딩 | 피니싱, 정보 불확실성(샘플링), 블렌딩 테이블 화면·보상 연결, 생산 테크 노드의 효과 데이터 | `production.ts`(+ 생산 단계 `runProduction`)·`maturation.ts`·**`warehouse.ts`**(+ 숙성 단계)·**`casks.ts`**·**`waterPermit.ts`**·`flavor.ts`·`blending.ts`·`blendTable.ts`·`blendRadar.ts`·`weather.ts`·**`actions.prod.ts`**, **`content/production.ts`**·`content/axes.ts`·`categories.ts`, 테스트 **`production.test.ts`**·`vessel.test.ts`·`blendTable.test.ts`, 화면 `Production`·`Warehouse`·`Bottling`·`BlendLab` | §4~§6, flavor-model, blending-minigame |
+| **MKT** 시장·판매·B2B·수출 | 브랜드 라인(브랜드별 인지도), 수요 공식 정리(SKU √n) | `market.ts`·**`sales.ts`**(판매·주세 단계)·**`retail.ts`**·**`tourism.ts`**·**`dutyFree.ts`**·`bulk.ts`·`broker.ts`·`deals.ts`·`exportDeals.ts`·**`actions.mkt.ts`**, **`content/market.ts`**·`content/exports.ts`·`names.ts`, `data/market/`, 테스트 **`market.test.ts`**·`exports.test.ts`, 화면 `Sales`·`B2B`·`Exports` | §8.3, §8.5~§8.6, §9, §11 |
+| **MGT** 재무·HR·이벤트·연구 | 연구 진행 시스템 + 공통 테크 4계통, 재무 확장(이사회·헷징·보험), 이벤트 난수 스트림 분리 구현 | `cashflow.ts`·**`loans.ts`**(+ 재무 단계)·**`investment.ts`**·`hr.ts`(+ 생애주기·사무직)·`events.ts`·`research.ts`·**`actions.mgt.ts`**, **`content/finance.ts`**·`content/events.ts`·`tech.ts`, 테스트 **`finance.test.ts`**, 화면 `Finance`·`Staff`·`Events`·`Dashboard` | §7, §8.1~§8.2, §8.4, §10, tech-tree |
 | **META** 시나리오·진행·경쟁 | 시나리오 초기화·가상 이력 생성기, 업적·마일스톤, (후속) 경쟁 AI | (새 파일) | §12, §9.4 |
 
-### 3.3 아직 여러 파트가 나눠 쓰는 파일 — 단계 S에서 쪼갠다 (S-4)
+### 3.3 여러 파트가 나눠 쓰던 파일 — **쪼갰다 (S-4, 결정 #144, 2026-11-06)**
 
-> **실행 계획:** [split-plan.md](split-plan.md) — 기호별 옮길 곳·파트, 순서, 검사, 결정 요청(`[결정 #144]`). 아래 목록에 더해 `step.ts`의 파트 도우미와 `sites.test.ts`도 쪼갠다
+> 굵게 = 쪼개기로 새로 생기거나 역할이 바뀐 파일(§3.1·§3.2). `ops.ts`·`sim.test.ts`는 없어졌다. 남은 것: `scripts/balance-sim.ts`(단계 T에서 BAL). 실행 기록은 [split-plan.md](split-plan.md) §7
+
+> 쪼개기 전 상태 (기록용):
 
 | 파일 | 섞여 있는 것 |
 |---|---|
@@ -108,7 +110,7 @@
 | ~~S-1~~ | ~~증류소 1개 전제를 유지할지~~ → **결정(#128, 2026-11-06):** 최종 목표는 해외 증류소를 인수해 **화면 전환으로 여러 증류소를 동시에 관리**하는 것. 지금은 **증류소 1개만** 먼저 돌린다. `[제안]` 나중 비용을 줄이는 최소 준비: 슬라이스를 회사 단위(재무·브랜드·연구·수출)와 증류소 단위(생산·재고·입지·직원)로 **문서에서 분류만** 해 두고 코드는 바꾸지 않는다 | — | 결정됨 | PRD §3.4, #11 |
 | **S-2** | **브랜드 단위 상태** — 인지도·럭셔리를 브랜드 라인별로(#54) 둘 구조. `commerce.awareness` 하나 → `brands[]` | 수요 공식·수출·이벤트가 모두 인지도를 읽는다 | 필수 | §11.2 ④, #51~#55 |
 | **S-3** | **지역·주종 추가가 데이터만으로 되는가** — 스코틀랜드(ciosryu/distillery#9)가 지금 옛 구조(v5) 위에서 구현 중이다. "지역 추가 = 데이터 추가"(PRD §13.2) 원칙대로 코드 수정 없이 들어가는지, 지역별 특수 규칙(세제·숙성 규정·입지 대표 결정)을 담을 데이터 모양이 충분한지 정한다 | Phase 3 콘텐츠 확장과 열린 PR #9의 정리 방향이 걸려 있다 | 필수 | §3, §13.2, [scotland.md](scotland.md) |
-| **S-4** | **파트 경계대로 파일 쪼개기** — `ops.ts`·`sites.ts`·`actions.ts`(행동 처리기를 파트별 모듈로)·`catalog.ts`·`sim.test.ts` (§3.3) | 단계 P 병렬 개발의 충돌을 막는 전제 | 필수 | PROCESS §7.3 |
+| **S-4** | **파트 경계대로 파일 쪼개기** — `ops.ts`·`sites.ts`·`actions.ts`(행동 처리기를 파트별 모듈로)·`catalog.ts`·`sim.test.ts` (§3.3) | 단계 P 병렬 개발의 충돌을 막는 전제 | 필수 — **완료** (결정 #144, [split-plan.md](split-plan.md) §7) | PROCESS §7.3 |
 | **S-5** | **이벤트 난수를 이벤트별 스트림으로** — 지금은 매달 목록 전체를 섞어서 이벤트 하나만 더해도 모든 시드 결과가 바뀐다 | 밸런스가 한 번 바뀌므로 튜닝(T) 전에 해야 한다 | 필수 | architecture §9.3 |
 | **S-6** | **연구 시스템 뼈대** — 연구 진행 틱 단계, 담당자·기간·비용 흐름, 노드 데이터 스키마(4개 → 전체를 넣을 그릇) | Phase 2 핵심. 게이트만 있고 진행이 없다 | 필수 | tech-tree §2·§7, #46 |
 | **S-7** | **콘텐츠를 엔진 중립 데이터로** — 원재료·설비·캐스크·지역·이벤트·테크를 JSON 스키마로. 시점(지금 대 단계 G 직전) | 파트가 콘텐츠를 늘리기 전에 형식을 정하면 이식 비용이 준다 | 필수 (형식·시점만) | §13.1 이식 계획 ②, #40 |
