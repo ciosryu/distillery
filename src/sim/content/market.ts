@@ -80,3 +80,17 @@ export const VISITOR_EQUIPMENT: Record<string, EquipmentDef> = {
  * 약한 제품을 하나 더 내도 총수요가 거의 늘지 않고 강한 제품의 몫도 거의 안 깎인다(몫 ∝ 단독 수요^ρ)
  */
 export const SKU = { rho: 3 };
+
+// ── 브랜드 라인 — 세컨드 브랜드 (PRD §11.2 ④, 결정 #51~#55 → 제안 P-MKT-2) [튜닝] ──
+export const BRANDS = {
+  /** 개설비 — 상표 출원·브랜드 디자인 (원) */
+  openCost: 20_000_000,
+  /** 세컨드 브랜드 월 유지비 — 브랜드 관리·별도 판촉물 (원). 마케팅비는 따로 */
+  monthlyUpkeep: 500_000,
+  /** 브랜드 연계 계수 s — 개설 시 하우스 인지도의 s배에서 시작, 성장도 서로 s만큼 나눠 받는다 (#52·#53) */
+  spillover: 0.5,
+  /** 이미 판 제품을 다른 브랜드로 옮길 때 — 고정비 + 남은 재고 병당 라벨 교체 (아직 안 판 제품은 무료) */
+  rebrandFixed: 2_000_000,
+  rebrandPerBottle: 300,
+  maxNameLength: 20,
+};

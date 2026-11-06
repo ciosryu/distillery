@@ -1,7 +1,7 @@
 import { DISTRIBUTION, PACKAGING, logisticsCost } from './content/catalog';
-import { SKU } from './content/market';
+import { BRANDS, SKU } from './content/market';
 import { rivalShare } from './rivals';
-import { awarenessOf, houseBrand } from './brands';
+import { awarenessOf, brandMarketing, brandOf, houseBrand, secondBrands } from './brands';
 import { consumerPrice, refPricePerL, regionOf, siteOf, traditionalTaxFactor, type RegionDef } from './content/regions';
 import { outboundLogistics } from './sites';
 import { DUTY_FREE, dutyFreeDemand, dutyFreeEditionAppeal } from './dutyFree';
@@ -397,21 +397,44 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
 export const AWARENESS = { marketing: 0.012, wordOfMouth: 0.000003, decay: 0.012 };
 
 /**
- * 인지도 갱신: 마케팅 + 입소문(판매량 × 품질) − 망각.
+ * 인지도 갱신 — 브랜드 라인별 (PRD §11.2 ④, 제안 P-MKT-2). 브랜드 b의 자체 성장
+ *   G_b = 마케팅(브랜드 b의 마케팅비) + 입소문(브랜드 b 제품의 이번 달 판매량 × 품질)
+ *   하우스  A_h ← A_h + (G_h + s × Σ G_세컨드) × (1 − A_h) − 망각 × A_h
+ *   세컨드  A_b ← A_b + (G_b + s × G_h) × (1 − A_b) − 망각 × A_b          s = BRANDS.spillover (#52·#53)
+ * 세컨드 브랜드가 없으면 옛 회사 인지도 성장식과 같다. 판매는 판매 시점의 브랜드로 센다.
  * 면세 판매 1병은 입소문에서 DUTY_FREE.wordOfMouthWeight병으로 친다 — 출도 관광객이 육지로 가져간다 (결정 #87).
- * 반환: 그중 면세 판매 입소문 몫(인지도 증가분)
+ * 반환: 그중 면세 판매 입소문 몫(브랜드별 자체 증가분의 합)
  */
 export function updateAwareness(s: GameState, sales: SalesResult[]): number {
-  const dutyFree = sales.reduce((t, x) => t + (x.dutyFree ?? 0), 0);
-  const bottles = sales.reduce((t, x) => t + x.bottles, 0) + (DUTY_FREE.wordOfMouthWeight - 1) * dutyFree;
-  const qs = allProductQualities(s); // 역대 전 제품(아카이브 포함) 평균 — lifecycle.ts의 [열린 문제] 참고
+  const qs = allProductQualities(s); // 역대 전 제품(아카이브 포함) 평균 — lifecycle.ts의 [열린 문제] 참고. 브랜드별 품질은 §15.3 #18과 함께
   const avgQ = qs.length ? qs.reduce((t, q) => t + q, 0) / qs.length : 50;
-  // 브랜드별 성장(PRD §11.2 ④)은 단계 P — 지금은 하우스 브랜드 하나라 회사 인지도 성장식을 하우스에 그대로 쓴다
+  const bottles = new Map<string, { all: number; dutyFree: number }>();
+  for (const x of sales) {
+    const p = s.commerce.products.find((q) => q.id === x.productId);
+    const id = p ? brandOf(s, p).id : houseBrand(s).id;
+    const b = bottles.get(id) ?? { all: 0, dutyFree: 0 };
+    b.all += x.bottles;
+    b.dutyFree += x.dutyFree ?? 0;
+    bottles.set(id, b);
+  }
+  const wom = (n: number) => AWARENESS.wordOfMouth * n * (avgQ / 60);
+  const own = new Map(s.commerce.brands.map((b) => {
+    const n = bottles.get(b.id) ?? { all: 0, dutyFree: 0 };
+    const g = AWARENESS.marketing * Math.log10(1 + brandMarketing(s, b) / 1_000_000) * mod(s, 'awareness_gain') + wom(n.all + (DUTY_FREE.wordOfMouthWeight - 1) * n.dutyFree);
+    return [b.id, { g, df: AWARENESS.wordOfMouth * DUTY_FREE.wordOfMouthWeight * n.dutyFree * (avgQ / 60) }];
+  }));
   const house = houseBrand(s);
-  const a = house.awareness;
-  const gain = (AWARENESS.marketing * Math.log10(1 + s.commerce.marketingBudget / 1_000_000) * mod(s, 'awareness_gain') + AWARENESS.wordOfMouth * bottles * (avgQ / 60)) * (1 - a);
-  house.awareness = clamp(a + gain - AWARENESS.decay * a, 0.001, 0.95);
-  return AWARENESS.wordOfMouth * DUTY_FREE.wordOfMouthWeight * dutyFree * (avgQ / 60) * (1 - a);
+  const gHouse = own.get(house.id)!.g;
+  const gSeconds = secondBrands(s).reduce((t, b) => t + own.get(b.id)!.g, 0);
+  let dutyFreeGain = 0;
+  for (const b of s.commerce.brands) {
+    const a = b.awareness;
+    const o = own.get(b.id)!;
+    const g = b.isHouse ? gHouse + BRANDS.spillover * gSeconds : o.g + BRANDS.spillover * gHouse;
+    b.awareness = clamp(a + g * (1 - a) - AWARENESS.decay * a, 0.001, 0.95);
+    dutyFreeGain += o.df * (1 - a);
+  }
+  return dutyFreeGain;
 }
 
 export function updateTrends(s: GameState, rng: Rng): void {

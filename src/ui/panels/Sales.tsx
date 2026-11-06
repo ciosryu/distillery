@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { CATEGORY } from '../../sim/content/categories';
 import { categoryName, consumerPrice, regionOf, traditionalTaxFactor } from '../../sim/content/regions';
 import { bottleMargin, calendar, coverage, demandFor, domesticDemands, DUTY_FREE, dutyFreeDemands, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, priceOptions, productConsumerPrice, retailCapacityCases, suggestedPrice, type GameState, type Product } from '../../sim';
-import { awarenessOf } from '../../sim/brands';
+import { awarenessOf, brandMarketing, brandOf, rebrandCost, secondBrands } from '../../sim/brands';
+import { BRANDS } from '../../sim/content/market';
+import { isLocked } from '../../sim/scenario';
 import { useGame } from '../../store/game';
 import { num, pct, won, wonFull } from '../format';
-import { Badge, Button, Card, Empty, Meter, NumberField, Stat, Table, Td } from '../kit';
+import { Badge, Button, Card, Empty, Meter, NumberField, Select, Stat, Table, Td, TextField } from '../kit';
 
 // 판매 화면 (파트 MKT) — MVP 판매 화면(mvp.md §1 ⑤: 가격 설정 · 수요 한도 · 한국 주세 내역)
 // PriceDesk는 MVP 단일 화면(설계 세션)이 그대로 끼워 쓸 수 있게 따로 내보낸다
@@ -33,6 +35,7 @@ export function PriceDesk() {
   const dutyFree = dutyFreeDemands(s, monthOfYear);
   const last = lastReport(s);
   const selected = active.find((p) => p.id === picked) ?? active[0];
+  const brandPick = secondBrands(s).length > 0 && !isLocked(s, 'action:setProductBrand');
 
   return (
     <div className="grid gap-4">
@@ -68,8 +71,13 @@ export function PriceDesk() {
                       {dfOnly && p.dfEdition && <Badge tone="warn">면세 Vol.{p.dfEdition.vol} · {s.month - p.createdMonth + 1}/{DUTY_FREE.sellOutMonths}개월</Badge>}
                     </div>
                     <div className="text-xs font-normal text-stone-500">{p.bottleMl}ml · {pct(p.abv)} · 품질 {p.quality}</div>
+                    {brandPick && (
+                      <div className="mt-1" title={rebrandCost(p) > 0 ? `이미 판 제품 — 옮기면 리브랜딩 ${rebrandCost(p).toLocaleString()}원` : '아직 안 판 제품 — 무료로 고른다'}>
+                        <Select label="브랜드" value={brandOf(s, p).id} onChange={(v) => dispatch({ type: 'setProductBrand', productId: p.id, brandId: v })} options={s.commerce.brands.map((b) => ({ value: b.id, label: b.isHouse ? `${b.name || '하우스'} (하우스)` : b.name }))} />
+                      </div>
+                    )}
                   </Td>
-                  <Td right>{num(p.stockBottles)}{p.stockBottles > 0 && sell > 0 && <div className="text-xs text-stone-500">약 {Math.max(1, Math.round(p.stockBottles / sell))}개월 치</div>}</Td>
+                  <Td right>{num(p.stockBottles)}{p.stockBottles > 0 && sell > 0 && <div className="text-xs text-stone-500">{p.stockBottles / sell > 60 ? '5년 치 넘게' : `약 ${Math.max(1, Math.round(p.stockBottles / sell))}개월 치`}</div>}</Td>
                   <Td>
                     <NumberField value={p.price} min={100} step={100} width="w-24" onCommit={(v) => dispatch({ type: 'setPrice', productId: p.id, price: v })} />
                     {suggested != null && suggested !== p.price && (
@@ -189,19 +197,20 @@ export function Sales() {
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="브랜드 인지도" value={pct(awarenessOf(s))} hint="마케팅·판매량·품질로 상승" />
+        <Stat label={secondBrands(s).length ? '하우스 브랜드 인지도' : '브랜드 인지도'} value={pct(awarenessOf(s))} hint="마케팅·판매량·품질로 상승" />
         <Stat label="유통 커버리지" value={pct(coverage(s))} hint="영업 직원 네트워크" />
         <div className="rounded-lg border border-stone-200 bg-white px-3 py-2 dark:border-stone-800 dark:bg-stone-900">
           <Meter label="소매 처리 역량 (9L 케이스/월, 지난달)" value={last?.retailSoldCases ?? 0} max={last?.retailCapacityCases ?? cap} />
           <div className="mt-1 text-xs text-stone-500">{(last?.lostSalesBottles ?? 0) > 0 ? `지난달 ${num(last!.lostSalesBottles!)}병을 역량이 모자라 못 팔았다` : `출고가 → 소비자가 × ${sample.toFixed(2)} (700ml 40%)`}</div>
         </div>
         <div className="rounded-lg border border-stone-200 bg-white px-3 py-2 dark:border-stone-800 dark:bg-stone-900">
-          <div className="text-xs text-stone-500">월 마케팅 예산</div>
+          <div className="text-xs text-stone-500">월 마케팅 예산{secondBrands(s).length ? ' (하우스)' : ''}</div>
           <NumberField value={s.commerce.marketingBudget / 10_000} min={0} max={100_000} width="w-24" suffix="만 원" onCommit={(v) => dispatch({ type: 'setMarketing', amount: v * 10_000 })} />
         </div>
       </div>
 
       <PriceDesk />
+      {!isLocked(s, 'action:openBrand') && <BrandLines />}
 
       <Card title={`${region.nameKo} 시장 (연간 기본 수요)`}>
         <Table head={['카테고리', '연간 수요(9L 케이스)', '기준 소비자가(L)', '가격 탄력성', '단일 브랜드 점유 상한', '트렌드', '출처']}>
@@ -222,5 +231,37 @@ export function Sales() {
         </Table>
       </Card>
     </div>
+  );
+}
+
+/** 브랜드 라인 (PRD §11.2 ④, P-MKT-2) — 세컨드 브랜드 개설·브랜드별 마케팅·폐지 */
+function BrandLines() {
+  const s = useGame((g) => g.state);
+  const dispatch = useGame((g) => g.dispatch);
+  const [name, setName] = useState('');
+  const productsOf = (id: string) => s.commerce.products.filter((p) => brandOf(s, p).id === id && p.stockBottles > 0);
+  return (
+    <Card title="브랜드 라인" actions={<span className="text-xs text-stone-500">세컨드 브랜드: 개설비 {won(BRANDS.openCost)} · 월 유지비 {won(BRANDS.monthlyUpkeep)} + 마케팅비</span>}>
+      <Table head={['브랜드', '인지도', '판매 중 제품', '월 마케팅비', '']}>
+        {s.commerce.brands.map((b) => (
+          <tr key={b.id}>
+            <Td className="font-medium">{b.isHouse ? <>{b.name || s.distilleryName} <Badge tone="info">하우스</Badge></> : b.name}</Td>
+            <Td right>{pct(b.awareness)}</Td>
+            <Td className="text-xs">{productsOf(b.id).map((p) => p.name).join(', ') || '—'}</Td>
+            <Td><NumberField value={brandMarketing(s, b) / 10_000} min={0} max={100_000} width="w-24" suffix="만 원" onCommit={(v) => dispatch({ type: 'setMarketing', brandId: b.id, amount: v * 10_000 })} /></Td>
+            <Td>{!b.isHouse && <Button small variant="ghost" disabled={productsOf(b.id).length > 0} title={productsOf(b.id).length ? '재고가 남은 제품을 다 팔거나 옮겨야 폐지할 수 있다' : '유지비가 멈춘다. 이 브랜드의 남은 제품 기록은 하우스로 돌아간다'} onClick={() => dispatch({ type: 'closeBrand', brandId: b.id })}>폐지</Button>}</Td>
+          </tr>
+        ))}
+      </Table>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <TextField label="새 세컨드 브랜드" value={name} onChange={setName} width="w-40" />
+        <Button small variant="primary" disabled={!name.trim() || s.finance.cash < BRANDS.openCost} onClick={() => { dispatch({ type: 'openBrand', name }); setName(''); }}>개설 ({won(BRANDS.openCost)})</Button>
+      </div>
+      <p className="mt-2 text-xs text-stone-500">
+        현금용 저가 제품을 따로 떼어 하우스 브랜드의 이미지를 지키는 수단이다. 세컨드 브랜드는 하우스 인지도의 {pct(BRANDS.spillover, 0)}에서 시작하고, 성장은 서로 {pct(BRANDS.spillover, 0)}씩만 나눠 받는다 —
+        같은 돈을 쓰면 하우스를 따라붙되 넘지 못하고, 더 쓰면 넘을 수 있다. 제품의 수요는 그 제품 브랜드의 인지도로 계산한다. 아직 안 판 제품은 무료로 브랜드를 고르고, 이미 판 제품을 옮기면 {won(BRANDS.rebrandFixed)} + 남은 재고 병당 {won(BRANDS.rebrandPerBottle)}의 라벨 교체 비용이 든다.
+        {' 수출 시장 인지도는 아직 회사 단위다.'}
+      </p>
+    </Card>
   );
 }

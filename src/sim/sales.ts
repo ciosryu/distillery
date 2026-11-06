@@ -5,6 +5,7 @@ import type { TickContext } from './tick';
 import { runSales, updateAwareness, updateExportAwareness } from './market';
 import { EXPORT_MARKETS } from './content/exports';
 import { runExportContracts } from './exportDeals';
+import { secondBrandMonthlyCost } from './brands';
 
 // 판매·주세 단계(틱 5) 본문 (파트 MKT, 결정 #144 — 파일 쪼개기로 옮겨 왔다. 규칙·수치 불변)
 
@@ -52,6 +53,9 @@ export function settleSales(s: GameState, report: MonthReport, ctx: TickContext)
   s.finance.cash += sales.reduce((t, x) => t + x.revenue, 0);
   const distribution = sales.reduce((t, x) => t + x.distribution, 0);
   if (distribution > 0) { s.finance.cash -= distribution; report.expenses.distribution = distribution; }
+  // 세컨드 브랜드 유지비 + 브랜드별 마케팅비 (P-MKT-2) — 결산표 '마케팅' 줄에 합친다. 하우스 마케팅비는 재무 단계가 같은 줄에 더한다
+  const brandCost = secondBrandMonthlyCost(s);
+  if (brandCost > 0) { s.finance.cash -= brandCost; report.expenses.marketing = (report.expenses.marketing ?? 0) + brandCost; }
   report.dutyFreeAwareness = updateAwareness(s, sales);
   return sales;
 }
