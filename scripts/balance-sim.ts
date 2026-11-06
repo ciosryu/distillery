@@ -210,7 +210,7 @@ function start(s: GameState, strategy: Strategy): GameState {
  *  자금이 모자라면 시설자금을 끌어 쓴다 — 빚과 3년 숙성 대기가 위험이다. OLD_EXPAND=1이면 옛 정책 */
 const OLD_EXPAND = process.env.OLD_EXPAND === '1';
 const EXPAND_RECIPE = '증설 몰트';
-const EXPAND_FROM = Number(process.env.EXPAND_FROM ?? 37);
+const EXPAND_FROM = Number(process.env.EXPAND_FROM ?? 60);
 const EXPAND_MAX_STAGES = Number(process.env.EXPAND_STAGES ?? 1);
 /** 숙성·증발 뒤 1 LPA에서 나오는 46%·700ml 병 수 (증발 약 15% 가정) */
 const BOTTLES_PER_LPA_AGED = 0.85 / (0.46 * 0.7);
