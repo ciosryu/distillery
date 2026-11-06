@@ -9,7 +9,7 @@
 ## 반드시 지킬 규칙
 
 - **정본은 `main`이다.** 작업 브랜치는 최신 `main`에서 시작하고, PR은 `main`으로 보낸다. `claude/dazzling-mccarthy-40er1r`는 동결(커밋·머지 금지)
-- **결정 번호를 스스로 매기지 않는다.** 새 결정은 임시 ID `P-<파트>-<n>`(예: `P-MKT-2`)로 쓰고, 정식 번호(#151~)는 머지할 때 공정관리 세션이 [`docs/DECISIONS.md`](docs/DECISIONS.md)에서 발급한다. PRD 새 절도 `§NEW-<파트>-<n>`으로 둔다
+- **결정 번호를 스스로 매기지 않는다.** 새 결정은 임시 ID `P-<파트>-<n>`(예: `P-MKT-2`)로 쓰고, 정식 번호(#152~)는 머지할 때 공정관리 세션이 [`docs/DECISIONS.md`](docs/DECISIONS.md)에서 발급한다. PRD 새 절도 `§NEW-<파트>-<n>`으로 둔다
 - **지금은 단계 S(뼈대)다.** 수치 튜닝·밸런스 판정은 하지 않는다. 명백한 붕괴(전 전략 파산 등)만 고친다
 - **자기 역할의 파일만 고친다.** 코어 파일(skeleton.md §3.1)은 설계 세션 소유다
 - **PR 전 검사:** `npm run typecheck` · `npm test` · `npm run build` · 바꾼 시스템이 닿는 입지에서 `npm run balance -- 2 120 all <지역> [입지]`가 오류 없이 끝나는지

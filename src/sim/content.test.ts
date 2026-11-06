@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import * as CONTENT from './content';
 
-// 콘텐츠 = 엔진 중립 데이터 (skeleton S-7, P-ARCH-14)
+// 콘텐츠 = 엔진 중립 데이터 (skeleton S-7, #151)
 // TypeScript 콘텐츠가 원본이고 JSON은 생성물이다(scripts/export-content.ts → Godot C#이 읽는다, 단계 G).
 // 그래서 콘텐츠 표에는 JSON으로 그대로 오갈 수 있는 값만 둔다 — 함수·Infinity·NaN·undefined·클래스 금지.
 // 규칙 함수(지역 조회·세금 계산 등)는 export해도 되지만 내보내기에서 빠진다 — C#에서는 규칙 코드로 다시 짠다
