@@ -21,6 +21,7 @@
 | [STATUS.md](STATUS.md) | 지금 단계·세션·열린 PR·오너 결정 대기 | 정본(수시 갱신) | 공정관리 |
 | [DECISIONS.md](DECISIONS.md) | 결정 로그·번호 원장 | 정본 | 공정관리(머지 때) |
 | [PRD.md](PRD.md) | 게임 규칙 전체 사양 | §1~§15: 정본 · §16.9 이후 밸런스 측정 표와 §17.2~§17.6: **기록** | 절마다 해당 파트. §0·§14·§15는 공정관리 |
+| [design/mvp.md](design/mvp.md) | MVP 정의·코어 루프·한 판 목표·길이·완료 기준 | 정본(결정 부분) + 초안(`[제안]` 부분) | 설계·공정관리 |
 | [design/skeleton.md](design/skeleton.md) | 뼈대 — 시스템 지도·파트 경계·구조 결정 백로그 | 정본(단계 S 작업 문서) | 설계 |
 | [design/architecture.md](design/architecture.md) | 코드 아키텍처·Godot 이식 명세 | 정본 | 설계 |
 | [design/flavor-model.md](design/flavor-model.md) | 향미 모델 | 정본 v0.1 | PROD |
