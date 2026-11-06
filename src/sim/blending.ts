@@ -1,4 +1,5 @@
 import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/catalog';
+import { brandOf } from './brands';
 import { CATEGORY } from './content/categories';
 import { BULK, INGREDIENTS } from './content/catalog';
 import { DEFAULT_WHISKY_RULES, priceForConsumer, refPricePerL, regionOf, traditionalTaxFactor, type RegionDef, type WhiskyRules } from './content/regions';
@@ -315,7 +316,8 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
       if (c && score >= COMMISSION.minScore) {
         c.fulfilledBy = product.id;
         const k = score / 100;
-        s.commerce.awareness = Math.min(0.95, s.commerce.awareness + c.reward.awareness * k);
+        const brand = brandOf(s, product);
+        brand.awareness = Math.min(0.95, brand.awareness + c.reward.awareness * k);
         product.blend.appealBonus = c.reward.appealBonus * k;
         product.blend.untilMonth = s.month + c.reward.months;
         rewardNote = `${c.client}가 받아들였다 — 인지도 +${(c.reward.awareness * k * 100).toFixed(1)}%p, ${c.reward.months}개월간 매력도 +${(c.reward.appealBonus * k * 100).toFixed(0)}%`;

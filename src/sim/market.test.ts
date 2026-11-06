@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { houseBrand } from './brands';
 import { advanceMonths, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, demandFor, evaluate, spotBidPerLPA, spotQuote, makeContractOffer, makeCraftContractOffer, contractAgingImpact, mulberry32, newGame, previewBlend, qualityFactor, type Cask, type GameState, type SpiritLot, appeal, applyEffects, buyersFor, type Product, agePerception, suggestedPrice, spotSaturation, sourcedElasticityFactor, sourcedPrestigeOf, executeBlend, runSales, updateAwareness, DUTY_FREE, dutyFreeSlotBlocker, makeOemOffer, makeRetailOffer, oemPackageCost, OEM, productDutyFreeDemand, resolveDutyFreeEditions, startOem, startRetail, type MonthReport } from './index';
 import { overhangFactor, retailCapacityCases } from './retail';
 import { BULK } from './content/catalog';
@@ -266,7 +267,7 @@ describe('실명 레지스트리 (결정 #44)', () => {
 describe('v1.0 운영 시스템', () => {
   it('소매 처리 역량을 넘는 판매분은 고비용 채널, 2배를 넘으면 못 판다', () => {
     let s = newGame({ seed: 1, startingCash: 50_000_000_000 });
-    s.commerce.awareness = 0.9;
+    houseBrand(s).awareness = 0.9;
     s.commerce.products.push({ id: 'P1', name: 'x', category: 'soju_distilled', ageYears: null, abv: 0.25, bottleMl: 375, chillFiltered: true, packagingId: 'standard', flavor: {}, quality: 80, typicity: 90, style: null, sourcedShare: 0, stockBottles: 1_000_000, price: 3000, unitCost: 1000, createdMonth: 0, lastMonthSold: 0, totalSold: 0 });
     s = advanceMonths(s, 1);
     const r = s.history.reports.at(-1)!;
@@ -331,7 +332,7 @@ describe('입지 목록 (결정 #86)', () => {
 describe('제주 — 취수 허가·면세 한정판 (결정 #87)', () => {
   it('면세 한정판: 국내 수요 0, 위스키 한정판은 숙성 연수 보너스, 기념품은 ×1.1, 연속 완판 보너스', () => {
     const j = newGame({ seed: 1, region: 'KR', site: 'jeju' });
-    j.commerce.awareness = 0.3;
+    houseBrand(j).awareness = 0.3;
     const normal = productDutyFreeDemand(j, product(), 1, 8);
     expect(normal).toBeGreaterThan(0);
     expect(productDutyFreeDemand(newGame({ seed: 1, region: 'KR' }), product(), 1, 8)).toBe(0);
@@ -363,10 +364,10 @@ describe('제주 — 취수 허가·면세 한정판 (결정 #87)', () => {
     // 5개월 만에 완판
     j.month = first.createdMonth + 4;
     first.stockBottles = 0;
-    const aw = j.commerce.awareness;
+    const aw = houseBrand(j).awareness;
     resolveDutyFreeEditions(j, report(j));
     expect(j.site.dfSeries).toEqual({ vol: 1, streak: 1 });
-    expect(j.commerce.awareness).toBeCloseTo(aw + DUTY_FREE.sellOutAwareness, 6);
+    expect(houseBrand(j).awareness).toBeCloseTo(aw + DUTY_FREE.sellOutAwareness, 6);
     const second = executeBlend(j, [{ source: 'lot', id: 'S2', liters: 100 }], opts).product!;
     expect(second.dfEdition).toEqual({ vol: 2, streak: 1 });
     j.month = second.createdMonth + DUTY_FREE.returnMonths - 1;
@@ -381,7 +382,7 @@ describe('제주 — 취수 허가·면세 한정판 (결정 #87)', () => {
 
   it('면세 판매: 소매 처리 역량을 쓰지 않고, 입소문은 ×2, 주세·전통주 출고량에서 빠진다', () => {
     let j = newGame({ seed: 1, region: 'KR', site: 'jeju' });
-    j.commerce.awareness = 0.3;
+    houseBrand(j).awareness = 0.3;
     j.commerce.products = [product({ category: 'soju_distilled', ageYears: null, abv: 0.4, bottleMl: 500, price: 10_000, traditional: true, localIngredient: true, dutyFreeOnly: true })];
     const { results } = runSales(structuredClone(j), mulberry32(1), 8);
     expect(results[0]!.dutyFree).toBeGreaterThan(0);
@@ -391,7 +392,7 @@ describe('제주 — 취수 허가·면세 한정판 (결정 #87)', () => {
     expect(dfPart).toBeGreaterThan(0);
     const b = structuredClone(j);
     updateAwareness(b, results.map((x) => ({ ...x, dutyFree: 0 })));
-    expect(a.commerce.awareness).toBeGreaterThan(b.commerce.awareness);
+    expect(houseBrand(a).awareness).toBeGreaterThan(houseBrand(b).awareness);
     j = advanceMonths(j, 1);
     expect(j.commerce.traditionalReleasedL).toBe(0);
     expect(j.history.reports.at(-1)!.liquorTaxRemitted).toBe(0);

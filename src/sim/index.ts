@@ -23,6 +23,7 @@ export * from './loans';
 export * from './sales';
 export * from './hr';
 export * from './progress';
+export * from './brands';
 export * from './migrate';
 export * from './research';
 export * from './tick';

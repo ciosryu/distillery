@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { houseBrand } from './brands';
 import { addModifier, advanceMonths, applyAction, domesticNetPerBottle, effectiveTariff, EXPORT_MARKETS, EXPORT_SALES, exportDemandFor, exportMarketsFor, exportNetPerBottle, exportShelfPrice, makeExportOffer, mulberry32, newGame, runExportContracts, runSales, updateExportAwareness, type GameState, type MonthReport, type Product } from './index';
 import { applyEffects, exportAwarenessMax, exportEligible } from './index';
 
@@ -78,7 +79,7 @@ describe('수입사 계약 (#101)·인지도 후광 (#102)', () => {
   });
 
   it('국내 인지도 후광은 공항 면세점만 — 해외 시장은 0에서 시작한다', () => {
-    const s = newGame({ seed: 2 }); s.commerce.awareness = 0.6; s.month = 10;
+    const s = newGame({ seed: 2 }); houseBrand(s).awareness = 0.6; s.month = 10;
     s.commerce.exports = [
       { marketId: 'DF', openedMonth: 0, readyMonth: 0, awareness: 0, totalBottles: 0 },
       { marketId: 'US', openedMonth: 0, readyMonth: 0, awareness: 0.02, totalBottles: 0, marketingPerMonth: EXPORT_MARKETS.US.monthlyCost },
@@ -101,7 +102,7 @@ describe('수입사 계약 (#101)·인지도 후광 (#102)', () => {
 
 describe('재고 배분 (#109)·수출가 (#106·#108)', () => {
   const setup = (stock: number, priceFactor = 0.95) => {
-    const s = newGame({ seed: 7 }); s.commerce.awareness = 0.6; s.month = 60; s.commerce.products = [whisky({ stockBottles: stock })];
+    const s = newGame({ seed: 7 }); houseBrand(s).awareness = 0.6; s.month = 60; s.commerce.products = [whisky({ stockBottles: stock })];
     s.commerce.exports = [{ marketId: 'DF', openedMonth: 0, readyMonth: 0, awareness: 0.6, totalBottles: 0, priceFactor, marketingPerMonth: 2_000_000 }];
     return s;
   };
@@ -180,7 +181,7 @@ describe('수출 (#95)', () => {
 
   it('수입사 계약(#101) → 준비 기간 뒤 판매, 수출분은 국내 주세가 없고 매입가는 출고가 × 계약 비율, 대금은 3개월 뒤', () => {
     let s = newGame({ seed: 41 });
-    s = { ...s, finance: { ...s.finance, cash: 1e10 }, commerce: { ...s.commerce, awareness: 0.5, products: [whisky({ stockBottles: 5000 })] } };
+    s = { ...s, finance: { ...s.finance, cash: 1e10 }, commerce: { ...s.commerce, brands: [{ ...houseBrand(s), awareness: 0.5 }], products: [whisky({ stockBottles: 5000 })] } };
     const offer = makeExportOffer(s, 'DF', mulberry32(1));
     s.commerce.exportOffers = [offer];
     s = applyAction(s, { type: 'acceptExportOffer', offerId: offer.id }).state;

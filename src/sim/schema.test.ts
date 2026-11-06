@@ -20,6 +20,12 @@ describe('세이브 마이그레이션 (결정 #118·#124)', () => {
       expect(to, `v5 필드 ${key}의 v6 위치가 정의되지 않았다`).toBeDefined();
       if (key === 'version') continue;
       const got = to === 'root' ? s[key] : to![1] === undefined ? s[to![0]] : s[to![0]]![to![1]];
+      if (key === 'awareness') {
+        // v10 → v11(S-2): 회사 인지도는 하우스 브랜드의 인지도가 된다
+        expect((s.commerce!.brands as { isHouse: boolean; awareness: number }[]).find((b) => b.isHouse)!.awareness, key).toBe(value);
+        expect(s.commerce!.awareness, key).toBeUndefined();
+        continue;
+      }
       if (key === 'modifiers') {
         // v6 → v7(결정 #125): 옛 피트·셰리 유행 보정치는 향미 트렌드 이동으로 옮겨진다 — 나머지 보정치는 그대로
         const legacy = (value as { key: string }[]).filter((m) => m.key === 'appeal:peated' || m.key === 'appeal:sherried');

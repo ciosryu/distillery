@@ -6,6 +6,7 @@ import { mulberry32 } from './rng';
 import type { Cask, CaskTypeId, GameState, Recipe, RegionId } from './types';
 import { regionOf, siteOf } from './content/regions';
 import { nid } from './util';
+import { HOUSE_BRAND_ID } from './brands';
 
 export interface NewGameOptions {
   seed?: number;
@@ -83,7 +84,7 @@ export function emptyCaskOf(s: GameState, typeId: keyof typeof CASKS): Cask {
 export function newGame(opts: NewGameOptions = {}): GameState {
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   const s: GameState = {
-    version: 10,
+    version: 11,
     seed,
     month: 0,
     startYear: opts.startYear ?? 2027,
@@ -103,7 +104,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     hr: { staff: [], candidates: [], houseStyle: 0 },
     production: { equipment: [], recipes: [], orders: [], ingredientKgLastMonth: {}, flags: { producedSoju: false }, wasteContractPerKg: 0 },
     inventory: { lots: [], casks: [], caskOrders: [], warehouseBase: 150, rotatedThisMonth: 0, samplesThisMonth: 0 },
-    commerce: { products: [], productArchive: [], awareness: 0.01, localBuzz: 0, marketingBudget: 3_000_000, traditionalReleasedL: 0, traditionalPrevYearL: 0, retailOffers: [], retailContracts: [], exports: [], exportOffers: [], exportEntered: [], commissions: [], lines: {} },
+    commerce: { products: [], productArchive: [], brands: [{ id: HOUSE_BRAND_ID, name: '', isHouse: true, openedMonth: 0, awareness: 0.01, luxury: 0 }], localBuzz: 0, marketingBudget: 3_000_000, traditionalReleasedL: 0, traditionalPrevYearL: 0, retailOffers: [], retailContracts: [], exports: [], exportOffers: [], exportEntered: [], commissions: [], lines: {} },
     b2b: { trust: 50, bulkIndex: 1, spotSoldLPA: { grain: 0 }, contracts: [], contractOffers: [], brokerOffers: [], caskBids: [], oemOffers: [], oemContracts: [] },
     events: { pending: [], forecasts: [], log: [], lastFired: {} },
     research: { unlocked: [], active: [], slots: 1 },
@@ -111,6 +112,8 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     history: { reports: [], years: [] },
     progress: { milestones: [] },
   };
+  // 하우스 브랜드 = 회사명 (S-2)
+  s.commerce.brands[0]!.name = s.distilleryName;
   // 초기 설비: 단식 증류기 1기 + 스테인리스 발효조 2기
   const still = { id: nid(s, 'E'), catalogId: 'pot_onion_1000', readyMonth: 0, feintsLPA: 0 };
   s.production.equipment.push(still, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0 }, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0 });

@@ -11,6 +11,9 @@ import { fail, type CashKeys, type Handlers } from './actionKit';
 // 행동을 더할 때: 아래 타입·처리기·현금 분류 세 곳만 고친다. 코어(actions.ts)는 이 파일의 타입을 통째로 합친다
 
 export type MktAction =
+  /** 브랜드 라인 (S-2 자리, PRD §11.2 ④) — 세컨드 브랜드 개설 / 제품을 브랜드에 배정. 규칙은 단계 P(MKT): 지금은 항상 실패 */
+  | { type: 'openBrand'; name: string }
+  | { type: 'setProductBrand'; productId: string; brandId: string }
   /** 수출 (#95·#101): 수입사 제안 수락 / 계약 해지 */
   | { type: 'acceptExportOffer'; offerId: string }
   | { type: 'closeExport'; marketId: ExportMarketId }
@@ -29,6 +32,8 @@ export type MktAction =
   | { type: 'acceptOem'; offerId: string };
 
 export const MKT_CASH_KEY: CashKeys<MktAction> = {
+  openBrand: null,
+  setProductBrand: null,
   setPrice: null,
   setMarketing: null,
   buyBrokerCask: 'brokerCask',
@@ -47,6 +52,9 @@ export const MKT_CASH_KEY: CashKeys<MktAction> = {
 };
 
 export const MKT_HANDLERS: Handlers<MktAction> = {
+  // 자리만 — 개설 비용·유지비·인지도 시작값(하우스의 50%, #52)·배정 규칙은 단계 P(MKT)
+  openBrand: (_s, prev, _a) => fail(prev, '세컨드 브랜드는 아직 없습니다 (다음 단계)'),
+  setProductBrand: (_s, prev, _a) => fail(prev, '세컨드 브랜드는 아직 없습니다 (다음 단계)'),
   acceptExportOffer: (s, prev, a) => {
     const o = (s.commerce.exportOffers ?? []).find((x) => x.id === a.offerId);
     const err = acceptExportOffer(s, a.offerId);

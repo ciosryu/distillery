@@ -1,4 +1,5 @@
 import { EVENT, EVENTS, type Effect, type EventDef, type Requirement } from './content/events';
+import { houseBrand } from './brands';
 import { regionOf, siteOf } from './content/regions';
 import { BUYERS, COMPETITIONS, CRITICS, displayName } from './content/names';
 import { makeSpecialContractOffer } from './bulk';
@@ -77,7 +78,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         break;
       }
       case 'cash': s.finance.cash += e.amount; if (e.amount) notes.push(`현금 ${e.amount > 0 ? '+' : ''}${e.amount.toLocaleString()}원`); break;
-      case 'awareness': s.commerce.awareness = clamp(s.commerce.awareness + e.delta, 0.001, 0.95); notes.push(`인지도 ${e.delta > 0 ? '+' : ''}${(e.delta * 100).toFixed(0)}%p`); break;
+      case 'awareness': { const h = houseBrand(s); h.awareness = clamp(h.awareness + e.delta, 0.001, 0.95); } notes.push(`인지도 ${e.delta > 0 ? '+' : ''}${(e.delta * 100).toFixed(0)}%p`); break;
       case 'trust': s.b2b.trust = clamp(s.b2b.trust + e.delta, 0, 100); break;
       case 'acclaim': {
         s.commerce.acclaim = clamp((s.commerce.acclaim ?? 0) + e.delta, 0, 1);

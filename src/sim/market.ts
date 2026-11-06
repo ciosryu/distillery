@@ -1,4 +1,5 @@
 import { DISTRIBUTION, PACKAGING, logisticsCost } from './content/catalog';
+import { awarenessOf, houseBrand } from './brands';
 import { consumerPrice, refPricePerL, regionOf, siteOf, traditionalTaxFactor, type RegionDef } from './content/regions';
 import { outboundLogistics } from './sites';
 import { DUTY_FREE, dutyFreeDemand, dutyFreeEditionAppeal } from './dutyFree';
@@ -78,7 +79,7 @@ export function demandFor(s: GameState, p: Product, sameCategoryCount: number, m
   // 면세 전용 한정판은 국내 매대에 없다 (결정 #87). 입지 수요 배수(관광·인바운드, 결정 #86)
   if (p.dutyFreeOnly) return { marketL: 0, reach: 0, appeal: appeal(p, s), consumerPricePerL: 0, refPricePerL: refPricePerL(region, p.category, p.abv), priceFactor: 0, demandBottles: 0 };
   const marketL = (m.baseCases * 9 / 12) * region.seasonality[monthOfYear - 1]! * (s.world.trend[p.category] ?? 1) * mod(s, `demand:${p.category}`) * mod(s, 'demand:all') * (siteOf(s).demandFactor ?? 1);
-  const reach = (s.commerce.awareness * coverage(s) * m.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
+  const reach = (awarenessOf(s, p) * coverage(s) * m.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
   const a = appeal(p, s);
   const bottleL = p.bottleMl / 1000;
   const consumerPricePerL = productConsumerPrice(s, p, region) / bottleL;
@@ -153,7 +154,7 @@ export function updateExportAwareness(s: GameState): void {
     // 마케팅 분담 = 시장 기준 월 비용이면 ×1, 0이면 ×0.3, 2배면 ×1.5 (체감)
     const push = e.marketingPerMonth == null ? 1 : 0.3 + 0.7 * Math.sqrt(e.marketingPerMonth / m.monthlyCost) * (e.marketingPerMonth > m.monthlyCost ? 0.85 : 1);
     const target = Math.min(max, e.awareness + a.perMonth * push * (1 - e.awareness) * mod(s, 'awareness_gain'));
-    e.awareness = clamp(Math.max(target, s.commerce.awareness * a.domesticSpill, (s.commerce.acclaim ?? 0) * ACCLAIM.floor), 0, max);
+    e.awareness = clamp(Math.max(target, awarenessOf(s) * a.domesticSpill, (s.commerce.acclaim ?? 0) * ACCLAIM.floor), 0, max);
   }
   if (s.commerce.acclaim) s.commerce.acclaim = Math.max(0, s.commerce.acclaim * (1 - ACCLAIM.decay));
 }
@@ -296,9 +297,11 @@ export function updateAwareness(s: GameState, sales: SalesResult[]): number {
   const bottles = sales.reduce((t, x) => t + x.bottles, 0) + (DUTY_FREE.wordOfMouthWeight - 1) * dutyFree;
   const qs = allProductQualities(s); // 역대 전 제품(아카이브 포함) 평균 — lifecycle.ts의 [열린 문제] 참고
   const avgQ = qs.length ? qs.reduce((t, q) => t + q, 0) / qs.length : 50;
-  const a = s.commerce.awareness;
+  // 브랜드별 성장(PRD §11.2 ④)은 단계 P — 지금은 하우스 브랜드 하나라 회사 인지도 성장식을 하우스에 그대로 쓴다
+  const house = houseBrand(s);
+  const a = house.awareness;
   const gain = (AWARENESS.marketing * Math.log10(1 + s.commerce.marketingBudget / 1_000_000) * mod(s, 'awareness_gain') + AWARENESS.wordOfMouth * bottles * (avgQ / 60)) * (1 - a);
-  s.commerce.awareness = clamp(a + gain - AWARENESS.decay * a, 0.001, 0.95);
+  house.awareness = clamp(a + gain - AWARENESS.decay * a, 0.001, 0.95);
   return AWARENESS.wordOfMouth * DUTY_FREE.wordOfMouthWeight * dutyFree * (avgQ / 60) * (1 - a);
 }
 
