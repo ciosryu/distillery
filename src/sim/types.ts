@@ -615,6 +615,45 @@ export interface EventsSlice {
   lastFired: Record<string, number>;
 }
 
+/** 게임이 끝나는 이유 (S-9, PRD §12.1). 파산만 규칙이 있고 면허 취소·해임은 자리만 — 규칙은 단계 P (해임은 재무 확장 S-11과 함께) */
+export type GameEnding = 'bankrupt' | 'licenseRevoked' | 'dismissed';
+
+/** 마일스톤 — 한 판의 연표와 업적의 원천 (S-9). 정의(이름·연표 표시)는 content/milestones.ts */
+export type MilestoneId = 'first_distill' | 'first_fill' | 'first_loan' | 'first_soju_sale' | 'first_whisky_bottled' | 'first_whisky_sale' | 'first_cash_crisis' | 'flagship_bottled' | 'flagship_sold';
+export interface Milestone {
+  id: MilestoneId;
+  /** 달성한 달 */
+  month: number;
+  /** 붙는 값 (플래그십 품질 등) */
+  value?: number;
+}
+
+/** 목표 판정의 확인 항목 (MVP §3 — 파산하지 않음·12년 플래그십 판매·순자산 목표) */
+export interface GoalCheck { id: 'survive' | 'flagship' | 'netWorth'; ok: boolean; value?: number; target?: number }
+
+/** 목표 판정 — 시나리오 목표 기간이 끝나거나 게임이 끝나면 한 번 (S-9) */
+export interface GoalVerdict {
+  /** 판정한 시점 (경과 개월) */
+  month: number;
+  /** heritage = 목표 모두 달성 · missed = 버텼지만 일부 미달 · failed = 기간 전에 게임이 끝났다 */
+  result: 'heritage' | 'missed' | 'failed';
+  /** 등급 (failed면 null) */
+  grade: 'S' | 'A' | 'B' | 'C' | null;
+  checks: GoalCheck[];
+  netWorth: number;
+  flagshipQuality?: number;
+  awareness: number;
+  /** 플레이어가 결과 화면을 확인했다 — 그 뒤는 목표 없이 계속 운영(샌드박스) */
+  acknowledged?: boolean;
+}
+
+/** 진행 (S-9, 스키마 v10) — 마일스톤·목표 판정·게임이 끝난 이유 */
+export interface ProgressSlice {
+  milestones: Milestone[];
+  verdict?: GoalVerdict;
+  ending?: { reason: GameEnding; month: number };
+}
+
 export interface HistorySlice {
   /** 최근 월 리포트 (상세) */
   reports: MonthReport[];
@@ -677,7 +716,7 @@ export interface ScenarioState {
 }
 
 export interface GameState {
-  version: 9;
+  version: 10;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;
@@ -686,7 +725,8 @@ export interface GameState {
   /** 지역 안의 증류소 입지 (없으면 지역 기본 입지) — 기후·특산물 자격이 달라진다 */
   siteId?: string;
   distilleryName: string;
-  status: 'running' | 'bankrupt';
+  /** running 또는 끝난 이유 (S-9) */
+  status: 'running' | GameEnding;
   nextId: number;
   /** 시나리오 (v8). 없으면 샌드박스 — 옛 세이브·개발자 새 게임 */
   scenario?: ScenarioState;
@@ -703,5 +743,7 @@ export interface GameState {
   /** 입지 고유 상태 (결정 #86~) */
   site: SiteState;
   history: HistorySlice;
+  /** 진행 — 마일스톤·목표 판정 (v10, S-9) */
+  progress: ProgressSlice;
 }
 

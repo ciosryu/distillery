@@ -13,6 +13,7 @@ import { updateWeather, weatherOffset } from './weather';
 import { archiveSoldOutProducts, rollupYear } from './lifecycle';
 import { pruneTrendsAndCommissions, refreshCommissions } from './blendTable';
 import { systemOn } from './scenario';
+import { endGame, updateProgress } from './progress';
 import { runMaturation } from './warehouse';
 import { runProduction } from './production';
 import { runFinance } from './loans';
@@ -120,8 +121,10 @@ function phaseSettle(s: GameState, report: MonthReport, cashStart: number, offTu
   if (s.finance.cash < 0) {
     s.finance.negativeCashMonths += 1;
     report.notes.push(`현금 부족 ${s.finance.negativeCashMonths}개월째 — ${BANKRUPT_AFTER_MONTHS}개월 지속 시 파산`);
-    if (s.finance.negativeCashMonths >= BANKRUPT_AFTER_MONTHS) { s.status = 'bankrupt'; report.notes.push('파산했습니다'); }
+    if (s.finance.negativeCashMonths >= BANKRUPT_AFTER_MONTHS) { endGame(s, 'bankrupt'); report.notes.push('파산했습니다'); }
   } else s.finance.negativeCashMonths = 0;
+  // 마일스톤·목표 판정 (S-9) — 기록만, 돈·재고는 바꾸지 않는다
+  updateProgress(s, report);
   const off = weatherOffset(s);
   report.weather = { tempAnom: Math.round(off.tempC * 10) / 10, humidAnom: Math.round(off.humidity * 10) / 10, shocks: s.world.weather.shocks.filter((x) => x.fromMonth <= s.month && s.month < x.untilMonth).map((x) => x.label) };
   // 순현금 = 이번 턴 안의 변화 + 턴 사이 행동 → 직전 결산 이후 현금 변화 전체 (§16.20)
