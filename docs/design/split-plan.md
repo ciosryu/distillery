@@ -1,7 +1,7 @@
 # 파일 쪼개기 계획 v0.1 — 파트 경계대로 (skeleton S-4)
 
 > 상위 문서: [뼈대 설계](skeleton.md) §3.3·§4 S-4 · [개발 공정](../PROCESS.md) §7.3
-> 상태: **계획 확정 — `[결정 #144]` 오너 승인, §6 권장안 4개 채택 (2026-11-06).** 실행은 ciosryu/distillery#14·#15·#16 머지 뒤
+> 상태: **실행 완료 (2026-11-06)** — `[결정 #144]` 오너 승인, §6 권장안 4개 채택. 실행 기록은 §7
 > 기준 코드: `main` + #14(시나리오, v8) + #15(병 숙성 프리미엄) + #16(숙성 용기, v9)을 합친 트리. 줄 수는 그 트리에서 셌고, 새 파일 줄 수는 추정이다
 
 ---
@@ -168,3 +168,27 @@ const ACTION_CASH_KEY = { ...PROD_CASH_KEY, ...MKT_CASH_KEY, ...MGT_CASH_KEY };
 | 2 | PR: 한 개(단계별 커밋) 대 단계별 PR 4개 | **한 개, 단계마다 커밋** | 결정이 하나도 없는 기계적 작업이라 오너가 볼 것이 없다. PR을 4개로 나누면 PM 머지와 따라잡기만 4번 는다. 커밋마다 골든 검사 결과를 남겨 커밋 단위로 확인할 수 있게 한다 | 단계별 PR — 되돌리기는 쉽지만 같은 파일(`index.ts`·`step.ts`)을 연달아 고쳐 쌓인 PR이 된다 |
 | 3 | 밸런스 스크립트를 지금 쪼갤지 | **단계 T에서 BAL이** | §2.7 | 지금 쪼갠다 — 파트가 봇을 고칠 일이 생기면 그때 충돌 |
 | 4 | `content/catalog.ts`를 재수출 껍데기로 남길지 | **남긴다** | 가져오기 경로를 바꾸지 않아도 되고, 콘텐츠 JSON화(S-7) 때 이 파일이 로더 자리가 된다 | 지운다 — 파일이 하나 줄지만 `content/catalog`를 가져오는 26개 파일의 경로가 바뀐다 |
+
+---
+
+## 7. 실행 기록 (2026-11-06, 설계 세션)
+
+`main`(#14~#18 머지 뒤)에서 한 PR, 단계마다 커밋 1개. **모든 단계에서** 타입 오류 0 · 테스트 150개 통과·테스트 이름 목록 동일 · `DIAG=1 npm run balance -- 2 120 all <KR·JP·KR jeju·JP hokkaido·TW kinmen>` 출력과 MVP 생존 실험(`MVP=micro`, 4시드) 출력이 쪼개기 전과 **바이트 동일** · `npm run build` 통과. 마지막에 브라우저에서 MVP(탭 8개)·샌드박스(탭 10개)를 1년씩 진행하고 모든 탭을 열어 콘솔 오류 0을 확인했다.
+
+| 단계 | 커밋 내용 |
+|---|---|
+| 1 | `content/catalog.ts` → `content/production.ts`·`market.ts`·`finance.ts` + 재수출·설비 조립 (설비 21개 순서 동일 확인) |
+| 2 | `ops.ts` 삭제·`sites.ts` 축소·`step.ts`의 파트 코드를 파트 파일로 (§2.1·§2.2·§2.5). 가져오기 순환 1개 → 0개 |
+| 3 | `actions.ts` → 입구 + `actions.prod/mkt/mgt.ts` + `actionKit.ts` |
+| 4 | `sim.test.ts` 삭제·`sites.test.ts` 축소 → `production/market/finance.test.ts`, `schema.test.ts`·`exports.test.ts`에 덧붙임 |
+
+**계획과 다르게 한 것 (모두 같은 원칙 — 파일 하나 = 파트 하나, 동작 불변):**
+1. **`step.ts`에서 규칙 본문도 뺐다.** 계획 §2.5는 도우미와 `runFinance`만 적었는데, 생산 단계(`runProduction`, 약 130줄)·숙성 단계(`runMaturation`)·판매·주세 단계 본문도 파트 규칙이었다. 각각 `production.ts`(PROD)·`warehouse.ts`(PROD)·새 파일 `sales.ts`(MKT, `settleSales`)로 옮겼다. `step.ts`는 457 → 167줄로, 단계 순서·리포트·판정만 남는다. 판매 단계를 `market.ts`가 아니라 새 파일에 둔 이유: `market.ts`와 `exportDeals.ts` 사이에 가져오기 순환이 생긴다
+2. **`actionKit.ts`(코어)를 새로 뒀다.** `ActionResult`·`fail`·처리기 표 타입을 입구(`actions.ts`)에 두면 입구와 파트 처리기가 서로 가져오는 순환이 생긴다
+3. **테스트 배치:** "한국 완화책(전통주 주세 경감)" 테스트는 v1.0 블록에 있어 계획에서 빠졌다 → 주세라 `market.test.ts`로. 블록을 나눈 곳(`지역 (v0.6)`·`v1.0 운영 시스템`·`입지 목록`·`제주 — 취수 허가·면세 한정판`)은 테스트 이름을 지키려고 블록 제목을 그대로 두었다 — 같은 제목의 블록이 여러 파일에 있다
+4. 타입만 가져오는 줄은 `import type { … }`으로 고쳤다(옮긴 파일만)
+
+**결과 줄 수:** `actions.ts` 534 → 43 · `step.ts` 457 → 167 · `sites.ts` 238 → 47 · `content/catalog.ts` 284 → 14 · `ops.ts`·`sim.test.ts` 삭제. 새 파일 19개(코어 1 · PROD 6 · MKT 7 · MGT 5, 테스트 포함)
+
+**남은 것:** `scripts/balance-sim.ts`는 계획대로 단계 T에서 BAL 세션이 나눈다. 멈춘 브랜치(#5·#9)는 §2의 표를 "옛 위치 → 새 위치" 지도로 쓴다 — 기호 이름은 그대로이고 `index.ts`가 재수출한다
+
