@@ -312,7 +312,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     }, {
       // 홋카이도 (결정 #84): 싸고 느린 땅, 재고 담보대출로 버티는 장기 숙성
       id: 'hokkaido', nameKo: '홋카이도',
-      tagline: '싸고 느린 땅에 오래 묵히는 재고전', difficulty: 4,
+      tagline: '싸고 느린 땅에 오래 묵히는 재고전', difficulty: 3,
       tempC: [-3.5, -3, 0.5, 6, 11, 15, 19.5, 21, 17, 10.5, 4, -1],
       humidity: [76, 74, 70, 68, 72, 78, 82, 81, 78, 74, 74, 76],
       basis: '홋카이도 내륙 평년값 근사(추정)',

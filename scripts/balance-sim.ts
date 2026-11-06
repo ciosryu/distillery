@@ -4,6 +4,7 @@ import { advanceMonth, applyAction, bulkValuePerLPA, capacityLPA, spotBidPerLPA,
 import { REGIONS, regionOf, siteOf } from '../src/sim/content/regions';
 import { dutyFreeSlotBlocker, inventoryLoanRoom, inventoryLtv, OEM, oemPackageCost } from '../src/sim';
 import { EVENTS } from '../src/sim/content/events';
+import { RETAIL } from '../src/sim/ops';
 import { EQUIPMENT } from '../src/sim/content/catalog';
 const EQUIPMENT_KIND = (id: string) => EQUIPMENT[id]?.kind;
 
@@ -18,6 +19,9 @@ const YOUNG = process.env.NO_YOUNG !== '1';
 const TOUR = process.env.NO_TOUR !== '1';
 const DEFEND = process.env.NO_DEFEND !== '1';
 // 튜닝 실험용: 그레인 현물 시장 깊이 덮어쓰기 (#81)
+// 튜닝 실험용: 소매 역량 초과분 수수료·한도 (#93)
+if (process.env.OVERFLOW_FEE) RETAIL.overflowFeeRate = Number(process.env.OVERFLOW_FEE);
+if (process.env.OVERFLOW_SHARE) RETAIL.overflowShare = Number(process.env.OVERFLOW_SHARE);
 if (process.env.GRAIN_DEPTH) REGIONS[REGION].grainSpotDepthLPA = Number(process.env.GRAIN_DEPTH);
 
 type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site';

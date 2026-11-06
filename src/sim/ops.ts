@@ -89,6 +89,8 @@ export const RETAIL = {
   premiumBonus: 0.3,
   /** 역량 초과분(최대 역량의 100%까지)은 할인·추가 수수료 채널 — 출고가 대비 수수료 */
   overflowFeeRate: 0.3,
+  /** 고비용 채널로 팔 수 있는 양 = 역량 × 이 비율 (그 너머는 못 판다) */
+  overflowShare: 1,
 };
 
 export const hasPremiumChannel = (s: GameState) => staffOf(s, 'sales').some((x) => x.stats.b >= RETAIL.premiumNetwork);

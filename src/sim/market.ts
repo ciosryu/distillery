@@ -119,7 +119,7 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
   const marginPerCase = (p: Product) => (bottleMargin(p).perBottle * 9000) / p.bottleMl;
   const order = [...wants].sort((a, b) => marginPerCase(b.p) - marginPerCase(a.p));
   let normalLeft = cap;
-  let overflowLeft = cap;
+  let overflowLeft = cap * RETAIL.overflowShare;
   const alloc = new Map<string, { sold: number; over: number }>();
   for (const w of order) {
     const perBottle = w.p.bottleMl / 9000;
