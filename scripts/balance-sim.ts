@@ -28,7 +28,7 @@ const SITE_STRATEGY: Record<string, string> = {
   'KR/default': '브랜드 + 대형 유통 납품(소주)',
   'KR/jeju': '브랜드 + 고소리술 면세 기념품 한정판(매대 1칸, 판당 300병) + 취수 증량',
   'JP/default': '혼합 + 위탁생산(전용 증류기 지원형 포함)',
-  'JP/kansai': '혼합 + 미즈나라 캐스크(인센스 프리미엄) + VIP 비지터 센터',
+  'JP/kansai': process.env.SITE_VIP === '1' ? '혼합 + 미즈나라 캐스크(인센스 프리미엄) + VIP 비지터 센터' : '혼합 + 미즈나라 캐스크(인센스 프리미엄)',
   'JP/hokkaido': '혼합 + 재고 담보대출로 버티기',
 };
 const SITE_BASE: Record<string, Exclude<Strategy, 'site'>> = { KR: 'brand', JP: 'hybrid', TW: 'brand' };
@@ -339,8 +339,8 @@ function siteActions(s: GameState): GameState {
   }
   // 제주: 취수 허가에 막히면 증량 신청
   if (site.waterPermit && !s.siteState.permitApplication && s.cash > 150_000_000 && s.reports.at(-1)?.notes.some((n) => n.includes('취수 허가량'))) s = act(s, { type: 'applyWaterPermit' });
-  // 오사카·교토: 숙성 위스키가 나온 뒤 VIP 테이스팅 라운지
-  if (SITE_KEY === 'JP/kansai' && process.env.SITE_NO_VIP !== '1' && s.month >= 36 && s.cash > 500_000_000 && s.equipment.some((e) => e.catalogId === 'visitor_basic') && !s.equipment.some((e) => e.catalogId === 'visitor_vip')) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_vip' });
+  // 오사카·교토: SITE_VIP=1이면 숙성 위스키가 나온 뒤 VIP 테이스팅 라운지 — v1.4 VIP 등급이 그 자체로 과하게 강해(월 수천만 원) 기본은 끈다 (PRD §15.3 #15)
+  if (SITE_KEY === 'JP/kansai' && process.env.SITE_VIP === '1' && s.month >= 36 && s.cash > 500_000_000 && s.equipment.some((e) => e.catalogId === 'visitor_basic') && !s.equipment.some((e) => e.catalogId === 'visitor_vip')) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_vip' });
   // 홋카이도: 현금이 모자라면 숙성 재고 담보대출
   if (inventoryLtv(s) > 0 && s.cash < 150_000_000 && !s.loans.some((l) => l.offerId === 'inventory') && inventoryLoanRoom(s) >= 50_000_000) s = act(s, { type: 'takeLoan', offerId: 'inventory', amount: inventoryLoanRoom(s) });
   return s;
