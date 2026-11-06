@@ -28,6 +28,7 @@ export const V6_MAP = {
   // finance
   cash: ['finance', 'cash'], negativeCashMonths: ['finance', 'negativeCashMonths'], loans: ['finance', 'loans'],
   investorShare: ['finance', 'investorShare'], investmentsTaken: ['finance', 'investmentsTaken'], receivables: ['finance', 'receivables'],
+  pendingCash: ['finance', 'pendingCash'],
   // hr
   staff: ['hr', 'staff'], candidates: ['hr', 'candidates'], houseStyle: ['hr', 'houseStyle'],
   // production
@@ -40,6 +41,7 @@ export const V6_MAP = {
   products: ['commerce', 'products'], awareness: ['commerce', 'awareness'], localBuzz: ['commerce', 'localBuzz'],
   marketingBudget: ['commerce', 'marketingBudget'], traditionalReleasedL: ['commerce', 'traditionalReleasedL'],
   traditionalPrevYearL: ['commerce', 'traditionalPrevYearL'], retailOffers: ['commerce', 'retailOffers'], retailContracts: ['commerce', 'retailContracts'],
+  exports: ['commerce', 'exports'],
   // b2b
   b2bTrust: ['b2b', 'trust'], bulkIndex: ['b2b', 'bulkIndex'], spotSoldLPA: ['b2b', 'spotSoldLPA'], contracts: ['b2b', 'contracts'],
   contractOffers: ['b2b', 'contractOffers'], brokerOffers: ['b2b', 'brokerOffers'], caskBids: ['b2b', 'caskBids'],
