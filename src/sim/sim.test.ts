@@ -669,6 +669,14 @@ describe('보유 비용·산지 대표 결정 (결정 #65)', () => {
     expect(streak2 / souvenir).toBeCloseTo(1 + 2 * DUTY_FREE.streakAppeal, 6);
     const capped = dutyFreeDemand(j, product({ dutyFreeOnly: true, dfEdition: { vol: 9, streak: 8 } }), 1, 8);
     expect(capped / normal).toBeCloseTo(1 + DUTY_FREE.maxStreak * DUTY_FREE.streakAppeal, 6);
+    // 숙성 한정판(결정 #72): 위스키 한정판은 숙성 연수 구간별 보너스(높은 구간 하나만), 국내 판매 제품엔 없음
+    const aged = (y: number, over: Partial<Product> = {}) => dutyFreeDemand(j, product({ ageYears: y, ...over }), 1, 8);
+    expect(aged(5, { dutyFreeOnly: true }) / aged(5)).toBeCloseTo(1, 6);
+    expect(aged(6, { dutyFreeOnly: true }) / aged(6)).toBeCloseTo(1.05, 6);
+    expect(aged(9, { dutyFreeOnly: true }) / aged(9)).toBeCloseTo(1.1, 6);
+    expect(aged(12, { dutyFreeOnly: true }) / aged(12)).toBeCloseTo(1.15, 6);
+    // 제주 원료 기념품이면 숙성 보너스 대신 기념품 보너스
+    expect(aged(12, { dutyFreeOnly: true, localIngredient: true }) / aged(12)).toBeCloseTo(DUTY_FREE.localAppeal, 6);
     expect(dutyFreeDemand(j, product(), 1, 8)).toBeGreaterThan(dutyFreeDemand(j, product(), 1, 3));
     const a = newGame({ seed: 1, site: 'andong' });
     const lot = { ...malt(48), id: 'L1' };

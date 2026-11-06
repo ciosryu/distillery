@@ -2,7 +2,7 @@ import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/c
 import { CATEGORY } from './content/categories';
 import { priceForConsumer, refPricePerL, regionOf, type RegionDef, type TaxOptions } from './content/regions';
 import { DUTY_FREE, siteOf } from './content/sites';
-import { dutyFreeSlotBlocker, nextDutyFreeEdition, traditionalReliefRate } from './sites';
+import { dutyFreeAgedAppeal, dutyFreeSlotBlocker, nextDutyFreeEdition, traditionalReliefRate } from './sites';
 import { clampFlavor, evaluate, weightedAverage, type Evaluation } from './flavor';
 import { emptyCask } from './maturation';
 import { bestBy, nid, staffOf } from './util';
@@ -135,7 +135,6 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   else if (opts.dutyFreeOnly) {
     const blocker = dutyFreeSlotBlocker(s);
     if (blocker) errors.push(blocker);
-    else if (!localIngredient) warnings.push('제주 원료(차조·청귤)를 쓰지 않은 한정판 — 기념품 매력도 보너스 없음');
   }
   if (kind === 'gin' && category === 'flavored_spirit') warnings.push('주니퍼가 지배적이지 않거나 도수 37.5% 미만 — "진" 표기 불가(기타 증류주)');
   if (finalAbv < MIN_BOTTLING_ABV[category]) errors.push(`${CATEGORY[category].nameKo} 최소 병입 도수는 ${(MIN_BOTTLING_ABV[category] * 100).toFixed(1)}%`);
@@ -143,6 +142,11 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   if (!PACKAGING[opts.packagingId]) errors.push('패키징을 선택하세요');
 
   const ageYears = isWhiskyCategory(category) ? Math.floor(minOakMonths / 12) : null;
+  if (opts.dutyFreeOnly && siteOf(s).dutyFree && !localIngredient && !errors.some((e) => e.includes('매대'))) {
+    const minAged = DUTY_FREE.agedTiers.at(-1)!;
+    if (ageYears == null) warnings.push('제주 원료(차조·청귤)를 쓰지 않은 한정판 — 기념품 매력도 보너스 없음');
+    else if (dutyFreeAgedAppeal(ageYears) <= 1) warnings.push(`숙성 ${ageYears}년 — ${minAged.years}년 이상이면 숙성 한정판 매력도 ×${minAged.appeal}`);
+  }
   const finalVolume = lpa / finalAbv;
   const bottles = Math.floor(finalVolume / (opts.bottleMl / 1000));
   if (bottles < 1) errors.push('병입할 양이 부족합니다');

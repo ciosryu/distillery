@@ -222,11 +222,18 @@ export function nextDutyFreeEdition(s: GameState): { vol: number; streak: number
   return { vol: (d?.vol ?? 0) + 1, streak: d?.streak ?? 0 };
 }
 
-/** 면세 한정판 매력도 배수 = 산지 원료 기념품 보너스 × 연속 완판 보너스 */
-export function dutyFreeEditionAppeal(p: Pick<Product, 'dutyFreeOnly' | 'localIngredient' | 'dfEdition'>): number {
+/** 숙성 한정판 보너스 (결정 #72) — 숙성 연수 구간별, 연수 표기가 없는 제품(소주·진)은 1 */
+export function dutyFreeAgedAppeal(ageYears: number | null | undefined): number {
+  if (ageYears == null) return 1;
+  return DUTY_FREE.agedTiers.find((t) => ageYears >= t.years)?.appeal ?? 1;
+}
+
+/** 면세 한정판 매력도 배수 = (제주 원료 기념품 보너스 또는 숙성 한정판 보너스) × 연속 완판 보너스 */
+export function dutyFreeEditionAppeal(p: Pick<Product, 'dutyFreeOnly' | 'localIngredient' | 'dfEdition'> & Partial<Pick<Product, 'ageYears'>>): number {
   if (!p.dutyFreeOnly) return 1;
   const streak = Math.min(p.dfEdition?.streak ?? 0, DUTY_FREE.maxStreak);
-  return (p.localIngredient ? DUTY_FREE.localAppeal : 1) * (1 + DUTY_FREE.streakAppeal * streak);
+  const base = p.localIngredient ? DUTY_FREE.localAppeal : dutyFreeAgedAppeal(p.ageYears);
+  return base * (1 + DUTY_FREE.streakAppeal * streak);
 }
 
 /** 월말: 면세 한정판 완판·국내 이관 판정 */

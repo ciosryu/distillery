@@ -47,6 +47,7 @@ const BIG_RECIPE = 'B2B 몰트';
 /** 면세 한정판 (결정 #70): 전용 매대 1칸 — 제주 원료 기념품(고소리술) 또는 위스키 한정판. DF_MODE=soju|whisky|both [실험용] */
 const DF_MODE = process.env.DF_MODE ?? 'soju';
 const DF_SOUVENIR_BOTTLES = Number(process.env.DF_SOUVENIR_BOTTLES ?? 300);
+const DF_WHISKY_YEARS = Number(process.env.DF_WHISKY_YEARS ?? 0);
 const dfSlotFree = (s: GameState) => dutyFreeEditions && !!SITES[s.siteId].dutyFree && !dutyFreeSlotBlocker(s);
 
 /** 제주 원료 소주 원액 일부를 면세 기념품 한정판(40%·500ml)으로 */
@@ -95,11 +96,15 @@ let retailBuffer = 0;
 function bottleWhisky(s: GameState): GameState {
   if (stockOf(s, 'whisky') >= 800) return s;
   // 국가 최소 숙성(대만 24개월)을 따른다
-  const ready = s.casks.filter((c) => c.contents && c.contents.oakMonths >= REGIONS[s.regionId].whiskyMinMonths && !c.contents.sourced).slice(0, 3);
+  const eligible = s.casks.filter((c) => c.contents && c.contents.oakMonths >= REGIONS[s.regionId].whiskyMinMonths && !c.contents.sourced);
+  // 면세 전용 한정판은 매대가 비었을 때만 (DF_MODE=whisky|both), 숙성 DF_WHISKY_YEARS년 이상 캐스크로만 — 숙성 한정판 보너스(결정 #72)
+  const aged = eligible.filter((c) => c.contents!.oakMonths >= DF_WHISKY_YEARS * 12);
+  const df = DF_MODE !== 'soju' && dfSlotFree(s) && aged.length > 0;
+  // 숙성 한정판을 노리면 국내용은 어린 캐스크부터 써서 오래된 캐스크를 남긴다
+  const reserve = DF_MODE !== 'soju' && DF_WHISKY_YEARS > 0 && dutyFreeEditions;
+  const ready = (df ? aged : reserve ? [...eligible].sort((a, b) => a.contents!.oakMonths - b.contents!.oakMonths) : eligible).slice(0, 3);
   if (!ready.length) return s;
   const comps = ready.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }));
-  // 면세 전용 한정판은 매대가 비었을 때만 (DF_MODE=whisky|both)
-  const df = DF_MODE !== 'soju' && dfSlotFree(s);
   const opts = { name: `싱글 몰트 ${s.month}`, targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard', dutyFreeOnly: df };
   return previewBlend(s, comps, opts).ok ? act(s, { type: 'bottle', components: comps, options: opts }) : s;
 }

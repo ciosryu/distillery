@@ -257,6 +257,8 @@ export const DUTY_FREE = {
    *  출시 6개월 안에 완판하면 다음 판 매력도 +3%(최대 3연속 +9%)·인지도 +0.5%p, 12개월 안에 못 팔면 국내 매대로 넘어가고 연속 기록 초기화 */
   slots: 1,
   localAppeal: 1.1,
+  /** 숙성 한정판 (결정 #72) [튜닝]: 제주 원료가 아닌 위스키 한정판은 숙성 연수로 매력도 보너스 — 면세점은 연수 표기 한정판이 주력. 높은 구간 하나만 */
+  agedTiers: [{ years: 10, appeal: 1.15 }, { years: 8, appeal: 1.1 }, { years: 6, appeal: 1.05 }] as { years: number; appeal: number }[],
   sellOutMonths: 6,
   returnMonths: 12,
   streakAppeal: 0.03,
