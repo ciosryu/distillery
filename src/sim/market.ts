@@ -167,7 +167,8 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
     const demand = Math.round(d.demandBottles * rng.range(0.9, 1.1));
     wants.push({ p, demand, want: Math.min(p.stockBottles, demand) });
   }
-  // 1-b) 수출 수요 (#95): 재고가 모자라면 국내·수출에 수요 비율대로 나눈다. 수출은 수입상이 받아 가므로 소매 처리 역량을 쓰지 않는다
+  // 1-b) 수출 수요 (#95·#105): 재고가 모자라면 국내를 먼저 채우고 남는 재고를 수출에 나눈다(EXPORT_SALES.allocation).
+  //      숙성 원액은 정해진 양뿐이라, 수요 비율로 나누면 수출 1병이 국내 정가 판매 1병을 빼앗는다. 수출은 수입상이 받아 가므로 소매 처리 역량을 쓰지 않는다
   const exportWants = new Map<string, { entry: ExportEntry; demand: number; want: number }[]>();
   const active = (s.exports ?? []).filter((e) => e.readyMonth <= s.month);
   for (const w of wants) {

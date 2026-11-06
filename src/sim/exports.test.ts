@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addModifier, advanceMonths, applyAction, effectiveTariff, EXPORT_MARKETS, exportMarketsFor, exportShelfPrice, makeExportOffer, mulberry32, newGame, runExportContracts, updateExportAwareness,
+  addModifier, advanceMonths, applyAction, effectiveTariff, EXPORT_MARKETS, EXPORT_SALES, exportMarketsFor, exportShelfPrice, makeExportOffer, mulberry32, newGame, runExportContracts, runSales, updateExportAwareness,
   type GameState, type MonthReport, type Product,
 } from './index';
 
@@ -98,5 +98,44 @@ describe('수입사 계약 (#101)·인지도 후광 (#102)', () => {
       return s.exports[0]!.awareness;
     };
     expect(mk(EXPORT_MARKETS.US.monthlyCost * 1.5)).toBeGreaterThan(mk(EXPORT_MARKETS.US.monthlyCost * 0.5));
+  });
+});
+
+describe('재고 배분 (#105)·매입가 (#106)', () => {
+  const setup = (stock: number) => {
+    const s = { ...newGame({ seed: 7 }), awareness: 0.6, month: 60, products: [whisky({ stockBottles: stock })] };
+    s.exports = [{ marketId: 'DF', openedMonth: 0, readyMonth: 0, awareness: 0.6, totalBottles: 0, priceFactor: 0.95, marketingPerMonth: 2_000_000 }];
+    return s;
+  };
+  const exported = (r: ReturnType<typeof runSales>) => r.exports.reduce((t, x) => t + x.bottles, 0);
+
+  it('재고가 국내 수요보다 적으면 국내를 먼저 채우고 수출은 남는 재고만 가져간다', () => {
+    const r = runSales(setup(5), mulberry32(1), 6);
+    expect(r.results[0]!.demandBottles).toBeGreaterThan(5);
+    expect(r.results[0]!.bottles).toBe(5);
+    expect(exported(r)).toBe(0);
+    // 재고가 넉넉하면 수출도 수요만큼 나간다
+    const big = runSales(setup(100_000), mulberry32(1), 6);
+    expect(exported(big)).toBeGreaterThan(0);
+    expect(big.results[0]!.bottles).toBe(big.results[0]!.demandBottles);
+  });
+
+  it('수요 비율 배분(#95 원래 규칙)으로 바꾸면 모자란 재고를 수출과 나눈다 — 실험용 스위치', () => {
+    EXPORT_SALES.allocation = 'proportional';
+    try {
+      const r = runSales(setup(200), mulberry32(1), 6);
+      expect(exported(r)).toBeGreaterThan(0);
+      expect(r.results[0]!.bottles).toBeLessThan(200);
+    } finally {
+      EXPORT_SALES.allocation = 'domestic';
+    }
+  });
+
+  it('매입가 비율은 출고가에 가깝다 — 수입상 마진은 유통 배수에 이미 들어 있다', () => {
+    for (const id of exportMarketsFor('KR')) {
+      const [lo, hi] = EXPORT_MARKETS[id].offer.priceFactor;
+      expect(lo).toBeGreaterThanOrEqual(0.85);
+      expect(hi).toBeLessThanOrEqual(1);
+    }
   });
 });

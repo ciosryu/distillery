@@ -45,7 +45,8 @@ export interface ExportMarketDef {
   awareness: { start: number; perMonth: number; domesticSpill: number; max: number };
   /** 면세: 생산 지역 공항 이용객 규모 배수 (시장 크기 × 배수) */
   regionScale?: Partial<Record<RegionId, number>>;
-  /** 수입사 계약 제안 조건 (#101): 매입가 = 출고가 × priceFactor 범위, 연 최소 물량 */
+  /** 수입사 계약 제안 조건 (#101): 매입가 = 출고가 × priceFactor 범위, 연 최소 물량.
+   *  #106: 수입상 마진은 channelMultiple에 이미 들어 있으므로 매입가는 출고가와 거의 같다(신생 브랜드 할인만, 먼 시장 0.85~0.95 · 가까운 시장 0.88~1 · 면세점 0.9~1) */
   offer: { priceFactor: [number, number]; minBottlesPerYear: number };
   /** 수입사 이름 (가상) */
   partners: string[];
@@ -83,7 +84,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     minWhiskyMonths: 0,
     // 국내 인지도 후광 없음 (#102) — 해외는 0에서 시작
     awareness: { start: 0.02, perMonth: 0.01, domesticSpill: 0, max: 0.6 },
-    offer: { priceFactor: [0.55, 0.7], minBottlesPerYear: 1_200 },
+    offer: { priceFactor: [0.85, 0.95], minBottlesPerYear: 1_200 },
     partners: ['파이어니어 스피릿 임포츠', '노스스타 브랜즈', '하버라인 와인앤스피릿'],
   },
   UK: {
@@ -105,7 +106,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     monthlyCost: 3_000_000,
     minWhiskyMonths: 36,
     awareness: { start: 0.03, perMonth: 0.012, domesticSpill: 0, max: 0.6 },
-    offer: { priceFactor: [0.55, 0.7], minBottlesPerYear: 600 },
+    offer: { priceFactor: [0.85, 0.95], minBottlesPerYear: 600 },
     partners: ['스페이 앤 템스 임포터스', '오크하트 디스트리뷰션'],
   },
   DF: {
@@ -130,7 +131,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     awareness: { start: 0, perMonth: 0, domesticSpill: 1, max: 0.95 },
     regionScale: { KR: 1.0, JP: 0.8, TW: 0.5 },
     // 면세 운영사 입점 계약 — 국내 여행객 시장이라 국내 인지도가 그대로 넘어온다 (#102)
-    offer: { priceFactor: [0.6, 0.75], minBottlesPerYear: 600 },
+    offer: { priceFactor: [0.9, 1], minBottlesPerYear: 600 },
     partners: ['게이트원 듀티프리', '스카이라운지 리테일'],
   },
   // ── 확장 시장 (#100) — 규모는 "신생 수입 브랜드가 들어갈 틈새"(§16.25 방식), 근거는 docs/design/export.md §9 ──
@@ -155,7 +156,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     monthlyCost: 3_000_000,
     minWhiskyMonths: 36,
     awareness: { start: 0.02, perMonth: 0.01, domesticSpill: 0, max: 0.6 },
-    offer: { priceFactor: [0.55, 0.7], minBottlesPerYear: 900 },
+    offer: { priceFactor: [0.85, 0.95], minBottlesPerYear: 900 },
     partners: ['메종 데 스피리튜', '라인 앤 론 임포트'],
   },
   CN: {
@@ -179,7 +180,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     monthlyCost: 4_000_000,
     minWhiskyMonths: 0,
     awareness: { start: 0.01, perMonth: 0.01, domesticSpill: 0, max: 0.5 },
-    offer: { priceFactor: [0.55, 0.7], minBottlesPerYear: 1_200 },
+    offer: { priceFactor: [0.85, 0.95], minBottlesPerYear: 1_200 },
     partners: ['화하 진구 무역', '동방 주업 수입'],
   },
   SEA: {
@@ -200,7 +201,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     monthlyCost: 2_000_000,
     minWhiskyMonths: 0,
     awareness: { start: 0.02, perMonth: 0.012, domesticSpill: 0, max: 0.6 },
-    offer: { priceFactor: [0.6, 0.72], minBottlesPerYear: 400 },
+    offer: { priceFactor: [0.88, 1], minBottlesPerYear: 400 },
     partners: ['머라이언 셀러스', '스트레이츠 스피릿 하우스'],
   },
   // ── 한국·일본·대만 상호 수출 (#100) — 자국 시장은 국내 판매라 제외 ──
@@ -225,7 +226,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     monthlyCost: 2_000_000,
     minWhiskyMonths: 0,
     awareness: { start: 0.02, perMonth: 0.01, domesticSpill: 0, max: 0.6 },
-    offer: { priceFactor: [0.6, 0.72], minBottlesPerYear: 600 },
+    offer: { priceFactor: [0.88, 1], minBottlesPerYear: 600 },
     partners: ['한강 주류 수입', '새벽 리큐르'],
   },
   JP: {
@@ -247,7 +248,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     monthlyCost: 2_000_000,
     minWhiskyMonths: 0,
     awareness: { start: 0.02, perMonth: 0.01, domesticSpill: 0, max: 0.6 },
-    offer: { priceFactor: [0.6, 0.72], minBottlesPerYear: 600 },
+    offer: { priceFactor: [0.88, 1], minBottlesPerYear: 600 },
     partners: ['아사히야 양주 수입', '미나토 트레이딩'],
   },
   TW: {
@@ -270,7 +271,7 @@ export const EXPORT_MARKETS: Record<ExportMarketId, ExportMarketDef> = {
     monthlyCost: 2_000_000,
     minWhiskyMonths: 0,
     awareness: { start: 0.02, perMonth: 0.01, domesticSpill: 0, max: 0.6 },
-    offer: { priceFactor: [0.6, 0.72], minBottlesPerYear: 600 },
+    offer: { priceFactor: [0.88, 1], minBottlesPerYear: 600 },
     partners: ['북회귀선 주류', '단수이 수입상사'],
   },
 };
@@ -280,6 +281,7 @@ export const EXPORT_MARKET_IDS = Object.keys(EXPORT_MARKETS) as ExportMarketId[]
 export const exportMarketsFor = (regionId: RegionId): ExportMarketId[] => EXPORT_MARKET_IDS.filter((id) => id !== regionId);
 /** 미국 추가 관세 등 관세 이벤트는 modifier 'tariff:<시장>'로 (1 + 관세)에 곱한다 (#103) */
 export const tariffKey = (id: ExportMarketId) => `tariff:${id}`;
-/** 재고가 모자랄 때 국내·수출 배분 — 'proportional' = 수요 비율(#95), 'domestic' = 국내를 먼저 채우고 남는 재고를 수출에 나눈다 [실험 스위치] */
-export const EXPORT_SALES: { allocation: 'proportional' | 'domestic' } = { allocation: 'proportional' };
+/** 재고가 모자랄 때 국내·수출 배분 (#105) — 'domestic' = 국내를 먼저 채우고 남는 재고를 수출에 수요 비율로 나눈다(기본),
+ *  'proportional' = 국내·수출에 수요 비율로 나눈다(#95 원래 규칙, 실험용) */
+export const EXPORT_SALES: { allocation: 'proportional' | 'domestic' } = { allocation: 'domestic' };
 export { KRW_PER_GBP, KRW_PER_USD };
