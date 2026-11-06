@@ -16,6 +16,8 @@ export interface IngredientDef {
   native?: string[];
   /** 입지 전용 원료 — 이 입지에서만 레시피에 쓸 수 있다 (결정 #87, 제주 차조·홋카이도 감자) */
   sites?: string[];
+  /** 발효제(누룩·코지·곡) — 주원료가 아니라 당화·발효를 일으키는 재료. 생산 화면의 크래프팅 레버가 "주원료 + 발효제 비율"로 나눠 보여 준다(P-PROD-1). 계산에는 쓰지 않는다 */
+  starter?: boolean;
 }
 
 export const INGREDIENTS: Record<string, IngredientDef> = {
@@ -25,18 +27,18 @@ export const INGREDIENTS: Record<string, IngredientDef> = {
   corn: { id: 'corn', nameKo: '옥수수(수입)', lpaPerKg: 0.38, pricePerKg: 450, flavor: { sweetness: 25, cereal: 12 }, kinds: ['grain'] },
   wheat: { id: 'wheat', nameKo: '밀(수입)', lpaPerKg: 0.37, pricePerKg: 500, flavor: { sweetness: 15, cereal: 10, floral: 3 }, kinds: ['grain'] },
   // 일본 본격 쇼추용
-  rice_koji: { id: 'rice_koji', nameKo: '쌀 코지(입국)', lpaPerKg: 0.4, pricePerKg: 4000, flavor: { nuruk_rice: 60, fresh_fruit: 8, floral: 6 }, kinds: ['soju'], native: ['JP'] },
+  rice_koji: { id: 'rice_koji', nameKo: '쌀 코지(입국)', lpaPerKg: 0.4, pricePerKg: 4000, flavor: { nuruk_rice: 60, fresh_fruit: 8, floral: 6 }, kinds: ['soju'], native: ['JP'], starter: true },
   sweet_potato: { id: 'sweet_potato', nameKo: '고구마', lpaPerKg: 0.13, pricePerKg: 600, flavor: { earthy: 15, sweetness: 22, floral: 10, fresh_fruit: 4 }, kinds: ['soju'], native: ['JP', 'KR'] },
   barley_raw: { id: 'barley_raw', nameKo: '보리(비맥아)', lpaPerKg: 0.38, pricePerKg: 900, flavor: { cereal: 25, toasted_grain: 10 }, kinds: ['soju'] },
   // 백주(고량주)용
   sorghum: { id: 'sorghum', nameKo: '고량(수수)', lpaPerKg: 0.36, pricePerKg: 900, flavor: { sorghum_grain: 45, earthy: 8 }, kinds: ['baijiu'], native: ['CN'] },
-  daqu: { id: 'daqu', nameKo: '대곡(밀 누룩, 曲)', lpaPerKg: 0.15, pricePerKg: 3000, flavor: { fermented_umami: 25, tropical: 20, earthy: 10, sorghum_grain: 5 }, kinds: ['baijiu'], native: ['CN'] },
+  daqu: { id: 'daqu', nameKo: '대곡(밀 누룩, 曲)', lpaPerKg: 0.15, pricePerKg: 3000, flavor: { fermented_umami: 25, tropical: 20, earthy: 10, sorghum_grain: 5 }, kinds: ['baijiu'], native: ['CN'], starter: true },
   // 대만 특산: 진먼(금문) 계약재배 고량 + 보리·밀 곡 → 청향형 58도 (결정 #58)
   sorghum_kinmen: { id: 'sorghum_kinmen', nameKo: '진먼 고량(金門 계약재배)', lpaPerKg: 0.37, pricePerKg: 1600, flavor: { sorghum_grain: 50, floral: 10, fresh_fruit: 8 }, kinds: ['baijiu'], native: ['TW'] },
-  wheat_qu: { id: 'wheat_qu', nameKo: '맥곡(麥麴, 청향용)', lpaPerKg: 0.15, pricePerKg: 2600, flavor: { floral: 22, fresh_fruit: 20, sorghum_grain: 4, fermented_umami: 3 }, kinds: ['baijiu'], native: ['CN', 'TW'] },
+  wheat_qu: { id: 'wheat_qu', nameKo: '맥곡(麥麴, 청향용)', lpaPerKg: 0.15, pricePerKg: 2600, flavor: { floral: 22, fresh_fruit: 20, sorghum_grain: 4, fermented_umami: 3 }, kinds: ['baijiu'], native: ['CN', 'TW'], starter: true },
   rice_domestic: { id: 'rice_domestic', nameKo: '국산 쌀', lpaPerKg: 0.46, pricePerKg: 2600, flavor: { nuruk_rice: 25, floral: 8, fresh_fruit: 8, sweetness: 8 }, kinds: ['soju'], native: ['KR'] },
   rice_processing: { id: 'rice_processing', nameKo: '가공용 쌀', lpaPerKg: 0.44, pricePerKg: 1300, flavor: { nuruk_rice: 20, floral: 5, fresh_fruit: 5, sweetness: 6, cereal: 5 }, kinds: ['soju'], native: ['KR'] },
-  nuruk: { id: 'nuruk', nameKo: '전통 누룩', lpaPerKg: 0.1, pricePerKg: 6000, flavor: { nuruk_rice: 40, earthy: 6, fresh_fruit: 6 }, kinds: ['soju'], native: ['KR'] },
+  nuruk: { id: 'nuruk', nameKo: '전통 누룩', lpaPerKg: 0.1, pricePerKg: 6000, flavor: { nuruk_rice: 40, earthy: 6, fresh_fruit: 6 }, kinds: ['soju'], native: ['KR'], starter: true },
   // 입지 전용 원료 (결정 #87)
   jeju_millet: { id: 'jeju_millet', nameKo: '제주 차조(좁쌀) — 고소리술 원료', lpaPerKg: 0.42, pricePerKg: 4500, flavor: { nuruk_rice: 15, cereal: 18, earthy: 6, toasted_grain: 6, sweetness: 6 }, kinds: ['soju'], native: ['KR'], sites: ['jeju'] },
   potato: { id: 'potato', nameKo: '홋카이도 감자', lpaPerKg: 0.11, pricePerKg: 450, flavor: { earthy: 10, sweetness: 8, floral: 6, fresh_fruit: 4 }, kinds: ['soju'], native: ['JP'], sites: ['hokkaido'] },

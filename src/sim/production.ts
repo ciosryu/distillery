@@ -13,6 +13,13 @@ import type { TickContext } from './tick';
 import { OEM } from './deals';
 import { hasLocalIngredient, seasonalEnergyFactor, siteFreight } from './sites';
 import { waterPermitCap } from './waterPermit';
+import { evaluate, type Evaluation } from './flavor';
+import { hexOf, HEX_AXES, HEX_LABEL } from './blendRadar';
+import { AXIS } from './content/axes';
+import { CATEGORY } from './content/categories';
+import type { PresetRecipe } from './content/presets';
+import { isLocked } from './scenario';
+import type { ProductCategory, SpiritKind } from './types';
 
 type StillDef = Extract<EquipmentDef, { kind: 'still' }>;
 
@@ -473,4 +480,176 @@ export function capacityReport(s: GameState): CapacityReport {
   const fermenterDaysCap = s.production.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'fermenter' && e.readyMonth <= s.month).length * 30;
   const distillerRunsCap = staffOf(s, 'distiller').reduce((t, d) => t + distillerRunCapacity(d.stats.b), 0);
   return { stills, fermenterDaysUsed, fermenterDaysCap, distillerRunsUsed, distillerRunsCap: Math.floor(distillerRunsCap) };
+}
+
+// ───────────── 크래프팅 레버 (mvp.md §1.2, 결정 #134 — 제안 P-PROD-1) ─────────────
+// 생산 화면이 "프리셋으로 시작 → 고급 설정에서 레버를 바꾼다 → 향미 육각형 + 품질 + 무엇이 무엇을 바꿨나 한 줄"을 보여 주는 데 쓰는 순수 함수.
+// 게임 상태를 바꾸지 않는다(미리보기 전용) — 틱·봇·세이브 동작은 그대로다.
+
+/** 뉴메이크(원액)를 평가하는 범주 — 생산 화면 미리보기 기준 */
+export const newmakeCategory = (k: SpiritKind): ProductCategory => (k === 'soju' ? 'soju_distilled' : k === 'gin' ? 'gin' : k === 'baijiu' ? 'baijiu' : 'malt_spirit');
+
+export type PreviewResult = BatchResult & { evaluation: Evaluation };
+
+/**
+ * 배치 1회 미리보기 — 지금 가진 발효조·리드 디스틸러·시세·입지 물로 계산한다. 발효실 온도는 기본 18°C(달마다 바뀌는 실제 온도는 쓰지 않는다 — 미리보기가 달마다 흔들리지 않게).
+ * 증류기가 없으면 null
+ */
+export function previewBatch(s: GameState, r: Recipe): PreviewResult | null {
+  const still = stillDefOf(s, r.stillId);
+  if (!still) return null;
+  const fermTypes = s.production.equipment.map((e) => EQUIPMENT[e.catalogId]).filter((d) => d?.kind === 'fermenter').map((d) => (d as { fermenterType: FermenterType }).fermenterType);
+  const ferm: FermenterType | null = r.kind === 'gin' ? null : r.kind === 'soju' && fermTypes.includes('onggi') ? 'onggi' : fermTypes[0] ?? 'stainless';
+  const b = simulateBatch(r, still, ferm, bestBy(staffOf(s, 'distiller'), 'b'), s.world.priceIndex, 0);
+  return { ...b, evaluation: evaluate(b.flavor, newmakeCategory(r.kind)) };
+}
+
+/** 향미 프로필의 한 축 (화면 레이더용, 0~100으로 자르지 않은 값) */
+export interface ProfileAxis { id: string; label: string; value: number }
+
+/**
+ * 향미 프로필 — 몰트·그레인은 블렌딩 육각형(6축, blendRadar)으로 본다: 뉴메이크 → 캐스크 샘플(sampleLog) → 블렌딩 테이블이 **같은 여섯 축**이라
+ * "이 레시피가 숙성 뒤 어디로 갈지"를 같은 그림에서 읽는다. 위스키 육각형은 소주의 누룩·곡물 향을 담지 못하므로 그 밖의 주종은 주종 범주의 레이더 축을 쓴다(P-PROD-1)
+ */
+export function flavorProfile(kind: SpiritKind, f: Flavor): ProfileAxis[] {
+  if (kind === 'malt' || kind === 'grain') {
+    const h = hexOf(f);
+    return HEX_AXES.map((a) => ({ id: a, label: HEX_LABEL[a], value: h[a] }));
+  }
+  return CATEGORY[newmakeCategory(kind)].radarAxes.map((a) => ({ id: a, label: AXIS[a].nameKo, value: f[a] ?? 0 }));
+}
+
+/** 이 판에서 고를 수 있는 프리셋 — 입지 원료 프리셋 + 지역 프리셋, 시나리오가 잠근 주종은 뺀다 */
+export function craftPresets(s: GameState): PresetRecipe[] {
+  return [...(siteOf(s).presets ?? []), ...regionOf(s).presets].filter((p) => !isLocked(s, `kind:${p.kind}`));
+}
+
+const mainIngredient = (r: Pick<Recipe, 'mashBill'>) => [...r.mashBill].sort((a, b) => b.ratio - a.ratio)[0]?.ingredientId;
+
+/** 레시피가 출발한 프리셋(추정) — 같은 이름 → 같은 주종·같은 주원료 → 같은 주종의 첫 프리셋. 레시피에 출처를 저장하지 않으므로 화면 설명용 추정이다 */
+export function basePresetOf(s: GameState, r: Pick<Recipe, 'name' | 'kind' | 'mashBill'>): PresetRecipe | null {
+  const same = craftPresets(s).filter((p) => p.kind === r.kind);
+  return same.find((p) => p.name === r.name) ?? same.find((p) => mainIngredient(p) === mainIngredient(r)) ?? same[0] ?? null;
+}
+
+export type RecipeLever = 'mash' | 'botanicals' | 'yeast' | 'fermentDays' | 'runs' | 'cut' | 'pressure' | 'still';
+
+export const LEVER_LABEL: Record<RecipeLever, string> = { mash: '원료', botanicals: '보태니컬', yeast: '효모', fermentDays: '발효 기간', runs: '증류 횟수', cut: '컷', pressure: '증류 방식', still: '증류기' };
+
+/** 프리셋을 지금 판의 레시피로 — 증류기는 draft와 같은 것을 쓰되, 감압이 아닌 프리셋을 감압 증류기에 비교하지 않게 상압 증류기를 고른다 */
+export function presetAsRecipe(s: GameState, p: PresetRecipe, draft: Pick<Recipe, 'stillId' | 'pressure'>): Recipe {
+  let stillId = draft.stillId;
+  if (p.pressure !== draft.pressure) {
+    const plain = s.production.equipment.find((e) => { const d = EQUIPMENT[e.catalogId]; return d?.kind === 'still' && !d.vacuum && d.stillType !== 'column'; });
+    if (plain) stillId = plain.id;
+  }
+  return { ...structuredClone(p), id: 'preset', stillId };
+}
+
+const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/** base에 draft의 레버 하나만 옮긴 레시피 */
+function withLever(base: Recipe, draft: Recipe, lever: RecipeLever): Recipe {
+  switch (lever) {
+    case 'mash': return { ...base, mashBill: draft.mashBill };
+    case 'botanicals': return { ...base, botanicals: draft.botanicals, botanicalMethod: draft.botanicalMethod };
+    case 'yeast': return { ...base, yeast: draft.yeast };
+    case 'fermentDays': return { ...base, fermentDays: draft.fermentDays };
+    case 'runs': return { ...base, runs: draft.runs };
+    case 'cut': return { ...base, cut: draft.cut };
+    // 감압은 감압 증류기에서만 된다 → 방식과 증류기를 함께 옮긴다
+    case 'pressure': return { ...base, pressure: draft.pressure, stillId: draft.stillId };
+    case 'still': return { ...base, stillId: draft.stillId };
+  }
+}
+
+/** base와 draft가 다른 레버 (gin은 매시·효모·발효를 쓰지 않는다) */
+export function changedLevers(base: Recipe, draft: Recipe): RecipeLever[] {
+  const out: RecipeLever[] = [];
+  if (draft.kind === 'gin') { if (!sameJson(base.botanicals, draft.botanicals) || base.botanicalMethod !== draft.botanicalMethod) out.push('botanicals'); }
+  else {
+    if (!sameJson(base.mashBill, draft.mashBill)) out.push('mash');
+    if (base.yeast !== draft.yeast) out.push('yeast');
+    if (base.fermentDays !== draft.fermentDays) out.push('fermentDays');
+  }
+  if (base.runs !== draft.runs) out.push('runs');
+  if (base.cut.c1 !== draft.cut.c1 || base.cut.c2 !== draft.cut.c2) out.push('cut');
+  if (base.pressure !== draft.pressure) out.push('pressure');
+  else if (base.stillId !== draft.stillId) out.push('still');
+  return out;
+}
+
+const shortName = (n: string) => n.replace(/\s*\(.*\)$/, '');
+
+/** 레버 값의 짧은 표기 */
+export function leverValue(s: GameState, r: Recipe, lever: RecipeLever): string {
+  switch (lever) {
+    case 'mash': return r.mashBill.map((m) => `${shortName(INGREDIENTS[m.ingredientId]?.nameKo ?? m.ingredientId)}${r.mashBill.length > 1 ? ` ${Math.round(m.ratio * 100)}%` : ''}`).join('·');
+    case 'botanicals': return `${r.botanicals.length}종·${r.botanicalMethod === 'vapor' ? '증기' : '침지'}`;
+    case 'yeast': return YEASTS[r.yeast].nameKo;
+    case 'fermentDays': return `${r.fermentDays}일`;
+    case 'runs': return `${r.runs}회`;
+    case 'cut': return `${r.cut.c1.toFixed(2)}~${r.cut.c2.toFixed(2)}`;
+    case 'pressure': return r.pressure === 'vacuum' ? '감압' : '상압';
+    case 'still': return shortName(stillDefOf(s, r.stillId)?.nameKo ?? '—');
+  }
+}
+
+export interface LeverEffect {
+  lever: RecipeLever;
+  from: string;
+  to: string;
+  /** 이 레버만 바꿨을 때의 변화 (다른 레버는 기준 프리셋 그대로) */
+  dQuality: number;
+  /** 산출 LPA 변화율 */
+  dYield: number;
+  dOffnotes: number;
+  /** 향미 프로필에서 가장 크게 움직인 축 */
+  topAxis: { label: string; d: number } | null;
+}
+
+/**
+ * 레버별 효과 — base(기준 프리셋)에서 레버 **하나씩만** draft 값으로 바꿔 미리보기를 비교한다.
+ * 레버끼리 상호작용이 있어(예: 컷 × 증류 횟수) 효과의 합이 전체 변화와 꼭 같지는 않다. 큰 순서로 정렬
+ */
+export function leverEffects(s: GameState, base: Recipe, draft: Recipe): LeverEffect[] {
+  const b = previewBatch(s, base);
+  if (!b) return [];
+  const bp = flavorProfile(base.kind, b.flavor);
+  const out: LeverEffect[] = [];
+  for (const lever of changedLevers(base, draft)) {
+    const v = previewBatch(s, withLever(base, draft, lever));
+    if (!v) continue;
+    const vp = flavorProfile(base.kind, v.flavor);
+    let topAxis: LeverEffect['topAxis'] = null;
+    vp.forEach((a, i) => { const d = a.value - bp[i]!.value; if (Math.abs(d) >= 1 && (!topAxis || Math.abs(d) > Math.abs(topAxis.d))) topAxis = { label: a.label, d }; });
+    out.push({
+      lever, from: leverValue(s, base, lever), to: leverValue(s, draft, lever),
+      dQuality: v.evaluation.quality - b.evaluation.quality,
+      dYield: b.lpa > 0 ? v.lpa / b.lpa - 1 : 0,
+      dOffnotes: v.evaluation.offnotes - b.evaluation.offnotes,
+      topAxis,
+    });
+  }
+  const size = (e: LeverEffect) => Math.abs(e.dQuality) + Math.abs(e.topAxis?.d ?? 0) / 4 + Math.abs(e.dYield) * 20;
+  return out.sort((x, y) => size(y) - size(x));
+}
+
+const signed = (v: number, digits = 0) => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(v).toFixed(digits)}`;
+
+/** 레버 효과 한 개를 짧은 문장으로 — "발효 기간 4일→7일: 과일 +6 · 품질 +1.2" */
+export function describeLeverEffect(e: LeverEffect): string {
+  const parts: string[] = [];
+  if (e.topAxis) parts.push(`${e.topAxis.label} ${signed(e.topAxis.d)}`);
+  if (Math.abs(e.dOffnotes) >= 1) parts.push(`이취 ${signed(e.dOffnotes)}`);
+  if (Math.abs(e.dYield) >= 0.02) parts.push(`수율 ${signed(e.dYield * 100)}%`);
+  parts.push(`품질 ${signed(e.dQuality, 1)}`);
+  return `${LEVER_LABEL[e.lever]} ${e.from}→${e.to}: ${parts.join(' · ')}`;
+}
+
+/** "무엇이 무엇을 바꿨나" 한 줄 — 큰 효과 2개 + 나머지 수. 바꾼 것이 없으면 프리셋 그대로라고 쓴다 */
+export function leverSummary(effects: LeverEffect[], max = 2): string {
+  if (!effects.length) return '프리셋 그대로입니다 — "고급 설정"에서 레버를 바꾸면 여기서 무엇이 무엇을 바꿨는지 보여 줍니다';
+  const head = effects.slice(0, max).map(describeLeverEffect).join(' / ');
+  return effects.length > max ? `${head} / 외 ${effects.length - max}개` : head;
 }
