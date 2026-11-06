@@ -8,7 +8,9 @@ import { matureCask, restLot } from './maturation';
 import { assignSlot, deliverOwnedCasks, runContamination, runOffice, runStaffLifecycle, runTourism, slotClimate } from './ops';
 import { emptyCaskOf } from './newGame';
 import { fermentationClimate, fermentDaysAt } from './production';
-import { runSales, updateAwareness, updateTrends } from './market';
+import { runSales, updateAwareness, updateExportAwareness, updateTrends } from './market';
+import { EXPORT_MARKETS } from './content/exports';
+import { refreshExportOffers, runExportContracts } from './exportDeals';
 import { batchEnergyCost, simulateBatch, stillDefOf, volumeDiscounts } from './production';
 import { siteOf } from './content/regions';
 import { collectReceivables, fulfillRetail, OEM, refreshDeals } from './deals';
@@ -245,7 +247,24 @@ export function advanceMonth(prev: GameState): GameState {
   fulfillContracts(s, report);
 
   fulfillRetail(s, report);
-  const { results: sales, retail } = runSales(s, rngFor(s.seed, s.month, 'sales'), monthOfYear);
+  updateExportAwareness(s); // 판매 전에 갱신 — 면세는 국내 인지도가 첫 달부터 넘어온다
+  const { results: sales, retail, exports } = runSales(s, rngFor(s.seed, s.month, 'sales'), monthOfYear);
+  // 수출 (#95·#101): 수입사 매입가(출고가 × 계약 비율)가 대금 지급 기한 뒤 들어오고(국내 주세 면세), 운임은 우리가, 마케팅 분담은 매달 낸다
+  if (s.exports?.length) {
+    report.exports = exports;
+    report.exportRevenue = exports.reduce((t, x) => t + x.revenue, 0);
+    for (const m of new Set(exports.map((x) => x.marketId))) {
+      const e = s.exports.find((x) => x.marketId === m);
+      const amount = exports.filter((x) => x.marketId === m).reduce((t, x) => t + x.revenue, 0);
+      if (amount <= 0) continue;
+      if (e?.paymentDelay) s.receivables.push({ dueMonth: s.month + e.paymentDelay, amount, label: `${e.partner ?? EXPORT_MARKETS[m].nameKo} 수출 대금` });
+      else s.cash += amount;
+    }
+    const freight = exports.reduce((t, x) => t + x.freight, 0);
+    if (freight > 0) { s.cash -= freight; report.expenses.export_freight = freight; }
+    const fixed = runExportContracts(s, report);
+    if (fixed > 0) { s.cash -= fixed; report.expenses.export_fixed = fixed; }
+  }
   report.sales = sales.map(({ overflowBottles: _o, distribution: _d, ...x }) => x);
   report.retailCapacityCases = retail.capacityCases;
   report.retailSoldCases = retail.soldCases;
@@ -294,6 +313,7 @@ export function advanceMonth(prev: GameState): GameState {
   refreshCaskBids(s, rngFor(s.seed, s.month, 'caskbids'));
   updateBulkIndex(s, rngFor(s.seed, s.month, 'bulk'));
   refreshDeals(s, rngFor(s.seed, s.month, 'deals'));
+  refreshExportOffers(s, rngFor(s.seed, s.month, 'export-offers'));
   // 그레인 현물 시장이 물량을 소화한다 (#81)
   if (s.spotSoldLPA) s.spotSoldLPA = { grain: s.spotSoldLPA.grain * BULK.spotDecay };
 

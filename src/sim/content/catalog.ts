@@ -232,7 +232,7 @@ export const BULK = {
 };
 
 /**
- * 병 가격·매력도의 숙성 프리미엄 (결정 #95) [튜닝]. 3년(×1.18)까지는 그대로(`agePerception`의 어린 위스키 구간),
+ * 병 가격·매력도의 숙성 프리미엄 (결정 #108) [튜닝]. 3년(×1.18)까지는 그대로(`agePerception`의 어린 위스키 구간),
  * 그 뒤로는 캐스크 원액의 벌크 기준가치(BULK.agePerYear·grainAgePerYear)와 같은 비율로 오른다 —
  * 오래 묵힌 원액을 병에 담아도 캐스크로 두는 것보다 가치가 덜 오르지 않게. 몰트 6년 ×1.62, 10년 ×2.21, 12년 ×2.51 (이전 연 6%·12년 상한: ×1.36·×1.60·×1.72).
  * capYears 이후로는 오르지 않는다 (게임 10년 안에는 닿지 않는 상한)
@@ -245,7 +245,7 @@ export const AGE_PREMIUM = {
   perYear: { whisky: BULK.agePerYear, grain_whisky: BULK.grainAgePerYear, blended_whisky: (BULK.agePerYear + BULK.grainAgePerYear) / 2 } as Partial<Record<ProductCategory, number>>,
   /** 3년 이후 상승률 배수 — 1이면 벌크와 같은 비율 [튜닝] */
   rateScale: 1,
-  /** 실험용: true면 결정 #95 이전 공식(3년 1.18, 이후 연 +0.06, 12년 상한) */
+  /** 실험용: true면 결정 #108 이전 공식(3년 1.18, 이후 연 +0.06, 12년 상한) */
   legacy: false,
 };
 

@@ -8,7 +8,7 @@ import { Badge, Button, Card, Empty, Meter, Stat, Table, Td } from '../kit';
 import { EventsCard } from './Events';
 
 const EXPENSE_LABEL: Record<string, string> = {
-  production: '생산(원재료·에너지)', distribution: '유통비(채널·물류)', penalty: '계약 위약금', salaries: '급여', overhead: '관리비', heating: '난방비', storage: '캐스크 보관비·보험', maintenance: '설비 유지비', marketing: '마케팅', interest: '이자', principal: '원금 상환',
+  production: '생산(원재료·에너지)', distribution: '유통비(채널·물류)', penalty: '계약 위약금', export_freight: '수출 운임', export_fixed: '수출 현지 비용', salaries: '급여', overhead: '관리비', heating: '난방비', storage: '캐스크 보관비·보험', maintenance: '설비 유지비', marketing: '마케팅', interest: '이자', principal: '원금 상환',
 };
 
 export function Dashboard() {

@@ -8,6 +8,8 @@ import { executeBlend, type BlendComponent, type BottleOptions } from './blendin
 import { MAX_RECHAR, recharCask } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
+import { acceptExportOffer, cancelExport } from './exportDeals';
+import { EXPORT_MARKETS, type ExportMarketId } from './content/exports';
 import { applyWaterPermit, equipmentCost, inventoryLoanRoom, inventoryLtv } from './sites';
 import { OEM, RETAIL_DEAL, startOem, startRetail } from './deals';
 import type { CaskTypeId, GameState, Recipe } from './types';
@@ -29,6 +31,9 @@ export type Action =
   /** 오염 캐스크 원액 폐기 */
   | { type: 'dumpCask'; caskId: string }
   | { type: 'takeInvestment'; offerId: string }
+  /** 수출 (#95·#101): 수입사 제안 수락 / 계약 해지 */
+  | { type: 'acceptExportOffer'; offerId: string }
+  | { type: 'closeExport'; marketId: ExportMarketId }
   | { type: 'sellCaskOwnership'; caskId: string }
   | { type: 'rechar'; caskId: string }
   | { type: 'bottle'; components: BlendComponent[]; options: BottleOptions }
@@ -166,6 +171,18 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       const { contents: _c, contamination: _t, contaminationKnown: _k, slot: _s, ...rest } = cask;
       s.casks[ci] = { ...rest, activity: cask.contamination ? cask.activity * 0.5 : cask.activity };
       return { state: s, message: `캐스크 ${cask.id} 원액 폐기${cask.contamination ? ' — 오염 통은 활성도 절반' : ''}` };
+    }
+    case 'acceptExportOffer': {
+      const o = (s.exportOffers ?? []).find((x) => x.id === a.offerId);
+      const err = acceptExportOffer(s, a.offerId);
+      if (err || !o) return fail(prev, err ?? '수입사 제안이 없습니다');
+      const e = s.exports!.find((x) => x.marketId === o.marketId)!;
+      return { state: s, message: `${o.partner}(${EXPORT_MARKETS[o.marketId].nameKo}) 수입사 계약 — 매입가 출고가의 ${Math.round(o.priceFactor * 100)}%, ${e.readyMonth - s.month}개월 뒤 판매 시작` };
+    }
+    case 'closeExport': {
+      const fee = cancelExport(s, a.marketId);
+      if (fee == null) return fail(prev, '계약한 시장이 아닙니다');
+      return { state: s, message: `${EXPORT_MARKETS[a.marketId].nameKo} 수입사 계약 해지${fee ? ` — 위약금 ${fee.toLocaleString()}원` : ''} (시장 개척비는 돌려받지 못합니다)` };
     }
     case 'takeInvestment': {
       const o = INVESTMENT_OFFERS.find((x) => x.id === a.offerId);

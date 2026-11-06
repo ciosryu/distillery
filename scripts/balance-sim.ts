@@ -6,6 +6,7 @@ import { dutyFreeSlotBlocker, inventoryLoanRoom, inventoryLtv, OEM, oemPackageCo
 import { EVENTS } from '../src/sim/content/events';
 import { RETAIL } from '../src/sim/ops';
 import { AGE_PREMIUM, BULK, CASK_STORAGE, EQUIPMENT } from '../src/sim/content/catalog';
+import { EXPORT_MARKETS, EXPORT_SALES } from '../src/sim/content/exports';
 const EQUIPMENT_KIND = (id: string) => EQUIPMENT[id]?.kind;
 
 const SEEDS = Number(process.argv[2] ?? 12);
@@ -23,7 +24,12 @@ const DEFEND = process.env.NO_DEFEND !== '1';
 if (process.env.OVERFLOW_FEE) RETAIL.overflowFeeRate = Number(process.env.OVERFLOW_FEE);
 if (process.env.OVERFLOW_SHARE) RETAIL.overflowShare = Number(process.env.OVERFLOW_SHARE);
 if (process.env.GRAIN_DEPTH) REGIONS[REGION].grainSpotDepthLPA = Number(process.env.GRAIN_DEPTH);
-// 비교 실험용: AGE_PREMIUM=old 면 결정 #95 이전의 병 숙성 프리미엄(3년 이후 연 +0.06, 12년 상한)
+// 실험용: 재고 부족 시 국내·수출 배분 (proportional | domestic)
+if (process.env.EXPORT_ALLOC) EXPORT_SALES.allocation = process.env.EXPORT_ALLOC as typeof EXPORT_SALES.allocation;
+// 실험용: 수입사 매입가 비율 범위(예: 0.85,0.95)·마케팅 분담 배수 덮어쓰기
+if (process.env.EXPORT_PF) { const [lo, hi] = process.env.EXPORT_PF.split(',').map(Number); for (const m of Object.values(EXPORT_MARKETS)) m.offer.priceFactor = [lo!, hi!]; }
+if (process.env.EXPORT_MKT) for (const m of Object.values(EXPORT_MARKETS)) m.monthlyCost *= Number(process.env.EXPORT_MKT);
+// 비교 실험용: AGE_PREMIUM=old 면 결정 #108 이전의 병 숙성 프리미엄(3년 이후 연 +0.06, 12년 상한)
 if (process.env.AGE_PREMIUM === 'old') AGE_PREMIUM.legacy = true;
 if (process.env.AGE_RATE) AGE_PREMIUM.rateScale = Number(process.env.AGE_RATE);
 // 튜닝 실험용: 캐스크 보관비 배수 (#61 보유 비용)
@@ -62,7 +68,7 @@ const rid = (s: GameState, kind: SpiritKind) => recipeOf(s, kind)?.id;
 const BIG_RECIPE = 'B2B 몰트';
 
 /** 제주: 입지 원료 소주 원액 일부를 면세 기념품 한정판(40%·500ml)으로 — 매대가 비었을 때만 */
-/** 면세 한정판 종류 (결정 #95 검증용) — soju(기본: 고소리술 기념품) | whisky(위스키 한정판만) | both. 위스키 한정판은 DF_WHISKY_YEARS년 이상 캐스크로 [실험용] */
+/** 면세 한정판 종류 (결정 #108 검증용) — soju(기본: 고소리술 기념품) | whisky(위스키 한정판만) | both. 위스키 한정판은 DF_WHISKY_YEARS년 이상 캐스크로 [실험용] */
 const DF_MODE = process.env.DF_MODE ?? 'soju';
 const DF_WHISKY_YEARS = Number(process.env.DF_WHISKY_YEARS ?? 0);
 function bottleSouvenir(s: GameState): GameState {
@@ -111,11 +117,15 @@ function fillMalt(s: GameState, maxLPA = Infinity, kind: 'malt' | 'grain' = 'mal
 const OLD_BOTTLE = process.env.OLD_BOTTLE === '1';
 const OLD_GRAIN = process.env.OLD_GRAIN === '1';
 const BOTTLES_PER_CASK = 330;
-function whiskyDemandLastMonth(s: GameState): number {
-  const ids = new Set(s.products.filter((p) => p.category === 'whisky').map((p) => p.id));
-  return s.reports.at(-1)?.sales.filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0) ?? 0;
+/** 지난달 이 주종의 수요 — 국내 + 수출(#95) */
+function demandLastMonth(s: GameState, cat: ProductCategory): number {
+  const ids = new Set(s.products.filter((p) => p.category === cat).map((p) => p.id));
+  const r = s.reports.at(-1);
+  if (!r) return 0;
+  return r.sales.filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0) + (r.exports ?? []).filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0);
 }
-/** 숙성 라인 (결정 #95 검증용): aged = 국내 싱글 몰트와 별도로 AGED_YEARS(기본 6)년 이상 캐스크만 쓰는 고연산 제품,
+const whiskyDemandLastMonth = (s: GameState) => demandLastMonth(s, 'whisky');
+/** 숙성 라인 (결정 #108 검증용): aged = 국내 싱글 몰트와 별도로 AGED_YEARS(기본 6)년 이상 캐스크만 쓰는 고연산 제품,
  *  twin = 같은 방식의 두 번째 라인을 연수 조건 없이(대조군 — 제품 하나를 더 내는 효과만). 둘 다 수요를 따라 병입한다 */
 const AGED_LINE_YEARS = Number(process.env.AGED_YEARS ?? 6);
 let agedYears = 0;
@@ -123,7 +133,10 @@ const AGED_PREFIX = '고연산 싱글 몰트';
 const isAgedLine = (name: string) => name.startsWith(AGED_PREFIX);
 function lineDemandLastMonth(s: GameState, aged: boolean): number {
   const ids = new Set(s.products.filter((p) => p.category === 'whisky' && isAgedLine(p.name) === aged).map((p) => p.id));
-  return s.reports.at(-1)?.sales.filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0) ?? 0;
+  const r = s.reports.at(-1);
+  if (!r) return 0;
+  // 국내 + 수출 (#95 수출 시스템)
+  return r.sales.filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0) + (r.exports ?? []).filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0);
 }
 /** 숙성용으로 떼어 두는 캐스크: 통입 월(원액 생산 월)이 AGED_EVERY개월마다 한 번인 것(기본 5 → 생산의 약 20%).
  *  이 봇은 수요가 공급보다 커서 떼어 두지 않으면 모든 캐스크가 3년에 병입된다 */
@@ -184,10 +197,7 @@ function bridgeSourced(s: GameState): GameState {
 
 /** 그레인 수직계열화: 36개월 이후 그레인 2 + 몰트 1 캐스크로 블렌디드 위스키를 병입 */
 /** v1.4(#84): 블렌디드도 수요를 따라 병입한다 — 지난달 수요의 1.5개월치까지, 한 번에 그레인 2n + 몰트 n 캐스크(n ≤ 4). OLD_GRAIN=1이면 옛 정책 */
-function blendedDemandLastMonth(s: GameState): number {
-  const ids = new Set(s.products.filter((p) => p.category === 'blended_whisky').map((p) => p.id));
-  return s.reports.at(-1)?.sales.filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0) ?? 0;
-}
+const blendedDemandLastMonth = (s: GameState) => demandLastMonth(s, 'blended_whisky');
 function bottleBlended(s: GameState): GameState {
   const stock = stockOf(s, 'blended_whisky');
   const target = OLD_GRAIN ? 1500 : Math.max(1500, blendedDemandLastMonth(s) * 1.5);
@@ -204,6 +214,58 @@ function bottleBlended(s: GameState): GameState {
 }
 
 /** v1.0 운영: 빈 통을 미리 쿠퍼리지에 주문하고, 소매 역량이 넘치면 영업 직원을 늘린다 */
+/** v1.5(#95) 수출 → v1.6(#104) 재고 여유 기준: 숙성 원액은 정해진 양뿐이라, 국내 수요를 못 채우는데 수출하면
+ *  정가 판매를 매입가(출고가의 55~75%)로 바꾸는 셈이다. 그래서 병입 가능한 3년 숙성 원액이 국내 수요 EXPORT_SURPLUS개월 치를
+ *  넘을 때만 제안을 받고(면세점은 36개월~, 해외는 48개월~, 최대 EXPORT_MAX곳), 여유가 EXPORT_SHORT개월 치 아래로 줄면
+ *  병당 순수입이 가장 낮은 시장부터 하나씩 철수한다. 진출 12개월 뒤 최근 6개월 공헌이익(매입가 − 운임 − 원가)이 마케팅 분담보다 작아도 철수.
+ *  EXPORT_NAIVE=1이면 v1.5 정책(재고 여유를 보지 않음). NO_EXPORT=1이면 수출 안 함 */
+const NO_EXPORT = process.env.NO_EXPORT === '1';
+const EXPORT_NAIVE = process.env.EXPORT_NAIVE === '1';
+const EXPORT_SURPLUS = Number(process.env.EXPORT_SURPLUS ?? 12);
+const EXPORT_SHORT = Number(process.env.EXPORT_SHORT ?? 4);
+/** 최근 3개월 국내(수출 제외) 위스키 월 수요 */
+function domesticWhiskyDemand(s: GameState): number {
+  const ids = new Set(s.products.filter((p) => p.category === 'whisky').map((p) => p.id));
+  const rs = s.reports.slice(-3);
+  return rs.length ? rs.reduce((t, r) => t + r.sales.filter((x) => ids.has(x.productId)).reduce((u, x) => u + x.demandBottles, 0), 0) / rs.length : 0;
+}
+/** 병입 가능한 숙성 원액(3년 이상 자사 몰트 캐스크 + 병입 재고)이 국내 수요 몇 개월 치인가 */
+function whiskySurplusMonths(s: GameState): number {
+  const ready = s.casks.filter((c) => c.contents && c.contents.oakMonths >= 36 && !c.contents.sourced).length * BOTTLES_PER_CASK + stockOf(s, 'whisky');
+  return ready / Math.max(100, domesticWhiskyDemand(s));
+}
+function exportPolicy(s: GameState): GameState {
+  if (NO_EXPORT) return s;
+  const whisky = s.products.filter((p) => p.category === 'whisky' && p.stockBottles > 0);
+  const aged36 = whisky.some((p) => (p.oakMonths ?? 0) >= 36);
+  const MAX = Number(process.env.EXPORT_MAX ?? 3);
+  const surplus = whiskySurplusMonths(s);
+  for (const o of [...(s.exportOffers ?? [])]) {
+    if ((s.exports ?? []).length >= MAX) break;
+    const from = o.marketId === 'DF' ? 36 : 48;
+    const ok = o.marketId === 'DF' ? whisky.length > 0 : aged36;
+    if (!ok || s.month < from) continue;
+    if (!EXPORT_NAIVE && surplus < EXPORT_SURPLUS) continue;
+    if (s.cash > o.entryCost + 200_000_000) s = act(s, { type: 'acceptExportOffer', offerId: o.id });
+  }
+  const netPerBottle = (e: NonNullable<GameState['exports']>[number]) => {
+    const xs = s.reports.slice(-6).flatMap((r) => (r.exports ?? []).filter((x) => x.marketId === e.marketId));
+    const b = xs.reduce((t, x) => t + x.bottles, 0);
+    return b ? xs.reduce((t, x) => t + x.revenue - x.freight, 0) / b : 0;
+  };
+  if (!EXPORT_NAIVE && surplus < EXPORT_SHORT && (s.exports ?? []).length) {
+    const worst = [...s.exports!].sort((a, b) => netPerBottle(a) - netPerBottle(b))[0]!;
+    s = act(s, { type: 'closeExport', marketId: worst.marketId });
+  }
+  for (const e of s.exports ?? []) {
+    if (s.month - e.readyMonth < 12) continue;
+    const recent = s.reports.slice(-6).flatMap((r) => (r.exports ?? []).filter((x) => x.marketId === e.marketId));
+    const margin = recent.reduce((t, x) => t + x.revenue - x.freight - x.bottles * (s.products.find((p) => p.id === x.productId)?.unitCost ?? 0), 0) / 6;
+    if (margin < (e.marketingPerMonth ?? EXPORT_MARKETS[e.marketId].monthlyCost)) s = act(s, { type: 'closeExport', marketId: e.marketId });
+  }
+  return s;
+}
+
 function operations(s: GameState, strategy: Strategy): GameState {
   // 비운 오염 통은 재탄화해서 다시 쓴다
   for (const c of s.casks.filter((x) => !x.contents && x.contamination && x.recharCount < 2)) if (s.cash > 100_000_000) s = act(s, { type: 'rechar', caskId: c.id });
@@ -224,6 +286,7 @@ function operations(s: GameState, strategy: Strategy): GameState {
     const need = EVENTS.filter((e) => e.defense && (atSite(e) || (!e.sitesOnly && (!e.regions || e.regions.includes(s.regionId))))).map((e) => e.defense!).find((id) => !s.equipment.some((x) => x.catalogId === id));
     if (need) s = act(s, { type: 'buyEquipment', catalogId: need });
   }
+  s = exportPolicy(s);
   void strategy;
   return s;
 }
@@ -286,8 +349,9 @@ function start(s: GameState, strategy: Strategy): GameState {
     const { id: _id, ...rest } = base;
     s = act(s, { type: 'saveRecipe', recipe: { ...rest, name: GRAIN_RECIPE, kind: 'grain', stillId: col.id, mashBill: [{ ingredientId: 'corn', ratio: 0.9 }, { ingredientId: 'malt_unpeated', ratio: 0.1 }], fermentDays: 3, runs: 1 } });
   }
-  // v1.4(#84): 그레인형도 몰트는 브랜드형과 같은 7배치(발효조 2기 추가) — 4배치면 #82 이후 위스키 판매에서 뒤처진다
-  if (strategy === 'grain' && !OLD_GRAIN) {
+  // 실험(#84, 기각): 그레인형 몰트 7배치 — 디스틸러 운전 한도를 몰트가 차지해 그레인 계약을 못 채우고(1~3년차 위약금 약 1억)
+  // 한국 파산 5 → 19/20, 일본 9 → 16/20. GRAIN_MALT7=1로만 켠다
+  if (strategy === 'grain' && process.env.GRAIN_MALT7 === '1') {
     s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
     s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
     return act(s, { type: 'setOrder', recipeId: rid(s, 'malt')!, batchesPerMonth: 7 });
@@ -508,7 +572,7 @@ function diag(strategy: Strategy, seed: number, s: GameState): void {
     const exp: Record<string, number> = {};
     for (const r of rs) for (const [k, v] of Object.entries(r.expenses)) exp[k] = (exp[k] ?? 0) + v;
     return {
-      retail: rs.reduce((t, r) => t + r.revenue, 0), bulk: rs.reduce((t, r) => t + r.bulkRevenue, 0), tourism: rs.reduce((t, r) => t + (r.tourismRevenue ?? 0), 0),
+      retail: rs.reduce((t, r) => t + r.revenue, 0), bulk: rs.reduce((t, r) => t + r.bulkRevenue, 0), tourism: rs.reduce((t, r) => t + (r.tourismRevenue ?? 0), 0), export: rs.reduce((t, r) => t + (r.exportRevenue ?? 0), 0),
       penalty: rs.reduce((t, r) => t + r.bulk.reduce((u, b) => u + b.penalty, 0), 0), exp,
     };
   };
@@ -551,7 +615,7 @@ function diag(strategy: Strategy, seed: number, s: GameState): void {
   }));
 }
 
-interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWorth: number; bookWorth: number; firstPositive: number; y5retail: number; y5bulk: number }
+interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWorth: number; bookWorth: number; firstPositive: number; y5retail: number; y5bulk: number; exportShare: number; markets: number }
 
 function play(strategy: Strategy, seed: number): Result {
   let s = newGame({ seed, region: REGION, site: SITE });
@@ -575,10 +639,14 @@ function play(strategy: Strategy, seed: number): Result {
   return {
     strategy, bankrupt: s.status === 'bankrupt', minCash: lo, netWorth: s.status === 'bankrupt' ? -Infinity : netWorth(s), bookWorth: s.status === 'bankrupt' ? -Infinity : bookWorth(s), firstPositive: fp,
     y5retail: y5.reduce((t, r) => t + r.revenue, 0), y5bulk: y5.reduce((t, r) => t + r.bulkRevenue, 0),
+    // 수출 지표 (#104): 전 기간 병입 매출 중 수출(수입사 매입가) 비중, 한 번이라도 진출한 시장 수
+    // report.revenue에는 회수한 외상(수출 대금 포함)이 섞여 있으므로 국내 병입 매출은 sales에서 직접 센다
+    exportShare: (() => { const ex = s.reports.reduce((t, r) => t + (r.exportRevenue ?? 0), 0); const dom = s.reports.reduce((t, r) => t + r.sales.reduce((u, x) => u + x.revenue, 0), 0); return dom + ex > 0 ? ex / (dom + ex) : 0; })(),
+    markets: (s.exportEntered ?? []).length,
   };
 }
 
-// 전략은 쉼표로 여러 개 지정할 수 있다 (예: brand,aged,twin). aged·twin(결정 #95 검증용)은 all에 넣지 않는다
+// 전략은 쉼표로 여러 개 지정할 수 있다 (예: brand,aged,twin). aged·twin(결정 #108 검증용)은 all에 넣지 않는다
 const list: Strategy[] = WHICH === 'all' ? ['brand', 'hybrid', 'expand', 'grain', ...(SITE_STRATEGY[SITE_KEY] ? ['site' as const] : [])] : (WHICH.split(',') as Strategy[]);
 const results: Record<Strategy, Result[]> = { brand: [], hybrid: [], expand: [], grain: [], site: [], aged: [], twin: [] };
 if (SITE_STRATEGY[SITE_KEY]) console.log(`site 전략 = ${SITE_STRATEGY[SITE_KEY]}`);
@@ -612,7 +680,7 @@ for (const st of list) {
   const nw = alive.map((r) => r.netWorth);
   const sd = Math.sqrt(avg(nw.map((v) => (v - avg(nw)) ** 2)));
   const fps = rs.filter((r) => r.firstPositive >= 0).map((r) => r.firstPositive);
-  console.log(`${st.padEnd(7)} | 파산 ${rs.length - alive.length}/${rs.length} | 순자산(${MONTHS}m) 평균 ${eok(avg(nw))} ±${eok(sd)} · 원가기준 ${eok(avg(alive.map((r) => r.bookWorth)))} | 최저 현금 평균 ${eok(avg(rs.map((r) => r.minCash)))} | 흑자 전환 평균 ${Math.round(avg(fps))}개월 | 5년차 매출 병입 ${eok(avg(rs.map((r) => r.y5retail)))} + B2B ${eok(avg(rs.map((r) => r.y5bulk)))} | 1위 ${wins[st] ?? 0}회`);
+  console.log(`${st.padEnd(7)} | 파산 ${rs.length - alive.length}/${rs.length} | 순자산(${MONTHS}m) 평균 ${eok(avg(nw))} ±${eok(sd)} · 원가기준 ${eok(avg(alive.map((r) => r.bookWorth)))} | 최저 현금 평균 ${eok(avg(rs.map((r) => r.minCash)))} | 흑자 전환 평균 ${Math.round(avg(fps))}개월 | 5년차 매출 병입 ${eok(avg(rs.map((r) => r.y5retail)))} + B2B ${eok(avg(rs.map((r) => r.y5bulk)))} | 수출 비중 ${(avg(rs.map((r) => r.exportShare)) * 100).toFixed(1)}% · 진출 ${avg(rs.map((r) => r.markets)).toFixed(1)}곳 | 1위 ${wins[st] ?? 0}회`);
 }
 const dist = (w: Record<string, number>) => [...list, '전멸'].map((st) => `${st} ${w[st] ?? 0}`).join(' · ');
 console.log(`\n[${REGION}${SITE ? '/' + SITE : ''}] 시드별 1위 분포(시가 평가): ${dist(wins)}`);

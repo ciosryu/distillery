@@ -3,7 +3,7 @@ import {
   advanceMonths, annuityPayment, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, categorize, demandFor, evaluate, evaporate, heartsFraction, spotBidPerLPA, spotQuote,
   makeContractOffer, makeCraftContractOffer, contractAgingImpact, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
   appeal, applyEffects, buyersFor, presetRecipes, validateRecipe, type Product,
-  agePerception, suggestedPrice, dutyFreeSuggestedPrice, spotSaturation, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
+  agePerception, suggestedPrice, dutyFreeSuggestedPrice, spotSaturation, EXPORT_MARKETS, exportShelfPrice, exportEligible, exportDemandFor, makeExportOffer, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
 } from './index';
 import { overhangFactor, ownsFacility, retailCapacityCases, slotClimate } from './ops';
 import { AGE_PREMIUM, EQUIPMENT } from './content/catalog';
@@ -379,7 +379,7 @@ describe('지역 (v0.6)', () => {
     expect(agePerception(0)).toBeCloseTo(0.472, 2);
     expect(agePerception(12)).toBeLessThan(0.8);
     expect(agePerception(35.999)).toBeCloseTo(agePerception(36), 2);
-    // 3년 이후는 벌크 가치와 같은 비율 (결정 #95, 이전 12년 ×1.72)
+    // 3년 이후는 벌크 가치와 같은 비율 (결정 #108, 이전 12년 ×1.72)
     expect(agePerception(144)).toBeCloseTo(1.18 * 3.4 / 1.6, 5);
   });
 
@@ -616,6 +616,7 @@ describe('v1.0 운영 시스템', () => {
 
   it('에이징 커브(근속 기준): 근속 20년 전에는 스탯이 꺾이지 않고, 넘으면 꺾인다', () => {
     let s = newGame({ seed: 3 });
+    s.cash = 1e11; // 매출 없이 4년을 돌리므로 파산해서 진행이 멈추지 않게
     const x = s.staff[0]!;
     x.ageAtHire = 20;
     s.month = 200; x.hiredMonth = 0; const before = { ...x.stats };
@@ -623,6 +624,7 @@ describe('v1.0 운영 시스템', () => {
     const st = s.staff[0]!.stats;
     expect(st.a >= before.a && st.b >= before.b && st.c >= before.c).toBe(true); // 레벨업으로 오를 수는 있어도 꺾이지 않는다
     s.month = 300;
+    s.staff[0]!.level = 1000; // 레벨업(스탯 상승)이 하락을 가리지 않게
     const mid = { ...s.staff[0]!.stats };
     s = advanceMonths(s, 24);
     const after = s.staff[0]!.stats;
@@ -694,7 +696,48 @@ describe('v1.0 운영 시스템', () => {
   });
 });
 
-describe('병 가격의 숙성 프리미엄 (결정 #95)', () => {
+describe('수출 (#95)', () => {
+  const whisky = (over: Partial<Product> = {}): Product => ({ id: 'w', name: 'w', category: 'whisky', ageYears: 3, oakMonths: 40, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 100, style: null, sourcedShare: 0, stockBottles: 1000, price: 40_000, unitCost: 12_000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, ...over });
+
+  it('수출 소비자가 = ((출고가+운임)×(1+관세) + 현지 주세) × 유통 배수 × (1+부가세)', () => {
+    const m = EXPORT_MARKETS.UK;
+    const p = whisky();
+    const lpa = 0.7 * 0.46;
+    const expected = ((40_000 + m.freightPerBottle.KR) * (1 + m.tariff.KR) + m.excisePerLPA * lpa) * m.channelMultiple * (1 + m.vat);
+    expect(exportShelfPrice({ regionId: 'KR' }, p, m)).toBeCloseTo(expected, 6);
+    // 면세점은 세금이 없어 같은 출고가라도 영국보다 싸다
+    expect(exportShelfPrice({ regionId: 'KR' }, p, EXPORT_MARKETS.DF)).toBeLessThan(exportShelfPrice({ regionId: 'KR' }, p, m));
+  });
+
+  it('영국은 3년 미만 위스키를 받지 않는다', () => {
+    expect(exportEligible(whisky({ oakMonths: 24 }), EXPORT_MARKETS.UK)).toBe(false);
+    expect(exportEligible(whisky({ oakMonths: 24 }), EXPORT_MARKETS.US)).toBe(true);
+    expect(exportEligible(whisky({ category: 'baijiu' }), EXPORT_MARKETS.US)).toBe(false);
+  });
+
+  it('수입사 계약(#101) → 준비 기간 뒤 판매, 수출분은 국내 주세가 없고 매입가는 출고가 × 계약 비율, 대금은 3개월 뒤', () => {
+    let s = newGame({ seed: 41 });
+    s = { ...s, cash: 1e10, awareness: 0.5, products: [whisky({ stockBottles: 5000 })] };
+    const offer = makeExportOffer(s, 'DF', mulberry32(1));
+    s.exportOffers = [offer];
+    s = applyAction(s, { type: 'acceptExportOffer', offerId: offer.id }).state;
+    expect(s.exports).toHaveLength(1);
+    expect(s.cash).toBe(1e10 - EXPORT_MARKETS.DF.entryCost);
+    const before = advanceMonths(s, 1);
+    expect(before.reports.at(-1)!.exports?.reduce((t, x) => t + x.bottles, 0) ?? 0).toBe(0); // 아직 준비 중
+    expect(before.reports.at(-1)!.expenses.export_fixed).toBe(offer.marketingPerMonth);
+    const after = advanceMonths(s, EXPORT_MARKETS.DF.entryMonths + 1);
+    const r = after.reports.at(-1)!;
+    const sold = r.exports!.reduce((t, x) => t + x.bottles, 0);
+    expect(sold).toBeGreaterThan(0);
+    expect(r.exportRevenue).toBe(Math.round(sold * 40_000 * offer.priceFactor));
+    expect(r.expenses.export_freight).toBe(sold * EXPORT_MARKETS.DF.freightPerBottle.KR);
+    expect(after.receivables.some((x) => x.dueMonth === after.month - 1 + 3 && x.label.includes('수출'))).toBe(true);
+    expect(exportDemandFor(after, after.products[0]!, after.exports![0]!, 1)).toBeGreaterThan(0);
+  });
+});
+
+describe('병 가격의 숙성 프리미엄 (결정 #108)', () => {
   const lot = (oakMonths: number, kind: 'malt' | 'grain' = 'malt'): SpiritLot => ({ id: 'm', name: 'm', kind, volumeL: 190, abv: 0.6, flavor: { fresh_fruit: 30, cereal: 20, vanilla_caramel: 40, integration: 50, harshness: 25 }, createdMonth: 0, oakMonths, sourced: false, costPerLPA: 9_000 });
   const product = (over: Partial<Product> = {}): Product => ({ id: 'p', name: 'p', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 80, style: null, sourcedShare: 0, stockBottles: 5000, price: 60_000, unitCost: 20_000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, ...over });
   const at = (y: number) => ({ ageYears: y, oakMonths: y * 12 });

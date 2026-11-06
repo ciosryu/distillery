@@ -1,0 +1,109 @@
+import { EXPORT_MARKETS, exportMarketsFor } from './content/exports';
+import { exportEligible } from './market';
+import type { Rng } from './rng';
+import type { ExportEntry, ExportOffer, GameState, MonthReport } from './types';
+import { nid } from './util';
+
+// 수입사 계약 (#101, docs/design/export.md §3) — 시장마다 수입사 1곳(독점). 수치 [튜닝]
+
+export const EXPORT_DEAL = {
+  /** 시장별 월 제안 확률 (품질 70↑ 제품이 있으면 ×1.5) */
+  offerChance: 0.04,
+  offerMonths: 3,
+  paymentDelay: 3,
+  terms: [24, 36],
+  marketingScale: [0.5, 1, 1.5],
+  minScale: [0.75, 1, 1.5],
+  /** 우리가 해지하면 마케팅 분담 몇 달 치를 위약금으로 */
+  cancelMonths: 3,
+  /** 연 최소 물량 미달로 수입사가 끝내면 현지 인지도가 이만큼 남는다 (재진입 대비 기록용) */
+};
+
+/** 이 시장에 지금 팔 수 있는 제품이 있는가 (재고·주종·현지 숙성 규정) */
+export function hasExportableProduct(s: GameState, marketId: ExportOffer['marketId']): boolean {
+  const m = EXPORT_MARKETS[marketId];
+  return s.products.some((p) => p.stockBottles > 0 && !p.dutyFreeOnly && exportEligible(p, m));
+}
+
+export function makeExportOffer(s: GameState, marketId: ExportOffer['marketId'], rng: Rng): ExportOffer {
+  const m = EXPORT_MARKETS[marketId];
+  const [lo, hi] = m.offer.priceFactor;
+  // 품질이 좋을수록 매입가 비율이 높게 제안된다
+  const bestQ = Math.max(0, ...s.products.filter((p) => p.stockBottles > 0 && exportEligible(p, m)).map((p) => p.quality));
+  const q = Math.min(1, Math.max(0, (bestQ - 50) / 30));
+  const priceFactor = Math.round((lo + (hi - lo) * (0.5 * q + 0.5 * rng.next())) * 100) / 100;
+  return {
+    id: nid(s, 'X'), marketId, partner: rng.pick(m.partners), priceFactor,
+    marketingPerMonth: Math.round((m.monthlyCost * rng.pick(EXPORT_DEAL.marketingScale)) / 100_000) * 100_000,
+    termMonths: rng.pick(EXPORT_DEAL.terms),
+    minBottlesPerYear: Math.round((m.offer.minBottlesPerYear * rng.pick(EXPORT_DEAL.minScale)) / 50) * 50,
+    paymentDelay: EXPORT_DEAL.paymentDelay,
+    entryCost: (s.exportEntered ?? []).includes(marketId) ? 0 : m.entryCost,
+    expiresMonth: s.month + EXPORT_DEAL.offerMonths,
+  };
+}
+
+/** 월말: 계약이 없는 시장마다 가끔 수입사 제안이 들어온다 */
+export function refreshExportOffers(s: GameState, rng: Rng): void {
+  s.exportOffers = (s.exportOffers ?? []).filter((o) => o.expiresMonth > s.month);
+  for (const id of exportMarketsFor(s.regionId)) {
+    if ((s.exports ?? []).some((e) => e.marketId === id) || s.exportOffers.some((o) => o.marketId === id)) continue;
+    if (!hasExportableProduct(s, id)) continue;
+    const good = s.products.some((p) => p.stockBottles > 0 && p.quality >= 70 && exportEligible(p, EXPORT_MARKETS[id]));
+    if (rng.chance(EXPORT_DEAL.offerChance * (good ? 1.5 : 1))) s.exportOffers.push(makeExportOffer(s, id, rng));
+  }
+}
+
+/** 제안 수락 (s는 변경 가능한 복제본) — 오류 문구 또는 null */
+export function acceptExportOffer(s: GameState, offerId: string): string | null {
+  const o = (s.exportOffers ?? []).find((x) => x.id === offerId);
+  if (!o) return '수입사 제안이 없습니다';
+  if ((s.exports ?? []).some((e) => e.marketId === o.marketId)) return '이미 계약한 시장입니다 (시장당 수입사 1곳)';
+  if (s.cash < o.entryCost) return '현금이 부족합니다 (시장 개척비)';
+  const m = EXPORT_MARKETS[o.marketId];
+  s.cash -= o.entryCost;
+  const { id: _id, expiresMonth: _e, marketId, ...terms } = o;
+  const ready = s.month + (o.entryCost > 0 ? m.entryMonths : 1);
+  (s.exports ??= []).push({ marketId, ...terms, openedMonth: s.month, readyMonth: ready, awareness: m.awareness.start, totalBottles: 0, yearStartMonth: ready, bottlesThisYear: 0 });
+  (s.exportEntered ??= []).includes(marketId) || s.exportEntered.push(marketId);
+  s.exportOffers = (s.exportOffers ?? []).filter((x) => x.id !== offerId);
+  return null;
+}
+
+/** 우리가 해지 — 마케팅 분담 몇 달 치 위약금. 반환: 위약금 */
+export function cancelExport(s: GameState, marketId: ExportEntry['marketId']): number | null {
+  const e = (s.exports ?? []).find((x) => x.marketId === marketId);
+  if (!e) return null;
+  const fee = Math.round((e.marketingPerMonth ?? 0) * EXPORT_DEAL.cancelMonths);
+  s.cash -= fee;
+  s.exports = (s.exports ?? []).filter((x) => x.marketId !== marketId);
+  return fee;
+}
+
+/** 월말 계약 처리: 마케팅 분담 지출, 연 최소 물량 점검, 기간 만료 시 갱신. 반환: 이번 달 현지 비용 */
+export function runExportContracts(s: GameState, report: MonthReport): number {
+  let fixed = 0;
+  const ended: string[] = [];
+  for (const e of s.exports ?? []) {
+    const m = EXPORT_MARKETS[e.marketId];
+    fixed += e.marketingPerMonth ?? m.monthlyCost;
+    if (e.readyMonth > s.month || e.minBottlesPerYear == null) continue;
+    const start = e.yearStartMonth ?? e.readyMonth;
+    if (s.month - start + 1 >= 12) {
+      if ((e.bottlesThisYear ?? 0) < e.minBottlesPerYear) {
+        ended.push(e.marketId);
+        report.events.push(`${m.nameKo} 수입사 계약 종료`);
+        report.notes.push(`${e.partner}(${m.nameKo})가 계약을 끝냈습니다 — 연 판매 ${(e.bottlesThisYear ?? 0).toLocaleString()}병 < 최소 ${e.minBottlesPerYear.toLocaleString()}병`);
+        continue;
+      }
+      e.yearStartMonth = s.month + 1;
+      e.bottlesThisYear = 0;
+    }
+    if (e.termMonths != null && s.month + 1 >= e.readyMonth + e.termMonths) {
+      e.termMonths += e.termMonths >= 36 ? 36 : 24;
+      report.notes.push(`${e.partner}(${m.nameKo}) 수입사 계약 갱신`);
+    }
+  }
+  if (ended.length) s.exports = (s.exports ?? []).filter((e) => !ended.includes(e.marketId));
+  return fixed;
+}
