@@ -1,6 +1,6 @@
 // 헤드리스 밸런스 시뮬레이션 — 전략별 단순 정책으로 N개 시드를 돌려 파산률·흑자 전환 시점·매출 구성을 본다.
 // 실행: npm run balance [-- 시드수 개월수 전략 지역 입지]   전략 = brand | hybrid | expand | grain | all(기본), 지역 = KR(기본) | JP | TW
-import { advanceMonth, applyAction, bulkValuePerLPA, capacityLPA, spotBidPerLPA, lotQuality, previewBlend, newGame, warehouseCapacity, whiskyMinMonths, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
+import { advanceMonth, applyAction, bulkValuePerLPA, capacityLPA, spotBidPerLPA, lotQuality, monthlyFixedCost, previewBlend, newGame, warehouseCapacity, whiskyMinMonths, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
 import { REGIONS, regionOf, siteOf } from '../src/sim/content/regions';
 import { dutyFreeSlotBlocker, inventoryLoanRoom, inventoryLtv, OEM, oemPackageCost } from '../src/sim';
 import { EVENTS } from '../src/sim/content/events';
@@ -299,6 +299,27 @@ const OLD_EXPAND = process.env.OLD_EXPAND === '1';
 const EXPAND_RECIPE = '증설 몰트';
 const EXPAND_FROM = Number(process.env.EXPAND_FROM ?? 60);
 const EXPAND_MAX_STAGES = Number(process.env.EXPAND_STAGES ?? 1);
+/** 확장형 안전장치 (NO_EXP_SAFETY=1이면 끈다)
+ *  ① 자유 현금흐름: 최근 12개월 월평균 자유 현금흐름이 EXPAND_FCF 이상일 때만 증설한다.
+ *     증설하면 매달 시설자금 원리금(거치 후 약 630만) + 유지비·생산비·캐스크(약 800만), 합계 약 1,400만이 늘어난다.
+ *     여유를 더해 기본 2,000만 (PRD §16.26: 8개 입지 합계, 확장 때문에 생긴 파산 8 → 2).
+ *     파산한 판은 브랜드 사업 자체가 약한 판(같은 시드 브랜드형 순자산 하위)이었고, 거치가 끝나는 84개월 무렵 원리금이 두 배가 돼 무너졌다
+ *  ② 숙성고: 랙 숙성고는 증설 단계가 있을 때만, 짓고 나서도 월 고정비 3개월치가 남을 때만 짓는다
+ *     (예전에는 증설이 없어도 숙성고가 85% 차면 지어서 1.5억이 그대로 묶였다) */
+const EXP_SAFETY = process.env.NO_EXP_SAFETY !== '1';
+const EXPAND_FCF = Number(process.env.EXPAND_FCF ?? 20_000_000);
+/** 판마다 월별 (현금 − 대출 잔액) — 차입·상환에 흔들리지 않는 자유 현금흐름 계산용 */
+const equityByMonth: number[] = [];
+/** 최근 12개월 월평균 자유 현금흐름 = (현금 − 대출 잔액)의 12개월 변화 / 12. 병입비·캐스크·설비 지출까지 다 들어간다 */
+function freeCashFlow12(s: GameState): number {
+  const past = equityByMonth[s.month - 12];
+  return past == null ? -Infinity : (s.cash - s.loans.reduce((t, l) => t + l.balance, 0) - past) / 12;
+}
+/** 증설 단계 = 증설 레시피가 쓰는 증류기 */
+function expansionStills(s: GameState) {
+  const ids = new Set(s.recipes.filter((r) => r.name.startsWith(EXPAND_RECIPE)).map((r) => r.stillId));
+  return s.equipment.filter((e) => ids.has(e.id));
+}
 /** 숙성·증발 뒤 1 LPA에서 나오는 46%·700ml 병 수 (증발 약 15% 가정) */
 const BOTTLES_PER_LPA_AGED = 0.85 / (0.46 * 0.7);
 function maltLPALastMonth(s: GameState): number {
@@ -307,8 +328,7 @@ function maltLPALastMonth(s: GameState): number {
 }
 function expandStaged(s: GameState): GameState {
   // 증설 단계 = 증설 레시피가 쓰는 증류기 (처음 증류기는 고장·수리로 readyMonth가 바뀌므로 readyMonth로 가리면 안 된다)
-  const stageIds = new Set(s.recipes.filter((r) => r.name.startsWith(EXPAND_RECIPE)).map((r) => r.stillId));
-  const stages = s.equipment.filter((e) => stageIds.has(e.id));
+  const stages = expansionStills(s);
   // 지어 놓은 증설 단계는 다 돌린다
   for (const still of stages) {
     const r = s.recipes.find((x) => x.stillId === still.id && x.name.startsWith(EXPAND_RECIPE));
@@ -320,6 +340,7 @@ function expandStaged(s: GameState): GameState {
   const supply = maltLPALastMonth(s) * BOTTLES_PER_LPA_AGED;
   if (demand < supply * Number(process.env.EXPAND_TRIGGER ?? 1.3)) return s;
   const cost = 300_000_000 + 2 * 40_000_000;
+  if (EXP_SAFETY && freeCashFlow12(s) < EXPAND_FCF) return s;
   if (s.cash < cost + 150_000_000 && !s.loans.some((l) => l.offerId === 'facility')) s = act(s, { type: 'takeLoan', offerId: 'facility', amount: 500_000_000 });
   if (s.cash < cost + 100_000_000) return s;
   s = act(s, { type: 'buyEquipment', catalogId: 'pot_onion_1000' });
@@ -336,7 +357,10 @@ function growWarehouse(s: GameState): GameState {
   const filled = s.casks.filter((c) => c.contents).length;
   if (s.casks.length >= warehouseCapacity(s) - 2) for (const c of s.casks.filter((x) => !x.contents).slice(12)) s = act(s, { type: 'sellUsedCask', caskId: c.id });
   const building = s.equipment.some((e) => EQUIPMENT_KIND(e.catalogId) === 'warehouse' && e.readyMonth > s.month);
-  if (!building && filled >= warehouseCapacity(s) * 0.85 && s.cash > 300_000_000) s = act(s, { type: 'buyEquipment', catalogId: 'warehouse_rack_100' });
+  const canBuild = EXP_SAFETY
+    ? expansionStills(s).length > 0 && s.cash - EQUIPMENT.warehouse_rack_100!.cost >= 3 * monthlyFixedCost(s)
+    : s.cash > 300_000_000;
+  if (!building && filled >= warehouseCapacity(s) * 0.85 && canBuild) s = act(s, { type: 'buyEquipment', catalogId: 'warehouse_rack_100' });
   return s;
 }
 
@@ -410,6 +434,7 @@ function siteActions(s: GameState): GameState {
 }
 
 function policy(s: GameState, strategy: Strategy): GameState {
+  equityByMonth[s.month] = s.cash - s.loans.reduce((t, l) => t + l.balance, 0);
   if (strategy === 'site') {
     siteMode = true;
     s = siteActions(s);
@@ -544,6 +569,7 @@ interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWo
 
 function play(strategy: Strategy, seed: number): Result {
   let s = newGame({ seed, region: REGION, site: SITE });
+  equityByMonth.length = 0;
   closedMarkets = new Set();
   exportLog = [];
   let lo = s.cash;
