@@ -17,7 +17,7 @@
 | 세션 | 역할 | 브랜치 | 상태 |
 |---|---|---|---|
 | 공정관리 | PM | `claude/hopeful-tesla-n0kk50` | 진행 중 |
-| 설계 | ARCH | `claude/arch-*` | 진행 중 — #14~#17 머지 완료(결정 #117·#139~#144). 다음: S-4 파일 쪼개기 실행 |
+| 설계 | ARCH | `claude/arch-*` | 진행 중 — #14~#17 머지 완료(결정 #117·#139~#144). S-4 파일 쪼개기 완료(ciosryu/distillery#20). 다음: MVP 단일 화면 |
 | 스코틀랜드 | (규칙 이전 세션) | `claude/hopeful-pascal-wm32n3` | ciosryu/distillery#9 WIP — 아래 "열린 PR" 참고 |
 | 병 가격 숙성 | (규칙 이전 세션) | `claude/fervent-mccarthy-anosrs` | PR #6 닫힘 → **종료 대상** |
 | 확장형 안전장치 | (규칙 이전 세션) | `claude/expand-stage-fix` | ciosryu/distillery#5 |
@@ -38,6 +38,7 @@
 1. `git merge origin/main` — 충돌이 많으면 먼저 자기 브랜치에 코드모드를 돌린다: `npm i --no-save ts-morph@24 && node scripts/codemods/v6-slices.mjs` (자세한 방법: ciosryu/distillery#10 설명 "코드 통합 방법")
 2. 새 필드는 해당 슬라이스에, 옛 세이브 매핑은 `src/sim/migrate.ts`의 `V5_FIELD_MAP`에 넣는다
 3. 결정 번호는 [DECISIONS.md](DECISIONS.md) 예약 표를 따른다. 새 결정은 임시 ID `P-<파트>-<n>`
+4. 파일이 쪼개졌다(ciosryu/distillery#20). 옛 파일의 기호가 어디로 갔는지는 [split-plan.md](design/split-plan.md) §2 표를 "옛 위치 → 새 위치" 지도로 쓴다
 
 | 브랜치 | PR | 따라잡기 |
 |---|---|---|
@@ -58,7 +59,7 @@
 
 | 순서 | 일 | 세션 |
 |---|---|---|
-| 1 | **S-4 파일 쪼개기 실행** — [split-plan.md](design/split-plan.md), PR 한 개·단계별 커밋, 단계마다 골든 동일 (#144) | 설계 |
+| 1 | ~~**S-4 파일 쪼개기 실행**~~ → 완료(ciosryu/distillery#20, 동작 불변·골든 바이트 동일). 파트별 행동 처리기 표·파일 소유는 [skeleton.md](design/skeleton.md) §3 | 설계 |
 | 2 | **MVP 단일 화면** — 현금·평가액 곡선(#138), 샘플 기록만 보이는 숙성고(#136·#143), 빈 자리(#137), 소주·몰트 생산 | 설계 → UI |
 | 3 | 남은 필수 구조 결정 — S-2 브랜드 단위 상태, S-3 지역 추가 = 데이터, S-5 이벤트 난수 스트림, S-6 연구 뼈대, S-7 콘텐츠 JSON 형식, S-9 승패·진행 | 설계 |
 | 4 | **사람 플레이테스트** — MVP 화면이 되면 오너가 한 판(mvp.md §7) | 오너 |
@@ -74,3 +75,4 @@
 | 2026-11-06 | MVP 생존 실험 — 한국 경기 소주 + 몰트로는 70~100% 파산. `scripts/experiments/mvp-survival.ts` |
 | 2026-11-06 | 설계 세션 PR 4개 머지(ciosryu/distillery#14~#17): MVP 경제·MVP 모드·사업 계획서(#139~#142), 병 가격 숙성(#117), 숙성 용기·샘플 기록(#143), 파일 쪼개기 계획(#144). 스키마 v9 |
 | 2026-11-06 | ciosryu/distillery#6 닫음 (#15로 대체). 설계 세션 질문 2~4는 설계 세션에서 진행 |
+| 2026-11-06 | 파일 쪼개기 실행 머지(ciosryu/distillery#20, #144) — PM 확인: typecheck·150 테스트·빌드 통과, KR 밸런스 DIAG·MVP 생존 실험 출력이 `main`과 바이트 동일 |
