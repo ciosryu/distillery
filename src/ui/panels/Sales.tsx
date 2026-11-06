@@ -1,6 +1,7 @@
 import { CATEGORY } from '../../sim/content/categories';
 import { categoryName, consumerPrice, regionOf } from '../../sim/content/regions';
 import { bottleMargin, calendar, coverage, demandFor, DUTY_FREE, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, outboundLogistics, productConsumerPrice, productDutyFreeDemand } from '../../sim';
+import { awarenessOf } from '../../sim/brands';
 import { useGame } from '../../store/game';
 import { num, pct, won } from '../format';
 import { Badge, Card, Empty, NumberField, Stat, Table, Td } from '../kit';
@@ -17,7 +18,7 @@ export function Sales() {
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="브랜드 인지도" value={pct(s.commerce.awareness)} hint="마케팅·판매량·품질로 상승" />
+        <Stat label="브랜드 인지도" value={pct(awarenessOf(s))} hint="마케팅·판매량·품질로 상승" />
         <Stat label="유통 커버리지" value={pct(coverage(s))} hint="영업 직원 네트워크" />
         <Stat label="출고가 → 소비자가 (700ml 40%, 출고가 1만 원 기준)" value={`× ${sample.toFixed(2)}`} hint={region.tax.label} />
         <div className="rounded-lg border border-stone-200 bg-white px-3 py-2 dark:border-stone-800 dark:bg-stone-900">

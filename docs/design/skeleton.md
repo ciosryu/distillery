@@ -24,11 +24,11 @@
 | 항목 | 내용 | 근거 |
 |---|---|---|
 | 플랫폼 | Godot 4 + C#, PC(Steam). TS는 설계 실험실·기준 구현 | #34·#35·#40·#122 |
-| 상태 | 단일 `GameState` v10 = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history·progress) | #118, [architecture.md §3](architecture.md) |
+| 상태 | 단일 `GameState` v11 = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history·progress) | #118, [architecture.md §3](architecture.md) |
 | 시간 | 1턴 = 1개월. 월 틱 0~9단계 파이프라인 + 틱 컨텍스트 | #1·#26, PRD §2.2 |
 | 경계 | `GameEngine` 계약 (명령 → 스냅샷) | architecture.md §3.2 |
 | 난수 | mulberry32, `rngFor(seed, month, stream)` 독립 스트림 | PRD §13.2 |
-| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8 → v9 → v10) | #118, S-8, S-10, S-9 |
+| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8 → v9 → v10 → v11) | #118, S-8, S-10, S-9, S-2 |
 | 테크 게이트 | `isUnlocked(state, key)` 하나로 판정, 키 규칙 고정, Phase 1은 꺼짐 | #118, tech-tree §7 |
 | 설계 규모 | 30년(360턴) · 원액 든 캐스크 2,500개 | #119 |
 | 기후 | 입지 평년값 + AR(1) 이상치, 이벤트는 입력(기온·습도) 충격 | #120 |
@@ -49,7 +49,7 @@
 | 정보 불확실성(샘플링) | §5.6 | `Cask.sampleLog` (샘플 순간의 읽기 기록, S-10) · `commerce.commissions`(블렌딩) | — | `blendTable.ts` (`recordSample`·`lastSample`, 블렌딩 테이블은 아직 실시간 읽기) | ◐ | PROD |
 | 블렌딩·병입·블렌딩 테이블 | §6, [blending-minigame](blending-minigame.md) | `commerce.lines`·`commissions` | (행동) | `blending.ts`, `blendTable.ts`, `blendRadar.ts` | ◐ (화면·보상 연결 남음) | PROD |
 | 수요·판매·주세·소매 역량 | §9, §16.4 | `commerce` | 5 | `market.ts`, `ops.ts`(일부) | ● | MKT |
-| 브랜드·럭셔리·브랜드 라인 | §11, §11.2 | `commerce.awareness`(회사 하나) | 8 | `market.ts`(럭셔리 일부) | ◐ (브랜드별 인지도 #54 없음) | MKT |
+| 브랜드·럭셔리·브랜드 라인 | §11, §11.2 | `commerce.brands[]`(v11, S-2) · `Product.brandId` | 8 | `brands.ts`(접근자), `market.ts`(인지도 성장·럭셔리 일부), 행동 `openBrand`·`setProductBrand`(자리) | ◐ (상태 모양·접근자 구현, 하우스 브랜드 하나. 세컨드 브랜드 개설·브랜드별 성장·B_brand 계산은 단계 P) | MKT |
 | 원액 B2B·브로커 | §8.3, §8.6 | `b2b` | 4·8 | `bulk.ts`, `broker.ts` | ● | MKT |
 | 입지 대표 거래(유통 납품·OEM·면세) | §16.21 | `commerce.retail*`, `b2b.oem*`, `site` | 4·6 | `deals.ts`, `sites.ts`(일부) | ● | MKT |
 | 수출·해외 명성 | §16.25, §16.27, §17 | `commerce.exports`·`exportOffers`·`exportEntered`·`acclaim` | 5·6·8 | `market.ts`, `exportDeals.ts`, `content/exports.ts` | ● (9개 시장·수입사 계약 #100~#109) | MKT |
@@ -79,7 +79,7 @@
 | 파트 | 범위 (단계 P에서 할 일 — 초안) | 소유 파일 | PRD 절 |
 |---|---|---|---|
 | **PROD** 생산·숙성·블렌딩 | 피니싱, 정보 불확실성(샘플링), 블렌딩 테이블 화면·보상 연결, 생산 테크 노드의 효과 데이터 | `production.ts`(+ 생산 단계 `runProduction`)·`maturation.ts`·**`warehouse.ts`**(+ 숙성 단계)·**`casks.ts`**·**`waterPermit.ts`**·`flavor.ts`·`blending.ts`·`blendTable.ts`·`blendRadar.ts`·`weather.ts`·**`actions.prod.ts`**, **`content/production.ts`**·`content/axes.ts`·`categories.ts`, 테스트 **`production.test.ts`**·`vessel.test.ts`·`blendTable.test.ts`, 화면 `Production`·`Warehouse`·`Bottling`·`BlendLab` | §4~§6, flavor-model, blending-minigame |
-| **MKT** 시장·판매·B2B·수출 | 브랜드 라인(브랜드별 인지도), 수요 공식 정리(SKU √n) | `market.ts`·**`sales.ts`**(판매·주세 단계)·**`retail.ts`**·**`tourism.ts`**·**`dutyFree.ts`**·`bulk.ts`·`broker.ts`·`deals.ts`·`exportDeals.ts`·**`actions.mkt.ts`**, **`content/market.ts`**·`content/exports.ts`·`names.ts`, `data/market/`, 테스트 **`market.test.ts`**·`exports.test.ts`, 화면 `Sales`·`B2B`·`Exports` | §8.3, §8.5~§8.6, §9, §11 |
+| **MKT** 시장·판매·B2B·수출 | 브랜드 라인(세컨드 브랜드 개설·배정·브랜드별 인지도 성장·B_brand), 수요 공식 정리(SKU √n) | `market.ts`·**`brands.ts`**·**`sales.ts`**(판매·주세 단계)·**`retail.ts`**·**`tourism.ts`**·**`dutyFree.ts`**·`bulk.ts`·`broker.ts`·`deals.ts`·`exportDeals.ts`·**`actions.mkt.ts`**, **`content/market.ts`**·`content/exports.ts`·`names.ts`, `data/market/`, 테스트 **`market.test.ts`**·`exports.test.ts`·**`brands.test.ts`**, 화면 `Sales`·`B2B`·`Exports` | §8.3, §8.5~§8.6, §9, §11 |
 | **MGT** 재무·HR·이벤트·연구 | 연구 진행 시스템 + 공통 테크 4계통, 재무 확장(이사회·헷징·보험), 이벤트 난수 스트림 분리 구현 | `cashflow.ts`·**`loans.ts`**(+ 재무 단계)·**`investment.ts`**·`hr.ts`(+ 생애주기·사무직)·`events.ts`·`research.ts`·**`actions.mgt.ts`**, **`content/finance.ts`**·`content/events.ts`·`tech.ts`, 테스트 **`finance.test.ts`**, 화면 `Finance`·`Staff`·`Events`·`Dashboard` | §7, §8.1~§8.2, §8.4, §10, tech-tree |
 | **META** 시나리오·진행·경쟁 | 가상 이력 생성기, 면허 취소 규칙, 마일스톤 추가·업적(단계 V), (후속) 경쟁 AI | `progress.ts`·`actions.meta.ts`·`content/milestones.ts`, 테스트 `progress.test.ts`, 화면 `Verdict` | §12, §9.4 |
 
@@ -108,7 +108,7 @@
 |---|---|---|---|---|
 | **S-0** | **MVP 정의와 코어 루프** — MVP의 목적·범위(지역·입지·주종·기간), 플레이어가 매달·매년·한 판에서 하는 일과 목표, 한 판의 끝. 이것이 정해져야 아래 S-2~S-14 중 무엇이 MVP 필수인지 가를 수 있다 | 모든 구조 결정의 범위를 정한다. 지금까지 검증은 봇 전략뿐이고 사람의 플레이 경험은 정의된 적 없다 | **결정됨** — #129~#134, [mvp.md](mvp.md) v0.1 | PRD §1, §12.1 |
 | ~~S-1~~ | ~~증류소 1개 전제를 유지할지~~ → **결정(#128, 2026-11-06):** 최종 목표는 해외 증류소를 인수해 **화면 전환으로 여러 증류소를 동시에 관리**하는 것. 지금은 **증류소 1개만** 먼저 돌린다. `[제안]` 나중 비용을 줄이는 최소 준비: 슬라이스를 회사 단위(재무·브랜드·연구·수출)와 증류소 단위(생산·재고·입지·직원)로 **문서에서 분류만** 해 두고 코드는 바꾸지 않는다 | — | 결정됨 | PRD §3.4, #11 |
-| **S-2** | **브랜드 단위 상태** — 인지도·럭셔리를 브랜드 라인별로(#54) 둘 구조. `commerce.awareness` 하나 → `brands[]` | 수요 공식·수출·이벤트가 모두 인지도를 읽는다 | 필수 | §11.2 ④, #51~#55 |
+| **S-2** | **브랜드 단위 상태** — 인지도·럭셔리를 브랜드 라인별로(#54) 둘 구조. `commerce.awareness` 하나 → `brands[]` | 수요 공식·수출·이벤트가 모두 인지도를 읽는다 | 필수 — **구현, `[결정 #148]`** (§4.6) | §11.2 ④, #51~#55 |
 | **S-3** | **지역·주종 추가가 데이터만으로 되는가** — 스코틀랜드(ciosryu/distillery#9)가 지금 옛 구조(v5) 위에서 구현 중이다. "지역 추가 = 데이터 추가"(PRD §13.2) 원칙대로 코드 수정 없이 들어가는지, 지역별 특수 규칙(세제·숙성 규정·입지 대표 결정)을 담을 데이터 모양이 충분한지 정한다 | Phase 3 콘텐츠 확장과 열린 PR #9의 정리 방향이 걸려 있다 | 필수 | §3, §13.2, [scotland.md](scotland.md) |
 | **S-4** | **파트 경계대로 파일 쪼개기** — `ops.ts`·`sites.ts`·`actions.ts`(행동 처리기를 파트별 모듈로)·`catalog.ts`·`sim.test.ts` (§3.3) | 단계 P 병렬 개발의 충돌을 막는 전제 | 필수 — **완료** (결정 #144, [split-plan.md](split-plan.md) §7) | PROCESS §7.3 |
 | **S-5** | **이벤트 난수를 이벤트별 스트림으로** — 지금은 매달 목록 전체를 섞어서 이벤트 하나만 더해도 모든 시드 결과가 바뀐다 | 밸런스가 한 번 바뀌므로 튜닝(T) 전에 해야 한다 | 필수 — **구현, `[결정 #147]`** (§4.5) | architecture §9.3 |
@@ -180,6 +180,20 @@ MVP 완료 기준 1(15년 목표 → 결과 화면 → 계속 운영)이 이 위
 - **분포:** 90판(한국·일본·대만 × 30시드 × 120개월) 이벤트 발생 월 0.487회 → 0.476회(−2.2%, 표본 오차 1σ 약 ±1.4% — 1.6σ, 노이즈로 본다 `[추정]`). 옛 섞기(`sort(() => rng − 0.5)`)는 균등하지 않았다
 - **밸런스가 한 번 바뀐다:** 이벤트가 켜진 판(샌드박스·기존 봇)의 시드별 결과가 달라진다. 8입지 × 5시드 스모크: 파산 합계 15 → 15, 붕괴 없음. MVP는 이벤트가 꺼져 있어 결과가 바이트 동일. 기준선 재측정은 단계 T
 - 테스트 3개의 시드를 "첫 달에 생산을 멈추는 이벤트가 없는 시드"로 옮기고(21→23, 41→43, 2→4), v7 세이브 픽스처의 기대값을 새 규칙으로 다시 쟀다
+
+### 4.6 S-2 브랜드 단위 상태 — `[결정 #148]` (2026-11-06, 오너 승인)
+
+동작 불변(밸런스 골든 5입지·MVP 실험 바이트 동일) — 하우스 브랜드 하나뿐이면 옛 회사 인지도와 같다.
+
+| 항목 | 정한 모양 | 대안 (기각 이유) |
+|---|---|---|
+| ① 자리 | `commerce.brands: BrandLine[]` — 하우스(회사명, id `'house'` 고정, 맨 앞) + 세컨드. `BrandLine { id, name, isHouse, openedMonth, awareness, luxury }` | 별도 `brands` 슬라이스 — 판매·수요와 같은 시장 도메인이라 나눌 이유가 없다 |
+| ② 인지도의 정본 | **브랜드에만 있다.** `commerce.awareness`는 없앴다(마이그레이션이 하우스 인지도로 옮김) | `commerce.awareness`를 하우스 값으로 남기고 세컨드만 `brands[]` — 하우스 값이 두 곳에 생긴다 |
+| ③ 읽고 쓰기 | 모든 곳이 `brands.ts` 접근자를 거친다. **제품 맥락**(국내 수요·면세 수요·평론가 의뢰 보상·면세 완판 보상)은 `brandOf(s, 제품)`, **회사 맥락**(관광·이벤트·캐스크 오너십 단가·수출 국내 후광·목표 판정·화면)은 하우스 | 직접 필드 접근 — 브랜드별 규칙을 넣을 때 13곳을 다시 찾아야 한다 |
+| ④ 제품 배정 | `Product.brandId?` — 없으면 하우스. 옛 제품·세이브는 그대로 하우스 | 필수 필드 — 옛 세이브의 제품을 모두 고쳐야 한다 |
+| ⑤ 아직 회사 단위인 것 | 마케팅 예산(`commerce.marketingBudget`), 수출 시장 인지도(`exports[].awareness`), 인지도 성장식(하우스에 적용). PRD §11.2 ④의 브랜드별 마케팅·브랜드 × 시장 인지도·50% 연계(#52·#53)는 규칙이라 단계 P(MKT) | 지금 다 나누기 — 규칙(성장 연계·개설 비용)이 정해지지 않아 빈 필드만 는다 |
+| ⑥ 행동 | `openBrand`·`setProductBrand` — 타입만, 지금은 항상 실패, MVP 잠금 | — |
+| ⑦ 럭셔리 | `BrandLine.luxury`(B_brand, 0~100) 자리만 — 계산(PRD §11.2 ③)은 단계 P | — |
 
 ## 5. 다음 행동 (설계 세션)
 

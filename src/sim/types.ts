@@ -145,9 +145,24 @@ export interface Cask {
   sampleLog?: SampleRecord[];
 }
 
+/** 브랜드 라인 (S-2, PRD §11.2 ④) — 하우스(회사명)와 세컨드 브랜드. 대중 인지도와 브랜드 럭셔리를 라인별로 둔다 (#54) */
+export interface BrandLine {
+  id: string;
+  name: string;
+  /** 하우스 브랜드(회사명) — 정확히 1개, 삭제 불가 */
+  isHouse: boolean;
+  openedMonth: number;
+  /** 국내 대중 인지도 0~1 (옛 commerce.awareness). 수출 시장 인지도는 아직 회사 단위(commerce.exports[].awareness) — 브랜드 × 시장은 단계 P(MKT) */
+  awareness: number;
+  /** 브랜드 럭셔리 B_brand 0~100 (PRD §11.2 ③) — 자리만, 아직 계산하지 않는다(0) */
+  luxury: number;
+}
+
 export interface Product {
   id: string;
   name: string;
+  /** 브랜드 라인 id (S-2) — 없으면 하우스 브랜드 */
+  brandId?: string;
   category: ProductCategory;
   ageYears: number | null;
   /** 최저 오크 숙성 개월 (어린 위스키 인식 할인용) */
@@ -567,7 +582,8 @@ export interface CommerceSlice {
   products: Product[];
   /** 품절·단종 제품 이력 (architecture §3.7) */
   productArchive: ProductArchiveEntry[];
-  awareness: number;
+  /** 브랜드 라인 (S-2, 스키마 v11) — 하우스 브랜드 1개(항상 맨 앞) + 세컨드 브랜드. 인지도는 브랜드마다 (PRD §11.2 ④, #51~#55) */
+  brands: BrandLine[];
   /** 비지터 센터 입소문(로컬 인지도) 0~1 */
   localBuzz: number;
   marketingBudget: number;
@@ -716,7 +732,7 @@ export interface ScenarioState {
 }
 
 export interface GameState {
-  version: 10;
+  version: 11;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { houseBrand } from './brands';
 import { advanceMonth, advanceMonths, advanceUntil, applyAction, DEFAULT_STOPS, GRADE, judgeGoal, migrateSave, netWorth, newGame, newScenarioGame, SAVE_VERSION, timelineOf, type GameState, type Product } from '.';
 import fixture from './fixtures/save-v9.json';
 
@@ -82,9 +83,9 @@ describe('목표 판정 (S-9, MVP §3)', () => {
     s.progress.milestones.push({ id: 'flagship_sold', month: 170, value: GRADE.sFlagshipQuality + 5 });
     const target = s.scenario!.equity * s.scenario!.goal.netWorthMultiple;
     s.finance.cash = target * GRADE.sNetWorthRatio + 1;
-    s.commerce.awareness = GRADE.sAwareness + 0.05;
+    houseBrand(s).awareness = GRADE.sAwareness + 0.05;
     expect(judgeGoal(s, 180)).toMatchObject({ result: 'heritage', grade: 'S' });
-    s.commerce.awareness = GRADE.sAwareness - 0.05;
+    houseBrand(s).awareness = GRADE.sAwareness - 0.05;
     expect(judgeGoal(s, 180)).toMatchObject({ result: 'heritage', grade: 'A' });
     s.finance.cash = target - 1_000_000_000;
     expect(judgeGoal(s, 180)).toMatchObject({ result: 'missed', grade: 'B' }); // 플래그십만
