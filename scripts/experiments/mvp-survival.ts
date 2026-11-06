@@ -12,6 +12,10 @@
 //     C   비지터 센터 베이직 투어를 시작 때 짓는다
 //     D   위스키 점유 상한 0.0055 → 0.01 (#85 이전 값)
 //   CASH=<원> 시작 자본을 직접 정한다 (규모 티어 검토용, B보다 우선)
+//   MVP=<micro|standard> 실제 MVP 시나리오 입구(newScenarioGame)로 시작한다 — VARIANT·CASH·EVENTS는 무시(시나리오가 정한다)
+//     LOAN=<원>      사업 계획서의 시작 대출 (기본 0)
+//     VISITOR=<월>   비지터 센터 베이직 투어를 짓는 달 (기본 0, -1 = 안 짓는다)
+//     SALES2=1       표준 티어에 영업 직원 1명을 더 둔다 (티어 차별화 검토용)
 //
 // MVP 근사:
 // - 한국 경기 기본 입지, 증류식 소주 + 싱글 몰트만. 고량주·진·비지터 센터·원액 계약·수출·브로커·매입 원액 없음
@@ -19,7 +23,7 @@
 // - 대출: 기존 은행·정책 대출만. 고금리 급전(#133)은 아직 없다 → 대출이 바닥나면 뉴메이크를 현물로 판다(비상 수단, #135)
 // - 위스키: 한국 최소 숙성 12개월부터 병입 가능. 수요의 1.5개월치까지 오래된 캐스크부터 병입.
 //   첫 해 통입분 중 5통은 12년 플래그십용으로 묶어 두고 144개월에 병입한다 (15년 목표 #133)
-import { advanceMonth, applyAction, bulkValuePerLPA, newGame, previewBlend, warehouseCapacity, type Action, type GameState, type ProductCategory } from '../../src/sim';
+import { advanceMonth, applyAction, bulkValuePerLPA, MVP_KR, newGame, newScenarioGame, previewBlend, warehouseCapacity, type Action, type GameState, type ProductCategory } from '../../src/sim';
 import { EVENTS } from '../../src/sim/content/events';
 import { LOAN_OFFERS } from '../../src/sim/content/catalog';
 import { REGIONS } from '../../src/sim/content/regions';
@@ -39,6 +43,11 @@ const MARKETING = VARIANT.has('A2') ? 3_000_000 : 5_000_000;
 const STARTING_CASH = process.env.CASH ? Number(process.env.CASH) : VARIANT.has('B') ? 1_000_000_000 : undefined;
 if (VARIANT.has('Bg')) for (const o of LOAN_OFFERS) if (['facility', 'kr_regional', 'kr_startup'].includes(o.id)) { o.graceMonths += 24; o.termMonths += 24; }
 if (VARIANT.has('D')) KR.market.whisky!.shareCap = 0.01;
+const MVP = process.env.MVP as 'micro' | 'standard' | undefined;
+const LOAN = Number(process.env.LOAN ?? 0);
+const VISITOR = Number(process.env.VISITOR ?? 0);
+if (process.env.SALES2 === '1') MVP_KR.tiers.find((t) => t.id === 'standard')!.staff.push({ role: 'sales', stats: { a: 50, b: 55, c: 50 }, ageAtHire: 33 });
+if (MVP && (VARIANT.size || process.env.CASH)) throw new Error('MVP 모드에서는 VARIANT·CASH를 쓰지 않는다');
 
 type Plan = { name: string; soju: number; malt: number };
 const PLANS: Plan[] = [
@@ -62,7 +71,7 @@ function start(s: GameState, p: Plan): GameState {
   const sales = s.hr.candidates.filter((c) => c.role === 'sales').sort((a, b) => b.stats.b - a.stats.b)[0];
   if (sales) s = act(s, { type: 'hire', candidateId: sales.id });
   s = act(s, { type: 'setMarketing', amount: MARKETING });
-  if (VARIANT.has('C')) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_basic' });
+  if (VARIANT.has('C') || (MVP && VISITOR === 0)) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_basic' });
   if (FARM) s = act(s, { type: 'buyEquipment', catalogId: 'kr_farm_registration' });
   if (p.malt > 3) { s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' }); s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' }); }
   if (p.soju > 0) s = act(s, { type: 'setOrder', recipeId: recipe(s, 'soju')!, batchesPerMonth: p.soju });
@@ -126,7 +135,7 @@ function finance(s: GameState, t: Track): GameState {
   return s;
 }
 
-interface Row { plan: string; seed: number; bankrupt: boolean; bankruptMonth: number; minCash: number; minCashMonth: number; firstWhisky: number; flagship: boolean; netWorth: number; spotSoldL: number; sojuShare3y: number; capBlocked: number; loansMax: number }
+interface Row { goal: boolean; plan: string; seed: number; bankrupt: boolean; bankruptMonth: number; minCash: number; minCashMonth: number; firstWhisky: number; flagship: boolean; netWorth: number; spotSoldL: number; sojuShare3y: number; capBlocked: number; loansMax: number }
 
 function netWorth(s: GameState): number {
   const stock = [...s.inventory.lots, ...s.inventory.casks.flatMap((c) => (c.contents ? [c.contents] : []))].reduce((t, l) => t + l.volumeL * l.abv * bulkValuePerLPA(s, l) * 0.85, 0);
@@ -135,13 +144,14 @@ function netWorth(s: GameState): number {
 }
 
 function play(p: Plan, seed: number): Row {
-  let s = newGame({ seed, region: 'KR', startingCash: STARTING_CASH });
+  let s = MVP ? newScenarioGame({ scenarioId: 'mvp_kr', tierId: MVP, loanAmount: LOAN, seed }) : newGame({ seed, region: 'KR', startingCash: STARTING_CASH });
   const t: Track = { flagship: new Set(), flagshipBottled: false, spotSoldL: 0, firstWhiskyMonth: -1, capBlocked: 0 };
   s = start(s, p);
   let minCash = s.finance.cash, minCashMonth = 0, loansMax = 0;
   // 월 리포트는 게임 안에서 최근 24개월만 상세로 남는다(lifecycle) → 실험 지표는 매달 따로 모은다
   const reps: GameState['history']['reports'] = [];
   for (let m = 0; m < MONTHS && s.status === 'running'; m++) {
+    if (MVP && VISITOR > 0 && m === VISITOR) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_basic' });
     s = bottle(s, t);
     s = fill(s, t);
     s = finance(s, t);
@@ -166,14 +176,15 @@ function play(p: Plan, seed: number): Row {
   const r3 = reps.filter((r) => r.month < 36).flatMap((r) => r.sales);
   const soju = r3.filter((x) => cats.get(x.productId) === 'soju_distilled').reduce((a, x) => a + x.revenue, 0);
   const all = r3.reduce((a, x) => a + x.revenue, 0);
-  return { plan: p.name, seed, bankrupt: s.status === 'bankrupt', bankruptMonth: s.status === 'bankrupt' ? s.month : -1, minCash, minCashMonth, firstWhisky: t.firstWhiskyMonth, flagship: t.flagshipBottled, netWorth: s.status === 'bankrupt' ? NaN : netWorth(s), spotSoldL: t.spotSoldL, sojuShare3y: all ? soju / all : 0, capBlocked: t.capBlocked, loansMax };
+  const nw = s.status === 'bankrupt' ? NaN : netWorth(s);
+  return { goal: !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, plan: p.name, seed, bankrupt: s.status === 'bankrupt', bankruptMonth: s.status === 'bankrupt' ? s.month : -1, minCash, minCashMonth, firstWhisky: t.firstWhiskyMonth, flagship: t.flagshipBottled, netWorth: nw, spotSoldL: t.spotSoldL, sojuShare3y: all ? soju / all : 0, capBlocked: t.capBlocked, loansMax };
 }
 
 const eok = (v: number) => (Number.isFinite(v) ? `${(v / 1e8).toFixed(2)}억` : '—');
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
 const med = (xs: number[]) => { const a = [...xs].sort((x, y) => x - y); return a.length ? a[Math.floor(a.length / 2)]! : NaN; };
 
-console.log(`MVP 생존 실험 — 한국 경기, ${SEEDS}시드 × ${MONTHS}개월, 이벤트 ${process.env.EVENTS === '1' ? '켬' : '끔'}, 전통주 등록 ${FARM ? '함' : '안 함'}, 위스키 최소 병입 ${MINAGE}개월${CAP ? `, 숙성고 상한 ${CAP}통` : ''}, 변형 ${[...VARIANT].join('+') || 'base'}`);
+console.log(`MVP 생존 실험 — 한국 경기, ${SEEDS}시드 × ${MONTHS}개월, 이벤트 ${process.env.EVENTS === '1' ? '켬' : '끔'}, 전통주 등록 ${FARM ? '함' : '안 함'}, 위스키 최소 병입 ${MINAGE}개월${CAP ? `, 숙성고 상한 ${CAP}통` : ''}, 변형 ${MVP ? `MVP ${MVP} · 시작 대출 ${(LOAN / 1e8).toFixed(1)}억 · 비지터 센터 ${VISITOR < 0 ? '없음' : `${VISITOR}월`}${process.env.SALES2 === '1' ? ' · 영업 2명' : ''}` : [...VARIANT].join('+') || 'base'}`);
 const byPlan: Record<string, Row[]> = {};
 const wins: Record<string, number> = {};
 for (let seed = 1; seed <= SEEDS; seed++) {
@@ -193,4 +204,4 @@ for (const p of PLANS) {
 }
 console.log(`\n시드별 1위(생존 중 순자산): ${Object.entries(wins).map(([k, v]) => `${k} ${v}`).join(' · ')}`);
 // 변형 비교표용 한 줄: 변형 | 전략별 파산 | 1위 분포 | 전략별 생존 순자산 평균 | 첫 위스키 병입 월(중앙값)
-console.log(`SUMMARY | ${[...VARIANT].join('+') || 'base'} | ${PLANS.map((p) => `${byPlan[p.name]!.filter((r) => r.bankrupt).length}/${SEEDS}`).join(' · ')} | ${Object.entries(wins).map(([k, v]) => `${k} ${v}`).join(' · ')} | ${PLANS.map((p) => eok(avg(byPlan[p.name]!.filter((r) => !r.bankrupt).map((r) => r.netWorth)))).join(' · ')} | ${PLANS.map((p) => Math.round(med(byPlan[p.name]!.filter((r) => r.firstWhisky >= 0).map((r) => r.firstWhisky)))).join(' · ')}`);
+console.log(`SUMMARY | ${MVP ? `MVP:${MVP}:loan${LOAN / 1e8}:visitor${VISITOR}${process.env.SALES2 === '1' ? ':sales2' : ''}` : [...VARIANT].join('+') || 'base'} | 목표(×${MVP_KR.goal.netWorthMultiple}) 달성 ${PLANS.map((p) => byPlan[p.name]!.filter((r) => r.goal).length).join(' · ')} | ${PLANS.map((p) => `${byPlan[p.name]!.filter((r) => r.bankrupt).length}/${SEEDS}`).join(' · ')} | ${Object.entries(wins).map(([k, v]) => `${k} ${v}`).join(' · ')} | ${PLANS.map((p) => eok(avg(byPlan[p.name]!.filter((r) => !r.bankrupt).map((r) => r.netWorth)))).join(' · ')} | ${PLANS.map((p) => Math.round(med(byPlan[p.name]!.filter((r) => r.firstWhisky >= 0).map((r) => r.firstWhisky)))).join(' · ')}`);

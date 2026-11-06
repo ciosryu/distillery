@@ -633,8 +633,23 @@ export interface ExportEntry extends Partial<Omit<ExportTerms, 'marketId'>> {
 
 export interface ExportSale { marketId: ExportMarketId; productId: string; name: string; bottles: number; revenue: number; demandBottles: number; freight: number }
 
+/** 시나리오 (skeleton S-8, P-ARCH-2) — 새 게임 때 시나리오 정의를 복사해 둔다. 없으면 샌드박스(모든 시스템 켬) */
+export interface ScenarioState {
+  /** content/scenarios.ts의 id */
+  id: string;
+  /** 규모 티어 (micro·standard) */
+  tierId: string;
+  /** 잠긴 키 — 테크 게이트와 같은 규칙('action:'·'facility:') + 'system:<틱 시스템>'·'kind:<주종>' */
+  locked: string[];
+  /** 경제 값 덮어쓰기 */
+  economy: { overheadPerMonth?: number };
+  /** 시작 자기자본 — 순자산 목표의 기준 (P-ARCH-3) */
+  equity: number;
+  goal: { months: number; netWorthMultiple: number; flagshipMinMonths: number };
+}
+
 export interface GameState {
-  version: 7;
+  version: 8;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;
@@ -645,6 +660,8 @@ export interface GameState {
   distilleryName: string;
   status: 'running' | 'bankrupt';
   nextId: number;
+  /** 시나리오 (v8). 없으면 샌드박스 — 옛 세이브·개발자 새 게임 */
+  scenario?: ScenarioState;
 
   world: WorldSlice;
   finance: FinanceSlice;

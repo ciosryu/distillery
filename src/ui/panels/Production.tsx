@@ -5,6 +5,7 @@ import {
   bestBy, equipmentCost, evaluate, monthLabel, simulateBatch, staffOf, stillDefOf, validateRecipe,
   type FermenterType, type GameState, type ProductCategory, type Recipe, type SpiritKind, type YeastId,
 } from '../../sim';
+import { isLocked } from '../../sim/scenario';
 import { useGame } from '../../store/game';
 import { logisticsMultiplier, regionOf, siteOf } from '../../sim/content/regions';
 import { Radar } from '../charts';
@@ -216,7 +217,7 @@ function Equipment() {
         <div>
           <h3 className="mb-1 text-xs font-semibold text-stone-500">구매</h3>
           <Table head={['설비', '사양', '가격', '설치 기간', '']}>
-            {Object.values(EQUIPMENT).filter((d) => !(d.kind === 'facility' && d.regions && !d.regions.includes(s.regionId))).map((d) => (
+            {Object.values(EQUIPMENT).filter((d) => !(d.kind === 'facility' && d.regions && !d.regions.includes(s.regionId)) && !isLocked(s, `facility:${d.id}`)).map((d) => (
               <tr key={d.id}>
                 <Td>{d.nameKo}</Td>
                 <Td className="text-xs text-stone-500">

@@ -4,7 +4,7 @@ import type { GameState } from './types';
 // 옛 세이브는 버리지 않고 v5 → v6 → … 순서로 올린다. 각 단계는 순수 함수(입력을 바꾸지 않는다).
 // 새 버전을 만들면: GameState.version을 올리고, MIGRATIONS에 `[이전 버전]: (s) => 다음 버전` 한 줄을 더한다.
 
-export const SAVE_VERSION = 7 as const;
+export const SAVE_VERSION = 8 as const;
 
 type AnySave = Record<string, any>;
 
@@ -89,10 +89,16 @@ function v6to7(s: AnySave): AnySave {
   };
 }
 
+/** v7 → v8: 시나리오(skeleton S-8, P-ARCH-2) 헤더 필드. 옛 세이브는 시나리오가 없는 샌드박스로 이어진다 — 필드를 만들지 않는다 */
+function v7to8(s: AnySave): AnySave {
+  return { ...s, version: 8 };
+}
+
 /** 버전 n 세이브 → 버전 n+1 */
 const MIGRATIONS: Record<number, (s: AnySave) => AnySave> = {
   5: v5to6,
   6: v6to7,
+  7: v7to8,
 };
 
 /**

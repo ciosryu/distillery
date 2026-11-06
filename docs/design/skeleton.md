@@ -24,11 +24,11 @@
 | 항목 | 내용 | 근거 |
 |---|---|---|
 | 플랫폼 | Godot 4 + C#, PC(Steam). TS는 설계 실험실·기준 구현 | #34·#35·#40·#122 |
-| 상태 | 단일 `GameState` v7 = 헤더 + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history) | #118, [architecture.md §3](architecture.md) |
+| 상태 | 단일 `GameState` v8 = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history) | #118, [architecture.md §3](architecture.md) |
 | 시간 | 1턴 = 1개월. 월 틱 0~9단계 파이프라인 + 틱 컨텍스트 | #1·#26, PRD §2.2 |
 | 경계 | `GameEngine` 계약 (명령 → 스냅샷) | architecture.md §3.2 |
 | 난수 | mulberry32, `rngFor(seed, month, stream)` 독립 스트림 | PRD §13.2 |
-| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7) | #118 |
+| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8) | #118, S-8 |
 | 테크 게이트 | `isUnlocked(state, key)` 하나로 판정, 키 규칙 고정, Phase 1은 꺼짐 | #118, tech-tree §7 |
 | 설계 규모 | 30년(360턴) · 원액 든 캐스크 2,500개 | #119 |
 | 기후 | 입지 평년값 + AR(1) 이상치, 이벤트는 입력(기온·습도) 충격 | #120 |
@@ -60,7 +60,7 @@
 | 연구·테크트리 | [tech-tree](tech-tree.md) | `research` | — (진행 없음) | `research.ts`, `content/tech.ts`(노드 4개) | ◐ (게이트만) | MGT |
 | 관광·비지터 센터 | §16.8 | `commerce.localBuzz` | 6 | `ops.ts`(일부) | ● | MKT |
 | 리포트·연 요약·데이터 수명 | §13 | `history` | 9 | `lifecycle.ts`, `step.ts` | ● | 코어 |
-| 시나리오 모드·JSON 초기화·가상 이력 생성기 | §12.2 | — | — | — | ○ | META |
+| 시나리오 모드·초기화·기능 플래그·가상 이력 생성기 | §12.2 | 헤더 `scenario` (v8) | 1·8 (끈 시스템 건너뜀) | `content/scenarios.ts`, `scenario.ts`(잠금), `newScenario.ts`(사업 계획서 입구·미리보기), 화면 `ui/BusinessPlan.tsx` | ◐ (입구·플래그·MVP 시나리오 구현, 가상 이력 생성기·JSON 파일 형식은 자리만) | 코어 → META |
 | 승패·업적·마일스톤 | §12.1 | 헤더 `status`만 | 9 | — | ✕ (한 줄 정의뿐) | META |
 | 다지역 경영(해외 증류소 인수) | §3.4 | — (증류소 1개 전제) | — | — | ○ | 코어 결정 → META |
 | 경쟁 AI 증류소 | §9.4 | — | — | — | ○ | META |
@@ -72,7 +72,7 @@
 
 ### 3.1 코어 — 설계 세션 소유 (단계 P에서는 코어 PR로만 변경, PROCESS §7.3)
 
-`src/sim/types.ts` · `step.ts` · `tick.ts` · `engine.ts` · `migrate.ts` · `newGame.ts` · `rng.ts` · `util.ts` · `modifiers.ts` · `lifecycle.ts` · `index.ts` · `content/index.ts` · `content/regions.ts` · `schema.test.ts` · `fixtures/` · `src/store/*` · `src/App.tsx` · `src/ui/kit.tsx`·`format.ts`·`charts.tsx`
+`src/sim/types.ts` · `step.ts` · `tick.ts` · `engine.ts` · `migrate.ts` · `newGame.ts` · `scenario.ts` · `newScenario.ts` · `content/scenarios.ts` · `rng.ts` · `util.ts` · `modifiers.ts` · `lifecycle.ts` · `index.ts` · `content/index.ts` · `content/regions.ts` · `schema.test.ts` · `fixtures/` · `src/store/*` · `src/App.tsx` · `src/ui/BusinessPlan.tsx` · `src/ui/kit.tsx`·`format.ts`·`charts.tsx`
 
 ### 3.2 파트별 소유 파일
 
@@ -110,7 +110,7 @@
 | **S-5** | **이벤트 난수를 이벤트별 스트림으로** — 지금은 매달 목록 전체를 섞어서 이벤트 하나만 더해도 모든 시드 결과가 바뀐다 | 밸런스가 한 번 바뀌므로 튜닝(T) 전에 해야 한다 | 필수 | architecture §9.3 |
 | **S-6** | **연구 시스템 뼈대** — 연구 진행 틱 단계, 담당자·기간·비용 흐름, 노드 데이터 스키마(4개 → 전체를 넣을 그릇) | Phase 2 핵심. 게이트만 있고 진행이 없다 | 필수 | tech-tree §2·§7, #46 |
 | **S-7** | **콘텐츠를 엔진 중립 데이터로** — 원재료·설비·캐스크·지역·이벤트·테크를 JSON 스키마로. 시점(지금 대 단계 G 직전) | 파트가 콘텐츠를 늘리기 전에 형식을 정하면 이식 비용이 준다 | 필수 (형식·시점만) | §13.1 이식 계획 ②, #40 |
-| **S-8** | **시나리오 초기화 경로** — JSON 시나리오 파일로 `GameState`를 만드는 입구 + 가상 이력 생성기의 자리 | §12.2가 "샌드박스 단계부터 지킬 아키텍처 요구사항"이라고 못 박았다 | 필수 (입구·스텁) | §12.2 |
+| **S-8** | **시나리오 초기화 경로** — JSON 시나리오 파일로 `GameState`를 만드는 입구 + 가상 이력 생성기의 자리 | §12.2가 "샌드박스 단계부터 지킬 아키텍처 요구사항"이라고 못 박았다 | 필수 (입구·스텁) — **구현, `[제안 P-ARCH-4]` 승인 대기** ([mvp.md §6.3](mvp.md)). 파일 형식(JSON)은 S-7과 함께 | §12.2 |
 | **S-9** | **승패·진행 구조** — 파산 외 실패 조건(면허 취소·해임), 업적·마일스톤의 데이터 모양, 플레이어 목표 | 게임 루프의 끝이 정의돼 있지 않다 | 필수 (모양만) | §12.1 |
 | **S-10** | **숙성 용기 일반화 + 피니싱·정보 불확실성의 자리** — 지금 숙성 상태는 목재 캐스크 전제다. 크래프팅 자유 원칙(#134)에 따라 ① 비목재 용기(옹기·스테인리스 휴지 — 화이트 스피릿의 숙성 방식·기간) ② 피니싱(캐스크 이력의 단계) ③ 샘플링으로 얻은 "아는 값" 대 "참값"을 담을 상태 모양을 정한다 | 숙성·블렌딩·판매가 모두 읽는다. 옹기 숙성은 flavor-model §4.5 확장 필요(tech-tree §10 #7) | 필수 | §5.2, §5.6, #134 |
 | S-11 | 재무 확장의 자리 — 이사회(지분·해임), 헷징 계약, 보험 | Phase 2 범위. 슬라이스 필드·명령 타입만 | 권장 | §8.2, §8.4 |
