@@ -520,6 +520,46 @@ export interface BlendCommission {
 /** 코어 레인지 — 같은 라인의 다음 배치는 기준 육각형과의 일관성으로 평가된다 */
 export interface CoreLine { refHex: Hex; batches: number; lastScore: number | null; createdMonth: number }
 
+/** 경쟁 AI 증류소 (S-12, PRD §9.4) — 자리만. 지금은 배경 공급(시세 랜덤 워크)이 시장을 대신하고, 목록은 비어 있다 */
+export interface RivalDistillery {
+  id: string;
+  name: string;
+  regionId: RegionId;
+  /** 이 카테고리 국내 시장에서 경쟁한다 */
+  categories: ProductCategory[];
+  /** 인지도 0~1 — 수요 공식에서 시장 몫을 나눈다(규칙은 단계 P) */
+  awareness: number;
+  quality: number;
+}
+
+/** 원재료 선도계약 (S-11, PRD §8.4) — 자리만. 지정 기간 동안 월 구매량을 고정 가격 지수로 산다(규칙은 단계 P, 틱 2단계 원가) */
+export interface ForwardContract {
+  id: string;
+  ingredientId: string;
+  kgPerMonth: number;
+  /** 고정 가격 지수 (1 = 기준가) */
+  priceIndex: number;
+  fromMonth: number;
+  untilMonth: number;
+}
+
+/** 보험 (S-11, PRD §8.4) — 자리만. 보험료는 틱 7단계, 보상은 사고(이벤트) 때(규칙은 단계 P) */
+export interface InsurancePolicy {
+  id: string;
+  kind: 'property' | 'inventory' | 'business_interruption' | 'product_liability' | 'credit';
+  premiumPerMonth: number;
+  /** 보상 한도 (원) */
+  coverage: number;
+  fromMonth: number;
+}
+
+/** 이사회 (S-11, PRD §8.2) — 외부 지분 25%↑면 분기 목표, 50%↑면 미달 누적 시 해임(GameEnding 'dismissed'). 자리만 */
+export interface BoardState {
+  /** 이사회 신뢰 0~100 */
+  confidence: number;
+  demands: { id: string; label: string; dueMonth: number }[];
+}
+
 export interface WorldSlice {
   /** 원재료 가격 지수 (1 = 기준가) */
   priceIndex: Record<string, number>;
@@ -530,6 +570,8 @@ export interface WorldSlice {
   weather: WeatherState;
   /** 향미 트렌드 이동 (결정 #125) */
   flavorTrend: { shifts: TrendShift[] };
+  /** 경쟁 AI 증류소 (S-12, v13) — 비어 있다 */
+  rivals: RivalDistillery[];
 }
 
 export interface FinanceSlice {
@@ -544,6 +586,12 @@ export interface FinanceSlice {
   receivables: Receivable[];
   /** 직전 결산 이후 턴 사이 행동으로 생긴 현금 흐름 — 다음 결산 보고서(offTurn)로 넘어가고 비워진다 (§16.20) */
   pendingCash?: CashFlows;
+  /** 원재료 선도계약 (S-11, v13) */
+  hedges: ForwardContract[];
+  /** 보험 (S-11, v13) */
+  insurance: InsurancePolicy[];
+  /** 이사회 — 외부 지분 25%↑일 때만 생긴다 (S-11) */
+  board?: BoardState;
 }
 
 export interface HrSlice {
@@ -733,7 +781,7 @@ export interface ScenarioState {
 }
 
 export interface GameState {
-  version: 12;
+  version: 13;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;

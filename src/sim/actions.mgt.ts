@@ -19,6 +19,10 @@ export type MgtAction =
   | { type: 'startResearch'; techId: string; leadStaffId: string }
   | { type: 'setResearch'; techId: string; paused?: boolean; leadStaffId?: string }
   | { type: 'cancelResearch'; techId: string }
+  /** 재무 확장 (S-11 자리, PRD §8.4) — 원재료 선도계약 / 보험 가입·해지. 규칙은 단계 P(MGT): 지금은 항상 실패 */
+  | { type: 'signForward'; ingredientId: string; kgPerMonth: number; months: number }
+  | { type: 'buyInsurance'; kind: 'property' | 'inventory' | 'business_interruption' | 'product_liability' | 'credit'; coverage: number }
+  | { type: 'cancelInsurance'; policyId: string }
   /** 투자 유치 */
   | { type: 'takeInvestment'; offerId: string }
   /** 수출 (#95·#101): 수입사 제안 수락 / 계약 해지 */
@@ -35,6 +39,9 @@ export const MGT_CASH_KEY: CashKeys<MgtAction> = {
   startResearch: null,
   setResearch: null,
   cancelResearch: null,
+  signForward: null,
+  buyInsurance: null,
+  cancelInsurance: null,
   hire: null,
   takeInvestment: 'investment',
   sellCaskOwnership: 'caskOwnership',
@@ -65,6 +72,10 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     if (a.paused !== undefined) r.paused = a.paused;
     return { state: s, message: r.paused ? '연구 일시정지 — 진행도는 남고 연구비는 멈춘다' : '연구 진행' };
   },
+  // 자리만 — 상품 데이터·가격·보상·이사회 목표는 단계 P(MGT)
+  signForward: (_s, prev, _a) => fail(prev, '선도계약은 아직 없습니다 (다음 단계)'),
+  buyInsurance: (_s, prev, _a) => fail(prev, '보험은 아직 없습니다 (다음 단계)'),
+  cancelInsurance: (_s, prev, _a) => fail(prev, '보험은 아직 없습니다 (다음 단계)'),
   cancelResearch: (s, prev, a) => {
     if (!s.research.active.some((x) => x.techId === a.techId)) return fail(prev, '진행 중인 연구가 아닙니다');
     s.research.active = s.research.active.filter((x) => x.techId !== a.techId);
