@@ -26,15 +26,32 @@ export function slotOccupancy(s: GameState, wId: string, tier: number): number {
   return s.inventory.casks.filter((c) => c.contents && c.slot?.w === wId && c.slot.tier === tier).length;
 }
 
-/** 통입한 캐스크의 자리를 정한다: 지정한 숙성고(없으면 더니지 우선) → 아래 단부터 */
-export function assignSlot(s: GameState, cask: Cask, preferW?: string): void {
-  const ws = warehousesOf(s);
+/**
+ * 숙성고 칸(숙성고 × 단) 점유 인덱스 — 자리 배정을 캐스크마다 전체 재계산(O(n))하지 않게 한 번 세어 두고 갱신한다 (architecture P1).
+ * 원액이 든 캐스크만 센다(slotOccupancy와 같은 기준)
+ */
+export class SlotIndex {
+  readonly warehouses: WarehouseView[];
+  private readonly counts = new Map<string, number>();
+  constructor(s: GameState) {
+    this.warehouses = warehousesOf(s);
+    for (const c of s.inventory.casks) if (c.contents && c.slot) this.add(c.slot.w, c.slot.tier, 1);
+  }
+  count(w: string, tier: number): number { return this.counts.get(`${w}:${tier}`) ?? 0; }
+  add(w: string, tier: number, d: number): void { const k = `${w}:${tier}`; this.counts.set(k, (this.counts.get(k) ?? 0) + d); }
+}
+
+/** 통입한 캐스크의 자리를 정한다: 지정한 숙성고(없으면 더니지 우선) → 아래 단부터.
+ *  여러 캐스크를 연달아 배정할 때는 같은 index를 넘겨 O(1)로 (넘기지 않으면 매번 새로 센다) */
+export function assignSlot(s: GameState, cask: Cask, preferW?: string, index: SlotIndex = new SlotIndex(s)): void {
+  const ws = index.warehouses;
   if (cask.slot && ws.some((w) => w.id === cask.slot!.w)) return;
   const order = [...ws].sort((a, b) => (a.id === preferW ? -1 : b.id === preferW ? 1 : 0) || (a.type === 'dunnage' ? -1 : 0) - (b.type === 'dunnage' ? -1 : 0));
   for (const w of order) for (let t = 0; t < w.tiers; t++) {
-    if (slotOccupancy(s, w.id, t) < w.perTier) { cask.slot = { w: w.id, tier: t }; return; }
+    if (index.count(w.id, t) < w.perTier) { cask.slot = { w: w.id, tier: t }; if (cask.contents) index.add(w.id, t, 1); return; }
   }
   cask.slot = { w: 'W0', tier: 5 };
+  if (cask.contents) index.add('W0', 5, 1);
 }
 
 /**
@@ -52,6 +69,16 @@ export function slotClimate(s: GameState, cask: Cask | null, monthOfYear: number
   if (w.type === 'dunnage') return { tempC: tm + 0.6 * (to - tm) + 0.3 * tierFrac, humidity: Math.min(95, ho + 6) };
   const strat = 2 + 0.25 * Math.max(0, to - 10);
   return { tempC: tm + 0.95 * (to - tm) + 0.8 + (tierFrac - 0.3) * strat, humidity: clamp(ho + 4 - 14 * tierFrac, 30, 95) };
+}
+
+/**
+ * 이번 달 숙성고 기후표 — 칸(숙성고 × 단)마다 한 번만 계산하고 캐스크는 조회만 한다 (architecture P4, 틱 컨텍스트).
+ * 값은 slotClimate와 똑같다(같은 함수로 계산). 표에 없는 칸은 slotClimate로 바로 계산한다
+ */
+export function climateTable(s: GameState, monthOfYear: number): (cask: Cask) => Climate {
+  const table = new Map<string, Climate>();
+  for (const w of warehousesOf(s)) for (let t = 0; t < w.tiers; t++) table.set(`${w.id}:${t}`, slotClimate(s, { slot: { w: w.id, tier: t } } as Cask, monthOfYear));
+  return (cask) => (cask.slot && table.get(`${cask.slot.w}:${cask.slot.tier}`)) || slotClimate(s, cask, monthOfYear);
 }
 
 /** 숙성고 매니저(QC) 1명이 한 달에 옮길 수 있는 캐스크 수 */
@@ -206,7 +233,7 @@ export function runStaffLifecycle(s: GameState, report: MonthReport, rng: Rng): 
 
 // ───────────── 숙성고 QC: 캐스크 오염 (TCA·곰팡이) ─────────────
 
-export function runContamination(s: GameState, report: MonthReport, rng: Rng, monthOfYear: number): void {
+export function runContamination(s: GameState, report: MonthReport, rng: Rng, monthOfYear: number, climateOf: (cask: Cask) => Climate = climateTable(s, monthOfYear)): void {
   const qc = staffOf(s, 'warehouse');
   const control = Math.max(0, ...qc.map((x) => x.stats.b));
   const observe = Math.max(0, ...qc.map((x) => x.stats.a));
@@ -214,7 +241,7 @@ export function runContamination(s: GameState, report: MonthReport, rng: Rng, mo
   for (const c of s.inventory.casks) {
     if (!c.contents) continue;
     if (!c.contamination) {
-      const h = slotClimate(s, c, monthOfYear).humidity;
+      const h = climateOf(c).humidity;
       const pTca = 0.0005;
       const pMold = 0.002 * Math.max(0, h - 75) / 10 * dehumid;
       const k = 1 - 0.4 * (control / 100);

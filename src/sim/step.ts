@@ -5,9 +5,10 @@ import { bulkValuePerLPA, fulfillContracts, refreshCaskBids, refreshContractOffe
 import { clamp, weightedAverage } from './flavor';
 import { gainXp, refreshCandidates } from './hr';
 import { matureCask, restLot } from './maturation';
-import { assignSlot, deliverOwnedCasks, runContamination, runOffice, runStaffLifecycle, runTourism, slotClimate } from './ops';
+import { assignSlot, deliverOwnedCasks, runContamination, runOffice, runStaffLifecycle, runTourism } from './ops';
 import { emptyCaskOf } from './newGame';
-import { fermentationClimate, fermentDaysAt } from './production';
+import { fermentDaysAt } from './production';
+import { buildTickContext, type TickContext } from './tick';
 import { runSales, updateAwareness, updateTrends } from './market';
 import { batchEnergyCost, simulateBatch, stillDefOf, volumeDiscounts } from './production';
 import { siteOf } from './content/regions';
@@ -27,8 +28,8 @@ export const distillerRunCapacity = (process: number) => 20 + process / 5;
 
 interface FermenterSlot { id: string; type: FermenterType; capacityL: number; daysLeft: number }
 
-function runProduction(s: GameState, report: MonthReport, monthOfYear: number): { runsUsed: number; mashKg: number } {
-  const fermC = fermentationClimate(s, monthOfYear);
+function runProduction(s: GameState, report: MonthReport, ctx: TickContext): { runsUsed: number; mashKg: number } {
+  const { monthOfYear, fermentC: fermC } = ctx;
   const prodRng = rngFor(s.seed, s.month, 'production');
   const distillers = staffOf(s, 'distiller');
   let distillerRuns = distillers.reduce((t, d) => t + distillerRunCapacity(d.stats.b), 0);
@@ -159,19 +160,16 @@ function runProduction(s: GameState, report: MonthReport, monthOfYear: number): 
   return { runsUsed, mashKg };
 }
 
-function runMaturation(s: GameState, report: MonthReport, monthOfYear: number): void {
-  const wm = staffOf(s, 'warehouse');
-  const control = Math.max(0, ...wm.map((x) => x.stats.b));
-  const observe = Math.max(0, ...wm.map((x) => x.stats.a));
-  const diligence = Math.max(0, ...wm.map((x) => x.stats.c));
+function runMaturation(s: GameState, report: MonthReport, ctx: TickContext): void {
+  const { control, observe, diligence } = ctx.warehouse;
   const rng = rngFor(s.seed, s.month, 'maturation');
   const evap = mod(s, 'evaporation');
   let lost = 0;
   s.inventory.casks = s.inventory.casks.map((cask) => {
     if (!cask.contents) return cask;
-    // 숙성고 내부 기후: 숙성고 종류·단에 따라 다르다 (결정 #65)
-    if (!cask.slot) assignSlot(s, cask);
-    const res = matureCask(cask, slotClimate(s, cask, monthOfYear), { control, evaporationFactor: evap });
+    // 숙성고 내부 기후: 숙성고 종류·단에 따라 다르다 (결정 #65) — 칸별 기후표 조회
+    if (!cask.slot) assignSlot(s, cask, undefined, ctx.slots);
+    const res = matureCask(cask, ctx.climateOf(cask), { control, evaporationFactor: evap });
     // 스팟 매입 통의 활성도는 6개월 숙성하면 드러난다
     if (cask.activityKnown === false && cask.contents.oakMonths + 1 >= 6) res.cask.activityKnown = true;
     lost += res.lostL;
@@ -187,7 +185,7 @@ function runMaturation(s: GameState, report: MonthReport, monthOfYear: number): 
     return next;
   });
   s.inventory.lots = s.inventory.lots.map(restLot);
-  runContamination(s, report, rngFor(s.seed, s.month, 'contamination'), monthOfYear);
+  runContamination(s, report, rngFor(s.seed, s.month, 'contamination'), ctx.monthOfYear, ctx.climateOf);
   report.angelsShareL = lost;
 }
 
@@ -216,14 +214,14 @@ function runFinance(s: GameState, report: MonthReport, monthOfYear: number): voi
   s.finance.loans = s.finance.loans.filter((l) => l.balance > 0);
 }
 
-/** 1개월 진행 (순수 함수) */
-export function advanceMonth(prev: GameState): GameState {
-  if (prev.status !== 'running') return prev;
-  const s = clone(prev);
-  const { monthOfYear } = calendar(s);
-  const cashStart = s.finance.cash;
-  const report: MonthReport = { month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] };
+// ───────────── 월 틱 파이프라인 (architecture §3.5, PRD §2.2) ─────────────
+// 0 준비 → 1 이벤트 → [틱 컨텍스트] → 2 생산 → 3 숙성 → 4 계약 납품 → 5 판매·주세 → 6 운영 → 7 재무 → 8 성장 → 9 판정·리포트
+// 각 단계는 같은 상태 사본(s)을 차례로 고친다. 난수는 단계마다 독립 스트림(rngFor(seed, month, 이름))이라 단계를 더해도 다른 단계 결과가 바뀌지 않는다.
 
+const newReport = (s: GameState): MonthReport => ({ month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] });
+
+/** 0 준비: 지난 보정치 정리, 주문 캐스크 도착, 입지 인허가 */
+function phasePrepare(s: GameState, report: MonthReport): void {
   pruneModifiers(s);
   s.inventory.rotatedThisMonth = 0;
   // 주문한 캐스크 도착 (쿠퍼리지·시즈닝 계약)
@@ -237,15 +235,23 @@ export function advanceMonth(prev: GameState): GameState {
   }
   s.inventory.caskOrders = s.inventory.caskOrders.filter((x) => x.arriveMonth > s.month);
   resolveWaterPermit(s, report);
-  runEvents(s, report, monthOfYear);
+}
+
+/** 1 이벤트: 예보 → 발생 → 보정치 등록 (이번 달부터 적용), 설비 가동 시작 알림 */
+function phaseEvents(s: GameState, report: MonthReport): void {
+  runEvents(s, report, calendar(s).monthOfYear);
   for (const e of s.production.equipment) if (e.readyMonth === s.month && s.month > 0) report.notes.push(`${EQUIPMENT[e.catalogId]?.nameKo ?? e.catalogId} 가동 시작`);
+}
 
-  const { runsUsed, mashKg } = runProduction(s, report, monthOfYear);
-  runMaturation(s, report, monthOfYear);
+/** 4 계약 납품: 원액 B2B 계약, 대형 유통 납품 */
+function phaseContracts(s: GameState, report: MonthReport): void {
   fulfillContracts(s, report);
-
   fulfillRetail(s, report);
-  const { results: sales, retail } = runSales(s, rngFor(s.seed, s.month, 'sales'), monthOfYear);
+}
+
+/** 5 판매·주세 — 이번 달 판매 결과를 돌려준다(성장 단계의 XP에 쓰임) */
+function phaseSales(s: GameState, report: MonthReport, ctx: TickContext): ReturnType<typeof runSales>['results'] {
+  const { results: sales, retail } = runSales(s, rngFor(s.seed, s.month, 'sales'), ctx.monthOfYear);
   report.sales = sales.map(({ overflowBottles: _o, distribution: _d, ...x }) => x);
   report.retailCapacityCases = retail.capacityCases;
   report.retailSoldCases = retail.soldCases;
@@ -256,7 +262,7 @@ export function advanceMonth(prev: GameState): GameState {
   report.dutyFreeBottles = sales.reduce((t, x) => t + (x.dutyFree ?? 0), 0);
   // 주세 납부 — 전통주는 연 누적 출고량 구간별 경감 (한국 완화책 #73)
   const region = regionOf(s);
-  if (monthOfYear === 1) { s.commerce.traditionalPrevYearL = s.commerce.traditionalReleasedL; s.commerce.traditionalReleasedL = 0; }
+  if (ctx.monthOfYear === 1) { s.commerce.traditionalPrevYearL = s.commerce.traditionalReleasedL; s.commerce.traditionalReleasedL = 0; }
   let tax = 0;
   for (const x of sales) {
     const p = s.commerce.products.find((q) => q.id === x.productId);
@@ -271,16 +277,22 @@ export function advanceMonth(prev: GameState): GameState {
   const distribution = sales.reduce((t, x) => t + x.distribution, 0);
   if (distribution > 0) { s.finance.cash -= distribution; report.expenses.distribution = distribution; }
   report.dutyFreeAwareness = updateAwareness(s, sales);
+  return sales;
+}
+
+/** 6 운영: 면세 한정판·매출채권, 트렌드, 관광, 캐스크 오너십 인도, 사무직, 직원 생애주기(에이징 커브·은퇴) */
+function phaseOperations(s: GameState, report: MonthReport, ctx: TickContext, mashKg: number): void {
   resolveDutyFreeEditions(s, report);
   collectReceivables(s, report);
   updateTrends(s, rngFor(s.seed, s.month, 'trend'));
-  runTourism(s, report, monthOfYear);
+  runTourism(s, report, ctx.monthOfYear);
   deliverOwnedCasks(s, report);
   runOffice(s, report, rngFor(s.seed, s.month, 'office'), mashKg);
   runStaffLifecycle(s, report, rngFor(s.seed, s.month, 'lifecycle'));
+}
 
-  runFinance(s, report, monthOfYear);
-
+/** 8 성장: XP, 후보·브로커·계약·입찰·거래 제안 갱신, 시세 랜덤 워크 */
+function phaseGrowth(s: GameState, report: MonthReport, runsUsed: number, sales: ReturnType<typeof runSales>['results']): void {
   const activity: Record<StaffRole, number> = {
     distiller: runsUsed / 2,
     warehouse: s.inventory.casks.filter((c) => c.contents).length / 5,
@@ -296,24 +308,44 @@ export function advanceMonth(prev: GameState): GameState {
   refreshDeals(s, rngFor(s.seed, s.month, 'deals'));
   // 그레인 현물 시장이 물량을 소화한다 (#81)
   if (s.b2b.spotSoldLPA) s.b2b.spotSoldLPA = { grain: s.b2b.spotSoldLPA.grain * BULK.spotDecay };
-
   // 원재료 가격 변동 (평균 회귀 랜덤 워크)
   const prng = rngFor(s.seed, s.month, 'prices');
   for (const k of Object.keys(s.world.priceIndex)) {
     const v = s.world.priceIndex[k]!;
     s.world.priceIndex[k] = clamp(v * Math.exp(prng.normal(0, 0.02)) + 0.05 * (1 - v), 0.6, 1.8);
   }
+}
 
+/** 9 판정·리포트: 지급 능력(연속 적자 → 파산), 리포트 기록, 월 넘김 */
+function phaseSettle(s: GameState, report: MonthReport, cashStart: number): void {
   if (s.finance.cash < 0) {
     s.finance.negativeCashMonths += 1;
     report.notes.push(`현금 부족 ${s.finance.negativeCashMonths}개월째 — ${BANKRUPT_AFTER_MONTHS}개월 지속 시 파산`);
     if (s.finance.negativeCashMonths >= BANKRUPT_AFTER_MONTHS) { s.status = 'bankrupt'; report.notes.push('파산했습니다'); }
   } else s.finance.negativeCashMonths = 0;
-
   report.netCash = s.finance.cash - cashStart;
   report.cashEnd = s.finance.cash;
   s.history.reports = [...s.history.reports, report].slice(-REPORTS_KEPT);
   s.month += 1;
+}
+
+/** 1개월 진행 (순수 함수 — 입력 상태를 바꾸지 않고 새 상태를 돌려준다) */
+export function advanceMonth(prev: GameState): GameState {
+  if (prev.status !== 'running') return prev;
+  const s = clone(prev);
+  const report = newReport(s);
+  const cashStart = s.finance.cash;
+  phasePrepare(s, report);                                   // 0
+  phaseEvents(s, report);                                    // 1
+  const ctx = buildTickContext(s);                           //   이번 달 조건 확정
+  const { runsUsed, mashKg } = runProduction(s, report, ctx); // 2
+  runMaturation(s, report, ctx);                             // 3 엔젤스 셰어·도수·향미
+  phaseContracts(s, report);                                 // 4
+  const sales = phaseSales(s, report, ctx);                  // 5
+  phaseOperations(s, report, ctx, mashKg);                   // 6
+  runFinance(s, report, ctx.monthOfYear);                    // 7
+  phaseGrowth(s, report, runsUsed, sales);                   // 8
+  phaseSettle(s, report, cashStart);                         // 9
   return s;
 }
 

@@ -1,5 +1,5 @@
 import { BULK, CASK_COST_SHARE_PER_FILL, CASK_MARKET, CASKS, EQUIPMENT, LOAN_OFFERS, RECHAR_COST } from './content/catalog';
-import { assignSlot, handleDeparture, INVESTMENT_OFFERS, masterDistiller, OWNERSHIP, rotateWarehouse, usedCaskPrice } from './ops';
+import { assignSlot, handleDeparture, INVESTMENT_OFFERS, masterDistiller, OWNERSHIP, rotateWarehouse, SlotIndex, usedCaskPrice } from './ops';
 import { isUnlocked, unlockingNodes } from './research';
 import { rngFor } from './rng';
 import { cancellationCost, isBulkKind, recordSpotSale, spotQuote, startContract } from './bulk';
@@ -199,6 +199,7 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       if (entry < 0.4) return fail(prev, '통입 도수는 40% 이상이어야 합니다');
       let lotLeftL = lot.volumeL;
       let filled = 0;
+      const slots = new SlotIndex(s); // 연달아 자리 배정 — 한 번 세고 갱신 (O(n²) 방지)
       for (const id of a.caskIds) {
         const ci = s.inventory.casks.findIndex((c) => c.id === id);
         const cask = s.inventory.casks[ci];
@@ -216,7 +217,7 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
           contents: { ...lot, id: nid(s, 'L'), name: `${lot.name} → ${cask.id}`, volumeL: lpa / entry, abv: entry, costPerLPA: lot.costPerLPA + caskShare / lpa },
         };
         s.inventory.casks[ci]!.slot = undefined;
-        assignSlot(s, s.inventory.casks[ci]!, a.warehouseId);
+        assignSlot(s, s.inventory.casks[ci]!, a.warehouseId, slots);
         filled++;
       }
       if (!filled) return fail(prev, '채울 수 있는 빈 캐스크가 없습니다 (오염 통은 재탄화해야 다시 쓸 수 있다)');

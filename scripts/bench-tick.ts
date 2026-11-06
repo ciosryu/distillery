@@ -4,7 +4,7 @@
 // 브라우저(V8 같은 계열이라도 기기·탭 상태에 따라)와 Node의 수치는 다르다 — 추세 비교용이다.
 import { advanceMonth, applyAction, newGame, type GameState } from '../src/sim';
 import { emptyCaskOf } from '../src/sim/newGame';
-import { assignSlot } from '../src/sim/ops';
+import { assignSlot, SlotIndex } from '../src/sim/ops';
 
 const SIZES = process.argv.slice(2).map(Number).filter((n) => n > 0);
 const ns = SIZES.length ? SIZES : [250, 1000, 2000, 5000];
@@ -29,16 +29,17 @@ function stateWith(n: number, lot: ReturnType<typeof maltLot>): { s: GameState; 
     c.filledMonth = 0;
     s.inventory.casks.push(c);
   }
-  // 통입 시 자리 배정을 한꺼번에 한 것과 같다 — 캐스크마다 전체 점유를 다시 센다(O(n²))
+  // 통입 시 자리 배정을 한꺼번에 한 것과 같다 — 점유 인덱스를 한 번 만들어 갱신한다 (v6 이전에는 캐스크마다 전체를 다시 세 O(n²))
   const t = performance.now();
-  for (const c of s.inventory.casks) if (c.contents) assignSlot(s, c);
+  const slots = new SlotIndex(s);
+  for (const c of s.inventory.casks) if (c.contents) assignSlot(s, c, undefined, slots);
   return { s, slotMs: performance.now() - t };
 }
 
 const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
 const lot = maltLot();
 console.log(`node ${process.version} · 원액 향미 축 ${Object.keys(lot.flavor).length}개`);
-console.log('캐스크 |  월 처리(중앙값) | structuredClone | 세이브 JSON(백만 자) | 캐스크당 JSON(자) | 전체 자리 배정(O(n²))');
+console.log('캐스크 |  월 처리(중앙값) | structuredClone | 세이브 JSON(백만 자) | 캐스크당 JSON(자) | 전체 자리 배정');
 for (const n of ns) {
   let { s, slotMs } = stateWith(n, lot);
   for (let i = 0; i < 2; i++) s = advanceMonth(s);
