@@ -47,6 +47,9 @@ export interface EventDef {
   months?: number[];
   /** 발생 가능한 지역 (없으면 모든 지역) */
   regions?: RegionId[];
+  /** 이 입지에서도 발생 (regions에 없어도) / sitesOnly면 이 입지에서만 — 결정 #86 */
+  sites?: string[];
+  sitesOnly?: boolean;
   requires?: Requirement[];
   /** 몇 달 앞서 예보. certainty = 실제로 일어날 확률 */
   forecast?: { months: number; certainty: number; text: string };
@@ -173,7 +176,18 @@ export const EVENTS: EventDef[] = [
   { id: 'tax_audit', title: '세무조사', category: 'regulation', chance: 0.008, cooldown: 48, minMonth: 24, requires: ['products'], text: '국세청 세무조사가 나왔습니다. 주세 신고 내역을 검증합니다.',
     effects: [{ type: 'taxAudit', rate: 0.15 }] },
   // ── 지역 고유 ──
-  { id: 'typhoon', title: '태풍 상륙', category: 'disaster', chance: 0.05, cooldown: 12, months: [8, 9, 10], regions: ['JP', 'TW'], defense: 'facility_storm', text: '태풍으로 공장이 피해를 입고 한 달간 생산이 멈춥니다.',
+  // 입지 고유 이벤트 (결정 #86~)
+  { id: 'jeju_tourism_boom', title: '제주 관광객 급증', category: 'market', chance: 0.02, cooldown: 36, sites: ['jeju'], sitesOnly: true, text: '제주 관광객이 크게 늘어 지정면세점 매출이 오릅니다.',
+    effects: [m('dutyfree', 1.4, [12, 18], '제주 관광 호황')] },
+  { id: 'jeju_tourism_slump', title: '제주 관광객 감소', category: 'market', chance: 0.015, cooldown: 36, sites: ['jeju'], sitesOnly: true, text: '항공편 감소와 고물가로 제주 관광객이 줄어듭니다.',
+    forecast: { months: 2, certainty: 0.6, text: '관광 동향: 제주 항공 노선 감축 소식이 들립니다.' },
+    effects: [m('dutyfree', 0.6, [6, 12], '제주 관광 침체')] },
+  { id: 'kansai_inbound_boom', title: '간사이 인바운드 관광 붐', category: 'market', chance: 0.02, cooldown: 36, sites: ['kansai'], sitesOnly: true, text: '외국인 관광객이 몰려 증류소 견학과 기념품 수요가 늘어납니다.',
+    effects: [m('demand:all', 1.1, [12, 18], '인바운드 관광 붐')] },
+  { id: 'kansai_inbound_slump', title: '인바운드 관광 급감', category: 'market', chance: 0.012, cooldown: 48, sites: ['kansai'], sitesOnly: true, text: '엔화 강세와 항공편 감소로 외국인 관광객이 줄어듭니다.',
+    forecast: { months: 2, certainty: 0.6, text: '관광 동향: 방일 관광객 증가세가 꺾이고 있습니다.' },
+    effects: [m('demand:all', 0.9, [6, 12], '인바운드 관광 급감')] },
+  { id: 'typhoon', title: '태풍 상륙', category: 'disaster', chance: 0.05, cooldown: 12, months: [8, 9, 10], regions: ['JP', 'TW'], sites: ['jeju'], defense: 'facility_storm', text: '태풍으로 공장이 피해를 입고 한 달간 생산이 멈춥니다.',
     effects: [{ type: 'caskVolumeLoss', share: 0.02 }, m('production', 0, [1, 1], '태풍 복구'), { type: 'cash', amount: -15_000_000 }] },
   { id: 'earthquake', title: '지진', category: 'disaster', chance: 0.004, cooldown: 60, regions: ['JP'], defense: 'facility_seismic', requires: ['filledCasks'], text: '강한 지진으로 숙성고 랙이 무너지고 증류기가 손상됐습니다.',
     effects: [{ type: 'caskLoss', share: [0.02, 0.06] }, { type: 'stillDown', months: 1 }, { type: 'cash', amount: -30_000_000 }] },

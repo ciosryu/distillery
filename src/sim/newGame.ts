@@ -4,7 +4,7 @@ import { refreshContractOffers } from './bulk';
 import { refreshCandidates, salaryFor } from './hr';
 import { mulberry32 } from './rng';
 import type { Cask, CaskTypeId, GameState, Recipe, RegionId } from './types';
-import { regionOf } from './content/regions';
+import { regionOf, siteOf } from './content/regions';
 import { nid } from './util';
 
 export interface NewGameOptions {
@@ -19,8 +19,19 @@ export interface NewGameOptions {
 
 export const DEFAULT_STARTING_CASH = 500_000_000;
 
-export function presetRecipes(stillId: string, region: RegionId = 'KR'): Omit<Recipe, 'id'>[] {
+export function presetRecipes(stillId: string, region: RegionId = 'KR', site?: string): Omit<Recipe, 'id'>[] {
   const base = { botanicals: [], botanicalMethod: 'steep' as const, pressure: 'atmospheric' as const, stillId };
+  // 입지 원료 프리셋 (결정 #87): 제주 고소리술·청귤 진, 홋카이도 감자 쇼추
+  const siteFirst: Omit<Recipe, 'id'>[] = [];
+  if (site === 'jeju') siteFirst.push(
+    { ...base, name: '고소리술 — 제주 차조', kind: 'soju', mashBill: [{ ingredientId: 'jeju_millet', ratio: 0.9 }, { ingredientId: 'nuruk', ratio: 0.1 }], yeast: 'nuruk_native', fermentDays: 14, runs: 1, cut: { c1: 0.12, c2: 0.7 } },
+    { ...base, name: '제주 청귤 진', kind: 'gin', mashBill: [], botanicalMethod: 'vapor', botanicals: [{ botanicalId: 'juniper', gramsPerL: 18 }, { botanicalId: 'jeju_citrus', gramsPerL: 5 }, { botanicalId: 'coriander', gramsPerL: 4 }], yeast: 'distillers', fermentDays: 0, runs: 1, cut: { c1: 0.08, c2: 0.8 } },
+  );
+  if (site === 'hokkaido') siteFirst.push({ ...base, name: '본격 쇼추 — 홋카이도 감자', kind: 'soju', mashBill: [{ ingredientId: 'potato', ratio: 0.75 }, { ingredientId: 'rice_koji', ratio: 0.25 }], yeast: 'distillers', fermentDays: 12, runs: 1, cut: { c1: 0.12, c2: 0.7 } });
+  return [...siteFirst, ...regionPresets(base, region)];
+}
+
+function regionPresets(base: Pick<Recipe, 'botanicals' | 'botanicalMethod' | 'pressure' | 'stillId'>, region: RegionId): Omit<Recipe, 'id'>[] {
   const londonDry: Omit<Recipe, 'id'> = { ...base, name: '런던 드라이 진', kind: 'gin', mashBill: [], botanicals: [
     { botanicalId: 'juniper', gramsPerL: 20 }, { botanicalId: 'coriander', gramsPerL: 8 }, { botanicalId: 'angelica', gramsPerL: 2 },
     { botanicalId: 'orris', gramsPerL: 1 }, { botanicalId: 'lemon_peel', gramsPerL: 3 }, { botanicalId: 'cassia', gramsPerL: 1 },
@@ -52,9 +63,10 @@ export function presetRecipes(stillId: string, region: RegionId = 'KR'): Omit<Re
   ];
 }
 
-/** 지역 특산 캐스크는 싸고, 다른 지역 캐스크는 비싸다 (+ 이벤트 보정은 호출 측에서) */
-export function regionalCaskPrice(s: Pick<GameState, 'regionId'>, typeId: CaskTypeId): number {
-  return Math.round(CASKS[typeId].price * (regionOf(s).caskPriceFactor[typeId] ?? 1));
+/** 지역 특산 캐스크는 싸고, 다른 지역 캐스크는 비싸다 × 입지 단가·운송 할증 (결정 #86) (+ 이벤트 보정은 호출 측에서) */
+export function regionalCaskPrice(s: Pick<GameState, 'regionId' | 'siteId'>, typeId: CaskTypeId): number {
+  const site = siteOf(s);
+  return Math.round(CASKS[typeId].price * (regionOf(s).caskPriceFactor[typeId] ?? 1) * (site.caskPriceFactor?.[typeId] ?? 1) * (site.freight?.casks ?? 1));
 }
 
 const STARTER: Record<RegionId, { name: string; casks: CaskTypeId[]; distillery: string }> = {
@@ -77,7 +89,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     startYear: opts.startYear ?? 2027,
     regionId: opts.region ?? 'KR',
     ...(opts.site ? { siteId: opts.site } : {}),
-    distilleryName: opts.distilleryName ?? STARTER[opts.region ?? 'KR'].distillery,
+    distilleryName: opts.distilleryName ?? siteOf({ regionId: opts.region ?? 'KR', siteId: opts.site }).starter?.distillery ?? STARTER[opts.region ?? 'KR'].distillery,
     cash: opts.startingCash ?? DEFAULT_STARTING_CASH,
     status: 'running',
     negativeCashMonths: 0,
@@ -119,20 +131,39 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     traditionalReleasedL: 0,
     traditionalPrevYearL: 0,
     pendingCash: {},
+    siteState: {},
+    retailOffers: [],
+    retailContracts: [],
+    oemOffers: [],
+    oemContracts: [],
+    receivables: [],
     reports: [],
     nextId: 1,
   };
   // 초기 설비: 단식 증류기 1기 + 스테인리스 발효조 2기
   const still = { id: nid(s, 'E'), catalogId: 'pot_onion_1000', readyMonth: 0, feintsLPA: 0 };
   s.equipment.push(still, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0 }, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0 });
-  for (const r of presetRecipes(still.id, s.regionId)) s.recipes.push({ ...r, id: nid(s, 'R') });
+  for (const r of presetRecipes(still.id, s.regionId, s.siteId)) s.recipes.push({ ...r, id: nid(s, 'R') });
   for (const t of STARTER[s.regionId].casks) s.casks.push(emptyCaskOf(s, t));
   // 창업 멤버: 디스틸러 1명
   const stats = { a: 50, b: 50, c: 45 };
-  s.staff.push({ id: nid(s, 'S'), name: STARTER[s.regionId].name, role: 'distiller', level: 1, xp: 0, stats, salary: salaryFor('distiller', stats, 1, regionOf(s).laborCost), hiredMonth: 0, ageAtHire: 38 });
+  s.staff.push({ id: nid(s, 'S'), name: siteOf(s).starter?.name ?? STARTER[s.regionId].name, role: 'distiller', level: 1, xp: 0, stats, salary: salaryFor('distiller', stats, 1, regionOf(s).laborCost), hiredMonth: 0, ageAtHire: 38 });
   const rng = mulberry32(seed ^ 0x9e3779b9);
   refreshCandidates(s, rng);
   refreshBroker(s, rng);
   refreshContractOffers(s, rng);
   return s;
+}
+
+/** 옛 저장(입지 특성 이전)에 없는 필드를 채운다 (결정 #86~). 순수 — 새 객체를 돌려준다 */
+export function normalizeState(s: GameState): GameState {
+  return {
+    ...s,
+    siteState: s.siteState ?? {},
+    retailOffers: s.retailOffers ?? [],
+    retailContracts: s.retailContracts ?? [],
+    oemOffers: s.oemOffers ?? [],
+    oemContracts: s.oemContracts ?? [],
+    receivables: s.receivables ?? [],
+  };
 }

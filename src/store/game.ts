@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { advanceMonths, applyAction, newGame, type Action, type GameState, type RegionId } from '../sim';
+import { advanceMonths, applyAction, newGame, normalizeState, type Action, type GameState, type RegionId } from '../sim';
 
 // v5 유지: 턴 사이 현금 흐름(pendingCash·보고서 offTurn 등)은 선택 필드라 구버전 v5 세이브도 그대로 읽힌다
 const SAVE_KEY = 'distillery-tycoon/save-v5';
@@ -9,7 +9,8 @@ function load(): GameState | null {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as GameState;
-    return s && s.version === 5 ? s : null;
+    // 입지 특성(결정 #86~) 이전 저장은 빠진 필드를 채워 읽는다
+    return s && s.version === 5 ? normalizeState(s) : null;
   } catch {
     return null;
   }
