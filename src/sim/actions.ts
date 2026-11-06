@@ -3,11 +3,11 @@ import { assignSlot, handleDeparture, INVESTMENT_OFFERS, masterDistiller, OWNERS
 import { isUnlocked, unlockingNodes } from './research';
 import { isLocked, LOCKED_MESSAGE } from './scenario';
 import { rngFor } from './rng';
-import { cancellationCost, isBulkKind, recordSpotSale, spotQuote, startContract } from './bulk';
+import { cancellationCost, isBulkKind, lotQuality, recordSpotSale, spotQuote, startContract } from './bulk';
 import { resolvePending } from './events';
 import { mod } from './modifiers';
 import { executeBlend, type BlendComponent, type BlendReveal, type BottleOptions } from './blending';
-import { blenderOf, delegatePlan, findTarget, LAB, RARE, SAMPLING, samplingCapacity } from './blendTable';
+import { blenderOf, delegatePlan, findTarget, LAB, RARE, recordSample, SAMPLING, samplingCapacity } from './blendTable';
 import { MAX_RECHAR, recharCask } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
@@ -44,6 +44,8 @@ export type Action =
   | { type: 'bottle'; components: BlendComponent[]; options: BottleOptions }
   /** 블렌딩 테이블 (결정 #124): 샘플링(읽는 오차↓·레어 발견) · 실험실 분석(피트·우디 정확) · 블렌더에게 맡기기 */
   | { type: 'sampleCask'; caskIds: string[] }
+  /** 피니싱 (S-10 자리) — 캐스크 원액을 빈 캐스크로 옮겨 마무리한다. 규칙은 단계 P(PROD): 지금은 항상 실패 */
+  | { type: 'transferCask'; fromCaskId: string; toCaskId: string }
   | { type: 'labAnalyze'; caskIds: string[] }
   | { type: 'delegateBlend'; targetId: string; caskIds: string[]; bottles: number; options: BottleOptions }
   | { type: 'setPrice'; productId: string; price: number }
@@ -81,6 +83,8 @@ const ACTION_CASH_KEY: Record<Action['type'], CashFlowKey | null> = {
   acceptExportOffer: 'export', closeExport: 'export', setExportPrice: null,
   // 블렌딩 테이블 (#124)
   sampleCask: 'blending', labAnalyze: 'blending', delegateBlend: 'bottling',
+  // 피니싱 (S-10 자리)
+  transferCask: null,
 };
 
 /** 병입 결과 문구 — 블렌딩 테이블 결과 공개(결정 #124 P6) 포함 */
@@ -328,6 +332,8 @@ function applyActionRaw(prev: GameState, a: Action): ActionResult {
         const n = (c.samples ?? 0) + 1;
         c.samples = n;
         c.contents = { ...c.contents!, volumeL: Math.max(0, c.contents!.volumeL - SAMPLING.lossL) };
+        // 이번 읽기를 남긴다 — 다음 샘플 전까지 화면의 추정치는 이 값이다 (S-10, #136)
+        recordSample(s, c, lotQuality(c.contents));
         // 레어 캐스크는 샘플을 뜰 때 드러날 수 있다 (감정력)
         if (c.rare && !c.rareKnown && rngFor(s.seed, s.month, `rarefind:${c.id}:${n}`).chance(blender ? RARE.findBase + RARE.findPerAppraisal * (blender.appraisal / 100) : RARE.findOwner)) {
           c.rareKnown = true;
@@ -338,6 +344,9 @@ function applyActionRaw(prev: GameState, a: Action): ActionResult {
       s.finance.cash -= casks.length * SAMPLING.cost;
       return { state: s, message: `캐스크 ${casks.length}개 샘플링${found.length ? ` — 레어 캐스크 발견: ${found.join(', ')}` : ''}` };
     }
+    case 'transferCask':
+      // 자리만 있다 — 원액의 caskHistory에 지금 캐스크 구간을 닫고 새 캐스크 구간을 여는 규칙은 단계 P(PROD), PRD §5.2
+      return fail(prev, '피니싱은 아직 없습니다 (다음 단계)');
     case 'labAnalyze': {
       const casks = a.caskIds.map((id) => s.inventory.casks.find((c) => c.id === id)).filter((c): c is Cask => !!c?.contents && !c.labAnalyzed);
       if (!casks.length) return fail(prev, '분석할 캐스크가 없습니다');

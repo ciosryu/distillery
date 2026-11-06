@@ -4,7 +4,7 @@ import type { GameState } from './types';
 // 옛 세이브는 버리지 않고 v5 → v6 → … 순서로 올린다. 각 단계는 순수 함수(입력을 바꾸지 않는다).
 // 새 버전을 만들면: GameState.version을 올리고, MIGRATIONS에 `[이전 버전]: (s) => 다음 버전` 한 줄을 더한다.
 
-export const SAVE_VERSION = 8 as const;
+export const SAVE_VERSION = 9 as const;
 
 type AnySave = Record<string, any>;
 
@@ -94,11 +94,18 @@ function v7to8(s: AnySave): AnySave {
   return { ...s, version: 8 };
 }
 
+/** v8 → v9: 숙성 용기 일반화·피니싱 이력·샘플 기록의 자리(S-10, P-ARCH-6). 새 필드는 모두 선택값이라 옛 세이브는 그대로 — 버전만 올린다.
+ *  옛 캐스크의 샘플 횟수(samples)는 남고 기록(sampleLog)은 없다 → 화면은 "기록 없음"으로 보이고 다음 샘플부터 쌓인다 */
+function v8to9(s: AnySave): AnySave {
+  return { ...s, version: 9 };
+}
+
 /** 버전 n 세이브 → 버전 n+1 */
 const MIGRATIONS: Record<number, (s: AnySave) => AnySave> = {
   5: v5to6,
   6: v6to7,
   7: v7to8,
+  8: v8to9,
 };
 
 /**

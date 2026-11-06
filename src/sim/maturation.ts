@@ -1,6 +1,6 @@
-import { CASKS, SEASONING_EXTRACT, WOOD_EXTRACT } from './content/catalog';
+import { CASKS, NON_WOOD_VESSEL, SEASONING_EXTRACT, WOOD_EXTRACT } from './content/catalog';
 import { clamp, clampFlavor } from './flavor';
-import type { AxisId, Cask, Flavor, SpiritLot } from './types';
+import type { AxisId, Cask, Flavor, SpiritLot, VesselMaterial } from './types';
 
 // 숙성 모델 (PRD §5.3, flavor-model §4.5). 수치 [튜닝].
 
@@ -95,6 +95,33 @@ export function matureCask(cask: Cask, climate: Climate, opts: MatureOptions): {
   return { cask: { ...cask, contents }, lostL: evap.lostL };
 }
 
+/** 용기 재질 — 콘텐츠에 없으면 나무 (S-10) */
+export const vesselMaterial = (cask: Pick<Cask, 'typeId'>): VesselMaterial => CASKS[cask.typeId]?.material ?? 'wood';
+
+/** 숙성 용기 1개월 (틱 3단계의 입구, S-10) — 나무는 matureCask, 그 밖의 재질은 matureNonWood */
+export function matureVessel(cask: Cask, climate: Climate, opts: MatureOptions): { cask: Cask; lostL: number } {
+  const material = vesselMaterial(cask);
+  return material === 'wood' ? matureCask(cask, climate, opts) : matureNonWood(cask, material, climate, opts);
+}
+
+/** 나무가 아닌 용기(옹기·스테인리스 휴지) 1개월 — 자리만 있는 스텁 (S-10). 지금 콘텐츠에는 이런 용기가 없어 게임에서 불리지 않는다.
+ *  추출 없음 · 재질별 증발 · 안정화. oakMonths는 늘지 않고 restMonths가 는다(위스키 법정 숙성에 안 들어간다) */
+export function matureNonWood(cask: Cask, material: Exclude<VesselMaterial, 'wood'>, climate: Climate, opts: MatureOptions): { cask: Cask; lostL: number } {
+  const lot = cask.contents;
+  if (!lot) return { cask, lostL: 0 };
+  const v = NON_WOOD_VESSEL[material];
+  const rate = R0_EVAP * evapTempFactor(climate.tempC) * sizeFactor(cask.sizeL) * v.evapFactor * (1 - 0.2 * (opts.control / 100)) * (opts.evaporationFactor ?? 1);
+  const evap = rate > 0 ? evaporate(lot.volumeL, lot.abv, rate, climate.humidity) : { volumeL: lot.volumeL, abv: lot.abv, lostL: 0 };
+  const f: Flavor = { ...lot.flavor };
+  f.integration = Math.min(25, (f.integration ?? 0) + v.integrationPerMonth);
+  f.harshness = (f.harshness ?? 0) * v.harshnessKeep;
+  const oldLPA = lot.volumeL * lot.abv;
+  const newLPA = evap.volumeL * evap.abv;
+  const costPerLPA = newLPA > 0 ? (lot.costPerLPA * oldLPA) / newLPA : lot.costPerLPA;
+  const contents: SpiritLot = { ...lot, volumeL: evap.volumeL, abv: evap.abv, flavor: clampFlavor(f), restMonths: (lot.restMonths ?? 0) + 1, costPerLPA };
+  return { cask: { ...cask, contents }, lostL: evap.lostL };
+}
+
 /** 스테인리스 탱크 보관 원액: 천천히 안정화 */
 export function restLot(lot: SpiritLot): SpiritLot {
   const f: Flavor = { ...lot.flavor };
@@ -106,7 +133,7 @@ export function restLot(lot: SpiritLot): SpiritLot {
 /** 캐스크를 비울 때: 재사용 시 활성도·시즈닝 감소 */
 export function emptyCask(cask: Cask): Cask {
   // 오염 통은 비우면서 오염이 드러난다(재탄화로 제거). 숙성고 자리도 비운다
-  return { ...cask, contents: undefined, filledMonth: undefined, slot: undefined, samples: undefined, labAnalyzed: undefined, rare: undefined, rareKnown: undefined, activity: cask.activity * 0.6, seasoning: cask.seasoning * 0.35, ...(cask.contamination ? { contaminationKnown: true } : {}) };
+  return { ...cask, contents: undefined, filledMonth: undefined, slot: undefined, samples: undefined, sampleLog: undefined, labAnalyzed: undefined, rare: undefined, rareKnown: undefined, activity: cask.activity * 0.6, seasoning: cask.seasoning * 0.35, ...(cask.contamination ? { contaminationKnown: true } : {}) };
 }
 
 /** 재탄화: 활성도 0.7까지 회복 (시즈닝은 회복 안 됨). 최대 2회 */

@@ -5,7 +5,7 @@ import { sumCashFlows } from './cashflow';
 import { bulkValuePerLPA, fulfillContracts, refreshCaskBids, refreshContractOffers, updateBulkIndex } from './bulk';
 import { clamp, weightedAverage } from './flavor';
 import { gainXp, refreshCandidates } from './hr';
-import { matureCask, restLot } from './maturation';
+import { matureVessel, restLot } from './maturation';
 import { assignSlot, deliverOwnedCasks, runContamination, runOffice, runStaffLifecycle, runTourism } from './ops';
 import { emptyCaskOf } from './newGame';
 import { fermentDaysAt } from './production';
@@ -178,7 +178,7 @@ function runMaturation(s: GameState, report: MonthReport, ctx: TickContext): voi
     if (!cask.contents) return cask;
     // 숙성고 내부 기후: 숙성고 종류·단에 따라 다르다 (결정 #65) — 칸별 기후표 조회
     if (!cask.slot) assignSlot(s, cask, undefined, ctx.slots);
-    const res = matureCask(cask, ctx.climateOf(cask), { control, evaporationFactor: evap });
+    const res = matureVessel(cask, ctx.climateOf(cask), { control, evaporationFactor: evap });
     // 스팟 매입 통의 활성도는 6개월 숙성하면 드러난다
     if (cask.activityKnown === false && cask.contents.oakMonths + 1 >= 6) res.cask.activityKnown = true;
     lost += res.lostL;
