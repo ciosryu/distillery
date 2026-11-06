@@ -86,7 +86,7 @@ export function B2B() {
       </Card>
 
       <Card title="현물 벌크 판매 — 탱크 원액 (몰트·그레인)">
-        {Number.isFinite(regionOf(s).grainSpotDepthLPA) && <p className="mb-2 text-xs text-amber-700 dark:text-amber-400">이 지역은 그레인 현물 시장이 얕습니다(깊이 {num(regionOf(s).grainSpotDepthLPA)} LPA). 최근 판매량 {num(s.b2b.spotSoldLPA?.grain ?? 0)} LPA — 많이 팔수록 단가가 떨어지고 매달 {pct(1 - BULK.spotDecay, 0)}씩 회복합니다.</p>}
+        {regionOf(s).grainSpotDepthLPA != null && <p className="mb-2 text-xs text-amber-700 dark:text-amber-400">이 지역은 그레인 현물 시장이 얕습니다(깊이 {num(regionOf(s).grainSpotDepthLPA ?? 0)} LPA). 최근 판매량 {num(s.b2b.spotSoldLPA?.grain ?? 0)} LPA — 많이 팔수록 단가가 떨어지고 매달 {pct(1 - BULK.spotDecay, 0)}씩 회복합니다.</p>}
         {!maltLots.length ? <Empty>탱크에 몰트·그레인 원액이 없습니다</Empty> : (
           <Table head={['원액', '액량', '도수', 'LPA', '품질', '단가(LPA)', '판매 금액', 'LPA당 원가', '']}>
             {maltLots.map((l) => (

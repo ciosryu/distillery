@@ -11,7 +11,8 @@
     "test": "vitest run",
     "balance": "tsx scripts/balance-sim.ts",
     "data:demand": "node scripts/build-demand-data.mjs",
-    "bench": "tsx scripts/bench-tick.ts"
+    "bench": "tsx scripts/bench-tick.ts",
+    "content:export": "tsx scripts/export-content.ts"
   },
   "dependencies": {
     "react": "^19.3.1",

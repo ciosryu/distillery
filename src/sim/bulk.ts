@@ -50,6 +50,7 @@ const trustAdj = (trust: number) => 0.95 + 0.1 * (trust / 100);
 export function spotSaturation(s: Pick<GameState, 'b2b' | 'regionId'>, lot: SpiritLot, lpa = 0): number {
   if (lot.kind !== 'grain') return 1;
   const depth = regionOf(s).grainSpotDepthLPA;
+  if (depth == null) return 1; // 포화 없음
   return 1 / (1 + ((s.b2b.spotSoldLPA?.grain ?? 0) + lpa / 2) / depth);
 }
 
