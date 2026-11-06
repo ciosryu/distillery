@@ -67,6 +67,7 @@ function fillMalt(s: GameState, maxLPA = Infinity, kind: 'malt' | 'grain' = 'mal
  *  v1.3까지는 "재고 800병 미만이면 3캐스크"라서 월 약 1,100병이 상한이었고, 수요가 3~6배인데도 숙성 캐스크가 쌓였다.
  *  OLD_BOTTLE=1이면 옛 정책 */
 const OLD_BOTTLE = process.env.OLD_BOTTLE === '1';
+const OLD_GRAIN = process.env.OLD_GRAIN === '1';
 const BOTTLES_PER_CASK = 330;
 function whiskyDemandLastMonth(s: GameState): number {
   const ids = new Set(s.products.filter((p) => p.category === 'whisky').map((p) => p.id));
@@ -110,11 +111,20 @@ function bridgeSourced(s: GameState): GameState {
 }
 
 /** 그레인 수직계열화: 36개월 이후 그레인 2 + 몰트 1 캐스크로 블렌디드 위스키를 병입 */
+/** v1.4(#84): 블렌디드도 수요를 따라 병입한다 — 지난달 수요의 1.5개월치까지, 한 번에 그레인 2n + 몰트 n 캐스크(n ≤ 4). OLD_GRAIN=1이면 옛 정책 */
+function blendedDemandLastMonth(s: GameState): number {
+  const ids = new Set(s.products.filter((p) => p.category === 'blended_whisky').map((p) => p.id));
+  return s.reports.at(-1)?.sales.filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0) ?? 0;
+}
 function bottleBlended(s: GameState): GameState {
-  if (stockOf(s, 'blended_whisky') >= 1500) return s;
+  const stock = stockOf(s, 'blended_whisky');
+  const target = OLD_GRAIN ? 1500 : Math.max(1500, blendedDemandLastMonth(s) * 1.5);
+  if (stock >= target) return s;
+  // 그레인 2 + 몰트 1 캐스크 ≈ 40% 700ml 약 1,200병
+  const n = OLD_GRAIN ? 1 : Math.min(4, Math.max(1, Math.ceil((target - stock) / 1200)));
   const aged = (k: 'malt' | 'grain') => s.casks.filter((c) => c.contents && c.contents.kind === k && c.contents.oakMonths >= 36 && !c.contents.sourced);
-  const g = aged('grain').slice(0, 2);
-  const m = aged('malt').slice(0, 1);
+  const g = aged('grain').slice(0, 2 * n);
+  const m = aged('malt').slice(0, n);
   if (g.length < 2 || !m.length) return s;
   const comps = [...g, ...m].map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }));
   const opts = { name: `블렌디드 ${s.month}`, targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' };
@@ -200,6 +210,12 @@ function start(s: GameState, strategy: Strategy): GameState {
     const base = recipeOf(s, 'malt')!;
     const { id: _id, ...rest } = base;
     s = act(s, { type: 'saveRecipe', recipe: { ...rest, name: GRAIN_RECIPE, kind: 'grain', stillId: col.id, mashBill: [{ ingredientId: 'corn', ratio: 0.9 }, { ingredientId: 'malt_unpeated', ratio: 0.1 }], fermentDays: 3, runs: 1 } });
+  }
+  // v1.4(#84): 그레인형도 몰트는 브랜드형과 같은 7배치(발효조 2기 추가) — 4배치면 #82 이후 위스키 판매에서 뒤처진다
+  if (strategy === 'grain' && !OLD_GRAIN) {
+    s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
+    s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
+    return act(s, { type: 'setOrder', recipeId: rid(s, 'malt')!, batchesPerMonth: 7 });
   }
   return act(s, { type: 'setOrder', recipeId: rid(s, 'malt')!, batchesPerMonth: 4 });
 }
