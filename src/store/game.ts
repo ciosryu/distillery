@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { createLocalEngine, DEFAULT_STOPS, newGame, type Action, type GameState, type RegionId, type StopReason } from '../sim';
+import { createLocalEngine, DEFAULT_STOPS, newGame, newScenarioGame, type Action, type BusinessPlan, type GameState, type RegionId, type StopReason } from '../sim';
 import { flushSave, loadGame, queueSave, saveNow } from './persist';
 import { useUi } from './ui';
 
@@ -25,9 +25,14 @@ interface GameStore {
   advanceUntil: (maxMonths: number, stopOn?: StopReason[]) => Promise<void>;
   cancelAdvance: () => void;
   restart: (name?: string, region?: RegionId, site?: string) => void;
+  /** 사업 계획서로 시나리오 새 게임 (S-8) */
+  startScenario: (plan: BusinessPlan) => void;
 }
 
-const engine = createLocalEngine(loadGame() ?? newGame());
+const saved = loadGame();
+/** 세이브 없이 처음 연 화면이면 사업 계획서부터 보여 준다 */
+export const startedFresh = !saved;
+const engine = createLocalEngine(saved ?? newGame());
 const toast = (kind: 'ok' | 'error', text: string) => useUi.getState().showToast(kind, text);
 const persist = (s: GameState) => queueSave(s, (msg) => toast('error', msg));
 let cancelRequested = false;
@@ -67,6 +72,13 @@ export const useGame = create<GameStore>((set) => {
       engine.load(s);
       const res = saveNow(s);
       toast(res.ok ? 'ok' : 'error', res.ok ? '새 게임을 시작했습니다' : res.error);
+    },
+    startScenario: (plan) => {
+      let s: GameState;
+      try { s = newScenarioGame(plan); } catch (e) { toast('error', (e as Error).message); return; }
+      engine.load(s);
+      const res = saveNow(s);
+      toast(res.ok ? 'ok' : 'error', res.ok ? '사업을 시작했습니다' : res.error);
     },
   };
 });

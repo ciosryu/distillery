@@ -13,6 +13,7 @@ import { buildTickContext, type TickContext } from './tick';
 import { updateWeather, weatherOffset } from './weather';
 import { archiveSoldOutProducts, rollupYear } from './lifecycle';
 import { pruneTrendsAndCommissions, refreshCommissions } from './blendTable';
+import { systemOn } from './scenario';
 import { runSales, updateAwareness, updateExportAwareness, updateTrends } from './market';
 import { EXPORT_MARKETS } from './content/exports';
 import { refreshExportOffers, runExportContracts } from './exportDeals';
@@ -251,7 +252,7 @@ function phasePrepare(s: GameState, report: MonthReport): void {
 
 /** 1 이벤트: 예보 → 발생 → 보정치 등록 (이번 달부터 적용), 설비 가동 시작 알림 */
 function phaseEvents(s: GameState, report: MonthReport): void {
-  runEvents(s, report, calendar(s).monthOfYear);
+  if (systemOn(s, 'events')) runEvents(s, report, calendar(s).monthOfYear);
   for (const e of s.production.equipment) if (e.readyMonth === s.month && s.month > 0) report.notes.push(`${EQUIPMENT[e.catalogId]?.nameKo ?? e.catalogId} 가동 시작`);
 }
 
@@ -332,14 +333,15 @@ function phaseGrowth(s: GameState, report: MonthReport, runsUsed: number, sales:
     blender: s.commerce.products.filter((p) => p.createdMonth === s.month).length * 15 + s.inventory.samplesThisMonth * 2,
   };
   report.notes.push(...gainXp(s, rngFor(s.seed, s.month, 'hr'), activity));
-  if (s.month % 3 === 2) refreshCandidates(s, rngFor(s.seed, s.month, 'candidates'));
-  refreshBroker(s, rngFor(s.seed, s.month, 'broker'));
-  refreshContractOffers(s, rngFor(s.seed, s.month, 'contracts'));
-  refreshCaskBids(s, rngFor(s.seed, s.month, 'caskbids'));
+  // 제안 갱신 — 시나리오가 끈 시스템은 제안을 만들지 않는다(S-8). 난수는 시스템마다 독립 스트림이라 끄더라도 다른 시스템 결과는 같다
+  if (s.month % 3 === 2 && systemOn(s, 'hr')) refreshCandidates(s, rngFor(s.seed, s.month, 'candidates'));
+  if (systemOn(s, 'broker')) refreshBroker(s, rngFor(s.seed, s.month, 'broker'));
+  if (systemOn(s, 'contracts')) refreshContractOffers(s, rngFor(s.seed, s.month, 'contracts'));
+  if (systemOn(s, 'caskBids')) refreshCaskBids(s, rngFor(s.seed, s.month, 'caskbids'));
   updateBulkIndex(s, rngFor(s.seed, s.month, 'bulk'));
-  refreshDeals(s, rngFor(s.seed, s.month, 'deals'));
-  refreshCommissions(s, rngFor(s.seed, s.month, 'commissions'), report);
-  refreshExportOffers(s, rngFor(s.seed, s.month, 'export-offers'));
+  if (systemOn(s, 'siteDeals')) refreshDeals(s, rngFor(s.seed, s.month, 'deals'));
+  if (systemOn(s, 'commissions')) refreshCommissions(s, rngFor(s.seed, s.month, 'commissions'), report);
+  if (systemOn(s, 'exports')) refreshExportOffers(s, rngFor(s.seed, s.month, 'export-offers'));
   // 그레인 현물 시장이 물량을 소화한다 (#81)
   if (s.b2b.spotSoldLPA) s.b2b.spotSoldLPA = { grain: s.b2b.spotSoldLPA.grain * BULK.spotDecay };
   // 원재료 가격 변동 (평균 회귀 랜덤 워크)

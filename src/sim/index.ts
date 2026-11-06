@@ -25,5 +25,8 @@ export * from './content/exports';
 export * from './sites';
 export * from './deals';
 export * from './exportDeals';
+export * from './scenario';
+export * from './newScenario';
+export { SCENARIOS, MVP_KR, type ScenarioDef, type ScenarioTierDef, type ScenarioSystem } from './content/scenarios';
 export { rngFor, mulberry32 } from './rng';
 export * as content from './content';

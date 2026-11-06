@@ -1,6 +1,7 @@
 import { BULK, CASK_COST_SHARE_PER_FILL, CASK_MARKET, CASKS, EQUIPMENT, LOAN_OFFERS, RECHAR_COST } from './content/catalog';
 import { assignSlot, handleDeparture, INVESTMENT_OFFERS, masterDistiller, OWNERSHIP, rotateWarehouse, SlotIndex, usedCaskPrice } from './ops';
 import { isUnlocked, unlockingNodes } from './research';
+import { isLocked, LOCKED_MESSAGE } from './scenario';
 import { rngFor } from './rng';
 import { cancellationCost, isBulkKind, recordSpotSale, spotQuote, startContract } from './bulk';
 import { resolvePending } from './events';
@@ -108,16 +109,21 @@ function applyActionRaw(prev: GameState, a: Action): ActionResult {
   if (prev.status !== 'running') return fail(prev, '게임이 종료되었습니다');
   // 테크 게이트 (tech-tree §7) — Phase 1은 TECH_GATING = false라 항상 통과
   if (!isUnlocked(prev, `action:${a.type}`)) return fail(prev, `연구가 필요합니다: ${unlockingNodes(`action:${a.type}`).map((n) => `${n.id} ${n.nameKo}`).join(' 또는 ')}`);
+  // 시나리오 잠금 (S-8) — 시나리오가 없으면 항상 통과
+  if (isLocked(prev, `action:${a.type}`)) return fail(prev, LOCKED_MESSAGE);
   const s = clone(prev);
   switch (a.type) {
     case 'setOrder': {
-      if (!s.production.recipes.some((r) => r.id === a.recipeId)) return fail(prev, '레시피가 없습니다');
+      const recipe = s.production.recipes.find((r) => r.id === a.recipeId);
+      if (!recipe) return fail(prev, '레시피가 없습니다');
+      if (a.batchesPerMonth > 0 && isLocked(s, `kind:${recipe.kind}`)) return fail(prev, LOCKED_MESSAGE);
       const n = Math.max(0, Math.min(60, Math.floor(a.batchesPerMonth)));
       s.production.orders = s.production.orders.filter((o) => o.recipeId !== a.recipeId);
       if (n > 0) s.production.orders.push({ recipeId: a.recipeId, batchesPerMonth: n });
       return { state: s };
     }
     case 'saveRecipe': {
+      if (isLocked(s, `kind:${a.recipe.kind}`)) return fail(prev, LOCKED_MESSAGE);
       const errs = validateRecipe(s, { ...a.recipe, id: a.recipe.id ?? 'new' } as Recipe);
       if (errs.length) return fail(prev, errs.join(' / '));
       if (a.recipe.id) {
@@ -135,6 +141,7 @@ function applyActionRaw(prev: GameState, a: Action): ActionResult {
     case 'buyEquipment': {
       const def = EQUIPMENT[a.catalogId];
       if (!def) return fail(prev, '알 수 없는 설비');
+      if (isLocked(s, `facility:${def.id}`)) return fail(prev, LOCKED_MESSAGE);
       if (def.kind === 'visitor' && def.requires && !s.production.equipment.some((e) => e.catalogId === def.requires)) return fail(prev, `${EQUIPMENT[def.requires]?.nameKo}부터 지어야 합니다`);
       if ((def.kind === 'visitor' || def.kind === 'facility') && s.production.equipment.some((e) => e.catalogId === def.id)) return fail(prev, '이미 있습니다');
       if (def.kind === 'facility' && def.regions && !def.regions.includes(s.regionId)) return fail(prev, '이 지역에서는 해당 없는 설비입니다');

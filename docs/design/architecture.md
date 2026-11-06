@@ -131,7 +131,7 @@ type StopReason = 'pendingEvent' | 'cashWarning' | 'bankrupt' | 'researchDone' |
 
 ```ts
 interface GameState {
-  meta;        // 버전·시드·월·지역·입지·이름·상태·nextId
+  meta;        // 버전·시드·월·지역·입지·이름·상태·nextId (+ v8: scenario — 시나리오 잠금 키·경제 값·목표, skeleton S-8)
   world;       // 날씨·원재료 시세·트렌드·벌크 지수·보정치
   finance;     // 현금·대출·투자·마케팅 예산·연속 적자 월
   hr;          // 직원·후보·하우스 스타일
