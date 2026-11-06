@@ -226,16 +226,39 @@ export interface Contract extends ContractTerms {
   prepaidRemaining: number;
 }
 
+/** 턴 사이 행동(즉시 입출금)의 현금 흐름 항목 — 분류는 cashflow.ts의 CASH_FLOW_LINES */
+export type CashFlowKey =
+  | 'spotBulk' | 'caskBid' | 'caskOwnership' | 'contractPrepay' | 'contractCancel' | 'bottling' | 'severance' | 'rotation' | 'event' | 'brokerCask' | 'export' | 'other'
+  | 'casks' | 'usedCask' | 'equipment'
+  | 'loan' | 'loanRepay' | 'investment';
+/** 항목별 현금 흐름. 부호: 입금 +, 출금 − */
+export type CashFlows = Partial<Record<CashFlowKey, number>>;
+
 export interface MonthReport {
   month: number;
+  /** 제품(병입) 매출 */
   revenue: number;
   expenses: Record<string, number>;
+  /** 직전 결산 이후 현금 변화 = 이번 결산 월말 현금 − 직전 결산 월말 현금 (턴 사이 행동 포함) */
   netCash: number;
   cashEnd: number;
   sales: { productId: string; name: string; bottles: number; revenue: number; demandBottles: number }[];
   /** 원액 계약 납품 */
   bulk: { contractId: string; buyerName: string; deliveredLPA: number; revenue: number; penalty: number }[];
+  /** 원액 계약 납품 매출 (현물 판매는 spotBulkRevenue) */
   bulkRevenue: number;
+  /** 원액 현물 판매(탱크 로트·캐스크째, sellBulk) + 독립 병입자 캐스크 매각(acceptCaskBid). 구버전 세이브의 보고서에는 없다 */
+  spotBulkRevenue?: number;
+  /** 직전 결산 이후 턴 사이 행동으로 생긴 현금 흐름 (부호: 입금 +, 출금 −). 구버전 세이브의 보고서에는 없다 */
+  offTurn?: CashFlows;
+  /** 순현금 분해: 영업 + 투자 + 재무 = netCash. 투자 = 설비·빈 캐스크 매매, 재무 = 대출 실행·상환(정기 원금 포함)·투자 유치 */
+  operatingCash?: number;
+  investingCash?: number;
+  financingCash?: number;
+  /** 계약 납품 중 선급금으로 상계한 금액 (현금은 안 들어옴) — 영업에는 납품 매출로, 재무에는 선급금 상환으로 잡는다 */
+  prepayApplied?: number;
+  /** 계약 만료·파기 때 돌려준 남은 선급금 (재무) */
+  prepayRefunded?: number;
   production: { recipeId: string; name: string; batches: number; lpa: number; cost: number }[];
   angelsShareL: number;
   liquorTaxRemitted: number;
@@ -247,9 +270,12 @@ export interface MonthReport {
   overflowCases?: number;
   lostSalesBottles?: number;
   visitors?: number;
-  /** 이번 달 평년 대비 외기 편차 (기상 이상치 + 이벤트 충격, 결정 #97) */
+  /** 이번 달 평년 대비 외기 편차 (기상 이상치 + 이벤트 충격, 결정 #98) */
   weather?: { tempAnom: number; humidAnom: number; shocks: string[] };
   tourismRevenue?: number;
+  /** 수출 판매 (#95) */
+  exports?: ExportSale[];
+  exportRevenue?: number;
   /** 입지 특성 (결정 #86~) */
   dutyFreeBottles?: number;
   /** 면세 판매 입소문으로 오른 인지도 */
@@ -348,11 +374,11 @@ export interface CaskOrder {
 
 export interface CaskBid { id: string; buyerName: string; caskId: string; price: number; expiresMonth: number }
 
-// ───────────── 게임 상태 v6 — 도메인 슬라이스 (PRD 결정 #95, docs/design/architecture.md §3.3) ─────────────
+// ───────────── 게임 상태 v6 — 도메인 슬라이스 (PRD 결정 #96, docs/design/architecture.md §3.3) ─────────────
 // 권위 상태는 하나. 헤더(시간·지역·시드)는 루트에, 도메인 데이터는 슬라이스에 둔다.
 // 한 슬라이스는 한 시스템 묶음이 "주로" 쓰지만, 월 틱은 슬라이스를 가로지르는 하나의 트랜잭션이다.
 
-/** 월 기상 이상치 — 입지 평년값에 더한다 (AR(1), PRD 결정 #97). 이벤트 충격(폭염·한파)도 여기에 더해진다 */
+/** 월 기상 이상치 — 입지 평년값에 더한다 (AR(1), PRD 결정 #98). 이벤트 충격(폭염·한파)도 여기에 더해진다 */
 export interface WeatherState {
   /** 이번 달 기온 이상치(°C) — 난수 성분 */
   tempAnom: number;
@@ -416,6 +442,8 @@ export interface FinanceSlice {
   investmentsTaken: string[];
   /** 매출채권 — 결제 지연 대금 */
   receivables: Receivable[];
+  /** 직전 결산 이후 턴 사이 행동으로 생긴 현금 흐름 — 다음 결산 보고서(offTurn)로 넘어가고 비워진다 (§16.20) */
+  pendingCash?: CashFlows;
 }
 
 export interface HrSlice {
@@ -463,6 +491,8 @@ export interface CommerceSlice {
   traditionalPrevYearL: number;
   retailOffers: RetailOffer[];
   retailContracts: RetailContract[];
+  /** 진출한 수출 시장 (수출 결정 — PRD §16.25) */
+  exports?: ExportEntry[];
 }
 
 export interface B2bSlice {
@@ -495,6 +525,20 @@ export interface HistorySlice {
   /** 연 요약 (오래된 기간의 장기 차트용) */
   years: YearSummary[];
 }
+/** 진출한 수출 시장 (#95) */
+export interface ExportEntry {
+  marketId: 'US' | 'UK' | 'DF';
+  openedMonth: number;
+  /** 이 달부터 판매 (라벨 승인·수입상 계약 기간) */
+  readyMonth: number;
+  /** 현지 인지도 0~1 */
+  awareness: number;
+  totalBottles: number;
+  /** 수출가 배수: FOB = 출고가 × 배수 (기본 1). 공급이 모자라면 올려서 적게 팔고 많이 남긴다 */
+  priceFactor?: number;
+}
+
+export interface ExportSale { marketId: 'US' | 'UK' | 'DF'; productId: string; name: string; bottles: number; revenue: number; demandBottles: number; freight: number }
 
 export interface GameState {
   version: 6;

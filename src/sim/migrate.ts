@@ -1,6 +1,6 @@
 import type { GameState } from './types';
 
-// 세이브 마이그레이션 체인 (PRD §13.2, 결정 #95, docs/design/architecture.md §3.6)
+// 세이브 마이그레이션 체인 (PRD §13.2, 결정 #96, docs/design/architecture.md §3.6)
 // 옛 세이브는 버리지 않고 v5 → v6 → … 순서로 올린다. 각 단계는 순수 함수(입력을 바꾸지 않는다).
 // 새 버전을 만들면: GameState.version을 올리고, MIGRATIONS에 `[이전 버전]: (s) => 다음 버전` 한 줄을 더한다.
 

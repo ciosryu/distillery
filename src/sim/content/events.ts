@@ -8,7 +8,7 @@ export type EventCategory = 'market' | 'supply' | 'disaster' | 'regulation' | 'b
 
 export type Effect =
   | { type: 'modifier'; key: string; factor: number; months: [number, number]; delay?: number; label?: string }
-  /** 기상 충격 — 결과(증발 배수)가 아니라 입력(외기 기온·습도)을 바꾼다 (결정 #97) */
+  /** 기상 충격 — 결과(증발 배수)가 아니라 입력(외기 기온·습도)을 바꾼다 (결정 #98) */
   | { type: 'weather'; tempC: number; humidity?: number; months: [number, number]; label?: string }
   | { type: 'cash'; amount: number }
   | { type: 'awareness'; delta: number }
@@ -114,7 +114,7 @@ export const EVENTS: EventDef[] = [
   { id: 'flood', title: '집중호우 침수', category: 'disaster', chance: 0.02, cooldown: 24, months: [7, 8], regions: ['KR', 'JP'], defense: 'facility_storm', text: '집중호우로 공장이 침수되어 한 달간 생산이 멈춥니다.',
     effects: [{ type: 'caskVolumeLoss', share: 0.02 }, m('production', 0, [1, 1], '침수 복구'), { type: 'cash', amount: -10_000_000 }] },
   { id: 'heatwave', title: '기록적 폭염', category: 'disaster', chance: 0.06, cooldown: 12, months: [7, 8], text: '폭염으로 숙성고 온도가 치솟아 증발이 늘어납니다.',
-    // v1.6(#97): 증발 ×1.7(결과) → 외기 +4°C 2개월(입력). 증발은 exp(0.13×4) ≈ 1.68배로 비슷하고, 추출·발효·도수도 함께 바뀐다
+    // v1.6(#98): 증발 ×1.7(결과) → 외기 +4°C 2개월(입력). 증발은 exp(0.13×4) ≈ 1.68배로 비슷하고, 추출·발효·도수도 함께 바뀐다
     effects: [{ type: 'weather', tempC: 4, humidity: -5, months: [2, 2], label: '폭염' }] },
   { id: 'still_breakdown', title: '증류기 고장', category: 'disaster', chance: 0.015, cooldown: 12, requires: ['still'], text: '증류기 하나가 고장 났습니다.',
     choices: [

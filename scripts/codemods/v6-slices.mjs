@@ -1,4 +1,4 @@
-// 코드모드: GameState v5(평면) 접근을 v6 도메인 슬라이스 접근으로 바꾼다 (docs/design/architecture.md §3.3, PRD 결정 #95)
+// 코드모드: GameState v5(평면) 접근을 v6 도메인 슬라이스 접근으로 바꾼다 (docs/design/architecture.md §3.3, PRD 결정 #96)
 //
 //   s.cash          → s.finance.cash
 //   s.pendingEvents → s.events.pending

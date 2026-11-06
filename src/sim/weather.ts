@@ -1,7 +1,7 @@
 import { rngFor } from './rng';
 import type { GameState } from './types';
 
-// 기상 이상치 (PRD 결정 #97, docs/design/architecture.md §3.5)
+// 기상 이상치 (PRD 결정 #98, docs/design/architecture.md §3.5)
 // 입지 월 평년값에 "이번 달 이상치"를 더한다. 이상치는 AR(1) — 더운 달 다음 달도 더울 가능성이 높다(계절감).
 //   a(t) = ρ·a(t−1) + σ·√(1−ρ²)·ε,  ε ~ N(0, 1),  난수 스트림 rngFor(seed, month, 'weather')
 // 이벤트(폭염·한파)는 결과(증발 ×1.7)가 아니라 이 입력에 충격을 더한다 → 증발·추출·발효·도수가 한 원인에서 일관되게 따라온다.

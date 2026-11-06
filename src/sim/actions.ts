@@ -9,9 +9,11 @@ import { executeBlend, type BlendComponent, type BottleOptions } from './blendin
 import { MAX_RECHAR, recharCask } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
+import { recordPendingCash, sumCashFlows } from './cashflow';
+import { EXPORT_MARKETS, type ExportMarketId } from './content/exports';
 import { applyWaterPermit, equipmentCost, inventoryLoanRoom, inventoryLtv } from './sites';
 import { OEM, RETAIL_DEAL, startOem, startRetail } from './deals';
-import type { CaskTypeId, GameState, Recipe } from './types';
+import type { CashFlowKey, CaskTypeId, GameState, Recipe } from './types';
 import { annuityPayment, clone, nid, staffOf, warehouseCapacity } from './util';
 
 export type Action =
@@ -30,6 +32,9 @@ export type Action =
   /** 오염 캐스크 원액 폐기 */
   | { type: 'dumpCask'; caskId: string }
   | { type: 'takeInvestment'; offerId: string }
+  | { type: 'openExport'; marketId: ExportMarketId }
+  | { type: 'closeExport'; marketId: ExportMarketId }
+  | { type: 'setExportPrice'; marketId: ExportMarketId; priceFactor: number }
   | { type: 'sellCaskOwnership'; caskId: string }
   | { type: 'rechar'; caskId: string }
   | { type: 'bottle'; components: BlendComponent[]; options: BottleOptions }
@@ -55,7 +60,32 @@ export interface ActionResult { state: GameState; error?: string; message?: stri
 
 const fail = (state: GameState, error: string): ActionResult => ({ state, error });
 
+/** 행동별 현금 흐름 항목 — 턴 사이 입출금을 다음 결산 보고서에 싣기 위한 분류 (null = 현금이 움직이지 않는 행동) */
+const ACTION_CASH_KEY: Record<Action['type'], CashFlowKey | null> = {
+  setOrder: null, saveRecipe: null, deleteRecipe: null, fillCasks: null, dumpCask: null, setPrice: null, setMarketing: null, hire: null,
+  buyEquipment: 'equipment', buyCasks: 'casks', buySpotCasks: 'casks', orderSeasoning: 'casks', rechar: 'casks', sellUsedCask: 'usedCask',
+  rotateWarehouse: 'rotation', takeInvestment: 'investment', sellCaskOwnership: 'caskOwnership', bottle: 'bottling', fire: 'severance',
+  takeLoan: 'loan', repayLoan: 'loanRepay', buyBrokerCask: 'brokerCask', sellBulk: 'spotBulk', acceptContract: 'contractPrepay',
+  cancelContract: 'contractCancel', resolveEvent: 'event', acceptCaskBid: 'caskBid',
+  // 입지 특성 (#86~): 취수 증량 신청비, 납품 계약 해지 비용, 위탁생산 설비 패키지(설치비 − 지원금)
+  applyWaterPermit: 'other', acceptRetail: null, cancelRetail: 'contractCancel', acceptOem: 'equipment',
+  // 수출 (#95): 시장 진출비·철수
+  openExport: 'export', closeExport: 'export', setExportPrice: null,
+};
+
+/** 행동 적용. 행동으로 움직인 현금은 pendingCash에 기록돼 다음 결산 보고서(offTurn·netCash)에 합쳐진다 */
 export function applyAction(prev: GameState, a: Action): ActionResult {
+  const res = applyActionRaw(prev, a);
+  if (res.error) return res;
+  // 행동 안에서 따로 기록한 몫(예: 계약 해지 비용 중 선급금 반환)을 뺀 나머지를 행동 항목으로 기록.
+  // 분류가 없는 행동이 현금을 움직여도 순현금에서 빠지지 않도록 '기타'로 기록
+  const recorded = sumCashFlows(res.state.finance.pendingCash ?? {}) - sumCashFlows(prev.finance.pendingCash ?? {});
+  const rest = res.state.finance.cash - prev.finance.cash - recorded;
+  if (Math.abs(rest) > 1e-6) recordPendingCash(res.state, ACTION_CASH_KEY[a.type] ?? 'other', rest);
+  return res;
+}
+
+function applyActionRaw(prev: GameState, a: Action): ActionResult {
   if (prev.status !== 'running') return fail(prev, '게임이 종료되었습니다');
   // 테크 게이트 (tech-tree §7) — Phase 1은 TECH_GATING = false라 항상 통과
   if (!isUnlocked(prev, `action:${a.type}`)) return fail(prev, `연구가 필요합니다: ${unlockingNodes(`action:${a.type}`).map((n) => `${n.id} ${n.nameKo}`).join(' 또는 ')}`);
@@ -169,6 +199,28 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       const { contents: _c, contamination: _t, contaminationKnown: _k, slot: _s, ...rest } = cask;
       s.inventory.casks[ci] = { ...rest, activity: cask.contamination ? cask.activity * 0.5 : cask.activity };
       return { state: s, message: `캐스크 ${cask.id} 원액 폐기${cask.contamination ? ' — 오염 통은 활성도 절반' : ''}` };
+    }
+    case 'openExport': {
+      const m = EXPORT_MARKETS[a.marketId];
+      if (!m) return fail(prev, '없는 시장입니다');
+      s.commerce.exports ??= [];
+      if (s.commerce.exports.some((e) => e.marketId === a.marketId)) return fail(prev, `이미 ${m.nameKo}에 진출했습니다`);
+      if (s.finance.cash < m.entryCost) return fail(prev, '현금이 부족합니다');
+      s.finance.cash -= m.entryCost;
+      s.commerce.exports.push({ marketId: a.marketId, openedMonth: s.month, readyMonth: s.month + m.entryMonths, awareness: m.awareness.start, totalBottles: 0 });
+      return { state: s, message: `${m.nameKo} 진출 준비 시작 — ${m.entryMonths}개월 뒤 판매` };
+    }
+    case 'setExportPrice': {
+      const e = s.commerce.exports?.find((x) => x.marketId === a.marketId);
+      if (!e) return fail(prev, '진출하지 않은 시장입니다');
+      e.priceFactor = Math.max(0.5, Math.min(3, Math.round(a.priceFactor * 100) / 100));
+      return { state: s, message: `${EXPORT_MARKETS[a.marketId].nameKo} 수출가를 출고가의 ×${e.priceFactor}로 정했습니다` };
+    }
+    case 'closeExport': {
+      const before = s.commerce.exports?.length ?? 0;
+      s.commerce.exports = (s.commerce.exports ?? []).filter((e) => e.marketId !== a.marketId);
+      if (s.commerce.exports.length === before) return fail(prev, '진출하지 않은 시장입니다');
+      return { state: s, message: `${EXPORT_MARKETS[a.marketId].nameKo}에서 철수했습니다 (진입 비용은 돌려받지 못합니다)` };
     }
     case 'takeInvestment': {
       const o = INVESTMENT_OFFERS.find((x) => x.id === a.offerId);
@@ -402,6 +454,8 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       if (!c) return fail(prev, '계약이 없습니다');
       const cost = cancellationCost(c);
       s.finance.cash -= cost;
+      // 해지 비용 = 위약금(영업) + 남은 선급금 반환(재무)
+      recordPendingCash(s, 'contractPrepay', -Math.round(c.prepaidRemaining));
       s.b2b.trust = Math.max(0, s.b2b.trust - 10);
       s.b2b.contracts = s.b2b.contracts.filter((x) => x.id !== c.id);
       return { state: s, message: `${c.buyerName} 계약 해지 — 해지 비용 ${cost.toLocaleString()}원, 신뢰도 하락` };

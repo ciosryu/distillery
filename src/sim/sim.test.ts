@@ -3,7 +3,7 @@ import {
   advanceMonths, annuityPayment, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, categorize, demandFor, evaluate, evaporate, heartsFraction, spotBidPerLPA, spotQuote,
   makeContractOffer, makeCraftContractOffer, contractAgingImpact, matureCask, mulberry32, newGame, previewBlend, qualityFactor, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type GameState, type SpiritLot,
   appeal, applyEffects, buyersFor, presetRecipes, validateRecipe, type Product,
-  agePerception, spotSaturation, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
+  agePerception, spotSaturation, EXPORT_MARKETS, exportShelfPrice, exportEligible, exportDemandFor, sourcedElasticityFactor, sourcedPrestigeOf, caskStorageCost, fermentDaysAt,
 } from './index';
 import { overhangFactor, ownsFacility, retailCapacityCases, slotClimate } from './ops';
 import { EQUIPMENT } from './content/catalog';
@@ -690,5 +690,136 @@ describe('v1.0 운영 시스템', () => {
     s = advanceMonths(s, 12);
     expect(s.history.reports.at(-1)!.visitors).toBeGreaterThan(0);
     expect(s.commerce.localBuzz).toBeGreaterThan(0);
+  });
+});
+
+describe('월간 보고서 — 턴 사이 현금 흐름', () => {
+  it('현물 벌크 판매(sellBulk)가 그달 보고서의 현물 매출·순현금에 잡힌다', () => {
+    let s = newGame({ seed: 21 });
+    s = applyAction(s, { type: 'setOrder', recipeId: recipeId(s, '싱글 몰트 — 언'), batchesPerMonth: 2 }).state;
+    s = advanceMonths(s, 1);
+    const lot = s.inventory.lots.find((l) => l.kind === 'malt')!;
+    const before = s.finance.cash;
+    s = applyAction(s, { type: 'sellBulk', source: 'lot', id: lot.id }).state;
+    const sold = s.finance.cash - before;
+    expect(sold).toBeGreaterThan(0);
+    expect(s.finance.pendingCash?.spotBulk).toBe(sold);
+
+    s = advanceMonths(s, 1);
+    const r = s.history.reports.at(-1)!;
+    expect(r.spotBulkRevenue).toBe(sold);
+    expect(r.offTurn?.spotBulk).toBe(sold);
+    // 순현금 = 직전 결산 이후 현금 변화 전체 (현물 판매 포함)
+    expect(r.netCash).toBeCloseTo(r.cashEnd - s.history.reports.at(-2)!.cashEnd, 0);
+    expect(r.operatingCash).toBeCloseTo(r.netCash, 0);
+    // 결산 후 대기 중인 턴 사이 흐름은 비워진다
+    expect(s.finance.pendingCash).toEqual({});
+  });
+
+  it('대출·캐스크 구매·IB/현물 매각까지 섞여도 순현금 = 월말 현금 차이, 영업+투자+재무 = 순현금', () => {
+    let s = newGame({ seed: 22 });
+    const cash0 = s.finance.cash;
+    s = applyAction(s, { type: 'takeLoan', offerId: 'working', amount: 100_000_000 }).state;
+    s = applyAction(s, { type: 'buyCasks', caskType: 'ex_bourbon_barrel', qty: 2 }).state;
+    s = applyAction(s, { type: 'buyBrokerCask', offerId: s.b2b.brokerOffers[0]!.id }).state;
+    s = applyAction(s, { type: 'sellBulk', source: 'cask', id: s.inventory.casks.at(-1)!.id }).state;
+    s = advanceMonths(s, 1);
+    let r = s.history.reports.at(-1)!;
+    expect(r.netCash).toBeCloseTo(r.cashEnd - cash0, 0);
+    expect(r.offTurn?.loan).toBe(100_000_000);
+    expect(r.offTurn?.casks).toBeLessThan(0);
+    expect(r.offTurn?.brokerCask).toBeLessThan(0);
+    expect(r.spotBulkRevenue).toBeGreaterThan(0);
+    // 대출(실행 − 그달 원금 상환)은 재무, 빈 캐스크는 투자 — 영업 현금흐름에는 들어가지 않는다
+    expect(r.expenses.principal).toBeGreaterThan(0); // 운전자금 대출은 거치 기간이 없다
+    expect(r.financingCash).toBe(100_000_000 - r.expenses.principal!);
+    expect(r.investingCash).toBe(r.offTurn!.casks);
+    expect(r.operatingCash! + r.investingCash! + r.financingCash!).toBeCloseTo(r.netCash, 0);
+
+    // 행동 없는 달: 순현금은 예전과 같다(턴 안의 변화만), 정기 원금 상환은 재무
+    s = advanceMonths(s, 1);
+    r = s.history.reports.at(-1)!;
+    expect(r.offTurn).toEqual({});
+    expect(r.netCash).toBeCloseTo(r.cashEnd - s.history.reports.at(-2)!.cashEnd, 0);
+    expect(r.financingCash).toBe(-(r.expenses.principal ?? 0));
+  });
+
+  it('계약 선급금은 재무로 잡혀 영업 현금흐름에서 빠지고, 납품 때 상계분은 영업 매출로 돌아온다', () => {
+    let s = newGame({ seed: 24 });
+    const offer = { ...s.b2b.contractOffers[0]!, style: 'any' as const, minQuality: 30, lpaPerMonth: 60, prepayShare: 0.3 };
+    s = { ...s, b2b: { ...s.b2b, contractOffers: [offer] } };
+    s = applyAction(s, { type: 'setOrder', recipeId: recipeId(s, '싱글 몰트 — 언'), batchesPerMonth: 3 }).state;
+    s = applyAction(s, { type: 'acceptContract', offerId: offer.id }).state;
+    const prepaid = s.finance.pendingCash!.contractPrepay!;
+    expect(prepaid).toBeGreaterThan(0);
+    s = advanceMonths(s, 1);
+    const r = s.history.reports.at(-1)!;
+    // 생산한 달에 바로 납품 → 상계분은 현금이 아니지만 영업 매출로, 같은 금액은 재무(선급금 상환)로
+    expect(r.prepayApplied).toBeGreaterThan(0);
+    expect(r.financingCash).toBeCloseTo(prepaid - r.prepayApplied!, 0);
+    expect(r.operatingCash! + r.investingCash! + r.financingCash!).toBeCloseTo(r.netCash, 0);
+    // 선급금 없이 같은 납품을 했을 때와 영업 현금흐름이 같다 (상계분 = 납품 총액 − 받은 현금)
+    expect(r.bulkRevenue + r.prepayApplied!).toBeCloseTo(r.bulk[0]!.deliveredLPA * offer.pricePerLPA, -1);
+  });
+
+  it('계약 해지 비용은 위약금(영업)과 남은 선급금 반환(재무)으로 나뉜다', () => {
+    let s = newGame({ seed: 25 });
+    const offer = { ...s.b2b.contractOffers[0]!, minQuality: 30, prepayShare: 0.3 };
+    s = { ...s, b2b: { ...s.b2b, contractOffers: [offer] } };
+    s = applyAction(s, { type: 'acceptContract', offerId: offer.id }).state;
+    const remaining = s.b2b.contracts[0]!.prepaidRemaining;
+    const before = s.finance.cash;
+    s = applyAction(s, { type: 'cancelContract', contractId: s.b2b.contracts[0]!.id }).state;
+    const cost = before - s.finance.cash;
+    expect(s.finance.pendingCash!.contractPrepay).toBeCloseTo(remaining - Math.round(remaining), 0); // 입금 − 반환 ≈ 0
+    expect(s.finance.pendingCash!.contractCancel).toBeCloseTo(-(cost - Math.round(remaining)), 0);
+    expect(s.finance.pendingCash!.contractCancel).toBeLessThan(0);
+  });
+
+  it('구버전 세이브(pendingCash 없음)도 그대로 진행된다', () => {
+    const g = newGame({ seed: 23 });
+    const { pendingCash: _p, ...finance } = g.finance;
+    let s: GameState = { ...g, finance };
+    s = applyAction(s, { type: 'buyCasks', caskType: 'ex_bourbon_barrel', qty: 1 }).state;
+    s = advanceMonths(s, 1);
+    expect(s.history.reports.at(-1)!.offTurn?.casks).toBeLessThan(0);
+  });
+});
+
+describe('수출 (#95)', () => {
+  const whisky = (over: Partial<Product> = {}): Product => ({ id: 'w', name: 'w', category: 'whisky', ageYears: 3, oakMonths: 40, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 100, style: null, sourcedShare: 0, stockBottles: 1000, price: 40_000, unitCost: 12_000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, ...over });
+
+  it('수출 소비자가 = ((출고가+운임)×(1+관세) + 현지 주세) × 유통 배수 × (1+부가세)', () => {
+    const m = EXPORT_MARKETS.UK;
+    const p = whisky();
+    const lpa = 0.7 * 0.46;
+    const expected = ((40_000 + m.freightPerBottle.KR) * (1 + m.tariff.KR) + m.excisePerLPA * lpa) * m.channelMultiple * (1 + m.vat);
+    expect(exportShelfPrice({ regionId: 'KR' }, p, m)).toBeCloseTo(expected, 6);
+    // 면세점은 세금이 없어 같은 출고가라도 영국보다 싸다
+    expect(exportShelfPrice({ regionId: 'KR' }, p, EXPORT_MARKETS.DF)).toBeLessThan(exportShelfPrice({ regionId: 'KR' }, p, m));
+  });
+
+  it('영국은 3년 미만 위스키를 받지 않는다', () => {
+    expect(exportEligible(whisky({ oakMonths: 24 }), EXPORT_MARKETS.UK)).toBe(false);
+    expect(exportEligible(whisky({ oakMonths: 24 }), EXPORT_MARKETS.US)).toBe(true);
+    expect(exportEligible(whisky({ category: 'baijiu' }), EXPORT_MARKETS.US)).toBe(false);
+  });
+
+  it('진출 → 준비 기간 뒤 판매, 수출분은 국내 주세가 없고 운임·월 비용이 나간다', () => {
+    let s = newGame({ seed: 41 });
+    s = { ...s, finance: { ...s.finance, cash: 1e10 }, commerce: { ...s.commerce, awareness: 0.5, products: [whisky({ stockBottles: 5000 })] } };
+    s = applyAction(s, { type: 'openExport', marketId: 'DF' }).state;
+    expect(s.commerce.exports).toHaveLength(1);
+    expect(applyAction(s, { type: 'openExport', marketId: 'DF' }).error).toBeTruthy();
+    const before = advanceMonths(s, 1);
+    expect(before.history.reports.at(-1)!.exports?.reduce((t, x) => t + x.bottles, 0) ?? 0).toBe(0); // 아직 준비 중
+    expect(before.history.reports.at(-1)!.expenses.export_fixed).toBe(EXPORT_MARKETS.DF.monthlyCost);
+    const after = advanceMonths(s, EXPORT_MARKETS.DF.entryMonths + 1);
+    const r = after.history.reports.at(-1)!;
+    const sold = r.exports!.reduce((t, x) => t + x.bottles, 0);
+    expect(sold).toBeGreaterThan(0);
+    expect(r.exportRevenue).toBe(sold * 40_000);
+    expect(r.expenses.export_freight).toBe(sold * EXPORT_MARKETS.DF.freightPerBottle.KR);
+    expect(exportDemandFor(after, after.commerce.products[0]!, after.commerce.exports![0]!, 1)).toBeGreaterThan(0);
   });
 });

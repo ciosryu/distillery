@@ -62,7 +62,7 @@ export function assignSlot(s: GameState, cask: Cask, preferW?: string, index: Sl
  */
 export function slotClimate(s: GameState, cask: Cask | null, monthOfYear: number): Climate {
   const site = siteOf(s);
-  // 외기 = 입지 평년값 + 이번 달 기상 이상치·이벤트 충격 (결정 #97)
+  // 외기 = 입지 평년값 + 이번 달 기상 이상치·이벤트 충격 (결정 #98)
   const off = weatherOffset(s);
   const to = site.tempC[monthOfYear - 1]! + off.tempC;
   const ho = clamp(site.humidity[monthOfYear - 1]! + off.humidity, 20, 100);

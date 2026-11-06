@@ -54,7 +54,7 @@ export const WATER_EFFECT: Record<WaterId, { offnote: number; fruity: number; fr
 export function fermentationClimate(s: GameState, monthOfYear: number): number {
   const site = siteOf(s);
   const tm = site.tempC.reduce((a, b) => a + b, 0) / 12;
-  // 발효실도 이번 달 기상 이상치·이벤트 충격을 받는다 (결정 #97)
+  // 발효실도 이번 달 기상 이상치·이벤트 충격을 받는다 (결정 #98)
   return tm + 0.8 * (site.tempC[monthOfYear - 1]! + weatherOffset(s).tempC - tm) + 2;
 }
 

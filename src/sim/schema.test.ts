@@ -7,7 +7,7 @@ import { evapTempFactor } from './maturation';
 
 // v5 세이브 픽스처는 리팩터 전 코드로 만들었다(옛 코드가 실제로 쓴 세이브 모양).
 
-describe('세이브 마이그레이션 (결정 #95)', () => {
+describe('세이브 마이그레이션 (결정 #96)', () => {
   it('v5의 모든 필드가 v6 위치에 같은 값으로 옮겨진다 (무손실)', () => {
     const raw = structuredClone(fixture.save) as Record<string, unknown>;
     const s = migrateSave(raw) as unknown as Record<string, Record<string, unknown>>;
@@ -73,7 +73,7 @@ describe('테크 게이트 isUnlocked (tech-tree §7)', () => {
   });
 });
 
-describe('기상 이상치 AR(1) (결정 #97)', () => {
+describe('기상 이상치 AR(1) (결정 #98)', () => {
   it('평균 0, 표준편차 σ, 1개월 자기상관 ρ에 가깝다', () => {
     const s = newGame({ seed: 3 });
     const xs: number[] = [];
@@ -157,7 +157,7 @@ describe('데이터 수명 관리 (architecture §3.7)', () => {
   });
 });
 
-describe('블렌딩 레이더 코어 (결정 #98)', () => {
+describe('블렌딩 레이더 코어 (결정 #99)', () => {
   const sherry: Flavor = { dried_fruit: 45, wood_spice: 25, vanilla_caramel: 20, nutty_rancio: 10, oak_tannin: 20 };
   const peated: Flavor = { peat_smoke: 55, cereal: 20, vanilla_caramel: 25, oily_waxy: 15, earthy: 5 };
   const bourbon: Flavor = { fresh_fruit: 35, vanilla_caramel: 40, floral: 20, cereal: 15, sweetness: 10 };

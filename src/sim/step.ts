@@ -1,6 +1,7 @@
 import { BULK, CASK_STORAGE, CASKS, EQUIPMENT, INGREDIENTS, ROLE_INFO } from './content/catalog';
 import { liquorTaxPerBottle, regionOf, traditionalTaxFactor } from './content/regions';
 import { refreshBroker } from './broker';
+import { sumCashFlows } from './cashflow';
 import { bulkValuePerLPA, fulfillContracts, refreshCaskBids, refreshContractOffers, updateBulkIndex } from './bulk';
 import { clamp, weightedAverage } from './flavor';
 import { gainXp, refreshCandidates } from './hr';
@@ -11,7 +12,8 @@ import { fermentDaysAt } from './production';
 import { buildTickContext, type TickContext } from './tick';
 import { updateWeather, weatherOffset } from './weather';
 import { archiveSoldOutProducts, rollupYear } from './lifecycle';
-import { runSales, updateAwareness, updateTrends } from './market';
+import { runSales, updateAwareness, updateExportAwareness, updateTrends } from './market';
+import { EXPORT_MARKETS } from './content/exports';
 import { batchEnergyCost, simulateBatch, stillDefOf, volumeDiscounts } from './production';
 import { siteOf } from './content/regions';
 import { collectReceivables, fulfillRetail, OEM, refreshDeals } from './deals';
@@ -19,7 +21,7 @@ import { hasLocalIngredient, heatingCost, inventoryMarginCall, resolveDutyFreeEd
 import { effectivePriceIndex, mod, pruneModifiers } from './modifiers';
 import { runEvents } from './events';
 import { rngFor } from './rng';
-import type { FermenterType, GameState, MonthReport, SpiritLot, StaffRole } from './types';
+import type { CashFlows, FermenterType, GameState, MonthReport, SpiritLot, StaffRole } from './types';
 import { bestBy, calendar, clone, monthLabel, nid, staffOf } from './util';
 
 export const BANKRUPT_AFTER_MONTHS = 3;
@@ -222,7 +224,7 @@ function runFinance(s: GameState, report: MonthReport, monthOfYear: number): voi
 // 0 준비(기상 이상치 포함) → 1 이벤트 → [틱 컨텍스트] → 2 생산 → 3 숙성 → 4 계약 납품 → 5 판매·주세 → 6 운영 → 7 재무 → 8 성장 → 9 판정·리포트
 // 각 단계는 같은 상태 사본(s)을 차례로 고친다. 난수는 단계마다 독립 스트림(rngFor(seed, month, 이름))이라 단계를 더해도 다른 단계 결과가 바뀌지 않는다.
 
-const newReport = (s: GameState): MonthReport => ({ month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] });
+const newReport = (s: GameState, offTurn: CashFlows): MonthReport => ({ month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, prepayApplied: 0, prepayRefunded: 0, spotBulkRevenue: (offTurn.spotBulk ?? 0) + (offTurn.caskBid ?? 0), offTurn, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] });
 
 /** 0 준비: 지난 보정치 정리, 주문 캐스크 도착, 입지 인허가 */
 function phasePrepare(s: GameState, report: MonthReport): void {
@@ -239,7 +241,7 @@ function phasePrepare(s: GameState, report: MonthReport): void {
   }
   s.inventory.caskOrders = s.inventory.caskOrders.filter((x) => x.arriveMonth > s.month);
   resolveWaterPermit(s, report);
-  // 이번 달 기상 이상치 (AR(1), 결정 #97) — 이벤트 충격은 다음 단계에서 더해진다
+  // 이번 달 기상 이상치 (AR(1), 결정 #98) — 이벤트 충격은 다음 단계에서 더해진다
   updateWeather(s);
 }
 
@@ -257,7 +259,18 @@ function phaseContracts(s: GameState, report: MonthReport): void {
 
 /** 5 판매·주세 — 이번 달 판매 결과를 돌려준다(성장 단계의 XP에 쓰임) */
 function phaseSales(s: GameState, report: MonthReport, ctx: TickContext): ReturnType<typeof runSales>['results'] {
-  const { results: sales, retail } = runSales(s, rngFor(s.seed, s.month, 'sales'), ctx.monthOfYear);
+  updateExportAwareness(s); // 판매 전에 갱신 — 면세는 국내 인지도가 첫 달부터 넘어온다
+  const { results: sales, retail, exports } = runSales(s, rngFor(s.seed, s.month, 'sales'), ctx.monthOfYear);
+  // 수출 (PRD §16.25): 출고가가 그대로 들어오고(국내 주세 면세) 운임은 우리가, 현지 비용은 매달 낸다
+  if (s.commerce.exports?.length) {
+    report.exports = exports;
+    report.exportRevenue = exports.reduce((t, x) => t + x.revenue, 0);
+    s.finance.cash += report.exportRevenue;
+    const freight = exports.reduce((t, x) => t + x.freight, 0);
+    if (freight > 0) { s.finance.cash -= freight; report.expenses.export_freight = freight; }
+    const fixed = s.commerce.exports.reduce((t, e) => t + EXPORT_MARKETS[e.marketId].monthlyCost, 0);
+    if (fixed > 0) { s.finance.cash -= fixed; report.expenses.export_fixed = fixed; }
+  }
   report.sales = sales.map(({ overflowBottles: _o, distribution: _d, ...x }) => x);
   report.retailCapacityCases = retail.capacityCases;
   report.retailSoldCases = retail.soldCases;
@@ -324,7 +337,7 @@ function phaseGrowth(s: GameState, report: MonthReport, runsUsed: number, sales:
 }
 
 /** 9 판정·리포트: 지급 능력(연속 적자 → 파산), 리포트 기록, 월 넘김 */
-function phaseSettle(s: GameState, report: MonthReport, cashStart: number): void {
+function phaseSettle(s: GameState, report: MonthReport, cashStart: number, offTurn: CashFlows): void {
   if (s.finance.cash < 0) {
     s.finance.negativeCashMonths += 1;
     report.notes.push(`현금 부족 ${s.finance.negativeCashMonths}개월째 — ${BANKRUPT_AFTER_MONTHS}개월 지속 시 파산`);
@@ -332,8 +345,13 @@ function phaseSettle(s: GameState, report: MonthReport, cashStart: number): void
   } else s.finance.negativeCashMonths = 0;
   const off = weatherOffset(s);
   report.weather = { tempAnom: Math.round(off.tempC * 10) / 10, humidAnom: Math.round(off.humidity * 10) / 10, shocks: s.world.weather.shocks.filter((x) => x.fromMonth <= s.month && s.month < x.untilMonth).map((x) => x.label) };
-  report.netCash = s.finance.cash - cashStart;
+  // 순현금 = 이번 턴 안의 변화 + 턴 사이 행동 → 직전 결산 이후 현금 변화 전체 (§16.20)
+  report.netCash = s.finance.cash - cashStart + sumCashFlows(offTurn);
   report.cashEnd = s.finance.cash;
+  report.investingCash = sumCashFlows(offTurn, 'investing');
+  // 선급금 상계분은 영업(납품 매출)으로 올리고 같은 금액을 재무(선급금 상환)로 뺀다
+  report.financingCash = sumCashFlows(offTurn, 'financing') - (report.expenses.principal ?? 0) - (report.prepayApplied ?? 0) - (report.prepayRefunded ?? 0);
+  report.operatingCash = report.netCash - report.investingCash - report.financingCash;
   s.history.reports = [...s.history.reports, report].slice(-REPORTS_KEPT);
   if (calendar(s).monthOfYear === 12) rollupYear(s, calendar(s).year);
   s.month += 1;
@@ -343,8 +361,11 @@ function phaseSettle(s: GameState, report: MonthReport, cashStart: number): void
 export function advanceMonth(prev: GameState): GameState {
   if (prev.status !== 'running') return prev;
   const s = clone(prev);
-  const report = newReport(s);
   const cashStart = s.finance.cash;
+  // 직전 결산 이후 턴 사이 행동(현물 판매·대출·설비 구매 등)으로 움직인 현금 — 이번 보고서에 합치고 비운다 (§16.20)
+  const offTurn: CashFlows = { ...(s.finance.pendingCash ?? {}) };
+  s.finance.pendingCash = {};
+  const report = newReport(s, offTurn);
   phasePrepare(s, report);                                   // 0
   phaseEvents(s, report);                                    // 1
   const ctx = buildTickContext(s);                           //   이번 달 조건 확정
@@ -355,7 +376,7 @@ export function advanceMonth(prev: GameState): GameState {
   phaseOperations(s, report, ctx, mashKg);                   // 6
   runFinance(s, report, ctx.monthOfYear);                    // 7
   phaseGrowth(s, report, runsUsed, sales);                   // 8
-  phaseSettle(s, report, cashStart);                         // 9
+  phaseSettle(s, report, cashStart, offTurn);                // 9
   return s;
 }
 

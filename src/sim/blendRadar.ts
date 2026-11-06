@@ -1,7 +1,7 @@
 import { rngFor } from './rng';
 import type { AxisId, Flavor } from './types';
 
-// 블렌딩 레이더 미니게임 코어 — "The Art of Blending" (PRD 결정 #98, docs/design/blending-minigame.md)
+// 블렌딩 레이더 미니게임 코어 — "The Art of Blending" (PRD 결정 #99, docs/design/blending-minigame.md)
 //
 // ① 육각형 6스탯은 36축 향미 모델의 "투영(view)"이다. 별도로 저장하는 스탯이 아니다 → 향미 수치의 출처는 하나로 유지된다.
 // ② 투영은 선형이다 → 블렌드의 육각형 = 구성 원액 육각형의 알코올(LPA) 가중 평균.
