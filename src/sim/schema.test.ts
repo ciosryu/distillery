@@ -4,6 +4,8 @@ import fixture from './fixtures/save-v5.json';
 import { slotClimate } from './warehouse';
 import { addWeatherShock, updateWeather, WEATHER } from './weather';
 import { evapTempFactor } from './maturation';
+import { categorize, previewBlend, simulateBatch, stillDefOf, type GameState, appeal, presetRecipes, validateRecipe, type Product } from './index';
+import { logisticsMultiplier, REGIONS } from './content/regions';
 
 // v5 세이브 픽스처는 리팩터 전 코드로 만들었다(옛 코드가 실제로 쓴 세이브 모양).
 
@@ -226,5 +228,79 @@ describe('배치 id — 캐스크 코호트 (architecture §3.4)', () => {
     expect(filled.length).toBeGreaterThanOrEqual(2);
     expect(new Set(filled.map((c) => c.contents!.batchId))).toEqual(new Set([lot.id]));
     expect(new Set(filled.map((c) => c.contents!.id)).size).toBe(filled.length);
+  });
+});
+
+// ───────────── 결정론·지역 규칙 (결정 #144 — sim.test.ts에서 옮겨 왔다) ─────────────
+
+const recipeId = (s: GameState, prefix: string) => s.production.recipes.find((r) => r.name.startsWith(prefix))!.id;
+
+describe('결정론', () => {
+  it('같은 시드와 같은 행동이면 결과가 같다', () => {
+    const play = () => {
+      let s = newGame({ seed: 77 });
+      s = applyAction(s, { type: 'setOrder', recipeId: recipeId(s, '증류식'), batchesPerMonth: 2 }).state;
+      s = applyAction(s, { type: 'setOrder', recipeId: recipeId(s, '싱글 몰트 — 언'), batchesPerMonth: 3 }).state;
+      return advanceMonths(s, 18);
+    };
+    expect(JSON.stringify(play())).toBe(JSON.stringify(play()));
+  });
+
+  it('행동은 원본 상태를 바꾸지 않는다', () => {
+    const s = newGame({ seed: 8 });
+    const before = JSON.stringify(s);
+    applyAction(s, { type: 'buyCasks', caskType: 'ex_bourbon_barrel', qty: 2 });
+    advanceMonths(s, 2);
+    expect(JSON.stringify(s)).toBe(before);
+  });
+});
+
+describe('지역 (v0.6)', () => {
+  const asRecipe = (s: GameState, kind: string) => ({ ...presetRecipes(s.production.equipment[0]!.id, 'KR').find((r) => r.kind === kind)!, id: 'X' });
+
+  it('교차 생산(결정 #67): 원산지 잠금이 없는 주종은 어느 지역에서나 만들 수 있고, 자생하지 않는 원재료는 물류 배수가 붙는다', () => {
+    const jp = newGame({ seed: 1, region: 'JP' });
+    const tw = newGame({ seed: 1, region: 'TW' });
+    expect(validateRecipe(jp, asRecipe(jp, 'baijiu'))).toEqual([]);
+    expect(validateRecipe(tw, asRecipe(tw, 'soju'))).toEqual([]);
+    expect(logisticsMultiplier(['KR'], 'KR')).toBe(1);
+    expect(logisticsMultiplier(['KR'], 'TW')).toBeCloseTo(1.3, 5);
+    expect(logisticsMultiplier(['MX'], 'KR')).toBeCloseTo(1.8, 5);
+    expect(logisticsMultiplier(undefined, 'JP')).toBe(1);
+    // 같은 레시피(국산 쌀·누룩)를 대만에서 만들면 원재료비가 오른다
+    const kr = newGame({ seed: 1, region: 'KR' });
+    const soju = asRecipe(kr, 'soju');
+    const still = stillDefOf(kr, kr.production.equipment[0]!.id)!;
+    const home = simulateBatch(soju, still, 'stainless', kr.hr.staff[0], kr.world.priceIndex, 0, { tempC: 18, regionId: 'KR' });
+    const away = simulateBatch(soju, still, 'stainless', kr.hr.staff[0], kr.world.priceIndex, 0, { tempC: 18, regionId: 'TW' });
+    expect(away.cost).toBeGreaterThan(home.cost * 1.15);
+  });
+
+  it('진먼 고량은 대만 자생(다른 곳은 수입), 진먼섬 증류소에서 60% 이상 쓰면 "진먼 고량주" 특산물이 된다', () => {
+    const yilan = newGame({ seed: 1, region: 'TW', startingCash: 5_000_000_000 });
+    const yk = yilan.production.recipes.find((r) => r.kind === 'baijiu')!;
+    const yl = advanceMonths(applyAction(yilan, { type: 'setOrder', recipeId: yk.id, batchesPerMonth: 1 }).state, 1);
+    const ylot = yl.inventory.lots.find((l) => l.kind === 'baijiu')!;
+    const ypv = previewBlend(yl, [{ source: 'lot', id: ylot.id, liters: ylot.volumeL }], { name: 'k', targetAbv: 0.58, bottleMl: 600, chillFilter: true, packagingId: 'standard' });
+    expect(ypv.specialty).toBeNull();
+    expect(ypv.warnings.some((w) => w.includes('진먼섬'))).toBe(true);
+    let tw = newGame({ seed: 1, region: 'TW', site: 'kinmen', startingCash: 5_000_000_000 });
+    const kinmen = tw.production.recipes.find((r) => r.kind === 'baijiu')!;
+    tw = advanceMonths(applyAction(tw, { type: 'setOrder', recipeId: kinmen.id, batchesPerMonth: 1 }).state, 1);
+    const lot = tw.inventory.lots.find((l) => l.kind === 'baijiu')!;
+    const pv = previewBlend(tw, [{ source: 'lot', id: lot.id, liters: lot.volumeL }], { name: 'k', targetAbv: 0.58, bottleMl: 600, chillFilter: true, packagingId: 'standard' });
+    expect(pv.specialty).toBe('kinmen');
+    const p = { category: 'baijiu', ageYears: null, packagingId: 'standard', flavor: {}, quality: 60, typicity: 80, sourcedShare: 0 } as unknown as Product;
+    expect(appeal({ ...p, specialty: 'kinmen' }, tw) / appeal(p, tw)).toBeCloseTo(1.35, 5);
+  });
+
+  it('최소 숙성 기간은 나라별: 한국 1년, 일본은 규정이 없어 바로 위스키, 대만 2년, 기본 3년', () => {
+    const rules = (r: 'KR' | 'JP' | 'TW') => REGIONS[r].whisky;
+    expect(categorize('malt', 11, 0.46, {}, false, true, rules('KR'))).toBe('malt_spirit');
+    expect(categorize('malt', 12, 0.46, {}, false, true, rules('KR'))).toBe('whisky');
+    expect(categorize('malt', 0, 0.46, {}, false, true, rules('JP'))).toBe('whisky');
+    expect(categorize('malt', 23, 0.46, {}, false, true, rules('TW'))).toBe('malt_spirit');
+    expect(categorize('malt', 24, 0.46, {}, false, true, rules('TW'))).toBe('whisky');
+    expect(categorize('malt', 35, 0.46, {})).toBe('malt_spirit');
   });
 });
