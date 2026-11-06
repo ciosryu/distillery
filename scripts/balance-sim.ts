@@ -169,21 +169,28 @@ function bottleBlended(s: GameState): GameState {
 /** v1.5(#95) 수출: 위스키가 나오면 면세점(36개월~), 3년 숙성 재고가 생기면 미국·영국(48개월~)에 진출한다.
  *  진출 12개월 뒤에도 최근 6개월 공헌이익(출고가 − 운임 − 원가)이 월 현지 비용보다 작으면 철수. NO_EXPORT=1이면 수출 안 함 */
 const NO_EXPORT = process.env.NO_EXPORT === '1';
+/** 이번 판에서 철수한 시장 — 다시 들어가지 않는다 (진입 비용을 반복해서 내는 버그 방지) */
+let closedMarkets = new Set<ExportMarketId>();
+let exportLog: string[] = [];
 function exportPolicy(s: GameState): GameState {
   if (NO_EXPORT) return s;
   const whisky = s.products.filter((p) => p.category === 'whisky' && p.stockBottles > 0);
   const aged36 = whisky.some((p) => (p.oakMonths ?? 0) >= 36);
+  // 남는 물량이 있을 때만: 3년 넘은 자사 몰트 캐스크가 EXPORT_SURPLUS개(약 330병/캐스크) 넘게 쌓였을 때.
+  // 공급이 국내 수요에 묶여 있으면 수출은 국내 판매를 빼앗고 현지 비용만 늘린다 (§16.25)
+  const surplus = s.casks.filter((c) => c.contents?.kind === 'malt' && !c.contents.sourced && c.contents.oakMonths >= 36).length >= Number(process.env.EXPORT_SURPLUS ?? 20);
+  if (!surplus && !(s.exports ?? []).length) return s;
   const open = new Set((s.exports ?? []).map((e) => e.marketId));
   const plan: [ExportMarketId, number, boolean][] = [['DF', 36, whisky.length > 0], ['US', 48, aged36], ['UK', 48, aged36]];
   for (const [id, from, ok] of plan) {
-    if (open.has(id) || !ok || s.month < from) continue;
-    if (s.cash > EXPORT_MARKETS[id].entryCost + 200_000_000) s = act(s, { type: 'openExport', marketId: id });
+    if (open.has(id) || closedMarkets.has(id) || !ok || !surplus || s.month < from) continue;
+    if (s.cash > EXPORT_MARKETS[id].entryCost + 200_000_000) { s = act(s, { type: 'openExport', marketId: id }); exportLog.push(`m${s.month} open ${id}`); }
   }
   for (const e of s.exports ?? []) {
     if (s.month - e.readyMonth < 12) continue;
     const recent = s.reports.slice(-6).flatMap((r) => (r.exports ?? []).filter((x) => x.marketId === e.marketId));
     const margin = recent.reduce((t, x) => t + x.revenue - x.freight - x.bottles * (s.products.find((p) => p.id === x.productId)?.unitCost ?? 0), 0) / 6;
-    if (margin < EXPORT_MARKETS[e.marketId].monthlyCost) s = act(s, { type: 'closeExport', marketId: e.marketId });
+    if (margin < EXPORT_MARKETS[e.marketId].monthlyCost) { s = act(s, { type: 'closeExport', marketId: e.marketId }); closedMarkets.add(e.marketId); exportLog.push(`m${s.month} close ${e.marketId} margin ${Math.round(margin / 1e4)}만`); }
   }
   return s;
 }
@@ -533,6 +540,8 @@ interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWo
 function play(strategy: Strategy, seed: number): Result {
   let s = newGame({ seed, region: REGION, site: SITE });
   spotIncome = [];
+  closedMarkets = new Set();
+  exportLog = [];
   let lo = s.cash;
   for (let m = 0; m < MONTHS && s.status === 'running'; m++) {
     s = advanceMonth(policy(s, strategy));
@@ -543,6 +552,7 @@ function play(strategy: Strategy, seed: number): Result {
   for (let i = 2; i < net.length; i++) if ((net[i]! + net[i - 1]! + net[i - 2]!) / 3 > 0) { fp = i; break; }
   const y5 = s.reports.filter((r) => r.month >= 48 && r.month < 60);
   if (DIAG) diag(strategy, seed, s);
+  if (process.env.DBG_EXPORT) console.error(strategy, seed, exportLog.join(' | '), '| 수출 누적', (s.exports ?? []).map((e) => `${e.marketId}:${e.totalBottles}병 aw${e.awareness.toFixed(2)}`).join(' '));
   return {
     strategy, bankrupt: s.status === 'bankrupt', minCash: lo, netWorth: s.status === 'bankrupt' ? -Infinity : netWorth(s), bookWorth: s.status === 'bankrupt' ? -Infinity : bookWorth(s), firstPositive: fp,
     y5retail: y5.reduce((t, r) => t + r.revenue, 0), y5bulk: y5.reduce((t, r) => t + r.bulkRevenue, 0),
