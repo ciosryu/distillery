@@ -4,7 +4,7 @@ import type { GameState } from './types';
 // 옛 세이브는 버리지 않고 v5 → v6 → … 순서로 올린다. 각 단계는 순수 함수(입력을 바꾸지 않는다).
 // 새 버전을 만들면: GameState.version을 올리고, MIGRATIONS에 `[이전 버전]: (s) => 다음 버전` 한 줄을 더한다.
 
-export const SAVE_VERSION = 11 as const;
+export const SAVE_VERSION = 12 as const;
 
 type AnySave = Record<string, any>;
 
@@ -112,6 +112,11 @@ function v10to11(s: AnySave): AnySave {
   return { ...s, version: 11, commerce: { ...commerce, brands: [{ id: 'house', name: s.distilleryName ?? '', isHouse: true, openedMonth: 0, awareness: awareness ?? 0.01, luxury: 0 }] } };
 }
 
+/** v11 → v12: 연구 진행(S-6) — 진행 중 연구에 시작 달·누적 연구비(선택값)가 생겼다. 옛 세이브는 연구가 없으므로 버전만 올린다 */
+function v11to12(s: AnySave): AnySave {
+  return { ...s, version: 12 };
+}
+
 /** 버전 n 세이브 → 버전 n+1 */
 const MIGRATIONS: Record<number, (s: AnySave) => AnySave> = {
   5: v5to6,
@@ -120,6 +125,7 @@ const MIGRATIONS: Record<number, (s: AnySave) => AnySave> = {
   8: v8to9,
   9: v9to10,
   10: v10to11,
+  11: v11to12,
 };
 
 /**

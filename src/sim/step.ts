@@ -14,6 +14,7 @@ import { archiveSoldOutProducts, rollupYear } from './lifecycle';
 import { pruneTrendsAndCommissions, refreshCommissions } from './blendTable';
 import { systemOn } from './scenario';
 import { endGame, updateProgress } from './progress';
+import { runResearch } from './research';
 import { runMaturation } from './warehouse';
 import { runProduction } from './production';
 import { runFinance } from './loans';
@@ -97,6 +98,8 @@ function phaseGrowth(s: GameState, report: MonthReport, runsUsed: number, sales:
     blender: s.commerce.products.filter((p) => p.createdMonth === s.month).length * 15 + s.inventory.samplesThisMonth * 2,
   };
   report.notes.push(...gainXp(s, rngFor(s.seed, s.month, 'hr'), activity));
+  // 연구 진척 (S-6) — 진행 중인 연구가 없으면 아무 일도 없다
+  if (systemOn(s, 'research')) runResearch(s, report);
   // 제안 갱신 — 시나리오가 끈 시스템은 제안을 만들지 않는다(S-8). 난수는 시스템마다 독립 스트림이라 끄더라도 다른 시스템 결과는 같다
   if (s.month % 3 === 2 && systemOn(s, 'hr')) refreshCandidates(s, rngFor(s.seed, s.month, 'candidates'));
   if (systemOn(s, 'broker')) refreshBroker(s, rngFor(s.seed, s.month, 'broker'));
