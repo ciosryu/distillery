@@ -6,6 +6,7 @@ import { dutyFreeSlotBlocker, inventoryLoanRoom, inventoryLtv, OEM, oemPackageCo
 import { EVENTS } from '../src/sim/content/events';
 import { RETAIL } from '../src/sim/ops';
 import { EQUIPMENT } from '../src/sim/content/catalog';
+import { EXPORT_MARKETS, type ExportMarketId } from '../src/sim/content/exports';
 const EQUIPMENT_KIND = (id: string) => EQUIPMENT[id]?.kind;
 
 const SEEDS = Number(process.argv[2] ?? 12);
@@ -101,10 +102,14 @@ function fillMalt(s: GameState, maxLPA = Infinity, kind: 'malt' | 'grain' = 'mal
 const OLD_BOTTLE = process.env.OLD_BOTTLE === '1';
 const OLD_GRAIN = process.env.OLD_GRAIN === '1';
 const BOTTLES_PER_CASK = 330;
-function whiskyDemandLastMonth(s: GameState): number {
-  const ids = new Set(s.products.filter((p) => p.category === 'whisky').map((p) => p.id));
-  return s.reports.at(-1)?.sales.filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0) ?? 0;
+/** 지난달 이 주종의 수요 — 국내 + 수출(#95) */
+function demandLastMonth(s: GameState, cat: ProductCategory): number {
+  const ids = new Set(s.products.filter((p) => p.category === cat).map((p) => p.id));
+  const r = s.reports.at(-1);
+  if (!r) return 0;
+  return r.sales.filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0) + (r.exports ?? []).filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0);
 }
+const whiskyDemandLastMonth = (s: GameState) => demandLastMonth(s, 'whisky');
 function bottleWhisky(s: GameState): GameState {
   const stock = stockOf(s, 'whisky');
   const target = OLD_BOTTLE ? 800 : Math.max(800, whiskyDemandLastMonth(s) * 1.5);
@@ -144,10 +149,7 @@ function bridgeSourced(s: GameState): GameState {
 
 /** 그레인 수직계열화: 36개월 이후 그레인 2 + 몰트 1 캐스크로 블렌디드 위스키를 병입 */
 /** v1.4(#84): 블렌디드도 수요를 따라 병입한다 — 지난달 수요의 1.5개월치까지, 한 번에 그레인 2n + 몰트 n 캐스크(n ≤ 4). OLD_GRAIN=1이면 옛 정책 */
-function blendedDemandLastMonth(s: GameState): number {
-  const ids = new Set(s.products.filter((p) => p.category === 'blended_whisky').map((p) => p.id));
-  return s.reports.at(-1)?.sales.filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0) ?? 0;
-}
+const blendedDemandLastMonth = (s: GameState) => demandLastMonth(s, 'blended_whisky');
 function bottleBlended(s: GameState): GameState {
   const stock = stockOf(s, 'blended_whisky');
   const target = OLD_GRAIN ? 1500 : Math.max(1500, blendedDemandLastMonth(s) * 1.5);
@@ -164,6 +166,28 @@ function bottleBlended(s: GameState): GameState {
 }
 
 /** v1.0 운영: 빈 통을 미리 쿠퍼리지에 주문하고, 소매 역량이 넘치면 영업 직원을 늘린다 */
+/** v1.5(#95) 수출: 위스키가 나오면 면세점(36개월~), 3년 숙성 재고가 생기면 미국·영국(48개월~)에 진출한다.
+ *  진출 12개월 뒤에도 최근 6개월 공헌이익(출고가 − 운임 − 원가)이 월 현지 비용보다 작으면 철수. NO_EXPORT=1이면 수출 안 함 */
+const NO_EXPORT = process.env.NO_EXPORT === '1';
+function exportPolicy(s: GameState): GameState {
+  if (NO_EXPORT) return s;
+  const whisky = s.products.filter((p) => p.category === 'whisky' && p.stockBottles > 0);
+  const aged36 = whisky.some((p) => (p.oakMonths ?? 0) >= 36);
+  const open = new Set((s.exports ?? []).map((e) => e.marketId));
+  const plan: [ExportMarketId, number, boolean][] = [['DF', 36, whisky.length > 0], ['US', 48, aged36], ['UK', 48, aged36]];
+  for (const [id, from, ok] of plan) {
+    if (open.has(id) || !ok || s.month < from) continue;
+    if (s.cash > EXPORT_MARKETS[id].entryCost + 200_000_000) s = act(s, { type: 'openExport', marketId: id });
+  }
+  for (const e of s.exports ?? []) {
+    if (s.month - e.readyMonth < 12) continue;
+    const recent = s.reports.slice(-6).flatMap((r) => (r.exports ?? []).filter((x) => x.marketId === e.marketId));
+    const margin = recent.reduce((t, x) => t + x.revenue - x.freight - x.bottles * (s.products.find((p) => p.id === x.productId)?.unitCost ?? 0), 0) / 6;
+    if (margin < EXPORT_MARKETS[e.marketId].monthlyCost) s = act(s, { type: 'closeExport', marketId: e.marketId });
+  }
+  return s;
+}
+
 function operations(s: GameState, strategy: Strategy): GameState {
   // 비운 오염 통은 재탄화해서 다시 쓴다
   for (const c of s.casks.filter((x) => !x.contents && x.contamination && x.recharCount < 2)) if (s.cash > 100_000_000) s = act(s, { type: 'rechar', caskId: c.id });
@@ -184,6 +208,7 @@ function operations(s: GameState, strategy: Strategy): GameState {
     const need = EVENTS.filter((e) => e.defense && (atSite(e) || (!e.sitesOnly && (!e.regions || e.regions.includes(s.regionId))))).map((e) => e.defense!).find((id) => !s.equipment.some((x) => x.catalogId === id));
     if (need) s = act(s, { type: 'buyEquipment', catalogId: need });
   }
+  s = exportPolicy(s);
   void strategy;
   return s;
 }

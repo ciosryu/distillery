@@ -125,6 +125,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     houseStyle: 0,
     investorShare: 0,
     investmentsTaken: [],
+    exports: [],
     localBuzz: 0,
     wasteContractPerKg: 0,
     rotatedThisMonth: 0,
