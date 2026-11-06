@@ -29,7 +29,7 @@ export function unlockingNodes(key: string): { id: string; nameKo: string }[] {
   return (GATES.get(key) ?? []).map((id) => TECH_NODES.find((n) => n.id === id)!).map((n) => ({ id: n.id, nameKo: n.nameKo }));
 }
 
-// ───────────── 연구 진행 (skeleton S-6, P-ARCH-12, tech-tree §2.1) ─────────────
+// ───────────── 연구 진행 (skeleton S-6, #149, tech-tree §2.1) ─────────────
 // 연구 = 기간 + 월 연구비(현금) + 담당자. 'R&D 포인트' 화폐는 없다(#46).
 // 진행도/월 = (1 / 기본기간) × (1 + 담당 스탯 / 200) × 실적 보너스(지표는 단계 P — 지금 1).
 // 일시정지·담당자 없음 = 진행·비용 정지. 담당자가 떠나면 진행도 −25%. 연구 중 본업 효율 −30%는 단계 P(생산·영업 쪽 규칙)

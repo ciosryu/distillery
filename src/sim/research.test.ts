@@ -3,7 +3,7 @@ import { advanceMonth, advanceMonths, applyAction, isUnlocked, migrateSave, newG
 import { TECH_BY_ID } from './content/tech';
 import fixture from './fixtures/save-v11.json';
 
-// 연구 진행 (skeleton S-6, P-ARCH-12, tech-tree §2.1)
+// 연구 진행 (skeleton S-6, #149, tech-tree §2.1)
 
 /** 숙성고 매니저(MAT 담당)를 둔 게임 */
 function withWarehouseLead(seed = 1): { s: GameState; leadId: string } {
