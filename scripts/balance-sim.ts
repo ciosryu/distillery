@@ -125,6 +125,10 @@ function lineDemandLastMonth(s: GameState, aged: boolean): number {
   const ids = new Set(s.products.filter((p) => p.category === 'whisky' && isAgedLine(p.name) === aged).map((p) => p.id));
   return s.reports.at(-1)?.sales.filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0) ?? 0;
 }
+/** 숙성용으로 떼어 두는 캐스크: 통입 월(원액 생산 월)이 AGED_EVERY개월마다 한 번인 것(기본 5 → 생산의 약 20%).
+ *  이 봇은 수요가 공급보다 커서 떼어 두지 않으면 모든 캐스크가 3년에 병입된다 */
+const AGED_EVERY = Number(process.env.AGED_EVERY ?? 5);
+const reservedFor = (c: GameState['casks'][number], minMonths: number) => !!c.contents && c.contents.createdMonth % AGED_EVERY === 0 && c.contents.oakMonths < minMonths;
 const lineStock = (s: GameState, aged: boolean) => s.products.filter((p) => p.category === 'whisky' && !p.dutyFreeOnly && isAgedLine(p.name) === aged).reduce((t, p) => t + p.stockBottles, 0);
 const ownAged = (s: GameState, minMonths: number) => s.casks.filter((c) => c.contents && c.contents.oakMonths >= minMonths && !c.contents.sourced);
 const byAge = (cs: GameState['casks'], oldest: boolean) => [...cs].sort((a, b) => (oldest ? -1 : 1) * (a.contents!.oakMonths - b.contents!.oakMonths));
@@ -147,10 +151,10 @@ function bottleWhisky(s: GameState): GameState {
   const target = OLD_BOTTLE ? 800 : Math.max(800, (agedYears > 0 ? lineDemandLastMonth(s, false) : whiskyDemandLastMonth(s)) * 1.5);
   if (stock >= target) return s;
   const n = OLD_BOTTLE ? 3 : Math.min(10, Math.max(1, Math.ceil((target - stock) / BOTTLES_PER_CASK)));
-  // 숙성 라인·숙성 한정판을 노릴 때 국내 기본 라인은 어린 캐스크부터 써서 오래된 캐스크를 남긴다
-  const reserve = agedYears > 0 || (siteMode && DF_MODE !== 'soju' && DF_WHISKY_YEARS > 0);
-  const eligible = ownAged(s, 36);
-  return bottleCasks(s, (reserve ? byAge(eligible, false) : eligible).slice(0, n), `싱글 몰트 ${s.month}`);
+  // 숙성 라인·숙성 한정판을 노릴 때 국내 기본 라인은 숙성용으로 떼어 둔 캐스크를 건드리지 않는다
+  const holdMonths = agedYears > 0 ? agedYears * 12 : siteMode && DF_MODE !== 'soju' && DF_WHISKY_YEARS > 0 ? DF_WHISKY_YEARS * 12 : 0;
+  const eligible = ownAged(s, 36).filter((c) => !holdMonths || !reservedFor(c, holdMonths));
+  return bottleCasks(s, eligible.slice(0, n), `싱글 몰트 ${s.month}`);
 }
 
 /** 공백기 브리지: ① 현금이 모자라면 법정 최소 숙성이 지난 자사 어린 위스키(12개월 이상)를 1캐스크 병입하거나
