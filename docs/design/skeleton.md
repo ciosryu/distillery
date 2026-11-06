@@ -24,11 +24,11 @@
 | 항목 | 내용 | 근거 |
 |---|---|---|
 | 플랫폼 | Godot 4 + C#, PC(Steam). TS는 설계 실험실·기준 구현 | #34·#35·#40·#122 |
-| 상태 | 단일 `GameState` v8 = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history) | #118, [architecture.md §3](architecture.md) |
+| 상태 | 단일 `GameState` v9 = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history) | #118, [architecture.md §3](architecture.md) |
 | 시간 | 1턴 = 1개월. 월 틱 0~9단계 파이프라인 + 틱 컨텍스트 | #1·#26, PRD §2.2 |
 | 경계 | `GameEngine` 계약 (명령 → 스냅샷) | architecture.md §3.2 |
 | 난수 | mulberry32, `rngFor(seed, month, stream)` 독립 스트림 | PRD §13.2 |
-| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8) | #118, S-8 |
+| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8 → v9) | #118, S-8, S-10 |
 | 테크 게이트 | `isUnlocked(state, key)` 하나로 판정, 키 규칙 고정, Phase 1은 꺼짐 | #118, tech-tree §7 |
 | 설계 규모 | 30년(360턴) · 원액 든 캐스크 2,500개 | #119 |
 | 기후 | 입지 평년값 + AR(1) 이상치, 이벤트는 입력(기온·습도) 충격 | #120 |
@@ -44,9 +44,9 @@
 | 지역·입지·법규 | §3, §16.21 | 헤더(regionId·siteId), `site` | 0 | `content/regions.ts`, `sites.ts` | ● | 코어(데이터) |
 | 원재료·레시피·발효·증류 | §4 | `production` | 2 | `production.ts`, `content/catalog.ts` | ● | PROD |
 | 향미 모델 | §5.4, [flavor-model](flavor-model.md) | (원액·캐스크 안) | 2·3 | `flavor.ts`, `content/axes.ts`, `content/categories.ts` | ● | PROD |
-| 숙성·캐스크·숙성고 공간·기후 | §5, §16.3 | `inventory` | 3 | `maturation.ts`, `ops.ts`(일부), `weather.ts`, `tick.ts` | ● | PROD |
-| 피니싱 | §5.2 | — | — | — | ○ | PROD |
-| 정보 불확실성(샘플링) | §5.6 | `commerce.commissions`(블렌딩 한정) | — | `blendTable.ts`(블렌딩만) | ◐ | PROD |
+| 숙성·캐스크·숙성고 공간·기후 | §5, §16.3 | `inventory` | 3 (`matureVessel` → 재질별) | `maturation.ts`, `ops.ts`(일부), `weather.ts`, `tick.ts` | ● (나무) · ○ 옹기·스테인리스 용기는 자리만(`CaskDef.material`·`matureNonWood`·`SpiritLot.restMonths`, S-10) | PROD |
+| 피니싱 | §5.2 | `SpiritLot.caskHistory` (S-10) | — | 행동 `transferCask` (항상 실패하는 자리) | ○ (자리만) | PROD |
+| 정보 불확실성(샘플링) | §5.6 | `Cask.sampleLog` (샘플 순간의 읽기 기록, S-10) · `commerce.commissions`(블렌딩) | — | `blendTable.ts` (`recordSample`·`lastSample`, 블렌딩 테이블은 아직 실시간 읽기) | ◐ | PROD |
 | 블렌딩·병입·블렌딩 테이블 | §6, [blending-minigame](blending-minigame.md) | `commerce.lines`·`commissions` | (행동) | `blending.ts`, `blendTable.ts`, `blendRadar.ts` | ◐ (화면·보상 연결 남음) | PROD |
 | 수요·판매·주세·소매 역량 | §9, §16.4 | `commerce` | 5 | `market.ts`, `ops.ts`(일부) | ● | MKT |
 | 브랜드·럭셔리·브랜드 라인 | §11, §11.2 | `commerce.awareness`(회사 하나) | 8 | `market.ts`(럭셔리 일부) | ◐ (브랜드별 인지도 #54 없음) | MKT |
@@ -112,7 +112,7 @@
 | **S-7** | **콘텐츠를 엔진 중립 데이터로** — 원재료·설비·캐스크·지역·이벤트·테크를 JSON 스키마로. 시점(지금 대 단계 G 직전) | 파트가 콘텐츠를 늘리기 전에 형식을 정하면 이식 비용이 준다 | 필수 (형식·시점만) | §13.1 이식 계획 ②, #40 |
 | **S-8** | **시나리오 초기화 경로** — JSON 시나리오 파일로 `GameState`를 만드는 입구 + 가상 이력 생성기의 자리 | §12.2가 "샌드박스 단계부터 지킬 아키텍처 요구사항"이라고 못 박았다 | 필수 (입구·스텁) — **구현, `[결정 P-ARCH-4]`** ([mvp.md §6.3](mvp.md)). 파일 형식(JSON)은 S-7과 함께 | §12.2 |
 | **S-9** | **승패·진행 구조** — 파산 외 실패 조건(면허 취소·해임), 업적·마일스톤의 데이터 모양, 플레이어 목표 | 게임 루프의 끝이 정의돼 있지 않다 | 필수 (모양만) | §12.1 |
-| **S-10** | **숙성 용기 일반화 + 피니싱·정보 불확실성의 자리** — 지금 숙성 상태는 목재 캐스크 전제다. 크래프팅 자유 원칙(#134)에 따라 ① 비목재 용기(옹기·스테인리스 휴지 — 화이트 스피릿의 숙성 방식·기간) ② 피니싱(캐스크 이력의 단계) ③ 샘플링으로 얻은 "아는 값" 대 "참값"을 담을 상태 모양을 정한다 | 숙성·블렌딩·판매가 모두 읽는다. 옹기 숙성은 flavor-model §4.5 확장 필요(tech-tree §10 #7) | 필수 | §5.2, §5.6, #134 |
+| **S-10** | **숙성 용기 일반화 + 피니싱·정보 불확실성의 자리** — 지금 숙성 상태는 목재 캐스크 전제다. 크래프팅 자유 원칙(#134)에 따라 ① 비목재 용기(옹기·스테인리스 휴지 — 화이트 스피릿의 숙성 방식·기간) ② 피니싱(캐스크 이력의 단계) ③ 샘플링으로 얻은 "아는 값" 대 "참값"을 담을 상태 모양을 정한다 | 숙성·블렌딩·판매가 모두 읽는다. 옹기 숙성은 flavor-model §4.5 확장 필요(tech-tree §10 #7) | 필수 — **자리 구현, `[제안 P-ARCH-6]`** (§4.3) | §5.2, §5.6, #134 |
 | S-11 | 재무 확장의 자리 — 이사회(지분·해임), 헷징 계약, 보험 | Phase 2 범위. 슬라이스 필드·명령 타입만 | 권장 | §8.2, §8.4 |
 | S-12 | 경쟁 AI의 자리 — 시장 점유를 나눌 "다른 공급자" 훅 | Phase 5지만 수요 공식에 들어갈 자리가 필요 | 권장 | §9.4, #28 |
 | S-13 | 웹 프로토타입 화면 범위 — Godot가 최종이므로 웹 UI를 어디까지 만들지 | 파트마다 화면 작업량이 달라진다 | 권장 | #122 |
@@ -135,6 +135,20 @@
 브랜드형·site 전략 지배(대만 진먼섬·제주·홋카이도), **통합 기준선 재측정**(해외 명성 #96·수출 확장 #100~#109·아키텍처 재편 #118~#126을 합친 뒤 아직 재지 않음), 제주 면세 한정판의 기회비용 제안(§16.28 `[제안]`), 결정 #77~#126의 `[튜닝]` 수치 전부.
 
 ---
+
+### 4.3 S-10 구조 — `[제안 P-ARCH-6]` (2026-11-06, 설계 세션)
+
+동작 불변(밸런스 골든 KR·JP·제주 바이트 동일)인 자리만 넣었다. 규칙·수치·콘텐츠는 단계 P(PROD).
+
+| 항목 | 정한 모양 | 대안 (기각 이유) |
+|---|---|---|
+| ① 숙성 용기 일반화 | 캐스크 타입 하나로 묶는다 — `CaskDef.material`(없으면 나무, `wood`·`onggi`·`steel`). 틱 3단계 입구 `matureVessel`이 재질로 나눈다(나무 = 기존 `matureCask`, 그 밖 = `matureNonWood` 스텁: 추출 없음·재질별 증발·안정화). 나무가 아닌 용기의 기간은 `SpiritLot.restMonths`에 따로 센다 — 위스키 법정 숙성(나무통)에 안 들어간다 | 별도 `Vessel` 엔티티 — 숙성고 자리·보관비·샘플링·병입 경로를 모두 두 갈래로 만들어야 한다. 이점은 이름이 정확한 것뿐 |
+| ② 피니싱 | 원액이 이력을 들고 다닌다 — `SpiritLot.caskHistory: { typeId, fromMonth, months }[]`. 행동 `transferCask`(옮기기)는 타입만 있고 지금은 항상 실패, MVP에서 잠금 | 캐스크에 "거쳐 간 원액" 기록 — 원액이 섞이고 나뉘면(블렌딩·여러 통에 나눠 통입) 추적이 끊긴다. 라벨("셰리 피니시")은 원액에서 읽는 게 맞다 |
+| ③ 아는 값 대 참값 | 캐스크에 샘플 순간의 읽기를 **기록**한다 — `Cask.sampleLog: { month, hex, sigma, estQuality }[]` 최근 2개(변화 화살표용). `sampleCask`가 쓰고 화면은 `lastSample`만 읽는다 | 지금처럼 매번 계산 — `perceivedHex`는 고정 오차를 **지금의** 참 향미에 더하므로 샘플 뒤에도 추정치가 참값을 따라 움직인다(정보 누수). #136의 "샘플로만 안다"가 성립하지 않는다 |
+
+- **발견 (단계 P PROD로 넘김):** 블렌딩 테이블(`readCask`)은 아직 실시간 읽기라 위 누수가 있다. 기록(`sampleLog`)으로 옮길지는 블렌딩 미니게임 규칙과 함께 정한다
+- 추정 품질 오차 = 읽기 오차 × 1(`QUALITY_SIGMA_PER_HEX`) `[튜닝]`. 옹기·스테인리스 수치(`NON_WOOD_VESSEL`)는 근거 없는 자리표시 `[확인 불가]`
+- 스키마 v9 (모든 새 필드는 선택값) + v8 세이브 픽스처
 
 ## 5. 다음 행동 (설계 세션)
 

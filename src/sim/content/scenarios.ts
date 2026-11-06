@@ -64,7 +64,7 @@ export const MVP_KR: ScenarioDef = {
     // 행동 — 직원·투자·캐스크 오너십·원액 계약·수출·브로커·입지 대표 거래·IB 입찰·블렌딩 테이블 의뢰
     'action:hire', 'action:fire', 'action:takeInvestment', 'action:sellCaskOwnership', 'action:acceptContract', 'action:cancelContract',
     'action:acceptExportOffer', 'action:setExportPrice', 'action:closeExport', 'action:buyBrokerCask', 'action:acceptRetail', 'action:cancelRetail',
-    'action:acceptOem', 'action:acceptCaskBid', 'action:delegateBlend', 'action:labAnalyze',
+    'action:acceptOem', 'action:acceptCaskBid', 'action:delegateBlend', 'action:labAnalyze', 'action:transferCask',
     // 설비 — 비지터 센터는 베이직 투어만(P-ARCH-1), 방재 설비 OUT, 증류기 추가는 다음 단계(§1.2 — 소주 감압 증류기만 연다)
     'facility:visitor_vip', 'facility:visitor_restaurant',
     'facility:facility_storm', 'facility:facility_snow', 'facility:facility_heating', 'facility:facility_dehumid', 'facility:facility_seismic',
