@@ -93,10 +93,10 @@ export function lotCategory(lot: SpiritLot, rules: WhiskyRules = DEFAULT_WHISKY_
   return lot.kind === 'grain' ? 'grain_whisky' : 'whisky';
 }
 
-/** 병 숙성 프리미엄이 끝나는 연수 — 그 뒤로는 연수 표기가 값을 더 올리지 않는다 (§NEW-ARCH-1) [튜닝] */
+/** 병 숙성 프리미엄이 끝나는 연수 — 그 뒤로는 연수 표기가 값을 더 올리지 않는다 (§6.2.1) [튜닝] */
 export const AGE_PREMIUM_CAP_YEARS = 18;
 
-/** 숙성 1년당 병 프리미엄 상승률 = 같은 원액의 현물 시가 상승률(BULK). 블렌디드는 몰트·그레인 평균 (§NEW-ARCH-1, P-ARCH-5)
+/** 숙성 1년당 병 프리미엄 상승률 = 같은 원액의 현물 시가 상승률(BULK). 블렌디드는 몰트·그레인 평균 (§6.2.1, #117)
  *  한 곳(BULK)에서 읽어 두 곡선이 다시 어긋나지 않게 한다 — 원액 시가와 병 가격이 같은 속도로 오른다 */
 export function agePremiumRate(category: ProductCategory): number {
   if (category === 'grain_whisky') return BULK.grainAgePerYear;
@@ -106,7 +106,7 @@ export function agePremiumRate(category: ProductCategory): number {
 
 /** 숙성 연수에 대한 소비자 인식 (위스키류) — 권장가·면세 권장가·매력도가 함께 쓴다.
  *  3년 미만은 법적으로 위스키라도 "어린 위스키"로 보고 크게 깎는다 — 0개월 0.47, 12개월 0.77, 24개월 0.98 (v0.8, 그대로)
- *  3년 = 1.18, 그 뒤는 원액 시가와 같은 비율로 오른다: 1.18 × (1 + r·연수) / (1 + 3r), 18년 상한 (§NEW-ARCH-1, 예약 #117의 규칙)
+ *  3년 = 1.18, 그 뒤는 원액 시가와 같은 비율로 오른다: 1.18 × (1 + r·연수) / (1 + 3r), 18년 상한 (§6.2.1, 예약 #117의 규칙)
  *  몰트(r = 0.2): 6년 1.62 · 10년 2.21 · 12년 2.51 · 18년 3.39 (옛 공식: 연 +0.06, 12년 상한 1.72) */
 export function agePerception(oakMonths: number, category: ProductCategory = 'whisky'): number {
   if (oakMonths < 36) return 1.18 * (0.4 + 0.6 * Math.pow(Math.max(0, oakMonths) / 36, 0.8));

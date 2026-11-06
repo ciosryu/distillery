@@ -89,12 +89,12 @@ function v6to7(s: AnySave): AnySave {
   };
 }
 
-/** v7 → v8: 시나리오(skeleton S-8, P-ARCH-2) 헤더 필드. 옛 세이브는 시나리오가 없는 샌드박스로 이어진다 — 필드를 만들지 않는다 */
+/** v7 → v8: 시나리오(skeleton S-8, #140) 헤더 필드. 옛 세이브는 시나리오가 없는 샌드박스로 이어진다 — 필드를 만들지 않는다 */
 function v7to8(s: AnySave): AnySave {
   return { ...s, version: 8 };
 }
 
-/** v8 → v9: 숙성 용기 일반화·피니싱 이력·샘플 기록의 자리(S-10, P-ARCH-6). 새 필드는 모두 선택값이라 옛 세이브는 그대로 — 버전만 올린다.
+/** v8 → v9: 숙성 용기 일반화·피니싱 이력·샘플 기록의 자리(S-10, #143). 새 필드는 모두 선택값이라 옛 세이브는 그대로 — 버전만 올린다.
  *  옛 캐스크의 샘플 횟수(samples)는 남고 기록(sampleLog)은 없다 → 화면은 "기록 없음"으로 보이고 다음 샘플부터 쌓인다 */
 function v8to9(s: AnySave): AnySave {
   return { ...s, version: 9 };

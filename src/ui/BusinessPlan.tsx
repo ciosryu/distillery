@@ -4,7 +4,7 @@ import { useGame } from '../store/game';
 import { months, pct, won } from './format';
 import { Badge, Button, Card, TextField } from './kit';
 
-// 사업 계획서 — MVP 시나리오의 새 게임 입구 (skeleton S-8, P-ARCH-2·3)
+// 사업 계획서 — MVP 시나리오의 새 게임 입구 (skeleton S-8, #140·3)
 // ① 규모 티어 ② 시작 자금 조달(기존 대출 상품을 미리 당겨 받는다) ③ 재무 시뮬레이터(실시간 런웨이)
 
 const STEP = 10_000_000;

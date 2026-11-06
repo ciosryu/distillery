@@ -381,7 +381,7 @@ describe('지역 (v0.6)', () => {
     expect(agePerception(35.999)).toBeCloseTo(agePerception(36), 2);
   });
 
-  it('3년 뒤 병 숙성 프리미엄은 같은 원액의 현물 시가와 같은 비율로 오른다, 18년 상한 (§NEW-ARCH-1)', () => {
+  it('3년 뒤 병 숙성 프리미엄은 같은 원액의 현물 시가와 같은 비율로 오른다, 18년 상한 (§6.2.1)', () => {
     // 몰트: 12년/3년 = 현물 시가 (1 + 0.2·12)/(1 + 0.2·3)
     expect(agePerception(144) / agePerception(36)).toBeCloseTo((1 + BULK.agePerYear * 12) / (1 + BULK.agePerYear * 3), 10);
     expect(agePerception(144)).toBeCloseTo(2.5075, 3);

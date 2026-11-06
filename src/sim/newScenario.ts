@@ -14,7 +14,7 @@ import { nid } from './util';
 export interface BusinessPlan {
   scenarioId: string;
   tierId: ScenarioTierDef['id'];
-  /** 시작 때 미리 당겨 받을 대출 합계 (0 ~ 티어 상한). 기존 대출 상품의 한도를 쓴다 (P-ARCH-3) */
+  /** 시작 때 미리 당겨 받을 대출 합계 (0 ~ 티어 상한). 기존 대출 상품의 한도를 쓴다 (#141) */
   loanAmount: number;
   seed?: number;
   distilleryName?: string;

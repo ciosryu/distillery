@@ -31,7 +31,7 @@ export type YeastId = 'distillers' | 'ale' | 'nuruk_native';
 export type FermenterType = 'stainless' | 'onggi';
 export type StillType = 'pot_onion' | 'pot_lantern' | 'hybrid' | 'vacuum_pot' | 'column';
 export type CondenserType = 'copper_shell' | 'worm_tub';
-/** 숙성 용기 재질 (S-10, P-ARCH-6) — 나무 캐스크 외에 옹기·스테인리스 휴지. 재질은 콘텐츠(CaskDef.material)에 있고 캐스크 인스턴스는 typeId로 찾는다 */
+/** 숙성 용기 재질 (S-10, #143) — 나무 캐스크 외에 옹기·스테인리스 휴지. 재질은 콘텐츠(CaskDef.material)에 있고 캐스크 인스턴스는 typeId로 찾는다 */
 export type VesselMaterial = 'wood' | 'onggi' | 'steel';
 export type CaskTypeId = 'ex_bourbon_barrel' | 'oloroso_butt' | 'korean_oak_quarter' | 'mizunara_hogshead';
 export type WoodId = 'american_oak' | 'european_oak' | 'korean_oak' | 'mizunara';
@@ -91,7 +91,7 @@ export interface SpiritLot {
   localIngredient?: boolean;
 }
 
-/** 원액이 거쳐 간 숙성 용기 한 구간 — 피니싱(다른 캐스크로 옮겨 마무리)의 이력 (S-10, P-ARCH-6). 원액이 들고 다닌다 */
+/** 원액이 거쳐 간 숙성 용기 한 구간 — 피니싱(다른 캐스크로 옮겨 마무리)의 이력 (S-10, #143). 원액이 들고 다닌다 */
 export interface CaskStint {
   typeId: CaskTypeId;
   /** 이 용기에 들어간 달 */
@@ -661,7 +661,7 @@ export interface ExportEntry extends Partial<Omit<ExportTerms, 'marketId'>> {
 
 export interface ExportSale { marketId: ExportMarketId; productId: string; name: string; bottles: number; revenue: number; demandBottles: number; freight: number }
 
-/** 시나리오 (skeleton S-8, P-ARCH-2) — 새 게임 때 시나리오 정의를 복사해 둔다. 없으면 샌드박스(모든 시스템 켬) */
+/** 시나리오 (skeleton S-8, #140) — 새 게임 때 시나리오 정의를 복사해 둔다. 없으면 샌드박스(모든 시스템 켬) */
 export interface ScenarioState {
   /** content/scenarios.ts의 id */
   id: string;
@@ -671,7 +671,7 @@ export interface ScenarioState {
   locked: string[];
   /** 경제 값 덮어쓰기 */
   economy: { overheadPerMonth?: number };
-  /** 시작 자기자본 — 순자산 목표의 기준 (P-ARCH-3) */
+  /** 시작 자기자본 — 순자산 목표의 기준 (#141) */
   equity: number;
   goal: { months: number; netWorthMultiple: number; flagshipMinMonths: number };
 }
