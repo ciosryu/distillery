@@ -23,7 +23,7 @@ export const CASH_FLOW_LINES: Record<CashFlowKey, { label: string; group: CashFl
   loan: { label: '대출 실행', group: 'financing' },
   loanRepay: { label: '대출 조기 상환', group: 'financing' },
   investment: { label: '투자 유치', group: 'financing' },
-  // 선급금은 나중 납품으로 갚는 고객 선수금 → 대출처럼 재무로 본다 (흑자 전환 지표에서 제외, §16.19)
+  // 선급금은 나중 납품으로 갚는 고객 선수금 → 대출처럼 재무로 본다 (흑자 전환 지표에서 제외, §16.20)
   contractPrepay: { label: '계약 선급금 (입금·반환)', group: 'financing' },
 };
 
