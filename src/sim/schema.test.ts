@@ -214,7 +214,8 @@ describe('블렌딩 레이더 코어 (결정 #121)', () => {
 
 describe('배치 id — 캐스크 코호트 (architecture §3.4)', () => {
   it('같은 배치를 나눠 통입한 캐스크는 같은 batchId를 갖는다', () => {
-    let s = newGame({ seed: 41, startingCash: 50_000_000_000 });
+    // 첫 달에 생산을 멈추는 이벤트가 없는 시드 (S-5로 41 → 43)
+    let s = newGame({ seed: 43, startingCash: 50_000_000_000 });
     const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
     s = applyAction(s, { type: 'setOrder', recipeId: malt.id, batchesPerMonth: 2 }).state;
     s = advanceMonths(s, 1);

@@ -237,24 +237,27 @@ export function resolvePending(s: GameState, pendingId: string, choiceIndex: num
 export function runEvents(s: GameState, report: MonthReport, monthOfYear: number): void {
   for (const p of [...s.events.pending]) resolvePending(s, p.id, p.defaultChoice, report);
 
-  const frng = rngFor(s.seed, s.month, 'forecasts');
+  // 예보 확정: 예보마다 독립 난수 (S-5) — 키는 이벤트 id + 확정 달(엔티티 번호와 무관), 다른 예보·이벤트 수와 무관하다
   for (const f of s.events.forecasts.filter((x) => x.fireMonth <= s.month)) {
     const def = EVENT[f.defId];
-    if (def && frng.chance(f.certainty)) fire(s, def, rngFor(s.seed, s.month, `event:${def.id}`), report);
+    if (def && rngFor(s.seed, s.month, `forecast:${f.defId}:${f.fireMonth}`).chance(f.certainty)) fire(s, def, rngFor(s.seed, s.month, `event:${def.id}`), report);
     else log(s, report, `예보 빗나감: ${f.title}`, '예보와 달리 큰 변화는 없었습니다.');
   }
   s.events.forecasts = s.events.forecasts.filter((x) => x.fireMonth > s.month);
 
-  const rng = rngFor(s.seed, s.month, 'events');
-  const order = [...EVENTS].sort(() => rng.next() - 0.5);
+  // 신규 발생 (S-5, P-ARCH-10): 이벤트마다 독립 스트림으로 굴린다 — 이벤트를 더하거나 빼도 다른 이벤트의 결과는 그대로다.
+  // ① 발생 판정 'event-roll:<id>' (모든 이벤트가 매달 한 번씩 굴린다) ② 성공한 것을 이벤트별 순위 키 'event-rank:<id>' 순으로 보며
+  // ③ 그 순간 발생 조건을 확인하고 월 상한까지 발생시킨다 — 옛 방식(무작위 순서로 조건 확인 → 판정 → 상한)과 같은 의미다
+  const region = regionOf(s);
+  const site = siteOf(s);
+  const rolled = EVENTS.filter((def) => rngFor(s.seed, s.month, `event-roll:${def.id}`).chance(def.chance * (region.eventWeights[def.category] ?? 1) * (site.eventBoost?.[def.id] ?? 1) * EVENT_RATE));
+  const rank = new Map(rolled.map((def) => [def.id, rngFor(s.seed, s.month, `event-rank:${def.id}`).next()]));
   let fired = 0;
-  for (const def of order) {
+  for (const def of rolled.sort((a, b) => rank.get(a.id)! - rank.get(b.id)!)) {
     if (fired >= MAX_NEW_EVENTS_PER_MONTH) break;
     if (!eligible(s, def, monthOfYear)) continue;
-    const weight = (regionOf(s).eventWeights[def.category] ?? 1) * (siteOf(s).eventBoost?.[def.id] ?? 1);
-    if (!rng.chance(def.chance * weight * EVENT_RATE)) continue;
-    s.events.lastFired[def.id] = s.month;
     fired++;
+    s.events.lastFired[def.id] = s.month;
     if (def.forecast) {
       s.events.forecasts.push({ id: nid(s, 'F'), defId: def.id, title: def.title, text: def.forecast.text, fireMonth: s.month + def.forecast.months, certainty: def.forecast.certainty });
       log(s, report, `예보: ${def.title}`, `${def.forecast.text} (약 ${def.forecast.months}개월 뒤, 확률 ${Math.round(def.forecast.certainty * 100)}%)`);

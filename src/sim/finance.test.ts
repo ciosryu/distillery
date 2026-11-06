@@ -126,7 +126,8 @@ describe('v1.0 운영 시스템', () => {
 
 describe('월간 보고서 — 턴 사이 현금 흐름', () => {
   it('현물 벌크 판매(sellBulk)가 그달 보고서의 현물 매출·순현금에 잡힌다', () => {
-    let s = newGame({ seed: 21 });
+    // 첫 달에 생산을 멈추는 이벤트(한파 등)가 없는 시드 — 이벤트 난수가 이벤트별 스트림이 되면서(S-5) 21 → 23
+    let s = newGame({ seed: 23 });
     s = applyAction(s, { type: 'setOrder', recipeId: recipeId(s, '싱글 몰트 — 언'), batchesPerMonth: 2 }).state;
     s = advanceMonths(s, 1);
     const lot = s.inventory.lots.find((l) => l.kind === 'malt')!;
