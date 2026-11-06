@@ -7,8 +7,8 @@ import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';
 export function Exports() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
-  const last = s.reports.at(-1);
-  const opened = s.exports ?? [];
+  const last = s.history.reports.at(-1);
+  const opened = s.commerce.exports ?? [];
 
   return (
     <div className="grid gap-4">
@@ -24,14 +24,14 @@ export function Exports() {
         const entry = opened.find((e) => e.marketId === id);
         const ready = !!entry && entry.readyMonth <= s.month;
         const sales = last?.exports?.filter((x) => x.marketId === id) ?? [];
-        const products = s.products.filter((p) => p.stockBottles > 0 && m.categories[p.category]);
+        const products = s.commerce.products.filter((p) => p.stockBottles > 0 && m.categories[p.category]);
         return (
           <Card
             key={id}
             title={<>{m.nameKo} {entry ? (ready ? <Badge tone="good">판매 중</Badge> : <Badge tone="warn">준비 중 — {entry.readyMonth - s.month}개월</Badge>) : <Badge>미진출</Badge>}</>}
             actions={entry
               ? <Button small variant="danger" onClick={() => dispatch({ type: 'closeExport', marketId: id })}>철수</Button>
-              : <Button small variant="primary" disabled={s.cash < m.entryCost} onClick={() => dispatch({ type: 'openExport', marketId: id })}>진출 ({won(m.entryCost)}, {m.entryMonths}개월)</Button>}
+              : <Button small variant="primary" disabled={s.finance.cash < m.entryCost} onClick={() => dispatch({ type: 'openExport', marketId: id })}>진출 ({won(m.entryCost)}, {m.entryMonths}개월)</Button>}
           >
             <p className="mb-2 text-xs text-stone-500">{m.descKo}</p>
             <div className="mb-3 grid grid-cols-2 gap-2 text-xs md:grid-cols-6">

@@ -143,12 +143,12 @@ export function newGame(opts: NewGameOptions = {}): GameState {
   };
   // 초기 설비: 단식 증류기 1기 + 스테인리스 발효조 2기
   const still = { id: nid(s, 'E'), catalogId: 'pot_onion_1000', readyMonth: 0, feintsLPA: 0 };
-  s.equipment.push(still, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0 }, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0 });
-  for (const r of presetRecipes(still.id, s.regionId, s.siteId)) s.recipes.push({ ...r, id: nid(s, 'R') });
-  for (const t of STARTER[s.regionId].casks) s.casks.push(emptyCaskOf(s, t));
+  s.production.equipment.push(still, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0 }, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0 });
+  for (const r of presetRecipes(still.id, s.regionId, s.siteId)) s.production.recipes.push({ ...r, id: nid(s, 'R') });
+  for (const t of STARTER[s.regionId].casks) s.inventory.casks.push(emptyCaskOf(s, t));
   // 창업 멤버: 디스틸러 1명
   const stats = { a: 50, b: 50, c: 45 };
-  s.staff.push({ id: nid(s, 'S'), name: siteOf(s).starter?.name ?? STARTER[s.regionId].name, role: 'distiller', level: 1, xp: 0, stats, salary: salaryFor('distiller', stats, 1, regionOf(s).laborCost), hiredMonth: 0, ageAtHire: 38 });
+  s.hr.staff.push({ id: nid(s, 'S'), name: siteOf(s).starter?.name ?? STARTER[s.regionId].name, role: 'distiller', level: 1, xp: 0, stats, salary: salaryFor('distiller', stats, 1, regionOf(s).laborCost), hiredMonth: 0, ageAtHire: 38 });
   const rng = mulberry32(seed ^ 0x9e3779b9);
   refreshCandidates(s, rng);
   refreshBroker(s, rng);
@@ -160,11 +160,11 @@ export function newGame(opts: NewGameOptions = {}): GameState {
 export function normalizeState(s: GameState): GameState {
   return {
     ...s,
-    siteState: s.siteState ?? {},
-    retailOffers: s.retailOffers ?? [],
-    retailContracts: s.retailContracts ?? [],
-    oemOffers: s.oemOffers ?? [],
-    oemContracts: s.oemContracts ?? [],
-    receivables: s.receivables ?? [],
+    siteState: s.site ?? {},
+    retailOffers: s.commerce.retailOffers ?? [],
+    retailContracts: s.commerce.retailContracts ?? [],
+    oemOffers: s.b2b.oemOffers ?? [],
+    oemContracts: s.b2b.oemContracts ?? [],
+    receivables: s.finance.receivables ?? [],
   };
 }

@@ -32,28 +32,28 @@ function cashFlowRows(r: MonthReport): [string, number][] {
 
 export function Dashboard() {
   const s = useGame((g) => g.state);
-  const last = s.reports.at(-1);
-  const recent = s.reports.slice(-3);
+  const last = s.history.reports.at(-1);
+  const recent = s.history.reports.slice(-3);
   // 대출 실행·투자 유치·계약 선급금으로 들어온 돈은 빼고 본다 (차입한 달이 흑자로 보이지 않게)
   const avgNet = recent.length ? recent.reduce((t, r) => t + selfFundedCash(r), 0) / recent.length : 0;
-  const runway = avgNet < 0 ? Math.floor(s.cash / -avgNet) : null;
-  const filled = s.casks.filter((c) => c.contents).length;
-  const tankLPA = s.lots.reduce((t, l) => t + l.volumeL * l.abv, 0);
+  const runway = avgNet < 0 ? Math.floor(s.finance.cash / -avgNet) : null;
+  const filled = s.inventory.casks.filter((c) => c.contents).length;
+  const tankLPA = s.inventory.lots.reduce((t, l) => t + l.volumeL * l.abv, 0);
   const cap = capacityReport(s);
 
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="현금" value={won(s.cash)} tone={s.cash < 0 ? 'bad' : undefined} hint={s.negativeCashMonths ? `현금 부족 ${s.negativeCashMonths}개월째` : undefined} />
+        <Stat label="현금" value={won(s.finance.cash)} tone={s.finance.cash < 0 ? 'bad' : undefined} hint={s.finance.negativeCashMonths ? `현금 부족 ${s.finance.negativeCashMonths}개월째` : undefined} />
         <Stat label="최근 3개월 평균 순현금(차입·투자·선급금 제외)" value={recent.length ? won(avgNet) : '—'} tone={!recent.length ? undefined : avgNet >= 0 ? 'good' : 'bad'} hint={!recent.length ? '기록 없음' : runway != null ? `이 속도면 약 ${runway}개월 버팀` : '현금 흐름 흑자'} />
         <Stat label="월 고정비(예상)" value={won(monthlyFixedCost(s))} hint="급여·관리비·유지비·마케팅·대출" />
-        <Stat label="브랜드 인지도" value={pct(s.awareness)} hint={`유통 커버리지 ${pct(coverage(s))}`} />
-        <Stat label="숙성 중 캐스크" value={`${filled} / ${warehouseCapacity(s)}`} hint={`빈 캐스크 ${s.casks.length - filled}개`} />
-        <Stat label="탱크 원액" value={`${num(tankLPA)} LPA`} hint={`${s.lots.length}개 로트`} />
-        <Stat label="판매 중 제품" value={s.products.filter((p) => p.stockBottles > 0).length} hint={`재고 ${num(s.products.reduce((t, p) => t + p.stockBottles, 0))}병`} />
-        <Stat label="대출 잔액" value={won(s.loans.reduce((t, l) => t + l.balance, 0))} hint={`${s.loans.length}건`} />
+        <Stat label="브랜드 인지도" value={pct(s.commerce.awareness)} hint={`유통 커버리지 ${pct(coverage(s))}`} />
+        <Stat label="숙성 중 캐스크" value={`${filled} / ${warehouseCapacity(s)}`} hint={`빈 캐스크 ${s.inventory.casks.length - filled}개`} />
+        <Stat label="탱크 원액" value={`${num(tankLPA)} LPA`} hint={`${s.inventory.lots.length}개 로트`} />
+        <Stat label="판매 중 제품" value={s.commerce.products.filter((p) => p.stockBottles > 0).length} hint={`재고 ${num(s.commerce.products.reduce((t, p) => t + p.stockBottles, 0))}병`} />
+        <Stat label="대출 잔액" value={won(s.finance.loans.reduce((t, l) => t + l.balance, 0))} hint={`${s.finance.loans.length}건`} />
         <Stat label="소매 처리 역량 (지난달)" value={last?.retailCapacityCases != null ? `${num(last.retailSoldCases ?? 0)} / ${num(last.retailCapacityCases)} 케이스` : `${num(retailCapacityCases(s))} 케이스/월`} tone={last?.overflowCases ? 'warn' : undefined} hint={last?.overflowCases ? `초과 ${num(last.overflowCases)}케이스 고비용 채널${last.lostSalesBottles ? ` · ${num(last.lostSalesBottles)}병 못 팔음` : ''}` : `영업 직원·네트워크로 늘어남${hasPremiumChannel(s) ? ' · 고급 유통망 확보' : ''}`} />
-        <Stat label="비지터 센터 (지난달)" value={visitorTiers(s).length ? `${num(last?.visitors ?? 0)}명 · ${won(last?.tourismRevenue ?? 0)}` : '없음'} hint={`입소문 ${pct(s.localBuzz)} — 첫 위스키 출시 때 오픈런 확률`} />
+        <Stat label="비지터 센터 (지난달)" value={visitorTiers(s).length ? `${num(last?.visitors ?? 0)}명 · ${won(last?.tourismRevenue ?? 0)}` : '없음'} hint={`입소문 ${pct(s.commerce.localBuzz)} — 첫 위스키 출시 때 오픈런 확률`} />
       </div>
 
       <SiteCard />
@@ -62,9 +62,9 @@ export function Dashboard() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card title="현금 추이" className="lg:col-span-2">
-          <Sparkline values={s.reports.map((r) => r.cashEnd)} label="월말 현금 추이" />
+          <Sparkline values={s.history.reports.map((r) => r.cashEnd)} label="월말 현금 추이" />
           <div className="mt-2 flex justify-between text-xs text-stone-500">
-            <span>{s.reports.length ? monthLabel(s.startYear, s.reports[0]!.month) : ''}</span>
+            <span>{s.history.reports.length ? monthLabel(s.startYear, s.history.reports[0]!.month) : ''}</span>
             <span>{last ? monthLabel(s.startYear, last.month) : ''}</span>
           </div>
         </Card>
@@ -127,10 +127,10 @@ function SiteCard() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
   const site = siteOf(s);
-  const last = s.reports.at(-1);
+  const last = s.history.reports.at(-1);
   if (!site.traits?.length) return null;
   const wp = site.waterPermit;
-  const app = s.siteState.permitApplication;
+  const app = s.site.permitApplication;
   const live = liveDutyFreeEditions(s)[0];
   const dfAw = (last?.dutyFreeAwareness ?? 0) * 100;
   return (
@@ -148,14 +148,14 @@ function SiteCard() {
               <div className="mt-1">
                 {app
                   ? <Badge tone="warn">증량 심사 중 · {monthLabel(s.startYear, app.decideMonth)} 결과 · 승인 확률 {pct(app.chance, 0)}</Badge>
-                  : <Button small disabled={s.cash < wp.cost} onClick={() => dispatch({ type: 'applyWaterPermit' })}>증량 신청 (+{liters(wp.stepL)}, {won(wp.cost)}, {wp.months[0]}~{wp.months[1]}개월, 승인 {pct(wp.chance, 0)})</Button>}
+                  : <Button small disabled={s.finance.cash < wp.cost} onClick={() => dispatch({ type: 'applyWaterPermit' })}>증량 신청 (+{liters(wp.stepL)}, {won(wp.cost)}, {wp.months[0]}~{wp.months[1]}개월, 승인 {pct(wp.chance, 0)})</Button>}
               </div>
             </div>
           )}
           {site.dutyFree && (
             <div>
               <b>지정면세점</b> — 지난달 면세 판매 {num(last?.dutyFreeBottles ?? 0)}병 (주세·부가세 없음) · 관광객 입소문 인지도 {dfAw > 0 && dfAw < 0.01 ? '+0.01%p 미만' : `+${dfAw.toFixed(2)}%p`}
-              <div className="text-xs text-stone-500">면세 한정판 매대: {live?.dfEdition ? `Vol.${live.dfEdition.vol} ${live.name} — 출시 ${s.month - live.createdMonth + 1}개월째, 남은 ${num(live.stockBottles)}병` : '비어 있음'} · 연속 완판 {s.siteState.dfSeries?.streak ?? 0}회</div>
+              <div className="text-xs text-stone-500">면세 한정판 매대: {live?.dfEdition ? `Vol.${live.dfEdition.vol} ${live.name} — 출시 ${s.month - live.createdMonth + 1}개월째, 남은 ${num(live.stockBottles)}병` : '비어 있음'} · 연속 완판 {s.site.dfSeries?.streak ?? 0}회</div>
             </div>
           )}
           {site.heating && <div><b>겨울 난방</b> — {site.heating.months.join('·')}월 난방비 월 {won(site.heating.perMonth)}, 증류 에너지비 ×{site.heating.energyFactor}</div>}

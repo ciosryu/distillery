@@ -17,9 +17,9 @@ const kindCategory = (k: SpiritKind): ProductCategory => (k === 'soju' ? 'soju_d
 function previewOf(s: GameState, r: Recipe) {
   const still = stillDefOf(s, r.stillId);
   if (!still) return null;
-  const fermTypes = s.equipment.map((e) => EQUIPMENT[e.catalogId]).filter((d) => d?.kind === 'fermenter').map((d) => (d as { fermenterType: FermenterType }).fermenterType);
+  const fermTypes = s.production.equipment.map((e) => EQUIPMENT[e.catalogId]).filter((d) => d?.kind === 'fermenter').map((d) => (d as { fermenterType: FermenterType }).fermenterType);
   const ferm: FermenterType | null = r.kind === 'gin' ? null : r.kind === 'soju' && fermTypes.includes('onggi') ? 'onggi' : fermTypes[0] ?? 'stainless';
-  const b = simulateBatch(r, still, ferm, bestBy(staffOf(s, 'distiller'), 'b'), s.priceIndex, 0);
+  const b = simulateBatch(r, still, ferm, bestBy(staffOf(s, 'distiller'), 'b'), s.world.priceIndex, 0);
   return { ...b, evaluation: evaluate(b.flavor, kindCategory(r.kind)) };
 }
 
@@ -39,9 +39,9 @@ function Orders() {
   return (
     <Card title="월 생산 지시 (상시 — 바꿀 때까지 매달 반복)">
       <Table head={['레시피', '주종', '증류기', '배치당 산출', '배치당 원가', '원액 품질', '월 배치 수']}>
-        {s.recipes.map((r) => {
+        {s.production.recipes.map((r) => {
           const p = previewOf(s, r);
-          const order = s.orders.find((o) => o.recipeId === r.id)?.batchesPerMonth ?? 0;
+          const order = s.production.orders.find((o) => o.recipeId === r.id)?.batchesPerMonth ?? 0;
           return (
             <tr key={r.id}>
               <Td className="font-medium">{r.name}</Td>
@@ -63,7 +63,7 @@ function Orders() {
 type Draft = Omit<Recipe, 'id'> & { id?: string };
 
 function blankDraft(s: GameState, kind: SpiritKind): Draft {
-  const stillId = s.equipment.find((e) => EQUIPMENT[e.catalogId]?.kind === 'still')?.id ?? '';
+  const stillId = s.production.equipment.find((e) => EQUIPMENT[e.catalogId]?.kind === 'still')?.id ?? '';
   const base: Draft = { name: `새 ${KIND_LABEL[kind]} 레시피`, kind, mashBill: [], botanicals: [], botanicalMethod: 'steep', yeast: 'distillers', fermentDays: 4, runs: 1, cut: { c1: 0.12, c2: 0.72 }, pressure: 'atmospheric', stillId };
   if (kind === 'soju') return s.regionId === 'JP'
     ? { ...base, mashBill: [{ ingredientId: 'sweet_potato', ratio: 0.75 }, { ingredientId: 'rice_koji', ratio: 0.25 }], fermentDays: 14 }
@@ -71,7 +71,7 @@ function blankDraft(s: GameState, kind: SpiritKind): Draft {
   if (kind === 'baijiu') return { ...base, mashBill: [{ ingredientId: 'sorghum', ratio: 0.85 }, { ingredientId: 'daqu', ratio: 0.15 }], yeast: 'nuruk_native', fermentDays: 28, cut: { c1: 0.1, c2: 0.75 } };
   if (kind === 'gin') return { ...base, botanicals: [{ botanicalId: 'juniper', gramsPerL: 20 }, { botanicalId: 'coriander', gramsPerL: 6 }], fermentDays: 0, cut: { c1: 0.08, c2: 0.8 } };
   if (kind === 'grain') {
-    const column = s.equipment.find((e) => EQUIPMENT[e.catalogId]?.kind === 'still' && (EQUIPMENT[e.catalogId] as { stillType: string }).stillType === 'column');
+    const column = s.production.equipment.find((e) => EQUIPMENT[e.catalogId]?.kind === 'still' && (EQUIPMENT[e.catalogId] as { stillType: string }).stillType === 'column');
     return { ...base, stillId: column?.id ?? stillId, mashBill: [{ ingredientId: 'corn', ratio: 0.9 }, { ingredientId: 'malt_unpeated', ratio: 0.1 }], fermentDays: 3, runs: 1, cut: { c1: 0.05, c2: 0.95 } };
   }
   return { ...base, mashBill: [{ ingredientId: 'malt_unpeated', ratio: 1 }], runs: 2, cut: { c1: 0.15, c2: 0.72 } };
@@ -80,11 +80,11 @@ function blankDraft(s: GameState, kind: SpiritKind): Draft {
 function RecipeEditor() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
-  const [draft, setDraft] = useState<Draft>(() => ({ ...s.recipes[0]! }));
+  const [draft, setDraft] = useState<Draft>(() => ({ ...s.production.recipes[0]! }));
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
   const errs = validateRecipe(s, { ...draft, id: draft.id ?? 'new' } as Recipe);
   const preview = useMemo(() => (errs.length ? null : previewOf(s, { ...draft, id: 'preview' } as Recipe)), [s, draft, errs.length]);
-  const stills = s.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'still');
+  const stills = s.production.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'still');
   // 입지 전용 원료(결정 #87)는 그 입지에서만 보인다
   const siteId = siteOf(s).id;
   const ingOptions = Object.values(INGREDIENTS).filter((i) => draft.kind !== 'gin' && (i.kinds as string[]).includes(draft.kind) && (!i.sites || i.sites.includes(siteId)));
@@ -97,8 +97,8 @@ function RecipeEditor() {
         <div className="flex flex-wrap items-center gap-2">
           <Select
             label="불러오기" value={draft.id ?? ''}
-            options={[{ value: '', label: '(새 레시피)' }, ...s.recipes.map((r) => ({ value: r.id, label: r.name }))]}
-            onChange={(id) => { const r = s.recipes.find((x) => x.id === id); setDraft(r ? { ...r } : blankDraft(s, 'malt')); }}
+            options={[{ value: '', label: '(새 레시피)' }, ...s.production.recipes.map((r) => ({ value: r.id, label: r.name }))]}
+            onChange={(id) => { const r = s.production.recipes.find((x) => x.id === id); setDraft(r ? { ...r } : blankDraft(s, 'malt')); }}
           />
           {regionOf(s).allowedKinds.map((k) => <Button key={k} small onClick={() => setDraft(blankDraft(s, k))}>+ {KIND_LABEL[k]}</Button>)}
         </div>
@@ -163,7 +163,7 @@ function RecipeEditor() {
           <div className="flex gap-2">
             <Button variant="primary" disabled={errs.length > 0} onClick={() => {
               if (dispatch({ type: 'saveRecipe', recipe: draft }) && !draft.id) {
-                const added = useGame.getState().state.recipes.at(-1);
+                const added = useGame.getState().state.production.recipes.at(-1);
                 if (added) setDraft({ ...added });
               }
             }}>{draft.id ? '레시피 저장' : '새 레시피로 추가'}</Button>
@@ -201,7 +201,7 @@ function Equipment() {
         <div>
           <h3 className="mb-1 text-xs font-semibold text-stone-500">보유 설비</h3>
           <Table head={['설비', '상태', '월 유지비']}>
-            {s.equipment.map((e) => {
+            {s.production.equipment.map((e) => {
               const d = EQUIPMENT[e.catalogId]!;
               return (
                 <tr key={e.id}>
@@ -224,7 +224,7 @@ function Equipment() {
                 </Td>
                 <Td right>{won(equipmentCost(s, d))}{equipmentCost(s, d) !== d.cost && <div className="text-xs text-stone-500">입지 반영 (기준 {won(d.cost)})</div>}</Td>
                 <Td right>{d.leadMonths}개월</Td>
-                <Td><Button small disabled={s.cash < equipmentCost(s, d)} onClick={() => dispatch({ type: 'buyEquipment', catalogId: d.id })}>발주</Button></Td>
+                <Td><Button small disabled={s.finance.cash < equipmentCost(s, d)} onClick={() => dispatch({ type: 'buyEquipment', catalogId: d.id })}>발주</Button></Td>
               </tr>
             ))}
           </Table>

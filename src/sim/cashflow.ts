@@ -31,9 +31,9 @@ export const CASH_FLOW_LINES: Record<CashFlowKey, { label: string; group: CashFl
 /** 턴 사이 현금 흐름을 기록한다 (현금 자체는 호출 측에서 이미 움직였다) */
 export function recordPendingCash(s: GameState, key: CashFlowKey, amount: number): void {
   if (!amount) return;
-  const p = { ...(s.pendingCash ?? {}) };
+  const p = { ...(s.finance.pendingCash ?? {}) };
   p[key] = (p[key] ?? 0) + amount;
-  s.pendingCash = p;
+  s.finance.pendingCash = p;
 }
 
 export const sumCashFlows = (f: CashFlows, group?: CashFlowGroup): number =>

@@ -31,12 +31,12 @@ function Tanks() {
   const [caskType, setCaskType] = useState<CaskTypeId>('ex_bourbon_barrel');
   const [count, setCount] = useState(5);
   const [entry, setEntry] = useState(63.5);
-  const emptyOfType = s.casks.filter((c) => !c.contents && c.typeId === caskType);
+  const emptyOfType = s.inventory.casks.filter((c) => !c.contents && c.typeId === caskType);
   return (
     <Card title="탱크 원액 (뉴메이크)">
-      {!s.lots.length ? <Empty>탱크가 비어 있습니다. 생산 지시를 내리고 한 달을 진행하세요.</Empty> : (
+      {!s.inventory.lots.length ? <Empty>탱크가 비어 있습니다. 생산 지시를 내리고 한 달을 진행하세요.</Empty> : (
         <Table head={['원액', '액량', '도수', 'LPA', '경과', '주요 향', '품질', '']}>
-          {s.lots.map((l) => (
+          {s.inventory.lots.map((l) => (
             <tr key={l.id}>
               <Td className="font-medium">{l.name}</Td>
               <Td right>{liters(l.volumeL)}</Td>
@@ -52,7 +52,7 @@ function Tanks() {
       )}
       {fillFor && (
         <div className="mt-3 flex flex-wrap items-end gap-3 rounded-lg bg-stone-50 p-3 dark:bg-stone-800/50">
-          <Select label="캐스크" value={caskType} options={(Object.keys(CASKS) as CaskTypeId[]).map((k) => ({ value: k, label: `${CASKS[k].nameKo} (빈 통 ${s.casks.filter((c) => !c.contents && c.typeId === k).length})` }))} onChange={setCaskType} />
+          <Select label="캐스크" value={caskType} options={(Object.keys(CASKS) as CaskTypeId[]).map((k) => ({ value: k, label: `${CASKS[k].nameKo} (빈 통 ${s.inventory.casks.filter((c) => !c.contents && c.typeId === k).length})` }))} onChange={setCaskType} />
           <NumberField label="개수" value={count} min={1} max={200} width="w-16" onCommit={setCount} />
           <NumberField label="통입 도수" value={entry} min={40} max={80} step={0.5} width="w-20" suffix="%" onCommit={setEntry} />
           <Button variant="primary" disabled={!emptyOfType.length} onClick={() => {
@@ -71,7 +71,7 @@ function Warehouses() {
   const ws = warehousesOf(s);
   const moy = calendar(s).monthOfYear;
   return (
-    <Card title={`숙성고 공간 — 로테이션 여력 ${Math.max(0, rotationCapacity(s) - s.rotatedThisMonth)}개/월`}>
+    <Card title={`숙성고 공간 — 로테이션 여력 ${Math.max(0, rotationCapacity(s) - s.inventory.rotatedThisMonth)}개/월`}>
       <Table head={['숙성고', '방식', '단별 적재 (아래 → 위)', '맨 아래 / 맨 위 (이번 달)', '']}>
         {ws.map((w) => {
           const bottom = slotClimate(s, { slot: { w: w.id, tier: 0 } } as never, moy);
@@ -98,13 +98,13 @@ function Casks() {
   const [buyType, setBuyType] = useState<CaskTypeId>('ex_bourbon_barrel');
   const [qty, setQty] = useState(10);
   const [filter, setFilter] = useState<'filled' | 'empty'>('filled');
-  const list = s.casks.filter((c) => (filter === 'filled' ? c.contents : !c.contents));
+  const list = s.inventory.casks.filter((c) => (filter === 'filled' ? c.contents : !c.contents));
   return (
     <Card
-      title={`숙성고 — ${s.casks.length} / ${warehouseCapacity(s)} 캐스크`}
+      title={`숙성고 — ${s.inventory.casks.length} / ${warehouseCapacity(s)} 캐스크`}
       actions={
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={filter} options={[{ value: 'filled', label: `숙성 중 (${s.casks.filter((c) => c.contents).length})` }, { value: 'empty', label: `빈 통 (${s.casks.filter((c) => !c.contents).length})` }]} onChange={setFilter} />
+          <Select value={filter} options={[{ value: 'filled', label: `숙성 중 (${s.inventory.casks.filter((c) => c.contents).length})` }, { value: 'empty', label: `빈 통 (${s.inventory.casks.filter((c) => !c.contents).length})` }]} onChange={setFilter} />
           <Select value={buyType} options={(Object.keys(CASKS) as CaskTypeId[]).map((k) => ({ value: k, label: `${CASKS[k].nameKo} — ${won(regionalCaskPrice(s, k))}` }))} onChange={setBuyType} />
           <NumberField value={qty} min={1} max={100} width="w-16" onCommit={setQty} />
           <Button small onClick={() => dispatch({ type: 'buyCasks', caskType: buyType, qty })} title={`카탈로그가, ${CASK_MARKET.cooperageLeadMonths}개월 뒤 도착`}>쿠퍼리지 주문 ({won(regionalCaskPrice(s, buyType) * qty)})</Button>
@@ -113,7 +113,7 @@ function Casks() {
         </div>
       }
     >
-      {!!s.caskOrders.length && <p className="mb-2 text-xs text-stone-500">도착 예정: {s.caskOrders.map((o) => `${CASKS[o.typeId].nameKo} ${o.qty}개(${o.source === 'seasoning' ? '시즈닝' : '쿠퍼리지'}, ${o.arriveMonth - s.month}개월 뒤)`).join(' · ')}</p>}
+      {!!s.inventory.caskOrders.length && <p className="mb-2 text-xs text-stone-500">도착 예정: {s.inventory.caskOrders.map((o) => `${CASKS[o.typeId].nameKo} ${o.qty}개(${o.source === 'seasoning' ? '시즈닝' : '쿠퍼리지'}, ${o.arriveMonth - s.month}개월 뒤)`).join(' · ')}</p>}
       {!list.length ? <Empty>{filter === 'filled' ? '숙성 중인 캐스크가 없습니다' : '빈 캐스크가 없습니다'}</Empty> : (
         <Table head={filter === 'filled' ? ['ID', '캐스크', '위치', '회차', '원액', '액량', '도수', '숙성', '주요 향', '품질', '표기', ''] : ['ID', '캐스크', '사용 횟수', '활성도', '재탄화', '']}>
           {list.map((c) => {
@@ -159,9 +159,9 @@ function Broker() {
   const dispatch = useGame((g) => g.dispatch);
   return (
     <Card title="원액 브로커 — 숙성 몰트 캐스크 매입 (자체 원액이 숙성되는 동안 블렌딩·병입용)">
-      {!s.brokerOffers.length ? <Empty>매물이 없습니다</Empty> : (
+      {!s.b2b.brokerOffers.length ? <Empty>매물이 없습니다</Empty> : (
         <Table head={['매물', '액량', '도수', '주요 향', '품질(위스키 기준)', 'LPA당', '가격', '']}>
-          {s.brokerOffers.map((o) => {
+          {s.b2b.brokerOffers.map((o) => {
             const lot = o.cask.contents!;
             const lpa = lot.volumeL * lot.abv;
             return (
@@ -173,7 +173,7 @@ function Broker() {
                 <Td right>{evaluate(lot.flavor, 'whisky').quality}</Td>
                 <Td right>{won(o.price / lpa)}</Td>
                 <Td right>{won(o.price)}</Td>
-                <Td><Button small disabled={s.cash < o.price} onClick={() => dispatch({ type: 'buyBrokerCask', offerId: o.id })}>매입</Button></Td>
+                <Td><Button small disabled={s.finance.cash < o.price} onClick={() => dispatch({ type: 'buyBrokerCask', offerId: o.id })}>매입</Button></Td>
               </tr>
             );
           })}

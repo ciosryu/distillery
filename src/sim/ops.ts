@@ -14,8 +14,8 @@ export interface WarehouseView { id: string; nameKo: string; type: WarehouseType
 
 /** 기본 숙성고(랙 6단) + 완공된 증설 숙성고 */
 export function warehousesOf(s: GameState): WarehouseView[] {
-  const list: WarehouseView[] = [{ id: 'W0', nameKo: '기본 숙성고 (랙 6단)', type: 'racked', tiers: 6, capacity: s.warehouseBase, perTier: Math.ceil(s.warehouseBase / 6) }];
-  for (const e of s.equipment) {
+  const list: WarehouseView[] = [{ id: 'W0', nameKo: '기본 숙성고 (랙 6단)', type: 'racked', tiers: 6, capacity: s.inventory.warehouseBase, perTier: Math.ceil(s.inventory.warehouseBase / 6) }];
+  for (const e of s.production.equipment) {
     const d = EQUIPMENT[e.catalogId];
     if (d?.kind === 'warehouse' && e.readyMonth <= s.month) list.push({ id: e.id, nameKo: d.nameKo, type: d.warehouseType, tiers: d.tiers, capacity: d.casks, perTier: Math.ceil(d.casks / d.tiers) });
   }
@@ -23,7 +23,7 @@ export function warehousesOf(s: GameState): WarehouseView[] {
 }
 
 export function slotOccupancy(s: GameState, wId: string, tier: number): number {
-  return s.casks.filter((c) => c.contents && c.slot?.w === wId && c.slot.tier === tier).length;
+  return s.inventory.casks.filter((c) => c.contents && c.slot?.w === wId && c.slot.tier === tier).length;
 }
 
 /** 통입한 캐스크의 자리를 정한다: 지정한 숙성고(없으면 더니지 우선) → 아래 단부터 */
@@ -63,14 +63,14 @@ export function rotateWarehouse(s: GameState, wId: string): { moved: number; err
   const w = warehousesOf(s).find((x) => x.id === wId);
   if (!w) return { moved: 0, error: '숙성고가 없습니다' };
   if (w.tiers < 2) return { moved: 0, error: '단이 하나뿐입니다' };
-  const casks = s.casks.filter((c) => c.contents && c.slot?.w === wId);
+  const casks = s.inventory.casks.filter((c) => c.contents && c.slot?.w === wId);
   if (!casks.length) return { moved: 0, error: '옮길 캐스크가 없습니다' };
-  const cap = rotationCapacity(s) - s.rotatedThisMonth;
+  const cap = rotationCapacity(s) - s.inventory.rotatedThisMonth;
   if (!staffOf(s, 'warehouse').length) return { moved: 0, error: '숙성고 매니저(QC)가 없습니다' };
   if (casks.length > cap) return { moved: 0, error: `이번 달 로테이션 여력 부족 (${cap}개 남음, 필요 ${casks.length}개)` };
   for (const c of casks) c.slot = { w: wId, tier: w.tiers - 1 - c.slot!.tier };
-  s.rotatedThisMonth += casks.length;
-  s.cash -= casks.length * ROTATION_COST_PER_CASK;
+  s.inventory.rotatedThisMonth += casks.length;
+  s.finance.cash -= casks.length * ROTATION_COST_PER_CASK;
   return { moved: casks.length };
 }
 
@@ -115,16 +115,16 @@ const TOUR_SEASON = [0.7, 0.7, 0.9, 1.0, 1.1, 1.0, 1.2, 1.3, 1.0, 1.2, 1.0, 0.9]
 export const NEW_MAKE_BOTTLE = { lpa: 0.32, netPrice: 20_000, buyRate: 0.1 };
 
 export function visitorTiers(s: GameState) {
-  return s.equipment.filter((e) => e.readyMonth <= s.month).map((e) => EQUIPMENT[e.catalogId]).filter((d): d is Extract<NonNullable<typeof d>, { kind: 'visitor' }> => d?.kind === 'visitor');
+  return s.production.equipment.filter((e) => e.readyMonth <= s.month).map((e) => EQUIPMENT[e.catalogId]).filter((d): d is Extract<NonNullable<typeof d>, { kind: 'visitor' }> => d?.kind === 'visitor');
 }
 
 export const tourismFactor = (s: GameState) => (regionOf(s).tourism ?? 1) * (siteOf(s).tourism ?? 1);
 
 export function runTourism(s: GameState, report: MonthReport, monthOfYear: number): void {
   const tiers = visitorTiers(s);
-  s.localBuzz = clamp(s.localBuzz * (1 - 0.015), 0, 1);
+  s.commerce.localBuzz = clamp(s.commerce.localBuzz * (1 - 0.015), 0, 1);
   if (!tiers.length) return;
-  const draw = TOUR_SEASON[monthOfYear - 1]! * tourismFactor(s) * clamp(0.6 + 0.8 * s.awareness + s.localBuzz, 0.4, 2);
+  const draw = TOUR_SEASON[monthOfYear - 1]! * tourismFactor(s) * clamp(0.6 + 0.8 * s.commerce.awareness + s.commerce.localBuzz, 0.4, 2);
   let visitors = 0;
   let revenue = 0;
   let buzz = 0;
@@ -136,17 +136,17 @@ export function runTourism(s: GameState, report: MonthReport, monthOfYear: numbe
   }
   // 뉴메이크 한정판: 탱크의 몰트·그레인 원액을 쓴다
   let nmBottles = Math.floor(visitors * NEW_MAKE_BOTTLE.buyRate);
-  for (const lot of s.lots.filter((l) => l.kind === 'malt' || l.kind === 'grain')) {
+  for (const lot of s.inventory.lots.filter((l) => l.kind === 'malt' || l.kind === 'grain')) {
     if (nmBottles <= 0) break;
     const take = Math.min(nmBottles, Math.floor((lot.volumeL * lot.abv) / NEW_MAKE_BOTTLE.lpa));
     lot.volumeL -= (take * NEW_MAKE_BOTTLE.lpa) / lot.abv;
     revenue += take * NEW_MAKE_BOTTLE.netPrice;
     nmBottles -= take;
   }
-  s.lots = s.lots.filter((l) => l.volumeL > 1);
-  s.cash += revenue;
-  s.localBuzz = clamp(s.localBuzz + buzz / 200_000, 0, 1);
-  s.awareness = clamp(s.awareness + 0.004 * s.localBuzz * (1 - s.awareness), 0.001, 0.95);
+  s.inventory.lots = s.inventory.lots.filter((l) => l.volumeL > 1);
+  s.finance.cash += revenue;
+  s.commerce.localBuzz = clamp(s.commerce.localBuzz + buzz / 200_000, 0, 1);
+  s.commerce.awareness = clamp(s.commerce.awareness + 0.004 * s.commerce.localBuzz * (1 - s.commerce.awareness), 0.001, 0.95);
   report.visitors = visitors;
   report.tourismRevenue = revenue;
 }
@@ -171,27 +171,27 @@ export const APPRENTICE_MONTHS = 24;
 export function handleDeparture(s: GameState, leaving: Staff, notes: string[]): void {
   const master = masterDistiller(s);
   if (leaving.role !== 'distiller' || master?.id !== leaving.id) return;
-  const heir = s.staff.find((x) => x.apprenticeOf === leaving.id && s.month - x.hiredMonth >= APPRENTICE_MONTHS);
+  const heir = s.hr.staff.find((x) => x.apprenticeOf === leaving.id && s.month - x.hiredMonth >= APPRENTICE_MONTHS);
   if (heir) {
     heir.apprenticeOf = undefined;
-    s.houseStyle = Math.round(s.houseStyle * 0.9);
-    notes.push(`부사수 ${heir.name}이(가) 하우스 스타일을 이어받았습니다 (${s.houseStyle})`);
+    s.hr.houseStyle = Math.round(s.hr.houseStyle * 0.9);
+    notes.push(`부사수 ${heir.name}이(가) 하우스 스타일을 이어받았습니다 (${s.hr.houseStyle})`);
   } else {
-    if (s.houseStyle > 0) notes.push(`부사수 없이 마스터 디스틸러가 떠나 하우스 스타일이 초기화됐습니다 (${Math.round(s.houseStyle)} → 0)`);
-    s.houseStyle = 0;
+    if (s.hr.houseStyle > 0) notes.push(`부사수 없이 마스터 디스틸러가 떠나 하우스 스타일이 초기화됐습니다 (${Math.round(s.hr.houseStyle)} → 0)`);
+    s.hr.houseStyle = 0;
   }
-  for (const x of s.staff) if (x.apprenticeOf === leaving.id) x.apprenticeOf = undefined;
+  for (const x of s.hr.staff) if (x.apprenticeOf === leaving.id) x.apprenticeOf = undefined;
 }
 
 export function runStaffLifecycle(s: GameState, report: MonthReport, rng: Rng): void {
   const master = masterDistiller(s);
-  if (master) s.houseStyle = clamp(s.houseStyle + 0.4 * (master.stats.c / 60), 0, 100);
-  for (const x of [...s.staff]) {
+  if (master) s.hr.houseStyle = clamp(s.hr.houseStyle + 0.4 * (master.stats.c / 60), 0, 100);
+  for (const x of [...s.hr.staff]) {
     const age = ageOf(x, s.month);
     if (age >= RETIRE_AGE) {
       const notes: string[] = [];
       handleDeparture(s, x, notes);
-      s.staff = s.staff.filter((y) => y.id !== x.id);
+      s.hr.staff = s.hr.staff.filter((y) => y.id !== x.id);
       report.notes.push(`${x.name} 은퇴 (${Math.floor(age)}세)`, ...notes);
       continue;
     }
@@ -211,7 +211,7 @@ export function runContamination(s: GameState, report: MonthReport, rng: Rng, mo
   const control = Math.max(0, ...qc.map((x) => x.stats.b));
   const observe = Math.max(0, ...qc.map((x) => x.stats.a));
   const dehumid = ownsFacility(s, 'facility_dehumid') ? 0.5 : 1;
-  for (const c of s.casks) {
+  for (const c of s.inventory.casks) {
     if (!c.contents) continue;
     if (!c.contamination) {
       const h = slotClimate(s, c, monthOfYear).humidity;
@@ -230,19 +230,19 @@ export function runContamination(s: GameState, report: MonthReport, rng: Rng, mo
   }
 }
 
-export const ownsFacility = (s: GameState, id: string) => s.equipment.some((e) => e.catalogId === id && e.readyMonth <= s.month);
+export const ownsFacility = (s: GameState, id: string) => s.production.equipment.some((e) => e.catalogId === id && e.readyMonth <= s.month);
 
 // ───────────── 사무직: 폐기물 유상 판매 계약 ─────────────
 
 /** 사무직이 있으면 매달 확률로 농장 사료용 드래프·지게미 판매 계약을 맺는다. 단가 = 20 + 협상 × 0.4 (원/kg 원재료) */
 export function runOffice(s: GameState, report: MonthReport, rng: Rng, mashKg: number): void {
   const office = staffOf(s, 'office');
-  if (s.wasteContractPerKg === 0 && office.length && rng.chance(0.3)) {
+  if (s.production.wasteContractPerKg === 0 && office.length && rng.chance(0.3)) {
     const best = Math.max(...office.map((x) => x.stats.b));
-    s.wasteContractPerKg = Math.round(20 + best * 0.4);
-    report.notes.push(`사무: 농장과 드래프·지게미 사료 판매 계약 체결 (원재료 kg당 ${s.wasteContractPerKg}원)`);
+    s.production.wasteContractPerKg = Math.round(20 + best * 0.4);
+    report.notes.push(`사무: 농장과 드래프·지게미 사료 판매 계약 체결 (원재료 kg당 ${s.production.wasteContractPerKg}원)`);
   }
-  if (s.wasteContractPerKg > 0 && mashKg > 0) s.cash += Math.round(mashKg * s.wasteContractPerKg);
+  if (s.production.wasteContractPerKg > 0 && mashKg > 0) s.finance.cash += Math.round(mashKg * s.production.wasteContractPerKg);
 }
 
 /** 세무조사 방어율 = 사무직 세무 스탯 (최대 70% 감면) */
@@ -260,14 +260,14 @@ export const INVESTMENT_OFFERS: InvestmentOffer[] = [
 export const OWNERSHIP = { premiumBase: 1.3, premiumAwareness: 0.8, deliverAtMonths: 96, minDeliverWait: 12, oversellShare: 0.25, oversellAppeal: 0.9 };
 
 export function ownershipOversold(s: GameState): boolean {
-  const filled = s.casks.filter((c) => c.contents);
+  const filled = s.inventory.casks.filter((c) => c.contents);
   return filled.length > 0 && filled.filter((c) => c.owner).length / filled.length > OWNERSHIP.oversellShare;
 }
 
 export function deliverOwnedCasks(s: GameState, report: MonthReport): void {
-  const due = s.casks.filter((c) => c.owner && c.owner.deliverMonth <= s.month);
+  const due = s.inventory.casks.filter((c) => c.owner && c.owner.deliverMonth <= s.month);
   for (const c of due) report.notes.push(`캐스크 오너십: ${c.owner!.name} 고객에게 캐스크 ${c.id} 인도`);
-  if (due.length) s.casks = s.casks.filter((c) => !due.includes(c));
+  if (due.length) s.inventory.casks = s.inventory.casks.filter((c) => !due.includes(c));
 }
 
 // ───────────── 캐스크 시장 ─────────────

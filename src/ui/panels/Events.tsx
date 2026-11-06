@@ -7,13 +7,13 @@ import { Badge, Button, Card, Empty } from '../kit';
 export function EventsCard() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
-  const active = s.modifiers.filter((m) => isActive(m, s.month));
-  const upcoming = s.modifiers.filter((m) => m.fromMonth > s.month);
+  const active = s.world.modifiers.filter((m) => isActive(m, s.month));
+  const upcoming = s.world.modifiers.filter((m) => m.fromMonth > s.month);
   return (
     <Card title="시장 상황 · 이벤트">
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="grid gap-3">
-          {s.pendingEvents.map((p) => (
+          {s.events.pending.map((p) => (
             <div key={p.id} className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
               <div className="text-sm font-semibold">{p.title} <Badge tone="warn">선택 필요</Badge></div>
               <p className="mt-1 text-xs text-stone-600 dark:text-stone-300">{p.text}</p>
@@ -29,9 +29,9 @@ export function EventsCard() {
           ))}
           <div>
             <h3 className="mb-1 text-xs font-semibold text-stone-500">예보 (빗나갈 수 있음)</h3>
-            {!s.forecasts.length ? <p className="text-xs text-stone-500">예보 없음</p> : (
+            {!s.events.forecasts.length ? <p className="text-xs text-stone-500">예보 없음</p> : (
               <ul className="grid gap-1 text-sm">
-                {s.forecasts.map((f) => (
+                {s.events.forecasts.map((f) => (
                   <li key={f.id}><Badge tone="info">{monthLabel(s.startYear, f.fireMonth)} 전후</Badge> {f.text} <span className="text-xs text-stone-500">확률 {pct(f.certainty, 0)}</span></li>
                 ))}
               </ul>
@@ -54,9 +54,9 @@ export function EventsCard() {
         </div>
         <div>
           <h3 className="mb-1 text-xs font-semibold text-stone-500">최근 이벤트</h3>
-          {!s.eventLog.length ? <Empty>아직 이벤트가 없습니다</Empty> : (
+          {!s.events.log.length ? <Empty>아직 이벤트가 없습니다</Empty> : (
             <ul className="grid max-h-72 gap-1.5 overflow-y-auto text-sm">
-              {[...s.eventLog].reverse().slice(0, 15).map((e, i) => (
+              {[...s.events.log].reverse().slice(0, 15).map((e, i) => (
                 <li key={i}><span className="text-xs text-stone-500">{monthLabel(s.startYear, e.month)}</span> <b>{e.title}</b> — <span className="text-xs text-stone-600 dark:text-stone-300">{e.text}</span></li>
               ))}
             </ul>

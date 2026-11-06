@@ -10,7 +10,7 @@ export function Finance() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
   const [amounts, setAmounts] = useState<Record<string, number>>(() => Object.fromEntries(LOAN_OFFERS.map((o) => [o.id, o.max / 1e6])));
-  const rows = s.reports.slice(-24).reverse();
+  const rows = s.history.reports.slice(-24).reverse();
 
   return (
     <div className="grid gap-4">
@@ -18,8 +18,8 @@ export function Finance() {
         <Table head={['상품', '금리', '기간', '거치', '한도', '조건', '신청 금액', '월 상환액(거치 후)', '']}>
           {LOAN_OFFERS.filter((o) => (!o.regions || o.regions.includes(s.regionId)) && (o.collateral !== 'inventory' || inventoryLtv(s) > 0)).map((o) => {
             const amt = (amounts[o.id] ?? 0) * 1e6;
-            const using = s.loans.some((l) => l.offerId === o.id);
-            const locked = o.requires === 'producedSoju' && !s.flags.producedSoju;
+            const using = s.finance.loans.some((l) => l.offerId === o.id);
+            const locked = o.requires === 'producedSoju' && !s.production.flags.producedSoju;
             return (
               <tr key={o.id}>
                 <Td className="font-medium">{o.nameKo}</Td>
@@ -37,10 +37,10 @@ export function Finance() {
         </Table>
       </Card>
 
-      <Card title={`투자 유치 — 외부 지분 ${pct(s.investorShare, 1)}`}>
+      <Card title={`투자 유치 — 외부 지분 ${pct(s.finance.investorShare, 1)}`}>
         <Table head={['제안', '금액', '지분', '가능 시기', '비고', '']}>
           {INVESTMENT_OFFERS.map((o) => {
-            const taken = s.investmentsTaken.includes(o.id);
+            const taken = s.finance.investmentsTaken.includes(o.id);
             const open = s.month >= o.minMonth && s.month <= o.maxMonth;
             return (
               <tr key={o.id}>
@@ -58,9 +58,9 @@ export function Finance() {
       </Card>
 
       <Card title="보유 대출">
-        {!s.loans.length ? <Empty>대출이 없습니다</Empty> : (
+        {!s.finance.loans.length ? <Empty>대출이 없습니다</Empty> : (
           <Table head={['상품', '원금', '잔액', '금리', '이번 달 납부', '실행', '']}>
-            {s.loans.map((l) => (
+            {s.finance.loans.map((l) => (
               <tr key={l.id}>
                 <Td>{l.name}</Td>
                 <Td right>{won(l.principal)}</Td>
@@ -68,7 +68,7 @@ export function Finance() {
                 <Td right>{pct(l.annualRate)}</Td>
                 <Td right>{won(currentLoanPayment(s, l))}{s.month < l.startMonth + l.graceMonths && <span className="ml-1 text-xs text-stone-500">(거치)</span>}</Td>
                 <Td>{monthLabel(s.startYear, l.startMonth)}</Td>
-                <Td><Button small disabled={s.cash < l.balance} onClick={() => dispatch({ type: 'repayLoan', loanId: l.id })}>전액 상환</Button></Td>
+                <Td><Button small disabled={s.finance.cash < l.balance} onClick={() => dispatch({ type: 'repayLoan', loanId: l.id })}>전액 상환</Button></Td>
               </tr>
             ))}
           </Table>

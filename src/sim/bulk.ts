@@ -40,7 +40,7 @@ export function bulkValuePerLPA(s: Pick<GameState, 'bulkIndex' | 'modifiers' | '
   const base = grain ? BULK.grainNewMakeBase : BULK.newMakeBase;
   const age = 1 + (grain ? BULK.grainAgePerYear : BULK.agePerYear) * years;
   const peat = isPeated(lot) ? (1 + BULK.peatPremium) * mod(s, 'bulk:peated') : 1;
-  return base * age * qualityFactor(lotQuality(lot)) * peat * s.bulkIndex * mod(s, 'bulk');
+  return base * age * qualityFactor(lotQuality(lot)) * peat * s.b2b.bulkIndex * mod(s, 'bulk');
 }
 
 /** B2B 신뢰도 보정: 0 → −5%, 100 → +5% */
@@ -50,19 +50,19 @@ const trustAdj = (trust: number) => 0.95 + 0.1 * (trust / 100);
 export function spotSaturation(s: Pick<GameState, 'spotSoldLPA' | 'regionId'>, lot: SpiritLot, lpa = 0): number {
   if (lot.kind !== 'grain') return 1;
   const depth = regionOf(s).grainSpotDepthLPA;
-  return 1 / (1 + ((s.spotSoldLPA?.grain ?? 0) + lpa / 2) / depth);
+  return 1 / (1 + ((s.b2b.spotSoldLPA?.grain ?? 0) + lpa / 2) / depth);
 }
 
 /** 현물로 팔 때 받는 단가 — 현물 시장의 절반은 국내 블렌더로 보고 국산 프리미엄의 절반을 반영. lpa = 이번에 팔 물량(포화 반영) */
 export function spotBidPerLPA(s: GameState, lot: SpiritLot, lpa = 0): number {
   // 입지 원액 운송비 (제주 섬 운송, 결정 #86)
-  return bulkValuePerLPA(s, lot) * BULK.bid * trustAdj(s.b2bTrust) * (lot.sourced ? 1 : 1 + domesticPremium(s) * 0.5) * spotSaturation(s, lot, lpa) * (siteOf(s).bulkFreight ?? 1);
+  return bulkValuePerLPA(s, lot) * BULK.bid * trustAdj(s.b2b.trust) * (lot.sourced ? 1 : 1 + domesticPremium(s) * 0.5) * spotSaturation(s, lot, lpa) * (siteOf(s).bulkFreight ?? 1);
 }
 
 /** 현물 판매를 시장에 기록 (포화 누적) */
 export function recordSpotSale(s: GameState, lot: SpiritLot, lpa: number): void {
   if (lot.kind !== 'grain') return;
-  s.spotSoldLPA = { grain: (s.spotSoldLPA?.grain ?? 0) + lpa };
+  s.b2b.spotSoldLPA = { grain: (s.b2b.spotSoldLPA?.grain ?? 0) + lpa };
 }
 
 /** 브로커에게 살 때 내는 단가 (수입 원액 — 국산 프리미엄 없음) */
@@ -84,8 +84,8 @@ export function spotQuote(s: GameState, lot: SpiritLot, liters: number, cask?: C
 
 /** 증류기·발효조 기준 월 원액 생산 여력(LPA) — 계약 물량 규모를 정하는 데 사용 */
 export function capacityLPA(s: GameState, kind: 'malt' | 'grain'): number {
-  const fermenters = s.equipment.map((e) => EQUIPMENT[e.catalogId]).filter((d) => d?.kind === 'fermenter') as { capacityL: number }[];
-  return s.equipment.reduce((t, e) => {
+  const fermenters = s.production.equipment.map((e) => EQUIPMENT[e.catalogId]).filter((d) => d?.kind === 'fermenter') as { capacityL: number }[];
+  return s.production.equipment.reduce((t, e) => {
     const d = EQUIPMENT[e.catalogId];
     if (d?.kind !== 'still') return t;
     const column = d.stillType === 'column';
@@ -102,8 +102,8 @@ export const maltCapacityLPA = (s: GameState) => capacityLPA(s, 'malt');
 function contractPrice(s: GameState, spirit: ContractTerms['spirit'], style: ContractTerms['style'], minQuality: number, domestic: boolean, prepay: boolean, priceFactor = 1, termMonths = 12): number {
   const base = spirit === 'grain_newmake' ? BULK.grainNewMakeBase : BULK.newMakeBase;
   // 블렌더는 최소 품질보다 약간 높은 원액을 기준으로 값을 매긴다
-  const ref = base * qualityFactor(minQuality + 8) * (style === 'peated' ? 1 + BULK.peatPremium : 1) * s.bulkIndex * mod(s, 'bulk');
-  const p = ref * BULK.contract * (1 + BULK.termPremiumPer12 * Math.max(0, termMonths / 12 - 1)) * trustAdj(s.b2bTrust) * (prepay ? 1 - BULK.prepayDiscount : 1) * (domestic ? 1 + domesticPremium(s) : 1) * priceFactor;
+  const ref = base * qualityFactor(minQuality + 8) * (style === 'peated' ? 1 + BULK.peatPremium : 1) * s.b2b.bulkIndex * mod(s, 'bulk');
+  const p = ref * BULK.contract * (1 + BULK.termPremiumPer12 * Math.max(0, termMonths / 12 - 1)) * trustAdj(s.b2b.trust) * (prepay ? 1 - BULK.prepayDiscount : 1) * (domestic ? 1 + domesticPremium(s) : 1) * priceFactor;
   // 입지 원액 운송비 (제주 섬 운송, 결정 #86)
   return Math.round((p * (siteOf(s).bulkFreight ?? 1)) / 100) * 100;
 }
@@ -130,7 +130,7 @@ export function makeContractOffer(s: GameState, rng: Rng): ContractOffer {
   const grainCap = capacityLPA(s, 'grain');
   const spirit: ContractTerms['spirit'] = grainCap > 0 && rng.chance(0.5) ? 'grain_newmake' : 'malt_newmake';
   const cap = spirit === 'grain_newmake' ? grainCap : capacityLPA(s, 'malt');
-  const lpaPerMonth = Math.max(40, Math.round((cap * rng.pick([0.25, 0.35, 0.5, 0.7]) * (0.8 + 0.4 * s.b2bTrust / 100) * regionOf(s).bulkMarketDepth) / 10) * 10);
+  const lpaPerMonth = Math.max(40, Math.round((cap * rng.pick([0.25, 0.35, 0.5, 0.7]) * (0.8 + 0.4 * s.b2b.trust / 100) * regionOf(s).bulkMarketDepth) / 10) * 10);
   return buildOffer(s, rng, spirit, lpaPerMonth, rng.pick([12, 24, 36]), rng.chance(0.35) ? 0.3 : 0);
 }
 
@@ -164,11 +164,11 @@ export function makeCraftContractOffer(s: GameState, rng: Rng): ContractOffer | 
 }
 
 export function refreshContractOffers(s: GameState, rng: Rng): void {
-  s.contractOffers = s.contractOffers.filter((o) => o.expiresMonth > s.month);
-  while (s.contractOffers.filter((o) => !o.craft).length < 2) s.contractOffers.push(makeContractOffer(s, rng));
-  if (!s.contractOffers.some((o) => o.craft) && rng.chance(BULK.craftChance)) {
+  s.b2b.contractOffers = s.b2b.contractOffers.filter((o) => o.expiresMonth > s.month);
+  while (s.b2b.contractOffers.filter((o) => !o.craft).length < 2) s.b2b.contractOffers.push(makeContractOffer(s, rng));
+  if (!s.b2b.contractOffers.some((o) => o.craft) && rng.chance(BULK.craftChance)) {
     const o = makeCraftContractOffer(s, rng);
-    if (o) s.contractOffers.push(o);
+    if (o) s.b2b.contractOffers.push(o);
   }
 }
 
@@ -198,7 +198,7 @@ export function contractAgingImpact(s: GameState, c: Pick<ContractTerms, 'lpaPer
   const remaining = Math.max(0, c.termMonths - (c.monthsDone ?? 0));
   const endMonth = s.month + remaining;
   const kind = c.spirit === 'grain_newmake' ? 'grain' : 'malt';
-  const filled = s.casks.filter((k) => k.contents && k.contents.kind === kind && !k.contents.sourced).map((k) => k.filledMonth ?? k.contents!.createdMonth);
+  const filled = s.inventory.casks.filter((k) => k.contents && k.contents.kind === kind && !k.contents.sourced).map((k) => k.filledMonth ?? k.contents!.createdMonth);
   const firstWhiskyMonth = (filled.length ? Math.min(...filled) : s.month) + CONTRACT_AGING_REF_MONTHS;
   const divertedLPA = c.lpaPerMonth * remaining;
   return {
@@ -223,9 +223,9 @@ export function cancellationCost(c: Contract): number {
 /** 월말 자동 납품: 조건에 맞는 탱크 뉴메이크를 오래된 것부터 출하 */
 export function fulfillContracts(s: GameState, report: MonthReport): void {
   const done: string[] = [];
-  for (const c of s.contracts) {
+  for (const c of s.b2b.contracts) {
     let need = c.lpaPerMonth;
-    const eligible = s.lots
+    const eligible = s.inventory.lots
       .filter((l) => isNewMake(l) && !l.sourced && l.kind === (c.spirit === 'grain_newmake' ? 'grain' : 'malt') && matchesStyle(l, c.style) && lotQuality(l) >= c.minQuality)
       .sort((a, b) => a.createdMonth - b.createdMonth);
     for (const lot of eligible) {
@@ -235,7 +235,7 @@ export function fulfillContracts(s: GameState, report: MonthReport): void {
       lot.volumeL -= take / lot.abv;
       need -= take;
     }
-    s.lots = s.lots.filter((l) => l.volumeL >= 1);
+    s.inventory.lots = s.inventory.lots.filter((l) => l.volumeL >= 1);
     const delivered = c.lpaPerMonth - need;
     const gross = delivered * c.pricePerLPA;
     const offset = Math.min(c.prepaidRemaining, gross * c.prepayShare);
@@ -243,7 +243,7 @@ export function fulfillContracts(s: GameState, report: MonthReport): void {
     c.prepaidRemaining -= offset;
     report.prepayApplied = (report.prepayApplied ?? 0) + offset;
     const penalty = Math.round(need * c.penaltyPerLPA);
-    s.cash += cashIn - penalty;
+    s.finance.cash += cashIn - penalty;
     c.deliveredLPA += delivered;
     c.shortfallLPA += need;
     c.monthsDone += 1;
@@ -251,46 +251,46 @@ export function fulfillContracts(s: GameState, report: MonthReport): void {
     report.bulkRevenue += cashIn;
     if (penalty > 0) {
       report.expenses.penalty = (report.expenses.penalty ?? 0) + penalty;
-      s.b2bTrust = clamp(s.b2bTrust - 2, 0, 100);
+      s.b2b.trust = clamp(s.b2b.trust - 2, 0, 100);
       report.notes.push(`${c.buyerName} 납품 부족 ${need.toFixed(0)} LPA — 위약금 지급`);
-    } else s.b2bTrust = clamp(s.b2bTrust + 0.5, 0, 100);
+    } else s.b2b.trust = clamp(s.b2b.trust + 0.5, 0, 100);
 
     if (c.shortfallLPA >= 2 * c.lpaPerMonth) {
-      s.cash -= Math.round(c.prepaidRemaining);
+      s.finance.cash -= Math.round(c.prepaidRemaining);
       report.prepayRefunded = (report.prepayRefunded ?? 0) + Math.round(c.prepaidRemaining);
-      s.b2bTrust = clamp(s.b2bTrust - 15, 0, 100);
+      s.b2b.trust = clamp(s.b2b.trust - 15, 0, 100);
       report.notes.push(`${c.buyerName} 계약 파기 — 누적 미납 과다. 남은 선급금 반환, 신뢰도 하락`);
       done.push(c.id);
     } else if (c.monthsDone >= c.termMonths) {
       if (c.prepaidRemaining > 0) {
-        s.cash -= Math.round(c.prepaidRemaining);
+        s.finance.cash -= Math.round(c.prepaidRemaining);
         report.prepayRefunded = (report.prepayRefunded ?? 0) + Math.round(c.prepaidRemaining);
       }
-      s.b2bTrust = clamp(s.b2bTrust + 5, 0, 100);
+      s.b2b.trust = clamp(s.b2b.trust + 5, 0, 100);
       report.notes.push(`${c.buyerName} 공급 계약 만료 — 총 ${Math.round(c.deliveredLPA)} LPA 납품`);
       done.push(c.id);
     }
   }
-  s.contracts = s.contracts.filter((c) => !done.includes(c.id));
+  s.b2b.contracts = s.b2b.contracts.filter((c) => !done.includes(c.id));
 }
 
 /** 벌크 시세: 평균 회귀 랜덤 워크 + 위스키 트렌드 연동 */
 export function updateBulkIndex(s: GameState, rng: Rng): void {
-  const v = s.bulkIndex;
-  const target = 0.5 + 0.5 * (s.trend.whisky ?? 1);
-  s.bulkIndex = clamp(v * Math.exp(rng.normal(0, 0.03)) + 0.08 * (target - v), 0.6, 1.5);
+  const v = s.b2b.bulkIndex;
+  const target = 0.5 + 0.5 * (s.world.trend.whisky ?? 1);
+  s.b2b.bulkIndex = clamp(v * Math.exp(rng.normal(0, 0.03)) + 0.08 * (target - v), 0.6, 1.5);
 }
 
 // ── 독립 병입자(IB) 캐스크 매입 제안 ──
 
 /** 3년 이상·품질 65 이상인 자사 캐스크가 있으면 IB가 현물가의 135%에 캐스크째 사겠다고 제안한다 (초기 런웨이 — 통떼기 매각) */
 export function refreshCaskBids(s: GameState, rng: Rng): void {
-  s.caskBids = s.caskBids.filter((b) => b.expiresMonth > s.month && s.casks.some((c) => c.id === b.caskId && c.contents));
-  if (s.caskBids.length >= 2 || !rng.chance(0.25)) return;
-  const candidates = s.casks.filter((c) => c.contents && !c.owner && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= 36 && lotQuality(c.contents) >= 65 && !s.caskBids.some((b) => b.caskId === c.id));
+  s.b2b.caskBids = s.b2b.caskBids.filter((b) => b.expiresMonth > s.month && s.inventory.casks.some((c) => c.id === b.caskId && c.contents));
+  if (s.b2b.caskBids.length >= 2 || !rng.chance(0.25)) return;
+  const candidates = s.inventory.casks.filter((c) => c.contents && !c.owner && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= 36 && lotQuality(c.contents) >= 65 && !s.b2b.caskBids.some((b) => b.caskId === c.id));
   if (!candidates.length) return;
   const cask = rng.pick(candidates);
   const ib = rng.pick(INDEPENDENT_BOTTLERS);
-  s.caskBids.push({ id: nid(s, 'I'), buyerName: displayName(ib), caskId: cask.id, price: Math.round(spotQuote(s, cask.contents!, cask.contents!.volumeL, cask) * 1.35), expiresMonth: s.month + 2 });
+  s.b2b.caskBids.push({ id: nid(s, 'I'), buyerName: displayName(ib), caskId: cask.id, price: Math.round(spotQuote(s, cask.contents!, cask.contents!.volumeL, cask) * 1.35), expiresMonth: s.month + 2 });
 }
 

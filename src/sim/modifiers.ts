@@ -12,24 +12,24 @@ export function isActive(m: Modifier, month: number): boolean {
 
 export function mod(s: Pick<GameState, 'modifiers' | 'month'>, key: string): number {
   let f = 1;
-  for (const m of s.modifiers) if (m.key === key && isActive(m, s.month)) f *= m.factor;
+  for (const m of s.world.modifiers) if (m.key === key && isActive(m, s.month)) f *= m.factor;
   return f;
 }
 
 export function addModifier(s: GameState, key: string, factor: number, months: number, label: string, delay = 0): Modifier {
   const m: Modifier = { id: nid(s, 'M'), key, factor, fromMonth: s.month + delay, untilMonth: s.month + delay + months, label };
-  s.modifiers.push(m);
+  s.world.modifiers.push(m);
   return m;
 }
 
 export function pruneModifiers(s: GameState): void {
-  s.modifiers = s.modifiers.filter((m) => m.untilMonth > s.month);
+  s.world.modifiers = s.world.modifiers.filter((m) => m.untilMonth > s.month);
 }
 
 /** 원재료·에너지 가격 지수 × 이벤트 보정 (생산 원가 계산용) */
 export function effectivePriceIndex(s: GameState, volumeDiscount: Record<string, number> = {}): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const [k, v] of Object.entries(s.priceIndex)) {
+  for (const [k, v] of Object.entries(s.world.priceIndex)) {
     const key = k === 'energy' ? 'energy' : `ingredient:${k}`;
     out[k] = v * mod(s, key) * (volumeDiscount[k] ?? 1);
   }

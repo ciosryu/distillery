@@ -64,7 +64,7 @@ export function fermentDaysAt(days: number, tempC: number): number {
 }
 
 export function stillDefOf(state: GameState, stillId: string): StillDef | null {
-  const inst = state.equipment.find((e) => e.id === stillId);
+  const inst = state.production.equipment.find((e) => e.id === stillId);
   if (!inst) return null;
   const def = EQUIPMENT[inst.catalogId];
   return def && def.kind === 'still' ? def : null;
@@ -284,7 +284,7 @@ export function simulateBatch(
 /** 대량 구매 할인 배수 — 지난달 실제 구매량(kg) 기준 공급 등급 (주문만 크게 넣는 꼼수 방지) */
 export function volumeDiscounts(s: GameState): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const [id, kg] of Object.entries(s.ingredientKgLastMonth ?? {})) {
+  for (const [id, kg] of Object.entries(s.production.ingredientKgLastMonth ?? {})) {
     const tier = VOLUME_DISCOUNT_TIERS.find((t) => kg >= t.minKg);
     if (tier) out[id] = tier.factor;
   }
