@@ -99,6 +99,7 @@ function fillMalt(s: GameState, maxLPA = Infinity, kind: 'malt' | 'grain' = 'mal
  *  v1.3까지는 "재고 800병 미만이면 3캐스크"라서 월 약 1,100병이 상한이었고, 수요가 3~6배인데도 숙성 캐스크가 쌓였다.
  *  OLD_BOTTLE=1이면 옛 정책 */
 const OLD_BOTTLE = process.env.OLD_BOTTLE === '1';
+const OLD_GRAIN = process.env.OLD_GRAIN === '1';
 const BOTTLES_PER_CASK = 330;
 function whiskyDemandLastMonth(s: GameState): number {
   const ids = new Set(s.products.filter((p) => p.category === 'whisky').map((p) => p.id));
@@ -142,11 +143,20 @@ function bridgeSourced(s: GameState): GameState {
 }
 
 /** 그레인 수직계열화: 36개월 이후 그레인 2 + 몰트 1 캐스크로 블렌디드 위스키를 병입 */
+/** v1.4(#84): 블렌디드도 수요를 따라 병입한다 — 지난달 수요의 1.5개월치까지, 한 번에 그레인 2n + 몰트 n 캐스크(n ≤ 4). OLD_GRAIN=1이면 옛 정책 */
+function blendedDemandLastMonth(s: GameState): number {
+  const ids = new Set(s.products.filter((p) => p.category === 'blended_whisky').map((p) => p.id));
+  return s.reports.at(-1)?.sales.filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.demandBottles, 0) ?? 0;
+}
 function bottleBlended(s: GameState): GameState {
-  if (stockOf(s, 'blended_whisky') >= 1500) return s;
+  const stock = stockOf(s, 'blended_whisky');
+  const target = OLD_GRAIN ? 1500 : Math.max(1500, blendedDemandLastMonth(s) * 1.5);
+  if (stock >= target) return s;
+  // 그레인 2 + 몰트 1 캐스크 ≈ 40% 700ml 약 1,200병
+  const n = OLD_GRAIN ? 1 : Math.min(4, Math.max(1, Math.ceil((target - stock) / 1200)));
   const aged = (k: 'malt' | 'grain') => s.casks.filter((c) => c.contents && c.contents.kind === k && c.contents.oakMonths >= 36 && !c.contents.sourced);
-  const g = aged('grain').slice(0, 2);
-  const m = aged('malt').slice(0, 1);
+  const g = aged('grain').slice(0, 2 * n);
+  const m = aged('malt').slice(0, n);
   if (g.length < 2 || !m.length) return s;
   const comps = [...g, ...m].map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }));
   const opts = { name: `블렌디드 ${s.month}`, targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' };
@@ -161,11 +171,6 @@ function operations(s: GameState, strategy: Strategy): GameState {
   // 오사카·교토 입지 전략: 싼 미즈나라 캐스크로 인센스 프리미엄을 노린다 (결정 #86)
   const caskType = siteMode && SITE_KEY === 'JP/kansai' && process.env.SITE_NO_MIZ !== '1' ? 'mizunara_hogshead' : 'ex_bourbon_barrel';
   if (empty < 12 && s.cash > 150_000_000) s = act(s, { type: 'buyCasks', caskType, qty: 12 });
-  // v1.4: 원액이 든 캐스크가 숙성고의 85%를 넘으면 빈 통부터 중고로 팔고, 그래도 차면 랙 숙성고(+100 캐스크)를 늘린다
-  const filled = s.casks.filter((c) => c.contents).length;
-  if (s.casks.length >= warehouseCapacity(s) - 2) for (const c of s.casks.filter((x) => !x.contents).slice(12)) s = act(s, { type: 'sellUsedCask', caskId: c.id });
-  const building = s.equipment.some((e) => EQUIPMENT_KIND(e.catalogId) === 'warehouse' && e.readyMonth > s.month);
-  if (!building && filled >= warehouseCapacity(s) * 0.85 && s.cash > 300_000_000) s = act(s, { type: 'buyEquipment', catalogId: 'warehouse_rack_100' });
   const last = s.reports.at(-1);
   const sales = s.staff.filter((x) => x.role === 'sales').length;
   if (last?.overflowCases && last.overflowCases > 20 && sales < 4 && s.cash > 150_000_000) {
@@ -241,18 +246,23 @@ function start(s: GameState, strategy: Strategy): GameState {
     const { id: _id, ...rest } = base;
     s = act(s, { type: 'saveRecipe', recipe: { ...rest, name: GRAIN_RECIPE, kind: 'grain', stillId: col.id, mashBill: [{ ingredientId: 'corn', ratio: 0.9 }, { ingredientId: 'malt_unpeated', ratio: 0.1 }], fermentDays: 3, runs: 1 } });
   }
+  // v1.4(#84): 그레인형도 몰트는 브랜드형과 같은 7배치(발효조 2기 추가) — 4배치면 #82 이후 위스키 판매에서 뒤처진다
+  if (strategy === 'grain' && !OLD_GRAIN) {
+    s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
+    s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
+    return act(s, { type: 'setOrder', recipeId: rid(s, 'malt')!, batchesPerMonth: 7 });
+  }
   return act(s, { type: 'setOrder', recipeId: rid(s, 'malt')!, batchesPerMonth: 4 });
 }
 
 /** 확장형: 위스키 판매가 자리 잡은 뒤(48개월~, 현금 4억↑) 증류기 1기를 추가해 몰트 B2B 공급을 붙인다 */
 /** v1.4(#83) 공격적 증설형: 브랜드형과 같이 시작해, 위스키 수요가 공급을 넘으면 증류기·발효조를 단계적으로 늘린다.
  *  늘린 원액은 전부 자사 위스키로 숙성한다(v1.3까지는 뉴메이크 B2B로 팔아 LPA당 가치가 1/5이었다).
- *  자금이 모자라면 시설자금을 끌어 쓴다 — 빚과 3년 숙성 대기가 위험이다.
- *  (머지 때 기준 브랜치 #83 정책으로 교체) */
-const OLD_EXPAND = process.env.NEW_EXPAND !== '1';
+ *  자금이 모자라면 시설자금을 끌어 쓴다 — 빚과 3년 숙성 대기가 위험이다. OLD_EXPAND=1이면 옛 정책 */
+const OLD_EXPAND = process.env.OLD_EXPAND === '1';
 const EXPAND_RECIPE = '증설 몰트';
-const EXPAND_FROM = Number(process.env.EXPAND_FROM ?? 37);
-const EXPAND_MAX_STAGES = Number(process.env.EXPAND_STAGES ?? 2);
+const EXPAND_FROM = Number(process.env.EXPAND_FROM ?? 60);
+const EXPAND_MAX_STAGES = Number(process.env.EXPAND_STAGES ?? 1);
 /** 숙성·증발 뒤 1 LPA에서 나오는 46%·700ml 병 수 (증발 약 15% 가정) */
 const BOTTLES_PER_LPA_AGED = 0.85 / (0.46 * 0.7);
 function maltLPALastMonth(s: GameState): number {
@@ -260,14 +270,16 @@ function maltLPALastMonth(s: GameState): number {
   return s.reports.at(-1)?.production.filter((p) => ids.has(p.recipeId)).reduce((t, p) => t + p.lpa, 0) ?? 0;
 }
 function expandStaged(s: GameState): GameState {
-  const stages = s.equipment.filter((e) => e.catalogId === 'pot_onion_1000');
+  // 증설 단계 = 증설 레시피가 쓰는 증류기 (처음 증류기는 고장·수리로 readyMonth가 바뀌므로 readyMonth로 가리면 안 된다)
+  const stageIds = new Set(s.recipes.filter((r) => r.name.startsWith(EXPAND_RECIPE)).map((r) => r.stillId));
+  const stages = s.equipment.filter((e) => stageIds.has(e.id));
   // 지어 놓은 증설 단계는 다 돌린다
   for (const still of stages) {
-    const r = s.recipes.find((x) => x.stillId === still.id);
-    if (r && still.readyMonth <= s.month && !s.orders.some((o) => o.recipeId === r.id)) s = act(s, { type: 'setOrder', recipeId: r.id, batchesPerMonth: 7 });
+    const r = s.recipes.find((x) => x.stillId === still.id && x.name.startsWith(EXPAND_RECIPE));
+    if (r && !s.orders.some((o) => o.recipeId === r.id)) s = act(s, { type: 'setOrder', recipeId: r.id, batchesPerMonth: 7 });
   }
   if (s.month < EXPAND_FROM || stages.length >= EXPAND_MAX_STAGES) return s;
-  if (stages.some((e) => e.readyMonth > s.month - 12)) return s; // 단계 사이 최소 12개월
+  if (stages.length && s.month - Math.max(...stages.map((e) => e.readyMonth)) < 12) return s; // 단계 사이 최소 12개월
   const demand = whiskyDemandLastMonth(s);
   const supply = maltLPALastMonth(s) * BOTTLES_PER_LPA_AGED;
   if (demand < supply * Number(process.env.EXPAND_TRIGGER ?? 1.3)) return s;
@@ -280,6 +292,16 @@ function expandStaged(s: GameState): GameState {
   const still = s.equipment.filter((e) => e.catalogId === 'pot_onion_1000').at(-1)!;
   const { id: _id, ...rest } = recipeOf(s, 'malt')!;
   return act(s, { type: 'saveRecipe', recipe: { ...rest, name: `${EXPAND_RECIPE} ${stages.length + 1}`, stillId: still.id } });
+}
+
+/** 증설형만: 원액이 든 캐스크가 숙성고의 85%를 넘으면 빈 통부터 중고로 팔고, 그래도 차면 랙 숙성고(+100 캐스크)를 늘린다.
+ *  고정 규모 전략(브랜드·혼합·그레인)에 넣으면 10년 안에 회수가 안 돼 순자산이 1.7~3억 줄었다 */
+function growWarehouse(s: GameState): GameState {
+  const filled = s.casks.filter((c) => c.contents).length;
+  if (s.casks.length >= warehouseCapacity(s) - 2) for (const c of s.casks.filter((x) => !x.contents).slice(12)) s = act(s, { type: 'sellUsedCask', caskId: c.id });
+  const building = s.equipment.some((e) => EQUIPMENT_KIND(e.catalogId) === 'warehouse' && e.readyMonth > s.month);
+  if (!building && filled >= warehouseCapacity(s) * 0.85 && s.cash > 300_000_000) s = act(s, { type: 'buyEquipment', catalogId: 'warehouse_rack_100' });
+  return s;
 }
 
 function expand(s: GameState): GameState {
@@ -388,7 +410,14 @@ function policy(s: GameState, strategy: Strategy): GameState {
     s = bottleBlended(s);
   } else if (!OLD_EXPAND) {
     s = expandStaged(s);
+    s = growWarehouse(s);
     s = fillMalt(s);
+    if (process.env.DBG_EXP && s.month % 6 === 0) {
+      const stills = s.equipment.filter((e) => e.catalogId === 'pot_onion_1000').map((e) => e.readyMonth).join(',');
+      const tank = s.lots.filter((l) => l.kind === 'malt').reduce((t, l) => t + l.volumeL * l.abv, 0);
+      const blocked = s.reports.at(-1)?.notes.filter((n) => n.includes('한도') || n.includes('없음')).slice(0, 1).join('') ?? '';
+      console.error(`m${s.month} cash ${(s.cash / 1e8).toFixed(2)} loans ${s.loans.map((l) => l.offerId).join('/')} stills[${stills}] maltLPA/mo ${Math.round(maltLPALastMonth(s))} tank ${Math.round(tank)} filled ${s.casks.filter((c) => c.contents).length}/${warehouseCapacity(s)} empty ${s.casks.filter((c) => !c.contents).length} demand ${Math.round(whiskyDemandLastMonth(s))} supply ${Math.round(maltLPALastMonth(s) * BOTTLES_PER_LPA_AGED)} whiskyStock ${stockOf(s, 'whisky')} ${blocked}`);
+    }
   } else {
     s = expand(s);
     const r = s.recipes.find((x) => x.name === BIG_RECIPE);
