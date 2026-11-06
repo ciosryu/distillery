@@ -1,8 +1,10 @@
 // 헤드리스 밸런스 시뮬레이션 — 전략별 단순 정책으로 N개 시드를 돌려 파산률·흑자 전환 시점·매출 구성을 본다.
 // 실행: npm run balance [-- 시드수 개월수 전략 지역 입지]   전략 = brand | hybrid | expand | grain | all(기본), 지역 = KR(기본) | JP | TW
 import { advanceMonth, applyAction, bulkValuePerLPA, capacityLPA, spotBidPerLPA, lotQuality, previewBlend, newGame, warehouseCapacity, whiskyMinMonths, type Action, type ContractTerms, type GameState, type ProductCategory, type RegionId, type SpiritKind } from '../src/sim';
-import { REGIONS, regionOf } from '../src/sim/content/regions';
+import { REGIONS, regionOf, siteOf } from '../src/sim/content/regions';
+import { dutyFreeSlotBlocker, inventoryLoanRoom, inventoryLtv, OEM, oemPackageCost } from '../src/sim';
 import { EVENTS } from '../src/sim/content/events';
+import { RETAIL } from '../src/sim/ops';
 import { EQUIPMENT } from '../src/sim/content/catalog';
 const EQUIPMENT_KIND = (id: string) => EQUIPMENT[id]?.kind;
 
@@ -17,9 +19,27 @@ const YOUNG = process.env.NO_YOUNG !== '1';
 const TOUR = process.env.NO_TOUR !== '1';
 const DEFEND = process.env.NO_DEFEND !== '1';
 // 튜닝 실험용: 그레인 현물 시장 깊이 덮어쓰기 (#81)
+// 튜닝 실험용: 소매 역량 초과분 수수료·한도 (#94)
+if (process.env.OVERFLOW_FEE) RETAIL.overflowFeeRate = Number(process.env.OVERFLOW_FEE);
+if (process.env.OVERFLOW_SHARE) RETAIL.overflowShare = Number(process.env.OVERFLOW_SHARE);
 if (process.env.GRAIN_DEPTH) REGIONS[REGION].grainSpotDepthLPA = Number(process.env.GRAIN_DEPTH);
 
-type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain';
+type Strategy = 'brand' | 'hybrid' | 'expand' | 'grain' | 'site';
+
+/** 입지 대표 결정 전략 (결정 #86~#90) — 지역 기본 전략(한국 브랜드형·일본 혼합형) 위에 입지 고유 결정 하나를 얹는다 */
+const SITE_KEY = `${REGION}/${SITE ?? 'default'}`;
+const SITE_STRATEGY: Record<string, string> = {
+  'KR/default': '브랜드 + 대형 유통 납품(소주)',
+  'KR/jeju': '브랜드 + 고소리술 면세 기념품 한정판(매대 1칸, 판당 300병) + 취수 증량',
+  'JP/default': '혼합 + 위탁생산(전용 증류기 지원형 포함)',
+  'JP/kansai': process.env.SITE_VIP === '1' ? '혼합 + 미즈나라 캐스크(인센스 프리미엄) + VIP 비지터 센터' : '혼합 + 미즈나라 캐스크(인센스 프리미엄)',
+  'JP/hokkaido': '혼합 + 재고 담보대출로 버티기',
+};
+const SITE_BASE: Record<string, Exclude<Strategy, 'site'>> = { KR: 'brand', JP: 'hybrid', TW: 'brand' };
+let siteMode = false;
+/** 대형 유통 납품으로 나갈 소주 병수 — 병입 기준 재고에 더한다 */
+let retailBuffer = 0;
+const DF_SOUVENIR_BOTTLES = Number(process.env.DF_SOUVENIR_BOTTLES ?? 300);
 
 /** 현물 판매 수입 — 턴 사이 행동이라 월간 보고서에 안 잡히므로 따로 센다 (월 → 원) */
 let spotIncome: number[] = [];
@@ -28,15 +48,27 @@ const act = (s: GameState, a: Action) => {
   if (a.type === 'sellBulk' || a.type === 'acceptCaskBid') spotIncome[s.month] = (spotIncome[s.month] ?? 0) + (next.cash - s.cash);
   return next;
 };
-const stockOf = (s: GameState, cat: ProductCategory) => s.products.filter((p) => p.category === cat).reduce((t, p) => t + p.stockBottles, 0);
+const stockOf = (s: GameState, cat: ProductCategory) => s.products.filter((p) => p.category === cat && !p.dutyFreeOnly).reduce((t, p) => t + p.stockBottles, 0);
 /** 지역마다 프리셋 이름이 다르므로 kind(+피트 여부)로 첫 레시피를 찾는다 */
 const recipeOf = (s: GameState, kind: SpiritKind) => s.recipes.find((r) => r.kind === kind && !r.mashBill.some((m) => m.ingredientId === 'malt_peated'));
 const rid = (s: GameState, kind: SpiritKind) => recipeOf(s, kind)?.id;
 const BIG_RECIPE = 'B2B 몰트';
 
+/** 제주: 입지 원료 소주 원액 일부를 면세 기념품 한정판(40%·500ml)으로 — 매대가 비었을 때만 */
+function bottleSouvenir(s: GameState): GameState {
+  if (!siteMode || !siteOf(s).dutyFree || dutyFreeSlotBlocker(s)) return s;
+  const lot = s.lots.find((l) => l.kind === 'soju' && l.localIngredient && s.month - l.createdMonth >= 1);
+  if (!lot) return s;
+  const liters = Math.min(lot.volumeL, (DF_SOUVENIR_BOTTLES * 0.5 * 0.4) / lot.abv);
+  const comps = [{ source: 'lot' as const, id: lot.id, liters }];
+  const opts = { name: `고소리술 면세 한정 ${s.month}`, targetAbv: 0.4, bottleMl: 500, chillFilter: true, packagingId: 'standard', dutyFreeOnly: true };
+  return previewBlend(s, comps, opts).ok ? act(s, { type: 'bottle', components: comps, options: opts }) : s;
+}
+
 function bottleCashProducts(s: GameState): GameState {
+  s = bottleSouvenir(s);
   for (const lot of [...s.lots]) {
-    if (lot.kind === 'soju' && stockOf(s, 'soju_distilled') < 1500 && s.month - lot.createdMonth >= 1)
+    if (lot.kind === 'soju' && stockOf(s, 'soju_distilled') < 1500 + retailBuffer && s.month - lot.createdMonth >= 1)
       s = act(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: lot.volumeL }], options: { name: `소주 ${s.month}`, targetAbv: 0.25, bottleMl: 375, chillFilter: true, packagingId: 'standard' } });
     // 한국은 중식당용 34%·500ml, 대만은 진먼식 58%·600ml
     if (lot.kind === 'baijiu' && stockOf(s, 'baijiu') < 1500 && s.month - lot.createdMonth >= 1)
@@ -136,7 +168,9 @@ function operations(s: GameState, strategy: Strategy): GameState {
   // 비운 오염 통은 재탄화해서 다시 쓴다
   for (const c of s.casks.filter((x) => !x.contents && x.contamination && x.recharCount < 2)) if (s.cash > 100_000_000) s = act(s, { type: 'rechar', caskId: c.id });
   const empty = s.casks.filter((c) => !c.contents && !c.contamination).length + s.caskOrders.reduce((t, o) => t + o.qty, 0);
-  if (empty < 12 && s.cash > 150_000_000) s = act(s, { type: 'buyCasks', caskType: 'ex_bourbon_barrel', qty: 12 });
+  // 오사카·교토 입지 전략: 싼 미즈나라 캐스크로 인센스 프리미엄을 노린다 (결정 #86)
+  const caskType = siteMode && SITE_KEY === 'JP/kansai' && process.env.SITE_NO_MIZ !== '1' ? 'mizunara_hogshead' : 'ex_bourbon_barrel';
+  if (empty < 12 && s.cash > 150_000_000) s = act(s, { type: 'buyCasks', caskType, qty: 12 });
   const last = s.reports.at(-1);
   const sales = s.staff.filter((x) => x.role === 'sales').length;
   if (last?.overflowCases && last.overflowCases > 20 && sales < 4 && s.cash > 150_000_000) {
@@ -146,7 +180,8 @@ function operations(s: GameState, strategy: Strategy): GameState {
   // 방재: 이 지역에서 일어나는 재해의 방재 설비를 여유 현금으로 하나씩 갖춘다
   // 공백기 자금을 말리지 않도록 숙성 위스키가 나오기 시작한 뒤(36개월~), 현금 여유가 클 때만
   if (DEFEND && s.month >= 36 && s.cash > 500_000_000) {
-    const need = EVENTS.filter((e) => e.defense && (!e.regions || e.regions.includes(s.regionId))).map((e) => e.defense!).find((id) => !s.equipment.some((x) => x.catalogId === id));
+    const atSite = (e: (typeof EVENTS)[number]) => !!e.sites?.includes(siteOf(s).id);
+    const need = EVENTS.filter((e) => e.defense && (atSite(e) || (!e.sitesOnly && (!e.regions || e.regions.includes(s.regionId))))).map((e) => e.defense!).find((id) => !s.equipment.some((x) => x.catalogId === id));
     if (need) s = act(s, { type: 'buyEquipment', catalogId: need });
   }
   void strategy;
@@ -312,7 +347,42 @@ function sellGrainSmart(s: GameState, recipeId: string | undefined): GameState {
   return s;
 }
 
+/** 입지 대표 결정 (site 전략에서만) */
+function siteActions(s: GameState): GameState {
+  const site = siteOf(s);
+  // 경기: 대형 유통 납품 — 소주 제안만, 소주 생산을 늘려 물량을 댄다
+  if (site.deals?.includes('retail')) {
+    for (const o of [...s.retailOffers]) if (o.category === 'soju_distilled' && s.retailContracts.length < 1) s = act(s, { type: 'acceptRetail', offerId: o.id });
+    retailBuffer = s.retailContracts.reduce((t, c) => t + c.bottlesPerMonth, 0) * 2;
+    const soju = rid(s, 'soju');
+    const order = soju && s.orders.find((o) => o.recipeId === soju);
+    if (soju && order && retailBuffer > 0 && order.batchesPerMonth < 3) s = act(s, { type: 'setOrder', recipeId: soju, batchesPerMonth: 3 });
+  }
+  // 간토: 위탁생산 — 남는 설비형은 바로, 전용 증류기 지원형은 현금 여유가 있을 때
+  if (site.deals?.includes('oem')) {
+    for (const o of [...s.oemOffers]) {
+      if (s.oemContracts.length >= OEM.maxActive) break;
+      if (!o.dedicated || s.cash > oemPackageCost(s) - (o.capexSupport ?? 0) + 300_000_000) s = act(s, { type: 'acceptOem', offerId: o.id });
+    }
+  }
+  // 제주: 취수 허가에 막히면 증량 신청
+  if (site.waterPermit && !s.siteState.permitApplication && s.cash > 150_000_000 && s.reports.at(-1)?.notes.some((n) => n.includes('취수 허가량'))) s = act(s, { type: 'applyWaterPermit' });
+  // 오사카·교토: SITE_VIP=1이면 숙성 위스키가 나온 뒤 VIP 테이스팅 라운지 — v1.4 VIP 등급이 그 자체로 과하게 강해(월 수천만 원) 기본은 끈다 (PRD §15.3 #15)
+  if (SITE_KEY === 'JP/kansai' && process.env.SITE_VIP === '1' && s.month >= 36 && s.cash > 500_000_000 && s.equipment.some((e) => e.catalogId === 'visitor_basic') && !s.equipment.some((e) => e.catalogId === 'visitor_vip')) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_vip' });
+  // 홋카이도: 현금이 모자라면 숙성 재고 담보대출
+  if (inventoryLtv(s) > 0 && s.cash < 150_000_000 && !s.loans.some((l) => l.offerId === 'inventory') && inventoryLoanRoom(s) >= 50_000_000) s = act(s, { type: 'takeLoan', offerId: 'inventory', amount: inventoryLoanRoom(s) });
+  return s;
+}
+
 function policy(s: GameState, strategy: Strategy): GameState {
+  if (strategy === 'site') {
+    siteMode = true;
+    s = siteActions(s);
+    const out = policy(s, SITE_BASE[s.regionId] ?? 'brand');
+    siteMode = false;
+    return out;
+  }
+  if (!siteMode) retailBuffer = 0;
   if (s.month === 0) s = start(s, strategy);
   s = bottleCashProducts(s);
   if (strategy === 'brand') {
@@ -372,7 +442,7 @@ const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.le
 function netWorth(s: GameState): number {
   const stock = [...s.lots, ...s.casks.flatMap((c) => (c.contents ? [c.contents] : []))].reduce((t, l) => t + l.volumeL * l.abv * bulkValuePerLPA(s, l) * 0.85, 0);
   const products = s.products.reduce((t, p) => t + p.stockBottles * p.unitCost, 0);
-  return (s.cash - s.loans.reduce((t, l) => t + l.balance, 0) + stock + products) * (1 - s.investorShare);
+  return (s.cash - s.loans.reduce((t, l) => t + l.balance, 0) + stock + products + s.receivables.reduce((t, r) => t + r.amount, 0)) * (1 - s.investorShare);
 }
 
 /** 보수적 순자산 = 원액 재고를 시가가 아닌 장부 원가로 평가 (회계상 재고 평가와 같음) */
@@ -454,20 +524,32 @@ function play(strategy: Strategy, seed: number): Result {
   };
 }
 
-const list: Strategy[] = WHICH === 'all' ? ['brand', 'hybrid', 'expand', 'grain'] : [WHICH as Strategy];
-const results: Record<Strategy, Result[]> = { brand: [], hybrid: [], expand: [], grain: [] };
+const list: Strategy[] = WHICH === 'all' ? ['brand', 'hybrid', 'expand', 'grain', ...(SITE_STRATEGY[SITE_KEY] ? ['site' as const] : [])] : [WHICH as Strategy];
+const results: Record<Strategy, Result[]> = { brand: [], hybrid: [], expand: [], grain: [], site: [] };
+if (SITE_STRATEGY[SITE_KEY]) console.log(`site 전략 = ${SITE_STRATEGY[SITE_KEY]}`);
 const wins: Record<string, number> = {};
 const bookWins: Record<string, number> = {};
+const tieWins: Record<string, number> = {};
 const tally = (rs: Result[], by: 'netWorth' | 'bookWorth', into: Record<string, number>) => {
   const best = rs.reduce((a, b) => (b[by] > a[by] ? b : a));
   const key = best.bankrupt ? '전멸' : best.strategy;
   into[key] = (into[key] ?? 0) + 1;
+};
+/** 공동 1위 집계 (결정 #91): 1위 순자산의 95% 이상인 전략은 공동 1위로 보고 1점을 나눠 갖는다 —
+ *  "기본 전략 + 한 가지"인 site 전략은 같은 시드에서 함께 움직여, 근소한 평균 우위만으로 대부분 1위가 되는 과장을 막는다 */
+const TIE_BAND = 0.95;
+const tallyTie = (rs: Result[], into: Record<string, number>) => {
+  const best = rs.reduce((a, b) => (b.netWorth > a.netWorth ? b : a));
+  if (best.bankrupt || !Number.isFinite(best.netWorth)) { into['전멸'] = (into['전멸'] ?? 0) + 1; return; }
+  const winners = rs.filter((r) => !r.bankrupt && r.netWorth >= (best.netWorth >= 0 ? best.netWorth * TIE_BAND : best.netWorth / TIE_BAND));
+  for (const w of winners) into[w.strategy] = (into[w.strategy] ?? 0) + 1 / winners.length;
 };
 for (let seed = 1; seed <= SEEDS; seed++) {
   const rs = list.map((st) => play(st, seed));
   rs.forEach((r) => results[r.strategy].push(r));
   tally(rs, 'netWorth', wins);
   tally(rs, 'bookWorth', bookWins);
+  tallyTie(rs, tieWins);
 }
 for (const st of list) {
   const rs = results[st];
@@ -480,3 +562,4 @@ for (const st of list) {
 const dist = (w: Record<string, number>) => [...list, '전멸'].map((st) => `${st} ${w[st] ?? 0}`).join(' · ');
 console.log(`\n[${REGION}${SITE ? '/' + SITE : ''}] 시드별 1위 분포(시가 평가): ${dist(wins)}`);
 console.log(`[${REGION}] 시드별 1위 분포(원가 평가): ${dist(bookWins)}  (한 전략이 60% 이상 이기면 지배 전략 의심)`);
+console.log(`[${REGION}${SITE ? '/' + SITE : ''}] 공동 1위 집계(1위의 95% 이내 나눔, #91): ${[...list, '전멸'].map((st) => `${st} ${Number((tieWins[st] ?? 0).toFixed(1))}`).join(' · ')}`);

@@ -1,6 +1,6 @@
 import { BOTANICALS, EQUIPMENT, GNS, INGREDIENTS, VOLUME_DISCOUNT_TIERS, YEASTS, type EquipmentDef } from './content/catalog';
 import { addScaled, clamp, clampFlavor, distillFlavor, heartsFraction } from './flavor';
-import { GI_LOCK, logisticsMultiplier, regionOf, siteOf } from './content/regions';
+import { GI_LOCK, logisticsMultiplier, regionOf, siteOf, type WaterId } from './content/regions';
 import type { Rng } from './rng';
 import type { Flavor, FermenterType, GameState, Recipe, RegionId, Staff } from './types';
 
@@ -16,6 +16,11 @@ export const COLUMN_CUT = { c1: 0.1, c2: 0.82 };
 const FEINTS_RECOVERY = 0.9;
 const ENERGY_PER_L_RUN = 60; // 원 / (L·회)
 
+/** 배치 에너지비 — 위탁생산(OEM)처럼 원료 없이 증류만 할 때 (결정 #89) */
+export function batchEnergyCost(still: StillDef, runs: number, energyIndex: number, factor = 1): number {
+  return runs * still.chargeL * ENERGY_PER_L_RUN * Math.pow(1000 / still.chargeL, 0.3) * energyIndex * factor;
+}
+
 export interface BatchResult {
   lpa: number;
   abv: number;
@@ -28,7 +33,21 @@ export interface BatchResult {
 }
 
 /** 배치 환경: 발효실 온도(°C), 난수(수율 편차·산패), 생산 지역(물류 배수) */
-export interface BatchEnv { tempC: number; rng?: Rng; regionId?: RegionId }
+export interface BatchEnv {
+  tempC: number; rng?: Rng; regionId?: RegionId;
+  /** 입지 물 (결정 #86) */
+  water?: WaterId;
+  /** 입지 입고 운송 할증(원재료) · 에너지비 배수(겨울 난방) */
+  freight?: number;
+  energyFactor?: number;
+}
+
+/** 물 효과 (결정 #86): 연수 = 이취↓·과일↑, 화산암반수 = 이취↓·과일 가산·수율↑ */
+export const WATER_EFFECT: Record<WaterId, { offnote: number; fruity: number; fruitAdd: number; yield: number }> = {
+  medium: { offnote: 1, fruity: 1, fruitAdd: 0, yield: 1 },
+  soft: { offnote: 0.7, fruity: 1.1, fruitAdd: 0, yield: 1 },
+  volcanic: { offnote: 0.8, fruity: 1, fruitAdd: 5, yield: 1.03 },
+};
 
 /** 발효실 온도 = 연평균 + 외기 편차의 80% + 발효열 2°C */
 export function fermentationClimate(s: GameState, monthOfYear: number): number {
@@ -65,7 +84,11 @@ export function validateRecipe(state: GameState, r: Recipe): string[] {
     if (!r.botanicals.length) errs.push('진에는 보태니컬이 필요합니다');
     if (!r.botanicals.some((b) => b.botanicalId === 'juniper')) errs.push('진에는 주니퍼가 반드시 들어가야 합니다');
     if (r.botanicalMethod === 'vapor' && still && !still.ginBasket) errs.push('이 증류기에는 진 바스켓이 없습니다(침지만 가능)');
-    for (const b of r.botanicals) if (!BOTANICALS[b.botanicalId]) errs.push(`알 수 없는 보태니컬: ${b.botanicalId}`);
+    for (const b of r.botanicals) {
+      const def = BOTANICALS[b.botanicalId];
+      if (!def) errs.push(`알 수 없는 보태니컬: ${b.botanicalId}`);
+      else if (def.sites && !def.sites.includes(siteOf(state).id)) errs.push(`${def.nameKo}은(는) 이 입지에서만 구할 수 있습니다`);
+    }
   } else {
     const sum = r.mashBill.reduce((s, m) => s + m.ratio, 0);
     if (Math.abs(sum - 1) > 0.01) errs.push('원재료 비율 합이 100%가 되어야 합니다');
@@ -73,6 +96,7 @@ export function validateRecipe(state: GameState, r: Recipe): string[] {
       const ing = INGREDIENTS[m.ingredientId];
       if (!ing) errs.push(`알 수 없는 원재료: ${m.ingredientId}`);
       else if (!(ing.kinds as string[]).includes(r.kind)) errs.push(`${ing.nameKo}은(는) 이 주종에 쓸 수 없습니다`);
+      else if (ing.sites && !ing.sites.includes(siteOf(state).id)) errs.push(`${ing.nameKo}은(는) 이 입지에서만 구할 수 있습니다`);
     }
     if (r.fermentDays < 2 || r.fermentDays > 28) errs.push('발효 기간은 2~28일');
   }
@@ -91,7 +115,7 @@ export function simulateBatch(
   env?: BatchEnv,
 ): BatchResult {
   const at = env?.regionId;
-  const logi = (native?: string[]) => (at ? logisticsMultiplier(native, at) : 1);
+  const logi = (native?: string[]) => (at ? logisticsMultiplier(native, at) : 1) * (env?.freight ?? 1);
   const warnings: string[] = [];
   const ingredientsKg: Record<string, number> = {};
   let cost = 0;
@@ -176,6 +200,15 @@ export function simulateBatch(
     flavor.sulfur_meaty = r.kind === 'malt' ? 25 : r.kind === 'grain' ? 15 : 12;
     flavor.oily_waxy = 20;
     if (r.kind === 'soju' && r.pressure === 'atmospheric') flavor.toasted_grain = (flavor.toasted_grain ?? 0) + 14;
+    // 입지 물 (결정 #86)
+    const w = WATER_EFFECT[env?.water ?? 'medium'];
+    flavor.solvent *= w.offnote;
+    flavor.feinty *= w.offnote;
+    flavor.sulfur_meaty *= w.offnote;
+    flavor.acetic = (flavor.acetic ?? 0) * w.offnote;
+    flavor.fresh_fruit = (flavor.fresh_fruit ?? 0) * w.fruity + w.fruitAdd;
+    flavor.floral = (flavor.floral ?? 0) * w.fruity;
+    chargeLPA *= w.yield;
   }
 
   // 페인츠 재투입
@@ -234,7 +267,7 @@ export function simulateBatch(
   else warnings.push('디스틸러 없이 생산 — 품질 저하');
 
   // 규모의 경제: 큰 증류기일수록 L당 에너지비가 낮다
-  cost += r.runs * still.chargeL * ENERGY_PER_L_RUN * Math.pow(1000 / still.chargeL, 0.3) * (priceIndex.energy ?? 1);
+  cost += r.runs * still.chargeL * ENERGY_PER_L_RUN * Math.pow(1000 / still.chargeL, 0.3) * (priceIndex.energy ?? 1) * (env?.energyFactor ?? 1);
 
   return {
     lpa,
