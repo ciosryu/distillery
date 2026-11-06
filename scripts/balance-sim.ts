@@ -531,7 +531,7 @@ function diag(strategy: Strategy, seed: number, s: GameState): void {
   }));
 }
 
-interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWorth: number; bookWorth: number; firstPositive: number; y5retail: number; y5bulk: number }
+interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWorth: number; bookWorth: number; firstPositive: number; y5retail: number; y5bulk: number; exportShare: number; markets: number }
 
 function play(strategy: Strategy, seed: number): Result {
   let s = newGame({ seed, region: REGION, site: SITE });
@@ -549,6 +549,9 @@ function play(strategy: Strategy, seed: number): Result {
   return {
     strategy, bankrupt: s.status === 'bankrupt', minCash: lo, netWorth: s.status === 'bankrupt' ? -Infinity : netWorth(s), bookWorth: s.status === 'bankrupt' ? -Infinity : bookWorth(s), firstPositive: fp,
     y5retail: y5.reduce((t, r) => t + r.revenue, 0), y5bulk: y5.reduce((t, r) => t + r.bulkRevenue, 0),
+    // 수출 지표 (#104): 전 기간 병입 매출 중 수출(수입사 매입가) 비중, 한 번이라도 진출한 시장 수
+    exportShare: (() => { const ex = s.reports.reduce((t, r) => t + (r.exportRevenue ?? 0), 0); const all = s.reports.reduce((t, r) => t + r.revenue, 0) + ex; return all > 0 ? ex / all : 0; })(),
+    markets: (s.exportEntered ?? []).length,
   };
 }
 
@@ -585,7 +588,7 @@ for (const st of list) {
   const nw = alive.map((r) => r.netWorth);
   const sd = Math.sqrt(avg(nw.map((v) => (v - avg(nw)) ** 2)));
   const fps = rs.filter((r) => r.firstPositive >= 0).map((r) => r.firstPositive);
-  console.log(`${st.padEnd(7)} | 파산 ${rs.length - alive.length}/${rs.length} | 순자산(${MONTHS}m) 평균 ${eok(avg(nw))} ±${eok(sd)} · 원가기준 ${eok(avg(alive.map((r) => r.bookWorth)))} | 최저 현금 평균 ${eok(avg(rs.map((r) => r.minCash)))} | 흑자 전환 평균 ${Math.round(avg(fps))}개월 | 5년차 매출 병입 ${eok(avg(rs.map((r) => r.y5retail)))} + B2B ${eok(avg(rs.map((r) => r.y5bulk)))} | 1위 ${wins[st] ?? 0}회`);
+  console.log(`${st.padEnd(7)} | 파산 ${rs.length - alive.length}/${rs.length} | 순자산(${MONTHS}m) 평균 ${eok(avg(nw))} ±${eok(sd)} · 원가기준 ${eok(avg(alive.map((r) => r.bookWorth)))} | 최저 현금 평균 ${eok(avg(rs.map((r) => r.minCash)))} | 흑자 전환 평균 ${Math.round(avg(fps))}개월 | 5년차 매출 병입 ${eok(avg(rs.map((r) => r.y5retail)))} + B2B ${eok(avg(rs.map((r) => r.y5bulk)))} | 수출 비중 ${(avg(rs.map((r) => r.exportShare)) * 100).toFixed(1)}% · 진출 ${avg(rs.map((r) => r.markets)).toFixed(1)}곳 | 1위 ${wins[st] ?? 0}회`);
 }
 const dist = (w: Record<string, number>) => [...list, '전멸'].map((st) => `${st} ${w[st] ?? 0}`).join(' · ');
 console.log(`\n[${REGION}${SITE ? '/' + SITE : ''}] 시드별 1위 분포(시가 평가): ${dist(wins)}`);

@@ -38,7 +38,7 @@ export function Exports() {
           >
             <p className="mb-2 text-xs text-stone-500">{m.descKo}</p>
             <div className="mb-3 grid grid-cols-2 gap-2 text-xs md:grid-cols-6">
-              <div>관세 <b>{pct(tariff, 1)}</b>{tariff !== m.tariff[s.regionId] && <span className="text-amber-700"> (이벤트)</span>}</div>
+              <div>관세 <b>{pct(tariff, 1)}</b>{Math.abs(tariff - m.tariff[s.regionId]) > 1e-9 && <span className="text-amber-700"> (이벤트)</span>}</div>
               <div>현지 주세 {m.adValorem ? <b>{pct(m.adValorem, 1)}</b> : <><b>{won(m.excisePerLPA)}</b>/LPA</>}</div>
               <div>부가세 <b>{pct(m.vat, 0)}</b></div>
               <div>유통 배수 <b>×{m.channelMultiple}</b></div>
