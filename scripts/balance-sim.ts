@@ -432,6 +432,8 @@ function policy(s: GameState, strategy: Strategy): GameState {
   if (s.month === 0) s = start(s, strategy);
   s = bottleCashProducts(s);
   if (strategy === 'brand') {
+    // 숙성 라인은 떼어 둔 캐스크가 숙성고 칸을 막으므로 확장형처럼 숙성고를 늘린다
+    if (agedYears > 0) s = growWarehouse(s);
     s = fillMalt(s);
   } else if (strategy === 'hybrid') {
     // 몰트 생산의 일부만 계약, 나머지는 숙성. 위스키 재고가 쌓이면 오래된 캐스크를 현물 판매
@@ -564,6 +566,12 @@ function play(strategy: Strategy, seed: number): Result {
   for (let i = 2; i < net.length; i++) if ((net[i]! + net[i - 1]! + net[i - 2]!) / 3 > 0) { fp = i; break; }
   const y5 = s.reports.filter((r) => r.month >= 48 && r.month < 60);
   if (DIAG) diag(strategy, seed, s);
+  if (process.env.DIAG_AGED === '1') {
+    const lines = (aged: boolean) => s.products.filter((p) => p.category === 'whisky' && isAgedLine(p.name) === aged);
+    const sum = (ps: GameState['products']) => ({ n: ps.length, sold: ps.reduce((t, p) => t + p.totalSold, 0), price: Math.round(ps.reduce((t, p) => t + p.price * p.totalSold, 0) / Math.max(1, ps.reduce((t, p) => t + p.totalSold, 0))), age: ps.length ? Math.round(ps.reduce((t, p) => t + (p.ageYears ?? 0), 0) / ps.length * 10) / 10 : 0 });
+    const held = s.casks.filter((c) => c.contents && reservedFor(c, 999)).length;
+    console.error(JSON.stringify({ strategy, seed, aged: sum(lines(true)), young: sum(lines(false)), df: sum(s.products.filter((p) => p.dutyFreeOnly && p.category === 'whisky')), reservedCasksLeft: held, casks: s.casks.filter((c) => c.contents).length }));
+  }
   return {
     strategy, bankrupt: s.status === 'bankrupt', minCash: lo, netWorth: s.status === 'bankrupt' ? -Infinity : netWorth(s), bookWorth: s.status === 'bankrupt' ? -Infinity : bookWorth(s), firstPositive: fp,
     y5retail: y5.reduce((t, r) => t + r.revenue, 0), y5bulk: y5.reduce((t, r) => t + r.bulkRevenue, 0),
