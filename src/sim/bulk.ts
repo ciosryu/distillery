@@ -1,6 +1,6 @@
 import { BULK, CASKS, EQUIPMENT } from './content/catalog';
 import { BUYERS, displayName, INDEPENDENT_BOTTLERS } from './content/names';
-import { regionOf } from './content/regions';
+import { regionOf, siteOf } from './content/regions';
 import { mod } from './modifiers';
 import { clamp, evaluate } from './flavor';
 import { lotCategory } from './blending';
@@ -55,7 +55,8 @@ export function spotSaturation(s: Pick<GameState, 'spotSoldLPA' | 'regionId'>, l
 
 /** 현물로 팔 때 받는 단가 — 현물 시장의 절반은 국내 블렌더로 보고 국산 프리미엄의 절반을 반영. lpa = 이번에 팔 물량(포화 반영) */
 export function spotBidPerLPA(s: GameState, lot: SpiritLot, lpa = 0): number {
-  return bulkValuePerLPA(s, lot) * BULK.bid * trustAdj(s.b2bTrust) * (lot.sourced ? 1 : 1 + domesticPremium(s) * 0.5) * spotSaturation(s, lot, lpa);
+  // 입지 원액 운송비 (제주 섬 운송, 결정 #86)
+  return bulkValuePerLPA(s, lot) * BULK.bid * trustAdj(s.b2bTrust) * (lot.sourced ? 1 : 1 + domesticPremium(s) * 0.5) * spotSaturation(s, lot, lpa) * (siteOf(s).bulkFreight ?? 1);
 }
 
 /** 현물 판매를 시장에 기록 (포화 누적) */
@@ -103,7 +104,8 @@ function contractPrice(s: GameState, spirit: ContractTerms['spirit'], style: Con
   // 블렌더는 최소 품질보다 약간 높은 원액을 기준으로 값을 매긴다
   const ref = base * qualityFactor(minQuality + 8) * (style === 'peated' ? 1 + BULK.peatPremium : 1) * s.bulkIndex * mod(s, 'bulk');
   const p = ref * BULK.contract * (1 + BULK.termPremiumPer12 * Math.max(0, termMonths / 12 - 1)) * trustAdj(s.b2bTrust) * (prepay ? 1 - BULK.prepayDiscount : 1) * (domestic ? 1 + domesticPremium(s) : 1) * priceFactor;
-  return Math.round(p / 100) * 100;
+  // 입지 원액 운송비 (제주 섬 운송, 결정 #86)
+  return Math.round((p * (siteOf(s).bulkFreight ?? 1)) / 100) * 100;
 }
 
 /** 이 지역에서 원액을 사는 회사: 현지 회사(국산 프리미엄) + 글로벌 회사. 가상 회사는 부정적 이벤트용으로 섞여 있다 */
