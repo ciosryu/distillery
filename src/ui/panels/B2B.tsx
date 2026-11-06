@@ -25,25 +25,25 @@ function AgingImpact({ s, i }: { s: GameState; i: ContractAgingImpact }) {
 export function B2B() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
-  const committed = s.contracts.reduce((t, c) => t + c.lpaPerMonth, 0);
-  const maltLots = s.lots.filter((l) => l.kind === 'malt' || l.kind === 'grain');
-  const maltCasks = s.casks.filter((c) => c.contents?.kind === 'malt' || c.contents?.kind === 'grain');
+  const committed = s.b2b.contracts.reduce((t, c) => t + c.lpaPerMonth, 0);
+  const maltLots = s.inventory.lots.filter((l) => l.kind === 'malt' || l.kind === 'grain');
+  const maltCasks = s.inventory.casks.filter((c) => c.contents?.kind === 'malt' || c.contents?.kind === 'grain');
 
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="벌크 원액 시세 지수" value={s.bulkIndex.toFixed(2)} hint="위스키 트렌드와 연동, 매달 변동" tone={s.bulkIndex >= 1 ? 'good' : 'warn'} />
-        <Stat label="B2B 신뢰도" value={Math.round(s.b2bTrust)} hint="납품 실적이 좋으면 상승 → 계약 단가·물량↑" />
+        <Stat label="벌크 원액 시세 지수" value={s.b2b.bulkIndex.toFixed(2)} hint="위스키 트렌드와 연동, 매달 변동" tone={s.b2b.bulkIndex >= 1 ? 'good' : 'warn'} />
+        <Stat label="B2B 신뢰도" value={Math.round(s.b2b.trust)} hint="납품 실적이 좋으면 상승 → 계약 단가·물량↑" />
         <Stat label="월 계약 물량" value={`${num(committed)} LPA`} hint={`생산 여력: 몰트 약 ${num(capacityLPA(s, 'malt'))} · 그레인 약 ${num(capacityLPA(s, 'grain'))} LPA/월 · 국산 프리미엄 ${pct(domesticPremium(s), 0)}`} />
-        <Stat label="지난달 원액 매출" value={won(s.reports.at(-1)?.bulkRevenue ?? 0)} hint="계약 납품분 (현물 판매는 즉시 입금)" />
+        <Stat label="지난달 원액 매출" value={won(s.history.reports.at(-1)?.bulkRevenue ?? 0)} hint="계약 납품분 (현물 판매는 즉시 입금)" />
       </div>
 
       <SiteDeals />
 
       <Card title="공급 계약 제안 — 블렌디드 위스키 회사·브로커">
-        {!s.contractOffers.length ? <Empty>제안이 없습니다</Empty> : (
+        {!s.b2b.contractOffers.length ? <Empty>제안이 없습니다</Empty> : (
           <Table head={['구매자', '원액', '스타일', '월 물량', '기간', '단가(LPA)', '최소 품질', '선급금', '총액', '미납 위약금', '숙성 영향', '']}>
-            {s.contractOffers.map((o) => (
+            {s.b2b.contractOffers.map((o) => (
               <tr key={o.id}>
                 <Td className="font-medium">{o.buyerName}{o.domestic && <> <Badge tone="good">국산 프리미엄</Badge></>}{o.craft && <> <Badge tone="good">크래프트 ×{BULK.craftPriceFactor}</Badge></>}</Td>
                 <Td>{o.spirit === 'grain_newmake' ? '그레인 뉴메이크' : '몰트 뉴메이크'}</Td>
@@ -65,9 +65,9 @@ export function B2B() {
       </Card>
 
       <Card title="진행 중 계약">
-        {!s.contracts.length ? <Empty>진행 중인 계약이 없습니다</Empty> : (
+        {!s.b2b.contracts.length ? <Empty>진행 중인 계약이 없습니다</Empty> : (
           <Table head={['구매자', '스타일', '월 물량', '단가', '진행', '누적 납품', '누적 미납', '남은 선급금', '숙성 영향', '']}>
-            {s.contracts.map((c) => (
+            {s.b2b.contracts.map((c) => (
               <tr key={c.id}>
                 <Td className="font-medium">{c.buyerName}</Td>
                 <Td><Badge>{STYLE_LABEL[c.style]}</Badge> q≥{c.minQuality}</Td>
@@ -86,7 +86,7 @@ export function B2B() {
       </Card>
 
       <Card title="현물 벌크 판매 — 탱크 원액 (몰트·그레인)">
-        {Number.isFinite(regionOf(s).grainSpotDepthLPA) && <p className="mb-2 text-xs text-amber-700 dark:text-amber-400">이 지역은 그레인 현물 시장이 얕습니다(깊이 {num(regionOf(s).grainSpotDepthLPA)} LPA). 최근 판매량 {num(s.spotSoldLPA?.grain ?? 0)} LPA — 많이 팔수록 단가가 떨어지고 매달 {pct(1 - BULK.spotDecay, 0)}씩 회복합니다.</p>}
+        {Number.isFinite(regionOf(s).grainSpotDepthLPA) && <p className="mb-2 text-xs text-amber-700 dark:text-amber-400">이 지역은 그레인 현물 시장이 얕습니다(깊이 {num(regionOf(s).grainSpotDepthLPA)} LPA). 최근 판매량 {num(s.b2b.spotSoldLPA?.grain ?? 0)} LPA — 많이 팔수록 단가가 떨어지고 매달 {pct(1 - BULK.spotDecay, 0)}씩 회복합니다.</p>}
         {!maltLots.length ? <Empty>탱크에 몰트·그레인 원액이 없습니다</Empty> : (
           <Table head={['원액', '액량', '도수', 'LPA', '품질', '단가(LPA)', '판매 금액', 'LPA당 원가', '']}>
             {maltLots.map((l) => (
@@ -107,10 +107,10 @@ export function B2B() {
       </Card>
 
       <Card title="독립 병입자(IB) 캐스크 매입 제안 — 5년 이상·품질 70 이상 캐스크">
-        {!s.caskBids.length ? <Empty>제안이 없습니다 (조건에 맞는 캐스크가 있으면 가끔 들어옵니다)</Empty> : (
+        {!s.b2b.caskBids.length ? <Empty>제안이 없습니다 (조건에 맞는 캐스크가 있으면 가끔 들어옵니다)</Empty> : (
           <Table head={['병입자', '캐스크', '숙성', '품질', '제안가(현물가의 135%)', '만료', '']}>
-            {s.caskBids.map((b) => {
-              const c = s.casks.find((x) => x.id === b.caskId);
+            {s.b2b.caskBids.map((b) => {
+              const c = s.inventory.casks.find((x) => x.id === b.caskId);
               return (
                 <tr key={b.id}>
                   <Td className="font-medium">{b.buyerName}</Td>
@@ -160,13 +160,13 @@ function SiteDeals() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
   const deals = siteOf(s).deals ?? [];
-  if (!deals.length && !s.receivables.length) return null;
+  if (!deals.length && !s.finance.receivables.length) return null;
   return (
     <>
       {deals.includes('retail') && (
         <Card title="대형 유통 납품 — 큰 물량·출고가의 80%·대금 2개월 뒤, 계약 중 숙성 위스키 매력도 ×0.9·인지도 상승 ×1.2">
           <Table head={['유통사', '카테고리', '월 납품', '단가', '기간', '병당 위약금', '상태', '']}>
-            {s.retailOffers.map((o) => (
+            {s.commerce.retailOffers.map((o) => (
               <tr key={o.id}>
                 <Td className="font-medium">{o.partner}</Td><Td>{CATEGORY[o.category].nameKo}</Td><Td right>{num(o.bottlesPerMonth)}병</Td>
                 <Td right>출고가 × {pct(o.priceFactor, 0)}</Td><Td right>{o.termMonths}개월</Td><Td right>{won(o.penaltyPerBottle)}</Td>
@@ -174,7 +174,7 @@ function SiteDeals() {
                 <Td><Button small variant="primary" onClick={() => dispatch({ type: 'acceptRetail', offerId: o.id })}>체결</Button></Td>
               </tr>
             ))}
-            {s.retailContracts.map((c) => (
+            {s.commerce.retailContracts.map((c) => (
               <tr key={c.id}>
                 <Td className="font-medium">{c.partner}</Td><Td>{CATEGORY[c.category].nameKo}</Td><Td right>{num(c.bottlesPerMonth)}병</Td>
                 <Td right>출고가 × {pct(c.priceFactor, 0)}</Td><Td right>{c.monthsDone}/{c.termMonths}개월</Td><Td right>{won(c.penaltyPerBottle)}</Td>
@@ -183,33 +183,33 @@ function SiteDeals() {
               </tr>
             ))}
           </Table>
-          {!s.retailOffers.length && !s.retailContracts.length && <Empty>제안이 없습니다 (가끔 들어옵니다)</Empty>}
+          {!s.commerce.retailOffers.length && !s.commerce.retailContracts.length && <Empty>제안이 없습니다 (가끔 들어옵니다)</Empty>}
         </Card>
       )}
       {deals.includes('oem') && (
         <Card title="위탁생산(OEM) — 원료는 위탁사 부담, 가공비를 받고 증류 설비를 먼저 내준다 (몰트 2회 증류 배치). 남는 설비가 없으면 위탁사가 전용 증류기 설치비 60% 지원">
           <Table head={['위탁사', '월 배치', '배치당 가공비', '기간', '배치당 위약금', '상태', '']}>
-            {s.oemOffers.map((o) => (
+            {s.b2b.oemOffers.map((o) => (
               <tr key={o.id}>
                 <Td className="font-medium">{o.buyerName}{o.dedicated && <div className="text-xs text-stone-500">전용 증류기 패키지: 설치비 {won(oemPackageCost(s))} 중 위탁사 지원 {won(o.capexSupport ?? 0)} → 우리 부담 {won(oemPackageCost(s) - (o.capexSupport ?? 0))}, 설치 후 시작</div>}</Td><Td right>{o.batchesPerMonth}</Td><Td right>{won(o.feePerBatch)}</Td><Td right>{o.termMonths}개월</Td><Td right>{won(o.penaltyPerBatch)}</Td>
                 <Td><Badge tone="info">제안 · {o.expiresMonth - s.month}개월 후 만료</Badge></Td>
                 <Td><Button small variant="primary" onClick={() => dispatch({ type: 'acceptOem', offerId: o.id })}>체결</Button></Td>
               </tr>
             ))}
-            {s.oemContracts.map((c) => (
+            {s.b2b.oemContracts.map((c) => (
               <tr key={c.id}>
                 <Td className="font-medium">{c.buyerName}</Td><Td right>{c.batchesPerMonth}</Td><Td right>{won(c.feePerBatch)}</Td><Td right>{c.monthsDone}/{c.termMonths}개월</Td><Td right>{won(c.penaltyPerBatch)}</Td>
                 <Td><Badge tone={c.missed ? 'warn' : 'good'}>{s.month < c.startMonth ? `전용 증류기 설치 중 · ${monthLabel(s.startYear, c.startMonth)} 시작` : `진행 중 · 누적 미이행 ${c.missed}배치`}</Badge></Td><Td />
               </tr>
             ))}
           </Table>
-          {!s.oemOffers.length && !s.oemContracts.length && <Empty>제안이 없습니다 (가끔 들어옵니다)</Empty>}
+          {!s.b2b.oemOffers.length && !s.b2b.oemContracts.length && <Empty>제안이 없습니다 (가끔 들어옵니다)</Empty>}
         </Card>
       )}
-      {s.receivables.length > 0 && (
+      {s.finance.receivables.length > 0 && (
         <Card title="받을 대금 (매출채권)">
           <Table head={['내용', '입금 예정', '금액']}>
-            {s.receivables.map((r, i) => <tr key={i}><Td>{r.label}</Td><Td right>{r.dueMonth - s.month}개월 후</Td><Td right>{won(r.amount)}</Td></tr>)}
+            {s.finance.receivables.map((r, i) => <tr key={i}><Td>{r.label}</Td><Td right>{r.dueMonth - s.month}개월 후</Td><Td right>{won(r.amount)}</Td></tr>)}
           </Table>
         </Card>
       )}

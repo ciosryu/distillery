@@ -83,86 +83,43 @@ export function emptyCaskOf(s: GameState, typeId: keyof typeof CASKS): Cask {
 export function newGame(opts: NewGameOptions = {}): GameState {
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   const s: GameState = {
-    version: 5,
+    version: 6,
     seed,
     month: 0,
     startYear: opts.startYear ?? 2027,
     regionId: opts.region ?? 'KR',
     ...(opts.site ? { siteId: opts.site } : {}),
     distilleryName: opts.distilleryName ?? siteOf({ regionId: opts.region ?? 'KR', siteId: opts.site }).starter?.distillery ?? STARTER[opts.region ?? 'KR'].distillery,
-    cash: opts.startingCash ?? DEFAULT_STARTING_CASH,
     status: 'running',
-    negativeCashMonths: 0,
-    equipment: [],
-    warehouseBase: 150,
-    recipes: [],
-    orders: [],
-    lots: [],
-    casks: [],
-    products: [],
-    staff: [],
-    candidates: [],
-    loans: [],
-    brokerOffers: [],
-    contracts: [],
-    contractOffers: [],
-    b2bTrust: 50,
-    bulkIndex: 1,
-    spotSoldLPA: { grain: 0 },
-    marketingBudget: 3_000_000,
-    awareness: 0.01,
-    priceIndex: { ...Object.fromEntries(Object.keys(INGREDIENTS).map((k) => [k, 1])), gns: 1, energy: 1 },
-    trend: { soju_distilled: 1, gin: 1, whisky: 1, grain_whisky: 1, blended_whisky: 1, baijiu: 1, malt_spirit: 1, flavored_spirit: 1 },
-    flags: { producedSoju: false },
-    modifiers: [],
-    pendingEvents: [],
-    forecasts: [],
-    eventLog: [],
-    eventLastMonth: {},
-    ingredientKgLastMonth: {},
-    caskBids: [],
-    caskOrders: [],
-    houseStyle: 0,
-    investorShare: 0,
-    investmentsTaken: [],
-    localBuzz: 0,
-    wasteContractPerKg: 0,
-    rotatedThisMonth: 0,
-    traditionalReleasedL: 0,
-    traditionalPrevYearL: 0,
-    siteState: {},
-    retailOffers: [],
-    retailContracts: [],
-    oemOffers: [],
-    oemContracts: [],
-    receivables: [],
-    reports: [],
     nextId: 1,
+    world: {
+      priceIndex: { ...Object.fromEntries(Object.keys(INGREDIENTS).map((k) => [k, 1])), gns: 1, energy: 1 },
+      trend: { soju_distilled: 1, gin: 1, whisky: 1, grain_whisky: 1, blended_whisky: 1, baijiu: 1, malt_spirit: 1, flavored_spirit: 1 },
+      modifiers: [],
+      weather: { tempAnom: 0, humidAnom: 0, shocks: [] },
+    },
+    finance: { cash: opts.startingCash ?? DEFAULT_STARTING_CASH, negativeCashMonths: 0, loans: [], investorShare: 0, investmentsTaken: [], receivables: [] },
+    hr: { staff: [], candidates: [], houseStyle: 0 },
+    production: { equipment: [], recipes: [], orders: [], ingredientKgLastMonth: {}, flags: { producedSoju: false }, wasteContractPerKg: 0 },
+    inventory: { lots: [], casks: [], caskOrders: [], warehouseBase: 150, rotatedThisMonth: 0 },
+    commerce: { products: [], productArchive: [], awareness: 0.01, localBuzz: 0, marketingBudget: 3_000_000, traditionalReleasedL: 0, traditionalPrevYearL: 0, retailOffers: [], retailContracts: [] },
+    b2b: { trust: 50, bulkIndex: 1, spotSoldLPA: { grain: 0 }, contracts: [], contractOffers: [], brokerOffers: [], caskBids: [], oemOffers: [], oemContracts: [] },
+    events: { pending: [], forecasts: [], log: [], lastFired: {} },
+    research: { unlocked: [], active: [], slots: 1 },
+    site: {},
+    history: { reports: [], years: [] },
   };
   // 초기 설비: 단식 증류기 1기 + 스테인리스 발효조 2기
   const still = { id: nid(s, 'E'), catalogId: 'pot_onion_1000', readyMonth: 0, feintsLPA: 0 };
-  s.equipment.push(still, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0 }, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0 });
-  for (const r of presetRecipes(still.id, s.regionId, s.siteId)) s.recipes.push({ ...r, id: nid(s, 'R') });
-  for (const t of STARTER[s.regionId].casks) s.casks.push(emptyCaskOf(s, t));
+  s.production.equipment.push(still, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0 }, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0 });
+  for (const r of presetRecipes(still.id, s.regionId, s.siteId)) s.production.recipes.push({ ...r, id: nid(s, 'R') });
+  for (const t of STARTER[s.regionId].casks) s.inventory.casks.push(emptyCaskOf(s, t));
   // 창업 멤버: 디스틸러 1명
   const stats = { a: 50, b: 50, c: 45 };
-  s.staff.push({ id: nid(s, 'S'), name: siteOf(s).starter?.name ?? STARTER[s.regionId].name, role: 'distiller', level: 1, xp: 0, stats, salary: salaryFor('distiller', stats, 1, regionOf(s).laborCost), hiredMonth: 0, ageAtHire: 38 });
+  s.hr.staff.push({ id: nid(s, 'S'), name: siteOf(s).starter?.name ?? STARTER[s.regionId].name, role: 'distiller', level: 1, xp: 0, stats, salary: salaryFor('distiller', stats, 1, regionOf(s).laborCost), hiredMonth: 0, ageAtHire: 38 });
   const rng = mulberry32(seed ^ 0x9e3779b9);
   refreshCandidates(s, rng);
   refreshBroker(s, rng);
   refreshContractOffers(s, rng);
   return s;
-}
-
-/** 옛 저장(입지 특성 이전)에 없는 필드를 채운다 (결정 #86~). 순수 — 새 객체를 돌려준다 */
-export function normalizeState(s: GameState): GameState {
-  return {
-    ...s,
-    siteState: s.siteState ?? {},
-    retailOffers: s.retailOffers ?? [],
-    retailContracts: s.retailContracts ?? [],
-    oemOffers: s.oemOffers ?? [],
-    oemContracts: s.oemContracts ?? [],
-    receivables: s.receivables ?? [],
-  };
 }

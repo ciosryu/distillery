@@ -55,28 +55,28 @@ export function hasLocalIngredient(site: Pick<SiteDef, 'id'>, r: Pick<Recipe, 'm
 /** 월 발효 투입 용량 상한(L). 없으면 Infinity */
 export function waterPermitCap(s: GameState): number {
   const wp = siteOf(s).waterPermit;
-  return wp ? s.siteState.waterPermitL ?? wp.baseL : Infinity;
+  return wp ? s.site.waterPermitL ?? wp.baseL : Infinity;
 }
 
 /** 취수 증량 신청 (s는 변경 가능한 복제본) — 오류 문구 또는 null */
 export function applyWaterPermit(s: GameState): string | null {
   const wp = siteOf(s).waterPermit;
   if (!wp) return '이 입지에는 취수 허가 제도가 없습니다';
-  if (s.siteState.permitApplication) return '이미 심사 중인 신청이 있습니다';
-  if (s.cash < wp.cost) return '현금이 부족합니다';
-  s.cash -= wp.cost;
+  if (s.site.permitApplication) return '이미 심사 중인 신청이 있습니다';
+  if (s.finance.cash < wp.cost) return '현금이 부족합니다';
+  s.finance.cash -= wp.cost;
   const rng = rngFor(s.seed, s.month, 'permit');
-  s.siteState.permitApplication = { decideMonth: s.month + rng.int(wp.months[0], wp.months[1]), addL: wp.stepL, chance: wp.chance };
+  s.site.permitApplication = { decideMonth: s.month + rng.int(wp.months[0], wp.months[1]), addL: wp.stepL, chance: wp.chance };
   return null;
 }
 
 /** 월초: 심사 결과 확정 */
 export function resolveWaterPermit(s: GameState, report: MonthReport): void {
-  const app = s.siteState.permitApplication;
+  const app = s.site.permitApplication;
   if (!app || s.month < app.decideMonth) return;
-  s.siteState.permitApplication = undefined;
+  s.site.permitApplication = undefined;
   if (rngFor(s.seed, s.month, 'permit-decide').chance(app.chance)) {
-    s.siteState.waterPermitL = waterPermitCap(s) + app.addL;
+    s.site.waterPermitL = waterPermitCap(s) + app.addL;
     report.events.push('취수 증량 승인');
     report.notes.push(`취수 허가 증량 승인 — 월 ${waterPermitCap(s).toLocaleString()}L`);
   } else {
@@ -148,16 +148,16 @@ export function dutyFreeDemand(s: GameState, p: Product, sameCategoryCount: numb
   const base = DUTY_FREE.market[p.category] ?? 0;
   const consumer = dutyFreeConsumerPrice(p);
   if (base <= 0 || consumer > DUTY_FREE.maxBottlePrice) return 0;
-  const marketL = (base * 9 / 12) * site.dutyFree.seasonality[monthOfYear - 1]! * (s.trend[p.category] ?? 1) * mod(s, 'dutyfree');
+  const marketL = (base * 9 / 12) * site.dutyFree.seasonality[monthOfYear - 1]! * (s.world.trend[p.category] ?? 1) * mod(s, 'dutyfree');
   // 면세점 입점은 지역 상품 진열이 기본 → 영업 커버리지의 영향이 작다
-  const reach = (s.awareness * (0.3 + 0.5 * coverage) * DUTY_FREE.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
+  const reach = (s.commerce.awareness * (0.3 + 0.5 * coverage) * DUTY_FREE.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
   const bottleL = p.bottleMl / 1000;
   const ref = refPricePerL(region, p.category, p.abv) * DUTY_FREE.refFactor;
   const priceFactor = Math.pow(consumer / bottleL / ref, -region.market[p.category].elasticity);
   return (marketL * reach * appealOf(p) * priceFactor) / bottleL;
 }
 
-export const liveDutyFreeEditions = (s: GameState) => s.products.filter((p) => p.dutyFreeOnly && p.stockBottles > 0);
+export const liveDutyFreeEditions = (s: GameState) => s.commerce.products.filter((p) => p.dutyFreeOnly && p.stockBottles > 0);
 
 /** 면세 한정판을 새로 낼 수 없는 사유 (전용 매대 1칸) — 없으면 null */
 export function dutyFreeSlotBlocker(s: GameState): string | null {
@@ -169,22 +169,22 @@ export function dutyFreeSlotBlocker(s: GameState): string | null {
 
 /** 다음에 낼 면세 한정판의 판 번호와 연속 완판 수 */
 export function nextDutyFreeEdition(s: GameState): { vol: number; streak: number } {
-  const d = s.siteState.dfSeries;
+  const d = s.site.dfSeries;
   return { vol: (d?.vol ?? 0) + 1, streak: d?.streak ?? 0 };
 }
 
 /** 월말: 면세 한정판 완판·국내 이관 판정 */
 export function resolveDutyFreeEditions(s: GameState, report: MonthReport): void {
-  for (const p of s.products) {
+  for (const p of s.commerce.products) {
     const ed = p.dfEdition;
     if (!ed || ed.done) continue;
     const months = s.month - p.createdMonth + 1;
-    const series = (s.siteState.dfSeries ??= { vol: ed.vol, streak: 0 });
+    const series = (s.site.dfSeries ??= { vol: ed.vol, streak: 0 });
     if (p.stockBottles <= 0) {
       ed.done = true;
       if (months <= DUTY_FREE.sellOutMonths) {
         series.streak = Math.min(series.streak + 1, DUTY_FREE.maxStreak);
-        s.awareness = clamp(s.awareness + DUTY_FREE.sellOutAwareness, 0.001, 0.95);
+        s.commerce.awareness = clamp(s.commerce.awareness + DUTY_FREE.sellOutAwareness, 0.001, 0.95);
         report.events.push(`면세 한정판 Vol.${ed.vol} 완판`);
         report.notes.push(`면세 한정판 Vol.${ed.vol} ${months}개월 만에 완판 — 인지도 +${(DUTY_FREE.sellOutAwareness * 100).toFixed(1)}%p, 다음 판 매력도 +${Math.round(series.streak * DUTY_FREE.streakAppeal * 100)}% (연속 ${series.streak}회)`);
       } else {
@@ -204,7 +204,7 @@ export function resolveDutyFreeEditions(s: GameState, report: MonthReport): void
 
 /** 담보 가치 = 숙성 중인 몰트·그레인 원액의 현물 시가 (오너십 캐스크 제외) */
 export function inventoryCollateral(s: GameState): number {
-  return s.casks.reduce((t, c) => t + (c.contents && !c.owner && isBulkKind(c.contents) ? c.contents.volumeL * c.contents.abv * bulkValuePerLPA(s, c.contents) : 0), 0);
+  return s.inventory.casks.reduce((t, c) => t + (c.contents && !c.owner && isBulkKind(c.contents) ? c.contents.volumeL * c.contents.abv * bulkValuePerLPA(s, c.contents) : 0), 0);
 }
 
 export const inventoryLtv = (s: Pick<GameState, 'regionId' | 'siteId'>) => siteOf(s).inventoryLtv ?? 0;
@@ -213,13 +213,13 @@ const isInventoryLoan = (offerId: string) => LOAN_OFFERS.find((o) => o.id === of
 
 /** 지금 더 빌릴 수 있는 재고 담보대출 한도 */
 export function inventoryLoanRoom(s: GameState): number {
-  const used = s.loans.filter((l) => isInventoryLoan(l.offerId)).reduce((t, l) => t + l.balance, 0);
+  const used = s.finance.loans.filter((l) => isInventoryLoan(l.offerId)).reduce((t, l) => t + l.balance, 0);
   return Math.max(0, Math.floor((inventoryCollateral(s) * inventoryLtv(s) - used) / 1_000_000) * 1_000_000);
 }
 
 /** 월말: 재고 시가가 떨어져 대출 잔액이 담보 한도의 110%를 넘으면 초과분을 즉시 상환 (추가 담보 요구) */
 export function inventoryMarginCall(s: GameState, report: MonthReport): number {
-  const loans = s.loans.filter((l) => isInventoryLoan(l.offerId));
+  const loans = s.finance.loans.filter((l) => isInventoryLoan(l.offerId));
   if (!loans.length) return 0;
   const limit = inventoryCollateral(s) * inventoryLtv(s);
   const balance = loans.reduce((t, l) => t + l.balance, 0);

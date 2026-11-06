@@ -51,10 +51,10 @@ export function Staff() {
   const dispatch = useGame((g) => g.dispatch);
   return (
     <div className="grid gap-4">
-      <Card title={`직원 (${s.staff.length}명 · 월 급여 ${won(s.staff.reduce((t, x) => t + x.salary, 0))}) · 하우스 스타일 ${Math.round(s.houseStyle)}`}>
-        {!s.staff.length ? <Empty>직원이 없습니다. 디스틸러가 없으면 생산할 수 없습니다.</Empty> : (
+      <Card title={`직원 (${s.hr.staff.length}명 · 월 급여 ${won(s.hr.staff.reduce((t, x) => t + x.salary, 0))}) · 하우스 스타일 ${Math.round(s.hr.houseStyle)}`}>
+        {!s.hr.staff.length ? <Empty>직원이 없습니다. 디스틸러가 없으면 생산할 수 없습니다.</Empty> : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {s.staff.map((x) => {
+            {s.hr.staff.map((x) => {
               const master = masterDistiller(s);
               const tag = x.id === master?.id ? <Badge tone="good">마스터 디스틸러</Badge> : x.apprenticeOf ? <Badge tone="info">부사수 · 수련 {s.month - x.hiredMonth}/{APPRENTICE_MONTHS}개월</Badge> : null;
               return <Person key={x.id} x={x} month={s.month} tag={tag} action={<Button small variant="danger" onClick={() => dispatch({ type: 'fire', staffId: x.id })}>내보내기 (위로금 1개월)</Button>} />;
@@ -66,9 +66,9 @@ export function Staff() {
         <ul className="mb-3 grid gap-1 text-xs text-stone-500">
           {(Object.keys(ROLE_EFFECT) as StaffT['role'][]).map((r) => <li key={r}><span className="font-medium text-stone-700 dark:text-stone-300">{ROLE_INFO[r].nameKo}</span> — {ROLE_EFFECT[r]}</li>)}
         </ul>
-        {!s.candidates.length ? <Empty>후보가 없습니다</Empty> : (
+        {!s.hr.candidates.length ? <Empty>후보가 없습니다</Empty> : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {s.candidates.map((x) => <Person key={x.id} x={x} month={s.month} action={<div className="flex gap-1"><Button small variant="primary" onClick={() => dispatch({ type: 'hire', candidateId: x.id })}>채용</Button>{x.role === 'distiller' && <Button small onClick={() => dispatch({ type: 'hire', candidateId: x.id, asApprentice: true })} title="급여 60%, 마스터 곁에서 24개월 이상 배우면 은퇴 때 하우스 스타일을 잇는다">부사수로 채용</Button>}</div>} />)}
+            {s.hr.candidates.map((x) => <Person key={x.id} x={x} month={s.month} action={<div className="flex gap-1"><Button small variant="primary" onClick={() => dispatch({ type: 'hire', candidateId: x.id })}>채용</Button>{x.role === 'distiller' && <Button small onClick={() => dispatch({ type: 'hire', candidateId: x.id, asApprentice: true })} title="급여 60%, 마스터 곁에서 24개월 이상 배우면 은퇴 때 하우스 스타일을 잇는다">부사수로 채용</Button>}</div>} />)}
           </div>
         )}
       </Card>

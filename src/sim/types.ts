@@ -344,8 +344,156 @@ export interface CaskOrder {
 
 export interface CaskBid { id: string; buyerName: string; caskId: string; price: number; expiresMonth: number }
 
+// ───────────── 게임 상태 v6 — 도메인 슬라이스 (PRD 결정 #95, docs/design/architecture.md §3.3) ─────────────
+// 권위 상태는 하나. 헤더(시간·지역·시드)는 루트에, 도메인 데이터는 슬라이스에 둔다.
+// 한 슬라이스는 한 시스템 묶음이 "주로" 쓰지만, 월 틱은 슬라이스를 가로지르는 하나의 트랜잭션이다.
+
+/** 월 기상 이상치 — 입지 평년값에 더한다 (AR(1), PRD 결정 #97). 이벤트 충격(폭염·한파)도 여기에 더해진다 */
+export interface WeatherState {
+  /** 이번 달 기온 이상치(°C) — 난수 성분 */
+  tempAnom: number;
+  /** 이번 달 상대습도 이상치(%p) — 난수 성분 */
+  humidAnom: number;
+  /** 이벤트 충격(°C·%p) — 기간 한정, 난수 성분과 별도로 더한다 */
+  shocks: { id: string; label: string; tempC: number; humidity: number; fromMonth: number; untilMonth: number }[];
+}
+
+/** 연구 상태 (docs/design/tech-tree.md §7). Phase 1은 연구 시스템 없이 isUnlocked 조회 구조만 쓴다 */
+export interface ResearchState {
+  /** 완료한 테크 노드 id */
+  unlocked: string[];
+  active: { techId: string; progress: number; leadStaffId?: string; paused: boolean }[];
+  /** 동시 연구 슬롯 */
+  slots: number;
+}
+
+/** 품절·단종 제품 요약 — 향미 객체 없이 이력만 남긴다 (데이터 수명 관리, architecture §3.7) */
+export interface ProductArchiveEntry {
+  id: string;
+  name: string;
+  category: ProductCategory;
+  createdMonth: number;
+  lastMonthSold: number;
+  totalSold: number;
+  quality: number;
+  price: number;
+}
+
+/** 연 요약 — 상세 월 리포트가 잘려 나가도 장기 차트를 그릴 수 있게 */
+export interface YearSummary {
+  year: number;
+  revenue: number;
+  bulkRevenue: number;
+  expenses: number;
+  cashEnd: number;
+  bottlesSold: number;
+  lpaProduced: number;
+  angelsShareL: number;
+  filledCasksEnd: number;
+}
+
+export interface WorldSlice {
+  /** 원재료 가격 지수 (1 = 기준가) */
+  priceIndex: Record<string, number>;
+  /** 카테고리 트렌드 지수 */
+  trend: Record<ProductCategory, number>;
+  /** 기간 한정 보정치 — 이벤트·시장 국면이 만든다 */
+  modifiers: Modifier[];
+  weather: WeatherState;
+}
+
+export interface FinanceSlice {
+  cash: number;
+  /** 연속 현금 부족 개월 — BANKRUPT_AFTER_MONTHS면 파산 */
+  negativeCashMonths: number;
+  loans: Loan[];
+  /** 외부 투자자 지분 (0~1) */
+  investorShare: number;
+  investmentsTaken: string[];
+  /** 매출채권 — 결제 지연 대금 */
+  receivables: Receivable[];
+}
+
+export interface HrSlice {
+  staff: Staff[];
+  candidates: Candidate[];
+  /** 증류소 하우스 스타일 0~100 — 마스터 디스틸러가 쌓고, 부사수 없이 은퇴하면 초기화 */
+  houseStyle: number;
+}
+
+export interface ProductionSlice {
+  equipment: EquipmentInstance[];
+  recipes: Recipe[];
+  orders: ProductionOrder[];
+  /** 지난달 원재료별 실제 구매량(kg) — 대량 구매 할인 등급 */
+  ingredientKgLastMonth: Record<string, number>;
+  /** 정책자금 자격 등 플래그 */
+  flags: { producedSoju: boolean };
+  /** 사무직이 타결한 폐기물(드래프·지게미) 유상 판매 단가(원/kg) */
+  wasteContractPerKg: number;
+}
+
+export interface InventorySlice {
+  /** 탱크 원액 (뉴메이크·비숙성) */
+  lots: SpiritLot[];
+  casks: Cask[];
+  /** 쿠퍼리지 주문·시즈닝 계약으로 도착 예정인 캐스크 */
+  caskOrders: CaskOrder[];
+  /** 기본 숙성고 용량(캐스크 수). 증설분은 설비에서 계산 */
+  warehouseBase: number;
+  /** 이번 달 로테이션한 캐스크 수 */
+  rotatedThisMonth: number;
+}
+
+export interface CommerceSlice {
+  products: Product[];
+  /** 품절·단종 제품 이력 (architecture §3.7) */
+  productArchive: ProductArchiveEntry[];
+  awareness: number;
+  /** 비지터 센터 입소문(로컬 인지도) 0~1 */
+  localBuzz: number;
+  marketingBudget: number;
+  /** 올해 전통주 경감 대상 누적 출고량(L) — 1월에 초기화 */
+  traditionalReleasedL: number;
+  /** 작년 전통주 경감 대상 출고량(L) — 500㎘ 넘으면 올해 경감 없음 */
+  traditionalPrevYearL: number;
+  retailOffers: RetailOffer[];
+  retailContracts: RetailContract[];
+}
+
+export interface B2bSlice {
+  /** B2B 신뢰도 0~100 — 계약 조건·현물 단가에 영향 */
+  trust: number;
+  /** 벌크 원액 시세 지수 (1 = 기준) */
+  bulkIndex: number;
+  /** 최근 현물 판매량(LPA, 매달 감쇠) — 그레인 현물 시장 포화 (#81) */
+  spotSoldLPA?: { grain: number };
+  contracts: Contract[];
+  contractOffers: ContractOffer[];
+  brokerOffers: BrokerOffer[];
+  caskBids: CaskBid[];
+  oemOffers: OemOffer[];
+  oemContracts: OemContract[];
+}
+
+export interface EventsSlice {
+  /** 플레이어 선택을 기다리는 이벤트 */
+  pending: PendingEvent[];
+  forecasts: Forecast[];
+  log: EventLogEntry[];
+  /** 이벤트별 마지막 발생 월 (쿨다운) */
+  lastFired: Record<string, number>;
+}
+
+export interface HistorySlice {
+  /** 최근 월 리포트 (상세) */
+  reports: MonthReport[];
+  /** 연 요약 (오래된 기간의 장기 차트용) */
+  years: YearSummary[];
+}
+
 export interface GameState {
-  version: 5;
+  version: 6;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;
@@ -354,70 +502,20 @@ export interface GameState {
   /** 지역 안의 증류소 입지 (없으면 지역 기본 입지) — 기후·특산물 자격이 달라진다 */
   siteId?: string;
   distilleryName: string;
-  cash: number;
   status: 'running' | 'bankrupt';
-  negativeCashMonths: number;
-  equipment: EquipmentInstance[];
-  /** 기본 숙성고 용량(캐스크 수). 증설분은 설비에서 계산 */
-  warehouseBase: number;
-  recipes: Recipe[];
-  orders: ProductionOrder[];
-  lots: SpiritLot[];
-  casks: Cask[];
-  products: Product[];
-  staff: Staff[];
-  candidates: Candidate[];
-  loans: Loan[];
-  brokerOffers: BrokerOffer[];
-  contracts: Contract[];
-  contractOffers: ContractOffer[];
-  /** B2B 신뢰도 0~100 — 계약 조건·현물 단가에 영향 */
-  b2bTrust: number;
-  /** 벌크 원액 시세 지수 (1 = 기준) */
-  bulkIndex: number;
-  /** 최근 현물 판매량(LPA, 매달 감쇠) — 그레인 현물 시장 포화 (#81). 옛 저장에는 없을 수 있다 */
-  spotSoldLPA?: { grain: number };
-  marketingBudget: number;
-  awareness: number;
-  /** 원재료 가격 지수 (1 = 기준가) */
-  priceIndex: Record<string, number>;
-  /** 카테고리 트렌드 지수 */
-  trend: Record<ProductCategory, number>;
-  /** 정책자금 자격 등 플래그 */
-  flags: { producedSoju: boolean };
-  modifiers: Modifier[];
-  pendingEvents: PendingEvent[];
-  forecasts: Forecast[];
-  eventLog: EventLogEntry[];
-  /** 이벤트별 마지막 발생 월 (쿨다운) */
-  eventLastMonth: Record<string, number>;
-  caskBids: CaskBid[];
-  /** 지난달 원재료별 실제 구매량(kg) — 대량 구매 할인 등급 */
-  ingredientKgLastMonth: Record<string, number>;
-  /** 쿠퍼리지 주문·시즈닝 계약으로 도착 예정인 캐스크 */
-  caskOrders: CaskOrder[];
-  /** 증류소 하우스 스타일 0~100 — 마스터 디스틸러가 쌓고, 부사수 없이 은퇴하면 초기화 */
-  houseStyle: number;
-  /** 외부 투자자 지분 (0~1) */
-  investorShare: number;
-  investmentsTaken: string[];
-  /** 비지터 센터 입소문(로컬 인지도) 0~1 */
-  localBuzz: number;
-  /** 사무직이 타결한 폐기물(드래프·지게미) 유상 판매 단가(원/kg) */
-  wasteContractPerKg: number;
-  /** 이번 달 로테이션한 캐스크 수 */
-  rotatedThisMonth: number;
-  /** 올해 전통주 경감 대상 누적 출고량(L) — 1월에 초기화 */
-  traditionalReleasedL: number;
-  /** 작년 전통주 경감 대상 출고량(L) — 500㎘ 넘으면 올해 경감 없음 */
-  traditionalPrevYearL: number;
-  /** 입지 특성 (결정 #86~) — 옛 저장에는 없을 수 있다 → normalizeState가 채운다 */
-  siteState: SiteState;
-  retailOffers: RetailOffer[];
-  retailContracts: RetailContract[];
-  oemOffers: OemOffer[];
-  oemContracts: OemContract[];
-  receivables: Receivable[];
-  reports: MonthReport[];
   nextId: number;
+
+  world: WorldSlice;
+  finance: FinanceSlice;
+  hr: HrSlice;
+  production: ProductionSlice;
+  inventory: InventorySlice;
+  commerce: CommerceSlice;
+  b2b: B2bSlice;
+  events: EventsSlice;
+  research: ResearchState;
+  /** 입지 고유 상태 (결정 #86~) */
+  site: SiteState;
+  history: HistorySlice;
 }
+

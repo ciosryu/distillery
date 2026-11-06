@@ -9,29 +9,29 @@ import { assignSlot } from '../src/sim/ops';
 const SIZES = process.argv.slice(2).map(Number).filter((n) => n > 0);
 const ns = SIZES.length ? SIZES : [250, 1000, 2000, 5000];
 
-function maltLot(): NonNullable<GameState['casks'][number]['contents']> {
+function maltLot(): NonNullable<GameState['inventory']['casks'][number]['contents']> {
   let s = newGame({ seed: 1, region: 'KR', startingCash: 50_000_000_000 });
-  const r = s.recipes.find((x) => x.kind === 'malt');
+  const r = s.production.recipes.find((x) => x.kind === 'malt');
   if (!r) throw new Error('몰트 레시피 프리셋이 없습니다');
   s = applyAction(s, { type: 'setOrder', recipeId: r.id, batchesPerMonth: 1 }).state;
   s = advanceMonth(s);
-  const lot = s.lots.find((l) => l.kind === 'malt');
+  const lot = s.inventory.lots.find((l) => l.kind === 'malt');
   if (!lot) throw new Error('몰트 원액이 생산되지 않았습니다');
   return { ...lot, volumeL: 200, abv: 0.635 };
 }
 
 function stateWith(n: number, lot: ReturnType<typeof maltLot>): { s: GameState; slotMs: number } {
   const s = newGame({ seed: 1, region: 'KR', startingCash: 1e15 });
-  s.warehouseBase = n + 100;
+  s.inventory.warehouseBase = n + 100;
   for (let i = 0; i < n; i++) {
     const c = emptyCaskOf(s, 'ex_bourbon_barrel');
     c.contents = { ...lot, id: `${lot.id}-${i}`, flavor: { ...lot.flavor } };
     c.filledMonth = 0;
-    s.casks.push(c);
+    s.inventory.casks.push(c);
   }
   // 통입 시 자리 배정을 한꺼번에 한 것과 같다 — 캐스크마다 전체 점유를 다시 센다(O(n²))
   const t = performance.now();
-  for (const c of s.casks) if (c.contents) assignSlot(s, c);
+  for (const c of s.inventory.casks) if (c.contents) assignSlot(s, c);
   return { s, slotMs: performance.now() - t };
 }
 
@@ -48,7 +48,7 @@ for (const n of ns) {
   for (let i = 0; i < 5; i++) structuredClone(s);
   const cloneMs = (performance.now() - t) / 5;
   const json = JSON.stringify(s);
-  const filled = s.casks.find((c) => c.contents);
+  const filled = s.inventory.casks.find((c) => c.contents);
   console.log([
     String(n).padStart(6),
     `${median(months).toFixed(1).padStart(10)} ms`,

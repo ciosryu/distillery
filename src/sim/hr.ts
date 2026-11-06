@@ -30,13 +30,13 @@ export function makeCandidate(s: GameState, rng: Rng, role?: StaffRole): Candida
 }
 
 export function refreshCandidates(s: GameState, rng: Rng): void {
-  s.candidates = ROLES.map((r) => makeCandidate(s, rng, r)).concat([makeCandidate(s, rng)]);
+  s.hr.candidates = ROLES.map((r) => makeCandidate(s, rng, r)).concat([makeCandidate(s, rng)]);
 }
 
 /** 월간 XP와 레벨업 */
 export function gainXp(s: GameState, rng: Rng, activity: Record<StaffRole, number>): string[] {
   const notes: string[] = [];
-  for (const x of s.staff) {
+  for (const x of s.hr.staff) {
     x.xp += 10 + activity[x.role];
     while (x.xp >= 100 * x.level) {
       x.xp -= 100 * x.level;

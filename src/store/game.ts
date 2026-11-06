@@ -1,63 +1,45 @@
 import { create } from 'zustand';
-import { advanceMonths, applyAction, newGame, normalizeState, type Action, type GameState, type RegionId } from '../sim';
+import { advanceMonths, applyAction, newGame, type Action, type GameState, type RegionId } from '../sim';
+import { flushSave, loadGame, queueSave, saveNow } from './persist';
+import { useUi } from './ui';
 
-const SAVE_KEY = 'distillery-tycoon/save-v5';
-
-function load(): GameState | null {
-  try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
-    const s = JSON.parse(raw) as GameState;
-    // 입지 특성(결정 #86~) 이전 저장은 빠진 필드를 채워 읽는다
-    return s && s.version === 5 ? normalizeState(s) : null;
-  } catch {
-    return null;
-  }
-}
-
-function save(s: GameState): void {
-  try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(s));
-  } catch {
-    /* 저장 불가 환경(시크릿 모드 등) — 무시 */
-  }
-}
-
-export interface Toast { id: number; kind: 'ok' | 'error'; text: string }
+// 게임 상태 읽기 모델 (architecture §3.2). 권위 상태는 이 store 하나 — 도메인별 store로 나누지 않는다.
+// 화면은 원시 상태 대신 selectors.ts의 셀렉터를 쓰는 것을 원칙으로 한다.
 
 interface GameStore {
   state: GameState;
-  toast: Toast | null;
   dispatch: (a: Action) => boolean;
   advance: (months: number) => void;
   restart: (name?: string, region?: RegionId, site?: string) => void;
-  clearToast: () => void;
 }
 
-let toastId = 0;
+const toast = (kind: 'ok' | 'error', text: string) => useUi.getState().showToast(kind, text);
+const persist = (s: GameState) => queueSave(s, (msg) => toast('error', msg));
+
+if (typeof window !== 'undefined') window.addEventListener('beforeunload', flushSave);
 
 export const useGame = create<GameStore>((set, get) => ({
-  state: load() ?? newGame(),
-  toast: null,
+  state: loadGame() ?? newGame(),
   dispatch: (a) => {
     const res = applyAction(get().state, a);
     if (res.error) {
-      set({ toast: { id: ++toastId, kind: 'error', text: res.error } });
+      toast('error', res.error);
       return false;
     }
-    save(res.state);
-    set({ state: res.state, toast: res.message ? { id: ++toastId, kind: 'ok', text: res.message } : get().toast });
+    persist(res.state);
+    set({ state: res.state });
+    if (res.message) toast('ok', res.message);
     return true;
   },
   advance: (months) => {
     const next = advanceMonths(get().state, months);
-    save(next);
+    persist(next);
     set({ state: next });
   },
   restart: (name, region, site) => {
     const s = newGame({ distilleryName: name || undefined, region, site: site || undefined });
-    save(s);
-    set({ state: s, toast: { id: ++toastId, kind: 'ok', text: '새 게임을 시작했습니다' } });
+    const res = saveNow(s);
+    set({ state: s });
+    toast(res.ok ? 'ok' : 'error', res.ok ? '새 게임을 시작했습니다' : res.error);
   },
-  clearToast: () => set({ toast: null }),
 }));

@@ -4,6 +4,7 @@ import { REGIONS, siteOf } from './sim/content/regions';
 
 const stars = (n?: number) => (n ? ` ${'★'.repeat(n)}` : '');
 import { useGame } from './store/game';
+import { useUi } from './store/ui';
 import { won } from './ui/format';
 import { Button } from './ui/kit';
 import { B2B } from './ui/panels/B2B';
@@ -27,30 +28,20 @@ const TABS = [
 ] as const;
 type TabId = (typeof TABS)[number]['id'];
 
-function readTab(): TabId {
-  try {
-    const t = localStorage.getItem('distillery-tycoon/tab');
-    return (TABS.some((x) => x.id === t) ? t : 'dashboard') as TabId;
-  } catch {
-    return 'dashboard';
-  }
-}
-
 export default function App() {
   const s = useGame((g) => g.state);
   const advance = useGame((g) => g.advance);
   const restart = useGame((g) => g.restart);
-  const toast = useGame((g) => g.toast);
-  const clearToast = useGame((g) => g.clearToast);
-  const [tab, setTab] = useState<TabId>(readTab);
+  const toast = useUi((u) => u.toast);
+  const clearToast = useUi((u) => u.clearToast);
+  const rawTab = useUi((u) => u.tab);
+  const setTab = useUi((u) => u.setTab);
+  const tab: TabId = TABS.some((x) => x.id === rawTab) ? (rawTab as TabId) : 'dashboard';
   const [newGameOpen, setNewGameOpen] = useState(false);
   const [ngName, setNgName] = useState('');
   const [ngRegion, setNgRegion] = useState<RegionId>('KR');
   const [ngSite, setNgSite] = useState('');
 
-  useEffect(() => {
-    try { localStorage.setItem('distillery-tycoon/tab', tab); } catch { /* 무시 */ }
-  }, [tab]);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(clearToast, 4000);
@@ -65,7 +56,7 @@ export default function App() {
           <div>
             <h1 className="text-base font-bold">{s.distilleryName} <span className="text-xs font-normal text-stone-500">Distillery Tycoon · {s.siteId ? `${REGIONS[s.regionId].nameKo.replace(/\s*\(.*\)$/, '')} (${siteOf(s).nameKo})` : REGIONS[s.regionId].nameKo}</span></h1>
             <div className="text-sm text-stone-600 dark:text-stone-300">
-              <span className="font-semibold">{monthLabel(s.startYear, s.month)}</span> · 현금 <span className={`font-semibold tabular-nums ${s.cash < 0 ? 'text-rose-700 dark:text-rose-400' : ''}`}>{won(s.cash)}</span>
+              <span className="font-semibold">{monthLabel(s.startYear, s.month)}</span> · 현금 <span className={`font-semibold tabular-nums ${s.finance.cash < 0 ? 'text-rose-700 dark:text-rose-400' : ''}`}>{won(s.finance.cash)}</span>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -120,9 +111,9 @@ export default function App() {
             파산했습니다 — 현금 부족이 3개월 이어졌습니다. "새 게임"으로 다시 시작하세요.
           </div>
         )}
-        {running && s.pendingEvents.length > 0 && tab !== 'dashboard' && (
+        {running && s.events.pending.length > 0 && tab !== 'dashboard' && (
           <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-            선택이 필요한 이벤트 {s.pendingEvents.length}건 — <button className="font-semibold underline" onClick={() => setTab('dashboard')}>대시보드에서 결정하기</button> (고르지 않으면 다음 달 기본값 적용)
+            선택이 필요한 이벤트 {s.events.pending.length}건 — <button className="font-semibold underline" onClick={() => setTab('dashboard')}>대시보드에서 결정하기</button> (고르지 않으면 다음 달 기본값 적용)
           </div>
         )}
         {running && s.month === 0 && (

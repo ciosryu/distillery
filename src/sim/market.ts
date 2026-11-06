@@ -24,10 +24,10 @@ export function markupFactor(s: GameState): number {
 
 /** 제품의 병당 소비자가 (지역 세제·유통 마진·영업 협상·이벤트 반영) */
 export function productConsumerPrice(s: GameState, p: Pick<Product, 'price' | 'bottleMl' | 'abv' | 'traditional'>, region: RegionDef = regionOf(s)): number {
-  return consumerPrice(region, p.price, p.bottleMl, p.abv, markupFactor(s), traditionalTaxFactor(region, p.traditional, s.traditionalReleasedL, s.traditionalPrevYearL));
+  return consumerPrice(region, p.price, p.bottleMl, p.abv, markupFactor(s), traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL));
 }
 
-export function appeal(p: Product, s?: Pick<GameState, 'modifiers' | 'month' | 'regionId'>): number {
+export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId'>): number {
   const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
   const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12) : 1;
   const lux = PACKAGING[p.packagingId]?.luxury ?? 1;
@@ -64,8 +64,8 @@ export function demandFor(s: GameState, p: Product, sameCategoryCount: number, m
   const m = region.market[p.category];
   // 면세 전용 한정판은 국내 매대에 없다 (결정 #87). 입지 수요 배수(관광·인바운드, 결정 #86)
   if (p.dutyFreeOnly) return { marketL: 0, reach: 0, appeal: appeal(p, s), consumerPricePerL: 0, refPricePerL: refPricePerL(region, p.category, p.abv), priceFactor: 0, demandBottles: 0 };
-  const marketL = (m.baseCases * 9 / 12) * region.seasonality[monthOfYear - 1]! * (s.trend[p.category] ?? 1) * mod(s, `demand:${p.category}`) * mod(s, 'demand:all') * (siteOf(s).demandFactor ?? 1);
-  const reach = (s.awareness * coverage(s) * m.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
+  const marketL = (m.baseCases * 9 / 12) * region.seasonality[monthOfYear - 1]! * (s.world.trend[p.category] ?? 1) * mod(s, `demand:${p.category}`) * mod(s, 'demand:all') * (siteOf(s).demandFactor ?? 1);
+  const reach = (s.commerce.awareness * coverage(s) * m.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
   const a = appeal(p, s);
   const bottleL = p.bottleMl / 1000;
   const consumerPricePerL = productConsumerPrice(s, p, region) / bottleL;
@@ -103,10 +103,10 @@ export function bottleMargin(p: Pick<Product, 'price' | 'unitCost' | 'bottleMl'>
 
 export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results: SalesResult[]; retail: RetailSummary } {
   const counts: Partial<Record<ProductCategory, number>> = {};
-  for (const p of s.products) if (p.stockBottles > 0) counts[p.category] = (counts[p.category] ?? 0) + 1;
+  for (const p of s.commerce.products) if (p.stockBottles > 0) counts[p.category] = (counts[p.category] ?? 0) + 1;
   // 1) 제품별 수요
   const wants: { p: Product; demand: number; want: number }[] = [];
-  for (const p of s.products) {
+  for (const p of s.commerce.products) {
     if (p.stockBottles <= 0) { p.lastMonthSold = 0; p.salesEma = (p.salesEma ?? 0) * 0.7; continue; }
     const d = demandFor(s, p, counts[p.category] ?? 1, monthOfYear);
     const demand = Math.round(d.demandBottles * rng.range(0.9, 1.1));
@@ -145,7 +145,7 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
   }
   // 3) 지정면세점 채널 (제주, 결정 #87) — 면세점이 진열·판매하므로 소매 처리 역량을 쓰지 않고, 섬 안에서 팔려 육지 출고 물류 할증도 없다
   if (siteOf(s).dutyFree) {
-    for (const p of s.products) {
+    for (const p of s.commerce.products) {
       if (p.stockBottles <= 0) { p.lastMonthDutyFree = 0; continue; }
       const df = Math.min(p.stockBottles, Math.round(productDutyFreeDemand(s, p, counts[p.category] ?? 1, monthOfYear) * rng.range(0.9, 1.1)));
       p.lastMonthDutyFree = df;
@@ -173,16 +173,16 @@ export const AWARENESS = { marketing: 0.012, wordOfMouth: 0.000003, decay: 0.012
 export function updateAwareness(s: GameState, sales: SalesResult[]): number {
   const dutyFree = sales.reduce((t, x) => t + (x.dutyFree ?? 0), 0);
   const bottles = sales.reduce((t, x) => t + x.bottles, 0) + (DUTY_FREE.wordOfMouthWeight - 1) * dutyFree;
-  const avgQ = s.products.length ? s.products.reduce((t, p) => t + p.quality, 0) / s.products.length : 50;
-  const a = s.awareness;
-  const gain = (AWARENESS.marketing * Math.log10(1 + s.marketingBudget / 1_000_000) * mod(s, 'awareness_gain') + AWARENESS.wordOfMouth * bottles * (avgQ / 60)) * (1 - a);
-  s.awareness = clamp(a + gain - AWARENESS.decay * a, 0.001, 0.95);
+  const avgQ = s.commerce.products.length ? s.commerce.products.reduce((t, p) => t + p.quality, 0) / s.commerce.products.length : 50;
+  const a = s.commerce.awareness;
+  const gain = (AWARENESS.marketing * Math.log10(1 + s.commerce.marketingBudget / 1_000_000) * mod(s, 'awareness_gain') + AWARENESS.wordOfMouth * bottles * (avgQ / 60)) * (1 - a);
+  s.commerce.awareness = clamp(a + gain - AWARENESS.decay * a, 0.001, 0.95);
   return AWARENESS.wordOfMouth * DUTY_FREE.wordOfMouthWeight * dutyFree * (avgQ / 60) * (1 - a);
 }
 
 export function updateTrends(s: GameState, rng: Rng): void {
-  for (const k of Object.keys(s.trend) as ProductCategory[]) {
-    const t = s.trend[k];
-    s.trend[k] = clamp(t * Math.exp(rng.normal(0, 0.015)) + 0.05 * (1 - t), 0.6, 1.5);
+  for (const k of Object.keys(s.world.trend) as ProductCategory[]) {
+    const t = s.world.trend[k];
+    s.world.trend[k] = clamp(t * Math.exp(rng.normal(0, 0.015)) + 0.05 * (1 - t), 0.6, 1.5);
   }
 }

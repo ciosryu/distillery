@@ -11,18 +11,18 @@ export function Sales() {
   const { monthOfYear } = calendar(s);
   const region = regionOf(s);
   const sample = consumerPrice(region, 10_000, 700, 0.4) / 10_000;
-  const active = s.products.filter((p) => p.stockBottles > 0 || p.lastMonthSold > 0);
+  const active = s.commerce.products.filter((p) => p.stockBottles > 0 || p.lastMonthSold > 0);
   const counts = active.reduce<Record<string, number>>((m, p) => { if (p.stockBottles > 0) m[p.category] = (m[p.category] ?? 0) + 1; return m; }, {});
 
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="브랜드 인지도" value={pct(s.awareness)} hint="마케팅·판매량·품질로 상승" />
+        <Stat label="브랜드 인지도" value={pct(s.commerce.awareness)} hint="마케팅·판매량·품질로 상승" />
         <Stat label="유통 커버리지" value={pct(coverage(s))} hint="영업 직원 네트워크" />
         <Stat label="출고가 → 소비자가 (700ml 40%, 출고가 1만 원 기준)" value={`× ${sample.toFixed(2)}`} hint={region.tax.label} />
         <div className="rounded-lg border border-stone-200 bg-white px-3 py-2 dark:border-stone-800 dark:bg-stone-900">
           <div className="text-xs text-stone-500">월 마케팅 예산</div>
-          <NumberField value={s.marketingBudget / 10_000} min={0} max={100_000} width="w-24" suffix="만 원" onCommit={(v) => dispatch({ type: 'setMarketing', amount: v * 10_000 })} />
+          <NumberField value={s.commerce.marketingBudget / 10_000} min={0} max={100_000} width="w-24" suffix="만 원" onCommit={(v) => dispatch({ type: 'setMarketing', amount: v * 10_000 })} />
         </div>
       </div>
 
@@ -69,7 +69,7 @@ export function Sales() {
                 <Td right>{won(m.refConsumerPricePerL)}</Td>
                 <Td right>{Number(m.elasticity.toFixed(2))}</Td>
                 <Td right>{pct(m.shareCap, m.shareCap < 0.01 ? 1 : 0)}</Td>
-                <Td right>{(s.trend[k] ?? 1).toFixed(2)}</Td>
+                <Td right>{(s.world.trend[k] ?? 1).toFixed(2)}</Td>
                 <Td className="text-xs text-stone-500">{m.baseSource}</Td>
               </tr>
             );

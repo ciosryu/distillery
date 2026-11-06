@@ -12,6 +12,8 @@ export * from './production';
 export * from './step';
 export * from './util';
 export * from './ops';
+export * from './migrate';
+export * from './research';
 export * from './sites';
 export * from './deals';
 export { rngFor, mulberry32 } from './rng';
