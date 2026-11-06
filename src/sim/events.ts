@@ -1,5 +1,5 @@
 import { EVENT, EVENTS, type Effect, type EventDef, type Requirement } from './content/events';
-import { regionOf } from './content/regions';
+import { regionOf, siteOf } from './content/regions';
 import { BUYERS, COMPETITIONS, CRITICS, displayName } from './content/names';
 import { makeSpecialContractOffer } from './bulk';
 import { EQUIPMENT } from './content/catalog';
@@ -30,7 +30,10 @@ function meets(s: GameState, r: Requirement): boolean {
 }
 
 function eligible(s: GameState, def: EventDef, monthOfYear: number): boolean {
-  if (def.regions && !def.regions.includes(s.regionId)) return false;
+  // 입지 이벤트 (결정 #84): sites에 있으면 지역과 무관하게 발생, sitesOnly면 그 입지에서만
+  const atSite = !!def.sites?.includes(siteOf(s).id);
+  if (def.sitesOnly && !atSite) return false;
+  if (!atSite && def.regions && !def.regions.includes(s.regionId)) return false;
   if (def.minMonth != null && s.month < def.minMonth) return false;
   if (def.months && !def.months.includes(monthOfYear)) return false;
   const last = s.eventLastMonth[def.id];
@@ -221,7 +224,7 @@ export function runEvents(s: GameState, report: MonthReport, monthOfYear: number
   for (const def of order) {
     if (fired >= MAX_NEW_EVENTS_PER_MONTH) break;
     if (!eligible(s, def, monthOfYear)) continue;
-    const weight = regionOf(s).eventWeights[def.category] ?? 1;
+    const weight = (regionOf(s).eventWeights[def.category] ?? 1) * (siteOf(s).eventBoost?.[def.id] ?? 1);
     if (!rng.chance(def.chance * weight * EVENT_RATE)) continue;
     s.eventLastMonth[def.id] = s.month;
     fired++;

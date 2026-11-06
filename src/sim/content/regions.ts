@@ -50,7 +50,13 @@ export interface SpecialtyDef {
   siteOnly?: string;
 }
 
-/** 지역 안의 증류소 입지. 세제·시장·인건비는 지역과 같고 기후·특산물 자격만 다르다 */
+/** 물: 연수 = 과일·플로럴↑·이취↓, 화산암반수 = 이취↓·수율 소폭↑ (결정 #84) */
+export type WaterId = 'medium' | 'soft' | 'volcanic';
+
+/**
+ * 지역 안의 증류소 입지. 세제·시장·인건비는 지역과 같고 기후·특산물 자격이 다르다 (v0.9 #62).
+ * 산지 특성(결정 #84~, docs/design/regions.md): 물·고정비·건설비·물류·수요·난방·취수 허가·면세 채널·대표 결정. 모두 선택 항목 [튜닝]
+ */
 export interface SiteDef {
   id: string;
   nameKo: string;
@@ -59,6 +65,40 @@ export interface SiteDef {
   basis: string;
   /** 관광 잠재력 배수 (지역 배수에 곱한다) */
   tourism?: number;
+  /** 한 줄 정체성·난이도(★)·화면 표시용 특성 요약 */
+  tagline?: string;
+  difficulty?: 1 | 2 | 3 | 4 | 5;
+  traits?: { tone: 'good' | 'bad'; text: string }[];
+  water?: WaterId;
+  /** 지역 관리비 배수 */
+  overheadFactor?: number;
+  /** 설비 건설비 배수 / 숙성고 증설비 추가 배수 */
+  buildCostFactor?: number;
+  warehouseCostFactor?: number;
+  /** 입고 운송 할증: 원재료·포장재·캐스크 */
+  freight?: { ingredients?: number; packaging?: number; casks?: number };
+  /** 국내 출고 물류비 배수 */
+  outboundLogistics?: number;
+  /** 국내 수요 배수 (관광·인바운드) */
+  demandFactor?: number;
+  /** 겨울 난방: 해당 월 난방비(원/월) + 증류 에너지비 배수 */
+  heating?: { months: number[]; perMonth: number; energyFactor: number };
+  /** 취수 허가(제주): 월 발효 투입 용량 상한(L) + 증량 신청 */
+  waterPermit?: { baseL: number; stepL: number; cost: number; months: [number, number]; chance: number };
+  /** 지정면세점 채널(제주) — 월별 관광 계절성 */
+  dutyFree?: { seasonality: number[] };
+  /** 숙성 재고 담보대출 담보 인정 비율 (없으면 담보대출 없음) */
+  inventoryLtv?: number;
+  /** 원액 B2B 운송비 — 섬·원거리 입지는 블렌더 매입 단가(현물·계약)가 깎인다 */
+  bulkFreight?: number;
+  /** 입지 대표 거래: 대형 유통 납품 / 위탁생산 */
+  deals?: ('retail' | 'oem')[];
+  /** 이벤트별 가중치 배수 (이벤트 id → 배수) */
+  eventBoost?: Partial<Record<string, number>>;
+  /** 입지 캐스크 단가 배수 (지역 배수에 곱한다) */
+  caskPriceFactor?: Partial<Record<CaskTypeId, number>>;
+  /** 창업 멤버·증류소 이름 (없으면 지역 기본) */
+  starter?: { name: string; distillery: string };
 }
 
 /** 스코틀랜드·EU식 3년 규정 — 지역 정의가 없을 때의 기본값 */
@@ -96,6 +136,10 @@ export interface RegionDef {
   specialties?: SpecialtyDef[];
   /** 기본 입지(위 tempC·humidity) 외의 선택 입지 */
   sites?: SiteDef[];
+  /** 기본 입지의 산지 특성 (기후는 지역 값을 쓴다) */
+  defaultSite?: Omit<Partial<SiteDef>, 'id' | 'tempC' | 'humidity'>;
+  /** 일본 미즈나라 백단·인센스 향(incense ≥ 8) 매력도 배수 (결정 #84) */
+  incensePremium?: number;
   /** 비지터 센터 관광 잠재력 (한국 = 1) */
   tourism?: number;
   /** 전통주(지역특산주) 주세 경감: 자국 자생 원재료 비율이 nativeShare 이상인 자사 제품. 연 누적 출고량(L) 구간별 세율 배수 */
@@ -150,13 +194,51 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     // 완화책(#73): 전통주 주세 경감 — 증류주 연 100㎘까지 50%, 100~200㎘ 30% (2025 시행령 개정안 보도 기준) [확인 필요: 최종 조문]
     // 요건 강화(#75): 지역 농산물 70% 이상 + 농업경영체 등록(원료 계약재배) + 전년 경감 대상 출고 500㎘ 이하
     traditionalRelief: { nativeShare: 0.7, tiers: [{ upToL: 100_000, factor: 0.5 }, { upToL: 200_000, factor: 0.7 }], label: '전통주 주세 경감', basis: '주세법: 전통주 세율 100분의 50 범위 경감, 시행령 개정안: 증류주 100㎘ 이하 50%·100~200㎘ 30%, 대상 출고량 500㎘ 이하. 지역특산주는 농업경영체·생산자단체 요건', requiresFacility: 'kr_farm_registration', maxPrevYearL: 500_000 },
+    // 경기 내륙 (기본 입지) — 수도권 시장 접근, 대표 결정: 대형 유통 납품 (결정 #84)
+    defaultSite: {
+      tagline: '수도권 시장 접근 — 균형형·튜토리얼', difficulty: 2, outboundLogistics: 0.9, deals: ['retail'],
+      traits: [
+        { tone: 'good', text: '수도권 시장: 국내 출고 물류비 −10%' },
+        { tone: 'good', text: '대형 유통 납품 제안 — 물량을 출고가 80%에 넘기고 대금은 2개월 뒤 (매대 노출로 인지도↑, 숙성 위스키 매력도 ×0.9)' },
+        { tone: 'bad', text: '전통주 경감을 받으려면 국산 원료 70%↑ + 농업경영체 등록' },
+      ],
+    },
     sites: [{
       id: 'andong', nameKo: '경북 안동',
+      tagline: '전통주 경감을 노리는 소주·위스키 겸업', difficulty: 2,
+      traits: [
+        { tone: 'good', text: '관광 잠재력 ×1.2 (하회마을·탈춤축제)' },
+        { tone: 'good', text: '전통주 주세 경감 — 국산 원료 70%↑ + 농업경영체 등록' },
+        { tone: 'bad', text: '내륙 대륙성 기후: 겨울이 춥다 (발효가 느려진다)' },
+      ],
       // 안동 ASOS 평년(1991~2020) 연평균 12.2°C·여름 23.9°C·겨울 −0.3°C에 맞춘 월별 근사치. 습도는 추정 [확인 필요: 기상청 월별 평년값]
       tempC: [-1.9, 0.6, 6.3, 12.4, 17.6, 22.0, 24.9, 24.9, 20.0, 13.4, 6.6, 0.4],
       humidity: [60, 57, 56, 56, 62, 70, 78, 78, 75, 71, 67, 63],
       basis: '안동 ASOS 평년값(연·계절 평균) 기반 근사. 김창수위스키 제2증류소(2026-07 준공) 소재지',
       tourism: 1.2,
+    }, {
+      // 제주 (결정 #84): 화산암반수·지정면세점, 대신 취수 허가·해운 물류
+      id: 'jeju', nameKo: '제주',
+      tagline: '화산암반수와 면세점, 대신 물을 마음대로 퍼 올릴 수 없다', difficulty: 3,
+      // 제주 평년값 근사 [확인 필요: 기상청 월별 평년값]
+      tempC: [6, 7, 10, 14, 18, 21.5, 26, 27, 23.5, 18.5, 13, 8.5],
+      humidity: [68, 67, 67, 70, 75, 81, 84, 82, 76, 70, 68, 67],
+      basis: '제주 평년값 근사(추정)',
+      tourism: 1.6, water: 'volcanic', overheadFactor: 0.9, buildCostFactor: 1.2,
+      freight: { ingredients: 1.08, packaging: 1.15, casks: 1.1 }, outboundLogistics: 2, bulkFreight: 0.85,
+      // 공정용수 월 15,000L — 실제 허가량(t/일)을 게임 규모로 단순화 [게임적 단순화]
+      waterPermit: { baseL: 15_000, stepL: 10_000, cost: 20_000_000, months: [6, 12], chance: 0.6 },
+      dutyFree: { seasonality: [1.15, 1.0, 0.75, 0.85, 1.0, 0.9, 1.4, 1.5, 0.9, 1.15, 0.75, 0.95] },
+      eventBoost: { typhoon: 1.3 },
+      starter: { name: '고은별', distillery: '오름 증류소' },
+      traits: [
+        { tone: 'good', text: '화산암반수: 발효 이취 −20%, 과일향↑, 수율 +3%' },
+        { tone: 'good', text: '지정면세점 채널: 출도 관광객에게 주세·부가세 없이 판매 (주류 2L·미화 400달러 한도), 면세 한정판 시리즈' },
+        { tone: 'good', text: '제주 차조 고소리술·청귤 보태니컬, 관광 잠재력 ×1.6' },
+        { tone: 'bad', text: '지하수 취수 허가: 월 발효 투입 15,000L 상한 (증량 신청 가능)' },
+        { tone: 'bad', text: '해운 물류: 국내 출고 물류비 ×2, 원료·포장재·캐스크 운송 할증, 건설비 +20%, 원액 B2B 단가 ×0.85' },
+        { tone: 'bad', text: '태풍 가중 ×1.3' },
+      ],
     }],
     caskPriceFactor: { korean_oak_quarter: 1.0, mizunara_hogshead: 1.6 },
   },
@@ -199,6 +281,54 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     eventWeights: { market: 1.1, supply: 1.0, disaster: 1.4, regulation: 0.8, b2b: 1.1, opportunity: 1.0, people: 1.0 },
     // 수입 원액 병입은 "재패니즈 위스키"가 될 수 없고 하이볼용 저가 위스키로 소비된다
     sourcedPenalty: 0.85,
+    // 미즈나라 백단·인센스 향은 일본 시장 프리미엄 (결정 #84)
+    incensePremium: 1.25,
+    // 간토 내륙 (기본 입지) — 대표 결정: 위탁생산(OEM) (결정 #84)
+    defaultSite: {
+      tagline: '원액 공급 계약·위탁생산으로 버티는 표준형', difficulty: 3, deals: ['oem'],
+      traits: [
+        { tone: 'good', text: '위탁생산(OEM) 제안 — 남는 설비로 다른 브랜드 원액을 증류, 설비가 없으면 위탁사가 전용 증류기 설치비 60% 지원' },
+        { tone: 'good', text: '원액 B2B 시장이 깊다(지역 공통)' },
+        { tone: 'bad', text: '지진·태풍' },
+      ],
+    },
+    sites: [{
+      // 오사카·교토 (결정 #84): 명수·미즈나라·관광, 대신 지진과 땅값
+      id: 'kansai', nameKo: '오사카·교토',
+      tagline: '명수·미즈나라·관광의 땅, 대신 지진과 땅값', difficulty: 3,
+      tempC: [4.8, 5.4, 8.8, 14.4, 19.5, 23.2, 27.3, 28.5, 24.4, 18.4, 12.5, 7.2],
+      humidity: [66, 65, 63, 63, 66, 72, 76, 72, 73, 72, 70, 68],
+      basis: '오사카·교토 평년값 근사(추정)',
+      tourism: 1.5, water: 'soft', overheadFactor: 1.1, warehouseCostFactor: 1.3, demandFactor: 1.1,
+      caskPriceFactor: { mizunara_hogshead: 0.8 }, eventBoost: { earthquake: 1.5 },
+      starter: { name: '야마다 유키', distillery: '미오 증류소' },
+      traits: [
+        { tone: 'good', text: '연수 명수: 발효 이취 −30%, 과일·플로럴 +10%' },
+        { tone: 'good', text: '미즈나라 캐스크 추가 −20%, 인센스 향 일본 프리미엄 ×1.25(지역 공통)' },
+        { tone: 'good', text: '간사이 인바운드: 국내 수요 +10%, 관광 잠재력 ×1.5' },
+        { tone: 'bad', text: '지진 가중 ×1.5 — 내진 랙 보강이 사실상 필수' },
+        { tone: 'bad', text: '땅값: 관리비 ×1.1, 숙성고 증설비 ×1.3' },
+      ],
+    }, {
+      // 홋카이도 (결정 #84): 싸고 느린 땅, 재고 담보대출로 버티는 장기 숙성
+      id: 'hokkaido', nameKo: '홋카이도',
+      tagline: '싸고 느린 땅에 오래 묵히는 재고전', difficulty: 4,
+      tempC: [-3.5, -3, 0.5, 6, 11, 15, 19.5, 21, 17, 10.5, 4, -1],
+      humidity: [76, 74, 70, 68, 72, 78, 82, 81, 78, 74, 74, 76],
+      basis: '홋카이도 내륙 평년값 근사(추정)',
+      tourism: 1.0, overheadFactor: 0.9, warehouseCostFactor: 0.7, outboundLogistics: 1.25, inventoryLtv: 0.6,
+      heating: { months: [11, 12, 1, 2, 3], perMonth: 4_000_000, energyFactor: 1.6 },
+      eventBoost: { snowstorm: 1.5, cold_wave: 1.3 },
+      starter: { name: '오노 다이치', distillery: '시라카바 증류소' },
+      traits: [
+        { tone: 'good', text: '싼 땅: 관리비 ×0.9, 숙성고 증설비 ×0.7' },
+        { tone: 'good', text: '재고 담보대출: 숙성 재고 시가의 60%까지 빌린다(시가가 떨어지면 추가 상환)' },
+        { tone: 'good', text: '감자 쇼추, 서늘해서 증발이 적다' },
+        { tone: 'bad', text: '난방: 11~3월 난방비 월 400만 원 + 증류 에너지비 ×1.6' },
+        { tone: 'bad', text: '본토 출고 물류비 +25%, 숙성이 느리다' },
+        { tone: 'bad', text: '폭설·한파 가중' },
+      ],
+    }],
     // 주세법(酒税法)은 숙성 규정이 없다 → 바로 "위스키" 판매 가능. 일본양주주조조합 자율 기준: 일본 내 나무통 3년 이상 → "재패니즈 위스키" (3차 검색 확인)
     whisky: { minMonths: 0, requiresOak: false, basis: '주세법: 숙성 규정 없음. 재패니즈 위스키 표기는 업계 자율 기준 3년', premiumLabel: { name: '재패니즈 위스키', minMonths: 36, appealWithout: 0.7 } },
     caskPriceFactor: { mizunara_hogshead: 0.6, korean_oak_quarter: 1.6 },
@@ -243,8 +373,20 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     whisky: { minMonths: 24, requiresOak: true, basis: '菸酒管理法施行細則 第3條: 木桶貯存兩年以上, 酒精成分 40% 이상' },
     // 진먼 고량주는 진먼섬(金門) 입지에서 만든 것만 (결정 #62)
     specialties: [{ id: 'kinmen', label: '진먼 고량주', category: 'baijiu', ingredientId: 'sorghum_kinmen', minShare: 0.6, appealBonus: 1.35, siteOnly: 'kinmen' }],
+    defaultSite: {
+      tagline: '2년에 출시하는 빠른 싱글 몰트, 대신 증발이 크다', difficulty: 3,
+      traits: [
+        { tone: 'good', text: '빠른 숙성 — 위스키는 2년부터' },
+        { tone: 'bad', text: '증발 연 약 10%, 태풍·지진' },
+      ],
+    },
     sites: [{
       id: 'kinmen', nameKo: '진먼섬(金門)',
+      tagline: '진먼 고량주 특산물의 섬', difficulty: 3,
+      traits: [
+        { tone: 'good', text: '진먼 고량주 특산물 표기(진먼 고량 60%↑) — 대만 시장 매력도 ×1.35' },
+        { tone: 'good', text: '이란보다 증발이 적다, 관광 ×1.3' },
+      ],
       // 샤먼 앞바다의 섬 — 이란보다 겨울이 서늘하고 바람이 강하다. 월별 근사치 [추정]
       tempC: [13.0, 13.3, 15.4, 19.4, 23.3, 26.4, 28.4, 28.2, 26.9, 23.6, 19.6, 15.1],
       humidity: [73, 78, 80, 82, 83, 85, 82, 81, 76, 70, 70, 70],
@@ -281,7 +423,12 @@ export function regionOf(s: Pick<GameState, 'regionId'>): RegionDef {
 /** 현재 증류소 입지 (기본 입지는 지역의 tempC·humidity) */
 export function siteOf(s: Pick<GameState, 'regionId' | 'siteId'>): SiteDef {
   const r = regionOf(s);
-  return r.sites?.find((x) => x.id === s.siteId) ?? { id: 'default', nameKo: r.nameKo.replace(/^.*\((.*)\)$/, '$1'), tempC: r.tempC, humidity: r.humidity, basis: '지역 기본 입지' };
+  return r.sites?.find((x) => x.id === s.siteId) ?? { nameKo: r.nameKo.replace(/^.*\((.*)\)$/, '$1'), basis: '지역 기본 입지', ...r.defaultSite, id: 'default', tempC: r.tempC, humidity: r.humidity };
+}
+
+/** 입지 목록 (기본 입지 포함) — 새 게임 화면·밸런스 스크립트용 */
+export function sitesOfRegion(regionId: RegionId): SiteDef[] {
+  return [siteOf({ regionId }), ...(REGIONS[regionId].sites ?? [])];
 }
 
 /** 도수 반영 기준 소비자가(원/L) */
