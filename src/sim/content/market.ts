@@ -1,0 +1,74 @@
+import type { EquipmentDef } from './production';
+
+// 시장 콘텐츠 (파트 MKT, 결정 #144) — 패키징·마진 구조(병입 인건비·유통)·원액 B2B·비지터 센터 설비. 모든 수치 [튜닝]
+
+// ── 패키징 ──
+/** 600ml = 대만 고량주 표준 병 */
+export const BOTTLE_SIZES = [375, 500, 600, 700] as const;
+export type BottleMl = (typeof BOTTLE_SIZES)[number];
+
+export const PACKAGING: Record<string, { nameKo: string; costBySize: Record<BottleMl, number>; luxury: number }> = {
+  standard: { nameKo: '스탠다드 병 + 코르크', costBySize: { 375: 1500, 500: 2000, 600: 2400, 700: 2800 }, luxury: 1.0 },
+  premium: { nameKo: '디캔터 + 케이스', costBySize: { 375: 6000, 500: 8000, 600: 9500, 700: 11000 }, luxury: 1.15 },
+};
+
+export function packagingCost(packagingId: string, bottleMl: number): number {
+  const p = PACKAGING[packagingId];
+  if (!p) return 0;
+  return p.costBySize[bottleMl as BottleMl] ?? Math.round(p.costBySize[700] * (bottleMl / 700));
+}
+
+// ── 마진 구조 (PRD §9.5) — 병당 고정비가 저가 제품의 마진을 깎는다 [튜닝] ──
+/** 병입 인건비·라인 비용 (병당) */
+export const BOTTLING_LABOR_PER_BOTTLE = 500;
+/** 유통: 채널 수수료(출고가 대비)와 병당 물류비 */
+export const DISTRIBUTION = {
+  channelFeeRate: 0.12,
+  logisticsBySize: { 375: 300, 500: 350, 700: 400 } as Record<BottleMl, number>,
+};
+export function logisticsCost(bottleMl: number): number {
+  return DISTRIBUTION.logisticsBySize[bottleMl as BottleMl] ?? Math.round(400 * (bottleMl / 700));
+}
+
+// ── 원액 B2B (PRD §8.6) [튜닝] ──
+// 원액 구매자 목록은 content/names.ts (BUYERS)로 이동 — 실명/가상명 전환 지원
+export const BULK = {
+  /** 뉴메이크 몰트 기준가(원/LPA) */
+  newMakeBase: 12_500,
+  /** 숙성 1년당 가치 상승 */
+  agePerYear: 0.2,
+  /** 피트 원액 프리미엄 */
+  peatPremium: 0.15,
+  /** 현물 매입가(우리가 팔 때) = 기준가치 × bid, 브로커 판매가(우리가 살 때) = × ask */
+  bid: 0.85,
+  ask: 1.25,
+  /** 계약가 = 기준가치 × contract (현물보다 높지만 고정) */
+  /** v1.3(#77): 0.9 → 1.1 — 장기 계약은 물량 보장 대가로 현물 기준가보다 비싸다 */
+  contract: 1.1,
+  /** 계약 기간 프리미엄: 24개월 +4%, 36개월 +8% */
+  termPremiumPer12: 0.04,
+  /** 선급금을 받으면 단가 할인 */
+  prepayDiscount: 0.05,
+  /** 미납 1 LPA당 위약금 = 계약가 × penaltyRate */
+  penaltyRate: 0.3,
+  maxActiveContracts: 5,
+  /** 크래프트 프리미엄 계약(#78): 생산 능력의 10~20%, 단가 ×1.5, 최소 품질 40~46 */
+  craftPriceFactor: 1.5,
+  craftChance: 0.3,
+  /** 그레인 뉴메이크 기준가(원/LPA) — 대량·저가 */
+  grainNewMakeBase: 7_000,
+  grainAgePerYear: 0.12,
+  /** 그레인 현물 시장 포화(#81) — 깊이는 지역별(RegionDef.grainSpotDepthLPA). 그레인 원액은 대형 블렌더가 자체 증류소에서
+   *  만들어 외부 구매자가 적다. 몰트 현물(브로커) 시장은 깊어서 포화 없음.
+   *  현물 판매량 기억의 월 감쇠 — 시장이 물량을 소화하는 속도 */
+  spotDecay: 0.6,
+};
+
+/** 비지터 센터 설비 (EQUIPMENT 항목) */
+export const VISITOR_EQUIPMENT: Record<string, EquipmentDef> = {
+  // ── 비지터 센터 ──
+  visitor_basic: { id: 'visitor_basic', kind: 'visitor', nameKo: '비지터 센터 — 베이직 투어', cost: 80_000_000, leadMonths: 4, maintenance: 3_000_000, tier: 1, visitorsPerMonth: 600, spendPerVisitor: 15_000, buzzQuality: 0.6 },
+  // 결정 #92: VIP·레스토랑은 소수 고객 상품 — v1.4 수치(VIP 월 400명 × 6만 원)는 관광 배수가 높은 입지에서 본업보다 많이 벌어(오사카·교토 순자산 54억) 방문객·객단가를 낮췄다 [튜닝]
+  visitor_vip: { id: 'visitor_vip', kind: 'visitor', nameKo: '비지터 센터 — VIP 테이스팅 라운지', cost: 200_000_000, leadMonths: 6, maintenance: 4_000_000, tier: 2, visitorsPerMonth: 150, spendPerVisitor: 50_000, buzzQuality: 1.2, requires: 'visitor_basic' },
+  visitor_restaurant: { id: 'visitor_restaurant', kind: 'visitor', nameKo: '비지터 센터 — 레스토랑 결합형', cost: 500_000_000, leadMonths: 9, maintenance: 8_000_000, tier: 3, visitorsPerMonth: 300, spendPerVisitor: 40_000, buzzQuality: 1.5, requires: 'visitor_vip' },
+};
