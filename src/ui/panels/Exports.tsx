@@ -35,7 +35,7 @@ export function Exports() {
           >
             <p className="mb-2 text-xs text-stone-500">{m.descKo}</p>
             <div className="mb-3 grid grid-cols-2 gap-2 text-xs md:grid-cols-6">
-              <div>관세 <b>{pct(m.tariff[s.regionId], 0)}</b></div>
+              <div>관세 <b>{pct(m.tariff[s.regionId], 1)}</b></div>
               <div>현지 주세 <b>{won(m.excisePerLPA)}</b>/LPA</div>
               <div>부가세 <b>{pct(m.vat, 0)}</b></div>
               <div>유통 배수 <b>×{m.channelMultiple}</b></div>
