@@ -25,7 +25,7 @@ describe('세이브 v9 → v10 (S-9)', () => {
 
 describe('마일스톤 (S-9)', () => {
   it('처음 일어난 달에 한 번만 기록한다', () => {
-    let s = newGame({ seed: 2 });
+    let s = newGame({ seed: 4 }); // 첫 달에 생산을 멈추는 이벤트가 없는 시드 (S-5)
     const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
     s = applyAction(s, { type: 'setOrder', recipeId: malt.id, batchesPerMonth: 2 }).state;
     s = applyAction(s, { type: 'takeLoan', offerId: 'kr_regional', amount: 100_000_000 }).state;
