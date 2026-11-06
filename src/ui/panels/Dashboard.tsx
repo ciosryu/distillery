@@ -1,84 +1,14 @@
-import { calendar, capacityReport, coverage, hasUpgrade, ingredientSupplyCap, liveDutyFreeEditions, monthLabel, monthlyFixedCost, riskScale, traditionalReliefRate, warehouseCapacity, waterPermitCap } from '../../sim';
-import { INGREDIENTS } from '../../sim/content/catalog';
-import { REGIONS } from '../../sim/content/regions';
-import { siteOf } from '../../sim/content/sites';
+import { capacityReport, coverage, monthLabel, monthlyFixedCost, warehouseCapacity } from '../../sim';
+import { hasPremiumChannel, retailCapacityCases, visitorTiers } from '../../sim/ops';
 import { useGame } from '../../store/game';
 import { Sparkline } from '../charts';
 import { won, pct, liters, num } from '../format';
-import { Badge, Button, Card, Empty, Meter, Stat, Table, Td } from '../kit';
+import { Card, Empty, Meter, Stat, Table, Td } from '../kit';
 import { EventsCard } from './Events';
 
 const EXPENSE_LABEL: Record<string, string> = {
-  production: '생산(원재료·에너지)', distribution: '유통비(채널·물류)', penalty: '계약 위약금', salaries: '급여', overhead: '관리비', heating: '난방비', storage: '숙성 재고 보관료', insurance: '숙성 재고 보험료', maintenance: '설비 유지비', marketing: '마케팅', interest: '이자', principal: '원금 상환',
+  production: '생산(원재료·에너지)', distribution: '유통비(채널·물류)', penalty: '계약 위약금', salaries: '급여', overhead: '관리비', maintenance: '설비 유지비', marketing: '마케팅', interest: '이자', principal: '원금 상환',
 };
-
-/** 산지 특성과 산지 고유 상태 (regions.md Tier 1) */
-function SiteCard() {
-  const s = useGame((g) => g.state);
-  const dispatch = useGame((g) => g.dispatch);
-  const site = siteOf(s);
-  const country = REGIONS[s.regionId];
-  const wp = site.waterPermit;
-  const app = s.siteState.permitApplication;
-  const shipped = s.siteState.traditionalShipped;
-  const thisYear = shipped && shipped.year === calendar(s).year ? shipped.liters : 0;
-  const quake = riskScale(s, 'earthquake');
-  return (
-    <Card title={<>산지 — {country.nameKo} · {site.nameKo} <span className="text-xs font-normal text-stone-500">{'★'.repeat(site.difficulty)} · {site.tagline}</span></>}>
-      <div className="grid gap-3 md:grid-cols-2">
-        <ul className="grid gap-0.5 text-sm">
-          {site.traits.map((x) => <li key={x.text} className={x.tone === 'good' ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}>{x.tone === 'good' ? '＋' : '－'} {x.text}</li>)}
-        </ul>
-        <div className="grid content-start gap-2 text-sm">
-          <div className="text-stone-600 dark:text-stone-300">
-            관리비 월 {won(site.overheadPerMonth)} · 엔젤스 셰어 보정 ×{site.angelShareFactor} · 물 {site.water === 'soft' ? '연수' : site.water === 'volcanic' ? '화산암반수' : '보통'}
-          </div>
-          {site.traditional && country.traditional && (
-            <div>
-              <b>전통주</b> — 올해 출고 {liters(thisYear)} · 현재 감면율 {pct(traditionalReliefRate(s, true), 0)}
-              <div className="text-xs text-stone-500">{country.traditional.label}. 전년 출고 {liters(country.traditional.eligibleMaxLastYearL)} 초과 시 자격 상실</div>
-              {Object.values(INGREDIENTS).filter((i) => i.monthlySupplyKg && i.sites?.includes(site.id)).map((i) => (
-                <div key={i.id} className="text-xs text-stone-500">{i.nameKo}: 지난달 {num(Math.round(s.ingredientKgLastMonth[i.id] ?? 0))} / 월 {num(ingredientSupplyCap(s, i.id))}kg 공급 한도</div>
-              ))}
-              {site.localSupply && (
-                <div className="mt-1">
-                  {s.siteState.localSupplyPending
-                    ? <Badge tone="warn">계약재배 확대 중 · {monthLabel(s.startYear, s.siteState.localSupplyPending.readyMonth)}부터 +{num(s.siteState.localSupplyPending.addKg)}kg</Badge>
-                    : <Button small disabled={(s.siteState.localSupplySteps ?? 0) >= site.localSupply.maxSteps || s.cash < site.localSupply.cost} onClick={() => dispatch({ type: 'expandLocalSupply' })}>계약재배 확대 (+{num(site.localSupply.stepKg)}kg/월, {won(site.localSupply.cost)}, {site.localSupply.leadMonths}개월 · {s.siteState.localSupplySteps ?? 0}/{site.localSupply.maxSteps}회)</Button>}
-                </div>
-              )}
-            </div>
-          )}
-          {wp && (
-            <div>
-              <b>취수 허가</b> — 월 발효 투입 {liters(waterPermitCap(s))} 상한
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-                {app
-                  ? <Badge tone="warn">증량 심사 중 · {monthLabel(s.startYear, app.decideMonth)} 결과 · 승인 확률 {pct(app.chance, 0)}</Badge>
-                  : <Button small disabled={s.cash < wp.cost} onClick={() => dispatch({ type: 'applyWaterPermit' })}>증량 신청 (+{liters(wp.stepL)}, {won(wp.cost)}, {wp.months[0]}~{wp.months[1]}개월, 승인 {pct(wp.chance, 0)})</Button>}
-              </div>
-            </div>
-          )}
-          {site.dutyFree && (() => {
-            const last = s.reports.at(-1);
-            const live = liveDutyFreeEditions(s)[0];
-            const series = s.siteState.dfSeries;
-            return (
-              <div>
-                <b>지정면세점</b> — 지난달 면세 판매 {num(last?.dutyFreeBottles ?? 0)}병 (주세·부가세 없음) · 관광객 입소문 인지도 {(() => { const v = (last?.dutyFreeAwareness ?? 0) * 100; return v > 0 && v < 0.01 ? '+0.01%p 미만' : `+${v.toFixed(2)}%p`; })()}
-                <div className="text-xs text-stone-500">
-                  면세 한정판 매대: {live?.dfEdition ? `Vol.${live.dfEdition.vol} ${live.name} — 출시 ${s.month - live.createdMonth + 1}개월째, 남은 ${num(live.stockBottles)}병` : '비어 있음'} · 연속 완판 {series?.streak ?? 0}회
-                </div>
-              </div>
-            );
-          })()}
-          {site.winterFerment && <div><b>겨울 발효</b> — {site.winterFerment.months.join('·')}월 발효조 가동 {pct(site.winterFerment.capacity, 0)} {hasUpgrade(s, 'temp_control') ? <Badge tone="good">온도 제어 설비로 해소</Badge> : <span className="text-xs text-stone-500">(생산 탭에서 온도 제어 설비 발주)</span>}</div>}
-          {quake < 1 && <div><b>지진 대비</b> — 피해 {pct(1 - quake, 0)} 경감</div>}
-        </div>
-      </div>
-    </Card>
-  );
-}
 
 export function Dashboard() {
   const s = useGame((g) => g.state);
@@ -101,11 +31,11 @@ export function Dashboard() {
         <Stat label="탱크 원액" value={`${num(tankLPA)} LPA`} hint={`${s.lots.length}개 로트`} />
         <Stat label="판매 중 제품" value={s.products.filter((p) => p.stockBottles > 0).length} hint={`재고 ${num(s.products.reduce((t, p) => t + p.stockBottles, 0))}병`} />
         <Stat label="대출 잔액" value={won(s.loans.reduce((t, l) => t + l.balance, 0))} hint={`${s.loans.length}건`} />
+        <Stat label="소매 처리 역량 (지난달)" value={last?.retailCapacityCases != null ? `${num(last.retailSoldCases ?? 0)} / ${num(last.retailCapacityCases)} 케이스` : `${num(retailCapacityCases(s))} 케이스/월`} tone={last?.overflowCases ? 'warn' : undefined} hint={last?.overflowCases ? `초과 ${num(last.overflowCases)}케이스 고비용 채널${last.lostSalesBottles ? ` · ${num(last.lostSalesBottles)}병 못 팔음` : ''}` : `영업 직원·네트워크로 늘어남${hasPremiumChannel(s) ? ' · 고급 유통망 확보' : ''}`} />
+        <Stat label="비지터 센터 (지난달)" value={visitorTiers(s).length ? `${num(last?.visitors ?? 0)}명 · ${won(last?.tourismRevenue ?? 0)}` : '없음'} hint={`입소문 ${pct(s.localBuzz)} — 첫 위스키 출시 때 오픈런 확률`} />
       </div>
 
       <EventsCard />
-
-      <SiteCard />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card title="현금 추이" className="lg:col-span-2">
@@ -134,9 +64,6 @@ export function Dashboard() {
               <Table head={['항목', '금액']}>
                 <tr><Td>제품 매출</Td><Td right>{won(last.revenue)}</Td></tr>
                 {last.bulkRevenue > 0 && <tr><Td>원액 계약 납품</Td><Td right>{won(last.bulkRevenue)}</Td></tr>}
-                {(last.visitorRevenue ?? 0) > 0 && <tr><Td>└ 그중 직판장 ({num(last.visitorBottles ?? 0)}병)</Td><Td right>{won(last.visitorRevenue!)}</Td></tr>}
-                {(last.retailRevenue ?? 0) > 0 && <tr><Td>대형 유통 납품 대금 입금</Td><Td right>{won(last.retailRevenue!)}</Td></tr>}
-                {(last.oemRevenue ?? 0) > 0 && <tr><Td>위탁생산 가공비</Td><Td right>{won(last.oemRevenue!)}</Td></tr>}
                 {Object.entries(last.expenses).map(([k, v]) => <tr key={k}><Td>{EXPENSE_LABEL[k] ?? k}</Td><Td right>−{won(v)}</Td></tr>)}
                 <tr className="font-semibold"><Td>순현금</Td><Td right>{won(last.netCash)}</Td></tr>
               </Table>

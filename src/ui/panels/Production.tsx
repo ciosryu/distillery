@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react';
-import { BOTANICALS, EQUIPMENT, INGREDIENTS, ORIGIN_LABEL, YEASTS } from '../../sim/content/catalog';
+import { BOTANICALS, EQUIPMENT, INGREDIENTS, YEASTS } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import {
-  bestBy, equipmentAvailable, equipmentBlocker, equipmentCost, evaluate, isTraditionalRecipe, monthLabel, simulateBatch, staffOf, stillDefOf, validateRecipe,
+  bestBy, evaluate, monthLabel, simulateBatch, staffOf, stillDefOf, validateRecipe,
   type FermenterType, type GameState, type ProductCategory, type Recipe, type SpiritKind, type YeastId,
 } from '../../sim';
-import { siteOf } from '../../sim/content/sites';
 import { useGame } from '../../store/game';
-import { regionOf } from '../../sim/content/regions';
+import { logisticsMultiplier, regionOf } from '../../sim/content/regions';
 import { Radar } from '../charts';
 import { liters, num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
@@ -20,7 +19,7 @@ function previewOf(s: GameState, r: Recipe) {
   if (!still) return null;
   const fermTypes = s.equipment.map((e) => EQUIPMENT[e.catalogId]).filter((d) => d?.kind === 'fermenter').map((d) => (d as { fermenterType: FermenterType }).fermenterType);
   const ferm: FermenterType | null = r.kind === 'gin' ? null : r.kind === 'soju' && fermTypes.includes('onggi') ? 'onggi' : fermTypes[0] ?? 'stainless';
-  const b = simulateBatch(r, still, ferm, bestBy(staffOf(s, 'distiller'), 'b'), s.priceIndex, 0, siteOf(s).water);
+  const b = simulateBatch(r, still, ferm, bestBy(staffOf(s, 'distiller'), 'b'), s.priceIndex, 0);
   return { ...b, evaluation: evaluate(b.flavor, kindCategory(r.kind)) };
 }
 
@@ -56,7 +55,7 @@ function Orders() {
           );
         })}
       </Table>
-      <p className="mt-2 text-xs text-stone-500">원액은 매달 말 탱크에 쌓입니다. 비숙성 주종(소주·진·고량주 등)은 바로 병입할 수 있고, 몰트는 캐스크에 통입해 36개월 이상 숙성해야 "위스키"로 판매할 수 있습니다. 설비·인력 한도는 대시보드의 가동 계획에서 확인하세요.</p>
+      <p className="mt-2 text-xs text-stone-500">원액은 매달 말 탱크에 쌓입니다. 비숙성 주종(소주·진·고량주 등)은 바로 병입할 수 있고, 몰트는 {(() => { const w = regionOf(s).whisky; return w.minMonths > 0 ? `캐스크에 통입해 ${w.minMonths}개월 이상 숙성해야 "위스키"로 판매할 수 있습니다` : w.requiresOak ? '캐스크에 넣기만 하면 바로 "위스키"로 팔 수 있지만(법정 최소 숙성 없음) 3년 미만은 어린 위스키라 값을 덜 받습니다' : '숙성 없이도 "위스키"로 팔 수 있지만(법정 최소 숙성 없음) 3년 미만은 어린 위스키라 값을 덜 받습니다'; })()} 설비·인력 한도는 대시보드의 가동 계획에서 확인하세요.</p>
     </Card>
   );
 }
@@ -86,7 +85,7 @@ function RecipeEditor() {
   const errs = validateRecipe(s, { ...draft, id: draft.id ?? 'new' } as Recipe);
   const preview = useMemo(() => (errs.length ? null : previewOf(s, { ...draft, id: 'preview' } as Recipe)), [s, draft, errs.length]);
   const stills = s.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'still');
-  const ingOptions = Object.values(INGREDIENTS).filter((i) => draft.kind !== 'gin' && (i.kinds as string[]).includes(draft.kind) && (!i.sites || i.sites.includes(s.siteId)));
+  const ingOptions = Object.values(INGREDIENTS).filter((i) => draft.kind !== 'gin' && (i.kinds as string[]).includes(draft.kind));
   const ratioSum = draft.mashBill.reduce((t, m) => t + m.ratio, 0);
 
   return (
@@ -116,7 +115,7 @@ function RecipeEditor() {
               <div className="text-xs font-semibold text-stone-500">원재료 배합 (합계 {pct(ratioSum, 0)})</div>
               {draft.mashBill.map((m, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-2">
-                  <Select value={m.ingredientId} options={ingOptions.map((o) => ({ value: o.id, label: `[${ORIGIN_LABEL[o.origin]}] ${o.nameKo} (${won(o.pricePerKg)}/kg)${o.monthlySupplyKg ? ` · 월 ${o.monthlySupplyKg.toLocaleString()}kg 한도` : ''}` }))} onChange={(v) => set({ mashBill: draft.mashBill.map((x, j) => (j === i ? { ...x, ingredientId: v } : x)) })} />
+                  <Select value={m.ingredientId} options={ingOptions.map((o) => ({ value: o.id, label: `${o.nameKo} (${won(o.pricePerKg)}/kg)` }))} onChange={(v) => set({ mashBill: draft.mashBill.map((x, j) => (j === i ? { ...x, ingredientId: v } : x)) })} />
                   <NumberField value={Math.round(m.ratio * 100)} min={0} max={100} width="w-16" suffix="%" onCommit={(v) => set({ mashBill: draft.mashBill.map((x, j) => (j === i ? { ...x, ratio: v / 100 } : x)) })} />
                   <Button small variant="ghost" onClick={() => set({ mashBill: draft.mashBill.filter((_, j) => j !== i) })}>삭제</Button>
                 </div>
@@ -134,7 +133,7 @@ function RecipeEditor() {
               <div className="text-xs font-semibold text-stone-500">보태니컬 (g/L — 주니퍼 필수, 주니퍼가 가장 강해야 "진" 표기 가능)</div>
               {draft.botanicals.map((b, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-2">
-                  <Select value={b.botanicalId} options={Object.values(BOTANICALS).filter((o) => (!o.regions || o.regions.includes(s.regionId)) && (!o.sites || o.sites.includes(s.siteId))).map((o) => ({ value: o.id, label: `${o.nameKo}${o.sites ? ' (산지 특산)' : o.regions ? ' (지역 특산)' : ''}` }))} onChange={(v) => set({ botanicals: draft.botanicals.map((x, j) => (j === i ? { ...x, botanicalId: v } : x)) })} />
+                  <Select value={b.botanicalId} options={Object.values(BOTANICALS).map((o) => { const k = logisticsMultiplier(o.native, s.regionId); return { value: o.id, label: `${o.nameKo}${o.native ? (k > 1 ? ` (수입 ×${k})` : ' (지역 특산)') : ''}` }; })} onChange={(v) => set({ botanicals: draft.botanicals.map((x, j) => (j === i ? { ...x, botanicalId: v } : x)) })} />
                   <NumberField value={b.gramsPerL} min={0} max={60} step={0.5} width="w-16" suffix="g/L" onCommit={(v) => set({ botanicals: draft.botanicals.map((x, j) => (j === i ? { ...x, gramsPerL: v } : x)) })} />
                   <Button small variant="ghost" onClick={() => set({ botanicals: draft.botanicals.filter((_, j) => j !== i) })}>삭제</Button>
                 </div>
@@ -159,11 +158,6 @@ function RecipeEditor() {
           </div>
 
           {errs.length > 0 && <ul className="list-disc pl-4 text-xs text-rose-700 dark:text-rose-400">{errs.map((e) => <li key={e}>{e}</li>)}</ul>}
-          {draft.kind === 'soju' && siteOf(s).traditional && (
-            <div className="text-xs">{isTraditionalRecipe(siteOf(s), draft)
-              ? <Badge tone="good">전통주 자격 — 주세 감면·온라인 직판</Badge>
-              : <span className="text-stone-500">전통주 자격 없음 — {siteOf(s).traditional!.label}</span>}</div>
-          )}
           <div className="flex gap-2">
             <Button variant="primary" disabled={errs.length > 0} onClick={() => {
               if (dispatch({ type: 'saveRecipe', recipe: draft }) && !draft.id) {
@@ -220,21 +214,17 @@ function Equipment() {
         <div>
           <h3 className="mb-1 text-xs font-semibold text-stone-500">구매</h3>
           <Table head={['설비', '사양', '가격', '설치 기간', '']}>
-            {equipmentAvailable(s).map((d) => {
-              const cost = equipmentCost(s, d);
-              const blocker = equipmentBlocker(s, d);
-              return (
-                <tr key={d.id}>
-                  <Td>{d.nameKo}{d.sites && <> <Badge tone={d.kind === 'upgrade' ? 'warn' : 'info'}>{d.kind === 'upgrade' ? '부지 개량' : '산지 특화'}</Badge></>}</Td>
-                  <Td className="text-xs text-stone-500">
-                    {d.kind === 'still' ? `월 ${d.runsPerMonth}회 · 환류 ${d.reflux}${d.vacuum ? ' · 감압' : ''}${d.ginBasket ? ' · 진 바스켓' : ''}${d.directFire ? ' · 석탄 직화(바디·오일리↑, 숙련 요구)' : ''}` : d.kind === 'fermenter' ? `${d.capacityL.toLocaleString()}L` : d.kind === 'warehouse' ? `+${d.casks} 캐스크` : d.description}
-                  </Td>
-                  <Td right>{won(cost)}{cost !== d.cost && <div className="text-xs text-stone-500">기준 {won(d.cost)}</div>}</Td>
-                  <Td right>{d.leadMonths}개월</Td>
-                  <Td><Button small disabled={s.cash < cost || !!blocker} title={blocker ?? undefined} onClick={() => dispatch({ type: 'buyEquipment', catalogId: d.id })}>{blocker && d.kind === 'upgrade' && s.equipment.some((e) => e.catalogId === d.id) ? '설치됨' : '발주'}</Button></Td>
-                </tr>
-              );
-            })}
+            {Object.values(EQUIPMENT).filter((d) => !(d.kind === 'facility' && d.regions && !d.regions.includes(s.regionId))).map((d) => (
+              <tr key={d.id}>
+                <Td>{d.nameKo}</Td>
+                <Td className="text-xs text-stone-500">
+                  {d.kind === 'still' ? `월 ${d.runsPerMonth}회 · 환류 ${d.reflux}${d.vacuum ? ' · 감압' : ''}${d.ginBasket ? ' · 진 바스켓' : ''}` : d.kind === 'fermenter' ? `${d.capacityL.toLocaleString()}L` : d.kind === 'warehouse' ? `+${d.casks} 캐스크 · ${d.warehouseType === 'dunnage' ? '더니지' : '랙'} ${d.tiers}단` : d.kind === 'facility' ? d.note : `방문객 월 ${d.visitorsPerMonth}명 · 1인 ${won(d.spendPerVisitor)}${d.requires ? ` · ${EQUIPMENT[d.requires]?.nameKo} 필요` : ''}`}
+                </Td>
+                <Td right>{won(d.cost)}</Td>
+                <Td right>{d.leadMonths}개월</Td>
+                <Td><Button small disabled={s.cash < d.cost} onClick={() => dispatch({ type: 'buyEquipment', catalogId: d.id })}>발주</Button></Td>
+              </tr>
+            ))}
           </Table>
         </div>
       </div>

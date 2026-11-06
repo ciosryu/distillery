@@ -1,12 +1,11 @@
 import { NAME_POOLS, ROLE_INFO } from './content/catalog';
 import { regionOf } from './content/regions';
-import { siteOf } from './content/sites';
 import { clamp } from './flavor';
 import type { Rng } from './rng';
 import type { Candidate, GameState, Staff, StaffRole } from './types';
 import { nid } from './util';
 
-const ROLES: StaffRole[] = ['distiller', 'warehouse', 'sales'];
+const ROLES: StaffRole[] = ['distiller', 'warehouse', 'sales', 'office'];
 
 export function salaryFor(role: StaffRole, stats: Staff['stats'], level: number, laborCost = 1): number {
   const avg = (stats.a + stats.b + stats.c) / 3;
@@ -25,12 +24,13 @@ export function makeCandidate(s: GameState, rng: Rng, role?: StaffRole): Candida
     id: nid(s, 'C'),
     name: `${rng.pick(pool.surnames)}${rng.pick(pool.given)}`,
     role: r, level, xp: 0, stats, salary, askSalary: salary, hiredMonth: -1,
+    // 입사 나이 24~58세: 노련할수록 스탯은 높지만 은퇴(65세)가 가깝다
+    ageAtHire: Math.round(clamp(rng.normal(36 + (level - 1) * 5, 7), 24, 58)),
   };
 }
 
 export function refreshCandidates(s: GameState, rng: Rng): void {
-  const extra = 1 + siteOf(s).extraCandidates;
-  s.candidates = ROLES.map((r) => makeCandidate(s, rng, r)).concat(Array.from({ length: extra }, () => makeCandidate(s, rng)));
+  s.candidates = ROLES.map((r) => makeCandidate(s, rng, r)).concat([makeCandidate(s, rng)]);
 }
 
 /** 월간 XP와 레벨업 */

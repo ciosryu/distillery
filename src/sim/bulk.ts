@@ -1,7 +1,6 @@
 import { BULK, CASKS, EQUIPMENT } from './content/catalog';
 import { BUYERS, displayName, INDEPENDENT_BOTTLERS } from './content/names';
 import { regionOf } from './content/regions';
-import { siteOf } from './content/sites';
 import { mod } from './modifiers';
 import { clamp, evaluate } from './flavor';
 import { lotCategory } from './blending';
@@ -47,9 +46,22 @@ export function bulkValuePerLPA(s: Pick<GameState, 'bulkIndex' | 'modifiers' | '
 /** B2B 신뢰도 보정: 0 → −5%, 100 → +5% */
 const trustAdj = (trust: number) => 0.95 + 0.1 * (trust / 100);
 
-/** 현물로 팔 때 받는 단가 — 현물 시장의 절반은 국내 블렌더로 보고 국산 프리미엄의 절반을 반영 */
-export function spotBidPerLPA(s: GameState, lot: SpiritLot): number {
-  return bulkValuePerLPA(s, lot) * BULK.bid * trustAdj(s.b2bTrust) * (lot.sourced ? 1 : 1 + domesticPremium(s) * 0.5) * (siteOf(s).bulkFreight ?? 1);
+/** 그레인 현물 시장 포화 계수 (#81): 1 / (1 + (최근 판매량 + 이번 판매량의 절반) / 시장 깊이). 몰트는 항상 1 */
+export function spotSaturation(s: Pick<GameState, 'spotSoldLPA' | 'regionId'>, lot: SpiritLot, lpa = 0): number {
+  if (lot.kind !== 'grain') return 1;
+  const depth = regionOf(s).grainSpotDepthLPA;
+  return 1 / (1 + ((s.spotSoldLPA?.grain ?? 0) + lpa / 2) / depth);
+}
+
+/** 현물로 팔 때 받는 단가 — 현물 시장의 절반은 국내 블렌더로 보고 국산 프리미엄의 절반을 반영. lpa = 이번에 팔 물량(포화 반영) */
+export function spotBidPerLPA(s: GameState, lot: SpiritLot, lpa = 0): number {
+  return bulkValuePerLPA(s, lot) * BULK.bid * trustAdj(s.b2bTrust) * (lot.sourced ? 1 : 1 + domesticPremium(s) * 0.5) * spotSaturation(s, lot, lpa);
+}
+
+/** 현물 판매를 시장에 기록 (포화 누적) */
+export function recordSpotSale(s: GameState, lot: SpiritLot, lpa: number): void {
+  if (lot.kind !== 'grain') return;
+  s.spotSoldLPA = { grain: (s.spotSoldLPA?.grain ?? 0) + lpa };
 }
 
 /** 브로커에게 살 때 내는 단가 (수입 원액 — 국산 프리미엄 없음) */
@@ -64,7 +76,7 @@ export function caskResidual(cask: Cask): number {
 
 export function spotQuote(s: GameState, lot: SpiritLot, liters: number, cask?: Cask): number {
   const lpa = Math.min(liters, lot.volumeL) * lot.abv;
-  return Math.round(lpa * spotBidPerLPA(s, lot) + (cask ? caskResidual(cask) : 0));
+  return Math.round(lpa * spotBidPerLPA(s, lot, lpa) + (cask ? caskResidual(cask) : 0));
 }
 
 // ── 계약 ──
@@ -86,11 +98,11 @@ export function capacityLPA(s: GameState, kind: 'malt' | 'grain'): number {
 }
 export const maltCapacityLPA = (s: GameState) => capacityLPA(s, 'malt');
 
-function contractPrice(s: GameState, spirit: ContractTerms['spirit'], style: ContractTerms['style'], minQuality: number, domestic: boolean, prepay: boolean, priceFactor = 1): number {
+function contractPrice(s: GameState, spirit: ContractTerms['spirit'], style: ContractTerms['style'], minQuality: number, domestic: boolean, prepay: boolean, priceFactor = 1, termMonths = 12): number {
   const base = spirit === 'grain_newmake' ? BULK.grainNewMakeBase : BULK.newMakeBase;
   // 블렌더는 최소 품질보다 약간 높은 원액을 기준으로 값을 매긴다
   const ref = base * qualityFactor(minQuality + 8) * (style === 'peated' ? 1 + BULK.peatPremium : 1) * s.bulkIndex * mod(s, 'bulk');
-  const p = ref * BULK.contract * trustAdj(s.b2bTrust) * (prepay ? 1 - BULK.prepayDiscount : 1) * (domestic ? 1 + domesticPremium(s) : 1) * priceFactor * (siteOf(s).bulkFreight ?? 1);
+  const p = ref * BULK.contract * (1 + BULK.termPremiumPer12 * Math.max(0, termMonths / 12 - 1)) * trustAdj(s.b2bTrust) * (prepay ? 1 - BULK.prepayDiscount : 1) * (domestic ? 1 + domesticPremium(s) : 1) * priceFactor;
   return Math.round(p / 100) * 100;
 }
 
@@ -104,7 +116,7 @@ function buildOffer(s: GameState, rng: Rng, spirit: ContractTerms['spirit'], lpa
   const buyer = rng.pick(pool.length ? pool : buyersFor(s));
   const style = spirit === 'grain_newmake' ? 'any' : rng.pick(['any', 'any', 'unpeated', 'peated'] as const);
   const minQuality = spirit === 'grain_newmake' ? rng.int(30, 38) : rng.int(35, 46);
-  const pricePerLPA = contractPrice(s, spirit, style, minQuality, buyer.domestic, prepayShare > 0, priceFactor);
+  const pricePerLPA = contractPrice(s, spirit, style, minQuality, buyer.domestic, prepayShare > 0, priceFactor, termMonths);
   return {
     id: nid(s, 'O'), buyerId: buyer.id, buyerName: buyer.nameKo, spirit, domestic: buyer.domestic, style,
     lpaPerMonth, termMonths, pricePerLPA, minQuality, prepayShare,
@@ -116,7 +128,7 @@ export function makeContractOffer(s: GameState, rng: Rng): ContractOffer {
   const grainCap = capacityLPA(s, 'grain');
   const spirit: ContractTerms['spirit'] = grainCap > 0 && rng.chance(0.5) ? 'grain_newmake' : 'malt_newmake';
   const cap = spirit === 'grain_newmake' ? grainCap : capacityLPA(s, 'malt');
-  const lpaPerMonth = Math.max(40, Math.round((cap * rng.pick([0.15, 0.25, 0.35, 0.5]) * (0.8 + 0.4 * s.b2bTrust / 100) * regionOf(s).bulkMarketDepth) / 10) * 10);
+  const lpaPerMonth = Math.max(40, Math.round((cap * rng.pick([0.25, 0.35, 0.5, 0.7]) * (0.8 + 0.4 * s.b2bTrust / 100) * regionOf(s).bulkMarketDepth) / 10) * 10);
   return buildOffer(s, rng, spirit, lpaPerMonth, rng.pick([12, 24, 36]), rng.chance(0.35) ? 0.3 : 0);
 }
 
@@ -132,12 +144,67 @@ export function makeSpecialContractOffer(s: GameState, rng: Rng, e: { capacitySh
   return { ...offer, expiresMonth: s.month + 2 };
 }
 
+/** 크래프트 프리미엄 계약 (#78): 독립 병입자·크래프트 블렌더가 소규모 증류소의 개성 있는 몰트 뉴메이크를 소량·고단가로 산다 */
+export function makeCraftContractOffer(s: GameState, rng: Rng): ContractOffer | null {
+  const cap = capacityLPA(s, 'malt');
+  if (cap <= 0) return null;
+  const ib = rng.pick(INDEPENDENT_BOTTLERS);
+  const style = rng.pick(['any', 'unpeated', 'peated'] as const);
+  const minQuality = rng.int(40, 46);
+  const termMonths = rng.pick([24, 36]);
+  const prepayShare = rng.chance(0.5) ? 0.3 : 0;
+  const lpaPerMonth = Math.max(20, Math.round((cap * rng.pick([0.1, 0.15, 0.2])) / 10) * 10);
+  const pricePerLPA = Math.round(contractPrice(s, 'malt_newmake', style, minQuality, false, prepayShare > 0, BULK.craftPriceFactor, termMonths) / 100) * 100;
+  return {
+    id: nid(s, 'Q'), buyerId: ib.id, buyerName: `${displayName(ib)} (크래프트)`, spirit: 'malt_newmake', domestic: false, style, craft: true,
+    lpaPerMonth, termMonths, pricePerLPA, minQuality, prepayShare, penaltyPerLPA: Math.round(pricePerLPA * BULK.penaltyRate), expiresMonth: s.month + 3,
+  };
+}
+
 export function refreshContractOffers(s: GameState, rng: Rng): void {
   s.contractOffers = s.contractOffers.filter((o) => o.expiresMonth > s.month);
-  while (s.contractOffers.length < 2) s.contractOffers.push(makeContractOffer(s, rng));
+  while (s.contractOffers.filter((o) => !o.craft).length < 2) s.contractOffers.push(makeContractOffer(s, rng));
+  if (!s.contractOffers.some((o) => o.craft) && rng.chance(BULK.craftChance)) {
+    const o = makeCraftContractOffer(s, rng);
+    if (o) s.contractOffers.push(o);
+  }
 }
 
 export const contractTotalValue = (c: ContractTerms) => c.lpaPerMonth * c.termMonths * c.pricePerLPA;
+
+/** 계약 경고 기준 숙성 기간 — 봇·플레이어가 싱글 몰트를 처음 내는 3년 */
+export const CONTRACT_AGING_REF_MONTHS = 36;
+
+export interface ContractAgingImpact {
+  /** 납품이 끝나는 게임 월 */
+  endMonth: number;
+  /** 남은 기간 동안 숙성고에 못 들어가는 원액 */
+  divertedLPA: number;
+  /** 그 원액을 46%·700ml로 병입했을 때의 병 수 (증발 전) */
+  bottleEquivalent: number;
+  /** 첫 자사 위스키가 3년 숙성되는 게임 월 */
+  firstWhiskyMonth: number;
+  /** 첫 위스키 출시 이후에도 계속 납품하는 개월 수 (0이면 안전) */
+  overlapMonths: number;
+  /** 계약 때문에 줄어드는 3년 숙성 위스키의 출시 구간 [from, to) */
+  whiskyGap: [number, number];
+}
+
+/** 계약 경고 (§16.16): 뉴메이크 계약은 첫 위스키가 나오기 전에 끝나야 한다.
+ *  더 길게 이어지면 그만큼의 원액이 3년 뒤 위스키 재고에서 빠진다 — LPA당 병입 가치는 현물의 약 5배 */
+export function contractAgingImpact(s: GameState, c: Pick<ContractTerms, 'lpaPerMonth' | 'termMonths' | 'spirit'> & { monthsDone?: number }): ContractAgingImpact {
+  const remaining = Math.max(0, c.termMonths - (c.monthsDone ?? 0));
+  const endMonth = s.month + remaining;
+  const kind = c.spirit === 'grain_newmake' ? 'grain' : 'malt';
+  const filled = s.casks.filter((k) => k.contents && k.contents.kind === kind && !k.contents.sourced).map((k) => k.filledMonth ?? k.contents!.createdMonth);
+  const firstWhiskyMonth = (filled.length ? Math.min(...filled) : s.month) + CONTRACT_AGING_REF_MONTHS;
+  const divertedLPA = c.lpaPerMonth * remaining;
+  return {
+    endMonth, divertedLPA, bottleEquivalent: Math.round(divertedLPA / (0.46 * 0.7)), firstWhiskyMonth,
+    overlapMonths: Math.max(0, endMonth - Math.max(s.month, firstWhiskyMonth)),
+    whiskyGap: [s.month + CONTRACT_AGING_REF_MONTHS, endMonth + CONTRACT_AGING_REF_MONTHS],
+  };
+}
 
 export function startContract(s: GameState, offer: ContractOffer): Contract {
   const prepaid = Math.round(contractTotalValue(offer) * offer.prepayShare);
@@ -209,17 +276,14 @@ export function updateBulkIndex(s: GameState, rng: Rng): void {
 
 // ── 독립 병입자(IB) 캐스크 매입 제안 ──
 
-/** 숙성(국가 기준, 기본 5년)·품질 70 이상인 자사 캐스크가 있으면 IB·수집가가 현물가의 135%에 캐스크째 사겠다고 제안한다.
- *  대만(결정 #65): 3년부터, 월 40%, 열대향(tropical ≥ 10) 캐스크는 160% — 수집가 시장 */
+/** 3년 이상·품질 65 이상인 자사 캐스크가 있으면 IB가 현물가의 135%에 캐스크째 사겠다고 제안한다 (초기 런웨이 — 통떼기 매각) */
 export function refreshCaskBids(s: GameState, rng: Rng): void {
-  const rule = regionOf(s).caskBids;
   s.caskBids = s.caskBids.filter((b) => b.expiresMonth > s.month && s.casks.some((c) => c.id === b.caskId && c.contents));
-  if (s.caskBids.length >= 2 || !rng.chance(rule.chance)) return;
-  const candidates = s.casks.filter((c) => c.contents && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= rule.minMonths && lotQuality(c.contents) >= 70 && !s.caskBids.some((b) => b.caskId === c.id));
+  if (s.caskBids.length >= 2 || !rng.chance(0.25)) return;
+  const candidates = s.casks.filter((c) => c.contents && !c.owner && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= 36 && lotQuality(c.contents) >= 65 && !s.caskBids.some((b) => b.caskId === c.id));
   if (!candidates.length) return;
   const cask = rng.pick(candidates);
   const ib = rng.pick(INDEPENDENT_BOTTLERS);
-  const premium = rule.tropicalPremium && (cask.contents!.flavor.tropical ?? 0) >= 10 ? rule.tropicalPremium : rule.premium;
-  s.caskBids.push({ id: nid(s, 'I'), buyerName: displayName(ib), caskId: cask.id, price: Math.round(spotQuote(s, cask.contents!, cask.contents!.volumeL, cask) * premium), expiresMonth: s.month + 2 });
+  s.caskBids.push({ id: nid(s, 'I'), buyerName: displayName(ib), caskId: cask.id, price: Math.round(spotQuote(s, cask.contents!, cask.contents!.volumeL, cask) * 1.35), expiresMonth: s.month + 2 });
 }
 

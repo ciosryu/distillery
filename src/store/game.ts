@@ -1,19 +1,14 @@
 import { create } from 'zustand';
-import { advanceMonths, applyAction, migrateState, newGame, type Action, type GameState, type SiteId } from '../sim';
+import { advanceMonths, applyAction, newGame, type Action, type GameState, type RegionId } from '../sim';
 
 const SAVE_KEY = 'distillery-tycoon/save-v5';
-/** 이전 형식 세이브 — 읽을 때 v5로 마이그레이션 (국가 → 표준 산지) */
-const LEGACY_KEYS = ['distillery-tycoon/save-v4'];
 
 function load(): GameState | null {
   try {
-    for (const key of [SAVE_KEY, ...LEGACY_KEYS]) {
-      const raw = localStorage.getItem(key);
-      if (!raw) continue;
-      const s = migrateState(JSON.parse(raw));
-      if (s) return s;
-    }
-    return null;
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as GameState;
+    return s && s.version === 5 ? s : null;
   } catch {
     return null;
   }
@@ -34,7 +29,7 @@ interface GameStore {
   toast: Toast | null;
   dispatch: (a: Action) => boolean;
   advance: (months: number) => void;
-  restart: (name?: string, site?: SiteId) => void;
+  restart: (name?: string, region?: RegionId, site?: string) => void;
   clearToast: () => void;
 }
 
@@ -58,8 +53,8 @@ export const useGame = create<GameStore>((set, get) => ({
     save(next);
     set({ state: next });
   },
-  restart: (name, site) => {
-    const s = newGame({ distilleryName: name || undefined, site });
+  restart: (name, region, site) => {
+    const s = newGame({ distilleryName: name || undefined, region, site: site || undefined });
     save(s);
     set({ state: s, toast: { id: ++toastId, kind: 'ok', text: '새 게임을 시작했습니다' } });
   },

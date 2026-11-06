@@ -1,16 +1,15 @@
-import { BULK, CASK_COST_SHARE_PER_FILL, CASKS, EQUIPMENT, LOAN_OFFERS, RECHAR_COST } from './content/catalog';
-import { cancellationCost, isBulkKind, spotQuote, startContract } from './bulk';
+import { BULK, CASK_COST_SHARE_PER_FILL, CASK_MARKET, CASKS, EQUIPMENT, LOAN_OFFERS, RECHAR_COST } from './content/catalog';
+import { assignSlot, handleDeparture, INVESTMENT_OFFERS, masterDistiller, OWNERSHIP, rotateWarehouse, usedCaskPrice } from './ops';
+import { rngFor } from './rng';
+import { cancellationCost, isBulkKind, recordSpotSale, spotQuote, startContract } from './bulk';
 import { resolvePending } from './events';
 import { mod } from './modifiers';
 import { executeBlend, type BlendComponent, type BottleOptions } from './blending';
 import { MAX_RECHAR, recharCask } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
-import { applyWaterPermit, equipmentBlocker, equipmentCost, expandLocalSupply } from './sites';
-import { inventoryLoanRoom } from './holding';
-import { OEM, RETAIL, startOem, startRetail } from './deals';
 import type { CaskTypeId, GameState, Recipe } from './types';
-import { annuityPayment, clone, nid, warehouseCapacity } from './util';
+import { annuityPayment, clone, nid, staffOf, warehouseCapacity } from './util';
 
 export type Action =
   | { type: 'setOrder'; recipeId: string; batchesPerMonth: number }
@@ -18,12 +17,22 @@ export type Action =
   | { type: 'deleteRecipe'; recipeId: string }
   | { type: 'buyEquipment'; catalogId: string }
   | { type: 'buyCasks'; caskType: CaskTypeId; qty: number }
-  | { type: 'fillCasks'; lotId: string; caskIds: string[]; entryAbv: number }
+  | { type: 'fillCasks'; lotId: string; caskIds: string[]; entryAbv: number; warehouseId?: string }
+  /** 스팟 마켓: 즉시 입고·웃돈·골빈 통 위험 */
+  | { type: 'buySpotCasks'; caskType: CaskTypeId; qty: number }
+  /** 시즈닝 계약: 새 통을 셰리 보데가(올로로소 벗)나 버번 증류소(배럴)에 보내 24개월 시즈닝 */
+  | { type: 'orderSeasoning'; caskType: 'oloroso_butt' | 'ex_bourbon_barrel'; qty: number }
+  | { type: 'sellUsedCask'; caskId: string }
+  | { type: 'rotateWarehouse'; warehouseId: string }
+  /** 오염 캐스크 원액 폐기 */
+  | { type: 'dumpCask'; caskId: string }
+  | { type: 'takeInvestment'; offerId: string }
+  | { type: 'sellCaskOwnership'; caskId: string }
   | { type: 'rechar'; caskId: string }
   | { type: 'bottle'; components: BlendComponent[]; options: BottleOptions }
   | { type: 'setPrice'; productId: string; price: number }
   | { type: 'setMarketing'; amount: number }
-  | { type: 'hire'; candidateId: string }
+  | { type: 'hire'; candidateId: string; asApprentice?: boolean }
   | { type: 'fire'; staffId: string }
   | { type: 'takeLoan'; offerId: string; amount: number }
   | { type: 'repayLoan'; loanId: string }
@@ -32,15 +41,7 @@ export type Action =
   | { type: 'acceptContract'; offerId: string }
   | { type: 'cancelContract'; contractId: string }
   | { type: 'resolveEvent'; eventId: string; choice: number }
-  | { type: 'acceptCaskBid'; bidId: string }
-  /** 취수 허가 증량 신청 (제주) */
-  | { type: 'applyWaterPermit' }
-  /** 산지 대표 거래 수락: 대형 유통 납품(경기) / 위탁생산(간토) */
-  | { type: 'acceptRetail'; offerId: string }
-  | { type: 'cancelRetail'; contractId: string }
-  | { type: 'acceptOem'; offerId: string }
-  /** 지역 원료 계약재배 확대 (안동) */
-  | { type: 'expandLocalSupply' };
+  | { type: 'acceptCaskBid'; bidId: string };
 
 export interface ActionResult { state: GameState; error?: string; message?: string }
 
@@ -75,11 +76,11 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
     case 'buyEquipment': {
       const def = EQUIPMENT[a.catalogId];
       if (!def) return fail(prev, '알 수 없는 설비');
-      const blocker = equipmentBlocker(s, def);
-      if (blocker) return fail(prev, blocker);
-      const cost = equipmentCost(s, def);
-      if (s.cash < cost) return fail(prev, '현금이 부족합니다');
-      s.cash -= cost;
+      if (def.kind === 'visitor' && def.requires && !s.equipment.some((e) => e.catalogId === def.requires)) return fail(prev, `${EQUIPMENT[def.requires]?.nameKo}부터 지어야 합니다`);
+      if ((def.kind === 'visitor' || def.kind === 'facility') && s.equipment.some((e) => e.catalogId === def.id)) return fail(prev, '이미 있습니다');
+      if (def.kind === 'facility' && def.regions && !def.regions.includes(s.regionId)) return fail(prev, '이 지역에서는 해당 없는 설비입니다');
+      if (s.cash < def.cost) return fail(prev, '현금이 부족합니다');
+      s.cash -= def.cost;
       s.equipment.push({ id: nid(s, 'E'), catalogId: def.id, readyMonth: s.month + def.leadMonths, ...(def.kind === 'still' ? { feintsLPA: 0 } : {}) });
       return { state: s, message: `${def.nameKo} 발주 — ${def.leadMonths}개월 후 설치` };
     }
@@ -87,12 +88,96 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       const def = CASKS[a.caskType];
       const qty = Math.max(1, Math.floor(a.qty));
       if (!def) return fail(prev, '알 수 없는 캐스크');
-      if (s.casks.length + qty > warehouseCapacity(s)) return fail(prev, `숙성고 용량 부족 (${s.casks.length}/${warehouseCapacity(s)})`);
+      const pending = s.caskOrders.reduce((t, o) => t + o.qty, 0);
+      if (s.casks.length + pending + qty > warehouseCapacity(s)) return fail(prev, `숙성고 용량 부족 (${s.casks.length}+주문 ${pending}/${warehouseCapacity(s)})`);
       const unit = Math.round(regionalCaskPrice(s, def.id) * mod(s, `cask:${def.id}`));
       if (s.cash < unit * qty) return fail(prev, '현금이 부족합니다');
       s.cash -= unit * qty;
-      for (let i = 0; i < qty; i++) s.casks.push(emptyCaskOf(s, a.caskType));
-      return { state: s, message: `${def.nameKo} ${qty}개 구매` };
+      // 쿠퍼리지 정상 주문: 카탈로그가, 2개월 뒤 도착 (결정 #66)
+      s.caskOrders.push({ id: nid(s, 'O'), typeId: a.caskType, qty, arriveMonth: s.month + CASK_MARKET.cooperageLeadMonths, source: 'cooperage' });
+      return { state: s, message: `${def.nameKo} ${qty}개 쿠퍼리지 주문 — ${CASK_MARKET.cooperageLeadMonths}개월 뒤 도착` };
+    }
+    case 'buySpotCasks': {
+      const def = CASKS[a.caskType];
+      const qty = Math.max(1, Math.floor(a.qty));
+      if (!def) return fail(prev, '알 수 없는 캐스크');
+      if (s.casks.length + qty > warehouseCapacity(s)) return fail(prev, `숙성고 용량 부족 (${s.casks.length}/${warehouseCapacity(s)})`);
+      const unit = Math.round(regionalCaskPrice(s, def.id) * mod(s, `cask:${def.id}`) * CASK_MARKET.spotPremium);
+      if (s.cash < unit * qty) return fail(prev, '현금이 부족합니다');
+      s.cash -= unit * qty;
+      const rng = rngFor(s.seed, s.month, `spot:${s.nextId}`);
+      const observe = Math.max(0, ...staffOf(s, 'warehouse').map((x) => x.stats.a));
+      let duds = 0;
+      for (let i = 0; i < qty; i++) {
+        const c = emptyCaskOf(s, a.caskType);
+        if (rng.chance(CASK_MARKET.spotDudChance)) {
+          // 골빈 통: 3~4필, 활성도 바닥
+          c.fills = rng.int(3, 4); c.activity = rng.range(0.15, 0.35); c.seasoning *= 0.3; duds++;
+        } else { c.fills = 1; c.activity = def.activity * rng.range(0.8, 0.95); c.seasoning *= 0.8; }
+        // 숙성고 QC의 관찰 스탯이 높으면 입고 때 상태를 알아본다
+        c.activityKnown = rng.chance(observe / 120);
+        s.casks.push(c);
+      }
+      return { state: s, message: `스팟 마켓에서 ${def.nameKo} ${qty}개 즉시 매입 (개당 ${unit.toLocaleString()}원)${duds && observe >= 60 ? ` — QC가 의심스러운 통 ${duds}개를 지적` : ''}` };
+    }
+    case 'orderSeasoning': {
+      const def = CASKS[a.caskType];
+      const qty = Math.max(1, Math.floor(a.qty));
+      if (!def) return fail(prev, '알 수 없는 캐스크');
+      const pending = s.caskOrders.reduce((t, o) => t + o.qty, 0);
+      if (s.casks.length + pending + qty > warehouseCapacity(s)) return fail(prev, '숙성고 용량 부족');
+      // 시즈닝 계약가는 시장가와 무관하게 계약 시점의 카탈로그가 기준 → 셰리통 파동 헤지
+      const unit = Math.round(regionalCaskPrice(s, def.id) * CASK_MARKET.seasoningCostFactor);
+      if (s.cash < unit * qty) return fail(prev, '현금이 부족합니다');
+      s.cash -= unit * qty;
+      s.caskOrders.push({ id: nid(s, 'O'), typeId: a.caskType, qty, arriveMonth: s.month + CASK_MARKET.seasoningMonths, source: 'seasoning' });
+      return { state: s, message: `${a.caskType === 'oloroso_butt' ? '셰리 보데가' : '버번 증류소'}와 시즈닝 계약 ${qty}통 — ${CASK_MARKET.seasoningMonths}개월 뒤 최상급 캐스크로 도착 (개당 ${unit.toLocaleString()}원)` };
+    }
+    case 'sellUsedCask': {
+      const ci = s.casks.findIndex((c) => c.id === a.caskId);
+      const cask = s.casks[ci];
+      if (!cask) return fail(prev, '캐스크가 없습니다');
+      if (cask.contents) return fail(prev, '빈 캐스크만 팔 수 있습니다');
+      if (cask.fills < 1) return fail(prev, '한 번도 쓰지 않은 통은 중고로 팔 수 없습니다');
+      const price = usedCaskPrice(cask);
+      s.cash += price;
+      s.casks.splice(ci, 1);
+      return { state: s, message: `중고 캐스크 ${cask.id}를 럼·테킬라·수제 맥주 양조장에 ${price.toLocaleString()}원에 매각` };
+    }
+    case 'rotateWarehouse': {
+      const r = rotateWarehouse(s, a.warehouseId);
+      if (r.error) return fail(prev, r.error);
+      return { state: s, message: `캐스크 ${r.moved}개 로테이션 (상하단 교체)` };
+    }
+    case 'dumpCask': {
+      const ci = s.casks.findIndex((c) => c.id === a.caskId);
+      const cask = s.casks[ci];
+      if (!cask?.contents) return fail(prev, '원액이 든 캐스크가 없습니다');
+      if (cask.owner) return fail(prev, '고객 소유 캐스크입니다');
+      const { contents: _c, contamination: _t, contaminationKnown: _k, slot: _s, ...rest } = cask;
+      s.casks[ci] = { ...rest, activity: cask.contamination ? cask.activity * 0.5 : cask.activity };
+      return { state: s, message: `캐스크 ${cask.id} 원액 폐기${cask.contamination ? ' — 오염 통은 활성도 절반' : ''}` };
+    }
+    case 'takeInvestment': {
+      const o = INVESTMENT_OFFERS.find((x) => x.id === a.offerId);
+      if (!o) return fail(prev, '투자 제안이 없습니다');
+      if (s.investmentsTaken.includes(o.id)) return fail(prev, '이미 받은 투자입니다');
+      if (s.month < o.minMonth || s.month > o.maxMonth) return fail(prev, '지금은 받을 수 없는 투자입니다');
+      s.cash += o.amount;
+      s.investorShare = 1 - (1 - s.investorShare) * (1 - o.share);
+      s.investmentsTaken.push(o.id);
+      return { state: s, message: `${o.nameKo} ${o.amount.toLocaleString()}원 유치 — 외부 지분 ${(s.investorShare * 100).toFixed(1)}%` };
+    }
+    case 'sellCaskOwnership': {
+      const cask = s.casks.find((c) => c.id === a.caskId);
+      if (!cask?.contents) return fail(prev, '원액이 든 캐스크가 없습니다');
+      if (cask.owner) return fail(prev, '이미 판매한 캐스크입니다');
+      if (cask.contents.sourced) return fail(prev, '자사 증류 원액만 오너십으로 팔 수 있습니다');
+      if (!isBulkKind(cask.contents)) return fail(prev, '몰트·그레인 캐스크만 가능합니다');
+      const price = Math.round(spotQuote(s, cask.contents, cask.contents.volumeL, cask) * (OWNERSHIP.premiumBase + OWNERSHIP.premiumAwareness * s.awareness) * (0.9 + s.houseStyle / 500));
+      s.cash += price;
+      cask.owner = { name: `개인 고객 ${cask.id}`, soldMonth: s.month, deliverMonth: s.month + Math.max(OWNERSHIP.minDeliverWait, OWNERSHIP.deliverAtMonths - cask.contents.oakMonths) };
+      return { state: s, message: `캐스크 ${cask.id} 오너십 판매 ${price.toLocaleString()}원 — ${cask.owner.deliverMonth - s.month}개월 뒤 인도` };
     }
     case 'fillCasks': {
       const lotIdx = s.lots.findIndex((l) => l.id === a.lotId);
@@ -106,6 +191,7 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
         const ci = s.casks.findIndex((c) => c.id === id);
         const cask = s.casks[ci];
         if (!cask || cask.contents || lotLeftL < 1) continue;
+        if (cask.contamination) continue;
         const caskLPA = cask.sizeL * entry;
         const needL = caskLPA / lot.abv;
         const useL = Math.min(needL, lotLeftL);
@@ -117,9 +203,11 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
           ...cask, fills: cask.fills + 1, filledMonth: s.month,
           contents: { ...lot, id: nid(s, 'L'), name: `${lot.name} → ${cask.id}`, volumeL: lpa / entry, abv: entry, costPerLPA: lot.costPerLPA + caskShare / lpa },
         };
+        s.casks[ci]!.slot = undefined;
+        assignSlot(s, s.casks[ci]!, a.warehouseId);
         filled++;
       }
-      if (!filled) return fail(prev, '채울 수 있는 빈 캐스크가 없습니다');
+      if (!filled) return fail(prev, '채울 수 있는 빈 캐스크가 없습니다 (오염 통은 재탄화해야 다시 쓸 수 있다)');
       if (lotLeftL < 1) s.lots.splice(lotIdx, 1);
       else s.lots[lotIdx] = { ...lot, volumeL: lotLeftL };
       return { state: s, message: `캐스크 ${filled}개 통입 (${(entry * 100).toFixed(1)}%)` };
@@ -155,6 +243,14 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       if (!c) return fail(prev, '후보가 없습니다');
       s.candidates = s.candidates.filter((x) => x.id !== c.id);
       const { askSalary: _ask, ...staff } = c;
+      if (a.asApprentice) {
+        const master = masterDistiller(s);
+        if (c.role !== 'distiller') return fail(prev, '부사수는 디스틸러 후보만 가능합니다');
+        if (!master) return fail(prev, '가르칠 마스터 디스틸러가 없습니다');
+        // 부사수: 급여 60%, 마스터 곁에서 24개월 이상 배워야 하우스 스타일을 잇는다
+        s.staff.push({ ...staff, salary: Math.round(c.askSalary * 0.6), hiredMonth: s.month, apprenticeOf: master.id });
+        return { state: s, message: `${c.name}을(를) ${master.name}의 부사수로 채용` };
+      }
       s.staff.push({ ...staff, salary: c.askSalary, hiredMonth: s.month });
       return { state: s, message: `${c.name} 채용` };
     }
@@ -162,17 +258,18 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       const x = s.staff.find((y) => y.id === a.staffId);
       if (!x) return fail(prev, '직원이 없습니다');
       s.cash -= x.salary; // 퇴직 위로금 1개월분
+      const notes: string[] = [];
+      handleDeparture(s, x, notes);
       s.staff = s.staff.filter((y) => y.id !== x.id);
-      return { state: s, message: `${x.name} 퇴사 (위로금 1개월분 지급)` };
+      return { state: s, message: [`${x.name} 퇴사 (위로금 1개월분 지급)`, ...notes].join(' — ') };
     }
     case 'takeLoan': {
       const offer = LOAN_OFFERS.find((o) => o.id === a.offerId);
       if (!offer) return fail(prev, '대출 상품이 없습니다');
       if (offer.requires === 'producedSoju' && !s.flags.producedSoju) return fail(prev, '전통주(증류식 소주) 생산 실적이 있어야 신청할 수 있습니다');
-      if (s.loans.some((l) => l.offerId === offer.id) && offer.collateral !== 'inventory') return fail(prev, '같은 상품을 이미 이용 중입니다');
-      const max = offer.collateral === 'inventory' ? inventoryLoanRoom(s) : offer.max;
-      if (max < 10_000_000) return fail(prev, '담보로 인정되는 숙성 재고가 부족합니다');
-      const amount = Math.min(max, Math.max(10_000_000, Math.round(a.amount / 1_000_000) * 1_000_000));
+      if (offer.regions && !offer.regions.includes(s.regionId)) return fail(prev, '이 지역에서는 신청할 수 없는 정책자금입니다');
+      if (s.loans.some((l) => l.offerId === offer.id)) return fail(prev, '같은 상품을 이미 이용 중입니다');
+      const amount = Math.min(offer.max, Math.max(10_000_000, Math.round(a.amount / 1_000_000) * 1_000_000));
       s.cash += amount;
       s.loans.push({
         id: nid(s, 'D'), offerId: offer.id, name: offer.nameKo, principal: amount, balance: amount,
@@ -203,8 +300,10 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
         const ci = s.casks.findIndex((c) => c.id === a.id);
         const cask = s.casks[ci];
         if (!cask?.contents) return fail(prev, '원액이 든 캐스크가 없습니다');
+        if (cask.owner) return fail(prev, '고객 소유 캐스크입니다');
         if (!isBulkKind(cask.contents)) return fail(prev, '벌크 판매는 몰트·그레인 원액만 가능합니다');
         const amount = spotQuote(s, cask.contents, cask.contents.volumeL, cask);
+        recordSpotSale(s, cask.contents, cask.contents.volumeL * cask.contents.abv);
         s.cash += amount;
         s.casks.splice(ci, 1);
         return { state: s, message: `캐스크 ${cask.id}를 원액째 ${amount.toLocaleString()}원에 판매` };
@@ -216,6 +315,7 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       const liters = Math.min(lot.volumeL, Math.max(0, a.liters ?? lot.volumeL));
       if (liters <= 0) return fail(prev, '판매량을 입력하세요');
       const amount = spotQuote(s, lot, liters);
+      recordSpotSale(s, lot, liters * lot.abv);
       s.cash += amount;
       if (lot.volumeL - liters < 1) s.lots.splice(li, 1);
       else s.lots[li] = { ...lot, volumeL: lot.volumeL - liters };
@@ -233,7 +333,7 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
     }
     case 'acceptCaskBid': {
       const bid = s.caskBids.find((b) => b.id === a.bidId);
-      const ci = bid ? s.casks.findIndex((c) => c.id === bid.caskId && c.contents) : -1;
+      const ci = bid ? s.casks.findIndex((c) => c.id === bid.caskId && c.contents && !c.owner) : -1;
       if (!bid || ci < 0) return fail(prev, '제안이 없거나 캐스크가 비었습니다');
       s.cash += bid.price;
       s.casks.splice(ci, 1);
@@ -245,43 +345,6 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
       const text = resolvePending(s, a.eventId, a.choice);
       if (!text) return fail(prev, '처리할 이벤트가 없습니다');
       return { state: s, message: text };
-    }
-    case 'acceptRetail': {
-      const o = s.retailOffers.find((x) => x.id === a.offerId);
-      if (!o) return fail(prev, '납품 제안이 없습니다');
-      if (s.retailContracts.length >= RETAIL.maxActive) return fail(prev, `납품 계약은 ${RETAIL.maxActive}건까지입니다`);
-      s.retailContracts.push(startRetail(s, o));
-      s.retailOffers = s.retailOffers.filter((x) => x.id !== o.id);
-      return { state: s, message: `${o.partner} 납품 계약 체결 — 월 ${o.bottlesPerMonth.toLocaleString()}병, 대금은 ${o.paymentDelay}개월 뒤` };
-    }
-    case 'cancelRetail': {
-      const c = s.retailContracts.find((x) => x.id === a.contractId);
-      if (!c) return fail(prev, '계약이 없습니다');
-      const cost = (c.termMonths - c.monthsDone) * c.bottlesPerMonth * c.penaltyPerBottle * 0.5;
-      s.cash -= Math.round(cost);
-      s.retailContracts = s.retailContracts.filter((x) => x.id !== c.id);
-      return { state: s, message: `${c.partner} 납품 계약 해지 — 해지 비용 ${Math.round(cost).toLocaleString()}원` };
-    }
-    case 'acceptOem': {
-      const o = s.oemOffers.find((x) => x.id === a.offerId);
-      if (!o) return fail(prev, '위탁생산 제안이 없습니다');
-      if (s.oemContracts.length >= OEM.maxActive) return fail(prev, `위탁생산 계약은 ${OEM.maxActive}건까지입니다`);
-      const c = startOem(s, o);
-      if (!c) return fail(prev, '현금이 부족합니다 (설비 패키지 설치비 − 지원금)');
-      s.oemContracts.push(c);
-      s.oemOffers = s.oemOffers.filter((x) => x.id !== o.id);
-      return { state: s, message: `${o.buyerName} 위탁생산 계약 — 월 ${o.batchesPerMonth}배치, 배치당 ${o.feePerBatch.toLocaleString()}원${o.dedicated ? ` · 전용 증류기 설치 지원 ${(o.capexSupport ?? 0).toLocaleString()}원 (설치 후 시작)` : ''}` };
-    }
-    case 'expandLocalSupply': {
-      const err = expandLocalSupply(s);
-      if (err) return fail(prev, err);
-      return { state: s, message: `계약재배 확대 계약 — ${s.siteState.localSupplyPending!.readyMonth - s.month}개월 뒤 월 +${s.siteState.localSupplyPending!.addKg.toLocaleString()}kg` };
-    }
-    case 'applyWaterPermit': {
-      const err = applyWaterPermit(s);
-      if (err) return fail(prev, err);
-      const app = s.siteState.permitApplication!;
-      return { state: s, message: `취수 증량 신청 접수 — 약 ${app.decideMonth - s.month}개월 뒤 결과 (승인 확률 ${Math.round(app.chance * 100)}%)` };
     }
     case 'cancelContract': {
       const c = s.contracts.find((x) => x.id === a.contractId);

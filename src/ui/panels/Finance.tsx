@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { LOAN_OFFERS } from '../../sim/content/catalog';
-import { annuityPayment, currentLoanPayment, inventoryLoanRoom, inventoryLtv, monthLabel } from '../../sim';
+import { INVESTMENT_OFFERS } from '../../sim/ops';
+import { annuityPayment, currentLoanPayment, monthLabel } from '../../sim';
 import { useGame } from '../../store/game';
 import { pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Table, Td } from '../kit';
@@ -15,27 +16,45 @@ export function Finance() {
     <div className="grid gap-4">
       <Card title="대출 상품">
         <Table head={['상품', '금리', '기간', '거치', '한도', '조건', '신청 금액', '월 상환액(거치 후)', '']}>
-          {LOAN_OFFERS.map((o) => {
+          {LOAN_OFFERS.filter((o) => !o.regions || o.regions.includes(s.regionId)).map((o) => {
             const amt = (amounts[o.id] ?? 0) * 1e6;
-            const collateral = o.collateral === 'inventory';
-            const max = collateral ? inventoryLoanRoom(s) : o.max;
-            const using = !collateral && s.loans.some((l) => l.offerId === o.id);
-            const locked = (o.requires === 'producedSoju' && !s.flags.producedSoju) || (collateral && max < 10_000_000);
+            const using = s.loans.some((l) => l.offerId === o.id);
+            const locked = o.requires === 'producedSoju' && !s.flags.producedSoju;
             return (
               <tr key={o.id}>
                 <Td className="font-medium">{o.nameKo}</Td>
                 <Td right>{pct(o.annualRate)}</Td>
                 <Td right>{o.termMonths / 12}년</Td>
                 <Td right>{o.graceMonths ? `${o.graceMonths}개월` : '—'}</Td>
-                <Td right>{won(max)}</Td>
-                <Td>{o.requires ? <Badge tone={locked ? 'warn' : 'good'}>증류식 소주 생산 실적</Badge> : collateral ? <Badge tone="info">숙성 재고 시가 × {pct(inventoryLtv(s), 0)} · 시가 하락 시 추가 상환</Badge> : '—'}</Td>
-                <Td><NumberField value={amounts[o.id] ?? 0} min={10} max={Math.max(10, max / 1e6)} width="w-20" suffix="백만" onCommit={(v) => setAmounts({ ...amounts, [o.id]: v })} /></Td>
+                <Td right>{won(o.max)}</Td>
+                <Td>{o.requires ? <Badge tone={locked ? 'warn' : 'good'}>증류식 소주 생산 실적</Badge> : o.regions ? <Badge tone="info" >지역 정책자금</Badge> : '—'}</Td>
+                <Td><NumberField value={amounts[o.id] ?? 0} min={10} max={o.max / 1e6} width="w-20" suffix="백만" onCommit={(v) => setAmounts({ ...amounts, [o.id]: v })} /></Td>
                 <Td right>{won(annuityPayment(amt, o.annualRate, o.termMonths - o.graceMonths))}</Td>
                 <Td><Button small variant="primary" disabled={using || locked} onClick={() => dispatch({ type: 'takeLoan', offerId: o.id, amount: amt })}>{using ? '이용 중' : '실행'}</Button></Td>
               </tr>
             );
           })}
         </Table>
+      </Card>
+
+      <Card title={`투자 유치 — 외부 지분 ${pct(s.investorShare, 1)}`}>
+        <Table head={['제안', '금액', '지분', '가능 시기', '비고', '']}>
+          {INVESTMENT_OFFERS.map((o) => {
+            const taken = s.investmentsTaken.includes(o.id);
+            const open = s.month >= o.minMonth && s.month <= o.maxMonth;
+            return (
+              <tr key={o.id}>
+                <Td className="font-medium">{o.nameKo}</Td>
+                <Td right>{won(o.amount)}</Td>
+                <Td right>{pct(o.share, 0)}</Td>
+                <Td className="text-xs">{o.minMonth}~{o.maxMonth}개월차</Td>
+                <Td className="text-xs text-stone-500">{o.note}</Td>
+                <Td><Button small variant="primary" disabled={taken || !open} onClick={() => dispatch({ type: 'takeInvestment', offerId: o.id })}>{taken ? '유치 완료' : open ? '유치' : '기간 아님'}</Button></Td>
+              </tr>
+            );
+          })}
+        </Table>
+        <p className="mt-2 text-xs text-stone-500">다른 초기 자금원: 숙성고의 <b>캐스크 오너십 판매</b>(지금 현금, 8년 뒤 인도 — 많이 팔면 매니아 신뢰↓), 독립 병입자의 <b>통째 매입 제안</b>(3년↑·품질 65↑), <b>비지터 센터</b> 투어·뉴메이크 판매.</p>
       </Card>
 
       <Card title="보유 대출">

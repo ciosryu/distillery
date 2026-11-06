@@ -17,12 +17,8 @@ export type Flavor = Partial<Record<AxisId, number>>;
 /** 생산 주종 (원액 기준) */
 export type SpiritKind = 'soju' | 'gin' | 'malt' | 'grain' | 'baijiu';
 
-/** 국가 (세제·GI·내수 시장·채널). 역사적 이유로 이름이 RegionId (PRD §3.6, 결정 #58) */
+/** 시작·운영 지역 */
 export type RegionId = 'KR' | 'JP' | 'TW';
-export type CountryId = RegionId;
-
-/** 산지 (기후·물·원료·물류·고유 이벤트) — docs/design/regions.md Tier 1 */
-export type SiteId = 'gyeonggi' | 'andong' | 'jeju' | 'kanto' | 'kansai' | 'hokkaido' | 'yilan';
 
 /** 판매 카테고리 (라벨 판정 결과) */
 export type ProductCategory = 'soju_distilled' | 'gin' | 'whisky' | 'grain_whisky' | 'blended_whisky' | 'baijiu' | 'malt_spirit' | 'flavored_spirit';
@@ -33,7 +29,7 @@ export type StillType = 'pot_onion' | 'pot_lantern' | 'hybrid' | 'vacuum_pot' | 
 export type CondenserType = 'copper_shell' | 'worm_tub';
 export type CaskTypeId = 'ex_bourbon_barrel' | 'oloroso_butt' | 'korean_oak_quarter' | 'mizunara_hogshead';
 export type WoodId = 'american_oak' | 'european_oak' | 'korean_oak' | 'mizunara';
-export type StaffRole = 'distiller' | 'warehouse' | 'sales';
+export type StaffRole = 'distiller' | 'warehouse' | 'sales' | 'office';
 
 export interface Recipe {
   id: string;
@@ -77,10 +73,8 @@ export interface SpiritLot {
   /** 누적 원가(원/LPA) — 원재료·에너지·매입가 */
   costPerLPA: number;
   recipeId?: string;
-  /** 전통주(민속주·지역특산주) 자격으로 생산된 원액 — 한국 주세 감면·온라인 직판 대상 */
-  traditional?: boolean;
-  /** 산지 원료(지역 농산물·산지 보태니컬)를 쓴 원액 — 제주 면세 기념품 매력도 */
-  localIngredient?: boolean;
+  /** 원재료 배합 비율(레시피 기준) — 특산물·버번 옥수수 51% 같은 원료 규정 판정용 */
+  mashShare?: Record<string, number>;
 }
 
 export interface Cask {
@@ -97,6 +91,15 @@ export interface Cask {
   char: number;
   contents?: SpiritLot;
   filledMonth?: number;
+  /** 숙성고 위치: 숙성고 id + 단(0 = 맨 아래) */
+  slot?: { w: string; tier: number };
+  /** false면 활성도를 아직 모른다 (스팟 매입 통 — 골빈 통일 수 있음) */
+  activityKnown?: boolean;
+  /** 오염(TCA·곰팡이) — 숙성고 QC가 찾아내기 전까지는 모른다 */
+  contamination?: 'tca' | 'mold';
+  contaminationKnown?: boolean;
+  /** 캐스크 오너십으로 판 통 — 고객 소유, 병입·판매 불가 */
+  owner?: { name: string; soldMonth: number; deliverMonth: number };
 }
 
 export interface Product {
@@ -104,6 +107,8 @@ export interface Product {
   name: string;
   category: ProductCategory;
   ageYears: number | null;
+  /** 최저 오크 숙성 개월 (어린 위스키 인식 할인용) */
+  oakMonths?: number;
   abv: number;
   bottleMl: number;
   chillFiltered: boolean;
@@ -113,6 +118,14 @@ export interface Product {
   typicity: number;
   style: string | null;
   sourcedShare: number;
+  /** 매입 원액의 브랜드 가치 0~1 — 비싸게 사 온 원액일수록 높다 (매입 원액이 없으면 1) */
+  sourcedPrestige?: number;
+  /** 지역 특산물 표기 (예: 대만 진먼섬의 진먼 고량주) */
+  specialty?: string;
+  /** 지역 프리미엄 표기 충족 여부 (예: 재패니즈 위스키) */
+  premiumLabel?: boolean;
+  /** 전통주(지역특산주) 주세 경감 대상 */
+  traditional?: boolean;
   stockBottles: number;
   /** 출고가(세전) / 병 */
   price: number;
@@ -121,16 +134,10 @@ export interface Product {
   createdMonth: number;
   lastMonthSold: number;
   totalSold: number;
-  /** 전통주 자격 — 모든 구성 원액이 전통주 원액일 때 */
-  traditional?: boolean;
-  /** 지난달 판매 중 면세 채널 몫 */
-  lastMonthDutyFree?: number;
-  /** 면세 전용 한정판 (제주) — 국내 판매 없음 */
-  dutyFreeOnly?: boolean;
-  /** 산지 원료 제품 — 모든 구성 원액이 산지 원료 원액일 때 */
-  localIngredient?: boolean;
-  /** 면세 한정판 시리즈 (결정 #70): 판 번호, 출시 시점 연속 완판 수, 판정 끝남 */
-  dfEdition?: { vol: number; streak: number; done?: boolean };
+  /** 월 판매량 지수이동평균 — 재고 적체 판정 */
+  salesEma?: number;
+  /** 첫 위스키 출시 오픈런 효과 */
+  launchBoost?: { factor: number; untilMonth: number };
 }
 
 export interface StaffStats { a: number; b: number; c: number }
@@ -145,6 +152,10 @@ export interface Staff {
   stats: StaffStats;
   salary: number;
   hiredMonth: number;
+  /** 입사 시 나이 — 나이가 들면 스탯이 꺾이고 65세에 은퇴 (에이징 커브) */
+  ageAtHire?: number;
+  /** 부사수: 이 직원을 가르치는 마스터 디스틸러 id */
+  apprenticeOf?: string;
 }
 
 export interface Candidate extends Staff { askSalary: number }
@@ -180,6 +191,8 @@ export interface ContractTerms {
   buyerName: string;
   /** 납품 원액: 몰트·그레인 뉴메이크 (버번은 켄터키 지역과 함께) */
   spirit: 'malt_newmake' | 'grain_newmake';
+  /** 크래프트 프리미엄 계약 — 소량·고단가 (독립 병입자·크래프트 블렌더) */
+  craft?: boolean;
   /** 국내 블렌더 — 국산 원액 프리미엄 적용 */
   domestic: boolean;
   style: 'any' | 'unpeated' | 'peated';
@@ -214,20 +227,15 @@ export interface MonthReport {
   production: { recipeId: string; name: string; batches: number; lpa: number; cost: number }[];
   angelsShareL: number;
   liquorTaxRemitted: number;
-  /** 전통주 주세 감면액 */
-  taxRelief?: number;
-  /** 면세 채널 판매 병수 */
-  dutyFreeBottles?: number;
-  /** 면세 판매 입소문으로 오른 인지도 (이번 달) */
-  dutyFreeAwareness?: number;
-  /** 직판장 판매 병수·순매출 */
-  visitorBottles?: number;
-  visitorRevenue?: number;
-  /** 대형 유통 납품 대금 입금 / OEM 가공비 */
-  retailRevenue?: number;
-  oemRevenue?: number;
   /** 이번 달 발생한 이벤트 제목 */
   events: string[];
+  /** 소매 처리 역량(9L 케이스)과 실제 판매 — 초과분은 고비용 채널 */
+  retailCapacityCases?: number;
+  retailSoldCases?: number;
+  overflowCases?: number;
+  lostSalesBottles?: number;
+  visitors?: number;
+  tourismRevenue?: number;
   notes: string[];
 }
 
@@ -269,52 +277,15 @@ export interface Forecast {
 export interface EventLogEntry { month: number; title: string; text: string }
 
 /** 독립 병입자(IB)의 캐스크 매입 제안 */
-export interface CaskBid { id: string; buyerName: string; caskId: string; price: number; expiresMonth: number }
-
-/** 대형 유통 납품 계약 (경기) — 큰 물량·낮은 단가·결제 지연 */
-export interface RetailTerms {
+export interface CaskOrder {
   id: string;
-  partner: string;
-  category: ProductCategory;
-  bottlesPerMonth: number;
-  /** 납품 단가 = 제품 출고가 × priceFactor */
-  priceFactor: number;
-  termMonths: number;
-  /** 대금 지급까지 개월 수 */
-  paymentDelay: number;
-  penaltyPerBottle: number;
+  typeId: CaskTypeId;
+  qty: number;
+  arriveMonth: number;
+  source: 'cooperage' | 'seasoning';
 }
-export interface RetailOffer extends RetailTerms { expiresMonth: number }
-export interface RetailContract extends RetailTerms { startMonth: number; monthsDone: number; delivered: number; shortfall: number }
 
-/** 대기업 위탁생산(OEM) 계약 (간토) — 원료는 위탁사 부담, 가공비를 받고 증류 설비를 내준다 */
-export interface OemTerms {
-  id: string; buyerName: string; batchesPerMonth: number; feePerBatch: number; termMonths: number; penaltyPerBatch: number;
-  /** 전용 증류기 설치 지원형 (결정 #66): 위탁사가 설비 패키지(증류기 + 발효조 2기) 설치비 일부를 체결 시 지원 */
-  dedicated?: boolean;
-  capexSupport?: number;
-}
-export interface OemOffer extends OemTerms { expiresMonth: number }
-export interface OemContract extends OemTerms { startMonth: number; monthsDone: number; missed: number; /** 전용 증류기 설비 id */ stillId?: string }
-
-/** 매출채권 — 결제 지연 대금 */
-export interface Receivable { dueMonth: number; amount: number; label: string }
-
-/** 산지 고유 상태 */
-export interface SiteState {
-  /** 취수 허가량 — 월 발효 투입 용량 상한(L). 제주 */
-  waterPermitL?: number;
-  /** 취수 증량 신청 — 결정 월에 승인 여부가 정해진다 */
-  permitApplication?: { decideMonth: number; addL: number; chance: number };
-  /** 지역 원료 계약재배 확대분(kg/월)과 진행 중인 확대 */
-  localSupplyKg?: number;
-  localSupplySteps?: number;
-  localSupplyPending?: { readyMonth: number; addKg: number };
-  /** 전통주 출고량(L) — 연도별 감면 구간 판정 */
-  traditionalShipped?: { year: number; liters: number; lastYearLiters: number };
-  /** 면세 한정판 시리즈 — 마지막 판 번호와 연속 완판 수 (제주) */
-  dfSeries?: { vol: number; streak: number };
-}
+export interface CaskBid { id: string; buyerName: string; caskId: string; price: number; expiresMonth: number }
 
 export interface GameState {
   version: 5;
@@ -322,11 +293,9 @@ export interface GameState {
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;
   startYear: number;
-  /** 국가 */
   regionId: RegionId;
-  /** 산지 (국가의 하위) */
-  siteId: SiteId;
-  siteState: SiteState;
+  /** 지역 안의 증류소 입지 (없으면 지역 기본 입지) — 기후·특산물 자격이 달라진다 */
+  siteId?: string;
   distilleryName: string;
   cash: number;
   status: 'running' | 'bankrupt';
@@ -349,6 +318,8 @@ export interface GameState {
   b2bTrust: number;
   /** 벌크 원액 시세 지수 (1 = 기준) */
   bulkIndex: number;
+  /** 최근 현물 판매량(LPA, 매달 감쇠) — 그레인 현물 시장 포화 (#81). 옛 저장에는 없을 수 있다 */
+  spotSoldLPA?: { grain: number };
   marketingBudget: number;
   awareness: number;
   /** 원재료 가격 지수 (1 = 기준가) */
@@ -364,13 +335,25 @@ export interface GameState {
   /** 이벤트별 마지막 발생 월 (쿨다운) */
   eventLastMonth: Record<string, number>;
   caskBids: CaskBid[];
-  retailOffers: RetailOffer[];
-  retailContracts: RetailContract[];
-  oemOffers: OemOffer[];
-  oemContracts: OemContract[];
-  receivables: Receivable[];
   /** 지난달 원재료별 실제 구매량(kg) — 대량 구매 할인 등급 */
   ingredientKgLastMonth: Record<string, number>;
+  /** 쿠퍼리지 주문·시즈닝 계약으로 도착 예정인 캐스크 */
+  caskOrders: CaskOrder[];
+  /** 증류소 하우스 스타일 0~100 — 마스터 디스틸러가 쌓고, 부사수 없이 은퇴하면 초기화 */
+  houseStyle: number;
+  /** 외부 투자자 지분 (0~1) */
+  investorShare: number;
+  investmentsTaken: string[];
+  /** 비지터 센터 입소문(로컬 인지도) 0~1 */
+  localBuzz: number;
+  /** 사무직이 타결한 폐기물(드래프·지게미) 유상 판매 단가(원/kg) */
+  wasteContractPerKg: number;
+  /** 이번 달 로테이션한 캐스크 수 */
+  rotatedThisMonth: number;
+  /** 올해 전통주 경감 대상 누적 출고량(L) — 1월에 초기화 */
+  traditionalReleasedL: number;
+  /** 작년 전통주 경감 대상 출고량(L) — 500㎘ 넘으면 올해 경감 없음 */
+  traditionalPrevYearL: number;
   reports: MonthReport[];
   nextId: number;
 }

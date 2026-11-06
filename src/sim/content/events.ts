@@ -1,4 +1,4 @@
-import type { ProductCategory, RegionId, SiteId } from '../types';
+import type { ProductCategory, RegionId } from '../types';
 
 // 이벤트 정의 — 선언형 데이터 (Godot 이식 시 JSON으로 옮길 수 있게 함수 없이 작성). 확률·수치 [튜닝]
 // 원칙: ① 큰 악재는 예보(빗나갈 수 있음)로 대비할 시간을 준다 ② 호재와 악재를 섞는다
@@ -11,7 +11,7 @@ export type Effect =
   | { type: 'cash'; amount: number }
   | { type: 'awareness'; delta: number }
   | { type: 'trust'; delta: number }
-  | { type: 'caskLoss'; share: [number, number]; /** 부지 개량으로 줄어든 경우 0개 손실 허용 */ allowZero?: boolean }
+  | { type: 'caskLoss'; share: [number, number] }
   | { type: 'caskVolumeLoss'; share: number }
   | { type: 'stillDown'; months: number }
   | { type: 'lotSpoil'; acetic: number }
@@ -22,7 +22,13 @@ export type Effect =
   | { type: 'gamble'; chance: number; success: Effect[]; failure: Effect[] }
   | { type: 'qualityGamble'; success: Effect[]; failure: Effect[] }
   | { type: 'exportOrder'; category: ProductCategory; bottles: number; priceFactor: number }
-  | { type: 'hypeBestSeller'; factor: number; months: number; backlash: number; backlashMonths: number };
+  | { type: 'hypeBestSeller'; factor: number; months: number; backlash: number; backlashMonths: number }
+  /** 캐스크 일부에 곰팡이·TCA 오염 */
+  | { type: 'contaminate'; share: [number, number]; kind: 'tca' | 'mold' }
+  /** 평론가 판정: 최고 제품 품질 ≥ rave면 극찬, < pan이면 혹평 */
+  | { type: 'criticVerdict'; rave: number; pan: number; raveEffects: Effect[]; panEffects: Effect[]; mildEffects: Effect[] }
+  /** 세무조사: 최근 3개월 주세 × rate 추징, 사무직 세무 스탯으로 감면 */
+  | { type: 'taxAudit'; rate: number };
 
 export type Requirement = 'activeContract' | 'filledCasks' | 'whiskyStock' | 'twoStaff' | 'still' | 'products' | 'highQualityProduct';
 
@@ -39,18 +45,16 @@ export interface EventDef {
   minMonth?: number;
   /** 발생 가능한 달(1~12) */
   months?: number[];
-  /** 발생 가능한 국가 (없으면 모든 국가) */
+  /** 발생 가능한 지역 (없으면 모든 지역) */
   regions?: RegionId[];
-  /** 발생 가능한 산지 (없으면 모든 산지) */
-  sites?: SiteId[];
-  /** 부지 개량으로 피해가 줄어드는 리스크 */
-  risk?: 'earthquake';
   requires?: Requirement[];
   /** 몇 달 앞서 예보. certainty = 실제로 일어날 확률 */
   forecast?: { months: number; certainty: number; text: string };
   effects?: Effect[];
   choices?: EventChoiceDef[];
   defaultChoice?: number;
+  /** 이 방재 설비가 있으면 피해 없음 (테크트리 도입 전 대체) */
+  defense?: string;
 }
 
 const m = (key: string, factor: number, months: [number, number], label?: string): Effect => ({ type: 'modifier', key, factor, months, label });
@@ -102,7 +106,7 @@ export const EVENTS: EventDef[] = [
   // ── 재해·운영 ──
   { id: 'warehouse_fire', title: '숙성고 화재', category: 'disaster', chance: 0.003, cooldown: 60, requires: ['filledCasks'], text: '숙성고 일부가 불에 탔습니다.',
     effects: [{ type: 'caskLoss', share: [0.05, 0.15] }, { type: 'cash', amount: -20_000_000 }] },
-  { id: 'flood', title: '집중호우 침수', category: 'disaster', chance: 0.02, cooldown: 24, months: [7, 8], regions: ['KR', 'JP'], text: '집중호우로 공장이 침수되어 한 달간 생산이 멈춥니다.',
+  { id: 'flood', title: '집중호우 침수', category: 'disaster', chance: 0.02, cooldown: 24, months: [7, 8], regions: ['KR', 'JP'], defense: 'facility_storm', text: '집중호우로 공장이 침수되어 한 달간 생산이 멈춥니다.',
     effects: [{ type: 'caskVolumeLoss', share: 0.02 }, m('production', 0, [1, 1], '침수 복구'), { type: 'cash', amount: -10_000_000 }] },
   { id: 'heatwave', title: '기록적 폭염', category: 'disaster', chance: 0.06, cooldown: 12, months: [7, 8], text: '폭염으로 숙성고 온도가 치솟아 증발이 늘어납니다.',
     effects: [m('evaporation', 1.7, [2, 2], '폭염')] },
@@ -134,7 +138,7 @@ export const EVENTS: EventDef[] = [
   { id: 'blender_default', title: '거래 블렌더 부도', category: 'b2b', chance: 0.01, cooldown: 36, requires: ['activeContract'], text: '계약 중인 블렌더가 부도났습니다. 계약이 끝나고 지난달 대금을 받지 못합니다.',
     effects: [{ type: 'buyerDefault' }] },
   { id: 'mega_contract', title: '대형 블렌더 장기 계약 제안', category: 'b2b', chance: 0.012, cooldown: 24, minMonth: 6, text: '대형 블렌더가 선급금 40% 조건의 장기 공급 계약을 제안합니다.',
-    effects: [{ type: 'specialContract', capacityShare: 0.6, prepayShare: 0.4, priceFactor: 1.05, termMonths: 36 }] },
+    effects: [{ type: 'specialContract', capacityShare: 0.8, prepayShare: 0.4, priceFactor: 1.15, termMonths: 36 }] },
 
   // ── 기회·사람 ──
   { id: 'export_inquiry', title: '해외 바이어 문의', category: 'opportunity', chance: 0.015, cooldown: 12, requires: ['whiskyStock'], text: '해외 바이어가 위스키 300병을 출고가의 120%에 사고 싶어 합니다.',
@@ -146,10 +150,32 @@ export const EVENTS: EventDef[] = [
     effects: [{ type: 'awareness', delta: 0.06 }] },
   { id: 'critic_visit', title: '평론가 {critic} 방문', category: 'opportunity', chance: 0.012, cooldown: 24, requires: ['products'], text: '평론가 {critic}이(가) 시음하러 왔습니다. 평가는 제품 품질에 달려 있습니다.',
     effects: [{ type: 'qualityGamble', success: [{ type: 'awareness', delta: 0.05 }, m('demand:all', 1.15, [6, 6], '평론가 호평')], failure: [m('demand:all', 0.88, [6, 6], '평론가 혹평')] }] },
+  // ── v1.0 재해 (방재 설비로 막는다) ──
+  { id: 'snowstorm', title: '폭설', category: 'disaster', chance: 0.03, cooldown: 24, months: [12, 1, 2], regions: ['KR', 'JP'], requires: ['filledCasks'], defense: 'facility_snow', text: '폭설로 숙성고 지붕 일부가 무너졌습니다.',
+    effects: [{ type: 'caskLoss', share: [0.01, 0.03] }, { type: 'stillDown', months: 1 }, { type: 'cash', amount: -20_000_000 }] },
+  { id: 'cold_wave', title: '한파', category: 'disaster', chance: 0.05, cooldown: 12, months: [12, 1, 2], regions: ['KR', 'JP'], defense: 'facility_heating', text: '기록적인 한파로 배관이 얼어 터졌습니다. 한 달간 생산이 멈춥니다.',
+    effects: [m('production', 0, [1, 1], '한파 동파 복구'), { type: 'cash', amount: -8_000_000 }] },
+  { id: 'mold_outbreak', title: '곰팡이 증식', category: 'disaster', chance: 0.04, cooldown: 12, months: [6, 7, 8, 9], requires: ['filledCasks'], defense: 'facility_dehumid', text: '장마철 습기로 숙성고에 곰팡이가 번졌습니다. 일부 캐스크가 오염됐습니다.',
+    effects: [{ type: 'contaminate', share: [0.03, 0.08], kind: 'mold' }] },
+  // ── v1.0 글로벌 경제 ──
+  { id: 'tariff_retaliation', title: '관세 보복', category: 'supply', chance: 0.008, cooldown: 72, minMonth: 12, text: '무역 분쟁으로 보복 관세가 붙었습니다. 수입 맥아와 미국산 버번 배럴이 비싸지고, 수출 블렌더의 원액 수요가 줄어듭니다.',
+    forecast: { months: 3, certainty: 0.6, text: '통상 갈등이 커지며 보복 관세 가능성이 거론됩니다.' },
+    effects: [m('ingredient:malt_unpeated', 1.15, [12, 24], '보복 관세'), m('ingredient:malt_peated', 1.15, [12, 24], '보복 관세'), m('cask:ex_bourbon_barrel', 1.3, [12, 24], '보복 관세'), m('bulk', 0.9, [12, 24], '수출 위축')] },
+  { id: 'spain_drought', title: '스페인 가뭄 — 셰리통 파동', category: 'supply', chance: 0.008, cooldown: 72, text: '스페인 가뭄으로 셰리 생산이 줄어 시즈닝된 셰리 캐스크가 귀해졌습니다.',
+    forecast: { months: 4, certainty: 0.7, text: '헤레스 지역 가뭄으로 포도 작황이 나쁘다는 소식입니다.' },
+    effects: [m('cask:oloroso_butt', 1.8, [24, 36], '셰리통 파동'), m('appeal:sherried', 1.1, [24, 36], '셰리 희소성')] },
+  // ── v1.0 평론가·세무 ──
+  { id: 'murray_visit', title: '짐 머레이 기습 방문', category: 'opportunity', chance: 0.006, cooldown: 36, requires: ['products'], text: '평론가 짐 머레이가 예고 없이 찾아와 대표 제품을 시음했습니다.',
+    effects: [{ type: 'criticVerdict', rave: 82, pan: 68,
+      raveEffects: [{ type: 'awareness', delta: 0.1 }, m('demand:all', 1.8, [12, 12], '짐 머레이 극찬'), m('consumerPrice:all', 0.92, [12, 12], '극찬 프리미엄')],
+      panEffects: [m('demand:all', 0.45, [12, 12], '짐 머레이 혹평')],
+      mildEffects: [{ type: 'awareness', delta: 0.02 }] }] },
+  { id: 'tax_audit', title: '세무조사', category: 'regulation', chance: 0.008, cooldown: 48, minMonth: 24, requires: ['products'], text: '국세청 세무조사가 나왔습니다. 주세 신고 내역을 검증합니다.',
+    effects: [{ type: 'taxAudit', rate: 0.15 }] },
   // ── 지역 고유 ──
-  { id: 'typhoon', title: '태풍 상륙', category: 'disaster', chance: 0.05, cooldown: 12, months: [8, 9, 10], sites: ['jeju', 'kanto', 'kansai', 'yilan'], text: '태풍으로 공장이 피해를 입고 한 달간 생산이 멈춥니다.',
+  { id: 'typhoon', title: '태풍 상륙', category: 'disaster', chance: 0.05, cooldown: 12, months: [8, 9, 10], regions: ['JP', 'TW'], defense: 'facility_storm', text: '태풍으로 공장이 피해를 입고 한 달간 생산이 멈춥니다.',
     effects: [{ type: 'caskVolumeLoss', share: 0.02 }, m('production', 0, [1, 1], '태풍 복구'), { type: 'cash', amount: -15_000_000 }] },
-  { id: 'earthquake', title: '지진', category: 'disaster', chance: 0.004, cooldown: 60, regions: ['JP', 'TW'], risk: 'earthquake', requires: ['filledCasks'], text: '강한 지진으로 숙성고 랙이 무너지고 증류기가 손상됐습니다.',
+  { id: 'earthquake', title: '지진', category: 'disaster', chance: 0.004, cooldown: 60, regions: ['JP'], defense: 'facility_seismic', requires: ['filledCasks'], text: '강한 지진으로 숙성고 랙이 무너지고 증류기가 손상됐습니다.',
     effects: [{ type: 'caskLoss', share: [0.02, 0.06] }, { type: 'stillDown', months: 1 }, { type: 'cash', amount: -30_000_000 }] },
   { id: 'jp_whisky_shortage', title: '재패니즈 위스키 원액 부족', category: 'b2b', chance: 0.012, cooldown: 60, minMonth: 12, regions: ['JP'], text: '재패니즈 위스키 인기로 대형 회사들이 일본산 원액을 구하지 못해 웃돈을 붙입니다.',
     effects: [m('domestic_premium', 1.5, [24, 36], '일본산 원액 부족'), m('demand:whisky', 1.2, [24, 36], '재패니즈 위스키 인기')] },
@@ -160,21 +186,6 @@ export const EVENTS: EventDef[] = [
     effects: [m('demand:whisky', 0.75, [18, 30], '투기 거품 붕괴'), m('bulk', 0.85, [12, 18], '투기 거품 붕괴')] },
   { id: 'tw_collector_boom', title: '싱글 캐스크 수집 열풍', category: 'market', chance: 0.012, cooldown: 48, regions: ['TW'], text: '대만 수집가들 사이에서 싱글 캐스크·고숙성 위스키 열풍이 붑니다.',
     effects: [m('demand:whisky', 1.3, [12, 24], '수집 열풍'), m('appeal:all', 1.05, [12, 24], '수집 열풍')] },
-  // ── 산지 고유 (regions.md §4, Tier 1) ──
-  { id: 'andong_festival', title: '안동 탈춤축제', category: 'market', chance: 0.3, cooldown: 10, months: [9, 10], sites: ['andong'], text: '탈춤축제 관광객이 몰려 증류식 소주가 잘 팔립니다.',
-    effects: [m('demand:soju_distilled', 1.3, [1, 1], '탈춤축제'), { type: 'awareness', delta: 0.01 }] },
-  { id: 'jeju_tourism_boom', title: '제주 관광객 급증', category: 'market', chance: 0.02, cooldown: 36, sites: ['jeju'], text: '제주 관광객이 크게 늘어 지정면세점 매출이 오릅니다.',
-    effects: [m('dutyfree', 1.4, [12, 18], '제주 관광 호황')] },
-  { id: 'jeju_tourism_slump', title: '제주 관광객 감소', category: 'market', chance: 0.015, cooldown: 36, sites: ['jeju'], text: '항공편 감소와 고물가로 제주 관광객이 줄어듭니다.',
-    forecast: { months: 2, certainty: 0.6, text: '관광 동향: 제주 항공 노선 감축 소식이 들립니다.' },
-    effects: [m('dutyfree', 0.6, [6, 12], '제주 관광 침체')] },
-  { id: 'kansai_inbound_boom', title: '간사이 인바운드 관광 붐', category: 'market', chance: 0.02, cooldown: 36, sites: ['kansai'], text: '외국인 관광객이 몰려 증류소 견학과 기념품 수요가 늘어납니다.',
-    effects: [m('demand:all', 1.1, [12, 18], '인바운드 관광 붐')] },
-  { id: 'kansai_inbound_slump', title: '인바운드 관광 급감', category: 'market', chance: 0.012, cooldown: 48, sites: ['kansai'], text: '엔화 강세와 항공편 감소로 외국인 관광객이 줄어듭니다.',
-    forecast: { months: 2, certainty: 0.6, text: '관광 동향: 방일 관광객 증가세가 꺾이고 있습니다.' },
-    effects: [m('demand:all', 0.9, [6, 12], '인바운드 관광 급감')] },
-  { id: 'hokkaido_snow', title: '폭설', category: 'disaster', chance: 0.04, cooldown: 10, months: [1, 2], sites: ['hokkaido'], text: '폭설로 도로가 끊겨 한 달간 원료 반입과 생산이 멈춥니다.',
-    effects: [m('production', 0, [1, 1], '폭설'), { type: 'cash', amount: -5_000_000 }] },
   { id: 'staff_poaching', title: '경쟁사 스카우트 제안', category: 'people', chance: 0.015, cooldown: 18, requires: ['twoStaff'], text: '경쟁사가 우리 직원에게 이직을 제안했습니다.',
     choices: [
       { label: '연봉 20% 인상', detail: '직원 한 명의 연봉을 20% 올려 붙잡는다', effects: [{ type: 'raiseSalary', share: 0.2 }] },

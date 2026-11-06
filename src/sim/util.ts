@@ -27,9 +27,7 @@ export function isReady(s: GameState, equipmentId: string): boolean {
 export function warehouseCapacity(s: GameState): number {
   return s.warehouseBase + s.equipment.reduce((sum, e) => {
     const def = EQUIPMENT[e.catalogId];
-    if (!def) return sum;
-    // 직판장 같은 시설은 숙성고 자리를 차지한다 (공사 중부터)
-    return sum + (def.kind === 'warehouse' && e.readyMonth <= s.month ? def.casks : 0) - (def.warehouseSlots ?? 0);
+    return sum + (def?.kind === 'warehouse' && e.readyMonth <= s.month ? def.casks : 0);
   }, 0);
 }
 

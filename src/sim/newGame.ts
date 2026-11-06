@@ -3,9 +3,8 @@ import { refreshBroker } from './broker';
 import { refreshContractOffers } from './bulk';
 import { refreshCandidates, salaryFor } from './hr';
 import { mulberry32 } from './rng';
-import type { Cask, CaskTypeId, GameState, Recipe, RegionId, SiteId } from './types';
+import type { Cask, CaskTypeId, GameState, Recipe, RegionId } from './types';
 import { regionOf } from './content/regions';
-import { DEFAULT_SITE, SITES, siteOf } from './content/sites';
 import { nid } from './util';
 
 export interface NewGameOptions {
@@ -13,15 +12,14 @@ export interface NewGameOptions {
   distilleryName?: string;
   startYear?: number;
   startingCash?: number;
-  /** 국가 — site를 주면 무시된다 (산지의 국가) */
   region?: RegionId;
-  /** 산지 (없으면 국가의 표준 산지) */
-  site?: SiteId;
+  /** 지역 안의 입지 (예: 대만 진먼섬, 한국 안동). 없으면 지역 기본 입지 */
+  site?: string;
 }
 
 export const DEFAULT_STARTING_CASH = 500_000_000;
 
-export function presetRecipes(stillId: string, region: RegionId = 'KR', site: SiteId = DEFAULT_SITE[region]): Omit<Recipe, 'id'>[] {
+export function presetRecipes(stillId: string, region: RegionId = 'KR'): Omit<Recipe, 'id'>[] {
   const base = { botanicals: [], botanicalMethod: 'steep' as const, pressure: 'atmospheric' as const, stillId };
   const londonDry: Omit<Recipe, 'id'> = { ...base, name: '런던 드라이 진', kind: 'gin', mashBill: [], botanicals: [
     { botanicalId: 'juniper', gramsPerL: 20 }, { botanicalId: 'coriander', gramsPerL: 8 }, { botanicalId: 'angelica', gramsPerL: 2 },
@@ -32,15 +30,6 @@ export function presetRecipes(stillId: string, region: RegionId = 'KR', site: Si
     { ...base, name: '싱글 몰트 — 피티드', kind: 'malt', mashBill: [{ ingredientId: 'malt_peated', ratio: 1 }], yeast: 'distillers', fermentDays: 4, runs: 2, cut: { c1: 0.15, c2: 0.78 } },
   ];
   const gin = (name: string, botanicals: Recipe['botanicals']): Omit<Recipe, 'id'> => ({ ...base, name, kind: 'gin', mashBill: [], botanicalMethod: 'vapor', botanicals, yeast: 'distillers', fermentDays: 0, runs: 1, cut: { c1: 0.08, c2: 0.8 } });
-  // 산지 한정 프리셋 — 산지 원료가 정체성인 곳은 그 레시피를 맨 앞에 둔다
-  const siteFirst: Omit<Recipe, 'id'>[] = [];
-  if (site === 'andong') siteFirst.push({ ...base, name: '안동소주 — 안동 쌀(전통주)', kind: 'soju', mashBill: [{ ingredientId: 'andong_rice', ratio: 0.92 }, { ingredientId: 'nuruk', ratio: 0.08 }], yeast: 'nuruk_native', fermentDays: 14, runs: 1, cut: { c1: 0.12, c2: 0.7 } });
-  if (site === 'jeju') siteFirst.push({ ...base, name: '고소리술 — 제주 차조', kind: 'soju', mashBill: [{ ingredientId: 'jeju_millet', ratio: 0.9 }, { ingredientId: 'nuruk', ratio: 0.1 }], yeast: 'nuruk_native', fermentDays: 14, runs: 1, cut: { c1: 0.12, c2: 0.7 } });
-  if (site === 'hokkaido') siteFirst.push({ ...base, name: '본격 쇼추 — 홋카이도 감자', kind: 'soju', mashBill: [{ ingredientId: 'potato', ratio: 0.75 }, { ingredientId: 'rice_koji', ratio: 0.25 }], yeast: 'distillers', fermentDays: 12, runs: 1, cut: { c1: 0.12, c2: 0.7 } });
-  return [...siteFirst, ...countryPresets(base, region, londonDry, malts, gin)];
-}
-
-function countryPresets(base: Pick<Recipe, 'botanicals' | 'botanicalMethod' | 'pressure' | 'stillId'>, region: RegionId, londonDry: Omit<Recipe, 'id'>, malts: Omit<Recipe, 'id'>[], gin: (name: string, b: Recipe['botanicals']) => Omit<Recipe, 'id'>): Omit<Recipe, 'id'>[] {
   if (region === 'JP') return [
     { ...base, name: '본격 쇼추 — 고구마(이모)', kind: 'soju', mashBill: [{ ingredientId: 'sweet_potato', ratio: 0.75 }, { ingredientId: 'rice_koji', ratio: 0.25 }], yeast: 'distillers', fermentDays: 14, runs: 1, cut: { c1: 0.12, c2: 0.7 } },
     { ...base, name: '본격 쇼추 — 보리(무기)', kind: 'soju', mashBill: [{ ingredientId: 'barley_raw', ratio: 0.7 }, { ingredientId: 'rice_koji', ratio: 0.3 }], yeast: 'distillers', fermentDays: 12, runs: 1, cut: { c1: 0.12, c2: 0.7 } },
@@ -48,6 +37,8 @@ function countryPresets(base: Pick<Recipe, 'botanicals' | 'botanicalMethod' | 'p
     ...malts,
   ];
   if (region === 'TW') return [
+    // 대만 특산물: 진먼섬 입지에서 진먼 고량 60% 이상 = 진먼 고량주 (결정 #58·#62)
+    { ...base, name: '진먼 고량 — 청향', kind: 'baijiu', mashBill: [{ ingredientId: 'sorghum_kinmen', ratio: 0.85 }, { ingredientId: 'wheat_qu', ratio: 0.15 }], yeast: 'distillers', fermentDays: 21, runs: 1, cut: { c1: 0.1, c2: 0.72 } },
     gin('대만 보태니컬 진', [{ botanicalId: 'juniper', gramsPerL: 18 }, { botanicalId: 'maqaw', gramsPerL: 3 }, { botanicalId: 'oolong', gramsPerL: 3 }, { botanicalId: 'lemon_peel', gramsPerL: 3 }, { botanicalId: 'coriander', gramsPerL: 4 }]),
     londonDry,
     ...malts,
@@ -61,36 +52,32 @@ function countryPresets(base: Pick<Recipe, 'botanicals' | 'botanicalMethod' | 'p
   ];
 }
 
-/** 지역 특산 캐스크는 싸고, 다른 지역 캐스크는 비싸다 — 국가 배수 × 산지 배수 × 운송 할증 (+ 이벤트 보정은 호출 측에서) */
-export function regionalCaskPrice(s: Pick<GameState, 'regionId' | 'siteId'>, typeId: CaskTypeId): number {
-  const site = siteOf(s);
-  return Math.round(CASKS[typeId].price * (regionOf(s).caskPriceFactor[typeId] ?? 1) * (site.caskPriceFactor[typeId] ?? 1) * site.freight.casks);
+/** 지역 특산 캐스크는 싸고, 다른 지역 캐스크는 비싸다 (+ 이벤트 보정은 호출 측에서) */
+export function regionalCaskPrice(s: Pick<GameState, 'regionId'>, typeId: CaskTypeId): number {
+  return Math.round(CASKS[typeId].price * (regionOf(s).caskPriceFactor[typeId] ?? 1));
 }
+
+const STARTER: Record<RegionId, { name: string; casks: CaskTypeId[]; distillery: string }> = {
+  KR: { name: '윤도현', distillery: '한빛 증류소', casks: Array(10).fill('ex_bourbon_barrel') },
+  JP: { name: '사토 겐타', distillery: '아카리 증류소', casks: [...Array(8).fill('ex_bourbon_barrel'), 'mizunara_hogshead', 'mizunara_hogshead'] },
+  TW: { name: '린즈하오', distillery: '란양 증류소', casks: Array(10).fill('ex_bourbon_barrel') },
+};
 
 export function emptyCaskOf(s: GameState, typeId: keyof typeof CASKS): Cask {
   const def = CASKS[typeId];
   return { id: nid(s, 'K'), typeId, sizeL: def.sizeL, wood: def.wood, activity: def.activity, seasoning: def.seasoning, fills: 0, recharCount: 0, char: def.char };
 }
 
-/** 산지 고유 상태 초기값 */
-function initialSiteState(siteId: SiteId): GameState['siteState'] {
-  const wp = SITES[siteId].waterPermit;
-  return wp ? { waterPermitL: wp.baseL } : {};
-}
-
 export function newGame(opts: NewGameOptions = {}): GameState {
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
-  const siteId: SiteId = opts.site ?? DEFAULT_SITE[opts.region ?? 'KR'];
-  const site = SITES[siteId];
   const s: GameState = {
     version: 5,
     seed,
     month: 0,
     startYear: opts.startYear ?? 2027,
-    regionId: site.country,
-    siteId,
-    siteState: initialSiteState(siteId),
-    distilleryName: opts.distilleryName ?? site.starter.distillery,
+    regionId: opts.region ?? 'KR',
+    ...(opts.site ? { siteId: opts.site } : {}),
+    distilleryName: opts.distilleryName ?? STARTER[opts.region ?? 'KR'].distillery,
     cash: opts.startingCash ?? DEFAULT_STARTING_CASH,
     status: 'running',
     negativeCashMonths: 0,
@@ -109,6 +96,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     contractOffers: [],
     b2bTrust: 50,
     bulkIndex: 1,
+    spotSoldLPA: { grain: 0 },
     marketingBudget: 3_000_000,
     awareness: 0.01,
     priceIndex: { ...Object.fromEntries(Object.keys(INGREDIENTS).map((k) => [k, 1])), gns: 1, energy: 1 },
@@ -121,42 +109,29 @@ export function newGame(opts: NewGameOptions = {}): GameState {
     eventLastMonth: {},
     ingredientKgLastMonth: {},
     caskBids: [],
-    retailOffers: [],
-    retailContracts: [],
-    oemOffers: [],
-    oemContracts: [],
-    receivables: [],
+    caskOrders: [],
+    houseStyle: 0,
+    investorShare: 0,
+    investmentsTaken: [],
+    localBuzz: 0,
+    wasteContractPerKg: 0,
+    rotatedThisMonth: 0,
+    traditionalReleasedL: 0,
+    traditionalPrevYearL: 0,
     reports: [],
     nextId: 1,
   };
   // 초기 설비: 단식 증류기 1기 + 스테인리스 발효조 2기
   const still = { id: nid(s, 'E'), catalogId: 'pot_onion_1000', readyMonth: 0, feintsLPA: 0 };
   s.equipment.push(still, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0 }, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0 });
-  for (const r of presetRecipes(still.id, s.regionId, s.siteId)) s.recipes.push({ ...r, id: nid(s, 'R') });
-  for (const t of site.starter.casks) s.casks.push(emptyCaskOf(s, t));
+  for (const r of presetRecipes(still.id, s.regionId)) s.recipes.push({ ...r, id: nid(s, 'R') });
+  for (const t of STARTER[s.regionId].casks) s.casks.push(emptyCaskOf(s, t));
   // 창업 멤버: 디스틸러 1명
   const stats = { a: 50, b: 50, c: 45 };
-  s.staff.push({ id: nid(s, 'S'), name: site.starter.name, role: 'distiller', level: 1, xp: 0, stats, salary: salaryFor('distiller', stats, 1, regionOf(s).laborCost), hiredMonth: 0 });
+  s.staff.push({ id: nid(s, 'S'), name: STARTER[s.regionId].name, role: 'distiller', level: 1, xp: 0, stats, salary: salaryFor('distiller', stats, 1, regionOf(s).laborCost), hiredMonth: 0, ageAtHire: 38 });
   const rng = mulberry32(seed ^ 0x9e3779b9);
   refreshCandidates(s, rng);
   refreshBroker(s, rng);
   refreshContractOffers(s, rng);
   return s;
-}
-
-/** 세이브 마이그레이션 — 알 수 없는 형식이면 null.
- *  v4 → v5 (PRD v0.8 국가/산지 2단 구조): 국가의 표준 산지로 이행, 산지 상태 초기화, 새 원재료 시세 지수 추가 */
-export function migrateState(raw: unknown): GameState | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const s = raw as Partial<GameState> & { version?: number };
-  // v5 안에서 늘어난 필드(산지 대표 거래·매출채권, 새 원재료 시세)는 빈 값으로 채운다
-  const fill = (x: GameState): GameState => ({
-    ...x,
-    priceIndex: { ...Object.fromEntries(Object.keys(INGREDIENTS).map((k) => [k, 1])), ...(x.priceIndex ?? {}) },
-    retailOffers: x.retailOffers ?? [], retailContracts: x.retailContracts ?? [], oemOffers: x.oemOffers ?? [], oemContracts: x.oemContracts ?? [], receivables: x.receivables ?? [],
-  });
-  if (s.version === 5) return fill(s as GameState);
-  if (s.version !== 4 || !s.regionId) return null;
-  const siteId = DEFAULT_SITE[s.regionId] ?? 'gyeonggi';
-  return fill({ ...(s as unknown as GameState), version: 5, siteId, siteState: initialSiteState(siteId) });
 }
