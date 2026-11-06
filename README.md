@@ -78,12 +78,21 @@ scripts/        밸런스 시뮬레이션, 틱 벤치마크, 수요 데이터 �
 
 ## 문서
 
+> **문서 정본 지도는 [docs/README.md](docs/README.md)** — 어떤 문서가 무엇의 정본인지, 등급(정본·기록·초안·조사), 누가 고치는지. 여러 세션이 나눠 개발하므로 [CLAUDE.md](CLAUDE.md)와 [docs/PROCESS.md](docs/PROCESS.md)를 먼저 읽는다.
+
 | 문서 | 내용 |
 |---|---|
-| [docs/PRD.md](docs/PRD.md) | 제품 요구사항 문서 v1.6 — 결정 로그(#1~98), 운영 시스템(§16), 한국 완화책(§16.10), 지역(한국·일본·대만)과 국가별 전략 정체성, 나라별 숙성 규칙, 매입 원액 브랜드 가치, 실존 이름 정책, Godot(C#) 이식 계획, 변동 설계, 원액 B2B·마진 사다리, 럭셔리 지수·브랜드 라인, 로드맵 |
+| [docs/PROCESS.md](docs/PROCESS.md) | 개발 공정 — 단계(뼈대 → 파트 개발 → 튜닝 → Godot 이식), 브랜치·머지, 결정 번호 발급, 공통 검사, 세션 구성 |
+| [docs/STATUS.md](docs/STATUS.md) | 현황판 — 지금 단계, 세션, 열린 PR 처리 방침, 오너 결정 대기 |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | 결정 로그(#1~#126)·번호 원장, 예약 번호, 재발급 이력 |
+| [docs/design/skeleton.md](docs/design/skeleton.md) | 뼈대 설계 — 시스템 지도, 파트 경계(소유 파일), 구조 결정 백로그(S-1~S-14) |
+| [docs/PRD.md](docs/PRD.md) | 제품 요구사항 문서 v1.6 — 운영 시스템(§16), 한국 완화책(§16.10), 지역(한국·일본·대만)과 국가별 전략 정체성, 나라별 숙성 규칙, 매입 원액 브랜드 가치, 실존 이름 정책, Godot(C#) 이식 계획, 변동 설계, 원액 B2B·마진 사다리, 럭셔리 지수·브랜드 라인, 로드맵 |
 | [docs/design/flavor-model.md](docs/design/flavor-model.md) | 향미 모델 설계 — 전역 축 레지스트리, 주종별 스키마, 공정 변환, 평가 함수 |
 | [docs/design/architecture.md](docs/design/architecture.md) | 아키텍처 v0.2 — 실측(캐스크 규모·틱 비용·세이브 크기), 단일 상태 + 도메인 슬라이스(#118), 틱 파이프라인·컨텍스트, 엔진 계약, 세이브 마이그레이션, 30년·2,500캐스크 기준 도입 트리거(#119) |
 | [docs/design/blending-minigame.md](docs/design/blending-minigame.md) | 블렌딩 레이더 미니게임 v0.1 (#121) — 6스탯 육각형 투영, 블렌더 지각 오차, 목표 매칭, 재미 제안 `[승인 요청]` |
 | [docs/design/tech-tree.md](docs/design/tech-tree.md) | 테크트리 설계 — 연구 시스템, 공통 4계통 + 주종 브랜치 6개, 라벨 속성 → 수요 연결 |
+| [docs/design/export.md](docs/design/export.md) | 수출 시장 설계 — 9개 시장, 수입사 계약, 관세 이벤트 (#95·#100~#109) |
+| [docs/design/regions.md](docs/design/regions.md) | 지역·입지 특성 원안 — §0.1 이식 현황 (#86~#94) |
+| [docs/design/scotland.md](docs/design/scotland.md) | 스코틀랜드(영국)·스페이사이드 설계 초안 v0.2 |
 | [docs/research/demand-data.md](docs/research/demand-data.md) | 국가·지역 × 주종 기본 수요 조사 v0.2 (출처·방법론·공백, 3·4차 조사 반영) |
 | [data/market/base-demand.json](data/market/base-demand.json) | 게임에 투입할 기본 수요 데이터 (`npm run data:demand`로 생성) |
