@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { advanceMonths, applyAction, awarenessOf, brandOf, demandFor, HOUSE_BRAND_ID, houseBrand, migrateSave, newGame, newScenarioGame, SAVE_VERSION, type Product } from '.';
 import fixture from './fixtures/save-v10.json';
 
-// 브랜드 라인 (skeleton S-2, P-ARCH-11, PRD §11.2 ④)
+// 브랜드 라인 (skeleton S-2, #148, PRD §11.2 ④)
 
 const product = (over: Partial<Product> = {}): Product => ({ id: 'P1', name: 'p', category: 'whisky', ageYears: 4, oakMonths: 48, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 80, style: null, sourcedShare: 0, stockBottles: 1000, price: 60_000, unitCost: 20_000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, ...over });
 
