@@ -155,7 +155,7 @@ function operations(s: GameState, strategy: Strategy): GameState {
   for (const c of s.casks.filter((x) => !x.contents && x.contamination && x.recharCount < 2)) if (s.cash > 100_000_000) s = act(s, { type: 'rechar', caskId: c.id });
   const empty = s.casks.filter((c) => !c.contents && !c.contamination).length + s.caskOrders.reduce((t, o) => t + o.qty, 0);
   // 오사카·교토 입지 전략: 싼 미즈나라 캐스크로 인센스 프리미엄을 노린다 (결정 #84)
-  const caskType = siteMode && SITE_KEY === 'JP/kansai' ? 'mizunara_hogshead' : 'ex_bourbon_barrel';
+  const caskType = siteMode && SITE_KEY === 'JP/kansai' && process.env.SITE_NO_MIZ !== '1' ? 'mizunara_hogshead' : 'ex_bourbon_barrel';
   if (empty < 12 && s.cash > 150_000_000) s = act(s, { type: 'buyCasks', caskType, qty: 12 });
   // v1.4: 원액이 든 캐스크가 숙성고의 85%를 넘으면 빈 통부터 중고로 팔고, 그래도 차면 랙 숙성고(+100 캐스크)를 늘린다
   const filled = s.casks.filter((c) => c.contents).length;
@@ -340,7 +340,7 @@ function siteActions(s: GameState): GameState {
   // 제주: 취수 허가에 막히면 증량 신청
   if (site.waterPermit && !s.siteState.permitApplication && s.cash > 150_000_000 && s.reports.at(-1)?.notes.some((n) => n.includes('취수 허가량'))) s = act(s, { type: 'applyWaterPermit' });
   // 오사카·교토: 숙성 위스키가 나온 뒤 VIP 테이스팅 라운지
-  if (SITE_KEY === 'JP/kansai' && s.month >= 36 && s.cash > 500_000_000 && s.equipment.some((e) => e.catalogId === 'visitor_basic') && !s.equipment.some((e) => e.catalogId === 'visitor_vip')) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_vip' });
+  if (SITE_KEY === 'JP/kansai' && process.env.SITE_NO_VIP !== '1' && s.month >= 36 && s.cash > 500_000_000 && s.equipment.some((e) => e.catalogId === 'visitor_basic') && !s.equipment.some((e) => e.catalogId === 'visitor_vip')) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_vip' });
   // 홋카이도: 현금이 모자라면 숙성 재고 담보대출
   if (inventoryLtv(s) > 0 && s.cash < 150_000_000 && !s.loans.some((l) => l.offerId === 'inventory') && inventoryLoanRoom(s) >= 50_000_000) s = act(s, { type: 'takeLoan', offerId: 'inventory', amount: inventoryLoanRoom(s) });
   return s;
