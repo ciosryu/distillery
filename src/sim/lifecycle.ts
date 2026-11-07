@@ -47,6 +47,7 @@ export function rollupYear(s: GameState, year: number): void {
     bulkRevenue: rs.reduce((t, r) => t + r.bulkRevenue, 0),
     expenses: rs.reduce((t, r) => t + Object.values(r.expenses).reduce((a, b) => a + b, 0), 0),
     cashEnd: rs.at(-1)!.cashEnd,
+    ...(rs.at(-1)!.netWorth != null ? { netWorthEnd: rs.at(-1)!.netWorth } : {}),
     bottlesSold: rs.reduce((t, r) => t + r.sales.reduce((a, x) => a + x.bottles, 0), 0),
     lpaProduced: rs.reduce((t, r) => t + r.production.reduce((a, x) => a + x.lpa, 0), 0),
     angelsShareL: rs.reduce((t, r) => t + r.angelsShareL, 0),
