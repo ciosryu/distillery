@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
-import { lastSample, readSigma, SAMPLING, samplingCapacity } from '../sim/blendTable';
+import { knownReads, lastSample, readSigma, SAMPLING, samplingCapacity, type KnownRead } from '../sim/blendTable';
 import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
 import { regionOf } from '../sim/content/regions';
 import { equipmentCost } from '../sim/sites';
@@ -8,12 +8,13 @@ import { isLocked, monthLabel, netWorth, regionalCaskPrice, selfFundedCash, ware
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
 import { LineChart } from './charts';
+import { PriceDesk } from './panels/Sales';
 import { liters, months, num, pct, won } from './format';
 import { Badge, Button, Card, Empty, Meter, NumberField, Select, Stat, Table, Td } from './kit';
 
 // MVP 단일 화면 (mvp.md §5, #136·#137·#138·#146) — 코어 UI(ARCH).
 // 원칙: 캐스크의 참 향미·품질은 보여 주지 않는다. 숙성 연수·남은 양·통 이력처럼 증류소가 실제로 아는 값과 **마지막 샘플 기록**만 보인다(#136).
-// 생산 지시·병입·판매·대출은 기존 탭을 쓴다 — 이 화면은 "지금 어디쯤인가"와 숙성고 공간(#137)을 한곳에 모은다
+// 판매(가격·수요·주세)는 MKT의 PriceDesk를 그대로 끼운다. 생산 지시·크래프팅 레버(PROD)·병입·대출은 바로 가기 — 이 화면은 "지금 어디쯤인가"·판매·숙성고 공간(#137)을 한곳에 모은다
 
 /** 숙성고 증설 선택지 (#137) — 카탈로그 설비 중 숙성고 */
 const WAREHOUSE_EXPANSIONS = Object.values(EQUIPMENT).filter((d) => d.kind === 'warehouse');
@@ -40,6 +41,8 @@ export function MvpHome() {
   return (
     <div className="grid gap-4">
       <Headline />
+      {/* 판매 — MKT가 단일 화면용으로 내보낸 가격·수요·주세 표 (#154) */}
+      <PriceDesk />
       <WarehouseCard />
       <SpaceCard />
     </div>
@@ -94,7 +97,7 @@ function Headline() {
         <span className="self-center text-stone-500">바로 가기:</span>
         <Button small onClick={() => setTab('production')}>생산 지시</Button>
         <Button small onClick={() => setTab('bottling')}>블렌딩·병입</Button>
-        <Button small onClick={() => setTab('sales')}>판매·가격</Button>
+        <Button small onClick={() => setTab('sales')}>판매 상세</Button>
         <Button small onClick={() => setTab('b2b')}>원액 현물 판매</Button>
         <Button small onClick={() => setTab('finance')}>대출·급전</Button>
         <Button small variant="ghost" onClick={() => setTab('dashboard')}>월 결산표</Button>
@@ -108,8 +111,22 @@ const LIST_FIRST = 30;
 
 const arrow = (d: number, eps = 0.5) => (d > eps ? '↑' : d < -eps ? '↓' : '→');
 
-/** 마지막 샘플 칸 — 기록이 없으면 "샘플 없음". 참값은 쓰지 않는다 */
-function SampleCell({ s, c }: { s: GameState; c: Cask }) {
+/**
+ * 마지막 샘플 칸 — 블렌딩 테이블과 같은 "아는 값"(knownRead, #157)을 쓴다. 참값은 쓰지 않는다.
+ * 자기 기록이 없으면 형제 통(같은 배치·같은 통 종류)의 기록을 흐리게, 그것도 없으면 "샘플 없음"
+ */
+function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead | undefined }) {
+  if (!known) return <span className="text-xs text-stone-400">샘플 없음</span>;
+  if (known.from === 'sibling') {
+    const top = [...HEX_AXES].sort((a, b) => known.hex[b] - known.hex[a]).slice(0, 3);
+    return (
+      <div className="text-xs text-stone-500" title="이 통은 아직 뜨지 않았다 — 같은 배치를 같은 종류 통에 담은 형제 통의 기록을 빌려 본다. 통마다 숙성이 달라 실제와 더 어긋날 수 있다">
+        <Badge>형제 통</Badge> <span className="tabular-nums">{known.estQuality} ±{Math.round(known.sigma)}</span>
+        <span className="ml-2">{top.map((a) => `${HEX_LABEL[a]} ${Math.round(known.hex[a])}`).join(' · ')}</span>
+        <span className="ml-2 text-stone-400">{s.month - known.month === 0 ? '이번 달' : `${s.month - known.month}개월 전`}</span>
+      </div>
+    );
+  }
   const ls = lastSample(c);
   if (!ls) return <span className="text-xs text-stone-400">샘플 없음</span>;
   const { last, delta } = ls;
@@ -138,6 +155,7 @@ function WarehouseCard() {
   const dispatch = useGame((g) => g.dispatch);
   const [picked, setPicked] = useState<string[]>([]);
   const [all, setAll] = useState(false);
+  const known = useMemo(() => knownReads(s), [s]);
   const rules = regionOf(s).whisky;
   const minM = whiskyMinMonths(rules);
   const filled = s.inventory.casks.filter((c) => c.contents).sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths || a.id.localeCompare(b.id));
@@ -145,15 +163,16 @@ function WarehouseCard() {
   const left = Math.max(0, samplingCapacity(s) - s.inventory.samplesThisMonth);
   const chosen = picked.filter((id) => filled.some((c) => c.id === id && sampleable(c)));
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
-  // 오래 안 뜬 통부터 (샘플 없음 → 오래된 샘플)
-  const stalest = filled.filter(sampleable).sort((a, b) => (a.sampleLog?.at(-1)?.month ?? -1) - (b.sampleLog?.at(-1)?.month ?? -1)).slice(0, left).map((c) => c.id);
+  // 아는 것이 적은 통부터: 아무 기록 없음 → 형제 통 기록만 → 자기 기록이 오래된 순
+  const staleness = (c: Cask) => { const k = known.get(c.id); return !k ? -2 : k.from === 'sibling' ? -1 : k.month; };
+  const stalest = filled.filter(sampleable).sort((a, b) => staleness(a) - staleness(b)).slice(0, left).map((c) => c.id);
   return (
     <Card
       title={`숙성 중인 캐스크 ${filled.length}통 — 샘플로만 안다`}
       actions={
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="text-stone-500">이번 달 샘플 여력 {left}회 · 1회 {won(SAMPLING.cost)} · 원액 {SAMPLING.lossL}L</span>
-          <Button small variant="ghost" disabled={!stalest.length} onClick={() => setPicked(stalest)} title="샘플이 없거나 가장 오래된 통부터 여력만큼 고른다">오래 안 뜬 통 고르기</Button>
+          <Button small variant="ghost" disabled={!stalest.length} onClick={() => setPicked(stalest)} title="아무 기록 없는 통 → 형제 통 기록만 있는 통 → 자기 기록이 오래된 통 순서로 여력만큼 고른다">오래 안 뜬 통 고르기</Button>
           <Button small variant="primary" disabled={!chosen.length || chosen.length > left} onClick={() => { if (dispatch({ type: 'sampleCask', caskIds: chosen })) setPicked([]); }}>
             선택한 {chosen.length}통 샘플 ({won(chosen.length * SAMPLING.cost)})
           </Button>
@@ -173,7 +192,7 @@ function WarehouseCard() {
                 <Td right>{months(lot.oakMonths)}</Td>
                 <Td right>{liters(lot.volumeL)}</Td>
                 <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : lot.oakMonths >= minM ? <Badge tone="good">위스키{lot.oakMonths < 36 ? ' (어림)' : ''}</Badge> : <Badge tone="warn">{minM - lot.oakMonths}개월 남음</Badge>}</Td>
-                <Td><SampleCell s={s} c={c} /></Td>
+                <Td><SampleCell s={s} c={c} known={known.get(c.id)} /></Td>
                 <Td>{c.contaminationKnown && !c.owner && <Button small variant="ghost" onClick={() => dispatch({ type: 'dumpCask', caskId: c.id })}>폐기</Button>}</Td>
               </tr>
             );
@@ -182,7 +201,7 @@ function WarehouseCard() {
       )}
       {filled.length > LIST_FIRST && <div className="mt-2"><Button small variant="ghost" onClick={() => setAll((v) => !v)}>{all ? '접기' : `나머지 ${filled.length - LIST_FIRST}통 더 보기`}</Button></div>}
       <p className="mt-2 text-xs text-stone-500">
-        추정치는 샘플을 뜬 그 달의 읽기다 — 다음 샘플 전까지 바뀌지 않는다. 같은 통을 여러 번 뜰수록 오차가 준다(통당 {SAMPLING.maxSamples}회까지).
+        추정치는 샘플을 뜬 그 달의 읽기다 — 다음 샘플 전까지 바뀌지 않는다. <b>형제 통</b> = 아직 안 뜬 통에 같은 배치·같은 종류 통의 기록을 빌려 보인 것(블렌딩 테이블과 같은 규칙). 같은 통을 여러 번 뜰수록 오차가 준다(통당 {SAMPLING.maxSamples}회까지).
         오크가 과하면(우디↑·품질↓) 지금 병입하는 것이 낫다. 병입은 <b>블렌딩·병입</b> 탭.
       </p>
       {chosen.length > 0 && <p className="mt-1 text-xs text-stone-500">선택한 통의 다음 읽기 오차: {chosen.slice(0, 4).map((id) => { const c = filled.find((x) => x.id === id)!; return `${id} ±${Math.round(readSigma(s, { ...c, samples: (c.samples ?? 0) + 1 }))}`; }).join(' · ')}{chosen.length > 4 ? ' …' : ''}</p>}
