@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HEX_AXES, basePresetOf, craftPresets, flavorProfile, leverEffects, leverSummary, newScenarioGame, presetAsRecipe, previewBatch, type GameState, type Recipe, advanceMonths, applyAction, bulkValuePerLPA, categorize, evaporate, heartsFraction, matureCask, newGame, previewBlend, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type SpiritLot, appeal, type Product, caskStorageCost, fermentDaysAt, waterPermitCap } from './index';
+import { mergeIntoTank, sameTank, HEX_AXES, basePresetOf, craftPresets, flavorProfile, leverEffects, leverSummary, newScenarioGame, presetAsRecipe, previewBatch, type GameState, type Recipe, advanceMonths, applyAction, bulkValuePerLPA, categorize, evaporate, heartsFraction, matureCask, newGame, previewBlend, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type SpiritLot, appeal, type Product, caskStorageCost, fermentDaysAt, waterPermitCap } from './index';
 import { slotClimate } from './warehouse';
 import { EQUIPMENT } from './content/catalog';
 import { consumerPrice, priceForConsumer, REGIONS, siteOf } from './content/regions';
@@ -306,5 +306,52 @@ describe('크래프팅 레버 미리보기 (mvp.md §1.2, #156)', () => {
     const r = malt(s);
     leverEffects(s, baseOf(s, r), { ...r, yeast: 'ale', runs: 1, mashBill: [{ ingredientId: 'malt_korean', ratio: 1 }] });
     expect(JSON.stringify(s)).toBe(before);
+  });
+});
+
+describe('탱크 합치기 (P-PROD-6)', () => {
+  it('같은 레시피 몰트 뉴메이크는 달이 바뀌어도 탱크 하나에 합쳐진다 — id 유지, 생산 달은 가장 오래된 배치, 배치 id는 새로', () => {
+    let s = newGame({ seed: 2 });
+    const malt = s.production.recipes.find((r) => r.kind === 'malt' && r.name.endsWith('언피티드'))!;
+    s = applyAction(s, { type: 'setOrder', recipeId: malt.id, batchesPerMonth: 2 }).state;
+    // 지시한 달 다음 틱부터 생산되는 배치가 쌓일 때까지
+    while (!s.inventory.lots.some((l) => l.recipeId === malt.id)) s = advanceMonths(s, 1);
+    const first = s.inventory.lots.filter((l) => l.recipeId === malt.id);
+    expect(first).toHaveLength(1);
+    const lpa1 = first[0]!.volumeL * first[0]!.abv;
+    s = advanceMonths(s, 2);
+    const after = s.inventory.lots.filter((l) => l.recipeId === malt.id);
+    expect(after).toHaveLength(1);
+    expect(after[0]!.id).toBe(first[0]!.id);
+    expect(after[0]!.createdMonth).toBe(first[0]!.createdMonth);
+    expect(after[0]!.batchId).not.toBe(first[0]!.batchId);
+    expect(after[0]!.volumeL * after[0]!.abv).toBeGreaterThan(lpa1 * 2.5);
+    expect(after[0]!.name).toContain('탱크');
+  });
+
+  it('소주는 합치지 않는다 — 탱크에서 쉬는 것 자체가 숙성(스테인리스 휴지, #161)', () => {
+    let s = newGame({ seed: 2 });
+    const soju = s.production.recipes.find((r) => r.kind === 'soju')!;
+    s = applyAction(s, { type: 'setOrder', recipeId: soju.id, batchesPerMonth: 1 }).state;
+    while (!s.inventory.lots.some((l) => l.recipeId === soju.id)) s = advanceMonths(s, 1);
+    s = advanceMonths(s, 2);
+    expect(s.inventory.lots.filter((l) => l.recipeId === soju.id)).toHaveLength(3);
+  });
+
+  it('합친 원액: LPA 가중 평균(도수·원가·원료 비율), 매입 원액·숙성 원액·다른 레시피와는 섞지 않는다', () => {
+    const base: SpiritLot = { id: 'A', name: 'a', kind: 'malt', volumeL: 100, abv: 0.7, flavor: { cereal: 40 }, createdMonth: 1, oakMonths: 0, sourced: false, costPerLPA: 10_000, recipeId: 'R1', batchId: 'A', mashShare: { malt_unpeated: 1 } };
+    const fresh: SpiritLot = { ...base, id: 'B', batchId: 'B', volumeL: 300, abv: 0.7, flavor: { cereal: 20 }, createdMonth: 3, costPerLPA: 20_000, mashShare: { malt_peated: 1 } };
+    expect(sameTank(base, fresh)).toBe(true);
+    expect(sameTank(base, { ...fresh, recipeId: 'R2' })).toBe(false);
+    expect(sameTank(base, { ...fresh, sourced: true })).toBe(false);
+    expect(sameTank({ ...base, kind: 'soju' }, { ...fresh, kind: 'soju' })).toBe(false);
+    const m = mergeIntoTank(base, fresh, '몰트', '1월');
+    expect(m.id).toBe('A');
+    expect(m.batchId).toBe('B');
+    expect(m.createdMonth).toBe(1);
+    expect(m.volumeL).toBe(400);
+    expect(m.costPerLPA).toBeCloseTo(17_500, 6);
+    expect(m.flavor.cereal).toBeCloseTo(25, 6);
+    expect(m.mashShare).toEqual({ malt_unpeated: 0.25, malt_peated: 0.75 });
   });
 });

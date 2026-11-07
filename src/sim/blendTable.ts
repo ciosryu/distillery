@@ -113,7 +113,8 @@ export interface KnownRead {
   sourceId: string;
 }
 
-const siblingKey = (c: Cask) => (c.contents?.batchId ? `${c.contents.batchId}:${c.typeId}` : null);
+/** 형제 = 같은 배치·같은 캐스크 종류·같은 달 통입 — 다른 달에 통입한 통은 숙성 개월이 달라 기록을 빌리지 않는다 (P-PROD-6) */
+const siblingKey = (c: Cask) => (c.contents?.batchId ? `${c.contents.batchId}:${c.typeId}:${c.filledMonth ?? ''}` : null);
 
 /**
  * 형제 기록을 빌리는 최소 액량 비율(작은 쪽 ÷ 큰 쪽) — 같은 배치라도 마지막 통은 일부만 채워져(실측 185L 옆 14.6L·43L)

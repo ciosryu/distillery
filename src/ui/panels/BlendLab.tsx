@@ -23,7 +23,7 @@ function cohortsOf(s: ReturnType<typeof useGame.getState>['state']): Cohort[] {
     const l = c.contents;
     if (!l || c.owner || (l.kind !== 'malt' && l.kind !== 'grain')) continue;
     // 레어로 드러난 캐스크는 따로 — 싱글 캐스크 병입 후보
-    const key = c.rare && c.rareKnown ? `rare:${c.id}` : `${l.batchId ?? `${l.recipeId}:${c.filledMonth}`}:${c.typeId}`;
+    const key = c.rare && c.rareKnown ? `rare:${c.id}` : `${l.batchId ?? l.recipeId}:${c.filledMonth}:${c.typeId}`;
     groups.set(key, [...(groups.get(key) ?? []), c]);
   }
   const known = knownReads(s);
