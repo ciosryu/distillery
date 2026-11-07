@@ -48,7 +48,7 @@ export function Dashboard() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="현금" value={won(s.finance.cash)} tone={s.finance.cash < 0 ? 'bad' : undefined} hint={s.finance.negativeCashMonths ? `현금 부족 ${s.finance.negativeCashMonths}개월째` : undefined} />
         <Stat label="최근 3개월 평균 순현금(차입·투자·선급금 제외)" value={recent.length ? won(avgNet) : '—'} tone={!recent.length ? undefined : avgNet >= 0 ? 'good' : 'bad'} hint={!recent.length ? '기록 없음' : runway != null ? `이 속도면 약 ${runway}개월 버팀` : '현금 흐름 흑자'} />
-        <Stat label="월 고정비(예상)" value={won(monthlyFixedCost(s))} hint="급여·관리비·유지비·마케팅·대출" />
+        <Stat label="월 고정비(예상)" value={won(monthlyFixedCost(s))} hint="급여·관리비·유지비·마케팅(세컨드 브랜드 포함)·대출" />
         <Stat label="브랜드 인지도" value={pct(awarenessOf(s))} hint={`유통 커버리지 ${pct(coverage(s))}`} />
         <Stat label="숙성 중 캐스크" value={`${filled} / ${warehouseCapacity(s)}`} hint={`빈 캐스크 ${s.inventory.casks.length - filled}개`} />
         <Stat label="탱크 원액" value={`${num(tankLPA)} LPA`} hint={`${s.inventory.lots.length}개 로트`} />
