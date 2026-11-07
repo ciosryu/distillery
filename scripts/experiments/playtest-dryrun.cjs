@@ -90,6 +90,7 @@ const URL = process.env.URL ?? 'http://localhost:4176/';
   await tab('증류소');
   const warn = await p.locator('text=/재고 .*병 — 최근 판매/').allInnerTexts();
   note('end', '재고 경고: ' + warn.join(' | '));
+  note('end', '통입 원액 목록: ' + (await p.getByLabel('원액').locator('option').allInnerTexts().catch(() => [])).join(' | '));
   await p.screenshot({ path: `${OUT}/zz-home.png`, fullPage: true });
   if (process.env.YEAR) { const before = (await state()).month; const t = await click(p.getByRole('button', { name: '1년 진행' }), before, '1년 진행'); const after = await state(); note('end', `1년 진행: ${before} → ${after.month}월, 현금 ${Math.round(after.finance.cash / 1e4)}만, 상태 ${after.status}, 토스트 ${t ? t.txt : '없음'}`); }
   const st = await state();

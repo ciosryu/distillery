@@ -6,7 +6,7 @@ import { vesselMaterial } from '../sim/maturation';
 import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
 import { equipmentCost } from '../sim/sites';
-import { isLocked, monthLabel, netWorth, regionalCaskPrice, selfFundedCash, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState } from '../sim';
+import { isLocked, monthLabel, netWorth, regionalCaskPrice, selfFundedCash, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
 import { LineChart } from './charts';
@@ -273,7 +273,16 @@ function SpaceCard() {
   const building = s.production.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'warehouse' && e.readyMonth > s.month);
   // 숙성할 수 있는 탱크 원액 — 몰트·그레인(오크 → 위스키), 소주(옹기·오크 숙성 소주, #161)
   // 몰트·그레인을 먼저 — 기본 루프는 몰트 → 오크 통이고, 소주는 대개 바로 병입한다(실수로 소주를 버번 통에 담지 않게)
-  const malts = s.inventory.lots.filter((l) => l.kind === 'malt' || l.kind === 'grain' || l.kind === 'soju').sort((a, b) => Number(a.kind === 'soju') - Number(b.kind === 'soju'));
+  // 소주는 달마다 탱크가 따로 쌓인다(#166은 몰트·그레인만 합친다) → 레시피별로 가장 오래 쉰 탱크 하나만 고를 수 있게 묶는다.
+  // 탱크에서 쉬는 것도 숙성이라(#161) 가장 오래된 것부터 통에 담는다. 그 탱크가 비면 다음으로 오래된 것이 나온다
+  const sojuGroups = new Map<string, SpiritLot[]>();
+  for (const l of s.inventory.lots) if (l.kind === 'soju') { const k = l.recipeId ?? l.name.split(' · ')[0]!; sojuGroups.set(k, [...(sojuGroups.get(k) ?? []), l]); }
+  const sojuPick = [...sojuGroups.values()].map((g) => ({ lot: [...g].sort((a, b) => a.createdMonth - b.createdMonth || a.id.localeCompare(b.id))[0]!, count: g.length }));
+  const malts = [...s.inventory.lots.filter((l) => l.kind === 'malt' || l.kind === 'grain'), ...sojuPick.map((x) => x.lot)];
+  const lotLabel = (l: SpiritLot) => {
+    const g = sojuPick.find((x) => x.lot.id === l.id);
+    return g && g.count > 1 ? `${l.name.split(' · ')[0]} · 탱크 ${g.count}개 중 가장 오래 쉰 것(${months(s.month - l.createdMonth)}) · ${liters(l.volumeL)} ${pct(l.abv)}` : `${l.name} · ${liters(l.volumeL)} ${pct(l.abv)}`;
+  };
   const emptyTypes = (Object.keys(CASKS) as CaskTypeId[]).filter((k) => empties.some((c) => c.typeId === k));
   const [lotId, setLotId] = useState('');
   const [fillType, setFillType] = useState<CaskTypeId | ''>('');
@@ -309,7 +318,7 @@ function SpaceCard() {
           <div className="text-xs font-semibold text-stone-700 dark:text-stone-200">탱크 원액 → 빈 통에 통입</div>
           {!malts.length ? <Empty>탱크에 숙성할 원액(몰트·소주)이 없습니다 — 생산 지시를 내리고 한 달을 진행하세요</Empty> : (
             <>
-              <Select label="원액" value={lot!.id} options={malts.map((l) => ({ value: l.id, label: `${l.name} · ${liters(l.volumeL)} ${pct(l.abv)}` }))} onChange={(v) => { setLotId(v); setFillType(''); }} />
+              <Select label="원액" value={lot!.id} options={malts.map((l) => ({ value: l.id, label: lotLabel(l) }))} onChange={(v) => { setLotId(v); setFillType(''); }} />
               {!ft ? <span className="text-xs text-rose-700 dark:text-rose-400">빈 통이 없습니다 — 오른쪽에서 사세요</span> : (
                 <div className="flex flex-wrap items-end gap-2">
                   <Select label="빈 통" value={ft} options={emptyTypes.map((k) => ({ value: k, label: `${CASKS[k].nameKo} (${empties.filter((c) => c.typeId === k && !c.contaminationKnown).length})` }))} onChange={setFillType} />
