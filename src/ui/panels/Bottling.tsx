@@ -138,7 +138,7 @@ export function Bottling() {
                   : <><dt className="text-stone-500">품질 / 전형성</dt><dd className="text-right tabular-nums">{preview.evaluation?.quality ?? '—'} / {preview.evaluation?.typicity ?? '—'}</dd></>}
                 <dt className="text-stone-500">병당 원가</dt><dd className="text-right tabular-nums">{won(preview.unitCost)}</dd>
                 <dt className="text-stone-500">{masked ? '예상 출고가' : '권장 출고가'}</dt><dd className="text-right tabular-nums">{masked ? (() => {
-                  // 추정 품질 ± 오차로 매긴 범위 (P-PROD-7) — 참 출고가는 병입하면 정해진다
+                  // 추정 품질 ± 오차로 매긴 범위 (#172) — 참 출고가는 병입하면 정해진다
                   if (est?.quality == null) return '모른다 — 샘플 필요';
                   const lo = priceAtQuality(s, preview, opts, Math.max(0, est.quality - est.sigma));
                   const hi = priceAtQuality(s, preview, opts, Math.min(100, est.quality + est.sigma));

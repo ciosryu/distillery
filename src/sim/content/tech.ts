@@ -54,7 +54,7 @@ export const TECH_FACILITY_NAMES: Record<string, string> = {
   malting_floor: '몰팅 플로어·킬른',
 };
 
-/** 테크 게이트 켜짐 (P-MGT-5) — 노드가 해금하는 키는 연구 전까지 닫힌다. 지금 실제로 판정하는 키는 행동 키(`action:`)뿐이라 잠기는 기존 기능은
+/** 테크 게이트 켜짐 (#174) — 노드가 해금하는 키는 연구 전까지 닫힌다. 지금 실제로 판정하는 키는 행동 키(`action:`)뿐이라 잠기는 기존 기능은
  *  로테이션(MAT-3a)·캐스크 오너십(BIZ-1b) 둘이다(tech-tree §1.2). false로 두면 모든 키가 열린다 */
 export const TECH_GATING = true;
 

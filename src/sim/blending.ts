@@ -276,7 +276,7 @@ export function estimateBlend(s: GameState, components: BlendComponent[]): { qua
 }
 
 /**
- * 추정 품질로 매긴 권장 출고가 — 병입 전에는 참 품질을 모르므로(#162) 추정 품질 ± 오차로 출고가 범위를 보여 준다 (P-PROD-7, 플레이테스트 2026-11-07).
+ * 추정 품질로 매긴 권장 출고가 — 병입 전에는 참 품질을 모르므로(#162) 추정 품질 ± 오차로 출고가 범위를 보여 준다 (#172, 플레이테스트 2026-11-07).
  * previewBlend의 권장 출고가와 같은 식에 품질만 바꿔 넣는다. 면세 한정판은 제외(null)
  */
 export function priceAtQuality(s: GameState, p: BlendPreview, opts: BottleOptions, quality: number): number | null {

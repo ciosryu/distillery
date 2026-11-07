@@ -23,7 +23,7 @@ function currentSuggestedPrice(s: GameState, p: Product): number {
 }
 
 /**
- * 판매가 어떻게 되는지 세 줄 (P-PROD-8, 플레이테스트 2026-11-07 "판매 시스템이 알기 힘들다") — 표의 숫자가 무엇을 뜻하는지 먼저 말한다
+ * 판매가 어떻게 되는지 세 줄 (#173, 플레이테스트 2026-11-07 "판매 시스템이 알기 힘들다") — 표의 숫자가 무엇을 뜻하는지 먼저 말한다
  */
 function SalesPrimer() {
   return (

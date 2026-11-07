@@ -358,7 +358,7 @@ describe('탱크 합치기 (#166)', () => {
   });
 });
 
-describe('병당 손익 (P-PROD-8, 플레이테스트 요청)', () => {
+describe('병당 손익 (#173, 플레이테스트 요청)', () => {
   const mvp = () => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
   it('소주는 바로 병입 한 줄, 몰트는 숙성 1·3년 두 줄 — 이익 = 출고가 − 원가 − 유통비, 숙성할수록 품질·출고가가 오른다', () => {
     const s = mvp();

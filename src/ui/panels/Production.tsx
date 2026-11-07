@@ -225,7 +225,7 @@ export function RecipeEditor() {
 }
 
 /**
- * 한 병에 얼마 남나 (P-PROD-8, 플레이테스트 2026-11-07 "원가와 판매가의 임팩트를 알기 쉽게") — 실제 병입·판매와 같은 식(sim/economics.ts).
+ * 한 병에 얼마 남나 (#173, 플레이테스트 2026-11-07 "원가와 판매가의 임팩트를 알기 쉽게") — 실제 병입·판매와 같은 식(sim/economics.ts).
  * 원가 → 출고가 → 유통비 → 병당 이익, 그리고 한 달에 팔 수 있는 양 대 이 레시피의 월 생산량
  */
 function UnitEconomics({ s, recipe }: { s: GameState; recipe: Recipe }) {
