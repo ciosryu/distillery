@@ -4,6 +4,7 @@ import type { GameState, MonthReport } from './types';
 import { bulkValuePerLPA, isBulkKind } from './bulk';
 import { heatingCost, siteOverhead } from './sites';
 import { caskStorageCost } from './casks';
+import { secondBrandMonthlyCost } from './brands';
 
 // 대출·재고 담보대출·월 고정비·재무 단계(틱 7) (파트 MGT, 결정 #144 — 파일 쪼개기로 옮겨 왔다. 규칙·수치 불변)
 
@@ -43,8 +44,9 @@ export function inventoryMarginCall(s: GameState, report: MonthReport): number {
 }
 
 
+/** 매달 나가는 고정 지출 예상 — 대시보드 "월 고정비"·사업 계획서 미리보기. 세컨드 브랜드 유지비·마케팅비(판매 단계가 낸다, #155)도 넣는다 */
 export function monthlyFixedCost(s: GameState): number {
-  return s.hr.staff.reduce((t, x) => t + x.salary, 0) + siteOverhead(s) + s.commerce.marketingBudget + caskStorageCost(s) +
+  return s.hr.staff.reduce((t, x) => t + x.salary, 0) + siteOverhead(s) + s.commerce.marketingBudget + secondBrandMonthlyCost(s) + caskStorageCost(s) +
     s.production.equipment.reduce((t, e) => t + (EQUIPMENT[e.catalogId]?.maintenance ?? 0), 0) +
     s.finance.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0);
 }

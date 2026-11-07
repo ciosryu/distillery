@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { advanceMonths, annuityPayment, applyAction, demandFor, newGame, type GameState, type SpiritLot, inventoryCollateral, inventoryLoanRoom, inventoryMarginCall, type MonthReport } from './index';
+import { advanceMonths, annuityPayment, applyAction, demandFor, newGame, newScenarioGame, type GameState, type SpiritLot, inventoryCollateral, inventoryLoanRoom, inventoryMarginCall, type MonthReport } from './index';
 import { ownsFacility } from './util';
 
 // 재무·인사·이벤트 테스트 (파트 MGT, 결정 #144 — sim.test.ts·sites.test.ts에서 옮겨 왔다. 테스트 이름·본문 불변)
@@ -58,6 +58,22 @@ describe('재무', () => {
     const b0 = s.finance.loans[0]!.balance;
     s = advanceMonths(s, 3);
     expect(s.finance.loans[0]!.balance).toBeLessThan(b0);
+  });
+
+  it('고금리 급전 (#133): 은행 상품을 쓰는 중에도 받을 수 있고, 연 20% 12개월 원리금 균등으로 1년 안에 다 갚는다', () => {
+    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 500_000_000, seed: 5 });
+    expect(s.finance.loans.length).toBeGreaterThan(0); // 시작 대출(은행·정책 상품)
+    const r = applyAction(s, { type: 'takeLoan', offerId: 'emergency', amount: 500_000_000 });
+    expect(r.error).toBeUndefined();
+    s = r.state;
+    const e = s.finance.loans.find((l) => l.offerId === 'emergency')!;
+    expect(e.principal).toBe(100_000_000); // 한도
+    expect(e.monthlyPayment).toBe(annuityPayment(100_000_000, 0.2, 12));
+    expect(applyAction(s, { type: 'takeLoan', offerId: 'emergency', amount: 10_000_000 }).error).toMatch(/이미 이용 중/);
+    s = advanceMonths(s, 12);
+    expect(s.finance.loans.some((l) => l.offerId === 'emergency')).toBe(false);
+    // 다 갚으면 다시 받을 수 있다
+    expect(applyAction(s, { type: 'takeLoan', offerId: 'emergency', amount: 50_000_000 }).error).toBeUndefined();
   });
 });
 

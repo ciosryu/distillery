@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { advanceMonths, applyAction, AWARENESS, awarenessOf, brandOf, demandFor, HOUSE_BRAND_ID, houseBrand, migrateSave, newGame, newScenarioGame, SAVE_VERSION, secondBrands, updateAwareness, type GameState, type Product } from '.';
+import { advanceMonths, applyAction, AWARENESS, awarenessOf, brandOf, demandFor, HOUSE_BRAND_ID, houseBrand, migrateSave, monthlyFixedCost, newGame, newScenarioGame, SAVE_VERSION, secondBrandMonthlyCost, secondBrands, updateAwareness, type GameState, type Product } from '.';
 import { BRANDS } from './content/market';
 import fixture from './fixtures/save-v10.json';
 
@@ -55,6 +55,15 @@ describe('세컨드 브랜드 규칙 (#155, PRD §11.2 ④)', () => {
     expect(r.error).toBeUndefined();
     return { s: r.state, b: secondBrands(r.state).at(-1)! };
   };
+
+  it('월 고정비 예상(monthlyFixedCost)에 세컨드 브랜드 유지비·마케팅비가 들어간다', () => {
+    const s0 = newGame({ seed: 1 });
+    const base = monthlyFixedCost(s0);
+    let { s, b } = open(s0);
+    s = applyAction(s, { type: 'setMarketing', brandId: b.id, amount: 2_000_000 }).state;
+    expect(monthlyFixedCost(s) - base).toBe(secondBrandMonthlyCost(s));
+    expect(secondBrandMonthlyCost(s)).toBe(BRANDS.monthlyUpkeep + 2_000_000);
+  });
 
   it('개설: 개설비를 내고 하우스 인지도의 50%에서 시작한다 (#52). 이름이 비거나 겹치면 실패', () => {
     const s0 = newGame({ seed: 1 });

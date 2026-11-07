@@ -9,11 +9,12 @@ export type Selection = { kind: 'cask' | 'equipment' | 'staff' | 'product' | 'wa
 
 const TAB_KEY = 'distillery-tycoon/tab';
 
+/** 저장된 탭이 없으면 '' — App이 그 판의 첫 탭(시나리오 = 증류소 화면, 샌드박스 = 대시보드)을 연다 */
 function readTab(): string {
   try {
-    return localStorage.getItem(TAB_KEY) ?? 'dashboard';
+    return localStorage.getItem(TAB_KEY) ?? '';
   } catch {
-    return 'dashboard';
+    return '';
   }
 }
 

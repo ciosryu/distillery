@@ -79,6 +79,7 @@ export const useGame = create<GameStore>((set) => {
       let s: GameState;
       try { s = newScenarioGame(plan); } catch (e) { toast('error', (e as Error).message); return; }
       engine.load(s);
+      useUi.getState().setTab(''); // 새 판은 첫 탭(증류소 화면)부터
       const res = saveNow(s);
       toast(res.ok ? 'ok' : 'error', res.ok ? '사업을 시작했습니다' : res.error);
     },
