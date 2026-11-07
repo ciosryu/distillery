@@ -23,7 +23,8 @@ export function Production() {
   );
 }
 
-function Orders() {
+/** 월 생산 지시 — MVP 증류소 탭(ui/MvpHome.tsx)에 끼울 수 있게 내보낸다 */
+export function Orders() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
   return (
@@ -81,7 +82,7 @@ const vacuumStillOf = (s: GameState) => stillsOf(s).find((e) => stillDefOf(s, e.
 const plainStillOf = (s: GameState) => stillsOf(s).find((e) => { const d = stillDefOf(s, e.id); return d && !d.vacuum && d.stillType !== 'column'; });
 
 /** 향미 프로필 레이더 — 기준 프리셋(점선)과 지금 초안(채움). 뉴메이크는 값이 작아 눈금을 최댓값에 맞춘다(25 단위) */
-function ProfileRadar({ base, draft, size = 230 }: { base?: ProfileAxis[]; draft: ProfileAxis[]; size?: number }) {
+export function ProfileRadar({ base, draft, size = 230 }: { base?: ProfileAxis[]; draft: ProfileAxis[]; size?: number }) {
   const c = size / 2;
   const r = c - 34;
   const n = draft.length;
@@ -119,7 +120,7 @@ const delta = (v: number, digits = 1) => (Math.abs(v) < 0.05 ? '' : ` (${v > 0 ?
  * 프리셋으로 시작한다. "고급 설정"을 열면 주종별 레버가 보이고, 결과는 향미 프로필 + 품질 + "무엇이 무엇을 바꿨나" 한 줄.
  * 몰트·소주는 레버 화면, 그 밖의 주종(샌드박스)은 자유 편집기
  */
-function RecipeEditor() {
+export function RecipeEditor() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
   const [draft, setDraft] = useState<Draft>(() => ({ ...s.production.recipes[0]! }));

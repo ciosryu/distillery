@@ -11,7 +11,7 @@ import { dutyFreeAgedAppeal, dutyFreeSlotBlocker, dutyFreeSuggestedPrice, hasDut
 import { bestBy, nid, staffOf } from './util';
 import { mod } from './modifiers';
 import { hexOf, matchScore, mixHex, perceivedHex } from './blendRadar';
-import { blenderOf, COMMISSION, findTarget, knownReads, revealNotes } from './blendTable';
+import { blenderOf, COMMISSION, findTarget, knownReads, QUALITY_SIGMA_PER_HEX, revealNotes } from './blendTable';
 import { productCountEver } from './lifecycle';
 import type { AxisId, CaskTypeId, Flavor, GameState, Hex, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
 
@@ -233,6 +233,45 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     localIngredient,
     dfEdition: dutyFree && hasDutyFree(s) ? nextDutyFreeEdition(s) : null,
     finish,
+  };
+}
+
+/**
+ * 병입 전에 플레이어가 **아는** 블렌드 (#136·#159, P-PROD-5) — 캐스크는 샘플 기록(knownReads), 탱크 원액은 우리가 막 만든 것이라 그대로 안다.
+ * 추정 품질 = 아는 원액들의 품질을 알코올(LPA) 가중 평균한 값(블렌드 품질 공식은 비선형이라 근사), 오차 = 가중 오차의 제곱합 제곱근.
+ * 기록이 없는 캐스크는 빠지고 그 비율을 unknownShare로 알린다. 아는 원액이 없으면 quality·hex = null
+ */
+export function estimateBlend(s: GameState, components: BlendComponent[]): { quality: number | null; sigma: number; hex: Hex | null; unknownShare: number; fromCasks: boolean } {
+  const known = knownReads(s);
+  let total = 0;
+  // key = 오차가 함께 움직이는 단위(같은 샘플 기록) — 같은 기록을 빌린 통들의 오차는 독립이 아니라 한 덩어리다
+  const parts: { w: number; q: number; sd: number; hex: Hex; key: string }[] = [];
+  let fromCasks = false;
+  for (const c of components) {
+    if (c.liters <= 0) continue;
+    const lot = lotOf(s, c);
+    if (!lot) continue;
+    const w = c.liters * lot.abv;
+    total += w;
+    if (c.source === 'cask') {
+      fromCasks = true;
+      const k = known.get(c.id);
+      if (k) parts.push({ w, q: k.estQuality, sd: k.sigma * QUALITY_SIGMA_PER_HEX, hex: k.hex, key: `rec:${k.sourceId}:${k.month}` });
+    } else parts.push({ w, q: evaluate(lot.flavor, lotCategory(lot, regionOf(s).whisky)).quality, sd: 0, hex: hexOf(lot.flavor), key: `lot:${c.id}` });
+  }
+  const kw = parts.reduce((t, p) => t + p.w, 0);
+  if (!kw) return { quality: null, sigma: 0, hex: null, unknownShare: total > 0 ? 1 : 0, fromCasks };
+  return {
+    quality: Math.round((parts.reduce((t, p) => t + p.w * p.q, 0) / kw) * 10) / 10,
+    sigma: (() => {
+      // 같은 기록끼리 비중을 먼저 더하고(완전 상관), 서로 다른 기록끼리는 독립으로 합친다
+      const byKey = new Map<string, { w: number; sd: number }>();
+      for (const p of parts) byKey.set(p.key, { w: (byKey.get(p.key)?.w ?? 0) + p.w, sd: p.sd });
+      return Math.sqrt([...byKey.values()].reduce((t, g) => t + ((g.w / kw) * g.sd) ** 2, 0));
+    })(),
+    hex: mixHex(parts.map((p) => ({ hex: p.hex, share: p.w }))),
+    unknownShare: total > 0 ? 1 - kw / total : 0,
+    fromCasks,
   };
 }
 

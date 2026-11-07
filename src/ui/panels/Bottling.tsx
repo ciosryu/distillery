@@ -1,14 +1,18 @@
 import { useMemo, useState } from 'react';
 import { BOTTLE_SIZES, PACKAGING, packagingCost } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
-import { agePerception, calendar, finishLabel, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind } from '../../sim';
 import { regionOf } from '../../sim/content/regions';
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
+import { ProfileRadar } from './Production';
 import { liters, months, num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
 
 const KIND_LABEL: Record<SpiritKind, string> = { soju: '소주', gin: '진', malt: '몰트', grain: '그레인', baijiu: '백주' };
+/** 육각형 상위 축 이름 (샘플 기록 표시용) */
+const topHex = (h: Hex, n = 3) => HEX_AXES.filter((a) => h[a] >= 1).sort((a, b) => h[b] - h[a]).slice(0, n).map((a) => HEX_LABEL[a]).join(' · ') || '뚜렷한 향 없음';
+
 const ABV_PRESETS = ['cask', '0.25', '0.3', '0.34', '0.38', '0.4', '0.43', '0.46', '0.58'] as const;
 
 export function Bottling() {
@@ -27,9 +31,14 @@ export function Bottling() {
     return { source, id, liters: l };
   });
   const preview = components.length ? previewBlend(s, components, opts) : null;
+  // 시나리오 게임(MVP)은 캐스크의 참 향미·품질을 숨긴다 (#136·#159) — 샘플 기록으로 추정한 값만 보여 주고, 병입하면 공개된다. 샌드박스는 개발용으로 참값을 보여 준다
+  const hide = !!s.scenario;
+  const known = useMemo(() => (hide ? knownReads(s) : null), [hide, s]);
+  const est = hide && preview ? estimateBlend(s, components) : null;
+  const masked = !!est?.fromCasks;
   // 면세 한정판 예상 판매 (결정 #87) — 이번 달 면세 수요(권장 출고가)로 완판 기한 안에 몇 병 팔릴지
   const dfForecast = (() => {
-    if (!preview?.ok || !preview.dfEdition || !preview.category || !preview.evaluation) return null;
+    if (masked || !preview?.ok || !preview.dfEdition || !preview.category || !preview.evaluation) return null;
     const p: Product = {
       id: 'preview', name: '', category: preview.category, ageYears: preview.ageYears, oakMonths: preview.minOakMonths, abv: preview.finalAbv, bottleMl: opts.bottleMl, chillFiltered: opts.chillFilter, packagingId: opts.packagingId,
       flavor: preview.flavor, quality: preview.evaluation.quality, typicity: preview.evaluation.typicity, style: preview.evaluation.style, sourcedShare: preview.sourcedShare,
@@ -57,7 +66,10 @@ export function Bottling() {
                 <Td right>{liters(x.lot.volumeL)}</Td>
                 <Td right>{pct(x.lot.abv)}</Td>
                 <Td right>{months(x.lot.oakMonths)}</Td>
-                <Td className="text-xs">{topNotes(x.lot.flavor).map((n) => n.nameKo).join(' · ')}</Td>
+                <Td className="text-xs">{hide && x.source === 'cask' ? (() => {
+                  const k = known?.get(x.id);
+                  return k ? <span className={k.from === 'sibling' ? 'opacity-70' : ''}>{topHex(k.hex)} <span className="text-stone-500">· 추정 {k.estQuality} · {s.month - k.month > 0 ? `${months(s.month - k.month)} 전` : '이번 달'}{k.from === 'sibling' ? ' 형제 통' : ''} 샘플</span></span> : <span className="text-stone-500">샘플 없음 — 모른다</span>;
+                })() : topNotes(x.lot.flavor).map((n) => n.nameKo).join(' · ')}</Td>
                 <Td>{picked[x.key] != null && <NumberField value={picked[x.key]!} min={0} max={Math.floor(x.lot.volumeL * 10) / 10} step={0.1} width="w-20" onCommit={(v) => setPicked((p) => ({ ...p, [x.key]: v }))} />}</Td>
               </tr>
             ))}
@@ -85,11 +97,14 @@ export function Bottling() {
           })()}
           {!preview ? <Empty>왼쪽에서 원액을 선택하세요</Empty> : (
             <div className="grid gap-2">
-              {preview.category && <Radar flavor={preview.flavor} axes={CATEGORY[preview.category].radarAxes} size={240} />}
+              {masked
+                ? (est?.hex ? <ProfileRadar draft={HEX_AXES.map((a) => ({ id: a, label: HEX_LABEL[a], value: est.hex![a] }))} size={240} /> : <Empty>고른 캐스크에 샘플 기록이 없다 — 숙성고에서 샘플을 떠야 향을 안다</Empty>)
+                : preview.category && <Radar flavor={preview.flavor} axes={CATEGORY[preview.category].radarAxes} size={240} />}
+              {masked && <p className="text-xs text-stone-500">샘플 기록으로 추정한 육각형·품질이다{est && est.unknownShare >= 0.05 ? ` — 기록 없는 원액 ${pct(est.unknownShare, 0)}는 추정에서 빠졌다` : ''}. 실제 향·품질·권장 출고가는 병입하면 공개된다.</p>}
               <div className="flex flex-wrap gap-1">
                 {preview.category && <Badge tone="info">{CATEGORY[preview.category].nameKo}</Badge>}
                 {preview.ageYears != null && <Badge tone="good">{preview.ageYears}년</Badge>}
-                {preview.evaluation?.style && <Badge>{preview.evaluation.style}</Badge>}
+                {!masked && preview.evaluation?.style && <Badge>{preview.evaluation.style}</Badge>}
                 {preview.finish && <Badge tone="good">{finishLabel(preview.finish)}</Badge>}
                 {preview.sourcedShare > 0 && <Badge tone="warn">매입 원액 {pct(preview.sourcedShare, 0)} · 브랜드 가치 {Math.round(preview.sourcedPrestige * 100)}</Badge>}
                 {preview.premiumLabel && <Badge tone="good">{regionOf(s).whisky.premiumLabel?.name}</Badge>}
@@ -102,9 +117,11 @@ export function Bottling() {
               <dl className="grid grid-cols-2 gap-x-2 text-sm">
                 <dt className="text-stone-500">병 수</dt><dd className="text-right tabular-nums">{num(preview.bottles)}병</dd>
                 <dt className="text-stone-500">도수</dt><dd className="text-right tabular-nums">{pct(preview.finalAbv)} (원액 {pct(preview.mixAbv)})</dd>
-                <dt className="text-stone-500">품질 / 전형성</dt><dd className="text-right tabular-nums">{preview.evaluation?.quality ?? '—'} / {preview.evaluation?.typicity ?? '—'}</dd>
+                {masked
+                  ? <><dt className="text-stone-500">추정 품질</dt><dd className="text-right tabular-nums">{est?.quality != null ? `${est.quality} ±${num(est.sigma, 1)}` : '모른다'}</dd></>
+                  : <><dt className="text-stone-500">품질 / 전형성</dt><dd className="text-right tabular-nums">{preview.evaluation?.quality ?? '—'} / {preview.evaluation?.typicity ?? '—'}</dd></>}
                 <dt className="text-stone-500">병당 원가</dt><dd className="text-right tabular-nums">{won(preview.unitCost)}</dd>
-                <dt className="text-stone-500">권장 출고가</dt><dd className="text-right tabular-nums">{won(preview.suggestedPrice)}{preview.dfEdition ? ' (면세 기준)' : ''}</dd>
+                <dt className="text-stone-500">권장 출고가</dt><dd className="text-right tabular-nums">{masked ? '병입 후 공개' : <>{won(preview.suggestedPrice)}{preview.dfEdition ? ' (면세 기준)' : ''}</>}</dd>
                 {preview.category && isWhiskyCategory(preview.category) && <><dt className="text-stone-500" title="권장 출고가와 매력도에 같이 곱한다. 3년 = ×1.18, 그 뒤는 원액 시가와 같은 속도로 오른다(18년 상한)">숙성 프리미엄</dt><dd className="text-right tabular-nums">×{agePerception(preview.minOakMonths, preview.category).toFixed(2)}</dd></>}
                 {dfForecast && <><dt className="text-stone-500">예상 면세 판매</dt><dd className={`text-right tabular-nums ${dfForecast.window < preview.bottles ? 'text-amber-800 dark:text-amber-300' : ''}`}>월 {num(dfForecast.perMonth)}병 · {DUTY_FREE.sellOutMonths}개월 {num(dfForecast.window)}병</dd></>}
               </dl>
