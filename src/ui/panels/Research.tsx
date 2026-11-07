@@ -7,7 +7,7 @@ import { useGame } from '../../store/game';
 import { won } from '../format';
 import { Badge, Button, Card, Empty, Table, Td } from '../kit';
 
-// 연구 화면 (P-MGT-3, tech-tree §2.1) — 직원 탭 안에 둔다(연구 = 담당 직원 + 기간 + 월 연구비). MVP는 연구가 잠겨 있어 숨긴다(#130)
+// 연구 화면 (#170, tech-tree §2.1) — 직원 탭 안에 둔다(연구 = 담당 직원 + 기간 + 월 연구비). MVP는 연구가 잠겨 있어 숨긴다(#130)
 
 const TREE_KO: Record<TreeId, string> = {
   production: '생산·발효', maturation: '숙성·캐스크', engineering: '설비·ESG', business: '경영·브랜드',

@@ -97,7 +97,7 @@ describe('연구 진행 (tech-tree §2.1)', () => {
   });
 });
 
-describe('노드 데이터 (P-MGT-3, tech-tree §8 Phase 2)', () => {
+describe('노드 데이터 (#170, tech-tree §8 Phase 2)', () => {
   it('Phase 2 범위 28개 — id가 겹치지 않고, 선행 노드가 있고, 순환이 없다', () => {
     expect(TECH_NODES.length).toBe(28);
     expect(new Set(TECH_NODES.map((n) => n.id)).size).toBe(TECH_NODES.length);
@@ -144,7 +144,7 @@ describe('노드 데이터 (P-MGT-3, tech-tree §8 Phase 2)', () => {
   });
 });
 
-describe('효과 조회 (P-MGT-3)', () => {
+describe('효과 조회 (#170)', () => {
   it('해금한 노드의 효과만 읽는다 — 손실은 곱으로, 리스크는 곱으로, 감지는 합으로', () => {
     const none = { research: { unlocked: [] as string[], active: [], slots: 1 } };
     expect(lossReductionMul(none, 'ferment')).toBe(1);

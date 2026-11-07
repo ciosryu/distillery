@@ -1,5 +1,5 @@
 // 테크 노드 데이터 (docs/design/tech-tree.md §4·§5·§7) — 파트 MGT. 노드 스키마는 전체 트리(약 42노드)를 넣을 그릇이다 (skeleton S-6).
-// 단계 P (P-MGT-3): Phase 2 범위(tech-tree §8 — 공통 4계통 + WHI·WHT + ASN 소주 노드) 28개. BRA·TEQ·RUM·ASN 백주는 Phase 3.
+// 단계 P (#170): Phase 2 범위(tech-tree §8 — 공통 4계통 + WHI·WHT + ASN 소주 노드) 28개. BRA·TEQ·RUM·ASN 백주는 Phase 3.
 // 게이트 키는 tech-tree §1.2가 "테크 뒤로" 옮긴 기능(이미 게임에 있는 것)만 실제로 잠근다 — 나머지 키는 아직 게임에 없는 기능의 자리다.
 // 연구 기간·연구비는 tech-tree §2.1 티어 기준(T1 3개월·T2 5개월·T3 9개월)의 자리표시 값이다 [튜닝]. 처음 4개 노드의 값은 그대로 뒀다.
 
@@ -156,7 +156,7 @@ export const TECH_NODES: TechNodeDef[] = [
   { id: 'ASN-2', nameKo: '고체·반고체 발효 제어', tree: 'asian', tier: 2, prereq: ['ASN-1'], research: { ...T2, leadRoles: ['distiller'], leadStat: 'b' },
     unlockKeys: ['recipe:soju.deotsul=2|3', 'label:samyangju'],
     pending: 'PROD — 이양주·삼양주 덧술 / MKT — 라벨 "삼양주 원주"' },
-  // P-MGT-1 A(오너 승인 2026-11-07): 옹기 항아리와 라벨 "옹기 N년 숙성"은 기본(#161). ASN-3a는 옹기 등급(통기성) 선택만 연다
+  // #169 A(오너 승인 2026-11-07): 옹기 항아리와 라벨 "옹기 N년 숙성"은 기본(#161). ASN-3a는 옹기 등급(통기성) 선택만 연다
   { id: 'ASN-3a', nameKo: '옹기·도자 숙성', tree: 'asian', tier: 3, prereq: ['ASN-1', 'MAT-1'], research: { ...T3, leadRoles: ['distiller', 'warehouse'], leadStat: 'b' },
     unlockKeys: ['recipe:onggi.grade'],
     pending: 'PROD — 옹기 등급(소성 온도·유약 → 통기성: 빠른 제거·높은 증발 ↔ 느린 제거·낮은 증발)' },

@@ -104,7 +104,7 @@ export function runResearch(s: GameState, report: MonthReport): void {
   if (done.length) s.research.active = s.research.active.filter((a) => a.progress < 1);
 }
 
-// ───────────── 효과 조회 (P-MGT-3, tech-tree §4 "손실 감소"·§1 P2·P3) ─────────────
+// ───────────── 효과 조회 (#170, tech-tree §4 "손실 감소"·§1 P2·P3) ─────────────
 // 해금한 노드의 effects를 모아 읽는다. 게이트(TECH_GATING)와 상관없이 연구를 끝내야 적용된다 — 효과는 잠금이 아니라 노하우다.
 // 읽는 쪽(생산 손실·숙성 감지·이벤트 리스크)은 담당 파트가 붙인다. 아직 아무도 읽지 않아 게임 동작은 그대로다.
 
