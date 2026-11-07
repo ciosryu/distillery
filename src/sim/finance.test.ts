@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonths, annuityPayment, applyAction, demandFor, newGame, newScenarioGame, type GameState, type SpiritLot, inventoryCollateral, inventoryLoanRoom, inventoryMarginCall, type MonthReport } from './index';
 import { ownsFacility } from './util';
+import { fireEvent } from './events';
+import { INSURANCE_PRODUCTS } from './content/catalog';
+import { claimFor, insuredInventoryValue, insuredPropertyValue, newLedger } from './insurance';
+import { isLocked } from './scenario';
 
 // 재무·인사·이벤트 테스트 (파트 MGT, 결정 #144 — sim.test.ts·sites.test.ts에서 옮겨 왔다. 테스트 이름·본문 불변)
 
@@ -74,6 +78,96 @@ describe('재무', () => {
     expect(s.finance.loans.some((l) => l.offerId === 'emergency')).toBe(false);
     // 다 갚으면 다시 받을 수 있다
     expect(applyAction(s, { type: 'takeLoan', offerId: 'emergency', amount: 50_000_000 }).error).toBeUndefined();
+  });
+});
+
+describe('보험 (#171)', () => {
+  /** 원액이 든 캐스크 몇 개가 있는 판 */
+  const withCasks = (seed = 1): GameState => {
+    const s = newGame({ seed, startingCash: 5_000_000_000 });
+    for (const o of s.b2b.brokerOffers.slice(0, 3)) s.inventory.casks.push({ ...o.cask, id: `C-${o.id}` });
+    return s;
+  };
+  const buy = (s: GameState, kind: 'property' | 'inventory' | 'business_interruption', coverage: number) => {
+    const r = applyAction(s, { type: 'buyInsurance', kind, coverage });
+    expect(r.error).toBeUndefined();
+    return r.state;
+  };
+  const rate = (kind: string) => INSURANCE_PRODUCTS.find((p) => p.kind === kind)!.annualRate;
+  /** 보장 시작 달을 지금으로 당긴다 (대기 기간을 건너뛰는 테스트용) */
+  const now = (s: GameState): GameState => { for (const x of s.finance.insurance) x.fromMonth = s.month; return s; };
+
+  it('가입하면 다음 달부터 보장하고, 보험료는 재무 단계에서 매달 나간다. 해지하면 멈춘다', () => {
+    let s = buy(newGame({ seed: 1 }), 'property', 100_000_000);
+    const pol = s.finance.insurance[0]!;
+    expect(pol.fromMonth).toBe(s.month + 1);
+    expect(pol.premiumPerMonth).toBe(Math.round((100_000_000 * rate('property')) / 12));
+    expect(applyAction(s, { type: 'buyInsurance', kind: 'property', coverage: 1e8 }).error).toMatch(/이미 가입/);
+    s = advanceMonths(s, 1);
+    expect(s.history.reports.at(-1)!.expenses.insurance).toBe(pol.premiumPerMonth);
+    s = applyAction(s, { type: 'cancelInsurance', policyId: pol.id }).state;
+    s = advanceMonths(s, 1);
+    expect(s.history.reports.at(-1)!.expenses.insurance).toBeUndefined();
+  });
+
+  it('숙성고 화재: 재산 보험은 복구비를, 재고 보험은 잃은 원액의 원가를 준다 (가입금액이 보험가액 이상이면 전액)', () => {
+    let s = withCasks();
+    s = now(buy(buy(s, 'property', insuredPropertyValue(s) + 1e6), 'inventory', insuredInventoryValue(s) + 1e6));
+    const before = insuredInventoryValue(s);
+    const cash = s.finance.cash;
+    fireEvent(s, 'warehouse_fire', report(s));
+    const lost = before - insuredInventoryValue(s);
+    expect(lost).toBeGreaterThan(0);
+    expect(s.finance.cash - cash).toBeCloseTo(-20_000_000 + 20_000_000 + lost, -1);
+    expect(s.events.log.at(-1)!.text).toMatch(/보험금/);
+  });
+
+  it('가입한 그달의 재해는 보상하지 않는다 (대기 기간)', () => {
+    const s = buy(withCasks(), 'property', 1e10);
+    const cash = s.finance.cash;
+    fireEvent(s, 'warehouse_fire', report(s));
+    expect(s.finance.cash - cash).toBe(-20_000_000);
+  });
+
+  it('일부보험은 비례 보상 — 가입금액 / 보험가액만큼만', () => {
+    const s = withCasks();
+    const value = insuredPropertyValue(s);
+    const t = now(buy(s, 'property', Math.round(value / 2 / 1e6) * 1e6));
+    const c = claimFor(t, { ...newLedger(t), property: 10_000_000 });
+    expect(c.property).toBeCloseTo(10_000_000 * (Math.round(value / 2 / 1e6) * 1e6) / value, -1);
+    expect(c.ratio.property).toBeLessThan(1);
+  });
+
+  it('영업중단 보험: 한파로 생산이 한 달 멈추면 월 고정비(월 보상 한도까지)를 준다', () => {
+    const s = now(buy(newGame({ seed: 1 }), 'business_interruption', 10_000_000));
+    const c = claimFor(s, { ...newLedger(s), stopMonths: 1 });
+    expect(c.interruption).toBe(10_000_000); // 한도 < 고정비
+    const cash = s.finance.cash;
+    fireEvent(s, 'cold_wave', report(s));
+    expect(s.finance.cash - cash).toBe(-8_000_000 + 10_000_000);
+  });
+
+  it('곰팡이(오염)는 보상하지 않는다, 방재 설비가 막으면 청구할 피해가 없다', () => {
+    const s = now(buy(buy(withCasks(), 'inventory', 1e10), 'property', 1e10));
+    const cash = s.finance.cash;
+    fireEvent(s, 'mold_outbreak', report(s));
+    expect(s.finance.cash).toBe(cash);
+    expect(s.events.log.at(-1)!.text).not.toMatch(/보험금/);
+  });
+
+  it('제조물 책임·신용보험은 아직 팔지 않고, MVP에서는 보험이 잠겨 있다', () => {
+    const s = newGame({ seed: 1 });
+    expect(applyAction(s, { type: 'buyInsurance', kind: 'credit', coverage: 1e8 }).error).toMatch(/BIZ-2b/);
+    expect(applyAction(s, { type: 'buyInsurance', kind: 'product_liability', coverage: 1e8 }).error).toMatch(/아직/);
+    const m = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    expect(isLocked(m, 'action:buyInsurance')).toBe(true);
+  });
+
+  it('보험료는 월 고정비 예상에 들어가고, 테크 ENG-2b가 재산·재고 보험료를 15% 깎는다', () => {
+    const s = newGame({ seed: 1 });
+    s.research.unlocked.push('ENG-2b');
+    const t = buy(s, 'inventory', 120_000_000);
+    expect(t.finance.insurance[0]!.premiumPerMonth).toBe(Math.round((120_000_000 * rate('inventory') * 0.85) / 12));
   });
 });
 

@@ -99,7 +99,9 @@ export const TECH_NODES: TechNodeDef[] = [
     pending: 'PROD — 바이오가스·폐액 정화 설비 / MGT — 가동 중 폐액 규제 이벤트 면제' },
   { id: 'ENG-2b', nameKo: '방재 엔지니어링', tree: 'engineering', tier: 2, prereq: ['ENG-1'], research: { ...T2, leadRoles: ['distiller', 'warehouse'], leadStat: 'b' },
     unlockKeys: ['facility:fire_suppression'],
-    pending: 'PROD — 상위 방재 설비 / MGT — 화재 피해↓·보험료↓(재무 확장 보험과 함께)' },
+    // 보험료 −15% (#171, PRD §8.4) — 가입할 때 보험료에 적용 [튜닝]
+    effects: [{ kind: 'risk_scale', riskId: 'premium:property', mul: 0.85 }, { kind: 'risk_scale', riskId: 'premium:inventory', mul: 0.85 }],
+    pending: 'PROD — 상위 방재 설비·화재 피해↓ (보험료 −15%는 적용됨)' },
   { id: 'ENG-2c', nameKo: '공정 자동화 제어', tree: 'engineering', tier: 2, prereq: ['ENG-1'], research: { ...T2, leadRoles: ['distiller'], leadStat: 'b' },
     unlockKeys: ['facility:process_control'],
     pending: 'PROD — 자동화 제어 시스템(운전 실수↓, 상시 지시 품질 하한↑)' },
