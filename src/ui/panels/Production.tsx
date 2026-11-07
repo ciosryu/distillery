@@ -5,6 +5,7 @@ import {
   type GameState, type ProfileAxis, type Recipe, type SpiritKind, type YeastId,
 } from '../../sim';
 import type { PresetRecipe } from '../../sim/content/presets';
+import { recipeEconomics, STANDARD_BOTTLE } from '../../sim/economics';
 import { isLocked } from '../../sim/scenario';
 import { useGame } from '../../store/game';
 import { logisticsMultiplier, regionOf, REGIONS, siteOf } from '../../sim/content/regions';
@@ -218,7 +219,47 @@ export function RecipeEditor() {
           {result.effects.length > 1 && <div className="mt-1 text-[11px] opacity-80">레버마다 그것 하나만 바꿨을 때의 효과다. 레버끼리 영향을 주고받아(예: 컷 × 증류 횟수) 합이 전체 변화와 다를 수 있다.</div>}
         </div>
       )}
+      {!errs.length && <UnitEconomics s={s} recipe={{ ...draft, id: draft.id ?? 'preview' } as Recipe} />}
     </Card>
+  );
+}
+
+/**
+ * 한 병에 얼마 남나 (P-PROD-8, 플레이테스트 2026-11-07 "원가와 판매가의 임팩트를 알기 쉽게") — 실제 병입·판매와 같은 식(sim/economics.ts).
+ * 원가 → 출고가 → 유통비 → 병당 이익, 그리고 한 달에 팔 수 있는 양 대 이 레시피의 월 생산량
+ */
+function UnitEconomics({ s, recipe }: { s: GameState; recipe: Recipe }) {
+  const rows = useMemo(() => recipeEconomics(s, recipe), [s, recipe]);
+  if (!rows.length) return null;
+  const aged = recipe.kind === 'malt' || recipe.kind === 'grain';
+  const fmt = aged ? STANDARD_BOTTLE.whisky : STANDARD_BOTTLE.soju;
+  const batches = s.production.orders.find((o) => o.recipeId === recipe.id)?.batchesPerMonth ?? 0;
+  const first = rows[0]!;
+  const perMonth = batches * first.bottlesPerBatch;
+  return (
+    <div className="mt-3 rounded-md border border-stone-200 p-3 text-sm dark:border-stone-700">
+      <div className="mb-1 font-semibold">한 병에 얼마 남나 <span className="text-xs font-normal text-stone-500">— {fmt.bottleMl}ml·{Math.round(fmt.abv * 100)}% 표준 병{aged ? ', 숙성은 새 버번 배럴·평균 기후로 굴린 예상' : ''}</span></div>
+      <Table head={[aged ? '숙성' : '시점', '예상 품질', '병당 원가 (원액 + 병·포장)', '출고가', '유통비', '병당 이익', '한 달 수요']}>
+        {rows.map((r) => (
+          <tr key={r.months}>
+            <Td>{r.months ? `${r.months / 12}년` : '바로 병입'}</Td>
+            <Td right>{r.quality}</Td>
+            <Td right>{won(r.spiritCost + r.packCost)} <span className="text-xs text-stone-500">({won(r.spiritCost)} + {won(r.packCost)})</span></Td>
+            <Td right>{won(r.price)}</Td>
+            <Td right>{won(r.distribution)}</Td>
+            <Td right><span className={r.margin < 0 ? 'font-semibold text-rose-700 dark:text-rose-400' : 'font-semibold text-emerald-700 dark:text-emerald-400'}>{won(r.margin)}</span></Td>
+            <Td right>약 {num(r.demandPerMonth)}병</Td>
+          </tr>
+        ))}
+      </Table>
+      <p className="mt-2 text-xs text-stone-600 dark:text-stone-300">
+        배치 1회 = 약 {num(first.bottlesPerBatch)}병{aged ? '(숙성 1년 뒤)' : ''}.{' '}
+        {batches > 0
+          ? <>지금 지시(월 {batches}배치)면 한 달에 약 <b>{num(perMonth)}병</b>을 만드는데, 지금 팔 수 있는 양은 <b>약 {num(first.demandPerMonth)}병</b>이다{perMonth > first.demandPerMonth * 2 ? <span className="text-rose-700 dark:text-rose-400"> — 만든 만큼 다 못 판다. 남는 술은 병입하지 말고 탱크·통에 두거나 원액째 팔자</span> : ''}.</>
+          : <>지금 팔 수 있는 양은 한 달 약 {num(first.demandPerMonth)}병이다.</>}
+        {' '}한 달 수요는 인지도·유통(영업)·마케팅이 오르면 는다. 출고가는 품질로 정한 권장가이고, 세금은 손님이 낸다(우리 현금에는 출고가만 남는다).
+      </p>
+    </div>
   );
 }
 
