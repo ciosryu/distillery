@@ -114,12 +114,18 @@ export interface CaskDef {
   material?: VesselMaterial;
 }
 
-/** 나무가 아닌 용기의 숙성 (S-10 자리) — 추출 없이 숨쉬기·안정화만. 값은 자리표시 `[튜닝]`, 근거 없음 `[확인 불가]` — flavor-model §4.5 확장 때 정한다 */
-export const NON_WOOD_VESSEL: Record<Exclude<VesselMaterial, 'wood'>, { evapFactor: number; integrationPerMonth: number; harshnessKeep: number }> = {
-  /** 옹기: 미세 기공으로 숨을 쉰다 — 증발이 조금 있고 거친 맛이 나무보다 천천히 풀린다 */
-  onggi: { evapFactor: 0.3, integrationPerMonth: 0.6, harshnessKeep: 0.98 },
-  /** 스테인리스 휴지: 증발 없음, 탱크 보관(restLot)과 같은 안정화 */
-  steel: { evapFactor: 0, integrationPerMonth: 0.5, harshnessKeep: 0.985 },
+/**
+ * 나무가 아닌 용기의 숙성 (S-10 자리 → 모델 P-PROD-4, flavor-model §4.5.1). 나무의 ②추출이 없고 ①제거·③반응만 있다(tech-tree ASN-3a 보충).
+ * - evapFactor: 같은 크기 나무 캐스크 대비 증발 배수
+ * - removal: 월 ①제거 계수(유황·거친 맛·용제·후류취) — 새 나무 캐스크(탄화 3·활성도 1)는 약 0.0105
+ * - integration·fruit·floral: 월 ③반응(시간 비례, 크기와 무관)
+ * 값은 모두 `[튜닝]`, 근거 없음 `[확인 불가]` — 옹기는 원안 "엔젤스 셰어 ×0.5"만 출처가 있다(tech-tree)
+ */
+export const NON_WOOD_VESSEL: Record<Exclude<VesselMaterial, 'wood'>, { evapFactor: number; removal: number; integration: number; fruit: number; floral: number }> = {
+  /** 옹기: 미세 기공으로 숨을 쉰다 — 증발이 나무의 절반, 거친 맛·이취가 나무보다 천천히 풀리고 둥글어진다. 나무 향(바닐라·탄닌)은 없다 */
+  onggi: { evapFactor: 0.5, removal: 0.02, integration: 1.0, fruit: 0.1, floral: 0.05 },
+  /** 스테인리스 휴지: 증발 없음, 안정화만. 지금 콘텐츠에는 없다 — 스테인리스 휴지는 탱크 보관(restLot)이 맡는다 */
+  steel: { evapFactor: 0, removal: 0.002, integration: 0.5, fruit: 0, floral: 0 },
 };
 
 export const CASKS: Record<CaskTypeId, CaskDef> = {
