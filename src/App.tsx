@@ -149,8 +149,7 @@ export default function App() {
         )}
         {running && s.month === 0 && s.scenario && (
           <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-            <b>시작 가이드</b> — ① <b>생산</b>에서 소주·몰트 월 배치 수를 정한다 ② 한 달을 진행하면 원액이 탱크에 쌓인다 ③ 소주는 <b>블렌딩·병입</b>에서 바로 병입해 팔고, 몰트는 <b>증류소</b> 화면에서 빈 통에 통입하고 샘플을 떠 숙성을 확인한다({REGIONS[s.regionId].whisky.minMonths}개월부터 위스키) ④ 비지터 센터 베이직 투어는 <b>생산</b>의 설비에서 짓는다 ⑤ 현금이 위급하면 <b>원액 B2B</b>에서 뉴메이크를 현물로 팔거나 <b>재무</b>에서 대출을 받는다.
-          </div>
+            <b>시작 가이드</b> — 모든 일은 <b>증류소</b> 화면에서 한다. ① <b>생산 지시</b>에서 소주·몰트 월 배치 수를 정한다 ② 한 달을 진행하면 원액이 탱크에 쌓인다 ③ 소주는 <b>블렌딩·병입</b> 탭에서 바로 병입해 팔고(가격은 증류소 화면의 <b>가격과 수요</b>), 몰트는 <b>숙성고 공간</b>에서 빈 통에 통입한다({REGIONS[s.regionId].whisky.minMonths}개월부터 위스키). 소주를 옹기에 숙성할 수도 있다 ④ 비지터 센터 베이직 투어는 화면 아래 <b>설비</b>를 펼쳐 짓는다 ⑤ 현금이 위급하면 <b>원액 B2B</b>에서 뉴메이크를 현물로 팔거나 <b>재무</b>에서 대출·급전을 받는다.</div>
         )}
         {running && s.month === 0 && !s.scenario && (
           <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">

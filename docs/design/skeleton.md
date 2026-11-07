@@ -60,7 +60,7 @@
 | 연구·테크트리 | [tech-tree](tech-tree.md) | `research` | 8 (`runResearch`) | `research.ts`(게이트·시작 조건·진행), `content/tech.ts`(노드 스키마 + 4개), 행동 `startResearch`·`setResearch`·`cancelResearch` | ◐ (진행 규칙 구현 — 기간·연구비·담당자·일시정지·이탈. 노드 4개뿐, 게이트 꺼짐, 실적 보너스·본업 효율 −30%·실험실 슬롯·화면은 단계 P) | MGT |
 | 관광·비지터 센터 | §16.8 | `commerce.localBuzz` | 6 | `ops.ts`(일부) | ● | MKT |
 | 리포트·연 요약·데이터 수명 | §13 | `history` (월 보고서 `netWorth?`·연 요약 `netWorthEnd?`, #159) | 9 | `lifecycle.ts`, `step.ts` | ● | 코어 |
-| MVP 단일 화면 (증류소 탭) | [mvp.md](mvp.md) §5.1 | (읽기만) | — | `ui/MvpHome.tsx` — 현금·순자산 곡선, 판매(`PriceDesk`), 아는 값만 보이는 숙성고(나무·옹기), 숙성고 공간·통입·빈 통 구매 | ● (#159. 생산 지시·크래프팅 레버는 PROD가 `Orders`·`RecipeEditor`를 내보내면 끼운다) | 코어 |
+| MVP 단일 화면 (증류소 탭) | [mvp.md](mvp.md) §5.1 | (읽기만) | — | `ui/MvpHome.tsx` — 현금·순자산 곡선, 생산 지시(`Orders`), 판매(`PriceDesk`), 아는 값만 보이는 숙성고(나무·옹기), 숙성고 공간·통입·빈 통 구매 | ● (#159. 생산 지시(PROD `Orders`)·판매(MKT `PriceDesk`)는 펼쳐서, 크래프팅 레버·설비(PROD `RecipeEditor`·`Equipment`)는 접어서 끼운다) | 코어 |
 | 시나리오 모드·초기화·기능 플래그·가상 이력 생성기 | §12.2 | 헤더 `scenario` (v8) | 1·8 (끈 시스템 건너뜀) | `content/scenarios.ts`, `scenario.ts`(잠금), `newScenario.ts`(사업 계획서 입구·미리보기), 화면 `ui/BusinessPlan.tsx` | ◐ (입구·플래그·MVP 시나리오 구현, 가상 이력 생성기·JSON 파일 형식은 자리만) | 코어 → META |
 | 승패·업적·마일스톤·목표 판정 | §12.1, [mvp.md](mvp.md) §3 | 헤더 `status`(끝난 이유) + `progress` 슬라이스(v10) | 9 (`updateProgress`) | `progress.ts`, `content/milestones.ts`, 행동 `actions.meta.ts`, 화면 `ui/Verdict.tsx` | ◐ (마일스톤 9개·MVP 목표 판정·결과 화면 구현. 면허 취소·해임은 자리만, 여러 판에 걸친 업적은 단계 V) | META |
 | 다지역 경영(해외 증류소 인수) | §3.4 | 지금은 증류소 1개. 슬라이스를 회사/증류소 단위로 분류해 둠(§4.10 ③) | — | 인수 시 시작 상태 = 시나리오 입구(`newScenarioGame`, S-8)와 같은 구조 | ○ (분류만, #128) | 코어 결정 → META |

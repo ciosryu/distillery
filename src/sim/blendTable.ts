@@ -109,27 +109,44 @@ export interface KnownRead {
   estQuality: number;
   /** 자기 기록인지, 형제 캐스크(같은 배치·같은 캐스크 종류)의 기록을 빌렸는지 */
   from: 'own' | 'sibling';
+  /** 기록을 뜬 캐스크 id — 같은 기록을 빌린 통들은 오차가 함께 움직인다(독립이 아니다) */
+  sourceId: string;
 }
 
 const siblingKey = (c: Cask) => (c.contents?.batchId ? `${c.contents.batchId}:${c.typeId}` : null);
 
-/** 모든 캐스크의 아는 값 (기록이 없고 형제도 없으면 빠진다). 한 번에 계산 — 캐스크가 수천 개여도 O(n) */
+/**
+ * 형제 기록을 빌리는 최소 액량 비율(작은 쪽 ÷ 큰 쪽) — 같은 배치라도 마지막 통은 일부만 채워져(실측 185L 옆 14.6L·43L)
+ * 표면적/부피가 달라 숙성 속도가 다르다. 이보다 차이가 크면 빌리지 않는다 (#162, 결정 대기 12) `[튜닝]`
+ */
+export const SIBLING_MIN_VOLUME_RATIO = 0.75;
+
+/** 모든 캐스크의 아는 값 (기록이 없고 빌릴 형제도 없으면 빠진다). 한 번에 계산 — 형제 묶음 안에서만 비교한다 */
 export function knownReads(s: GameState): Map<string, KnownRead> {
-  const bySibling = new Map<string, SampleRecord>();
+  // 형제 묶음(같은 배치·같은 캐스크 종류)마다 기록이 있는 통
+  const recorded = new Map<string, { id: string; volumeL: number; rec: SampleRecord }[]>();
   for (const c of s.inventory.casks) {
     const last = c.contents ? c.sampleLog?.at(-1) : undefined;
     const k = siblingKey(c);
     if (!last || !k) continue;
-    const prev = bySibling.get(k);
-    if (!prev || last.month > prev.month) bySibling.set(k, last);
+    recorded.set(k, [...(recorded.get(k) ?? []), { id: c.id, volumeL: c.contents!.volumeL, rec: last }]);
   }
   const out = new Map<string, KnownRead>();
   for (const c of s.inventory.casks) {
     if (!c.contents) continue;
     const own = c.sampleLog?.at(-1);
-    const k = siblingKey(c);
-    const rec = own ?? (k ? bySibling.get(k) : undefined);
-    if (rec) out.set(c.id, { hex: rec.hex, sigma: rec.sigma, month: rec.month, estQuality: rec.estQuality, from: own ? 'own' : 'sibling' });
+    let rec = own;
+    let sourceId = c.id;
+    if (!rec) {
+      const k = siblingKey(c);
+      const v = c.contents.volumeL;
+      // 액량이 비슷한 형제 중 가장 최근 기록
+      for (const x of (k ? recorded.get(k) : undefined) ?? []) {
+        if (Math.min(v, x.volumeL) / Math.max(v, x.volumeL) < SIBLING_MIN_VOLUME_RATIO) continue;
+        if (!rec || x.rec.month > rec.month) { rec = x.rec; sourceId = x.id; }
+      }
+    }
+    if (rec) out.set(c.id, { hex: rec.hex, sigma: rec.sigma, month: rec.month, estQuality: rec.estQuality, from: own ? 'own' : 'sibling', sourceId });
   }
   return out;
 }
