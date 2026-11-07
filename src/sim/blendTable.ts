@@ -113,7 +113,7 @@ export interface KnownRead {
   sourceId: string;
 }
 
-/** 형제 = 같은 배치·같은 캐스크 종류·같은 달 통입 — 다른 달에 통입한 통은 숙성 개월이 달라 기록을 빌리지 않는다 (P-PROD-6) */
+/** 형제 = 같은 배치·같은 캐스크 종류·같은 달 통입 — 다른 달에 통입한 통은 숙성 개월이 달라 기록을 빌리지 않는다 (#166) */
 const siblingKey = (c: Cask) => (c.contents?.batchId ? `${c.contents.batchId}:${c.typeId}:${c.filledMonth ?? ''}` : null);
 
 /**

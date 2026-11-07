@@ -299,7 +299,7 @@ export function simulateBatch(
   };
 }
 
-// ───────────── 탱크 합치기 (P-PROD-6) ─────────────
+// ───────────── 탱크 합치기 (#166) ─────────────
 
 /** 탱크에서 합치는 주종 — 캐스크로 갈 원액(몰트·그레인)만. 소주·진·고량주는 탱크에서 쉬는 것 자체가 숙성(스테인리스 휴지, #161)이라
  *  새 원액을 섞으면 오래 쉰 원액의 효과가 사라진다 → 달별 배치를 그대로 둔다(실측: 합치면 KR 경기 봇 파산 8/40 → 16/40, 몰트·그레인만 합치면 5/40) */
@@ -474,7 +474,7 @@ export function runProduction(s: GameState, report: MonthReport, ctx: TickContex
       costPerLPA: cost / lpa,
       ...(hasLocalIngredient(site, recipe) ? { localIngredient: true } : {}),
     };
-    // 같은 레시피 몰트·그레인 뉴메이크는 탱크(스피릿 리시버)에서 합친다 (P-PROD-6) — 달마다 배치가 따로 쌓여 통입 화면에 원액이 수십 개가 되던 것
+    // 같은 레시피 몰트·그레인 뉴메이크는 탱크(스피릿 리시버)에서 합친다 (#166) — 달마다 배치가 따로 쌓여 통입 화면에 원액이 수십 개가 되던 것
     const ti = s.inventory.lots.findIndex((l) => sameTank(l, fresh));
     if (ti < 0) s.inventory.lots.push(fresh);
     else s.inventory.lots[ti] = mergeIntoTank(s.inventory.lots[ti]!, fresh, recipe.name, monthLabel(s.startYear, s.inventory.lots[ti]!.createdMonth));

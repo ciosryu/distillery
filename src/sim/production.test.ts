@@ -309,7 +309,7 @@ describe('크래프팅 레버 미리보기 (mvp.md §1.2, #156)', () => {
   });
 });
 
-describe('탱크 합치기 (P-PROD-6)', () => {
+describe('탱크 합치기 (#166)', () => {
   it('같은 레시피 몰트 뉴메이크는 달이 바뀌어도 탱크 하나에 합쳐진다 — id 유지, 생산 달은 가장 오래된 배치, 배치 id는 새로', () => {
     let s = newGame({ seed: 2 });
     const malt = s.production.recipes.find((r) => r.kind === 'malt' && r.name.endsWith('언피티드'))!;
