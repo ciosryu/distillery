@@ -120,6 +120,7 @@ const delta = (v: number, digits = 1) => (Math.abs(v) < 0.05 ? '' : ` (${v > 0 ?
  * 프리셋으로 시작한다. "고급 설정"을 열면 주종별 레버가 보이고, 결과는 향미 프로필 + 품질 + "무엇이 무엇을 바꿨나" 한 줄.
  * 몰트·소주는 레버 화면, 그 밖의 주종(샌드박스)은 자유 편집기
  */
+/** MVP 증류소 탭이 접어서 끼운다 (크래프팅 레버, #156) */
 export function RecipeEditor() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
@@ -353,7 +354,8 @@ function FreeControls({ s, draft, set }: { s: GameState; draft: Draft; set: SetD
   );
 }
 
-function Equipment() {
+/** MVP 증류소 탭이 접어서 끼운다 (비지터 센터 베이직 투어·감압 증류기 등) */
+export function Equipment() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
   return (
