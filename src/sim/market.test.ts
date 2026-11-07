@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { houseBrand } from './brands';
 import { advanceMonths, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, demandFor, evaluate, spotBidPerLPA, spotQuote, makeContractOffer, makeCraftContractOffer, contractAgingImpact, mulberry32, newGame, previewBlend, qualityFactor, type Cask, type GameState, type SpiritLot, appeal, applyEffects, buyersFor, type Product, agePerception, suggestedPrice, spotSaturation, sourcedElasticityFactor, sourcedPrestigeOf, executeBlend, runSales, updateAwareness, DUTY_FREE, dutyFreeSlotBlocker, makeOemOffer, makeRetailOffer, oemPackageCost, OEM, productDutyFreeDemand, resolveDutyFreeEditions, startOem, startRetail, type MonthReport } from './index';
 import { overhangFactor, retailCapacityCases } from './retail';
+import { domesticDemands, priceBreakdown, priceOptions, skuSplit, skuSplitEqual } from './market';
+import { SKU } from './content/market';
 import { BULK } from './content/catalog';
 import { BUYERS } from './content/names';
 import { REGIONS, traditionalTaxFactor, refPricePerL } from './content/regions';
@@ -455,5 +457,86 @@ describe('간토 위탁생산 (결정 #89)', () => {
     expect(r.oemRevenue).toBe(2 * OEM.feePerBatch);
     expect(r.expenses.production ?? 0).toBeGreaterThan(0);
     expect(r.expenses.production ?? 0).toBeLessThan(OEM.feePerBatch);
+  });
+});
+
+describe('판매 화면 — 소비자가 내역·가격 비교 (MVP 판매 화면)', () => {
+  it('한국 위스키: 종가세 72% + 교육세(주세의 30%) + 부가세 10% + 도소매 마진 = 소비자가', () => {
+    const s = newGame({ seed: 1, region: 'KR' });
+    const p = product({ price: 50_000 });
+    const b = priceBreakdown(s, p);
+    expect(b.adValoremTax).toBeCloseTo(50_000 * 0.72, 6);
+    expect(b.educationTax).toBeCloseTo(50_000 * 0.72 * 0.3, 6);
+    expect(b.specificTax).toBe(0);
+    expect(b.vat).toBeCloseTo((50_000 + b.adValoremTax + b.educationTax) * 0.1, 6);
+    expect(b.price + b.adValoremTax + b.educationTax + b.specificTax + b.vat + b.retail).toBeCloseTo(b.consumer, 6);
+    expect(b.reliefFactor).toBe(1);
+  });
+
+  it('전통주 경감 대상 소주는 주세·교육세가 경감 배수만큼 준다', () => {
+    const s = newGame({ seed: 1, region: 'KR' });
+    const soju = product({ category: 'soju_distilled', ageYears: null, oakMonths: 0, abv: 0.25, bottleMl: 375, price: 8_000 });
+    const plain = priceBreakdown(s, soju);
+    const relief = priceBreakdown(s, { ...soju, traditional: true });
+    expect(relief.reliefFactor).toBe(0.5);
+    expect(relief.adValoremTax + relief.educationTax).toBeCloseTo((plain.adValoremTax + plain.educationTax) * 0.5, 6);
+    expect(relief.consumer).toBeLessThan(plain.consumer);
+  });
+
+  it('종량세 지역(일본)은 LPA당 세금이 붙는다', () => {
+    const s = newGame({ seed: 1, region: 'JP' });
+    const b = priceBreakdown(s, product({ price: 50_000 }));
+    expect(b.adValoremTax).toBe(0);
+    expect(b.specificTax).toBeCloseTo(REGIONS.JP.tax.specificPerLPA * 0.7 * 0.46, 6);
+  });
+
+  it('가격 비교: 값을 올리면 수요 한도가 줄고, 판매 가능량은 재고를 넘지 않는다', () => {
+    const s = newGame({ seed: 1, region: 'KR' });
+    const opts = priceOptions(s, product({ stockBottles: 30 }), 1);
+    for (let i = 1; i < opts.length; i++) expect(opts[i]!.demandBottles).toBeLessThan(opts[i - 1]!.demandBottles);
+    for (const o of opts) expect(o.sellBottles).toBeLessThanOrEqual(30);
+    expect(opts.find((o) => o.price === 60_000)).toBeTruthy();
+  });
+});
+
+describe('같은 카테고리 제품끼리 수요 나눔 (#154, §15.3 #12)', () => {
+  const lineup = (...ps: Product[]) => { const s = newGame({ seed: 2, region: 'KR' }); s.commerce.products = ps; return s; };
+  const total = (s: GameState) => [...domesticDemands(s, 3).values()].reduce((t, d) => t + d.demandBottles, 0);
+
+  it('skuSplit: 혼자면 1, 똑같은 n개면 총합 n^(1/ρ), 단독 수요 0이면 0', () => {
+    expect(skuSplit([5])).toEqual([1]);
+    const f = skuSplit([4, 4, 4]);
+    expect(f.reduce((t, x) => t + 4 * x, 0)).toBeCloseTo(4 * Math.pow(3, 1 / SKU.rho), 9);
+    expect(skuSplit([3, 0])).toEqual([1, 0]);
+    expect(skuSplit([2], 2)[0]).toBe(1);
+    expect(skuSplitEqual(4, 2)).toBeCloseTo(0.5, 9); // ρ = 2는 옛 1/√n과 같다
+  });
+
+  it('똑같은 제품을 하나 더 내면 총수요가 n^(1/ρ)배 — 옛 √n보다 작다', () => {
+    const one = total(lineup(product({ id: 'a' })));
+    const two = total(lineup(product({ id: 'a' }), product({ id: 'b' })));
+    expect(two / one).toBeCloseTo(Math.pow(2, 1 / SKU.rho), 6);
+    expect(two / one).toBeLessThan(Math.SQRT2);
+  });
+
+  it('약한 제품을 더해도 강한 제품의 몫은 거의 그대로이고, 총수요는 줄지 않는다', () => {
+    const strong = product({ id: 'a' });
+    const weak = product({ id: 'b', quality: 35, price: 120_000 });
+    const alone = total(lineup(strong));
+    const both = domesticDemands(lineup(strong, weak), 3);
+    expect(both.get('a')!.demandBottles).toBeGreaterThan(alone * 0.97);
+    expect(both.get('a')!.demandBottles + both.get('b')!.demandBottles).toBeGreaterThanOrEqual(alone);
+  });
+
+  it('면세 전용 한정판은 국내 수요를 깎지 않는다 (옛 모델 오차)', () => {
+    const domesticOnly = total(lineup(product({ id: 'a' })));
+    const s = lineup(product({ id: 'a' }), product({ id: 'df', dutyFreeOnly: true }));
+    expect(domesticDemands(s, 3).get('a')!.demandBottles).toBeCloseTo(domesticOnly, 6);
+  });
+
+  it('다른 카테고리끼리는 나누지 않는다', () => {
+    const s = lineup(product({ id: 'a' }), product({ id: 'g', category: 'gin', ageYears: null, oakMonths: 0, abv: 0.43, price: 20_000 }));
+    expect(domesticDemands(s, 3).get('a')!.split).toBe(1);
+    expect(domesticDemands(s, 3).get('g')!.split).toBe(1);
   });
 });

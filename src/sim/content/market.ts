@@ -72,3 +72,25 @@ export const VISITOR_EQUIPMENT: Record<string, EquipmentDef> = {
   visitor_vip: { id: 'visitor_vip', kind: 'visitor', nameKo: '비지터 센터 — VIP 테이스팅 라운지', cost: 200_000_000, leadMonths: 6, maintenance: 4_000_000, tier: 2, visitorsPerMonth: 150, spendPerVisitor: 50_000, buzzQuality: 1.2, requires: 'visitor_basic' },
   visitor_restaurant: { id: 'visitor_restaurant', kind: 'visitor', nameKo: '비지터 센터 — 레스토랑 결합형', cost: 500_000_000, leadMonths: 9, maintenance: 8_000_000, tier: 3, visitorsPerMonth: 300, spendPerVisitor: 40_000, buzzQuality: 1.5, requires: 'visitor_vip' },
 };
+
+// ── 같은 카테고리 제품끼리 수요 나눔 (PRD §9.2, §15.3 #12 → 결정 #154) [튜닝] ──
+/**
+ * CES 지수 ρ — 같은 카테고리 제품들의 총수요 = (Σ 단독 수요^ρ)^(1/ρ).
+ * 똑같은 제품 n개면 총수요 n^(1/ρ)배: ρ = 2 → √n(옛 공식과 같음), ρ = 3 → ∛n, ρ → ∞ → 늘지 않음.
+ * 약한 제품을 하나 더 내도 총수요가 거의 늘지 않고 강한 제품의 몫도 거의 안 깎인다(몫 ∝ 단독 수요^ρ)
+ */
+export const SKU = { rho: 3 };
+
+// ── 브랜드 라인 — 세컨드 브랜드 (PRD §11.2 ④, 결정 #51~#55 → 결정 #155) [튜닝] ──
+export const BRANDS = {
+  /** 개설비 — 상표 출원·브랜드 디자인 (원) */
+  openCost: 20_000_000,
+  /** 세컨드 브랜드 월 유지비 — 브랜드 관리·별도 판촉물 (원). 마케팅비는 따로 */
+  monthlyUpkeep: 500_000,
+  /** 브랜드 연계 계수 s — 개설 시 하우스 인지도의 s배에서 시작, 성장도 서로 s만큼 나눠 받는다 (#52·#53) */
+  spillover: 0.5,
+  /** 이미 판 제품을 다른 브랜드로 옮길 때 — 고정비 + 남은 재고 병당 라벨 교체 (아직 안 판 제품은 무료) */
+  rebrandFixed: 2_000_000,
+  rebrandPerBottle: 300,
+  maxNameLength: 20,
+};
