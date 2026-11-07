@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonths, annuityPayment, applyAction, demandFor, newGame, newScenarioGame, type GameState, type SpiritLot, inventoryCollateral, inventoryLoanRoom, inventoryMarginCall, type MonthReport } from './index';
 import { ownsFacility } from './util';
+import { bankScreening, isScreenedOffer } from './loans';
+import { LOAN_OFFERS } from './content/catalog';
 
 // 재무·인사·이벤트 테스트 (파트 MGT, 결정 #144 — sim.test.ts·sites.test.ts에서 옮겨 왔다. 테스트 이름·본문 불변)
 
@@ -74,6 +76,39 @@ describe('재무', () => {
     expect(s.finance.loans.some((l) => l.offerId === 'emergency')).toBe(false);
     // 다 갚으면 다시 받을 수 있다
     expect(applyAction(s, { type: 'takeLoan', offerId: 'emergency', amount: 50_000_000 }).error).toBeUndefined();
+  });
+});
+
+describe('은행 심사 (P-MGT-2, 초안)', () => {
+  // 창업 유예가 끝난 판: 최근 6개월 영업현금 = 월 op씩, 현금 = cash
+  const after = (op: number, cash: number): GameState => {
+    const s = newGame({ seed: 31 });
+    const reports = Array.from({ length: 6 }, (_, i) => ({ ...report(s), month: 24 + i, operatingCash: op, netCash: op }));
+    return { ...s, month: 30, finance: { ...s.finance, cash }, history: { ...s.history, reports } };
+  };
+
+  it('창업 24개월까지는 심사 없이 통과한다 (MVP 시작 대출 포함)', () => {
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 500_000_000, seed: 5 });
+    expect(s.finance.loans.length).toBeGreaterThan(0);
+    const young = { ...after(-50_000_000, 0), month: 23 };
+    expect(applyAction(young, { type: 'takeLoan', offerId: 'working', amount: 100_000_000 }).error).toBeUndefined();
+  });
+
+  it('적자이면서 현금이 고정비 3개월분보다 적으면 은행·정책 상품을 거절하고, 급전은 받는다', () => {
+    const s = after(-20_000_000, 1_000_000);
+    expect(bankScreening(s, LOAN_OFFERS.find((o) => o.id === 'working')!).ok).toBe(false);
+    for (const id of ['working', 'facility']) expect(applyAction(s, { type: 'takeLoan', offerId: id, amount: 100_000_000 }).error).toMatch(/은행 심사 거절/);
+    expect(applyAction(s, { type: 'takeLoan', offerId: 'emergency', amount: 100_000_000 }).error).toBeUndefined();
+  });
+
+  it('적자만, 현금 부족만이면 통과한다 (mode and)', () => {
+    expect(applyAction(after(-20_000_000, 5_000_000_000), { type: 'takeLoan', offerId: 'working', amount: 100_000_000 }).error).toBeUndefined();
+    expect(applyAction(after(20_000_000, 1_000_000), { type: 'takeLoan', offerId: 'working', amount: 100_000_000 }).error).toBeUndefined();
+  });
+
+  it('재고 담보대출·급전은 심사 대상이 아니다', () => {
+    expect(LOAN_OFFERS.filter(isScreenedOffer).map((o) => o.id)).not.toEqual(expect.arrayContaining(['emergency', 'inventory']));
+    expect(bankScreening(after(-20_000_000, 0), LOAN_OFFERS.find((o) => o.id === 'emergency')!).screened).toBe(false);
   });
 });
 
