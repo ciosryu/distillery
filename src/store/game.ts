@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createLocalEngine, DEFAULT_STOPS, newGame, newScenarioGame, type Action, type BusinessPlan, type GameState, type RegionId, type StopReason } from '../sim';
 import { flushSave, loadGame, queueSave, saveNow } from './persist';
 import { useUi } from './ui';
+import { parsePlayFile, recordAction, recordTurns, replacePlaylog, resetPlaylog } from './playlog';
 
 // 게임 상태 읽기 모델 (architecture §3.2). 권위 상태는 엔진(GameEngine) 하나 — 도메인별 store로 나누지 않는다.
 // store는 엔진 스냅샷을 비추고 명령을 넘길 뿐이다. 화면은 원시 상태 대신 selectors.ts의 셀렉터를 쓰는 것을 원칙으로 한다.
@@ -29,6 +30,8 @@ interface GameStore {
   restart: (name?: string, region?: RegionId, site?: string) => void;
   /** 사업 계획서로 시나리오 새 게임 (S-8) */
   startScenario: (plan: BusinessPlan) => void;
+  /** 기록 파일(세이브 + 플레이 기록) 또는 세이브 JSON을 불러온다 — 플레이테스트 피드백 재현용 (mvp.md §7.2) */
+  loadFile: (text: string) => void;
 }
 
 const saved = loadGame();
@@ -47,13 +50,21 @@ const SAFETY_STOPS: StopReason[] = ['cashWarning', 'bankrupt', 'gameOver', 'verd
 if (typeof window !== 'undefined') window.addEventListener('beforeunload', flushSave);
 
 export const useGame = create<GameStore>((set) => {
-  engine.subscribe((s) => { persist(s); set({ state: s }); });
+  // 플레이 기록 (playlog.ts): 달이 넘어가면 그때까지의 플레이 시간을 남긴다. 새 판·불러오기로 달이 줄면 기준만 옮긴다
+  let lastMonth = engine.snapshot().month;
+  engine.subscribe((s) => {
+    if (s.month > lastMonth) recordTurns(lastMonth, s.month);
+    lastMonth = s.month;
+    persist(s);
+    set({ state: s });
+  });
   return {
     state: engine.snapshot(),
     dispatch: (a) => {
       const res = engine.dispatch(a);
       if (res.error) { toast('error', res.error); return false; }
       if (res.message) toast('ok', res.message);
+      recordAction();
       return true;
     },
     advance: (months) => {
@@ -79,6 +90,7 @@ export const useGame = create<GameStore>((set) => {
     cancelAdvance: () => { cancelRequested = true; },
     restart: (name, region, site) => {
       const s = newGame({ distilleryName: name || undefined, region, site: site || undefined });
+      resetPlaylog();
       engine.load(s);
       const res = saveNow(s);
       toast(res.ok ? 'ok' : 'error', res.ok ? '새 게임을 시작했습니다' : res.error);
@@ -86,10 +98,20 @@ export const useGame = create<GameStore>((set) => {
     startScenario: (plan) => {
       let s: GameState;
       try { s = newScenarioGame(plan); } catch (e) { toast('error', (e as Error).message); return; }
+      resetPlaylog();
       engine.load(s);
       useUi.getState().setTab(''); // 새 판은 첫 탭(증류소 화면)부터
       const res = saveNow(s);
       toast(res.ok ? 'ok' : 'error', res.ok ? '사업을 시작했습니다' : res.error);
+    },
+    loadFile: (text) => {
+      const r = parsePlayFile(text);
+      if ('error' in r) { toast('error', r.error); return; }
+      replacePlaylog(r.playlog);
+      lastMonth = r.save.month; // 불러온 달까지를 새 진행으로 기록하지 않는다
+      engine.load(r.save);
+      const res = saveNow(r.save);
+      toast(res.ok ? 'ok' : 'error', res.ok ? `불러왔습니다 — ${r.save.distilleryName}${r.playlog ? ' (플레이 기록 포함)' : ''}` : res.error);
     },
   };
 });
