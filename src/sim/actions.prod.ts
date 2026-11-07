@@ -7,7 +7,7 @@ import { lotQuality } from './bulk';
 import { mod } from './modifiers';
 import { executeBlend, type BlendComponent, type BlendReveal, type BottleOptions } from './blending';
 import { blenderOf, delegatePlan, findTarget, LAB, RARE, recordSample, SAMPLING, samplingCapacity } from './blendTable';
-import { canFinishInto, emptyCask, FINISH, finishCount, finishLabel, historyAfterTransfer, MAX_RECHAR, recharCask } from './maturation';
+import { canFinishInto, emptyCask, FINISH, finishCount, finishLabel, historyAfterTransfer, MAX_RECHAR, recharCask, vesselMaterial } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
 import { equipmentCost } from './sites';
@@ -160,6 +160,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const def = CASKS[a.caskType];
     const qty = Math.max(1, Math.floor(a.qty));
     if (!def) return fail(prev, '알 수 없는 캐스크');
+    if (def.seasoningType === 'none') return fail(prev, '시즈닝 계약은 버번·셰리 캐스크만 할 수 있습니다');
     const pending = s.inventory.caskOrders.reduce((t, o) => t + o.qty, 0);
     if (s.inventory.casks.length + pending + qty > warehouseCapacity(s)) return fail(prev, '숙성고 용량 부족');
     // 시즈닝 계약가는 시장가와 무관하게 계약 시점의 카탈로그가 기준 → 셰리통 파동 헤지
@@ -174,6 +175,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const cask = s.inventory.casks[ci];
     if (!cask) return fail(prev, '캐스크가 없습니다');
     if (cask.contents) return fail(prev, '빈 캐스크만 팔 수 있습니다');
+    if (vesselMaterial(cask) !== 'wood') return fail(prev, '옹기는 중고 캐스크 시장에 팔 수 없습니다');
     if (cask.fills < 1) return fail(prev, '한 번도 쓰지 않은 통은 중고로 팔 수 없습니다');
     const price = usedCaskPrice(cask);
     s.finance.cash += price;
@@ -235,6 +237,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const cask = s.inventory.casks[ci];
     if (!cask) return fail(prev, '캐스크가 없습니다');
     if (cask.contents) return fail(prev, '빈 캐스크만 재탄화할 수 있습니다');
+    if (vesselMaterial(cask) !== 'wood') return fail(prev, '나무 캐스크만 재탄화할 수 있습니다');
     if (cask.recharCount >= MAX_RECHAR) return fail(prev, `재탄화는 최대 ${MAX_RECHAR}회`);
     if (s.finance.cash < RECHAR_COST) return fail(prev, '현금이 부족합니다');
     s.finance.cash -= RECHAR_COST;

@@ -114,12 +114,18 @@ export interface CaskDef {
   material?: VesselMaterial;
 }
 
-/** 나무가 아닌 용기의 숙성 (S-10 자리) — 추출 없이 숨쉬기·안정화만. 값은 자리표시 `[튜닝]`, 근거 없음 `[확인 불가]` — flavor-model §4.5 확장 때 정한다 */
-export const NON_WOOD_VESSEL: Record<Exclude<VesselMaterial, 'wood'>, { evapFactor: number; integrationPerMonth: number; harshnessKeep: number }> = {
-  /** 옹기: 미세 기공으로 숨을 쉰다 — 증발이 조금 있고 거친 맛이 나무보다 천천히 풀린다 */
-  onggi: { evapFactor: 0.3, integrationPerMonth: 0.6, harshnessKeep: 0.98 },
-  /** 스테인리스 휴지: 증발 없음, 탱크 보관(restLot)과 같은 안정화 */
-  steel: { evapFactor: 0, integrationPerMonth: 0.5, harshnessKeep: 0.985 },
+/**
+ * 나무가 아닌 용기의 숙성 (S-10 자리 → 모델 #161, flavor-model §4.5.1). 나무의 ②추출이 없고 ①제거·③반응만 있다(tech-tree ASN-3a 보충).
+ * - evapFactor: 같은 크기 나무 캐스크 대비 증발 배수
+ * - removal: 월 ①제거 계수(유황·거친 맛·용제·후류취) — 새 나무 캐스크(탄화 3·활성도 1)는 약 0.0105
+ * - integration·fruit·floral: 월 ③반응(시간 비례, 크기와 무관)
+ * 값은 모두 `[튜닝]`, 근거 없음 `[확인 불가]` — 옹기는 원안 "엔젤스 셰어 ×0.5"만 출처가 있다(tech-tree)
+ */
+export const NON_WOOD_VESSEL: Record<Exclude<VesselMaterial, 'wood'>, { evapFactor: number; removal: number; integration: number; fruit: number; floral: number }> = {
+  /** 옹기: 미세 기공으로 숨을 쉰다 — 증발이 나무의 절반, 거친 맛·이취가 나무보다 천천히 풀리고 둥글어진다. 나무 향(바닐라·탄닌)은 없다 */
+  onggi: { evapFactor: 0.5, removal: 0.02, integration: 1.0, fruit: 0.1, floral: 0.05 },
+  /** 스테인리스 휴지: 증발 없음, 안정화만. 지금 콘텐츠에는 없다 — 스테인리스 휴지는 탱크 보관(restLot)이 맡는다 */
+  steel: { evapFactor: 0, removal: 0.002, integration: 0.5, fruit: 0, floral: 0 },
 };
 
 export const CASKS: Record<CaskTypeId, CaskDef> = {
@@ -127,6 +133,8 @@ export const CASKS: Record<CaskTypeId, CaskDef> = {
   oloroso_butt: { id: 'oloroso_butt', nameKo: '올로로소 셰리 벗 500L', sizeL: 500, wood: 'european_oak', price: 1_800_000, activity: 1.0, seasoning: 1.0, seasoningType: 'sherry', char: 1 },
   korean_oak_quarter: { id: 'korean_oak_quarter', nameKo: '한국 참나무(신갈나무) 쿼터 125L, 신품', sizeL: 125, wood: 'korean_oak', price: 900_000, activity: 1.3, seasoning: 0, seasoningType: 'none', char: 3 },
   mizunara_hogshead: { id: 'mizunara_hogshead', nameKo: '미즈나라 혹스헤드 250L, 신품', sizeL: 250, wood: 'mizunara', price: 3_500_000, activity: 1.2, seasoning: 0, seasoningType: 'none', char: 2, leakFactor: 3 },
+  // 옹기 항아리 (#161) — 나무 향 없이 미세 기공으로 숨 쉬며 부드러워진다. 화이트 스피릿(소주·백주) 숙성용. 오크 숙성 개월에 안 들어간다. 크기·가격 [튜닝]·[확인 불가]
+  onggi_jar: { id: 'onggi_jar', nameKo: '옹기 항아리 200L (숨 쉬는 독)', sizeL: 200, wood: 'none', price: 400_000, activity: 0, seasoning: 0, seasoningType: 'none', char: 0, material: 'onggi' },
 };
 
 /** 목재별 월간 추출 기여 (activity·속도 1 기준) */
@@ -135,6 +143,8 @@ export const WOOD_EXTRACT: Record<WoodId, Flavor> = {
   european_oak: { vanilla_caramel: 0.7, oak_tannin: 1.3, wood_spice: 0.8, color: 1.5 },
   korean_oak: { vanilla_caramel: 0.9, oak_tannin: 1.2, wood_spice: 1.0, color: 1.3 },
   mizunara: { vanilla_caramel: 0.6, oak_tannin: 1.0, wood_spice: 0.8, color: 1.0, sweetness: 0.2 },
+  /** 나무가 아닌 용기 — 추출 없음 (matureVessel이 재질로 나눠 matureCask에 오지 않는다) */
+  none: {},
 };
 
 /** 시즈닝 향 월간 기여 (seasoning 1 기준) */

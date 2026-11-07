@@ -107,17 +107,33 @@ export function matureVessel(cask: Cask, climate: Climate, opts: MatureOptions):
   return material === 'wood' ? matureCask(cask, climate, opts) : matureNonWood(cask, material, climate, opts);
 }
 
-/** 나무가 아닌 용기(옹기·스테인리스 휴지) 1개월 — 자리만 있는 스텁 (S-10). 지금 콘텐츠에는 이런 용기가 없어 게임에서 불리지 않는다.
- *  추출 없음 · 재질별 증발 · 안정화. oakMonths는 늘지 않고 restMonths가 는다(위스키 법정 숙성에 안 들어간다) */
+/**
+ * 나무가 아닌 용기(옹기·스테인리스 휴지) 1개월 (#161, flavor-model §4.5.1) — 나무의 ②추출 없이 ①제거·③반응만.
+ * 제거는 크기·온도를 타고(m), 반응은 시간 비례다(나무와 같은 구조). 증발은 재질 배수.
+ * oakMonths는 늘지 않고 restMonths가 는다 — 위스키 법정 숙성(나무통)에 안 들어간다
+ */
 export function matureNonWood(cask: Cask, material: Exclude<VesselMaterial, 'wood'>, climate: Climate, opts: MatureOptions): { cask: Cask; lostL: number } {
   const lot = cask.contents;
   if (!lot) return { cask, lostL: 0 };
   const v = NON_WOOD_VESSEL[material];
-  const rate = R0_EVAP * evapTempFactor(climate.tempC) * sizeFactor(cask.sizeL) * v.evapFactor * (1 - 0.2 * (opts.control / 100)) * (opts.evaporationFactor ?? 1);
+  const sf = sizeFactor(cask.sizeL);
+  const rate = R0_EVAP * evapTempFactor(climate.tempC) * sf * v.evapFactor * (1 - 0.2 * (opts.control / 100)) * (opts.evaporationFactor ?? 1);
   const evap = rate > 0 ? evaporate(lot.volumeL, lot.abv, rate, climate.humidity) : { volumeL: lot.volumeL, abv: lot.abv, lostL: 0 };
   const f: Flavor = { ...lot.flavor };
-  f.integration = Math.min(25, (f.integration ?? 0) + v.integrationPerMonth);
-  f.harshness = (f.harshness ?? 0) * v.harshnessKeep;
+  const bump = (k: AxisId, amount: number, cap = 100) => {
+    const cur = f[k] ?? 0;
+    f[k] = cur + amount * Math.max(0, 1 - cur / cap);
+  };
+  // ① 제거 (숨쉬기·산화 — 나무보다 느리다)
+  const d = v.removal * sf * tempFactor(climate.tempC);
+  f.sulfur_meaty = (f.sulfur_meaty ?? 0) * (1 - d * 1.5);
+  f.harshness = (f.harshness ?? 0) * (1 - d);
+  f.solvent = (f.solvent ?? 0) * (1 - d * 0.5);
+  f.feinty = (f.feinty ?? 0) * (1 - d * 0.2);
+  // ③ 반응 (시간 비례)
+  bump('fresh_fruit', v.fruit, 80);
+  bump('floral', v.floral, 80);
+  bump('integration', v.integration);
   const oldLPA = lot.volumeL * lot.abv;
   const newLPA = evap.volumeL * evap.abv;
   const costPerLPA = newLPA > 0 ? (lot.costPerLPA * oldLPA) / newLPA : lot.costPerLPA;
