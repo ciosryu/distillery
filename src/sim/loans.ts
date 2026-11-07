@@ -69,7 +69,7 @@ export function runFinance(s: GameState, report: MonthReport, monthOfYear: numbe
   pay('maintenance', s.production.equipment.reduce((t, e) => t + (e.readyMonth <= s.month ? (EQUIPMENT[e.catalogId]?.maintenance ?? 0) : 0), 0));
   pay('marketing', s.commerce.marketingBudget);
   pay('storage', caskStorageCost(s));
-  // 보험료 (P-MGT-4) — 가입한 달부터 매달
+  // 보험료 (#171) — 가입한 달부터 매달
   pay('insurance', s.finance.insurance.reduce((t, x) => t + x.premiumPerMonth, 0));
   for (const loan of s.finance.loans) {
     const interest = Math.round(loan.balance * (loan.annualRate / 12));

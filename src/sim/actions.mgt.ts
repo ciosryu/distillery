@@ -20,7 +20,7 @@ export type MgtAction =
   | { type: 'startResearch'; techId: string; leadStaffId: string }
   | { type: 'setResearch'; techId: string; paused?: boolean; leadStaffId?: string }
   | { type: 'cancelResearch'; techId: string }
-  /** 재무 확장 (S-11 자리, PRD §8.4) — 원재료 선도계약(규칙 전: 항상 실패) / 보험 가입·해지(P-MGT-4: 재산·재고·영업중단) */
+  /** 재무 확장 (S-11 자리, PRD §8.4) — 원재료 선도계약(규칙 전: 항상 실패) / 보험 가입·해지(#171: 재산·재고·영업중단) */
   | { type: 'signForward'; ingredientId: string; kgPerMonth: number; months: number }
   | { type: 'buyInsurance'; kind: 'property' | 'inventory' | 'business_interruption' | 'product_liability' | 'credit'; coverage: number }
   | { type: 'cancelInsurance'; policyId: string }
@@ -75,7 +75,7 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
   },
   // 자리만 — 상품 데이터·가격·보상·이사회 목표는 단계 P(MGT)
   signForward: (_s, prev, _a) => fail(prev, '선도계약은 아직 없습니다 (다음 단계)'),
-  // 보험 (P-MGT-4) — 종류마다 1건. 가입한 다음 달부터 보장, 보험료는 재무 단계에서 매달. 해지하면 바로 끝난다(환급 없음 — 보험료는 매달 낸다)
+  // 보험 (#171) — 종류마다 1건. 가입한 다음 달부터 보장, 보험료는 재무 단계에서 매달. 해지하면 바로 끝난다(환급 없음 — 보험료는 매달 낸다)
   buyInsurance: (s, prev, a) => {
     const p = insuranceProduct(a.kind);
     if (!p) return fail(prev, a.kind === 'credit' ? '매출채권 신용보험은 고급 상품입니다 (연구 BIZ-2b 재무 리스크 관리 뒤)' : '제조물 책임 보험은 아직 없습니다 (리콜 사고가 생기면 함께)');

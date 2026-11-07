@@ -81,7 +81,7 @@ describe('재무', () => {
   });
 });
 
-describe('보험 (P-MGT-4)', () => {
+describe('보험 (#171)', () => {
   /** 원액이 든 캐스크 몇 개가 있는 판 */
   const withCasks = (seed = 1): GameState => {
     const s = newGame({ seed, startingCash: 5_000_000_000 });

@@ -3,7 +3,7 @@ import { monthlyFixedCost } from './loans';
 import { riskMul } from './research';
 import type { GameState, InsurancePolicy } from './types';
 
-// 보험 (파트 MGT, P-MGT-4, PRD §8.4) — 재산·재고·영업중단. 재해 이벤트(events.ts fire)가 피해를 장부(LossLedger)에 적고, 끝에 settleClaims가 보험금을 준다.
+// 보험 (파트 MGT, #171, PRD §8.4) — 재산·재고·영업중단. 재해 이벤트(events.ts fire)가 피해를 장부(LossLedger)에 적고, 끝에 settleClaims가 보험금을 준다.
 // 보험이 없으면 장부는 적히기만 하고 현금·난수에 손대지 않는다 → 보험을 안 든 판은 동작이 그대로다.
 
 export type InsuranceKind = InsuranceProductDef['kind'];

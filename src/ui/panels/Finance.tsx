@@ -113,7 +113,7 @@ export function Finance() {
   );
 }
 
-/** 보험 (P-MGT-4, PRD §8.4) — 재산·재고·영업중단. MVP는 잠겨 있어 숨긴다 */
+/** 보험 (#171, PRD §8.4) — 재산·재고·영업중단. MVP는 잠겨 있어 숨긴다 */
 function InsuranceCard() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);

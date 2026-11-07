@@ -18,13 +18,13 @@ describe('세이브 v12 → v13', () => {
 });
 
 describe('재무 확장의 자리 (S-11)', () => {
-  it('새 게임은 빈 목록, 이사회 없음. 선도계약은 아직 실패하고(보험은 P-MGT-4) MVP에서는 잠겨 있다', () => {
+  it('새 게임은 빈 목록, 이사회 없음. 선도계약은 아직 실패하고(보험은 #171) MVP에서는 잠겨 있다', () => {
     const s = newGame({ seed: 1 });
     expect(s.finance.hedges).toEqual([]);
     expect(s.finance.insurance).toEqual([]);
     expect(s.finance.board).toBeUndefined();
     expect(applyAction(s, { type: 'signForward', ingredientId: 'malt_unpeated', kgPerMonth: 1000, months: 12 }).error).toMatch(/다음 단계/);
-    // 보험은 규칙이 생겼다 (P-MGT-4) — 자세한 테스트는 finance.test.ts
+    // 보험은 규칙이 생겼다 (#171) — 자세한 테스트는 finance.test.ts
     expect(applyAction(s, { type: 'buyInsurance', kind: 'property', coverage: 1_000_000_000 }).error).toBeUndefined();
     expect(applyAction(s, { type: 'cancelInsurance', policyId: 'x' }).error).toMatch(/보험이 없습니다/);
     const mvp = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });

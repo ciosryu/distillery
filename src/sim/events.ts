@@ -57,7 +57,7 @@ function log(s: GameState, report: MonthReport | null, title: string, text: stri
   if (report) report.events.push(title);
 }
 
-/** ledger가 있으면(재해 이벤트) 보험이 보상할 피해를 적는다 — 적기만 하고 상태·난수는 바꾸지 않는다 (P-MGT-4) */
+/** ledger가 있으면(재해 이벤트) 보험이 보상할 피해를 적는다 — 적기만 하고 상태·난수는 바꾸지 않는다 (#171) */
 export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: string, ledger?: LossLedger): string[] {
   const notes: string[] = [];
   for (const e of effects) {
@@ -220,7 +220,7 @@ function fire(s: GameState, base: EventDef, rng: Rng, report: MonthReport): void
     log(s, report, def.title, `${def.text} 하지만 ${EQUIPMENT[def.defense]?.nameKo ?? '방재 설비'} 덕분에 피해가 없었습니다.`);
     return;
   }
-  // 재해는 피해 장부를 적어 끝에 보험금을 준다 (P-MGT-4). 보험이 없으면 문구·현금 모두 그대로
+  // 재해는 피해 장부를 적어 끝에 보험금을 준다 (#171). 보험이 없으면 문구·현금 모두 그대로
   const ledger = def.category === 'disaster' ? newLedger(s) : undefined;
   const notes = applyEffects(s, def.effects ?? [], rng, def.title, ledger);
   if (ledger) notes.push(...settleClaims(s, ledger));
