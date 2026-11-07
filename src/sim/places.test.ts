@@ -23,7 +23,8 @@ describe('재무 확장의 자리 (S-11)', () => {
     expect(s.finance.hedges).toEqual([]);
     expect(s.finance.insurance).toEqual([]);
     expect(s.finance.board).toBeUndefined();
-    expect(applyAction(s, { type: 'signForward', ingredientId: 'malt_unpeated', kgPerMonth: 1000, months: 12 }).error).toMatch(/다음 단계/);
+    // 선도계약은 규칙이 생겼다 (P-MGT-6) — 자세한 테스트는 finance.test.ts
+    expect(applyAction(s, { type: 'signForward', ingredientId: 'malt_unpeated', kgPerMonth: 1000, months: 12 }).error ?? '').not.toMatch(/다음 단계/);
     expect(applyAction(s, { type: 'buyInsurance', kind: 'property', coverage: 1_000_000_000 }).error).toMatch(/다음 단계/);
     expect(applyAction(s, { type: 'cancelInsurance', policyId: 'x' }).error).toMatch(/다음 단계/);
     const mvp = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
