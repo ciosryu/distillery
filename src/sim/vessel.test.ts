@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emptyCaskOf, FINISH, finishOf, advanceMonth, advanceMonths, applyAction, lastSample, lotQuality, matureCask, matureNonWood, matureVessel, migrateSave, newGame, newScenarioGame, readCask, SAMPLE_LOG_KEPT, SAVE_VERSION, vesselMaterial, emptyCask, type GameState } from '.';
+import { evaluate, lotCategory, previewBatch, restLot, type Cask, type SpiritLot, emptyCaskOf, FINISH, finishOf, advanceMonth, advanceMonths, applyAction, lastSample, lotQuality, matureCask, matureNonWood, matureVessel, migrateSave, newGame, newScenarioGame, readCask, SAMPLE_LOG_KEPT, SAVE_VERSION, vesselMaterial, emptyCask, type GameState } from '.';
 import fixture from './fixtures/save-v8.json';
 
 /** 몰트 원액을 캐스크 1통에 넣은 게임 */
@@ -193,5 +193,59 @@ describe('피니싱 (PRD §5.2, #158)', () => {
     const mixed = applyAction(t, { type: 'bottle', components: [{ source: 'cask', id: sherry, liters: 20 }, { source: 'lot', id: 'PLAIN', liters: 20 }], options: opts });
     expect(mixed.error).toBeUndefined();
     expect(mixed.state.commerce.products.at(-1)!.finish).toBeUndefined();
+  });
+});
+
+describe('옹기 숙성 (P-PROD-4, flavor-model §4.5.1)', () => {
+  const climate = { tempC: 13, humidity: 70 };
+  const opts = { control: 0 };
+  /** MVP 판 + 소주 뉴메이크를 담은 옹기·버번 캐스크 */
+  function sojuIn(type: 'onggi_jar' | 'ex_bourbon_barrel'): Cask & { contents: SpiritLot } {
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const r = s.production.recipes.find((x) => x.kind === 'soju')!;
+    const b = previewBatch(s, r)!;
+    return { ...emptyCaskOf(s, type), contents: { id: 'L', name: 'soju', kind: 'soju', volumeL: 190, abv: 0.45, flavor: b.flavor, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 10_000 } };
+  }
+  const age = (c: Cask, n: number) => { let x = c; for (let i = 0; i < n; i++) x = matureVessel(x, climate, opts).cask; return x; };
+  const q = (l: SpiritLot) => evaluate(l.flavor, lotCategory(l)).quality;
+
+  it('옹기는 나무 향 없이 부드러워지고, 오크 개월이 아니라 휴지 개월이 늘며, 증발은 나무의 절반 수준이다', () => {
+    const c = sojuIn('onggi_jar');
+    expect(vesselMaterial(c)).toBe('onggi');
+    const a = age(c, 24).contents!;
+    expect(a.oakMonths).toBe(0);
+    expect(a.restMonths).toBe(24);
+    expect(a.flavor.vanilla_caramel ?? 0).toBe(0);
+    expect(a.flavor.oak_tannin ?? 0).toBe(0);
+    expect(a.flavor.harshness!).toBeLessThan(c.contents.flavor.harshness!);
+    const oak = age(sojuIn('ex_bourbon_barrel'), 24).contents!;
+    expect(190 - a.volumeL).toBeLessThan((190 - oak.volumeL) * 0.6);
+  });
+
+  it('품질 순서: 탱크 보관 < 옹기 (돈 내고 살 이유가 있다). 오크는 바닐라·탄닌이 붙는 다른 스타일', () => {
+    const c = sojuIn('onggi_jar');
+    let tank: SpiritLot = { ...c.contents };
+    for (let i = 0; i < 24; i++) tank = restLot(tank);
+    expect(q(age(c, 24).contents!)).toBeGreaterThan(q(tank));
+    expect(age(sojuIn('ex_bourbon_barrel'), 24).contents!.flavor.vanilla_caramel!).toBeGreaterThan(20);
+  });
+
+  it('MVP에서 옹기를 사서 소주를 통입하고 한 달이 지나면 옹기 숙성이 된다. 재탄화·중고 매각은 안 된다', () => {
+    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const soju = s.production.recipes.find((r) => r.kind === 'soju')!;
+    s = applyAction(s, { type: 'setOrder', recipeId: soju.id, batchesPerMonth: 1 }).state;
+    s = advanceMonth(s);
+    const bought = applyAction(s, { type: 'buySpotCasks', caskType: 'onggi_jar', qty: 1 });
+    expect(bought.error).toBeUndefined();
+    s = bought.state;
+    const jar = s.inventory.casks.find((c) => c.typeId === 'onggi_jar')!;
+    expect(applyAction(s, { type: 'rechar', caskId: jar.id }).error).toBeDefined();
+    expect(applyAction(s, { type: 'sellUsedCask', caskId: jar.id }).error).toBeDefined();
+    const lot = s.inventory.lots.find((l) => l.kind === 'soju')!;
+    s = applyAction(s, { type: 'fillCasks', lotId: lot.id, caskIds: [jar.id], entryAbv: 0.45 }).state;
+    s = advanceMonth(s);
+    const filled = s.inventory.casks.find((c) => c.id === jar.id)!;
+    expect(filled.contents!.restMonths).toBe(1);
+    expect(filled.contents!.oakMonths).toBe(0);
   });
 });
