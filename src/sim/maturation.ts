@@ -108,7 +108,7 @@ export function matureVessel(cask: Cask, climate: Climate, opts: MatureOptions):
 }
 
 /**
- * 나무가 아닌 용기(옹기·스테인리스 휴지) 1개월 (P-PROD-4, flavor-model §4.5.1) — 나무의 ②추출 없이 ①제거·③반응만.
+ * 나무가 아닌 용기(옹기·스테인리스 휴지) 1개월 (#161, flavor-model §4.5.1) — 나무의 ②추출 없이 ①제거·③반응만.
  * 제거는 크기·온도를 타고(m), 반응은 시간 비례다(나무와 같은 구조). 증발은 재질 배수.
  * oakMonths는 늘지 않고 restMonths가 는다 — 위스키 법정 숙성(나무통)에 안 들어간다
  */
