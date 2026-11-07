@@ -10,12 +10,13 @@ import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
 import { LineChart } from './charts';
 import { PriceDesk } from './panels/Sales';
+import { Equipment, Orders, RecipeEditor } from './panels/Production';
 import { liters, months, num, pct, won } from './format';
 import { Badge, Button, Card, Empty, Meter, NumberField, Select, Stat, Table, Td } from './kit';
 
 // MVP 단일 화면 (mvp.md §5, #136·#137·#138·#146) — 코어 UI(ARCH).
 // 원칙: 캐스크의 참 향미·품질은 보여 주지 않는다. 숙성 연수·남은 양·통 이력처럼 증류소가 실제로 아는 값과 **마지막 샘플 기록**만 보인다(#136).
-// 판매(가격·수요·주세)는 MKT의 PriceDesk를 그대로 끼운다. 생산 지시·크래프팅 레버(PROD)·병입·대출은 바로 가기 — 이 화면은 "지금 어디쯤인가"·판매·숙성고 공간(#137)을 한곳에 모은다
+// 생산 지시(PROD Orders)·판매(MKT PriceDesk)는 펼쳐서, 크래프팅 레버·설비(PROD)는 접어서 끼운다. 병입·대출은 바로 가기 — 이 화면은 "지금 어디쯤인가"·판매·숙성고 공간(#137)을 한곳에 모은다
 
 /** 숙성고 증설 선택지 (#137) — 카탈로그 설비 중 숙성고 */
 const WAREHOUSE_EXPANSIONS = Object.values(EQUIPMENT).filter((d) => d.kind === 'warehouse');
@@ -42,10 +43,13 @@ export function MvpHome() {
   return (
     <div className="grid gap-4">
       <Headline />
+      {/* 생산 지시 — PROD가 내보낸 월 배치 표 (매달 바꾸는 결정이라 펼쳐 둔다) */}
+      <Orders />
       {/* 판매 — MKT가 단일 화면용으로 내보낸 가격·수요·주세 표 (#154) */}
       <PriceDesk />
       <WarehouseCard />
       <SpaceCard />
+      <CraftingFold />
     </div>
   );
 }
@@ -96,7 +100,6 @@ function Headline() {
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
         <span className="self-center text-stone-500">바로 가기:</span>
-        <Button small onClick={() => setTab('production')}>생산 지시</Button>
         <Button small onClick={() => setTab('bottling')}>블렌딩·병입</Button>
         <Button small onClick={() => setTab('sales')}>판매 상세</Button>
         <Button small onClick={() => setTab('b2b')}>원액 현물 판매</Button>
@@ -112,6 +115,24 @@ const ageOf = (c: Cask) => Math.max(c.contents?.oakMonths ?? 0, c.contents?.rest
 
 /** 숙성고 목록에 처음 보이는 통 수 (오래된 순) */
 const LIST_FIRST = 30;
+
+/** 크래프팅 레버(#156)·설비는 자주 안 바꾸므로 접어 둔다 — 처음 2시간을 가볍게 (mvp.md §1.2) */
+function CraftingFold() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="grid gap-4">
+      <div>
+        <Button variant="ghost" onClick={() => setOpen((v) => !v)}>{open ? '▾' : '▸'} 레시피·크래프팅 레버 · 설비(비지터 센터·증류기) {open ? '접기' : '펼치기'}</Button>
+      </div>
+      {open && (
+        <>
+          <RecipeEditor />
+          <Equipment />
+        </>
+      )}
+    </div>
+  );
+}
 
 const arrow = (d: number, eps = 0.5) => (d > eps ? '↑' : d < -eps ? '↓' : '→');
 
@@ -223,7 +244,8 @@ function SpaceCard() {
   const free = Math.max(0, cap - casks.length - pendingOrders);
   const building = s.production.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'warehouse' && e.readyMonth > s.month);
   // 숙성할 수 있는 탱크 원액 — 몰트·그레인(오크 → 위스키), 소주(옹기·오크 숙성 소주, #161)
-  const malts = s.inventory.lots.filter((l) => l.kind === 'malt' || l.kind === 'grain' || l.kind === 'soju');
+  // 몰트·그레인을 먼저 — 기본 루프는 몰트 → 오크 통이고, 소주는 대개 바로 병입한다(실수로 소주를 버번 통에 담지 않게)
+  const malts = s.inventory.lots.filter((l) => l.kind === 'malt' || l.kind === 'grain' || l.kind === 'soju').sort((a, b) => Number(a.kind === 'soju') - Number(b.kind === 'soju'));
   const emptyTypes = (Object.keys(CASKS) as CaskTypeId[]).filter((k) => empties.some((c) => c.typeId === k));
   const [lotId, setLotId] = useState('');
   const [fillType, setFillType] = useState<CaskTypeId | ''>('');
