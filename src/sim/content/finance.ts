@@ -20,6 +20,20 @@ export const LOAN_OFFERS: LoanOfferDef[] = [
   { id: 'inventory', nameKo: '숙성 재고 담보대출', annualRate: 0.06, termMonths: 60, max: 2_000_000_000, graceMonths: 12, collateral: 'inventory', note: '담보 인정 비율이 있는 입지(홋카이도)에서만' },
 ];
 
+// ── 원재료 선도계약 (P-MGT-6, PRD §8.4 "원재료 가격" 줄). 수치 [튜닝] ──
+// 차액 정산형: 고정 가격 지수로 매달 kg만큼을 계약하고, 매달 (시장 지수 − 고정 지수) × 기준가 × 물류 배수 × kg를 주고받는다.
+// 시세가 오르면 받고 내리면 낸다 → 실제로 사는 원료 원가와 합치면 원가가 고정된다(생산 원가 계산은 그대로 — PROD 파일을 건드리지 않는다).
+// 계약량은 지금 생산 지시가 쓰는 월 사용량까지(투기 방지 — 가격 지수는 1로 되돌아가는 성질이 있어 상한 없이는 쉬운 돈이 된다). 중도 해지 없음
+export const FORWARD = {
+  /** 고정 가격 = 지금 시장 지수 × (1 + spread) — 거래 상대의 마진 */
+  spread: 0.03,
+  minMonths: 6,
+  maxMonths: 24,
+  /** 계약 가능 kg = 지금 생산 지시의 월 사용량 × 이 배수 (같은 원료의 기존 계약량을 뺀다) */
+  usageCap: 1.0,
+  minKgPerMonth: 100,
+};
+
 // ── 직원 ──
 export const ROLE_INFO: Record<StaffRole, { nameKo: string; stats: [string, string, string]; baseSalary: number }> = {
   office: { nameKo: '사무(백오피스)', stats: ['세무', '협상', '행정'], baseSalary: 3_200_000 },

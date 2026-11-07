@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonths, annuityPayment, applyAction, demandFor, newGame, newScenarioGame, type GameState, type SpiritLot, inventoryCollateral, inventoryLoanRoom, inventoryMarginCall, type MonthReport } from './index';
 import { ownsFacility } from './util';
+import { forwardNotionalPerKg, forwardRoomKg, marketIndex, monthlyUsageKg, settleForwards } from './forwards';
+import { isLocked } from './scenario';
 
 // 재무·인사·이벤트 테스트 (파트 MGT, 결정 #144 — sim.test.ts·sites.test.ts에서 옮겨 왔다. 테스트 이름·본문 불변)
 
@@ -74,6 +76,55 @@ describe('재무', () => {
     expect(s.finance.loans.some((l) => l.offerId === 'emergency')).toBe(false);
     // 다 갚으면 다시 받을 수 있다
     expect(applyAction(s, { type: 'takeLoan', offerId: 'emergency', amount: 50_000_000 }).error).toBeUndefined();
+  });
+});
+
+describe('원재료 선도계약 (P-MGT-6)', () => {
+  /** 언피티드 몰트를 월 2배치 생산하는 판 */
+  const malting = (): GameState => applyAction(newGame({ seed: 1, startingCash: 5_000_000_000 }), { type: 'setOrder', recipeId: recipeId(newGame({ seed: 1 }), '싱글 몰트 — 언'), batchesPerMonth: 2 }).state;
+  const ING = 'malt_unpeated';
+
+  it('계약량은 지금 생산 지시의 월 사용량까지 — 지시가 없으면 계약할 수 없다', () => {
+    expect(applyAction(newGame({ seed: 1 }), { type: 'signForward', ingredientId: ING, kgPerMonth: 1000, months: 12 }).error).toMatch(/생산 지시가 쓰는 양/);
+    const s = malting();
+    const use = monthlyUsageKg(s)[ING]!;
+    expect(use).toBeGreaterThan(100);
+    const r = applyAction(s, { type: 'signForward', ingredientId: ING, kgPerMonth: 1e9, months: 12 });
+    expect(r.error).toBeUndefined();
+    const h = r.state.finance.hedges[0]!;
+    expect(h.kgPerMonth).toBe(Math.floor(use));
+    expect(h.priceIndex).toBeCloseTo(marketIndex(s, ING) * 1.03, 3);
+    expect(h.untilMonth - h.fromMonth).toBe(12);
+    expect(forwardRoomKg(r.state, ING)).toBe(0);
+    expect(applyAction(r.state, { type: 'signForward', ingredientId: ING, kgPerMonth: 100, months: 12 }).error).toMatch(/남은 한도/);
+    expect(applyAction(s, { type: 'signForward', ingredientId: ING, kgPerMonth: 100, months: 3 }).error).toMatch(/6~24개월/);
+  });
+
+  it('시세가 오르면 차액을 받고, 내리면 차액을 낸다 (이벤트 보정 포함)', () => {
+    const s = applyAction(malting(), { type: 'signForward', ingredientId: ING, kgPerMonth: 1000, months: 12 }).state;
+    const h = s.finance.hedges[0]!;
+    const notional = forwardNotionalPerKg(s, ING) * h.kgPerMonth;
+    const up = structuredClone(s);
+    up.world.modifiers.push({ id: 'm', key: `ingredient:${ING}`, factor: 1.5, fromMonth: 0, untilMonth: 99, label: '보리 흉작' });
+    const r1 = report(up); const c1 = up.finance.cash;
+    settleForwards(up, r1);
+    expect(up.finance.cash - c1).toBeCloseTo((marketIndex(up, ING) - h.priceIndex) * notional, -1);
+    expect(up.finance.cash).toBeGreaterThan(c1);
+    const down = structuredClone(s);
+    down.world.priceIndex[ING] = 0.7;
+    const r2 = report(down); const c2 = down.finance.cash;
+    settleForwards(down, r2);
+    expect(down.finance.cash).toBeLessThan(c2);
+    expect(r2.expenses.hedge).toBeCloseTo(c2 - down.finance.cash, 0);
+  });
+
+  it('기간이 끝나면 계약이 사라진다, MVP에서는 잠겨 있다', () => {
+    let s = applyAction(malting(), { type: 'signForward', ingredientId: ING, kgPerMonth: 500, months: 6 }).state;
+    s = advanceMonths(s, 5);
+    expect(s.finance.hedges.length).toBe(1);
+    s = advanceMonths(s, 1);
+    expect(s.finance.hedges).toEqual([]);
+    expect(isLocked(newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 }), 'action:signForward')).toBe(true);
   });
 });
 

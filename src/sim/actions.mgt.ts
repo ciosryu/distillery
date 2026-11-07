@@ -1,3 +1,5 @@
+import { forwardRoomKg, marketIndex } from './forwards';
+import { FORWARD, INGREDIENTS } from './content/catalog';
 import { LOAN_OFFERS } from './content/catalog';
 import { awarenessOf } from './brands';
 import { handleDeparture, masterDistiller } from './hr';
@@ -73,7 +75,20 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     return { state: s, message: r.paused ? '연구 일시정지 — 진행도는 남고 연구비는 멈춘다' : '연구 진행' };
   },
   // 자리만 — 상품 데이터·가격·보상·이사회 목표는 단계 P(MGT)
-  signForward: (_s, prev, _a) => fail(prev, '선도계약은 아직 없습니다 (다음 단계)'),
+  // 원재료 선도계약 (P-MGT-6) — 고정 가격 = 지금 시장 지수 × (1 + spread), 이번 달부터 months개월, 월 kg는 생산 지시의 사용량까지. 중도 해지 없음
+  signForward: (s, prev, a) => {
+    const ing = INGREDIENTS[a.ingredientId];
+    if (!ing) return fail(prev, '원료가 없습니다');
+    const months = Math.round(a.months);
+    if (months < FORWARD.minMonths || months > FORWARD.maxMonths) return fail(prev, `계약 기간은 ${FORWARD.minMonths}~${FORWARD.maxMonths}개월입니다`);
+    const room = forwardRoomKg(s, ing.id);
+    const kg = Math.min(room, Math.round(a.kgPerMonth));
+    if (room < FORWARD.minKgPerMonth) return fail(prev, `${ing.nameKo}: 지금 생산 지시가 쓰는 양만큼만 계약할 수 있습니다 (남은 한도 월 ${room.toLocaleString()}kg)`);
+    if (kg < FORWARD.minKgPerMonth) return fail(prev, `월 ${FORWARD.minKgPerMonth}kg 이상이어야 합니다`);
+    const priceIndex = Math.round(marketIndex(s, ing.id) * (1 + FORWARD.spread) * 1000) / 1000;
+    s.finance.hedges.push({ id: nid(s, 'H'), ingredientId: ing.id, kgPerMonth: kg, priceIndex, fromMonth: s.month, untilMonth: s.month + months });
+    return { state: s, message: `${ing.nameKo} 선도계약 — 월 ${kg.toLocaleString()}kg × ${months}개월, 고정 가격 지수 ${priceIndex.toFixed(3)} (시세와의 차액을 매달 정산)` };
+  },
   buyInsurance: (_s, prev, _a) => fail(prev, '보험은 아직 없습니다 (다음 단계)'),
   cancelInsurance: (_s, prev, _a) => fail(prev, '보험은 아직 없습니다 (다음 단계)'),
   cancelResearch: (s, prev, a) => {
