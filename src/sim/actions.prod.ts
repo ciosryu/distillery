@@ -7,7 +7,7 @@ import { lotQuality } from './bulk';
 import { mod } from './modifiers';
 import { executeBlend, type BlendComponent, type BlendReveal, type BottleOptions } from './blending';
 import { blenderOf, delegatePlan, findTarget, LAB, RARE, recordSample, SAMPLING, samplingCapacity } from './blendTable';
-import { MAX_RECHAR, recharCask } from './maturation';
+import { canFinishInto, emptyCask, FINISH, finishCount, finishLabel, historyAfterTransfer, MAX_RECHAR, recharCask } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
 import { equipmentCost } from './sites';
@@ -269,16 +269,40 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     s.finance.cash -= casks.length * SAMPLING.cost;
     return { state: s, message: `캐스크 ${casks.length}개 샘플링${found.length ? ` — 레어 캐스크 발견: ${found.join(', ')}` : ''}` };
   },
-  transferCask: (_s, prev, _a) => {
-    // 자리만 있다 — 원액의 caskHistory에 지금 캐스크 구간을 닫고 새 캐스크 구간을 여는 규칙은 단계 P(PROD), PRD §5.2
-    return fail(prev, '피니싱은 아직 없습니다 (다음 단계)');
+  transferCask: (s, prev, a) => {
+    // 피니싱 (PRD §5.2, #158) — 원액을 빈 시즈닝 캐스크로 옮긴다. 손실 0.75%, 숙성 연수는 최초 통입 기준
+    const fi = s.inventory.casks.findIndex((c) => c.id === a.fromCaskId);
+    const ti = s.inventory.casks.findIndex((c) => c.id === a.toCaskId);
+    const from = s.inventory.casks[fi];
+    const to = s.inventory.casks[ti];
+    if (!from?.contents) return fail(prev, '옮길 원액이 든 캐스크가 없습니다');
+    if (from.owner) return fail(prev, '고객 소유 캐스크입니다');
+    if (!to || to.contents) return fail(prev, '빈 캐스크로만 옮길 수 있습니다');
+    if (to.contamination) return fail(prev, '이 통은 쓸 수 없습니다 (오염 통은 재탄화해야 다시 쓸 수 있다)');
+    if (!canFinishInto(to.typeId)) return fail(prev, '피니싱은 버번·셰리 시즈닝 캐스크로만 할 수 있습니다 (다른 캐스크는 테크 WHI-3 해금 후)');
+    if (to.typeId === from.typeId) return fail(prev, '같은 종류의 캐스크로는 피니싱이 되지 않습니다');
+    const lot = from.contents;
+    if (finishCount(lot) >= FINISH.maxFinishes) return fail(prev, '피니싱은 한 번만 할 수 있습니다 (더블 캐스크는 테크 WHI-3 해금 후)');
+    const keep = 1 - FINISH.lossShare;
+    const volumeL = lot.volumeL * keep;
+    if (volumeL > to.sizeL) return fail(prev, `원액 ${Math.round(volumeL)}L가 ${CASKS[to.typeId].nameKo}에 다 들어가지 않습니다`);
+    const lpa = volumeL * lot.abv;
+    // 원가: 손실만큼 LPA당 원가가 오르고, 통입처럼 캐스크 원가 일부를 배분한다
+    const caskShare = CASKS[to.typeId].price * CASK_COST_SHARE_PER_FILL;
+    s.inventory.casks[ti] = {
+      ...to, fills: to.fills + 1, filledMonth: s.month, slot: from.slot, rare: undefined, rareKnown: undefined, samples: undefined, sampleLog: undefined, labAnalyzed: undefined,
+      contents: { ...lot, name: `${lot.name} → ${to.id}`, volumeL, costPerLPA: lot.costPerLPA / keep + caskShare / lpa, caskHistory: historyAfterTransfer(lot, from.typeId, to.typeId, s.month) },
+    };
+    s.inventory.casks[fi] = emptyCask(from);
+    return { state: s, message: `${from.id} → ${to.id} ${finishLabel(to.typeId)} 시작 (손실 ${(lot.volumeL - volumeL).toFixed(1)}L) — 권장 ${FINISH.recommendedMonths[0]}~${FINISH.recommendedMonths[1]}개월` };
   },
   labAnalyze: (s, prev, a) => {
     const casks = a.caskIds.map((id) => s.inventory.casks.find((c) => c.id === id)).filter((c): c is Cask => !!c?.contents && !c.labAnalyzed);
     if (!casks.length) return fail(prev, '분석할 캐스크가 없습니다');
-    for (const c of casks) c.labAnalyzed = true;
+    // 분석은 떠 간 시료로 한다 → 이번 읽기를 기록으로 남긴다(피트·우디는 정확, 나머지 축은 지금 샘플 횟수의 읽기 오차). 샘플 횟수·월 여력은 쓰지 않는다 (#157)
+    for (const c of casks) { c.labAnalyzed = true; recordSample(s, c, lotQuality(c.contents!)); }
     s.finance.cash -= casks.length * LAB.cost;
-    return { state: s, message: `실험실 분석 ${casks.length}건 — 피트·우디는 이제 정확히 안다` };
+    return { state: s, message: `실험실 분석 ${casks.length}건 — 피트·우디는 이제 정확히 안다(분석 결과를 샘플 기록에 남겼다)` };
   },
   delegateBlend: (s, prev, a) => {
     const target = findTarget(s, a.targetId);
@@ -287,7 +311,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if ('error' in plan) return fail(prev, plan.error);
     const res = executeBlend(s, plan.components, { ...a.options, targetId: target.source === 'core' ? undefined : target.id, line: target.source === 'core' ? target.id.slice(5) : a.options.line, delegated: true });
     if (res.error) return fail(prev, res.error);
-    return { state: s, message: `블렌더에게 맡김 — ${bottleMessage(res.product!, res.reveal)}` };
+    return { state: s, message: `블렌더에게 맡김 — ${bottleMessage(res.product!, res.reveal)}${plan.unknown ? ` · 샘플 기록이 없는 ${plan.unknown}통은 뺐다` : ''}` };
   },
   applyWaterPermit: (s, prev, _a) => {
     const err = applyWaterPermit(s);

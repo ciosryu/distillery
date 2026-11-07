@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { houseBrand } from './brands';
 import {
-  addTrendShift, appeal, applyAction, blenderOf, blendTargets, hexOf, matchScore, migrateSave, newGame, readCask, readSigma, samplingCapacity, trendFactor,
+  addTrendShift, appeal, applyAction, blenderOf, blendTargets, delegatePlan, findTarget, hexOf, knownRead, knownReads, matchScore, migrateSave, newGame, readCask, readSigma, samplingCapacity, trendFactor,
   type Flavor, type GameState, type Staff,
 } from '.';
 import { emptyCaskOf } from './newGame';
@@ -169,7 +169,9 @@ describe('목표 3종·결과 공개·위임 (P5·P6·P7)', () => {
   it('위임: 노련한 블렌더는 목표에 가깝게, 결과는 공개 문구와 함께 남는다', () => {
     const target = { ...hexOf(SHERRY) };
     for (const a of Object.keys(target) as (keyof typeof target)[]) target[a] = 0.5 * hexOf(SHERRY)[a] + 0.3 * hexOf(BOURBON)[a] + 0.2 * hexOf(PEATED)[a];
-    const run = (s: GameState) => {
+    const run = (s0: GameState) => {
+      // 블렌더는 맛본 원액만 섞는다 (#157) — 배치마다 1통씩 샘플, 나머지는 형제 기록을 빌린다
+      const s = applyAction(s0, { type: 'sampleCask', caskIds: ['S', 'B', 'P'].map((b) => caskIdsOf(s0, b)[0]!) }).state;
       s.commerce.commissions.push({ id: 'Q2', client: '몰트 바 연합', label: '혼합', hex: target, tolerance: 7, expiresMonth: 6, reward: { awareness: 0.02, appealBonus: 0.25, months: 24 } });
       const res = applyAction(s, { type: 'delegateBlend', targetId: 'Q2', caskIds: s.inventory.casks.filter((c) => c.contents).map((c) => c.id), bottles: 1000, options: opts });
       expect(res.error).toBeUndefined();
@@ -182,3 +184,69 @@ describe('목표 3종·결과 공개·위임 (P5·P6·P7)', () => {
   });
 });
 
+
+describe('블렌딩 테이블은 샘플 기록만 읽는다 (#157, #143 정보 누수)', () => {
+  const commission = (s: GameState) => {
+    s.commerce.commissions.push({ id: 'Q9', client: '몰트 바 연합', label: '셰리', hex: hexOf(SHERRY), tolerance: 7, expiresMonth: 6, reward: { awareness: 0.02, appealBonus: 0.25, months: 24 } });
+    return findTarget(s, 'Q9')!;
+  };
+  const allIds = (s: GameState) => s.inventory.casks.filter((c) => c.contents).map((c) => c.id);
+
+  it('샘플이 없으면 모른다 — 위임은 실패하고, 한 통을 뜨면 같은 배치·같은 캐스크 종류의 형제가 그 기록을 빌린다', () => {
+    let s = blender(withCasks(), 5, 70, 70, 50);
+    expect(knownReads(s).size).toBe(0);
+    expect('error' in delegatePlan(s, commission(s), allIds(s), 500, opts)).toBe(true);
+    const [first, second] = caskIdsOf(s, 'S');
+    s = applyAction(s, { type: 'sampleCask', caskIds: [first!] }).state;
+    const own = knownRead(s, s.inventory.casks.find((c) => c.id === first)!)!;
+    const borrowed = knownRead(s, s.inventory.casks.find((c) => c.id === second)!)!;
+    expect(own.from).toBe('own');
+    expect(borrowed.from).toBe('sibling');
+    expect(borrowed.hex).toEqual(own.hex);
+    expect(knownRead(s, s.inventory.casks.find((c) => c.id === caskIdsOf(s, 'B')[0])!)).toBeNull();
+    // 기록을 아는 캐스크만 섞고, 모르는 통 수를 알려 준다
+    const plan = delegatePlan(s, commission(s), allIds(s), 500, opts);
+    expect('error' in plan).toBe(false);
+    if (!('error' in plan)) {
+      expect(plan.unknown).toBe(6);
+      expect(plan.components.every((c) => caskIdsOf(s, 'S').includes(c.id))).toBe(true);
+    }
+  });
+
+  it('샘플 뒤에 숙성으로 참 향미가 바뀌어도 아는 값·위임 계획은 그대로다 — 다시 떠야 바뀐다', () => {
+    let s = blender(withCasks(), 5, 70, 70, 50);
+    s = applyAction(s, { type: 'sampleCask', caskIds: allIds(s) }).state;
+    const before = structuredClone(knownReads(s));
+    const planBefore = delegatePlan(s, commission(structuredClone(s)), allIds(s), 500, opts);
+    // 숙성이 셰리 캐스크를 더 우디하게 만들었다고 치자 (참값만 바뀐다)
+    const t = structuredClone(s);
+    for (const c of t.inventory.casks) if (c.contents?.batchId === 'S') c.contents.flavor = { ...c.contents.flavor, oak_tannin: 60, wood_spice: 45 };
+    expect(knownReads(t)).toEqual(before);
+    expect(delegatePlan(t, commission(structuredClone(t)), allIds(t), 500, opts)).toEqual(planBefore);
+    // readCask(샘플 순간의 읽기)는 참값을 따라간다 — 그래서 화면·판단에는 쓰지 않는다
+    const id = caskIdsOf(t, 'S')[0]!;
+    expect(readCask(t, t.inventory.casks.find((c) => c.id === id)!)).not.toEqual(before.get(id)!.hex);
+    // 다시 뜨면 바뀐 참값 쪽으로 기록이 움직인다
+    const u = applyAction(t, { type: 'sampleCask', caskIds: [id] }).state;
+    expect(knownRead(u, u.inventory.casks.find((c) => c.id === id)!)!.hex.woody).toBeGreaterThan(before.get(id)!.hex.woody);
+  });
+
+  it('실험실 분석은 시료를 떠 가서 분석한다 — 피트·우디가 정확한 기록이 남고, 샘플 횟수·월 여력은 쓰지 않는다', () => {
+    let s = withCasks();
+    const id = caskIdsOf(s, 'P')[0]!;
+    s = applyAction(s, { type: 'labAnalyze', caskIds: [id] }).state;
+    const c = s.inventory.casks.find((k) => k.id === id)!;
+    const k = knownRead(s, c)!;
+    expect(k.hex.peat).toBe(hexOf(c.contents!.flavor).peat);
+    expect(k.hex.woody).toBe(hexOf(c.contents!.flavor).woody);
+    expect(c.samples ?? 0).toBe(0);
+    expect(s.inventory.samplesThisMonth).toBe(0);
+  });
+
+  it('결과 공개: 기록 없는 원액을 섞으면 그만큼 예상 밖이었다고 알린다', () => {
+    const s = blender(withCasks(), 5, 70, 70, 50);
+    const res = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id: caskIdsOf(s, 'S')[0]!, liters: 100 }], options: opts });
+    expect(res.error).toBeUndefined();
+    expect(res.message).toMatch(/샘플 기록 없이 병입/);
+  });
+});

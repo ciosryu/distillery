@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { BOTTLE_SIZES, PACKAGING, packagingCost } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
-import { agePerception, calendar, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind } from '../../sim';
+import { agePerception, calendar, finishLabel, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind } from '../../sim';
 import { regionOf } from '../../sim/content/regions';
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
@@ -90,6 +90,7 @@ export function Bottling() {
                 {preview.category && <Badge tone="info">{CATEGORY[preview.category].nameKo}</Badge>}
                 {preview.ageYears != null && <Badge tone="good">{preview.ageYears}년</Badge>}
                 {preview.evaluation?.style && <Badge>{preview.evaluation.style}</Badge>}
+                {preview.finish && <Badge tone="good">{finishLabel(preview.finish)}</Badge>}
                 {preview.sourcedShare > 0 && <Badge tone="warn">매입 원액 {pct(preview.sourcedShare, 0)} · 브랜드 가치 {Math.round(preview.sourcedPrestige * 100)}</Badge>}
                 {preview.premiumLabel && <Badge tone="good">{regionOf(s).whisky.premiumLabel?.name}</Badge>}
                 {preview.traditional && <Badge tone="good">{regionOf(s).traditionalRelief?.label}</Badge>}
