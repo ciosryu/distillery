@@ -82,7 +82,7 @@ export function spotQuote(s: GameState, lot: SpiritLot, liters: number, cask?: C
 }
 
 /**
- * 숙성 캐스크를 팔기 전에 플레이어가 **아는** 현물 견적 (결정 P-MKT-4, #136·#159) — 샘플 기록의 추정 품질 ± 1σ로 범위를 낸다.
+ * 숙성 캐스크를 팔기 전에 플레이어가 **아는** 현물 견적 (결정 #164, #136·#159) — 샘플 기록의 추정 품질 ± 1σ로 범위를 낸다.
  * 실제 판매가는 사는 쪽이 맛보고 정한다(참값, spotQuote). 기록이 없으면(known = null) 품질을 모르니 범위도 없다
  */
 export function spotQuoteEstimate(s: GameState, lot: SpiritLot, liters: number, cask: Cask | undefined, known: { estQuality: number; qualitySigma: number } | null): { low: number; mid: number; high: number } | null {

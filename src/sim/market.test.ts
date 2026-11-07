@@ -542,7 +542,7 @@ describe('같은 카테고리 제품끼리 수요 나눔 (#154, §15.3 #12)', ()
   });
 });
 
-describe('원액 B2B 견적 — 아는 품질로만 (P-MKT-4, #136·#159)', () => {
+describe('원액 B2B 견적 — 아는 품질로만 (#164, #136·#159)', () => {
   const caskWith = (s: GameState) => {
     const l = lot({ kind: 'malt', oakMonths: 60, abv: 0.6, volumeL: 180, flavor: { vanilla_caramel: 30, fresh_fruit: 20, integration: 50 } });
     const c = { id: 'C1', typeId: 'ex_bourbon_barrel', activity: 0.8, contents: l } as unknown as Cask;

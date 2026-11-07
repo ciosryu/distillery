@@ -23,7 +23,7 @@ function AgingImpact({ s, i }: { s: GameState; i: ContractAgingImpact }) {
 }
 
 /**
- * 캐스크 원액의 품질·견적 표시 (#136·#159, 결정 P-MKT-4) — 시나리오(MVP)에서는 샘플 기록으로 추정한 값만 보인다(블렌딩·병입 탭 #162와 같은 규칙).
+ * 캐스크 원액의 품질·견적 표시 (#136·#159, 결정 #164) — 시나리오(MVP)에서는 샘플 기록으로 추정한 값만 보인다(블렌딩·병입 탭 #162와 같은 규칙).
  * 탱크 원액(뉴메이크)과 샌드박스는 참값. 실제 판매가는 사는 쪽이 맛보고 정한다
  */
 function caskQuality(s: GameState, hide: boolean, c: Cask, k: KnownRead | undefined) {
@@ -51,7 +51,7 @@ export function B2B() {
   const committed = s.b2b.contracts.reduce((t, c) => t + c.lpaPerMonth, 0);
   const maltLots = s.inventory.lots.filter((l) => l.kind === 'malt' || l.kind === 'grain');
   const maltCasks = s.inventory.casks.filter((c) => c.contents?.kind === 'malt' || c.contents?.kind === 'grain');
-  const hide = !!s.scenario; // 캐스크 원액의 참값을 숨긴다 (#136, P-MKT-4)
+  const hide = !!s.scenario; // 캐스크 원액의 참값을 숨긴다 (#136, #164)
   const known = hide ? knownReads(s) : null;
 
   return (
