@@ -83,11 +83,11 @@ const vacuumStillOf = (s: GameState) => stillsOf(s).find((e) => stillDefOf(s, e.
 const plainStillOf = (s: GameState) => stillsOf(s).find((e) => { const d = stillDefOf(s, e.id); return d && !d.vacuum && d.stillType !== 'column'; });
 
 /** 향미 프로필 레이더 — 기준 프리셋(점선)과 지금 초안(채움). 뉴메이크는 값이 작아 눈금을 최댓값에 맞춘다(25 단위) */
-export function ProfileRadar({ base, draft, size = 230 }: { base?: ProfileAxis[]; draft: ProfileAxis[]; size?: number }) {
+export function ProfileRadar({ base, draft, size = 230, layers }: { base?: ProfileAxis[]; draft: ProfileAxis[]; size?: number; layers?: { axes: ProfileAxis[]; color: string; label: string }[] }) {
   const c = size / 2;
   const r = c - 34;
   const n = draft.length;
-  const top = Math.min(100, Math.max(25, Math.ceil(Math.max(...draft.map((a) => a.value), ...(base ?? []).map((a) => a.value)) / 25) * 25));
+  const top = Math.min(100, Math.max(25, Math.ceil(Math.max(...draft.map((a) => a.value), ...(base ?? []).map((a) => a.value), ...(layers ?? []).flatMap((l) => l.axes.map((a) => a.value))) / 25) * 25));
   const pt = (i: number, v: number) => {
     const ang = -Math.PI / 2 + (2 * Math.PI * i) / n;
     const k = Math.max(0, Math.min(top, v)) / top;
@@ -107,6 +107,8 @@ export function ProfileRadar({ base, draft, size = 230 }: { base?: ProfileAxis[]
           </g>
         );
       })}
+      {/* 원액별 선 (블렌딩) — 가늘게, 결과(채움) 밑에 */}
+      {layers?.map((l) => <polygon key={l.label} points={poly(l.axes)} fill="none" stroke={l.color} strokeOpacity={0.85} strokeWidth={1} aria-label={l.label} />)}
       {base && <polygon points={poly(base)} className="fill-none stroke-stone-500 dark:stroke-stone-400" strokeWidth={1.2} strokeDasharray="4 3" />}
       <polygon points={poly(draft)} className="fill-amber-500/30 stroke-amber-600 dark:stroke-amber-400" strokeWidth={1.5} />
       <text x={size - 4} y={size - 4} textAnchor="end" className="fill-stone-500 text-[9px]">눈금 {top}</text>
