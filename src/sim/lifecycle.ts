@@ -7,8 +7,6 @@ import type { GameState, Product, ProductArchiveEntry, YearSummary } from './typ
 /** 품절 뒤 이 개월 수가 지나야 아카이브 (판매 화면이 직전 판매를 보여 줄 여유) */
 export const ARCHIVE_AFTER_MONTHS = 3;
 
-const idNum = (id: string) => Number(id.replace(/^\D+/, '')) || 0;
-
 /** 품절·판매 없음·면세 한정판 판정 끝난 제품을 아카이브로 옮긴다 */
 export function archiveSoldOutProducts(s: GameState): number {
   const keep: Product[] = [];
@@ -22,16 +20,6 @@ export function archiveSoldOutProducts(s: GameState): number {
   }
   if (moved) s.commerce.products = keep;
   return moved;
-}
-
-/**
- * 지금까지 만든 모든 제품의 품질 — 판매 중 + 아카이브를 만든 순서(id)대로.
- * 입소문의 평균 품질(updateAwareness)이 "역대 전 제품 평균"이라 아카이브도 포함한다. 합산 순서를 옛 배열과 같게 해 결과가 바뀌지 않는다.
- * [열린 문제] 30년 플레이에서는 1년차 저품질 제품이 평균을 영원히 끌어내린다 → 최근 판매 가중 평균으로 바꿀지 결정 필요
- */
-export function allProductQualities(s: GameState): number[] {
-  if (!s.commerce.productArchive.length) return s.commerce.products.map((p) => p.quality);
-  return [...s.commerce.products, ...s.commerce.productArchive].sort((a, b) => idNum(a.id) - idNum(b.id)).map((p) => p.quality);
 }
 
 /** 지금까지 만든 제품 수 (아카이브 포함) */
