@@ -222,7 +222,7 @@ function SpaceCard() {
   const pendingOrders = s.inventory.caskOrders.reduce((t, o) => t + o.qty, 0);
   const free = Math.max(0, cap - casks.length - pendingOrders);
   const building = s.production.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'warehouse' && e.readyMonth > s.month);
-  // 숙성할 수 있는 탱크 원액 — 몰트·그레인(오크 → 위스키), 소주(옹기·오크 숙성 소주, P-PROD-4)
+  // 숙성할 수 있는 탱크 원액 — 몰트·그레인(오크 → 위스키), 소주(옹기·오크 숙성 소주, #161)
   const malts = s.inventory.lots.filter((l) => l.kind === 'malt' || l.kind === 'grain' || l.kind === 'soju');
   const emptyTypes = (Object.keys(CASKS) as CaskTypeId[]).filter((k) => empties.some((c) => c.typeId === k));
   const [lotId, setLotId] = useState('');

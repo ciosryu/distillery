@@ -44,7 +44,7 @@
 | 지역·입지·법규 | §3, §16.21 | 헤더(regionId·siteId), `site` | 0 | `content/regions.ts`, `sites.ts` | ● | 코어(데이터) |
 | 원재료·레시피·발효·증류 | §4 | `production` | 2 | `production.ts`, `content/catalog.ts` | ● | PROD |
 | 향미 모델 | §5.4, [flavor-model](flavor-model.md) | (원액·캐스크 안) | 2·3 | `flavor.ts`, `content/axes.ts`, `content/categories.ts` | ● | PROD |
-| 숙성·캐스크·숙성고 공간·기후 | §5, §16.3 | `inventory` | 3 (`matureVessel` → 재질별) | `maturation.ts`(`matureCask`·`matureNonWood`), `warehouse.ts`, `casks.ts`, `weather.ts`, `tick.ts` | ● 나무 · ● 옹기(`onggi_jar`, 제거·반응·증발 ×0.5, `SpiritLot.restMonths` — 위스키 오크 개월에 안 들어감, P-PROD-4) · 스테인리스 휴지는 새 용기 없이 탱크 보관(`restLot`)이 맡는다 | PROD |
+| 숙성·캐스크·숙성고 공간·기후 | §5, §16.3 | `inventory` | 3 (`matureVessel` → 재질별) | `maturation.ts`(`matureCask`·`matureNonWood`), `warehouse.ts`, `casks.ts`, `weather.ts`, `tick.ts` | ● 나무 · ● 옹기(`onggi_jar`, 제거·반응·증발 ×0.5, `SpiritLot.restMonths` — 위스키 오크 개월에 안 들어감, #161) · 스테인리스 휴지는 새 용기 없이 탱크 보관(`restLot`)이 맡는다 | PROD |
 | 피니싱 | §5.2 | `SpiritLot.caskHistory` (S-10) · `Product.finish?` (v14) | — | `maturation.ts`(`canFinishInto`·`historyAfterTransfer`·`finishLabel`), 행동 `transferCask` | ● (#158 — 빈 버번·셰리 시즈닝 캐스크로 옮기기·이력·피니시 라벨. 라벨의 판매 효과는 MKT 후속) | PROD |
 | 정보 불확실성(샘플링) | §5.6 | `Cask.sampleLog` (샘플 순간의 읽기 기록, S-10) · `commerce.commissions`(블렌딩) | — | `blendTable.ts` (`recordSample`·`knownReads` — 자기 기록, 없으면 형제 통 기록) · 화면: 블렌딩 테이블(#157)·증류소 탭(#159)이 같은 아는 값 | ● (#157). **남은 화면 누수:** 블렌딩·병입 탭(PROD)·원액 B2B 탭(MKT)이 참값을 보인다 — 플레이테스트 전에 고친다(#159). 형제 통 오차는 STATUS 결정 대기 12 | PROD |
 | 블렌딩·병입·블렌딩 테이블 | §6, [blending-minigame](blending-minigame.md) | `commerce.lines`·`commissions` | (행동) | `blending.ts`, `blendTable.ts`, `blendRadar.ts` | ◐ (화면·보상 연결 남음) | PROD |
