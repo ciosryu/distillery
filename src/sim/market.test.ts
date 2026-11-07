@@ -3,6 +3,7 @@ import { houseBrand } from './brands';
 import { advanceMonths, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, demandFor, evaluate, spotBidPerLPA, spotQuote, makeContractOffer, makeCraftContractOffer, contractAgingImpact, mulberry32, newGame, previewBlend, qualityFactor, type Cask, type GameState, type SpiritLot, appeal, applyEffects, buyersFor, type Product, agePerception, suggestedPrice, spotSaturation, sourcedElasticityFactor, sourcedPrestigeOf, executeBlend, runSales, updateAwareness, DUTY_FREE, dutyFreeSlotBlocker, makeOemOffer, makeRetailOffer, oemPackageCost, OEM, productDutyFreeDemand, resolveDutyFreeEditions, startOem, startRetail, type MonthReport } from './index';
 import { overhangFactor, retailCapacityCases } from './retail';
 import { domesticDemands, priceBreakdown, priceOptions, skuSplit, skuSplitEqual } from './market';
+import { lotQuality, spotQuoteEstimate } from './bulk';
 import { SKU } from './content/market';
 import { BULK } from './content/catalog';
 import { BUYERS } from './content/names';
@@ -538,5 +539,34 @@ describe('같은 카테고리 제품끼리 수요 나눔 (#154, §15.3 #12)', ()
     const s = lineup(product({ id: 'a' }), product({ id: 'g', category: 'gin', ageYears: null, oakMonths: 0, abv: 0.43, price: 20_000 }));
     expect(domesticDemands(s, 3).get('a')!.split).toBe(1);
     expect(domesticDemands(s, 3).get('g')!.split).toBe(1);
+  });
+});
+
+describe('원액 B2B 견적 — 아는 품질로만 (#164, #136·#159)', () => {
+  const caskWith = (s: GameState) => {
+    const l = lot({ kind: 'malt', oakMonths: 60, abv: 0.6, volumeL: 180, flavor: { vanilla_caramel: 30, fresh_fruit: 20, integration: 50 } });
+    const c = { id: 'C1', typeId: 'ex_bourbon_barrel', activity: 0.8, contents: l } as unknown as Cask;
+    s.inventory.casks.push(c);
+    return { l, c };
+  };
+
+  it('품질을 주지 않으면 옛 견적과 같다(참값) — 판매가는 그대로 사는 쪽이 맛본 값', () => {
+    const s = newGame({ seed: 1 });
+    const { l, c } = caskWith(s);
+    const q = lotQuality(l);
+    expect(spotQuote(s, l, l.volumeL, c, q)).toBe(spotQuote(s, l, l.volumeL, c));
+  });
+
+  it('추정 견적은 추정 품질 ±1σ 범위 — 기록이 없으면 null', () => {
+    const s = newGame({ seed: 1 });
+    const { l, c } = caskWith(s);
+    expect(spotQuoteEstimate(s, l, l.volumeL, c, null)).toBeNull();
+    const e = spotQuoteEstimate(s, l, l.volumeL, c, { estQuality: 55, qualitySigma: 5 })!;
+    expect(e.low).toBeLessThan(e.mid);
+    expect(e.mid).toBeLessThan(e.high);
+    expect(e.mid).toBe(spotQuote(s, l, l.volumeL, c, 55));
+    // 참값과 무관하다 — 추정치가 같으면 원액 향이 달라도 견적이 같다
+    const other = { ...l, flavor: { solvent: 30, harshness: 60 } };
+    expect(spotQuoteEstimate(s, other, l.volumeL, c, { estQuality: 55, qualitySigma: 5 })).toEqual(e);
   });
 });
