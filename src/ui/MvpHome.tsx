@@ -298,7 +298,7 @@ function SpaceCard() {
   return (
     <Card title={`숙성고 공간 — ${casks.length} / ${cap}통 (빈 통 ${empties.length})`}>
       <div className="grid gap-4 md:grid-cols-3">
-        <div className="grid content-start gap-2">
+        <div className="grid min-w-0 content-start gap-2">
           <Meter label="자리 사용 (빈 통·주문 중 포함)" value={casks.length + pendingOrders} max={cap} />
           <div className="text-xs text-stone-600 dark:text-stone-300">
             남은 자리 <b className="tabular-nums">{free}</b>통{pendingOrders ? ` · 쿠퍼리지 도착 예정 ${pendingOrders}통` : ''}
@@ -314,7 +314,7 @@ function SpaceCard() {
           <p className="text-xs text-stone-500">원액이 든 통은 매달 보관비·보험료가 든다. 자리가 모자라면 애매한 통을 병입하거나 원액째 팔아 비운다.</p>
         </div>
 
-        <div className="grid content-start gap-2">
+        <div className="grid min-w-0 content-start gap-2">
           <div className="text-xs font-semibold text-stone-700 dark:text-stone-200">탱크 원액 → 빈 통에 통입</div>
           {!malts.length ? <Empty>탱크에 숙성할 원액(몰트·소주)이 없습니다 — 생산 지시를 내리고 한 달을 진행하세요</Empty> : (
             <>
@@ -340,7 +340,7 @@ function SpaceCard() {
           )}
         </div>
 
-        <div className="grid content-start gap-2">
+        <div className="grid min-w-0 content-start gap-2">
           <div className="text-xs font-semibold text-stone-700 dark:text-stone-200">빈 통 사기</div>
           <Select value={buyType} options={(Object.keys(CASKS) as CaskTypeId[]).map((k) => ({ value: k, label: `${CASKS[k].nameKo} — ${won(regionalCaskPrice(s, k))}` }))} onChange={setBuyType} />
           <div className="flex flex-wrap items-end gap-2">
