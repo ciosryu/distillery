@@ -4,6 +4,7 @@ import { knownReads, lastSample, readSigma, SAMPLING, samplingCapacity, type Kno
 import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
 import { vesselMaterial } from '../sim/maturation';
 import { regionOf } from '../sim/content/regions';
+import { CATEGORY } from '../sim/content/categories';
 import { equipmentCost } from '../sim/sites';
 import { isLocked, monthLabel, netWorth, regionalCaskPrice, selfFundedCash, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState } from '../sim';
 import { useGame } from '../store/game';
@@ -29,6 +30,27 @@ export function curvePoints(s: GameState): { x: number; cash: number; nw: number
     .map((y) => ({ x: (y.year - s.startYear) * 12 + 12, cash: y.cashEnd, nw: y.netWorthEnd ?? null }))
     .filter((p) => p.x - 1 < first);
   return [...fromYears, ...rs.map((r) => ({ x: r.month + 1, cash: r.cashEnd, nw: r.netWorth ?? null }))];
+}
+
+/** 재고 경고 기준 — 최근 판매로 이만큼 넘게 버틸 재고면 경고 (화면 안내 기준, 게임 규칙 아님) */
+const OVERSTOCK_MONTHS = 6;
+
+/**
+ * 제품 범주별 재고가 최근 3개월 판매의 몇 개월치인지. 병입하면 병·포장비가 바로 나가므로 못 팔 만큼 병입하면 현금이 묶인다
+ * (플레이테스트 사전 점검: 소주를 매달 전부 병입하면 17개월 만에 39개월치가 쌓이고 현금이 바닥났다)
+ */
+export function overstock(s: GameState): { category: string; stock: number; perMonth: number; months: number }[] {
+  const recent = s.history.reports.slice(-3);
+  if (!recent.length) return [];
+  const byCat = new Map<string, { stock: number; sold: number }>();
+  for (const p of s.commerce.products) {
+    const e = byCat.get(p.category) ?? { stock: 0, sold: 0 };
+    e.stock += p.stockBottles;
+    e.sold += recent.reduce((t, r) => t + r.sales.filter((x) => x.productId === p.id).reduce((a, x) => a + x.bottles, 0), 0);
+    byCat.set(p.category, e);
+  }
+  return [...byCat].map(([category, e]) => ({ category, stock: e.stock, perMonth: e.sold / recent.length, months: e.sold > 0 ? e.stock / (e.sold / recent.length) : Infinity }))
+    .filter((x) => x.stock > 0 && x.months > OVERSTOCK_MONTHS && recent.length >= 2);
 }
 
 /** 최근 3개월 자체 현금 흐름(차입·투자 유치·선급금 제외)으로 본 런웨이 — 대시보드와 같은 계산 */
@@ -82,6 +104,12 @@ function Headline() {
         <Stat label="가장 오래된 자체 원액" value={months(oldest)} tone={oldest >= flagMin ? 'good' : undefined}
           hint={left != null ? `플래그십 ${Math.floor(flagMin / 12)}년 · 목표까지 ${left}개월` : `플래그십 ${Math.floor(flagMin / 12)}년`} />
       </div>
+      {overstock(s).map((o) => (
+        <p key={o.category} className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+          ⚠ <b>{CATEGORY[o.category as keyof typeof CATEGORY]?.nameKo ?? o.category}</b> 재고 {num(o.stock)}병 — 최근 판매(월 {num(Math.round(o.perMonth))}병)로 {Number.isFinite(o.months) ? `약 ${Math.round(o.months)}개월치` : '팔리지 않고 있다'}.
+          병입하면 병·포장비가 바로 나간다 — 병입을 멈추고(원액은 탱크에 둔다) 생산 지시를 줄이거나, 아래 <b>가격과 수요</b>에서 값을 낮춘다.
+        </p>
+      ))}
       <div className="mt-3">
         <LineChart
           label="월말 현금과 순자산 추이"
