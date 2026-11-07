@@ -115,7 +115,7 @@ export interface CaskDef {
 }
 
 /**
- * 나무가 아닌 용기의 숙성 (S-10 자리 → 모델 P-PROD-4, flavor-model §4.5.1). 나무의 ②추출이 없고 ①제거·③반응만 있다(tech-tree ASN-3a 보충).
+ * 나무가 아닌 용기의 숙성 (S-10 자리 → 모델 #161, flavor-model §4.5.1). 나무의 ②추출이 없고 ①제거·③반응만 있다(tech-tree ASN-3a 보충).
  * - evapFactor: 같은 크기 나무 캐스크 대비 증발 배수
  * - removal: 월 ①제거 계수(유황·거친 맛·용제·후류취) — 새 나무 캐스크(탄화 3·활성도 1)는 약 0.0105
  * - integration·fruit·floral: 월 ③반응(시간 비례, 크기와 무관)
@@ -133,7 +133,7 @@ export const CASKS: Record<CaskTypeId, CaskDef> = {
   oloroso_butt: { id: 'oloroso_butt', nameKo: '올로로소 셰리 벗 500L', sizeL: 500, wood: 'european_oak', price: 1_800_000, activity: 1.0, seasoning: 1.0, seasoningType: 'sherry', char: 1 },
   korean_oak_quarter: { id: 'korean_oak_quarter', nameKo: '한국 참나무(신갈나무) 쿼터 125L, 신품', sizeL: 125, wood: 'korean_oak', price: 900_000, activity: 1.3, seasoning: 0, seasoningType: 'none', char: 3 },
   mizunara_hogshead: { id: 'mizunara_hogshead', nameKo: '미즈나라 혹스헤드 250L, 신품', sizeL: 250, wood: 'mizunara', price: 3_500_000, activity: 1.2, seasoning: 0, seasoningType: 'none', char: 2, leakFactor: 3 },
-  // 옹기 항아리 (P-PROD-4) — 나무 향 없이 미세 기공으로 숨 쉬며 부드러워진다. 화이트 스피릿(소주·백주) 숙성용. 오크 숙성 개월에 안 들어간다. 크기·가격 [튜닝]·[확인 불가]
+  // 옹기 항아리 (#161) — 나무 향 없이 미세 기공으로 숨 쉬며 부드러워진다. 화이트 스피릿(소주·백주) 숙성용. 오크 숙성 개월에 안 들어간다. 크기·가격 [튜닝]·[확인 불가]
   onggi_jar: { id: 'onggi_jar', nameKo: '옹기 항아리 200L (숨 쉬는 독)', sizeL: 200, wood: 'none', price: 400_000, activity: 0, seasoning: 0, seasoningType: 'none', char: 0, material: 'onggi' },
 };
 

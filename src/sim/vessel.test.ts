@@ -196,7 +196,7 @@ describe('피니싱 (PRD §5.2, #158)', () => {
   });
 });
 
-describe('옹기 숙성 (P-PROD-4, flavor-model §4.5.1)', () => {
+describe('옹기 숙성 (#161, flavor-model §4.5.1)', () => {
   const climate = { tempC: 13, humidity: 70 };
   const opts = { control: 0 };
   /** MVP 판 + 소주 뉴메이크를 담은 옹기·버번 캐스크 */
