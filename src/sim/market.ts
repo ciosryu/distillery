@@ -407,7 +407,7 @@ const WOM_DEFAULT_QUALITY = 50;
  * 반환: 그중 면세 판매 입소문 몫(브랜드별 자체 증가분의 합)
  */
 export function updateAwareness(s: GameState, sales: SalesResult[]): number {
-  // 입소문 = 이번 달 판 병 × 그 병의 품질 (결정 P-MKT-3 — 옛 '역대 전 제품 평균 품질'을 대체, §15.3 #18).
+  // 입소문 = 이번 달 판 병 × 그 병의 품질 (결정 #163 — 옛 '역대 전 제품 평균 품질'을 대체, §15.3 #18).
   // 기억은 인지도 자체가 맡는다(월 망각 AWARENESS.decay) — 품질 평균에 따로 기간을 두지 않는다
   const qBottles = new Map<string, { all: number; dutyFree: number }>(); // 브랜드별 Σ 병 × 품질/60
   for (const x of sales) {

@@ -145,7 +145,7 @@ describe('세컨드 브랜드 규칙 (#155, PRD §11.2 ④)', () => {
   });
 });
 
-describe('입소문 품질 = 판 병의 품질 (P-MKT-3, §15.3 #18)', () => {
+describe('입소문 품질 = 판 병의 품질 (#163, §15.3 #18)', () => {
   const sale = (productId: string, bottles: number) => ({ productId, name: productId, bottles, revenue: 0, demandBottles: bottles, distribution: 0 });
   const gain = (s: GameState, sales: ReturnType<typeof sale>[]) => { const a0 = houseBrand(s).awareness; updateAwareness(s, sales); return houseBrand(s).awareness - a0; };
   const base = () => { const s = newGame({ seed: 4 }); s.commerce.marketingBudget = 0; return s; };

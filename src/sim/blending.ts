@@ -237,7 +237,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
 }
 
 /**
- * 병입 전에 플레이어가 **아는** 블렌드 (#136·#159, P-PROD-5) — 캐스크는 샘플 기록(knownReads), 탱크 원액은 우리가 막 만든 것이라 그대로 안다.
+ * 병입 전에 플레이어가 **아는** 블렌드 (#136·#159, #162) — 캐스크는 샘플 기록(knownReads), 탱크 원액은 우리가 막 만든 것이라 그대로 안다.
  * 추정 품질 = 아는 원액들의 품질을 알코올(LPA) 가중 평균한 값(블렌드 품질 공식은 비선형이라 근사), 오차 = 가중 오차의 제곱합 제곱근.
  * 기록이 없는 캐스크는 빠지고 그 비율을 unknownShare로 알린다. 아는 원액이 없으면 quality·hex = null
  */

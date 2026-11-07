@@ -117,7 +117,7 @@ const siblingKey = (c: Cask) => (c.contents?.batchId ? `${c.contents.batchId}:${
 
 /**
  * 형제 기록을 빌리는 최소 액량 비율(작은 쪽 ÷ 큰 쪽) — 같은 배치라도 마지막 통은 일부만 채워져(실측 185L 옆 14.6L·43L)
- * 표면적/부피가 달라 숙성 속도가 다르다. 이보다 차이가 크면 빌리지 않는다 (P-PROD-5, 결정 대기 12) `[튜닝]`
+ * 표면적/부피가 달라 숙성 속도가 다르다. 이보다 차이가 크면 빌리지 않는다 (#162, 결정 대기 12) `[튜닝]`
  */
 export const SIBLING_MIN_VOLUME_RATIO = 0.75;
 
