@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
 import { knownReads, lastSample, readSigma, SAMPLING, samplingCapacity, type KnownRead } from '../sim/blendTable';
 import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
+import { vesselMaterial } from '../sim/maturation';
 import { regionOf } from '../sim/content/regions';
 import { equipmentCost } from '../sim/sites';
 import { isLocked, monthLabel, netWorth, regionalCaskPrice, selfFundedCash, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState } from '../sim';
@@ -106,6 +107,9 @@ function Headline() {
   );
 }
 
+/** 숙성 기간 — 나무는 오크 개월, 옹기는 옹기 개월 (목록 정렬용) */
+const ageOf = (c: Cask) => Math.max(c.contents?.oakMonths ?? 0, c.contents?.restMonths ?? 0);
+
 /** 숙성고 목록에 처음 보이는 통 수 (오래된 순) */
 const LIST_FIRST = 30;
 
@@ -158,7 +162,7 @@ function WarehouseCard() {
   const known = useMemo(() => knownReads(s), [s]);
   const rules = regionOf(s).whisky;
   const minM = whiskyMinMonths(rules);
-  const filled = s.inventory.casks.filter((c) => c.contents).sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths || a.id.localeCompare(b.id));
+  const filled = s.inventory.casks.filter((c) => c.contents).sort((a, b) => ageOf(b) - ageOf(a) || a.id.localeCompare(b.id));
   const sampleable = (c: Cask) => !c.owner && (c.samples ?? 0) < SAMPLING.maxSamples;
   const left = Math.max(0, samplingCapacity(s) - s.inventory.samplesThisMonth);
   const chosen = picked.filter((id) => filled.some((c) => c.id === id && sampleable(c)));
@@ -179,7 +183,7 @@ function WarehouseCard() {
         </div>
       }
     >
-      {!filled.length ? <Empty>숙성 중인 캐스크가 없습니다. 아래에서 탱크의 몰트 원액을 빈 통에 통입하세요.</Empty> : (
+      {!filled.length ? <Empty>숙성 중인 캐스크가 없습니다. 아래에서 탱크의 몰트(또는 소주) 원액을 빈 통에 통입하세요.</Empty> : (
         <Table head={['', '캐스크', '원액', '숙성', '남은 양', '표기', '마지막 샘플 (추정 품질 ±오차 · 강한 향 · 변화)', '']}>
           {(all ? filled : filled.slice(0, LIST_FIRST)).map((c) => {
             const lot = c.contents!;
@@ -187,11 +191,11 @@ function WarehouseCard() {
             return (
               <tr key={c.id}>
                 <Td><input type="checkbox" aria-label={`${c.id} 샘플 선택`} disabled={!can} checked={chosen.includes(c.id)} onChange={() => toggle(c.id)} /></Td>
-                <Td className="text-xs">{c.id} · {CASKS[c.typeId].nameKo}{c.fills > 1 ? ` (${c.fills}필)` : ''}</Td>
+                <Td className="text-xs">{c.id} · {CASKS[c.typeId].nameKo}{c.fills > 1 && vesselMaterial(c) === 'wood' ? ` (${c.fills}필)` : ''}</Td>
                 <Td className="max-w-48 truncate text-xs">{lot.name}{lot.sourced && <> <Badge tone="info">매입</Badge></>}{c.owner && <> <Badge tone="info">고객 소유</Badge></>}{c.rareKnown && <> <Badge tone="good">레어</Badge></>}{c.contaminationKnown && <> <Badge tone="bad">오염</Badge></>}</Td>
-                <Td right>{months(lot.oakMonths)}</Td>
+                <Td right>{vesselMaterial(c) === 'wood' ? months(lot.oakMonths) : <>옹기 {months(lot.restMonths ?? 0)}{lot.oakMonths > 0 && <div className="text-xs text-stone-500">오크 {months(lot.oakMonths)}</div>}</>}</Td>
                 <Td right>{liters(lot.volumeL)}</Td>
-                <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : lot.oakMonths >= minM ? <Badge tone="good">위스키{lot.oakMonths < 36 ? ' (어림)' : ''}</Badge> : <Badge tone="warn">{minM - lot.oakMonths}개월 남음</Badge>}</Td>
+                <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>{vesselMaterial(c) === 'onggi' ? '옹기 ' : ''}숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : vesselMaterial(c) !== 'wood' && lot.oakMonths < minM ? <Badge tone="warn">옹기 — 위스키 숙성에 안 들어감</Badge> : lot.oakMonths >= minM ? <Badge tone="good">위스키{lot.oakMonths < 36 ? ' (어림)' : ''}</Badge> : <Badge tone="warn">{minM - lot.oakMonths}개월 남음</Badge>}</Td>
                 <Td><SampleCell s={s} c={c} known={known.get(c.id)} /></Td>
                 <Td>{c.contaminationKnown && !c.owner && <Button small variant="ghost" onClick={() => dispatch({ type: 'dumpCask', caskId: c.id })}>폐기</Button>}</Td>
               </tr>
@@ -218,7 +222,8 @@ function SpaceCard() {
   const pendingOrders = s.inventory.caskOrders.reduce((t, o) => t + o.qty, 0);
   const free = Math.max(0, cap - casks.length - pendingOrders);
   const building = s.production.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'warehouse' && e.readyMonth > s.month);
-  const malts = s.inventory.lots.filter((l) => l.kind === 'malt' || l.kind === 'grain');
+  // 숙성할 수 있는 탱크 원액 — 몰트·그레인(오크 → 위스키), 소주(옹기·오크 숙성 소주, #161)
+  const malts = s.inventory.lots.filter((l) => l.kind === 'malt' || l.kind === 'grain' || l.kind === 'soju');
   const emptyTypes = (Object.keys(CASKS) as CaskTypeId[]).filter((k) => empties.some((c) => c.typeId === k));
   const [lotId, setLotId] = useState('');
   const [fillType, setFillType] = useState<CaskTypeId | ''>('');
@@ -226,7 +231,9 @@ function SpaceCard() {
   const [buyType, setBuyType] = useState<CaskTypeId>('ex_bourbon_barrel');
   const [buyN, setBuyN] = useState(4);
   const lot = malts.find((l) => l.id === lotId) ?? malts[0];
-  const ft = fillType && emptyTypes.includes(fillType) ? fillType : emptyTypes[0];
+  // 고르지 않았으면 원액에 맞는 통을 먼저: 소주 → 옹기, 몰트 → 나무
+  const fits = (k: CaskTypeId) => (lot?.kind === 'soju') === (CASKS[k].material === 'onggi');
+  const ft = fillType && emptyTypes.includes(fillType) ? fillType : emptyTypes.find(fits) ?? emptyTypes[0];
   const ofType = empties.filter((c) => c.typeId === ft && !c.contaminationKnown);
   const price = regionalCaskPrice(s, buyType);
   return (
@@ -249,18 +256,27 @@ function SpaceCard() {
         </div>
 
         <div className="grid content-start gap-2">
-          <div className="text-xs font-semibold text-stone-700 dark:text-stone-200">탱크의 몰트 → 빈 통에 통입</div>
-          {!malts.length ? <Empty>탱크에 몰트 원액이 없습니다 — 생산 지시를 내리고 한 달을 진행하세요</Empty> : (
+          <div className="text-xs font-semibold text-stone-700 dark:text-stone-200">탱크 원액 → 빈 통에 통입</div>
+          {!malts.length ? <Empty>탱크에 숙성할 원액(몰트·소주)이 없습니다 — 생산 지시를 내리고 한 달을 진행하세요</Empty> : (
             <>
-              <Select label="원액" value={lot!.id} options={malts.map((l) => ({ value: l.id, label: `${l.name} · ${liters(l.volumeL)} ${pct(l.abv)}` }))} onChange={setLotId} />
+              <Select label="원액" value={lot!.id} options={malts.map((l) => ({ value: l.id, label: `${l.name} · ${liters(l.volumeL)} ${pct(l.abv)}` }))} onChange={(v) => { setLotId(v); setFillType(''); }} />
               {!ft ? <span className="text-xs text-rose-700 dark:text-rose-400">빈 통이 없습니다 — 오른쪽에서 사세요</span> : (
                 <div className="flex flex-wrap items-end gap-2">
                   <Select label="빈 통" value={ft} options={emptyTypes.map((k) => ({ value: k, label: `${CASKS[k].nameKo} (${empties.filter((c) => c.typeId === k && !c.contaminationKnown).length})` }))} onChange={setFillType} />
                   <NumberField label="개수" value={fillN} min={1} max={200} width="w-16" onCommit={setFillN} />
-                  <Button small variant="primary" disabled={!ofType.length} onClick={() => dispatch({ type: 'fillCasks', lotId: lot!.id, caskIds: ofType.slice(0, fillN).map((c) => c.id), entryAbv: 0.635 })}>통입 (63.5%)</Button>
+                  <Button small variant="primary" disabled={!ofType.length} onClick={() => dispatch({ type: 'fillCasks', lotId: lot!.id, caskIds: ofType.slice(0, fillN).map((c) => c.id), entryAbv: 0.635 })}>통입 ({pct(Math.min(0.635, lot!.abv))})</Button>
                 </div>
               )}
-              {ft && <p className="text-xs text-stone-500">63.5%로 물을 섞으면 약 {liters((lot!.volumeL * lot!.abv) / 0.635)} — {CASKS[ft].sizeL}L 통 약 {num(Math.ceil((lot!.volumeL * lot!.abv) / 0.635 / CASKS[ft].sizeL))}통 분량</p>}
+              {ft && (() => {
+                const entry = Math.min(0.635, lot!.abv);
+                const onggi = CASKS[ft].material === 'onggi';
+                return (
+                  <>
+                    <p className="text-xs text-stone-500">{entry < lot!.abv ? `${pct(entry)}로 물을 섞으면` : '원액 도수 그대로'} 약 {liters((lot!.volumeL * lot!.abv) / entry)} — {CASKS[ft].sizeL}L 통 약 {num(Math.ceil((lot!.volumeL * lot!.abv) / entry / CASKS[ft].sizeL))}통 분량</p>
+                    {onggi && <p className="text-xs text-amber-800 dark:text-amber-300">옹기: 나무 향 없이 숨을 쉬며 거친 맛이 풀린다 — 탱크 보관보다 빠르고 증발은 나무 통의 절반. 소주 숙성용{lot!.kind !== 'soju' ? ' — 몰트는 옹기에서 보낸 기간이 위스키 숙성(오크)에 들어가지 않는다' : ''}.</p>}
+                  </>
+                );
+              })()}
             </>
           )}
         </div>

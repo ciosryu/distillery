@@ -24,11 +24,11 @@
 | 항목 | 내용 | 근거 |
 |---|---|---|
 | 플랫폼 | Godot 4 + C#, PC(Steam). TS는 설계 실험실·기준 구현 | #34·#35·#40·#122 |
-| 상태 | 단일 `GameState` v13 = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history·progress) | #118, [architecture.md §3](architecture.md) |
+| 상태 | 단일 `GameState` v14 = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history·progress). v14 = 제품 피니싱 표기 `Product.finish?`(#158) | #118, [architecture.md §3](architecture.md) |
 | 시간 | 1턴 = 1개월. 월 틱 0~9단계 파이프라인 + 틱 컨텍스트 | #1·#26, PRD §2.2 |
 | 경계 | `GameEngine` 계약 (명령 → 스냅샷) | architecture.md §3.2 |
 | 난수 | mulberry32, `rngFor(seed, month, stream)` 독립 스트림 | PRD §13.2 |
-| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8 → v9 → v10 → v11 → v12 → v13) | #118, S-8, S-10, S-9, S-2, S-6, S-11·S-12 |
+| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8 → v9 → v10 → v11 → v12 → v13 → v14) | #118, S-8, S-10, S-9, S-2, S-6, S-11·S-12, #158 |
 | 테크 게이트 | `isUnlocked(state, key)` 하나로 판정, 키 규칙 고정, Phase 1은 꺼짐 | #118, tech-tree §7 |
 | 설계 규모 | 30년(360턴) · 원액 든 캐스크 2,500개 | #119 |
 | 기후 | 입지 평년값 + AR(1) 이상치, 이벤트는 입력(기온·습도) 충격 | #120 |
@@ -44,22 +44,23 @@
 | 지역·입지·법규 | §3, §16.21 | 헤더(regionId·siteId), `site` | 0 | `content/regions.ts`, `sites.ts` | ● | 코어(데이터) |
 | 원재료·레시피·발효·증류 | §4 | `production` | 2 | `production.ts`, `content/catalog.ts` | ● | PROD |
 | 향미 모델 | §5.4, [flavor-model](flavor-model.md) | (원액·캐스크 안) | 2·3 | `flavor.ts`, `content/axes.ts`, `content/categories.ts` | ● | PROD |
-| 숙성·캐스크·숙성고 공간·기후 | §5, §16.3 | `inventory` | 3 (`matureVessel` → 재질별) | `maturation.ts`, `ops.ts`(일부), `weather.ts`, `tick.ts` | ● (나무) · ○ 옹기·스테인리스 용기는 자리만(`CaskDef.material`·`matureNonWood`·`SpiritLot.restMonths`, S-10) | PROD |
-| 피니싱 | §5.2 | `SpiritLot.caskHistory` (S-10) | — | 행동 `transferCask` (항상 실패하는 자리) | ○ (자리만) | PROD |
-| 정보 불확실성(샘플링) | §5.6 | `Cask.sampleLog` (샘플 순간의 읽기 기록, S-10) · `commerce.commissions`(블렌딩) | — | `blendTable.ts` (`recordSample`·`lastSample`, 블렌딩 테이블은 아직 실시간 읽기) | ◐ | PROD |
+| 숙성·캐스크·숙성고 공간·기후 | §5, §16.3 | `inventory` | 3 (`matureVessel` → 재질별) | `maturation.ts`(`matureCask`·`matureNonWood`), `warehouse.ts`, `casks.ts`, `weather.ts`, `tick.ts` | ● 나무 · ● 옹기(`onggi_jar`, 제거·반응·증발 ×0.5, `SpiritLot.restMonths` — 위스키 오크 개월에 안 들어감, #161) · 스테인리스 휴지는 새 용기 없이 탱크 보관(`restLot`)이 맡는다 | PROD |
+| 피니싱 | §5.2 | `SpiritLot.caskHistory` (S-10) · `Product.finish?` (v14) | — | `maturation.ts`(`canFinishInto`·`historyAfterTransfer`·`finishLabel`), 행동 `transferCask` | ● (#158 — 빈 버번·셰리 시즈닝 캐스크로 옮기기·이력·피니시 라벨. 라벨의 판매 효과는 MKT 후속) | PROD |
+| 정보 불확실성(샘플링) | §5.6 | `Cask.sampleLog` (샘플 순간의 읽기 기록, S-10) · `commerce.commissions`(블렌딩) | — | `blendTable.ts` (`recordSample`·`knownReads` — 자기 기록, 없으면 형제 통 기록) · 화면: 블렌딩 테이블(#157)·증류소 탭(#159)이 같은 아는 값 | ● (#157). **남은 화면 누수:** 블렌딩·병입 탭(PROD)·원액 B2B 탭(MKT)이 참값을 보인다 — 플레이테스트 전에 고친다(#159). 형제 통 오차는 STATUS 결정 대기 12 | PROD |
 | 블렌딩·병입·블렌딩 테이블 | §6, [blending-minigame](blending-minigame.md) | `commerce.lines`·`commissions` | (행동) | `blending.ts`, `blendTable.ts`, `blendRadar.ts` | ◐ (화면·보상 연결 남음) | PROD |
-| 수요·판매·주세·소매 역량 | §9, §16.4 | `commerce` | 5 | `market.ts`, `ops.ts`(일부) | ● | MKT |
-| 브랜드·럭셔리·브랜드 라인 | §11, §11.2 | `commerce.brands[]`(v11, S-2) · `Product.brandId` | 8 | `brands.ts`(접근자), `market.ts`(인지도 성장·럭셔리 일부), 행동 `openBrand`·`setProductBrand`(자리) | ◐ (상태 모양·접근자 구현, 하우스 브랜드 하나. 세컨드 브랜드 개설·브랜드별 성장·B_brand 계산은 단계 P) | MKT |
+| 수요·판매·주세·소매 역량 | §9, §16.4 | `commerce` | 5 | `market.ts`(같은 카테고리 수요 나눔 CES #154), `sales.ts`, `retail.ts`, 화면 `Sales`(`PriceDesk` — 증류소 탭에도 끼움) | ● | MKT |
+| 브랜드·럭셔리·브랜드 라인 | §11, §11.2 | `commerce.brands[]`(v11, S-2) · `Product.brandId` · `BrandLine.marketingBudget?` | 5(유지비·마케팅비)·8 | `brands.ts`(접근자·개설·배정·폐지·비용), `market.ts`(브랜드별 인지도 성장), 행동 `openBrand`·`setProductBrand`·`closeBrand`·`setMarketing{brandId}` | ◐ (세컨드 브랜드 규칙 #155 구현, MVP에서는 잠김. 남은 것: B_brand(럭셔리) 계산, 브랜드 × 수출 시장 인지도) | MKT |
 | 원액 B2B·브로커 | §8.3, §8.6 | `b2b` | 4·8 | `bulk.ts`, `broker.ts` | ● | MKT |
 | 입지 대표 거래(유통 납품·OEM·면세) | §16.21 | `commerce.retail*`, `b2b.oem*`, `site` | 4·6 | `deals.ts`, `sites.ts`(일부) | ● | MKT |
 | 수출·해외 명성 | §16.25, §16.27, §17 | `commerce.exports`·`exportOffers`·`exportEntered`·`acclaim` | 5·6·8 | `market.ts`, `exportDeals.ts`, `content/exports.ts` | ● (9개 시장·수입사 계약 #100~#109) | MKT |
-| 재무(대출·투자·캐스크 오너십·담보대출) | §8 | `finance` | 7 | `cashflow.ts`, `actions.ts`, `sites.ts`(담보) | ● | MGT |
+| 재무(대출·급전·투자·캐스크 오너십·담보대출) | §8 | `finance` | 7 | `loans.ts`(재무 단계·월 고정비 예상), `cashflow.ts`, `investment.ts`, `actions.mgt.ts`, `content/finance.ts` | ● (고금리 급전 #160. 은행 심사는 재무 확장으로 — STATUS MGT ③) | MGT |
 | 재무 확장(이사회·헷징·보험) | §8.2, §8.4 | `finance.hedges`·`insurance`·`board?` (v13) | 2(선도계약 원가)·7(보험료·이사회) — 규칙 생길 때 | 행동 `signForward`·`buyInsurance`·`cancelInsurance`(자리), 해임 = `GameEnding 'dismissed'`(S-9) | ○ (자리만) | MGT |
 | HR(직군·에이징·하우스 스타일·마스터 블렌더) | §7, §16.6 | `hr` | 6·8 | `hr.ts`, `ops.ts`(일부) | ● | MGT |
 | 이벤트·예보·보정치 | §10 | `events`, `world.modifiers` | 1 | `events.ts`, `content/events.ts`, `modifiers.ts` | ● | MGT |
 | 연구·테크트리 | [tech-tree](tech-tree.md) | `research` | 8 (`runResearch`) | `research.ts`(게이트·시작 조건·진행), `content/tech.ts`(노드 스키마 + 4개), 행동 `startResearch`·`setResearch`·`cancelResearch` | ◐ (진행 규칙 구현 — 기간·연구비·담당자·일시정지·이탈. 노드 4개뿐, 게이트 꺼짐, 실적 보너스·본업 효율 −30%·실험실 슬롯·화면은 단계 P) | MGT |
 | 관광·비지터 센터 | §16.8 | `commerce.localBuzz` | 6 | `ops.ts`(일부) | ● | MKT |
-| 리포트·연 요약·데이터 수명 | §13 | `history` | 9 | `lifecycle.ts`, `step.ts` | ● | 코어 |
+| 리포트·연 요약·데이터 수명 | §13 | `history` (월 보고서 `netWorth?`·연 요약 `netWorthEnd?`, #159) | 9 | `lifecycle.ts`, `step.ts` | ● | 코어 |
+| MVP 단일 화면 (증류소 탭) | [mvp.md](mvp.md) §5.1 | (읽기만) | — | `ui/MvpHome.tsx` — 현금·순자산 곡선, 판매(`PriceDesk`), 아는 값만 보이는 숙성고(나무·옹기), 숙성고 공간·통입·빈 통 구매 | ● (#159. 생산 지시·크래프팅 레버는 PROD가 `Orders`·`RecipeEditor`를 내보내면 끼운다) | 코어 |
 | 시나리오 모드·초기화·기능 플래그·가상 이력 생성기 | §12.2 | 헤더 `scenario` (v8) | 1·8 (끈 시스템 건너뜀) | `content/scenarios.ts`, `scenario.ts`(잠금), `newScenario.ts`(사업 계획서 입구·미리보기), 화면 `ui/BusinessPlan.tsx` | ◐ (입구·플래그·MVP 시나리오 구현, 가상 이력 생성기·JSON 파일 형식은 자리만) | 코어 → META |
 | 승패·업적·마일스톤·목표 판정 | §12.1, [mvp.md](mvp.md) §3 | 헤더 `status`(끝난 이유) + `progress` 슬라이스(v10) | 9 (`updateProgress`) | `progress.ts`, `content/milestones.ts`, 행동 `actions.meta.ts`, 화면 `ui/Verdict.tsx` | ◐ (마일스톤 9개·MVP 목표 판정·결과 화면 구현. 면허 취소·해임은 자리만, 여러 판에 걸친 업적은 단계 V) | META |
 | 다지역 경영(해외 증류소 인수) | §3.4 | 지금은 증류소 1개. 슬라이스를 회사/증류소 단위로 분류해 둠(§4.10 ③) | — | 인수 시 시작 상태 = 시나리오 입구(`newScenarioGame`, S-8)와 같은 구조 | ○ (분류만, #128) | 코어 결정 → META |
@@ -126,7 +127,7 @@
 
 | 항목 | 파트 | 출처 |
 |---|---|---|
-| SKU 수만큼 총수요가 늘어나는 수요 공식 | MKT | PRD §15.3 #12 |
+| ~~SKU 수만큼 총수요가 늘어나는 수요 공식~~ → 같은 카테고리 수요 나눔 CES로 해결 (#154) | MKT | PRD §15.3 #12 |
 | ~~병 가격의 숙성 반영 (PR #6)~~ → 단계 S에서 설계 세션이 구현 (MVP 필수 #133, #117) | ARCH | PRD §6.2.1 |
 | 입소문 평균 품질의 기준 기간 | MKT | §15.3 #18 |
 | 제주 면세점 두 종류(#87 지정면세점·#95 공항 면세점) 정리 | MKT | §16.25 |
