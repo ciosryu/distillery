@@ -11,7 +11,6 @@ import { ownershipOversold, OWNERSHIP } from './investment';
 import { clamp } from './flavor';
 import { hexOf } from './blendRadar';
 import { RARE, trendFactor } from './blendTable';
-import { allProductQualities } from './lifecycle';
 import { staffOf } from './util';
 import { mod } from './modifiers';
 import type { ExportEntry, ExportSale, GameState, Product, ProductCategory } from './types';
@@ -395,10 +394,12 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
 
 /** 인지도 계수 [튜닝] — 월 500만 원 마케팅 단독이면 평형 인지도 ≈ 0.4 */
 export const AWARENESS = { marketing: 0.012, wordOfMouth: 0.000003, decay: 0.012 };
+/** 판매 기록에 제품이 없을 때(이론상 없음) 입소문에 쓰는 품질 */
+const WOM_DEFAULT_QUALITY = 50;
 
 /**
  * 인지도 갱신 — 브랜드 라인별 (PRD §11.2 ④, 결정 #155). 브랜드 b의 자체 성장
- *   G_b = 마케팅(브랜드 b의 마케팅비) + 입소문(브랜드 b 제품의 이번 달 판매량 × 품질)
+ *   G_b = 마케팅(브랜드 b의 마케팅비) + 입소문(브랜드 b 제품의 이번 달 판매 병수 × 그 제품의 품질/60)
  *   하우스  A_h ← A_h + (G_h + s × Σ G_세컨드) × (1 − A_h) − 망각 × A_h
  *   세컨드  A_b ← A_b + (G_b + s × G_h) × (1 − A_b) − 망각 × A_b          s = BRANDS.spillover (#52·#53)
  * 세컨드 브랜드가 없으면 옛 회사 인지도 성장식과 같다. 판매는 판매 시점의 브랜드로 센다.
@@ -406,22 +407,22 @@ export const AWARENESS = { marketing: 0.012, wordOfMouth: 0.000003, decay: 0.012
  * 반환: 그중 면세 판매 입소문 몫(브랜드별 자체 증가분의 합)
  */
 export function updateAwareness(s: GameState, sales: SalesResult[]): number {
-  const qs = allProductQualities(s); // 역대 전 제품(아카이브 포함) 평균 — lifecycle.ts의 [열린 문제] 참고. 브랜드별 품질은 §15.3 #18과 함께
-  const avgQ = qs.length ? qs.reduce((t, q) => t + q, 0) / qs.length : 50;
-  const bottles = new Map<string, { all: number; dutyFree: number }>();
+  // 입소문 = 이번 달 판 병 × 그 병의 품질 (결정 P-MKT-3 — 옛 '역대 전 제품 평균 품질'을 대체, §15.3 #18).
+  // 기억은 인지도 자체가 맡는다(월 망각 AWARENESS.decay) — 품질 평균에 따로 기간을 두지 않는다
+  const qBottles = new Map<string, { all: number; dutyFree: number }>(); // 브랜드별 Σ 병 × 품질/60
   for (const x of sales) {
     const p = s.commerce.products.find((q) => q.id === x.productId);
     const id = p ? brandOf(s, p).id : houseBrand(s).id;
-    const b = bottles.get(id) ?? { all: 0, dutyFree: 0 };
-    b.all += x.bottles;
-    b.dutyFree += x.dutyFree ?? 0;
-    bottles.set(id, b);
+    const q = (p?.quality ?? WOM_DEFAULT_QUALITY) / 60;
+    const b = qBottles.get(id) ?? { all: 0, dutyFree: 0 };
+    b.all += (x.bottles + (DUTY_FREE.wordOfMouthWeight - 1) * (x.dutyFree ?? 0)) * q;
+    b.dutyFree += DUTY_FREE.wordOfMouthWeight * (x.dutyFree ?? 0) * q;
+    qBottles.set(id, b);
   }
-  const wom = (n: number) => AWARENESS.wordOfMouth * n * (avgQ / 60);
   const own = new Map(s.commerce.brands.map((b) => {
-    const n = bottles.get(b.id) ?? { all: 0, dutyFree: 0 };
-    const g = AWARENESS.marketing * Math.log10(1 + brandMarketing(s, b) / 1_000_000) * mod(s, 'awareness_gain') + wom(n.all + (DUTY_FREE.wordOfMouthWeight - 1) * n.dutyFree);
-    return [b.id, { g, df: AWARENESS.wordOfMouth * DUTY_FREE.wordOfMouthWeight * n.dutyFree * (avgQ / 60) }];
+    const n = qBottles.get(b.id) ?? { all: 0, dutyFree: 0 };
+    const g = AWARENESS.marketing * Math.log10(1 + brandMarketing(s, b) / 1_000_000) * mod(s, 'awareness_gain') + AWARENESS.wordOfMouth * n.all;
+    return [b.id, { g, df: AWARENESS.wordOfMouth * n.dutyFree }];
   }));
   const house = houseBrand(s);
   const gHouse = own.get(house.id)!.g;
