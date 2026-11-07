@@ -4,16 +4,16 @@ import { CATEGORY } from './content/categories';
 import { BULK, INGREDIENTS } from './content/catalog';
 import { DEFAULT_WHISKY_RULES, priceForConsumer, refPricePerL, regionOf, traditionalTaxFactor, type RegionDef, type WhiskyRules } from './content/regions';
 import { clampFlavor, evaluate, weightedAverage, type Evaluation } from './flavor';
-import { emptyCask } from './maturation';
+import { emptyCask, finishLabel, finishOf } from './maturation';
 import { ownsFacility } from './util';
 import { siteFreight } from './sites';
 import { dutyFreeAgedAppeal, dutyFreeSlotBlocker, dutyFreeSuggestedPrice, hasDutyFree, nextDutyFreeEdition, DUTY_FREE } from './dutyFree';
 import { bestBy, nid, staffOf } from './util';
 import { mod } from './modifiers';
 import { hexOf, matchScore, mixHex, perceivedHex } from './blendRadar';
-import { blenderOf, COMMISSION, findTarget, readCask, revealNotes } from './blendTable';
+import { blenderOf, COMMISSION, findTarget, knownReads, revealNotes } from './blendTable';
 import { productCountEver } from './lifecycle';
-import type { AxisId, Flavor, GameState, Hex, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
+import type { AxisId, CaskTypeId, Flavor, GameState, Hex, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
 
 export interface BlendComponent { source: 'cask' | 'lot'; id: string; liters: number }
 export interface BottleOptions {
@@ -25,7 +25,8 @@ export interface BottleOptions {
 }
 
 /** 배팅 결과 공개 (P6) */
-export interface BlendReveal { targetLabel: string | null; score: number | null; predicted: Hex; actual: Hex; notes: string[]; rewardNote?: string }
+/** predicted = 블렌더가 아는 값(샘플 기록)으로 만든 예상. 아는 원액이 하나도 없으면 null (#157) */
+export interface BlendReveal { targetLabel: string | null; score: number | null; predicted: Hex | null; actual: Hex; notes: string[]; rewardNote?: string }
 
 export interface BlendPreview {
   ok: boolean;
@@ -54,6 +55,8 @@ export interface BlendPreview {
   localIngredient: boolean;
   /** 면세 한정판으로 내면 붙을 판 번호·연속 완판 수 */
   dfEdition: { vol: number; streak: number } | null;
+  /** 라벨 "○○ 캐스크 피니시" — 모든 원액이 같은 종류 캐스크로 피니싱됐을 때만 (#158) */
+  finish: CaskTypeId | null;
 }
 
 /** 기본(스코틀랜드·EU식) 위스키 최소 숙성. 지역별 규칙은 RegionDef.whisky */
@@ -136,7 +139,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     if (c.liters > lot.volumeL + 1e-6) errors.push(`${lot.name}: 보유량(${lot.volumeL.toFixed(1)}L)보다 많이 선택했습니다`);
     items.push({ lot, liters: Math.min(c.liters, lot.volumeL) });
   }
-  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, sourcedPrestige: 1, specialty: null, premiumLabel: false, traditional: false, suggestedPrice: 0, localIngredient: false, dfEdition: null };
+  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, sourcedPrestige: 1, specialty: null, premiumLabel: false, traditional: false, suggestedPrice: 0, localIngredient: false, dfEdition: null, finish: null };
   const region = regionOf(s);
   const rules = region.whisky;
   if (!items.length) { errors.push('블렌딩할 원액을 선택하세요'); return empty; }
@@ -153,6 +156,9 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   let finalAbv = opts.targetAbv === 'cask' ? mixAbv : opts.targetAbv;
   if (finalAbv > mixAbv + 1e-6) { errors.push(`목표 도수(${(finalAbv * 100).toFixed(1)}%)가 원액 도수(${(mixAbv * 100).toFixed(1)}%)보다 높습니다`); finalAbv = mixAbv; }
   const minOakMonths = Math.min(...items.map((i) => i.lot.oakMonths));
+  // 피니시 라벨: 섞은 원액이 모두 같은 종류 캐스크로 피니싱됐을 때만 붙인다 — 피니싱 안 한 원액이 섞이면 라벨 없음 (#158)
+  const finishes = items.map((i) => finishOf(i.lot)?.typeId ?? null);
+  const finish = finishes.every((f) => f && f === finishes[0]) ? finishes[0]! : null;
   const sourcedLPA = items.reduce((t, i) => t + (i.lot.sourced ? i.liters * i.lot.abv : 0), 0);
   const sourcedShare = sourcedLPA / lpa;
   // 매입 원액 브랜드 가치 = 매입 원액들의 LPA당 매입가로 정한 값의 LPA 가중 평균
@@ -226,6 +232,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
       : suggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? minOakMonths : null, finalAbv, traditionalTaxFactor(region, traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL)),
     localIngredient,
     dfEdition: dutyFree && hasDutyFree(s) ? nextDutyFreeEdition(s) : null,
+    finish,
   };
 }
 
@@ -238,15 +245,19 @@ function packagingUnitCost(s: GameState, opts: Pick<BottleOptions, 'packagingId'
 export function executeBlend(s: GameState, components: BlendComponent[], opts: BottleOptions): { error?: string; product?: Product; reveal?: BlendReveal } {
   const p = previewBlend(s, components, opts);
   if (!p.ok || !p.category || !p.evaluation) return { error: p.errors.join(' / ') || '병입할 수 없습니다' };
-  // 블렌딩 테이블 (결정 #124): 원액을 빼기 전에 블렌더가 읽은 값으로 예상 육각형을 만든다 (공개 연출용)
+  // 블렌딩 테이블 (결정 #124): 원액을 빼기 전에 블렌더가 아는 값으로 예상 육각형을 만든다 (공개 연출용).
+  // 캐스크는 샘플 기록(#157) — 기록이 없는 캐스크는 예상에서 빠진다. 탱크 원액은 우리가 막 만든 것이라 처음 읽기로 안다
   const blender = blenderOf(s);
+  const known = knownReads(s);
   const parts = components.filter((c) => c.liters > 0).map((c) => {
     const lot = lotOf(s, c)!;
     const cask = c.source === 'cask' ? s.inventory.casks.find((k) => k.id === c.id) : undefined;
-    const seen = cask ? readCask(s, cask)! : perceivedHex(hexOf(lot.flavor), s.seed, lot.id, blender, 0);
+    const seen = cask ? known.get(cask.id)?.hex ?? null : perceivedHex(hexOf(lot.flavor), s.seed, lot.id, blender, 0);
     return { seen, share: c.liters * lot.abv, cask };
   });
-  const predicted = mixHex(parts.map((x) => ({ hex: x.seen, share: x.share })));
+  const seenParts = parts.filter((x): x is typeof x & { seen: Hex } => !!x.seen);
+  const unknownShare = parts.reduce((t, x) => t + (x.seen ? 0 : x.share), 0) / Math.max(1e-9, parts.reduce((t, x) => t + x.share, 0));
+  const predicted = seenParts.length ? mixHex(seenParts.map((x) => ({ hex: x.seen, share: x.share }))) : null;
   const single = parts.length === 1 ? parts[0]!.cask : undefined;
   const lineTarget = opts.line && s.commerce.lines[opts.line] ? findTarget(s, `line:${opts.line}`) : undefined;
   const target = lineTarget ?? findTarget(s, opts.targetId);
@@ -268,7 +279,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   }
   const product: Product = {
     id: nid(s, 'P'),
-    name: opts.name.trim() || `${CATEGORY[p.category].nameKo} ${productCountEver(s) + 1}`,
+    name: opts.name.trim() || `${CATEGORY[p.category].nameKo} ${productCountEver(s) + 1}${p.finish ? ` ${finishLabel(p.finish)}` : ''}`,
     category: p.category,
     ageYears: p.ageYears,
     oakMonths: p.minOakMonths,
@@ -292,6 +303,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     lastMonthSold: 0,
     totalSold: 0,
     ...(p.localIngredient ? { localIngredient: true } : {}),
+    ...(p.finish ? { finish: p.finish } : {}),
     ...(opts.dutyFreeOnly && p.dfEdition ? { dutyFreeOnly: true, dfEdition: { ...p.dfEdition } } : {}),
   };
   if (p.dfEdition && opts.dutyFreeOnly) s.site.dfSeries = { vol: p.dfEdition.vol, streak: p.dfEdition.streak };
@@ -336,5 +348,5 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     product.line = opts.line;
     rewardNote = [rewardNote, `코어 레인지 「${opts.line}」 기준 배치로 등록 — 다음 배치부터 이 육각형과 비교한다`].filter(Boolean).join(' · ');
   }
-  return { product, reveal: { targetLabel: target?.label ?? null, score, predicted, actual, notes: revealNotes(predicted, actual), ...(rewardNote ? { rewardNote } : {}) } };
+  return { product, reveal: { targetLabel: target?.label ?? null, score, predicted, actual, notes: predicted ? [...revealNotes(predicted, actual), ...(unknownShare >= 0.05 ? [`샘플 기록 없는 원액 ${Math.round(unknownShare * 100)}%는 예상 밖이었다`] : [])] : ['샘플 기록 없이 병입 — 예상 없이 섞었다'], ...(rewardNote ? { rewardNote } : {}) } };
 }

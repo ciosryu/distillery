@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CASKS, RECHAR_COST } from '../../sim/content/catalog';
-import { evaluate, lotCategory, MAX_RECHAR, regionalCaskPrice, topNotes, warehouseCapacity, whiskyMinMonths, type CaskTypeId, type SpiritLot } from '../../sim';
+import { canFinishInto, evaluate, FINISH, finishCount, finishLabel, finishOf, isLocked, lotCategory, MAX_RECHAR, regionalCaskPrice, topNotes, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type SpiritLot } from '../../sim';
 import { CASK_MARKET } from '../../sim/content/catalog';
 import { rotationCapacity, slotClimate, slotOccupancy, warehousesOf } from '../../sim/warehouse';
 import { usedCaskPrice } from '../../sim/casks';
@@ -99,7 +99,9 @@ function Casks() {
   const [buyType, setBuyType] = useState<CaskTypeId>('ex_bourbon_barrel');
   const [qty, setQty] = useState(10);
   const [filter, setFilter] = useState<'filled' | 'empty'>('filled');
+  const [finishFor, setFinishFor] = useState<string | null>(null);
   const list = s.inventory.casks.filter((c) => (filter === 'filled' ? c.contents : !c.contents));
+  const finishing = !isLocked(s, 'action:transferCask');
   return (
     <Card
       title={`숙성고 — ${s.inventory.casks.length} / ${warehouseCapacity(s)} 캐스크`}
@@ -115,6 +117,10 @@ function Casks() {
       }
     >
       {!!s.inventory.caskOrders.length && <p className="mb-2 text-xs text-stone-500">도착 예정: {s.inventory.caskOrders.map((o) => `${CASKS[o.typeId].nameKo} ${o.qty}개(${o.source === 'seasoning' ? '시즈닝' : '쿠퍼리지'}, ${o.arriveMonth - s.month}개월 뒤)`).join(' · ')}</p>}
+      {finishFor && filter === 'filled' && (() => {
+        const from = s.inventory.casks.find((c) => c.id === finishFor);
+        return from?.contents ? <FinishPanel from={from} onDone={() => setFinishFor(null)} /> : null;
+      })()}
       {!list.length ? <Empty>{filter === 'filled' ? '숙성 중인 캐스크가 없습니다' : '빈 캐스크가 없습니다'}</Empty> : (
         <Table head={filter === 'filled' ? ['ID', '캐스크', '위치', '회차', '원액', '액량', '도수', '숙성', '주요 향', '품질', '표기', ''] : ['ID', '캐스크', '사용 횟수', '활성도', '재탄화', '']}>
           {list.map((c) => {
@@ -139,10 +145,11 @@ function Casks() {
                 <Td right>{liters(lot.volumeL)}</Td>
                 <Td right>{pct(lot.abv)}</Td>
                 <Td right>{months(lot.oakMonths)}</Td>
-                <Td><Notes lot={lot} /></Td>
+                <Td><Notes lot={lot} />{(() => { const f = finishOf(lot); if (!f) return null; const [lo, hi] = FINISH.recommendedMonths; return <div><Badge tone={f.months < lo ? 'warn' : f.months > hi ? 'bad' : 'good'}>{finishLabel(f.typeId)} {months(f.months)}{f.months < lo ? ' — 아직 짧다' : f.months > hi ? ' — 권장보다 길다' : ''}</Badge></div>; })()}</Td>
                 <Td right>{evaluate(lot.flavor, cat).quality}</Td>
                 <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : lot.oakMonths >= minM ? <Badge tone="good">{lot.kind === 'grain' ? '그레인 위스키 가능' : '위스키 가능'}{rules.premiumLabel && lot.oakMonths >= rules.premiumLabel.minMonths && !lot.sourced ? ` · ${rules.premiumLabel.name}` : ''}{lot.oakMonths < 36 ? ' (어린 위스키)' : ''}</Badge> : <Badge tone="warn">{minM - lot.oakMonths}개월 남음</Badge>}</Td>
                 <Td className="flex gap-1">
+                  {finishing && !c.owner && finishCount(lot) < FINISH.maxFinishes && <Button small variant={finishFor === c.id ? 'secondary' : 'ghost'} onClick={() => setFinishFor(finishFor === c.id ? null : c.id)} title="빈 버번·셰리 시즈닝 캐스크로 옮겨 마무리한다 — 손실 0.75%, 숙성 연수는 그대로">피니싱</Button>}
                   {!c.owner && !lot.sourced && (lot.kind === 'malt' || lot.kind === 'grain') && <Button small variant="ghost" onClick={() => dispatch({ type: 'sellCaskOwnership', caskId: c.id })} title="개인 고객에게 선도 판매 — 지금 현금, 8년 숙성 시점에 인도">오너십 판매</Button>}
                   {c.contaminationKnown && !c.owner && <Button small variant="ghost" onClick={() => dispatch({ type: 'dumpCask', caskId: c.id })}>폐기</Button>}
                 </Td>
@@ -152,6 +159,34 @@ function Casks() {
         </Table>
       )}
     </Card>
+  );
+}
+
+/** 피니싱 (PRD §5.2, #158) — 옮길 빈 시즈닝 캐스크를 고른다. 종류별로 가장 활성도 높은 빈 통을 쓴다 */
+function FinishPanel({ from, onDone }: { from: Cask; onDone: () => void }) {
+  const s = useGame((g) => g.state);
+  const dispatch = useGame((g) => g.dispatch);
+  const lot = from.contents!;
+  const need = lot.volumeL * (1 - FINISH.lossShare);
+  const options = (Object.keys(CASKS) as CaskTypeId[]).filter((k) => canFinishInto(k) && k !== from.typeId).map((k) => {
+    const empties = s.inventory.casks.filter((c) => !c.contents && c.typeId === k && !c.contaminationKnown).sort((a, b) => b.seasoning - a.seasoning || b.activity - a.activity);
+    return { k, best: empties[0], count: empties.length, fits: CASKS[k].sizeL >= need };
+  });
+  const [lo, hi] = FINISH.recommendedMonths;
+  return (
+    <div className="mb-3 grid gap-2 rounded-lg bg-stone-50 p-3 text-sm dark:bg-stone-800/50">
+      <div><b>{from.id} 피니싱</b> — {lot.name} · {liters(lot.volumeL)} · 숙성 {months(lot.oakMonths)}</div>
+      <div className="flex flex-wrap gap-2">
+        {options.map((o) => (
+          <Button key={o.k} small disabled={!o.best || !o.fits} title={!o.fits ? `원액 ${Math.round(need)}L가 들어가지 않는다` : !o.best ? '빈 통이 없다 — 위에서 구매' : `시즈닝 ${o.best.seasoning.toFixed(2)} · 활성도 ${o.best.activity.toFixed(2)} (${o.best.fills}필)`}
+            onClick={() => { if (o.best && dispatch({ type: 'transferCask', fromCaskId: from.id, toCaskId: o.best.id })) onDone(); }}>
+            {finishLabel(o.k)} — {CASKS[o.k].nameKo} (빈 통 {o.count}){!o.fits ? ' · 용량 부족' : ''}
+          </Button>
+        ))}
+        <Button small variant="ghost" onClick={onDone}>닫기</Button>
+      </div>
+      <p className="text-xs text-stone-500">시즈닝 향은 처음 몇 달에 빠르게 옮겨 오고 점점 느려진다. 권장 {lo}~{hi}개월 — 너무 오래 두면 시즈닝 향이 원래 성격을 덮어 품질이 내려간다. 숙성 연수는 처음 통입한 날부터 그대로 센다. 옮길 때 원액 {(FINISH.lossShare * 100).toFixed(2)}%를 잃는다. 피니싱은 한 번만(더블 캐스크는 다음 단계).</p>
+    </div>
   );
 }
 

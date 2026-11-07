@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { advanceMonths, applyAction, awarenessOf, brandOf, demandFor, HOUSE_BRAND_ID, houseBrand, migrateSave, newGame, newScenarioGame, SAVE_VERSION, type Product } from '.';
+import { advanceMonths, applyAction, AWARENESS, awarenessOf, brandOf, demandFor, HOUSE_BRAND_ID, houseBrand, migrateSave, newGame, newScenarioGame, SAVE_VERSION, secondBrands, updateAwareness, type GameState, type Product } from '.';
+import { BRANDS } from './content/market';
 import fixture from './fixtures/save-v10.json';
 
 // 브랜드 라인 (skeleton S-2, #148, PRD §11.2 ④)
@@ -41,11 +42,96 @@ describe('브랜드 라인 구조 (S-2)', () => {
     expect(ds / dh).toBeCloseTo(5, 6);
   });
 
-  it('브랜드 개설·배정 행동은 자리만 있다 (단계 P) — MVP에서는 잠겨 있다', () => {
-    const s = newGame({ seed: 1 });
-    expect(applyAction(s, { type: 'openBrand', name: '세컨드' }).error).toMatch(/다음 단계/);
-    expect(applyAction(s, { type: 'setProductBrand', productId: 'x', brandId: 'y' }).error).toMatch(/다음 단계/);
+  it('MVP에서는 브랜드 개설·배정이 잠겨 있다', () => {
     const mvp = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     expect(applyAction(mvp, { type: 'openBrand', name: '세컨드' }).error).toMatch(/시나리오/);
+    expect(applyAction(mvp, { type: 'setProductBrand', productId: 'x', brandId: 'y' }).error).toMatch(/시나리오/);
+  });
+});
+
+describe('세컨드 브랜드 규칙 (#155, PRD §11.2 ④)', () => {
+  const open = (s: GameState, name = '세컨드') => {
+    const r = applyAction(s, { type: 'openBrand', name });
+    expect(r.error).toBeUndefined();
+    return { s: r.state, b: secondBrands(r.state).at(-1)! };
+  };
+
+  it('개설: 개설비를 내고 하우스 인지도의 50%에서 시작한다 (#52). 이름이 비거나 겹치면 실패', () => {
+    const s0 = newGame({ seed: 1 });
+    houseBrand(s0).awareness = 0.4;
+    const { s, b } = open(s0);
+    expect(s0.finance.cash - s.finance.cash).toBe(BRANDS.openCost);
+    expect(b).toMatchObject({ isHouse: false, name: '세컨드', awareness: 0.2, openedMonth: s0.month, marketingBudget: 0 });
+    expect(applyAction(s, { type: 'openBrand', name: '세컨드' }).error).toMatch(/이미/);
+    expect(applyAction(s, { type: 'openBrand', name: '  ' }).error).toMatch(/이름/);
+    const poor = structuredClone(s0);
+    poor.finance.cash = BRANDS.openCost - 1;
+    expect(applyAction(poor, { type: 'openBrand', name: 'x' }).error).toMatch(/현금/);
+  });
+
+  it('배정: 아직 안 판 제품은 무료, 판 적 있으면 리브랜딩 비용. 수요는 새 브랜드 인지도를 쓴다', () => {
+    const { s: s1, b } = open(newGame({ seed: 1 }));
+    s1.commerce.products.push(product({ id: 'new' }), product({ id: 'old', totalSold: 10, stockBottles: 1000 }));
+    const r1 = applyAction(s1, { type: 'setProductBrand', productId: 'new', brandId: b.id });
+    expect(r1.error).toBeUndefined();
+    expect(r1.state.finance.cash).toBe(s1.finance.cash);
+    expect(brandOf(r1.state, r1.state.commerce.products.find((p) => p.id === 'new')!).id).toBe(b.id);
+    const r2 = applyAction(r1.state, { type: 'setProductBrand', productId: 'old', brandId: b.id });
+    expect(r1.state.finance.cash - r2.state.finance.cash).toBe(BRANDS.rebrandFixed + BRANDS.rebrandPerBottle * 1000);
+    expect(applyAction(r2.state, { type: 'setProductBrand', productId: 'old', brandId: b.id }).error).toMatch(/이미/);
+    // 하우스로 되돌리면 brandId를 지운다
+    const back = applyAction(r2.state, { type: 'setProductBrand', productId: 'new', brandId: HOUSE_BRAND_ID }).state;
+    expect(back.commerce.products.find((p) => p.id === 'new')!.brandId).toBeUndefined();
+  });
+
+  it('유지비 + 브랜드별 마케팅비가 매달 나가 결산표 마케팅 줄에 합쳐진다', () => {
+    let { s, b } = open(newGame({ seed: 1 }));
+    s = applyAction(s, { type: 'setMarketing', brandId: b.id, amount: 2_000_000 }).state;
+    expect(secondBrands(s)[0]!.marketingBudget).toBe(2_000_000);
+    const house = s.commerce.marketingBudget;
+    const t = advanceMonths(s, 1);
+    expect(t.history.reports.at(-1)!.expenses.marketing).toBe(house + BRANDS.monthlyUpkeep + 2_000_000);
+  });
+
+  it('성장 연계: 세컨드에만 쓰면 하우스는 그 성장의 s만 받고, 더 투자하면 세컨드가 하우스를 추월한다 (#53·#54)', () => {
+    let { s, b } = open(newGame({ seed: 1 }));
+    s = applyAction(s, { type: 'setMarketing', amount: 0 }).state;
+    s = applyAction(s, { type: 'setMarketing', brandId: b.id, amount: 10_000_000 }).state;
+    s.finance.cash = 5_000_000_000;
+    const t = advanceMonths(s, 36);
+    expect(awarenessOf(t, { brandId: b.id })).toBeGreaterThan(awarenessOf(t));
+    expect(awarenessOf(t)).toBeGreaterThan(houseBrand(s).awareness); // 하우스도 연계로 조금 오른다
+  });
+
+  it('같은 마케팅이면 세컨드는 하우스를 따라붙되 넘지 못한다 (#54)', () => {
+    const s0 = newGame({ seed: 1 });
+    houseBrand(s0).awareness = 0.3;
+    let { s, b } = open(s0);
+    s = applyAction(s, { type: 'setMarketing', brandId: b.id, amount: s.commerce.marketingBudget }).state;
+    s.finance.cash = 5_000_000_000;
+    const t = advanceMonths(s, 60);
+    expect(awarenessOf(t, { brandId: b.id })).toBeLessThan(awarenessOf(t));
+    expect(awarenessOf(t, { brandId: b.id }) / awarenessOf(t)).toBeGreaterThan(0.8);
+  });
+
+  it('세컨드 브랜드가 없으면 성장식은 옛 회사 인지도 성장식과 같다', () => {
+    const s = newGame({ seed: 3 });
+    const a0 = houseBrand(s).awareness;
+    updateAwareness(s, [{ productId: 'none', name: 'x', bottles: 500, revenue: 0, demandBottles: 500, distribution: 0 }]);
+    const q = 50; // 제품 기록 없음 → 평균 품질 50
+    const g = (AWARENESS.marketing * Math.log10(1 + s.commerce.marketingBudget / 1_000_000) + AWARENESS.wordOfMouth * 500 * (q / 60)) * (1 - a0);
+    expect(houseBrand(s).awareness).toBeCloseTo(a0 + g - AWARENESS.decay * a0, 12);
+  });
+
+  it('폐지: 재고 남은 제품이 있으면 못 하고, 폐지하면 남은 제품은 하우스로 돌아가고 유지비가 멈춘다', () => {
+    const { s: s1, b } = open(newGame({ seed: 1 }));
+    s1.commerce.products.push(product({ id: 'x', brandId: b.id, stockBottles: 5 }));
+    expect(applyAction(s1, { type: 'closeBrand', brandId: b.id }).error).toMatch(/재고/);
+    s1.commerce.products[0]!.stockBottles = 0;
+    const r = applyAction(s1, { type: 'closeBrand', brandId: b.id });
+    expect(r.error).toBeUndefined();
+    expect(secondBrands(r.state)).toHaveLength(0);
+    expect(r.state.commerce.products[0]!.brandId).toBeUndefined();
+    expect(applyAction(r.state, { type: 'closeBrand', brandId: HOUSE_BRAND_ID }).error).toBeTruthy();
   });
 });

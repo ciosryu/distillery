@@ -5,22 +5,26 @@ import { recordPendingCash } from './cashflow';
 import { EXPORT_MARKETS, type ExportMarketId } from './content/exports';
 import { OEM, RETAIL_DEAL, startOem, startRetail } from './deals';
 import { warehouseCapacity } from './util';
+import { BRANDS } from './content/market';
+import { assignProductBrand, brandOf, closeSecondBrand, openSecondBrand } from './brands';
 import { fail, type CashKeys, type Handlers } from './actionKit';
 
 // 플레이어 행동 — 시장·판매·B2B·수출 (MKT) (결정 #144 — 파일 쪼개기로 actions.ts에서 옮겨 왔다. 규칙 불변)
 // 행동을 더할 때: 아래 타입·처리기·현금 분류 세 곳만 고친다. 코어(actions.ts)는 이 파일의 타입을 통째로 합친다
 
 export type MktAction =
-  /** 브랜드 라인 (S-2 자리, PRD §11.2 ④) — 세컨드 브랜드 개설 / 제품을 브랜드에 배정. 규칙은 단계 P(MKT): 지금은 항상 실패 */
+  /** 브랜드 라인 (PRD §11.2 ④, 결정 #155) — 세컨드 브랜드 개설(개설비) / 제품을 브랜드에 배정(판 적 있으면 리브랜딩 비용) / 세컨드 브랜드 폐지 */
   | { type: 'openBrand'; name: string }
   | { type: 'setProductBrand'; productId: string; brandId: string }
+  | { type: 'closeBrand'; brandId: string }
   /** 수출 (#95·#101): 수입사 제안 수락 / 계약 해지 */
   | { type: 'acceptExportOffer'; offerId: string }
   | { type: 'closeExport'; marketId: ExportMarketId }
   | { type: 'setExportPrice'; marketId: ExportMarketId; priceFactor: number }
   /** 피니싱 (S-10 자리) — 캐스크 원액을 빈 캐스크로 옮겨 마무리한다. 규칙은 단계 P(PROD): 지금은 항상 실패 */
   | { type: 'setPrice'; productId: string; price: number }
-  | { type: 'setMarketing'; amount: number }
+  /** 월 마케팅 예산 — brandId가 없거나 하우스면 하우스(commerce.marketingBudget), 세컨드 브랜드면 그 브랜드 */
+  | { type: 'setMarketing'; amount: number; brandId?: string }
   | { type: 'buyBrokerCask'; offerId: string }
   | { type: 'sellBulk'; source: 'lot' | 'cask'; id: string; liters?: number }
   | { type: 'acceptContract'; offerId: string }
@@ -32,8 +36,10 @@ export type MktAction =
   | { type: 'acceptOem'; offerId: string };
 
 export const MKT_CASH_KEY: CashKeys<MktAction> = {
-  openBrand: null,
-  setProductBrand: null,
+  // 브랜드 (#155): 개설비·리브랜딩 비용 — 전용 현금 흐름 항목이 없어 '기타'
+  openBrand: 'other',
+  setProductBrand: 'other',
+  closeBrand: null,
   setPrice: null,
   setMarketing: null,
   buyBrokerCask: 'brokerCask',
@@ -52,9 +58,22 @@ export const MKT_CASH_KEY: CashKeys<MktAction> = {
 };
 
 export const MKT_HANDLERS: Handlers<MktAction> = {
-  // 자리만 — 개설 비용·유지비·인지도 시작값(하우스의 50%, #52)·배정 규칙은 단계 P(MKT)
-  openBrand: (_s, prev, _a) => fail(prev, '세컨드 브랜드는 아직 없습니다 (다음 단계)'),
-  setProductBrand: (_s, prev, _a) => fail(prev, '세컨드 브랜드는 아직 없습니다 (다음 단계)'),
+  openBrand: (s, prev, a) => {
+    const b = openSecondBrand(s, a.name);
+    if (typeof b === 'string') return fail(prev, b);
+    return { state: s, message: `세컨드 브랜드 '${b.name}' 개설 — 개설비 ${BRANDS.openCost.toLocaleString()}원, 월 유지비 ${BRANDS.monthlyUpkeep.toLocaleString()}원. 인지도 ${Math.round(b.awareness * 1000) / 10}%(하우스의 ${Math.round(BRANDS.spillover * 100)}%)에서 시작` };
+  },
+  setProductBrand: (s, prev, a) => {
+    const cost = assignProductBrand(s, a.productId, a.brandId);
+    if (typeof cost === 'string') return fail(prev, cost);
+    const p = s.commerce.products.find((x) => x.id === a.productId)!;
+    return { state: s, message: `${p.name} → ${brandOf(s, p).name}${cost > 0 ? ` (리브랜딩 ${cost.toLocaleString()}원)` : ''}` };
+  },
+  closeBrand: (s, prev, a) => {
+    const b = closeSecondBrand(s, a.brandId);
+    if (typeof b === 'string') return fail(prev, b);
+    return { state: s, message: `세컨드 브랜드 '${b.name}' 폐지 — 유지비가 더 나가지 않습니다` };
+  },
   acceptExportOffer: (s, prev, a) => {
     const o = (s.commerce.exportOffers ?? []).find((x) => x.id === a.offerId);
     const err = acceptExportOffer(s, a.offerId);
@@ -79,8 +98,12 @@ export const MKT_HANDLERS: Handlers<MktAction> = {
     p.price = Math.max(100, Math.round(a.price / 100) * 100);
     return { state: s };
   },
-  setMarketing: (s, _prev, a) => {
-    s.commerce.marketingBudget = Math.max(0, Math.round(a.amount / 100_000) * 100_000);
+  setMarketing: (s, prev, a) => {
+    const amount = Math.max(0, Math.round(a.amount / 100_000) * 100_000);
+    const b = a.brandId ? s.commerce.brands.find((x) => x.id === a.brandId) : undefined;
+    if (a.brandId && !b) return fail(prev, '브랜드가 없습니다');
+    if (b && !b.isHouse) b.marketingBudget = amount;
+    else s.commerce.marketingBudget = amount;
     return { state: s };
   },
   buyBrokerCask: (s, prev, a) => {

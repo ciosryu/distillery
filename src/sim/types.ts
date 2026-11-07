@@ -156,6 +156,8 @@ export interface BrandLine {
   awareness: number;
   /** 브랜드 럭셔리 B_brand 0~100 (PRD §11.2 ③) — 자리만, 아직 계산하지 않는다(0) */
   luxury: number;
+  /** 세컨드 브랜드의 월 마케팅비(원, PRD §11.2 ④ "브랜드별 집행"). 하우스는 쓰지 않는다 — 하우스 예산은 commerce.marketingBudget. 없으면 0 */
+  marketingBudget?: number;
 }
 
 export interface Product {
@@ -184,6 +186,8 @@ export interface Product {
   premiumLabel?: boolean;
   /** 전통주(지역특산주) 주세 경감 대상 */
   traditional?: boolean;
+  /** 피니싱 캐스크 종류 — 라벨 "○○ 캐스크 피니시" (PRD §5.2). 없으면 피니싱 안 함. 병입 규칙은 PROD, 라벨의 판매 효과(럭셔리 라벨 항·매니아 선호, §11.2)는 MKT (v14) */
+  finish?: CaskTypeId;
   stockBottles: number;
   /** 출고가(세전) / 병 */
   price: number;
@@ -785,7 +789,7 @@ export interface ScenarioState {
 }
 
 export interface GameState {
-  version: 13;
+  version: 14;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;

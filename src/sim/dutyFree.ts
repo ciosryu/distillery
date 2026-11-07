@@ -62,9 +62,9 @@ export function dutyFreeSuggestedPrice(region: RegionDef, category: ProductCateg
 }
 
 /**
- * 면세 채널 수요(병) — 국내 기준가의 60%를 기준으로, 주세·부가세 없이. appealOf는 market.appeal (순환 참조를 피하려고 주입)
+ * 면세 채널 수요(병) — 국내 기준가의 60%를 기준으로, 주세·부가세 없이. appealOf는 market.appeal (순환 참조를 피하려고 주입). split = 1이면 단독 수요
  */
-export function dutyFreeDemand(s: GameState, p: Product, sameCategoryCount: number, monthOfYear: number, appealOf: (p: Product) => number, coverage: number): number {
+export function dutyFreeDemand(s: GameState, p: Product, split: number, monthOfYear: number, appealOf: (p: Product) => number, coverage: number): number {
   const site = siteOf(s);
   if (!site.dutyFree) return 0;
   const region = regionOf(s);
@@ -73,7 +73,8 @@ export function dutyFreeDemand(s: GameState, p: Product, sameCategoryCount: numb
   if (base <= 0 || consumer > DUTY_FREE.maxBottlePrice) return 0;
   const marketL = (base * 9 / 12) * site.dutyFree.seasonality[monthOfYear - 1]! * (s.world.trend[p.category] ?? 1) * mod(s, 'dutyfree');
   // 면세점 입점은 지역 상품 진열이 기본 → 영업 커버리지의 영향이 작다
-  const reach = (awarenessOf(s, p) * (0.3 + 0.5 * coverage) * DUTY_FREE.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
+  // split = 같은 카테고리 제품끼리 수요 나눔 배수 (market.ts skuSplit, #154)
+  const reach = awarenessOf(s, p) * (0.3 + 0.5 * coverage) * DUTY_FREE.shareCap * split;
   const bottleL = p.bottleMl / 1000;
   const ref = refPricePerL(region, p.category, p.abv) * DUTY_FREE.refFactor;
   const priceFactor = Math.pow(consumer / bottleL / ref, -region.market[p.category].elasticity);
