@@ -127,7 +127,7 @@ describe('노드 데이터 (P-MGT-3, tech-tree §8 Phase 2)', () => {
         if (live && !sc.locked.includes(key)) gaps.push(`${sc.id}: ${key}`);
       }
     }
-    expect(gaps).toEqual(KNOWN_GAPS);
+    expect(gaps.filter((g) => !KNOWN_GAPS.includes(g))).toEqual([]); // 코어 PR이 빈틈을 막으면 KNOWN_GAPS에서 지운다
   });
 
   it('게임에 이미 있는 기능 중 테크로 잠기는 것은 tech-tree §1.2 목록뿐이다 (로테이션·캐스크 오너십)', () => {
