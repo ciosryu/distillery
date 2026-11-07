@@ -5,6 +5,7 @@ import { REGIONS, siteOf } from './sim/content/regions';
 const stars = (n?: number) => (n ? ` ${'★'.repeat(n)}` : '');
 import { startedFresh, useGame } from './store/game';
 import { BusinessPlan } from './ui/BusinessPlan';
+import { exportPlayFile, getPlaylog, startPlayClock } from './store/playlog';
 import { MvpHome } from './ui/MvpHome';
 import { Verdict } from './ui/Verdict';
 import { useUi } from './store/ui';
@@ -42,6 +43,15 @@ const visibleTabs = (s: GameState) => TABS.filter((t) => (!t.lockKey || !isLocke
 
 export default function App() {
   const s = useGame((g) => g.state);
+  const loadFile = useGame((g) => g.loadFile);
+  // 플레이 기록 (mvp.md §7.2) — 실제 플레이 시간을 재고, 세이브와 함께 파일로 내보낸다
+  const [, setClockTick] = useState(0);
+  useEffect(() => {
+    startPlayClock();
+    const t = setInterval(() => setClockTick((v) => v + 1), 15_000);
+    return () => clearInterval(t);
+  }, []);
+  const playMin = Math.floor(getPlaylog().activeMs / 60_000);
   const advance = useGame((g) => g.advance);
   const advanceUntil = useGame((g) => g.advanceUntil);
   const cancelAdvance = useGame((g) => g.cancelAdvance);
@@ -75,6 +85,7 @@ export default function App() {
             <div className="text-sm text-stone-600 dark:text-stone-300">
               <span className="font-semibold">{monthLabel(s.startYear, s.month)}</span> · 현금 <span className={`font-semibold tabular-nums ${s.finance.cash < 0 ? 'text-rose-700 dark:text-rose-400' : ''}`}>{won(s.finance.cash)}</span>
               {s.scenario && !s.progress.verdict && <> · 15년 목표까지 <span className="tabular-nums">{s.scenario.goal.months - s.month}개월</span></>}
+              {s.scenario && <> · <span className="tabular-nums text-stone-500" title="화면이 보이고 최근 2분 안에 입력이 있었던 시간만 센다 — 플레이테스트 기록(기록 내보내기)">플레이 {Math.floor(playMin / 60)}:{String(playMin % 60).padStart(2, '0')}</span></>}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -85,6 +96,11 @@ export default function App() {
               ? <Button variant="ghost" onClick={cancelAdvance}>자동 진행 중 {advancing.done}/{advancing.total} — 멈춤</Button>
               : <Button disabled={!running} onClick={() => void advanceUntil(24)} title="선택 이벤트·예보·현금 경고·설비 가동 시작·블렌딩 의뢰 중 하나가 생기면 멈춘다 (최대 24개월)">다음 알림까지</Button>}
             <Button variant="ghost" onClick={() => { setPlanOpen((v) => !v); setNewGameOpen(false); }}>새 게임</Button>
+            <Button variant="ghost" onClick={() => exportPlayFile(s)} title="세이브 + 플레이 기록(턴별 시간·행동 수)을 한 파일로 내려받는다 — 플레이테스트 피드백에 붙이면 그 판을 그대로 재현한다">기록 내보내기</Button>
+            <label className="inline-flex cursor-pointer items-center rounded-md px-3 py-1.5 text-sm font-medium text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800" title="내보낸 기록 파일이나 세이브 JSON을 불러온다 (지금 진행은 사라진다)">
+              불러오기
+              <input type="file" accept="application/json,.json" className="hidden" aria-label="기록 파일 불러오기" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void f.text().then(loadFile); }} />
+            </label>
           </div>
         </div>
         {newGameOpen && (
