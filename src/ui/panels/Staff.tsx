@@ -4,6 +4,7 @@ import { ageOf, AGING_TENURE_MONTHS, APPRENTICE_MONTHS, masterDistiller, RETIRE_
 import { useGame } from '../../store/game';
 import { won } from '../format';
 import { Badge, Button, Card, Empty } from '../kit';
+import { Research } from './Research';
 
 const ROLE_EFFECT: Record<StaffT['role'], string> = {
   distiller: '후각: 과일 에스테르↑ · 공정: 이취↓·운전 횟수↑ · 직관: 블렌딩 통합감↑',
@@ -73,6 +74,7 @@ export function Staff() {
           </div>
         )}
       </Card>
+      <Research />
     </div>
   );
 }

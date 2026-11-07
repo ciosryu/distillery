@@ -1,4 +1,5 @@
-import { TECH_BY_ID, TECH_GATING, TECH_NODES } from './content/tech';
+import { TECH_BY_ID, TECH_FACILITY_NAMES, TECH_GATING, TECH_NODES, type TechEffect } from './content/tech';
+import { EQUIPMENT } from './content/catalog';
 import type { GameState, MonthReport } from './types';
 import { ownsFacility } from './util';
 
@@ -42,6 +43,13 @@ export const RESEARCH = {
   departureSetback: 0.25,
 };
 
+/** 연구 요건 설비 이름 — 카탈로그에 있으면 그 이름, 아직 없는 설비는 "(아직 게임에 없음)"을 붙인다 */
+export function facilityName(id: string): string {
+  const def = EQUIPMENT[id];
+  if (def) return def.nameKo;
+  return `${TECH_FACILITY_NAMES[id] ?? id} (아직 게임에 없음)`;
+}
+
 /** 연구를 시작할 수 없는 이유 (없으면 null) */
 export function researchBlocker(s: GameState, techId: string, leadStaffId?: string): string | null {
   const node = TECH_BY_ID[techId];
@@ -52,7 +60,7 @@ export function researchBlocker(s: GameState, techId: string, leadStaffId?: stri
   if (missing.length) return `선행 연구가 필요합니다: ${missing.map((id) => TECH_BY_ID[id]?.nameKo ?? id).join(', ')}`;
   if (s.research.active.length >= s.research.slots) return `연구 슬롯이 꽉 찼습니다 (${s.research.slots}개)`;
   const fac = (node.requires?.facilities ?? []).filter((id) => !ownsFacility(s, id));
-  if (fac.length) return `설비가 필요합니다: ${fac.join(', ')}`;
+  if (fac.length) return `설비가 필요합니다: ${fac.map(facilityName).join(', ')}`;
   if (node.requires?.operatingMonths && s.month < node.requires.operatingMonths) return `가동 ${node.requires.operatingMonths}개월이 지나야 합니다`;
   if (leadStaffId) {
     const lead = s.hr.staff.find((x) => x.id === leadStaffId);
@@ -94,4 +102,34 @@ export function runResearch(s: GameState, report: MonthReport): void {
     report.notes.push(`연구 완료: ${TECH_BY_ID[a.techId]?.nameKo ?? a.techId}`);
   }
   if (done.length) s.research.active = s.research.active.filter((a) => a.progress < 1);
+}
+
+// ───────────── 효과 조회 (#170, tech-tree §4 "손실 감소"·§1 P2·P3) ─────────────
+// 해금한 노드의 effects를 모아 읽는다. 게이트(TECH_GATING)와 상관없이 연구를 끝내야 적용된다 — 효과는 잠금이 아니라 노하우다.
+// 읽는 쪽(생산 손실·숙성 감지·이벤트 리스크)은 담당 파트가 붙인다. 아직 아무도 읽지 않아 게임 동작은 그대로다.
+
+function unlockedEffects(s: Pick<GameState, 'research'>): TechEffect[] {
+  return s.research.unlocked.flatMap((id) => TECH_BY_ID[id]?.effects ?? []);
+}
+
+/** 손실 배수 — 실제 손실 = 기본 손실 × 이 값. 여러 노드는 곱으로 쌓여 이론 수율을 넘지 않는다 (tech-tree §4 머리말). 해당 효과가 없으면 1 */
+export function lossReductionMul(s: Pick<GameState, 'research'>, target: string): number {
+  return unlockedEffects(s).reduce((m, e) => (e.kind === 'loss_reduction' && e.target === target ? m * (1 - e.value) : m), 1);
+}
+
+/** 리스크 배수 — 확률·피해 크기에 곱한다. 0(면역)은 데이터에 두지 않는다(P3) */
+export function riskMul(s: Pick<GameState, 'research'>, riskId: string): number {
+  return unlockedEffects(s).reduce((m, e) => (e.kind === 'risk_scale' && e.riskId === riskId ? m * e.mul : m), 1);
+}
+
+/** 정보 효과 — 관측 오차 배수(곱), 감지 확률 가산(합), 예측 기간(최댓값). P2: 결과 확률이 아니라 정보만 바꾼다 */
+export function infoBonus(s: Pick<GameState, 'research'>, target: string): { sigmaMul: number; detectAdd: number; forecastMonths: number } {
+  const out = { sigmaMul: 1, detectAdd: 0, forecastMonths: 0 };
+  for (const e of unlockedEffects(s)) {
+    if (e.kind !== 'info' || e.target !== target) continue;
+    out.sigmaMul *= e.sigmaMul ?? 1;
+    out.detectAdd += e.detectAdd ?? 0;
+    out.forecastMonths = Math.max(out.forecastMonths, e.forecastMonths ?? 0);
+  }
+  return out;
 }
