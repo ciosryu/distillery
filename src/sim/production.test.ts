@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mergeIntoTank, sameTank, HEX_AXES, basePresetOf, craftPresets, flavorProfile, leverEffects, leverSummary, newScenarioGame, presetAsRecipe, previewBatch, type GameState, type Recipe, advanceMonths, applyAction, bulkValuePerLPA, categorize, evaporate, heartsFraction, matureCask, newGame, previewBlend, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type SpiritLot, appeal, type Product, caskStorageCost, fermentDaysAt, waterPermitCap } from './index';
+import { AGING_HORIZONS, recipeEconomics, STANDARD_BOTTLE } from './economics';
 import { slotClimate } from './warehouse';
 import { EQUIPMENT } from './content/catalog';
 import { consumerPrice, priceForConsumer, REGIONS, siteOf } from './content/regions';
@@ -353,5 +354,41 @@ describe('탱크 합치기 (#166)', () => {
     expect(m.costPerLPA).toBeCloseTo(17_500, 6);
     expect(m.flavor.cereal).toBeCloseTo(25, 6);
     expect(m.mashShare).toEqual({ malt_unpeated: 0.25, malt_peated: 0.75 });
+  });
+});
+
+describe('병당 손익 (P-PROD-8, 플레이테스트 요청)', () => {
+  const mvp = () => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+  it('소주는 바로 병입 한 줄, 몰트는 숙성 1·3년 두 줄 — 이익 = 출고가 − 원가 − 유통비, 숙성할수록 품질·출고가가 오른다', () => {
+    const s = mvp();
+    const soju = recipeEconomics(s, s.production.recipes.find((r) => r.kind === 'soju')!);
+    expect(soju.map((r) => r.months)).toEqual([0]);
+    const malt = recipeEconomics(s, s.production.recipes.find((r) => r.kind === 'malt')!);
+    expect(malt.map((r) => r.months)).toEqual([...AGING_HORIZONS]);
+    for (const r of [...soju, ...malt]) {
+      expect(Math.abs(r.margin - (r.price - r.spiritCost - r.packCost - r.distribution))).toBeLessThanOrEqual(3);
+      expect(r.bottlesPerBatch).toBeGreaterThan(0);
+      expect(r.demandPerMonth).toBeGreaterThanOrEqual(0);
+    }
+    expect(malt[1]!.quality).toBeGreaterThan(malt[0]!.quality);
+    expect(malt[1]!.price).toBeGreaterThan(malt[0]!.price);
+    expect(malt[0]!.category).toBe('whisky');
+  });
+
+  it('권장 출고가는 같은 원액을 실제로 병입할 때의 권장 출고가와 같다(같은 식)', () => {
+    const s = mvp();
+    const r = s.production.recipes.find((x) => x.kind === 'soju')!;
+    const row = recipeEconomics(s, r)[0]!;
+    const b = previewBatch(s, r)!;
+    s.inventory.lots.push({ id: 'X', name: 'x', kind: 'soju', volumeL: b.volumeL, abv: b.abv, flavor: b.flavor, createdMonth: s.month, oakMonths: 0, sourced: false, costPerLPA: b.cost / b.lpa, recipeId: r.id, mashShare: Object.fromEntries(r.mashBill.map((m) => [m.ingredientId, m.ratio])) });
+    const p = previewBlend(s, [{ source: 'lot', id: 'X', liters: 100 }], { name: '', targetAbv: STANDARD_BOTTLE.soju.abv, bottleMl: STANDARD_BOTTLE.soju.bottleMl, chillFilter: true, packagingId: 'standard' });
+    expect(row.price).toBe(p.suggestedPrice);
+  });
+
+  it('게임 상태를 바꾸지 않는다 (id 카운터 포함)', () => {
+    const s = mvp();
+    const before = JSON.stringify(s);
+    for (const r of s.production.recipes) recipeEconomics(s, r);
+    expect(JSON.stringify(s)).toBe(before);
   });
 });
