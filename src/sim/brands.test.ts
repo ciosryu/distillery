@@ -144,3 +144,35 @@ describe('세컨드 브랜드 규칙 (#155, PRD §11.2 ④)', () => {
     expect(applyAction(r.state, { type: 'closeBrand', brandId: HOUSE_BRAND_ID }).error).toBeTruthy();
   });
 });
+
+describe('입소문 품질 = 판 병의 품질 (P-MKT-3, §15.3 #18)', () => {
+  const sale = (productId: string, bottles: number) => ({ productId, name: productId, bottles, revenue: 0, demandBottles: bottles, distribution: 0 });
+  const gain = (s: GameState, sales: ReturnType<typeof sale>[]) => { const a0 = houseBrand(s).awareness; updateAwareness(s, sales); return houseBrand(s).awareness - a0; };
+  const base = () => { const s = newGame({ seed: 4 }); s.commerce.marketingBudget = 0; return s; };
+
+  it('같은 병수면 품질에 비례해 입소문이 커진다', () => {
+    const hi = base(); hi.commerce.products = [product({ id: 'a', quality: 90 })];
+    const lo = base(); lo.commerce.products = [product({ id: 'a', quality: 30 })];
+    const decay = AWARENESS.decay * houseBrand(hi).awareness;
+    expect((gain(hi, [sale('a', 2000)]) + decay) / (gain(lo, [sale('a', 2000)]) + decay)).toBeCloseTo(3, 9);
+  });
+
+  it('예전에 만든 저품질 제품(보관 포함)은 지금 입소문을 깎지 않는다', () => {
+    const clean = base(); clean.commerce.products = [product({ id: 'a', quality: 80 })];
+    const legacy = base(); legacy.commerce.products = [product({ id: 'a', quality: 80 }), product({ id: 'old', quality: 20, stockBottles: 0 })];
+    legacy.commerce.productArchive = Array.from({ length: 10 }, (_, i) => product({ id: `ar${i}`, quality: 15, stockBottles: 0 }));
+    expect(gain(legacy, [sale('a', 1500)])).toBeCloseTo(gain(clean, [sale('a', 1500)]), 12);
+  });
+
+  it('세컨드 브랜드의 저품질 대량 판매는 하우스 입소문의 품질을 끌어내리지 않는다 (연계 s만큼만 더한다)', () => {
+    const mk = (secondQ: number) => {
+      const s = base();
+      s.commerce.brands.push({ id: 'B2', name: '세컨드', isHouse: false, openedMonth: 0, awareness: 0.01, luxury: 0 });
+      s.commerce.products = [product({ id: 'h', quality: 85 }), product({ id: 'c', quality: secondQ, brandId: 'B2' })];
+      return gain(s, [sale('h', 1000), sale('c', 5000)]);
+    };
+    const onlyHouse = (() => { const s = base(); s.commerce.products = [product({ id: 'h', quality: 85 })]; return gain(s, [sale('h', 1000)]); })();
+    expect(mk(30)).toBeGreaterThan(onlyHouse); // 세컨드 판매도 s만큼 더해진다
+    expect(mk(30)).toBeLessThan(mk(60)); // 세컨드 품질이 낮으면 그 기여만 작다
+  });
+});
