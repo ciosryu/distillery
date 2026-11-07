@@ -127,6 +127,8 @@ export const CASKS: Record<CaskTypeId, CaskDef> = {
   oloroso_butt: { id: 'oloroso_butt', nameKo: '올로로소 셰리 벗 500L', sizeL: 500, wood: 'european_oak', price: 1_800_000, activity: 1.0, seasoning: 1.0, seasoningType: 'sherry', char: 1 },
   korean_oak_quarter: { id: 'korean_oak_quarter', nameKo: '한국 참나무(신갈나무) 쿼터 125L, 신품', sizeL: 125, wood: 'korean_oak', price: 900_000, activity: 1.3, seasoning: 0, seasoningType: 'none', char: 3 },
   mizunara_hogshead: { id: 'mizunara_hogshead', nameKo: '미즈나라 혹스헤드 250L, 신품', sizeL: 250, wood: 'mizunara', price: 3_500_000, activity: 1.2, seasoning: 0, seasoningType: 'none', char: 2, leakFactor: 3 },
+  // 옹기 항아리 (P-PROD-4) — 나무 향 없이 미세 기공으로 숨 쉬며 부드러워진다. 화이트 스피릿(소주·백주) 숙성용. 오크 숙성 개월에 안 들어간다. 크기·가격 [튜닝]·[확인 불가]
+  onggi_jar: { id: 'onggi_jar', nameKo: '옹기 항아리 200L (숨 쉬는 독)', sizeL: 200, wood: 'none', price: 400_000, activity: 0, seasoning: 0, seasoningType: 'none', char: 0, material: 'onggi' },
 };
 
 /** 목재별 월간 추출 기여 (activity·속도 1 기준) */
@@ -135,6 +137,8 @@ export const WOOD_EXTRACT: Record<WoodId, Flavor> = {
   european_oak: { vanilla_caramel: 0.7, oak_tannin: 1.3, wood_spice: 0.8, color: 1.5 },
   korean_oak: { vanilla_caramel: 0.9, oak_tannin: 1.2, wood_spice: 1.0, color: 1.3 },
   mizunara: { vanilla_caramel: 0.6, oak_tannin: 1.0, wood_spice: 0.8, color: 1.0, sweetness: 0.2 },
+  /** 나무가 아닌 용기 — 추출 없음 (matureVessel이 재질로 나눠 matureCask에 오지 않는다) */
+  none: {},
 };
 
 /** 시즈닝 향 월간 기여 (seasoning 1 기준) */
