@@ -125,7 +125,8 @@ export function RecipeEditor() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
   const [draft, setDraft] = useState<Draft>(() => ({ ...s.production.recipes[0]! }));
-  const [advanced, setAdvanced] = useState(false);
+  // 시나리오(MVP) 증류소 탭은 이 카드를 이미 접어 둔다 → 펼쳤으면 레버를 바로 보여 준다(두 번 접으면 못 찾는다 — 플레이테스트 2026-11-07)
+  const [advanced, setAdvanced] = useState(() => !!s.scenario);
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
   const errs = validateRecipe(s, { ...draft, id: draft.id ?? 'new' } as Recipe);
   const presets = useMemo(() => craftPresets(s), [s]);
@@ -170,7 +171,7 @@ export function RecipeEditor() {
           </div>
 
           <div>
-            <Button small variant={advanced ? 'secondary' : 'ghost'} onClick={() => setAdvanced((v) => !v)}>{advanced ? '▾ 고급 설정 닫기' : '▸ 고급 설정 — 원료·효모·발효·증류·컷'}</Button>
+            <Button small variant={advanced ? 'secondary' : 'primary'} onClick={() => setAdvanced((v) => !v)}>{advanced ? '▾ 고급 설정 닫기' : '▸ 고급 설정 열기 — 원료·효모·발효·증류·컷을 바꾼다'}</Button>
           </div>
 
           {advanced && (lever ? <LeverControls s={s} draft={draft} set={set} /> : <FreeControls s={s} draft={draft} set={set} />)}

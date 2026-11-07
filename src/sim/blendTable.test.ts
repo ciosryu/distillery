@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { houseBrand } from './brands';
 import {
-  addTrendShift, appeal, applyAction, blenderOf, blendTargets, delegatePlan, estimateBlend, revealNotes, SIBLING_MIN_VOLUME_RATIO, findTarget, hexOf, knownRead, knownReads, matchScore, migrateSave, newGame, readCask, readSigma, samplingCapacity, trendFactor,
+  addTrendShift, appeal, applyAction, blenderOf, blendTargets, delegatePlan, estimateBlend, previewBlend, priceAtQuality, revealNotes, SIBLING_MIN_VOLUME_RATIO, findTarget, hexOf, knownRead, knownReads, matchScore, migrateSave, newGame, readCask, readSigma, samplingCapacity, trendFactor,
   type Flavor, type GameState, type Staff,
 } from '.';
 import { emptyCaskOf } from './newGame';
@@ -318,5 +318,15 @@ describe('병입 결과 공개 문구 (플레이 점검에서 발견)', () => {
     const r = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: 'T1', liters: 100 }], options: { ...opts, targetAbv: 0.25 } });
     expect(r.error).toBeUndefined();
     expect(r.message).not.toMatch(/예상보다/);
+  });
+});
+
+describe('병입 전 예상 출고가 범위 (P-PROD-7, 플레이테스트 2026-11-07)', () => {
+  it('참 품질을 넣으면 권장 출고가와 같고, 품질이 높을수록 비싸다 — 범위는 같은 식에 추정 품질 ± 오차를 넣은 것', () => {
+    const s = withCasks();
+    const comps = [{ source: 'cask' as const, id: caskIdsOf(s, 'S')[0]!, liters: 100 }];
+    const p = previewBlend(s, comps, opts);
+    expect(priceAtQuality(s, p, opts, p.evaluation!.quality)).toBe(p.suggestedPrice);
+    expect(priceAtQuality(s, p, opts, 70)!).toBeGreaterThan(priceAtQuality(s, p, opts, 50)!);
   });
 });
