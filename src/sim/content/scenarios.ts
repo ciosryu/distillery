@@ -61,8 +61,8 @@ export const MVP_KR: ScenarioDef = {
   locked: [
     // 틱 시스템 (mvp.md §2 OUT)
     'system:events', 'system:exports', 'system:contracts', 'system:broker', 'system:caskBids', 'system:siteDeals', 'system:commissions', 'system:hr', 'system:research',
-    // 행동 — 직원·투자·캐스크 오너십·원액 계약·수출·브로커·입지 대표 거래·IB 입찰·블렌딩 테이블 의뢰
-    'action:hire', 'action:fire', 'action:takeInvestment', 'action:sellCaskOwnership', 'action:acceptContract', 'action:cancelContract',
+    // 행동 — 직원·투자·캐스크 오너십·숙성고 로테이션(테크 MAT-3a 게이트 — 연구가 잠긴 MVP에서 풀 길이 없다)·원액 계약·수출·브로커·입지 대표 거래·IB 입찰·블렌딩 테이블 의뢰
+    'action:hire', 'action:fire', 'action:takeInvestment', 'action:sellCaskOwnership', 'action:rotateWarehouse', 'action:acceptContract', 'action:cancelContract',
     'action:acceptExportOffer', 'action:setExportPrice', 'action:closeExport', 'action:buyBrokerCask', 'action:acceptRetail', 'action:cancelRetail',
     'action:acceptOem', 'action:acceptCaskBid', 'action:delegateBlend', 'action:labAnalyze', 'action:transferCask', 'action:openBrand', 'action:setProductBrand', 'action:startResearch', 'action:setResearch', 'action:cancelResearch', 'action:signForward', 'action:buyInsurance', 'action:cancelInsurance',
     // 설비 — 비지터 센터는 베이직 투어만(#139), 방재 설비 OUT, 증류기 추가는 다음 단계(§1.2 — 소주 감압 증류기만 연다)
