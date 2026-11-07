@@ -180,6 +180,7 @@ describe('v1.0 운영 시스템', () => {
   it('로테이션: QC가 있어야 하고, 단을 뒤집는다', () => {
     let s = newGame({ seed: 1, region: 'KR' });
     const cask = s.b2b.brokerOffers[0]!.cask; s.inventory.casks.push(cask); cask.slot = { w: 'W0', tier: 5 };
+    s.research.unlocked.push('MAT-3a'); // 로테이션은 테크 MAT-3a 뒤 (tech-tree §1.2, 게이트 켜기)
     expect(applyAction(s, { type: 'rotateWarehouse', warehouseId: 'W0' }).error).toContain('QC');
     const qc = s.hr.candidates.find((c) => c.role === 'warehouse')!;
     s = applyAction(s, { type: 'hire', candidateId: qc.id }).state;
