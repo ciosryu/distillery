@@ -227,6 +227,9 @@ describe('v1.0 운영 시스템', () => {
     expect(s.finance.investorShare).toBeCloseTo(0.1, 5);
     const cask = { ...s.b2b.brokerOffers[0]!.cask, contents: { ...s.b2b.brokerOffers[0]!.cask.contents!, sourced: false } };
     s.inventory.casks.push(cask);
+    // 캐스크 오너십은 테크 BIZ-1b 뒤 (tech-tree §1.2, 게이트 켜기 P-MGT-5)
+    expect(applyAction(s, { type: 'sellCaskOwnership', caskId: cask.id }).error).toMatch(/BIZ-1b/);
+    s.research.unlocked.push('BIZ-1b');
     const before = s.finance.cash;
     s = applyAction(s, { type: 'sellCaskOwnership', caskId: cask.id }).state;
     expect(s.finance.cash).toBeGreaterThan(before);

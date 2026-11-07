@@ -54,8 +54,9 @@ export const TECH_FACILITY_NAMES: Record<string, string> = {
   malting_floor: '몰팅 플로어·킬른',
 };
 
-/** false = 잠금 없음: 모든 키가 열려 있다 (게임 동작 불변). 게이트 켜기는 별도 PR(연구 화면이 먼저 있어야 잠긴 기능을 풀 수 있다) */
-export const TECH_GATING = false;
+/** 테크 게이트 켜짐 (P-MGT-5) — 노드가 해금하는 키는 연구 전까지 닫힌다. 지금 실제로 판정하는 키는 행동 키(`action:`)뿐이라 잠기는 기존 기능은
+ *  로테이션(MAT-3a)·캐스크 오너십(BIZ-1b) 둘이다(tech-tree §1.2). false로 두면 모든 키가 열린다 */
+export const TECH_GATING = true;
 
 const T1 = { baseMonths: 3, monthlyCost: 4_000_000 };
 const T2 = { baseMonths: 5, monthlyCost: 6_000_000 };
