@@ -15,10 +15,26 @@ export const LOAN_OFFERS: LoanOfferDef[] = [
   { id: 'kr_startup', nameKo: '창업기반지원자금 (중소벤처기업진흥공단)', annualRate: 0.025, termMonths: 72, max: 200_000_000, graceMonths: 18, regions: ['KR'], note: '창업 7년 이내 중소기업 정책 융자를 단순화' },
   // 재고 담보대출 (결정 #90, 홋카이도) — 숙성 원액 시가를 담보로. 시가가 떨어지면 추가 상환 요구 [튜닝]
   // 고금리 급전 (#133, MVP) — 은행 상품을 다 쓴 뒤 현금 공백을 메우는 마지막 수단. 금리는 한국 법정 최고금리(연 20%, 2021-07~) 수준, 기간·한도는 [튜닝].
-  // 다른 상품과 같은 규칙(상품당 1건, 조기 상환 가능)이다. 은행 심사(적자·현금 부족이면 거절)는 MGT 재무 확장 몫 — 그게 생겨야 급전만 남는 순간이 실제로 온다
+  // 다른 상품과 같은 규칙(상품당 1건, 조기 상환 가능)이다. 은행 심사(아래 BANK_SCREENING, P-MGT-2 초안)가 은행 상품을 거절해도 급전은 심사 없이 받는다 — 그래야 급전만 남는 순간이 실제로 온다
   { id: 'emergency', nameKo: '고금리 급전 (대부업)', annualRate: 0.2, termMonths: 12, max: 100_000_000, graceMonths: 0, emergency: true, note: '심사 없이 바로 — 연 20%, 12개월 원리금 균등' },
   { id: 'inventory', nameKo: '숙성 재고 담보대출', annualRate: 0.06, termMonths: 60, max: 2_000_000_000, graceMonths: 12, collateral: 'inventory', note: '담보 인정 비율이 있는 입지(홋카이도)에서만' },
 ];
+
+/**
+ * 은행 심사 (P-MGT-2, #160에서 넘김 — 초안). 대상: 급전·재고 담보대출을 뺀 은행·정책 상품.
+ * 창업 유예 기간에는 사업 계획으로 통과한다(시작 대출·첫 위스키 전 공백). 그 뒤로는 최근 영업현금흐름(적자)과 현금(고정비 몇 달분)을 본다.
+ * mode 'and' = 적자이면서 현금도 부족할 때만 거절 / 'or' = 둘 중 하나만 걸려도 거절. 수치 전부 [튜닝]
+ */
+export const BANK_SCREENING = {
+  enabled: true,
+  mode: 'and' as 'and' | 'or',
+  /** 창업 뒤 이 개월 수까지는 심사 없이 통과 (시설자금·지역 육성자금 거치 24개월과 맞춤) */
+  startupMonths: 24,
+  /** 적자 판단 — 최근 몇 달 영업현금흐름(월 리포트 operatingCash) 합계가 0 미만이면 적자 */
+  lookbackMonths: 6,
+  /** 현금 부족 판단 — 현금 < 월 고정비 예상 × 이 개월 수 */
+  cashFloorMonths: 3,
+};
 
 // ── 직원 ──
 export const ROLE_INFO: Record<StaffRole, { nameKo: string; stats: [string, string, string]; baseSalary: number }> = {

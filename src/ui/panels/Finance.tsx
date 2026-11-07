@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { LOAN_OFFERS } from '../../sim/content/catalog';
+import { BANK_SCREENING } from '../../sim/content/finance';
 import { INVESTMENT_OFFERS } from '../../sim/content/catalog';
-import { annuityPayment, currentLoanPayment, inventoryCollateral, inventoryLoanRoom, inventoryLtv, monthLabel } from '../../sim';
+import { annuityPayment, bankScreening, currentLoanPayment, inventoryCollateral, inventoryLoanRoom, inventoryLtv, monthLabel } from '../../sim';
 import { useGame } from '../../store/game';
 import { pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Table, Td } from '../kit';
@@ -11,15 +12,25 @@ export function Finance() {
   const dispatch = useGame((g) => g.dispatch);
   const [amounts, setAmounts] = useState<Record<string, number>>(() => Object.fromEntries(LOAN_OFFERS.map((o) => [o.id, o.max / 1e6])));
   const rows = s.history.reports.slice(-24).reverse();
+  // 은행 심사(P-MGT-2) 현황 — 심사 대상 상품이면 모두 같은 값이라 대표로 시설자금을 본다
+  const screen = bankScreening(s, LOAN_OFFERS.find((o) => o.id === 'facility')!);
 
   return (
     <div className="grid gap-4">
       <Card title="대출 상품">
+        {BANK_SCREENING.enabled && (
+          <p className="mb-2 text-sm text-stone-600">
+            {s.month < BANK_SCREENING.startupMonths
+              ? `은행 심사: 창업 ${BANK_SCREENING.startupMonths}개월까지는 사업 계획으로 통과 (${BANK_SCREENING.startupMonths - s.month}개월 남음)`
+              : <>은행 심사: 최근 {BANK_SCREENING.lookbackMonths}개월 영업현금 {won(screen.operating)}{screen.deficit && <Badge tone="warn">적자</Badge>} · 현금 {won(s.finance.cash)} / 기준 {won(screen.cashFloor)}{screen.cashShort && <Badge tone="warn">부족</Badge>} — {screen.ok ? '통과' : <span className="font-medium text-rose-700">거절 (급전·재고 담보대출만 가능)</span>}</>}
+          </p>
+        )}
         <Table head={['상품', '금리', '기간', '거치', '한도', '조건', '신청 금액', '월 상환액(거치 후)', '']}>
           {LOAN_OFFERS.filter((o) => (!o.regions || o.regions.includes(s.regionId)) && (o.collateral !== 'inventory' || inventoryLtv(s) > 0)).map((o) => {
             const amt = (amounts[o.id] ?? 0) * 1e6;
             const using = s.finance.loans.some((l) => l.offerId === o.id);
             const locked = o.requires === 'producedSoju' && !s.production.flags.producedSoju;
+            const rejected = !bankScreening(s, o).ok;
             return (
               <tr key={o.id}>
                 <Td className="font-medium">{o.nameKo}</Td>
@@ -30,7 +41,7 @@ export function Finance() {
                 <Td>{o.emergency ? <Badge tone="bad">고금리 · 마지막 수단</Badge> : o.collateral === 'inventory' ? <Badge tone="info">재고 담보 · 시가 하락 시 추가 상환</Badge> : o.requires ? <Badge tone={locked ? 'warn' : 'good'}>증류식 소주 생산 실적</Badge> : o.regions ? <Badge tone="info" >지역 정책자금</Badge> : '—'}</Td>
                 <Td><NumberField value={amounts[o.id] ?? 0} min={10} max={o.max / 1e6} width="w-20" suffix="백만" onCommit={(v) => setAmounts({ ...amounts, [o.id]: v })} /></Td>
                 <Td right>{won(annuityPayment(amt, o.annualRate, o.termMonths - o.graceMonths))}</Td>
-                <Td><Button small variant="primary" disabled={using || locked} onClick={() => dispatch({ type: 'takeLoan', offerId: o.id, amount: amt })}>{using ? '이용 중' : '실행'}</Button></Td>
+                <Td><Button small variant="primary" disabled={using || locked || rejected} onClick={() => dispatch({ type: 'takeLoan', offerId: o.id, amount: amt })}>{using ? '이용 중' : rejected ? '심사 거절' : '실행'}</Button></Td>
               </tr>
             );
           })}

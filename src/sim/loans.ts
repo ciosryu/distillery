@@ -1,4 +1,5 @@
 import { EQUIPMENT, LOAN_OFFERS } from './content/catalog';
+import { BANK_SCREENING, type LoanOfferDef } from './content/finance';
 import { siteOf } from './content/regions';
 import type { GameState, MonthReport } from './types';
 import { bulkValuePerLPA, isBulkKind } from './bulk';
@@ -49,6 +50,42 @@ export function monthlyFixedCost(s: GameState): number {
   return s.hr.staff.reduce((t, x) => t + x.salary, 0) + siteOverhead(s) + s.commerce.marketingBudget + secondBrandMonthlyCost(s) + caskStorageCost(s) +
     s.production.equipment.reduce((t, e) => t + (EQUIPMENT[e.catalogId]?.maintenance ?? 0), 0) +
     s.finance.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0);
+}
+
+// ───────────── 은행 심사 (P-MGT-2, 초안) ─────────────
+
+/** 심사 대상 = 은행·정책 상품. 고금리 급전(#160, 심사 없음)과 재고 담보대출(담보가 한도를 정한다, #90)은 뺀다 */
+export const isScreenedOffer = (o: LoanOfferDef) => !o.emergency && !o.collateral;
+
+export interface BankScreening {
+  /** 심사를 하는가 (꺼져 있거나 대상이 아니거나 창업 유예 중이면 false) */
+  screened: boolean;
+  ok: boolean;
+  /** 최근 lookbackMonths 영업현금흐름 합계 */
+  operating: number;
+  /** 현금 기준선 = 월 고정비 예상 × cashFloorMonths */
+  cashFloor: number;
+  deficit: boolean;
+  cashShort: boolean;
+  /** 거절 이유 (화면·행동 실패 문구) */
+  reason?: string;
+}
+
+/** 은행 심사 — 상품을 신청하면 받을 결과. 화면이 미리 보여 주고 takeLoan이 같은 값으로 거절한다 */
+export function bankScreening(s: GameState, offer: LoanOfferDef): BankScreening {
+  const cfg = BANK_SCREENING;
+  const recent = s.history.reports.slice(-cfg.lookbackMonths);
+  const operating = recent.reduce((t, r) => t + (r.operatingCash ?? r.netCash), 0);
+  const cashFloor = Math.round(monthlyFixedCost(s) * cfg.cashFloorMonths);
+  const deficit = recent.length > 0 && operating < 0;
+  const cashShort = s.finance.cash < cashFloor;
+  const screened = cfg.enabled && isScreenedOffer(offer) && s.month >= cfg.startupMonths;
+  const rejected = screened && (cfg.mode === 'and' ? deficit && cashShort : deficit || cashShort);
+  const why = [
+    deficit ? `최근 ${recent.length}개월 영업 적자 ${Math.round(-operating).toLocaleString()}원` : '',
+    cashShort ? `현금이 고정비 ${cfg.cashFloorMonths}개월분(${cashFloor.toLocaleString()}원)보다 적음` : '',
+  ].filter(Boolean).join(' · ');
+  return { screened, ok: !rejected, operating, cashFloor, deficit, cashShort, ...(rejected ? { reason: `은행 심사 거절 — ${why}. 고금리 급전은 심사 없이 받을 수 있다` } : {}) };
 }
 
 /** 이번 달 대출 납부액 (거치 기간에는 이자만) */
