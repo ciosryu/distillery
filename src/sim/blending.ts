@@ -10,8 +10,8 @@ import { siteFreight } from './sites';
 import { dutyFreeAgedAppeal, dutyFreeSlotBlocker, dutyFreeSuggestedPrice, hasDutyFree, nextDutyFreeEdition, DUTY_FREE } from './dutyFree';
 import { bestBy, nid, staffOf } from './util';
 import { mod } from './modifiers';
-import { hexOf, matchScore, mixHex, perceivedHex } from './blendRadar';
-import { blenderOf, COMMISSION, findTarget, knownReads, QUALITY_SIGMA_PER_HEX, revealNotes } from './blendTable';
+import { hexOf, matchScore, mixHex } from './blendRadar';
+import { COMMISSION, findTarget, knownReads, QUALITY_SIGMA_PER_HEX, revealNotes } from './blendTable';
 import { productCountEver } from './lifecycle';
 import type { AxisId, CaskTypeId, Flavor, GameState, Hex, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
 
@@ -285,13 +285,12 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   const p = previewBlend(s, components, opts);
   if (!p.ok || !p.category || !p.evaluation) return { error: p.errors.join(' / ') || '병입할 수 없습니다' };
   // 블렌딩 테이블 (결정 #124): 원액을 빼기 전에 블렌더가 아는 값으로 예상 육각형을 만든다 (공개 연출용).
-  // 캐스크는 샘플 기록(#157) — 기록이 없는 캐스크는 예상에서 빠진다. 탱크 원액은 우리가 막 만든 것이라 처음 읽기로 안다
-  const blender = blenderOf(s);
+  // 캐스크는 샘플 기록(#157) — 기록이 없는 캐스크는 예상에서 빠진다. 탱크 원액은 우리가 막 만든 것이라 참값으로 안다(#162의 estimateBlend와 같은 규칙)
   const known = knownReads(s);
   const parts = components.filter((c) => c.liters > 0).map((c) => {
     const lot = lotOf(s, c)!;
     const cask = c.source === 'cask' ? s.inventory.casks.find((k) => k.id === c.id) : undefined;
-    const seen = cask ? known.get(cask.id)?.hex ?? null : perceivedHex(hexOf(lot.flavor), s.seed, lot.id, blender, 0);
+    const seen = cask ? known.get(cask.id)?.hex ?? null : hexOf(lot.flavor);
     return { seen, share: c.liters * lot.abv, cask };
   });
   const seenParts = parts.filter((x): x is typeof x & { seen: Hex } => !!x.seen);
@@ -387,5 +386,5 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     product.line = opts.line;
     rewardNote = [rewardNote, `코어 레인지 「${opts.line}」 기준 배치로 등록 — 다음 배치부터 이 육각형과 비교한다`].filter(Boolean).join(' · ');
   }
-  return { product, reveal: { targetLabel: target?.label ?? null, score, predicted, actual, notes: predicted ? [...revealNotes(predicted, actual), ...(unknownShare >= 0.05 ? [`샘플 기록 없는 원액 ${Math.round(unknownShare * 100)}%는 예상 밖이었다`] : [])] : ['샘플 기록 없이 병입 — 예상 없이 섞었다'], ...(rewardNote ? { rewardNote } : {}) } };
+  return { product, reveal: { targetLabel: target?.label ?? null, score, predicted, actual, notes: p.kind !== 'malt' && p.kind !== 'grain' ? [] : predicted ? [...revealNotes(predicted, actual), ...(unknownShare >= 0.05 ? [`샘플 기록 없는 원액 ${Math.round(unknownShare * 100)}%는 예상 밖이었다`] : [])] : ['샘플 기록 없이 병입 — 예상 없이 섞었다'], ...(rewardNote ? { rewardNote } : {}) } };
 }
