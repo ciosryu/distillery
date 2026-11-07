@@ -84,7 +84,7 @@ export const CATEGORY: Record<ProductCategory, CategorySchema> = {
     sulfurIsOffnote: true,
   },
   malt_spirit: {
-    id: 'malt_spirit', nameKo: '곡물 스피릿(3년 미만)',
+    id: 'malt_spirit', nameKo: '몰트·곡물 스피릿(위스키 숙성 전)',  // 최소 숙성은 지역마다 다르다(한국 12개월, 스코틀랜드 3년) — 이름에 연수를 넣지 않는다(플레이테스트 2026-11-07)
     radarAxes: ['fresh_fruit', 'floral', 'cereal', 'peat_smoke', 'vanilla_caramel', 'oak_tannin', 'wood_spice'],
     styles: [],
     caps: { oak_tannin: 40 },

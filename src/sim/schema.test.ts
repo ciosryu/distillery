@@ -72,10 +72,12 @@ describe('세이브 마이그레이션 (결정 #118·#124)', () => {
 });
 
 describe('테크 게이트 isUnlocked (tech-tree §7)', () => {
-  it('Phase 1은 게이트가 꺼져 있어 모든 행동이 열려 있다', () => {
+  it('단계 P(게이트 켜기)부터 게이트가 켜져 있다 — 연구 전에는 잠긴 키만 닫히고 나머지는 열려 있다', () => {
     const s = newGame({ seed: 1 });
-    expect(isUnlocked(s, 'action:rotateWarehouse')).toBe(true);
+    expect(isUnlocked(s, 'action:rotateWarehouse')).toBe(false);
+    expect(isUnlocked(s, 'action:sellCaskOwnership')).toBe(false);
     expect(isUnlocked(s, 'action:setOrder')).toBe(true);
+    expect(applyAction(s, { type: 'rotateWarehouse', warehouseId: 'W0' }).error).toMatch(/연구가 필요합니다: MAT-3a/);
   });
 
   it('게이트를 켜면 노드가 해금한 키만 열린다', () => {
