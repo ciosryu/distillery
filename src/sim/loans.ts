@@ -48,7 +48,7 @@ export function inventoryMarginCall(s: GameState, report: MonthReport): number {
 export function monthlyFixedCost(s: GameState): number {
   return s.hr.staff.reduce((t, x) => t + x.salary, 0) + siteOverhead(s) + s.commerce.marketingBudget + secondBrandMonthlyCost(s) + caskStorageCost(s) +
     s.production.equipment.reduce((t, e) => t + (EQUIPMENT[e.catalogId]?.maintenance ?? 0), 0) +
-    s.finance.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0);
+    s.finance.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0) + s.finance.insurance.reduce((t, x) => t + x.premiumPerMonth, 0);
 }
 
 /** 이번 달 대출 납부액 (거치 기간에는 이자만) */
@@ -69,6 +69,8 @@ export function runFinance(s: GameState, report: MonthReport, monthOfYear: numbe
   pay('maintenance', s.production.equipment.reduce((t, e) => t + (e.readyMonth <= s.month ? (EQUIPMENT[e.catalogId]?.maintenance ?? 0) : 0), 0));
   pay('marketing', s.commerce.marketingBudget);
   pay('storage', caskStorageCost(s));
+  // 보험료 (P-MGT-4) — 가입한 달부터 매달
+  pay('insurance', s.finance.insurance.reduce((t, x) => t + x.premiumPerMonth, 0));
   for (const loan of s.finance.loans) {
     const interest = Math.round(loan.balance * (loan.annualRate / 12));
     const inGrace = s.month < loan.startMonth + loan.graceMonths;
