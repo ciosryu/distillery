@@ -1,9 +1,9 @@
 import { BULK, CASKS } from '../../sim/content/catalog';
 import { regionOf, siteOf } from '../../sim/content/regions';
 import { CATEGORY } from '../../sim/content/categories';
-import { oemPackageCost, cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, lotQuality, monthLabel, spotBidPerLPA, spotQuote, spotSaturation, type ContractAgingImpact, type GameState } from '../../sim';
+import { oemPackageCost, cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, knownReads, lotQuality, monthLabel, QUALITY_SIGMA_PER_HEX, spotBidPerLPA, spotQuote, spotQuoteEstimate, spotSaturation, type Cask, type ContractAgingImpact, type GameState, type KnownRead } from '../../sim';
 import { useGame } from '../../store/game';
-import { liters, months, num, pct, won } from '../format';
+import { liters, months, num, pct, won, wonFull } from '../format';
 import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';
 
 const STYLE_LABEL = { any: '무관', unpeated: '논피트', peated: '피트' } as const;
@@ -22,12 +22,37 @@ function AgingImpact({ s, i }: { s: GameState; i: ContractAgingImpact }) {
   );
 }
 
+/**
+ * 캐스크 원액의 품질·견적 표시 (#136·#159, 결정 P-MKT-4) — 시나리오(MVP)에서는 샘플 기록으로 추정한 값만 보인다(블렌딩·병입 탭 #162와 같은 규칙).
+ * 탱크 원액(뉴메이크)과 샌드박스는 참값. 실제 판매가는 사는 쪽이 맛보고 정한다
+ */
+function caskQuality(s: GameState, hide: boolean, c: Cask, k: KnownRead | undefined) {
+  if (!hide) return <>{lotQuality(c.contents!)}</>;
+  if (!k) return <span className="text-xs text-stone-500" title="숙성고에서 샘플을 뜨거나, 같은 배치·같은 종류의 액량이 비슷한 통에 기록이 있어야 안다">샘플 필요</span>;
+  const age = s.month - k.month;
+  return <span title={`${k.from === 'own' ? '이 통' : '형제 통'}의 샘플 기록${age > 0 ? ` (${age}개월 전 — 그 뒤 숙성은 모른다)` : ''}`}>~{Math.round(k.estQuality)} <span className="text-xs text-stone-500">±{Math.round(k.sigma * QUALITY_SIGMA_PER_HEX)}</span></span>;
+}
+
+/** 견적: 샌드박스는 참값, 시나리오는 추정 품질 ±1σ 범위(perLPA = LPA당 단가, 아니면 캐스크째 판매 금액) */
+function caskQuote(s: GameState, hide: boolean, c: Cask, k: KnownRead | undefined, perLPA: boolean) {
+  const l = c.contents!;
+  if (!hide) return <>{won(perLPA ? spotBidPerLPA(s, l) : spotQuote(s, l, l.volumeL, c))}</>;
+  const est = spotQuoteEstimate(s, l, l.volumeL, c, k ? { estQuality: k.estQuality, qualitySigma: k.sigma * QUALITY_SIGMA_PER_HEX } : null);
+  if (!est || !k) return <span className="text-xs text-stone-500" title="품질을 모르면 견적도 모른다 — 팔면 사는 쪽이 맛보고 값을 정한다">?</span>;
+  const sd = k.sigma * QUALITY_SIGMA_PER_HEX;
+  const [lo, hi] = perLPA ? [spotBidPerLPA(s, l, 0, k.estQuality - sd), spotBidPerLPA(s, l, 0, k.estQuality + sd)] : [est.low, est.high];
+  const f = perLPA ? (v: number) => wonFull(Math.round(v / 100) * 100) : won;
+  return <span title="추정 품질 ±1σ 범위. 실제 값은 사는 쪽이 맛보고 정한다">{f(lo)}~{f(hi)}</span>;
+}
+
 export function B2B() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
   const committed = s.b2b.contracts.reduce((t, c) => t + c.lpaPerMonth, 0);
   const maltLots = s.inventory.lots.filter((l) => l.kind === 'malt' || l.kind === 'grain');
   const maltCasks = s.inventory.casks.filter((c) => c.contents?.kind === 'malt' || c.contents?.kind === 'grain');
+  const hide = !!s.scenario; // 캐스크 원액의 참값을 숨긴다 (#136, P-MKT-4)
+  const known = hide ? knownReads(s) : null;
 
   return (
     <div className="grid gap-4">
@@ -116,7 +141,7 @@ export function B2B() {
                   <Td className="font-medium">{b.buyerName}</Td>
                   <Td>{b.caskId}</Td>
                   <Td right>{c?.contents ? months(c.contents.oakMonths) : '—'}</Td>
-                  <Td right>{c?.contents ? lotQuality(c.contents) : '—'}</Td>
+                  <Td right>{c?.contents ? caskQuality(s, hide, c, known?.get(c.id)) : '—'}</Td>
                   <Td right>{won(b.price)}</Td>
                   <Td right>{b.expiresMonth - s.month}개월 후</Td>
                   <Td><Button small variant="primary" onClick={() => dispatch({ type: 'acceptCaskBid', bidId: b.id })}>판매</Button></Td>
@@ -139,9 +164,9 @@ export function B2B() {
                   <Td right>{months(l.oakMonths)}</Td>
                   <Td right>{liters(l.volumeL)}</Td>
                   <Td right>{pct(l.abv)}</Td>
-                  <Td right>{lotQuality(l)}</Td>
-                  <Td right>{won(spotBidPerLPA(s, l))}</Td>
-                  <Td right>{won(spotQuote(s, l, l.volumeL, c))}</Td>
+                  <Td right>{caskQuality(s, hide, c, known?.get(c.id))}</Td>
+                  <Td right>{caskQuote(s, hide, c, known?.get(c.id), true)}</Td>
+                  <Td right>{caskQuote(s, hide, c, known?.get(c.id), false)}</Td>
                   <Td right>{won(l.costPerLPA)}</Td>
                   <Td><Button small onClick={() => dispatch({ type: 'sellBulk', source: 'cask', id: c.id })}>판매</Button></Td>
                 </tr>
@@ -149,6 +174,7 @@ export function B2B() {
             })}
           </Table>
         )}
+        {hide && <p className="mt-2 text-xs text-amber-800 dark:text-amber-300">캐스크 품질·견적은 샘플 기록으로 추정한 값(±1σ)입니다. 실제 판매가는 사는 쪽이 맛보고 정합니다 — 샘플이 없는 통은 값을 모르고 팝니다.</p>}
         <p className="mt-2 text-xs text-stone-500">벌크 단가 = 기준가 × 숙성 연수 × 품질 × 피트 × 시세 지수 × 현물 할인(85%). 같은 원액을 브로커에게 살 때는 125%를 내므로 사고팔기만으로는 차익이 나지 않습니다. 숙성할수록 벌크 가치가 오르지만, 자사 브랜드로 병입하면 LPA당 수익이 훨씬 큽니다(대신 판매량이 브랜드 인지도에 묶입니다).</p>
       </Card>
     </div>

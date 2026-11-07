@@ -32,15 +32,15 @@ export function domesticPremium(s: Pick<GameState, 'world' | 'month' | 'regionId
   return regionOf(s).domesticSpiritPremium * mod(s, 'domestic_premium');
 }
 
-/** 벌크 기준가치(원/LPA): 몰트·그레인 원액만 거래 */
-export function bulkValuePerLPA(s: Pick<GameState, 'b2b' | 'world' | 'month'>, lot: SpiritLot): number {
+/** 벌크 기준가치(원/LPA): 몰트·그레인 원액만 거래. quality = 품질(없으면 참값 — 사는 쪽이 맛을 본다) */
+export function bulkValuePerLPA(s: Pick<GameState, 'b2b' | 'world' | 'month'>, lot: SpiritLot, quality = lotQuality(lot)): number {
   if (!isBulkKind(lot)) return 0;
   const years = lot.oakMonths / 12;
   const grain = lot.kind === 'grain';
   const base = grain ? BULK.grainNewMakeBase : BULK.newMakeBase;
   const age = 1 + (grain ? BULK.grainAgePerYear : BULK.agePerYear) * years;
   const peat = isPeated(lot) ? (1 + BULK.peatPremium) * mod(s, 'bulk:peated') : 1;
-  return base * age * qualityFactor(lotQuality(lot)) * peat * s.b2b.bulkIndex * mod(s, 'bulk');
+  return base * age * qualityFactor(quality) * peat * s.b2b.bulkIndex * mod(s, 'bulk');
 }
 
 /** B2B 신뢰도 보정: 0 → −5%, 100 → +5% */
@@ -55,9 +55,9 @@ export function spotSaturation(s: Pick<GameState, 'b2b' | 'regionId'>, lot: Spir
 }
 
 /** 현물로 팔 때 받는 단가 — 현물 시장의 절반은 국내 블렌더로 보고 국산 프리미엄의 절반을 반영. lpa = 이번에 팔 물량(포화 반영) */
-export function spotBidPerLPA(s: GameState, lot: SpiritLot, lpa = 0): number {
+export function spotBidPerLPA(s: GameState, lot: SpiritLot, lpa = 0, quality = lotQuality(lot)): number {
   // 입지 원액 운송비 (제주 섬 운송, 결정 #86)
-  return bulkValuePerLPA(s, lot) * BULK.bid * trustAdj(s.b2b.trust) * (lot.sourced ? 1 : 1 + domesticPremium(s) * 0.5) * spotSaturation(s, lot, lpa) * (siteOf(s).bulkFreight ?? 1);
+  return bulkValuePerLPA(s, lot, quality) * BULK.bid * trustAdj(s.b2b.trust) * (lot.sourced ? 1 : 1 + domesticPremium(s) * 0.5) * spotSaturation(s, lot, lpa) * (siteOf(s).bulkFreight ?? 1);
 }
 
 /** 현물 판매를 시장에 기록 (포화 누적) */
@@ -76,9 +76,19 @@ export function caskResidual(cask: Cask): number {
   return Math.round(CASKS[cask.typeId].price * Math.min(1, cask.activity) * 0.4);
 }
 
-export function spotQuote(s: GameState, lot: SpiritLot, liters: number, cask?: Cask): number {
+export function spotQuote(s: GameState, lot: SpiritLot, liters: number, cask?: Cask, quality = lotQuality(lot)): number {
   const lpa = Math.min(liters, lot.volumeL) * lot.abv;
-  return Math.round(lpa * spotBidPerLPA(s, lot, lpa) + (cask ? caskResidual(cask) : 0));
+  return Math.round(lpa * spotBidPerLPA(s, lot, lpa, quality) + (cask ? caskResidual(cask) : 0));
+}
+
+/**
+ * 숙성 캐스크를 팔기 전에 플레이어가 **아는** 현물 견적 (결정 P-MKT-4, #136·#159) — 샘플 기록의 추정 품질 ± 1σ로 범위를 낸다.
+ * 실제 판매가는 사는 쪽이 맛보고 정한다(참값, spotQuote). 기록이 없으면(known = null) 품질을 모르니 범위도 없다
+ */
+export function spotQuoteEstimate(s: GameState, lot: SpiritLot, liters: number, cask: Cask | undefined, known: { estQuality: number; qualitySigma: number } | null): { low: number; mid: number; high: number } | null {
+  if (!known) return null;
+  const q = (d: number) => spotQuote(s, lot, liters, cask, known.estQuality + d * known.qualitySigma);
+  return { low: q(-1), mid: q(0), high: q(1) };
 }
 
 // ── 계약 ──
