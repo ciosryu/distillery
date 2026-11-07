@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CASKS, RECHAR_COST } from '../../sim/content/catalog';
-import { canFinishInto, evaluate, FINISH, finishCount, finishLabel, finishOf, isLocked, lotCategory, MAX_RECHAR, regionalCaskPrice, topNotes, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type SpiritLot } from '../../sim';
+import { canFinishInto, evaluate, FINISH, vesselMaterial, finishCount, finishLabel, finishOf, isLocked, lotCategory, MAX_RECHAR, regionalCaskPrice, topNotes, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type SpiritLot } from '../../sim';
 import { CASK_MARKET } from '../../sim/content/catalog';
 import { rotationCapacity, slotClimate, slotOccupancy, warehousesOf } from '../../sim/warehouse';
 import { usedCaskPrice } from '../../sim/casks';
@@ -60,6 +60,7 @@ function Tanks() {
             if (dispatch({ type: 'fillCasks', lotId: fillFor, caskIds: emptyOfType.slice(0, count).map((c) => c.id), entryAbv: entry / 100 })) setFillFor(null);
           }}>통입</Button>
           <span className="text-xs text-stone-500">물을 섞어 통입 도수로 낮춥니다. 빈 통이 없으면 아래에서 구매하세요.</span>
+          {CASKS[caskType].material === 'onggi' && <span className="w-full text-xs text-amber-800 dark:text-amber-300">옹기: 나무 향(바닐라·탄닌) 없이 숨을 쉬며 거친 맛이 풀리고 둥글어진다 — 탱크 보관보다 빠르고, 증발은 나무 캐스크의 절반. 소주·백주 숙성용이다. 옹기에서 보낸 기간은 위스키 숙성(오크) 개월에 들어가지 않는다.</span>}
         </div>
       )}
     </Card>
@@ -127,9 +128,9 @@ function Casks() {
             const lot = c.contents;
             if (!lot) return (
               <tr key={c.id}>
-                <Td>{c.id}</Td><Td>{CASKS[c.typeId].nameKo}{c.contaminationKnown && <> <Badge tone="bad">오염 — 재탄화 필요</Badge></>}</Td><Td right>{c.fills}회</Td><Td right>{c.activityKnown === false ? '? (스팟 매입)' : c.activity.toFixed(2)}</Td><Td right>{c.recharCount}/{MAX_RECHAR}</Td>
+                <Td>{c.id}</Td><Td>{CASKS[c.typeId].nameKo}{c.contaminationKnown && <> <Badge tone="bad">오염 — 재탄화 필요</Badge></>}</Td><Td right>{c.fills}회</Td>{vesselMaterial(c) !== 'wood' ? <><Td right>—</Td><Td right>—</Td><Td className="text-xs text-stone-500">옹기는 닳지 않는다 — 재탄화·중고 매각 없음</Td></> : <><Td right>{c.activityKnown === false ? '? (스팟 매입)' : c.activity.toFixed(2)}</Td><Td right>{c.recharCount}/{MAX_RECHAR}</Td>
                 <Td className="flex gap-1"><Button small disabled={c.recharCount >= MAX_RECHAR || c.fills === 0} onClick={() => dispatch({ type: 'rechar', caskId: c.id })} title="활성도를 0.7까지 회복">재탄화 {won(RECHAR_COST)}</Button>
-                  <Button small variant="ghost" disabled={c.fills === 0} onClick={() => dispatch({ type: 'sellUsedCask', caskId: c.id })} title="럼·테킬라·수제 맥주 양조장에 매각">중고 매각 {won(usedCaskPrice(c))}</Button></Td>
+                  <Button small variant="ghost" disabled={c.fills === 0} onClick={() => dispatch({ type: 'sellUsedCask', caskId: c.id })} title="럼·테킬라·수제 맥주 양조장에 매각">중고 매각 {won(usedCaskPrice(c))}</Button></Td></>}
               </tr>
             );
             const rules = regionOf(s).whisky;
@@ -144,10 +145,10 @@ function Casks() {
                 <Td className="max-w-56 truncate text-xs" >{lot.name}{lot.sourced && <> <Badge tone="info">매입</Badge></>}{c.owner && <> <Badge tone="info">고객 소유 · {c.owner.deliverMonth - s.month}개월 뒤 인도</Badge></>}{c.contaminationKnown && <> <Badge tone="bad">{c.contamination === 'tca' ? 'TCA 오염' : '곰팡이 오염'}</Badge></>}</Td>
                 <Td right>{liters(lot.volumeL)}</Td>
                 <Td right>{pct(lot.abv)}</Td>
-                <Td right>{months(lot.oakMonths)}</Td>
+                <Td right>{vesselMaterial(c) === 'wood' ? months(lot.oakMonths) : <>옹기 {months(lot.restMonths ?? 0)}{lot.oakMonths > 0 && <div className="text-xs text-stone-500">오크 {months(lot.oakMonths)}</div>}</>}</Td>
                 <Td><Notes lot={lot} />{(() => { const f = finishOf(lot); if (!f) return null; const [lo, hi] = FINISH.recommendedMonths; return <div><Badge tone={f.months < lo ? 'warn' : f.months > hi ? 'bad' : 'good'}>{finishLabel(f.typeId)} {months(f.months)}{f.months < lo ? ' — 아직 짧다' : f.months > hi ? ' — 권장보다 길다' : ''}</Badge></div>; })()}</Td>
                 <Td right>{evaluate(lot.flavor, cat).quality}</Td>
-                <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : lot.oakMonths >= minM ? <Badge tone="good">{lot.kind === 'grain' ? '그레인 위스키 가능' : '위스키 가능'}{rules.premiumLabel && lot.oakMonths >= rules.premiumLabel.minMonths && !lot.sourced ? ` · ${rules.premiumLabel.name}` : ''}{lot.oakMonths < 36 ? ' (어린 위스키)' : ''}</Badge> : <Badge tone="warn">{minM - lot.oakMonths}개월 남음</Badge>}</Td>
+                <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>{vesselMaterial(c) === 'onggi' ? '옹기' : ''}숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : vesselMaterial(c) !== 'wood' && lot.oakMonths < minM ? <Badge tone="warn">옹기 — 위스키 숙성(오크)에 안 들어감</Badge> : lot.oakMonths >= minM ? <Badge tone="good">{lot.kind === 'grain' ? '그레인 위스키 가능' : '위스키 가능'}{rules.premiumLabel && lot.oakMonths >= rules.premiumLabel.minMonths && !lot.sourced ? ` · ${rules.premiumLabel.name}` : ''}{lot.oakMonths < 36 ? ' (어린 위스키)' : ''}</Badge> : <Badge tone="warn">{minM - lot.oakMonths}개월 남음</Badge>}</Td>
                 <Td className="flex gap-1">
                   {finishing && !c.owner && finishCount(lot) < FINISH.maxFinishes && <Button small variant={finishFor === c.id ? 'secondary' : 'ghost'} onClick={() => setFinishFor(finishFor === c.id ? null : c.id)} title="빈 버번·셰리 시즈닝 캐스크로 옮겨 마무리한다 — 손실 0.75%, 숙성 연수는 그대로">피니싱</Button>}
                   {!c.owner && !lot.sourced && (lot.kind === 'malt' || lot.kind === 'grain') && <Button small variant="ghost" onClick={() => dispatch({ type: 'sellCaskOwnership', caskId: c.id })} title="개인 고객에게 선도 판매 — 지금 현금, 8년 숙성 시점에 인도">오너십 판매</Button>}
