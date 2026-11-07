@@ -482,7 +482,7 @@ export function capacityReport(s: GameState): CapacityReport {
   return { stills, fermenterDaysUsed, fermenterDaysCap, distillerRunsUsed, distillerRunsCap: Math.floor(distillerRunsCap) };
 }
 
-// ───────────── 크래프팅 레버 (mvp.md §1.2, 결정 #134 — 결정 P-PROD-1) ─────────────
+// ───────────── 크래프팅 레버 (mvp.md §1.2, 결정 #134 — 결정 #156) ─────────────
 // 생산 화면이 "프리셋으로 시작 → 고급 설정에서 레버를 바꾼다 → 향미 육각형 + 품질 + 무엇이 무엇을 바꿨나 한 줄"을 보여 주는 데 쓰는 순수 함수.
 // 게임 상태를 바꾸지 않는다(미리보기 전용) — 틱·봇·세이브 동작은 그대로다.
 
@@ -509,7 +509,7 @@ export interface ProfileAxis { id: string; label: string; value: number }
 
 /**
  * 향미 프로필 — 몰트·그레인은 블렌딩 육각형(6축, blendRadar)으로 본다: 뉴메이크 → 캐스크 샘플(sampleLog) → 블렌딩 테이블이 **같은 여섯 축**이라
- * "이 레시피가 숙성 뒤 어디로 갈지"를 같은 그림에서 읽는다. 위스키 육각형은 소주의 누룩·곡물 향을 담지 못하므로 그 밖의 주종은 주종 범주의 레이더 축을 쓴다(P-PROD-1)
+ * "이 레시피가 숙성 뒤 어디로 갈지"를 같은 그림에서 읽는다. 위스키 육각형은 소주의 누룩·곡물 향을 담지 못하므로 그 밖의 주종은 주종 범주의 레이더 축을 쓴다(#156)
  */
 export function flavorProfile(kind: SpiritKind, f: Flavor): ProfileAxis[] {
   if (kind === 'malt' || kind === 'grain') {

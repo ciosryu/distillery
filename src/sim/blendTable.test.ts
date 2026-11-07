@@ -170,7 +170,7 @@ describe('목표 3종·결과 공개·위임 (P5·P6·P7)', () => {
     const target = { ...hexOf(SHERRY) };
     for (const a of Object.keys(target) as (keyof typeof target)[]) target[a] = 0.5 * hexOf(SHERRY)[a] + 0.3 * hexOf(BOURBON)[a] + 0.2 * hexOf(PEATED)[a];
     const run = (s0: GameState) => {
-      // 블렌더는 맛본 원액만 섞는다 (P-PROD-2) — 배치마다 1통씩 샘플, 나머지는 형제 기록을 빌린다
+      // 블렌더는 맛본 원액만 섞는다 (#157) — 배치마다 1통씩 샘플, 나머지는 형제 기록을 빌린다
       const s = applyAction(s0, { type: 'sampleCask', caskIds: ['S', 'B', 'P'].map((b) => caskIdsOf(s0, b)[0]!) }).state;
       s.commerce.commissions.push({ id: 'Q2', client: '몰트 바 연합', label: '혼합', hex: target, tolerance: 7, expiresMonth: 6, reward: { awareness: 0.02, appealBonus: 0.25, months: 24 } });
       const res = applyAction(s, { type: 'delegateBlend', targetId: 'Q2', caskIds: s.inventory.casks.filter((c) => c.contents).map((c) => c.id), bottles: 1000, options: opts });
@@ -185,7 +185,7 @@ describe('목표 3종·결과 공개·위임 (P5·P6·P7)', () => {
 });
 
 
-describe('블렌딩 테이블은 샘플 기록만 읽는다 (P-PROD-2, #143 정보 누수)', () => {
+describe('블렌딩 테이블은 샘플 기록만 읽는다 (#157, #143 정보 누수)', () => {
   const commission = (s: GameState) => {
     s.commerce.commissions.push({ id: 'Q9', client: '몰트 바 연합', label: '셰리', hex: hexOf(SHERRY), tolerance: 7, expiresMonth: 6, reward: { awareness: 0.02, appealBonus: 0.25, months: 24 } });
     return findTarget(s, 'Q9')!;

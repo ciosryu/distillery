@@ -110,7 +110,7 @@ describe('피니싱 (S-10 자리)', () => {
   });
 });
 
-describe('피니싱 (PRD §5.2, P-PROD-3)', () => {
+describe('피니싱 (PRD §5.2, #158)', () => {
   /** withFilledCask + 숙성 n개월 + 빈 올로로소 벗·버번 배럴 1통씩 */
   function ready(monthsAged = 12) {
     const { s: s0, caskId } = withFilledCask();

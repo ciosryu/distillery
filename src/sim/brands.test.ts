@@ -49,7 +49,7 @@ describe('브랜드 라인 구조 (S-2)', () => {
   });
 });
 
-describe('세컨드 브랜드 규칙 (P-MKT-2, PRD §11.2 ④)', () => {
+describe('세컨드 브랜드 규칙 (#155, PRD §11.2 ④)', () => {
   const open = (s: GameState, name = '세컨드') => {
     const r = applyAction(s, { type: 'openBrand', name });
     expect(r.error).toBeUndefined();

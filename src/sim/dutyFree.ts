@@ -73,7 +73,7 @@ export function dutyFreeDemand(s: GameState, p: Product, split: number, monthOfY
   if (base <= 0 || consumer > DUTY_FREE.maxBottlePrice) return 0;
   const marketL = (base * 9 / 12) * site.dutyFree.seasonality[monthOfYear - 1]! * (s.world.trend[p.category] ?? 1) * mod(s, 'dutyfree');
   // 면세점 입점은 지역 상품 진열이 기본 → 영업 커버리지의 영향이 작다
-  // split = 같은 카테고리 제품끼리 수요 나눔 배수 (market.ts skuSplit, P-MKT-1)
+  // split = 같은 카테고리 제품끼리 수요 나눔 배수 (market.ts skuSplit, #154)
   const reach = awarenessOf(s, p) * (0.3 + 0.5 * coverage) * DUTY_FREE.shareCap * split;
   const bottleL = p.bottleMl / 1000;
   const ref = refPricePerL(region, p.category, p.abv) * DUTY_FREE.refFactor;

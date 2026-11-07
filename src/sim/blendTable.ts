@@ -55,7 +55,7 @@ export const LAB = {
 
 /**
  * 블렌더가 **지금** 캐스크를 맛보면 읽을 육각형 (실험실 분석 축은 정확). 지금의 참 향미에 고정 오차를 더한다 —
- * 샘플을 뜨는 순간(recordSample)에만 쓴다. 화면·블렌딩 판단은 이 값이 아니라 기록(knownRead)을 읽는다(P-PROD-2, #143 정보 누수)
+ * 샘플을 뜨는 순간(recordSample)에만 쓴다. 화면·블렌딩 판단은 이 값이 아니라 기록(knownRead)을 읽는다(#157, #143 정보 누수)
  */
 export function readCask(s: GameState, cask: Cask): Hex | null {
   if (!cask.contents) return null;
@@ -67,7 +67,7 @@ export function readCask(s: GameState, cask: Cask): Hex | null {
 
 // ───────────── 샘플 기록 — "아는 값" (S-10, #136) ─────────────
 // readCask는 지금의 참 향미에 고정된 오차를 더해 매번 다시 계산한다 → 샘플 뒤에도 추정치가 참값을 따라 움직인다(정보 누수).
-// MVP 숙성고 화면과 블렌딩 테이블(P-PROD-2)은 대신 샘플을 뜬 그 순간의 읽기를 남긴 기록(sampleLog)만 본다
+// MVP 숙성고 화면과 블렌딩 테이블(#157)은 대신 샘플을 뜬 그 순간의 읽기를 남긴 기록(sampleLog)만 본다
 
 /** 남기는 샘플 기록 수 — 마지막 샘플과 그 직전(변화 화살표용) */
 export const SAMPLE_LOG_KEPT = 2;
@@ -96,7 +96,7 @@ export function lastSample(cask: Pick<Cask, 'sampleLog'>): { last: SampleRecord;
   return { last, delta: { hex, quality: last.estQuality - prev.estQuality } };
 }
 
-// ───────────── 블렌딩 테이블이 아는 값 (P-PROD-2) ─────────────
+// ───────────── 블렌딩 테이블이 아는 값 (#157) ─────────────
 // 블렌딩 테이블·위임·결과 공개는 샘플 기록만 읽는다. 기록은 다음 샘플 전까지 움직이지 않는다 → 오래된 샘플은 오래된 정보다(다시 떠야 한다).
 // 같은 배치를 같은 종류 캐스크에 나눠 담은 형제 캐스크는 서로의 기록을 빌린다 — 블렌더는 한 배치에서 대표 통 몇 개만 맛본다.
 // 레어 캐스크처럼 형제와 다른 통은 자기 샘플을 떠야 드러난다
@@ -312,7 +312,7 @@ export function delegatePlan(s: GameState, target: BlendTarget, caskIds: string[
   const usable = caskIds.map((id) => s.inventory.casks.find((c) => c.id === id)).filter((c): c is Cask => !!c?.contents && !c.owner && !(c.contamination && c.contaminationKnown));
   if (!usable.length) return { error: '맡길 캐스크가 없습니다' };
   if (bottles <= 0) return { error: '병 수를 정하세요' };
-  // 블렌더는 맛본(기록이 있는) 원액만 섞는다 (P-PROD-2)
+  // 블렌더는 맛본(기록이 있는) 원액만 섞는다 (#157)
   const known = knownReads(s);
   const casks = usable.filter((c) => known.has(c.id));
   if (!casks.length) return { error: '샘플 기록이 있는 캐스크가 없습니다 — 블렌더는 맛본 원액만 섞는다. 먼저 샘플을 뜨세요' };

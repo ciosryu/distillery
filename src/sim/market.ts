@@ -97,7 +97,7 @@ export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regi
 /** 브랜드 가치가 낮은 매입 원액 병입은 저가 하이볼 수요라 가격에 훨씬 민감하다 */
 export const sourcedElasticityFactor = (p: Pick<Product, 'sourcedShare' | 'sourcedPrestige'>) => 1 + 0.6 * p.sourcedShare * (1 - (p.sourcedPrestige ?? 0));
 
-// ── 같은 카테고리 제품끼리 수요 나눔 (P-MKT-1, PRD §9.2 · §15.3 #12) ──
+// ── 같은 카테고리 제품끼리 수요 나눔 (#154, PRD §9.2 · §15.3 #12) ──
 // 옛 공식: 제품마다 도달률 ÷ √n → 똑같은 제품을 n개 내면 총수요 √n배, 약한 제품을 하나 더 내도 강한 제품이 1/√2로 깎였다.
 // 새 공식(CES): 단독 수요 x_i로 총수요 = (Σx^ρ)^(1/ρ), 제품 i의 몫 ∝ x_i^ρ → 배수 = (x_i^ρ / Σx^ρ)^(1 − 1/ρ)
 
@@ -290,7 +290,7 @@ export function bottleMargin(p: Pick<Product, 'price' | 'unitCost' | 'bottleMl'>
 }
 
 export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results: SalesResult[]; retail: RetailSummary; exports: ExportSale[] } {
-  // 1) 제품별 수요 — 같은 카테고리 제품끼리 채널별로 나눈다 (P-MKT-1). 판매 전 재고 기준으로 한 번에 계산
+  // 1) 제품별 수요 — 같은 카테고리 제품끼리 채널별로 나눈다 (#154). 판매 전 재고 기준으로 한 번에 계산
   const domestic = domesticDemands(s, monthOfYear);
   const dutyFree = dutyFreeDemands(s, monthOfYear);
   const active = (s.commerce.exports ?? []).filter((e) => e.readyMonth <= s.month);
@@ -397,7 +397,7 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
 export const AWARENESS = { marketing: 0.012, wordOfMouth: 0.000003, decay: 0.012 };
 
 /**
- * 인지도 갱신 — 브랜드 라인별 (PRD §11.2 ④, 결정 P-MKT-2). 브랜드 b의 자체 성장
+ * 인지도 갱신 — 브랜드 라인별 (PRD §11.2 ④, 결정 #155). 브랜드 b의 자체 성장
  *   G_b = 마케팅(브랜드 b의 마케팅비) + 입소문(브랜드 b 제품의 이번 달 판매량 × 품질)
  *   하우스  A_h ← A_h + (G_h + s × Σ G_세컨드) × (1 − A_h) − 망각 × A_h
  *   세컨드  A_b ← A_b + (G_b + s × G_h) × (1 − A_b) − 망각 × A_b          s = BRANDS.spillover (#52·#53)

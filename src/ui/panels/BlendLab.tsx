@@ -10,7 +10,7 @@ import { Badge, Button, Card, Empty, NumberField, Table, Td, TextField } from '.
 // 블렌딩 테이블 (결정 #124, docs/design/blending-minigame.md) — 웹 프로토타입(와이어프레임). 최종 화면은 Godot에서 만든다(결정 #122).
 // 캐스크는 같은 배치·같은 캐스크 종류끼리 묶어(코호트) 보여 준다 — 2,500개를 한 줄씩 보여 주지 않는다.
 
-/** read = 샘플 기록(형제 기록 포함)의 평균 — 기록이 하나도 없으면 null(모른다, P-PROD-2). known = 기록을 아는 통 수, readMonth = 가장 오래된 기록의 달 */
+/** read = 샘플 기록(형제 기록 포함)의 평균 — 기록이 하나도 없으면 null(모른다, #157). known = 기록을 아는 통 수, readMonth = 가장 오래된 기록의 달 */
 interface Cohort { key: string; label: string; casks: Cask[]; read: Hex | null; sigma: number; known: number; readMonth: number | null; lpa: number; oakMonths: number; rare: boolean; samples: number; lab: boolean }
 type KnownCohort = Cohort & { read: Hex };
 const isKnown = (c: Cohort): c is KnownCohort => c.read != null;
@@ -88,7 +88,7 @@ export function BlendLab() {
   const blender = blenderOf(s);
   const target = targets.find((t) => t.id === targetId) ?? targets[0]!;
 
-  // 비율은 기록이 있는 코호트에만 줄 수 있다 — 맛보지 않은 원액은 예상을 만들 수 없다 (P-PROD-2)
+  // 비율은 기록이 있는 코호트에만 줄 수 있다 — 맛보지 않은 원액은 예상을 만들 수 없다 (#157)
   const knownCohorts = cohorts.filter(isKnown);
   const picked = knownCohorts.filter((c) => (shares[c.key] ?? 0) > 0);
   const total = picked.reduce((t, c) => t + shares[c.key]!, 0);

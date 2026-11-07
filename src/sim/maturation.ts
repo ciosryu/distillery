@@ -77,7 +77,7 @@ export function matureCask(cask: Cask, climate: Climate, opts: MatureOptions): {
   // ② 추출 (목재 + 시즈닝)
   for (const [k, v] of Object.entries(WOOD_EXTRACT[cask.wood]) as [AxisId, number][]) bump(k, v * act * m);
   const seasoningType = CASKS[cask.typeId].seasoningType;
-  // 피니싱 캐스크의 시즈닝 향은 초기에 빠르게 옮겨 오고 이후 둔화한다 (PRD §5.2, P-PROD-3). 첫 통입은 그대로(×1)
+  // 피니싱 캐스크의 시즈닝 향은 초기에 빠르게 옮겨 오고 이후 둔화한다 (PRD §5.2, #158). 첫 통입은 그대로(×1)
   const fin = finishOf(lot);
   const seasonK = fin ? FINISH.seasoningBoost * Math.exp(-fin.months / FINISH.tauMonths) : 1;
   for (const [k, v] of Object.entries(SEASONING_EXTRACT[seasoningType]) as [AxisId, number][]) bump(k, v * cask.seasoning * m * seasonK);
@@ -147,7 +147,7 @@ export function recharCask(cask: Cask): Cask {
   return { ...cask, activity: Math.max(cask.activity, 0.7), char: 4, recharCount: cask.recharCount + 1 };
 }
 
-// ───────────── 피니싱 (PRD §5.2, 결정 #49·#143 자리 → 규칙 P-PROD-3) ─────────────
+// ───────────── 피니싱 (PRD §5.2, 결정 #49·#143 자리 → 규칙 #158) ─────────────
 // 숙성 중인 원액을 시즈닝 캐스크(버번·셰리)로 옮겨 마무리한다. 원액이 이력(caskHistory)을 들고 다니고, 숙성 연수는 최초 통입 기준(oakMonths 그대로).
 // 과하게 오래 두면 시즈닝 향이 한 축을 덮어 복합성·축 상한 감점으로 품질이 내려간다 — 따로 감점 규칙을 두지 않는다(오너 결정 2026-11-06)
 

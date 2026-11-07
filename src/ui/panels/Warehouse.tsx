@@ -162,7 +162,7 @@ function Casks() {
   );
 }
 
-/** 피니싱 (PRD §5.2, P-PROD-3) — 옮길 빈 시즈닝 캐스크를 고른다. 종류별로 가장 활성도 높은 빈 통을 쓴다 */
+/** 피니싱 (PRD §5.2, #158) — 옮길 빈 시즈닝 캐스크를 고른다. 종류별로 가장 활성도 높은 빈 통을 쓴다 */
 function FinishPanel({ from, onDone }: { from: Cask; onDone: () => void }) {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);

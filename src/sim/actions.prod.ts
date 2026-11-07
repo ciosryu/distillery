@@ -270,7 +270,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     return { state: s, message: `캐스크 ${casks.length}개 샘플링${found.length ? ` — 레어 캐스크 발견: ${found.join(', ')}` : ''}` };
   },
   transferCask: (s, prev, a) => {
-    // 피니싱 (PRD §5.2, P-PROD-3) — 원액을 빈 시즈닝 캐스크로 옮긴다. 손실 0.75%, 숙성 연수는 최초 통입 기준
+    // 피니싱 (PRD §5.2, #158) — 원액을 빈 시즈닝 캐스크로 옮긴다. 손실 0.75%, 숙성 연수는 최초 통입 기준
     const fi = s.inventory.casks.findIndex((c) => c.id === a.fromCaskId);
     const ti = s.inventory.casks.findIndex((c) => c.id === a.toCaskId);
     const from = s.inventory.casks[fi];
@@ -299,7 +299,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
   labAnalyze: (s, prev, a) => {
     const casks = a.caskIds.map((id) => s.inventory.casks.find((c) => c.id === id)).filter((c): c is Cask => !!c?.contents && !c.labAnalyzed);
     if (!casks.length) return fail(prev, '분석할 캐스크가 없습니다');
-    // 분석은 떠 간 시료로 한다 → 이번 읽기를 기록으로 남긴다(피트·우디는 정확, 나머지 축은 지금 샘플 횟수의 읽기 오차). 샘플 횟수·월 여력은 쓰지 않는다 (P-PROD-2)
+    // 분석은 떠 간 시료로 한다 → 이번 읽기를 기록으로 남긴다(피트·우디는 정확, 나머지 축은 지금 샘플 횟수의 읽기 오차). 샘플 횟수·월 여력은 쓰지 않는다 (#157)
     for (const c of casks) { c.labAnalyzed = true; recordSample(s, c, lotQuality(c.contents!)); }
     s.finance.cash -= casks.length * LAB.cost;
     return { state: s, message: `실험실 분석 ${casks.length}건 — 피트·우디는 이제 정확히 안다(분석 결과를 샘플 기록에 남겼다)` };

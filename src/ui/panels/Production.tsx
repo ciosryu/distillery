@@ -115,7 +115,7 @@ function ProfileRadar({ base, draft, size = 230 }: { base?: ProfileAxis[]; draft
 const delta = (v: number, digits = 1) => (Math.abs(v) < 0.05 ? '' : ` (${v > 0 ? '+' : '−'}${Math.abs(v).toFixed(digits)})`);
 
 /**
- * 레시피 · 크래프팅 (mvp.md §1.2, 결정 #134 — P-PROD-1)
+ * 레시피 · 크래프팅 (mvp.md §1.2, 결정 #134 — #156)
  * 프리셋으로 시작한다. "고급 설정"을 열면 주종별 레버가 보이고, 결과는 향미 프로필 + 품질 + "무엇이 무엇을 바꿨나" 한 줄.
  * 몰트·소주는 레버 화면, 그 밖의 주종(샌드박스)은 자유 편집기
  */

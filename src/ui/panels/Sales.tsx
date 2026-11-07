@@ -30,7 +30,7 @@ export function PriceDesk() {
   const { monthOfYear } = calendar(s);
   const region = regionOf(s);
   const active = sellingProducts(s);
-  // 같은 카테고리 제품끼리 나눈 이번 달 수요 (P-MKT-1). 재고 없는 제품은 혼자일 때의 수요(다시 채우면)
+  // 같은 카테고리 제품끼리 나눈 이번 달 수요 (#154). 재고 없는 제품은 혼자일 때의 수요(다시 채우면)
   const domestic = domesticDemands(s, monthOfYear);
   const dutyFree = dutyFreeDemands(s, monthOfYear);
   const last = lastReport(s);
@@ -234,7 +234,7 @@ export function Sales() {
   );
 }
 
-/** 브랜드 라인 (PRD §11.2 ④, P-MKT-2) — 세컨드 브랜드 개설·브랜드별 마케팅·폐지 */
+/** 브랜드 라인 (PRD §11.2 ④, #155) — 세컨드 브랜드 개설·브랜드별 마케팅·폐지 */
 function BrandLines() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);

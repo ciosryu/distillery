@@ -499,7 +499,7 @@ describe('판매 화면 — 소비자가 내역·가격 비교 (MVP 판매 화�
   });
 });
 
-describe('같은 카테고리 제품끼리 수요 나눔 (P-MKT-1, §15.3 #12)', () => {
+describe('같은 카테고리 제품끼리 수요 나눔 (#154, §15.3 #12)', () => {
   const lineup = (...ps: Product[]) => { const s = newGame({ seed: 2, region: 'KR' }); s.commerce.products = ps; return s; };
   const total = (s: GameState) => [...domesticDemands(s, 3).values()].reduce((t, d) => t + d.demandBottles, 0);
 

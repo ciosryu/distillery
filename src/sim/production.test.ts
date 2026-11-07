@@ -250,7 +250,7 @@ describe('제주 — 취수 허가·면세 한정판 (결정 #87)', () => {
   });
 });
 
-describe('크래프팅 레버 미리보기 (mvp.md §1.2, P-PROD-1)', () => {
+describe('크래프팅 레버 미리보기 (mvp.md §1.2, #156)', () => {
   const mvp = () => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
   const malt = (s: GameState) => s.production.recipes.find((r) => r.kind === 'malt')!;
   const soju = (s: GameState) => s.production.recipes.find((r) => r.kind === 'soju')!;

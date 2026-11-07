@@ -25,7 +25,7 @@ export interface BottleOptions {
 }
 
 /** 배팅 결과 공개 (P6) */
-/** predicted = 블렌더가 아는 값(샘플 기록)으로 만든 예상. 아는 원액이 하나도 없으면 null (P-PROD-2) */
+/** predicted = 블렌더가 아는 값(샘플 기록)으로 만든 예상. 아는 원액이 하나도 없으면 null (#157) */
 export interface BlendReveal { targetLabel: string | null; score: number | null; predicted: Hex | null; actual: Hex; notes: string[]; rewardNote?: string }
 
 export interface BlendPreview {
@@ -55,7 +55,7 @@ export interface BlendPreview {
   localIngredient: boolean;
   /** 면세 한정판으로 내면 붙을 판 번호·연속 완판 수 */
   dfEdition: { vol: number; streak: number } | null;
-  /** 라벨 "○○ 캐스크 피니시" — 모든 원액이 같은 종류 캐스크로 피니싱됐을 때만 (P-PROD-3) */
+  /** 라벨 "○○ 캐스크 피니시" — 모든 원액이 같은 종류 캐스크로 피니싱됐을 때만 (#158) */
   finish: CaskTypeId | null;
 }
 
@@ -156,7 +156,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   let finalAbv = opts.targetAbv === 'cask' ? mixAbv : opts.targetAbv;
   if (finalAbv > mixAbv + 1e-6) { errors.push(`목표 도수(${(finalAbv * 100).toFixed(1)}%)가 원액 도수(${(mixAbv * 100).toFixed(1)}%)보다 높습니다`); finalAbv = mixAbv; }
   const minOakMonths = Math.min(...items.map((i) => i.lot.oakMonths));
-  // 피니시 라벨: 섞은 원액이 모두 같은 종류 캐스크로 피니싱됐을 때만 붙인다 — 피니싱 안 한 원액이 섞이면 라벨 없음 (P-PROD-3)
+  // 피니시 라벨: 섞은 원액이 모두 같은 종류 캐스크로 피니싱됐을 때만 붙인다 — 피니싱 안 한 원액이 섞이면 라벨 없음 (#158)
   const finishes = items.map((i) => finishOf(i.lot)?.typeId ?? null);
   const finish = finishes.every((f) => f && f === finishes[0]) ? finishes[0]! : null;
   const sourcedLPA = items.reduce((t, i) => t + (i.lot.sourced ? i.liters * i.lot.abv : 0), 0);
@@ -246,7 +246,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   const p = previewBlend(s, components, opts);
   if (!p.ok || !p.category || !p.evaluation) return { error: p.errors.join(' / ') || '병입할 수 없습니다' };
   // 블렌딩 테이블 (결정 #124): 원액을 빼기 전에 블렌더가 아는 값으로 예상 육각형을 만든다 (공개 연출용).
-  // 캐스크는 샘플 기록(P-PROD-2) — 기록이 없는 캐스크는 예상에서 빠진다. 탱크 원액은 우리가 막 만든 것이라 처음 읽기로 안다
+  // 캐스크는 샘플 기록(#157) — 기록이 없는 캐스크는 예상에서 빠진다. 탱크 원액은 우리가 막 만든 것이라 처음 읽기로 안다
   const blender = blenderOf(s);
   const known = knownReads(s);
   const parts = components.filter((c) => c.liters > 0).map((c) => {
