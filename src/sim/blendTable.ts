@@ -113,7 +113,8 @@ export interface KnownRead {
   sourceId: string;
 }
 
-const siblingKey = (c: Cask) => (c.contents?.batchId ? `${c.contents.batchId}:${c.typeId}` : null);
+/** 형제 = 같은 배치·같은 캐스크 종류·같은 달 통입 — 다른 달에 통입한 통은 숙성 개월이 달라 기록을 빌리지 않는다 (#166) */
+const siblingKey = (c: Cask) => (c.contents?.batchId ? `${c.contents.batchId}:${c.typeId}:${c.filledMonth ?? ''}` : null);
 
 /**
  * 형제 기록을 빌리는 최소 액량 비율(작은 쪽 ÷ 큰 쪽) — 같은 배치라도 마지막 통은 일부만 채워져(실측 185L 옆 14.6L·43L)
@@ -308,13 +309,19 @@ export function optimizeShares(points: Hex[], target: Pick<BlendTarget, 'hex' | 
 
 // ───────────── P6 결과 공개 ─────────────
 
-/** 예상과 실제의 차이 중 큰 축 두 개를 문장으로 */
+/** 받침이 있으면 '이', 없으면 '가' — "과일이", "피트가" */
+const subj = (w: string): string => {
+  const c = w.charCodeAt(w.length - 1) - 0xac00;
+  return c >= 0 && c <= 11171 && c % 28 !== 0 ? `${w}이` : `${w}가`;
+};
+
+/** 예상과 실제의 차이 중 큰 축 두 개를 문장으로 (위스키 계열 육각형 — 소주·진 병입에는 쓰지 않는다) */
 export function revealNotes(predicted: Hex, actual: Hex): string[] {
   return HEX_AXES.map((a) => ({ a, d: actual[a] - predicted[a] }))
     .filter((x) => Math.abs(x.d) >= 3)
     .sort((p, q) => Math.abs(q.d) - Math.abs(p.d))
     .slice(0, 2)
-    .map((x) => `${HEX_LABEL[x.a]}가 예상보다 ${x.d > 0 ? '강했다' : '약했다'} (${x.d > 0 ? '+' : ''}${x.d.toFixed(0)})`);
+    .map((x) => `${subj(HEX_LABEL[x.a])} 예상보다 ${x.d > 0 ? '강했다' : '약했다'} (${x.d > 0 ? '+' : ''}${x.d.toFixed(0)})`);
 }
 
 export { hexDistance, matchScore };

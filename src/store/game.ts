@@ -21,7 +21,7 @@ const STOP_LABEL: Record<StopReason, string> = {
 interface GameStore {
   state: GameState;
   dispatch: (a: Action) => boolean;
-  /** n개월 진행 (멈춤 조건 없음) */
+  /** n개월 진행. 여러 달(분기·1년)이면 현금 부족·파산·게임 종료·목표 판정에서 멈춘다 */
   advance: (months: number) => void;
   /** 멈춤 조건이 생길 때까지 최대 n개월 — 한 달마다 화면에 제어권을 돌려준다 (PRD §2.1) */
   advanceUntil: (maxMonths: number, stopOn?: StopReason[]) => Promise<void>;
@@ -38,6 +38,11 @@ const engine = createLocalEngine(saved ?? newGame());
 const toast = (kind: 'ok' | 'error', text: string) => useUi.getState().showToast(kind, text);
 const persist = (s: GameState) => queueSave(s, (msg) => toast('error', msg));
 let cancelRequested = false;
+/**
+ * "분기 진행"·"1년 진행"도 이 조건에서는 멈춘다 — 현금이 바닥난 줄 모르고 1년을 넘겨 손쓸 틈 없이 파산하지 않게
+ * (플레이테스트 사전 점검에서 발견: 현금이 음수가 된 달에도 계속 진행했다). 이벤트·예보 같은 알림은 "다음 알림까지"의 몫
+ */
+const SAFETY_STOPS: StopReason[] = ['cashWarning', 'bankrupt', 'gameOver', 'verdict'];
 
 if (typeof window !== 'undefined') window.addEventListener('beforeunload', flushSave);
 
@@ -51,7 +56,10 @@ export const useGame = create<GameStore>((set) => {
       if (res.message) toast('ok', res.message);
       return true;
     },
-    advance: (months) => { engine.advance({ months }); },
+    advance: (months) => {
+      const res = engine.advance({ months, stopOn: months > 1 ? SAFETY_STOPS : [] });
+      if (res.stoppedBy !== 'maxMonths' && res.months < months) toast(res.stoppedBy === 'verdict' ? 'ok' : 'error', `${res.months}개월 진행 후 멈춤 — ${STOP_LABEL[res.stoppedBy]}`);
+    },
     advanceUntil: async (maxMonths, stopOn = DEFAULT_STOPS) => {
       const ui = useUi.getState();
       if (ui.advancing) return;

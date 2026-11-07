@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { BOTTLE_SIZES, PACKAGING, packagingCost } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
-import { agePerception, calendar, estimateBlend, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind } from '../../sim';
+import { agePerception, calendar, estimateBlend, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind } from '../../sim';
 import { regionOf } from '../../sim/content/regions';
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
@@ -21,14 +21,30 @@ export function Bottling() {
   const [picked, setPicked] = useState<Record<string, number>>({});
   const [opts, setOpts] = useState<BottleOptions>({ name: '', targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' });
 
-  const sources = useMemo(() => [
-    ...s.inventory.lots.map((l) => ({ key: `lot:${l.id}`, source: 'lot' as const, id: l.id, lot: l, where: '탱크' })),
-    ...s.inventory.casks.filter((c) => c.contents).map((c) => ({ key: `cask:${c.id}`, source: 'cask' as const, id: c.id, lot: c.contents!, where: `캐스크 ${c.id}` })),
-  ], [s.inventory.lots, s.inventory.casks]);
+  // 캐스크를 먼저(오래 숙성한 순), 탱크 원액은 레시피별로 한 줄 — 생산 지시가 달마다 배치를 하나씩 쌓아 탱크 줄이 수십 개가 되던 것을 묶는다.
+  // 묶음에 넣은 사용량은 배치별 액량에 비례해 나눠 쓴다 (화면만의 묶음 — 원액 자체는 그대로다)
+  const sources = useMemo(() => {
+    const casks = s.inventory.casks.filter((c) => c.contents)
+      .sort((a, b) => Math.max(b.contents!.oakMonths, b.contents!.restMonths ?? 0) - Math.max(a.contents!.oakMonths, a.contents!.restMonths ?? 0))
+      .map((c) => ({ key: `cask:${c.id}`, source: 'cask' as const, id: c.id, ids: [c.id], lot: c.contents!, where: `캐스크 ${c.id}` }));
+    const groups = new Map<string, typeof s.inventory.lots>();
+    for (const l of s.inventory.lots) { const g = `${l.kind}:${l.recipeId ?? l.name.split(' · ')[0]}:${l.sourced ? 's' : ''}`; groups.set(g, [...(groups.get(g) ?? []), l]); }
+    const tanks = [...groups.entries()].map(([g, lots]) => {
+      const vol = lots.reduce((t, l) => t + l.volumeL, 0);
+      const lpa = lots.reduce((t, l) => t + l.volumeL * l.abv, 0);
+      const newest = [...lots].sort((a, b) => b.createdMonth - a.createdMonth)[0]!;
+      const lot = { ...newest, name: lots.length > 1 ? `${newest.name.split(' · ')[0]} — 탱크 ${lots.length}개 배치` : newest.name, volumeL: vol, abv: lpa / vol, flavor: weightedAverage(lots.map((l) => ({ flavor: l.flavor, weight: l.volumeL * l.abv }))) };
+      return { key: `tank:${g}`, source: 'lot' as const, id: newest.id, ids: lots.map((l) => l.id), lot, where: '탱크' };
+    });
+    return [...casks, ...tanks];
+  }, [s.inventory.lots, s.inventory.casks]);
 
-  const components: BlendComponent[] = Object.entries(picked).map(([key, l]) => {
-    const [source, id] = key.split(':') as ['lot' | 'cask', string];
-    return { source, id, liters: l };
+  const components: BlendComponent[] = Object.entries(picked).flatMap(([key, l]): BlendComponent[] => {
+    const src = sources.find((x) => x.key === key);
+    if (!src) return [];
+    if (src.source === 'cask') return [{ source: 'cask', id: src.id, liters: l }];
+    // 탱크 묶음: 배치별 액량에 비례해 나눈다
+    return src.ids.map((id) => { const lot = s.inventory.lots.find((x) => x.id === id)!; return { source: 'lot' as const, id, liters: Math.floor(((l * lot.volumeL) / src.lot.volumeL) * 10) / 10 }; }).filter((c) => c.liters > 0);
   });
   const preview = components.length ? previewBlend(s, components, opts) : null;
   // 시나리오 게임(MVP)은 캐스크의 참 향미·품질을 숨긴다 (#136·#159) — 샘플 기록으로 추정한 값만 보여 주고, 병입하면 공개된다. 샌드박스는 개발용으로 참값을 보여 준다

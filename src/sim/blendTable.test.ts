@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { houseBrand } from './brands';
 import {
-  addTrendShift, appeal, applyAction, blenderOf, blendTargets, delegatePlan, estimateBlend, SIBLING_MIN_VOLUME_RATIO, findTarget, hexOf, knownRead, knownReads, matchScore, migrateSave, newGame, readCask, readSigma, samplingCapacity, trendFactor,
+  addTrendShift, appeal, applyAction, blenderOf, blendTargets, delegatePlan, estimateBlend, revealNotes, SIBLING_MIN_VOLUME_RATIO, findTarget, hexOf, knownRead, knownReads, matchScore, migrateSave, newGame, readCask, readSigma, samplingCapacity, trendFactor,
   type Flavor, type GameState, type Staff,
 } from '.';
 import { emptyCaskOf } from './newGame';
@@ -301,5 +301,22 @@ describe('병입 전 추정 오차 (#162)', () => {
     // 따로 뜬 기록끼리는 독립이라 오차가 준다
     s = applyAction(s, { type: 'sampleCask', caskIds: [ids[1]!, ids[2]!] }).state;
     expect(estimateBlend(s, ids.map((id) => ({ source: 'cask' as const, id, liters: 50 }))).sigma).toBeLessThan(one.sigma);
+  });
+});
+
+describe('병입 결과 공개 문구 (플레이 점검에서 발견)', () => {
+  it('조사: 받침이 있으면 "이", 없으면 "가"', () => {
+    const zero = { peat: 0, fruit: 0, floral: 0, spicy: 0, woody: 0, sweet: 0 };
+    expect(revealNotes(zero, { ...zero, fruit: 20 })[0]).toMatch(/^과일이 예상보다 강했다/);
+    expect(revealNotes(zero, { ...zero, floral: 20 })[0]).toMatch(/^플로럴이/);
+    expect(revealNotes(zero, { ...zero, peat: 20 })[0]).toMatch(/^피트가/);
+  });
+
+  it('탱크 원액만 병입하면 예상 = 실제(막 만든 원액은 안다) — 소주에 위스키 육각형 문구를 붙이지 않는다', () => {
+    const s = newGame({ seed: 3 });
+    s.inventory.lots.push({ id: 'T1', name: 'tank', kind: 'soju', volumeL: 300, abv: 0.45, flavor: { ...BOURBON }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 5000 });
+    const r = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: 'T1', liters: 100 }], options: { ...opts, targetAbv: 0.25 } });
+    expect(r.error).toBeUndefined();
+    expect(r.message).not.toMatch(/예상보다/);
   });
 });

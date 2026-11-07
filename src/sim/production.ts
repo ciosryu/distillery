@@ -299,6 +299,39 @@ export function simulateBatch(
   };
 }
 
+// ───────────── 탱크 합치기 (#166) ─────────────
+
+/** 탱크에서 합치는 주종 — 캐스크로 갈 원액(몰트·그레인)만. 소주·진·고량주는 탱크에서 쉬는 것 자체가 숙성(스테인리스 휴지, #161)이라
+ *  새 원액을 섞으면 오래 쉰 원액의 효과가 사라진다 → 달별 배치를 그대로 둔다(실측: 합치면 KR 경기 봇 파산 8/40 → 16/40, 몰트·그레인만 합치면 5/40) */
+export const TANK_MERGE_KINDS: readonly SpiritKind[] = ['malt', 'grain'];
+
+/** 같은 탱크에 합칠 원액인가 — 같은 레시피의 자체 뉴메이크(매입·숙성 원액 아님), 합치는 주종, 입지 원료 표기가 같을 때 */
+export const sameTank = (a: SpiritLot, b: SpiritLot): boolean =>
+  TANK_MERGE_KINDS.includes(a.kind) && !!a.recipeId && a.recipeId === b.recipeId && a.kind === b.kind && !a.sourced && !b.sourced && a.oakMonths === 0 && b.oakMonths === 0 && !!a.localIngredient === !!b.localIngredient;
+
+/**
+ * 탱크 원액에 새 뉴메이크를 합친다 — 향·도수·원가·원료 비율은 알코올(LPA) 가중 평균. id는 기존 탱크 것(화면 선택이 이어진다),
+ * 생산 달은 가장 오래된 배치(탱크에 원액이 있던 첫 달), 배치 id는 새 것(이번 달 뒤로 통입한 캐스크가 이전 통입과 형제가 되지 않게)
+ */
+export function mergeIntoTank(tank: SpiritLot, fresh: SpiritLot, recipeName: string, sinceLabel: string): SpiritLot {
+  const a = tank.volumeL * tank.abv;
+  const b = fresh.volumeL * fresh.abv;
+  const volumeL = tank.volumeL + fresh.volumeL;
+  const shares = new Set([...Object.keys(tank.mashShare ?? {}), ...Object.keys(fresh.mashShare ?? {})]);
+  const mashShare = shares.size ? Object.fromEntries([...shares].map((k) => [k, ((tank.mashShare?.[k] ?? 0) * a + (fresh.mashShare?.[k] ?? 0) * b) / (a + b)])) : undefined;
+  return {
+    ...tank,
+    batchId: fresh.batchId,
+    name: `${recipeName} · 탱크 (${sinceLabel}부터)`,
+    volumeL,
+    abv: (a + b) / volumeL,
+    flavor: weightedAverage([{ flavor: tank.flavor, weight: a }, { flavor: fresh.flavor, weight: b }]),
+    costPerLPA: (tank.costPerLPA * a + fresh.costPerLPA * b) / (a + b),
+    createdMonth: Math.min(tank.createdMonth, fresh.createdMonth),
+    ...(mashShare ? { mashShare } : {}),
+  };
+}
+
 /** 대량 구매 할인 배수 — 지난달 실제 구매량(kg) 기준 공급 등급 (주문만 크게 넣는 꼼수 방지) */
 export function volumeDiscounts(s: GameState): Record<string, number> {
   const out: Record<string, number> = {};
@@ -430,7 +463,7 @@ export function runProduction(s: GameState, report: MonthReport, ctx: TickContex
     const volumeL = parts.reduce((t, p) => t + p.lot.volumeL, 0);
     const cost = parts.reduce((t, p) => t + p.cost, 0);
     const lotId = nid(s, 'L');
-    s.inventory.lots.push({
+    const fresh: SpiritLot = {
       ...parts[0]!.lot,
       id: lotId,
       batchId: lotId,
@@ -440,7 +473,11 @@ export function runProduction(s: GameState, report: MonthReport, ctx: TickContex
       flavor: weightedAverage(parts.map((p) => ({ flavor: p.lot.flavor, weight: p.lpa }))),
       costPerLPA: cost / lpa,
       ...(hasLocalIngredient(site, recipe) ? { localIngredient: true } : {}),
-    });
+    };
+    // 같은 레시피 몰트·그레인 뉴메이크는 탱크(스피릿 리시버)에서 합친다 (#166) — 달마다 배치가 따로 쌓여 통입 화면에 원액이 수십 개가 되던 것
+    const ti = s.inventory.lots.findIndex((l) => sameTank(l, fresh));
+    if (ti < 0) s.inventory.lots.push(fresh);
+    else s.inventory.lots[ti] = mergeIntoTank(s.inventory.lots[ti]!, fresh, recipe.name, monthLabel(s.startYear, s.inventory.lots[ti]!.createdMonth));
     if (recipe.kind === 'soju') s.production.flags.producedSoju = true;
     report.production.push({ recipeId: recipe.id, name: recipe.name, batches: parts.length, lpa, cost });
     report.expenses.production = (report.expenses.production ?? 0) + cost;
