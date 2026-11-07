@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BOTTLE_SIZES, PACKAGING, packagingCost } from '../../sim/content/catalog';
+import { BOTTLE_SIZES, CASKS, PACKAGING, packagingCost } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
-import { agePerception, calendar, estimateBlend, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind } from '../../sim';
 import { regionOf } from '../../sim/content/regions';
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
@@ -22,6 +22,26 @@ function sourceCategory(lot: SpiritLot, minMonths: number): string {
 }
 const CATEGORY_ORDER = ['몰트 위스키', '몰트 스피릿(숙성 중)', '그레인 위스키', '그레인 스피릿(숙성 중)', '소주', '진', '백주'];
 
+/** 캐스크 종류 짧은 이름과 색 (플레이테스트 2026-11-07: 버번 캐스크인지 올로로소 캐스크인지 구분이 안 된다) */
+const CASK_SHORT: Record<CaskTypeId, { name: string; cls: string }> = {
+  ex_bourbon_barrel: { name: '버번 배럴', cls: 'bg-amber-100 text-amber-900 dark:bg-amber-900/50 dark:text-amber-200' },
+  oloroso_butt: { name: '올로로소 셰리 벗', cls: 'bg-rose-100 text-rose-900 dark:bg-rose-900/50 dark:text-rose-200' },
+  korean_oak_quarter: { name: '한국 참나무', cls: 'bg-lime-100 text-lime-900 dark:bg-lime-900/50 dark:text-lime-200' },
+  mizunara_hogshead: { name: '미즈나라', cls: 'bg-violet-100 text-violet-900 dark:bg-violet-900/50 dark:text-violet-200' },
+  onggi_jar: { name: '옹기', cls: 'bg-stone-200 text-stone-800 dark:bg-stone-700 dark:text-stone-100' },
+};
+const caskShort = (t: CaskTypeId) => CASK_SHORT[t]?.name ?? CASKS[t]?.nameKo ?? t;
+/** 통 표시: 종류 · 회차(1필 = 새 통, 숫자가 클수록 향이 약하다) · 피니시 */
+function CaskTag({ c }: { c: Cask }) {
+  const f = c.contents ? finishOf(c.contents) : null;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <span className={`rounded px-1 py-px text-[11px] font-medium ${CASK_SHORT[c.typeId]?.cls ?? ''}`}>{caskShort(c.typeId)}</span>
+      <span className="text-stone-500">{c.fills}필{f ? ` · ${finishLabel(f.typeId)} ${months(f.months)}` : ''}</span>
+    </span>
+  );
+}
+
 /** 블렌딩 그래프의 원액 색 — 밝은·어두운 화면 모두에서 보이는 중간 톤 */
 const LAYER_COLORS = ['#0ea5e9', '#10b981', '#a855f7', '#ef4444', '#eab308', '#14b8a6', '#f97316', '#6366f1'];
 
@@ -38,7 +58,7 @@ export function Bottling() {
   const sources = useMemo(() => {
     const casks = s.inventory.casks.filter((c) => c.contents)
       .sort((a, b) => Math.max(b.contents!.oakMonths, b.contents!.restMonths ?? 0) - Math.max(a.contents!.oakMonths, a.contents!.restMonths ?? 0))
-      .map((c) => ({ key: `cask:${c.id}`, source: 'cask' as const, id: c.id, ids: [c.id], lot: c.contents!, where: `캐스크 ${c.id}` }));
+      .map((c) => ({ key: `cask:${c.id}`, source: 'cask' as const, id: c.id, ids: [c.id], lot: c.contents!, where: `캐스크 ${c.id}`, cask: c as Cask | undefined }));
     const groups = new Map<string, typeof s.inventory.lots>();
     for (const l of s.inventory.lots) { const g = `${l.kind}:${l.recipeId ?? l.name.split(' · ')[0]}:${l.sourced ? 's' : ''}`; groups.set(g, [...(groups.get(g) ?? []), l]); }
     const tanks = [...groups.entries()].map(([g, lots]) => {
@@ -46,7 +66,7 @@ export function Bottling() {
       const lpa = lots.reduce((t, l) => t + l.volumeL * l.abv, 0);
       const newest = [...lots].sort((a, b) => b.createdMonth - a.createdMonth)[0]!;
       const lot = { ...newest, name: lots.length > 1 ? `${newest.name.split(' · ')[0]} — 탱크 ${lots.length}개 배치` : newest.name, volumeL: vol, abv: lpa / vol, flavor: weightedAverage(lots.map((l) => ({ flavor: l.flavor, weight: l.volumeL * l.abv }))) };
-      return { key: `tank:${g}`, source: 'lot' as const, id: newest.id, ids: lots.map((l) => l.id), lot, where: '탱크' };
+      return { key: `tank:${g}`, source: 'lot' as const, id: newest.id, ids: lots.map((l) => l.id), lot, where: '탱크', cask: undefined as Cask | undefined };
     });
     return [...casks, ...tanks];
   }, [s.inventory.lots, s.inventory.casks]);
@@ -59,7 +79,11 @@ export function Bottling() {
     for (const x of sources) { const k = sourceCategory(x.lot, minMonths); m.set(k, (m.get(k) ?? 0) + 1); }
     return [...m.entries()].sort((a, b) => CATEGORY_ORDER.indexOf(a[0]) - CATEGORY_ORDER.indexOf(b[0]));
   }, [sources, minMonths]);
-  const shown = cat === '전체' ? sources : sources.filter((x) => sourceCategory(x.lot, minMonths) === cat || picked[x.key] != null);
+  const [caskType, setCaskType] = useState<CaskTypeId | '전체'>('전체');
+  const byCat = cat === '전체' ? sources : sources.filter((x) => sourceCategory(x.lot, minMonths) === cat || picked[x.key] != null);
+  // 통 종류로 한 번 더 거르기 — 보이는 원액에 통 종류가 둘 이상일 때만 버튼을 낸다
+  const caskTypes = [...new Set(byCat.flatMap((x) => (x.cask ? [x.cask.typeId] : [])))];
+  const shown = caskType === '전체' || !caskTypes.includes(caskType) ? byCat : byCat.filter((x) => x.cask?.typeId === caskType || picked[x.key] != null);
 
   const components: BlendComponent[] = Object.entries(picked).flatMap(([key, l]): BlendComponent[] => {
     const src = sources.find((x) => x.key === key);
@@ -105,7 +129,7 @@ export function Bottling() {
     const total = pickedRows.reduce((t, x) => t + picked[x.key]! * x.lot.abv, 0) || 1;
     const layers = pickedRows.flatMap((x, i) => {
       const share = (picked[x.key]! * x.lot.abv) / total;
-      const label = `${x.lot.name.split(' → ')[0]}${x.source === 'cask' ? ` (${x.id})` : ''}`;
+      const label = `${x.lot.name.split(' → ')[0]}${x.cask ? ` · ${caskShort(x.cask.typeId)} ${x.cask.fills}필 (${x.id})` : ''}`;
       let axes: ProfileAxis[] | null;
       if (hide && x.source === 'cask') {
         const k = known?.get(x.id);
@@ -140,6 +164,14 @@ export function Bottling() {
             {[['전체', sources.length] as [string, number], ...counts].map(([k, n]) => (
               <Button key={k} small variant={cat === k ? 'primary' : 'secondary'} onClick={() => setCat(k)}>{k} {n}</Button>
             ))}
+            {caskTypes.length > 1 && (
+              <span className="ml-2 inline-flex flex-wrap items-center gap-1 border-l border-stone-300 pl-2 dark:border-stone-700">
+                <span className="text-xs text-stone-500">통</span>
+                {(['전체', ...caskTypes] as (CaskTypeId | '전체')[]).map((t) => (
+                  <Button key={t} small variant={caskType === t ? 'primary' : 'secondary'} onClick={() => setCaskType(t)}>{t === '전체' ? '전체' : `${caskShort(t)} ${byCat.filter((x) => x.cask?.typeId === t).length}`}</Button>
+                ))}
+              </span>
+            )}
             <span className="ml-1 text-xs text-stone-500">같은 주종끼리만 섞인다 — 몰트·그레인은 섞으면 블렌디드. 숙성 중인 몰트를 섞으면 가장 어린 원액 기준으로 표기된다</span>
           </div>
         )}
@@ -148,7 +180,7 @@ export function Bottling() {
             {shown.map((x) => (
               <tr key={x.key} className={picked[x.key] != null ? 'bg-amber-50 dark:bg-amber-950/30' : ''}>
                 <Td><input type="checkbox" checked={picked[x.key] != null} onChange={() => toggle(x.key, x.lot.volumeL)} aria-label={`${x.lot.name} 선택`} className="accent-amber-700" /></Td>
-                <Td className="text-xs font-medium"><div className="w-44 truncate" title={x.lot.name}>{x.lot.name.split(' → ')[0]}</div><div className="font-normal text-stone-500">{x.where}</div></Td>
+                <Td className="text-xs font-medium"><div className="w-44 truncate" title={x.lot.name}>{x.lot.name.split(' → ')[0]}</div><div className="w-44 whitespace-normal font-normal text-stone-500">{x.cask ? <span className="inline-flex flex-wrap items-center gap-1">{x.where} <CaskTag c={x.cask} /></span> : x.where}</div></Td>
                 <Td><Badge>{sourceCategory(x.lot, minMonths)}</Badge></Td>
                 <Td right>{liters(x.lot.volumeL)}</Td>
                 <Td right>{pct(x.lot.abv)}</Td>
