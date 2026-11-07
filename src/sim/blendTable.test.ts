@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { houseBrand } from './brands';
 import {
-  addTrendShift, appeal, applyAction, blenderOf, blendTargets, delegatePlan, findTarget, hexOf, knownRead, knownReads, matchScore, migrateSave, newGame, readCask, readSigma, samplingCapacity, trendFactor,
+  addTrendShift, appeal, applyAction, blenderOf, blendTargets, delegatePlan, estimateBlend, SIBLING_MIN_VOLUME_RATIO, findTarget, hexOf, knownRead, knownReads, matchScore, migrateSave, newGame, readCask, readSigma, samplingCapacity, trendFactor,
   type Flavor, type GameState, type Staff,
 } from '.';
 import { emptyCaskOf } from './newGame';
@@ -248,5 +248,58 @@ describe('블렌딩 테이블은 샘플 기록만 읽는다 (#157, #143 정보 �
     const res = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id: caskIdsOf(s, 'S')[0]!, liters: 100 }], options: opts });
     expect(res.error).toBeUndefined();
     expect(res.message).toMatch(/샘플 기록 없이 병입/);
+  });
+});
+
+describe('병입 전 추정 (#136·#159, P-PROD-5)', () => {
+  it('샘플이 없으면 모르고, 샘플 뒤에는 기록의 추정 품질 — 참값이 바뀌어도 그대로다', () => {
+    let s = withCasks();
+    const id = caskIdsOf(s, 'S')[0]!;
+    const comp = [{ source: 'cask' as const, id, liters: 50 }];
+    const none = estimateBlend(s, comp);
+    expect(none.quality).toBeNull();
+    expect(none.unknownShare).toBe(1);
+    expect(none.fromCasks).toBe(true);
+    s = applyAction(s, { type: 'sampleCask', caskIds: [id] }).state;
+    const rec = s.inventory.casks.find((c) => c.id === id)!.sampleLog!.at(-1)!;
+    const e = estimateBlend(s, comp);
+    expect(e.quality).toBe(rec.estQuality);
+    expect(e.hex).toEqual(rec.hex);
+    const t = structuredClone(s);
+    t.inventory.casks.find((c) => c.id === id)!.contents!.flavor = { ...PEATED };
+    expect(estimateBlend(t, comp)).toEqual(e);
+  });
+
+  it('탱크 원액은 우리가 막 만든 것이라 참 품질로 안다 — 캐스크가 없으면 숨길 것도 없다', () => {
+    const s = newGame({ seed: 3 });
+    s.inventory.lots.push({ id: 'T1', name: 'tank', kind: 'soju', volumeL: 300, abv: 0.45, flavor: { ...BOURBON }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 5000 });
+    const e = estimateBlend(s, [{ source: 'lot', id: 'T1', liters: 100 }]);
+    expect(e.fromCasks).toBe(false);
+    expect(e.sigma).toBe(0);
+    expect(e.quality).not.toBeNull();
+  });
+
+  it('형제 통 기록은 액량이 비슷할 때만 빌린다 — 일부만 채운 마지막 통은 따로 떠야 한다 (결정 대기 12)', () => {
+    let s = withCasks();
+    const [a, b, c] = caskIdsOf(s, 'B');
+    s.inventory.casks.find((k) => k.id === c)!.contents!.volumeL = 190 * (SIBLING_MIN_VOLUME_RATIO - 0.1);
+    s = applyAction(s, { type: 'sampleCask', caskIds: [a!] }).state;
+    const known = knownReads(s);
+    expect(known.get(b!)?.from).toBe('sibling');
+    expect(known.has(c!)).toBe(false);
+  });
+});
+
+describe('병입 전 추정 오차 (P-PROD-5)', () => {
+  it('같은 기록을 빌린 통들을 섞어도 오차가 줄지 않는다 — 한 번 읽은 값이다', () => {
+    let s = withCasks();
+    const ids = caskIdsOf(s, 'S');
+    s = applyAction(s, { type: 'sampleCask', caskIds: [ids[0]!] }).state;
+    const one = estimateBlend(s, [{ source: 'cask', id: ids[0]!, liters: 50 }]);
+    const three = estimateBlend(s, ids.map((id) => ({ source: 'cask' as const, id, liters: 50 })));
+    expect(three.sigma).toBeCloseTo(one.sigma, 6);
+    // 따로 뜬 기록끼리는 독립이라 오차가 준다
+    s = applyAction(s, { type: 'sampleCask', caskIds: [ids[1]!, ids[2]!] }).state;
+    expect(estimateBlend(s, ids.map((id) => ({ source: 'cask' as const, id, liters: 50 }))).sigma).toBeLessThan(one.sigma);
   });
 });
