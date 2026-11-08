@@ -1,4 +1,4 @@
-// MVP 경제 진단 — 봇은 사는데 사람은 왜 파산하나 (MGT, 결정 대기 19 · mvp.md §7.6)
+// MVP 경제 진단 — 봇은 사는데 사람은 왜 파산하나 (MGT, 결정 대기 19 · mvp.md §7.7)
 // 실행: npx tsx scripts/experiments/mvp-gaps.ts [시드수=20] [개월=180]
 //   TIER=<micro|standard>  기본 micro (1·2차 플레이테스트 티어)
 //   ONLY=<id,...>          이 변형만 (병렬 실행용)
