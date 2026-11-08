@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { CATEGORY } from '../../sim/content/categories';
+import { AXIS } from '../../sim/content/axes';
+import { ProfileRadar } from './Production';
 import { categoryName, consumerPrice, regionOf, traditionalTaxFactor } from '../../sim/content/regions';
-import { bottleMargin, calendar, coverage, demandFor, domesticDemands, DUTY_FREE, dutyFreeDemands, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, priceOptions, productConsumerPrice, retailCapacityCases, suggestedPrice, type GameState, type Product } from '../../sim';
+import { finishLabel, hexOf, HEX_AXES, HEX_LABEL, topNotes, type ProductCategory, type ProfileAxis, bottleMargin, calendar, coverage, demandFor, domesticDemands, DUTY_FREE, dutyFreeDemands, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, priceOptions, productConsumerPrice, retailCapacityCases, suggestedPrice, type GameState, type Product } from '../../sim';
 import { awarenessOf, brandMarketing, brandOf, rebrandCost, secondBrands } from '../../sim/brands';
 import { BRANDS } from '../../sim/content/market';
 import { isLocked } from '../../sim/scenario';
@@ -143,8 +145,75 @@ export function PriceDesk() {
           {hasDutyFree(s) && ' 지정면세점 판매분은 주세·부가세가 없고, 소매 처리 역량과 육지 출고 물류 할증을 쓰지 않습니다.'}
         </p>
       </Card>
+      {selected && <ProductFlavor p={selected} />}
       {selected && <ProductDetail p={selected} />}
     </div>
+  );
+}
+
+/** 위스키 육각형으로 보는 범주 — 몰트·그레인 계열 (#156과 같은 축 규칙) */
+const HEX_CATEGORIES: ReadonlySet<ProductCategory> = new Set<ProductCategory>(['whisky', 'grain_whisky', 'blended_whisky', 'malt_spirit']);
+
+/** 제품의 향미 프로필 — 몰트·그레인 계열은 위스키 육각형, 그 밖은 주종 레이더 축 */
+function productProfile(p: Pick<Product, 'category' | 'flavor'>): ProfileAxis[] {
+  if (HEX_CATEGORIES.has(p.category)) {
+    const h = hexOf(p.flavor);
+    return HEX_AXES.map((a) => ({ id: a, label: HEX_LABEL[a], value: h[a] }));
+  }
+  return CATEGORY[p.category].radarAxes.map((a) => ({ id: a, label: AXIS[a].nameKo, value: p.flavor[a] ?? 0 }));
+}
+const sameAxes = (a: Pick<Product, 'category'>, b: Pick<Product, 'category'>) =>
+  HEX_CATEGORIES.has(a.category) ? HEX_CATEGORIES.has(b.category) : a.category === b.category;
+
+/**
+ * 판매 중인 제품의 향미 (P-PROD-9, 오너 요청 2026-11-08) — 병입 때 확정된 참 향미·품질. 병입하면 참값이 공개되는 규칙(#162)이라 MVP에서도 보인다.
+ * 같은 축의 다른 제품을 골라 겹쳐 비교한다(점선)
+ */
+function ProductFlavor({ p }: { p: Product }) {
+  const s = useGame((g) => g.state);
+  const region = regionOf(s);
+  const [cmpId, setCmpId] = useState('');
+  const others = s.commerce.products.filter((x) => x.id !== p.id && sameAxes(p, x));
+  const cmp = others.find((x) => x.id === cmpId);
+  const profile = productProfile(p);
+  const notes = topNotes(p.flavor);
+  const facts = (x: Product) => [
+    categoryName(region, x.category, CATEGORY[x.category].nameKo),
+    x.ageYears != null ? `${x.ageYears}년` : null,
+    x.finish ? finishLabel(x.finish) : null,
+    x.style ? `스타일: ${x.style}` : null,
+    `${x.bottleMl}ml · ${pct(x.abv)}`,
+  ].filter(Boolean).join(' · ');
+  return (
+    <Card title={`${p.name} — 향미`} actions={others.length > 0 && (
+      <Select label="비교" value={cmp ? cmp.id : ''} onChange={setCmpId} options={[{ value: '', label: '(비교 안 함)' }, ...others.map((x) => ({ value: x.id, label: `${x.name} · 품질 ${x.quality}` }))]} />
+    )}>
+      <div className="flex flex-wrap items-start gap-4">
+        <ProfileRadar draft={profile} base={cmp ? productProfile(cmp) : undefined} size={260} />
+        <div className="grid min-w-56 flex-1 gap-2 text-sm">
+          <div>
+            <div className="flex items-baseline gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-amber-500/60" /><b>{p.name}</b> <span className="tabular-nums">품질 {p.quality}</span></div>
+            <div className="text-xs text-stone-500">{facts(p)}</div>
+            <div className="mt-1 text-xs">주요 향: {notes.length ? notes.map((n) => `${n.nameKo} ${n.value}`).join(' · ') : '뚜렷한 향 없음'}</div>
+            {p.sourcedShare > 0 && <div className="text-xs text-stone-500">매입 원액 {pct(p.sourcedShare, 0)}</div>}
+          </div>
+          {cmp && (
+            <div className="border-t border-stone-200 pt-2 dark:border-stone-700">
+              <div className="flex items-baseline gap-2"><span className="inline-block w-3 border-t-2 border-dashed border-stone-500" /><b>{cmp.name}</b> <span className="tabular-nums">품질 {cmp.quality}</span> <span className={`text-xs tabular-nums ${p.quality - cmp.quality >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>({p.quality - cmp.quality >= 0 ? '+' : '−'}{Math.abs(p.quality - cmp.quality).toFixed(1)})</span></div>
+              <div className="text-xs text-stone-500">{facts(cmp)}</div>
+              <div className="mt-1 text-xs">주요 향: {topNotes(cmp.flavor).map((n) => `${n.nameKo} ${n.value}`).join(' · ') || '뚜렷한 향 없음'}</div>
+              {(() => {
+                // 많이 다른 축 3개 — 지금 제품 기준
+                const c = productProfile(cmp);
+                const diff = profile.map((a, i) => ({ label: a.label, d: a.value - c[i]!.value })).filter((x) => Math.abs(x.d) >= 1).sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).slice(0, 3);
+                return diff.length ? <div className="mt-1 text-xs">차이: {diff.map((x) => <span key={x.label} className={`mr-2 font-medium ${x.d > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>{x.label} {x.d > 0 ? '+' : '−'}{Math.abs(x.d).toFixed(0)}</span>)}</div> : null;
+              })()}
+            </div>
+          )}
+          <p className="text-xs text-stone-500">병입 때 확정된 향미다(병 안에서는 변하지 않는다). {HEX_CATEGORIES.has(p.category) ? '위스키 육각형 — 숙성고 샘플·블렌딩 그래프와 같은 축.' : '주종 레이더 축.'}{others.length === 0 ? ' 같은 축의 다른 제품이 생기면 겹쳐 비교할 수 있다.' : ''}</p>
+        </div>
+      </div>
+    </Card>
   );
 }
 
