@@ -24,11 +24,11 @@
 | 항목 | 내용 | 근거 |
 |---|---|---|
 | 플랫폼 | Godot 4 + C#, PC(Steam). TS는 설계 실험실·기준 구현 | #34·#35·#40·#122 |
-| 상태 | 단일 `GameState` v14 = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history·progress). v14 = 제품 피니싱 표기 `Product.finish?`(#158) | #118, [architecture.md §3](architecture.md) |
+| 상태 | 단일 `GameState` **v15** = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history·progress). v14 = 제품 피니싱 표기 `Product.finish?`(#158), v15 = 병입 때 통 구성 `Product.caskMix?`(#176). **다음 코어 PR이 스키마를 올리면 v16** | #118, [architecture.md §3](architecture.md) |
 | 시간 | 1턴 = 1개월. 월 틱 0~9단계 파이프라인 + 틱 컨텍스트 | #1·#26, PRD §2.2 |
 | 경계 | `GameEngine` 계약 (명령 → 스냅샷) | architecture.md §3.2 |
 | 난수 | mulberry32, `rngFor(seed, month, stream)` 독립 스트림 | PRD §13.2 |
-| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8 → v9 → v10 → v11 → v12 → v13 → v14) | #118, S-8, S-10, S-9, S-2, S-6, S-11·S-12, #158 |
+| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8 → v9 → v10 → v11 → v12 → v13 → v14 → v15) | #118, S-8, S-10, S-9, S-2, S-6, S-11·S-12, #158, #176 |
 | 테크 게이트 | `isUnlocked(state, key)` 하나로 판정, 키 규칙 고정, Phase 1은 꺼짐 | #118, tech-tree §7 |
 | 설계 규모 | 30년(360턴) · 원액 든 캐스크 2,500개 | #119 |
 | 기후 | 입지 평년값 + AR(1) 이상치, 이벤트는 입력(기온·습도) 충격 | #120 |
@@ -54,7 +54,7 @@
 | 입지 대표 거래(유통 납품·OEM·면세) | §16.21 | `commerce.retail*`, `b2b.oem*`, `site` | 4·6 | `deals.ts`, `sites.ts`(일부) | ● | MKT |
 | 수출·해외 명성 | §16.25, §16.27, §17 | `commerce.exports`·`exportOffers`·`exportEntered`·`acclaim` | 5·6·8 | `market.ts`, `exportDeals.ts`, `content/exports.ts` | ● (9개 시장·수입사 계약 #100~#109) | MKT |
 | 재무(대출·급전·투자·캐스크 오너십·담보대출) | §8 | `finance` | 7 | `loans.ts`(재무 단계·월 고정비 예상), `cashflow.ts`, `investment.ts`, `actions.mgt.ts`, `content/finance.ts` | ● (고금리 급전 #160. 은행 심사는 재무 확장으로 — STATUS MGT ③) | MGT |
-| 재무 확장(이사회·헷징·보험) | §8.2, §8.4 | `finance.hedges`·`insurance`·`board?` (v13) | 2(선도계약 원가)·7(보험료·이사회) — 규칙 생길 때 | 행동 `signForward`·`buyInsurance`·`cancelInsurance`(자리), 해임 = `GameEnding 'dismissed'`(S-9) | ○ (자리만) | MGT |
+| 재무 확장(이사회·헷징·보험) | §8.2, §8.4 | `finance.hedges`·`insurance`·`board?` (v13) | 1(재해 보험금 `settleClaims`, #171) · **7**: 보험료(#171) → 대출 → 선도계약 차액 정산(`settleForwards`, #179) → 담보 추가 상환 → **이사회는 7단계 끝**(`runBoard`, #180) | `insurance.ts`·`forwards.ts`·`board.ts`, 행동 `signForward`·`buyInsurance`·`cancelInsurance`, 화면 `Finance`(+ `Board`), 해임 = `GameEnding 'dismissed'`(S-9) | ● 보험·선도계약·이사회(#171·#179·#180, MVP에서 잠김) · ○ PRD §8.4 고급 상품(선물환·금리 스왑·신용보험·팩토링) | MGT |
 | HR(직군·에이징·하우스 스타일·마스터 블렌더) | §7, §16.6 | `hr` | 6·8 | `hr.ts`, `ops.ts`(일부) | ● | MGT |
 | 이벤트·예보·보정치 | §10 | `events`, `world.modifiers` | 1 | `events.ts`, `content/events.ts`, `modifiers.ts` | ● | MGT |
 | 연구·테크트리 | [tech-tree](tech-tree.md) | `research` | 8 (`runResearch`) | `research.ts`(게이트·시작 조건·진행), `content/tech.ts`(노드 스키마 + 4개), 행동 `startResearch`·`setResearch`·`cancelResearch` | ◐ (진행 규칙 구현 — 기간·연구비·담당자·일시정지·이탈. 노드 4개뿐, 게이트 꺼짐, 실적 보너스·본업 효율 −30%·실험실 슬롯·화면은 단계 P) | MGT |
@@ -79,9 +79,9 @@
 
 | 파트 | 범위 (단계 P에서 할 일 — 초안) | 소유 파일 | PRD 절 |
 |---|---|---|---|
-| **PROD** 생산·숙성·블렌딩 | 피니싱, 정보 불확실성(샘플링), 블렌딩 테이블 화면·보상 연결, 생산 테크 노드의 효과 데이터 | `production.ts`(+ 생산 단계 `runProduction`)·`maturation.ts`·**`warehouse.ts`**(+ 숙성 단계)·**`casks.ts`**·**`waterPermit.ts`**·`flavor.ts`·`blending.ts`·`blendTable.ts`·`blendRadar.ts`·`weather.ts`·**`actions.prod.ts`**, **`content/production.ts`**·`content/axes.ts`·`categories.ts`, 테스트 **`production.test.ts`**·`vessel.test.ts`·`blendTable.test.ts`, 화면 `Production`·`Warehouse`·`Bottling`·`BlendLab` | §4~§6, flavor-model, blending-minigame |
-| **MKT** 시장·판매·B2B·수출 | 브랜드 라인(세컨드 브랜드 개설·배정·브랜드별 인지도 성장·B_brand), 수요 공식 정리(SKU √n) | `market.ts`·**`brands.ts`**·**`sales.ts`**(판매·주세 단계)·**`retail.ts`**·**`tourism.ts`**·**`dutyFree.ts`**·`bulk.ts`·`broker.ts`·`deals.ts`·`exportDeals.ts`·**`actions.mkt.ts`**, **`content/market.ts`**·`content/exports.ts`·`names.ts`, `data/market/`, 테스트 **`market.test.ts`**·`exports.test.ts`·**`brands.test.ts`**, 화면 `Sales`·`B2B`·`Exports` | §8.3, §8.5~§8.6, §9, §11 |
-| **MGT** 재무·HR·이벤트·연구 | 연구 노드 전체(공통 4계통 + 주종 브랜치)·효과·실적 보너스·연구 화면·게이트 켜기(`TECH_GATING`), 재무 확장(이사회·헷징·보험) | `cashflow.ts`·**`loans.ts`**(+ 재무 단계)·**`investment.ts`**·`hr.ts`(+ 생애주기·사무직)·`events.ts`·`research.ts`·**`actions.mgt.ts`**, **`content/finance.ts`**·`content/events.ts`·`tech.ts`, 테스트 **`finance.test.ts`**, 화면 `Finance`·`Staff`·`Events`·`Dashboard` | §7, §8.1~§8.2, §8.4, §10, tech-tree |
+| **PROD** 생산·숙성·블렌딩 | 피니싱, 정보 불확실성(샘플링), 블렌딩 테이블 화면·보상 연결, 생산 테크 노드의 효과 데이터 | `production.ts`(+ 생산 단계 `runProduction`)·`maturation.ts`·**`warehouse.ts`**(+ 숙성 단계)·**`casks.ts`**·**`waterPermit.ts`**·`flavor.ts`·`blending.ts`·`blendTable.ts`·`blendRadar.ts`·`weather.ts`·**`actions.prod.ts`**, **`content/production.ts`**·`content/axes.ts`·`categories.ts`, **`economics.ts`**(병당 손익 #173), 테스트 **`production.test.ts`**·`vessel.test.ts`·`blendTable.test.ts`, 화면 `Production`·`Warehouse`·`Bottling`·`BlendLab` · **`Sales`(MKT 종료로 임시 소유, #173)** | §4~§6, flavor-model, blending-minigame |
+| **MKT** 시장·판매·B2B·수출 — **종료(2026-11-07, 자리를 MGT에 넘김)**. 다시 열 때까지 아래 파일 변경은 PM이 배정한다. `Sales` 화면은 PROD 임시 소유(#173) | 브랜드 라인(세컨드 브랜드 개설·배정·브랜드별 인지도 성장·B_brand), 수요 공식 정리(SKU √n) | `market.ts`·**`brands.ts`**·**`sales.ts`**(판매·주세 단계)·**`retail.ts`**·**`tourism.ts`**·**`dutyFree.ts`**·`bulk.ts`·`broker.ts`·`deals.ts`·`exportDeals.ts`·**`actions.mkt.ts`**, **`content/market.ts`**·`content/exports.ts`·`names.ts`, `data/market/`, 테스트 **`market.test.ts`**·`exports.test.ts`·**`brands.test.ts`**, 화면 ~~`Sales`~~(→ PROD 임시)·`B2B`·`Exports` | §8.3, §8.5~§8.6, §9, §11 |
+| **MGT** 재무·HR·이벤트·연구 | 연구 노드 전체(공통 4계통 + 주종 브랜치)·효과·실적 보너스·연구 화면·게이트 켜기(`TECH_GATING`), 재무 확장(이사회·헷징·보험) | `cashflow.ts`·**`loans.ts`**(+ 재무 단계)·**`investment.ts`**·`hr.ts`(+ 생애주기·사무직)·`events.ts`·`research.ts`·**`insurance.ts`**(#171)·**`forwards.ts`**(#179)·**`board.ts`**(#180)·**`actions.mgt.ts`**, **`content/finance.ts`**·`content/events.ts`·`tech.ts`, 테스트 **`finance.test.ts`**·`fixedcost.test.ts`, 화면 `Finance`·`Staff`·`Events`·`Dashboard`·**`Board`**(#180)·**`FixedCost`**(증류소 탭에 끼움, #181) | §7, §8.1~§8.2, §8.4, §10, tech-tree |
 | **META** 시나리오·진행·경쟁 | 가상 이력 생성기, 면허 취소 규칙, 마일스톤 추가·업적(단계 V), (후속) 경쟁 AI | `progress.ts`·`actions.meta.ts`·`content/milestones.ts`, 테스트 `progress.test.ts`, 화면 `Verdict` | §12, §9.4 |
 
 ### 3.3 여러 파트가 나눠 쓰던 파일 — **쪼갰다 (S-4, 결정 #144, 2026-11-06)**
@@ -256,7 +256,7 @@ MVP 완료 기준 1(15년 목표 → 결과 화면 → 계속 운영)이 이 위
 
 | 시스템 | 자리 | 대안 (기각 이유) |
 |---|---|---|
-| ① 재무 확장 (S-11, MGT) | `finance.hedges: ForwardContract[]`(원재료 선도계약 — 품목·월 kg·고정 가격 지수·기간) · `finance.insurance: InsurancePolicy[]`(재산·재고·영업중단·제조물·신용 — 월 보험료·보상 한도) · `finance.board?`(외부 지분 25%↑일 때 생김 — 신뢰·분기 목표). 행동 `signForward`·`buyInsurance`·`cancelInsurance`(항상 실패, MVP 잠금). 틱: 선도계약은 2단계 원가, 보험료·이사회는 7단계(재무). 해임은 S-9의 `GameEnding 'dismissed'` | 이사회를 항상 두기 — 외부 지분이 없으면 의미가 없다. PRD §8.4의 고급 상품(선물환·금리 스왑·신용보험·팩토링)은 테크 BIZ-2b 해금(#49) — 같은 `insurance`·`hedges` 모양에 종류만 더한다 |
+| ① 재무 확장 (S-11, MGT) | `finance.hedges: ForwardContract[]`(원재료 선도계약 — 품목·월 kg·고정 가격 지수·기간) · `finance.insurance: InsurancePolicy[]`(재산·재고·영업중단·제조물·신용 — 월 보험료·보상 한도) · `finance.board?`(외부 지분 25%↑일 때 생김 — 신뢰·분기 목표). 행동 `signForward`·`buyInsurance`·`cancelInsurance`(항상 실패, MVP 잠금). 틱: 선도계약은 2단계 원가, 보험료·이사회는 7단계(재무) — (→ #179에서 선도계약은 7단계 **차액 정산**으로 정해졌다. 지금 틱 위치는 §2 표). 해임은 S-9의 `GameEnding 'dismissed'` | 이사회를 항상 두기 — 외부 지분이 없으면 의미가 없다. PRD §8.4의 고급 상품(선물환·금리 스왑·신용보험·팩토링)은 테크 BIZ-2b 해금(#49) — 같은 `insurance`·`hedges` 모양에 종류만 더한다 |
 | ② 경쟁 AI (S-12, META) | `world.rivals: RivalDistillery[]`(비어 있음 — 지역·카테고리·인지도·품질) + 국내 수요 공식에 **`× (1 − rivalShare)`** 훅. 경쟁사가 없으면 0이라 값이 정확히 같다. 지금은 PRD §9.4대로 배경 공급(시세 랜덤 워크·공급 과잉 이벤트)이 시장을 대신한다 | 수요 공식의 `shareCap`(점유 상한)을 경쟁사 몫으로 보기 — 상한은 조사로 맞춘 "신생 브랜드가 닿을 수 있는 몫"이라(#85) 뜻이 다르다 |
 | ③ 다지역 경영 (S-1, #128) | **문서에서 분류만** (#128의 준비안) — 아래 표. 증류소를 여럿 둘 때 증류소 단위 슬라이스를 `distilleries[]`로 옮기고 회사 단위는 그대로 둔다. 인수한 증류소의 시작 상태는 시나리오 입구(S-8)와 같은 구조로 만든다(PRD §3.4) | 지금 `distilleries[]`로 — 증류소 1개인 동안 모든 접근이 한 단계 깊어지고 얻는 것이 없다 |
 
