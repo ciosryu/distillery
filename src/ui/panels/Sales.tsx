@@ -52,7 +52,7 @@ function PriceInput({ s, p, value, suggested, onSet }: { s: GameState; p: Produc
       <div className="text-[11px] text-stone-500 tabular-nums">{wonFull(value)}</div>
       {pending && (
         <div className="mt-1 w-56 rounded border border-amber-300 bg-amber-50 p-1.5 text-[11px] text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-          ⚠ <b>{wonFull(pending.v)}</b>로 바꿀까요? {pending.msg}
+          ⚠ <b>{wonFull(pending.v)}</b>(으)로 바꿀까요? {pending.msg}
           <div className="mt-1 flex gap-1">
             <Button small variant="primary" onClick={() => { onSet(pending.v); setPending(null); }}>이 값으로</Button>
             <Button small variant="ghost" onClick={() => setPending(null)}>취소</Button>
@@ -161,7 +161,10 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
         </Td>
         <Td right>{num(p.stockBottles)}{p.stockBottles > 0 && sell > 0 && <div className="text-xs text-stone-500">{p.stockBottles / sell > 60 ? '5년 치 넘게' : `약 ${Math.max(1, Math.round(p.stockBottles / sell))}개월 치`}</div>}</Td>
         <Td>
-          <PriceInput s={s} p={p} value={p.price} suggested={suggested} onSet={(v) => dispatch({ type: 'setPrice', productId: p.id, price: v })} />
+          {p.autoPrice
+            ? <div className="text-sm tabular-nums" title="매달 판매 직전에 이번 달 이익(팔 수 있는 양 × 병당 공헌이익)이 가장 큰 값으로 바뀐다">{wonFull(p.price)} <Badge tone="good">자동</Badge></div>
+            : <PriceInput s={s} p={p} value={p.price} suggested={suggested} onSet={(v) => dispatch({ type: 'setPrice', productId: p.id, price: v })} />}
+          {!dfOnly && <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400" title="켜면 매달 판매 직전에 이번 달 이익이 가장 큰 값(권장가의 0.6~2배 중)으로 정한다. 재고가 적으면 올리고 많으면 내린다"><input type="checkbox" className="accent-amber-700" checked={!!p.autoPrice} onChange={(e) => dispatch({ type: 'setAutoPrice', productId: p.id, on: e.target.checked })} /> 자동 최적 가격</label>}
           {suggested != null && suggested !== p.price && (
             <button className="mt-0.5 block text-xs text-amber-800 underline decoration-dotted dark:text-amber-300" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: suggested })} title="기준 소비자가 × √(품질/60) × 숙성 인식에 맞춘 출고가">권장 {wonFull(suggested)}</button>
           )}
@@ -216,7 +219,10 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
         </Td>
         <Td right>{num(stock)}{sell > 0 && <div className="text-xs text-stone-500">{stock / sell > 60 ? '5년 치 넘게' : `약 ${Math.max(1, Math.round(stock / sell))}개월 치`}</div>}</Td>
         <Td>
-          <PriceInput s={s} p={p0} value={lo} suggested={currentSuggestedPrice(s, p0)} onSet={(v) => { for (const p of items) if (p.price !== v) dispatch({ type: 'setPrice', productId: p.id, price: v }); }} />
+          {items.every((p) => p.autoPrice)
+            ? <div className="text-sm tabular-nums">{lo === hi ? wonFull(lo) : `${num(lo)}~${num(hi)}원`} <Badge tone="good">자동</Badge></div>
+            : <PriceInput s={s} p={p0} value={lo} suggested={currentSuggestedPrice(s, p0)} onSet={(v) => { for (const p of items) { if (p.autoPrice) dispatch({ type: 'setAutoPrice', productId: p.id, on: false }); if (p.price !== v) dispatch({ type: 'setPrice', productId: p.id, price: v }); } }} />}
+          <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400"><input type="checkbox" className="accent-amber-700" checked={items.every((p) => p.autoPrice)} onChange={(e) => { for (const p of items) dispatch({ type: 'setAutoPrice', productId: p.id, on: e.target.checked }); }} /> 묶음 모두 자동 최적 가격</label>
           <div className="mt-0.5 text-xs text-stone-500" title="묶음 줄에서 값을 바꾸면 묶인 제품 모두 같은 값이 된다">{lo === hi ? '묶인 제품 모두 같은 값' : <>제품마다 {num(lo)}~{num(hi)}원 — 바꾸면 모두 같게 · <button className="underline decoration-dotted" onClick={() => { for (const p of items) if (p.price !== lo) dispatch({ type: 'setPrice', productId: p.id, price: lo }); }}>모두 {num(lo)}원으로</button></>}</div>
         </Td>
         <Td right>{wonFull(ms[0]!.consumer)}{lo !== hi && <div className="text-xs text-stone-500">첫 제품 기준</div>}</Td>
@@ -239,7 +245,15 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="grid gap-4">
-      <Card title="가격과 수요" actions={<span className="text-xs text-stone-500">한 달 판매 = min(재고, 수요 한도 ±10%, 소매 처리 역량)</span>}>
+      <Card title="가격과 수요" actions={<span className="flex flex-wrap items-center gap-2 text-xs text-stone-500">한 달 판매 = min(재고, 수요 한도 ±10%, 소매 처리 역량)
+        {(() => {
+          // 모든 제품 자동 최적 가격 (P-PROD-18) — 면세 한정판 제외
+          const ps = s.commerce.products.filter((p) => !p.dutyFreeOnly);
+          if (!ps.length) return null;
+          const allOn = ps.every((p) => p.autoPrice);
+          return <Button small variant={allOn ? 'secondary' : 'ghost'} onClick={() => { for (const p of ps) if (!!p.autoPrice === allOn) dispatch({ type: 'setAutoPrice', productId: p.id, on: !allOn }); }} title="매달 판매 직전에 제품마다 이번 달 이익이 가장 큰 값으로 정한다">{allOn ? '모든 제품 자동 가격 끄기' : '모든 제품 자동 최적 가격 켜기'}</Button>;
+        })()}
+      </span>}>
         {!compact && <SalesPrimer />}
         {!active.length ? <Empty>{compact ? '재고가 있는 제품이 없습니다 — 블렌딩·병입 탭에서 병입하세요. 품절 제품은 판매 탭에서 본다.' : '판매 중인 제품이 없습니다. 블렌딩·병입 탭에서 병입하세요.'}</Empty> : (
           <Table head={['제품', '재고', '출고가(병)', '소비자가', '이번 달 수요 한도', '지난달 수요 → 판매', '예상 월 매출', '병당 공헌이익', '']}>
@@ -388,7 +402,7 @@ function ProductDetail({ p }: { p: Product }) {
                 <Td right>{num(o.sellBottles)}</Td>
                 <Td right>{won(o.revenue)}</Td>
                 <Td right className={o === best ? 'text-emerald-700 dark:text-emerald-400' : ''}>{won(o.contribution)}</Td>
-                <Td>{o.price !== p.price && <Button small variant="ghost" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: o.price })}>적용</Button>}</Td>
+                <Td>{o.price !== p.price && <Button small variant="ghost" onClick={() => { if (p.autoPrice) dispatch({ type: 'setAutoPrice', productId: p.id, on: false }); dispatch({ type: 'setPrice', productId: p.id, price: o.price }); }}>적용</Button>}</Td>
               </tr>
             ))}
           </Table>
