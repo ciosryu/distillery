@@ -15,12 +15,12 @@ const KIND_LABEL: Record<SpiritKind, string> = { soju: '소주', gin: '진', mal
 const topHex = (h: Hex, n = 3) => HEX_AXES.filter((a) => h[a] >= 1).sort((a, b) => h[b] - h[a]).slice(0, n).map((a) => HEX_LABEL[a]).join(' · ') || '뚜렷한 향 없음';
 
 /** 원액 분류 — 주종 + 위스키 표기 가능 여부 (플레이테스트 2026-11-07: 주종이 다 섞여 보여 블렌딩이 불편하다) */
-function sourceCategory(lot: SpiritLot, minMonths: number): string {
+export function sourceCategory(lot: SpiritLot, minMonths: number): string {
   if (lot.kind === 'malt') return lot.oakMonths >= minMonths ? '몰트 위스키' : '몰트 스피릿(숙성 중)';
   if (lot.kind === 'grain') return lot.oakMonths >= minMonths ? '그레인 위스키' : '그레인 스피릿(숙성 중)';
   return KIND_LABEL[lot.kind];
 }
-const CATEGORY_ORDER = ['몰트 위스키', '몰트 스피릿(숙성 중)', '그레인 위스키', '그레인 스피릿(숙성 중)', '소주', '진', '백주'];
+export const CATEGORY_ORDER = ['몰트 위스키', '몰트 스피릿(숙성 중)', '그레인 위스키', '그레인 스피릿(숙성 중)', '소주', '진', '백주'];
 
 /** 캐스크 종류 짧은 이름과 색 (플레이테스트 2026-11-07: 버번 캐스크인지 올로로소 캐스크인지 구분이 안 된다) */
 const CASK_SHORT: Record<CaskTypeId, { name: string; cls: string }> = {
