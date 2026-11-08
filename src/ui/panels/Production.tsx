@@ -66,6 +66,7 @@ export function Orders() {
 function ProductionValueLine() {
   const s = useGame((g) => g.state);
   const v = useMemo(() => productionValue(s), [s]);
+  const pace = useMemo(() => whiskyAnnualPace(s), [s]);
   const fixed = monthlyFixedCost(s);
   if (!v.perBatch.length) return null;
   const years = Math.ceil(v.minMonths / 12);
@@ -85,6 +86,12 @@ function ProductionValueLine() {
       ) : (
         <div className="mt-0.5 font-medium">
           ⚠ 몰트 생산 0 — {years}년 뒤부터 새로 팔 위스키가 없다. 생산을 멈춰 아끼는 돈은 몰트 1배치당 월 {won(one.costPerMonth)}뿐이고, 고정비 {won(fixed)}은 그대로 나간다
+        </div>
+      )}
+      {/* 수요 한도 — 만든 만큼 다 팔리지는 않는다 (매출 추정이 과장되지 않게) */}
+      {pace && pace.bottles > 0 && v.whiskyBottlesPerYear > pace.bottles * 1.2 && (
+        <div className="mt-0.5 text-amber-800 dark:text-amber-300">
+          단, 지금 위스키 판매 속도는 연 약 {num(pace.bottles)}병({pace.basis === 'sales' ? '최근 판매' : '수요 추정'})이다 — 그 이상은 바로 팔리지 않는다. 인지도·유통이 오르면 늘고, 남는 원액은 통에서 더 숙성해 비싸게 팔거나 현물로 판다
         </div>
       )}
       <div className="mt-0.5 text-stone-600 dark:text-stone-400">
