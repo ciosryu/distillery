@@ -493,7 +493,7 @@ describe('소주·진 샘플 — 그 주종 레이더 축으로도 읽는다 (#1
   });
 });
 
-describe('생산비 대 고정비 · 생산이 만드는 미래 위스키 (P-PROD-15, 2차 플레이테스트)', () => {
+describe('생산비 대 고정비 · 생산이 만드는 미래 위스키 (#185, 2차 플레이테스트)', () => {
   it('월 생산비 = 배치 원가 × 월 배치 수, 해마다 위스키 병 수 = 공급 전망의 생산 지시 몫(정상 상태)과 같다', () => {
     const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
@@ -512,7 +512,7 @@ describe('생산비 대 고정비 · 생산이 만드는 미래 위스키 (P-PRO
   });
 });
 
-describe('기존 제품에 재고 보충 (P-PROD-14, 2차 플레이테스트 오너 요청)', () => {
+describe('기존 제품에 재고 보충 (#186, 2차 플레이테스트 오너 요청)', () => {
   const setup = () => {
     let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     const soju = s.production.recipes.find((r) => r.kind === 'soju')!;

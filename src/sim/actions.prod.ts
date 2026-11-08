@@ -247,7 +247,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
   bottle: (s, prev, a) => {
     const res = executeBlend(s, a.components, a.options);
     if (res.error) return fail(prev, res.error);
-    // 기존 제품 재고 보충 (P-PROD-14) — 몇 병을 더했고 품질이 어떻게 됐는지
+    // 기존 제품 재고 보충 (#186) — 몇 병을 더했고 품질이 어떻게 됐는지
     if (a.options.restockId) {
       const before = prev.commerce.products.find((x) => x.id === a.options.restockId)!;
       const added = res.product!.stockBottles - before.stockBottles;

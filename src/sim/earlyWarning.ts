@@ -3,7 +3,7 @@ import { macroWarnings, type MacroWarning } from './events';
 import { infoBonus } from './research';
 import type { GameState } from './types';
 
-// ENG-3 공급망 예측 — 매크로 이벤트 조기 경보 (파트 MGT, P-MGT-11, tech-tree §4.3). 정보만 준다(P2): 대응은 선도계약·비축·보험으로
+// ENG-3 공급망 예측 — 매크로 이벤트 조기 경보 (파트 MGT, #189, tech-tree §4.3). 정보만 준다(P2): 대응은 선도계약·비축·보험으로
 
 /** 사무직(office) 중 가장 높은 행정 스탯(c) — 원안 "예측 정확도 = 백오피스 스탯" */
 const officeStat = (s: Pick<GameState, 'hr'>): number => s.hr.staff.filter((x) => x.role === 'office').reduce((m, x) => Math.max(m, x.stats.c), 0);

@@ -4,7 +4,7 @@ import { marketIndex, monthlyUsageKg } from '../../sim/forwards';
 import { useGame } from '../../store/game';
 import { Card, Table, Td } from '../kit';
 
-// ENG-3 공급망 예측 (P-MGT-10) — 연구했을 때만 보인다. 정보만 준다: 대응은 위 선도계약으로
+// ENG-3 공급망 예측 (#188) — 연구했을 때만 보인다. 정보만 준다: 대응은 위 선도계약으로
 
 export function ForecastCard() {
   const s = useGame((g) => g.state);

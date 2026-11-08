@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { advanceMonth, newGame, type GameState } from './index';
 import { forecastSigma, priceForecast, truePricePath } from './forecast';
 
-// ENG-3 공급망 예측 (P-MGT-10) — 파트 MGT
+// ENG-3 공급망 예측 (#188) — 파트 MGT
 
 const withEng3 = (seed = 1): GameState => { const s = newGame({ seed, startingCash: 5_000_000_000 }); s.research.unlocked.push('ENG-3'); return s; };
 
-describe('가격 예측 (P-MGT-10)', () => {
+describe('가격 예측 (#188)', () => {
   it('미래 경로 식이 실제 월 진행(step.ts 8단계)과 정확히 같다 — 식이 어긋나면 여기서 깨진다', () => {
     let s = newGame({ seed: 7 });
     const path = truePricePath(s, 3);

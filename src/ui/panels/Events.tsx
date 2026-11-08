@@ -69,7 +69,7 @@ export function EventsCard() {
   );
 }
 
-/** 매크로 이벤트 조기 경보 (ENG-3, P-MGT-11) — 연구했을 때만 */
+/** 매크로 이벤트 조기 경보 (ENG-3, #189) — 연구했을 때만 */
 function MacroWarnings() {
   const s = useGame((g) => g.state);
   const w = macroForecast(s);

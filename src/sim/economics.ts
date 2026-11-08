@@ -215,7 +215,7 @@ export function tankFillNeed(s: GameState): { liters: number; casks200: number; 
   return { liters: Math.round(liters), casks200: Math.ceil(liters / 200), freeSlots: Math.max(0, warehouseCapacity(s) - s.inventory.casks.length) };
 }
 
-// ───────────── 생산비 대 고정비 · 생산이 만드는 미래 위스키 (P-PROD-15, 2차 MVP 플레이테스트 2026-11-08) ─────────────
+// ───────────── 생산비 대 고정비 · 생산이 만드는 미래 위스키 (#185, 2차 MVP 플레이테스트 2026-11-08) ─────────────
 // 2차 판: 현금이 줄자 생산을 0으로 했다(오너: "현금 아끼려고 + 경고의 '생산 지시 줄이기'를 보고"). 실제 생산비는 월 약 300만,
 // 고정비는 월 2,000만~3,000만이라 아낀 돈은 작았고 3~5년 차에 팔 위스키가 사라졌다. 공급 전망은 "봤는데 의미를 몰랐다" —
 // 병 수 대신 **돈**으로 보인다: 이 생산을 유지하면 월 얼마가 들고, 몇 년 뒤 해마다 위스키 몇 병(≈ 매출 얼마)이 생기는가. 상태를 바꾸지 않는다

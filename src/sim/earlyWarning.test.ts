@@ -4,9 +4,9 @@ import { EVENT } from './content/events';
 import { MACRO_CATEGORIES, macroWarnings } from './events';
 import { macroDetect, macroForecast } from './earlyWarning';
 
-// ENG-3 매크로 이벤트 조기 경보 (P-MGT-11) — 파트 MGT
+// ENG-3 매크로 이벤트 조기 경보 (#189) — 파트 MGT
 
-describe('매크로 이벤트 조기 경보 (P-MGT-11)', () => {
+describe('매크로 이벤트 조기 경보 (#189)', () => {
   it('ENG-3를 연구하지 않으면 없고, 연구하면 목록이 나온다 (상태는 그대로)', () => {
     expect(macroForecast(newGame({ seed: 1 }))).toBeNull();
     const s = newGame({ seed: 1 });

@@ -185,7 +185,7 @@ export function Bottling() {
     ? chart.blend.map((a, i) => ({ label: a.label, d: a.value - prevBlend[i]!.value })).filter((x) => Math.abs(x.d) >= 1).sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).slice(0, 3)
     : [];
   const abvValue = opts.targetAbv === 'cask' ? 'cask' : String(opts.targetAbv);
-  // 재고 보충 대상 (P-PROD-14) — 고른 원액과 같은 범주 제품을 앞에
+  // 재고 보충 대상 (#186) — 고른 원액과 같은 범주 제품을 앞에
   const restockTarget = opts.restockId ? s.commerce.products.find((p) => p.id === opts.restockId) : undefined;
   // 보충 대상이 판매 목록에서 빠졌으면(보관 처리) 새 제품으로 돌아간다
   useEffect(() => { if (opts.restockId && !restockTarget) setOpts((o) => ({ ...o, restockId: undefined })); }, [opts.restockId, restockTarget]);
@@ -243,7 +243,7 @@ export function Bottling() {
 
       <Card title="병입">
         <div className="grid gap-2">
-          {/* 새 제품 / 기존 제품 재고 보충 (P-PROD-14, 2차 플레이테스트 오너 요청) */}
+          {/* 새 제품 / 기존 제품 재고 보충 (#186, 2차 플레이테스트 오너 요청) */}
           <div className="flex flex-wrap items-center gap-1 text-sm">
             <Button small variant={!restockTarget ? 'primary' : 'ghost'} onClick={() => setOpts({ ...opts, restockId: undefined })}>새 제품</Button>
             <Button small variant={restockTarget ? 'primary' : 'ghost'} disabled={!restockable(s).length} title={restockable(s).length ? '이미 파는 제품의 재고에 더한다 — 이름·출고가·판매 기록을 이어 가고, 같은 범주 제품이 늘어 수요를 나눠 갖지 않는다' : '판매 중인 제품이 없다'} onClick={() => { const t0 = restockChoices[0] ?? restockable(s)[0]; if (t0) pickRestock(t0); }}>기존 제품 재고 보충</Button>

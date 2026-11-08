@@ -44,7 +44,7 @@ function eligible(s: GameState, def: EventDef, monthOfYear: number): boolean {
   return eligibleAt(s, def, s.month, monthOfYear);
 }
 
-/** month 달에 이 이벤트가 일어날 수 있는가 — 지금 상태 기준(조기 경보 P-MGT-11은 앞으로의 달에 쓴다. 조건은 지금 상태로 대신한다) */
+/** month 달에 이 이벤트가 일어날 수 있는가 — 지금 상태 기준(조기 경보 #189은 앞으로의 달에 쓴다. 조건은 지금 상태로 대신한다) */
 function eligibleAt(s: GameState, def: EventDef, month: number, monthOfYear: number): boolean {
   // 입지 이벤트 (결정 #86): sites에 있으면 지역과 무관하게 발생, sitesOnly면 그 입지에서만
   const atSite = !!def.sites?.includes(siteOf(s).id);
@@ -270,7 +270,7 @@ function rollChance(def: EventDef, region: ReturnType<typeof regionOf>, site: Re
   return def.chance * (region.eventWeights[def.category] ?? 1) * (site.eventBoost?.[def.id] ?? 1) * EVENT_RATE;
 }
 
-// ───────────── 매크로 이벤트 조기 경보 (ENG-3, P-MGT-11) ─────────────
+// ───────────── 매크로 이벤트 조기 경보 (ENG-3, #189) ─────────────
 
 export interface MacroWarning { defId: string; title: string; category: EventDef['category']; month: number; forecastFirst: boolean }
 

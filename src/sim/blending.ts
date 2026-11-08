@@ -23,7 +23,7 @@ export interface BottleOptions {
   /** 코어 레인지 라인 — 처음이면 이 배치가 기준 육각형이 되고, 다음 배치부터 일관성으로 평가 */ line?: string;
   /** 블렌더에게 맡긴 배팅 */ delegated?: boolean;
   /**
-   * 기존 제품에 재고 보충 (P-PROD-14, 2차 플레이테스트 오너 요청) — 새 제품을 만들지 않고 이 제품의 재고에 더한다.
+   * 기존 제품에 재고 보충 (#186, 2차 플레이테스트 오너 요청) — 새 제품을 만들지 않고 이 제품의 재고에 더한다.
    * 병 크기·도수·피니시·범주가 같아야 하고, 품질·향·원가는 남은 재고와 새 병 수로 가중 평균한다. 이름·출고가·판매 기록은 그대로
    */
   restockId?: string;
@@ -307,7 +307,7 @@ function packagingUnitCost(s: GameState, opts: Pick<BottleOptions, 'packagingId'
 }
 
 /** 블렌딩·병입 실행 (s는 변경 가능한 복제본) */
-// ───────────── 기존 제품에 재고 보충 (P-PROD-14, 2차 플레이테스트 2026-11-08 오너 요청) ─────────────
+// ───────────── 기존 제품에 재고 보충 (#186, 2차 플레이테스트 2026-11-08 오너 요청) ─────────────
 // 새 이름으로만 병입하면 제품이 늘 때마다 같은 범주 수요를 나눠 갖고(#163 나눔) 판매 기록·가격이 처음부터다.
 // 같은 제품으로 이어 가면 매대에 옛 병과 새 병이 섞인다고 보고 품질·향·원가를 재고 가중 평균한다(오너 승인: "재고 가중 평균").
 
@@ -438,7 +438,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     ...(caskMix.length ? { caskMix } : {}),
     ...(opts.dutyFreeOnly && p.dfEdition ? { dutyFreeOnly: true, dfEdition: { ...p.dfEdition } } : {}),
   };
-  // 기존 제품에 재고 보충 (P-PROD-14) — 새 제품을 만들지 않고 가중 평균으로 합친다. 출시 효과·면세 판·블렌딩 목표 채점은 새 제품에만
+  // 기존 제품에 재고 보충 (#186) — 새 제품을 만들지 않고 가중 평균으로 합친다. 출시 효과·면세 판·블렌딩 목표 채점은 새 제품에만
   if (opts.restockId) {
     const idx = s.commerce.products.findIndex((x) => x.id === opts.restockId);
     const merged = restockedProduct(s.commerce.products[idx]!, product);

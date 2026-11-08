@@ -60,7 +60,7 @@ export function CashBanner() {
 }
 
 /**
- * 생산을 멈춰도 아끼는 돈은 작다 (P-PROD-15, 2차 MVP 플레이테스트) — 2차 판은 이 경고의 [생산 지시 줄이기]를 보고 생산을 0으로 했고
+ * 생산을 멈춰도 아끼는 돈은 작다 (#185, 2차 MVP 플레이테스트) — 2차 판은 이 경고의 [생산 지시 줄이기]를 보고 생산을 0으로 했고
  * (오너 답변), 생산비 월 약 300만을 아끼는 대신 3~5년 차 위스키를 잃었다. 버튼을 빼고 사실을 보인다
  */
 function ProductionTruth({ s }: { s: Parameters<typeof productionValue>[0] }) {
