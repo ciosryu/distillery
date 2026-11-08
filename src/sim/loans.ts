@@ -8,6 +8,9 @@ import { caskStorageCost } from './casks';
 import { secondBrandMonthlyCost } from './brands';
 import { settleForwards } from './forwards';
 import { calendar } from './util';
+import { houseBrand } from './brands';
+import { AWARENESS } from './market';
+import { mod } from './modifiers';
 
 // 대출·재고 담보대출·월 고정비·재무 단계(틱 7) (파트 MGT, 결정 #144 — 파일 쪼개기로 옮겨 왔다. 규칙·수치 불변)
 
@@ -69,6 +72,33 @@ export function monthlyFixedBreakdown(s: GameState): { id: string; label: string
     { id: 'loans', label: '대출 원리금', amount: s.finance.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0) },
     { id: 'insurance', label: '보험료', amount: s.finance.insurance.reduce((t, x) => t + x.premiumPerMonth, 0) },
   ].filter((x) => x.amount > 0 || x.adjustable);
+}
+
+// ───────────── 마케팅 예산의 앞날 (P-MGT-12, mvp.md §7.6) ─────────────
+
+/** 마케팅 예산을 바꾸면 n개월 뒤 하우스 브랜드 인지도·수요가 어떻게 되는지 — 인지도 갱신식(market.ts updateAwareness)을 앞으로 돌린 추정.
+ *  입소문은 지난달 판매에서 시작하고 인지도에 비례해 변한다고 본다(수요 ∝ 인지도). 세컨드 브랜드 파급은 뺀다(MVP는 잠김).
+ *  demandMul = n개월 뒤 수요 / 지금 수요. 매출은 공급이 받쳐 주면 같은 비율로 움직인다. 상태는 바꾸지 않는다 */
+export function marketingOutlook(s: GameState, budget: number, months = 36): { awarenessNow: number; awareness: number; demandMul: number } {
+  const house = houseBrand(s);
+  const a0 = house.awareness;
+  const ids = new Set(s.commerce.products.filter((p) => !p.brandId || p.brandId === house.id).map((p) => p.id));
+  const last = s.history.reports.at(-1)?.sales ?? [];
+  const wom0 = AWARENESS.wordOfMouth * last.filter((x) => ids.has(x.productId)).reduce((t, x) => t + x.bottles * ((s.commerce.products.find((p) => p.id === x.productId)?.quality ?? 50) / 60), 0);
+  const gm = AWARENESS.marketing * Math.log10(1 + budget / 1_000_000) * mod(s, 'awareness_gain');
+  let a = a0;
+  for (let m = 0; m < months; m++) {
+    const g = gm + wom0 * (a / a0);
+    a = Math.min(0.95, Math.max(0.001, a + g * (1 - a) - AWARENESS.decay * a));
+  }
+  return { awarenessNow: a0, awareness: a, demandMul: a / a0 };
+}
+
+/** 최근 n개월(기록이 있는 만큼) 하우스 브랜드 판매 매출 — 마케팅 앞날을 돈으로 바꾸는 기준 */
+export function recentHouseRevenue(s: GameState, months = 12): number {
+  const house = houseBrand(s).id;
+  const brandOfId = new Map(s.commerce.products.map((p) => [p.id, p.brandId ?? house]));
+  return s.history.reports.slice(-months).reduce((t, r) => t + r.sales.filter((x) => (brandOfId.get(x.productId) ?? house) === house /* 보관된 옛 제품은 하우스로 친다 */).reduce((u, x) => u + x.revenue, 0), 0);
 }
 
 /** 이번 달 대출 납부액 (거치 기간에는 이자만) */

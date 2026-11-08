@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { EQUIPMENT } from './content/catalog';
 import { applyAction, heatingCost, monthlyFixedCost, newGame, newScenarioGame } from './index';
-import { monthlyFixedBreakdown } from './loans';
+import { marketingOutlook, monthlyFixedBreakdown, recentHouseRevenue } from './loans';
+import { AWARENESS } from './market';
 
 // 매달 나가는 돈 (#181 안 A) — 내역의 합은 월 고정비 예상과 같다
 
@@ -42,5 +43,33 @@ describe('월 고정비 내역 (#181)', () => {
     const parts = monthlyFixedBreakdown(s);
     expect(parts.find((p) => p.id === 'marketing')?.amount).toBe(s.commerce.marketingBudget);
     expect(parts.find((p) => p.id === 'secondBrand')).toBeUndefined(); // 세컨드 브랜드가 없으면 줄도 없다
+  });
+
+  // P-MGT-12 — 마케팅 예산의 앞날 (mvp.md §7.6)
+  it('마케팅 앞날: 예산이 클수록 3년 뒤 수요 배수가 크고, 상태는 그대로', () => {
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const before = JSON.stringify(s);
+    const muls = [0, 1_000_000, 3_000_000, 5_000_000].map((b) => marketingOutlook(s, b).demandMul);
+    for (let i = 1; i < muls.length; i++) expect(muls[i]).toBeGreaterThan(muls[i - 1]!);
+    expect(JSON.stringify(s)).toBe(before);
+  });
+
+  it('마케팅 앞날 한 달 = 인지도 갱신식 한 번 (판매 없음)', () => {
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const a0 = s.commerce.brands[0]!.awareness;
+    const g = AWARENESS.marketing * Math.log10(1 + 3_000_000 / 1_000_000);
+    const o = marketingOutlook(s, 3_000_000, 1);
+    expect(o.awarenessNow).toBe(a0);
+    expect(o.awareness).toBeCloseTo(a0 + g * (1 - a0) - AWARENESS.decay * a0, 10);
+  });
+
+  it('최근 하우스 매출 = 최근 n개월 판매 매출 합', () => {
+    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    expect(recentHouseRevenue(s)).toBe(0);
+    const id = 'P-test';
+    s = { ...s, commerce: { ...s.commerce, products: [...s.commerce.products, { id } as never] },
+      history: { ...s.history, reports: [{ sales: [{ productId: id, revenue: 100 }] }, { sales: [{ productId: id, revenue: 50 }] }] as never } };
+    expect(recentHouseRevenue(s, 12)).toBe(150);
+    expect(recentHouseRevenue(s, 1)).toBe(50);
   });
 });
