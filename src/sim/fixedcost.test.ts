@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { EQUIPMENT } from './content/catalog';
 import { applyAction, heatingCost, monthlyFixedCost, newGame, newScenarioGame } from './index';
-import { marketingOutlook, monthlyFixedBreakdown, recentHouseRevenue } from './loans';
+import { forfeitedLoanRoom, marketingOutlook, monthlyFixedBreakdown, recentHouseRevenue } from './loans';
+import { gainXp, salaryRaiseSinceStart } from './hr';
+import { rngFor } from './rng';
 import { AWARENESS } from './market';
 
 // 매달 나가는 돈 (#181 안 A) — 내역의 합은 월 고정비 예상과 같다
@@ -71,5 +73,31 @@ describe('월 고정비 내역 (#181)', () => {
       history: { ...s.history, reports: [{ sales: [{ productId: id, revenue: 100 }] }, { sales: [{ productId: id, revenue: 50 }] }] as never } };
     expect(recentHouseRevenue(s, 12)).toBe(150);
     expect(recentHouseRevenue(s, 1)).toBe(50);
+  });
+
+  // P-MGT-14 — 한 번만 받는 대출을 일부만 받으면 나머지 한도가 사라진다 (mvp.md §7.8)
+  it('대출 일부 실행: 남는 한도 = 한도 − 신청액, 받은 뒤·막힌 상품은 0', () => {
+    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    expect(forfeitedLoanRoom(s, 'kr_startup', 50_000_000)).toBe(150_000_000);
+    expect(forfeitedLoanRoom(s, 'kr_startup', 200_000_000)).toBe(0);
+    expect(forfeitedLoanRoom(s, 'policy', 50_000_000)).toBe(0); // 소주 생산 실적 전에는 막힘
+    s = applyAction(s, { type: 'takeLoan', offerId: 'kr_startup', amount: 50_000_000 }).state;
+    expect(forfeitedLoanRoom(s, 'kr_startup', 50_000_000)).toBe(0); // 이용 중 — 다시 받을 수 없다
+    expect(applyAction(s, { type: 'takeLoan', offerId: 'kr_startup', amount: 50_000_000 }).error).toBeTruthy();
+  });
+
+  // P-MGT-15 — HR이 잠긴 MVP에서 레벨이 오르면 급여가 저절로 오른다
+  it('MVP 급여 인상분: 시작엔 0, 레벨이 오르면 그만큼, HR이 열린 판은 null', () => {
+    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const r0 = salaryRaiseSinceStart(s)!;
+    expect(r0.now - r0.start).toBe(0);
+    s = structuredClone(s);
+    const start = r0.now;
+    for (let m = 0; m < 60; m++) gainXp(s, rngFor(1, m, 'xp-test'), { distiller: 20, warehouse: 0, sales: 20, office: 0, blender: 0 } as never);
+    const r = salaryRaiseSinceStart(s)!;
+    expect(s.hr.staff.some((x) => x.level > 1)).toBe(true);
+    expect(r.now).toBeGreaterThan(start);
+    expect(Math.abs(r.start - start)).toBeLessThanOrEqual(10_000 * s.hr.staff.length * 2); // 만 원 반올림이 레벨마다 쌓인 오차
+    expect(salaryRaiseSinceStart(newGame({ seed: 1 }))).toBeNull();
   });
 });
