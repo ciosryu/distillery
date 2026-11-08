@@ -74,6 +74,14 @@ describe('이사회 (#180)', () => {
     expect(lo.finance.board!.confidence).toBe(0);
   });
 
+  it('외부 지분이 25% 밑으로 내려가면 이사회가 해산한다 (지금은 지분을 되사는 수단이 없다)', () => {
+    const s = withBoard(15, 0.2);
+    const r = rep(15);
+    runBoard(s, r);
+    expect(s.finance.board).toBeUndefined();
+    expect(r.notes.join(' ')).toMatch(/해산/);
+  });
+
   it('이사회가 없으면 아무 일도 없고, MVP는 투자가 잠겨 있어 이사회가 생기지 않는다', () => {
     const s = newGame({ seed: 1 });
     const r = rep(0);
