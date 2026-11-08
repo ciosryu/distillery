@@ -7,6 +7,7 @@ import { INVESTMENT_OFFERS } from '../../sim/content/catalog';
 import { annuityPayment, currentLoanPayment, monthlyFixedCost as monthlyFixed, inventoryCollateral, inventoryLoanRoom, inventoryLtv, monthLabel } from '../../sim';
 import { useGame } from '../../store/game';
 import { BoardCard } from './Board';
+import { ForecastCard } from './Forecast';
 import { pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Table, Td } from '../kit';
 
@@ -43,6 +44,7 @@ export function Finance() {
       </Card>
 
       <ForwardCard />
+      <ForecastCard />
 
       <InsuranceCard />
 
