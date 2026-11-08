@@ -87,10 +87,11 @@ export function MvpHome() {
 const FOLD_KEY = 'distillery-tycoon/fold/';
 /**
  * 접힌 블록의 열림 — 신호(auto)가 있으면 기본 펼침, 없으면 접힘. 사람이 직접 펼치거나 접으면 그 브라우저에 기억하되,
- * 신호가 생기거나 사라지면 다시 기본값을 따른다(평상시에 접어 둔 돈 흐름도 위기가 오면 펼쳐진다). "이번 달 할 일" 링크(OPEN_FOLD_EVENT)는 연다.
+ * 신호가 생기거나 사라지면 다시 기본값을 따른다(평상시에 접어 둔 돈 흐름도 위기가 오면 펼쳐진다). "이번 달 할 일"·파산 경고 링크(OPEN_FOLD_EVENT)는 연다 —
+ * detail이 블록 id이거나 블록 안의 앵커(anchors)일 때. 블록 안에 링크 대상 앵커를 새로 두면 anchors에 함께 적는다.
  * 브라우저 저장이 막혀도 기본값으로 돈다 — 게임 상태가 아니다
  */
-function useFold(id: string, auto: boolean): [boolean, () => void] {
+function useFold(id: string, auto: boolean, anchors: string[] = []): [boolean, () => void] {
   const [stored, setStored] = useState<{ v: boolean; sig: boolean } | null>(() => {
     try { const x = JSON.parse(localStorage.getItem(FOLD_KEY + id) ?? 'null'); return x && typeof x.v === 'boolean' ? x : null; } catch { return null; }
   });
@@ -101,7 +102,7 @@ function useFold(id: string, auto: boolean): [boolean, () => void] {
     try { localStorage.setItem(FOLD_KEY + id, JSON.stringify(x)); } catch { /* 편의 기능 — 실패해도 그만 */ }
   };
   useEffect(() => {
-    const on = (e: Event) => { if ((e as CustomEvent).detail === id) save(true); };
+    const on = (e: Event) => { const d = (e as CustomEvent).detail; if (d === id || anchors.includes(d)) save(true); };
     window.addEventListener(OPEN_FOLD_EVENT, on);
     return () => window.removeEventListener(OPEN_FOLD_EVENT, on);
   });
@@ -129,7 +130,8 @@ function MoneyFold() {
   const over = overstock(s);
   const jump = paymentJump(loanSchedule(s, 4));
   const alert = cashAlert(s);
-  const [open, toggle] = useFold('mvp-money', !!alert || over.length > 0 || !!jump);
+  // 블록 안의 앵커도 함께 적는다 — 파산 경고의 [매달 나가는 돈 줄이기](#185)가 'mvp-fixed'로 가는데, 사람이 블록을 접어 두면 앵커가 없어 아무 일도 안 했다
+  const [open, toggle] = useFold('mvp-money', !!alert || over.length > 0 || !!jump, ['mvp-fixed']);
   return (
     <Card>
       <FoldBar open={open} onToggle={toggle} title="돈 흐름" hint="펼치기 — 지난달 현금 흐름 · 매달 나가는 돈 · 상환 예정">
