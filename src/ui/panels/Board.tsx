@@ -5,7 +5,7 @@ import { useGame } from '../../store/game';
 import { pct, won } from '../format';
 import { Badge, Card } from '../kit';
 
-// 이사회 (P-MGT-7, PRD §8.2) — 외부 지분 25%↑일 때만 보인다
+// 이사회 (#180, PRD §8.2) — 외부 지분 25%↑일 때만 보인다
 
 export function BoardCard() {
   const s = useGame((g) => g.state);

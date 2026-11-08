@@ -4,7 +4,7 @@ import { effectivePriceIndex } from './modifiers';
 import { previewBatch } from './production';
 import type { GameState, MonthReport } from './types';
 
-// 원재료 선도계약 (파트 MGT, P-MGT-6, PRD §8.4) — 차액 정산형. 매달 재무 단계(7)에서 (시장 지수 − 고정 지수) × kg당 기준가 × kg를 주고받는다.
+// 원재료 선도계약 (파트 MGT, #179, PRD §8.4) — 차액 정산형. 매달 재무 단계(7)에서 (시장 지수 − 고정 지수) × kg당 기준가 × kg를 주고받는다.
 // 실제 원료 구매(생산 단계 원가)는 그대로 시세를 내고, 이 정산이 차이를 메워 원가를 고정한다. 계약이 없으면 아무 일도 없다.
 
 /** 이 원료의 kg당 기준 금액 — 기준가 × 수입 물류 배수 (입지 운송비 배수는 넣지 않는다 `[튜닝]`) */

@@ -18,12 +18,12 @@ describe('세이브 v12 → v13', () => {
 });
 
 describe('재무 확장의 자리 (S-11)', () => {
-  it('새 게임은 빈 목록, 이사회 없음. 선도계약(P-MGT-6)·보험(#171)은 규칙이 있고 MVP에서는 잠겨 있다', () => {
+  it('새 게임은 빈 목록, 이사회 없음. 선도계약(#179)·보험(#171)은 규칙이 있고 MVP에서는 잠겨 있다', () => {
     const s = newGame({ seed: 1 });
     expect(s.finance.hedges).toEqual([]);
     expect(s.finance.insurance).toEqual([]);
     expect(s.finance.board).toBeUndefined();
-    // 선도계약은 규칙이 생겼다 (P-MGT-6) — 새 게임은 생산 지시가 없어 계약할 양이 없다. 자세한 테스트는 finance.test.ts
+    // 선도계약은 규칙이 생겼다 (#179) — 새 게임은 생산 지시가 없어 계약할 양이 없다. 자세한 테스트는 finance.test.ts
     expect(applyAction(s, { type: 'signForward', ingredientId: 'malt_unpeated', kgPerMonth: 1000, months: 12 }).error).toMatch(/생산 지시가 쓰는 양/);
     // 보험은 규칙이 생겼다 (#171) — 자세한 테스트는 finance.test.ts
     expect(applyAction(s, { type: 'buyInsurance', kind: 'property', coverage: 1_000_000_000 }).error).toBeUndefined();

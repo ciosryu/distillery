@@ -81,7 +81,7 @@ export function Finance() {
                 <Td>{monthLabel(s.startYear, l.startMonth)}</Td>
                 <Td>
                   <div className="flex items-center gap-1">
-                    {/* 일부 상환 (P-MGT-8) — 남은 기간 그대로 월 납부가 줄어든다 */}
+                    {/* 일부 상환 (#181) — 남은 기간 그대로 월 납부가 줄어든다 */}
                     <NumberField value={(repay[l.id] ?? 10_000_000) / 1e6} min={10} max={Math.floor(l.balance / 1e6)} width="w-20" suffix="백만" onCommit={(v) => setRepay({ ...repay, [l.id]: v * 1e6 })} />
                     <Button small disabled={s.finance.cash < (repay[l.id] ?? 10_000_000) || (repay[l.id] ?? 10_000_000) >= l.balance} onClick={() => dispatch({ type: 'repayLoan', loanId: l.id, amount: repay[l.id] ?? 10_000_000 })} title="잔액 일부를 갚는다 — 남은 기간은 그대로, 월 납부·이자가 줄어든다">일부 상환</Button>
                     <Button small disabled={s.finance.cash < l.balance} onClick={() => dispatch({ type: 'repayLoan', loanId: l.id })}>전액 상환</Button>
@@ -127,7 +127,7 @@ export function Finance() {
   );
 }
 
-/** 원재료 선도계약 (P-MGT-6, PRD §8.4) — 차액 정산형. MVP는 잠겨 있어 숨긴다 */
+/** 원재료 선도계약 (#179, PRD §8.4) — 차액 정산형. MVP는 잠겨 있어 숨긴다 */
 function ForwardCard() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);

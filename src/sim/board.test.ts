@@ -3,7 +3,7 @@ import { applyAction, newGame, newScenarioGame, type GameState, type MonthReport
 import { BOARD } from './content/catalog';
 import { quarterRevenue, runBoard } from './board';
 
-// 이사회 (P-MGT-7, PRD §8.2) — 파트 MGT
+// 이사회 (#180, PRD §8.2) — 파트 MGT
 
 const rep = (month: number, revenue = 0, cashEnd = 0): MonthReport => ({ month, revenue, expenses: {}, netCash: 0, cashEnd, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] });
 /** month에 이사회가 있는 판 (외부 지분 share) */
@@ -15,7 +15,7 @@ const withBoard = (month: number, share = 0.325): GameState => {
   return s;
 };
 
-describe('이사회 (P-MGT-7)', () => {
+describe('이사회 (#180)', () => {
   it('외부 지분 25%↑에서만 생긴다 — 엔젤(10%)만으로는 없고, 시드 VC를 더하면(32.5%) 생긴다', () => {
     let s = newGame({ seed: 1, startingCash: 5_000_000_000 });
     s = applyAction(s, { type: 'takeInvestment', offerId: 'angel' }).state;

@@ -3,7 +3,7 @@ import { monthlyFixedCost } from './loans';
 import { endGame } from './progress';
 import type { GameState, MonthReport } from './types';
 
-// 이사회 (파트 MGT, P-MGT-7, PRD §8.2) — 외부 지분 25%↑면 생기고, 석 달마다 목표를 하나 낸다. 달성하면 신뢰↑, 미달이면 신뢰↓.
+// 이사회 (파트 MGT, #180, PRD §8.2) — 외부 지분 25%↑면 생기고, 석 달마다 목표를 하나 낸다. 달성하면 신뢰↑, 미달이면 신뢰↓.
 // 외부 지분 50%↑에서 신뢰가 0이 되면 대표 해임(GameEnding 'dismissed'). 목표 수치는 월 리포트 기록에서 다시 계산한다(상태 모양은 S-11 자리 그대로).
 // 이사회가 없으면(외부 지분 25% 미만 — MVP는 투자가 잠겨 있다) 아무 일도 하지 않는다.
 

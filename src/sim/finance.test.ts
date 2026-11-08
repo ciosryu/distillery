@@ -82,7 +82,7 @@ describe('재무', () => {
   });
 });
 
-describe('원재료 선도계약 (P-MGT-6)', () => {
+describe('원재료 선도계약 (#179)', () => {
   /** 언피티드 몰트를 월 2배치 생산하는 판 */
   const malting = (): GameState => applyAction(newGame({ seed: 1, startingCash: 5_000_000_000 }), { type: 'setOrder', recipeId: recipeId(newGame({ seed: 1 }), '싱글 몰트 — 언'), batchesPerMonth: 2 }).state;
   const ING = 'malt_unpeated';

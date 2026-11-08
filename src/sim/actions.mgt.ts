@@ -23,7 +23,7 @@ export type MgtAction =
   | { type: 'startResearch'; techId: string; leadStaffId: string }
   | { type: 'setResearch'; techId: string; paused?: boolean; leadStaffId?: string }
   | { type: 'cancelResearch'; techId: string }
-  /** 재무 확장 (S-11 자리, PRD §8.4) — 원재료 선도계약(P-MGT-6: 차액 정산형) / 보험 가입·해지(#171: 재산·재고·영업중단) */
+  /** 재무 확장 (S-11 자리, PRD §8.4) — 원재료 선도계약(#179: 차액 정산형) / 보험 가입·해지(#171: 재산·재고·영업중단) */
   | { type: 'signForward'; ingredientId: string; kgPerMonth: number; months: number }
   | { type: 'buyInsurance'; kind: 'property' | 'inventory' | 'business_interruption' | 'product_liability' | 'credit'; coverage: number }
   | { type: 'cancelInsurance'; policyId: string }
@@ -35,11 +35,11 @@ export type MgtAction =
   | { type: 'hire'; candidateId: string; asApprentice?: boolean }
   | { type: 'fire'; staffId: string }
   | { type: 'takeLoan'; offerId: string; amount: number }
-  /** 대출 상환 — amount가 없거나 잔액 이상이면 전액, 있으면 일부(P-MGT-8: 남은 기간 그대로 월 납부를 다시 계산) */
+  /** 대출 상환 — amount가 없거나 잔액 이상이면 전액, 있으면 일부(#181: 남은 기간 그대로 월 납부를 다시 계산) */
   | { type: 'repayLoan'; loanId: string; amount?: number }
   | { type: 'resolveEvent'; eventId: string; choice: number };
 
-/** 대출 일부 상환 최소액 (P-MGT-8) [튜닝] — 대출 실행 최소액과 같다 */
+/** 대출 일부 상환 최소액 (#181) [튜닝] — 대출 실행 최소액과 같다 */
 export const PARTIAL_REPAY_MIN = 10_000_000;
 
 export const MGT_CASH_KEY: CashKeys<MgtAction> = {
@@ -80,7 +80,7 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     if (a.paused !== undefined) r.paused = a.paused;
     return { state: s, message: r.paused ? '연구 일시정지 — 진행도는 남고 연구비는 멈춘다' : '연구 진행' };
   },
-  // 원재료 선도계약 (P-MGT-6) — 고정 가격 = 지금 시장 지수 × (1 + spread), 이번 달부터 months개월, 월 kg는 생산 지시의 사용량까지. 중도 해지 없음
+  // 원재료 선도계약 (#179) — 고정 가격 = 지금 시장 지수 × (1 + spread), 이번 달부터 months개월, 월 kg는 생산 지시의 사용량까지. 중도 해지 없음
   signForward: (s, prev, a) => {
     const ing = INGREDIENTS[a.ingredientId];
     if (!ing) return fail(prev, '원료가 없습니다');
@@ -123,7 +123,7 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     s.finance.cash += o.amount;
     s.finance.investorShare = 1 - (1 - s.finance.investorShare) * (1 - o.share);
     s.finance.investmentsTaken.push(o.id);
-    const formed = ensureBoard(s); // 이사회 (P-MGT-7) — 외부 지분 25%↑
+    const formed = ensureBoard(s); // 이사회 (#180) — 외부 지분 25%↑
     return { state: s, message: `${o.nameKo} ${o.amount.toLocaleString()}원 유치 — 외부 지분 ${(s.finance.investorShare * 100).toFixed(1)}%${formed ? ' · 이사회가 생겼다 (석 달마다 목표)' : ''}` };
   },
   sellCaskOwnership: (s, prev, a) => {
@@ -192,7 +192,7 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
       s.finance.loans = s.finance.loans.filter((l) => l.id !== loan.id);
       return { state: s, message: '대출 전액 상환' };
     }
-    // 일부 상환 (P-MGT-8): 잔액을 줄이고 남은 기간은 그대로 둔 채 월 납부를 다시 계산한다(거치 중이면 거치가 끝난 뒤의 납부)
+    // 일부 상환 (#181): 잔액을 줄이고 남은 기간은 그대로 둔 채 월 납부를 다시 계산한다(거치 중이면 거치가 끝난 뒤의 납부)
     if (amount < PARTIAL_REPAY_MIN) return fail(prev, `일부 상환은 ${PARTIAL_REPAY_MIN.toLocaleString()}원 이상입니다`);
     if (s.finance.cash < amount) return fail(prev, '현금이 부족합니다');
     const before = currentLoanPayment(s, loan);

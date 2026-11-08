@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { advanceMonths, annuityPayment, applyAction, currentLoanPayment, newGame, type GameState } from './index';
 import { PARTIAL_REPAY_MIN } from './actions.mgt';
 
-// 대출 일부 상환 (P-MGT-8, PRD §NEW-MGT-4 안 B) — 파트 MGT
+// 대출 일부 상환 (#181, PRD §8.1.1 안 B) — 파트 MGT
 
 const withLoan = (offerId: string, amount: number): GameState => {
   const s = newGame({ seed: 1, startingCash: 5_000_000_000 });
   return applyAction(s, { type: 'takeLoan', offerId, amount }).state;
 };
 
-describe('대출 일부 상환 (P-MGT-8)', () => {
+describe('대출 일부 상환 (#181)', () => {
   it('거치 없는 대출: 잔액이 줄고, 남은 기간 그대로 월 납부를 다시 계산한다', () => {
     let s = advanceMonths(withLoan('working', 300_000_000), 6);
     const l0 = s.finance.loans[0]!;

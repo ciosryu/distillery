@@ -81,11 +81,11 @@ export function runFinance(s: GameState, report: MonthReport, monthOfYear: numbe
     pay('interest', interest);
     pay('principal', principal);
   }
-  // 원재료 선도계약 차액 정산 (P-MGT-6) — 계약이 없으면 아무 일도 없다
+  // 원재료 선도계약 차액 정산 (#179) — 계약이 없으면 아무 일도 없다
   settleForwards(s, report);
   // 재고 담보대출(홋카이도, 결정 #90): 시가가 떨어지면 추가 상환 요구
   pay('principal', inventoryMarginCall(s, report));
   s.finance.loans = s.finance.loans.filter((l) => l.balance > 0);
-  // 이사회 (P-MGT-7) — 외부 지분 25%↑일 때만 있다
+  // 이사회 (#180) — 외부 지분 25%↑일 때만 있다
   runBoard(s, report);
 }
