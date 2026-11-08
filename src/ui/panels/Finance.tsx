@@ -41,7 +41,7 @@ export function Finance() {
                 </Td>
                 <Td>
                   <NumberField value={amounts[o.id] ?? 0} min={10} max={o.max / 1e6} width="w-20" suffix="백만" onCommit={(v) => setAmounts({ ...amounts, [o.id]: v })} />
-                  {/* P-MGT-14 — 한 번만 받는 상품: 일부만 받으면 나머지 한도는 사라진다 */}
+                  {/* P-MGT-16 — 한 번만 받는 상품: 일부만 받으면 나머지 한도는 사라진다 */}
                   {!using && !locked && forfeitedLoanRoom(s, o.id, amt) > 0 && (
                     <div className="mt-0.5 max-w-[12rem] whitespace-normal text-xs text-amber-800 dark:text-amber-300">한 번만 받는 상품 — 남는 {won(forfeitedLoanRoom(s, o.id, amt))}은 다시 받을 수 없다</div>
                   )}

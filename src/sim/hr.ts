@@ -41,7 +41,7 @@ export function refreshCandidates(s: GameState, rng: Rng): void {
 export const LEVEL_RAISE = 0.05;
 
 /**
- * 직원 급여가 시작보다 얼마나 올랐나 (P-MGT-15, mvp.md §7.8) — HR이 잠긴 시나리오(MVP)에서만 계산한다.
+ * 직원 급여가 시작보다 얼마나 올랐나 (P-MGT-17, mvp.md §7.8) — HR이 잠긴 시나리오(MVP)에서만 계산한다.
  * 거기서는 직원이 모두 레벨 1로 시작해 고용·해고가 없으므로, 레벨이 오른 만큼(×1.05씩)이 곧 인상분이다(반올림 오차 만 원 단위).
  * HR이 열린 판은 입사 레벨을 알 수 없어 null. 상태를 바꾸지 않는다
  */

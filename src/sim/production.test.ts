@@ -558,3 +558,17 @@ describe('기존 제품에 재고 보충 (#186, 2차 플레이테스트 오너 �
     expect(previewBlend(s, comp, { ...opts, restockId: 'NOPE' }).ok).toBe(false);
   });
 });
+
+describe('재고 보충 — 매대 재고가 0이면 새 배치의 숙성 표기를 그대로 (P-PROD-14 수정)', () => {
+  it('남은 재고가 있으면 어린 쪽, 0이면 새 배치 값', async () => {
+    const { restockedProduct } = await import('./blending');
+    const base = { id: 'P', name: 'x', category: 'whisky', ageYears: 1, oakMonths: 12, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 60, typicity: 50, style: null, sourcedShare: 0, stockBottles: 100, price: 40000, unitCost: 10000, createdMonth: 0, lastMonthSold: 0, totalSold: 0 } as Product;
+    const batch = { ...base, ageYears: 3, oakMonths: 38, quality: 75, stockBottles: 300 } as Product;
+    expect(restockedProduct(base, batch).ageYears).toBe(1);
+    const empty = restockedProduct({ ...base, stockBottles: 0 }, batch);
+    expect(empty.ageYears).toBe(3);
+    expect(empty.oakMonths).toBe(38);
+    expect(empty.quality).toBe(75);
+    expect(empty.price).toBe(40000); // 출고가는 플레이어 몫 — 화면이 올리라고 알린다
+  });
+});

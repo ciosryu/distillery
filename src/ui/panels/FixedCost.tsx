@@ -14,7 +14,7 @@ export function FixedCostLine() {
   const setTab = useUi((u) => u.setTab);
   const parts = monthlyFixedBreakdown(s);
   const total = parts.reduce((t, p) => t + p.amount, 0);
-  // P-MGT-15 — HR이 잠긴 판(MVP)에서 급여가 저절로 오른 몫 (mvp.md §7.8: 3차 판 6년간 +19%)
+  // P-MGT-17 — HR이 잠긴 판(MVP)에서 급여가 저절로 오른 몫 (mvp.md §7.8: 3차 판 6년간 +19%)
   const raise = salaryRaiseSinceStart(s);
   const raised = raise && raise.now - raise.start >= 10_000 ? raise.now - raise.start : 0;
   return (

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BOTTLE_SIZES, CASKS, PACKAGING, packagingCost } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
-import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual } from '../../sim';
 import { regionOf } from '../../sim/content/regions';
 import { stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
 import { useGame } from '../../store/game';
@@ -333,9 +333,27 @@ export function Bottling() {
               {dfForecast && dfForecast.window < preview.bottles && <p className="text-xs text-amber-800 dark:text-amber-300">⚠ 이번 달 수요(계절·인지도 반영)로는 {DUTY_FREE.sellOutMonths}개월 안에 {num(preview.bottles)}병을 다 팔기 어렵습니다 — 사용량을 줄이면 완판 보너스를 노릴 수 있습니다</p>}
               {preview.warnings.map((w) => <p key={w} className="text-xs text-amber-800 dark:text-amber-300">⚠ {w}</p>)}
               {preview.errors.map((e) => <p key={e} className="text-xs text-rose-700 dark:text-rose-400">✕ {e}</p>)}
+              {/* 같은 주종 제품 수 — 제품이 하나뿐이면 그 주종 수요가 가장 작다(1개 1.00 · 2개 1.26 · 3개 1.44배). 한 제품만 계속 보충하면
+                  사람형 봇 8/8 파산, 2~3개로 나누면 0/8 (2026-11-08 실험). 4개부터는 거의 안 는다 */}
+              {preview.category && !preview.dfEdition && (() => {
+                const n = s.commerce.products.filter((p) => p.category === preview.category && p.stockBottles > 0 && !p.dutyFreeOnly).length;
+                const after = restockTarget || n >= 3 ? n : n + 1;
+                const tot = (k: number) => (k * skuSplitEqual(k)).toFixed(2);
+                if (restockTarget && n <= 1) return <p className="text-xs text-amber-800 dark:text-amber-300">⚠ 판매 중인 {CATEGORY[preview.category].nameKo} 제품이 이것 하나뿐입니다 — 제품이 하나면 그 주종 수요가 가장 작습니다. 이번 원액을 <b>새 제품</b>으로 내면 주종 전체 수요가 ×{tot(1)} → ×{tot(2)}가 됩니다(2~3개가 적당, 4개부터는 거의 안 는다)</p>;
+                if (!restockTarget && n < 3) return <p className="text-xs text-stone-500">판매 중인 {CATEGORY[preview.category].nameKo} 제품 {n}개 → {after}개: 주종 전체 수요 ×{tot(Math.max(1, n))} → ×{tot(after)} (같은 주종은 2~3개가 적당)</p>;
+                if (!restockTarget && n >= 3) return <p className="text-xs text-stone-500">판매 중인 {CATEGORY[preview.category].nameKo} 제품이 이미 {n}개 — 더 늘려도 수요가 거의 안 는다(×{tot(n)} → ×{tot(n + 1)}). <b>기존 제품 재고 보충</b>을 권한다</p>;
+                return null;
+              })()}
               {restockTarget && restockAfter && (
                 <p className="rounded-md bg-sky-50 px-2 py-1 text-xs text-sky-900 dark:bg-sky-950 dark:text-sky-100">
                   보충 뒤 「{restockTarget.name}」: 재고 {num(restockTarget.stockBottles)} → <b>{num(restockAfter.stock)}병</b> · 품질 {restockTarget.quality} → <b>{restockAfter.quality == null ? '모른다(샘플 필요)' : `${num(restockAfter.quality, 1)}${restockAfter.sigma >= 0.5 ? ` ±${num(restockAfter.sigma, 1)}` : ''}`}</b> (새 병 비중 {pct(restockAfter.w, 0)}) · 출고가 {won(restockTarget.price)} 그대로
+                  {(() => {
+                    // 출고가는 자동으로 안 바뀐다 — 새 배치가 더 비싸게 팔릴 술이면 알려 준다 (숙성 연수·품질이 오르면 권장가가 오른다)
+                    const sug = masked ? (est?.quality != null ? priceAtQuality(s, preview, opts, est.quality) : null) : preview.suggestedPrice;
+                    return sug != null && sug > restockTarget.price * 1.1
+                      ? <span className="block font-medium">새 배치 {masked ? '예상' : '권장'} 출고가 ≈ {won(sug)} — 지금 출고가보다 높다. 보충 뒤 판매 화면에서 값을 올리세요{preview.ageYears != null && restockTarget.ageYears != null && preview.ageYears > restockTarget.ageYears ? ` (숙성 ${restockTarget.ageYears}년 → ${preview.ageYears}년)` : ''}</span>
+                      : null;
+                  })()}
                 </p>
               )}
               {stock && (
