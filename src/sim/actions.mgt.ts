@@ -8,7 +8,7 @@ import { OWNERSHIP } from './investment';
 import { ensureBoard } from './board';
 import { isBulkKind, spotQuote } from './bulk';
 import { resolvePending } from './events';
-import { inventoryLoanRoom, inventoryLtv } from './loans';
+import { currentLoanPayment, inventoryLoanRoom, inventoryLtv } from './loans';
 import { annuityPayment, nid } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
 import { TECH_BY_ID } from './content/tech';
@@ -35,8 +35,12 @@ export type MgtAction =
   | { type: 'hire'; candidateId: string; asApprentice?: boolean }
   | { type: 'fire'; staffId: string }
   | { type: 'takeLoan'; offerId: string; amount: number }
-  | { type: 'repayLoan'; loanId: string }
+  /** 대출 상환 — amount가 없거나 잔액 이상이면 전액, 있으면 일부(P-MGT-8: 남은 기간 그대로 월 납부를 다시 계산) */
+  | { type: 'repayLoan'; loanId: string; amount?: number }
   | { type: 'resolveEvent'; eventId: string; choice: number };
+
+/** 대출 일부 상환 최소액 (P-MGT-8) [튜닝] — 대출 실행 최소액과 같다 */
+export const PARTIAL_REPAY_MIN = 10_000_000;
 
 export const MGT_CASH_KEY: CashKeys<MgtAction> = {
   // 연구비는 행동이 아니라 매달 틱에서 나간다 (월 리포트 expenses.research)
@@ -181,10 +185,23 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
   repayLoan: (s, prev, a) => {
     const loan = s.finance.loans.find((l) => l.id === a.loanId);
     if (!loan) return fail(prev, '대출이 없습니다');
-    if (s.finance.cash < loan.balance) return fail(prev, '현금이 부족합니다');
-    s.finance.cash -= loan.balance;
-    s.finance.loans = s.finance.loans.filter((l) => l.id !== loan.id);
-    return { state: s, message: '대출 전액 상환' };
+    const amount = a.amount == null ? loan.balance : Math.round(a.amount / 1_000_000) * 1_000_000;
+    if (amount >= loan.balance) {
+      if (s.finance.cash < loan.balance) return fail(prev, '현금이 부족합니다');
+      s.finance.cash -= loan.balance;
+      s.finance.loans = s.finance.loans.filter((l) => l.id !== loan.id);
+      return { state: s, message: '대출 전액 상환' };
+    }
+    // 일부 상환 (P-MGT-8): 잔액을 줄이고 남은 기간은 그대로 둔 채 월 납부를 다시 계산한다(거치 중이면 거치가 끝난 뒤의 납부)
+    if (amount < PARTIAL_REPAY_MIN) return fail(prev, `일부 상환은 ${PARTIAL_REPAY_MIN.toLocaleString()}원 이상입니다`);
+    if (s.finance.cash < amount) return fail(prev, '현금이 부족합니다');
+    const before = currentLoanPayment(s, loan);
+    s.finance.cash -= amount;
+    loan.balance -= amount;
+    const graceEnd = loan.startMonth + loan.graceMonths;
+    const left = s.month < graceEnd ? loan.termMonths - loan.graceMonths : Math.max(1, loan.startMonth + loan.termMonths - s.month);
+    loan.monthlyPayment = annuityPayment(loan.balance, loan.annualRate, left);
+    return { state: s, message: `${loan.name} ${amount.toLocaleString()}원 일부 상환 — 잔액 ${loan.balance.toLocaleString()}원, 이번 달 납부 ${before.toLocaleString()} → ${currentLoanPayment(s, loan).toLocaleString()}원` };
   },
   resolveEvent: (s, prev, a) => {
     const text = resolvePending(s, a.eventId, a.choice);

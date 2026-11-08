@@ -14,6 +14,7 @@ export function Finance() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
   const [amounts, setAmounts] = useState<Record<string, number>>(() => Object.fromEntries(LOAN_OFFERS.map((o) => [o.id, o.max / 1e6])));
+  const [repay, setRepay] = useState<Record<string, number>>({});
   const rows = s.history.reports.slice(-24).reverse();
 
   return (
@@ -78,7 +79,14 @@ export function Finance() {
                 <Td right>{pct(l.annualRate)}</Td>
                 <Td right>{won(currentLoanPayment(s, l))}{s.month < l.startMonth + l.graceMonths && <span className="ml-1 text-xs text-stone-500">(거치)</span>}</Td>
                 <Td>{monthLabel(s.startYear, l.startMonth)}</Td>
-                <Td><Button small disabled={s.finance.cash < l.balance} onClick={() => dispatch({ type: 'repayLoan', loanId: l.id })}>전액 상환</Button></Td>
+                <Td>
+                  <div className="flex items-center gap-1">
+                    {/* 일부 상환 (P-MGT-8) — 남은 기간 그대로 월 납부가 줄어든다 */}
+                    <NumberField value={(repay[l.id] ?? 10_000_000) / 1e6} min={10} max={Math.floor(l.balance / 1e6)} width="w-20" suffix="백만" onCommit={(v) => setRepay({ ...repay, [l.id]: v * 1e6 })} />
+                    <Button small disabled={s.finance.cash < (repay[l.id] ?? 10_000_000) || (repay[l.id] ?? 10_000_000) >= l.balance} onClick={() => dispatch({ type: 'repayLoan', loanId: l.id, amount: repay[l.id] ?? 10_000_000 })} title="잔액 일부를 갚는다 — 남은 기간은 그대로, 월 납부·이자가 줄어든다">일부 상환</Button>
+                    <Button small disabled={s.finance.cash < l.balance} onClick={() => dispatch({ type: 'repayLoan', loanId: l.id })}>전액 상환</Button>
+                  </div>
+                </Td>
               </tr>
             ))}
           </Table>
