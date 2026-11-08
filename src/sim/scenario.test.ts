@@ -123,3 +123,18 @@ describe('MVP 화면의 현금·순자산 곡선 기록 (#138·#146)', () => {
     expect(s.history.reports.at(-1)!.netWorth!).toBeGreaterThan(s.finance.cash);
   });
 });
+
+describe('시나리오 경제 값은 판 시작 때 복사된다 (#190 사후 검토)', () => {
+  it('새 소규모 판은 관리비 300만, 이미 진행 중인 판(복사된 500만)은 콘텐츠가 바뀌어도 500만 그대로 낸다', () => {
+    const fresh = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    expect(MVP_KR.tiers.find((t) => t.id === 'micro')!.overheadPerMonth).toBe(3_000_000);
+    expect(fresh.scenario!.economy.overheadPerMonth).toBe(3_000_000);
+    expect(siteOverhead(fresh)).toBe(3_000_000);
+    // #190 이전에 시작한 판 = 세이브에 500만이 복사돼 있다 — 콘텐츠(300만)를 따르지 않는다(세이브가 스스로를 설명한다, #142)
+    const old = structuredClone(fresh);
+    old.scenario!.economy.overheadPerMonth = 5_000_000;
+    expect(siteOverhead(old)).toBe(5_000_000);
+    expect(advanceMonth(old).history.reports.at(-1)!.expenses.overhead).toBe(5_000_000);
+    expect(advanceMonth(fresh).history.reports.at(-1)!.expenses.overhead).toBe(3_000_000);
+  });
+});

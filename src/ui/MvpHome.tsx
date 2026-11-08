@@ -275,10 +275,6 @@ function CraftingFold() {
 const arrow = (d: number, eps = 0.5) => (d > eps ? '↑' : d < -eps ? '↓' : '→');
 
 /**
- * 마지막 샘플 칸 — 블렌딩 테이블과 같은 "아는 값"(knownRead, #157)을 쓴다. 참값은 쓰지 않는다.
- * 자기 기록이 없으면 형제 통(같은 배치·같은 통 종류)의 기록을 흐리게, 그것도 없으면 "샘플 없음"
- */
-/**
  * 샘플 읽기를 [축 이름, 값]으로 — 소주·진·고량주는 그 주종 레이더 축(#183), 몰트·그레인은 육각형.
  * 소주인데 레이더 축 읽기가 없는 옛 기록은 null(위스키 축으로 보이면 소주에 "피트"가 떴다)
  */
@@ -289,6 +285,10 @@ function readingOf(c: Cask, r: Pick<KnownRead, 'hex' | 'axes'>): [string, number
 const topOf = (xs: [string, number][], n = 3) => [...xs].sort((a, b) => b[1] - a[1]).slice(0, n);
 const OLD_RECORD = <span className="text-stone-400" title="이전 버전에서 뜬 기록이라 소주 향 축 읽기가 없다 — 다시 샘플을 뜨면 보인다">향은 다시 샘플</span>;
 
+/**
+ * 마지막 샘플 칸 — 블렌딩 테이블과 같은 "아는 값"(knownRead, #157)을 쓴다. 참값은 쓰지 않는다.
+ * 자기 기록이 없으면 형제 통(같은 배치·같은 통 종류)의 기록을 흐리게, 그것도 없으면 "샘플 없음"
+ */
 function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead | undefined }) {
   if (!known) return <span className="text-xs text-stone-400">샘플 없음</span>;
   if (known.from === 'sibling') {
