@@ -137,7 +137,7 @@ export function runContamination(s: GameState, report: MonthReport, rng: Rng, mo
 
 /** 3 숙성 (틱 단계 본문 — step.ts가 부른다) */
 export function runMaturation(s: GameState, report: MonthReport, ctx: TickContext): void {
-  // 자동 샘플 (P-PROD-11) — 이번 달 직접 뜬 샘플이 없으면 숙성 전에 오래 안 뜬 통부터. 시나리오 게임만
+  // 자동 샘플 (#177) — 이번 달 직접 뜬 샘플이 없으면 숙성 전에 오래 안 뜬 통부터. 시나리오 게임만
   autoSample(s, report, lotQuality);
   const { control, observe, diligence } = ctx.warehouse;
   const rng = rngFor(s.seed, s.month, 'maturation');

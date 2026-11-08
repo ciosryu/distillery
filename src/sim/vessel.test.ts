@@ -26,7 +26,7 @@ describe('세이브 v8 → v9 (S-10)', () => {
     expect(sampled.sampleLog).toBeUndefined();
     expect(lastSample(sampled)).toBeNull();
     const t = advanceMonths(s, 3);
-    // 자동 샘플(P-PROD-11)은 이 세이브 뒤에 생긴 시나리오 규칙이다 — 그 비용을 되돌리면 옛 코드의 결과와 같아야 한다
+    // 자동 샘플(#177)은 이 세이브 뒤에 생긴 시나리오 규칙이다 — 그 비용을 되돌리면 옛 코드의 결과와 같아야 한다
     const autoCost = t.history.reports.slice(-3).reduce((sum, r) => sum + (r.expenses[AUTO_SAMPLE_EXPENSE] ?? 0), 0);
     // 샘플로 원액이 조금 줄면 원액 가치에 비례하는 보관 보험료도 아주 조금 준다(수십 원) — 그만큼은 허용한다
     expect(t.month).toBe(fixture.expectedAfter3.month);
@@ -254,7 +254,7 @@ describe('옹기 숙성 (#161, flavor-model §4.5.1)', () => {
   });
 });
 
-describe('자동 샘플 (P-PROD-11, 오너 요청 2026-11-08)', () => {
+describe('자동 샘플 (#177, 오너 요청 2026-11-08)', () => {
   /** MVP 판 + 몰트 원액을 버번 배럴 n통에 */
   function mvpWithCasks(n = 8): GameState {
     let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 2 });

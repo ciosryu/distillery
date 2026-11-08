@@ -13,7 +13,7 @@ describe('세이브 v9 → v10 (S-9)', () => {
     expect(s.version).toBe(SAVE_VERSION);
     expect(s.progress).toEqual({ milestones: [] });
     const t = advanceMonths(s, 3);
-    // 자동 샘플(P-PROD-11)은 이 세이브 뒤에 생긴 시나리오 규칙이다 — 그 비용을 되돌리면 옛 코드의 결과와 같아야 한다
+    // 자동 샘플(#177)은 이 세이브 뒤에 생긴 시나리오 규칙이다 — 그 비용을 되돌리면 옛 코드의 결과와 같아야 한다
     const autoCost = t.history.reports.slice(-3).reduce((sum, r) => sum + (r.expenses[AUTO_SAMPLE_EXPENSE] ?? 0), 0);
     // 샘플로 원액이 조금 줄면 원액 가치에 비례하는 보관 보험료도 아주 조금 준다(수십 원) — 그만큼은 허용한다
     expect(t.month).toBe(fixture.expectedAfter3.month);

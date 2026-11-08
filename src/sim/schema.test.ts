@@ -327,7 +327,7 @@ describe('세이브 v13 → v14 (제품 피니싱 표기 자리, #158 코어)', 
   });
 });
 
-describe('세이브 v14 → v15 (제품 통 구성 기록 자리, P-PROD-10 코어)', () => {
+describe('세이브 v14 → v15 (제품 통 구성 기록 자리, #176 코어)', () => {
   it('버전만 오르고 옛 제품은 통 구성 기록이 없으며, 진행 결과가 v14 코드와 같다', () => {
     const s = migrateSave(structuredClone(fixtureV14.save))!;
     expect(s.version).toBe(SAVE_VERSION);

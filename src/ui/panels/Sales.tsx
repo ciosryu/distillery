@@ -167,7 +167,7 @@ const sameAxes = (a: Pick<Product, 'category'>, b: Pick<Product, 'category'>) =>
   HEX_CATEGORIES.has(a.category) ? HEX_CATEGORIES.has(b.category) : a.category === b.category;
 
 /**
- * 판매 중인 제품의 향미 (P-PROD-9, 오너 요청 2026-11-08) — 병입 때 확정된 참 향미·품질. 병입하면 참값이 공개되는 규칙(#162)이라 MVP에서도 보인다.
+ * 판매 중인 제품의 향미 (#175, 오너 요청 2026-11-08) — 병입 때 확정된 참 향미·품질. 병입하면 참값이 공개되는 규칙(#162)이라 MVP에서도 보인다.
  * 같은 축의 다른 제품을 골라 겹쳐 비교한다(점선)
  */
 function ProductFlavor({ p }: { p: Product }) {
@@ -182,7 +182,7 @@ function ProductFlavor({ p }: { p: Product }) {
     categoryName(region, x.category, CATEGORY[x.category].nameKo),
     x.ageYears != null ? `${x.ageYears}년` : null,
     x.finish ? finishLabel(x.finish) : null,
-    // 통 구성 (P-PROD-10) — 병입 때 기록. 기록 전 제품은 없다
+    // 통 구성 (#176) — 병입 때 기록. 기록 전 제품은 없다
     x.caskMix?.length ? `통: ${x.caskMix.map((m) => `${caskShort(m.typeId)} ${pct(m.share, 0)}`).join(' · ')}${(() => { const rest = 1 - x.caskMix!.reduce((t, m) => t + m.share, 0); return rest >= 0.005 ? ` · 탱크 ${pct(rest, 0)}` : ''; })()}` : null,
     x.style ? `스타일: ${x.style}` : null,
     `${x.bottleMl}ml · ${pct(x.abv)}`,

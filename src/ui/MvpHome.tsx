@@ -226,7 +226,7 @@ function WarehouseCard() {
   }, [filled, minM]);
   const shownCasks = cat === '전체' ? filled : filled.filter((c) => sourceCategory(c.contents!, minM) === cat || picked.includes(c.id));
   const shownIds = new Set(shownCasks.map((c) => c.id));
-  // 아는 것이 적은 통부터: 아무 기록 없음 → 형제 통 기록만 → 자기 기록이 오래된 순 — 자동 샘플(P-PROD-11)과 같은 순서, 지금 보이는 분류 안에서
+  // 아는 것이 적은 통부터: 아무 기록 없음 → 형제 통 기록만 → 자기 기록이 오래된 순 — 자동 샘플(#177)과 같은 순서, 지금 보이는 분류 안에서
   const stalest = stalestCasks(s, Infinity, known).filter((c) => shownIds.has(c.id)).slice(0, left).map((c) => c.id);
   // 이번 달에 직접 뜬 기록이 있으면 자동 샘플은 없다
   const sampledThisMonth = s.inventory.casks.some((c) => c.contents && c.sampleLog?.at(-1)?.month === s.month);

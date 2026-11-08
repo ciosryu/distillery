@@ -306,7 +306,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   const seenParts = parts.filter((x): x is typeof x & { seen: Hex } => !!x.seen);
   const unknownShare = parts.reduce((t, x) => t + (x.seen ? 0 : x.share), 0) / Math.max(1e-9, parts.reduce((t, x) => t + x.share, 0));
   const predicted = seenParts.length ? mixHex(seenParts.map((x) => ({ hex: x.seen, share: x.share }))) : null;
-  // 통 구성 (P-PROD-10) — 캐스크 원액의 통 종류별 알코올 비중(전체 블렌드 대비, 큰 순). 탱크 원액은 빠진다 — 합이 1보다 작으면 나머지가 탱크
+  // 통 구성 (#176) — 캐스크 원액의 통 종류별 알코올 비중(전체 블렌드 대비, 큰 순). 탱크 원액은 빠진다 — 합이 1보다 작으면 나머지가 탱크
   const totalShare = parts.reduce((t, x) => t + x.share, 0);
   const byType = new Map<CaskTypeId, number>();
   for (const x of parts) if (x.cask) byType.set(x.cask.typeId, (byType.get(x.cask.typeId) ?? 0) + x.share);
