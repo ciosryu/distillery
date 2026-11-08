@@ -214,3 +214,52 @@ export function tankFillNeed(s: GameState): { liters: number; casks200: number; 
   const liters = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced).reduce((t, l) => t + l.volumeL, 0);
   return { liters: Math.round(liters), casks200: Math.ceil(liters / 200), freeSlots: Math.max(0, warehouseCapacity(s) - s.inventory.casks.length) };
 }
+
+// ───────────── 생산비 대 고정비 · 생산이 만드는 미래 위스키 (P-PROD-15, 2차 MVP 플레이테스트 2026-11-08) ─────────────
+// 2차 판: 현금이 줄자 생산을 0으로 했다(오너: "현금 아끼려고 + 경고의 '생산 지시 줄이기'를 보고"). 실제 생산비는 월 약 300만,
+// 고정비는 월 2,000만~3,000만이라 아낀 돈은 작았고 3~5년 차에 팔 위스키가 사라졌다. 공급 전망은 "봤는데 의미를 몰랐다" —
+// 병 수 대신 **돈**으로 보인다: 이 생산을 유지하면 월 얼마가 들고, 몇 년 뒤 해마다 위스키 몇 병(≈ 매출 얼마)이 생기는가. 상태를 바꾸지 않는다
+
+export interface ProductionValue {
+  /** 지금 생산 지시의 월 생산비(원재료·에너지 — 배치 원가 합) */
+  costPerMonth: number;
+  /** 그중 몰트·그레인 */
+  whiskyCostPerMonth: number;
+  /** 지금 몰트·그레인 지시가 법정 최소 숙성 뒤 해마다 만드는 위스키 병 수(700ml·40%, 증발 연 5% 근사) */
+  whiskyBottlesPerYear: number;
+  /** 1년 숙성 몰트 위스키 한 병의 권장 출고가·병당 이익 — 병당 손익 표(recipeEconomics)와 같은 값. 몰트 레시피가 없으면 null */
+  pricePerBottle: number | null;
+  marginPerBottle: number | null;
+  /** 몰트·그레인 레시피별 "월 1배치"의 값 — 월 생산비, 해마다 생기는 위스키 병 수 */
+  perBatch: { recipeId: string; name: string; costPerMonth: number; whiskyBottlesPerYear: number }[];
+  /** 법정 최소 숙성(개월) — 이만큼 뒤부터 위스키가 된다 */
+  minMonths: number;
+}
+
+export function productionValue(s: GameState, minMonths = regionOf(s).whisky.minMonths): ProductionValue {
+  const min = Math.max(1, minMonths);
+  const bottleLPA = (STANDARD_BOTTLE.whisky.bottleMl / 1000) * STANDARD_BOTTLE.whisky.abv;
+  const keep = Math.pow(0.95, min / 12);
+  const yearly = (lpaPerMonth: number) => Math.round((lpaPerMonth * 12 * keep) / bottleLPA);
+  let cost = 0;
+  let whiskyCost = 0;
+  let whiskyLpa = 0;
+  for (const o of s.production.orders) {
+    const r = s.production.recipes.find((x) => x.id === o.recipeId);
+    if (!r || o.batchesPerMonth <= 0) continue;
+    const b = previewBatch(s, r);
+    if (!b) continue;
+    cost += b.cost * o.batchesPerMonth;
+    if (r.kind === 'malt' || r.kind === 'grain') { whiskyCost += b.cost * o.batchesPerMonth; whiskyLpa += b.lpa * o.batchesPerMonth; }
+  }
+  const perBatch = s.production.recipes.filter((r) => r.kind === 'malt' || r.kind === 'grain').flatMap((r) => {
+    const b = previewBatch(s, r);
+    return b ? [{ recipeId: r.id, name: r.name, costPerMonth: Math.round(b.cost), whiskyBottlesPerYear: yearly(b.lpa) }] : [];
+  });
+  const malt = s.production.recipes.find((x) => x.kind === 'malt');
+  const row = malt ? recipeEconomics(s, malt)[0] : undefined;
+  return {
+    costPerMonth: Math.round(cost), whiskyCostPerMonth: Math.round(whiskyCost), whiskyBottlesPerYear: yearly(whiskyLpa),
+    pricePerBottle: row?.price ?? null, marginPerBottle: row?.margin ?? null, perBatch, minMonths: min,
+  };
+}
