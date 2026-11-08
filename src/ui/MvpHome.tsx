@@ -6,12 +6,13 @@ import { vesselMaterial } from '../sim/maturation';
 import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
 import { equipmentCost } from '../sim/sites';
-import { isLocked, monthLabel, netWorth, regionalCaskPrice, selfFundedCash, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
+import { isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
 import { FixedCostLine } from './panels/FixedCost';
 import { LineChart } from './charts';
-import { CashFlowLine, MonthTodo } from './Alerts';
+import { CashFlowLine, MonthTodo } from './AlertsView';
+import { runway } from './alerts';
 import { PriceDesk } from './panels/Sales';
 import { Equipment, Orders, RecipeEditor } from './panels/Production';
 import { CATEGORY_ORDER, sourceCategory } from './panels/Bottling';
@@ -56,14 +57,6 @@ export function overstock(s: GameState): { category: string; stock: number; perM
     .filter((x) => x.stock > 0 && x.months > OVERSTOCK_MONTHS && recent.length >= 2);
 }
 
-/** 최근 3개월 자체 현금 흐름(차입·투자 유치·선급금 제외)으로 본 런웨이 — 대시보드와 같은 계산 */
-function runwayOf(s: GameState): { avg: number | null; months: number | null } {
-  const recent = s.history.reports.slice(-3);
-  if (!recent.length) return { avg: null, months: null };
-  const avg = recent.reduce((t, r) => t + selfFundedCash(r), 0) / recent.length;
-  return { avg, months: avg < 0 ? Math.floor(Math.max(0, s.finance.cash) / -avg) : null };
-}
-
 export function MvpHome() {
   return (
     <div className="grid gap-4">
@@ -90,7 +83,7 @@ function Headline() {
   const inv = nw - s.finance.cash + loans - s.finance.receivables.reduce((t, r) => t + r.amount, 0);
   const sc = s.scenario;
   const target = sc ? sc.equity * sc.goal.netWorthMultiple : null;
-  const run = runwayOf(s);
+  const run = runway(s);
   const pts = useMemo(() => curvePoints(s), [s]);
   const xMax = sc?.goal.months ?? Math.max(120, (pts.at(-1)?.x ?? 0) + 12);
   const flagMin = sc?.goal.flagshipMinMonths ?? 144;
