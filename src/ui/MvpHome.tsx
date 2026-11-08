@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
-import { AUTO_SAMPLE_MIN_AGE, autoSamplePicks, knownReads, lastSample, readSigma, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
+import { AUTO_SAMPLE_MIN_AGE, autoSamplePicks, knownReads, lastSample, readSigma, sampleAxesOf, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
+import { AXIS } from '../sim/content/axes';
 import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
 import { vesselMaterial } from '../sim/maturation';
 import { regionOf } from '../sim/content/regions';
@@ -170,14 +171,25 @@ const arrow = (d: number, eps = 0.5) => (d > eps ? '↑' : d < -eps ? '↓' : '�
  * 마지막 샘플 칸 — 블렌딩 테이블과 같은 "아는 값"(knownRead, #157)을 쓴다. 참값은 쓰지 않는다.
  * 자기 기록이 없으면 형제 통(같은 배치·같은 통 종류)의 기록을 흐리게, 그것도 없으면 "샘플 없음"
  */
+/**
+ * 샘플 읽기를 [축 이름, 값]으로 — 소주·진·고량주는 그 주종 레이더 축(P-PROD-13), 몰트·그레인은 육각형.
+ * 소주인데 레이더 축 읽기가 없는 옛 기록은 null(위스키 축으로 보이면 소주에 "피트"가 떴다)
+ */
+function readingOf(c: Cask, r: Pick<KnownRead, 'hex' | 'axes'>): [string, number][] | null {
+  if (c.contents && sampleAxesOf(c.contents.kind)) return r.axes ? (Object.entries(r.axes) as [keyof typeof AXIS, number][]).map(([a, v]) => [AXIS[a].nameKo, v]) : null;
+  return HEX_AXES.map((a) => [HEX_LABEL[a], r.hex[a]]);
+}
+const topOf = (xs: [string, number][], n = 3) => [...xs].sort((a, b) => b[1] - a[1]).slice(0, n);
+const OLD_RECORD = <span className="text-stone-400" title="이전 버전에서 뜬 기록이라 소주 향 축 읽기가 없다 — 다시 샘플을 뜨면 보인다">향은 다시 샘플</span>;
+
 function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead | undefined }) {
   if (!known) return <span className="text-xs text-stone-400">샘플 없음</span>;
   if (known.from === 'sibling') {
-    const top = [...HEX_AXES].sort((a, b) => known.hex[b] - known.hex[a]).slice(0, 3);
+    const reading = readingOf(c, known);
     return (
       <div className="text-xs text-stone-500" title="이 통은 아직 뜨지 않았다 — 같은 배치를 같은 종류 통에 담은 형제 통의 기록을 빌려 본다. 통마다 숙성이 달라 실제와 더 어긋날 수 있다">
         <Badge>형제 통</Badge> <span className="tabular-nums">{known.estQuality} ±{Math.round(known.sigma)}</span>
-        <span className="ml-2">{top.map((a) => `${HEX_LABEL[a]} ${Math.round(known.hex[a])}`).join(' · ')}</span>
+        <span className="ml-2">{reading ? topOf(reading).map(([l, v]) => `${l} ${Math.round(v)}`).join(' · ') : OLD_RECORD}</span>
         <span className="ml-2 text-stone-400">{s.month - known.month === 0 ? '이번 달' : `${s.month - known.month}개월 전`}</span>
       </div>
     );
@@ -188,8 +200,13 @@ function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead |
   // 두 읽기의 차이는 두 오차가 겹친다 — 그보다 큰 변화만 화살표로 보인다
   const prevSigma = c.sampleLog && c.sampleLog.length >= 2 ? c.sampleLog.at(-2)!.sigma : last.sigma;
   const noise = Math.hypot(last.sigma, prevSigma);
-  const top = [...HEX_AXES].sort((a, b) => last.hex[b] - last.hex[a]).slice(0, 3);
-  const moved = delta ? [...HEX_AXES].sort((a, b) => Math.abs(delta.hex[b]) - Math.abs(delta.hex[a])).filter((a) => Math.abs(delta.hex[a]) > noise).slice(0, 2) : [];
+  const reading = readingOf(c, last);
+  // 변화 화살표 — 두 읽기가 같은 축일 때만 (옛 기록 → 새 기록 사이는 비교하지 않는다)
+  const prevRec = c.sampleLog && c.sampleLog.length >= 2 ? c.sampleLog.at(-2)! : null;
+  const prevReading = prevRec ? readingOf(c, prevRec) : null;
+  const moved = delta && reading && prevReading && prevReading.length === reading.length
+    ? reading.map(([l, v], i) => [l, v - prevReading[i]![1]] as [string, number]).filter(([, d]) => Math.abs(d) > noise).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 2)
+    : [];
   const age = s.month - last.month;
   return (
     <div className="text-xs">
@@ -198,8 +215,8 @@ function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead |
       {delta && (Math.abs(delta.quality) > noise
         ? <span className="ml-1 tabular-nums" title="직전 샘플 대비 (오차보다 큰 변화)">{arrow(delta.quality)}{delta.quality > 0 ? '+' : ''}{delta.quality}</span>
         : <span className="ml-1 text-stone-400" title={`직전 샘플 대비 ${delta.quality > 0 ? '+' : ''}${delta.quality} — 두 읽기의 오차(±${Math.round(noise)}) 안이라 변화라고 보기 어렵다`}>≈</span>)}
-      <span className="ml-2 text-stone-600 dark:text-stone-300">{top.map((a) => `${HEX_LABEL[a]} ${Math.round(last.hex[a])}`).join(' · ')}</span>
-      {!!moved.length && <span className="ml-2 text-stone-500">{moved.map((a) => `${HEX_LABEL[a]}${arrow(delta!.hex[a])}`).join(' ')}</span>}
+      <span className="ml-2 text-stone-600 dark:text-stone-300">{reading ? topOf(reading).map(([l, v]) => `${l} ${Math.round(v)}`).join(' · ') : OLD_RECORD}</span>
+      {!!moved.length && <span className="ml-2 text-stone-500">{moved.map(([l, d]) => `${l}${arrow(d)}`).join(' ')}</span>}
       <span className={`ml-2 ${age >= 12 ? 'text-amber-700 dark:text-amber-400' : 'text-stone-400'}`}>{age === 0 ? '이번 달' : `${age}개월 전`}</span>
     </div>
   );
