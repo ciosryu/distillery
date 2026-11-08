@@ -43,6 +43,12 @@ export function demandMet(s: GameState, d: { id: string; dueMonth: number }): bo
 export function runBoard(s: GameState, report: MonthReport): void {
   const b = s.finance.board;
   if (!b) return;
+  // 사라지는 조건: 외부 지분이 기준 밑으로 내려가면 이사회도 없어진다 (지금은 지분을 되사는 수단이 없어 일어나지 않는다 — 자사주 매입 등이 생길 때를 위한 규칙)
+  if (s.finance.investorShare < BOARD.formShare - 1e-9) {
+    delete s.finance.board;
+    report.notes.push('외부 지분이 줄어 이사회가 해산했습니다');
+    return;
+  }
   for (const d of b.demands.filter((x) => s.month > x.dueMonth)) {
     const ok = demandMet(s, d);
     b.confidence = Math.max(0, Math.min(100, b.confidence + (ok ? BOARD.metGain : -BOARD.missLoss)));
