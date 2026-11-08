@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import { BANKRUPT_AFTER_MONTHS, isLocked, monthLabel, type GameState, type RegionId } from './sim';
 import { REGIONS, siteOf } from './sim/content/regions';
+import { SCENARIOS } from './sim/content/scenarios';
 
 const stars = (n?: number) => (n ? ` ${'★'.repeat(n)}` : '');
 import { startedFresh, useGame } from './store/game';
@@ -82,7 +83,7 @@ export default function App() {
       <header className="sticky top-0 z-10 border-b border-stone-200 bg-white/90 backdrop-blur dark:border-stone-800 dark:bg-stone-900/90">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div>
-            <h1 className="text-base font-bold">{s.distilleryName} <span className="text-xs font-normal text-stone-500">Distillery Tycoon · {s.siteId ? `${REGIONS[s.regionId].nameKo.replace(/\s*\(.*\)$/, '')} (${siteOf(s).nameKo})` : REGIONS[s.regionId].nameKo}</span></h1>
+            <h1 className="text-base font-bold">{s.distilleryName} <ModeBadge s={s} /> <span className="text-xs font-normal text-stone-500">Distillery Tycoon · {s.siteId ? `${REGIONS[s.regionId].nameKo.replace(/\s*\(.*\)$/, '')} (${siteOf(s).nameKo})` : REGIONS[s.regionId].nameKo}</span></h1>
             <div className="text-sm text-stone-600 dark:text-stone-300">
               <span className="font-semibold">{monthLabel(s.startYear, s.month)}</span> · 현금 <span className={`font-semibold tabular-nums ${s.finance.cash < 0 ? 'text-rose-700 dark:text-rose-400' : ''}`}>{won(s.finance.cash)}</span>
               {s.scenario && !s.progress.verdict && <> · 15년 목표까지 <span className="tabular-nums">{s.scenario.goal.months - s.month}개월</span></>}
@@ -106,7 +107,7 @@ export default function App() {
         </div>
         {newGameOpen && (
           <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-4 pb-3 text-sm">
-            <span className="text-stone-600 dark:text-stone-300">개발자 샌드박스 — 모든 시스템 켬 (현재 진행은 사라집니다):</span>
+            <span className="text-stone-600 dark:text-stone-300"><b className="text-amber-800 dark:text-amber-300">개발자 샌드박스</b> — 모든 시스템 켬, MVP 경제 설정 없음 · <b>플레이테스트용이 아니다</b>(플레이테스트는 사업 계획서의 "사업 시작") · 현재 진행은 사라진다:</span>
             <input className="rounded-md border border-stone-300 bg-white px-2 py-1 dark:border-stone-700 dark:bg-stone-800" placeholder="증류소 이름(비우면 기본값)" value={ngName} onChange={(e) => setNgName(e.target.value)} aria-label="증류소 이름" />
             <select className="rounded-md border border-stone-300 bg-white px-2 py-1 dark:border-stone-700 dark:bg-stone-800" value={ngRegion} onChange={(e) => { setNgRegion(e.target.value as RegionId); setNgSite(''); }} aria-label="시작 지역">
               {(Object.keys(REGIONS) as RegionId[]).map((r) => <option key={r} value={r}>{REGIONS[r].nameKo}</option>)}
@@ -172,6 +173,7 @@ export default function App() {
         )}
         {running && s.month === 0 && !s.scenario && (
           <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+            <p className="mb-1 font-semibold">⚠ 지금은 개발자 샌드박스입니다 — 모든 시스템이 켜져 있고 MVP 경제 설정이 없어 MVP 플레이테스트 판정에 쓰지 않습니다. 플레이테스트라면 머리글의 <b>새 게임</b> → 사업 계획서 → <b>사업 시작</b>으로 여세요.</p>
             <b>시작 가이드</b> — ① <b>생산</b>에서 월 배치 수를 정하고 ② 한 달을 진행하면 원액이 탱크에 쌓입니다. ③ 소주·진 같은 비숙성 주종은 <b>블렌딩·병입</b>에서 바로 병입해 팔고, 몰트는 <b>숙성고</b>에서 캐스크에 통입해 숙성하세요({REGIONS[s.regionId].whisky.minMonths > 0 ? `${REGIONS[s.regionId].whisky.minMonths}개월부터 위스키` : '이 나라는 법정 최소 숙성이 없어 바로 위스키 표기 가능 — 단 3년 미만은 값을 덜 받는다'}). 그동안은 <b>숙성고</b>의 브로커에게 숙성 원액을 사서 병입하거나 <b>원액 B2B</b> 계약으로 현금을 만들 수 있습니다. ④ <b>직원</b>에서 영업 직원을 뽑으면 유통이 넓어집니다. 자금이 모자라면 <b>재무</b>의 대출을 쓰세요.
           </div>
         )}
@@ -184,5 +186,26 @@ export default function App() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * 지금 어느 모드인지 (1차 플레이테스트 할 일 ⓪, mvp.md §7.3) — 첫 사람 플레이테스트가 개발자 샌드박스로 진행됐는데 오너도 몰랐다.
+ * 시나리오 게임 = "MVP · 티어", 샌드박스 = "개발자 샌드박스". 화면만 — 게임 상태와 무관
+ */
+function ModeBadge({ s }: { s: GameState }) {
+  if (s.scenario) {
+    const def = SCENARIOS[s.scenario.id];
+    const tier = def?.tiers.find((x) => x.id === s.scenario!.tierId);
+    return (
+      <span className="ml-1 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 align-middle text-xs font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200" title={`${def?.nameKo ?? s.scenario.id} — 사업 계획서로 시작한 판. 플레이테스트는 이 모드로 한다`}>
+        MVP{tier ? ` · ${tier.nameKo}` : ''}
+      </span>
+    );
+  }
+  return (
+    <span className="ml-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 align-middle text-xs font-semibold text-amber-900 dark:bg-amber-950 dark:text-amber-200" title="모든 시스템이 켜지고 MVP 경제 설정(#139)이 없는 개발용 판 — MVP 플레이테스트 판정에 쓰지 않는다. 플레이테스트는 새 게임 → 사업 계획서 → 사업 시작">
+      개발자 샌드박스 — 플레이테스트용 아님
+    </span>
   );
 }

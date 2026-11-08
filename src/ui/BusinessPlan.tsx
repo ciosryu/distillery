@@ -78,7 +78,7 @@ export function BusinessPlan({ onClose, onSandbox }: { onClose?: () => void; onS
           <div className="flex flex-wrap items-end gap-2">
             <TextField label="증류소 이름" value={name} onChange={setName} />
             <Button variant="primary" onClick={() => { startScenario({ scenarioId: scenario.id, tierId, loanAmount, distilleryName: name || undefined }); onClose?.(); }}>사업 시작</Button>
-            {onSandbox && <Button variant="ghost" small onClick={onSandbox}>개발자용 샌드박스</Button>}
+            {onSandbox && <Button variant="ghost" small onClick={onSandbox} title="모든 시스템이 켜지고 MVP 경제 설정이 없는 개발용 판 — 플레이테스트는 왼쪽 '사업 시작'">개발자용 샌드박스 (플레이테스트용 아님)</Button>}
           </div>
         </div>
 
