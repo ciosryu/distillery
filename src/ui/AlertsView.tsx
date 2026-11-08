@@ -6,13 +6,19 @@ import { useUi } from '../store/ui';
 import { cashAlert, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, type TodoTarget } from './alerts';
 import { Button } from './kit';
 
-/** 탭 이동 또는 증류소 화면 안의 카드로 스크롤 */
+/** 증류소 탭의 접힌 블록을 여는 신호 — detail = 블록 id(= 스크롤 앵커). MvpHome의 useFold가 듣는다 (P-ARCH-21) */
+export const OPEN_FOLD_EVENT = 'mvp-open-fold';
+
+/** 탭 이동 또는 증류소 화면 안의 카드로 스크롤 — 접혀 있으면 먼저 연다 */
 function useGo() {
   const setTab = useUi((u) => u.setTab);
   return (t: TodoTarget) => {
     if ('tab' in t) { setTab(t.tab); return; }
     setTab('home');
-    requestAnimationFrame(() => document.getElementById(t.anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent(OPEN_FOLD_EVENT, { detail: t.anchor }));
+      requestAnimationFrame(() => document.getElementById(t.anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    });
   };
 }
 

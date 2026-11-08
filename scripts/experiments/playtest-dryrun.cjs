@@ -16,6 +16,15 @@ const URL = process.env.URL ?? 'http://localhost:4176/';
   const note = (m, t) => { log.push(`[${m}] ${t}`); };
   const toast = async () => { const t = p.locator('[role=status]'); if (await t.count()) { const txt = await t.innerText(); const bad = /rose/.test(await t.getAttribute('class') ?? ''); return { txt, bad }; } return null; };
   const click = async (loc, m, what) => { clicks++; await loc.click(); await p.waitForTimeout(120); const t = await toast(); if (t) note(m, `${what} → ${t.bad ? '✕ ' : ''}${t.txt}`); return t; };
+  // 병입: 재고가 1년 치를 넘으면 버튼이 "한 번 더 누르면 병입"으로 바뀐다(#178 B) — 순진한 정책이라 확인까지 누르고 기록한다
+  const bottleClick = async (m, what) => {
+    const bt = p.getByRole('button', { name: /^병입하기/ });
+    if (!(await bt.count()) || !(await bt.first().isEnabled())) { note(m, `✕ ${what} 버튼 비활성: ${(await p.locator('text=✕').allInnerTexts()).join(' / ')}`); return null; }
+    const r = await click(bt.first(), m, what);
+    const again = p.getByRole('button', { name: /한 번 더 누르면 병입/ });
+    if (await again.count()) { note(m, `${what}: 재고 과다 확인 요청(#178) → 확인`); return click(again.first(), m, `${what} (확인)`); }
+    return r;
+  };
   const tab = async (name) => { clicks++; await p.locator('nav[aria-label="메뉴"] button', { hasText: name }).first().click(); await p.waitForTimeout(150); };
   const state = async () => { await p.waitForTimeout(550); return JSON.parse(await p.evaluate(() => localStorage.getItem('distillery-tycoon/save'))); };
   await p.goto(URL); await p.waitForSelector('text=사업 계획서');
@@ -39,19 +48,21 @@ const URL = process.env.URL ?? 'http://localhost:4176/';
   for (let m = 0; m < MONTHS; m++) {
     const c0 = clicks;
     await tab('증류소');
-    const space = p.locator('section', { hasText: '숙성고 공간' });
+    // 증류소 탭 배치(P-ARCH-21): 통입은 생산 지시 아래 카드, 빈 통 사기는 숙성고 공간 카드
+    const space = p.locator('section', { has: p.locator('h2', { hasText: /^숙성고 공간/ }) });
+    const fillCard = p.locator('section', { has: p.locator('h2', { hasText: '탱크 원액 → 빈 통에 통입' }) });
     // 빈 통이 적으면 쿠퍼리지 주문
     let st = await state();
     const empties = st.inventory.casks.filter((c) => !c.contents).length;
     const pending = st.inventory.caskOrders.reduce((t, o) => t + o.qty, 0);
-    if (empties + pending < 6) { const n = space.getByLabel('개수').last(); clicks++; await n.fill('8'); await n.press('Enter'); await click(space.getByRole('button', { name: /^주문/ }), st.month, '빈 통 8개 주문'); }
+    if (empties + pending < 6) { const n = space.getByLabel('개수').first(); clicks++; await n.fill('8'); await n.press('Enter'); await click(space.getByRole('button', { name: /^주문/ }), st.month, '빈 통 8개 주문'); }
     // 몰트 통입 (원액 기본 = 몰트)
-    const lotSel = space.getByLabel('원액');
+    const lotSel = fillCard.getByLabel('원액');
     if (await lotSel.count()) {
       const first = (await lotSel.locator('option').first().innerText());
       if (/몰트/.test(first)) {
-        const btn = space.getByRole('button', { name: /^통입/ });
-        if (await btn.count() && await btn.isEnabled()) { const n = space.getByLabel('개수').first(); clicks++; await n.fill('3'); await n.press('Enter'); await click(btn, st.month, `몰트 통입 (${first.split(' · ')[1]})`); }
+        const btn = fillCard.getByRole('button', { name: /^통입/ });
+        if (await btn.count() && await btn.isEnabled()) { const n = fillCard.getByLabel('개수').first(); clicks++; await n.fill('3'); await n.press('Enter'); await click(btn, st.month, `몰트 통입 (${first.split(' · ')[1]})`); }
       }
     }
     // 병입: 탱크 소주 전부 + (12개월 넘은 캐스크가 있으면) 위스키
@@ -59,25 +70,27 @@ const URL = process.env.URL ?? 'http://localhost:4176/';
     const src = p.locator('section', { hasText: '원액 선택' }).locator('tbody tr');
     const n = await src.count();
     let sojuPicked = 0;
-    for (let i = 0; i < n; i++) { const t = await src.nth(i).innerText(); if (/탱크/.test(t) && /소주/.test(t)) { clicks++; await src.nth(i).locator('input[type=checkbox]').check(); sojuPicked++; } }
+    // 체크하면 표가 다시 그려져 줄 수가 바뀔 수 있다(병입 탭의 탱크 묶음 #58) — 없어진 줄은 건너뛴다
+    for (let i = 0; i < n; i++) { if (i >= await src.count()) break; const t = await src.nth(i).innerText({ timeout: 2000 }).catch(() => ''); if (/탱크/.test(t) && /소주/.test(t)) { clicks++; await src.nth(i).locator('input[type=checkbox]').check(); sojuPicked++; } }
     if (sojuPicked) {
       const nm = p.getByLabel('제품명'); clicks++; await nm.fill(`한빛 소주 ${st.month}`);
       clicks++; await p.getByLabel('도수').selectOption('0.25'); clicks++; await p.getByLabel('병').selectOption('375');
-      const bt = p.getByRole('button', { name: '병입하기' });
-      if (await bt.isEnabled()) await click(bt, st.month, `소주 병입 (${sojuPicked}로트)`); else note(st.month, `✕ 소주 병입 버튼 비활성: ${(await p.locator('text=✕').allInnerTexts()).join(' / ')}`);
+      await bottleClick(st.month, `소주 병입 (${sojuPicked}줄)`);
     }
     st = await state();
     const ripe = st.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.kind === 'malt' && c.contents.oakMonths >= 12);
     if (ripe.length && firstWhiskyBottled < 0) {
+      // 병입 탭은 처음 고른 원액의 분류로 목록을 좁힌다(#58) — 소주를 병입한 뒤에는 '전체'로 돌린다
+      const allBtn = p.locator('section', { hasText: '원액 선택' }).getByRole('button', { name: /^전체/ });
+      if (await allBtn.count()) { clicks++; await allBtn.first().click(); }
       for (const c of ripe.slice(0, 2)) { clicks++; await p.locator(`input[aria-label$="→ ${c.id} 선택"]`).check(); }
       const nm = p.getByLabel('제품명'); clicks++; await nm.fill('한빛 싱글 몰트 1호');
       clicks++; await p.getByLabel('도수').selectOption('0.46'); clicks++; await p.getByLabel('병').selectOption('700');
       await p.screenshot({ path: `${OUT}/whisky-preview.png`, fullPage: true });
       const panel = await p.locator('section', { hasText: '병입' }).last().innerText();
       note(st.month, `위스키 병입 미리보기: ${panel.replace(/\s+/g, ' ').slice(0, 260)}`);
-      const bt = p.getByRole('button', { name: '병입하기' });
-      if (await bt.isEnabled()) { const t = await click(bt, st.month, `위스키 병입 (${ripe.slice(0, 2).map((c) => c.id).join(',')})`); if (t && !t.bad) firstWhiskyBottled = st.month; }
-      else note(st.month, `✕ 위스키 병입 비활성: ${(await p.locator('text=✕').allInnerTexts()).join(' / ')}`);
+      const t = await bottleClick(st.month, `위스키 병입 (${ripe.slice(0, 2).map((c) => c.id).join(',')})`);
+      if (t && !t.bad) firstWhiskyBottled = st.month;
     }
     await tab('증류소');
     await click(p.getByRole('button', { name: '1개월 진행' }), st.month, '1개월 진행');

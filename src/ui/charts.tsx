@@ -61,7 +61,7 @@ export interface LineSeries {
 }
 
 /** 같은 단위의 시계열 여러 개 + 기준선 (한 축). 호버하면 그 시점 값이 뜬다 — MVP 현금·평가액 곡선(#138) */
-export function LineChart({ xs, series, xMax, refs = [], fmtY, fmtX, fmtTip = fmtX, label }: {
+export function LineChart({ xs, series, xMax, refs = [], fmtY, fmtX, fmtTip = fmtX, label, height = 240 }: {
   xs: number[];
   series: LineSeries[];
   /** x축 끝 (목표 기간 등) — 아직 오지 않은 구간은 비워 둔다 */
@@ -72,6 +72,8 @@ export function LineChart({ xs, series, xMax, refs = [], fmtY, fmtX, fmtTip = fm
   /** 툴팁 제목 (없으면 fmtX) */
   fmtTip?: (x: number) => string;
   label: string;
+  /** 그림 높이(px) — 기본 240 */
+  height?: number;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   // 실제 폭으로 그린다 — viewBox를 늘리면 글자도 같이 커진다
@@ -85,7 +87,7 @@ export function LineChart({ xs, series, xMax, refs = [], fmtY, fmtX, fmtTip = fm
     return () => ro.disconnect();
   }, []);
   if (xs.length < 2) return <div className="py-8 text-center text-xs text-stone-500">두 달 이상 진행하면 곡선이 그려집니다</div>;
-  const H = 240, L = 56, R = 92, T = 10, B = 22;
+  const H = height, L = 56, R = 92, T = 10, B = 22;
   const vals = series.flatMap((s) => s.values.filter((v): v is number => v != null)).concat(refs.map((r) => r.value), [0]);
   let lo = Math.min(...vals), hi = Math.max(...vals);
   const pad = (hi - lo) * 0.06 || 1;

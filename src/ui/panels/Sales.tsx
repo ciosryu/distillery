@@ -52,99 +52,165 @@ function salesStory(stock: number, demand: number, margin: number): string {
   return `${head} ${todo}`;
 }
 
-/** 가격·수요 표 + 고른 제품의 주세 내역·가격 비교. MVP 단일 화면에서도 쓴다 */
-export function PriceDesk() {
+/** 병입 회차를 뗀 제품 이름 — "한빛 소주 13" → "한빛 소주" (증류소 탭 묶음 줄, P-ARCH-21) */
+export const productStem = (name: string) => name.replace(/\s*(#|No\.?\s*)?\d+\s*(호|차)?\s*$/i, '').trim() || name;
+
+/**
+ * 가격·수요 표 + 고른 제품의 주세 내역·가격 비교. MVP 단일 화면에서도 쓴다.
+ * compact(증류소 탭, [P-ARCH-21]): 재고 있는 제품만 · 같은 술(범주·병·도수·병입 회차 뗀 이름)은 한 줄로 묶고 ▸로 제품별 줄을 펼친다 ·
+ * 설명·각주는 판매 탭에 두고 · 제품 상세(향미·내역)는 "내역"을 눌렀을 때만. 묶음 줄에서 값을 바꾸면 묶인 제품 모두 같은 값(오너 결정)
+ */
+export function PriceDesk({ compact = false }: { compact?: boolean }) {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
   const [picked, setPicked] = useState<string | null>(null);
+  const [openGroups, setOpenGroups] = useState<string[]>([]);
   const { monthOfYear } = calendar(s);
   const region = regionOf(s);
-  const active = sellingProducts(s);
+  const active = compact ? sellingProducts(s).filter((p) => p.stockBottles > 0) : sellingProducts(s);
   // 같은 카테고리 제품끼리 나눈 이번 달 수요 (#154). 재고 없는 제품은 혼자일 때의 수요(다시 채우면)
   const domestic = domesticDemands(s, monthOfYear);
   const dutyFree = dutyFreeDemands(s, monthOfYear);
   const last = lastReport(s);
-  const selected = active.find((p) => p.id === picked) ?? active[0];
+  const selected = compact ? active.find((p) => p.id === picked) : active.find((p) => p.id === picked) ?? active[0];
   const brandPick = secondBrands(s).length > 0 && !isLocked(s, 'action:setProductBrand');
+
+  /** 제품 한 줄의 숫자 — 표 줄과 묶음 줄이 같이 쓴다 */
+  const metrics = (p: Product) => {
+    const d = domestic.get(p.id) ?? demandFor(s, p, 1, monthOfYear);
+    // 면세 채널(제주, 결정 #87): 면세 전용 한정판은 국내 매대에 없다 → 면세가·면세 기준가로 보여 준다
+    const df = dutyFree.get(p.id) ?? 0;
+    const dfOnly = !!p.dutyFreeOnly;
+    const consumer = dfOnly ? dutyFreeConsumerPrice(p) : productConsumerPrice(s, p);
+    const ratio = dfOnly ? consumer / (p.bottleMl / 1000) / (d.refPricePerL * DUTY_FREE.refFactor) : d.consumerPricePerL / d.refPricePerL;
+    const demand = (dfOnly ? 0 : d.demandBottles) + df;
+    const sell = Math.min(p.stockBottles, Math.round(demand));
+    const prev = last?.sales.find((x) => x.productId === p.id);
+    const suggested = dfOnly ? null : currentSuggestedPrice(s, p);
+    const m = bottleMargin(p, dfOnly ? 1 : outboundLogistics(s));
+    return { d, df, dfOnly, consumer, ratio, demand, sell, prev, suggested, m };
+  };
+  const rowsFor = (p: Product) => {
+    const { d, df, dfOnly, consumer, ratio, demand, sell, prev, suggested, m } = metrics(p);
+    const isPicked = selected?.id === p.id;
+    return [
+      <tr key={p.id} className={isPicked ? 'bg-amber-50/60 dark:bg-amber-950/30' : ''}>
+        <Td className="font-medium">
+          {p.name}
+          <div className="mt-0.5 flex flex-wrap gap-1">
+            <Badge tone="info">{categoryName(region, p.category, CATEGORY[p.category].nameKo)}</Badge>
+            {p.ageYears != null && <Badge tone="good">{p.ageYears}년</Badge>}
+            {p.premiumLabel && region.whisky.premiumLabel && <Badge tone="good">{region.whisky.premiumLabel.name}</Badge>}
+            {p.specialty && <Badge tone="good">{region.specialties?.find((x) => x.id === p.specialty)?.label}</Badge>}
+            {p.traditional && <Badge tone="good">{region.traditionalRelief?.label}</Badge>}
+            {p.sourcedShare > 0 && <Badge tone="warn">매입 {pct(p.sourcedShare, 0)} · 브랜드 {Math.round((p.sourcedPrestige ?? 0) * 100)}</Badge>}
+            {dfOnly && p.localIngredient && <Badge tone="good">제주 원료</Badge>}
+            {dfOnly && !p.localIngredient && dutyFreeAgedAppeal(p.ageYears) > 1 && <Badge tone="good">숙성 한정 · 수요 ×{dutyFreeAgedAppeal(p.ageYears)}</Badge>}
+            {dfOnly && p.dfEdition && <Badge tone="warn">면세 Vol.{p.dfEdition.vol} · {s.month - p.createdMonth + 1}/{DUTY_FREE.sellOutMonths}개월</Badge>}
+          </div>
+          <div className="text-xs font-normal text-stone-500">{p.bottleMl}ml · {pct(p.abv)} · 품질 {p.quality}</div>
+          {brandPick && (
+            <div className="mt-1" title={rebrandCost(p) > 0 ? `이미 판 제품 — 옮기면 리브랜딩 ${rebrandCost(p).toLocaleString()}원` : '아직 안 판 제품 — 무료로 고른다'}>
+              <Select label="브랜드" value={brandOf(s, p).id} onChange={(v) => dispatch({ type: 'setProductBrand', productId: p.id, brandId: v })} options={s.commerce.brands.map((b) => ({ value: b.id, label: b.isHouse ? `${b.name || '하우스'} (하우스)` : b.name }))} />
+            </div>
+          )}
+        </Td>
+        <Td right>{num(p.stockBottles)}{p.stockBottles > 0 && sell > 0 && <div className="text-xs text-stone-500">{p.stockBottles / sell > 60 ? '5년 치 넘게' : `약 ${Math.max(1, Math.round(p.stockBottles / sell))}개월 치`}</div>}</Td>
+        <Td>
+          <NumberField value={p.price} min={100} step={100} width="w-24" onCommit={(v) => dispatch({ type: 'setPrice', productId: p.id, price: v })} />
+          {suggested != null && suggested !== p.price && (
+            <button className="mt-0.5 block text-xs text-amber-800 underline decoration-dotted dark:text-amber-300" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: suggested })} title="기준 소비자가 × √(품질/60) × 숙성 인식에 맞춘 출고가">권장 {wonFull(suggested)}</button>
+          )}
+        </Td>
+        <Td right>
+          {wonFull(consumer)}
+          <div className={`text-xs ${ratio > 1.3 ? 'text-rose-700 dark:text-rose-400' : ratio < 0.8 ? 'text-emerald-700 dark:text-emerald-400' : 'text-stone-500'}`}>{dfOnly ? '면세가 · ' : ''}기준가의 {pct(ratio, 0)}</div>
+        </Td>
+        <Td right>
+          <span className="font-semibold">{num(demand)}병</span>
+          {df > 0 && !dfOnly && <div className="text-xs text-stone-500">면세 {num(df)}병 포함</div>}
+          {d.split < 0.995 && !dfOnly && <div className="text-xs text-stone-500" title="같은 카테고리 제품끼리 수요를 나눈다 — 단독 수요가 클수록 몫이 크다">같은 카테고리 나눔 ×{d.split.toFixed(2)}</div>}
+          {p.stockBottles > 0 && p.stockBottles < demand && <div className="text-xs text-rose-700 dark:text-rose-400">재고 부족 — 값을 올려도 된다</div>}
+        </Td>
+        <Td right>
+          {prev ? <>{num(prev.demandBottles)} → <span className="font-semibold">{num(prev.bottles)}</span></> : <span className="text-stone-400">—</span>}
+          {prev && prev.bottles < prev.demandBottles && <div className="text-xs text-stone-500">{p.stockBottles === 0 ? '품절' : '역량·재고로 못 판 수요'}</div>}
+        </Td>
+        <Td right>{won(sell * p.price)}<div className="text-xs text-stone-500">{num(sell)}병</div></Td>
+        <Td right><span className={m.rate < 0.15 ? 'text-rose-700 dark:text-rose-400' : m.rate > 0.5 ? 'text-emerald-700 dark:text-emerald-400' : ''}>{won(m.perBottle)}</span><div className="text-xs text-stone-500">{pct(m.rate, 0)}</div></Td>
+        <Td><Button small variant={isPicked ? 'primary' : 'ghost'} onClick={() => setPicked(compact && isPicked ? null : p.id)}>내역</Button></Td>
+      </tr>,
+      <tr key={`${p.id}:story`} className={isPicked ? 'bg-amber-50/60 dark:bg-amber-950/30' : ''}>
+        <td colSpan={9} className="px-2 pb-2 text-xs text-stone-600 dark:text-stone-300">{salesStory(p.stockBottles, demand, m.perBottle)}</td>
+      </tr>,
+    ];
+  };
+
+  /** 묶음 줄 (compact) — 합계와 범위, 값은 묶인 제품 모두에 */
+  const groupRows = (key: string, items: Product[]) => {
+    const ms = items.map(metrics);
+    const sum = (f: (x: (typeof ms)[number], i: number) => number) => ms.reduce((t, x, i) => t + f(x, i), 0);
+    const stock = items.reduce((t, p) => t + p.stockBottles, 0);
+    const demand = sum((x) => x.demand);
+    const sell = sum((x) => x.sell);
+    const prevDemand = sum((x) => x.prev?.demandBottles ?? 0);
+    const prevSold = sum((x) => x.prev?.bottles ?? 0);
+    const revenue = sum((x, i) => x.sell * items[i]!.price);
+    const prices = items.map((p) => p.price);
+    const lo = Math.min(...prices), hi = Math.max(...prices);
+    const margins = ms.map((x) => x.m.perBottle);
+    const avgMargin = Math.round(stock > 0 ? sum((x, i) => x.m.perBottle * items[i]!.stockBottles) / stock : margins[0]!);
+    const marginLo = won(Math.min(...margins)), marginHi = won(Math.max(...margins));
+    const open = openGroups.includes(key);
+    const p0 = items[0]!;
+    return [
+      <tr key={`g:${key}`}>
+        <Td className="font-medium">
+          {productStem(p0.name)} <span className="text-xs font-normal text-stone-500">· 제품 {items.length}개 묶음</span>
+          <div className="mt-0.5 flex flex-wrap gap-1"><Badge tone="info">{categoryName(region, p0.category, CATEGORY[p0.category].nameKo)}</Badge></div>
+          <div className="text-xs font-normal text-stone-500">{p0.bottleMl}ml · {pct(p0.abv)} · 품질 {Math.min(...items.map((p) => p.quality))}~{Math.max(...items.map((p) => p.quality))}</div>
+        </Td>
+        <Td right>{num(stock)}{sell > 0 && <div className="text-xs text-stone-500">{stock / sell > 60 ? '5년 치 넘게' : `약 ${Math.max(1, Math.round(stock / sell))}개월 치`}</div>}</Td>
+        <Td>
+          <NumberField value={lo} min={100} step={100} width="w-24" onCommit={(v) => { for (const p of items) if (p.price !== v) dispatch({ type: 'setPrice', productId: p.id, price: v }); }} />
+          <div className="mt-0.5 text-xs text-stone-500" title="묶음 줄에서 값을 바꾸면 묶인 제품 모두 같은 값이 된다">{lo === hi ? '묶인 제품 모두 같은 값' : <>제품마다 {num(lo)}~{num(hi)}원 — 바꾸면 모두 같게 · <button className="underline decoration-dotted" onClick={() => { for (const p of items) if (p.price !== lo) dispatch({ type: 'setPrice', productId: p.id, price: lo }); }}>모두 {num(lo)}원으로</button></>}</div>
+        </Td>
+        <Td right>{wonFull(ms[0]!.consumer)}{lo !== hi && <div className="text-xs text-stone-500">첫 제품 기준</div>}</Td>
+        <Td right><span className="font-semibold">{num(demand)}병</span></Td>
+        <Td right>{prevDemand || prevSold ? <>{num(prevDemand)} → <span className="font-semibold">{num(prevSold)}</span></> : <span className="text-stone-400">—</span>}</Td>
+        <Td right>{won(revenue)}<div className="text-xs text-stone-500">{num(sell)}병</div></Td>
+        <Td right>{marginLo === marginHi ? marginLo : `${marginLo}~${marginHi}`}</Td>
+        <Td><Button small variant="ghost" onClick={() => setOpenGroups((g) => (open ? g.filter((k) => k !== key) : [...g, key]))}>{open ? '▾ 접기' : `▸ 제품 ${items.length}개`}</Button></Td>
+      </tr>,
+      <tr key={`g:${key}:story`}>
+        <td colSpan={9} className="px-2 pb-2 text-xs text-stone-600 dark:text-stone-300">{salesStory(stock, demand, avgMargin)}</td>
+      </tr>,
+    ];
+  };
+  const groups = new Map<string, Product[]>();
+  if (compact) for (const p of active) { const k = `${p.category}|${p.bottleMl}|${p.abv}|${productStem(p.name)}|${p.dutyFreeOnly ? 'df' : ''}`; groups.set(k, [...(groups.get(k) ?? []), p]); }
+  const body = compact
+    ? [...groups].flatMap(([k, items]) => (items.length === 1 ? rowsFor(items[0]!) : [...groupRows(k, items), ...(openGroups.includes(k) ? items.flatMap(rowsFor) : [])]))
+    : active.flatMap(rowsFor);
 
   return (
     <div className="grid gap-4">
       <Card title="가격과 수요" actions={<span className="text-xs text-stone-500">한 달 판매 = min(재고, 수요 한도 ±10%, 소매 처리 역량)</span>}>
-        <SalesPrimer />
-        {!active.length ? <Empty>판매 중인 제품이 없습니다. 블렌딩·병입 탭에서 병입하세요.</Empty> : (
+        {!compact && <SalesPrimer />}
+        {!active.length ? <Empty>{compact ? '재고가 있는 제품이 없습니다 — 블렌딩·병입 탭에서 병입하세요. 품절 제품은 판매 탭에서 본다.' : '판매 중인 제품이 없습니다. 블렌딩·병입 탭에서 병입하세요.'}</Empty> : (
           <Table head={['제품', '재고', '출고가(병)', '소비자가', '이번 달 수요 한도', '지난달 수요 → 판매', '예상 월 매출', '병당 공헌이익', '']}>
-            {active.map((p) => {
-              const d = domestic.get(p.id) ?? demandFor(s, p, 1, monthOfYear);
-              // 면세 채널(제주, 결정 #87): 면세 전용 한정판은 국내 매대에 없다 → 면세가·면세 기준가로 보여 준다
-              const df = dutyFree.get(p.id) ?? 0;
-              const dfOnly = !!p.dutyFreeOnly;
-              const consumer = dfOnly ? dutyFreeConsumerPrice(p) : productConsumerPrice(s, p);
-              const ratio = dfOnly ? consumer / (p.bottleMl / 1000) / (d.refPricePerL * DUTY_FREE.refFactor) : d.consumerPricePerL / d.refPricePerL;
-              const demand = (dfOnly ? 0 : d.demandBottles) + df;
-              const sell = Math.min(p.stockBottles, Math.round(demand));
-              const prev = last?.sales.find((x) => x.productId === p.id);
-              const suggested = dfOnly ? null : currentSuggestedPrice(s, p);
-              const m = bottleMargin(p, dfOnly ? 1 : outboundLogistics(s));
-              const isPicked = selected?.id === p.id;
-              return [
-                <tr key={p.id} className={isPicked ? 'bg-amber-50/60 dark:bg-amber-950/30' : ''}>
-                  <Td className="font-medium">
-                    {p.name}
-                    <div className="mt-0.5 flex flex-wrap gap-1">
-                      <Badge tone="info">{categoryName(region, p.category, CATEGORY[p.category].nameKo)}</Badge>
-                      {p.ageYears != null && <Badge tone="good">{p.ageYears}년</Badge>}
-                      {p.premiumLabel && region.whisky.premiumLabel && <Badge tone="good">{region.whisky.premiumLabel.name}</Badge>}
-                      {p.specialty && <Badge tone="good">{region.specialties?.find((x) => x.id === p.specialty)?.label}</Badge>}
-                      {p.traditional && <Badge tone="good">{region.traditionalRelief?.label}</Badge>}
-                      {p.sourcedShare > 0 && <Badge tone="warn">매입 {pct(p.sourcedShare, 0)} · 브랜드 {Math.round((p.sourcedPrestige ?? 0) * 100)}</Badge>}
-                      {dfOnly && p.localIngredient && <Badge tone="good">제주 원료</Badge>}
-                      {dfOnly && !p.localIngredient && dutyFreeAgedAppeal(p.ageYears) > 1 && <Badge tone="good">숙성 한정 · 수요 ×{dutyFreeAgedAppeal(p.ageYears)}</Badge>}
-                      {dfOnly && p.dfEdition && <Badge tone="warn">면세 Vol.{p.dfEdition.vol} · {s.month - p.createdMonth + 1}/{DUTY_FREE.sellOutMonths}개월</Badge>}
-                    </div>
-                    <div className="text-xs font-normal text-stone-500">{p.bottleMl}ml · {pct(p.abv)} · 품질 {p.quality}</div>
-                    {brandPick && (
-                      <div className="mt-1" title={rebrandCost(p) > 0 ? `이미 판 제품 — 옮기면 리브랜딩 ${rebrandCost(p).toLocaleString()}원` : '아직 안 판 제품 — 무료로 고른다'}>
-                        <Select label="브랜드" value={brandOf(s, p).id} onChange={(v) => dispatch({ type: 'setProductBrand', productId: p.id, brandId: v })} options={s.commerce.brands.map((b) => ({ value: b.id, label: b.isHouse ? `${b.name || '하우스'} (하우스)` : b.name }))} />
-                      </div>
-                    )}
-                  </Td>
-                  <Td right>{num(p.stockBottles)}{p.stockBottles > 0 && sell > 0 && <div className="text-xs text-stone-500">{p.stockBottles / sell > 60 ? '5년 치 넘게' : `약 ${Math.max(1, Math.round(p.stockBottles / sell))}개월 치`}</div>}</Td>
-                  <Td>
-                    <NumberField value={p.price} min={100} step={100} width="w-24" onCommit={(v) => dispatch({ type: 'setPrice', productId: p.id, price: v })} />
-                    {suggested != null && suggested !== p.price && (
-                      <button className="mt-0.5 block text-xs text-amber-800 underline decoration-dotted dark:text-amber-300" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: suggested })} title="기준 소비자가 × √(품질/60) × 숙성 인식에 맞춘 출고가">권장 {wonFull(suggested)}</button>
-                    )}
-                  </Td>
-                  <Td right>
-                    {wonFull(consumer)}
-                    <div className={`text-xs ${ratio > 1.3 ? 'text-rose-700 dark:text-rose-400' : ratio < 0.8 ? 'text-emerald-700 dark:text-emerald-400' : 'text-stone-500'}`}>{dfOnly ? '면세가 · ' : ''}기준가의 {pct(ratio, 0)}</div>
-                  </Td>
-                  <Td right>
-                    <span className="font-semibold">{num(demand)}병</span>
-                    {df > 0 && !dfOnly && <div className="text-xs text-stone-500">면세 {num(df)}병 포함</div>}
-                    {d.split < 0.995 && !dfOnly && <div className="text-xs text-stone-500" title="같은 카테고리 제품끼리 수요를 나눈다 — 단독 수요가 클수록 몫이 크다">같은 카테고리 나눔 ×{d.split.toFixed(2)}</div>}
-                    {p.stockBottles > 0 && p.stockBottles < demand && <div className="text-xs text-rose-700 dark:text-rose-400">재고 부족 — 값을 올려도 된다</div>}
-                  </Td>
-                  <Td right>
-                    {prev ? <>{num(prev.demandBottles)} → <span className="font-semibold">{num(prev.bottles)}</span></> : <span className="text-stone-400">—</span>}
-                    {prev && prev.bottles < prev.demandBottles && <div className="text-xs text-stone-500">{p.stockBottles === 0 ? '품절' : '역량·재고로 못 판 수요'}</div>}
-                  </Td>
-                  <Td right>{won(sell * p.price)}<div className="text-xs text-stone-500">{num(sell)}병</div></Td>
-                  <Td right><span className={m.rate < 0.15 ? 'text-rose-700 dark:text-rose-400' : m.rate > 0.5 ? 'text-emerald-700 dark:text-emerald-400' : ''}>{won(m.perBottle)}</span><div className="text-xs text-stone-500">{pct(m.rate, 0)}</div></Td>
-                  <Td><Button small variant={isPicked ? 'primary' : 'ghost'} onClick={() => setPicked(p.id)}>내역</Button></Td>
-                </tr>,
-                <tr key={`${p.id}:story`} className={isPicked ? 'bg-amber-50/60 dark:bg-amber-950/30' : ''}>
-                  <td colSpan={9} className="px-2 pb-2 text-xs text-stone-600 dark:text-stone-300">{salesStory(p.stockBottles, demand, m.perBottle)}</td>
-                </tr>,
-              ];
-            })}
+            {body}
           </Table>
         )}
-        <p className="mt-2 text-xs text-stone-500">
-          수요 한도 = 시장 규모 × 계절·트렌드 × 도달률(인지도 × 유통 커버리지 × 점유 상한) × 제품 매력도 × 가격 계수. 값을 올리면 병당 이익은 늘고 한도는 줄어든다 — 재고가 한도보다 적으면 값을 올려도 다 팔린다.
-          같은 카테고리 제품이 여러 개면 수요를 나눠 갖는다 — 총수요는 조금만 늘고(똑같은 제품 2개면 약 1.26배), 단독 수요가 큰 제품이 더 큰 몫을 가진다. 병당 공헌이익 = 출고가 − (원액·포장·병입 인건비) − 유통비(채널 수수료 + 물류).
-          {hasDutyFree(s) && ' 지정면세점 판매분은 주세·부가세가 없고, 소매 처리 역량과 육지 출고 물류 할증을 쓰지 않습니다.'}
-        </p>
+        {compact
+          ? <p className="mt-2 text-xs text-stone-500">재고 있는 제품만 · 같은 술은 한 줄로 묶었다(▸ 펼치면 제품별) · 향미·소비자가 내역은 "내역" · 품절 제품과 판매 설명은 <b>판매</b> 탭.</p>
+          : (
+          <p className="mt-2 text-xs text-stone-500">
+            수요 한도 = 시장 규모 × 계절·트렌드 × 도달률(인지도 × 유통 커버리지 × 점유 상한) × 제품 매력도 × 가격 계수. 값을 올리면 병당 이익은 늘고 한도는 줄어든다 — 재고가 한도보다 적으면 값을 올려도 다 팔린다.
+            같은 카테고리 제품이 여러 개면 수요를 나눠 갖는다 — 총수요는 조금만 늘고(똑같은 제품 2개면 약 1.26배), 단독 수요가 큰 제품이 더 큰 몫을 가진다. 병당 공헌이익 = 출고가 − (원액·포장·병입 인건비) − 유통비(채널 수수료 + 물류).
+            {hasDutyFree(s) && ' 지정면세점 판매분은 주세·부가세가 없고, 소매 처리 역량과 육지 출고 물류 할증을 쓰지 않습니다.'}
+          </p>
+          )}
       </Card>
       {selected && <ProductFlavor p={selected} />}
       {selected && <ProductDetail p={selected} />}
