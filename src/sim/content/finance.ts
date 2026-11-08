@@ -86,3 +86,18 @@ export const INVESTMENT_OFFERS: InvestmentOffer[] = [
   { id: 'angel', nameKo: '엔젤 투자', amount: 200_000_000, share: 0.1, minMonth: 0, maxMonth: 48, note: '초기 런웨이용. 지분 10%' },
   { id: 'seed_vc', nameKo: '시드 투자 (VC)', amount: 500_000_000, share: 0.25, minMonth: 12, maxMonth: 84, note: '지분 25%. 엑시트 압박은 후속(이사회 §8.2)' },
 ];
+
+// ── 이사회 (P-MGT-7, PRD §8.2 "이사회 시스템") — 외부 지분 25%↑면 분기 목표, 50%↑면 신뢰가 바닥나면 해임. 수치 [튜닝] ──
+export const BOARD = {
+  /** 이사회가 생기는 외부 지분 */
+  formShare: 0.25,
+  /** 해임 권한이 생기는 외부 지분 (지금 투자 상품으로는 최대 32.5% — 해임은 아직 일어날 수 없다) */
+  dismissShare: 0.5,
+  startConfidence: 60,
+  metGain: 10,
+  missLoss: 15,
+  /** 분기 목표: 매출이 있으면 직전 분기 매출 × 이 배수 이상 */
+  revenueGrowth: 1.05,
+  /** 분기 목표: 매출이 없으면(Death Valley) 분기 말 현금 ≥ 월 고정비 예상 × 이 개월 수 */
+  cashBufferMonths: 3,
+};

@@ -1,3 +1,4 @@
+import { runBoard } from './board';
 import { EQUIPMENT, LOAN_OFFERS } from './content/catalog';
 import { siteOf } from './content/regions';
 import type { GameState, MonthReport } from './types';
@@ -85,4 +86,6 @@ export function runFinance(s: GameState, report: MonthReport, monthOfYear: numbe
   // 재고 담보대출(홋카이도, 결정 #90): 시가가 떨어지면 추가 상환 요구
   pay('principal', inventoryMarginCall(s, report));
   s.finance.loans = s.finance.loans.filter((l) => l.balance > 0);
+  // 이사회 (P-MGT-7) — 외부 지분 25%↑일 때만 있다
+  runBoard(s, report);
 }

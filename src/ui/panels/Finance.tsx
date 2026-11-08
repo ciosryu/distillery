@@ -6,6 +6,7 @@ import { isLocked } from '../../sim';
 import { INVESTMENT_OFFERS } from '../../sim/content/catalog';
 import { annuityPayment, currentLoanPayment, monthlyFixedCost as monthlyFixed, inventoryCollateral, inventoryLoanRoom, inventoryLtv, monthLabel } from '../../sim';
 import { useGame } from '../../store/game';
+import { BoardCard } from './Board';
 import { pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Table, Td } from '../kit';
 
@@ -63,6 +64,8 @@ export function Finance() {
         </Table>
         <p className="mt-2 text-xs text-stone-500">다른 초기 자금원: 숙성고의 <b>캐스크 오너십 판매</b>(연구 BIZ-1b 뒤 — 지금 현금, 8년 뒤 인도 — 많이 팔면 매니아 신뢰↓), 독립 병입자의 <b>통째 매입 제안</b>(3년↑·품질 65↑), <b>비지터 센터</b> 투어·뉴메이크 판매.</p>
       </Card>
+
+      <BoardCard />
 
       <Card title="보유 대출">
         {!s.finance.loans.length ? <Empty>대출이 없습니다</Empty> : (
