@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
-import { AUTO_SAMPLE_MIN_AGE, autoSamplePicks, knownReads, lastSample, readSigma, sampleAxesOf, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
+import { autoSamplePicks, knownReads, lastSample, readSigma, sampleAxesOf, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
 import { AXIS } from '../sim/content/axes';
 import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
 import { vesselMaterial } from '../sim/maturation';
@@ -381,8 +381,8 @@ function WarehouseCard() {
             {sampledThisMonth
               ? '이번 달은 직접 샘플을 떠서 자동 샘플이 없다.'
               : autoCount
-                ? `이번 달에 아무 통도 직접 뜨지 않고 다음 달로 넘기면, ${AUTO_SAMPLE_MIN_AGE}개월 넘게 안 뜬 통 ${autoCount}통을 자동으로 뜬다(${won(autoCount * SAMPLING.cost)}). 직접 고르면 고른 통만 뜬다.`
-                : `자동으로 뜰 통이 없다 — 모든 통을 최근 ${AUTO_SAMPLE_MIN_AGE}개월 안에 떴거나 통당 최대 횟수(${SAMPLING.maxSamples}회)를 다 썼다. 직접 고르면 뜰 수 있다.`}
+                ? `이번 달에 아무 통도 직접 뜨지 않고 다음 달로 넘기면, 오래 안 뜬 통 ${autoCount}통을 자동으로 뜬다(${won(autoCount * SAMPLING.cost)}). 자동 샘플은 통당 횟수(${SAMPLING.maxSamples}회)를 쓰지 않지만 오차도 줄이지 않는다 — 오차를 줄이려면 직접 고른다.`
+                : `자동으로 뜰 통이 없다 — 숙성 중인 통이 없거나 현금이 모자라다.`}
           </div>
         </div>
       )}
