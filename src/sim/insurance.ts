@@ -1,7 +1,7 @@
 import { EQUIPMENT, INSURANCE_PRODUCTS, type InsuranceProductDef } from './content/catalog';
 import { monthlyFixedCost } from './loans';
 import { riskMul } from './research';
-import type { GameState, InsurancePolicy } from './types';
+import type { GameState, InsurancePolicy, MonthReport } from './types';
 
 // 보험 (파트 MGT, #171, PRD §8.4) — 재산·재고·영업중단. 재해 이벤트(events.ts fire)가 피해를 장부(LossLedger)에 적고, 끝에 settleClaims가 보험금을 준다.
 // 보험이 없으면 장부는 적히기만 하고 현금·난수에 손대지 않는다 → 보험을 안 든 판은 동작이 그대로다.
@@ -70,12 +70,13 @@ export function claimFor(s: GameState, ledger: LossLedger): { property: number; 
 }
 
 /** 재해 끝에 보험금을 준다 — 보험이 없거나 피해가 없으면 아무 일도 없다. 돌려주는 문구는 이벤트 기록에 붙는다 */
-export function settleClaims(s: GameState, ledger: LossLedger): string[] {
+export function settleClaims(s: GameState, ledger: LossLedger, report?: MonthReport | null): string[] {
   if (!s.finance.insurance.length) return [];
   const c = claimFor(s, ledger);
   const total = c.property + c.inventory + c.interruption;
   if (total <= 0) return [];
   s.finance.cash += total;
+  if (report) report.otherIncome = { ...report.otherIncome, insurance: (report.otherIncome?.insurance ?? 0) + total };
   const parts = [
     c.property ? `재산 ${c.property.toLocaleString()}원${c.ratio.property ? `(비례 ${Math.round(c.ratio.property * 100)}%)` : ''}` : '',
     c.inventory ? `재고 ${c.inventory.toLocaleString()}원${c.ratio.inventory ? `(비례 ${Math.round(c.ratio.inventory * 100)}%)` : ''}` : '',

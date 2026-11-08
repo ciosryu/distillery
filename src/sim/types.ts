@@ -356,6 +356,8 @@ export interface MonthReport {
   oemRevenue?: number;
   /** 매출채권 입금 (대형 유통 납품 대금) */
   receivablesCollected?: number;
+  /** 매출이 아닌 입금 (MGT) — 보험금(재해 보상, #171)·선도계약 정산으로 받은 돈(#179). 낸 정산액은 expenses.hedge. 구버전 세이브의 보고서에는 없다 */
+  otherIncome?: Partial<Record<'insurance' | 'hedge', number>>;
   notes: string[];
 }
 
