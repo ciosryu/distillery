@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BOTTLE_SIZES, CASKS, PACKAGING, packagingCost } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
-import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf } from '../../sim';
 import { regionOf } from '../../sim/content/regions';
 import { stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
 import { useGame } from '../../store/game';
@@ -17,7 +17,7 @@ const topHex = (h: Hex, n = 3) => HEX_AXES.filter((a) => h[a] >= 1).sort((a, b) 
 /** 소주·진·고량주 샘플 기록의 강한 향 — 그 주종 레이더 축 (P-PROD-13). 육각형(위스키 축)으로 보이면 소주에 "피트"가 떴다 */
 const topAxes = (ax: Partial<Record<AxisId, number>>, n = 3) => (Object.entries(ax) as [AxisId, number][]).filter(([, v]) => v >= 1).sort((a, b) => b[1] - a[1]).slice(0, n).map(([a]) => AXIS[a].nameKo).join(' · ') || '뚜렷한 향 없음';
 /** 샘플 기록의 강한 향 — 레이더 축 읽기가 있으면 그것, 없으면 육각형 */
-const topKnown = (k: KnownRead) => (k.axes ? topAxes(k.axes) : topHex(k.hex));
+const topKnown = (k: KnownRead, kind: SpiritKind) => (k.axes ? topAxes(k.axes) : sampleAxesOf(kind) ? '향은 다시 샘플(이전 버전 기록)' : topHex(k.hex));
 
 /** 원액 분류 — 주종 + 위스키 표기 가능 여부 (플레이테스트 2026-11-07: 주종이 다 섞여 보여 블렌딩이 불편하다) */
 export function sourceCategory(lot: SpiritLot, minMonths: number): string {
@@ -219,7 +219,7 @@ export function Bottling() {
                 {/* 표가 옆으로 넘쳐 체크박스·이름이 밀려나지 않게 너비를 묶고 두 줄로 (플레이테스트 2026-11-07) */}
                 <Td className="text-xs"><div className="w-40 whitespace-normal">{hide && x.source === 'cask' ? (() => {
                   const k = known?.get(x.id);
-                  return k ? <span className={k.from === 'sibling' ? 'opacity-70' : ''}>{topKnown(k)}<span className="block text-stone-500">추정 {k.estQuality} · {s.month - k.month > 0 ? `${months(s.month - k.month)} 전` : '이번 달'}{k.from === 'sibling' ? ' 형제 통' : ''} 샘플</span></span> : <span className="text-stone-500">샘플 없음 — 모른다</span>;
+                  return k ? <span className={k.from === 'sibling' ? 'opacity-70' : ''}>{topKnown(k, x.lot.kind)}<span className="block text-stone-500">추정 {k.estQuality} · {s.month - k.month > 0 ? `${months(s.month - k.month)} 전` : '이번 달'}{k.from === 'sibling' ? ' 형제 통' : ''} 샘플</span></span> : <span className="text-stone-500">샘플 없음 — 모른다</span>;
                 })() : topNotes(x.lot.flavor).map((n) => n.nameKo).join(' · ')}</div></Td>
                 <Td>{picked[x.key] != null && <NumberField value={picked[x.key]!} min={0} max={Math.floor(x.lot.volumeL * 10) / 10} step={0.1} width="w-20" onCommit={(v) => setPicked((p) => ({ ...p, [x.key]: v }))} />}</Td>
               </tr>
