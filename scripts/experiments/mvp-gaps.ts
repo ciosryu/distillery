@@ -23,7 +23,10 @@ interface Gap {
   overBottle?: boolean;     // 소주를 재고와 상관없이 다 병입 (1차: 한 제품 186개월 치)
   andong?: boolean;         // 안동 입지 (1차)
   marketing?: number;       // 마케팅 월 예산 (봇 기준 500만, 게임 기본값 300만, 고정비를 줄이려는 사람의 첫 수 = 0)
+  schedule?: [number, number, number][]; // [달, 소주 배치, 몰트 배치] — 그 달부터 생산 지시 (3차 판 흉내)
+  loanCap?: number;         // 은행·정책 대출 누적 실행 상한 (사람은 한도를 다 쓰지 않는다 — 3차 판 5.5억)
 }
+const P3_SCHEDULE: [number, number, number][] = [[0, 1, 4], [25, 1, 2], [35, 0, 0], [40, 1, 4]];
 const GAPS: Gap[] = [
   { id: 'base', label: '기준 봇(균형)' },
   { id: 'V', label: '비지터 센터 없음', noVisitor: true },
@@ -38,6 +41,11 @@ const GAPS: Gap[] = [
   { id: 'V+S27', label: '비지터 없음 + 27개월 생산 0', noVisitor: true, stopAt: 27 },
   { id: '1차', label: '안동 + 몰트 감축 + 과잉 병입', andong: true, cut: [24, 60], overBottle: true },
   { id: '1차+V', label: '1차 + 비지터 없음', andong: true, cut: [24, 60], overBottle: true, noVisitor: true },
+  // 3차 판 흉내 (mvp.md §7.8): 소주 1·몰트 4 → 25~34개월 몰트 2 → 35~39개월 생산 0 → 40개월부터 다시, 비지터 센터 없음, 마케팅 300만
+  { id: 'P3', label: '3차 판 근사 (대출 5.5억까지)', noVisitor: true, marketing: 3_000_000, schedule: P3_SCHEDULE, loanCap: 550_000_000 },
+  { id: 'P3L', label: '3차 판 근사 + 대출 한도까지', noVisitor: true, marketing: 3_000_000, schedule: P3_SCHEDULE },
+  { id: 'P3V', label: '3차 판 근사 + 비지터 센터 (대출 5.5억까지)', marketing: 3_000_000, schedule: P3_SCHEDULE, loanCap: 550_000_000 },
+  { id: 'P3P', label: '3차 판 근사 + 생산 유지 (대출 5.5억까지)', noVisitor: true, marketing: 3_000_000, schedule: [[0, 1, 4]], loanCap: 550_000_000 },
 ];
 
 const act = (s: GameState, a: Action) => applyAction(s, a).state;
@@ -88,8 +96,10 @@ function bottle(s: GameState, g: Gap): GameState {
 }
 
 // mvp-survival.ts와 같은 대출 순서 (고금리 급전 #160은 쓰지 않는다 — 기준과 맞추려고)
-function finance(s: GameState): GameState {
+/** borrowed = 이 판에서 지금까지 실행한 대출 원금 합 (play가 센다). loanCap에 닿으면 더 빌리지 않는다 */
+function finance(s: GameState, borrowed = 0, loanCap = Infinity): GameState {
   const has = (id: string) => s.finance.loans.some((l) => l.offerId === id);
+  if (borrowed >= loanCap) { if (s.finance.cash < 30_000_000) for (const lot of s.inventory.lots.filter((l) => l.kind === 'malt')) s = act(s, { type: 'sellBulk', source: 'lot', id: lot.id }); return s; }
   if (s.finance.cash < 200_000_000 && !has('kr_regional')) s = act(s, { type: 'takeLoan', offerId: 'kr_regional', amount: 300_000_000 });
   if (s.finance.cash < 100_000_000 && !has('kr_startup')) s = act(s, { type: 'takeLoan', offerId: 'kr_startup', amount: 200_000_000 });
   if (s.finance.cash < 100_000_000 && !has('working')) s = act(s, { type: 'takeLoan', offerId: 'working', amount: 300_000_000 });
@@ -116,17 +126,20 @@ function play(g: Gap, seed: number, wantYears: boolean): Row {
   if (!g.noVisitor) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_basic' });
   s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
   s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
-  s = setOrders(s, 2, 5);
-  let minCash = s.finance.cash, minCashMonth = 0, loansMax = 0;
+  s = g.schedule ? setOrders(s, g.schedule[0]![1], g.schedule[0]![2]) : setOrders(s, 2, 5);
+  let minCash = s.finance.cash, minCashMonth = 0, loansMax = 0, borrowed = 0;
   const reps: GameState['history']['reports'] = [];
   const fixed: number[] = [];
   for (let m = 0; m < MONTHS && s.status === 'running'; m++) {
+    for (const [at, so, ma] of g.schedule ?? []) if (at === m && at > 0) s = setOrders(s, so, ma);
     if (g.stopAt === m) s = setOrders(s, 0, 0);
     if (g.cut && m === g.cut[0]) s = setOrders(s, 2, 1);
     if (g.cut && m === g.cut[1]) s = setOrders(s, 2, 5);
     s = bottle(s, g);
     s = fill(s);
-    s = finance(s);
+    const before = new Set(s.finance.loans.map((l) => l.id));
+    s = finance(s, borrowed, g.loanCap);
+    borrowed += s.finance.loans.filter((l) => !before.has(l.id)).reduce((t, l) => t + l.principal, 0);
     fixed.push(monthlyFixedCost(s));
     s = advanceMonth(s);
     const last = s.history.reports.at(-1);
