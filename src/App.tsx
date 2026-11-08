@@ -56,6 +56,8 @@ export default function App() {
   const playMin = Math.floor(getPlaylog().activeMs / 60_000);
   const advance = useGame((g) => g.advance);
   const advanceUntil = useGame((g) => g.advanceUntil);
+  const undo = useGame((g) => g.undo);
+  const undoInfo = useGame((g) => g.undoInfo);
   const cancelAdvance = useGame((g) => g.cancelAdvance);
   const advancing = useUi((u) => u.advancing);
   const restart = useGame((g) => g.restart);
@@ -97,6 +99,8 @@ export default function App() {
             {advancing
               ? <Button variant="ghost" onClick={cancelAdvance}>자동 진행 중 {advancing.done}/{advancing.total} — 멈춤</Button>
               : <Button disabled={!running} onClick={() => void advanceUntil(24)} title="선택 이벤트·예보·현금 경고·설비 가동 시작·블렌딩 의뢰 중 하나가 생기면 멈춘다 (최대 24개월)">다음 알림까지</Button>}
+            {/* 한 턴 되돌리기 (3차 MVP 플레이테스트 오너 요청 — 실수로 분기 진행을 누를 때) */}
+            <Button variant="ghost" disabled={!undoInfo || !!advancing} onClick={undo} title={undoInfo ? `${monthLabel(s.startYear, undoInfo.month)}로 되돌린다 — 직전 진행 ${undoInfo.months}개월과 그 뒤에 한 행동이 사라진다(한 번만)` : '되돌릴 진행이 없다'}>↶ 되돌리기{undoInfo && undoInfo.months > 1 ? ` (${undoInfo.months}개월)` : ''}</Button>
             <Button variant="ghost" onClick={() => { setPlanOpen((v) => !v); setNewGameOpen(false); }}>새 게임</Button>
             <Button variant="ghost" onClick={() => exportPlayFile(s)} title="세이브 + 플레이 기록(턴별 시간·행동 수)을 한 파일로 내려받는다 — 플레이테스트 피드백에 붙이면 그 판을 그대로 재현한다">기록 내보내기</Button>
             <label className="inline-flex cursor-pointer items-center rounded-md px-3 py-1.5 text-sm font-medium text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800" title="내보낸 기록 파일이나 세이브 JSON을 불러온다 (지금 진행은 사라진다)">
