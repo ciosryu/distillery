@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
 import { ProfileRadar } from './Production';
+import { caskShort } from './Bottling';
 import { categoryName, consumerPrice, regionOf, traditionalTaxFactor } from '../../sim/content/regions';
 import { finishLabel, hexOf, HEX_AXES, HEX_LABEL, topNotes, type ProductCategory, type ProfileAxis, bottleMargin, calendar, coverage, demandFor, domesticDemands, DUTY_FREE, dutyFreeDemands, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, priceOptions, productConsumerPrice, retailCapacityCases, suggestedPrice, type GameState, type Product } from '../../sim';
 import { awarenessOf, brandMarketing, brandOf, rebrandCost, secondBrands } from '../../sim/brands';
@@ -181,6 +182,8 @@ function ProductFlavor({ p }: { p: Product }) {
     categoryName(region, x.category, CATEGORY[x.category].nameKo),
     x.ageYears != null ? `${x.ageYears}년` : null,
     x.finish ? finishLabel(x.finish) : null,
+    // 통 구성 (P-PROD-10) — 병입 때 기록. 기록 전 제품은 없다
+    x.caskMix?.length ? `통: ${x.caskMix.map((m) => `${caskShort(m.typeId)} ${pct(m.share, 0)}`).join(' · ')}${(() => { const rest = 1 - x.caskMix!.reduce((t, m) => t + m.share, 0); return rest >= 0.005 ? ` · 탱크 ${pct(rest, 0)}` : ''; })()}` : null,
     x.style ? `스타일: ${x.style}` : null,
     `${x.bottleMl}ml · ${pct(x.abv)}`,
   ].filter(Boolean).join(' · ');

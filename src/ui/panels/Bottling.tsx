@@ -30,7 +30,7 @@ const CASK_SHORT: Record<CaskTypeId, { name: string; cls: string }> = {
   mizunara_hogshead: { name: '미즈나라', cls: 'bg-violet-100 text-violet-900 dark:bg-violet-900/50 dark:text-violet-200' },
   onggi_jar: { name: '옹기', cls: 'bg-stone-200 text-stone-800 dark:bg-stone-700 dark:text-stone-100' },
 };
-const caskShort = (t: CaskTypeId) => CASK_SHORT[t]?.name ?? CASKS[t]?.nameKo ?? t;
+export const caskShort = (t: CaskTypeId) => CASK_SHORT[t]?.name ?? CASKS[t]?.nameKo ?? t;
 /** 통 표시: 종류 · 회차(1필 = 새 통, 숫자가 클수록 향이 약하다) · 피니시 */
 function CaskTag({ c }: { c: Cask }) {
   const f = c.contents ? finishOf(c.contents) : null;
