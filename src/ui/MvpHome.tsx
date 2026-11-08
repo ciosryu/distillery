@@ -256,16 +256,17 @@ const LIST_FIRST = 30;
 
 /** 크래프팅 레버(#156)·설비는 자주 안 바꾸므로 접어 둔다 — 처음 2시간을 가볍게 (mvp.md §1.2) */
 function CraftingFold() {
-  const [open, setOpen] = useState(false);
+  // "이번 달 할 일"의 [설비에서 짓기](비지터 센터)가 이 블록을 열고 설비로 스크롤한다 (3차 MVP 플레이테스트: 비지터 센터를 못 찾았다)
+  const [open, toggle] = useFold('mvp-craft', false, ['mvp-equipment']);
   return (
     <div className="grid gap-4">
       <div>
-        <Button variant="ghost" onClick={() => setOpen((v) => !v)}>{open ? '▾' : '▸'} 레시피·크래프팅 레버 · 설비(비지터 센터·증류기) {open ? '접기' : '펼치기'}</Button>
+        <Button variant="ghost" onClick={toggle}>{open ? '▾' : '▸'} 레시피·크래프팅 레버 · 설비(비지터 센터·증류기) {open ? '접기' : '펼치기'}</Button>
       </div>
       {open && (
         <>
           <RecipeEditor />
-          <Equipment />
+          <div id="mvp-equipment" className="scroll-mt-28"><Equipment /></div>
         </>
       )}
     </div>

@@ -5,6 +5,8 @@
 import { regionOf } from '../sim/content/regions';
 import { BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, selfFundedCash, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
+import { EQUIPMENT } from '../sim/content/catalog';
+import { isLocked } from '../sim/scenario';
 
 // ───────────── ① 파산 카운트다운 ─────────────
 
@@ -123,6 +125,11 @@ export const RESTOCK_MONTHS = 2;
 export function monthTodos(s: GameState): Todo[] {
   const out: Todo[] = [];
   const min = whiskyMinMonths(regionOf(s).whisky); // 병입·표기와 같은 식 (blending.ts)
+  // 비지터 센터가 없다 — 3차 MVP 판은 설비가 접힌 칸 안에 있어 "못 찾았다"(오너). 첫해 가장 큰 수입원(월 약 700만, 사람형 봇 실험)이라 할 일에 올린다
+  const visitor = EQUIPMENT.visitor_basic;
+  if (s.scenario && visitor && !isLocked(s, 'facility:visitor_basic') && !s.production.equipment.some((e) => EQUIPMENT[e.catalogId]?.kind === 'visitor')) {
+    out.push({ id: 'visitor', level: s.month < 24 ? 'warn' : 'info', text: `비지터 센터(베이직 투어)가 없다 — ${fmtWon(visitor.cost)}, ${'leadMonths' in visitor ? visitor.leadMonths : 4}개월 뒤 문을 열면 관광 수입 월 약 600만~800만(유지비 월 ${fmtWon(visitor.maintenance)}). 첫해 소주보다 큰 수입원이다`, action: '설비에서 짓기', target: { anchor: 'mvp-equipment' } });
+  }
   // 대출 거치가 3개월 안에 끝나 납부가 뛴다
   const jump = paymentJump(loanSchedule(s, 4));
   if (jump) out.push({ id: 'loan-jump', level: 'warn', text: `${jump.month - s.month === 0 ? '이번 달' : `${jump.month - s.month}개월 뒤`} 대출 거치가 끝나 월 납부가 ${fmtWon(jump.from)} → ${fmtWon(jump.to)}로 뛴다`, action: '대출 보기', target: { tab: 'finance' } });

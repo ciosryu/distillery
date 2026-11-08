@@ -106,3 +106,12 @@ describe('런웨이 — 한 번 나가는 설비 구매는 "이 속도"에 넣�
     expect(cashAlert(s)).toBeNull();
   });
 });
+
+describe('이번 달 할 일 — 비지터 센터 (3차 MVP 플레이테스트: 못 찾았다)', () => {
+  it('MVP에서 비지터 센터가 없으면 할 일에 올리고, 지으면(공사 중 포함) 내린다', () => {
+    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    expect(monthTodos(s).some((t) => t.id === 'visitor')).toBe(true);
+    s = applyAction(s, { type: 'buyEquipment', catalogId: 'visitor_basic' }).state;
+    expect(monthTodos(s).some((t) => t.id === 'visitor')).toBe(false);
+  });
+});
