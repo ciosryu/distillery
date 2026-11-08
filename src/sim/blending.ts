@@ -346,11 +346,14 @@ export function restockedProduct(old: Product, batch: Product): Product {
   const avg = (x: number, y: number) => x + (y - x) * w;
   const flavor = weightedAverage([{ flavor: old.flavor, weight: a }, { flavor: batch.flavor, weight: b }].filter((x) => x.weight > 0));
   const caskMix = mergeCaskMix(old.caskMix, a, batch.caskMix, b);
-  const minAge = old.ageYears == null || batch.ageYears == null ? (old.ageYears ?? batch.ageYears) : Math.min(old.ageYears, batch.ageYears);
+  // 숙성 표기·표기 조건은 매대에 실제로 섞이는 병 기준 — 남은 재고가 없으면 새 배치 그대로 (2026-11-08 수정: 재고 0에서 보충해도
+  // 옛 배치의 어린 표기가 남아, 한 제품을 계속 보충하면 위스키가 영원히 "1년"으로 팔렸다 — 사람형 봇 8/8 파산)
+  const fresh = a === 0;
+  const minAge = fresh ? batch.ageYears : old.ageYears == null || batch.ageYears == null ? (old.ageYears ?? batch.ageYears) : Math.min(old.ageYears, batch.ageYears);
   const merged: Product = {
     ...old,
     ageYears: minAge,
-    oakMonths: Math.min(old.oakMonths ?? batch.oakMonths ?? 0, batch.oakMonths ?? old.oakMonths ?? 0),
+    oakMonths: fresh ? batch.oakMonths : Math.min(old.oakMonths ?? batch.oakMonths ?? 0, batch.oakMonths ?? old.oakMonths ?? 0),
     flavor,
     hex: hexOf(flavor),
     quality: Math.round(avg(old.quality, batch.quality) * 10) / 10,
@@ -358,13 +361,14 @@ export function restockedProduct(old: Product, batch: Product): Product {
     style: w > 0.5 ? batch.style : old.style,
     sourcedShare: avg(old.sourcedShare, batch.sourcedShare),
     sourcedPrestige: avg(old.sourcedPrestige ?? 1, batch.sourcedPrestige ?? 1),
-    premiumLabel: !!old.premiumLabel && !!batch.premiumLabel,
+    premiumLabel: fresh ? !!batch.premiumLabel : !!old.premiumLabel && !!batch.premiumLabel,
     stockBottles: a + b,
     unitCost: Math.round(avg(old.unitCost, batch.unitCost)),
   };
-  if (!(old.traditional && batch.traditional)) delete merged.traditional;
-  if (!(old.specialty && old.specialty === batch.specialty)) delete merged.specialty;
-  if (!(old.localIngredient && batch.localIngredient)) delete merged.localIngredient;
+  const keep = (o: unknown, b: unknown, same = true) => (fresh ? !!b : !!o && !!b && same);
+  if (keep(old.traditional, batch.traditional)) merged.traditional = true; else delete merged.traditional;
+  if (keep(old.specialty, batch.specialty, old.specialty === batch.specialty)) merged.specialty = batch.specialty; else delete merged.specialty;
+  if (keep(old.localIngredient, batch.localIngredient)) merged.localIngredient = true; else delete merged.localIngredient;
   if (caskMix) merged.caskMix = caskMix; else delete merged.caskMix;
   return merged;
 }
