@@ -29,6 +29,7 @@ import { runEvents } from './events';
 import { rngFor } from './rng';
 import type { CashFlows, GameState, MonthReport, StaffRole } from './types';
 import { calendar, clone } from './util';
+import { applyAutoPrices } from './economics';
 
 export const BANKRUPT_AFTER_MONTHS = 3;
 const REPORTS_KEPT = 120;
@@ -37,8 +38,8 @@ const REPORTS_KEPT = 120;
 // 0 준비(기상 이상치 포함) → 1 이벤트 → [틱 컨텍스트] → 2 생산 → 3 숙성 → 4 계약 납품 → 5 판매·주세 → 6 운영 → 7 재무 → 8 성장 → 9 판정·리포트
 // 각 단계는 같은 상태 사본(s)을 차례로 고친다. 난수는 단계마다 독립 스트림(rngFor(seed, month, 이름))이라 단계를 더해도 다른 단계 결과가 바뀌지 않는다.
 
-/** 5 판매·주세 — 규칙 본문은 sales.ts(MKT) */
-const phaseSales = settleSales;
+/** 5 판매·주세 — 규칙 본문은 sales.ts(MKT). 판매 직전에 자동 가격을 켠 제품의 값을 정한다(P-PROD-18, economics.ts) */
+const phaseSales: typeof settleSales = (s, report, ctx) => { applyAutoPrices(s, ctx.monthOfYear); return settleSales(s, report, ctx); };
 
 const newReport = (s: GameState, offTurn: CashFlows): MonthReport => ({ month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, prepayApplied: 0, prepayRefunded: 0, spotBulkRevenue: (offTurn.spotBulk ?? 0) + (offTurn.caskBid ?? 0), offTurn, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] });
 
