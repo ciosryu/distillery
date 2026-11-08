@@ -49,6 +49,7 @@ export function settleForwards(s: GameState, report: MonthReport): void {
   if (net) {
     s.finance.cash += net;
     if (net < 0) report.expenses.hedge = (report.expenses.hedge ?? 0) - net;
+    else report.otherIncome = { ...report.otherIncome, hedge: (report.otherIncome?.hedge ?? 0) + net };
     report.notes.push(`선도계약 정산 ${net > 0 ? '+' : ''}${net.toLocaleString()}원 (시세 ${net > 0 ? '상승분을 받음' : '하락분을 냄'})`);
   }
   s.finance.hedges = s.finance.hedges.filter((h) => s.month + 1 < h.untilMonth);

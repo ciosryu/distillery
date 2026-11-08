@@ -10,7 +10,7 @@ import { Badge, Button, Card, Empty, Meter, Stat, Table, Td } from '../kit';
 import { EventsCard } from './Events';
 
 const EXPENSE_LABEL: Record<string, string> = {
-  production: '생산(원재료·에너지)', distribution: '유통비(채널·물류)', penalty: '계약 위약금', export_freight: '수출 운임', export_fixed: '수출 현지 비용', salaries: '급여', overhead: '관리비', heating: '난방비', storage: '캐스크 보관비·보험', maintenance: '설비 유지비', marketing: '마케팅', interest: '이자', principal: '원금 상환', research: '연구비',
+  production: '생산(원재료·에너지)', distribution: '유통비(채널·물류)', penalty: '계약 위약금', export_freight: '수출 운임', export_fixed: '수출 현지 비용', salaries: '급여', overhead: '관리비', heating: '난방비', storage: '캐스크 보관비', insurance: '보험료', hedge: '선도계약 정산(낸 돈)', maintenance: '설비 유지비', marketing: '마케팅', interest: '이자', principal: '원금 상환', research: '연구비',
 };
 
 /** 결산표 행: 이번 턴 매출 → 턴 사이 행동 → 이번 턴 비용 → 나머지(이벤트·폐기물 판매·선급금 반환 등). 부호: 입금 +, 출금 − */
@@ -25,6 +25,8 @@ function cashFlowRows(r: MonthReport): [string, number][] {
   if (r.exportRevenue) rows.push(['수출 매출', r.exportRevenue]);
   if (r.tourismRevenue) rows.push(['비지터 센터', r.tourismRevenue]);
   if (r.prepayRefunded) rows.push(['계약 선급금 반환', -r.prepayRefunded]);
+  if (r.otherIncome?.insurance) rows.push(['보험금', r.otherIncome.insurance]);
+  if (r.otherIncome?.hedge) rows.push(['선도계약 정산(받은 돈)', r.otherIncome.hedge]);
   for (const [k, v] of Object.entries(r.offTurn ?? {}) as [CashFlowKey, number][]) if (v) rows.push([`${CASH_FLOW_LINES[k].label} (턴 사이)`, v]);
   for (const [k, v] of Object.entries(r.expenses)) rows.push([EXPENSE_LABEL[k] ?? k, -v]);
   const rest = r.netCash - rows.reduce((t, [, v]) => t + v, 0);

@@ -142,7 +142,7 @@ export interface FlowPart { label: string; amount: number }
 const EXPENSE_GROUP: Record<string, string> = {
   production: '생산', distribution: '유통비', export_freight: '유통비', export_fixed: '유통비', penalty: '기타',
   salaries: '고정비', overhead: '고정비', heating: '고정비', maintenance: '고정비', marketing: '고정비', storage: '고정비', insurance: '고정비', research: '고정비',
-  interest: '대출 상환', principal: '대출 상환',
+  interest: '대출 상환', principal: '대출 상환', hedge: '선도계약 정산',
 };
 const OFFTURN_GROUP: Partial<Record<CashFlowKey, string>> = {
   spotBulk: '원액 판매', caskBid: '원액 판매', caskOwnership: '원액 판매', bottling: '병입', blending: '샘플·분석',
@@ -160,6 +160,8 @@ export function lastMonthFlow(r: MonthReport): { inflow: FlowPart[]; outflow: Fl
   add('수출', r.exportRevenue ?? 0);
   add('비지터 센터', r.tourismRevenue ?? 0);
   if (r.prepayRefunded) add('대출·투자 유입', -r.prepayRefunded);
+  add('보험금', r.otherIncome?.insurance ?? 0);
+  add('선도계약 정산', r.otherIncome?.hedge ?? 0);
   for (const [k, v] of Object.entries(r.offTurn ?? {}) as [CashFlowKey, number][]) add(OFFTURN_GROUP[k] ?? (CASH_FLOW_LINES[k]?.label ?? '기타'), v);
   for (const [k, v] of Object.entries(r.expenses)) add(EXPENSE_GROUP[k] ?? '기타', -v);
   const rest = r.netCash - [...g.values()].reduce((t, v) => t + v, 0);
