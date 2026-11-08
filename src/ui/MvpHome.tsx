@@ -105,13 +105,13 @@ function Headline() {
       {overstock(s).map((o) => (
         <p key={o.category} className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
           ⚠ <b>{CATEGORY[o.category as keyof typeof CATEGORY]?.nameKo ?? o.category}</b> 재고 {num(o.stock)}병 — 최근 판매(월 {num(Math.round(o.perMonth))}병)로 {Number.isFinite(o.months) ? `약 ${Math.round(o.months)}개월치` : '팔리지 않고 있다'}.
-          병입하면 병·포장비가 바로 나간다 — 병입을 멈추고(원액은 탱크에 둔다) 생산 지시를 줄이거나, 아래 <b>가격과 수요</b>에서 값을 낮춘다.
+          병입하면 병·포장비가 바로 나간다 — 병입을 멈추고(원액은 탱크·통에 그대로 두면 상하지 않고, 몰트는 숙성될수록 비싸진다) 아래 <b>가격과 수요</b>에서 값을 낮춘다.
         </p>
       ))}
       {/* 지난달 현금 흐름 한 줄 · 대출 상환 예정 (1차 MVP 플레이테스트 대응 ②④) */}
       <CashFlowLine />
       {/* 매달 나가는 돈 + 마케팅 예산 (#181 안 A, MGT 작성) */}
-      <FixedCostLine />
+      <div id="mvp-fixed" className="scroll-mt-28"><FixedCostLine /></div>
       <div className="mt-3">
         <LineChart
           label="월말 현금과 순자산 추이"
