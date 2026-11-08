@@ -8,6 +8,8 @@ import { staffOf, ownsFacility } from './util';
 import { weatherOffset } from './weather';
 import { mod } from './modifiers';
 import type { TickContext } from './tick';
+import { autoSample } from './blendTable';
+import { lotQuality } from './bulk';
 
 // 숙성고: 공간·칸 배정·내부 기후·로테이션·오염 QC·월 숙성 단계(틱 3) (파트 PROD, 결정 #144 — 파일 쪼개기로 옮겨 왔다. 규칙·수치 불변)
 
@@ -135,6 +137,8 @@ export function runContamination(s: GameState, report: MonthReport, rng: Rng, mo
 
 /** 3 숙성 (틱 단계 본문 — step.ts가 부른다) */
 export function runMaturation(s: GameState, report: MonthReport, ctx: TickContext): void {
+  // 자동 샘플 (#177) — 이번 달 직접 뜬 샘플이 없으면 숙성 전에 오래 안 뜬 통부터. 시나리오 게임만
+  autoSample(s, report, lotQuality);
   const { control, observe, diligence } = ctx.warehouse;
   const rng = rngFor(s.seed, s.month, 'maturation');
   const evap = mod(s, 'evaporation');

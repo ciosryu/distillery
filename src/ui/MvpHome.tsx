@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
-import { knownReads, lastSample, readSigma, SAMPLING, samplingCapacity, type KnownRead } from '../sim/blendTable';
+import { AUTO_SAMPLE_MIN_AGE, autoSamplePicks, knownReads, lastSample, readSigma, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
 import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
 import { vesselMaterial } from '../sim/maturation';
 import { regionOf } from '../sim/content/regions';
@@ -12,6 +12,7 @@ import { useUi } from '../store/ui';
 import { LineChart } from './charts';
 import { PriceDesk } from './panels/Sales';
 import { Equipment, Orders, RecipeEditor } from './panels/Production';
+import { CATEGORY_ORDER, sourceCategory } from './panels/Bottling';
 import { liters, months, num, pct, won } from './format';
 import { Badge, Button, Card, Empty, Meter, NumberField, Select, Stat, Table, Td } from './kit';
 
@@ -216,9 +217,21 @@ function WarehouseCard() {
   const left = Math.max(0, samplingCapacity(s) - s.inventory.samplesThisMonth);
   const chosen = picked.filter((id) => filled.some((c) => c.id === id && sampleable(c)));
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
-  // 아는 것이 적은 통부터: 아무 기록 없음 → 형제 통 기록만 → 자기 기록이 오래된 순
-  const staleness = (c: Cask) => { const k = known.get(c.id); return !k ? -2 : k.from === 'sibling' ? -1 : k.month; };
-  const stalest = filled.filter(sampleable).sort((a, b) => staleness(a) - staleness(b)).slice(0, left).map((c) => c.id);
+  // 원액 종류별로 보기 (오너 요청 2026-11-08) — 고른 통은 분류와 상관없이 늘 보인다
+  const [cat, setCat] = useState('전체');
+  const counts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of filled) { const k = sourceCategory(c.contents!, minM); m.set(k, (m.get(k) ?? 0) + 1); }
+    return [...m.entries()].sort((a, b) => CATEGORY_ORDER.indexOf(a[0]) - CATEGORY_ORDER.indexOf(b[0]));
+  }, [filled, minM]);
+  const shownCasks = cat === '전체' ? filled : filled.filter((c) => sourceCategory(c.contents!, minM) === cat || picked.includes(c.id));
+  const shownIds = new Set(shownCasks.map((c) => c.id));
+  // 아는 것이 적은 통부터: 아무 기록 없음 → 형제 통 기록만 → 자기 기록이 오래된 순 — 자동 샘플(#177)과 같은 순서, 지금 보이는 분류 안에서
+  const stalest = stalestCasks(s, Infinity, known).filter((c) => shownIds.has(c.id)).slice(0, left).map((c) => c.id);
+  // 이번 달에 직접 뜬 기록이 있으면 자동 샘플은 없다
+  const sampledThisMonth = s.inventory.casks.some((c) => c.contents && c.sampleLog?.at(-1)?.month === s.month);
+  // 자동 샘플이 뜰 통 — 시뮬레이션과 같은 목록(6개월 넘게 안 뜬 통만, 현금 한도)
+  const autoCount = autoSamplePicks(s, known, Math.max(0, Math.floor(s.finance.cash / SAMPLING.cost))).length;
   return (
     <Card
       title={`숙성 중인 캐스크 ${filled.length}통 — 샘플로만 안다`}
@@ -232,9 +245,25 @@ function WarehouseCard() {
         </div>
       }
     >
+      {filled.length > 0 && (
+        <div className="mb-2 grid gap-1">
+          <div className="flex flex-wrap items-center gap-1">
+            {[['전체', filled.length] as [string, number], ...counts].map(([k, n]) => (
+              <Button key={k} small variant={cat === k ? 'primary' : 'secondary'} onClick={() => setCat(k)}>{k} {n}</Button>
+            ))}
+          </div>
+          <div className={`text-xs ${autoCount ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`}>
+            {sampledThisMonth
+              ? '이번 달은 직접 샘플을 떠서 자동 샘플이 없다.'
+              : autoCount
+                ? `이번 달에 아무 통도 직접 뜨지 않고 다음 달로 넘기면, ${AUTO_SAMPLE_MIN_AGE}개월 넘게 안 뜬 통 ${autoCount}통을 자동으로 뜬다(${won(autoCount * SAMPLING.cost)}). 직접 고르면 고른 통만 뜬다.`
+                : `자동으로 뜰 통이 없다 — 모든 통을 최근 ${AUTO_SAMPLE_MIN_AGE}개월 안에 떴거나 통당 최대 횟수(${SAMPLING.maxSamples}회)를 다 썼다. 직접 고르면 뜰 수 있다.`}
+          </div>
+        </div>
+      )}
       {!filled.length ? <Empty>숙성 중인 캐스크가 없습니다. 아래에서 탱크의 몰트(또는 소주) 원액을 빈 통에 통입하세요.</Empty> : (
         <Table head={['', '캐스크', '원액', '숙성', '남은 양', '표기', '마지막 샘플 (추정 품질 ±오차 · 강한 향 · 변화)', '']}>
-          {(all ? filled : filled.slice(0, LIST_FIRST)).map((c) => {
+          {(all ? shownCasks : shownCasks.slice(0, LIST_FIRST)).map((c) => {
             const lot = c.contents!;
             const can = sampleable(c);
             return (
@@ -252,7 +281,7 @@ function WarehouseCard() {
           })}
         </Table>
       )}
-      {filled.length > LIST_FIRST && <div className="mt-2"><Button small variant="ghost" onClick={() => setAll((v) => !v)}>{all ? '접기' : `나머지 ${filled.length - LIST_FIRST}통 더 보기`}</Button></div>}
+      {shownCasks.length > LIST_FIRST && <div className="mt-2"><Button small variant="ghost" onClick={() => setAll((v) => !v)}>{all ? '접기' : `나머지 ${shownCasks.length - LIST_FIRST}통 더 보기`}</Button></div>}
       <p className="mt-2 text-xs text-stone-500">
         추정치는 샘플을 뜬 그 달의 읽기다 — 다음 샘플 전까지 바뀌지 않는다. <b>형제 통</b> = 아직 안 뜬 통에 같은 배치·같은 종류 통의 기록을 빌려 보인 것(블렌딩 테이블과 같은 규칙). 같은 통을 여러 번 뜰수록 오차가 준다(통당 {SAMPLING.maxSamples}회까지).
         오크가 과하면(우디↑·품질↓) 지금 병입하는 것이 낫다. 병입은 <b>블렌딩·병입</b> 탭.

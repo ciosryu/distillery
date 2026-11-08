@@ -330,3 +330,26 @@ describe('병입 전 예상 출고가 범위 (#172, 플레이테스트 2026-11-0
     expect(priceAtQuality(s, p, opts, 70)!).toBeGreaterThan(priceAtQuality(s, p, opts, 50)!);
   });
 });
+
+describe('제품의 통 구성 기록 (#176)', () => {
+  it('병입 때 캐스크 원액의 통 종류별 알코올 비중을 큰 순으로 남긴다 — 탱크 원액은 빠지고 나머지가 된다', () => {
+    const s = withCasks();
+    const [s1] = caskIdsOf(s, 'S');
+    const [b1] = caskIdsOf(s, 'B');
+    s.inventory.casks.find((c) => c.id === s1)!.typeId = 'oloroso_butt';
+    s.inventory.lots.push({ id: 'T1', name: 'tank', kind: 'malt', volumeL: 300, abv: 0.6, flavor: { ...BOURBON }, createdMonth: 0, oakMonths: 48, sourced: false, costPerLPA: 5000 });
+    const r = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id: s1!, liters: 100 }, { source: 'cask', id: b1!, liters: 50 }, { source: 'lot', id: 'T1', liters: 50 }], options: opts });
+    expect(r.error).toBeUndefined();
+    const mix = r.state.commerce.products.at(-1)!.caskMix!;
+    expect(mix.map((m) => m.typeId)).toEqual(['oloroso_butt', 'ex_bourbon_barrel']);
+    expect(mix[0]!.share).toBeCloseTo(0.5, 3);
+    expect(mix[1]!.share).toBeCloseTo(0.25, 3);
+  });
+
+  it('탱크 원액만 병입하면 통 구성이 없다', () => {
+    const s = newGame({ seed: 3 });
+    s.inventory.lots.push({ id: 'T1', name: 'tank', kind: 'soju', volumeL: 300, abv: 0.45, flavor: { ...BOURBON }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 5000 });
+    const r = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: 'T1', liters: 100 }], options: { ...opts, targetAbv: 0.25 } });
+    expect(r.state.commerce.products.at(-1)!.caskMix).toBeUndefined();
+  });
+});
