@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
-import { knownReads, lastSample, readSigma, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
+import { AUTO_SAMPLE_MIN_AGE, autoSamplePicks, knownReads, lastSample, readSigma, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
 import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
 import { vesselMaterial } from '../sim/maturation';
 import { regionOf } from '../sim/content/regions';
@@ -230,7 +230,8 @@ function WarehouseCard() {
   const stalest = stalestCasks(s, Infinity, known).filter((c) => shownIds.has(c.id)).slice(0, left).map((c) => c.id);
   // 이번 달에 직접 뜬 기록이 있으면 자동 샘플은 없다
   const sampledThisMonth = s.inventory.casks.some((c) => c.contents && c.sampleLog?.at(-1)?.month === s.month);
-  const autoCount = sampledThisMonth ? 0 : Math.min(samplingCapacity(s), stalestCasks(s, Infinity, known).length);
+  // 자동 샘플이 뜰 통 — 시뮬레이션과 같은 목록(6개월 넘게 안 뜬 통만, 현금 한도)
+  const autoCount = autoSamplePicks(s, known, Math.max(0, Math.floor(s.finance.cash / SAMPLING.cost))).length;
   return (
     <Card
       title={`숙성 중인 캐스크 ${filled.length}통 — 샘플로만 안다`}
@@ -255,8 +256,8 @@ function WarehouseCard() {
             {sampledThisMonth
               ? '이번 달은 직접 샘플을 떠서 자동 샘플이 없다.'
               : autoCount
-                ? `이번 달에 아무 통도 직접 뜨지 않고 다음 달로 넘기면, 오래 안 뜬 통 ${autoCount}통을 자동으로 뜬다(${won(autoCount * SAMPLING.cost)}). 직접 고르면 고른 통만 뜬다.`
-                : '더 뜰 수 있는 통이 없다(통당 최대 횟수).'}
+                ? `이번 달에 아무 통도 직접 뜨지 않고 다음 달로 넘기면, ${AUTO_SAMPLE_MIN_AGE}개월 넘게 안 뜬 통 ${autoCount}통을 자동으로 뜬다(${won(autoCount * SAMPLING.cost)}). 직접 고르면 고른 통만 뜬다.`
+                : `자동으로 뜰 통이 없다 — 모든 통을 최근 ${AUTO_SAMPLE_MIN_AGE}개월 안에 떴거나 통당 최대 횟수(${SAMPLING.maxSamples}회)를 다 썼다. 직접 고르면 뜰 수 있다.`}
           </div>
         </div>
       )}
