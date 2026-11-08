@@ -528,7 +528,7 @@ MVP 판(한국 경기, 소규모 크래프트, 시작 대출 0)으로 했다. �
 
 출처: [Deku Deals — Game Dev Tycoon (HowLongToBeat)](https://www.dekudeals.com/items/game-dev-tycoon) · [Vaporlens — Game Dev Tycoon 리뷰 플레이 시간](https://vaporlens.app/app/239820/game_dev_tycoon/stats/details) · [Steam Page Analyzer — 환불률](https://www.steampageanalyzer.com/blog/steam-refund-rates-data)
 
-### 7.5 MVP 경제 진단 — 봇은 사는데 사람은 왜 파산하나 (2026-11-08, MGT 세션)
+### 7.7 MVP 경제 진단 — 봇은 사는데 사람은 왜 파산하나 (2026-11-08, MGT 세션)
 
 결정 대기 19("고정비 > 초반 매출")에 대한 진단이다. 수치는 바꾸지 않았다. 봇(§6.3)은 소규모 티어 20시드에서 파산 0이었다. 반면 사람은 1차(117개월)·2차(43개월) 모두 파산했다. 그래서 **"봇과 사람의 행동 차이 중 무엇이 파산을 만드는가"**를 쟀다.
 
