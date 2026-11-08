@@ -3,6 +3,7 @@ import { awarenessOf } from './brands';
 import { handleDeparture, masterDistiller } from './hr';
 import { INVESTMENT_OFFERS } from './content/catalog';
 import { OWNERSHIP } from './investment';
+import { ensureBoard } from './board';
 import { isBulkKind, spotQuote } from './bulk';
 import { resolvePending } from './events';
 import { inventoryLoanRoom, inventoryLtv } from './loans';
@@ -104,7 +105,8 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     s.finance.cash += o.amount;
     s.finance.investorShare = 1 - (1 - s.finance.investorShare) * (1 - o.share);
     s.finance.investmentsTaken.push(o.id);
-    return { state: s, message: `${o.nameKo} ${o.amount.toLocaleString()}원 유치 — 외부 지분 ${(s.finance.investorShare * 100).toFixed(1)}%` };
+    const formed = ensureBoard(s); // 이사회 (P-MGT-7) — 외부 지분 25%↑
+    return { state: s, message: `${o.nameKo} ${o.amount.toLocaleString()}원 유치 — 외부 지분 ${(s.finance.investorShare * 100).toFixed(1)}%${formed ? ' · 이사회가 생겼다 (석 달마다 목표)' : ''}` };
   },
   sellCaskOwnership: (s, prev, a) => {
     const cask = s.inventory.casks.find((c) => c.id === a.caskId);
