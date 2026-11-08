@@ -74,7 +74,7 @@ export const MVP_KR: ScenarioDef = {
   defaultTier: 'micro',
   tiers: [
     {
-      // #139(A1+C): 관리비 절반 → P-CORE-1(2차 MVP 플레이테스트 2026-11-08, 오너 선택): 500만 → 300만. 숙성고 용량은 #137 압박용 [튜닝]
+      // #139(A1+C): 관리비 절반 → #190(2차 MVP 플레이테스트 2026-11-08, 오너 선택): 500만 → 300만. 숙성고 용량은 #137 압박용 [튜닝]
       id: 'micro', nameKo: '소규모 크래프트', tagline: '고정비가 가장 낮다. 대신 숙성고가 작아 중반부터 공간이 모자란다',
       equity: 500_000_000, overheadPerMonth: 3_000_000, warehouseBase: 90,
       staff: [FOUNDING_SALES],
