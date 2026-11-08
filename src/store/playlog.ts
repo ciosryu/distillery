@@ -88,8 +88,10 @@ export function exportPlayFile(s: GameState): void {
   const blob = new Blob([JSON.stringify(file)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
+  // 파일 이름에 모드를 넣는다 (mvp / sandbox) — 첫 플레이테스트가 샌드박스였던 것을 파일만 보고도 알 수 있게 (할 일 ⓪)
+  const mode = s.scenario ? `mvp-${s.scenario.tierId}` : 'sandbox';
   // 파일 이름은 ASCII만 — 한글이 섞이면 이름을 버리고 "download"로 받는 환경이 있다
-  a.download = `distillery-y${Math.floor(s.month / 12) + 1}m${(s.month % 12) + 1}-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}.json`;
+  a.download = `distillery-${mode}-y${Math.floor(s.month / 12) + 1}m${(s.month % 12) + 1}-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}.json`;
   document.body.appendChild(a); // 문서에 붙여야 download 이름이 지켜지는 브라우저가 있다
   a.click();
   a.remove();
