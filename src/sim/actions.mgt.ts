@@ -1,3 +1,5 @@
+import { forwardRoomKg, marketIndex } from './forwards';
+import { FORWARD, INGREDIENTS } from './content/catalog';
 import { LOAN_OFFERS } from './content/catalog';
 import { awarenessOf } from './brands';
 import { handleDeparture, masterDistiller } from './hr';
@@ -20,7 +22,7 @@ export type MgtAction =
   | { type: 'startResearch'; techId: string; leadStaffId: string }
   | { type: 'setResearch'; techId: string; paused?: boolean; leadStaffId?: string }
   | { type: 'cancelResearch'; techId: string }
-  /** 재무 확장 (S-11 자리, PRD §8.4) — 원재료 선도계약(규칙 전: 항상 실패) / 보험 가입·해지(#171: 재산·재고·영업중단) */
+  /** 재무 확장 (S-11 자리, PRD §8.4) — 원재료 선도계약(P-MGT-6: 차액 정산형) / 보험 가입·해지(#171: 재산·재고·영업중단) */
   | { type: 'signForward'; ingredientId: string; kgPerMonth: number; months: number }
   | { type: 'buyInsurance'; kind: 'property' | 'inventory' | 'business_interruption' | 'product_liability' | 'credit'; coverage: number }
   | { type: 'cancelInsurance'; policyId: string }
@@ -73,8 +75,20 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     if (a.paused !== undefined) r.paused = a.paused;
     return { state: s, message: r.paused ? '연구 일시정지 — 진행도는 남고 연구비는 멈춘다' : '연구 진행' };
   },
-  // 자리만 — 상품 데이터·가격·보상·이사회 목표는 단계 P(MGT)
-  signForward: (_s, prev, _a) => fail(prev, '선도계약은 아직 없습니다 (다음 단계)'),
+  // 원재료 선도계약 (P-MGT-6) — 고정 가격 = 지금 시장 지수 × (1 + spread), 이번 달부터 months개월, 월 kg는 생산 지시의 사용량까지. 중도 해지 없음
+  signForward: (s, prev, a) => {
+    const ing = INGREDIENTS[a.ingredientId];
+    if (!ing) return fail(prev, '원료가 없습니다');
+    const months = Math.round(a.months);
+    if (months < FORWARD.minMonths || months > FORWARD.maxMonths) return fail(prev, `계약 기간은 ${FORWARD.minMonths}~${FORWARD.maxMonths}개월입니다`);
+    const room = forwardRoomKg(s, ing.id);
+    const kg = Math.min(room, Math.round(a.kgPerMonth));
+    if (room < FORWARD.minKgPerMonth) return fail(prev, `${ing.nameKo}: 지금 생산 지시가 쓰는 양만큼만 계약할 수 있습니다 (남은 한도 월 ${room.toLocaleString()}kg)`);
+    if (kg < FORWARD.minKgPerMonth) return fail(prev, `월 ${FORWARD.minKgPerMonth}kg 이상이어야 합니다`);
+    const priceIndex = Math.round(marketIndex(s, ing.id) * (1 + FORWARD.spread) * 1000) / 1000;
+    s.finance.hedges.push({ id: nid(s, 'H'), ingredientId: ing.id, kgPerMonth: kg, priceIndex, fromMonth: s.month, untilMonth: s.month + months });
+    return { state: s, message: `${ing.nameKo} 선도계약 — 월 ${kg.toLocaleString()}kg × ${months}개월, 고정 가격 지수 ${priceIndex.toFixed(3)} (시세와의 차액을 매달 정산)` };
+  },
   // 보험 (#171) — 종류마다 1건. 가입한 다음 달부터 보장, 보험료는 재무 단계에서 매달. 해지하면 바로 끝난다(환급 없음 — 보험료는 매달 낸다)
   buyInsurance: (s, prev, a) => {
     const p = insuranceProduct(a.kind);
