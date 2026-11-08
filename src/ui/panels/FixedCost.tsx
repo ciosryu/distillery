@@ -24,6 +24,8 @@ export function FixedCostLine() {
         <span>— 줄이면 인지도가 덜 자란다. 대출은 일부 상환으로 월 납부를 줄일 수 있다</span>
         <Button small variant="ghost" onClick={() => setTab('finance')}>대출 보기</Button>
       </div>
+      {/* 현금 부족 중엔 일부 상환이 지금 현금을 더 줄인다 (P-MGT-12) — 파산 경고의 [매달 나가는 돈 줄이기]가 이 줄로 온다 */}
+      {s.finance.cash < total && <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">⚠ 현금이 한 달 치 고정비보다 적다 — 지금 일부 상환하면 현금이 더 줄어든다. 먼저 대출·급전으로 현금을 만들고, 상환은 현금이 남을 때 한다.</p>}
     </div>
   );
 }
