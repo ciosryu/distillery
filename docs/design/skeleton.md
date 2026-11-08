@@ -73,7 +73,7 @@
 
 ### 3.1 코어 — 설계 세션 소유 (단계 P에서는 코어 PR로만 변경, PROCESS §7.3)
 
-`src/sim/types.ts` · `step.ts`(단계 순서만) · `tick.ts` · `engine.ts` · **`actions.ts`(행동 입구)** · **`actionKit.ts`** · `migrate.ts` · `newGame.ts` · `scenario.ts` · `newScenario.ts` · **`sites.ts`(입지 데이터 접근)** · `rng.ts` · `util.ts` · `modifiers.ts` · `lifecycle.ts` · `index.ts` · `content/index.ts` · **`content/catalog.ts`(재수출·설비 조립)** · `content/regions.ts` · `content/scenarios.ts` · `schema.test.ts` · **`sites.test.ts`** · `scenario.test.ts` · `fixtures/` · `src/store/*`(+ 플레이 기록 `playlog.ts`) · `src/App.tsx` · `src/ui/BusinessPlan.tsx` · **`src/ui/MvpHome.tsx`(MVP 단일 화면)** · `src/ui/kit.tsx`·`format.ts`·`charts.tsx`
+`src/sim/types.ts` · `step.ts`(단계 순서만) · `tick.ts` · `engine.ts` · **`actions.ts`(행동 입구)** · **`actionKit.ts`** · `migrate.ts` · `newGame.ts` · `scenario.ts` · `newScenario.ts` · **`sites.ts`(입지 데이터 접근)** · `rng.ts` · `util.ts` · `modifiers.ts` · `lifecycle.ts` · `index.ts` · `content/index.ts` · **`content/catalog.ts`(재수출·설비 조립)** · `content/regions.ts` · `content/scenarios.ts` · `schema.test.ts` · **`sites.test.ts`** · `scenario.test.ts` · `fixtures/` · `src/store/*`(+ 플레이 기록 `playlog.ts`) · `src/App.tsx` · `src/ui/BusinessPlan.tsx` · **`src/ui/MvpHome.tsx`(MVP 단일 화면)** · `src/ui/alerts.ts`·`Alerts.tsx`(파산 카운트다운·이번 달 할 일·현금 흐름·대출 상환 예정) · `src/ui/kit.tsx`·`format.ts`·`charts.tsx`
 
 ### 3.2 파트별 소유 파일
 
