@@ -5,6 +5,7 @@ import {
   type GameState, type ProfileAxis, type Recipe, type SpiritKind, type YeastId,
 } from '../../sim';
 import type { PresetRecipe } from '../../sim/content/presets';
+import { recipeEconomics, STANDARD_BOTTLE, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from '../../sim/economics';
 import { isLocked } from '../../sim/scenario';
 import { useGame } from '../../store/game';
 import { logisticsMultiplier, regionOf, REGIONS, siteOf } from '../../sim/content/regions';
@@ -46,8 +47,54 @@ export function Orders() {
           );
         })}
       </Table>
+      <WhiskySupply />
       <p className="mt-2 text-xs text-stone-500">원액은 매달 말 탱크에 쌓입니다. 비숙성 주종(소주·진·고량주 등)은 바로 병입할 수 있고, 몰트는 {(() => { const w = regionOf(s).whisky; return w.minMonths > 0 ? `캐스크에 통입해 ${w.minMonths}개월 이상 숙성해야 "위스키"로 판매할 수 있습니다` : w.requiresOak ? '캐스크에 넣기만 하면 바로 "위스키"로 팔 수 있지만(법정 최소 숙성 없음) 3년 미만은 어린 위스키라 값을 덜 받습니다' : '숙성 없이도 "위스키"로 팔 수 있지만(법정 최소 숙성 없음) 3년 미만은 어린 위스키라 값을 덜 받습니다'; })()} 설비·인력 한도는 대시보드의 가동 계획에서 확인하세요.</p>
     </Card>
+  );
+}
+
+/**
+ * 위스키 공급 전망 (#178, 1차 MVP 플레이테스트) — 지금 숙성 중인 통·탱크 몰트·월 생산 지시로 해마다 새로 "위스키"가 되는 병 수를
+ * 연 판매 속도와 나란히 보인다. 생산을 줄이면 몇 년 뒤 팔 위스키가 끊긴다는 걸 지시를 바꾸는 자리에서 바로 보게 한다
+ */
+function WhiskySupply() {
+  const s = useGame((g) => g.state);
+  const { rows, pace, tank } = useMemo(() => ({ rows: whiskySupplyForecast(s, 5), pace: whiskyAnnualPace(s), tank: tankFillNeed(s) }), [s]);
+  const hasWhisky = rows.some((r) => r.bottles > 0) || s.production.recipes.some((r) => r.kind === 'malt' || r.kind === 'grain');
+  if (!hasWhisky) return null;
+  const min = Math.max(1, regionOf(s).whisky.minMonths);
+  const tone = (b: number) => {
+    if (!pace || pace.bottles <= 0) return 'text-stone-700';
+    if (b < pace.bottles * 0.8) return 'text-red-700';
+    if (b > pace.bottles * 2) return 'text-amber-700';
+    return 'text-emerald-700';
+  };
+  const label = (y: number) => (y === 0 ? '앞으로 1년' : `${y + 1}년째`);
+  return (
+    <div className="mt-3 rounded-md border border-stone-200 bg-stone-50 p-3">
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+        <span className="text-sm font-medium">위스키 공급 전망 — 해마다 새로 팔 수 있게 되는 병 수 (700ml·40%)</span>
+        <span className="text-xs text-stone-600">
+          {pace ? <>연 판매 속도 ≈ <b>{num(pace.bottles)}병</b> ({pace.basis === 'sales' ? '최근 3개월 실제 판매 × 12' : '수요 추정 — 아직 판매 기록 없음'})</> : '몰트 레시피가 없어 수요를 계산할 수 없습니다'}
+        </span>
+      </div>
+      <div className="grid grid-cols-5 gap-2 text-center">
+        {rows.map((r) => (
+          <div key={r.year} className="min-w-0 rounded bg-white px-1 py-1.5" title={`숙성 중인 통 ${num(r.fromCasks)} · 탱크 몰트 ${num(r.fromTank)} · 생산 지시 ${num(r.fromOrders)}`}>
+            <div className="text-[11px] text-stone-500">{label(r.year)}</div>
+            <div className={`text-sm font-semibold tabular-nums ${tone(r.bottles)}`}>{num(r.bottles)}</div>
+            <div className="truncate text-[10px] text-stone-400">통 {num(r.fromCasks)} · 탱크 {num(r.fromTank)} · 지시 {num(r.fromOrders)}</div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-1.5 text-[11px] text-stone-500">
+        숙성 {min}개월을 채워 "위스키"가 되는 때로 셉니다(증발 연 5% 근사). <span className="text-red-700">빨강</span> = 판매 속도의 80% 미만(그해 팔 위스키가 모자람),{' '}
+        <span className="text-emerald-700">초록</span> = 적정, <span className="text-amber-700">노랑</span> = 2배 넘음(재고가 쌓임). 지금 생산을 줄이면 {Math.ceil(min / 12)}년 뒤 칸부터 줄어듭니다.
+        {tank.liters > 0 && (
+          <> 탱크 몰트 {liters(tank.liters)}는 지금 통입한다고 본 값입니다 — 200L 통 약 {num(tank.casks200)}개가 필요하고 숙성고 남은 자리는 {num(tank.freeSlots)}개{tank.casks200 > tank.freeSlots ? <b className="text-red-700"> (자리 부족 — 숙성고를 늘리지 않으면 그만큼 늦어집니다)</b> : ''}.</>
+        )}
+      </p>
+    </div>
   );
 }
 
@@ -82,11 +129,11 @@ const vacuumStillOf = (s: GameState) => stillsOf(s).find((e) => stillDefOf(s, e.
 const plainStillOf = (s: GameState) => stillsOf(s).find((e) => { const d = stillDefOf(s, e.id); return d && !d.vacuum && d.stillType !== 'column'; });
 
 /** 향미 프로필 레이더 — 기준 프리셋(점선)과 지금 초안(채움). 뉴메이크는 값이 작아 눈금을 최댓값에 맞춘다(25 단위) */
-export function ProfileRadar({ base, draft, size = 230 }: { base?: ProfileAxis[]; draft: ProfileAxis[]; size?: number }) {
+export function ProfileRadar({ base, draft, size = 230, layers }: { base?: ProfileAxis[]; draft: ProfileAxis[]; size?: number; layers?: { axes: ProfileAxis[]; color: string; label: string }[] }) {
   const c = size / 2;
   const r = c - 34;
   const n = draft.length;
-  const top = Math.min(100, Math.max(25, Math.ceil(Math.max(...draft.map((a) => a.value), ...(base ?? []).map((a) => a.value)) / 25) * 25));
+  const top = Math.min(100, Math.max(25, Math.ceil(Math.max(...draft.map((a) => a.value), ...(base ?? []).map((a) => a.value), ...(layers ?? []).flatMap((l) => l.axes.map((a) => a.value))) / 25) * 25));
   const pt = (i: number, v: number) => {
     const ang = -Math.PI / 2 + (2 * Math.PI * i) / n;
     const k = Math.max(0, Math.min(top, v)) / top;
@@ -106,6 +153,8 @@ export function ProfileRadar({ base, draft, size = 230 }: { base?: ProfileAxis[]
           </g>
         );
       })}
+      {/* 원액별 선 (블렌딩) — 가늘게, 결과(채움) 밑에 */}
+      {layers?.map((l) => <polygon key={l.label} points={poly(l.axes)} fill="none" stroke={l.color} strokeOpacity={0.85} strokeWidth={1} aria-label={l.label} />)}
       {base && <polygon points={poly(base)} className="fill-none stroke-stone-500 dark:stroke-stone-400" strokeWidth={1.2} strokeDasharray="4 3" />}
       <polygon points={poly(draft)} className="fill-amber-500/30 stroke-amber-600 dark:stroke-amber-400" strokeWidth={1.5} />
       <text x={size - 4} y={size - 4} textAnchor="end" className="fill-stone-500 text-[9px]">눈금 {top}</text>
@@ -125,7 +174,8 @@ export function RecipeEditor() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
   const [draft, setDraft] = useState<Draft>(() => ({ ...s.production.recipes[0]! }));
-  const [advanced, setAdvanced] = useState(false);
+  // 시나리오(MVP) 증류소 탭은 이 카드를 이미 접어 둔다 → 펼쳤으면 레버를 바로 보여 준다(두 번 접으면 못 찾는다 — 플레이테스트 2026-11-07)
+  const [advanced, setAdvanced] = useState(() => !!s.scenario);
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
   const errs = validateRecipe(s, { ...draft, id: draft.id ?? 'new' } as Recipe);
   const presets = useMemo(() => craftPresets(s), [s]);
@@ -170,7 +220,7 @@ export function RecipeEditor() {
           </div>
 
           <div>
-            <Button small variant={advanced ? 'secondary' : 'ghost'} onClick={() => setAdvanced((v) => !v)}>{advanced ? '▾ 고급 설정 닫기' : '▸ 고급 설정 — 원료·효모·발효·증류·컷'}</Button>
+            <Button small variant={advanced ? 'secondary' : 'primary'} onClick={() => setAdvanced((v) => !v)}>{advanced ? '▾ 고급 설정 닫기' : '▸ 고급 설정 열기 — 원료·효모·발효·증류·컷을 바꾼다'}</Button>
           </div>
 
           {advanced && (lever ? <LeverControls s={s} draft={draft} set={set} /> : <FreeControls s={s} draft={draft} set={set} />)}
@@ -217,7 +267,47 @@ export function RecipeEditor() {
           {result.effects.length > 1 && <div className="mt-1 text-[11px] opacity-80">레버마다 그것 하나만 바꿨을 때의 효과다. 레버끼리 영향을 주고받아(예: 컷 × 증류 횟수) 합이 전체 변화와 다를 수 있다.</div>}
         </div>
       )}
+      {!errs.length && <UnitEconomics s={s} recipe={{ ...draft, id: draft.id ?? 'preview' } as Recipe} />}
     </Card>
+  );
+}
+
+/**
+ * 한 병에 얼마 남나 (#173, 플레이테스트 2026-11-07 "원가와 판매가의 임팩트를 알기 쉽게") — 실제 병입·판매와 같은 식(sim/economics.ts).
+ * 원가 → 출고가 → 유통비 → 병당 이익, 그리고 한 달에 팔 수 있는 양 대 이 레시피의 월 생산량
+ */
+function UnitEconomics({ s, recipe }: { s: GameState; recipe: Recipe }) {
+  const rows = useMemo(() => recipeEconomics(s, recipe), [s, recipe]);
+  if (!rows.length) return null;
+  const aged = recipe.kind === 'malt' || recipe.kind === 'grain';
+  const fmt = aged ? STANDARD_BOTTLE.whisky : STANDARD_BOTTLE.soju;
+  const batches = s.production.orders.find((o) => o.recipeId === recipe.id)?.batchesPerMonth ?? 0;
+  const first = rows[0]!;
+  const perMonth = batches * first.bottlesPerBatch;
+  return (
+    <div className="mt-3 rounded-md border border-stone-200 p-3 text-sm dark:border-stone-700">
+      <div className="mb-1 font-semibold">한 병에 얼마 남나 <span className="text-xs font-normal text-stone-500">— {fmt.bottleMl}ml·{Math.round(fmt.abv * 100)}% 표준 병{aged ? ', 숙성은 새 버번 배럴·평균 기후로 굴린 예상' : ''}</span></div>
+      <Table head={[aged ? '숙성' : '시점', '예상 품질', '병당 원가 (원액 + 병·포장)', '출고가', '유통비', '병당 이익', '한 달 수요']}>
+        {rows.map((r) => (
+          <tr key={r.months}>
+            <Td>{r.months ? `${r.months / 12}년` : '바로 병입'}</Td>
+            <Td right>{r.quality}</Td>
+            <Td right>{won(r.spiritCost + r.packCost)} <span className="text-xs text-stone-500">({won(r.spiritCost)} + {won(r.packCost)})</span></Td>
+            <Td right>{won(r.price)}</Td>
+            <Td right>{won(r.distribution)}</Td>
+            <Td right><span className={r.margin < 0 ? 'font-semibold text-rose-700 dark:text-rose-400' : 'font-semibold text-emerald-700 dark:text-emerald-400'}>{won(r.margin)}</span></Td>
+            <Td right>약 {num(r.demandPerMonth)}병</Td>
+          </tr>
+        ))}
+      </Table>
+      <p className="mt-2 text-xs text-stone-600 dark:text-stone-300">
+        배치 1회 = 약 {num(first.bottlesPerBatch)}병{aged ? '(숙성 1년 뒤)' : ''}.{' '}
+        {batches > 0
+          ? <>지금 지시(월 {batches}배치)면 한 달에 약 <b>{num(perMonth)}병</b>을 만드는데, 지금 팔 수 있는 양은 <b>약 {num(first.demandPerMonth)}병</b>이다{perMonth > first.demandPerMonth * 2 ? <span className="text-rose-700 dark:text-rose-400"> — 만든 만큼 다 못 판다. 남는 술은 병입하지 말고 탱크·통에 두거나 원액째 팔자</span> : ''}.</>
+          : <>지금 팔 수 있는 양은 한 달 약 {num(first.demandPerMonth)}병이다.</>}
+        {' '}한 달 수요는 인지도·유통(영업)·마케팅이 오르면 는다. 출고가는 품질로 정한 권장가이고, 세금은 손님이 낸다(우리 현금에는 출고가만 남는다).
+      </p>
+    </div>
   );
 }
 

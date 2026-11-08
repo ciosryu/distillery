@@ -7,6 +7,7 @@ import { evapTempFactor } from './maturation';
 import { categorize, previewBlend, simulateBatch, stillDefOf, type GameState, appeal, presetRecipes, validateRecipe, type Product } from './index';
 import { logisticsMultiplier, REGIONS } from './content/regions';
 import fixtureV13 from './fixtures/save-v13.json';
+import fixtureV14 from './fixtures/save-v14.json';
 
 // v5 세이브 픽스처는 리팩터 전 코드로 만들었다(옛 코드가 실제로 쓴 세이브 모양).
 
@@ -72,10 +73,12 @@ describe('세이브 마이그레이션 (결정 #118·#124)', () => {
 });
 
 describe('테크 게이트 isUnlocked (tech-tree §7)', () => {
-  it('Phase 1은 게이트가 꺼져 있어 모든 행동이 열려 있다', () => {
+  it('단계 P(게이트 켜기)부터 게이트가 켜져 있다 — 연구 전에는 잠긴 키만 닫히고 나머지는 열려 있다', () => {
     const s = newGame({ seed: 1 });
-    expect(isUnlocked(s, 'action:rotateWarehouse')).toBe(true);
+    expect(isUnlocked(s, 'action:rotateWarehouse')).toBe(false);
+    expect(isUnlocked(s, 'action:sellCaskOwnership')).toBe(false);
     expect(isUnlocked(s, 'action:setOrder')).toBe(true);
+    expect(applyAction(s, { type: 'rotateWarehouse', warehouseId: 'W0' }).error).toMatch(/연구가 필요합니다: MAT-3a/);
   });
 
   it('게이트를 켜면 노드가 해금한 키만 열린다', () => {
@@ -321,5 +324,16 @@ describe('세이브 v13 → v14 (제품 피니싱 표기 자리, #158 코어)', 
     expect(s.commerce.products.every((p) => p.finish === undefined)).toBe(true);
     const t = advanceMonths(s, 3);
     expect({ month: t.month, cash: t.finance.cash }).toEqual(fixtureV13.expectedAfter3);
+  });
+});
+
+describe('세이브 v14 → v15 (제품 통 구성 기록 자리, #176 코어)', () => {
+  it('버전만 오르고 옛 제품은 통 구성 기록이 없으며, 진행 결과가 v14 코드와 같다', () => {
+    const s = migrateSave(structuredClone(fixtureV14.save))!;
+    expect(s.version).toBe(SAVE_VERSION);
+    expect(s.commerce.products.length).toBeGreaterThan(0);
+    expect(s.commerce.products.every((p) => p.caskMix === undefined)).toBe(true);
+    const t = advanceMonths(s, 3);
+    expect({ month: t.month, cash: t.finance.cash }).toEqual(fixtureV14.expectedAfter3);
   });
 });

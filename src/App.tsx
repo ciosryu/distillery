@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactElement } from 'react';
-import { isLocked, monthLabel, type GameState, type RegionId } from './sim';
+import { BANKRUPT_AFTER_MONTHS, isLocked, monthLabel, type GameState, type RegionId } from './sim';
 import { REGIONS, siteOf } from './sim/content/regions';
 
 const stars = (n?: number) => (n ? ` ${'★'.repeat(n)}` : '');
@@ -7,6 +7,7 @@ import { startedFresh, useGame } from './store/game';
 import { BusinessPlan } from './ui/BusinessPlan';
 import { exportPlayFile, getPlaylog, startPlayClock } from './store/playlog';
 import { MvpHome } from './ui/MvpHome';
+import { CashBanner } from './ui/Alerts';
 import { Verdict } from './ui/Verdict';
 import { useUi } from './store/ui';
 import { won } from './ui/format';
@@ -155,9 +156,11 @@ export default function App() {
         )}
         {!running && (
           <div className="mb-4 rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200">
-            {s.status === 'bankrupt' ? '파산했습니다 — 현금 부족이 3개월 이어졌습니다.' : '게임이 끝났습니다.'} "새 게임"으로 다시 시작하세요.
+            {s.status === 'bankrupt' ? `파산했습니다 — 월말 현금 부족이 ${BANKRUPT_AFTER_MONTHS}개월 이어졌습니다.` : '게임이 끝났습니다.'} "새 게임"으로 다시 시작하세요.
           </div>
         )}
+        {/* 파산 카운트다운 (1차 MVP 플레이테스트 대응 ①) — 모든 탭 맨 위 */}
+        <CashBanner />
         {running && s.events.pending.length > 0 && tab !== 'dashboard' && (
           <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
             선택이 필요한 이벤트 {s.events.pending.length}건 — <button className="font-semibold underline" onClick={() => setTab('dashboard')}>대시보드에서 결정하기</button> (고르지 않으면 다음 달 기본값 적용)

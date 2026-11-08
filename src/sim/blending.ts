@@ -275,6 +275,16 @@ export function estimateBlend(s: GameState, components: BlendComponent[]): { qua
   };
 }
 
+/**
+ * 추정 품질로 매긴 권장 출고가 — 병입 전에는 참 품질을 모르므로(#162) 추정 품질 ± 오차로 출고가 범위를 보여 준다 (#172, 플레이테스트 2026-11-07).
+ * previewBlend의 권장 출고가와 같은 식에 품질만 바꿔 넣는다. 면세 한정판은 제외(null)
+ */
+export function priceAtQuality(s: GameState, p: BlendPreview, opts: BottleOptions, quality: number): number | null {
+  if (!p.category || p.dfEdition) return null;
+  const region = regionOf(s);
+  return suggestedPrice(region, p.category, opts.bottleMl, quality, isWhiskyCategory(p.category) ? p.minOakMonths : null, p.finalAbv, traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL));
+}
+
 /** 병당 포장재 원가 — 이벤트 보정 × 입지 운송 할증 (결정 #86) */
 function packagingUnitCost(s: GameState, opts: Pick<BottleOptions, 'packagingId' | 'bottleMl'>): number {
   return packagingCost(opts.packagingId, opts.bottleMl) * mod(s, 'packaging') * siteFreight(s, 'packaging');
@@ -296,6 +306,11 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   const seenParts = parts.filter((x): x is typeof x & { seen: Hex } => !!x.seen);
   const unknownShare = parts.reduce((t, x) => t + (x.seen ? 0 : x.share), 0) / Math.max(1e-9, parts.reduce((t, x) => t + x.share, 0));
   const predicted = seenParts.length ? mixHex(seenParts.map((x) => ({ hex: x.seen, share: x.share }))) : null;
+  // 통 구성 (#176) — 캐스크 원액의 통 종류별 알코올 비중(전체 블렌드 대비, 큰 순). 탱크 원액은 빠진다 — 합이 1보다 작으면 나머지가 탱크
+  const totalShare = parts.reduce((t, x) => t + x.share, 0);
+  const byType = new Map<CaskTypeId, number>();
+  for (const x of parts) if (x.cask) byType.set(x.cask.typeId, (byType.get(x.cask.typeId) ?? 0) + x.share);
+  const caskMix = totalShare > 0 ? [...byType.entries()].map(([typeId, v]) => ({ typeId, share: Math.round((v / totalShare) * 1000) / 1000 })).sort((a, b) => b.share - a.share) : [];
   const single = parts.length === 1 ? parts[0]!.cask : undefined;
   const lineTarget = opts.line && s.commerce.lines[opts.line] ? findTarget(s, `line:${opts.line}`) : undefined;
   const target = lineTarget ?? findTarget(s, opts.targetId);
@@ -342,6 +357,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     totalSold: 0,
     ...(p.localIngredient ? { localIngredient: true } : {}),
     ...(p.finish ? { finish: p.finish } : {}),
+    ...(caskMix.length ? { caskMix } : {}),
     ...(opts.dutyFreeOnly && p.dfEdition ? { dutyFreeOnly: true, dfEdition: { ...p.dfEdition } } : {}),
   };
   if (p.dfEdition && opts.dutyFreeOnly) s.site.dfSeries = { vol: p.dfEdition.vol, streak: p.dfEdition.streak };

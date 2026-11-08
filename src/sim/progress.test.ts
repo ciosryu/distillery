@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { houseBrand } from './brands';
-import { advanceMonth, advanceMonths, advanceUntil, applyAction, DEFAULT_STOPS, GRADE, judgeGoal, migrateSave, netWorth, newGame, newScenarioGame, SAVE_VERSION, timelineOf, type GameState, type Product } from '.';
+import { advanceMonth, advanceMonths, advanceUntil, applyAction, DEFAULT_STOPS, GRADE, judgeGoal, migrateSave, netWorth, newGame, newScenarioGame, SAVE_VERSION, timelineOf, type GameState, type Product, AUTO_SAMPLE_EXPENSE } from '.';
 import fixture from './fixtures/save-v9.json';
 
 const micro = (seed = 4) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed });
@@ -13,7 +13,11 @@ describe('세이브 v9 → v10 (S-9)', () => {
     expect(s.version).toBe(SAVE_VERSION);
     expect(s.progress).toEqual({ milestones: [] });
     const t = advanceMonths(s, 3);
-    expect({ month: t.month, cash: t.finance.cash }).toEqual(fixture.expectedAfter3);
+    // 자동 샘플(#177)은 이 세이브 뒤에 생긴 시나리오 규칙이다 — 그 비용을 되돌리면 옛 코드의 결과와 같아야 한다
+    const autoCost = t.history.reports.slice(-3).reduce((sum, r) => sum + (r.expenses[AUTO_SAMPLE_EXPENSE] ?? 0), 0);
+    // 샘플로 원액이 조금 줄면 원액 가치에 비례하는 보관 보험료도 아주 조금 준다(수십 원) — 그만큼은 허용한다
+    expect(t.month).toBe(fixture.expectedAfter3.month);
+    expect(Math.abs(t.finance.cash + autoCost - fixture.expectedAfter3.cash)).toBeLessThan(10_000);
     // 이미 지난 일은 다음 판정 때 그 달 날짜로 잡힌다
     expect(ids(t)).toEqual(expect.arrayContaining(['first_distill', 'first_fill']));
   });

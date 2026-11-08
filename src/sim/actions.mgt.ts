@@ -12,6 +12,7 @@ import { annuityPayment, nid } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
 import { TECH_BY_ID } from './content/tech';
 import { researchBlocker } from './research';
+import { insurancePremium, insuranceProduct } from './insurance';
 
 // 플레이어 행동 — 재무·인사·이벤트 (MGT) (결정 #144 — 파일 쪼개기로 actions.ts에서 옮겨 왔다. 규칙 불변)
 // 행동을 더할 때: 아래 타입·처리기·현금 분류 세 곳만 고친다. 코어(actions.ts)는 이 파일의 타입을 통째로 합친다
@@ -21,7 +22,7 @@ export type MgtAction =
   | { type: 'startResearch'; techId: string; leadStaffId: string }
   | { type: 'setResearch'; techId: string; paused?: boolean; leadStaffId?: string }
   | { type: 'cancelResearch'; techId: string }
-  /** 재무 확장 (S-11 자리, PRD §8.4) — 원재료 선도계약 / 보험 가입·해지. 규칙은 단계 P(MGT): 지금은 항상 실패 */
+  /** 재무 확장 (S-11 자리, PRD §8.4) — 원재료 선도계약(P-MGT-6: 차액 정산형) / 보험 가입·해지(#171: 재산·재고·영업중단) */
   | { type: 'signForward'; ingredientId: string; kgPerMonth: number; months: number }
   | { type: 'buyInsurance'; kind: 'property' | 'inventory' | 'business_interruption' | 'product_liability' | 'credit'; coverage: number }
   | { type: 'cancelInsurance'; policyId: string }
@@ -74,7 +75,6 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     if (a.paused !== undefined) r.paused = a.paused;
     return { state: s, message: r.paused ? '연구 일시정지 — 진행도는 남고 연구비는 멈춘다' : '연구 진행' };
   },
-  // 자리만 — 상품 데이터·가격·보상·이사회 목표는 단계 P(MGT)
   // 원재료 선도계약 (P-MGT-6) — 고정 가격 = 지금 시장 지수 × (1 + spread), 이번 달부터 months개월, 월 kg는 생산 지시의 사용량까지. 중도 해지 없음
   signForward: (s, prev, a) => {
     const ing = INGREDIENTS[a.ingredientId];
@@ -89,8 +89,22 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     s.finance.hedges.push({ id: nid(s, 'H'), ingredientId: ing.id, kgPerMonth: kg, priceIndex, fromMonth: s.month, untilMonth: s.month + months });
     return { state: s, message: `${ing.nameKo} 선도계약 — 월 ${kg.toLocaleString()}kg × ${months}개월, 고정 가격 지수 ${priceIndex.toFixed(3)} (시세와의 차액을 매달 정산)` };
   },
-  buyInsurance: (_s, prev, _a) => fail(prev, '보험은 아직 없습니다 (다음 단계)'),
-  cancelInsurance: (_s, prev, _a) => fail(prev, '보험은 아직 없습니다 (다음 단계)'),
+  // 보험 (#171) — 종류마다 1건. 가입한 다음 달부터 보장, 보험료는 재무 단계에서 매달. 해지하면 바로 끝난다(환급 없음 — 보험료는 매달 낸다)
+  buyInsurance: (s, prev, a) => {
+    const p = insuranceProduct(a.kind);
+    if (!p) return fail(prev, a.kind === 'credit' ? '매출채권 신용보험은 고급 상품입니다 (연구 BIZ-2b 재무 리스크 관리 뒤)' : '제조물 책임 보험은 아직 없습니다 (리콜 사고가 생기면 함께)');
+    if (s.finance.insurance.some((x) => x.kind === p.kind)) return fail(prev, '같은 종류 보험에 이미 가입했습니다 — 금액을 바꾸려면 해지 후 다시 가입');
+    const coverage = Math.round(Math.min(p.maxCoverage, Math.max(p.minCoverage, a.coverage)) / 1_000_000) * 1_000_000;
+    const premium = insurancePremium(s, p.kind, coverage);
+    s.finance.insurance.push({ id: nid(s, 'I'), kind: p.kind, premiumPerMonth: premium, coverage, fromMonth: s.month + 1 });
+    return { state: s, message: `${p.nameKo} 가입 — ${p.basis === 'monthly' ? '월 보상 한도' : '가입금액'} ${coverage.toLocaleString()}원, 월 보험료 ${premium.toLocaleString()}원 (다음 달부터 보장)` };
+  },
+  cancelInsurance: (s, prev, a) => {
+    const x = s.finance.insurance.find((y) => y.id === a.policyId);
+    if (!x) return fail(prev, '보험이 없습니다');
+    s.finance.insurance = s.finance.insurance.filter((y) => y.id !== x.id);
+    return { state: s, message: `${insuranceProduct(x.kind)?.nameKo ?? '보험'} 해지` };
+  },
   cancelResearch: (s, prev, a) => {
     if (!s.research.active.some((x) => x.techId === a.techId)) return fail(prev, '진행 중인 연구가 아닙니다');
     s.research.active = s.research.active.filter((x) => x.techId !== a.techId);

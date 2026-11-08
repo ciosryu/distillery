@@ -117,8 +117,8 @@ describe('노드 데이터 (#170, tech-tree §8 Phase 2)', () => {
   });
 
   it('MVP 전수 점검: 연구가 잠긴 MVP에서 쓰는 행동·설비에 테크 게이트가 걸려 있지 않다 (게이트를 켜도 MVP가 막히지 않는다)', () => {
-    // 알려진 빈틈: MVP는 로테이션을 잠그지 않았다(화면에는 숙성고 탭이 없어 안 보인다). 게이트를 켜기 전에 코어 PR로 MVP 잠금 목록에 넣는다
-    const KNOWN_GAPS = ['mvp_kr: action:rotateWarehouse'];
+    // 알려진 빈틈 — 없다 (MVP 로테이션 잠금은 #169로 막았다). 새 게이트 키를 넣다가 여기가 깨지면 시나리오 잠금 목록부터 고친다
+    const KNOWN_GAPS: string[] = [];
     const gaps: string[] = [];
     for (const sc of Object.values(SCENARIOS)) {
       if (!sc.locked.includes('system:research')) continue;

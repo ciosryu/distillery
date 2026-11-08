@@ -15,6 +15,7 @@ import { nid } from './util';
 import { addWeatherShock } from './weather';
 import { addTrendShift } from './blendTable';
 import { HEX_LABEL } from './blendRadar';
+import { caskBookValue, newLedger, settleClaims, type LossLedger } from './insurance';
 
 // 이벤트 엔진: 예보 → 발생 → (선택지) → 효과. 결정론적 난수 스트림 사용.
 
@@ -56,13 +57,15 @@ function log(s: GameState, report: MonthReport | null, title: string, text: stri
   if (report) report.events.push(title);
 }
 
-export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: string): string[] {
+/** ledger가 있으면(재해 이벤트) 보험이 보상할 피해를 적는다 — 적기만 하고 상태·난수는 바꾸지 않는다 (#171) */
+export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: string, ledger?: LossLedger): string[] {
   const notes: string[] = [];
   for (const e of effects) {
     switch (e.type) {
       case 'modifier': {
         const months = rng.int(e.months[0], e.months[1]);
         addModifier(s, e.key, e.factor, months, e.label ?? label, e.delay ?? 0);
+        if (ledger && e.key === 'production' && e.factor === 0) ledger.stopMonths += months;
         break;
       }
       case 'weather': {
@@ -77,7 +80,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         notes.push(`${HEX_LABEL[e.axis]} 향 유행 — 최대 매력도 ×${(1 + e.strength).toFixed(2)} (${months}개월)`);
         break;
       }
-      case 'cash': s.finance.cash += e.amount; if (e.amount) notes.push(`현금 ${e.amount > 0 ? '+' : ''}${e.amount.toLocaleString()}원`); break;
+      case 'cash': s.finance.cash += e.amount; if (e.amount) notes.push(`현금 ${e.amount > 0 ? '+' : ''}${e.amount.toLocaleString()}원`); if (ledger && e.amount < 0) ledger.property += -e.amount; break;
       case 'awareness': { const h = houseBrand(s); h.awareness = clamp(h.awareness + e.delta, 0.001, 0.95); } notes.push(`인지도 ${e.delta > 0 ? '+' : ''}${(e.delta * 100).toFixed(0)}%p`); break;
       case 'trust': s.b2b.trust = clamp(s.b2b.trust + e.delta, 0, 100); break;
       case 'acclaim': {
@@ -92,17 +95,19 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         const n = Math.max(1, Math.round(filled.length * rng.range(e.share[0], e.share[1])));
         const lost = new Set<string>();
         while (lost.size < Math.min(n, filled.length)) lost.add(rng.pick(filled).id);
+        if (ledger) ledger.inventory += filled.filter((c) => lost.has(c.id)).reduce((t, c) => t + caskBookValue(c), 0);
         s.inventory.casks = s.inventory.casks.filter((c) => !lost.has(c.id));
         notes.push(`캐스크 ${lost.size}개 소실`);
         break;
       }
       case 'caskVolumeLoss':
+        if (ledger) ledger.inventory += e.share * s.inventory.casks.reduce((t, c) => t + caskBookValue(c), 0);
         s.inventory.casks = s.inventory.casks.map((c) => (c.contents ? { ...c, contents: { ...c.contents, volumeL: c.contents.volumeL * (1 - e.share), costPerLPA: c.contents.costPerLPA / (1 - e.share) } } : c));
         notes.push(`숙성 원액 ${(e.share * 100).toFixed(0)}% 손실`);
         break;
       case 'stillDown': {
         const stills = s.production.equipment.filter((x) => x.readyMonth <= s.month && x.feintsLPA != null);
-        if (stills.length) { const st = rng.pick(stills); st.readyMonth = s.month + e.months; notes.push(`증류기 ${st.id} ${e.months}개월 가동 중단`); }
+        if (stills.length) { const st = rng.pick(stills); st.readyMonth = s.month + e.months; notes.push(`증류기 ${st.id} ${e.months}개월 가동 중단`); if (ledger) ledger.stopMonths += e.months / stills.length; }
         break;
       }
       case 'lotSpoil':
@@ -215,8 +220,17 @@ function fire(s: GameState, base: EventDef, rng: Rng, report: MonthReport): void
     log(s, report, def.title, `${def.text} 하지만 ${EQUIPMENT[def.defense]?.nameKo ?? '방재 설비'} 덕분에 피해가 없었습니다.`);
     return;
   }
-  const notes = applyEffects(s, def.effects ?? [], rng, def.title);
+  // 재해는 피해 장부를 적어 끝에 보험금을 준다 (#171). 보험이 없으면 문구·현금 모두 그대로
+  const ledger = def.category === 'disaster' ? newLedger(s) : undefined;
+  const notes = applyEffects(s, def.effects ?? [], rng, def.title, ledger);
+  if (ledger) notes.push(...settleClaims(s, ledger));
   log(s, report, def.title, [def.text, ...notes].join(' '));
+}
+
+/** 이벤트 하나를 지금 일으킨다 — 테스트·디버그용 (발생 판정·조건·쿨다운을 건너뛴다) */
+export function fireEvent(s: GameState, defId: string, report: MonthReport): void {
+  const def = EVENT[defId];
+  if (def) fire(s, def, rngFor(s.seed, s.month, `event:${def.id}`), report);
 }
 
 /** 플레이어가 선택지를 고름 (s는 변경 가능한 복제본) */

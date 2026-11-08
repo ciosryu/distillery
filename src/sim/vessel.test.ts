@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluate, lotCategory, previewBatch, restLot, type Cask, type SpiritLot, emptyCaskOf, FINISH, finishOf, advanceMonth, advanceMonths, applyAction, lastSample, lotQuality, matureCask, matureNonWood, matureVessel, migrateSave, newGame, newScenarioGame, readCask, SAMPLE_LOG_KEPT, SAVE_VERSION, vesselMaterial, emptyCask, type GameState } from '.';
+import { AUTO_SAMPLE_MIN_AGE, autoSample, samplingCapacity, SAMPLING, stalestCasks, evaluate, lotCategory, previewBatch, restLot, type Cask, type SpiritLot, emptyCaskOf, FINISH, finishOf, advanceMonth, advanceMonths, applyAction, lastSample, lotQuality, matureCask, matureNonWood, matureVessel, migrateSave, newGame, newScenarioGame, readCask, SAMPLE_LOG_KEPT, SAVE_VERSION, vesselMaterial, emptyCask, type GameState, AUTO_SAMPLE_EXPENSE } from '.';
 import fixture from './fixtures/save-v8.json';
 
 /** 몰트 원액을 캐스크 1통에 넣은 게임 */
@@ -26,7 +26,11 @@ describe('세이브 v8 → v9 (S-10)', () => {
     expect(sampled.sampleLog).toBeUndefined();
     expect(lastSample(sampled)).toBeNull();
     const t = advanceMonths(s, 3);
-    expect({ month: t.month, cash: t.finance.cash }).toEqual(fixture.expectedAfter3);
+    // 자동 샘플(#177)은 이 세이브 뒤에 생긴 시나리오 규칙이다 — 그 비용을 되돌리면 옛 코드의 결과와 같아야 한다
+    const autoCost = t.history.reports.slice(-3).reduce((sum, r) => sum + (r.expenses[AUTO_SAMPLE_EXPENSE] ?? 0), 0);
+    // 샘플로 원액이 조금 줄면 원액 가치에 비례하는 보관 보험료도 아주 조금 준다(수십 원) — 그만큼은 허용한다
+    expect(t.month).toBe(fixture.expectedAfter3.month);
+    expect(Math.abs(t.finance.cash + autoCost - fixture.expectedAfter3.cash)).toBeLessThan(10_000);
   });
 });
 
@@ -247,5 +251,71 @@ describe('옹기 숙성 (#161, flavor-model §4.5.1)', () => {
     const filled = s.inventory.casks.find((c) => c.id === jar.id)!;
     expect(filled.contents!.restMonths).toBe(1);
     expect(filled.contents!.oakMonths).toBe(0);
+  });
+});
+
+describe('자동 샘플 (#177, 오너 요청 2026-11-08)', () => {
+  /** MVP 판 + 몰트 원액을 버번 배럴 n통에 */
+  function mvpWithCasks(n = 8): GameState {
+    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 2 });
+    for (let i = 0; i < n; i++) {
+      const c = emptyCaskOf(s, 'ex_bourbon_barrel');
+      c.contents = { id: `L${i}`, name: 'm', kind: 'malt', volumeL: 190, abv: 0.63, flavor: { cereal: 30, vanilla_caramel: 20 }, createdMonth: 0, oakMonths: 6, sourced: false, costPerLPA: 10_000, batchId: `B${i}` };
+      c.filledMonth = 0;
+      s.inventory.casks.push(c);
+    }
+    return s;
+  }
+  const sampledIn = (s: GameState, month: number) => s.inventory.casks.filter((c) => c.sampleLog?.at(-1)?.month === month).map((c) => c.id);
+
+  it('그 달에 직접 뜬 샘플이 없으면, 달이 넘어갈 때 오래 안 뜬 통부터 여력만큼 뜨고 비용을 결산표에 남긴다', () => {
+    const s = mvpWithCasks();
+    const m = s.month;
+    const cap = samplingCapacity(s);
+    const t = advanceMonth(s);
+    const got = sampledIn(t, m);
+    expect(got).toHaveLength(Math.min(cap, 8));
+    const r = t.history.reports.at(-1)!;
+    expect(r.expenses[AUTO_SAMPLE_EXPENSE]).toBe(got.length * SAMPLING.cost);
+    expect(r.notes.some((n) => n.startsWith('자동 샘플'))).toBe(true);
+    // 다음 달에는 아직 안 뜬 통만 — 방금 뜬 통은 6개월이 지나야 다시 자동으로 뜬다(통당 최대 횟수를 아끼려고)
+    const u = advanceMonth(t);
+    const next = sampledIn(u, t.month);
+    expect(next.filter((id) => got.includes(id))).toEqual([]);
+    expect(next).toHaveLength(8 - got.length);
+    // 6개월 뒤에는 다시 뜬다
+    let v = u;
+    for (let i = 0; i < AUTO_SAMPLE_MIN_AGE; i++) v = advanceMonth(v);
+    const total = v.inventory.casks.filter((c) => c.contents).reduce((t2, c) => t2 + (c.samples ?? 0), 0);
+    expect(total).toBeGreaterThan(8);
+    expect(Math.max(...v.inventory.casks.filter((c) => c.contents).map((c) => c.samples ?? 0))).toBeLessThanOrEqual(2);
+  });
+
+  it('한 통이라도 직접 뜬 달에는 자동 샘플이 없다', () => {
+    const s = mvpWithCasks();
+    const m = s.month;
+    const one = applyAction(s, { type: 'sampleCask', caskIds: [s.inventory.casks.find((c) => c.contents)!.id] }).state;
+    const t = advanceMonth(one);
+    expect(sampledIn(t, m)).toHaveLength(1);
+    expect(t.history.reports.at(-1)!.expenses[AUTO_SAMPLE_EXPENSE]).toBeUndefined();
+  });
+
+  it('샌드박스에는 없고, 현금이 모자라면 낼 수 있는 만큼만 뜬다', () => {
+    const { s: sb } = withFilledCask();
+    const t = advanceMonth(sb);
+    expect(t.history.reports.at(-1)!.expenses[AUTO_SAMPLE_EXPENSE]).toBeUndefined();
+    const poor = mvpWithCasks();
+    const report = { expenses: {}, notes: [] } as unknown as Parameters<typeof autoSample>[1];
+    poor.finance.cash = SAMPLING.cost * 2 + 1;
+    expect(autoSample(poor, report, lotQuality)).toBe(2);
+    expect(poor.finance.cash).toBe(1);
+  });
+
+  it('고르는 순서: 아무 기록 없는 통 → 형제 통 기록만 → 자기 기록이 오래된 통', () => {
+    const s = mvpWithCasks(3);
+    const [a, b, c] = s.inventory.casks.filter((x) => x.contents);
+    a!.sampleLog = [{ month: 0, hex: { peat: 0, fruit: 0, floral: 0, spicy: 0, woody: 0, sweet: 0 }, sigma: 5, estQuality: 50 }];
+    a!.samples = 1;
+    expect(stalestCasks(s, 3).map((x) => x.id)).toEqual([b!.id, c!.id, a!.id].sort((x, y) => (x === a!.id ? 1 : y === a!.id ? -1 : x.localeCompare(y))));
   });
 });

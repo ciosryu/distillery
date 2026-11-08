@@ -1,10 +1,10 @@
-import { FORWARD, INGREDIENTS } from '../../sim/content/catalog';
 import { forwardRoomKg, forwardSettlement, marketIndex, monthlyUsageKg } from '../../sim/forwards';
-import { isLocked as isLockedForward } from '../../sim/scenario';
 import { useState } from 'react';
-import { LOAN_OFFERS } from '../../sim/content/catalog';
+import { FORWARD, INGREDIENTS, INSURANCE_PRODUCTS, LOAN_OFFERS } from '../../sim/content/catalog';
+import { insurancePremium, insuredInventoryValue, insuredPropertyValue } from '../../sim/insurance';
+import { isLocked } from '../../sim';
 import { INVESTMENT_OFFERS } from '../../sim/content/catalog';
-import { annuityPayment, currentLoanPayment, inventoryCollateral, inventoryLoanRoom, inventoryLtv, monthLabel } from '../../sim';
+import { annuityPayment, currentLoanPayment, monthlyFixedCost as monthlyFixed, inventoryCollateral, inventoryLoanRoom, inventoryLtv, monthLabel } from '../../sim';
 import { useGame } from '../../store/game';
 import { pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Table, Td } from '../kit';
@@ -42,6 +42,8 @@ export function Finance() {
 
       <ForwardCard />
 
+      <InsuranceCard />
+
       <Card title={`투자 유치 — 외부 지분 ${pct(s.finance.investorShare, 1)}`}>
         <Table head={['제안', '금액', '지분', '가능 시기', '비고', '']}>
           {INVESTMENT_OFFERS.map((o) => {
@@ -59,7 +61,7 @@ export function Finance() {
             );
           })}
         </Table>
-        <p className="mt-2 text-xs text-stone-500">다른 초기 자금원: 숙성고의 <b>캐스크 오너십 판매</b>(지금 현금, 8년 뒤 인도 — 많이 팔면 매니아 신뢰↓), 독립 병입자의 <b>통째 매입 제안</b>(3년↑·품질 65↑), <b>비지터 센터</b> 투어·뉴메이크 판매.</p>
+        <p className="mt-2 text-xs text-stone-500">다른 초기 자금원: 숙성고의 <b>캐스크 오너십 판매</b>(연구 BIZ-1b 뒤 — 지금 현금, 8년 뒤 인도 — 많이 팔면 매니아 신뢰↓), 독립 병입자의 <b>통째 매입 제안</b>(3년↑·품질 65↑), <b>비지터 센터</b> 투어·뉴메이크 판매.</p>
       </Card>
 
       <Card title="보유 대출">
@@ -120,7 +122,7 @@ function ForwardCard() {
   const dispatch = useGame((g) => g.dispatch);
   const [months, setMonths] = useState(12);
   const [kgs, setKgs] = useState<Record<string, number>>({});
-  if (isLockedForward(s, 'action:signForward')) return null;
+  if (isLocked(s, 'action:signForward')) return null;
   const use = monthlyUsageKg(s);
   const settle = Object.fromEntries(forwardSettlement(s).map((x) => [x.id, x.amount]));
   return (
@@ -165,6 +167,45 @@ function ForwardCard() {
           </Table>
         </div>
       )}
+    </Card>
+  );
+}
+
+/** 보험 (#171, PRD §8.4) — 재산·재고·영업중단. MVP는 잠겨 있어 숨긴다 */
+function InsuranceCard() {
+  const s = useGame((g) => g.state);
+  const dispatch = useGame((g) => g.dispatch);
+  const [amounts, setAmounts] = useState<Record<string, number>>({});
+  if (isLocked(s, 'action:buyInsurance')) return null;
+  const insuredValue = { property: insuredPropertyValue(s), inventory: insuredInventoryValue(s) } as Record<string, number>;
+  const total = s.finance.insurance.reduce((t, x) => t + x.premiumPerMonth, 0);
+  return (
+    <Card title={`보험 — 월 보험료 ${won(total)}`}>
+      <p className="mb-2 text-xs text-stone-500">재해 이벤트의 피해만 보상한다 — 복구비(재산) · 잃은 숙성 원액의 원가(재고) · 생산이 멈춘 달의 고정비(영업중단). 곰팡이·오염·폭염 증발은 제외. 가입한 다음 달부터 보장한다. 방재 설비가 피해를 막으면 청구할 피해도 없다.</p>
+      <Table head={['보험', '보험가액·기준', '연 보험료율', '가입금액·한도', '월 보험료', '']}>
+        {INSURANCE_PRODUCTS.map((p) => {
+          const policy = s.finance.insurance.find((x) => x.kind === p.kind);
+          const base = p.basis === 'value' ? insuredValue[p.kind]! : monthlyFixed(s); // 기본 금액: 보험가액 / 지금 월 고정비
+          const amt = (amounts[p.kind] ?? Math.max(p.minCoverage, Math.round(base / 1e6) * 1e6 || p.minCoverage) / 1e6) * 1e6;
+          const shown = policy ? policy.coverage : amt;
+          const ratio = p.basis === 'value' && base > 0 ? Math.min(1, shown / base) : 1;
+          return (
+            <tr key={p.kind}>
+              <Td className="font-medium">{p.nameKo}<div className="max-w-md text-xs font-normal text-stone-500">{p.note}</div></Td>
+              <Td right>{p.basis === 'value' ? won(base) : <span className="text-xs">월 고정비까지 (지금 {won(monthlyFixed(s))})</span>}</Td>
+              <Td right>{pct(p.annualRate, 1)}</Td>
+              <Td right>
+                {policy ? won(policy.coverage) : <NumberField value={amt / 1e6} min={p.minCoverage / 1e6} max={p.maxCoverage / 1e6} width="w-20" suffix="백만" onCommit={(v) => setAmounts({ ...amounts, [p.kind]: v })} />}
+                {p.basis === 'value' && ratio < 1 && <div className="text-xs text-amber-700">일부보험 — 피해의 {Math.round(ratio * 100)}%만 보상</div>}
+              </Td>
+              <Td right>{won(policy ? policy.premiumPerMonth : insurancePremium(s, p.kind, amt))}{policy && s.month < policy.fromMonth && <div className="text-xs text-stone-500">다음 달부터 보장</div>}</Td>
+              <Td>{policy
+                ? <Button small onClick={() => dispatch({ type: 'cancelInsurance', policyId: policy.id })}>해지</Button>
+                : <Button small variant="primary" onClick={() => dispatch({ type: 'buyInsurance', kind: p.kind, coverage: amt })}>가입</Button>}</Td>
+            </tr>
+          );
+        })}
+      </Table>
     </Card>
   );
 }

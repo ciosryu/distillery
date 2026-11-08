@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mergeIntoTank, sameTank, HEX_AXES, basePresetOf, craftPresets, flavorProfile, leverEffects, leverSummary, newScenarioGame, presetAsRecipe, previewBatch, type GameState, type Recipe, advanceMonths, applyAction, bulkValuePerLPA, categorize, evaporate, heartsFraction, matureCask, newGame, previewBlend, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type SpiritLot, appeal, type Product, caskStorageCost, fermentDaysAt, waterPermitCap } from './index';
+import { AGING_HORIZONS, recipeEconomics, STANDARD_BOTTLE, stockMonthsAfter, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from './economics';
 import { slotClimate } from './warehouse';
 import { EQUIPMENT } from './content/catalog';
 import { consumerPrice, priceForConsumer, REGIONS, siteOf } from './content/regions';
@@ -180,6 +181,7 @@ describe('v1.0 운영 시스템', () => {
   it('로테이션: QC가 있어야 하고, 단을 뒤집는다', () => {
     let s = newGame({ seed: 1, region: 'KR' });
     const cask = s.b2b.brokerOffers[0]!.cask; s.inventory.casks.push(cask); cask.slot = { w: 'W0', tier: 5 };
+    s.research.unlocked.push('MAT-3a'); // 로테이션은 테크 MAT-3a 뒤 (tech-tree §1.2, 게이트 켜기)
     expect(applyAction(s, { type: 'rotateWarehouse', warehouseId: 'W0' }).error).toContain('QC');
     const qc = s.hr.candidates.find((c) => c.role === 'warehouse')!;
     s = applyAction(s, { type: 'hire', candidateId: qc.id }).state;
@@ -353,5 +355,106 @@ describe('탱크 합치기 (#166)', () => {
     expect(m.costPerLPA).toBeCloseTo(17_500, 6);
     expect(m.flavor.cereal).toBeCloseTo(25, 6);
     expect(m.mashShare).toEqual({ malt_unpeated: 0.25, malt_peated: 0.75 });
+  });
+});
+
+describe('병당 손익 (#173, 플레이테스트 요청)', () => {
+  const mvp = () => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+  it('소주는 바로 병입 한 줄, 몰트는 숙성 1·3년 두 줄 — 이익 = 출고가 − 원가 − 유통비, 숙성할수록 품질·출고가가 오른다', () => {
+    const s = mvp();
+    const soju = recipeEconomics(s, s.production.recipes.find((r) => r.kind === 'soju')!);
+    expect(soju.map((r) => r.months)).toEqual([0]);
+    const malt = recipeEconomics(s, s.production.recipes.find((r) => r.kind === 'malt')!);
+    expect(malt.map((r) => r.months)).toEqual([...AGING_HORIZONS]);
+    for (const r of [...soju, ...malt]) {
+      expect(Math.abs(r.margin - (r.price - r.spiritCost - r.packCost - r.distribution))).toBeLessThanOrEqual(3);
+      expect(r.bottlesPerBatch).toBeGreaterThan(0);
+      expect(r.demandPerMonth).toBeGreaterThanOrEqual(0);
+    }
+    expect(malt[1]!.quality).toBeGreaterThan(malt[0]!.quality);
+    expect(malt[1]!.price).toBeGreaterThan(malt[0]!.price);
+    expect(malt[0]!.category).toBe('whisky');
+  });
+
+  it('권장 출고가는 같은 원액을 실제로 병입할 때의 권장 출고가와 같다(같은 식)', () => {
+    const s = mvp();
+    const r = s.production.recipes.find((x) => x.kind === 'soju')!;
+    const row = recipeEconomics(s, r)[0]!;
+    const b = previewBatch(s, r)!;
+    s.inventory.lots.push({ id: 'X', name: 'x', kind: 'soju', volumeL: b.volumeL, abv: b.abv, flavor: b.flavor, createdMonth: s.month, oakMonths: 0, sourced: false, costPerLPA: b.cost / b.lpa, recipeId: r.id, mashShare: Object.fromEntries(r.mashBill.map((m) => [m.ingredientId, m.ratio])) });
+    const p = previewBlend(s, [{ source: 'lot', id: 'X', liters: 100 }], { name: '', targetAbv: STANDARD_BOTTLE.soju.abv, bottleMl: STANDARD_BOTTLE.soju.bottleMl, chillFilter: true, packagingId: 'standard' });
+    expect(row.price).toBe(p.suggestedPrice);
+  });
+
+  it('게임 상태를 바꾸지 않는다 (id 카운터 포함)', () => {
+    const s = mvp();
+    const before = JSON.stringify(s);
+    for (const r of s.production.recipes) recipeEconomics(s, r);
+    expect(JSON.stringify(s)).toBe(before);
+  });
+});
+
+describe('위스키 공급 전망·병입 재고 경고 (#178, 1차 MVP 플레이테스트)', () => {
+  const mvp = () => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+  const maltLot = (s: GameState, id: string, volumeL: number, oakMonths = 0): SpiritLot => ({
+    id, name: id, kind: 'malt', volumeL, abv: 0.635, flavor: {}, createdMonth: s.month, oakMonths, sourced: false, costPerLPA: 10_000,
+  });
+  const clearOrders = (s: GameState) => { s.production.orders = []; };
+
+  it('숙성 중인 통은 법정 최소 숙성을 채우는 해에, 탱크 몰트는 지금 통입한다고 보고 센다 (700ml·40% 병, 증발 연 5%)', () => {
+    const s = mvp();
+    clearOrders(s);
+    const cask = { id: 'C1', typeId: 'ex_bourbon_barrel', sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3 } as Cask;
+    s.inventory.casks.push({ ...cask, contents: maltLot(s, 'L1', 200, 2) }); // 한국 최소 12개월 — 10개월 뒤
+    s.inventory.lots.push(maltLot(s, 'T1', 100));
+    const f = whiskySupplyForecast(s, 3);
+    const bottle = 0.7 * 0.4;
+    expect(f[0]!.fromCasks).toBe(Math.round((200 * 0.635 * Math.pow(0.95, 10 / 12)) / bottle));
+    // 지금 통입하면 12번째 월 마감에 12개월을 채운다 — 앞으로 1년 칸
+    expect(f[0]!.fromTank).toBe(Math.round((100 * 0.635 * 0.95) / bottle));
+    expect(f[1]!.fromTank).toBe(0);
+    expect(f.every((y) => y.fromOrders === 0)).toBe(true);
+    expect(f[2]!.bottles).toBe(0);
+  });
+
+  it('생산 지시를 줄이면 최소 숙성 뒤 해부터 공급이 준다 — 이번 해 칸은 그대로', () => {
+    const s = mvp();
+    const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
+    s.production.orders = [{ recipeId: malt.id, batchesPerMonth: 4 }];
+    const hi = whiskySupplyForecast(s, 3);
+    s.production.orders = [{ recipeId: malt.id, batchesPerMonth: 1 }];
+    const lo = whiskySupplyForecast(s, 3);
+    expect(hi[0]!.fromOrders).toBe(lo[0]!.fromOrders); // 12개월 미만이라 아직 위스키가 아니다
+    expect(hi[1]!.fromOrders).toBeGreaterThan(lo[1]!.fromOrders * 3.5);
+  });
+
+  it('병입 뒤 재고 개월 수 — 판매 기록이 있으면 최근 3개월 판매, 없으면 수요 근사로 나눈다', () => {
+    const s = mvp();
+    const before = stockMonthsAfter(s, 'soju_distilled', 600, 100);
+    expect(before.basis).toBe('demand');
+    expect(before.months).toBeCloseTo(6, 6);
+    expect(stockMonthsAfter(s, 'soju_distilled', 600, 0).months).toBe(Infinity);
+    const p = { id: 'P1', category: 'soju_distilled', stockBottles: 400, dutyFreeOnly: false } as Product;
+    s.commerce.products.push(p);
+    const rep = (n: number) => ({ sales: [{ productId: 'P1', name: 'x', bottles: n, revenue: 0, demandBottles: n }] }) as unknown as GameState['history']['reports'][number];
+    s.history.reports.push(rep(40), rep(60), rep(50));
+    const after = stockMonthsAfter(s, 'soju_distilled', 600, 999);
+    expect(after.basis).toBe('sales');
+    expect(after.monthly).toBe(50);
+    expect(after.months).toBeCloseTo((400 + 600) / 50, 6);
+  });
+
+  it('연 판매 속도는 위스키 범주 판매 × 12, 없으면 수요 추정 — 탱크 통입 자리 안내, 상태 불변', () => {
+    const s = mvp();
+    expect(whiskyAnnualPace(s)?.basis).toBe('demand');
+    s.inventory.lots.push(maltLot(s, 'T1', 450));
+    const before = JSON.stringify(s);
+    whiskySupplyForecast(s);
+    expect(tankFillNeed(s).casks200).toBe(3);
+    expect(JSON.stringify(s)).toBe(before);
+    s.commerce.products.push({ id: 'W1', category: 'whisky', stockBottles: 10 } as Product, { id: 'B1', category: 'blended_whisky', stockBottles: 10 } as Product);
+    const rep = { sales: [{ productId: 'W1', name: 'w', bottles: 30, revenue: 0, demandBottles: 30 }, { productId: 'B1', name: 'b', bottles: 10, revenue: 0, demandBottles: 10 }] } as unknown as GameState['history']['reports'][number];
+    s.history.reports.push(rep);
+    expect(whiskyAnnualPace(s)).toEqual({ bottles: 480, basis: 'sales' });
   });
 });

@@ -6,7 +6,7 @@ import { rngFor } from './rng';
 import { lotQuality } from './bulk';
 import { mod } from './modifiers';
 import { executeBlend, type BlendComponent, type BlendReveal, type BottleOptions } from './blending';
-import { blenderOf, delegatePlan, findTarget, LAB, RARE, recordSample, SAMPLING, samplingCapacity } from './blendTable';
+import { blenderOf, delegatePlan, findTarget, LAB, RARE, recordSample, SAMPLING, samplingCapacity, takeSample } from './blendTable';
 import { canFinishInto, emptyCask, FINISH, finishCount, finishLabel, historyAfterTransfer, MAX_RECHAR, recharCask, vesselMaterial } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
@@ -255,19 +255,8 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (!casks.length) return fail(prev, '샘플을 뜰 캐스크가 없습니다 (빈 통이거나 이미 충분히 샘플링했다)');
     if (casks.length > cap) return fail(prev, `이번 달 샘플링 여력 부족 (${Math.max(0, cap)}회 남음) — 마스터 블렌더를 두면 늘어난다`);
     const blender = blenderOf(s);
-    const found: string[] = [];
-    for (const c of casks) {
-      const n = (c.samples ?? 0) + 1;
-      c.samples = n;
-      c.contents = { ...c.contents!, volumeL: Math.max(0, c.contents!.volumeL - SAMPLING.lossL) };
-      // 이번 읽기를 남긴다 — 다음 샘플 전까지 화면의 추정치는 이 값이다 (S-10, #136)
-      recordSample(s, c, lotQuality(c.contents));
-      // 레어 캐스크는 샘플을 뜰 때 드러날 수 있다 (감정력)
-      if (c.rare && !c.rareKnown && rngFor(s.seed, s.month, `rarefind:${c.id}:${n}`).chance(blender ? RARE.findBase + RARE.findPerAppraisal * (blender.appraisal / 100) : RARE.findOwner)) {
-        c.rareKnown = true;
-        found.push(c.id);
-      }
-    }
+    // 1통씩: 횟수·원액 손실·읽기 기록·레어 판정 (자동 샘플과 같은 함수)
+    const found = casks.filter((c) => takeSample(s, c, blender, lotQuality)).map((c) => c.id);
     s.inventory.samplesThisMonth += casks.length;
     s.finance.cash -= casks.length * SAMPLING.cost;
     return { state: s, message: `캐스크 ${casks.length}개 샘플링${found.length ? ` — 레어 캐스크 발견: ${found.join(', ')}` : ''}` };

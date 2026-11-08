@@ -54,8 +54,9 @@ export const TECH_FACILITY_NAMES: Record<string, string> = {
   malting_floor: '몰팅 플로어·킬른',
 };
 
-/** false = 잠금 없음: 모든 키가 열려 있다 (게임 동작 불변). 게이트 켜기는 별도 PR(연구 화면이 먼저 있어야 잠긴 기능을 풀 수 있다) */
-export const TECH_GATING = false;
+/** 테크 게이트 켜짐 (#174) — 노드가 해금하는 키는 연구 전까지 닫힌다. 지금 실제로 판정하는 키는 행동 키(`action:`)뿐이라 잠기는 기존 기능은
+ *  로테이션(MAT-3a)·캐스크 오너십(BIZ-1b) 둘이다(tech-tree §1.2). false로 두면 모든 키가 열린다 */
+export const TECH_GATING = true;
 
 const T1 = { baseMonths: 3, monthlyCost: 4_000_000 };
 const T2 = { baseMonths: 5, monthlyCost: 6_000_000 };
@@ -99,7 +100,9 @@ export const TECH_NODES: TechNodeDef[] = [
     pending: 'PROD — 바이오가스·폐액 정화 설비 / MGT — 가동 중 폐액 규제 이벤트 면제' },
   { id: 'ENG-2b', nameKo: '방재 엔지니어링', tree: 'engineering', tier: 2, prereq: ['ENG-1'], research: { ...T2, leadRoles: ['distiller', 'warehouse'], leadStat: 'b' },
     unlockKeys: ['facility:fire_suppression'],
-    pending: 'PROD — 상위 방재 설비 / MGT — 화재 피해↓·보험료↓(재무 확장 보험과 함께)' },
+    // 보험료 −15% (#171, PRD §8.4) — 가입할 때 보험료에 적용 [튜닝]
+    effects: [{ kind: 'risk_scale', riskId: 'premium:property', mul: 0.85 }, { kind: 'risk_scale', riskId: 'premium:inventory', mul: 0.85 }],
+    pending: 'PROD — 상위 방재 설비·화재 피해↓ (보험료 −15%는 적용됨)' },
   { id: 'ENG-2c', nameKo: '공정 자동화 제어', tree: 'engineering', tier: 2, prereq: ['ENG-1'], research: { ...T2, leadRoles: ['distiller'], leadStat: 'b' },
     unlockKeys: ['facility:process_control'],
     pending: 'PROD — 자동화 제어 시스템(운전 실수↓, 상시 지시 품질 하한↑)' },
