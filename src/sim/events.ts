@@ -223,7 +223,7 @@ function fire(s: GameState, base: EventDef, rng: Rng, report: MonthReport): void
   // 재해는 피해 장부를 적어 끝에 보험금을 준다 (#171). 보험이 없으면 문구·현금 모두 그대로
   const ledger = def.category === 'disaster' ? newLedger(s) : undefined;
   const notes = applyEffects(s, def.effects ?? [], rng, def.title, ledger);
-  if (ledger) notes.push(...settleClaims(s, ledger));
+  if (ledger) notes.push(...settleClaims(s, ledger, report));
   log(s, report, def.title, [def.text, ...notes].join(' '));
 }
 
