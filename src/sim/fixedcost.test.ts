@@ -45,7 +45,7 @@ describe('월 고정비 내역 (#181)', () => {
     expect(parts.find((p) => p.id === 'secondBrand')).toBeUndefined(); // 세컨드 브랜드가 없으면 줄도 없다
   });
 
-  // P-MGT-12 — 마케팅 예산의 앞날 (mvp.md §7.6)
+  // P-MGT-13 — 마케팅 예산의 앞날 (mvp.md §7.7)
   it('마케팅 앞날: 예산이 클수록 3년 뒤 수요 배수가 크고, 상태는 그대로', () => {
     const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     const before = JSON.stringify(s);

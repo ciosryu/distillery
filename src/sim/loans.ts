@@ -74,7 +74,7 @@ export function monthlyFixedBreakdown(s: GameState): { id: string; label: string
   ].filter((x) => x.amount > 0 || x.adjustable);
 }
 
-// ───────────── 마케팅 예산의 앞날 (P-MGT-12, mvp.md §7.6) ─────────────
+// ───────────── 마케팅 예산의 앞날 (P-MGT-13, mvp.md §7.7) ─────────────
 
 /** 마케팅 예산을 바꾸면 n개월 뒤 하우스 브랜드 인지도·수요가 어떻게 되는지 — 인지도 갱신식(market.ts updateAwareness)을 앞으로 돌린 추정.
  *  입소문은 지난달 판매에서 시작하고 인지도에 비례해 변한다고 본다(수요 ∝ 인지도). 세컨드 브랜드 파급은 뺀다(MVP는 잠김).

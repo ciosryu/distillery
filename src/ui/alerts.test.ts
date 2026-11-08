@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonth, advanceMonths, applyAction, BANKRUPT_AFTER_MONTHS, newScenarioGame, type GameState } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
-import { cashAlert, lastMonthFlow, loanSchedule, monthTodos, paymentJump, SAMPLE_STALE_MONTHS } from './alerts';
+import { cashAlert, runway, lastMonthFlow, loanSchedule, monthTodos, paymentJump, SAMPLE_STALE_MONTHS } from './alerts';
 
 // 1차 MVP 플레이테스트 대응 ①~④ — 화면용 계산이 시뮬레이션과 같은 값을 내는지 (코어 UI)
 const mvp = (loanAmount = 0) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount, seed: 1 });
@@ -93,5 +93,16 @@ describe('ARCH 사후 검토 (#90) — 시뮬레이션이 쓰는 지출 키는 �
   });
   it('"샘플 시기" 기준 = 자동 샘플이 뜨는 기준', () => {
     expect(SAMPLE_STALE_MONTHS).toBe(AUTO_SAMPLE_MIN_AGE);
+  });
+});
+
+describe('런웨이 — 한 번 나가는 설비 구매는 "이 속도"에 넣지 않는다', () => {
+  it('시작하자마자 비지터 센터를 지어도 첫 달에 "약 3개월 뒤 바닥" 경보가 뜨지 않는다', () => {
+    let s = mvp();
+    s = applyAction(s, { type: 'buyEquipment', catalogId: 'visitor_basic' }).state;
+    s = advanceMonth(s);
+    expect(s.history.reports.at(-1)!.offTurn?.equipment).toBeLessThan(0);
+    expect(runway(s).months!).toBeGreaterThan(6);
+    expect(cashAlert(s)).toBeNull();
   });
 });

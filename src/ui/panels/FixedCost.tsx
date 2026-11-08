@@ -30,12 +30,12 @@ export function FixedCostLine() {
   );
 }
 
-/** 이 값 이하(100만 원 미만)면 빨강 — mvp.md §7.6: 관리비 300만(#190)에서 0원은 20/20 파산, 100만은 목표 19/20 [튜닝] */
+/** 이 값 이하(100만 원 미만)면 빨강 — mvp.md §7.7: 관리비 300만(#190)에서 0원은 20/20 파산, 100만은 목표 19/20 [튜닝] */
 const LOW_MARKETING = 999_999;
 /** 낮을 때 비교하는 예산 = 새 게임 기본값 */
 const REF_MARKETING = 3_000_000;
 
-// 마케팅 예산의 앞날 (P-MGT-12) — 줄여서 아끼는 돈과 3년 뒤 덜 팔리는 몫을 나란히 보인다. 규칙은 바꾸지 않는다
+// 마케팅 예산의 앞날 (P-MGT-13) — 줄여서 아끼는 돈과 3년 뒤 덜 팔리는 몫을 나란히 보인다. 규칙은 바꾸지 않는다
 function MarketingOutlookLine({ s }: { s: GameState }) {
   const budget = s.commerce.marketingBudget;
   const cur = marketingOutlook(s, budget);
