@@ -14,7 +14,7 @@ export interface CashAlert {
   negativeMonths: number;
   /** 앞으로 월말이 몇 번 더 마이너스면 파산하는가 (1 = 이번 달 말) */
   monthEndsLeft: number;
-  /** 최근 3개월 자체 현금 흐름(차입·투자·선급금 제외)으로 본 런웨이 — 흑자거나 기록이 없으면 null */
+  /** 최근 3개월 자체 현금 흐름(차입·투자·선급금·설비 구매 제외)으로 본 런웨이 — 흑자거나 기록이 없으면 null */
   runwayMonths: number | null;
   /** 최근 3개월 평균 자체 순현금 */
   avgSelfFunded: number | null;
@@ -24,10 +24,17 @@ export interface CashAlert {
 /** 런웨이 경고 기준(개월) — 이 속도로 이 안에 현금이 바닥나면 미리 경고한다 (화면 안내 기준, 게임 규칙 아님) */
 export const RUNWAY_WARN_MONTHS = 3;
 
+/**
+ * 런웨이에 넣는 한 달 현금 흐름 = 자체 현금 흐름(차입·투자 유치·선급금 제외)에서 **설비 구매를 뺀** 값.
+ * 설비는 한 번 나가는 돈이라 "이 속도"가 아니다 — 시작하자마자 비지터 센터(8천만)를 지으면 첫 달에 "약 3개월 뒤 바닥" 경보가 떴다
+ * (실제 런웨이 약 17개월, 다음 달 사라짐 — 결정 대기 19 실험에서 발견). 빈 통 구매는 매달 되풀이되므로 남긴다
+ */
+export const recurringCash = (r: MonthReport) => selfFundedCash(r) - (r.offTurn?.equipment ?? 0);
+
 export function runway(s: GameState): { avg: number | null; months: number | null } {
   const recent = s.history.reports.slice(-3);
   if (!recent.length) return { avg: null, months: null };
-  const avg = recent.reduce((t, r) => t + selfFundedCash(r), 0) / recent.length;
+  const avg = recent.reduce((t, r) => t + recurringCash(r), 0) / recent.length;
   return { avg, months: avg < 0 ? Math.floor(Math.max(0, s.finance.cash) / -avg) : null };
 }
 
