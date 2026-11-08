@@ -58,6 +58,10 @@ export const TECH_FACILITY_NAMES: Record<string, string> = {
  *  로테이션(MAT-3a)·캐스크 오너십(BIZ-1b) 둘이다(tech-tree §1.2). false로 두면 모든 키가 열린다 */
 export const TECH_GATING = true;
 
+/** ENG-3 매크로 이벤트 조기 경보 (P-MGT-11) — 조짐 감지 확률 = min(maxDetect, baseDetect + 사무직 행정 스탯 / statDivisor) [튜닝].
+ *  상한 90%: 감지율 100%면 거의 완벽한 예지(실측 정밀도 0.91~0.96·재현율 1.00)라 P2(정보에도 불확실성)를 위해 놓치는 몫을 남긴다 */
+export const MACRO_WARNING = { baseDetect: 0.6, statDivisor: 333, maxDetect: 0.9 };
+
 const T1 = { baseMonths: 3, monthlyCost: 4_000_000 };
 const T2 = { baseMonths: 5, monthlyCost: 6_000_000 };
 const T3 = { baseMonths: 9, monthlyCost: 10_000_000 };
