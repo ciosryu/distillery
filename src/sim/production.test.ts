@@ -394,7 +394,7 @@ describe('병당 손익 (#173, 플레이테스트 요청)', () => {
   });
 });
 
-describe('위스키 공급 전망·병입 재고 경고 (P-PROD-12, 1차 MVP 플레이테스트)', () => {
+describe('위스키 공급 전망·병입 재고 경고 (#178, 1차 MVP 플레이테스트)', () => {
   const mvp = () => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
   const maltLot = (s: GameState, id: string, volumeL: number, oakMonths = 0): SpiritLot => ({
     id, name: id, kind: 'malt', volumeL, abv: 0.635, flavor: {}, createdMonth: s.month, oakMonths, sourced: false, costPerLPA: 10_000,

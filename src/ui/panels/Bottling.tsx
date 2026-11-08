@@ -112,7 +112,7 @@ export function Bottling() {
     const perMonth = productDutyFreeDemand(s, p, same, calendar(s).monthOfYear);
     return { perMonth, window: perMonth * DUTY_FREE.sellOutMonths };
   })();
-  // 병입 재고 경고 (P-PROD-12, 1차 MVP 플레이테스트: 소주 15,271병 = 판매 186개월 치를 병입해 현금이 묶였다) —
+  // 병입 재고 경고 (#178, 1차 MVP 플레이테스트: 소주 15,271병 = 판매 186개월 치를 병입해 현금이 묶였다) —
   // 병입 뒤 그 분류 재고가 최근 판매(없으면 이번 달 수요 근사)로 몇 개월 치인가. 12개월 넘으면 한 번 더 눌러야 병입된다. 면세 한정판은 위 예상 면세 판매로 따로 본다
   const stock = (() => {
     if (!preview?.ok || !preview.category || preview.dfEdition) return null;
