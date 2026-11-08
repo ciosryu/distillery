@@ -20,6 +20,20 @@ export const LOAN_OFFERS: LoanOfferDef[] = [
   { id: 'inventory', nameKo: '숙성 재고 담보대출', annualRate: 0.06, termMonths: 60, max: 2_000_000_000, graceMonths: 12, collateral: 'inventory', note: '담보 인정 비율이 있는 입지(홋카이도)에서만' },
 ];
 
+// ── 원재료 선도계약 (#179, PRD §8.4 "원재료 가격" 줄). 수치 [튜닝] ──
+// 차액 정산형: 고정 가격 지수로 매달 kg만큼을 계약하고, 매달 (시장 지수 − 고정 지수) × 기준가 × 물류 배수 × kg를 주고받는다.
+// 시세가 오르면 받고 내리면 낸다 → 실제로 사는 원료 원가와 합치면 원가가 고정된다(생산 원가 계산은 그대로 — PROD 파일을 건드리지 않는다).
+// 계약량은 지금 생산 지시가 쓰는 월 사용량까지(투기 방지 — 가격 지수는 1로 되돌아가는 성질이 있어 상한 없이는 쉬운 돈이 된다). 중도 해지 없음
+export const FORWARD = {
+  /** 고정 가격 = 지금 시장 지수 × (1 + spread) — 거래 상대의 마진 */
+  spread: 0.03,
+  minMonths: 6,
+  maxMonths: 24,
+  /** 계약 가능 kg = 지금 생산 지시의 월 사용량 × 이 배수 (같은 원료의 기존 계약량을 뺀다) */
+  usageCap: 1.0,
+  minKgPerMonth: 100,
+};
+
 // ── 보험 (#171, PRD §8.4 "화재·홍수" 줄 — 재산·재고·영업중단). 수치 [튜닝] ──
 // 보장 대상은 재해(category 'disaster') 이벤트의 피해만: 복구비(현금) · 캐스크 소실·원액 손실 · 생산 중단 개월.
 // 곰팡이·오염·폭염(증발)은 보상하지 않는다. 가입한 다음 달부터 보장한다(재해 직전 가입 방지).
@@ -72,3 +86,18 @@ export const INVESTMENT_OFFERS: InvestmentOffer[] = [
   { id: 'angel', nameKo: '엔젤 투자', amount: 200_000_000, share: 0.1, minMonth: 0, maxMonth: 48, note: '초기 런웨이용. 지분 10%' },
   { id: 'seed_vc', nameKo: '시드 투자 (VC)', amount: 500_000_000, share: 0.25, minMonth: 12, maxMonth: 84, note: '지분 25%. 엑시트 압박은 후속(이사회 §8.2)' },
 ];
+
+// ── 이사회 (#180, PRD §8.2 "이사회 시스템") — 외부 지분 25%↑면 분기 목표, 50%↑면 신뢰가 바닥나면 해임. 수치 [튜닝] ──
+export const BOARD = {
+  /** 이사회가 생기는 외부 지분 */
+  formShare: 0.25,
+  /** 해임 권한이 생기는 외부 지분 (지금 투자 상품으로는 최대 32.5% — 해임은 아직 일어날 수 없다) */
+  dismissShare: 0.5,
+  startConfidence: 60,
+  metGain: 10,
+  missLoss: 15,
+  /** 분기 목표: 매출이 있으면 직전 분기 매출 × 이 배수 이상 */
+  revenueGrowth: 1.05,
+  /** 분기 목표: 매출이 없으면(Death Valley) 분기 말 현금 ≥ 월 고정비 예상 × 이 개월 수 */
+  cashBufferMonths: 3,
+};

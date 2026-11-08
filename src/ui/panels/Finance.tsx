@@ -1,10 +1,12 @@
+import { forwardRoomKg, forwardSettlement, marketIndex, monthlyUsageKg } from '../../sim/forwards';
 import { useState } from 'react';
-import { INSURANCE_PRODUCTS, LOAN_OFFERS } from '../../sim/content/catalog';
+import { FORWARD, INGREDIENTS, INSURANCE_PRODUCTS, LOAN_OFFERS } from '../../sim/content/catalog';
 import { insurancePremium, insuredInventoryValue, insuredPropertyValue } from '../../sim/insurance';
 import { isLocked } from '../../sim';
 import { INVESTMENT_OFFERS } from '../../sim/content/catalog';
 import { annuityPayment, currentLoanPayment, monthlyFixedCost as monthlyFixed, inventoryCollateral, inventoryLoanRoom, inventoryLtv, monthLabel } from '../../sim';
 import { useGame } from '../../store/game';
+import { BoardCard } from './Board';
 import { pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Table, Td } from '../kit';
 
@@ -12,6 +14,7 @@ export function Finance() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
   const [amounts, setAmounts] = useState<Record<string, number>>(() => Object.fromEntries(LOAN_OFFERS.map((o) => [o.id, o.max / 1e6])));
+  const [repay, setRepay] = useState<Record<string, number>>({});
   const rows = s.history.reports.slice(-24).reverse();
 
   return (
@@ -39,6 +42,8 @@ export function Finance() {
         </Table>
       </Card>
 
+      <ForwardCard />
+
       <InsuranceCard />
 
       <Card title={`투자 유치 — 외부 지분 ${pct(s.finance.investorShare, 1)}`}>
@@ -61,6 +66,8 @@ export function Finance() {
         <p className="mt-2 text-xs text-stone-500">다른 초기 자금원: 숙성고의 <b>캐스크 오너십 판매</b>(연구 BIZ-1b 뒤 — 지금 현금, 8년 뒤 인도 — 많이 팔면 매니아 신뢰↓), 독립 병입자의 <b>통째 매입 제안</b>(3년↑·품질 65↑), <b>비지터 센터</b> 투어·뉴메이크 판매.</p>
       </Card>
 
+      <BoardCard />
+
       <Card title="보유 대출">
         {!s.finance.loans.length ? <Empty>대출이 없습니다</Empty> : (
           <Table head={['상품', '원금', '잔액', '금리', '이번 달 납부', '실행', '']}>
@@ -72,7 +79,14 @@ export function Finance() {
                 <Td right>{pct(l.annualRate)}</Td>
                 <Td right>{won(currentLoanPayment(s, l))}{s.month < l.startMonth + l.graceMonths && <span className="ml-1 text-xs text-stone-500">(거치)</span>}</Td>
                 <Td>{monthLabel(s.startYear, l.startMonth)}</Td>
-                <Td><Button small disabled={s.finance.cash < l.balance} onClick={() => dispatch({ type: 'repayLoan', loanId: l.id })}>전액 상환</Button></Td>
+                <Td>
+                  <div className="flex items-center gap-1">
+                    {/* 일부 상환 (#181) — 남은 기간 그대로 월 납부가 줄어든다 */}
+                    <NumberField value={(repay[l.id] ?? 10_000_000) / 1e6} min={10} max={Math.floor(l.balance / 1e6)} width="w-20" suffix="백만" onCommit={(v) => setRepay({ ...repay, [l.id]: v * 1e6 })} />
+                    <Button small disabled={s.finance.cash < (repay[l.id] ?? 10_000_000) || (repay[l.id] ?? 10_000_000) >= l.balance} onClick={() => dispatch({ type: 'repayLoan', loanId: l.id, amount: repay[l.id] ?? 10_000_000 })} title="잔액 일부를 갚는다 — 남은 기간은 그대로, 월 납부·이자가 줄어든다">일부 상환</Button>
+                    <Button small disabled={s.finance.cash < l.balance} onClick={() => dispatch({ type: 'repayLoan', loanId: l.id })}>전액 상환</Button>
+                  </div>
+                </Td>
               </tr>
             ))}
           </Table>
@@ -110,6 +124,61 @@ export function Finance() {
         <p className="mt-2 text-xs text-stone-500">턴 사이 행동(원액 현물 판매·IB 캐스크 매각·병입 포장비·설비·캐스크 구매·대출·투자 유치 등)은 행동 시점에 현금이 움직이고, 그다음 결산 달에 합산됩니다. 순현금 = 직전 결산 이후 현금 변화 전체(표에 따로 없는 병입비·이벤트 등 포함). 영업 현금흐름 = 순현금 − 설비·캐스크 투자 − 차입·상환·투자 유치·계약 선급금(입금·상계·반환). '—'는 구버전 세이브의 기록입니다.</p>
       </Card>
     </div>
+  );
+}
+
+/** 원재료 선도계약 (#179, PRD §8.4) — 차액 정산형. MVP는 잠겨 있어 숨긴다 */
+function ForwardCard() {
+  const s = useGame((g) => g.state);
+  const dispatch = useGame((g) => g.dispatch);
+  const [months, setMonths] = useState(12);
+  const [kgs, setKgs] = useState<Record<string, number>>({});
+  if (isLocked(s, 'action:signForward')) return null;
+  const use = monthlyUsageKg(s);
+  const settle = Object.fromEntries(forwardSettlement(s).map((x) => [x.id, x.amount]));
+  return (
+    <Card title="원재료 선도계약 — 차액 정산">
+      <p className="mb-2 text-xs text-stone-500">고정 가격 지수(지금 시세 + {pct(FORWARD.spread, 0)})로 매달 정한 kg를 계약한다. 시세가 고정가보다 오르면 차액을 받고, 내리면 낸다 — 실제 원료는 그대로 시세로 사므로 둘을 합치면 원가가 고정된다. 계약량은 지금 생산 지시의 월 사용량까지, 기간 {FORWARD.minMonths}~{FORWARD.maxMonths}개월, 중도 해지 없음.</p>
+      {!Object.keys(use).length ? <Empty>생산 지시가 없습니다 — 쓰는 원료만 계약할 수 있다</Empty> : (
+        <Table head={['원료', '월 사용량', '남은 한도', '시장 지수', '고정 지수', '월 계약량', '']}>
+          {Object.entries(use).map(([id, kg]) => {
+            const room = forwardRoomKg(s, id);
+            const amt = Math.min(room, kgs[id] ?? room);
+            return (
+              <tr key={id}>
+                <Td className="font-medium">{INGREDIENTS[id]?.nameKo ?? id}</Td>
+                <Td right>{Math.round(kg).toLocaleString()}kg</Td>
+                <Td right>{room.toLocaleString()}kg</Td>
+                <Td right>{marketIndex(s, id).toFixed(3)}</Td>
+                <Td right>{(marketIndex(s, id) * (1 + FORWARD.spread)).toFixed(3)}</Td>
+                <Td><NumberField value={amt} min={0} max={room} step={100} width="w-24" suffix="kg" onCommit={(v) => setKgs({ ...kgs, [id]: v })} /></Td>
+                <Td><Button small variant="primary" disabled={room < FORWARD.minKgPerMonth} onClick={() => dispatch({ type: 'signForward', ingredientId: id, kgPerMonth: amt, months })}>{months}개월 계약</Button></Td>
+              </tr>
+            );
+          })}
+        </Table>
+      )}
+      <div className="mt-2 flex items-center gap-2 text-sm">
+        <span className="text-stone-500">계약 기간</span>
+        <NumberField value={months} min={FORWARD.minMonths} max={FORWARD.maxMonths} width="w-16" suffix="개월" onCommit={setMonths} />
+      </div>
+      {s.finance.hedges.length > 0 && (
+        <div className="mt-3">
+          <Table head={['진행 중', '월 kg', '고정 지수', '시장 지수', '이번 달 정산(예상)', '남은 기간']}>
+            {s.finance.hedges.map((h) => (
+              <tr key={h.id}>
+                <Td className="font-medium">{INGREDIENTS[h.ingredientId]?.nameKo ?? h.ingredientId}</Td>
+                <Td right>{h.kgPerMonth.toLocaleString()}</Td>
+                <Td right>{h.priceIndex.toFixed(3)}</Td>
+                <Td right>{marketIndex(s, h.ingredientId).toFixed(3)}</Td>
+                <Td right>{settle[h.id] != null ? <span className={settle[h.id]! >= 0 ? 'text-emerald-700' : 'text-rose-700'}>{settle[h.id]! >= 0 ? '+' : ''}{won(settle[h.id]!)}</span> : '—'}</Td>
+                <Td right>{h.untilMonth - s.month}개월</Td>
+              </tr>
+            ))}
+          </Table>
+        </div>
+      )}
+    </Card>
   );
 }
 

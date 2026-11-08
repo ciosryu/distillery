@@ -1,11 +1,14 @@
+import { forwardRoomKg, marketIndex } from './forwards';
+import { FORWARD, INGREDIENTS } from './content/catalog';
 import { LOAN_OFFERS } from './content/catalog';
 import { awarenessOf } from './brands';
 import { handleDeparture, masterDistiller } from './hr';
 import { INVESTMENT_OFFERS } from './content/catalog';
 import { OWNERSHIP } from './investment';
+import { ensureBoard } from './board';
 import { isBulkKind, spotQuote } from './bulk';
 import { resolvePending } from './events';
-import { inventoryLoanRoom, inventoryLtv } from './loans';
+import { currentLoanPayment, inventoryLoanRoom, inventoryLtv } from './loans';
 import { annuityPayment, nid } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
 import { TECH_BY_ID } from './content/tech';
@@ -20,7 +23,7 @@ export type MgtAction =
   | { type: 'startResearch'; techId: string; leadStaffId: string }
   | { type: 'setResearch'; techId: string; paused?: boolean; leadStaffId?: string }
   | { type: 'cancelResearch'; techId: string }
-  /** 재무 확장 (S-11 자리, PRD §8.4) — 원재료 선도계약(규칙 전: 항상 실패) / 보험 가입·해지(#171: 재산·재고·영업중단) */
+  /** 재무 확장 (S-11 자리, PRD §8.4) — 원재료 선도계약(#179: 차액 정산형) / 보험 가입·해지(#171: 재산·재고·영업중단) */
   | { type: 'signForward'; ingredientId: string; kgPerMonth: number; months: number }
   | { type: 'buyInsurance'; kind: 'property' | 'inventory' | 'business_interruption' | 'product_liability' | 'credit'; coverage: number }
   | { type: 'cancelInsurance'; policyId: string }
@@ -32,8 +35,12 @@ export type MgtAction =
   | { type: 'hire'; candidateId: string; asApprentice?: boolean }
   | { type: 'fire'; staffId: string }
   | { type: 'takeLoan'; offerId: string; amount: number }
-  | { type: 'repayLoan'; loanId: string }
+  /** 대출 상환 — amount가 없거나 잔액 이상이면 전액, 있으면 일부(#181: 남은 기간 그대로 월 납부를 다시 계산) */
+  | { type: 'repayLoan'; loanId: string; amount?: number }
   | { type: 'resolveEvent'; eventId: string; choice: number };
+
+/** 대출 일부 상환 최소액 (#181) [튜닝] — 대출 실행 최소액과 같다 */
+export const PARTIAL_REPAY_MIN = 10_000_000;
 
 export const MGT_CASH_KEY: CashKeys<MgtAction> = {
   // 연구비는 행동이 아니라 매달 틱에서 나간다 (월 리포트 expenses.research)
@@ -73,8 +80,20 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     if (a.paused !== undefined) r.paused = a.paused;
     return { state: s, message: r.paused ? '연구 일시정지 — 진행도는 남고 연구비는 멈춘다' : '연구 진행' };
   },
-  // 자리만 — 상품 데이터·가격·보상·이사회 목표는 단계 P(MGT)
-  signForward: (_s, prev, _a) => fail(prev, '선도계약은 아직 없습니다 (다음 단계)'),
+  // 원재료 선도계약 (#179) — 고정 가격 = 지금 시장 지수 × (1 + spread), 이번 달부터 months개월, 월 kg는 생산 지시의 사용량까지. 중도 해지 없음
+  signForward: (s, prev, a) => {
+    const ing = INGREDIENTS[a.ingredientId];
+    if (!ing) return fail(prev, '원료가 없습니다');
+    const months = Math.round(a.months);
+    if (months < FORWARD.minMonths || months > FORWARD.maxMonths) return fail(prev, `계약 기간은 ${FORWARD.minMonths}~${FORWARD.maxMonths}개월입니다`);
+    const room = forwardRoomKg(s, ing.id);
+    const kg = Math.min(room, Math.round(a.kgPerMonth));
+    if (room < FORWARD.minKgPerMonth) return fail(prev, `${ing.nameKo}: 지금 생산 지시가 쓰는 양만큼만 계약할 수 있습니다 (남은 한도 월 ${room.toLocaleString()}kg)`);
+    if (kg < FORWARD.minKgPerMonth) return fail(prev, `월 ${FORWARD.minKgPerMonth}kg 이상이어야 합니다`);
+    const priceIndex = Math.round(marketIndex(s, ing.id) * (1 + FORWARD.spread) * 1000) / 1000;
+    s.finance.hedges.push({ id: nid(s, 'H'), ingredientId: ing.id, kgPerMonth: kg, priceIndex, fromMonth: s.month, untilMonth: s.month + months });
+    return { state: s, message: `${ing.nameKo} 선도계약 — 월 ${kg.toLocaleString()}kg × ${months}개월, 고정 가격 지수 ${priceIndex.toFixed(3)} (시세와의 차액을 매달 정산)` };
+  },
   // 보험 (#171) — 종류마다 1건. 가입한 다음 달부터 보장, 보험료는 재무 단계에서 매달. 해지하면 바로 끝난다(환급 없음 — 보험료는 매달 낸다)
   buyInsurance: (s, prev, a) => {
     const p = insuranceProduct(a.kind);
@@ -104,7 +123,8 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     s.finance.cash += o.amount;
     s.finance.investorShare = 1 - (1 - s.finance.investorShare) * (1 - o.share);
     s.finance.investmentsTaken.push(o.id);
-    return { state: s, message: `${o.nameKo} ${o.amount.toLocaleString()}원 유치 — 외부 지분 ${(s.finance.investorShare * 100).toFixed(1)}%` };
+    const formed = ensureBoard(s); // 이사회 (#180) — 외부 지분 25%↑
+    return { state: s, message: `${o.nameKo} ${o.amount.toLocaleString()}원 유치 — 외부 지분 ${(s.finance.investorShare * 100).toFixed(1)}%${formed ? ' · 이사회가 생겼다 (석 달마다 목표)' : ''}` };
   },
   sellCaskOwnership: (s, prev, a) => {
     const cask = s.inventory.casks.find((c) => c.id === a.caskId);
@@ -165,10 +185,23 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
   repayLoan: (s, prev, a) => {
     const loan = s.finance.loans.find((l) => l.id === a.loanId);
     if (!loan) return fail(prev, '대출이 없습니다');
-    if (s.finance.cash < loan.balance) return fail(prev, '현금이 부족합니다');
-    s.finance.cash -= loan.balance;
-    s.finance.loans = s.finance.loans.filter((l) => l.id !== loan.id);
-    return { state: s, message: '대출 전액 상환' };
+    const amount = a.amount == null ? loan.balance : Math.round(a.amount / 1_000_000) * 1_000_000;
+    if (amount >= loan.balance) {
+      if (s.finance.cash < loan.balance) return fail(prev, '현금이 부족합니다');
+      s.finance.cash -= loan.balance;
+      s.finance.loans = s.finance.loans.filter((l) => l.id !== loan.id);
+      return { state: s, message: '대출 전액 상환' };
+    }
+    // 일부 상환 (#181): 잔액을 줄이고 남은 기간은 그대로 둔 채 월 납부를 다시 계산한다(거치 중이면 거치가 끝난 뒤의 납부)
+    if (amount < PARTIAL_REPAY_MIN) return fail(prev, `일부 상환은 ${PARTIAL_REPAY_MIN.toLocaleString()}원 이상입니다`);
+    if (s.finance.cash < amount) return fail(prev, '현금이 부족합니다');
+    const before = currentLoanPayment(s, loan);
+    s.finance.cash -= amount;
+    loan.balance -= amount;
+    const graceEnd = loan.startMonth + loan.graceMonths;
+    const left = s.month < graceEnd ? loan.termMonths - loan.graceMonths : Math.max(1, loan.startMonth + loan.termMonths - s.month);
+    loan.monthlyPayment = annuityPayment(loan.balance, loan.annualRate, left);
+    return { state: s, message: `${loan.name} ${amount.toLocaleString()}원 일부 상환 — 잔액 ${loan.balance.toLocaleString()}원, 이번 달 납부 ${before.toLocaleString()} → ${currentLoanPayment(s, loan).toLocaleString()}원` };
   },
   resolveEvent: (s, prev, a) => {
     const text = resolvePending(s, a.eventId, a.choice);
