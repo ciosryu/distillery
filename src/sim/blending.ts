@@ -22,6 +22,11 @@ export interface BottleOptions {
   /** 블렌딩 테이블 (결정 #124): 맞출 목표 — 'trend' · 의뢰 id · 'line:<이름>' */ targetId?: string;
   /** 코어 레인지 라인 — 처음이면 이 배치가 기준 육각형이 되고, 다음 배치부터 일관성으로 평가 */ line?: string;
   /** 블렌더에게 맡긴 배팅 */ delegated?: boolean;
+  /**
+   * 기존 제품에 재고 보충 (P-PROD-14, 2차 플레이테스트 오너 요청) — 새 제품을 만들지 않고 이 제품의 재고에 더한다.
+   * 병 크기·도수·피니시·범주가 같아야 하고, 품질·향·원가는 남은 재고와 새 병 수로 가중 평균한다. 이름·출고가·판매 기록은 그대로
+   */
+  restockId?: string;
 }
 
 /** 배팅 결과 공개 (P6) */
@@ -223,6 +228,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   const perBottleFixed = packagingUnitCost(s, opts) + BOTTLING_LABOR_PER_BOTTLE;
   const unitCost = bottles > 0 ? spiritCost / bottles + perBottleFixed : 0;
   const evaluation = evaluate(flavor, category);
+  if (opts.restockId) restockChecks(s, opts, { category, finalAbv, finish, ageYears, premiumLabel, traditional, specialty: specialty?.id ?? null }, errors, warnings);
   return {
     ok: errors.length === 0, errors, warnings, kind, category, volumeL: finalVolume, lpa, mixAbv, finalAbv, bottles,
     minOakMonths, ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare, sourcedPrestige, specialty: specialty?.id ?? null, premiumLabel, traditional,
@@ -301,6 +307,68 @@ function packagingUnitCost(s: GameState, opts: Pick<BottleOptions, 'packagingId'
 }
 
 /** 블렌딩·병입 실행 (s는 변경 가능한 복제본) */
+// ───────────── 기존 제품에 재고 보충 (P-PROD-14, 2차 플레이테스트 2026-11-08 오너 요청) ─────────────
+// 새 이름으로만 병입하면 제품이 늘 때마다 같은 범주 수요를 나눠 갖고(#163 나눔) 판매 기록·가격이 처음부터다.
+// 같은 제품으로 이어 가면 매대에 옛 병과 새 병이 섞인다고 보고 품질·향·원가를 재고 가중 평균한다(오너 승인: "재고 가중 평균").
+
+/** 재고를 보충할 수 있는 제품 — 지금 판매 목록에 있고(보관 처리 전) 면세 한정판이 아닌 것 */
+export const restockable = (s: GameState): Product[] => s.commerce.products.filter((p) => !p.dutyFreeOnly);
+
+function restockChecks(s: GameState, opts: BottleOptions, b: { category: ProductCategory; finalAbv: number; finish: CaskTypeId | null; ageYears: number | null; premiumLabel: boolean; traditional: boolean; specialty: string | null }, errors: string[], warnings: string[]): void {
+  const t = s.commerce.products.find((p) => p.id === opts.restockId);
+  if (!t) { errors.push('보충할 제품이 판매 목록에 없습니다'); return; }
+  if (t.dutyFreeOnly || opts.dutyFreeOnly) { errors.push('면세 한정판은 재고를 보충할 수 없습니다 — 판(Vol.)마다 새로 낸다'); return; }
+  if (t.category !== b.category) errors.push(`「${t.name}」은 ${CATEGORY[t.category].nameKo} — 이 원액은 ${CATEGORY[b.category].nameKo}라 보충할 수 없습니다`);
+  if (opts.bottleMl !== t.bottleMl) errors.push(`병 크기를 「${t.name}」과 같은 ${t.bottleMl}ml로 맞추세요`);
+  if (Math.abs(b.finalAbv - t.abv) > 0.0005) errors.push(`도수를 「${t.name}」과 같은 ${(t.abv * 100).toFixed(1)}%로 맞추세요`);
+  if ((b.finish ?? null) !== (t.finish ?? null)) errors.push(t.finish ? `「${t.name}」은 ${finishLabel(t.finish)} 피니시 제품 — 같은 피니시 원액만 보충할 수 있습니다` : `「${t.name}」은 피니시 표기가 없는 제품 — 피니싱한 원액은 새 제품으로 내세요`);
+  if (t.ageYears != null && b.ageYears != null && b.ageYears < t.ageYears) warnings.push(`숙성 표기가 ${t.ageYears}년 → ${b.ageYears}년으로 내려갑니다 (가장 어린 원액 기준)`);
+  if (t.premiumLabel && !b.premiumLabel) warnings.push('이 원액은 프리미엄 표기 조건을 못 채워 제품의 표기가 빠집니다');
+  if (t.traditional && !b.traditional) warnings.push('이 원액은 전통주 주세 경감 대상이 아니라 제품의 경감 표기가 빠집니다');
+  if (t.specialty && t.specialty !== b.specialty) warnings.push('이 원액은 특산물 표기 조건을 못 채워 제품의 특산물 표기가 빠집니다');
+}
+
+/** 두 비중 목록(통 구성)을 병 수로 가중 평균 */
+function mergeCaskMix(a: Product['caskMix'], wa: number, b: Product['caskMix'], wb: number): Product['caskMix'] {
+  const m = new Map<CaskTypeId, number>();
+  for (const x of a ?? []) m.set(x.typeId, (m.get(x.typeId) ?? 0) + x.share * wa);
+  for (const x of b ?? []) m.set(x.typeId, (m.get(x.typeId) ?? 0) + x.share * wb);
+  const tot = wa + wb;
+  const out = [...m.entries()].map(([typeId, v]) => ({ typeId, share: Math.round((v / tot) * 1000) / 1000 })).filter((x) => x.share > 0).sort((x, y) => y.share - x.share);
+  return out.length ? out : undefined;
+}
+
+/** 보충 뒤 제품 — 남은 재고(old)와 새 병(batch)의 가중 평균. 이름·출고가·출시 달·판매 기록·블렌딩 목표 기록은 그대로 */
+export function restockedProduct(old: Product, batch: Product): Product {
+  const a = Math.max(0, old.stockBottles);
+  const b = batch.stockBottles;
+  const w = a + b > 0 ? b / (a + b) : 1;
+  const avg = (x: number, y: number) => x + (y - x) * w;
+  const flavor = weightedAverage([{ flavor: old.flavor, weight: a }, { flavor: batch.flavor, weight: b }].filter((x) => x.weight > 0));
+  const caskMix = mergeCaskMix(old.caskMix, a, batch.caskMix, b);
+  const minAge = old.ageYears == null || batch.ageYears == null ? (old.ageYears ?? batch.ageYears) : Math.min(old.ageYears, batch.ageYears);
+  const merged: Product = {
+    ...old,
+    ageYears: minAge,
+    oakMonths: Math.min(old.oakMonths ?? batch.oakMonths ?? 0, batch.oakMonths ?? old.oakMonths ?? 0),
+    flavor,
+    hex: hexOf(flavor),
+    quality: Math.round(avg(old.quality, batch.quality) * 10) / 10,
+    typicity: Math.round(avg(old.typicity, batch.typicity) * 10) / 10,
+    style: w > 0.5 ? batch.style : old.style,
+    sourcedShare: avg(old.sourcedShare, batch.sourcedShare),
+    sourcedPrestige: avg(old.sourcedPrestige ?? 1, batch.sourcedPrestige ?? 1),
+    premiumLabel: !!old.premiumLabel && !!batch.premiumLabel,
+    stockBottles: a + b,
+    unitCost: Math.round(avg(old.unitCost, batch.unitCost)),
+  };
+  if (!(old.traditional && batch.traditional)) delete merged.traditional;
+  if (!(old.specialty && old.specialty === batch.specialty)) delete merged.specialty;
+  if (!(old.localIngredient && batch.localIngredient)) delete merged.localIngredient;
+  if (caskMix) merged.caskMix = caskMix; else delete merged.caskMix;
+  return merged;
+}
+
 export function executeBlend(s: GameState, components: BlendComponent[], opts: BottleOptions): { error?: string; product?: Product; reveal?: BlendReveal } {
   const p = previewBlend(s, components, opts);
   if (!p.ok || !p.category || !p.evaluation) return { error: p.errors.join(' / ') || '병입할 수 없습니다' };
@@ -370,6 +438,15 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     ...(caskMix.length ? { caskMix } : {}),
     ...(opts.dutyFreeOnly && p.dfEdition ? { dutyFreeOnly: true, dfEdition: { ...p.dfEdition } } : {}),
   };
+  // 기존 제품에 재고 보충 (P-PROD-14) — 새 제품을 만들지 않고 가중 평균으로 합친다. 출시 효과·면세 판·블렌딩 목표 채점은 새 제품에만
+  if (opts.restockId) {
+    const idx = s.commerce.products.findIndex((x) => x.id === opts.restockId);
+    const merged = restockedProduct(s.commerce.products[idx]!, product);
+    s.commerce.products[idx] = merged;
+    s.finance.cash -= Math.round((packagingUnitCost(s, opts) + BOTTLING_LABOR_PER_BOTTLE) * p.bottles);
+    const actualBatch = hexOf(product.flavor);
+    return { product: merged, reveal: { targetLabel: null, score: null, predicted, actual: actualBatch, notes: p.kind !== 'malt' && p.kind !== 'grain' ? [] : predicted ? [...revealNotes(predicted, actualBatch), ...(unknownShare >= 0.05 ? [`샘플 기록 없는 원액 ${Math.round(unknownShare * 100)}%는 예상 밖이었다`] : [])] : ['샘플 기록 없이 병입 — 예상 없이 섞었다'] } };
+  }
   if (p.dfEdition && opts.dutyFreeOnly) s.site.dfSeries = { vol: p.dfEdition.vol, streak: p.dfEdition.streak };
   // 첫 위스키 출시: 비지터 센터 입소문이 높으면 오픈런 (3개월간 수요 × (1 + 2 × 입소문))
   if (isWhiskyCategory(product.category) && !s.commerce.products.some((x) => isWhiskyCategory(x.category)) && !s.commerce.productArchive.some((x) => isWhiskyCategory(x.category)) && s.commerce.localBuzz > 0.05) {
