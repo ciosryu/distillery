@@ -2,7 +2,8 @@ import { HEX_AXES, HEX_LABEL, hexDistance, hexOf, matchScore, mixHex, perceivedH
 import { clamp } from './flavor';
 import { RARE_EXTRACT_BOOST } from './maturation';
 import { rngFor, type Rng } from './rng';
-import type { BlendCommission, Cask, GameState, Hex, HexAxis, MonthReport, SampleRecord, Staff, TrendShift } from './types';
+import type { AxisId, BlendCommission, Cask, GameState, Hex, HexAxis, MonthReport, ProductCategory, SampleRecord, SpiritKind, Staff, TrendShift } from './types';
+import { CATEGORY } from './content/categories';
 import type { BlendComponent, BottleOptions } from './blending';
 import { nid, staffOf } from './util';
 
@@ -65,6 +66,28 @@ export function readCask(s: GameState, cask: Cask): Hex | null {
   return seen;
 }
 
+// ───────────── 위스키가 아닌 원액의 읽기 — 그 주종의 레이더 축 (P-PROD-13, 2차 플레이테스트 2026-11-08) ─────────────
+// 육각형(피트·우디·스위트…)은 위스키 축이라 옹기 소주 샘플로는 소주 그래프(누룩·쌀, 청사과·배…)를 그릴 수 없었고, "강한 향"에 피트가 떴다.
+// 소주·진·고량주는 샘플을 뜰 때 그 주종 레이더 축도 같은 크기의 오차로 읽어 기록한다. 육각형·추정 품질 읽기는 그대로(난수 스트림이 따로다)
+
+/** 그 주종 레이더 축으로 읽는 원액 → 축을 고르는 범주 (몰트·그레인은 육각형만) */
+const AXES_CATEGORY: Partial<Record<SpiritKind, ProductCategory>> = { soju: 'soju_distilled', gin: 'gin', baijiu: 'baijiu' };
+/** 이 원액의 샘플 읽기에 쓰는 레이더 축 — 몰트·그레인(육각형)이면 null */
+export const sampleAxesOf = (kind: SpiritKind): AxisId[] | null => { const c = AXES_CATEGORY[kind]; return c ? CATEGORY[c].radarAxes : null; };
+
+/** 블렌더가 지금 캐스크를 맛보면 읽을 레이더 축 값 — 샘플을 뜨는 순간(recordSample)에만 쓴다. 몰트·그레인은 null */
+export function readCaskAxes(s: GameState, cask: Cask): Partial<Record<AxisId, number>> | null {
+  const lot = cask.contents;
+  const axes = lot ? sampleAxesOf(lot.kind) : null;
+  if (!lot || !axes) return null;
+  const blender = blenderOf(s);
+  const sd = sampledSigma(blender, cask.samples ?? 0);
+  const r = rngFor(s.seed, 0, `perceive-axes:${cask.id}:${blender?.id ?? 'owner'}:${cask.samples ?? 0}`);
+  const out: Partial<Record<AxisId, number>> = {};
+  for (const a of axes) out[a] = Math.max(0, (lot.flavor[a] ?? 0) + r.normal(0, sd));
+  return out;
+}
+
 // ───────────── 샘플 기록 — "아는 값" (S-10, #136) ─────────────
 // readCask는 지금의 참 향미에 고정된 오차를 더해 매번 다시 계산한다 → 샘플 뒤에도 추정치가 참값을 따라 움직인다(정보 누수).
 // MVP 숙성고 화면과 블렌딩 테이블(#157)은 대신 샘플을 뜬 그 순간의 읽기를 남긴 기록(sampleLog)만 본다
@@ -79,7 +102,8 @@ export function recordSample(s: GameState, cask: Cask, trueQuality: number): Sam
   const hex = readCask(s, cask)!;
   const sigma = readSigma(s, cask);
   const r = rngFor(s.seed, 0, `sample-quality:${cask.id}:${cask.samples ?? 0}`);
-  const rec: SampleRecord = { month: s.month, hex, sigma, estQuality: Math.round(clamp(trueQuality + r.normal(0, sigma * QUALITY_SIGMA_PER_HEX), 0, 100)) };
+  const axes = readCaskAxes(s, cask);
+  const rec: SampleRecord = { month: s.month, hex, sigma, estQuality: Math.round(clamp(trueQuality + r.normal(0, sigma * QUALITY_SIGMA_PER_HEX), 0, 100)), ...(axes ? { axes } : {}) };
   cask.sampleLog = [...(cask.sampleLog ?? []), rec].slice(-SAMPLE_LOG_KEPT);
   return rec;
 }
@@ -111,6 +135,8 @@ export interface KnownRead {
   from: 'own' | 'sibling';
   /** 기록을 뜬 캐스크 id — 같은 기록을 빌린 통들은 오차가 함께 움직인다(독립이 아니다) */
   sourceId: string;
+  /** 소주·진·고량주의 레이더 축 읽기 (P-PROD-13). 몰트·그레인이나 옛 기록은 없다 */
+  axes?: Partial<Record<AxisId, number>>;
 }
 
 /** 형제 = 같은 배치·같은 캐스크 종류·같은 달 통입 — 다른 달에 통입한 통은 숙성 개월이 달라 기록을 빌리지 않는다 (#166) */
@@ -147,7 +173,7 @@ export function knownReads(s: GameState): Map<string, KnownRead> {
         if (!rec || x.rec.month > rec.month) { rec = x.rec; sourceId = x.id; }
       }
     }
-    if (rec) out.set(c.id, { hex: rec.hex, sigma: rec.sigma, month: rec.month, estQuality: rec.estQuality, from: own ? 'own' : 'sibling', sourceId });
+    if (rec) out.set(c.id, { hex: rec.hex, sigma: rec.sigma, month: rec.month, estQuality: rec.estQuality, from: own ? 'own' : 'sibling', sourceId, ...(rec.axes ? { axes: rec.axes } : {}) });
   }
   return out;
 }
