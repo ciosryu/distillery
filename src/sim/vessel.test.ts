@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { autoSample, samplingCapacity, SAMPLING, stalestCasks, evaluate, lotCategory, previewBatch, restLot, type Cask, type SpiritLot, emptyCaskOf, FINISH, finishOf, advanceMonth, advanceMonths, applyAction, lastSample, lotQuality, matureCask, matureNonWood, matureVessel, migrateSave, newGame, newScenarioGame, readCask, SAMPLE_LOG_KEPT, SAVE_VERSION, vesselMaterial, emptyCask, type GameState, AUTO_SAMPLE_EXPENSE } from '.';
+import { AUTO_SAMPLE_MIN_AGE, autoSample, samplingCapacity, SAMPLING, stalestCasks, evaluate, lotCategory, previewBatch, restLot, type Cask, type SpiritLot, emptyCaskOf, FINISH, finishOf, advanceMonth, advanceMonths, applyAction, lastSample, lotQuality, matureCask, matureNonWood, matureVessel, migrateSave, newGame, newScenarioGame, readCask, SAMPLE_LOG_KEPT, SAVE_VERSION, vesselMaterial, emptyCask, type GameState, AUTO_SAMPLE_EXPENSE } from '.';
 import fixture from './fixtures/save-v8.json';
 
 /** 몰트 원액을 캐스크 1통에 넣은 게임 */
@@ -278,10 +278,17 @@ describe('자동 샘플 (P-PROD-11, 오너 요청 2026-11-08)', () => {
     const r = t.history.reports.at(-1)!;
     expect(r.expenses[AUTO_SAMPLE_EXPENSE]).toBe(got.length * SAMPLING.cost);
     expect(r.notes.some((n) => n.startsWith('자동 샘플'))).toBe(true);
-    // 다음 달에도 직접 안 뜨면 이번엔 아직 안 뜬 통부터
+    // 다음 달에는 아직 안 뜬 통만 — 방금 뜬 통은 6개월이 지나야 다시 자동으로 뜬다(통당 최대 횟수를 아끼려고)
     const u = advanceMonth(t);
     const next = sampledIn(u, t.month);
-    expect(next.filter((id) => got.includes(id))).toHaveLength(Math.max(0, next.length - (8 - got.length)));
+    expect(next.filter((id) => got.includes(id))).toEqual([]);
+    expect(next).toHaveLength(8 - got.length);
+    // 6개월 뒤에는 다시 뜬다
+    let v = u;
+    for (let i = 0; i < AUTO_SAMPLE_MIN_AGE; i++) v = advanceMonth(v);
+    const total = v.inventory.casks.filter((c) => c.contents).reduce((t2, c) => t2 + (c.samples ?? 0), 0);
+    expect(total).toBeGreaterThan(8);
+    expect(Math.max(...v.inventory.casks.filter((c) => c.contents).map((c) => c.samples ?? 0))).toBeLessThanOrEqual(2);
   });
 
   it('한 통이라도 직접 뜬 달에는 자동 샘플이 없다', () => {

@@ -190,26 +190,37 @@ export function stalestCasks(s: GameState, n: number, known: Map<string, KnownRe
 
 /** 자동 샘플 비용 항목 이름 (월 결산표에 그대로 보인다) */
 export const AUTO_SAMPLE_EXPENSE = '자동 샘플';
+/**
+ * 자동 샘플은 자기 기록이 이 개월 수보다 오래된 통(또는 기록 없는 통·형제 기록만 있는 통)만 뜬다 `[튜닝]`.
+ * 없으면 통 수가 적은 판에서 매달 한두 달 전에 뜬 통을 다시 떠 통당 최대 횟수(SAMPLING.maxSamples)를 1년 안에 다 써 버린다 —
+ * 12년 플래그십을 고를 때 더 뜰 수 없게 된다(실측: 8통 판, 13개월에 대부분 6회 소진). 직접 고를 때는 제한 없다
+ */
+export const AUTO_SAMPLE_MIN_AGE = 6;
+
+/** 이번 달에 자동 샘플이 뜰 통 — 그 달에 직접 뜬 기록이 있으면 빈 목록. 화면 안내도 같은 목록을 쓴다 */
+export function autoSamplePicks(s: GameState, known: Map<string, KnownRead> = knownReads(s), affordable = Infinity): Cask[] {
+  if (!s.scenario) return [];
+  if (s.inventory.casks.some((c) => c.contents && c.sampleLog?.at(-1)?.month === s.month)) return [];
+  const stale = stalestCasks(s, Infinity, known).filter((c) => { const own = c.sampleLog?.at(-1); return !own || s.month - own.month >= AUTO_SAMPLE_MIN_AGE; });
+  return stale.slice(0, Math.max(0, Math.min(samplingCapacity(s), affordable)));
+}
 
 /**
- * 자동 샘플 (P-PROD-11, 오너 요청 2026-11-08) — **그 달에 직접 뜬 샘플이 하나도 없으면** 달이 넘어갈 때 오래 안 뜬 통부터 여력만큼 뜬다.
+ * 자동 샘플 (P-PROD-11, 오너 요청 2026-11-08) — **그 달에 직접 뜬 샘플이 하나도 없으면** 달이 넘어갈 때 오래 안 뜬 통부터 여력만큼 뜬다(자기 기록이 AUTO_SAMPLE_MIN_AGE개월 넘은 통만).
  * 직접 뜬 달은 건드리지 않는다. 시나리오(MVP) 게임만 — 샌드박스는 블렌딩 테이블로 직접 관리한다.
  * 틱 3단계(숙성) 맨 앞에서 부른다 — 숙성 전 상태를 읽어, 플레이어가 그 달에 눌렀을 때와 같다. 월 여력(samplesThisMonth)은 새 달 몫이라 쓰지 않는다.
  * 현금이 모자라면 낼 수 있는 만큼만. 뜬 통 수
  */
 export function autoSample(s: GameState, report: MonthReport, qualityOf: (lot: NonNullable<Cask['contents']>) => number): number {
-  if (!s.scenario) return 0;
-  // 이번 달에 직접 뜬 샘플(또는 실험실 분석)이 있으면 그대로 둔다
-  if (s.inventory.casks.some((c) => c.contents && c.sampleLog?.at(-1)?.month === s.month)) return 0;
-  const affordable = Math.max(0, Math.floor(s.finance.cash / SAMPLING.cost));
-  const picks = stalestCasks(s, Math.min(samplingCapacity(s), affordable));
+  // 시나리오 게임만, 이번 달에 직접 뜬 샘플(또는 실험실 분석)이 없을 때, 6개월 넘게 안 뜬 통만, 현금 한도 안에서
+  const picks = autoSamplePicks(s, knownReads(s), Math.max(0, Math.floor(s.finance.cash / SAMPLING.cost)));
   if (!picks.length) return 0;
   const blender = blenderOf(s);
   const found = picks.filter((c) => takeSample(s, c, blender, qualityOf)).map((c) => c.id);
   const cost = picks.length * SAMPLING.cost;
   s.finance.cash -= cost;
   report.expenses[AUTO_SAMPLE_EXPENSE] = (report.expenses[AUTO_SAMPLE_EXPENSE] ?? 0) + cost;
-  report.notes.push(`자동 샘플 ${picks.length}통 (${cost.toLocaleString()}원) — 이번 달 직접 뜬 샘플이 없어 오래 안 뜬 통부터 떴다: ${picks.map((c) => c.id).join(', ')}${found.length ? ` · 레어 캐스크 발견: ${found.join(', ')}` : ''}`);
+  report.notes.push(`자동 샘플 ${picks.length}통 (${cost.toLocaleString()}원) — 이번 달 직접 뜬 샘플이 없어 ${AUTO_SAMPLE_MIN_AGE}개월 넘게 안 뜬 통부터 떴다: ${picks.map((c) => c.id).join(', ')}${found.length ? ` · 레어 캐스크 발견: ${found.join(', ')}` : ''}`);
   return picks.length;
 }
 
