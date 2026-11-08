@@ -12,12 +12,14 @@
 //          'at27' = 27개월째 생산 지시를 모두 0으로(2차 판 그대로 — 23개월째 몰트, 27개월째 전부)
 //          'y2to5' = 2~5년 차 몰트를 월 1배치로 줄인다(1차 판, 117개월 파산 — 7~8년 차 위스키 공급 끊김)
 //   visitor 비지터 센터 베이직 투어를 시작 때 짓는가
+//   SPLIT=1 이면 15년 순자산 분해 표를 더 낸다(현금·대출·원액 현물가·제품, 위스키 매출 시기, 원액 평가액 증가 대 생산비 — #191 정정, mvp.md §7.6)
 //   bigMalt 몰트 5배치 + 스테인리스 발효조 2기(끄면 몰트 3배치) · farm 농업경영체 등록(전통주 주세 경감) — 둘 다 켜면 mvp-survival '균형'(FARM=1)과 같은 규모
 // 파산 규칙: 지금(월말 마이너스 3개월 연속, step.ts) + 결정 대기 16의 "6개월로 완화"를 같은 판에서 따로 센다(시뮬레이션 상태의 연속 개월을 스크립트가 덮어 써서 3개월 파산을 막고, 6개월은 스크립트가 센다).
 import { advanceMonth, applyAction, newScenarioGame, previewBlend, warehouseCapacity, type Action, type GameState, type ProductCategory } from '../../src/sim';
 import { EVENTS } from '../../src/sim/content/events';
 import { cashAlert } from '../../src/ui/alerts';
 import { netWorth } from '../../src/sim/progress';
+import { isBulkKind, spotBidPerLPA } from '../../src/sim/bulk';
 
 const SEEDS = Number(process.argv[2] ?? 10);
 const MONTHS = Number(process.argv[3] ?? 180);
@@ -118,7 +120,12 @@ function finance(s: GameState, p: Policy): GameState {
   return s;
 }
 
-interface Row { cutMonth: number; policy: string; bankrupt3: number; bankrupt6: number; minCash: number; minCashMonth: number; loansMax: number; firstWhisky: number; nw: number; goal: boolean; verdict: string; whiskyY6to9: number }
+/** 순자산 중 원액(탱크·캐스크) 현물 매각가 — progress.netWorth와 같은 식 */
+const spiritsValue = (s: GameState) => [...s.inventory.lots, ...s.inventory.casks.filter((c) => c.contents && !c.owner).map((c) => c.contents!)]
+  .reduce((t, l) => t + (isBulkKind(l) ? l.volumeL * l.abv * spotBidPerLPA(s, l) : 0), 0);
+
+interface Split { cash: number; loans: number; spirits: number; products: number; whiskyRevY6to9: number; whiskyRevY10to15: number; spiritsGainY2to5: number; productionY2to5: number }
+interface Row { split: Split; cutMonth: number; policy: string; bankrupt3: number; bankrupt6: number; minCash: number; minCashMonth: number; loansMax: number; firstWhisky: number; nw: number; goal: boolean; verdict: string; whiskyY6to9: number }
 
 function play(p: Policy, seed: number): Row {
   let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: TIER, loanAmount: LOAN, seed });
@@ -127,6 +134,8 @@ function play(p: Policy, seed: number): Row {
   if (p.bigMalt) for (let i = 0; i < 2; i++) s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
   if (p.farm) s = act(s, { type: 'buyEquipment', catalogId: 'kr_farm_registration' });
   s = setOrders(s, SOJU_BATCHES, maltBatches(p));
+  const split: Split = { cash: 0, loans: 0, spirits: 0, products: 0, whiskyRevY6to9: 0, whiskyRevY10to15: 0, spiritsGainY2to5: 0, productionY2to5: 0 };
+  let spirits12 = 0;
   let bankrupt3 = -1, bankrupt6 = -1, neg = 0, cut = false, cutMonth = -1, minCash = s.finance.cash, minCashMonth = 0, loansMax = 0, whiskyY6to9 = 0;
   const cats = () => new Map([...s.commerce.products, ...s.commerce.productArchive].map((x) => [x.id, x.category]));
   for (let m = 0; m < MONTHS; m++) {
@@ -145,12 +154,17 @@ function play(p: Policy, seed: number): Row {
     if (neg >= 6) { bankrupt6 = s.month; break; }
     if (s.finance.cash < minCash) { minCash = s.finance.cash; minCashMonth = s.month; }
     loansMax = Math.max(loansMax, s.finance.loans.reduce((x, l) => x + l.balance, 0));
+    if (s.month === 12) spirits12 = spiritsValue(s);
+    if (s.month === 60) split.spiritsGainY2to5 = spiritsValue(s) - spirits12;
+    if (s.month > 12 && s.month <= 60) split.productionY2to5 += s.history.reports.at(-1)?.expenses.production ?? 0;
+    if (s.month >= 60) { const c = cats(); const rev = (s.history.reports.at(-1)?.sales ?? []).filter((x) => c.get(x.productId) === 'whisky').reduce((a, x) => a + x.revenue, 0); if (s.month < 108) split.whiskyRevY6to9 += rev; else split.whiskyRevY10to15 += rev; }
     if (s.month >= 60 && s.month < 108) { const c = cats(); whiskyY6to9 += (s.history.reports.at(-1)?.sales ?? []).filter((x) => c.get(x.productId) === 'whisky').reduce((a, x) => a + x.bottles, 0); }
   }
   const alive = bankrupt6 < 0;
+  Object.assign(split, { cash: s.finance.cash, loans: s.finance.loans.reduce((x, l) => x + l.balance, 0), spirits: spiritsValue(s), products: s.commerce.products.reduce((x, q) => x + q.stockBottles * q.unitCost, 0) });
   const nw = alive ? netWorth(s) : NaN;
   const v = s.progress.verdict;
-  return { cutMonth, policy: p.name, bankrupt3, bankrupt6, minCash, minCashMonth, loansMax, firstWhisky: t.firstWhisky, nw, goal: alive && bankrupt3 < 0 && !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', whiskyY6to9 };
+  return { split, cutMonth, policy: p.name, bankrupt3, bankrupt6, minCash, minCashMonth, loansMax, firstWhisky: t.firstWhisky, nw, goal: alive && bankrupt3 < 0 && !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', whiskyY6to9 };
 }
 
 const eok = (v: number) => (Number.isFinite(v) ? `${(v / 1e8).toFixed(2)}억` : '—');
@@ -161,9 +175,23 @@ const mo = (v: number) => (Number.isFinite(v) ? `${Math.round(v)}월` : '—');
 console.log(`사람처럼 하는 MVP 판 — 한국 경기, ${TIER}, 시작 대출 ${eok(LOAN)}, ${SEEDS}시드 × ${MONTHS}개월, 이벤트 끔, 소주 ${SOJU_BATCHES}·언피티드 몰트 3배치(확장 정책은 5배치)`);
 console.log('| 정책 | 파산 (3개월 규칙, 중앙 월) | 파산 (6개월 규칙, 중앙 월) | 최저 현금 중앙값 (그 달) | 최대 대출 잔액 평균 | 첫 위스키 | 6~9년 차 위스키 판매(병, 평균) | 15년 순자산 평균(3개월 규칙 생존) | 순자산 목표 달성 |');
 console.log('|---|---|---|---|---|---|---|---|---|');
+const ALL = new Map<string, Row[]>();
 for (const p of POLICIES) {
   const rows = Array.from({ length: SEEDS }, (_, i) => play(p, i + 1));
+  ALL.set(p.name, rows);
   const b3 = rows.filter((r) => r.bankrupt3 >= 0), b6 = rows.filter((r) => r.bankrupt6 >= 0);
   const alive3 = rows.filter((r) => r.bankrupt3 < 0 && r.bankrupt6 < 0);
   console.log(`| ${p.name} | ${b3.length}/${SEEDS} (${mo(med(b3.map((r) => r.bankrupt3)))}) | ${b6.length}/${SEEDS} (${mo(med(b6.map((r) => r.bankrupt6)))}) | ${eok(med(rows.map((r) => r.minCash)))} (${mo(med(rows.map((r) => r.minCashMonth)))}) | ${eok(avg(rows.map((r) => r.loansMax)))} | ${mo(med(rows.map((r) => r.firstWhisky).filter((x) => x >= 0)))} | ${Math.round(avg(rows.map((r) => r.whiskyY6to9))).toLocaleString()} | ${eok(avg(alive3.map((r) => r.nw)))} | ${rows.filter((r) => r.goal).length}/${SEEDS} |${rows.some((r) => r.cutMonth >= 0) ? ` 생산 중단 ${mo(med(rows.map((r) => r.cutMonth).filter((x) => x >= 0)))}` : ''}`);
+}
+
+if (process.env.SPLIT) {
+  // 15년 순자산이 어디서 오나 (3개월 규칙 생존 판 평균) — 원액 현물가가 생산비보다 덜 자란다면 "숙성 재고 평가액" 표시는 생산을 말리는 쪽으로 읽힌다
+  console.log('\n| 정책 | 15년 순자산 | = 현금 | − 대출 | + 원액 현물가 | + 제품 재고 | 위스키 매출 6~9년 차 | 10~15년 차 | 2~5년 차 원액 평가액 증가 | 같은 기간 생산비(소주 포함) |');
+  console.log('|---|---|---|---|---|---|---|---|---|---|');
+  for (const p of POLICIES) {
+    const alive = (ALL.get(p.name) ?? []).filter((r) => r.bankrupt3 < 0 && r.bankrupt6 < 0);
+    if (!alive.length) { console.log(`| ${p.name} | 생존 판 없음 |||||||||`); continue; }
+    const a = (k: keyof Split) => eok(avg(alive.map((r) => r.split[k])));
+    console.log(`| ${p.name} | ${eok(avg(alive.map((r) => r.nw)))} | ${a('cash')} | ${a('loans')} | ${a('spirits')} | ${a('products')} | ${a('whiskyRevY6to9')} | ${a('whiskyRevY10to15')} | ${a('spiritsGainY2to5')} | ${a('productionY2to5')} |`);
+  }
 }
