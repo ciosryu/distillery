@@ -190,6 +190,8 @@ export interface Product {
   traditional?: boolean;
   /** 피니싱 캐스크 종류 — 라벨 "○○ 캐스크 피니시" (PRD §5.2). 없으면 피니싱 안 함. 병입 규칙은 PROD, 라벨의 판매 효과(럭셔리 라벨 항·매니아 선호, §11.2)는 MKT (v14) */
   finish?: CaskTypeId;
+  /** 섞은 원액의 통 구성 — 마지막에 담겨 있던 통 종류별 알코올(LPA) 비중, 큰 순. 탱크 원액은 빠진다. 없으면 기록 전 제품(v15 이전)이거나 캐스크 원액이 없다. 표시용(동작 없음, P-PROD-10) */
+  caskMix?: { typeId: CaskTypeId; share: number }[];
   stockBottles: number;
   /** 출고가(세전) / 병 */
   price: number;
@@ -791,7 +793,7 @@ export interface ScenarioState {
 }
 
 export interface GameState {
-  version: 14;
+  version: 15;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;
