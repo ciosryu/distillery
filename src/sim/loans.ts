@@ -7,6 +7,7 @@ import { heatingCost, siteOverhead } from './sites';
 import { caskStorageCost } from './casks';
 import { secondBrandMonthlyCost } from './brands';
 import { settleForwards } from './forwards';
+import { calendar } from './util';
 
 // 대출·재고 담보대출·월 고정비·재무 단계(틱 7) (파트 MGT, 결정 #144 — 파일 쪼개기로 옮겨 왔다. 규칙·수치 불변)
 
@@ -46,11 +47,10 @@ export function inventoryMarginCall(s: GameState, report: MonthReport): number {
 }
 
 
-/** 매달 나가는 고정 지출 예상 — 대시보드 "월 고정비"·사업 계획서 미리보기. 세컨드 브랜드 유지비·마케팅비(판매 단계가 낸다, #155)도 넣는다 */
+/** 매달 나가는 고정 지출 예상 — 대시보드 "월 고정비"·증류소 탭 "매달 나가는 돈"·사업 계획서 미리보기·이사회 현금 기준·영업중단 보험금.
+ *  다음 결산(7 재무 단계 + 판매 단계의 마케팅비)이 실제로 낼 돈과 맞춘다: 세컨드 브랜드 유지비·마케팅비(#155), 다음 달 난방비(겨울만), 완공된 설비의 유지비만 */
 export function monthlyFixedCost(s: GameState): number {
-  return s.hr.staff.reduce((t, x) => t + x.salary, 0) + siteOverhead(s) + s.commerce.marketingBudget + secondBrandMonthlyCost(s) + caskStorageCost(s) +
-    s.production.equipment.reduce((t, e) => t + (EQUIPMENT[e.catalogId]?.maintenance ?? 0), 0) +
-    s.finance.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0) + s.finance.insurance.reduce((t, x) => t + x.premiumPerMonth, 0);
+  return monthlyFixedBreakdown(s).reduce((t, x) => t + x.amount, 0);
 }
 
 /** 월 고정비 예상의 내역 (#181 안 A — 증류소 탭 "매달 나가는 돈"). 합은 monthlyFixedCost와 같다. adjustable = 플레이어가 바로 조절할 수 있는 줄 */
@@ -58,8 +58,13 @@ export function monthlyFixedBreakdown(s: GameState): { id: string; label: string
   return [
     { id: 'salaries', label: '급여', amount: s.hr.staff.reduce((t, x) => t + x.salary, 0) },
     { id: 'overhead', label: '관리비', amount: siteOverhead(s) },
-    { id: 'marketing', label: '마케팅', amount: s.commerce.marketingBudget + secondBrandMonthlyCost(s), adjustable: true },
-    { id: 'maintenance', label: '설비 유지비', amount: s.production.equipment.reduce((t, e) => t + (EQUIPMENT[e.catalogId]?.maintenance ?? 0), 0) },
+    // 다음 결산 달의 난방비 (runFinance와 같은 달 — 결산은 s.month를 처리한다)
+    { id: 'heating', label: '난방비', amount: heatingCost(s, calendar(s).monthOfYear) },
+    // 마케팅 입력칸이 바꾸는 하우스 예산만 — 세컨드 브랜드 비용은 아래 줄 (#100 검토)
+    { id: 'marketing', label: '마케팅', amount: s.commerce.marketingBudget, adjustable: true },
+    { id: 'secondBrand', label: '세컨드 브랜드', amount: secondBrandMonthlyCost(s) },
+    // 짓는 중인 설비는 유지비를 내지 않는다 (runFinance와 같은 조건)
+    { id: 'maintenance', label: '설비 유지비', amount: s.production.equipment.reduce((t, e) => t + (e.readyMonth <= s.month ? (EQUIPMENT[e.catalogId]?.maintenance ?? 0) : 0), 0) },
     { id: 'storage', label: '통 보관비', amount: caskStorageCost(s) },
     { id: 'loans', label: '대출 원리금', amount: s.finance.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0) },
     { id: 'insurance', label: '보험료', amount: s.finance.insurance.reduce((t, x) => t + x.premiumPerMonth, 0) },

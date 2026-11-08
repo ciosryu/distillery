@@ -1,6 +1,9 @@
 // 위기 경고·이번 달 할 일·지난달 현금 흐름·대출 상환 예정 — 화면 (코어 UI, 1차 MVP 플레이테스트 대응 ①~④, 계산은 alerts.ts)
 // 파일 이름이 alerts.ts와 대소문자만 다르면 대소문자를 가리지 않는 파일 시스템(macOS·Windows 기본)에서 './Alerts'가 alerts.ts로 풀릴 수 있어 AlertsView로 둔다
 import { BANKRUPT_AFTER_MONTHS, monthLabel } from '../sim';
+import { productionValue } from '../sim/economics';
+import { monthlyFixedCost } from '../sim/loans';
+import { won } from './format';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
 import { cashAlert, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, type TodoTarget } from './alerts';
@@ -48,10 +51,29 @@ export function CashBanner() {
         <Button small variant={danger ? 'primary' : 'secondary'} onClick={() => go({ tab: 'finance' })}>대출·급전 받기</Button>
         <Button small onClick={() => go({ tab: 'b2b' })}>원액 현물 판매</Button>
         <Button small onClick={() => go({ tab: 'sales' })}>값 낮춰 재고 팔기</Button>
-        {s.scenario && <Button small variant="ghost" onClick={() => go({ anchor: 'mvp-orders' })}>생산 지시 줄이기</Button>}
+        {s.scenario && <Button small variant="ghost" onClick={() => go({ anchor: 'mvp-fixed' })}>매달 나가는 돈 줄이기</Button>}
         <Button small variant="ghost" onClick={() => go({ tab: 'dashboard' })}>월 결산표</Button>
       </div>
+      <ProductionTruth s={s} />
     </div>
+  );
+}
+
+/**
+ * 생산을 멈춰도 아끼는 돈은 작다 (#185, 2차 MVP 플레이테스트) — 2차 판은 이 경고의 [생산 지시 줄이기]를 보고 생산을 0으로 했고
+ * (오너 답변), 생산비 월 약 300만을 아끼는 대신 3~5년 차 위스키를 잃었다. 버튼을 빼고 사실을 보인다
+ */
+function ProductionTruth({ s }: { s: Parameters<typeof productionValue>[0] }) {
+  if (!s.scenario) return null;
+  const v = productionValue(s);
+  const fixed = monthlyFixedCost(s);
+  if (!v.perBatch.length) return null;
+  return (
+    <p className="mt-2 text-xs opacity-90">
+      참고: 지금 생산비는 월 <b>{won(v.costPerMonth)}</b>뿐이고 고정비 월 <b>{won(fixed)}</b>은 생산과 상관없이 나간다 — 생산을 멈춰도 이만큼만 아낀다.
+      {v.whiskyBottlesPerYear > 0 && v.pricePerBottle != null && <> 대신 {v.minMonths}개월 뒤부터 해마다 위스키 약 {v.whiskyBottlesPerYear.toLocaleString()}병(≈ 매출 {won(v.whiskyBottlesPerYear * v.pricePerBottle)}, 추정)이 사라진다.</>}
+      {' '}현금은 대출·급전, 원액 현물 판매, 가격, 마케팅·대출 상환 같은 매달 나가는 돈에서 만든다.
+    </p>
   );
 }
 

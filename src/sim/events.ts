@@ -41,14 +41,19 @@ function meets(s: GameState, r: Requirement): boolean {
 }
 
 function eligible(s: GameState, def: EventDef, monthOfYear: number): boolean {
+  return eligibleAt(s, def, s.month, monthOfYear);
+}
+
+/** month 달에 이 이벤트가 일어날 수 있는가 — 지금 상태 기준(조기 경보 #189은 앞으로의 달에 쓴다. 조건은 지금 상태로 대신한다) */
+function eligibleAt(s: GameState, def: EventDef, month: number, monthOfYear: number): boolean {
   // 입지 이벤트 (결정 #86): sites에 있으면 지역과 무관하게 발생, sitesOnly면 그 입지에서만
   const atSite = !!def.sites?.includes(siteOf(s).id);
   if (def.sitesOnly && !atSite) return false;
   if (!atSite && def.regions && !def.regions.includes(s.regionId)) return false;
-  if (def.minMonth != null && s.month < def.minMonth) return false;
+  if (def.minMonth != null && month < def.minMonth) return false;
   if (def.months && !def.months.includes(monthOfYear)) return false;
   const last = s.events.lastFired[def.id];
-  if (last != null && s.month - last < def.cooldown) return false;
+  if (last != null && month - last < def.cooldown) return false;
   if (s.events.forecasts.some((f) => f.defId === def.id) || s.events.pending.some((p) => p.defId === def.id)) return false;
   return (def.requires ?? []).every((r) => meets(s, r));
 }
@@ -260,6 +265,42 @@ export function resolvePending(s: GameState, pendingId: string, choiceIndex: num
   return text;
 }
 
+/** 이벤트의 월 발생 판정 확률 — 지역 분류 가중 × 입지 가중 × 전체 배수 (runEvents와 조기 경보가 같은 값을 쓴다) */
+function rollChance(def: EventDef, region: ReturnType<typeof regionOf>, site: ReturnType<typeof siteOf>): number {
+  return def.chance * (region.eventWeights[def.category] ?? 1) * (site.eventBoost?.[def.id] ?? 1) * EVENT_RATE;
+}
+
+// ───────────── 매크로 이벤트 조기 경보 (ENG-3, #189) ─────────────
+
+export interface MacroWarning { defId: string; title: string; category: EventDef['category']; month: number; forecastFirst: boolean }
+
+/**
+ * 앞으로 months달 안에 일어날 조짐이 있는 거시(시장·공급·규제) 이벤트 — 연구 ENG-3의 정보 효과. 상태·난수를 바꾸지 않는다.
+ * ① 그 달의 발생 판정(같은 난수 'event-roll')이 성공하고 ② 지금 상태로 본 발생 조건이 맞으면 조짐이 있다.
+ * ③ 다 보이지는 않는다(P2): 감지 확률 detect — 감지 판정은 대상 달 기준 별도 난수라 달이 지나도 같은 조짐이 깜빡이지 않는다.
+ * 월 상한(2건)·상태 변화로 실제로는 안 일어날 수 있다
+ */
+export function macroWarnings(s: GameState, months: number, detect: number): MacroWarning[] {
+  const region = regionOf(s);
+  const site = siteOf(s);
+  const out: MacroWarning[] = [];
+  for (let k = 0; k < months; k++) {
+    const month = s.month + k;
+    const moy = (month % 12) + 1;
+    for (const def of EVENTS) {
+      if (!MACRO_CATEGORIES.includes(def.category)) continue;
+      if (!rngFor(s.seed, month, `event-roll:${def.id}`).chance(rollChance(def, region, site))) continue;
+      if (!eligibleAt(s, def, month, moy)) continue;
+      if (!rngFor(s.seed, month, `macro-warn:${def.id}`).chance(detect)) continue;
+      out.push({ defId: def.id, title: def.title, category: def.category, month, forecastFirst: !!def.forecast });
+    }
+  }
+  return out;
+}
+
+/** 조기 경보가 다루는 거시 이벤트 분류 */
+export const MACRO_CATEGORIES: EventDef['category'][] = ['market', 'supply', 'regulation'];
+
 /** 월초 이벤트 단계: 미선택 이벤트 기본값 처리 → 예보 확정 → 신규 발생 */
 export function runEvents(s: GameState, report: MonthReport, monthOfYear: number): void {
   for (const p of [...s.events.pending]) resolvePending(s, p.id, p.defaultChoice, report);
@@ -277,7 +318,7 @@ export function runEvents(s: GameState, report: MonthReport, monthOfYear: number
   // ③ 그 순간 발생 조건을 확인하고 월 상한까지 발생시킨다 — 옛 방식(무작위 순서로 조건 확인 → 판정 → 상한)과 같은 의미다
   const region = regionOf(s);
   const site = siteOf(s);
-  const rolled = EVENTS.filter((def) => rngFor(s.seed, s.month, `event-roll:${def.id}`).chance(def.chance * (region.eventWeights[def.category] ?? 1) * (site.eventBoost?.[def.id] ?? 1) * EVENT_RATE));
+  const rolled = EVENTS.filter((def) => rngFor(s.seed, s.month, `event-roll:${def.id}`).chance(rollChance(def, region, site)));
   const rank = new Map(rolled.map((def) => [def.id, rngFor(s.seed, s.month, `event-rank:${def.id}`).next()]));
   let fired = 0;
   for (const def of rolled.sort((a, b) => rank.get(a.id)! - rank.get(b.id)!)) {

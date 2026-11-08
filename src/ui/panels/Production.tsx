@@ -5,7 +5,8 @@ import {
   type GameState, type ProfileAxis, type Recipe, type SpiritKind, type YeastId,
 } from '../../sim';
 import type { PresetRecipe } from '../../sim/content/presets';
-import { recipeEconomics, STANDARD_BOTTLE, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from '../../sim/economics';
+import { productionValue, recipeEconomics, STANDARD_BOTTLE, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from '../../sim/economics';
+import { monthlyFixedCost } from '../../sim/loans';
 import { isLocked } from '../../sim/scenario';
 import { useGame } from '../../store/game';
 import { logisticsMultiplier, regionOf, REGIONS, siteOf } from '../../sim/content/regions';
@@ -47,6 +48,7 @@ export function Orders() {
           );
         })}
       </Table>
+      <ProductionValueLine />
       <WhiskySupply />
       <p className="mt-2 text-xs text-stone-500">원액은 매달 말 탱크에 쌓입니다. 비숙성 주종(소주·진·고량주 등)은 바로 병입할 수 있고, 몰트는 {(() => { const w = regionOf(s).whisky; return w.minMonths > 0 ? `캐스크에 통입해 ${w.minMonths}개월 이상 숙성해야 "위스키"로 판매할 수 있습니다` : w.requiresOak ? '캐스크에 넣기만 하면 바로 "위스키"로 팔 수 있지만(법정 최소 숙성 없음) 3년 미만은 어린 위스키라 값을 덜 받습니다' : '숙성 없이도 "위스키"로 팔 수 있지만(법정 최소 숙성 없음) 3년 미만은 어린 위스키라 값을 덜 받습니다'; })()} 설비·인력 한도는 대시보드의 가동 계획에서 확인하세요.</p>
     </Card>
@@ -57,6 +59,48 @@ export function Orders() {
  * 위스키 공급 전망 (#178, 1차 MVP 플레이테스트) — 지금 숙성 중인 통·탱크 몰트·월 생산 지시로 해마다 새로 "위스키"가 되는 병 수를
  * 연 판매 속도와 나란히 보인다. 생산을 줄이면 몇 년 뒤 팔 위스키가 끊긴다는 걸 지시를 바꾸는 자리에서 바로 보게 한다
  */
+/**
+ * 생산비 대 고정비 · 생산이 만드는 미래 위스키를 돈으로 (#185, 2차 MVP 플레이테스트) — 2차 판은 현금을 아끼려고 생산을 0으로 했는데
+ * 생산비는 월 약 300만, 고정비는 월 2,000만~3,000만이었다. 생산을 멈추면 아끼는 돈과 잃는 위스키(매출)를 나란히 보인다
+ */
+function ProductionValueLine() {
+  const s = useGame((g) => g.state);
+  const v = useMemo(() => productionValue(s), [s]);
+  const pace = useMemo(() => whiskyAnnualPace(s), [s]);
+  const fixed = monthlyFixedCost(s);
+  if (!v.perBatch.length) return null;
+  const years = Math.ceil(v.minMonths / 12);
+  const one = v.perBatch[0]!;
+  const money = (bottles: number) => (v.pricePerBottle != null ? <>≈ 매출 <b>{won(bottles * v.pricePerBottle)}</b>{v.marginPerBottle != null && <> · 이익 {won(bottles * v.marginPerBottle)}</>}</> : null);
+  return (
+    <div className={`mt-3 rounded-md border p-3 text-xs ${v.whiskyBottlesPerYear === 0 ? 'border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-100' : 'border-stone-200 bg-white dark:border-stone-700 dark:bg-stone-900'}`}>
+      <div className="text-sm">
+        지금 생산 지시: 월 생산비 <b>{won(v.costPerMonth)}</b>
+        <span className="text-stone-500"> — 매달 나가는 고정비 {won(fixed)}의 {fixed > 0 ? pct(v.costPerMonth / fixed, 0) : '—'}</span>
+      </div>
+      {v.whiskyBottlesPerYear > 0 ? (
+        <div className="mt-0.5">
+          → {v.minMonths}개월 뒤부터 해마다 위스키 약 <b>{num(v.whiskyBottlesPerYear)}병</b> {money(v.whiskyBottlesPerYear)}
+          <span className="text-stone-500"> (1년 숙성 권장 출고가 기준 추정, 만든 만큼 판다고 볼 때)</span>
+        </div>
+      ) : (
+        <div className="mt-0.5 font-medium">
+          ⚠ 몰트 생산 0 — {years}년 뒤부터 새로 팔 위스키가 없다. 생산을 멈춰 아끼는 돈은 몰트 1배치당 월 {won(one.costPerMonth)}뿐이고, 고정비 {won(fixed)}은 그대로 나간다
+        </div>
+      )}
+      {/* 수요 한도 — 만든 만큼 다 팔리지는 않는다 (매출 추정이 과장되지 않게) */}
+      {pace && pace.bottles > 0 && v.whiskyBottlesPerYear > pace.bottles * 1.2 && (
+        <div className="mt-0.5 text-amber-800 dark:text-amber-300">
+          단, 지금 위스키 판매 속도는 연 약 {num(pace.bottles)}병({pace.basis === 'sales' ? '최근 판매' : '수요 추정'})이다 — 그 이상은 바로 팔리지 않는다. 인지도·유통이 오르면 늘고, 남는 원액은 통에서 더 숙성해 비싸게 팔거나 현물로 판다
+        </div>
+      )}
+      <div className="mt-0.5 text-stone-600 dark:text-stone-400">
+        몰트 1배치/월 더(「{one.name}」): 생산비 +{won(one.costPerMonth)}/월 → {v.minMonths}개월 뒤부터 해마다 위스키 +{num(one.whiskyBottlesPerYear)}병 {money(one.whiskyBottlesPerYear)}
+      </div>
+    </div>
+  );
+}
+
 function WhiskySupply() {
   const s = useGame((g) => g.state);
   const { rows, pace, tank } = useMemo(() => ({ rows: whiskySupplyForecast(s, 5), pace: whiskyAnnualPace(s), tank: tankFillNeed(s) }), [s]);
@@ -70,6 +114,7 @@ function WhiskySupply() {
     return 'text-emerald-700';
   };
   const label = (y: number) => (y === 0 ? '앞으로 1년' : `${y + 1}년째`);
+  const word = (b: number) => (!pace || pace.bottles <= 0 ? '' : b < pace.bottles * 0.8 ? (b === 0 ? '팔 위스키 없음' : '그해 팔 위스키 부족') : b > pace.bottles * 2 ? '남아 쌓임' : '판매 속도와 맞음');
   return (
     <div className="mt-3 rounded-md border border-stone-200 bg-stone-50 p-3">
       <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
@@ -83,6 +128,8 @@ function WhiskySupply() {
           <div key={r.year} className="min-w-0 rounded bg-white px-1 py-1.5" title={`숙성 중인 통 ${num(r.fromCasks)} · 탱크 몰트 ${num(r.fromTank)} · 생산 지시 ${num(r.fromOrders)}`}>
             <div className="text-[11px] text-stone-500">{label(r.year)}</div>
             <div className={`text-sm font-semibold tabular-nums ${tone(r.bottles)}`}>{num(r.bottles)}</div>
+            {/* 색만으로는 뜻이 안 읽혔다(2차 플레이테스트) — 말로 붙인다 */}
+            <div className={`text-[10px] ${tone(r.bottles)}`}>{word(r.bottles)}</div>
             <div className="truncate text-[10px] text-stone-400">통 {num(r.fromCasks)} · 탱크 {num(r.fromTank)} · 지시 {num(r.fromOrders)}</div>
           </div>
         ))}

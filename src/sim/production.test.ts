@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mergeIntoTank, sameTank, HEX_AXES, basePresetOf, craftPresets, flavorProfile, leverEffects, leverSummary, newScenarioGame, presetAsRecipe, previewBatch, type GameState, type Recipe, advanceMonths, applyAction, bulkValuePerLPA, categorize, evaporate, heartsFraction, matureCask, newGame, previewBlend, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type SpiritLot, appeal, type Product, caskStorageCost, fermentDaysAt, waterPermitCap } from './index';
-import { AGING_HORIZONS, recipeEconomics, STANDARD_BOTTLE, stockMonthsAfter, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from './economics';
+import { AGING_HORIZONS, recipeEconomics, STANDARD_BOTTLE, stockMonthsAfter, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast, productionValue } from './economics';
 import { slotClimate } from './warehouse';
 import { EQUIPMENT } from './content/catalog';
 import { consumerPrice, priceForConsumer, REGIONS, siteOf } from './content/regions';
@@ -490,5 +490,71 @@ describe('소주·진 샘플 — 그 주종 레이더 축으로도 읽는다 (#1
     c.sampleLog = [{ ...rec, axes: undefined }];
     expect(estimateBlend(s, [{ source: 'cask', id: jar.id, liters: 50 }]).axes).toBeNull();
     void recordSample;
+  });
+});
+
+describe('생산비 대 고정비 · 생산이 만드는 미래 위스키 (#185, 2차 플레이테스트)', () => {
+  it('월 생산비 = 배치 원가 × 월 배치 수, 해마다 위스키 병 수 = 공급 전망의 생산 지시 몫(정상 상태)과 같다', () => {
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
+    const soju = s.production.recipes.find((r) => r.kind === 'soju')!;
+    s.production.orders = [{ recipeId: malt.id, batchesPerMonth: 3 }, { recipeId: soju.id, batchesPerMonth: 2 }];
+    const v = productionValue(s);
+    expect(v.costPerMonth).toBe(Math.round(previewBatch(s, malt)!.cost * 3 + previewBatch(s, soju)!.cost * 2));
+    expect(v.whiskyCostPerMonth).toBe(Math.round(previewBatch(s, malt)!.cost * 3));
+    const steady = whiskySupplyForecast(s, 3)[2]!.fromOrders; // 3년째 = 12개 월 생산분이 모두 위스키가 된 해
+    expect(Math.abs(v.whiskyBottlesPerYear - steady)).toBeLessThanOrEqual(2);
+    expect(v.pricePerBottle).toBeGreaterThan(0);
+    const one = v.perBatch.find((x) => x.recipeId === malt.id)!;
+    expect(Math.abs(one.whiskyBottlesPerYear * 3 - v.whiskyBottlesPerYear)).toBeLessThanOrEqual(3);
+    s.production.orders = [{ recipeId: soju.id, batchesPerMonth: 2 }];
+    expect(productionValue(s).whiskyBottlesPerYear).toBe(0);
+  });
+});
+
+describe('기존 제품에 재고 보충 (#186, 2차 플레이테스트 오너 요청)', () => {
+  const setup = () => {
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const soju = s.production.recipes.find((r) => r.kind === 'soju')!;
+    s = applyAction(s, { type: 'setOrder', recipeId: soju.id, batchesPerMonth: 2 }).state;
+    s = advanceMonths(s, 2);
+    return s;
+  };
+  const opts = { name: '하회', targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' } as const;
+  const lots = (s: GameState) => s.inventory.lots.filter((l) => l.kind === 'soju');
+
+  it('새 제품을 만들지 않고 재고에 더한다 — 품질·원가는 재고 가중 평균, 이름·출고가·출시 달은 그대로', () => {
+    let s = setup();
+    const [a, b] = lots(s);
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: a!.id, liters: 60 }], options: { ...opts } }).state;
+    const p0 = s.commerce.products.at(-1)!;
+    const n0 = s.commerce.products.length;
+    s = applyAction(s, { type: 'setPrice', productId: p0.id, price: p0.price + 1000 }).state;
+    const before = s.commerce.products.find((x) => x.id === p0.id)!;
+    const preview = previewBlend(s, [{ source: 'lot', id: b!.id, liters: 90 }], { ...opts, name: '', restockId: p0.id });
+    expect(preview.ok).toBe(true);
+    const res = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: b!.id, liters: 90 }], options: { ...opts, name: '', restockId: p0.id } });
+    expect(res.error).toBeUndefined();
+    s = res.state;
+    expect(s.commerce.products.length).toBe(n0);
+    const after = s.commerce.products.find((x) => x.id === p0.id)!;
+    expect(after.stockBottles).toBe(before.stockBottles + preview.bottles);
+    const w = preview.bottles / after.stockBottles;
+    expect(after.quality).toBeCloseTo(before.quality + (preview.evaluation!.quality - before.quality) * w, 0);
+    expect(after.name).toBe(before.name);
+    expect(after.price).toBe(before.price);
+    expect(after.createdMonth).toBe(before.createdMonth);
+    expect(res.message).toContain('재고 보충');
+  });
+
+  it('병 크기·도수·범주가 다르면 보충할 수 없다', () => {
+    let s = setup();
+    const [a, b] = lots(s);
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: a!.id, liters: 60 }], options: { ...opts } }).state;
+    const id = s.commerce.products.at(-1)!.id;
+    const comp = [{ source: 'lot' as const, id: b!.id, liters: 60 }];
+    expect(previewBlend(s, comp, { ...opts, bottleMl: 500, restockId: id }).errors.join()).toContain('병 크기');
+    expect(previewBlend(s, comp, { ...opts, targetAbv: 0.25, restockId: id }).errors.join()).toContain('도수');
+    expect(previewBlend(s, comp, { ...opts, restockId: 'NOPE' }).ok).toBe(false);
   });
 });

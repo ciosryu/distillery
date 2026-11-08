@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BOTTLE_SIZES, CASKS, PACKAGING, packagingCost } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
-import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel } from '../../sim';
 import { regionOf } from '../../sim/content/regions';
 import { stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
 import { useGame } from '../../store/game';
@@ -185,6 +185,19 @@ export function Bottling() {
     ? chart.blend.map((a, i) => ({ label: a.label, d: a.value - prevBlend[i]!.value })).filter((x) => Math.abs(x.d) >= 1).sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).slice(0, 3)
     : [];
   const abvValue = opts.targetAbv === 'cask' ? 'cask' : String(opts.targetAbv);
+  // 재고 보충 대상 (#186) — 고른 원액과 같은 범주 제품을 앞에
+  const restockTarget = opts.restockId ? s.commerce.products.find((p) => p.id === opts.restockId) : undefined;
+  // 보충 대상이 판매 목록에서 빠졌으면(보관 처리) 새 제품으로 돌아간다
+  useEffect(() => { if (opts.restockId && !restockTarget) setOpts((o) => ({ ...o, restockId: undefined })); }, [opts.restockId, restockTarget]);
+  const restockChoices = restockable(s).filter((p) => !preview?.category || p.category === preview.category);
+  const pickRestock = (p: Product) => setOpts({ ...opts, restockId: p.id, name: '', bottleMl: p.bottleMl, targetAbv: p.abv, chillFilter: p.chillFiltered, packagingId: p.packagingId, dutyFreeOnly: false, targetId: undefined, line: undefined });
+  // 보충 뒤 품질 예상 — 남은 재고(병입한 제품이라 품질을 안다)와 새 병의 가중 평균. 시나리오 게임은 새 원액의 추정 품질(±오차)로
+  const restockAfter = (() => {
+    if (!restockTarget || !preview?.ok || !preview.evaluation) return null;
+    const a = Math.max(0, restockTarget.stockBottles); const b = preview.bottles; const w = a + b > 0 ? b / (a + b) : 1;
+    const q = masked ? est?.quality ?? null : preview.evaluation.quality;
+    return { stock: a + b, w, quality: q == null ? null : restockTarget.quality + (q - restockTarget.quality) * w, sigma: masked ? (est?.sigma ?? 0) * w : 0 };
+  })();
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_23rem]">
@@ -230,6 +243,18 @@ export function Bottling() {
 
       <Card title="병입">
         <div className="grid gap-2">
+          {/* 새 제품 / 기존 제품 재고 보충 (#186, 2차 플레이테스트 오너 요청) */}
+          <div className="flex flex-wrap items-center gap-1 text-sm">
+            <Button small variant={!restockTarget ? 'primary' : 'ghost'} onClick={() => setOpts({ ...opts, restockId: undefined })}>새 제품</Button>
+            <Button small variant={restockTarget ? 'primary' : 'ghost'} disabled={!restockable(s).length} title={restockable(s).length ? '이미 파는 제품의 재고에 더한다 — 이름·출고가·판매 기록을 이어 가고, 같은 범주 제품이 늘어 수요를 나눠 갖지 않는다' : '판매 중인 제품이 없다'} onClick={() => { const t0 = restockChoices[0] ?? restockable(s)[0]; if (t0) pickRestock(t0); }}>기존 제품 재고 보충</Button>
+          </div>
+          {restockTarget ? (
+            <div className="grid gap-1">
+              <Select label="보충할 제품" value={restockTarget.id} options={(restockChoices.some((p) => p.id === restockTarget.id) ? restockChoices : [restockTarget, ...restockChoices]).map((p) => ({ value: p.id, label: `${p.name} · ${p.bottleMl}ml ${Math.round(p.abv * 1000) / 10}% · 재고 ${num(p.stockBottles)}병 · 품질 ${p.quality} · ${monthLabel(s.startYear, p.createdMonth)} 출시` }))} onChange={(id) => { const t1 = s.commerce.products.find((p) => p.id === id); if (t1) pickRestock(t1); }} />
+              <p className="text-xs text-stone-500">병·도수·포장은 「{restockTarget.name}」과 같게 맞춘다: {restockTarget.bottleMl}ml · {Math.round(restockTarget.abv * 1000) / 10}% · {restockTarget.chillFiltered ? '칠 필터링' : '논칠필터'} · {PACKAGING[restockTarget.packagingId]?.nameKo ?? restockTarget.packagingId}. 이름·출고가({won(restockTarget.price)})·판매 기록은 그대로, 품질·향·원가는 남은 재고와 새 병 수로 평균 낸다.</p>
+            </div>
+          ) : (
+            <>
           <TextField label="제품명" value={opts.name} onChange={(v) => setOpts({ ...opts, name: v })} width="w-full" />
           <div className="flex flex-wrap gap-2">
             <Select label="도수" value={abvValue} options={ABV_PRESETS.map((v) => ({ value: v, label: v === 'cask' ? '캐스크 스트렝스' : `${Math.round(Number(v) * 100)}%` }))} onChange={(v) => setOpts({ ...opts, targetAbv: v === 'cask' ? 'cask' : Number(v) })} />
@@ -240,6 +265,8 @@ export function Bottling() {
             {hasDutyFree(s) && <label className="inline-flex items-center gap-1 text-sm" title={`국내 판매 없이 지정면세점 전용 매대(${DUTY_FREE.slots}칸)에서만 판매. 제주 원료(차조·청귤) 기념품은 매력도 ×${DUTY_FREE.localAppeal}, 위스키는 숙성 ${DUTY_FREE.agedTiers.map((t) => `${t.years}년 ×${t.appeal}`).join(' · ')}. ${DUTY_FREE.sellOutMonths}개월 안에 완판하면 다음 판 매력도 +${Math.round(DUTY_FREE.streakAppeal * 100)}%(최대 ${DUTY_FREE.maxStreak}연속), ${DUTY_FREE.returnMonths}개월 안에 못 팔면 국내 매대로 넘어갑니다`}><input type="checkbox" checked={!!opts.dutyFreeOnly} onChange={(e) => setOpts({ ...opts, dutyFreeOnly: e.target.checked })} className="accent-amber-700" /> 면세 전용 한정판</label>}
             <Select label="패키징" value={opts.packagingId} options={Object.entries(PACKAGING).map(([k, v]) => ({ value: k, label: `${v.nameKo} (${won(packagingCost(k, opts.bottleMl))}/병)` }))} onChange={(v) => setOpts({ ...opts, packagingId: v })} />
           </div>
+            </>
+          )}
 
           {hasDutyFree(s) && opts.dutyFreeOnly && (() => {
             const blocker = dutyFreeSlotBlocker(s);
@@ -306,6 +333,11 @@ export function Bottling() {
               {dfForecast && dfForecast.window < preview.bottles && <p className="text-xs text-amber-800 dark:text-amber-300">⚠ 이번 달 수요(계절·인지도 반영)로는 {DUTY_FREE.sellOutMonths}개월 안에 {num(preview.bottles)}병을 다 팔기 어렵습니다 — 사용량을 줄이면 완판 보너스를 노릴 수 있습니다</p>}
               {preview.warnings.map((w) => <p key={w} className="text-xs text-amber-800 dark:text-amber-300">⚠ {w}</p>)}
               {preview.errors.map((e) => <p key={e} className="text-xs text-rose-700 dark:text-rose-400">✕ {e}</p>)}
+              {restockTarget && restockAfter && (
+                <p className="rounded-md bg-sky-50 px-2 py-1 text-xs text-sky-900 dark:bg-sky-950 dark:text-sky-100">
+                  보충 뒤 「{restockTarget.name}」: 재고 {num(restockTarget.stockBottles)} → <b>{num(restockAfter.stock)}병</b> · 품질 {restockTarget.quality} → <b>{restockAfter.quality == null ? '모른다(샘플 필요)' : `${num(restockAfter.quality, 1)}${restockAfter.sigma >= 0.5 ? ` ±${num(restockAfter.sigma, 1)}` : ''}`}</b> (새 병 비중 {pct(restockAfter.w, 0)}) · 출고가 {won(restockTarget.price)} 그대로
+                </p>
+              )}
               {stock && (
                 <p className={`text-xs ${stock.months > STOCK_STRONG_WARN_MONTHS ? 'font-medium text-rose-700 dark:text-rose-400' : stock.months > STOCK_WARN_MONTHS ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`}>
                   {stock.months > STOCK_WARN_MONTHS ? '⚠ ' : ''}병입 뒤 {CATEGORY[preview.category!].nameKo} 재고 ≈ <b>{Number.isFinite(stock.months) ? `${num(stock.months, 1)}개월 치` : '팔리지 않음'}</b>
@@ -319,7 +351,7 @@ export function Bottling() {
                 if (strongStock && !isArmed) { setArmed(blendKey); return; }
                 setArmed(null);
                 if (dispatch({ type: 'bottle', components, options: opts })) { setPicked({}); setOpts({ ...opts, name: '' }); }
-              }}>{strongStock ? (isArmed ? `정말 ${num(preview.bottles)}병 병입 — 한 번 더 누르면 병입합니다` : '병입하기 (재고 과다 — 확인 필요)') : '병입하기'}</Button>
+              }}>{strongStock ? (isArmed ? `정말 ${num(preview.bottles)}병 병입 — 한 번 더 누르면 병입합니다` : `${restockTarget ? '재고 보충' : '병입하기'} (재고 과다 — 확인 필요)`) : restockTarget ? `「${restockTarget.name}」 재고 보충` : '병입하기'}</Button>
             </div>
           )}
         </div>
