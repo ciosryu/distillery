@@ -1,3 +1,4 @@
+import { runBoard } from './board';
 import { EQUIPMENT, LOAN_OFFERS } from './content/catalog';
 import { siteOf } from './content/regions';
 import type { GameState, MonthReport } from './types';
@@ -5,7 +6,6 @@ import { bulkValuePerLPA, isBulkKind } from './bulk';
 import { heatingCost, siteOverhead } from './sites';
 import { caskStorageCost } from './casks';
 import { secondBrandMonthlyCost } from './brands';
-import { runBoard } from './board';
 
 // 대출·재고 담보대출·월 고정비·재무 단계(틱 7) (파트 MGT, 결정 #144 — 파일 쪼개기로 옮겨 왔다. 규칙·수치 불변)
 
