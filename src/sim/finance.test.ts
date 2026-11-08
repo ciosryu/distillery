@@ -6,6 +6,7 @@ import { fireEvent } from './events';
 import { INSURANCE_PRODUCTS } from './content/catalog';
 import { claimFor, insuredInventoryValue, insuredPropertyValue, newLedger } from './insurance';
 import { isLocked } from './scenario';
+import { availableLoans, currentLoanPayment, loanRoomTotal, loanTerms } from './loans';
 
 // 재무·인사·이벤트 테스트 (파트 MGT, 결정 #144 — sim.test.ts·sites.test.ts에서 옮겨 왔다. 테스트 이름·본문 불변)
 
@@ -79,6 +80,43 @@ describe('재무', () => {
     expect(s.finance.loans.some((l) => l.offerId === 'emergency')).toBe(false);
     // 다 갚으면 다시 받을 수 있다
     expect(applyAction(s, { type: 'takeLoan', offerId: 'emergency', amount: 50_000_000 }).error).toBeUndefined();
+  });
+
+  it('지금 받을 수 있는 대출 (#192): takeLoan과 같은 조건 — 열린 상품은 한도까지 실행되고, 막힌 상품은 거절된다', () => {
+    const check = (s: GameState) => {
+      for (const x of availableLoans(s)) {
+        const r = applyAction(s, { type: 'takeLoan', offerId: x.offer.id, amount: x.offer.max });
+        if (x.blocked) expect(r.error, x.offer.id).toBeDefined();
+        else {
+          expect(r.error, x.offer.id).toBeUndefined();
+          expect(r.state.finance.loans.at(-1)!.principal, x.offer.id).toBe(x.max);
+          // 실행하면 내는 돈 = 실제 첫 납부 · 거치 뒤 납부
+          const l = r.state.finance.loans.at(-1)!;
+          const t = loanTerms(x.offer, x.max, s.month);
+          expect(currentLoanPayment(r.state, l)).toBe(t.paymentNow);
+          expect(l.monthlyPayment).toBe(t.paymentAfterGrace);
+          expect(currentLoanPayment({ ...r.state, month: t.graceEndMonth }, l)).toBe(t.paymentAfterGrace);
+        }
+      }
+    };
+    // MVP 소규모, 시작 대출 없음 — 정책자금은 소주 생산 실적이 있어야 한다
+    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5 });
+    const ids = availableLoans(s).map((x) => x.offer.id);
+    expect(ids).toEqual(expect.arrayContaining(['facility', 'working', 'policy', 'kr_regional', 'kr_startup', 'emergency']));
+    expect(ids).not.toContain('inventory'); // 한국은 재고 담보 없음
+    expect(availableLoans(s).find((x) => x.offer.id === 'policy')!.blocked).toMatch(/소주/);
+    check(s);
+    const before = loanRoomTotal(s);
+    s = applyAction(s, { type: 'takeLoan', offerId: 'kr_regional', amount: 100_000_000 }).state;
+    expect(availableLoans(s).some((x) => x.offer.id === 'kr_regional')).toBe(false); // 이용 중이면 뺀다
+    expect(loanRoomTotal(s)).toBe(before - 300_000_000);
+    s.production.flags.producedSoju = true;
+    expect(availableLoans(s).find((x) => x.offer.id === 'policy')!.blocked).toBeUndefined();
+    check(s);
+    // 샌드박스 홋카이도 — 재고 담보대출은 숙성 재고가 있어야 열린다
+    const h = newGame({ seed: 1, region: 'JP', site: 'hokkaido' });
+    expect(availableLoans(h).find((x) => x.offer.id === 'inventory')?.blocked).toBeDefined();
+    check(h);
   });
 });
 

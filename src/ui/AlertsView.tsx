@@ -2,7 +2,7 @@
 // 파일 이름이 alerts.ts와 대소문자만 다르면 대소문자를 가리지 않는 파일 시스템(macOS·Windows 기본)에서 './Alerts'가 alerts.ts로 풀릴 수 있어 AlertsView로 둔다
 import { BANKRUPT_AFTER_MONTHS, monthLabel } from '../sim';
 import { productionValue } from '../sim/economics';
-import { monthlyFixedCost } from '../sim/loans';
+import { loanRoomTotal, monthlyFixedCost } from '../sim/loans';
 import { won } from './format';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
@@ -35,6 +35,7 @@ export function CashBanner() {
   const a = cashAlert(s);
   if (!a) return null;
   const danger = a.level === 'danger';
+  const room = loanRoomTotal(s); // 지금 더 빌릴 수 있는 돈 (#192) — 2차 판은 16억을 남긴 채 파산했다
   const box = danger
     ? 'border-rose-400 bg-rose-50 text-rose-900 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-100'
     : 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100';
@@ -48,7 +49,7 @@ export function CashBanner() {
       <div>{danger ? '🚨 ' : '⚠ '}{head}{a.avgSelfFunded != null && a.avgSelfFunded < 0 && <span className="opacity-80"> · 최근 3개월 자체 현금 흐름 월 {fmtWon(a.avgSelfFunded)}</span>}</div>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
         <span className="opacity-80">지금 할 수 있는 일:</span>
-        <Button small variant={danger ? 'primary' : 'secondary'} onClick={() => go({ tab: 'finance' })}>대출·급전 받기</Button>
+        <Button small variant={danger ? 'primary' : 'secondary'} onClick={() => go({ tab: 'finance' })}>{room > 0 ? <>대출·급전 받기 — 아직 {fmtWon(room)}</> : '대출·급전 — 남은 한도 없음'}</Button>
         <Button small onClick={() => go({ tab: 'b2b' })}>원액 현물 판매</Button>
         <Button small onClick={() => go({ tab: 'sales' })}>값 낮춰 재고 팔기</Button>
         {s.scenario && <Button small variant="ghost" onClick={() => go({ anchor: 'mvp-fixed' })}>매달 나가는 돈 줄이기</Button>}
@@ -72,7 +73,7 @@ function ProductionTruth({ s }: { s: Parameters<typeof productionValue>[0] }) {
     <p className="mt-2 text-xs opacity-90">
       참고: 지금 생산비는 월 <b>{won(v.costPerMonth)}</b>뿐이고 고정비 월 <b>{won(fixed)}</b>은 생산과 상관없이 나간다 — 생산을 멈춰도 이만큼만 아낀다.
       {v.whiskyBottlesPerYear > 0 && v.pricePerBottle != null && <> 대신 {v.minMonths}개월 뒤부터 해마다 위스키 약 {v.whiskyBottlesPerYear.toLocaleString()}병(≈ 매출 {won(v.whiskyBottlesPerYear * v.pricePerBottle)}, 추정)이 사라진다.</>}
-      {' '}현금은 대출·급전, 원액 현물 판매, 가격, 마케팅·대출 상환 같은 매달 나가는 돈에서 만든다.
+      {' '}현금은 대출·급전, 원액 현물 판매, 가격에서 만든다 — 대출 일부 상환은 월 납부를 줄이지만 지금 현금을 더 줄인다.
     </p>
   );
 }

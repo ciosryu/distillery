@@ -1,5 +1,5 @@
 import { runBoard } from './board';
-import { EQUIPMENT, LOAN_OFFERS } from './content/catalog';
+import { EQUIPMENT, LOAN_OFFERS, type LoanOfferDef } from './content/catalog';
 import { siteOf } from './content/regions';
 import type { GameState, MonthReport } from './types';
 import { bulkValuePerLPA, isBulkKind } from './bulk';
@@ -7,7 +7,8 @@ import { heatingCost, siteOverhead } from './sites';
 import { caskStorageCost } from './casks';
 import { secondBrandMonthlyCost } from './brands';
 import { settleForwards } from './forwards';
-import { calendar } from './util';
+import { annuityPayment, calendar } from './util';
+import { isLocked } from './scenario';
 
 // 대출·재고 담보대출·월 고정비·재무 단계(틱 7) (파트 MGT, 결정 #144 — 파일 쪼개기로 옮겨 왔다. 규칙·수치 불변)
 
@@ -45,6 +46,41 @@ export function inventoryMarginCall(s: GameState, report: MonthReport): number {
   report.notes.push(`재고 시가 하락 — 담보대출 추가 상환 요구 ${paid.toLocaleString()}원`);
   return paid;
 }
+
+// ───────────── 지금 받을 수 있는 대출 (#192, 화면용 — 1·2차 MVP 플레이테스트 "현금 부족 때 할 일을 몰랐다") ─────────────
+
+/** 대출 한 건을 실행하면 내는 돈 — `takeLoan`·`currentLoanPayment`와 같은 식. graceEndMonth = 원금까지 내기 시작하는 달 */
+export function loanTerms(o: Pick<LoanOfferDef, 'annualRate' | 'termMonths' | 'graceMonths'>, amount: number, month: number) {
+  const afterGrace = annuityPayment(amount, o.annualRate, o.termMonths - o.graceMonths);
+  return { paymentNow: o.graceMonths > 0 ? Math.round(amount * (o.annualRate / 12)) : afterGrace, paymentAfterGrace: afterGrace, graceEndMonth: month + o.graceMonths };
+}
+
+export interface LoanOption { offer: LoanOfferDef; /** 지금 신청할 수 있는 최대액 */ max: number; /** 신청할 수 없는 이유 (없으면 신청 가능) */ blocked?: string }
+
+/**
+ * 지금 신청할 수 있는 대출 상품과 한도 — `takeLoan`과 같은 조건(지역·이용 중·소주 생산 실적·재고 담보 한도·시나리오 잠금).
+ * 이용 중인 상품과 이 입지에서 없는 상품은 뺀다. 조건이 모자란 상품은 blocked로 남긴다(무엇을 하면 열리는지 보이려고). 상태를 바꾸지 않는다
+ */
+export function availableLoans(s: GameState): LoanOption[] {
+  if (isLocked(s, 'action:takeLoan')) return [];
+  const out: LoanOption[] = [];
+  for (const o of LOAN_OFFERS) {
+    if (o.regions && !o.regions.includes(s.regionId)) continue;
+    if (s.finance.loans.some((l) => l.offerId === o.id)) continue;
+    if (o.collateral === 'inventory') {
+      if (inventoryLtv(s) <= 0) continue;
+      const room = Math.min(o.max, inventoryLoanRoom(s));
+      out.push(room < 10_000_000 ? { offer: o, max: 0, blocked: '담보로 잡을 숙성 재고가 부족하다' } : { offer: o, max: room });
+      continue;
+    }
+    if (o.requires === 'producedSoju' && !s.production.flags.producedSoju) { out.push({ offer: o, max: o.max, blocked: '증류식 소주를 한 번 생산하면 열린다' }); continue; }
+    out.push({ offer: o, max: o.max });
+  }
+  return out;
+}
+
+/** 지금 바로 더 빌릴 수 있는 돈의 합 (조건이 모자란 상품은 뺀다) */
+export const loanRoomTotal = (s: GameState) => availableLoans(s).reduce((t, x) => t + (x.blocked ? 0 : x.max), 0);
 
 
 /** 매달 나가는 고정 지출 예상 — 대시보드 "월 고정비"·증류소 탭 "매달 나가는 돈"·사업 계획서 미리보기·이사회 현금 기준·영업중단 보험금.
