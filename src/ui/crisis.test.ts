@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonth, advanceMonths, applyAction, BANKRUPT_AFTER_MONTHS, newScenarioGame, type GameState } from '../sim';
-import { cashAlert, lastMonthFlow, loanSchedule, monthTodos, paymentJump } from './alerts';
+import { cashAlert, lastMonthFlow, loanSchedule, monthTodos, paymentJump } from './crisis';
 
 // 1차 MVP 플레이테스트 대응 ①~④ — 화면용 계산이 시뮬레이션과 같은 값을 내는지 (코어 UI)
 const mvp = (loanAmount = 0) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount, seed: 1 });

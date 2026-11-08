@@ -1,8 +1,8 @@
-// 위기 경고·이번 달 할 일·지난달 현금 흐름·대출 상환 예정 — 화면 (코어 UI, 1차 MVP 플레이테스트 대응 ①~④, 계산은 alerts.ts)
+// 위기 경고·이번 달 할 일·지난달 현금 흐름·대출 상환 예정 — 화면 (코어 UI, 1차 MVP 플레이테스트 대응 ①~④, 계산은 crisis.ts — 파일 이름이 대소문자만 다르면 Windows·Mac에서 같은 파일로 잡힌다)
 import { BANKRUPT_AFTER_MONTHS, monthLabel } from '../sim';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
-import { cashAlert, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, type TodoTarget } from './alerts';
+import { cashAlert, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, type TodoTarget } from './crisis';
 import { Button } from './kit';
 
 /** 탭 이동 또는 증류소 화면 안의 카드로 스크롤 */
