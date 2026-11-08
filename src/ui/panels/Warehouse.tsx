@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CASKS, RECHAR_COST } from '../../sim/content/catalog';
-import { canFinishInto, evaluate, FINISH, vesselMaterial, finishCount, finishLabel, finishOf, isLocked, lotCategory, MAX_RECHAR, regionalCaskPrice, topNotes, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type SpiritLot } from '../../sim';
+import { canFinishInto, evaluate, FINISH, vesselMaterial, finishCount, finishLabel, finishOf, isLocked, isUnlocked, lotCategory, unlockingNodes, MAX_RECHAR, regionalCaskPrice, topNotes, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type SpiritLot } from '../../sim';
 import { CASK_MARKET } from '../../sim/content/catalog';
 import { rotationCapacity, slotClimate, slotOccupancy, warehousesOf } from '../../sim/warehouse';
 import { usedCaskPrice } from '../../sim/casks';
@@ -9,6 +9,18 @@ import { regionOf } from '../../sim/content/regions';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Select, Table, Td } from '../kit';
+import type { GameState } from '../../sim';
+
+/**
+ * 테크 게이트(#174)로 잠긴 행동은 버튼을 숨기고 어떤 연구가 여는지만 알린다 (#174 후속, PROD).
+ * 엔진 판정(actions.ts — 테크 게이트 → 시나리오 잠금)과 같은 순서로 본다. 게임 규칙은 바꾸지 않는다
+ */
+const canUse = (s: GameState, action: string) => isUnlocked(s, `action:${action}`) && !isLocked(s, `action:${action}`);
+function ResearchHint({ s, action, what }: { s: GameState; action: string; what: string }) {
+  if (canUse(s, action) || isLocked(s, `action:${action}`)) return null;
+  const nodes = unlockingNodes(`action:${action}`).map((n) => `${n.id} ${n.nameKo}`).join(' 또는 ');
+  return <p className="mt-2 text-xs text-stone-500">🔒 {what} — 연구가 필요하다: <b>{nodes}</b> (직원 탭 → 연구)</p>;
+}
 
 function Notes({ lot }: { lot: SpiritLot }) {
   return <span className="text-xs text-stone-600 dark:text-stone-300">{topNotes(lot.flavor).map((n) => `${n.nameKo} ${n.value}`).join(' · ')}</span>;
@@ -72,8 +84,9 @@ function Warehouses() {
   const dispatch = useGame((g) => g.dispatch);
   const ws = warehousesOf(s);
   const moy = calendar(s).monthOfYear;
+  const canRotate = canUse(s, 'rotateWarehouse');
   return (
-    <Card title={`숙성고 공간 — 로테이션 여력 ${Math.max(0, rotationCapacity(s) - s.inventory.rotatedThisMonth)}개/월`}>
+    <Card title={canRotate ? `숙성고 공간 — 로테이션 여력 ${Math.max(0, rotationCapacity(s) - s.inventory.rotatedThisMonth)}개/월` : '숙성고 공간'}>
       <Table head={['숙성고', '방식', '단별 적재 (아래 → 위)', '맨 아래 / 맨 위 (이번 달)', '']}>
         {ws.map((w) => {
           const bottom = slotClimate(s, { slot: { w: w.id, tier: 0 } } as never, moy);
@@ -84,11 +97,12 @@ function Warehouses() {
               <Td>{w.type === 'dunnage' ? <Badge tone="good">더니지 {w.tiers}단</Badge> : <Badge>랙 {w.tiers}단</Badge>}</Td>
               <Td className="text-xs tabular-nums">{Array.from({ length: w.tiers }, (_, t) => slotOccupancy(s, w.id, t)).join(' · ')} (단당 {w.perTier})</Td>
               <Td className="text-xs tabular-nums">{bottom.tempC.toFixed(1)}°C {Math.round(bottom.humidity)}% / {top.tempC.toFixed(1)}°C {Math.round(top.humidity)}%</Td>
-              <Td><Button small disabled={w.tiers < 2} onClick={() => dispatch({ type: 'rotateWarehouse', warehouseId: w.id })} title="숙성고 매니저가 최상단↔최하단을 바꾼다 (캐스크당 1.5만 원)">로테이션</Button></Td>
+              <Td>{canRotate && <Button small disabled={w.tiers < 2} onClick={() => dispatch({ type: 'rotateWarehouse', warehouseId: w.id })} title="숙성고 매니저가 최상단↔최하단을 바꾼다 (캐스크당 1.5만 원)">로테이션</Button>}</Td>
             </tr>
           );
         })}
       </Table>
+      <ResearchHint s={s} action="rotateWarehouse" what="로테이션(최상단↔최하단 교체)" />
       <p className="mt-2 text-xs text-stone-500">더니지는 상하단 온도 차가 거의 없고 습해서 숙성이 안정적이다. 랙은 위로 갈수록 덥고 건조해 숙성·증발이 빨라진다 — 로테이션으로 평준화한다. 원액이 든 캐스크는 월 보관비·보험료가 든다.</p>
     </Card>
   );
@@ -103,6 +117,7 @@ function Casks() {
   const [finishFor, setFinishFor] = useState<string | null>(null);
   const list = s.inventory.casks.filter((c) => (filter === 'filled' ? c.contents : !c.contents));
   const finishing = !isLocked(s, 'action:transferCask');
+  const canOwn = canUse(s, 'sellCaskOwnership');
   return (
     <Card
       title={`숙성고 — ${s.inventory.casks.length} / ${warehouseCapacity(s)} 캐스크`}
@@ -151,7 +166,7 @@ function Casks() {
                 <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>{vesselMaterial(c) === 'onggi' ? '옹기 ' : ''}숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : vesselMaterial(c) !== 'wood' && lot.oakMonths < minM ? <Badge tone="warn">옹기 — 위스키 숙성(오크)에 안 들어감</Badge> : lot.oakMonths >= minM ? <Badge tone="good">{lot.kind === 'grain' ? '그레인 위스키 가능' : '위스키 가능'}{rules.premiumLabel && lot.oakMonths >= rules.premiumLabel.minMonths && !lot.sourced ? ` · ${rules.premiumLabel.name}` : ''}{lot.oakMonths < 36 ? ' (어린 위스키)' : ''}</Badge> : <Badge tone="warn">{minM - lot.oakMonths}개월 남음</Badge>}</Td>
                 <Td className="flex gap-1">
                   {finishing && !c.owner && finishCount(lot) < FINISH.maxFinishes && <Button small variant={finishFor === c.id ? 'secondary' : 'ghost'} onClick={() => setFinishFor(finishFor === c.id ? null : c.id)} title="빈 버번·셰리 시즈닝 캐스크로 옮겨 마무리한다 — 손실 0.75%, 숙성 연수는 그대로">피니싱</Button>}
-                  {!c.owner && !lot.sourced && (lot.kind === 'malt' || lot.kind === 'grain') && <Button small variant="ghost" onClick={() => dispatch({ type: 'sellCaskOwnership', caskId: c.id })} title="개인 고객에게 선도 판매 — 지금 현금, 8년 숙성 시점에 인도">오너십 판매</Button>}
+                  {canOwn && !c.owner && !lot.sourced && (lot.kind === 'malt' || lot.kind === 'grain') && <Button small variant="ghost" onClick={() => dispatch({ type: 'sellCaskOwnership', caskId: c.id })} title="개인 고객에게 선도 판매 — 지금 현금, 8년 숙성 시점에 인도">오너십 판매</Button>}
                   {c.contaminationKnown && !c.owner && <Button small variant="ghost" onClick={() => dispatch({ type: 'dumpCask', caskId: c.id })}>폐기</Button>}
                 </Td>
               </tr>
@@ -159,6 +174,7 @@ function Casks() {
           })}
         </Table>
       )}
+      {filter === 'filled' && list.length > 0 && <ResearchHint s={s} action="sellCaskOwnership" what="캐스크 오너십 판매(개인 고객 선도 판매)" />}
     </Card>
   );
 }
