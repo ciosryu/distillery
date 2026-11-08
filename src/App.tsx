@@ -8,7 +8,7 @@ import { startedFresh, useGame } from './store/game';
 import { BusinessPlan } from './ui/BusinessPlan';
 import { exportPlayFile, getPlaylog, startPlayClock } from './store/playlog';
 import { MvpHome } from './ui/MvpHome';
-import { CashBanner } from './ui/Alerts';
+import { CashBanner } from './ui/AlertsView';
 import { Verdict } from './ui/Verdict';
 import { useUi } from './store/ui';
 import { won } from './ui/format';

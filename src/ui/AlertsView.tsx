@@ -1,4 +1,5 @@
 // 위기 경고·이번 달 할 일·지난달 현금 흐름·대출 상환 예정 — 화면 (코어 UI, 1차 MVP 플레이테스트 대응 ①~④, 계산은 alerts.ts)
+// 파일 이름이 alerts.ts와 대소문자만 다르면 대소문자를 가리지 않는 파일 시스템(macOS·Windows 기본)에서 './Alerts'가 alerts.ts로 풀릴 수 있어 AlertsView로 둔다
 import { BANKRUPT_AFTER_MONTHS, monthLabel } from '../sim';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';

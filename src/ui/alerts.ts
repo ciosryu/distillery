@@ -3,7 +3,8 @@
 // 1차 MVP 판: 117개월째 파산, 대출 누적 20억 실행(파산 때 잔액 약 7.2억) — 현금 부족을 몰랐고, 돈이 어디로 나가는지, 언제 상환이 몰리는지 보이지 않았다 (mvp.md §7.4)
 
 import { regionOf } from '../sim/content/regions';
-import { BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, selfFundedCash, warehouseCapacity, type CashFlowKey, type GameState, type MonthReport } from '../sim';
+import { BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, selfFundedCash, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport } from '../sim';
+import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 
 // ───────────── ① 파산 카운트다운 ─────────────
 
@@ -89,16 +90,18 @@ const WHISKY_CATS = new Set(['whisky', 'grain_whisky', 'blended_whisky']);
 
 /** 범주 묶음의 재고 개월 수 — 최근 3개월 판매 기준. 판매가 없으면 재고가 있으면 Infinity, 없으면 0 */
 function stockMonths(s: GameState, inCat: (c: string) => boolean): { stock: number; months: number } {
-  const ids = new Set(s.commerce.products.filter((p) => inCat(p.category)).map((p) => p.id));
-  const stock = s.commerce.products.filter((p) => inCat(p.category) && !p.dutyFreeOnly).reduce((t, p) => t + p.stockBottles, 0);
+  // 면세 전용 한정판(제주)은 국내 재고가 아니다 — 재고와 판매 양쪽에서 같이 뺀다
+  const domestic = s.commerce.products.filter((p) => inCat(p.category) && !p.dutyFreeOnly);
+  const ids = new Set(domestic.map((p) => p.id));
+  const stock = domestic.reduce((t, p) => t + p.stockBottles, 0);
   const recent = s.history.reports.slice(-3);
   const sold = recent.reduce((t, r) => t + r.sales.filter((x) => ids.has(x.productId)).reduce((u, x) => u + x.bottles, 0), 0);
   const per = recent.length ? sold / recent.length : 0;
   return { stock, months: per > 0 ? stock / per : stock > 0 ? Infinity : 0 };
 }
 
-/** 샘플 기록이 이만큼 오래된 통은 "샘플 시기" — 화면 안내 기준 */
-export const SAMPLE_STALE_MONTHS = 6;
+/** 샘플 기록이 이만큼 오래된 통은 "샘플 시기" — 자동 샘플(#177)이 뜨는 기준과 같게 둔다 */
+export const SAMPLE_STALE_MONTHS = AUTO_SAMPLE_MIN_AGE;
 /** 재고가 이보다 적으면 "병입할 때" — 화면 안내 기준 */
 export const RESTOCK_MONTHS = 2;
 
@@ -108,7 +111,7 @@ export const RESTOCK_MONTHS = 2;
  */
 export function monthTodos(s: GameState): Todo[] {
   const out: Todo[] = [];
-  const min = Math.max(1, regionOf(s).whisky.minMonths);
+  const min = whiskyMinMonths(regionOf(s).whisky); // 병입·표기와 같은 식 (blending.ts)
   // 대출 거치가 3개월 안에 끝나 납부가 뛴다
   const jump = paymentJump(loanSchedule(s, 4));
   if (jump) out.push({ id: 'loan-jump', level: 'warn', text: `${jump.month - s.month === 0 ? '이번 달' : `${jump.month - s.month}개월 뒤`} 대출 거치가 끝나 월 납부가 ${fmtWon(jump.from)} → ${fmtWon(jump.to)}로 뛴다`, action: '대출 보기', target: { tab: 'finance' } });
@@ -143,6 +146,7 @@ const EXPENSE_GROUP: Record<string, string> = {
   production: '생산', distribution: '유통비', export_freight: '유통비', export_fixed: '유통비', penalty: '기타',
   salaries: '고정비', overhead: '고정비', heating: '고정비', maintenance: '고정비', marketing: '고정비', storage: '고정비', insurance: '고정비', research: '고정비',
   interest: '대출 상환', principal: '대출 상환',
+  hedge: '선도계약 정산', [AUTO_SAMPLE_EXPENSE]: '샘플·분석',
 };
 const OFFTURN_GROUP: Partial<Record<CashFlowKey, string>> = {
   spotBulk: '원액 판매', caskBid: '원액 판매', caskOwnership: '원액 판매', bottling: '병입', blending: '샘플·분석',
