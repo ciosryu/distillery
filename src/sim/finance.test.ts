@@ -82,7 +82,7 @@ describe('재무', () => {
     expect(applyAction(s, { type: 'takeLoan', offerId: 'emergency', amount: 50_000_000 }).error).toBeUndefined();
   });
 
-  it('지금 받을 수 있는 대출 (P-MGT-12): takeLoan과 같은 조건 — 열린 상품은 한도까지 실행되고, 막힌 상품은 거절된다', () => {
+  it('지금 받을 수 있는 대출 (#192): takeLoan과 같은 조건 — 열린 상품은 한도까지 실행되고, 막힌 상품은 거절된다', () => {
     const check = (s: GameState) => {
       for (const x of availableLoans(s)) {
         const r = applyAction(s, { type: 'takeLoan', offerId: x.offer.id, amount: x.offer.max });

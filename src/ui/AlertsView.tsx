@@ -35,7 +35,7 @@ export function CashBanner() {
   const a = cashAlert(s);
   if (!a) return null;
   const danger = a.level === 'danger';
-  const room = loanRoomTotal(s); // 지금 더 빌릴 수 있는 돈 (P-MGT-12) — 2차 판은 16억을 남긴 채 파산했다
+  const room = loanRoomTotal(s); // 지금 더 빌릴 수 있는 돈 (#192) — 2차 판은 16억을 남긴 채 파산했다
   const box = danger
     ? 'border-rose-400 bg-rose-50 text-rose-900 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-100'
     : 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100';

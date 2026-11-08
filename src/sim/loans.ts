@@ -47,7 +47,7 @@ export function inventoryMarginCall(s: GameState, report: MonthReport): number {
   return paid;
 }
 
-// ───────────── 지금 받을 수 있는 대출 (P-MGT-12, 화면용 — 1·2차 MVP 플레이테스트 "현금 부족 때 할 일을 몰랐다") ─────────────
+// ───────────── 지금 받을 수 있는 대출 (#192, 화면용 — 1·2차 MVP 플레이테스트 "현금 부족 때 할 일을 몰랐다") ─────────────
 
 /** 대출 한 건을 실행하면 내는 돈 — `takeLoan`·`currentLoanPayment`와 같은 식. graceEndMonth = 원금까지 내기 시작하는 달 */
 export function loanTerms(o: Pick<LoanOfferDef, 'annualRate' | 'termMonths' | 'graceMonths'>, amount: number, month: number) {
