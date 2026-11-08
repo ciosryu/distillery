@@ -5,7 +5,7 @@ import {
   type GameState, type ProfileAxis, type Recipe, type SpiritKind, type YeastId,
 } from '../../sim';
 import type { PresetRecipe } from '../../sim/content/presets';
-import { recipeEconomics, STANDARD_BOTTLE } from '../../sim/economics';
+import { recipeEconomics, STANDARD_BOTTLE, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from '../../sim/economics';
 import { isLocked } from '../../sim/scenario';
 import { useGame } from '../../store/game';
 import { logisticsMultiplier, regionOf, REGIONS, siteOf } from '../../sim/content/regions';
@@ -47,8 +47,54 @@ export function Orders() {
           );
         })}
       </Table>
+      <WhiskySupply />
       <p className="mt-2 text-xs text-stone-500">원액은 매달 말 탱크에 쌓입니다. 비숙성 주종(소주·진·고량주 등)은 바로 병입할 수 있고, 몰트는 {(() => { const w = regionOf(s).whisky; return w.minMonths > 0 ? `캐스크에 통입해 ${w.minMonths}개월 이상 숙성해야 "위스키"로 판매할 수 있습니다` : w.requiresOak ? '캐스크에 넣기만 하면 바로 "위스키"로 팔 수 있지만(법정 최소 숙성 없음) 3년 미만은 어린 위스키라 값을 덜 받습니다' : '숙성 없이도 "위스키"로 팔 수 있지만(법정 최소 숙성 없음) 3년 미만은 어린 위스키라 값을 덜 받습니다'; })()} 설비·인력 한도는 대시보드의 가동 계획에서 확인하세요.</p>
     </Card>
+  );
+}
+
+/**
+ * 위스키 공급 전망 (#178, 1차 MVP 플레이테스트) — 지금 숙성 중인 통·탱크 몰트·월 생산 지시로 해마다 새로 "위스키"가 되는 병 수를
+ * 연 판매 속도와 나란히 보인다. 생산을 줄이면 몇 년 뒤 팔 위스키가 끊긴다는 걸 지시를 바꾸는 자리에서 바로 보게 한다
+ */
+function WhiskySupply() {
+  const s = useGame((g) => g.state);
+  const { rows, pace, tank } = useMemo(() => ({ rows: whiskySupplyForecast(s, 5), pace: whiskyAnnualPace(s), tank: tankFillNeed(s) }), [s]);
+  const hasWhisky = rows.some((r) => r.bottles > 0) || s.production.recipes.some((r) => r.kind === 'malt' || r.kind === 'grain');
+  if (!hasWhisky) return null;
+  const min = Math.max(1, regionOf(s).whisky.minMonths);
+  const tone = (b: number) => {
+    if (!pace || pace.bottles <= 0) return 'text-stone-700';
+    if (b < pace.bottles * 0.8) return 'text-red-700';
+    if (b > pace.bottles * 2) return 'text-amber-700';
+    return 'text-emerald-700';
+  };
+  const label = (y: number) => (y === 0 ? '앞으로 1년' : `${y + 1}년째`);
+  return (
+    <div className="mt-3 rounded-md border border-stone-200 bg-stone-50 p-3">
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+        <span className="text-sm font-medium">위스키 공급 전망 — 해마다 새로 팔 수 있게 되는 병 수 (700ml·40%)</span>
+        <span className="text-xs text-stone-600">
+          {pace ? <>연 판매 속도 ≈ <b>{num(pace.bottles)}병</b> ({pace.basis === 'sales' ? '최근 3개월 실제 판매 × 12' : '수요 추정 — 아직 판매 기록 없음'})</> : '몰트 레시피가 없어 수요를 계산할 수 없습니다'}
+        </span>
+      </div>
+      <div className="grid grid-cols-5 gap-2 text-center">
+        {rows.map((r) => (
+          <div key={r.year} className="min-w-0 rounded bg-white px-1 py-1.5" title={`숙성 중인 통 ${num(r.fromCasks)} · 탱크 몰트 ${num(r.fromTank)} · 생산 지시 ${num(r.fromOrders)}`}>
+            <div className="text-[11px] text-stone-500">{label(r.year)}</div>
+            <div className={`text-sm font-semibold tabular-nums ${tone(r.bottles)}`}>{num(r.bottles)}</div>
+            <div className="truncate text-[10px] text-stone-400">통 {num(r.fromCasks)} · 탱크 {num(r.fromTank)} · 지시 {num(r.fromOrders)}</div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-1.5 text-[11px] text-stone-500">
+        숙성 {min}개월을 채워 "위스키"가 되는 때로 셉니다(증발 연 5% 근사). <span className="text-red-700">빨강</span> = 판매 속도의 80% 미만(그해 팔 위스키가 모자람),{' '}
+        <span className="text-emerald-700">초록</span> = 적정, <span className="text-amber-700">노랑</span> = 2배 넘음(재고가 쌓임). 지금 생산을 줄이면 {Math.ceil(min / 12)}년 뒤 칸부터 줄어듭니다.
+        {tank.liters > 0 && (
+          <> 탱크 몰트 {liters(tank.liters)}는 지금 통입한다고 본 값입니다 — 200L 통 약 {num(tank.casks200)}개가 필요하고 숙성고 남은 자리는 {num(tank.freeSlots)}개{tank.casks200 > tank.freeSlots ? <b className="text-red-700"> (자리 부족 — 숙성고를 늘리지 않으면 그만큼 늦어집니다)</b> : ''}.</>
+        )}
+      </p>
+    </div>
   );
 }
 

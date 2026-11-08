@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BOTTLE_SIZES, CASKS, PACKAGING, packagingCost } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
-import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind } from '../../sim';
 import { regionOf } from '../../sim/content/regions';
+import { stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
 import { ProfileRadar } from './Production';
@@ -111,6 +112,26 @@ export function Bottling() {
     const perMonth = productDutyFreeDemand(s, p, same, calendar(s).monthOfYear);
     return { perMonth, window: perMonth * DUTY_FREE.sellOutMonths };
   })();
+  // 병입 재고 경고 (#178, 1차 MVP 플레이테스트: 소주 15,271병 = 판매 186개월 치를 병입해 현금이 묶였다) —
+  // 병입 뒤 그 분류 재고가 최근 판매(없으면 이번 달 수요 근사)로 몇 개월 치인가. 12개월 넘으면 한 번 더 눌러야 병입된다. 면세 한정판은 위 예상 면세 판매로 따로 본다
+  const stock = (() => {
+    if (!preview?.ok || !preview.category || preview.dfEdition) return null;
+    const quality = masked ? (est?.quality ?? 50) : (preview.evaluation?.quality ?? 50);
+    const price = masked ? (priceAtQuality(s, preview, opts, quality) ?? preview.suggestedPrice) : preview.suggestedPrice;
+    const p: Product = {
+      id: 'preview', name: '', category: preview.category, ageYears: preview.ageYears, oakMonths: preview.minOakMonths, abv: preview.finalAbv, bottleMl: opts.bottleMl, chillFiltered: opts.chillFilter, packagingId: opts.packagingId,
+      flavor: preview.flavor, quality, typicity: preview.evaluation?.typicity ?? 50, style: preview.evaluation?.style ?? null, sourcedShare: preview.sourcedShare,
+      stockBottles: preview.bottles, price, unitCost: preview.unitCost, createdMonth: s.month, lastMonthSold: 0, totalSold: 0, localIngredient: preview.localIngredient,
+    };
+    const same = s.commerce.products.filter((x) => x.stockBottles > 0 && x.category === p.category).length + 1;
+    const guess = demandFor(s, p, same, calendar(s).monthOfYear).demandBottles;
+    return stockMonthsAfter(s, preview.category, preview.bottles, guess);
+  })();
+  const strongStock = !!stock && stock.months > STOCK_STRONG_WARN_MONTHS;
+  // 두 번 눌러 확인 — 고른 원액·옵션이 바뀌면 다시 묻는다
+  const blendKey = JSON.stringify([components, opts]);
+  const [armed, setArmed] = useState<string | null>(null);
+  const isArmed = armed === blendKey;
   const toggle = (key: string, vol: number) => {
     // 첫 원액을 고르면 그 분류만 보이게
     if (cat === '전체' && !Object.keys(picked).length) { const x = sources.find((y) => y.key === key); if (x) setCat(sourceCategory(x.lot, minMonths)); }
@@ -272,7 +293,20 @@ export function Bottling() {
               {dfForecast && dfForecast.window < preview.bottles && <p className="text-xs text-amber-800 dark:text-amber-300">⚠ 이번 달 수요(계절·인지도 반영)로는 {DUTY_FREE.sellOutMonths}개월 안에 {num(preview.bottles)}병을 다 팔기 어렵습니다 — 사용량을 줄이면 완판 보너스를 노릴 수 있습니다</p>}
               {preview.warnings.map((w) => <p key={w} className="text-xs text-amber-800 dark:text-amber-300">⚠ {w}</p>)}
               {preview.errors.map((e) => <p key={e} className="text-xs text-rose-700 dark:text-rose-400">✕ {e}</p>)}
-              <Button variant="primary" disabled={!preview.ok} onClick={() => { if (dispatch({ type: 'bottle', components, options: opts })) { setPicked({}); setOpts({ ...opts, name: '' }); } }}>병입하기</Button>
+              {stock && (
+                <p className={`text-xs ${stock.months > STOCK_STRONG_WARN_MONTHS ? 'font-medium text-rose-700 dark:text-rose-400' : stock.months > STOCK_WARN_MONTHS ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`}>
+                  {stock.months > STOCK_WARN_MONTHS ? '⚠ ' : ''}병입 뒤 {CATEGORY[preview.category!].nameKo} 재고 ≈ <b>{Number.isFinite(stock.months) ? `${num(stock.months, 1)}개월 치` : '팔리지 않음'}</b>
+                  {' '}({stock.basis === 'sales' ? `최근 3개월 판매 월 ${num(stock.monthly)}병 기준` : `아직 판매 기록 없음 — 이번 달 수요 근사 월 ${num(stock.monthly)}병 기준`})
+                  {stock.months > STOCK_STRONG_WARN_MONTHS
+                    ? ` — 1년 넘게 팔아야 하는 양입니다. 병값·병입 인건비가 지금 나가고 재고 ${STOCK_WARN_MONTHS}개월 치를 넘으면 할인 이미지로 수요가 줄어듭니다. 사용량을 줄여 나눠 병입하세요`
+                    : stock.months > STOCK_WARN_MONTHS ? ` — ${STOCK_WARN_MONTHS}개월 치를 넘으면 할인 이미지로 수요가 줄어듭니다` : ''}
+                </p>
+              )}
+              <Button variant="primary" disabled={!preview.ok} onClick={() => {
+                if (strongStock && !isArmed) { setArmed(blendKey); return; }
+                setArmed(null);
+                if (dispatch({ type: 'bottle', components, options: opts })) { setPicked({}); setOpts({ ...opts, name: '' }); }
+              }}>{strongStock ? (isArmed ? `정말 ${num(preview.bottles)}병 병입 — 한 번 더 누르면 병입합니다` : '병입하기 (재고 과다 — 확인 필요)') : '병입하기'}</Button>
             </div>
           )}
         </div>

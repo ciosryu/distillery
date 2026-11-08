@@ -10,6 +10,7 @@ import { isLocked, monthLabel, netWorth, regionalCaskPrice, selfFundedCash, ware
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
 import { LineChart } from './charts';
+import { CashFlowLine, MonthTodo } from './Alerts';
 import { PriceDesk } from './panels/Sales';
 import { Equipment, Orders, RecipeEditor } from './panels/Production';
 import { CATEGORY_ORDER, sourceCategory } from './panels/Bottling';
@@ -65,13 +66,15 @@ function runwayOf(s: GameState): { avg: number | null; months: number | null } {
 export function MvpHome() {
   return (
     <div className="grid gap-4">
+      {/* 이번 달 할 일 (1차 MVP 플레이테스트 대응 ③) */}
+      <MonthTodo />
       <Headline />
       {/* 생산 지시 — PROD가 내보낸 월 배치 표 (매달 바꾸는 결정이라 펼쳐 둔다) */}
-      <Orders />
+      <div id="mvp-orders" className="scroll-mt-28"><Orders /></div>
       {/* 판매 — MKT가 단일 화면용으로 내보낸 가격·수요·주세 표 (#154) */}
       <PriceDesk />
-      <WarehouseCard />
-      <SpaceCard />
+      <div id="mvp-warehouse" className="scroll-mt-28"><WarehouseCard /></div>
+      <div id="mvp-space" className="scroll-mt-28"><SpaceCard /></div>
       <CraftingFold />
     </div>
   );
@@ -111,6 +114,8 @@ function Headline() {
           병입하면 병·포장비가 바로 나간다 — 병입을 멈추고(원액은 탱크에 둔다) 생산 지시를 줄이거나, 아래 <b>가격과 수요</b>에서 값을 낮춘다.
         </p>
       ))}
+      {/* 지난달 현금 흐름 한 줄 · 대출 상환 예정 (1차 MVP 플레이테스트 대응 ②④) */}
+      <CashFlowLine />
       <div className="mt-3">
         <LineChart
           label="월말 현금과 순자산 추이"
