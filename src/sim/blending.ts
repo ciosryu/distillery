@@ -11,7 +11,7 @@ import { dutyFreeAgedAppeal, dutyFreeSlotBlocker, dutyFreeSuggestedPrice, hasDut
 import { bestBy, nid, staffOf } from './util';
 import { mod } from './modifiers';
 import { hexOf, matchScore, mixHex } from './blendRadar';
-import { COMMISSION, findTarget, knownReads, QUALITY_SIGMA_PER_HEX, revealNotes } from './blendTable';
+import { COMMISSION, findTarget, knownReads, QUALITY_SIGMA_PER_HEX, revealNotes, sampleAxesOf } from './blendTable';
 import { productCountEver } from './lifecycle';
 import type { AxisId, CaskTypeId, Flavor, GameState, Hex, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
 
@@ -241,11 +241,11 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
  * 추정 품질 = 아는 원액들의 품질을 알코올(LPA) 가중 평균한 값(블렌드 품질 공식은 비선형이라 근사), 오차 = 가중 오차의 제곱합 제곱근.
  * 기록이 없는 캐스크는 빠지고 그 비율을 unknownShare로 알린다. 아는 원액이 없으면 quality·hex = null
  */
-export function estimateBlend(s: GameState, components: BlendComponent[]): { quality: number | null; sigma: number; hex: Hex | null; unknownShare: number; fromCasks: boolean } {
+export function estimateBlend(s: GameState, components: BlendComponent[]): { quality: number | null; sigma: number; hex: Hex | null; unknownShare: number; fromCasks: boolean; axes: Partial<Record<AxisId, number>> | null } {
   const known = knownReads(s);
   let total = 0;
   // key = 오차가 함께 움직이는 단위(같은 샘플 기록) — 같은 기록을 빌린 통들의 오차는 독립이 아니라 한 덩어리다
-  const parts: { w: number; q: number; sd: number; hex: Hex; key: string }[] = [];
+  const parts: { w: number; q: number; sd: number; hex: Hex; key: string; axes?: Partial<Record<AxisId, number>> }[] = [];
   let fromCasks = false;
   for (const c of components) {
     if (c.liters <= 0) continue;
@@ -256,11 +256,15 @@ export function estimateBlend(s: GameState, components: BlendComponent[]): { qua
     if (c.source === 'cask') {
       fromCasks = true;
       const k = known.get(c.id);
-      if (k) parts.push({ w, q: k.estQuality, sd: k.sigma * QUALITY_SIGMA_PER_HEX, hex: k.hex, key: `rec:${k.sourceId}:${k.month}` });
-    } else parts.push({ w, q: evaluate(lot.flavor, lotCategory(lot, regionOf(s).whisky)).quality, sd: 0, hex: hexOf(lot.flavor), key: `lot:${c.id}` });
+      if (k) parts.push({ w, q: k.estQuality, sd: k.sigma * QUALITY_SIGMA_PER_HEX, hex: k.hex, key: `rec:${k.sourceId}:${k.month}`, axes: k.axes });
+    } else {
+      // 탱크 원액은 막 만든 것이라 참값을 안다 — 소주·진·고량주는 레이더 축도 참값
+      const ax = sampleAxesOf(lot.kind);
+      parts.push({ w, q: evaluate(lot.flavor, lotCategory(lot, regionOf(s).whisky)).quality, sd: 0, hex: hexOf(lot.flavor), key: `lot:${c.id}`, axes: ax ? Object.fromEntries(ax.map((a) => [a, lot.flavor[a] ?? 0])) : undefined });
+    }
   }
   const kw = parts.reduce((t, p) => t + p.w, 0);
-  if (!kw) return { quality: null, sigma: 0, hex: null, unknownShare: total > 0 ? 1 : 0, fromCasks };
+  if (!kw) return { quality: null, sigma: 0, hex: null, unknownShare: total > 0 ? 1 : 0, fromCasks, axes: null };
   return {
     quality: Math.round((parts.reduce((t, p) => t + p.w * p.q, 0) / kw) * 10) / 10,
     sigma: (() => {
@@ -272,6 +276,12 @@ export function estimateBlend(s: GameState, components: BlendComponent[]): { qua
     hex: mixHex(parts.map((p) => ({ hex: p.hex, share: p.w }))),
     unknownShare: total > 0 ? 1 - kw / total : 0,
     fromCasks,
+    // 소주·진·고량주의 레이더 축 추정 (#183) — 아는 원액 모두에 축 읽기가 있을 때만(옛 기록이 섞이면 null → 화면은 "다시 샘플")
+    axes: parts.every((p) => p.axes) ? (() => {
+      const out: Partial<Record<AxisId, number>> = {};
+      for (const p of parts) for (const [a, v] of Object.entries(p.axes!) as [AxisId, number][]) out[a] = (out[a] ?? 0) + (v * p.w) / kw;
+      return out;
+    })() : null,
   };
 }
 

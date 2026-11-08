@@ -20,9 +20,11 @@ export interface LossLedger {
   stopMonths: number;
   /** 재해 직전 재고 원가 — 비례 보상 기준 */
   inventoryValueBefore: number;
+  /** 피해 크기 배수 — 연구 효과 riskMul('event:<이벤트 id>') (#184, 예: ENG-2b 숙성고 화재 ×0.6). 1이면 피해 그대로 */
+  damageMul: number;
 }
 
-export const newLedger = (s: GameState): LossLedger => ({ property: 0, inventory: 0, stopMonths: 0, inventoryValueBefore: insuredInventoryValue(s) });
+export const newLedger = (s: GameState, eventId?: string): LossLedger => ({ property: 0, inventory: 0, stopMonths: 0, inventoryValueBefore: insuredInventoryValue(s), damageMul: eventId ? riskMul(s, `event:${eventId}`) : 1 });
 
 /** 캐스크 한 통 원액의 원가 (오너십 판매분은 고객 재산이라 제외) */
 export const caskBookValue = (c: GameState['inventory']['casks'][number]): number => (c.contents && !c.owner ? c.contents.volumeL * c.contents.abv * c.contents.costPerLPA : 0);

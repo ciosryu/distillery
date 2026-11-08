@@ -111,6 +111,11 @@ export interface SampleRecord {
   sigma: number;
   /** 추정 품질 (참 품질 + 오차) */
   estQuality: number;
+  /**
+   * 위스키가 아닌 원액(소주·진·고량주)은 그 주종의 레이더 축으로도 읽는다 (지각 오차 포함) — 육각형은 위스키 축이라
+   * 소주 그래프를 그릴 수 없었다(2차 플레이테스트 2026-11-08: 옹기 소주 샘플을 떠도 향미 그래프가 안 나옴). 옛 기록에는 없다
+   */
+  axes?: Partial<Record<AxisId, number>>;
 }
 
 export interface Cask {

@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
-import { AUTO_SAMPLE_MIN_AGE, autoSamplePicks, knownReads, lastSample, readSigma, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
+import { AUTO_SAMPLE_MIN_AGE, autoSamplePicks, knownReads, lastSample, readSigma, sampleAxesOf, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
+import { AXIS } from '../sim/content/axes';
 import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
 import { vesselMaterial } from '../sim/maturation';
 import { regionOf } from '../sim/content/regions';
@@ -11,8 +12,9 @@ import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
 import { FixedCostLine } from './panels/FixedCost';
 import { LineChart } from './charts';
-import { CashFlowLine, MonthTodo } from './AlertsView';
-import { runway } from './alerts';
+import { CashFlowLine, MonthTodo, OPEN_FOLD_EVENT } from './AlertsView';
+import { cashAlert, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
+import { monthlyFixedBreakdown } from '../sim/loans';
 import { PriceDesk } from './panels/Sales';
 import { Equipment, Orders, RecipeEditor } from './panels/Production';
 import { CATEGORY_ORDER, sourceCategory } from './panels/Bottling';
@@ -21,7 +23,8 @@ import { Badge, Button, Card, Empty, Meter, NumberField, Select, Stat, Table, Td
 
 // MVP 단일 화면 (mvp.md §5, #136·#137·#138·#146) — 코어 UI(ARCH).
 // 원칙: 캐스크의 참 향미·품질은 보여 주지 않는다. 숙성 연수·남은 양·통 이력처럼 증류소가 실제로 아는 값과 **마지막 샘플 기록**만 보인다(#136).
-// 생산 지시(PROD Orders)·판매(MKT PriceDesk)는 펼쳐서, 크래프팅 레버·설비(PROD)는 접어서 끼운다. 병입·대출은 바로 가기 — 이 화면은 "지금 어디쯤인가"·판매·숙성고 공간(#137)을 한곳에 모은다
+// 배치 4층 ([결정 #182], mvp.md §5.2): 위기(파산 배너, App) → 이번 달(할 일 · 현금·곡선 · 생산 지시 · 통입 · 판매 — 펼침)
+//   → 상태(돈 흐름 · 숙성 중인 캐스크 — 한 줄 요약으로 접고, 신호가 있으면 기본 펼침) → 참고(레시피·설비 — 접힘). 전체 정보는 판매·재무·대시보드 탭에 그대로 있다
 
 /** 숙성고 증설 선택지 (#137) — 카탈로그 설비 중 숙성고 */
 const WAREHOUSE_EXPANSIONS = Object.values(EQUIPMENT).filter((d) => d.kind === 'warehouse');
@@ -60,16 +63,118 @@ export function overstock(s: GameState): { category: string; stock: number; perM
 export function MvpHome() {
   return (
     <div className="grid gap-4">
-      {/* 이번 달 할 일 (1차 MVP 플레이테스트 대응 ③) */}
+      {/* ── 이번 달 ── 할 일 (1차 MVP 플레이테스트 대응 ③) */}
       <MonthTodo />
       <Headline />
-      {/* 생산 지시 — PROD가 내보낸 월 배치 표 (매달 바꾸는 결정이라 펼쳐 둔다) */}
+      {/* ── 상태 ── 돈 흐름: 한 줄 요약, 현금 경고·재고 과잉·거치 종료 임박이면 기본 펼침 */}
+      <MoneyFold />
+      {/* 15년 곡선 (#138) — 돈 흐름 아래로: 위기 때 KPI와 돈 흐름이 붙어 첫 화면에 들어온다 */}
+      <CurveCard />
+      {/* ── 이번 달 결정 ── 생산 지시(PROD) + 통입 */}
       <div id="mvp-orders" className="scroll-mt-28"><Orders /></div>
-      {/* 판매 — MKT가 단일 화면용으로 내보낸 가격·수요·주세 표 (#154) */}
-      <PriceDesk />
-      <div id="mvp-warehouse" className="scroll-mt-28"><WarehouseCard /></div>
+      <div id="mvp-fill" className="scroll-mt-28"><FillCard /></div>
+      {/* 판매 — 재고 있는 제품만, 같은 술은 한 줄 (PriceDesk compact) */}
+      <PriceDesk compact />
+      {/* ── 상태 ── 숙성 중인 캐스크: 한 줄 요약, "샘플 시기" 할 일에서 열린다 + 숙성고 공간(증설·빈 통) */}
+      <div id="mvp-warehouse" className="scroll-mt-28"><WarehouseFold /></div>
       <div id="mvp-space" className="scroll-mt-28"><SpaceCard /></div>
+      {/* ── 참고 ── */}
       <CraftingFold />
+    </div>
+  );
+}
+
+const FOLD_KEY = 'distillery-tycoon/fold/';
+/**
+ * 접힌 블록의 열림 — 신호(auto)가 있으면 기본 펼침, 없으면 접힘. 사람이 직접 펼치거나 접으면 그 브라우저에 기억하되,
+ * 신호가 생기거나 사라지면 다시 기본값을 따른다(평상시에 접어 둔 돈 흐름도 위기가 오면 펼쳐진다). "이번 달 할 일" 링크(OPEN_FOLD_EVENT)는 연다.
+ * 브라우저 저장이 막혀도 기본값으로 돈다 — 게임 상태가 아니다
+ */
+function useFold(id: string, auto: boolean): [boolean, () => void] {
+  const [stored, setStored] = useState<{ v: boolean; sig: boolean } | null>(() => {
+    try { const x = JSON.parse(localStorage.getItem(FOLD_KEY + id) ?? 'null'); return x && typeof x.v === 'boolean' ? x : null; } catch { return null; }
+  });
+  const open = stored && stored.sig === auto ? stored.v : auto;
+  const save = (v: boolean) => {
+    const x = { v, sig: auto };
+    setStored(x);
+    try { localStorage.setItem(FOLD_KEY + id, JSON.stringify(x)); } catch { /* 편의 기능 — 실패해도 그만 */ }
+  };
+  useEffect(() => {
+    const on = (e: Event) => { if ((e as CustomEvent).detail === id) save(true); };
+    window.addEventListener(OPEN_FOLD_EVENT, on);
+    return () => window.removeEventListener(OPEN_FOLD_EVENT, on);
+  });
+  return [open, () => save(!open)];
+}
+
+/** 접힌 블록의 머리 줄 — 누르면 펼침/접힘. 요약 숫자는 접혀 있어도 보인다 */
+function FoldBar({ open, onToggle, title, children, hint }: { open: boolean; onToggle: () => void; title: string; children?: ReactNode; hint: string }) {
+  return (
+    <button type="button" aria-expanded={open} onClick={onToggle} className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-left text-sm">
+      <span className="font-semibold text-stone-700 dark:text-stone-200">{open ? '▾' : '▸'} {title}</span>
+      {children}
+      <span className="ml-auto text-xs text-stone-500">{open ? '접기' : hint}</span>
+    </button>
+  );
+}
+
+/** 돈 흐름 — 지난달 현금 흐름 · 매달 나가는 돈 + 마케팅 · 대출 상환 예정 · 재고 과잉 경고. 접혀 있어도 핵심 숫자는 한 줄로 보인다 */
+function MoneyFold() {
+  const s = useGame((g) => g.state);
+  const r = s.history.reports.at(-1);
+  const net = r ? lastMonthFlow(r).net : null;
+  const fixed = monthlyFixedBreakdown(s).reduce((t, x) => t + x.amount, 0);
+  const repay = loanSchedule(s, 12).reduce((t, m) => t + m.payment, 0);
+  const over = overstock(s);
+  const jump = paymentJump(loanSchedule(s, 4));
+  const alert = cashAlert(s);
+  const [open, toggle] = useFold('mvp-money', !!alert || over.length > 0 || !!jump);
+  return (
+    <Card>
+      <FoldBar open={open} onToggle={toggle} title="돈 흐름" hint="펼치기 — 지난달 현금 흐름 · 매달 나가는 돈 · 상환 예정">
+        {net != null && <span>지난달 <b className={`tabular-nums ${net < 0 ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}`}>{net >= 0 ? '+' : ''}{fmtWon(net)}</b></span>}
+        <span>매달 나가는 돈 <b className="tabular-nums">{fmtWon(fixed)}</b></span>
+        {s.finance.loans.length > 0 && <span>12개월 대출 상환 <b className="tabular-nums">{fmtWon(repay)}</b></span>}
+        {alert && <Badge tone="bad">현금 경고</Badge>}
+        {over.length > 0 && <Badge tone="warn">재고 과잉 {over.length}</Badge>}
+        {jump && <Badge tone="warn">거치 종료 임박</Badge>}
+      </FoldBar>
+      {open && (
+        <>
+          {over.map((o) => (
+            <p key={o.category} className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+              ⚠ <b>{CATEGORY[o.category as keyof typeof CATEGORY]?.nameKo ?? o.category}</b> 재고 {num(o.stock)}병 — 최근 판매(월 {num(Math.round(o.perMonth))}병)로 {Number.isFinite(o.months) ? `약 ${Math.round(o.months)}개월치` : '팔리지 않고 있다'}.
+              병입하면 병·포장비가 바로 나간다 — 병입을 멈추고(원액은 탱크에 둔다) 생산 지시를 줄이거나, 아래 <b>가격과 수요</b>에서 값을 낮춘다.
+            </p>
+          ))}
+          {/* 지난달 현금 흐름 한 줄 · 대출 상환 예정 (1차 MVP 플레이테스트 대응 ②④) */}
+          <CashFlowLine />
+          {/* 매달 나가는 돈 + 마케팅 예산 (#181 안 A, MGT 작성) */}
+          <FixedCostLine />
+        </>
+      )}
+    </Card>
+  );
+}
+
+/** 숙성 중인 캐스크 — 한 줄 요약(통 수 · 기록 있는 통 · 샘플 시기 · 자리). 펼치면 샘플 목록 */
+function WarehouseFold() {
+  const s = useGame((g) => g.state);
+  const filled = s.inventory.casks.filter((c) => c.contents);
+  const recorded = filled.filter((c) => c.sampleLog?.length).length;
+  const stale = s.scenario ? staleSampleCasks(s).length : 0;
+  const [open, toggle] = useFold('mvp-warehouse', false);
+  return (
+    <div className="grid gap-4">
+      <Card>
+        <FoldBar open={open} onToggle={toggle} title={`숙성 중인 캐스크 ${filled.length}통`} hint="펼치기 — 샘플 목록 · 샘플 뜨기">
+          <span className="text-stone-600 dark:text-stone-300">샘플 기록 있는 통 {recorded}</span>
+          {stale > 0 && <Badge tone="warn">샘플 시기 {stale}통</Badge>}
+          <span className="text-stone-600 dark:text-stone-300">자리 {s.inventory.casks.length}/{warehouseCapacity(s)}</span>
+        </FoldBar>
+      </Card>
+      {open && <WarehouseCard />}
     </div>
   );
 }
@@ -84,8 +189,6 @@ function Headline() {
   const sc = s.scenario;
   const target = sc ? sc.equity * sc.goal.netWorthMultiple : null;
   const run = runway(s);
-  const pts = useMemo(() => curvePoints(s), [s]);
-  const xMax = sc?.goal.months ?? Math.max(120, (pts.at(-1)?.x ?? 0) + 12);
   const flagMin = sc?.goal.flagshipMinMonths ?? 144;
   const oldest = s.inventory.casks.filter((c) => c.contents && !c.owner && !c.contents.sourced && (c.contents.kind === 'malt' || c.contents.kind === 'grain'))
     .reduce((m, c) => Math.max(m, c.contents!.oakMonths), 0);
@@ -102,19 +205,30 @@ function Headline() {
         <Stat label="가장 오래된 자체 원액" value={months(oldest)} tone={oldest >= flagMin ? 'good' : undefined}
           hint={left != null ? `플래그십 ${Math.floor(flagMin / 12)}년 · 목표까지 ${left}개월` : `플래그십 ${Math.floor(flagMin / 12)}년`} />
       </div>
-      {overstock(s).map((o) => (
-        <p key={o.category} className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-          ⚠ <b>{CATEGORY[o.category as keyof typeof CATEGORY]?.nameKo ?? o.category}</b> 재고 {num(o.stock)}병 — 최근 판매(월 {num(Math.round(o.perMonth))}병)로 {Number.isFinite(o.months) ? `약 ${Math.round(o.months)}개월치` : '팔리지 않고 있다'}.
-          병입하면 병·포장비가 바로 나간다 — 병입을 멈추고(원액은 탱크에 둔다) 생산 지시를 줄이거나, 아래 <b>가격과 수요</b>에서 값을 낮춘다.
-        </p>
-      ))}
-      {/* 지난달 현금 흐름 한 줄 · 대출 상환 예정 (1차 MVP 플레이테스트 대응 ②④) */}
-      <CashFlowLine />
-      {/* 매달 나가는 돈 + 마케팅 예산 (#181 안 A, MGT 작성) */}
-      <FixedCostLine />
-      <div className="mt-3">
+      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+        <span className="self-center text-stone-500">바로 가기:</span>
+        <Button small onClick={() => setTab('bottling')}>블렌딩·병입</Button>
+        <Button small onClick={() => setTab('sales')}>판매 상세</Button>
+        <Button small onClick={() => setTab('b2b')}>원액 현물 판매</Button>
+        <Button small onClick={() => setTab('finance')}>대출·급전</Button>
+        <Button small variant="ghost" onClick={() => setTab('dashboard')}>월 결산표</Button>
+      </div>
+    </Card>
+  );
+}
+
+function CurveCard() {
+  const s = useGame((g) => g.state);
+  const sc = s.scenario;
+  const target = sc ? sc.equity * sc.goal.netWorthMultiple : null;
+  const pts = useMemo(() => curvePoints(s), [s]);
+  const xMax = sc?.goal.months ?? Math.max(120, (pts.at(-1)?.x ?? 0) + 12);
+  return (
+    <Card>
+      <div>
         <LineChart
           label="월말 현금과 순자산 추이"
+          height={170}
           xs={pts.map((p) => p.x)}
           xMax={xMax}
           series={[
@@ -127,14 +241,6 @@ function Headline() {
           fmtTip={(m) => `${monthLabel(s.startYear, m - 1)} 말 (${m}개월째)`}
         />
         <p className="mt-1 text-xs text-stone-500">순자산과 현금의 차이 = 재고 평가액 − 대출. 숙성 중인 몰트는 현물 시장에서 지금 받을 수 있는 값으로만 센다(병 가격이 아니다 — #146).</p>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2 text-xs">
-        <span className="self-center text-stone-500">바로 가기:</span>
-        <Button small onClick={() => setTab('bottling')}>블렌딩·병입</Button>
-        <Button small onClick={() => setTab('sales')}>판매 상세</Button>
-        <Button small onClick={() => setTab('b2b')}>원액 현물 판매</Button>
-        <Button small onClick={() => setTab('finance')}>대출·급전</Button>
-        <Button small variant="ghost" onClick={() => setTab('dashboard')}>월 결산표</Button>
       </div>
     </Card>
   );
@@ -170,14 +276,25 @@ const arrow = (d: number, eps = 0.5) => (d > eps ? '↑' : d < -eps ? '↓' : '�
  * 마지막 샘플 칸 — 블렌딩 테이블과 같은 "아는 값"(knownRead, #157)을 쓴다. 참값은 쓰지 않는다.
  * 자기 기록이 없으면 형제 통(같은 배치·같은 통 종류)의 기록을 흐리게, 그것도 없으면 "샘플 없음"
  */
+/**
+ * 샘플 읽기를 [축 이름, 값]으로 — 소주·진·고량주는 그 주종 레이더 축(#183), 몰트·그레인은 육각형.
+ * 소주인데 레이더 축 읽기가 없는 옛 기록은 null(위스키 축으로 보이면 소주에 "피트"가 떴다)
+ */
+function readingOf(c: Cask, r: Pick<KnownRead, 'hex' | 'axes'>): [string, number][] | null {
+  if (c.contents && sampleAxesOf(c.contents.kind)) return r.axes ? (Object.entries(r.axes) as [keyof typeof AXIS, number][]).map(([a, v]) => [AXIS[a].nameKo, v]) : null;
+  return HEX_AXES.map((a) => [HEX_LABEL[a], r.hex[a]]);
+}
+const topOf = (xs: [string, number][], n = 3) => [...xs].sort((a, b) => b[1] - a[1]).slice(0, n);
+const OLD_RECORD = <span className="text-stone-400" title="이전 버전에서 뜬 기록이라 소주 향 축 읽기가 없다 — 다시 샘플을 뜨면 보인다">향은 다시 샘플</span>;
+
 function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead | undefined }) {
   if (!known) return <span className="text-xs text-stone-400">샘플 없음</span>;
   if (known.from === 'sibling') {
-    const top = [...HEX_AXES].sort((a, b) => known.hex[b] - known.hex[a]).slice(0, 3);
+    const reading = readingOf(c, known);
     return (
       <div className="text-xs text-stone-500" title="이 통은 아직 뜨지 않았다 — 같은 배치를 같은 종류 통에 담은 형제 통의 기록을 빌려 본다. 통마다 숙성이 달라 실제와 더 어긋날 수 있다">
         <Badge>형제 통</Badge> <span className="tabular-nums">{known.estQuality} ±{Math.round(known.sigma)}</span>
-        <span className="ml-2">{top.map((a) => `${HEX_LABEL[a]} ${Math.round(known.hex[a])}`).join(' · ')}</span>
+        <span className="ml-2">{reading ? topOf(reading).map(([l, v]) => `${l} ${Math.round(v)}`).join(' · ') : OLD_RECORD}</span>
         <span className="ml-2 text-stone-400">{s.month - known.month === 0 ? '이번 달' : `${s.month - known.month}개월 전`}</span>
       </div>
     );
@@ -188,8 +305,13 @@ function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead |
   // 두 읽기의 차이는 두 오차가 겹친다 — 그보다 큰 변화만 화살표로 보인다
   const prevSigma = c.sampleLog && c.sampleLog.length >= 2 ? c.sampleLog.at(-2)!.sigma : last.sigma;
   const noise = Math.hypot(last.sigma, prevSigma);
-  const top = [...HEX_AXES].sort((a, b) => last.hex[b] - last.hex[a]).slice(0, 3);
-  const moved = delta ? [...HEX_AXES].sort((a, b) => Math.abs(delta.hex[b]) - Math.abs(delta.hex[a])).filter((a) => Math.abs(delta.hex[a]) > noise).slice(0, 2) : [];
+  const reading = readingOf(c, last);
+  // 변화 화살표 — 두 읽기가 같은 축일 때만 (옛 기록 → 새 기록 사이는 비교하지 않는다)
+  const prevRec = c.sampleLog && c.sampleLog.length >= 2 ? c.sampleLog.at(-2)! : null;
+  const prevReading = prevRec ? readingOf(c, prevRec) : null;
+  const moved = delta && reading && prevReading && prevReading.length === reading.length
+    ? reading.map(([l, v], i) => [l, v - prevReading[i]![1]] as [string, number]).filter(([, d]) => Math.abs(d) > noise).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 2)
+    : [];
   const age = s.month - last.month;
   return (
     <div className="text-xs">
@@ -198,8 +320,8 @@ function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead |
       {delta && (Math.abs(delta.quality) > noise
         ? <span className="ml-1 tabular-nums" title="직전 샘플 대비 (오차보다 큰 변화)">{arrow(delta.quality)}{delta.quality > 0 ? '+' : ''}{delta.quality}</span>
         : <span className="ml-1 text-stone-400" title={`직전 샘플 대비 ${delta.quality > 0 ? '+' : ''}${delta.quality} — 두 읽기의 오차(±${Math.round(noise)}) 안이라 변화라고 보기 어렵다`}>≈</span>)}
-      <span className="ml-2 text-stone-600 dark:text-stone-300">{top.map((a) => `${HEX_LABEL[a]} ${Math.round(last.hex[a])}`).join(' · ')}</span>
-      {!!moved.length && <span className="ml-2 text-stone-500">{moved.map((a) => `${HEX_LABEL[a]}${arrow(delta!.hex[a])}`).join(' ')}</span>}
+      <span className="ml-2 text-stone-600 dark:text-stone-300">{reading ? topOf(reading).map(([l, v]) => `${l} ${Math.round(v)}`).join(' · ') : OLD_RECORD}</span>
+      {!!moved.length && <span className="ml-2 text-stone-500">{moved.map(([l, d]) => `${l}${arrow(d)}`).join(' ')}</span>}
       <span className={`ml-2 ${age >= 12 ? 'text-amber-700 dark:text-amber-400' : 'text-stone-400'}`}>{age === 0 ? '이번 달' : `${age}개월 전`}</span>
     </div>
   );
@@ -292,15 +414,11 @@ function WarehouseCard() {
   );
 }
 
-function SpaceCard() {
+/** 탱크 원액 → 빈 통에 통입 — 매달 하는 결정이라 생산 지시 바로 아래 ([#182], 전에는 숙성고 공간 카드 안 맨 아래) */
+function FillCard() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
-  const cap = warehouseCapacity(s);
-  const casks = s.inventory.casks;
-  const empties = casks.filter((c) => !c.contents);
-  const pendingOrders = s.inventory.caskOrders.reduce((t, o) => t + o.qty, 0);
-  const free = Math.max(0, cap - casks.length - pendingOrders);
-  const building = s.production.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'warehouse' && e.readyMonth > s.month);
+  const empties = s.inventory.casks.filter((c) => !c.contents);
   // 숙성할 수 있는 탱크 원액 — 몰트·그레인(오크 → 위스키), 소주(옹기·오크 숙성 소주, #161)
   // 몰트·그레인을 먼저 — 기본 루프는 몰트 → 오크 통이고, 소주는 대개 바로 병입한다(실수로 소주를 버번 통에 담지 않게)
   // 소주는 달마다 탱크가 따로 쌓인다(#166은 몰트·그레인만 합친다) → 레시피별로 가장 오래 쉰 탱크 하나만 고를 수 있게 묶는다.
@@ -317,17 +435,56 @@ function SpaceCard() {
   const [lotId, setLotId] = useState('');
   const [fillType, setFillType] = useState<CaskTypeId | ''>('');
   const [fillN, setFillN] = useState(4);
-  const [buyType, setBuyType] = useState<CaskTypeId>('ex_bourbon_barrel');
-  const [buyN, setBuyN] = useState(4);
   const lot = malts.find((l) => l.id === lotId) ?? malts[0];
   // 고르지 않았으면 원액에 맞는 통을 먼저: 소주 → 옹기, 몰트 → 나무
   const fits = (k: CaskTypeId) => (lot?.kind === 'soju') === (CASKS[k].material === 'onggi');
   const ft = fillType && emptyTypes.includes(fillType) ? fillType : emptyTypes.find(fits) ?? emptyTypes[0];
   const ofType = empties.filter((c) => c.typeId === ft && !c.contaminationKnown);
+  return (
+    <Card title="탱크 원액 → 빈 통에 통입" actions={<span className="text-xs text-stone-500">빈 통 {empties.length}개 · 빈 통 사기·증설은 아래 숙성고 공간</span>}>
+    <div className="grid min-w-0 content-start gap-2">
+        {!malts.length ? <Empty>탱크에 숙성할 원액(몰트·소주)이 없습니다 — 생산 지시를 내리고 한 달을 진행하세요</Empty> : (
+          <>
+            <Select label="원액" value={lot!.id} options={malts.map((l) => ({ value: l.id, label: lotLabel(l) }))} onChange={(v) => { setLotId(v); setFillType(''); }} />
+            {!ft ? <span className="text-xs text-rose-700 dark:text-rose-400">빈 통이 없습니다 — 아래 숙성고 공간에서 사세요</span> : (
+              <div className="flex flex-wrap items-end gap-2">
+                <Select label="빈 통" value={ft} options={emptyTypes.map((k) => ({ value: k, label: `${CASKS[k].nameKo} (${empties.filter((c) => c.typeId === k && !c.contaminationKnown).length})` }))} onChange={setFillType} />
+                <NumberField label="개수" value={fillN} min={1} max={200} width="w-16" onCommit={setFillN} />
+                <Button small variant="primary" disabled={!ofType.length} onClick={() => dispatch({ type: 'fillCasks', lotId: lot!.id, caskIds: ofType.slice(0, fillN).map((c) => c.id), entryAbv: 0.635 })}>통입 ({pct(Math.min(0.635, lot!.abv))})</Button>
+              </div>
+            )}
+            {ft && (() => {
+              const entry = Math.min(0.635, lot!.abv);
+              const onggi = CASKS[ft].material === 'onggi';
+              return (
+                <>
+                  <p className="text-xs text-stone-500">{entry < lot!.abv ? `${pct(entry)}로 물을 섞으면` : '원액 도수 그대로'} 약 {liters((lot!.volumeL * lot!.abv) / entry)} — {CASKS[ft].sizeL}L 통 약 {num(Math.ceil((lot!.volumeL * lot!.abv) / entry / CASKS[ft].sizeL))}통 분량</p>
+                  {onggi && <p className="text-xs text-amber-800 dark:text-amber-300">옹기: 나무 향 없이 숨을 쉬며 거친 맛이 풀린다 — 탱크 보관보다 빠르고 증발은 나무 통의 절반. 소주 숙성용{lot!.kind !== 'soju' ? ' — 몰트는 옹기에서 보낸 기간이 위스키 숙성(오크)에 들어가지 않는다' : ''}.</p>}
+                </>
+              );
+            })()}
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function SpaceCard() {
+  const s = useGame((g) => g.state);
+  const dispatch = useGame((g) => g.dispatch);
+  const cap = warehouseCapacity(s);
+  const casks = s.inventory.casks;
+  const empties = casks.filter((c) => !c.contents);
+  const pendingOrders = s.inventory.caskOrders.reduce((t, o) => t + o.qty, 0);
+  const free = Math.max(0, cap - casks.length - pendingOrders);
+  const building = s.production.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'warehouse' && e.readyMonth > s.month);
+  const [buyType, setBuyType] = useState<CaskTypeId>('ex_bourbon_barrel');
+  const [buyN, setBuyN] = useState(4);
   const price = regionalCaskPrice(s, buyType);
   return (
     <Card title={`숙성고 공간 — ${casks.length} / ${cap}통 (빈 통 ${empties.length})`}>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <div className="grid min-w-0 content-start gap-2">
           <Meter label="자리 사용 (빈 통·주문 중 포함)" value={casks.length + pendingOrders} max={cap} />
           <div className="text-xs text-stone-600 dark:text-stone-300">
@@ -342,32 +499,6 @@ function SpaceCard() {
             ))}
           </div>
           <p className="text-xs text-stone-500">원액이 든 통은 매달 보관비·보험료가 든다. 자리가 모자라면 애매한 통을 병입하거나 원액째 팔아 비운다.</p>
-        </div>
-
-        <div className="grid min-w-0 content-start gap-2">
-          <div className="text-xs font-semibold text-stone-700 dark:text-stone-200">탱크 원액 → 빈 통에 통입</div>
-          {!malts.length ? <Empty>탱크에 숙성할 원액(몰트·소주)이 없습니다 — 생산 지시를 내리고 한 달을 진행하세요</Empty> : (
-            <>
-              <Select label="원액" value={lot!.id} options={malts.map((l) => ({ value: l.id, label: lotLabel(l) }))} onChange={(v) => { setLotId(v); setFillType(''); }} />
-              {!ft ? <span className="text-xs text-rose-700 dark:text-rose-400">빈 통이 없습니다 — 오른쪽에서 사세요</span> : (
-                <div className="flex flex-wrap items-end gap-2">
-                  <Select label="빈 통" value={ft} options={emptyTypes.map((k) => ({ value: k, label: `${CASKS[k].nameKo} (${empties.filter((c) => c.typeId === k && !c.contaminationKnown).length})` }))} onChange={setFillType} />
-                  <NumberField label="개수" value={fillN} min={1} max={200} width="w-16" onCommit={setFillN} />
-                  <Button small variant="primary" disabled={!ofType.length} onClick={() => dispatch({ type: 'fillCasks', lotId: lot!.id, caskIds: ofType.slice(0, fillN).map((c) => c.id), entryAbv: 0.635 })}>통입 ({pct(Math.min(0.635, lot!.abv))})</Button>
-                </div>
-              )}
-              {ft && (() => {
-                const entry = Math.min(0.635, lot!.abv);
-                const onggi = CASKS[ft].material === 'onggi';
-                return (
-                  <>
-                    <p className="text-xs text-stone-500">{entry < lot!.abv ? `${pct(entry)}로 물을 섞으면` : '원액 도수 그대로'} 약 {liters((lot!.volumeL * lot!.abv) / entry)} — {CASKS[ft].sizeL}L 통 약 {num(Math.ceil((lot!.volumeL * lot!.abv) / entry / CASKS[ft].sizeL))}통 분량</p>
-                    {onggi && <p className="text-xs text-amber-800 dark:text-amber-300">옹기: 나무 향 없이 숨을 쉬며 거친 맛이 풀린다 — 탱크 보관보다 빠르고 증발은 나무 통의 절반. 소주 숙성용{lot!.kind !== 'soju' ? ' — 몰트는 옹기에서 보낸 기간이 위스키 숙성(오크)에 들어가지 않는다' : ''}.</p>}
-                  </>
-                );
-              })()}
-            </>
-          )}
         </div>
 
         <div className="grid min-w-0 content-start gap-2">

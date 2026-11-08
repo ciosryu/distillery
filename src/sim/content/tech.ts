@@ -11,7 +11,8 @@ export type TreeId = 'production' | 'maturation' | 'engineering' | 'business' | 
 export type LeadStat = 'a' | 'b' | 'c';
 
 /**
- * 해금 효과 중 게이트가 아닌 것 (tech-tree §7 TechUnlock의 loss_reduction·risk_scale·info) — 그릇만 있고 아직 적용하지 않는다.
+ * 해금 효과 중 게이트가 아닌 것 (tech-tree §7 TechUnlock의 loss_reduction·risk_scale·info) — research.ts 조회 함수로 읽는다.
+ * 지금 읽는 곳: risk_scale의 이벤트 피해(events.ts, #184)·보험료(insurance.ts). loss_reduction·info와 batch_variance는 담당 파트(PROD·MKT)가 붙인다.
  * 게이트(선택지·설비·계약·라벨·이벤트 선택지)는 unlockKeys가 isUnlocked 키로 표현한다
  */
 export type TechEffect =
@@ -67,7 +68,7 @@ export const TECH_NODES: TechNodeDef[] = [
   { id: 'PRO-1', nameKo: '발효 공정 관리', tree: 'production', tier: 1, prereq: [], research: { ...T1, leadRoles: ['distiller'], leadStat: 'b' },
     unlockKeys: ['recipe:ferment.profile=staged', 'info:ferment_log'],
     effects: [{ kind: 'loss_reduction', target: 'ferment', value: 0.15 }, { kind: 'risk_scale', riskId: 'acetic', mul: 0.7 }, { kind: 'risk_scale', riskId: 'batch_variance', mul: 0.7 }],
-    pending: 'PROD — 단계별 발효 온도 프로파일·발효 로그, 발효 손실·편차·acetic 효과 적용' },
+    pending: 'PROD — 단계별 발효 온도 프로파일·발효 로그, 발효 손실·편차 (발효 오염 이벤트의 이취 ×0.7은 적용됨)' },
   { id: 'PRO-2', nameKo: '하우스 효모 뱅크', tree: 'production', tier: 2, prereq: ['PRO-1'], requires: { facilities: ['lab'] }, research: { ...T2, leadRoles: ['distiller'], leadStat: 'a' },
     unlockKeys: ['recipe:yeast=house_strain', 'label:house_yeast'],
     pending: 'PROD — 실험실 설비·균주 분리·보존 / MKT — 라벨 "자사 효모"' },
@@ -101,8 +102,9 @@ export const TECH_NODES: TechNodeDef[] = [
   { id: 'ENG-2b', nameKo: '방재 엔지니어링', tree: 'engineering', tier: 2, prereq: ['ENG-1'], research: { ...T2, leadRoles: ['distiller', 'warehouse'], leadStat: 'b' },
     unlockKeys: ['facility:fire_suppression'],
     // 보험료 −15% (#171, PRD §8.4) — 가입할 때 보험료에 적용 [튜닝]
-    effects: [{ kind: 'risk_scale', riskId: 'premium:property', mul: 0.85 }, { kind: 'risk_scale', riskId: 'premium:inventory', mul: 0.85 }],
-    pending: 'PROD — 상위 방재 설비·화재 피해↓ (보험료 −15%는 적용됨)' },
+    // 보험료 −15% (#171) · 숙성고 화재 피해 ×0.6 (#184 — 복구비·소실 캐스크 비율) [튜닝]
+    effects: [{ kind: 'risk_scale', riskId: 'premium:property', mul: 0.85 }, { kind: 'risk_scale', riskId: 'premium:inventory', mul: 0.85 }, { kind: 'risk_scale', riskId: 'event:warehouse_fire', mul: 0.6 }],
+    pending: 'PROD — 상위 방재 설비 (보험료 −15%·숙성고 화재 피해 ×0.6은 적용됨)' },
   { id: 'ENG-2c', nameKo: '공정 자동화 제어', tree: 'engineering', tier: 2, prereq: ['ENG-1'], research: { ...T2, leadRoles: ['distiller'], leadStat: 'b' },
     unlockKeys: ['facility:process_control'],
     pending: 'PROD — 자동화 제어 시스템(운전 실수↓, 상시 지시 품질 하한↑)' },
@@ -126,7 +128,7 @@ export const TECH_NODES: TechNodeDef[] = [
   { id: 'BIZ-3', nameKo: '글로벌 앰버서더 프로그램', tree: 'business', tier: 3, prereq: ['BIZ-1a'], research: { ...T3, leadRoles: ['sales'], leadStat: 'a' },
     unlockKeys: ['contract:ambassador', 'event:influencer_backlash=ambassador'],
     effects: [{ kind: 'risk_scale', riskId: 'influencer_backlash', mul: 0.5 }],
-    pending: 'MKT — 면세·하이엔드 입점·브랜드 지정 / MGT — 역풍 이벤트 대응 선택지·피해 −50%' },
+    pending: 'MKT — 면세·하이엔드 입점·브랜드 지정 / MGT — 역풍 이벤트 대응 선택지 (인플루언서 반동 폭 −50%는 적용됨)' },
 
   // ── 위스키 (WHI, §5.1) ──
   { id: 'WHI-1', nameKo: '곡물 과학', tree: 'whisky', tier: 1, prereq: [], research: { ...T1, leadRoles: ['distiller'], leadStat: 'b' },
@@ -155,7 +157,7 @@ export const TECH_NODES: TechNodeDef[] = [
   { id: 'ASN-1', nameKo: '발효제 미생물 최적화', tree: 'asian', tier: 1, prereq: [], research: { ...T1, leadRoles: ['distiller'], leadStat: 'b' },
     unlockKeys: ['recipe:soju.koji=selectable'],
     effects: [{ kind: 'loss_reduction', target: 'saccharification', value: 0.2 }, { kind: 'risk_scale', riskId: 'mash_spoilage', mul: 0.3 }],
-    pending: 'PROD — 입국 균종 선택·당화 손실 감소·술덧 산패 위험 −70%' },
+    pending: 'PROD — 입국 균종 선택·당화 손실 감소 (발효 오염 이벤트의 소주 이취 ×0.3은 적용됨)' },
   { id: 'ASN-2', nameKo: '고체·반고체 발효 제어', tree: 'asian', tier: 2, prereq: ['ASN-1'], research: { ...T2, leadRoles: ['distiller'], leadStat: 'b' },
     unlockKeys: ['recipe:soju.deotsul=2|3', 'label:samyangju'],
     pending: 'PROD — 이양주·삼양주 덧술 / MKT — 라벨 "삼양주 원주"' },

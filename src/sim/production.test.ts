@@ -458,3 +458,37 @@ describe('위스키 공급 전망·병입 재고 경고 (#178, 1차 MVP 플레�
     expect(whiskyAnnualPace(s)).toEqual({ bottles: 480, basis: 'sales' });
   });
 });
+
+describe('소주·진 샘플 — 그 주종 레이더 축으로도 읽는다 (#183, 2차 플레이테스트)', () => {
+  it('옹기 소주 샘플 기록에 소주 레이더 축 읽기가 남고, 병입 추정에 축이 나온다 — 육각형·추정 품질 읽기는 그대로', async () => {
+    const { sampleAxesOf, knownReads, recordSample, readCask } = await import('./blendTable');
+    const { estimateBlend } = await import('./blending');
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const soju = s.production.recipes.find((r) => r.kind === 'soju')!;
+    s = applyAction(s, { type: 'setOrder', recipeId: soju.id, batchesPerMonth: 1 }).state;
+    s = advanceMonths(s, 1);
+    s = applyAction(s, { type: 'buySpotCasks', caskType: 'onggi_jar', qty: 1 }).state;
+    const lot = s.inventory.lots.find((l) => l.kind === 'soju')!;
+    const jar = s.inventory.casks.find((c) => !c.contents && c.typeId === 'onggi_jar')!;
+    s = applyAction(s, { type: 'fillCasks', lotId: lot.id, caskIds: [jar.id], entryAbv: 0.45 }).state;
+    s = advanceMonths(s, 3);
+    const pre = s.inventory.casks.find((c) => c.id === jar.id)!;
+    const hexBefore = readCask(s, { ...pre, samples: (pre.samples ?? 0) + 1 }); // takeSample이 횟수를 먼저 올리고 읽는다
+    s = applyAction(s, { type: 'sampleCask', caskIds: [jar.id] }).state;
+    const c = s.inventory.casks.find((x) => x.id === jar.id)!;
+    const rec = c.sampleLog!.at(-1)!;
+    const axes = sampleAxesOf('soju')!;
+    expect(Object.keys(rec.axes ?? {}).sort()).toEqual([...axes].sort());
+    expect(rec.hex).toEqual(hexBefore); // 육각형 읽기는 축 읽기를 더해도 그대로 (난수 스트림이 따로)
+    expect(knownReads(s).get(jar.id)?.axes).toEqual(rec.axes);
+    const est = estimateBlend(s, [{ source: 'cask', id: jar.id, liters: 50 }]);
+    expect(est.axes).not.toBeNull();
+    for (const a of axes) expect(est.axes![a]).toBeCloseTo(rec.axes![a]!, 6);
+    // 몰트는 육각형만
+    expect(sampleAxesOf('malt')).toBeNull();
+    // 옛 기록(축 없음)이 섞이면 축 추정은 null — 화면은 "다시 샘플"
+    c.sampleLog = [{ ...rec, axes: undefined }];
+    expect(estimateBlend(s, [{ source: 'cask', id: jar.id, liters: 50 }]).axes).toBeNull();
+    void recordSample;
+  });
+});

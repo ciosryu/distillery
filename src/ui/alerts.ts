@@ -102,6 +102,10 @@ function stockMonths(s: GameState, inCat: (c: string) => boolean): { stock: numb
 
 /** 샘플 기록이 이만큼 오래된 통은 "샘플 시기" — 자동 샘플(#177)이 뜨는 기준과 같게 둔다 */
 export const SAMPLE_STALE_MONTHS = AUTO_SAMPLE_MIN_AGE;
+/** "샘플 시기"인 통 — 오크 숙성 SAMPLE_STALE_MONTHS개월 이상이고 자기 샘플 기록이 그만큼 오래됐거나 없다 (할 일·증류소 탭 숙성고 요약이 같이 쓴다) */
+export const staleSampleCasks = (s: GameState) =>
+  s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.oakMonths >= SAMPLE_STALE_MONTHS && s.month - (c.sampleLog?.at(-1)?.month ?? -Infinity) >= SAMPLE_STALE_MONTHS);
+
 /** 재고가 이보다 적으면 "병입할 때" — 화면 안내 기준 */
 export const RESTOCK_MONTHS = 2;
 
@@ -120,7 +124,7 @@ export function monthTodos(s: GameState): Todo[] {
   if (tankMalt >= 50) {
     const empties = s.inventory.casks.filter((c) => !c.contents && !(c.contamination && c.contaminationKnown)).length;
     const free = Math.max(0, warehouseCapacity(s) - s.inventory.casks.length);
-    out.push({ id: 'fill', level: 'info', text: `탱크 몰트·그레인 ${Math.round(tankMalt).toLocaleString()}L 통입 대기 — 빈 통 ${empties}개 · 남은 자리 ${free}통 (통에 넣어야 숙성이 시작된다)`, action: '숙성고 공간', target: { anchor: 'mvp-space' } });
+    out.push({ id: 'fill', level: 'info', text: `탱크 몰트·그레인 ${Math.round(tankMalt).toLocaleString()}L 통입 대기 — 빈 통 ${empties}개 · 남은 자리 ${free}통 (통에 넣어야 숙성이 시작된다)`, action: '통입', target: { anchor: 'mvp-fill' } });
   }
   // 위스키 재고가 떨어져 가는데 숙성을 채운 통이 있다
   const ready = s.inventory.casks.filter((c) => c.contents && !c.owner && (c.contents.kind === 'malt' || c.contents.kind === 'grain') && c.contents.oakMonths >= min).length;
@@ -132,7 +136,7 @@ export function monthTodos(s: GameState): Todo[] {
   if (tankSoju >= 50 && so.months < RESTOCK_MONTHS) out.push({ id: 'soju', level: 'info', text: `소주 재고 ${so.stock ? `${so.months.toFixed(1)}개월 치` : '없음'} — 탱크 소주 ${Math.round(tankSoju).toLocaleString()}L 병입 가능 (팔 만큼만)`, action: '블렌딩·병입', target: { tab: 'bottling' } });
   // 샘플 시기 — 기록이 없거나 오래된 통 (시나리오 게임만: 샌드박스는 참값을 본다)
   if (s.scenario) {
-    const stale = s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.oakMonths >= SAMPLE_STALE_MONTHS && s.month - (c.sampleLog?.at(-1)?.month ?? -Infinity) >= SAMPLE_STALE_MONTHS).length;
+    const stale = staleSampleCasks(s).length;
     if (stale > 0) out.push({ id: 'sample', level: 'info', text: `샘플 기록이 ${SAMPLE_STALE_MONTHS}개월 넘은(또는 없는) 통 ${stale}개 — 병입 전에 맛을 확인한다`, action: '숙성 중인 캐스크', target: { anchor: 'mvp-warehouse' } });
   }
   return out;
