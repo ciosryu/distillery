@@ -7,6 +7,7 @@
 // mvp-survival.ts의 "균형" 봇(소주 2 · 몰트 5배치, 비지터 센터 0개월, 수요 1.5개월치 병입)을 기준으로 두고,
 // 1·2차 사람 플레이에서 봇과 달랐던 행동을 하나씩(또는 묶어서) 넣어 파산이 생기는지 본다. 게임 규칙·콘텐츠는 바꾸지 않는다
 // (안동 입지만 실험 안에서 시나리오 입지를 바꾼다).
+// 3차 판(mvp.md §7.8) 변형: 생산 일정(orders)·대출 실행 합계 상한(loanCap)으로 사람 판을 흉내 내고, 무엇 하나만 바꾸면 사는지 본다
 import { advanceMonth, applyAction, bulkValuePerLPA, MVP_KR, newScenarioGame, previewBlend, warehouseCapacity, type Action, type GameState, type ProductCategory } from '../../src/sim';
 import { monthlyFixedCost } from '../../src/sim/loans';
 
@@ -23,7 +24,13 @@ interface Gap {
   overBottle?: boolean;     // 소주를 재고와 상관없이 다 병입 (1차: 한 제품 186개월 치)
   andong?: boolean;         // 안동 입지 (1차)
   marketing?: number;       // 마케팅 월 예산 (봇 기준 500만, 게임 기본값 300만, 고정비를 줄이려는 사람의 첫 수 = 0)
+  /** 생산 지시 일정 [이 달부터, 소주, 몰트] — 3차 판: 0개월 1·4, 25개월 1·2, 35개월 0·0, 40개월 1·4 (mvp.md §7.8) */
+  orders?: [number, number, number][];
+  /** 은행·정책 대출 실행 합계 상한 (3차 판: 5.5억 — "빚이 부담스러워서", 오너 답변) */
+  loanCap?: number;
 }
+/** 3차 판의 생산 일정 (mvp.md §7.8 — 기록의 월 결산 production에서 읽음) */
+const P3: [number, number, number][] = [[0, 1, 4], [25, 1, 2], [35, 0, 0], [40, 1, 4]];
 const GAPS: Gap[] = [
   { id: 'base', label: '기준 봇(균형)' },
   { id: 'V', label: '비지터 센터 없음', noVisitor: true },
@@ -38,6 +45,13 @@ const GAPS: Gap[] = [
   { id: 'V+S27', label: '비지터 없음 + 27개월 생산 0', noVisitor: true, stopAt: 27 },
   { id: '1차', label: '안동 + 몰트 감축 + 과잉 병입', andong: true, cut: [24, 60], overBottle: true },
   { id: '1차+V', label: '1차 + 비지터 없음', andong: true, cut: [24, 60], overBottle: true, noVisitor: true },
+  // 3차 판 (mvp.md §7.8): 마케팅 300만 · 비지터 센터 없음 · 감산 · 대출 5.5억에서 멈춤 — 무엇 하나만 바꾸면 사는가
+  { id: '3차', label: '3차 판 (비지터 없음 · 감산 · 대출 5.5억까지)', marketing: 3_000_000, noVisitor: true, orders: P3, loanCap: 550_000_000 },
+  { id: '3차+L', label: '3차 판 + 대출은 봇처럼(상한 없음)', marketing: 3_000_000, noVisitor: true, orders: P3 },
+  { id: '3차+V', label: '3차 판 + 비지터 센터', marketing: 3_000_000, orders: P3, loanCap: 550_000_000 },
+  { id: '3차+P', label: '3차 판 + 생산 유지(소주 1 · 몰트 4)', marketing: 3_000_000, noVisitor: true, orders: [[0, 1, 4]], loanCap: 550_000_000 },
+  { id: '3차+PL', label: '3차 판 + 생산 유지 + 대출 상한 없음', marketing: 3_000_000, noVisitor: true, orders: [[0, 1, 4]] },
+  { id: '3차+VP', label: '3차 판 + 비지터 + 생산 유지 (대출 5.5억까지)', marketing: 3_000_000, orders: [[0, 1, 4]], loanCap: 550_000_000 },
 ];
 
 const act = (s: GameState, a: Action) => applyAction(s, a).state;
@@ -88,8 +102,17 @@ function bottle(s: GameState, g: Gap): GameState {
 }
 
 // mvp-survival.ts와 같은 대출 순서 (고금리 급전 #160은 쓰지 않는다 — 기준과 맞추려고)
-function finance(s: GameState): GameState {
+let borrowed = 0; // 이번 판의 은행·정책 대출 실행 합계 (loanCap용)
+function finance(s: GameState, g: Gap): GameState {
   const has = (id: string) => s.finance.loans.some((l) => l.offerId === id);
+  const act = (st: GameState, a: Action) => {
+    if (a.type !== 'takeLoan') return applyAction(st, a).state;
+    const amount = g.loanCap != null ? Math.min(a.amount, g.loanCap - borrowed) : a.amount;
+    if (amount < 10_000_000) return st;
+    const r = applyAction(st, { ...a, amount });
+    if (!r.error) borrowed += r.state.finance.loans.at(-1)!.principal;
+    return r.state;
+  };
   if (s.finance.cash < 200_000_000 && !has('kr_regional')) s = act(s, { type: 'takeLoan', offerId: 'kr_regional', amount: 300_000_000 });
   if (s.finance.cash < 100_000_000 && !has('kr_startup')) s = act(s, { type: 'takeLoan', offerId: 'kr_startup', amount: 200_000_000 });
   if (s.finance.cash < 100_000_000 && !has('working')) s = act(s, { type: 'takeLoan', offerId: 'working', amount: 300_000_000 });
@@ -116,7 +139,8 @@ function play(g: Gap, seed: number, wantYears: boolean): Row {
   if (!g.noVisitor) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_basic' });
   s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
   s = act(s, { type: 'buyEquipment', catalogId: 'ferm_steel_2000' });
-  s = setOrders(s, 2, 5);
+  borrowed = 0;
+  s = g.orders ? setOrders(s, g.orders[0]![1], g.orders[0]![2]) : setOrders(s, 2, 5);
   let minCash = s.finance.cash, minCashMonth = 0, loansMax = 0;
   const reps: GameState['history']['reports'] = [];
   const fixed: number[] = [];
@@ -124,9 +148,11 @@ function play(g: Gap, seed: number, wantYears: boolean): Row {
     if (g.stopAt === m) s = setOrders(s, 0, 0);
     if (g.cut && m === g.cut[0]) s = setOrders(s, 2, 1);
     if (g.cut && m === g.cut[1]) s = setOrders(s, 2, 5);
+    const o = g.orders?.find((x) => x[0] === m && m > 0);
+    if (o) s = setOrders(s, o[1], o[2]);
     s = bottle(s, g);
     s = fill(s);
-    s = finance(s);
+    s = finance(s, g);
     fixed.push(monthlyFixedCost(s));
     s = advanceMonth(s);
     const last = s.history.reports.at(-1);
