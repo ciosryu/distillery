@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { houseBrand } from './brands';
 import { advanceMonths, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, demandFor, evaluate, spotBidPerLPA, spotQuote, makeContractOffer, makeCraftContractOffer, contractAgingImpact, mulberry32, newGame, previewBlend, qualityFactor, type Cask, type GameState, type SpiritLot, appeal, applyEffects, buyersFor, type Product, agePerception, suggestedPrice, spotSaturation, sourcedElasticityFactor, sourcedPrestigeOf, executeBlend, runSales, updateAwareness, DUTY_FREE, dutyFreeSlotBlocker, makeOemOffer, makeRetailOffer, oemPackageCost, OEM, productDutyFreeDemand, resolveDutyFreeEditions, startOem, startRetail, type MonthReport } from './index';
 import { overhangFactor, retailCapacityCases } from './retail';
-import { domesticDemands, priceBreakdown, priceOptions, skuSplit, skuSplitEqual } from './market';
+import { domesticDemands, priceBreakdown, priceOptions, priceResponse, skuSplit, skuSplitEqual } from './market';
 import { lotQuality, spotQuoteEstimate } from './bulk';
-import { SKU } from './content/market';
+import { PRICE_CURVE, SKU } from './content/market';
 import { BULK } from './content/catalog';
 import { BUYERS } from './content/names';
 import { REGIONS, traditionalTaxFactor, refPricePerL } from './content/regions';
@@ -568,5 +568,36 @@ describe('원액 B2B 견적 — 아는 품질로만 (#164, #136·#159)', () => {
     // 참값과 무관하다 — 추정치가 같으면 원액 향이 달라도 견적이 같다
     const other = { ...l, flavor: { solvent: 30, harshness: 60 } };
     expect(spotQuoteEstimate(s, other, l.volumeL, c, { estQuality: 55, qualitySigma: 5 })).toEqual(e);
+  });
+});
+
+describe('가격 반응 곡선 (P-MKT-5, PRD §9.2)', () => {
+  it('기대 소비자가에서는 옛 공식과 값이 같고, k = 0이면 어디서나 옛 공식이다', () => {
+    const ref = 170_000, exp = 120_000;
+    expect(priceResponse(exp, ref, exp, 1.1)).toBeCloseTo(Math.pow(exp / ref, -1.1), 12);
+    for (const c of [20_000, 90_000, 400_000]) expect(priceResponse(c, ref, exp, 1.1, 0)).toBeCloseTo(Math.pow(c / ref, -1.1), 12);
+  });
+
+  it('값을 올리면 수요는 늘 줄고, 기대가에서 멀어질수록 더 가파르다', () => {
+    const f = (c: number) => priceResponse(c, 100_000, 100_000, 1.0);
+    let prev = Infinity;
+    for (const c of [10_000, 30_000, 60_000, 100_000, 150_000, 300_000, 1_000_000]) { expect(f(c)).toBeLessThan(prev); prev = f(c); }
+    // 탄력성 1: 옛 공식은 매출이 어디서나 같았다 → 새 곡선은 기대가에서 매출이 가장 크다
+    const rev = (c: number) => c * f(c);
+    expect(rev(100_000)).toBeGreaterThan(rev(50_000));
+    expect(rev(100_000)).toBeGreaterThan(rev(200_000));
+    expect(rev(1_000_000)).toBeLessThan(rev(100_000) * 0.01);
+  });
+
+  it('값을 크게 내려도 수요는 끝없이 늘지 않는다 (상한 = 기대가 수요 × e^(ε/k))', () => {
+    const at = priceResponse(100_000, 100_000, 100_000, 2);
+    expect(priceResponse(1, 100_000, 100_000, 2)).toBeLessThan(at * Math.exp(2 / PRICE_CURVE.k) + 1e-9);
+  });
+
+  it('위스키: 기대가의 10배로 팔면 매출이 거의 0 — 옛 공식은 그대로였다', () => {
+    const s = newGame({ seed: 1, region: 'KR' });
+    const p = product({ price: 60_000, stockBottles: 1_000_000 });
+    const rev = (price: number) => demandFor(s, { ...p, price }, 1, 6).demandBottles * price;
+    expect(rev(600_000)).toBeLessThan(rev(60_000) * 0.05);
   });
 });

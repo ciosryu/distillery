@@ -4,7 +4,7 @@ import { AXIS } from '../../sim/content/axes';
 import { ProfileRadar } from './Production';
 import { caskShort } from './Bottling';
 import { categoryName, consumerPrice, regionOf, traditionalTaxFactor } from '../../sim/content/regions';
-import { finishLabel, hexOf, HEX_AXES, HEX_LABEL, topNotes, type ProductCategory, type ProfileAxis, bottleMargin, calendar, coverage, demandFor, domesticDemands, DUTY_FREE, dutyFreeDemands, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, priceOptions, productConsumerPrice, retailCapacityCases, suggestedPrice, type GameState, type Product } from '../../sim';
+import { finishLabel, hexOf, HEX_AXES, HEX_LABEL, topNotes, type ProductCategory, type ProfileAxis, bottleMargin, calendar, coverage, demandFor, domesticDemands, DUTY_FREE, dutyFreeDemands, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, expectedPricePerL, priceOptions, productConsumerPrice, retailCapacityCases, suggestedPrice, type GameState, type Product } from '../../sim';
 import { awarenessOf, brandMarketing, brandOf, rebrandCost, secondBrands } from '../../sim/brands';
 import { BRANDS } from '../../sim/content/market';
 import { isLocked } from '../../sim/scenario';
@@ -295,8 +295,17 @@ function ProductDetail({ p }: { p: Product }) {
   if (p.dutyFreeOnly) return <Card title={`${p.name} — 면세 전용`}><p className="text-sm text-stone-600 dark:text-stone-300">면세 전용 한정판은 주세·부가세가 없습니다. 면세가 = 출고가 × 면세점 마진 {DUTY_FREE.markup}.</p></Card>;
   const b = priceBreakdown(s, p, region);
   const d = domesticDemands(s, monthOfYear, region).get(p.id) ?? demandFor(s, p, 1, monthOfYear, region);
-  const opts = priceOptions(s, p, monthOfYear);
+  // 가격 비교는 지금 값 근처 + 권장가 — 값이 기대가에서 멀리 벗어났을 때도 돌아갈 길이 보이게 (P-MKT-5)
+  const suggested = currentSuggestedPrice(s, p);
+  const baseFactors = [0.8, 0.9, 1, 1.1, 1.25, 1.5];
+  const sf = suggested / Math.max(1, p.price);
+  const factors = baseFactors.some((f) => Math.abs(f / sf - 1) < 0.05) ? baseFactors : [...baseFactors, sf].sort((a, b) => a - b);
+  const opts = priceOptions(s, p, monthOfYear, factors);
   const best = opts.reduce((a, x) => (x.contribution > a.contribution ? x : a), opts[0]!);
+  const bestRev = opts.reduce((a, x) => (x.revenue > a.revenue ? x : a), opts[0]!);
+  // 기대 소비자가 (P-MKT-5) — 여기서 멀어질수록 수요가 가파르게(비쌀 때) 또는 완만하게(쌀 때) 변한다
+  const expected = expectedPricePerL(region, p) * (p.bottleMl / 1000);
+  const vsExpected = b.consumer / expected;
   const t = region.tax;
   const rows: [string, number, string?][] = [
     ['출고가 (우리 매출)', b.price],
@@ -331,7 +340,7 @@ function ProductDetail({ p }: { p: Product }) {
           <dt className="text-stone-500">도달률 (인지도 {pct(awarenessOf(s, p), 1)} × 커버리지 {pct(coverage(s), 0)} × 점유 상한)</dt><dd className="text-right tabular-nums">{pct(d.reach, 4)} → {num(d.marketL * d.reach, 1)}L</dd>
           {d.split < 0.995 && <><dt className="text-stone-500">같은 카테고리 제품끼리 나눔</dt><dd className="text-right tabular-nums">× {d.split.toFixed(2)}</dd></>}
           <dt className="text-stone-500">매력도 (품질·전형성·숙성·포장)</dt><dd className="text-right tabular-nums">× {d.appeal.toFixed(2)}</dd>
-          <dt className="text-stone-500">가격 계수 (소비자가 / 기준가 {wonFull(d.refPricePerL * p.bottleMl / 1000)})</dt><dd className="text-right tabular-nums">× {d.priceFactor.toFixed(2)}</dd>
+          <dt className="text-stone-500">가격 계수 (기준가 {wonFull(d.refPricePerL * p.bottleMl / 1000)} · 이 제품 기대가 {wonFull(expected)})</dt><dd className="text-right tabular-nums">× {d.priceFactor.toFixed(2)}</dd>
           <dt className="font-medium">수요 한도</dt><dd className="text-right font-medium tabular-nums">{num(d.demandBottles)}병</dd>
         </dl>
         <div className="mt-3">
@@ -342,14 +351,16 @@ function ProductDetail({ p }: { p: Product }) {
                 <Td right>{wonFull(o.consumer)}</Td>
                 <Td right>{num(o.demandBottles)}</Td>
                 <Td right>{num(o.sellBottles)}</Td>
-                <Td right>{won(o.revenue)}</Td>
+                <Td right className={o === bestRev ? 'text-sky-700 dark:text-sky-400' : ''}>{won(o.revenue)}</Td>
                 <Td right className={o === best ? 'text-emerald-700 dark:text-emerald-400' : ''}>{won(o.contribution)}</Td>
-                <Td>{o.price !== p.price && <Button small variant="ghost" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: o.price })}>적용</Button>}</Td>
+                <Td>{o.price !== p.price && <Button small variant="ghost" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: o.price })}>적용</Button>}{Math.abs(o.price - suggested) < 100 && <span className="ml-1 text-xs text-amber-800 dark:text-amber-300">권장</span>}</Td>
               </tr>
             ))}
           </Table>
         </div>
-        <p className="mt-2 text-xs text-stone-500">이번 달 기댓값이다(실제는 ±10%, 소매 처리 역량을 넘으면 고비용 채널). 재고가 적으면 비싸게 팔수록, 재고가 많으면 많이 팔수록 낫다 — 재고가 6개월 치를 넘게 쌓이면 할인 이미지로 수요가 준다.</p>
+        {vsExpected > 1.5 && <p className="mt-2 text-xs font-medium text-rose-700 dark:text-rose-400">소비자가가 이 제품 기대가의 {vsExpected.toFixed(1)}배 — 기대가보다 비쌀수록 사는 사람이 빠르게 줄어 매출이 떨어진다.</p>}
+        {vsExpected < 0.67 && <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">소비자가가 이 제품 기대가의 {pct(vsExpected, 0)} — 이만큼 싸게 팔아도 수요는 덜 늘어 매출이 줄고, 재고만 빨리 빠진다. 현금이 급하면 값을 내리기보다 대출·뉴메이크 현물 판매를 본다.</p>}
+        <p className="mt-2 text-xs text-stone-500">이번 달 기댓값이다(실제는 ±10%, 소매 처리 역량을 넘으면 고비용 채널). <span className="text-sky-700 dark:text-sky-400">파란 매출</span>이 가장 큰 가격, <span className="text-emerald-700 dark:text-emerald-400">초록 공헌이익</span>이 가장 큰 가격이다. 기대가(권장가) 근처가 보통 둘 다 좋고, 재고가 적으면 조금 비싸게, 많으면 조금 싸게 — 재고가 6개월 치를 넘게 쌓이면 할인 이미지로 수요가 준다.</p>
       </Card>
     </div>
   );
