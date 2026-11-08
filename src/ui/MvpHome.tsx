@@ -9,6 +9,7 @@ import { equipmentCost } from '../sim/sites';
 import { isLocked, monthLabel, netWorth, regionalCaskPrice, selfFundedCash, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
+import { FixedCostLine } from './panels/FixedCost';
 import { LineChart } from './charts';
 import { CashFlowLine, MonthTodo } from './Alerts';
 import { PriceDesk } from './panels/Sales';
@@ -116,6 +117,8 @@ function Headline() {
       ))}
       {/* 지난달 현금 흐름 한 줄 · 대출 상환 예정 (1차 MVP 플레이테스트 대응 ②④) */}
       <CashFlowLine />
+      {/* 매달 나가는 돈 + 마케팅 예산 (P-MGT-8 안 A, MGT 작성) */}
+      <FixedCostLine />
       <div className="mt-3">
         <LineChart
           label="월말 현금과 순자산 추이"
