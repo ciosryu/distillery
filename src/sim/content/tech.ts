@@ -109,7 +109,7 @@ export const TECH_NODES: TechNodeDef[] = [
   { id: 'ENG-3', nameKo: '공급망 예측', tree: 'engineering', tier: 3, prereq: ['ENG-2c'], research: { ...T3, leadRoles: ['office'], leadStat: 'c' },
     unlockKeys: ['info:price_forecast'],
     effects: [{ kind: 'info', target: 'ingredient_price', forecastMonths: 3 }, { kind: 'info', target: 'macro_event', forecastMonths: 3 }],
-    pending: 'MGT — 원자재 가격 지수 선행 예측·매크로 이벤트 조기 경보(정보만 — 대응은 선도계약)' },
+    pending: 'MGT — 매크로 이벤트 조기 경보 (원자재 가격 지수 3개월 예측 범위는 적용됨 — 재무 탭)' },
 
   // ── 경영·브랜드 (BIZ, §4.4) — 담당: 사무·영업 ──
   { id: 'BIZ-1a', nameKo: '정기 납품 계약', tree: 'business', tier: 1, prereq: [], research: { ...T1, leadRoles: ['sales'], leadStat: 'b' },
@@ -169,3 +169,6 @@ export const TECH_NODES: TechNodeDef[] = [
 ];
 
 export const TECH_BY_ID: Record<string, TechNodeDef> = Object.fromEntries(TECH_NODES.map((n) => [n.id, n]));
+
+/** ENG-3 공급망 예측 (P-MGT-10) — 예측 오차. 90% 범위 = 중심 × exp(±z90 × σ_k), σ_k = baseSigma × √k × (1 − 사무직 행정 스탯 / statDivisor) [튜닝] */
+export const PRICE_FORECAST = { baseSigma: 0.05, statDivisor: 200, z90: 1.645 };
