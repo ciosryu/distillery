@@ -16,6 +16,7 @@ import { addWeatherShock } from './weather';
 import { addTrendShift } from './blendTable';
 import { HEX_LABEL } from './blendRadar';
 import { caskBookValue, newLedger, settleClaims, type LossLedger } from './insurance';
+import { riskMul } from './research';
 
 // 이벤트 엔진: 예보 → 발생 → (선택지) → 효과. 결정론적 난수 스트림 사용.
 
@@ -60,6 +61,9 @@ function log(s: GameState, report: MonthReport | null, title: string, text: stri
 /** ledger가 있으면(재해 이벤트) 보험이 보상할 피해를 적는다 — 적기만 하고 상태·난수는 바꾸지 않는다 (#171) */
 export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: string, ledger?: LossLedger): string[] {
   const notes: string[] = [];
+  // 연구로 줄어드는 재해 피해 크기 (P-MGT-9, tech-tree P3 "면역 대신 크기 감소") — 1이면 아래 계산을 건너뛰어 값이 그대로다
+  const dm = ledger?.damageMul ?? 1;
+  const scale = (x: number) => (dm === 1 ? x : x * dm);
   for (const e of effects) {
     switch (e.type) {
       case 'modifier': {
@@ -80,7 +84,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         notes.push(`${HEX_LABEL[e.axis]} 향 유행 — 최대 매력도 ×${(1 + e.strength).toFixed(2)} (${months}개월)`);
         break;
       }
-      case 'cash': s.finance.cash += e.amount; if (e.amount) notes.push(`현금 ${e.amount > 0 ? '+' : ''}${e.amount.toLocaleString()}원`); if (ledger && e.amount < 0) ledger.property += -e.amount; break;
+      case 'cash': { const amount = e.amount < 0 ? Math.round(scale(e.amount)) : e.amount; s.finance.cash += amount; if (amount) notes.push(`현금 ${amount > 0 ? '+' : ''}${amount.toLocaleString()}원`); if (ledger && amount < 0) ledger.property += -amount; break; }
       case 'awareness': { const h = houseBrand(s); h.awareness = clamp(h.awareness + e.delta, 0.001, 0.95); } notes.push(`인지도 ${e.delta > 0 ? '+' : ''}${(e.delta * 100).toFixed(0)}%p`); break;
       case 'trust': s.b2b.trust = clamp(s.b2b.trust + e.delta, 0, 100); break;
       case 'acclaim': {
@@ -92,7 +96,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
       }
       case 'caskLoss': {
         const filled = s.inventory.casks.filter((c) => c.contents);
-        const n = Math.max(1, Math.round(filled.length * rng.range(e.share[0], e.share[1])));
+        const n = Math.max(1, Math.round(filled.length * scale(rng.range(e.share[0], e.share[1]))));
         const lost = new Set<string>();
         while (lost.size < Math.min(n, filled.length)) lost.add(rng.pick(filled).id);
         if (ledger) ledger.inventory += filled.filter((c) => lost.has(c.id)).reduce((t, c) => t + caskBookValue(c), 0);
@@ -100,20 +104,26 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         notes.push(`캐스크 ${lost.size}개 소실`);
         break;
       }
-      case 'caskVolumeLoss':
-        if (ledger) ledger.inventory += e.share * s.inventory.casks.reduce((t, c) => t + caskBookValue(c), 0);
-        s.inventory.casks = s.inventory.casks.map((c) => (c.contents ? { ...c, contents: { ...c.contents, volumeL: c.contents.volumeL * (1 - e.share), costPerLPA: c.contents.costPerLPA / (1 - e.share) } } : c));
-        notes.push(`숙성 원액 ${(e.share * 100).toFixed(0)}% 손실`);
+      case 'caskVolumeLoss': {
+        const share = scale(e.share);
+        if (ledger) ledger.inventory += share * s.inventory.casks.reduce((t, c) => t + caskBookValue(c), 0);
+        s.inventory.casks = s.inventory.casks.map((c) => (c.contents ? { ...c, contents: { ...c.contents, volumeL: c.contents.volumeL * (1 - share), costPerLPA: c.contents.costPerLPA / (1 - share) } } : c));
+        notes.push(`숙성 원액 ${(share * 100).toFixed(0)}% 손실`);
         break;
+      }
       case 'stillDown': {
         const stills = s.production.equipment.filter((x) => x.readyMonth <= s.month && x.feintsLPA != null);
         if (stills.length) { const st = rng.pick(stills); st.readyMonth = s.month + e.months; notes.push(`증류기 ${st.id} ${e.months}개월 가동 중단`); if (ledger) ledger.stopMonths += e.months / stills.length; }
         break;
       }
-      case 'lotSpoil':
-        for (const l of s.inventory.lots) if (l.kind !== 'gin') l.flavor = { ...l.flavor, acetic: (l.flavor.acetic ?? 0) + e.acetic };
+      case 'lotSpoil': {
+        // 연구 효과 (P-MGT-9): PRO-1 발효 공정 관리 = acetic 위험 ×0.7, ASN-1 발효제 미생물 = 소주 술덧 산패 ×0.3 [튜닝]
+        const ac = riskMul(s, 'acetic');
+        const soju = ac * riskMul(s, 'mash_spoilage');
+        for (const l of s.inventory.lots) if (l.kind !== 'gin') { const m = l.kind === 'soju' ? soju : ac; l.flavor = { ...l.flavor, acetic: (l.flavor.acetic ?? 0) + (m === 1 ? e.acetic : e.acetic * m) }; }
         notes.push('탱크 원액에 이취 발생');
         break;
+      }
       case 'specialContract': {
         const offer = makeSpecialContractOffer(s, rng, e);
         if (offer) { s.b2b.contractOffers.push(offer); notes.push(`${offer.buyerName}의 특별 계약 제안 도착`); }
@@ -148,7 +158,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         break;
       case 'contaminate': {
         const filled = s.inventory.casks.filter((c) => c.contents && !c.contamination);
-        const n = Math.min(filled.length, Math.max(1, Math.round(filled.length * rng.range(e.share[0], e.share[1]))));
+        const n = Math.min(filled.length, Math.max(1, Math.round(filled.length * scale(rng.range(e.share[0], e.share[1])))));
         for (let i = 0; i < n; i++) { const c = rng.pick(filled.filter((x) => !x.contamination)); c.contamination = e.kind; }
         notes.push(`캐스크 ${n}개 오염 (숙성고 QC가 찾아내야 한다)`);
         break;
@@ -193,7 +203,9 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         const best = [...s.commerce.products].sort((a, b) => b.lastMonthSold - a.lastMonthSold)[0];
         if (!best) break;
         addModifier(s, `demand:${best.category}`, e.factor, e.months, `${label} — 반짝 품귀`);
-        addModifier(s, `demand:${best.category}`, e.backlash, e.backlashMonths, `${label} — 반동`, e.months);
+        // 반동 폭 × 연구 효과 (P-MGT-9: BIZ-3 앰버서더 프로그램 = 역풍 피해 −50%)
+        const bm = riskMul(s, 'influencer_backlash');
+        addModifier(s, `demand:${best.category}`, bm === 1 ? e.backlash : 1 - (1 - e.backlash) * bm, e.backlashMonths, `${label} — 반동`, e.months);
         break;
       }
     }
@@ -221,7 +233,7 @@ function fire(s: GameState, base: EventDef, rng: Rng, report: MonthReport): void
     return;
   }
   // 재해는 피해 장부를 적어 끝에 보험금을 준다 (#171). 보험이 없으면 문구·현금 모두 그대로
-  const ledger = def.category === 'disaster' ? newLedger(s) : undefined;
+  const ledger = def.category === 'disaster' ? newLedger(s, def.id) : undefined;
   const notes = applyEffects(s, def.effects ?? [], rng, def.title, ledger);
   if (ledger) notes.push(...settleClaims(s, ledger, report));
   log(s, report, def.title, [def.text, ...notes].join(' '));
