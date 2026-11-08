@@ -53,6 +53,19 @@ export function monthlyFixedCost(s: GameState): number {
     s.finance.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0) + s.finance.insurance.reduce((t, x) => t + x.premiumPerMonth, 0);
 }
 
+/** 월 고정비 예상의 내역 (#181 안 A — 증류소 탭 "매달 나가는 돈"). 합은 monthlyFixedCost와 같다. adjustable = 플레이어가 바로 조절할 수 있는 줄 */
+export function monthlyFixedBreakdown(s: GameState): { id: string; label: string; amount: number; adjustable?: boolean }[] {
+  return [
+    { id: 'salaries', label: '급여', amount: s.hr.staff.reduce((t, x) => t + x.salary, 0) },
+    { id: 'overhead', label: '관리비', amount: siteOverhead(s) },
+    { id: 'marketing', label: '마케팅', amount: s.commerce.marketingBudget + secondBrandMonthlyCost(s), adjustable: true },
+    { id: 'maintenance', label: '설비 유지비', amount: s.production.equipment.reduce((t, e) => t + (EQUIPMENT[e.catalogId]?.maintenance ?? 0), 0) },
+    { id: 'storage', label: '통 보관비', amount: caskStorageCost(s) },
+    { id: 'loans', label: '대출 원리금', amount: s.finance.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0) },
+    { id: 'insurance', label: '보험료', amount: s.finance.insurance.reduce((t, x) => t + x.premiumPerMonth, 0) },
+  ].filter((x) => x.amount > 0 || x.adjustable);
+}
+
 /** 이번 달 대출 납부액 (거치 기간에는 이자만) */
 export function currentLoanPayment(s: GameState, l: GameState['finance']['loans'][number]): number {
   return s.month < l.startMonth + l.graceMonths ? Math.round(l.balance * (l.annualRate / 12)) : l.monthlyPayment;
