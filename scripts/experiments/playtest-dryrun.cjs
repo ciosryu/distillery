@@ -48,7 +48,7 @@ const URL = process.env.URL ?? 'http://localhost:4176/';
   for (let m = 0; m < MONTHS; m++) {
     const c0 = clicks;
     await tab('증류소');
-    // 증류소 탭 배치(P-ARCH-21): 통입은 생산 지시 아래 카드, 빈 통 사기는 숙성고 공간 카드
+    // 증류소 탭 배치(#182): 통입은 생산 지시 아래 카드, 빈 통 사기는 숙성고 공간 카드
     const space = p.locator('section', { has: p.locator('h2', { hasText: /^숙성고 공간/ }) });
     const fillCard = p.locator('section', { has: p.locator('h2', { hasText: '탱크 원액 → 빈 통에 통입' }) });
     // 빈 통이 적으면 쿠퍼리지 주문

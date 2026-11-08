@@ -20,7 +20,7 @@ export interface LossLedger {
   stopMonths: number;
   /** 재해 직전 재고 원가 — 비례 보상 기준 */
   inventoryValueBefore: number;
-  /** 피해 크기 배수 — 연구 효과 riskMul('event:<이벤트 id>') (P-MGT-9, 예: ENG-2b 숙성고 화재 ×0.6). 1이면 피해 그대로 */
+  /** 피해 크기 배수 — 연구 효과 riskMul('event:<이벤트 id>') (#184, 예: ENG-2b 숙성고 화재 ×0.6). 1이면 피해 그대로 */
   damageMul: number;
 }
 

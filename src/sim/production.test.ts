@@ -459,7 +459,7 @@ describe('위스키 공급 전망·병입 재고 경고 (#178, 1차 MVP 플레�
   });
 });
 
-describe('소주·진 샘플 — 그 주종 레이더 축으로도 읽는다 (P-PROD-13, 2차 플레이테스트)', () => {
+describe('소주·진 샘플 — 그 주종 레이더 축으로도 읽는다 (#183, 2차 플레이테스트)', () => {
   it('옹기 소주 샘플 기록에 소주 레이더 축 읽기가 남고, 병입 추정에 축이 나온다 — 육각형·추정 품질 읽기는 그대로', async () => {
     const { sampleAxesOf, knownReads, recordSample, readCask } = await import('./blendTable');
     const { estimateBlend } = await import('./blending');

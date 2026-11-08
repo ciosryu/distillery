@@ -6,7 +6,7 @@ import { useUi } from '../store/ui';
 import { cashAlert, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, type TodoTarget } from './alerts';
 import { Button } from './kit';
 
-/** 증류소 탭의 접힌 블록을 여는 신호 — detail = 블록 id(= 스크롤 앵커). MvpHome의 useFold가 듣는다 (P-ARCH-21) */
+/** 증류소 탭의 접힌 블록을 여는 신호 — detail = 블록 id(= 스크롤 앵커). MvpHome의 useFold가 듣는다 (#182) */
 export const OPEN_FOLD_EVENT = 'mvp-open-fold';
 
 /** 탭 이동 또는 증류소 화면 안의 카드로 스크롤 — 접혀 있으면 먼저 연다 */

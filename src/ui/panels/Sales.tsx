@@ -52,12 +52,12 @@ function salesStory(stock: number, demand: number, margin: number): string {
   return `${head} ${todo}`;
 }
 
-/** 병입 회차를 뗀 제품 이름 — "한빛 소주 13" → "한빛 소주" (증류소 탭 묶음 줄, P-ARCH-21) */
+/** 병입 회차를 뗀 제품 이름 — "한빛 소주 13" → "한빛 소주" (증류소 탭 묶음 줄, #182) */
 export const productStem = (name: string) => name.replace(/\s*(#|No\.?\s*)?\d+\s*(호|차)?\s*$/i, '').trim() || name;
 
 /**
  * 가격·수요 표 + 고른 제품의 주세 내역·가격 비교. MVP 단일 화면에서도 쓴다.
- * compact(증류소 탭, [P-ARCH-21]): 재고 있는 제품만 · 같은 술(범주·병·도수·병입 회차 뗀 이름)은 한 줄로 묶고 ▸로 제품별 줄을 펼친다 ·
+ * compact(증류소 탭, [#182]): 재고 있는 제품만 · 같은 술(범주·병·도수·병입 회차 뗀 이름)은 한 줄로 묶고 ▸로 제품별 줄을 펼친다 ·
  * 설명·각주는 판매 탭에 두고 · 제품 상세(향미·내역)는 "내역"을 눌렀을 때만. 묶음 줄에서 값을 바꾸면 묶인 제품 모두 같은 값(오너 결정)
  */
 export function PriceDesk({ compact = false }: { compact?: boolean }) {

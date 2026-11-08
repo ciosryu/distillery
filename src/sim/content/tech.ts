@@ -12,7 +12,7 @@ export type LeadStat = 'a' | 'b' | 'c';
 
 /**
  * 해금 효과 중 게이트가 아닌 것 (tech-tree §7 TechUnlock의 loss_reduction·risk_scale·info) — research.ts 조회 함수로 읽는다.
- * 지금 읽는 곳: risk_scale의 이벤트 피해(events.ts, P-MGT-9)·보험료(insurance.ts). loss_reduction·info와 batch_variance는 담당 파트(PROD·MKT)가 붙인다.
+ * 지금 읽는 곳: risk_scale의 이벤트 피해(events.ts, #184)·보험료(insurance.ts). loss_reduction·info와 batch_variance는 담당 파트(PROD·MKT)가 붙인다.
  * 게이트(선택지·설비·계약·라벨·이벤트 선택지)는 unlockKeys가 isUnlocked 키로 표현한다
  */
 export type TechEffect =
@@ -102,7 +102,7 @@ export const TECH_NODES: TechNodeDef[] = [
   { id: 'ENG-2b', nameKo: '방재 엔지니어링', tree: 'engineering', tier: 2, prereq: ['ENG-1'], research: { ...T2, leadRoles: ['distiller', 'warehouse'], leadStat: 'b' },
     unlockKeys: ['facility:fire_suppression'],
     // 보험료 −15% (#171, PRD §8.4) — 가입할 때 보험료에 적용 [튜닝]
-    // 보험료 −15% (#171) · 숙성고 화재 피해 ×0.6 (P-MGT-9 — 복구비·소실 캐스크 비율) [튜닝]
+    // 보험료 −15% (#171) · 숙성고 화재 피해 ×0.6 (#184 — 복구비·소실 캐스크 비율) [튜닝]
     effects: [{ kind: 'risk_scale', riskId: 'premium:property', mul: 0.85 }, { kind: 'risk_scale', riskId: 'premium:inventory', mul: 0.85 }, { kind: 'risk_scale', riskId: 'event:warehouse_fire', mul: 0.6 }],
     pending: 'PROD — 상위 방재 설비 (보험료 −15%·숙성고 화재 피해 ×0.6은 적용됨)' },
   { id: 'ENG-2c', nameKo: '공정 자동화 제어', tree: 'engineering', tier: 2, prereq: ['ENG-1'], research: { ...T2, leadRoles: ['distiller'], leadStat: 'b' },

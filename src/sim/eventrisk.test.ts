@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { newGame, type GameState, type MonthReport } from './index';
 import { fireEvent } from './events';
 
-// 이벤트 리스크 배수 (P-MGT-9, tech-tree P3 "면역 대신 크기 감소") — 연구한 노드의 risk_scale이 이벤트 피해를 줄인다
+// 이벤트 리스크 배수 (#184, tech-tree P3 "면역 대신 크기 감소") — 연구한 노드의 risk_scale이 이벤트 피해를 줄인다
 
 const rep = (s: GameState): MonthReport => ({ month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] });
 const game = (unlocked: string[] = []): GameState => {
@@ -14,7 +14,7 @@ const game = (unlocked: string[] = []): GameState => {
   return s;
 };
 
-describe('이벤트 리스크 배수 (P-MGT-9)', () => {
+describe('이벤트 리스크 배수 (#184)', () => {
   it('ENG-2b(방재 엔지니어링): 숙성고 화재의 복구비가 ×0.6', () => {
     const plain = game(); const c0 = plain.finance.cash; fireEvent(plain, 'warehouse_fire', rep(plain));
     const eng = game(['ENG-2b']); const c1 = eng.finance.cash; fireEvent(eng, 'warehouse_fire', rep(eng));

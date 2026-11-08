@@ -61,7 +61,7 @@ function log(s: GameState, report: MonthReport | null, title: string, text: stri
 /** ledger가 있으면(재해 이벤트) 보험이 보상할 피해를 적는다 — 적기만 하고 상태·난수는 바꾸지 않는다 (#171) */
 export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: string, ledger?: LossLedger): string[] {
   const notes: string[] = [];
-  // 연구로 줄어드는 재해 피해 크기 (P-MGT-9, tech-tree P3 "면역 대신 크기 감소") — 1이면 아래 계산을 건너뛰어 값이 그대로다
+  // 연구로 줄어드는 재해 피해 크기 (#184, tech-tree P3 "면역 대신 크기 감소") — 1이면 아래 계산을 건너뛰어 값이 그대로다
   const dm = ledger?.damageMul ?? 1;
   const scale = (x: number) => (dm === 1 ? x : x * dm);
   for (const e of effects) {
@@ -117,7 +117,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         break;
       }
       case 'lotSpoil': {
-        // 연구 효과 (P-MGT-9): PRO-1 발효 공정 관리 = acetic 위험 ×0.7, ASN-1 발효제 미생물 = 소주 술덧 산패 ×0.3 [튜닝]
+        // 연구 효과 (#184): PRO-1 발효 공정 관리 = acetic 위험 ×0.7, ASN-1 발효제 미생물 = 소주 술덧 산패 ×0.3 [튜닝]
         const ac = riskMul(s, 'acetic');
         const soju = ac * riskMul(s, 'mash_spoilage');
         for (const l of s.inventory.lots) if (l.kind !== 'gin') { const m = l.kind === 'soju' ? soju : ac; l.flavor = { ...l.flavor, acetic: (l.flavor.acetic ?? 0) + (m === 1 ? e.acetic : e.acetic * m) }; }
@@ -203,7 +203,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         const best = [...s.commerce.products].sort((a, b) => b.lastMonthSold - a.lastMonthSold)[0];
         if (!best) break;
         addModifier(s, `demand:${best.category}`, e.factor, e.months, `${label} — 반짝 품귀`);
-        // 반동 폭 × 연구 효과 (P-MGT-9: BIZ-3 앰버서더 프로그램 = 역풍 피해 −50%)
+        // 반동 폭 × 연구 효과 (#184: BIZ-3 앰버서더 프로그램 = 역풍 피해 −50%)
         const bm = riskMul(s, 'influencer_backlash');
         addModifier(s, `demand:${best.category}`, bm === 1 ? e.backlash : 1 - (1 - e.backlash) * bm, e.backlashMonths, `${label} — 반동`, e.months);
         break;

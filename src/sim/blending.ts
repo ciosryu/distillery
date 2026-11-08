@@ -276,7 +276,7 @@ export function estimateBlend(s: GameState, components: BlendComponent[]): { qua
     hex: mixHex(parts.map((p) => ({ hex: p.hex, share: p.w }))),
     unknownShare: total > 0 ? 1 - kw / total : 0,
     fromCasks,
-    // 소주·진·고량주의 레이더 축 추정 (P-PROD-13) — 아는 원액 모두에 축 읽기가 있을 때만(옛 기록이 섞이면 null → 화면은 "다시 샘플")
+    // 소주·진·고량주의 레이더 축 추정 (#183) — 아는 원액 모두에 축 읽기가 있을 때만(옛 기록이 섞이면 null → 화면은 "다시 샘플")
     axes: parts.every((p) => p.axes) ? (() => {
       const out: Partial<Record<AxisId, number>> = {};
       for (const p of parts) for (const [a, v] of Object.entries(p.axes!) as [AxisId, number][]) out[a] = (out[a] ?? 0) + (v * p.w) / kw;

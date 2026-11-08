@@ -14,7 +14,7 @@ import { Badge, Button, Card, Empty, NumberField, Select, Table, Td, TextField }
 const KIND_LABEL: Record<SpiritKind, string> = { soju: '소주', gin: '진', malt: '몰트', grain: '그레인', baijiu: '백주' };
 /** 육각형 상위 축 이름 (샘플 기록 표시용) */
 const topHex = (h: Hex, n = 3) => HEX_AXES.filter((a) => h[a] >= 1).sort((a, b) => h[b] - h[a]).slice(0, n).map((a) => HEX_LABEL[a]).join(' · ') || '뚜렷한 향 없음';
-/** 소주·진·고량주 샘플 기록의 강한 향 — 그 주종 레이더 축 (P-PROD-13). 육각형(위스키 축)으로 보이면 소주에 "피트"가 떴다 */
+/** 소주·진·고량주 샘플 기록의 강한 향 — 그 주종 레이더 축 (#183). 육각형(위스키 축)으로 보이면 소주에 "피트"가 떴다 */
 const topAxes = (ax: Partial<Record<AxisId, number>>, n = 3) => (Object.entries(ax) as [AxisId, number][]).filter(([, v]) => v >= 1).sort((a, b) => b[1] - a[1]).slice(0, n).map(([a]) => AXIS[a].nameKo).join(' · ') || '뚜렷한 향 없음';
 /** 샘플 기록의 강한 향 — 레이더 축 읽기가 있으면 그것, 없으면 육각형 */
 const topKnown = (k: KnownRead, kind: SpiritKind) => (k.axes ? topAxes(k.axes) : sampleAxesOf(kind) ? '향은 다시 샘플(이전 버전 기록)' : topHex(k.hex));
@@ -160,7 +160,7 @@ export function Bottling() {
         const k = known?.get(x.id);
         axes = !k ? null
           : hexMode ? HEX_AXES.map((a) => ({ id: a, label: HEX_LABEL[a], value: k.hex[a] }))
-          // 소주·진·고량주: 샘플 기록의 레이더 축 읽기 (P-PROD-13). 옛 기록(축 없음)은 선을 못 그린다
+          // 소주·진·고량주: 샘플 기록의 레이더 축 읽기 (#183). 옛 기록(축 없음)은 선을 못 그린다
           : k.axes ? CATEGORY[preview.category!].radarAxes.map((a) => ({ id: a, label: AXIS[a].nameKo, value: k.axes![a] ?? 0 })) : null;
       } else axes = axesOf(x.lot.flavor);
       return [{ axes, color: LAYER_COLORS[i % LAYER_COLORS.length]!, label, share }];
