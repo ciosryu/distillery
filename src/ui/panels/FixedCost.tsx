@@ -4,7 +4,7 @@ import { useUi } from '../../store/ui';
 import { won } from '../format';
 import { Button, NumberField } from '../kit';
 
-// 매달 나가는 돈 (P-MGT-8 안 A, 1차 MVP 플레이테스트 대응) — 월 고정비 예상의 내역 + 바로 조절할 수 있는 마케팅 예산. 규칙은 바꾸지 않는다
+// 매달 나가는 돈 (#181 안 A, 1차 MVP 플레이테스트 대응) — 월 고정비 예상의 내역 + 바로 조절할 수 있는 마케팅 예산. 규칙은 바꾸지 않는다
 
 export function FixedCostLine() {
   const s = useGame((g) => g.state);

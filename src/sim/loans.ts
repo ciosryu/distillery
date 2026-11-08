@@ -53,7 +53,7 @@ export function monthlyFixedCost(s: GameState): number {
     s.finance.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0) + s.finance.insurance.reduce((t, x) => t + x.premiumPerMonth, 0);
 }
 
-/** 월 고정비 예상의 내역 (P-MGT-8 안 A — 증류소 탭 "매달 나가는 돈"). 합은 monthlyFixedCost와 같다. adjustable = 플레이어가 바로 조절할 수 있는 줄 */
+/** 월 고정비 예상의 내역 (#181 안 A — 증류소 탭 "매달 나가는 돈"). 합은 monthlyFixedCost와 같다. adjustable = 플레이어가 바로 조절할 수 있는 줄 */
 export function monthlyFixedBreakdown(s: GameState): { id: string; label: string; amount: number; adjustable?: boolean }[] {
   return [
     { id: 'salaries', label: '급여', amount: s.hr.staff.reduce((t, x) => t + x.salary, 0) },

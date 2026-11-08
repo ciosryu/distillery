@@ -117,7 +117,7 @@ function Headline() {
       ))}
       {/* 지난달 현금 흐름 한 줄 · 대출 상환 예정 (1차 MVP 플레이테스트 대응 ②④) */}
       <CashFlowLine />
-      {/* 매달 나가는 돈 + 마케팅 예산 (P-MGT-8 안 A, MGT 작성) */}
+      {/* 매달 나가는 돈 + 마케팅 예산 (#181 안 A, MGT 작성) */}
       <FixedCostLine />
       <div className="mt-3">
         <LineChart
