@@ -15,7 +15,7 @@ export const LOAN_OFFERS: LoanOfferDef[] = [
   { id: 'kr_startup', nameKo: '창업기반지원자금 (중소벤처기업진흥공단)', annualRate: 0.025, termMonths: 72, max: 200_000_000, graceMonths: 18, regions: ['KR'], note: '창업 7년 이내 중소기업 정책 융자를 단순화' },
   // 재고 담보대출 (결정 #90, 홋카이도) — 숙성 원액 시가를 담보로. 시가가 떨어지면 추가 상환 요구 [튜닝]
   // 고금리 급전 (#133, MVP) — 은행 상품을 다 쓴 뒤 현금 공백을 메우는 마지막 수단. 금리는 한국 법정 최고금리(연 20%, 2021-07~) 수준, 기간·한도는 [튜닝].
-  // 다른 상품과 같은 규칙(상품당 1건, 조기 상환 가능)이다. 은행 심사(적자·현금 부족이면 거절)는 단계 T 확인 항목(P-MGT-18, mvp.md §7.11) — 생기면 급전만 남는 순간이 실제로 온다
+  // 다른 상품과 같은 규칙(상품당 1건, 조기 상환 가능)이다. 은행 심사(적자·현금 부족이면 거절)는 단계 T 확인 항목(#210, mvp.md §7.11) — 생기면 급전만 남는 순간이 실제로 온다
   { id: 'emergency', nameKo: '고금리 급전 (대부업)', annualRate: 0.2, termMonths: 12, max: 100_000_000, graceMonths: 0, emergency: true, note: '심사 없이 바로 — 연 20%, 12개월 원리금 균등' },
   { id: 'inventory', nameKo: '숙성 재고 담보대출', annualRate: 0.06, termMonths: 60, max: 2_000_000_000, graceMonths: 12, collateral: 'inventory', note: '담보 인정 비율이 있는 입지(홋카이도)에서만' },
 ];
