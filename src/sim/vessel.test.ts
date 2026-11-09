@@ -278,17 +278,26 @@ describe('자동 샘플 (#177, 오너 요청 2026-11-08)', () => {
     const r = t.history.reports.at(-1)!;
     expect(r.expenses[AUTO_SAMPLE_EXPENSE]).toBe(got.length * SAMPLING.cost);
     expect(r.notes.some((n) => n.startsWith('자동 샘플'))).toBe(true);
-    // 다음 달에는 아직 안 뜬 통만 — 방금 뜬 통은 6개월이 지나야 다시 자동으로 뜬다(통당 최대 횟수를 아끼려고)
+    // P-PROD-17: 매 턴 여력만큼 — 다음 달에는 아직 안 뜬 통부터, 남는 여력은 가장 오래전에 뜬 통으로
     const u = advanceMonth(t);
     const next = sampledIn(u, t.month);
-    expect(next.filter((id) => got.includes(id))).toEqual([]);
-    expect(next).toHaveLength(8 - got.length);
-    // 6개월 뒤에는 다시 뜬다
+    expect(next).toHaveLength(Math.min(cap, 8));
+    for (const id of t.inventory.casks.filter((c) => c.contents && !got.includes(c.id)).map((c) => c.id)) expect(next).toContain(id);
+    // 자동 샘플은 통당 횟수를 쓰지 않는다 — 몇 달을 돌아도 0, 직접 뜰 몫(최대 횟수)은 그대로 남는다
     let v = u;
     for (let i = 0; i < AUTO_SAMPLE_MIN_AGE; i++) v = advanceMonth(v);
-    const total = v.inventory.casks.filter((c) => c.contents).reduce((t2, c) => t2 + (c.samples ?? 0), 0);
-    expect(total).toBeGreaterThan(8);
-    expect(Math.max(...v.inventory.casks.filter((c) => c.contents).map((c) => c.samples ?? 0))).toBeLessThanOrEqual(2);
+    expect(v.inventory.casks.filter((c) => c.contents).every((c) => (c.samples ?? 0) === 0)).toBe(true);
+    expect(v.inventory.casks.filter((c) => c.contents).every((c) => (c.sampleLog?.length ?? 0) > 0)).toBe(true);
+  });
+
+  it('자동 샘플은 오차를 줄이지 않고 같은 오차로 다시 읽는다 — 매달 떠도 참값으로 수렴하지 않는다', () => {
+    let s = mvpWithCasks(1);
+    for (let i = 0; i < 6; i++) s = advanceMonth(s);
+    const c = s.inventory.casks.find((x) => x.contents)!;
+    const log = c.sampleLog!;
+    expect(log.length).toBeGreaterThanOrEqual(2);
+    expect(log.at(-1)!.sigma).toBeCloseTo(log.at(-2)!.sigma, 9);
+    expect(c.samples ?? 0).toBe(0);
   });
 
   it('한 통이라도 직접 뜬 달에는 자동 샘플이 없다', () => {
