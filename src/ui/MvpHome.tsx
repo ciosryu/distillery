@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
-import { autoSamplePicks, knownReads, lastSample, readSigma, sampleAxesOf, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
+import { knownReads, lastSample, readSigma, sampleAxesOf, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
 import { AXIS } from '../sim/content/axes';
 import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
 import { vesselMaterial } from '../sim/maturation';
@@ -13,6 +13,7 @@ import { useUi } from '../store/ui';
 import { FixedCostLine } from './panels/FixedCost';
 import { LineChart } from './charts';
 import { CashFlowLine, MonthTodo, OPEN_FOLD_EVENT } from './AlertsView';
+import { AutoSampleSettingsRow } from './panels/AutoSample';
 import { cashAlert, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
 import { monthlyFixedBreakdown } from '../sim/loans';
 import { PriceDesk } from './panels/Sales';
@@ -357,7 +358,6 @@ function WarehouseCard() {
   // 이번 달에 직접 뜬 기록이 있으면 자동 샘플은 없다
   const sampledThisMonth = s.inventory.casks.some((c) => c.contents && c.sampleLog?.at(-1)?.month === s.month);
   // 자동 샘플이 뜰 통 — 시뮬레이션과 같은 목록(6개월 넘게 안 뜬 통만, 현금 한도)
-  const autoCount = autoSamplePicks(s, known, Math.max(0, Math.floor(s.finance.cash / SAMPLING.cost))).length;
   return (
     <Card
       title={`숙성 중인 캐스크 ${filled.length}통 — 샘플로만 안다`}
@@ -378,13 +378,9 @@ function WarehouseCard() {
               <Button key={k} small variant={cat === k ? 'primary' : 'secondary'} onClick={() => setCat(k)}>{k} {n}</Button>
             ))}
           </div>
-          <div className={`text-xs ${autoCount ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`}>
-            {sampledThisMonth
-              ? '이번 달은 직접 샘플을 떠서 자동 샘플이 없다.'
-              : autoCount
-                ? `이번 달에 아무 통도 직접 뜨지 않고 다음 달로 넘기면, 오래 안 뜬 통 ${autoCount}통을 자동으로 뜬다(${won(autoCount * SAMPLING.cost)}). 자동 샘플은 통당 횟수(${SAMPLING.maxSamples}회)를 쓰지 않지만 오차도 줄이지 않는다 — 오차를 줄이려면 직접 고른다.`
-                : `자동으로 뜰 통이 없다 — 숙성 중인 통이 없거나 현금이 모자라다.`}
-          </div>
+          {/* 자동 샘플 설정 (#207) — 묶음·최소 숙성·간격·월 최대, 이번 턴 미리 보기 */}
+          {sampledThisMonth ? <div className="text-xs text-stone-500">이번 달은 직접 샘플을 떠서 자동 샘플이 없다.</div> : <AutoSampleSettingsRow />}
+          <div className="text-[11px] text-stone-500">자동 샘플은 통당 횟수({SAMPLING.maxSamples}회)를 쓰지 않지만 오차도 줄이지 않는다 — 오차를 줄이려면 직접 고른다.</div>
         </div>
       )}
       {!filled.length ? <Empty>숙성 중인 캐스크가 없습니다. 아래에서 탱크의 몰트(또는 소주) 원액을 빈 통에 통입하세요.</Empty> : (

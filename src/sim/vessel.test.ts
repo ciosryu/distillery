@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AUTO_SAMPLE_MIN_AGE, autoSample, samplingCapacity, SAMPLING, stalestCasks, evaluate, lotCategory, previewBatch, restLot, type Cask, type SpiritLot, emptyCaskOf, FINISH, finishOf, advanceMonth, advanceMonths, applyAction, lastSample, lotQuality, matureCask, matureNonWood, matureVessel, migrateSave, newGame, newScenarioGame, readCask, SAMPLE_LOG_KEPT, SAVE_VERSION, vesselMaterial, emptyCask, type GameState, AUTO_SAMPLE_EXPENSE } from '.';
+import { AUTO_SAMPLE_MIN_AGE, autoSample, autoSamplePicks, samplingCapacity, SAMPLING, stalestCasks, evaluate, lotCategory, previewBatch, restLot, type Cask, type SpiritLot, emptyCaskOf, FINISH, finishOf, advanceMonth, advanceMonths, applyAction, lastSample, lotQuality, matureCask, matureNonWood, matureVessel, migrateSave, newGame, newScenarioGame, readCask, SAMPLE_LOG_KEPT, SAVE_VERSION, vesselMaterial, emptyCask, type GameState, AUTO_SAMPLE_EXPENSE } from '.';
 import fixture from './fixtures/save-v8.json';
 
 /** 몰트 원액을 캐스크 1통에 넣은 게임 */
@@ -326,5 +326,45 @@ describe('자동 샘플 (#177, 오너 요청 2026-11-08)', () => {
     a!.sampleLog = [{ month: 0, hex: { peat: 0, fruit: 0, floral: 0, spicy: 0, woody: 0, sweet: 0 }, sigma: 5, estQuality: 50 }];
     a!.samples = 1;
     expect(stalestCasks(s, 3).map((x) => x.id)).toEqual([b!.id, c!.id, a!.id].sort((x, y) => (x === a!.id ? 1 : y === a!.id ? -1 : x.localeCompare(y))));
+  });
+});
+
+describe('자동 샘플 설정 (#207, 2026-11-09 오너 요청)', () => {
+  function mvpMixed(): GameState {
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 3 });
+    const add = (id: string, kind: 'malt' | 'soju', oak: number, rest = 0, type: 'ex_bourbon_barrel' | 'onggi_jar' = 'ex_bourbon_barrel') => {
+      const c = emptyCaskOf(s, type); c.id = id;
+      c.contents = { id: `L${id}`, name: id, kind, volumeL: 150, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: oak, restMonths: rest || undefined, sourced: false, costPerLPA: 10_000, batchId: `B${id}` };
+      s.inventory.casks.push(c);
+    };
+    add('W1', 'malt', 40); add('W2', 'malt', 130); add('S1', 'malt', 6); add('J1', 'soju', 0, 8, 'onggi_jar');
+    return s;
+  }
+  const ids = (s: GameState) => autoSamplePicks(s).map((c) => c.id).sort();
+  it('묶음·최소 숙성·끔', () => {
+    let s = mvpMixed();
+    expect(ids(s)).toEqual(['J1', 'S1', 'W1', 'W2']);
+    s = applyAction(s, { type: 'setAutoSample', settings: { groups: ['whisky'] } }).state;
+    expect(ids(s)).toEqual(['W1', 'W2']);
+    s = applyAction(s, { type: 'setAutoSample', settings: { groups: ['whisky'], minAgeMonths: 120 } }).state;
+    expect(ids(s)).toEqual(['W2']);
+    s = applyAction(s, { type: 'setAutoSample', settings: { groups: ['soju', 'spirit'] } }).state;
+    expect(ids(s)).toEqual(['J1', 'S1']);
+    s = applyAction(s, { type: 'setAutoSample', settings: { off: true } }).state;
+    expect(ids(s)).toEqual([]);
+    s = applyAction(s, { type: 'setAutoSample', settings: {} }).state;
+    expect(s.inventory.autoSample).toBeUndefined();
+  });
+  it('다시 뜨는 간격·한 달 최대', () => {
+    let s = mvpMixed();
+    s = applyAction(s, { type: 'setAutoSample', settings: { minGapMonths: 3, maxPerMonth: 2 } }).state;
+    expect(autoSamplePicks(s)).toHaveLength(2);
+    const t = advanceMonth(s);
+    const first = t.inventory.casks.filter((c) => c.sampleLog?.at(-1)?.month === s.month).map((c) => c.id);
+    expect(first).toHaveLength(2);
+    // 다음 달: 방금 뜬 두 통은 간격(3개월) 때문에 빠지고 나머지 두 통
+    const next = autoSamplePicks(t).map((c) => c.id);
+    expect(next.filter((id) => first.includes(id))).toEqual([]);
+    expect(next).toHaveLength(2);
   });
 });
