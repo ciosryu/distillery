@@ -6,6 +6,7 @@ import { makeSpecialContractOffer } from './bulk';
 import { EQUIPMENT } from './content/catalog';
 import { ownsFacility } from './util';
 import { taxAuditDefense } from './hr';
+import { systemOn } from './scenario';
 import { clamp } from './flavor';
 import { addModifier } from './modifiers';
 import { exportAwarenessMax } from './market';
@@ -51,6 +52,8 @@ function eligibleAt(s: GameState, def: EventDef, month: number, monthOfYear: num
   if (def.sitesOnly && !atSite) return false;
   if (!atSite && def.regions && !def.regions.includes(s.regionId)) return false;
   if (def.minMonth != null && month < def.minMonth) return false;
+  // 직원 이벤트(스카우트 등)는 채용이 열린 판에서만 — 채용이 잠긴 MVP에서는 잃은 직원을 다시 뽑을 수 없다 (P-ARCH-MID-1)
+  if (def.category === 'people' && !systemOn(s, 'hr')) return false;
   if (def.months && !def.months.includes(monthOfYear)) return false;
   const last = s.events.lastFired[def.id];
   if (last != null && month - last < def.cooldown) return false;
