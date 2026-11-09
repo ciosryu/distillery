@@ -79,7 +79,7 @@ export function MvpHome() {
       <div id="mvp-warehouse" className="scroll-mt-28"><WarehouseFold /></div>
       <div id="mvp-space" className="scroll-mt-28"><SpaceCard /></div>
       {/* ── 참고 ── */}
-      <CraftingFold />
+      <div id="mvp-craft" className="scroll-mt-28"><CraftingFold /></div>
     </div>
   );
 }
@@ -254,18 +254,18 @@ const ageOf = (c: Cask) => Math.max(c.contents?.oakMonths ?? 0, c.contents?.rest
 /** 숙성고 목록에 처음 보이는 통 수 (오래된 순) */
 const LIST_FIRST = 30;
 
-/** 크래프팅 레버(#156)·설비는 자주 안 바꾸므로 접어 둔다 — 처음 2시간을 가볍게 (mvp.md §1.2) */
+/** 크래프팅 레버(#156)·설비는 자주 안 바꾸므로 접어 둔다 — 처음 2시간을 가볍게 (mvp.md §1.2). "이번 달 할 일"의 [설비 보기](P-MGT-14)가 연다 */
 function CraftingFold() {
-  const [open, setOpen] = useState(false);
+  const [open, toggle] = useFold('mvp-craft', false, ['mvp-equipment']);
   return (
     <div className="grid gap-4">
       <div>
-        <Button variant="ghost" onClick={() => setOpen((v) => !v)}>{open ? '▾' : '▸'} 레시피·크래프팅 레버 · 설비(비지터 센터·증류기) {open ? '접기' : '펼치기'}</Button>
+        <Button variant="ghost" onClick={toggle}>{open ? '▾' : '▸'} 레시피·크래프팅 레버 · 설비(비지터 센터·증류기) {open ? '접기' : '펼치기'}</Button>
       </div>
       {open && (
         <>
           <RecipeEditor />
-          <Equipment />
+          <div id="mvp-equipment" className="scroll-mt-28"><Equipment /></div>
         </>
       )}
     </div>

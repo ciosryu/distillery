@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { advanceMonth, advanceMonths, applyAction, BANKRUPT_AFTER_MONTHS, newScenarioGame, type GameState } from '../sim';
+import { advanceMonth, advanceMonths, applyAction, BANKRUPT_AFTER_MONTHS, newGame, newScenarioGame, type GameState } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { cashAlert, runway, lastMonthFlow, loanSchedule, monthTodos, paymentJump, SAMPLE_STALE_MONTHS } from './alerts';
 
@@ -69,6 +69,22 @@ describe('이번 달 할 일 (③) · 지난달 현금 흐름 (④)', () => {
     expect(monthTodos(s).some((t) => t.id === 'fill')).toBe(false);
     s = advanceMonth(s);
     expect(monthTodos(s).some((t) => t.id === 'fill')).toBe(true);
+  });
+
+  it('비지터 센터가 없으면 할 일에 띄우고, 발주하면(짓는 중 포함) 사라진다 — 샌드박스는 띄우지 않는다 (P-MGT-14)', () => {
+    let s: GameState = mvp();
+    const t = monthTodos(s).find((x) => x.id === 'visitor');
+    expect(t?.level).toBe('warn');
+    expect(t?.target).toEqual({ anchor: 'mvp-equipment' }); // 접힌 설비 블록 안 — MvpHome useFold('mvp-craft', …, ['mvp-equipment'])가 연다
+    expect(t?.text).toMatch(/비지터 센터가 없다/);
+    // 다른 설비(3차 판에서 산 옹기 발효 세트)로는 사라지지 않는다
+    s = applyAction(s, { type: 'buyEquipment', catalogId: 'ferm_onggi_set' }).state;
+    expect(monthTodos(s).some((x) => x.id === 'visitor')).toBe(true);
+    const r = applyAction(s, { type: 'buyEquipment', catalogId: 'visitor_basic' });
+    expect(r.error).toBeUndefined();
+    expect(monthTodos(r.state).some((x) => x.id === 'visitor')).toBe(false); // 짓는 중
+    expect(monthTodos(advanceMonths(r.state, 5)).some((x) => x.id === 'visitor')).toBe(false); // 완공 뒤
+    expect(monthTodos(newGame({ seed: 1 })).some((x) => x.id === 'visitor')).toBe(false);
   });
 
   it('들어온 돈 + 나간 돈 = 그달 순현금 (결산표와 같은 원천)', () => {

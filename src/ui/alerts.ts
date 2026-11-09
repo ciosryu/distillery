@@ -5,6 +5,10 @@
 import { regionOf } from '../sim/content/regions';
 import { BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, selfFundedCash, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
+import { EQUIPMENT } from '../sim/content/catalog';
+import { equipmentCost } from '../sim/sites';
+import { tourismFactor } from '../sim/tourism';
+import { isLocked } from '../sim/scenario';
 
 // ───────────── ① 파산 카운트다운 ─────────────
 
@@ -126,6 +130,10 @@ export function monthTodos(s: GameState): Todo[] {
   // 대출 거치가 3개월 안에 끝나 납부가 뛴다
   const jump = paymentJump(loanSchedule(s, 4));
   if (jump) out.push({ id: 'loan-jump', level: 'warn', text: `${jump.month - s.month === 0 ? '이번 달' : `${jump.month - s.month}개월 뒤`} 대출 거치가 끝나 월 납부가 ${fmtWon(jump.from)} → ${fmtWon(jump.to)}로 뛴다`, action: '대출 보기', target: { tab: 'finance' } });
+  // 비지터 센터가 없다 (P-MGT-14, 3차 MVP 플레이테스트 mvp.md §7.8) — 오너는 첫 턴에 지었다고 생각했지만 실제로는 옹기 발효 세트를 샀고, 73개월 동안 몰랐다.
+  // 3차 판을 흉내 낸 봇은 비지터 센터 하나로 파산 20/20 → 0/20, 목표 0 → 17/20. 발주하면(짓는 중 포함) 사라진다. 시나리오 게임만(샌드박스는 다른 운영)
+  const visitor = visitorTodo(s);
+  if (visitor) out.push(visitor);
   // 탱크 몰트·그레인 통입 대기 — 통에 넣어야 숙성이 시작된다
   const tankMalt = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced).reduce((t, l) => t + l.volumeL, 0);
   if (tankMalt >= 50) {
@@ -147,6 +155,15 @@ export function monthTodos(s: GameState): Todo[] {
     if (stale > 0) out.push({ id: 'sample', level: 'info', text: `샘플 기록이 ${SAMPLE_STALE_MONTHS}개월 넘은(또는 없는) 통 ${stale}개 — 병입 전에 맛을 확인한다`, action: '숙성 중인 캐스크', target: { anchor: 'mvp-warehouse' } });
   }
   return out;
+}
+
+/** 비지터 센터 할 일 (P-MGT-14) — 시나리오 게임에서 베이직 투어를 살 수 있는데 비지터 센터가 하나도 없으면(짓는 중 포함) */
+export function visitorTodo(s: GameState): Todo | null {
+  const d = EQUIPMENT.visitor_basic;
+  if (!s.scenario || !d || d.kind !== 'visitor' || isLocked(s, `facility:${d.id}`)) return null;
+  if (s.production.equipment.some((e) => EQUIPMENT[e.catalogId]?.kind === 'visitor')) return null;
+  const visitors = Math.round((d.visitorsPerMonth * tourismFactor(s)) / 10) * 10;
+  return { id: 'visitor', level: 'warn', text: `비지터 센터가 없다 — 관광 매출 0원. ${d.nameKo.replace(/^비지터 센터 — /, '')} ${fmtWon(equipmentCost(s, d))}, ${d.leadMonths}개월 뒤부터 방문객 월 약 ${visitors.toLocaleString()}명 (1인 ${d.spendPerVisitor.toLocaleString()}원)`, action: '설비 보기', target: { anchor: 'mvp-equipment' } };
 }
 
 // ───────────── ④ 지난달 현금 흐름 한 줄 ─────────────
