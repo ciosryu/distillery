@@ -140,7 +140,7 @@ describe('시나리오 경제 값은 판 시작 때 복사된다 (#190 사후 �
 });
 
 describe('MVP 중반 콘텐츠 — 단계 해금·중반 목표 (4차 MVP 플레이테스트 2026-11-09)', () => {
-  it('60개월(6년 차)에 이벤트·블렌딩 의뢰·방재 설비, 84개월에 수출, 108개월에 두 번째 브랜드가 열린다', async () => {
+  it('60개월(6년 차)에 이벤트·블렌딩 의뢰·방재 설비, 84개월에 수출이 열린다 — 두 번째 브랜드는 MVP에서 잠긴 채(P-MKT-9)', async () => {
     const { advanceMonth, newScenarioGame, isLocked, applyAction } = await import('./index');
     let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     expect(isLocked(s, 'system:events')).toBe(true);
@@ -155,8 +155,8 @@ describe('MVP 중반 콘텐츠 — 단계 해금·중반 목표 (4차 MVP 플레
     expect(s.scenario!.stagesDone).toEqual(['y5_market']);
     s.month = 108; s = advanceMonth(s); // 늦게 들어와도(옛 세이브) 지난 단계를 모두 연다
     expect(isLocked(s, 'system:exports')).toBe(false);
-    expect(isLocked(s, 'action:openBrand')).toBe(false);
-    expect(s.scenario!.stagesDone).toEqual(['y5_market', 'y7_export', 'y9_brand']);
+    expect(isLocked(s, 'action:openBrand')).toBe(true);
+    expect(s.scenario!.stagesDone).toEqual(['y5_market', 'y7_export']);
     // 채용이 잠긴 MVP에서는 직원 이벤트가 나오지 않는다 — hr는 계속 잠김
     expect(isLocked(s, 'system:hr')).toBe(true);
     void applyAction;
