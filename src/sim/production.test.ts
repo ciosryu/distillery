@@ -583,7 +583,7 @@ describe('자동 최적 가격 (#200, 3차 MVP 플레이테스트 오너 요청)
     s = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: 120 }], options: { name: '소주', targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' } }).state;
     return s;
   };
-  it('켜면 이번 달 공헌이익이 가장 큰 후보 값으로 바뀌고, 그 값은 가격 비교표의 최대와 같다', async () => {
+  it('켜면 이 제품 공헌이 남는 후보 중 진열 전체 공헌이 가장 큰 값으로 바뀐다 (P-PROD-26)', async () => {
     const { bestAutoPrice, AUTO_PRICE_FACTORS, currentSuggested } = await import('./economics');
     const { priceOptions, calendar } = await import('./index');
     const s = setup();
@@ -593,7 +593,9 @@ describe('자동 최적 가격 (#200, 3차 MVP 플레이테스트 오너 요청)
     const base = currentSuggested(s, p);
     const cands = [...new Set([p.price, ...AUTO_PRICE_FACTORS.map((f) => Math.max(100, Math.round((base * f) / 100) * 100))])];
     const opts = priceOptions(s, p, calendar(s).monthOfYear, cands.map((x) => x / p.price));
-    const top = opts.reduce((a, b) => (b.contribution > a.contribution ? b : a));
+    const ok = opts.filter((o) => o.contribution > 0);
+    expect(ok.length).toBeGreaterThan(0);
+    const top = ok.reduce((a, b) => (b.lineupContribution > a.lineupContribution ? b : a));
     expect(best).toBe(top.price);
     const on = applyAction(s, { type: 'setAutoPrice', productId: p.id, on: true }).state;
     expect(on.commerce.products.find((x) => x.id === p.id)!.price).toBe(best);

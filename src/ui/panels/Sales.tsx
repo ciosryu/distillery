@@ -381,8 +381,11 @@ function ProductDetail({ p }: { p: Product }) {
   const sf = suggested / Math.max(1, p.price);
   const factors = baseFactors.some((f) => Math.abs(f / sf - 1) < 0.05) ? baseFactors : [...baseFactors, sf].sort((a, b) => a - b);
   const opts = priceOptions(s, p, monthOfYear, factors);
-  const best = opts.reduce((a, x) => (x.contribution > a.contribution ? x : a), opts[0]!);
-  const bestRev = opts.reduce((a, x) => (x.revenue > a.revenue ? x : a), opts[0]!);
+  // 최대 표시는 국내 진열 전체 기준 (#212 P-MKT-7 · P-PROD-26) — 한 제품 값을 내리면 늘어난 판매의 상당 부분은 형제 제품에서 온다.
+  // 공헌 최대는 자동 가격과 같이 이 제품 자신의 공헌이 0 이하인 값을 뺀다
+  const ownOk = opts.filter((x) => x.contribution > 0);
+  const best = (ownOk.length ? ownOk : opts).reduce((a, x) => (x.lineupContribution > a.lineupContribution ? x : a), (ownOk.length ? ownOk : opts)[0]!);
+  const bestRev = opts.reduce((a, x) => (x.lineupRevenue > a.lineupRevenue ? x : a), opts[0]!);
   // 기대 소비자가 (#198) — 여기서 멀어질수록 수요가 가파르게(비쌀 때) 또는 완만하게(쌀 때) 변한다
   const expected = expectedPricePerL(region, p) * (p.bottleMl / 1000);
   const vsExpected = b.consumer / expected;
@@ -424,15 +427,16 @@ function ProductDetail({ p }: { p: Product }) {
           <dt className="font-medium">수요 한도</dt><dd className="text-right font-medium tabular-nums">{num(d.demandBottles)}병</dd>
         </dl>
         <div className="mt-3">
-          <Table head={['출고가', '소비자가', '수요 한도', '팔 수 있는 양', '월 매출', '월 공헌이익', '']}>
+          <Table head={['출고가', '소비자가', '수요 한도', '팔 수 있는 양', '이 제품 공헌', '진열 매출', '진열 공헌', '']}>
             {opts.map((o) => (
               <tr key={o.price} className={o.price === p.price ? 'font-semibold' : ''}>
                 <Td right>{wonFull(o.price)}</Td>
                 <Td right>{wonFull(o.consumer)}</Td>
                 <Td right>{num(o.demandBottles)}</Td>
                 <Td right>{num(o.sellBottles)}</Td>
-                <Td right className={o === bestRev ? 'text-sky-700 dark:text-sky-400' : ''}>{won(o.revenue)}</Td>
-                <Td right className={o === best ? 'text-emerald-700 dark:text-emerald-400' : ''}>{won(o.contribution)}</Td>
+                <Td right className="text-stone-500">{won(o.contribution)}</Td>
+                <Td right className={o === bestRev ? 'text-sky-700 dark:text-sky-400' : ''}>{won(o.lineupRevenue)}</Td>
+                <Td right className={o === best ? 'font-semibold text-emerald-700 dark:text-emerald-400' : ''}>{won(o.lineupContribution)}</Td>
                 <Td>{o.price !== p.price && <Button small variant="ghost" onClick={() => { if (p.autoPrice) dispatch({ type: 'setAutoPrice', productId: p.id, on: false }); dispatch({ type: 'setPrice', productId: p.id, price: o.price }); }}>적용</Button>}{Math.abs(o.price - suggested) < 100 && <span className="ml-1 text-xs text-amber-800 dark:text-amber-300">권장</span>}</Td>
               </tr>
             ))}
@@ -440,7 +444,7 @@ function ProductDetail({ p }: { p: Product }) {
         </div>
         {vsExpected > 1.5 && <p className="mt-2 text-xs font-medium text-rose-700 dark:text-rose-400">소비자가가 이 제품 기대가의 {vsExpected.toFixed(1)}배 — 기대가보다 비쌀수록 사는 사람이 빠르게 줄어 매출이 떨어진다.</p>}
         {vsExpected < 0.67 && <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">소비자가가 이 제품 기대가의 {pct(vsExpected, 0)} — 이만큼 싸게 팔아도 수요는 덜 늘어 매출이 줄고, 재고만 빨리 빠진다. 현금이 급하면 값을 내리기보다 대출·뉴메이크 현물 판매를 본다.</p>}
-        <p className="mt-2 text-xs text-stone-500">이번 달 기댓값이다(실제는 ±10%, 소매 처리 역량을 넘으면 고비용 채널). <span className="text-sky-700 dark:text-sky-400">파란 매출</span>이 가장 큰 가격, <span className="text-emerald-700 dark:text-emerald-400">초록 공헌이익</span>이 가장 큰 가격이다. 기대가(권장가) 근처가 보통 둘 다 좋고, 재고가 적으면 조금 비싸게, 많으면 조금 싸게 — 재고가 6개월 치를 넘게 쌓이면 할인 이미지로 수요가 준다.</p>
+        <p className="mt-2 text-xs text-stone-500">이번 달 기댓값이다(실제는 ±10%, 소매 처리 역량을 넘으면 고비용 채널). <b>진열</b> 매출·공헌 = 이 제품 + 판매 중인 다른 국내 제품(각자 재고 한도) — 같은 주종 제품끼리 손님을 나누므로, 이 제품 값을 내려 더 파는 몫의 상당 부분은 다른 제품에서 온다. <span className="text-sky-700 dark:text-sky-400">파란 매출</span>·<span className="text-emerald-700 dark:text-emerald-400">초록 공헌</span>은 진열 전체가 가장 큰 가격이고, 자동 최적 가격도 초록 기준으로 고른다(이 제품이 손해이거나 안 팔리는 값은 빼고). 기대가(권장가) 근처가 보통 둘 다 좋고, 재고가 적으면 조금 비싸게, 많으면 조금 싸게 — 재고가 6개월 치를 넘게 쌓이면 할인 이미지로 수요가 준다.</p>
       </Card>
     </div>
   );
