@@ -189,16 +189,30 @@ function demandWithSplit(s: GameState, p: Product, split: number, monthOfYear: n
 }
 
 /** 가격을 바꾸면 — 판매 화면의 가격 비교. 판매 가능 = min(재고, 수요 기댓값). 소매 처리 역량·±10% 난수는 넣지 않는다 */
-export interface PriceOption { price: number; consumer: number; demandBottles: number; sellBottles: number; revenue: number; contribution: number }
+/** 가격 비교 한 줄. lineup*은 국내 진열 전체(이 제품 포함) — 같은 카테고리 나눔(#154) 때문에 이 제품 값을 내리면 형제 제품 판매를 뺏어 온다([결정 P-MKT-7]) */
+export interface PriceOption { price: number; consumer: number; demandBottles: number; sellBottles: number; revenue: number; contribution: number; lineupRevenue: number; lineupContribution: number }
 
 export function priceOptions(s: GameState, p: Product, monthOfYear: number, factors: readonly number[] = [0.8, 0.9, 1, 1.1, 1.25, 1.5]): PriceOption[] {
+  const logistics = outboundLogistics(s);
   return factors.map((f) => {
     const q: Product = { ...p, price: Math.max(100, Math.round((p.price * f) / 100) * 100) };
     // 값이 바뀌면 같은 카테고리 안의 몫도 바뀐다 — 이 제품만 바꾼 진열로 다시 나눈다 (재고가 없으면 혼자일 때)
     const lineup = s.commerce.products.some((x) => x.id === p.id) ? s.commerce.products.map((x) => (x.id === p.id ? q : x)) : [...s.commerce.products, q];
-    const d = domesticDemands({ ...s, commerce: { ...s.commerce, products: lineup } }, monthOfYear).get(q.id) ?? demandFor(s, q, 1, monthOfYear);
+    const dm = domesticDemands({ ...s, commerce: { ...s.commerce, products: lineup } }, monthOfYear);
+    const d = dm.get(q.id) ?? demandFor(s, q, 1, monthOfYear);
     const sell = Math.min(q.stockBottles, Math.round(d.demandBottles));
-    return { price: q.price, consumer: productConsumerPrice(s, q), demandBottles: d.demandBottles, sellBottles: sell, revenue: sell * q.price, contribution: sell * bottleMargin(q, outboundLogistics(s)).perBottle };
+    const revenue = sell * q.price;
+    const contribution = sell * bottleMargin(q, logistics).perBottle;
+    // 진열 전체 = 이 제품 + 다른 국내 제품(각자 재고 한도). 면세·수출 몫은 넣지 않는다(근사)
+    let lineupRevenue = revenue, lineupContribution = contribution;
+    for (const x of lineup) {
+      const dx = x.id === q.id ? undefined : dm.get(x.id);
+      if (!dx) continue;
+      const n = Math.min(x.stockBottles, Math.round(dx.demandBottles));
+      lineupRevenue += n * x.price;
+      lineupContribution += n * bottleMargin(x, logistics).perBottle;
+    }
+    return { price: q.price, consumer: productConsumerPrice(s, q), demandBottles: d.demandBottles, sellBottles: sell, revenue, contribution, lineupRevenue, lineupContribution };
   });
 }
 

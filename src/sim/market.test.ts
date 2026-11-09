@@ -498,6 +498,22 @@ describe('판매 화면 — 소비자가 내역·가격 비교 (MVP 판매 화�
     for (const o of opts) expect(o.sellBottles).toBeLessThanOrEqual(30);
     expect(opts.find((o) => o.price === 60_000)).toBeTruthy();
   });
+
+  it('가격 비교 진열 전체(P-MKT-7): 혼자면 자기 것과 같고, 형제가 있으면 값을 내려 늘어난 판매 일부는 형제에게서 뺏은 것', () => {
+    const s = newGame({ seed: 1, region: 'KR' });
+    const a = product({ id: 'a', stockBottles: 100_000 });
+    s.commerce.products = [a];
+    for (const o of priceOptions(s, a, 1)) { expect(o.lineupRevenue).toBe(o.revenue); expect(o.lineupContribution).toBe(o.contribution); }
+    const b = product({ id: 'b', stockBottles: 100_000 });
+    s.commerce.products = [a, b];
+    s.commerce.brands[0]!.awareness = 1; // 반올림에 묻히지 않을 만큼 수요를 키운다
+    const [lo, , base] = priceOptions(s, a, 1, [0.6, 0.8, 1]);
+    const own = lo!.sellBottles - base!.sellBottles;
+    const lineupGain = (lo!.lineupRevenue - lo!.revenue) / b.price - (base!.lineupRevenue - base!.revenue) / b.price; // 형제 판매 변화(병)
+    expect(own).toBeGreaterThan(0);
+    expect(lineupGain).toBeLessThan(0);
+    expect(lo!.lineupContribution - base!.lineupContribution).toBeLessThan(lo!.contribution - base!.contribution);
+  });
 });
 
 describe('같은 카테고리 제품끼리 수요 나눔 (#154, §15.3 #12)', () => {
