@@ -53,7 +53,7 @@ export function salaryRaiseSinceStart(s: Pick<GameState, 'hr' | 'scenario'>): { 
   return { now, start };
 }
 
-// ───────────── 성장: 교육·멘토링·헤드헌팅 (PRD §7.3, P-MGT-23) — 수치 [튜닝] ─────────────
+// ───────────── 성장: 교육·멘토링·헤드헌팅 (PRD §7.3, #222) — 수치 [튜닝] ─────────────
 
 /** 멘토링: 매달 더 얻는 XP. 부사수(마스터 곁) / 같은 직군에 레벨이 seniorGap 이상 높은 선배가 있으면 */
 export const MENTORING = { apprenticeXp: 8, seniorXp: 4, seniorGap: 2 };

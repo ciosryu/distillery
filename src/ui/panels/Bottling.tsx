@@ -330,7 +330,7 @@ export function Bottling() {
                   return lo != null && hi != null ? `${won(lo)} ~ ${won(hi)}` : '병입 후 공개';
                 })() : <>{won(preview.suggestedPrice)}{preview.dfEdition ? ' (면세 기준)' : ''}</>}</dd>
                 {preview.category && isWhiskyCategory(preview.category) && <><dt className="text-stone-500" title="권장 출고가와 매력도에 같이 곱한다. 3년 = ×1.18, 그 뒤는 원액 시가와 같은 속도로 오른다(18년 상한)">숙성 프리미엄</dt><dd className="text-right tabular-nums">×{agePerception(preview.minOakMonths, preview.category).toFixed(2)}</dd></>}
-                {preview.agedLabel && preview.category && <><dt className="text-stone-500" title="옹기·오크에서 6개월 이상 쉰 증류식 소주·고량주 — 권장 출고가와 매력도에 같이 곱한다. 1년 +0.08, 3년 상한 ×1.24 (P-MKT-8)">숙성 표기 프리미엄</dt><dd className="text-right tabular-nums">×{agedWhitePerception(preview.category, preview.minOakMonths, preview.minRestMonths).toFixed(2)}</dd></>}
+                {preview.agedLabel && preview.category && <><dt className="text-stone-500" title="옹기·오크에서 6개월 이상 쉰 증류식 소주·고량주 — 권장 출고가와 매력도에 같이 곱한다. 1년 +0.08, 3년 상한 ×1.24 (#217)">숙성 표기 프리미엄</dt><dd className="text-right tabular-nums">×{agedWhitePerception(preview.category, preview.minOakMonths, preview.minRestMonths).toFixed(2)}</dd></>}
                 {dfForecast && <><dt className="text-stone-500">예상 면세 판매</dt><dd className={`text-right tabular-nums ${dfForecast.window < preview.bottles ? 'text-amber-800 dark:text-amber-300' : ''}`}>월 {num(dfForecast.perMonth)}병 · {DUTY_FREE.sellOutMonths}개월 {num(dfForecast.window)}병</dd></>}
               </dl>
               {preview.dfEdition && !preview.localIngredient && dutyFreeAgedAppeal(preview.ageYears) > 1 && <p className="text-xs text-stone-500">숙성 한정판 보너스는 수요만 올립니다. 숙성 연수에 따른 값은 권장 출고가의 숙성 프리미엄에 이미 들어 있습니다</p>}

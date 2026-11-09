@@ -42,9 +42,9 @@ export type MgtAction =
   /** 대출 상환 — amount가 없거나 잔액 이상이면 전액, 있으면 일부(#181: 남은 기간 그대로 월 납부를 다시 계산) */
   | { type: 'repayLoan'; loanId: string; amount?: number }
   | { type: 'resolveEvent'; eventId: string; choice: number }
-  /** 교육 프로그램 (P-MGT-23) — 비용을 내고 XP */
+  /** 교육 프로그램 (#222) — 비용을 내고 XP */
   | { type: 'trainStaff'; staffId: string }
-  /** 헤드헌팅 (P-MGT-23) — 비용을 내고 스탯 높은 후보 1명 */
+  /** 헤드헌팅 (#222) — 비용을 내고 스탯 높은 후보 1명 */
   | { type: 'headhunt'; role: 'distiller' | 'warehouse' | 'sales' | 'office' | 'blender' };
 
 /** 대출 일부 상환 최소액 (#181) [튜닝] — 대출 실행 최소액과 같다 */

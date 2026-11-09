@@ -583,7 +583,7 @@ describe('자동 최적 가격 (#200, 3차 MVP 플레이테스트 오너 요청)
     s = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: 120 }], options: { name: '소주', targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' } }).state;
     return s;
   };
-  it('켜면 이 제품 공헌이 남는 후보 중 진열 전체 공헌이 가장 큰 값으로 바뀐다 (P-PROD-26)', async () => {
+  it('켜면 이 제품 공헌이 남는 후보 중 진열 전체 공헌이 가장 큰 값으로 바뀐다 (#220)', async () => {
     const { bestAutoPrice, AUTO_PRICE_FACTORS, currentSuggested } = await import('./economics');
     const { priceOptions, calendar } = await import('./index');
     const s = setup();
@@ -728,7 +728,7 @@ describe('캐스크 스트렝스 제품 재고 보충 (2026-11-09 오너 보고:
   });
 });
 
-describe('숙성 소주 표기 — 병입·보충·권장가·자동 납품 (#187 P-MKT-8 · P-PROD-28)', () => {
+describe('숙성 소주 표기 — 병입·보충·권장가·자동 납품 (#217 · #221)', () => {
   const setup = async () => {
     const { emptyCaskOf } = await import('./index');
     const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });

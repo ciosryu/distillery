@@ -267,7 +267,7 @@ export function productionValue(s: GameState, minMonths = regionOf(s).whisky.min
 
 // ───────────── 자동 최적 가격 (#200, 3차 MVP 플레이테스트 오너 요청·선택 "이번 달 이익 최대") ─────────────
 // 토글을 켠 제품은 매달 판매 직전에 값을 정한다 — 판매 화면의 가격 비교(priceOptions)와 같은 식으로, 이번 달 **국내 진열 전체**의 공헌이익
-// (각 제품 팔 수 있는 양 × 병당 공헌이익의 합, P-PROD-26)이 가장 큰 값. 재고가 적으면 올리고 많으면 내린다. 병당 손해 나는 값은 고르지 않는다. 3차 판은 입력 실수로 위스키를 권장가의 1/3에 10개월 팔았다
+// (각 제품 팔 수 있는 양 × 병당 공헌이익의 합, #220)이 가장 큰 값. 재고가 적으면 올리고 많으면 내린다. 병당 손해 나는 값은 고르지 않는다. 3차 판은 입력 실수로 위스키를 권장가의 1/3에 10개월 팔았다
 
 /** 지금 권장 출고가 — 품질·숙성·주세 경감으로 정해진다(판매 화면의 "권장"과 같은 값) */
 export function currentSuggested(s: GameState, p: Product): number {
@@ -285,7 +285,7 @@ export function bestAutoPrice(s: GameState, p: Product, monthOfYear = calendar(s
   const base = currentSuggested(s, p);
   const prices = [...new Set([p.price, ...AUTO_PRICE_FACTORS.map((f) => Math.max(100, Math.round((base * f) / 100) * 100))])];
   const opts = priceOptions(s, p, monthOfYear, prices.map((x) => x / p.price));
-  // 국내 진열 전체 공헌이 가장 큰 값 (#212 P-MKT-7 · P-PROD-26, 4차 플레이테스트 MKT 분석): 같은 범주 제품끼리 손님을 나누므로
+  // 국내 진열 전체 공헌이 가장 큰 값 (#212 · #220, 4차 플레이테스트 MKT 분석): 같은 범주 제품끼리 손님을 나누므로
   // 한 제품 값을 내려 늘어난 판매의 상당 부분은 형제 제품에서 온다 — 제품 혼자의 공헌으로 고르면 값을 너무 내린다.
   // 이 제품 자신의 공헌이 0 이하인 값(병당 손해 · 하나도 안 팔림)은 고르지 않는다 — 형제를 위해 한 제품을 사실상 내리는 일을 막는다
   let best: (typeof opts)[number] | null = null;
@@ -332,7 +332,7 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
   if (!kind) return [];
   if (!isWhiskyCategory(p.category)) {
     const minAbv = isCaskStrength(p) ? 0.4 : p.abv - 1e-9;
-    // 숙성 소주 표기 제품 (P-PROD-28) — 탱크 원액을 섞으면 표기가 빠지므로, 표기 개월 이상 쉰 같은 용기(옹기/오크)의 통에서 어린 통부터
+    // 숙성 소주 표기 제품 (#221) — 탱크 원액을 섞으면 표기가 빠지므로, 표기 개월 이상 쉰 같은 용기(옹기/오크)의 통에서 어린 통부터
     if (agedWhiteLabel(p.category, p.oakMonths, p.restMonths)) {
       const onggi = (p.restMonths ?? 0) >= (p.oakMonths ?? 0);
       const need = agedWhiteLabelMonths(Math.max(p.restMonths ?? 0, p.oakMonths ?? 0));

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { applyAction, newGame, newScenarioGame } from './index';
 import { headhuntCost, mentoringXp } from './hr';
 
-// HR 성장 — 교육·멘토링·헤드헌팅 (PRD §7.3, P-MGT-23). MVP는 HR이 잠겨 있다
-describe('HR 성장 (P-MGT-23)', () => {
+// HR 성장 — 교육·멘토링·헤드헌팅 (PRD §7.3, #222). MVP는 HR이 잠겨 있다
+describe('HR 성장 (#222)', () => {
   it('교육: 월급 2개월 치를 내고 XP +50×레벨, 같은 직원은 12개월 뒤에 다시', () => {
     const s = newGame({ seed: 1 });
     const x = s.hr.staff[0]!;

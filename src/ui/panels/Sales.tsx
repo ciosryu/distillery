@@ -383,7 +383,7 @@ function ProductDetail({ p }: { p: Product }) {
   const sf = suggested / Math.max(1, p.price);
   const factors = baseFactors.some((f) => Math.abs(f / sf - 1) < 0.05) ? baseFactors : [...baseFactors, sf].sort((a, b) => a - b);
   const opts = priceOptions(s, p, monthOfYear, factors);
-  // 최대 표시는 국내 진열 전체 기준 (#212 P-MKT-7 · P-PROD-26) — 한 제품 값을 내리면 늘어난 판매의 상당 부분은 형제 제품에서 온다.
+  // 최대 표시는 국내 진열 전체 기준 (#212 · #220) — 한 제품 값을 내리면 늘어난 판매의 상당 부분은 형제 제품에서 온다.
   // 공헌 최대는 자동 가격과 같이 이 제품 자신의 공헌이 0 이하인 값을 뺀다
   const ownOk = opts.filter((x) => x.contribution > 0);
   const best = (ownOk.length ? ownOk : opts).reduce((a, x) => (x.lineupContribution > a.lineupContribution ? x : a), (ownOk.length ? ownOk : opts)[0]!);
