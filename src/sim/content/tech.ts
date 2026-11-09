@@ -78,7 +78,7 @@ export const TECH_NODES: TechNodeDef[] = [
     pending: 'PROD — 실험실 설비·균주 분리·보존 / MKT — 라벨 "자사 효모"' },
   { id: 'PRO-3', nameKo: '장인 전수 체계', tree: 'production', tier: 3, prereq: ['PRO-1'], requires: { operatingMonths: 36 }, research: { ...T3, leadRoles: ['distiller'], leadStat: 'c' },
     unlockKeys: ['event:artisan_retire=transfer', 'facility:visitor_tour_heritage'],
-    pending: 'MGT — 장인 은퇴 전수 이벤트 / MKT — 전통 공정 견학 코스. 전통 공정 노드(WHI-2 플로어 몰팅·ASN-3c)의 선행 조건' },
+    pending: 'MKT — 전통 공정 견학 코스. 전통 공정 노드(WHI-2 플로어 몰팅·ASN-3c)의 선행 조건 (장인 은퇴 전수 선택지는 적용됨 — 은퇴 12개월 전)' },
 
   // ── 숙성·캐스크 (MAT, §4.2) — 담당: 숙성고 매니저 ──
   { id: 'MAT-1', nameKo: '캐스크 이력 DB', tree: 'maturation', tier: 1, prereq: [], research: { baseMonths: 3, monthlyCost: 3_000_000, leadRoles: ['warehouse'], leadStat: 'a' }, unlockKeys: ['info:cask_history'],
@@ -114,8 +114,7 @@ export const TECH_NODES: TechNodeDef[] = [
     pending: 'PROD — 자동화 제어 시스템(운전 실수↓, 상시 지시 품질 하한↑)' },
   { id: 'ENG-3', nameKo: '공급망 예측', tree: 'engineering', tier: 3, prereq: ['ENG-2c'], research: { ...T3, leadRoles: ['office'], leadStat: 'c' },
     unlockKeys: ['info:price_forecast'],
-    effects: [{ kind: 'info', target: 'ingredient_price', forecastMonths: 3 }, { kind: 'info', target: 'macro_event', forecastMonths: 3 }],
-    pending: 'MGT — 매크로 이벤트 조기 경보 (원자재 가격 지수 3개월 예측 범위는 적용됨 — 재무 탭)' },
+    effects: [{ kind: 'info', target: 'ingredient_price', forecastMonths: 3 }, { kind: 'info', target: 'macro_event', forecastMonths: 3 }] },
 
   // ── 경영·브랜드 (BIZ, §4.4) — 담당: 사무·영업 ──
   { id: 'BIZ-1a', nameKo: '정기 납품 계약', tree: 'business', tier: 1, prereq: [], research: { ...T1, leadRoles: ['sales'], leadStat: 'b' },
@@ -133,7 +132,7 @@ export const TECH_NODES: TechNodeDef[] = [
   { id: 'BIZ-3', nameKo: '글로벌 앰버서더 프로그램', tree: 'business', tier: 3, prereq: ['BIZ-1a'], research: { ...T3, leadRoles: ['sales'], leadStat: 'a' },
     unlockKeys: ['contract:ambassador', 'event:influencer_backlash=ambassador'],
     effects: [{ kind: 'risk_scale', riskId: 'influencer_backlash', mul: 0.5 }],
-    pending: 'MKT — 면세·하이엔드 입점·브랜드 지정 / MGT — 역풍 이벤트 대응 선택지 (인플루언서 반동 폭 −50%는 적용됨)' },
+    pending: 'MKT — 면세·하이엔드 입점·브랜드 지정 (인플루언서 반동 폭 −50%·바이럴 뒤 앰버서더 대응 선택지는 적용됨)' },
 
   // ── 위스키 (WHI, §5.1) ──
   { id: 'WHI-1', nameKo: '곡물 과학', tree: 'whisky', tier: 1, prereq: [], research: { ...T1, leadRoles: ['distiller'], leadStat: 'b' },

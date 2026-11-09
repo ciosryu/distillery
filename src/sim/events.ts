@@ -5,7 +5,7 @@ import { BUYERS, COMPETITIONS, CRITICS, displayName } from './content/names';
 import { makeSpecialContractOffer } from './bulk';
 import { EQUIPMENT } from './content/catalog';
 import { ownsFacility } from './util';
-import { taxAuditDefense } from './hr';
+import { ageOf, masterDistiller, RETIRE_AGE, taxAuditDefense } from './hr';
 import { clamp } from './flavor';
 import { addModifier } from './modifiers';
 import { exportAwarenessMax } from './market';
@@ -16,7 +16,7 @@ import { addWeatherShock } from './weather';
 import { addTrendShift } from './blendTable';
 import { HEX_LABEL } from './blendRadar';
 import { caskBookValue, creditClaim, newLedger, settleClaims, type LossLedger } from './insurance';
-import { riskMul } from './research';
+import { isUnlocked, riskMul } from './research';
 
 // 이벤트 엔진: 예보 → 발생 → (선택지) → 효과. 결정론적 난수 스트림 사용.
 
@@ -216,6 +216,17 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         addModifier(s, `demand:${best.category}`, bm === 1 ? e.backlash : 1 - (1 - e.backlash) * bm, e.backlashMonths, `${label} — 반동`, e.months);
         break;
       }
+      case 'softenBacklash': {
+        // 아직 끝나지 않은 반동 보정치(지금 걸렸거나 곧 걸릴)를 1에 가깝게 — 앰버서더 대응 (P-MGT-20)
+        let n = 0;
+        for (const x of s.world.modifiers) {
+          if (!x.label.endsWith('— 반동') || x.untilMonth <= s.month || x.factor >= 1) continue;
+          x.factor = 1 - (1 - x.factor) * (1 - e.share);
+          n++;
+        }
+        if (n) notes.push(`반동 폭 ${Math.round(e.share * 100)}% 축소`);
+        break;
+      }
     }
   }
   return notes;
@@ -245,6 +256,23 @@ function fire(s: GameState, base: EventDef, rng: Rng, report: MonthReport): void
   const notes = applyEffects(s, def.effects ?? [], rng, def.title, ledger);
   if (ledger) notes.push(...settleClaims(s, ledger, report));
   log(s, report, def.title, [def.text, ...notes].join(' '));
+  // 연구가 여는 이어지는 선택 이벤트 (P-MGT-20) — 연구하지 않은 판은 아무 일도 없다
+  const next = def.followUp && isUnlocked(s, def.followUp.unlockKey) ? EVENT[def.followUp.eventId] : undefined;
+  if (next) fire(s, next, rngFor(s.seed, s.month, `event:${next.id}`), report);
+}
+
+/** PRO-3 장인 전수 (P-MGT-20): 마스터 디스틸러가 12개월 안에 은퇴하고, 아직 묻지 않았으면 선택 이벤트를 띄운다 */
+export const ARTISAN_NOTICE_MONTHS = 12;
+function artisanTransferDue(s: GameState): boolean {
+  if (!isUnlocked(s, 'event:artisan_retire=transfer')) return false;
+  const master = masterDistiller(s);
+  if (!master) return false;
+  const age = ageOf(master, s.month);
+  if (age < RETIRE_AGE - ARTISAN_NOTICE_MONTHS / 12 || age >= RETIRE_AGE) return false;
+  // 같은 은퇴에 한 번만 묻는다: 대기 중이거나, 이 은퇴 공지 기간 안에 이미 떴으면 건너뛴다
+  if (s.events.pending.some((p) => p.defId === 'artisan_retire')) return false;
+  const last = s.events.lastFired.artisan_retire;
+  return last === undefined || s.month - last >= ARTISAN_NOTICE_MONTHS;
 }
 
 /** 이벤트 하나를 지금 일으킨다 — 테스트·디버그용 (발생 판정·조건·쿨다운을 건너뛴다) */
@@ -307,6 +335,12 @@ export const MACRO_CATEGORIES: EventDef['category'][] = ['market', 'supply', 're
 /** 월초 이벤트 단계: 미선택 이벤트 기본값 처리 → 예보 확정 → 신규 발생 */
 export function runEvents(s: GameState, report: MonthReport, monthOfYear: number): void {
   for (const p of [...s.events.pending]) resolvePending(s, p.id, p.defaultChoice, report);
+
+  // 연구가 여는 조건부 선택 이벤트 (P-MGT-20) — 무작위 발생 판정과 상관없다. 연구하지 않은 판은 그대로
+  if (artisanTransferDue(s)) {
+    s.events.lastFired.artisan_retire = s.month;
+    fire(s, EVENT.artisan_retire!, rngFor(s.seed, s.month, 'event:artisan_retire'), report);
+  }
 
   // 예보 확정: 예보마다 독립 난수 (S-5) — 키는 이벤트 id + 확정 달(엔티티 번호와 무관), 다른 예보·이벤트 수와 무관하다
   for (const f of s.events.forecasts.filter((x) => x.fireMonth <= s.month)) {
