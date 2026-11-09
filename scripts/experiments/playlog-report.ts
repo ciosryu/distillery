@@ -90,16 +90,28 @@ function bankScreeningCheck(): void {
       rows.push({ month: r.month, ...x, deficit, cash, fixed, refused, why });
     }
   }
+  // 월 결산은 최근 REPORTS_KEPT(120)개월만 남는다(step.ts) — 그 전에 받은 대출: 아직 남은 것은 실행 달로 세고, 다 갚아 사라진 것은 셀 수 없다
+  const first = reports[0]?.month ?? 0;
+  for (const l of s.finance.loans.filter((x) => x.startMonth < first)) {
+    const screened = !exempt.has(l.offerId);
+    rows.unshift({ month: l.startMonth, amount: l.principal, what: `${l.name} (월 결산 기록 밖)`, screened, deficit: null, cash: null, fixed: null, refused: false,
+      why: !screened ? '심사 밖(급전·재고 담보)' : l.startMonth < SCREEN.startupMonths ? `창업 ${SCREEN.startupMonths}개월 안 — 사업 계획으로 통과` : '기록 밖 — 판정 불가' });
+  }
+  const firstLoan = ms(s.progress.milestones, 'first_loan');
+  const missed = first > 0 && firstLoan != null && firstLoan < first && !rows.some((x) => x.month === firstLoan);
   const borrowed = rows.reduce((t, x) => t + x.amount, 0);
   const refusedAmt = rows.filter((x) => x.refused).reduce((t, x) => t + x.amount, 0);
   const survived = s.status !== 'bankrupt' && (s.progress.verdict != null || s.month >= 180);
   console.log('\n## 은행 심사(#65) 다시 열 조건 — 기록으로 센 것 (게임 변경 없음)');
   for (const x of rows) console.log(`- ${x.month}개월째(${monthLabel(s.startYear, x.month)}) ${x.what} ${won(x.amount)} → ${x.refused ? '**거절됐을 것**' : '통과'} — ${x.why}`);
   if (!rows.length) console.log('- 기록 기간에 받은 대출 없음');
+  if (missed) console.log(`- ⚠ 월 결산이 ${first}개월째부터만 남아 있다(최근 120개월). 첫 대출은 ${firstLoan}개월째인데, 그 대출은 이미 다 갚아 기록에 없다 → 아래 ②③은 **하한**이다. 대출 상품·금액은 결산의 이자·원금 흐름으로 따로 추정한다`);
   console.log(`- ① 파산 없이 목표 판정까지: ${survived ? '✅' : `❌ (${s.status === 'bankrupt' ? `${s.month}개월째 파산` : `${s.month}개월째 진행 중`})`}`);
-  console.log(`- ② 누적 대출 ≥ ${won(SCREEN.reopenBorrowed)}: ${borrowed >= SCREEN.reopenBorrowed ? '✅' : '❌'} (${won(borrowed)})`);
-  console.log(`- ③ 심사에 걸렸을 대출 ≥ 절반: ${borrowed > 0 && refusedAmt * 2 >= borrowed ? '✅' : '❌'} (${won(refusedAmt)} / ${won(borrowed)})`);
-  console.log(`- 다시 열 조건(①②③ 모두): ${survived && borrowed >= SCREEN.reopenBorrowed && borrowed > 0 && refusedAmt * 2 >= borrowed ? '충족 — #65 재검토' : '불충족 — 은행 심사 보류 유지'}`);
+  const lower = missed ? ' — 하한(기록 밖 대출 미포함)' : '';
+  console.log(`- ② 누적 대출 ≥ ${won(SCREEN.reopenBorrowed)}: ${borrowed >= SCREEN.reopenBorrowed ? '✅' : missed ? '❓' : '❌'} (${won(borrowed)}${lower})`);
+  console.log(`- ③ 심사에 걸렸을 대출 ≥ 절반: ${borrowed > 0 && refusedAmt * 2 >= borrowed ? '✅' : missed ? '❓' : '❌'} (${won(refusedAmt)} / ${won(borrowed)}${lower})`);
+  const met = survived && borrowed >= SCREEN.reopenBorrowed && borrowed > 0 && refusedAmt * 2 >= borrowed;
+  console.log(`- 다시 열 조건(①②③ 모두): ${met ? '충족 — #65 재검토' : !survived ? '불충족 — 은행 심사 보류 유지' : missed ? '기록만으로는 판정 불가(②③ 하한) — 기록 밖 대출을 추정해 판단' : '불충족 — 은행 심사 보류 유지'}`);
 }
 
 /** 가장 오래 걸린 턴 5개 — 사람이 어디서 머뭇거렸나 */
