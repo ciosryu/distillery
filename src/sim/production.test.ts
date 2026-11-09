@@ -668,7 +668,7 @@ describe('품절 제품 지우기 · 통에서 원액 빼기 (2026-11-09 오너 
   });
 });
 
-describe('자동 납품 (P-PROD-21, 2026-11-09 오너 요청)', () => {
+describe('자동 납품 (#206, 2026-11-09 오너 요청)', () => {
   it('소주: 매달 판매 전에 재고를 n개월분으로 채운다 — 탱크 원액, 먼저 만든 것부터', async () => {
     const { autoRestockPlan, productMonthlyPace } = await import('./economics');
     let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });

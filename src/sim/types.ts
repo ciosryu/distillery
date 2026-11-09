@@ -202,7 +202,7 @@ export interface Product {
   price: number;
   /** 자동 최적 가격 (#200) — 켜 두면 매달 판매 직전에 이번 달 이익이 가장 큰 값으로 바뀐다(economics.applyAutoPrices). 옛 세이브에는 없다 = 끔 */
   autoPrice?: boolean;
-  /** 자동 납품 (P-PROD-21) — 몇 개월분 재고를 유지할지(1·2·3·6). 켜 두면 매달 판매 직전에 모자란 만큼 원액을 골라 재고 보충(economics.applyAutoRestock). 없으면 끔 */
+  /** 자동 납품 (#206) — 몇 개월분 재고를 유지할지(1·2·3·6). 켜 두면 매달 판매 직전에 모자란 만큼 원액을 골라 재고 보충(economics.applyAutoRestock). 없으면 끔 */
   autoRestock?: number;
   /** 병당 생산 원가 = 원액 + 포장 + 병입 인건비 (유통비 제외) */
   unitCost: number;

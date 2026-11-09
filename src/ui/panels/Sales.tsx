@@ -176,7 +176,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
           {p.autoPrice
             ? <div className="text-sm tabular-nums" title="매달 판매 직전에 이번 달 이익(팔 수 있는 양 × 병당 공헌이익)이 가장 큰 값으로 바뀐다">{wonFull(p.price)} <Badge tone="good">자동</Badge></div>
             : <PriceInput s={s} p={p} value={p.price} suggested={suggested} onSet={(v) => dispatch({ type: 'setPrice', productId: p.id, price: v })} />}
-          {/* 자동 납품 (P-PROD-21) — 매달 판매 전에 재고를 n개월분으로 채운다 */}
+          {/* 자동 납품 (#206) — 매달 판매 전에 재고를 n개월분으로 채운다 */}
           {autoRestockSupported(p) && (
             <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400" title={isWhiskyCategory(p.category) ? `매달 판매 직전에 재고가 모자라면 ${p.ageYears ? `${p.ageYears}년 이상` : '법정 숙성 이상'} 숙성된 통(같은 피니시) 중 표기에 가장 가까운 통부터 골라 이 제품에 보충한다 — 숙성 표기 유지` : '매달 판매 직전에 재고가 모자라면 탱크 원액(먼저 만든 것부터)으로 이 제품에 보충한다'}>
               자동 납품

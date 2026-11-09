@@ -53,7 +53,7 @@ export type ProdAction =
   | { type: 'unfillCask'; caskId: string }
   /** 자동 최적 가격 켜기·끄기 (#200) — 켜면 바로 한 번 값을 정한다 */
   | { type: 'setAutoPrice'; productId: string; on: boolean }
-  /** 자동 납품 (P-PROD-21) — months: 유지할 재고 개월분(1·2·3·6), null이면 끔 */
+  /** 자동 납품 (#206) — months: 유지할 재고 개월분(1·2·3·6), null이면 끔 */
   | { type: 'setAutoRestock'; productId: string; months: number | null };
 
 export const PROD_CASH_KEY: CashKeys<ProdAction> = {
