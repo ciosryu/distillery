@@ -34,7 +34,9 @@ export type Effect =
   /** 평론가 판정: 최고 제품 품질 ≥ rave면 극찬, < pan이면 혹평 */
   | { type: 'criticVerdict'; rave: number; pan: number; raveEffects: Effect[]; panEffects: Effect[]; mildEffects: Effect[] }
   /** 세무조사: 최근 3개월 주세 × rate 추징, 사무직 세무 스탯으로 감면 */
-  | { type: 'taxAudit'; rate: number };
+  | { type: 'taxAudit'; rate: number }
+  /** 인플루언서 반동(hypeBestSeller의 '— 반동' 보정치)을 share만큼 1에 가깝게 — BIZ-3 앰버서더 대응 (P-MGT-20) */
+  | { type: 'softenBacklash'; share: number };
 
 export type Requirement = 'activeContract' | 'filledCasks' | 'whiskyStock' | 'twoStaff' | 'still' | 'products' | 'highQualityProduct' | 'agedWhisky' | 'exportUS' | 'exportCN';
 
@@ -64,6 +66,8 @@ export interface EventDef {
   defaultChoice?: number;
   /** 이 방재 설비가 있으면 피해 없음 (테크트리 도입 전 대체) */
   defense?: string;
+  /** 이 이벤트가 일어난 뒤, 연구로 unlockKey가 열려 있으면 이어서 띄우는 선택 이벤트 (TRIGGERED_EVENTS의 id) — 연구 효과 '이벤트 선택지' (P-MGT-20) */
+  followUp?: { eventId: string; unlockKey: string };
 }
 
 const m = (key: string, factor: number, months: [number, number], label?: string): Effect => ({ type: 'modifier', key, factor, months, label });
@@ -92,7 +96,8 @@ export const EVENTS: EventDef[] = [
     forecast: { months: 2, certainty: 0.6, text: '경제 전망: 하반기 소비 위축 우려가 커지고 있습니다.' },
     effects: [m('demand:whisky', 0.8, [12, 24], '경기 침체'), m('demand:blended_whisky', 0.85, [12, 24], '경기 침체'), m('demand:soju_distilled', 0.9, [12, 24], '경기 침체'), m('demand:gin', 0.9, [12, 24], '경기 침체')] },
   { id: 'influencer_viral', title: '인플루언서 바이럴', category: 'market', chance: 0.015, cooldown: 24, requires: ['products'], text: '유명 인플루언서가 우리 제품을 소개했습니다. 반짝 품귀 뒤에는 반동이 올 수 있습니다.',
-    effects: [{ type: 'awareness', delta: 0.04 }, { type: 'hypeBestSeller', factor: 1.8, months: 2, backlash: 0.85, backlashMonths: 6 }] },
+    effects: [{ type: 'awareness', delta: 0.04 }, { type: 'hypeBestSeller', factor: 1.8, months: 2, backlash: 0.85, backlashMonths: 6 }],
+    followUp: { eventId: 'ambassador_response', unlockKey: 'event:influencer_backlash=ambassador' } },
 
   // ── 원가·공급 ──
   { id: 'barley_failure', title: '보리 흉작', category: 'supply', chance: 0.014, cooldown: 36, text: '주요 산지의 보리 작황이 나빠 맥아 가격이 급등합니다.',
@@ -241,4 +246,27 @@ export const EVENTS: EventDef[] = [
     ], defaultChoice: 0 },
 ];
 
-export const EVENT: Record<string, EventDef> = Object.fromEntries(EVENTS.map((e) => [e.id, e]));
+/**
+ * 연구가 여는 선택 이벤트 (P-MGT-20, tech-tree §4 — 노드의 `event:` 해금 키). 무작위로 일어나지 않는다(EVENTS와 따로 둔다 —
+ * 월 발생 판정·조기 경보·이벤트 수에 영향 없음). 조건이 맞으면 코드가 띄운다: 앞선 이벤트의 followUp, 또는 events.ts runEvents의 조건 확인.
+ * 비용·효과 수치는 모두 [튜닝]
+ */
+export const TRIGGERED_EVENTS: EventDef[] = [
+  // PRO-3 장인 전수 체계 — 마스터 디스틸러 은퇴 12개월 전 (events.ts artisanTransferDue)
+  { id: 'artisan_retire', title: '마스터 디스틸러 은퇴 예정 — 전수', category: 'people', chance: 0, cooldown: 0,
+    text: '마스터 디스틸러가 1년 안에 은퇴합니다. 손에 익은 공정과 하우스 스타일을 기록으로 남길지 정합니다.',
+    choices: [
+      { label: '전수 기록 프로젝트', detail: '2,000만 원 — 24개월 안에 은퇴하면 하우스 스타일 손실이 10분의 1로 준다(부사수 없으면 0 → 90% 보존, 있으면 90% → 99%)',
+        effects: [{ type: 'cash', amount: -20_000_000 }, m('house_style_loss', 0.1, [24, 24], '장인 전수 기록')] },
+      { label: '그대로 보낸다', detail: '비용 없음 — 부사수가 없으면 하우스 스타일이 초기화된다', effects: [] },
+    ], defaultChoice: 1 },
+  // BIZ-3 글로벌 앰버서더 — 인플루언서 바이럴 직후 (influencer_viral.followUp)
+  { id: 'ambassador_response', title: '인플루언서 역풍 — 앰버서더 대응', category: 'market', chance: 0, cooldown: 0,
+    text: '바이럴 뒤 반동이 예상됩니다. 앰버서더를 앞세워 대응할 수 있습니다.',
+    choices: [
+      { label: '앰버서더 대응 캠페인', detail: '1,500만 원 — 반동 폭을 절반으로 더 줄인다', effects: [{ type: 'cash', amount: -15_000_000 }, { type: 'softenBacklash', share: 0.5 }] },
+      { label: '대응하지 않는다', detail: '비용 없음 — 연구 효과(반동 폭 −50%)만 남는다', effects: [] },
+    ], defaultChoice: 1 },
+];
+
+export const EVENT: Record<string, EventDef> = Object.fromEntries([...EVENTS, ...TRIGGERED_EVENTS].map((e) => [e.id, e]));
