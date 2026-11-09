@@ -1,9 +1,16 @@
 import { DISTRIBUTION, PACKAGING, logisticsCost } from './content/catalog';
+import { BRANDS, PRICE_CURVE, SKU } from './content/market';
+import { rivalShare } from './rivals';
+import { awarenessOf, brandMarketing, brandOf, houseBrand, secondBrands } from './brands';
 import { consumerPrice, refPricePerL, regionOf, siteOf, traditionalTaxFactor, type RegionDef } from './content/regions';
-import { DUTY_FREE, dutyFreeDemand, dutyFreeEditionAppeal, outboundLogistics } from './sites';
-import { agePerception } from './blending';
-import { overhangFactor, ownershipOversold, OWNERSHIP, retailCapacityCases, RETAIL } from './ops';
+import { outboundLogistics } from './sites';
+import { DUTY_FREE, dutyFreeDemand, dutyFreeEditionAppeal } from './dutyFree';
+import { agePerception, isWhiskyCategory } from './blending';
+import { overhangFactor, retailCapacityCases, RETAIL } from './retail';
+import { ownershipOversold, OWNERSHIP } from './investment';
 import { clamp } from './flavor';
+import { hexOf } from './blendRadar';
+import { RARE, trendFactor } from './blendTable';
 import { staffOf } from './util';
 import { mod } from './modifiers';
 import type { ExportEntry, ExportSale, GameState, Product, ProductCategory } from './types';
@@ -25,15 +32,53 @@ export function markupFactor(s: GameState): number {
 
 /** 제품의 병당 소비자가 (지역 세제·유통 마진·영업 협상·이벤트 반영) */
 export function productConsumerPrice(s: GameState, p: Pick<Product, 'price' | 'bottleMl' | 'abv' | 'traditional'>, region: RegionDef = regionOf(s)): number {
-  return consumerPrice(region, p.price, p.bottleMl, p.abv, markupFactor(s), traditionalTaxFactor(region, p.traditional, s.traditionalReleasedL, s.traditionalPrevYearL));
+  return consumerPrice(region, p.price, p.bottleMl, p.abv, markupFactor(s), traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL));
 }
 
-export function appeal(p: Product, s?: Pick<GameState, 'modifiers' | 'month' | 'regionId'>): number {
+/** 소비자가 내역 (병당) — 판매 화면의 주세 내역. 합계는 productConsumerPrice와 같다 */
+export interface PriceBreakdown {
+  /** 출고가 — 우리가 받는 값(매출) */
+  price: number;
+  /** 종가세(출고가 × 세율 × 경감) */
+  adValoremTax: number;
+  /** 교육세(주세의 n%) */
+  educationTax: number;
+  /** 종량세(LPA당) */
+  specificTax: number;
+  /** 주세 경감 배수 (전통주 구간 경감, 없으면 1) */
+  reliefFactor: number;
+  /** 부가세 */
+  vat: number;
+  /** 도소매 마진 (영업 협상·이벤트 반영) */
+  retail: number;
+  consumer: number;
+}
+
+export function priceBreakdown(s: GameState, p: Pick<Product, 'price' | 'bottleMl' | 'abv' | 'traditional'>, region: RegionDef = regionOf(s)): PriceBreakdown {
+  const relief = traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL);
+  const lpa = (p.bottleMl / 1000) * p.abv;
+  const adValoremTax = p.price * region.tax.adValorem * relief;
+  const educationTax = adValoremTax * region.tax.education;
+  const specificTax = region.tax.specificPerLPA * lpa * relief;
+  const taxed = p.price + adValoremTax + educationTax + specificTax;
+  const vat = taxed * region.tax.vat;
+  const consumer = productConsumerPrice(s, p, region);
+  return { price: p.price, adValoremTax, educationTax, specificTax, reliefFactor: relief, vat, retail: consumer - taxed - vat, consumer };
+}
+
+export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId'>): number {
   const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
-  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12) : 1;
+  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : 1;
   const lux = PACKAGING[p.packagingId]?.luxury ?? 1;
   // 시장 국면: 피트·셰리 유행
-  const trend = s ? mod(s, 'appeal:all') * ((p.flavor.peat_smoke ?? 0) >= 25 ? mod(s, 'appeal:peated') : 1) * ((p.flavor.dried_fruit ?? 0) >= 25 ? mod(s, 'appeal:sherried') : 1) : 1;
+  // 시장 국면: 향미 트렌드 이동 (결정 #125 — 옛 피트·셰리 계단식 보정치를 육각형 축 기반 연속 배수로 대체)
+  const trend = s ? mod(s, 'appeal:all') * trendFactor(s, p.hex ?? hexOf(p.flavor)) : 1;
+  // 블렌딩 테이블 (결정 #124): 평론가 의뢰 블렌드는 기간 한정 가산, 코어 레인지는 일관성(0.9~1.1), 레어 싱글 캐스크
+  const blendBonus = !p.blend ? 1
+    : p.blend.source === 'critic' ? (s && p.blend.untilMonth != null && s.month < p.blend.untilMonth ? 1 + (p.blend.appealBonus ?? 0) : 1)
+    : p.blend.source === 'core' ? 0.9 + 0.2 * (p.blend.score / 100)
+    : 1;
+  const rare = p.rareSingleCask ? RARE.singleCaskAppeal : 1;
   const region = s ? regionOf(s) : null;
   // 매입 원액 병입의 브랜드 가치: 싸게 사 온 원액일수록 감점, 비싼 원액이면 감점이 줄어든다
   const brand = 1 - (region?.sourcedPenalty ?? 0.4) * p.sourcedShare * (1 - (p.sourcedPrestige ?? 0));
@@ -45,15 +90,65 @@ export function appeal(p: Product, s?: Pick<GameState, 'modifiers' | 'month' | '
   const premium = s && aged ? mod(s, 'appeal:premium') : 1;
   const incense = region?.incensePremium && (p.flavor.incense ?? 0) >= 8 ? region.incensePremium : 1;
   const edition = dutyFreeEditionAppeal(p);
-  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * brand * label * specialty * trend * premium * incense * edition;
+  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * brand * label * specialty * trend * premium * incense * edition * blendBonus * rare;
 }
 
 /** 브랜드 가치가 낮은 매입 원액 병입은 저가 하이볼 수요라 가격에 훨씬 민감하다 */
 export const sourcedElasticityFactor = (p: Pick<Product, 'sourcedShare' | 'sourcedPrestige'>) => 1 + 0.6 * p.sourcedShare * (1 - (p.sourcedPrestige ?? 0));
 
+// ── 같은 카테고리 제품끼리 수요 나눔 (#154, PRD §9.2 · §15.3 #12) ──
+// 옛 공식: 제품마다 도달률 ÷ √n → 똑같은 제품을 n개 내면 총수요 √n배, 약한 제품을 하나 더 내도 강한 제품이 1/√2로 깎였다.
+// 새 공식(CES): 단독 수요 x_i로 총수요 = (Σx^ρ)^(1/ρ), 제품 i의 몫 ∝ x_i^ρ → 배수 = (x_i^ρ / Σx^ρ)^(1 − 1/ρ)
+
+/** 단독 수요 목록 → 제품별 나눔 배수 (같은 카테고리·같은 채널끼리). 단독 수요가 0인 제품은 0 */
+export function skuSplit(xs: readonly number[], rho = SKU.rho): number[] {
+  const pow = xs.map((x) => (x > 0 ? Math.pow(x, rho) : 0));
+  const total = pow.reduce((t, x) => t + x, 0);
+  return pow.map((x) => (total > 0 && x > 0 ? Math.pow(x / total, 1 - 1 / rho) : x > 0 ? 1 : 0));
+}
+
+/** 같은 카테고리 제품이 n개이고 단독 수요가 모두 같다고 볼 때의 배수 — 제품 수만 아는 호출자(미리보기)용 */
+export const skuSplitEqual = (n: number, rho = SKU.rho) => Math.pow(Math.max(1, n), 1 / rho - 1);
+
+/** 제품 목록을 카테고리별로 묶어 나눔 배수를 매긴다. standalone = 단독 수요(병 단위여도 같은 카테고리 안에서는 L로 바꿔 비교) */
+function splitByCategory(items: readonly { p: Product; standaloneBottles: number }[]): Map<string, number> {
+  const byCat = new Map<ProductCategory, { p: Product; standaloneBottles: number }[]>();
+  for (const it of items) byCat.set(it.p.category, [...(byCat.get(it.p.category) ?? []), it]);
+  const out = new Map<string, number>();
+  for (const list of byCat.values()) {
+    const f = skuSplit(list.map((x) => (x.standaloneBottles * x.p.bottleMl) / 1000));
+    list.forEach((x, i) => out.set(x.p.id, f[i]!));
+  }
+  return out;
+}
+
+// ── 가격 반응 곡선 (결정 #198, PRD §9.2) ──
+// 옛 공식: 수요 ∝ (소비자가/기준가)^(−ε) — 탄력성이 어디서나 같다. 위스키는 ε 1.1 × 영업 매력 보정 ≈ 1.0이라
+// 값을 몇 배로 바꿔도 매출이 그대로였고(3차 플레이테스트: 출고가 8천 원~195만 원 모두 월 550만 원), 비쌀수록 무조건 이득이었다.
+// 새 공식: 이 제품의 기대 소비자가 E(기준가 × √(품질/60) × 숙성 인식 — 권장 출고가의 소비자가)에서 옛 곡선과 값·기울기가 같고,
+// 국소 탄력성 = ε × (소비자가/E)^K — 기대가보다 비쌀수록 가파르고(값을 크게 올리면 수요가 무너진다), 쌀수록 완만하다(값을 크게 내려도 수요가 끝없이 늘지 않는다).
+//   ln 수요 = −ε·ln(E/기준가) − ε·((소비자가/E)^K − 1)/K          K → 0이면 옛 공식
+
+/** 이 제품을 사는 사람이 기대하는 소비자가(원/L) — 권장 출고가(blending.ts suggestedPrice)가 맞추는 값과 같다 */
+export function expectedPricePerL(region: RegionDef, p: Pick<Product, 'category' | 'abv' | 'quality' | 'oakMonths' | 'ageYears'>): number {
+  const aged = isWhiskyCategory(p.category);
+  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : 1;
+  return refPricePerL(region, p.category, p.abv) * Math.sqrt(Math.max(p.quality, 20) / 60) * ageBonus;
+}
+
+/** 가격 계수 — consumer·ref·expected는 원/L, elasticity는 기대가에서의 탄력성 */
+export function priceResponse(consumerPerL: number, refPerL: number, expectedPerL: number, elasticity: number, k = PRICE_CURVE.k): number {
+  const base = Math.pow(expectedPerL / refPerL, -elasticity);
+  if (k <= 0) return base * Math.pow(consumerPerL / expectedPerL, -elasticity);
+  return base * Math.exp((-elasticity * (Math.pow(consumerPerL / expectedPerL, k) - 1)) / k);
+}
+
 export interface DemandBreakdown {
   marketL: number;
+  /** 도달률(인지도 × 커버리지 × 점유 상한) — 나눔 전 */
   reach: number;
+  /** 같은 카테고리 제품끼리 나눔 배수 (1 = 혼자) */
+  split: number;
   appeal: number;
   consumerPricePerL: number;
   refPricePerL: number;
@@ -61,24 +156,64 @@ export interface DemandBreakdown {
   demandBottles: number;
 }
 
+/** 국내 수요 — sameCategoryCount는 같은 카테고리 제품 수(단독 수요가 같다고 보는 근사, skuSplitEqual). 정확한 나눔은 domesticDemands */
 export function demandFor(s: GameState, p: Product, sameCategoryCount: number, monthOfYear: number, region: RegionDef = regionOf(s)): DemandBreakdown {
+  return demandWithSplit(s, p, skuSplitEqual(sameCategoryCount), monthOfYear, region);
+}
+
+/** 이번 달 국내 수요 — 재고 있는 제품끼리 카테고리별로 정확히 나눈다(runSales·판매 화면). 재고 없는 제품은 없다 */
+export function domesticDemands(s: GameState, monthOfYear: number, region: RegionDef = regionOf(s)): Map<string, DemandBreakdown> {
+  const alone = s.commerce.products.filter((p) => p.stockBottles > 0).map((p) => ({ p, d: demandWithSplit(s, p, 1, monthOfYear, region) }));
+  const f = splitByCategory(alone.map((x) => ({ p: x.p, standaloneBottles: x.d.demandBottles })));
+  return new Map(alone.map(({ p, d }) => { const k = f.get(p.id) ?? 1; return [p.id, { ...d, split: k, demandBottles: d.demandBottles * k }]; }));
+}
+
+function demandWithSplit(s: GameState, p: Product, split: number, monthOfYear: number, region: RegionDef): DemandBreakdown {
   const m = region.market[p.category];
   // 면세 전용 한정판은 국내 매대에 없다 (결정 #87). 입지 수요 배수(관광·인바운드, 결정 #86)
-  if (p.dutyFreeOnly) return { marketL: 0, reach: 0, appeal: appeal(p, s), consumerPricePerL: 0, refPricePerL: refPricePerL(region, p.category, p.abv), priceFactor: 0, demandBottles: 0 };
-  const marketL = (m.baseCases * 9 / 12) * region.seasonality[monthOfYear - 1]! * (s.trend[p.category] ?? 1) * mod(s, `demand:${p.category}`) * mod(s, 'demand:all') * (siteOf(s).demandFactor ?? 1);
-  const reach = (s.awareness * coverage(s) * m.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
+  if (p.dutyFreeOnly) return { marketL: 0, reach: 0, split, appeal: appeal(p, s), consumerPricePerL: 0, refPricePerL: refPricePerL(region, p.category, p.abv), priceFactor: 0, demandBottles: 0 };
+  const marketL = (m.baseCases * 9 / 12) * region.seasonality[monthOfYear - 1]! * (s.world.trend[p.category] ?? 1) * mod(s, `demand:${p.category}`) * mod(s, 'demand:all') * (siteOf(s).demandFactor ?? 1) * (1 - rivalShare(s, p.category)); // 경쟁 AI 몫 (S-12 훅 — 경쟁사가 없으면 0)
+  const reach = awarenessOf(s, p) * coverage(s) * m.shareCap;
   const a = appeal(p, s);
   const bottleL = p.bottleMl / 1000;
   const consumerPricePerL = productConsumerPrice(s, p, region) / bottleL;
   const charm = Math.max(0, ...staffOf(s, 'sales').map((x) => x.stats.a));
   const elasticity = m.elasticity * (1 - 0.15 * (charm / 100)) * sourcedElasticityFactor(p);
   const ref = refPricePerL(region, p.category, p.abv);
-  const priceFactor = m.baseCases > 0 ? Math.pow(consumerPricePerL / ref, -elasticity) : 0;
+  const priceFactor = m.baseCases > 0 ? priceResponse(consumerPricePerL, ref, expectedPricePerL(region, p), elasticity) : 0;
   // 재고 적체(할인 이미지)·첫 출시 오픈런·캐스크 오너십 과다 판매(매니아 신뢰↓)
   const launch = p.launchBoost && s.month < p.launchBoost.untilMonth ? p.launchBoost.factor : 1;
   const oversold = ownershipOversold(s) ? OWNERSHIP.oversellAppeal : 1;
-  const demandBottles = (marketL * reach * a * priceFactor * overhangFactor(p, s.month) * launch * oversold) / bottleL;
-  return { marketL, reach, appeal: a, consumerPricePerL, refPricePerL: ref, priceFactor, demandBottles };
+  const demandBottles = (marketL * reach * split * a * priceFactor * overhangFactor(p, s.month) * launch * oversold) / bottleL;
+  return { marketL, reach, split, appeal: a, consumerPricePerL, refPricePerL: ref, priceFactor, demandBottles };
+}
+
+/** 가격을 바꾸면 — 판매 화면의 가격 비교. 판매 가능 = min(재고, 수요 기댓값). 소매 처리 역량·±10% 난수는 넣지 않는다 */
+/** 가격 비교 한 줄. lineup*은 국내 진열 전체(이 제품 포함) — 같은 카테고리 나눔(#154) 때문에 이 제품 값을 내리면 형제 제품 판매를 뺏어 온다([결정 #212]) */
+export interface PriceOption { price: number; consumer: number; demandBottles: number; sellBottles: number; revenue: number; contribution: number; lineupRevenue: number; lineupContribution: number }
+
+export function priceOptions(s: GameState, p: Product, monthOfYear: number, factors: readonly number[] = [0.8, 0.9, 1, 1.1, 1.25, 1.5]): PriceOption[] {
+  const logistics = outboundLogistics(s);
+  return factors.map((f) => {
+    const q: Product = { ...p, price: Math.max(100, Math.round((p.price * f) / 100) * 100) };
+    // 값이 바뀌면 같은 카테고리 안의 몫도 바뀐다 — 이 제품만 바꾼 진열로 다시 나눈다 (재고가 없으면 혼자일 때)
+    const lineup = s.commerce.products.some((x) => x.id === p.id) ? s.commerce.products.map((x) => (x.id === p.id ? q : x)) : [...s.commerce.products, q];
+    const dm = domesticDemands({ ...s, commerce: { ...s.commerce, products: lineup } }, monthOfYear);
+    const d = dm.get(q.id) ?? demandFor(s, q, 1, monthOfYear);
+    const sell = Math.min(q.stockBottles, Math.round(d.demandBottles));
+    const revenue = sell * q.price;
+    const contribution = sell * bottleMargin(q, logistics).perBottle;
+    // 진열 전체 = 이 제품 + 다른 국내 제품(각자 재고 한도). 면세·수출 몫은 넣지 않는다(근사)
+    let lineupRevenue = revenue, lineupContribution = contribution;
+    for (const x of lineup) {
+      const dx = x.id === q.id ? undefined : dm.get(x.id);
+      if (!dx) continue;
+      const n = Math.min(x.stockBottles, Math.round(dx.demandBottles));
+      lineupRevenue += n * x.price;
+      lineupContribution += n * bottleMargin(x, logistics).perBottle;
+    }
+    return { price: q.price, consumer: productConsumerPrice(s, q), demandBottles: d.demandBottles, sellBottles: sell, revenue, contribution, lineupRevenue, lineupContribution };
+  });
 }
 
 // ── 수출 (#95) ──
@@ -92,13 +227,13 @@ export const exportFreightPerBottle = (s: Pick<GameState, 'regionId'>, p: Pick<P
 export const exportFob = (p: Pick<Product, 'price'>, priceFactor = 1) => Math.round(p.price * priceFactor);
 
 /** 관세 이벤트(#103) 반영 실효 관세율 */
-export function effectiveTariff(s: Pick<GameState, 'regionId'> & Partial<Pick<GameState, 'modifiers' | 'month'>>, m: ExportMarketDef): number {
-  const k = s.modifiers && s.month != null ? mod(s as GameState, tariffKey(m.id)) : 1;
+export function effectiveTariff(s: Pick<GameState, 'regionId'> & Partial<Pick<GameState, 'world' | 'month'>>, m: ExportMarketDef): number {
+  const k = s.world?.modifiers && s.month != null ? mod(s as GameState, tariffKey(m.id)) : 1;
   return (1 + m.tariff[s.regionId]) * k - 1;
 }
 
 /** 수출 시장 소비자가 (병당): ((FOB + 운임) × (1 + 관세) × (1 + 현지 종가세) + 현지 주세) × 유통 배수 × (1 + 부가세). 국내 주세는 수출 면세 */
-export function exportShelfPrice(s: Pick<GameState, 'regionId'> & Partial<Pick<GameState, 'modifiers' | 'month'>>, p: Pick<Product, 'price' | 'bottleMl' | 'abv'>, m: ExportMarketDef, priceFactor = 1): number {
+export function exportShelfPrice(s: Pick<GameState, 'regionId'> & Partial<Pick<GameState, 'world' | 'month'>>, p: Pick<Product, 'price' | 'bottleMl' | 'abv'>, m: ExportMarketDef, priceFactor = 1): number {
   const lpa = (p.bottleMl / 1000) * p.abv;
   return ((exportFob(p, priceFactor) + exportFreightPerBottle(s, p, m)) * (1 + effectiveTariff(s, m)) * (1 + (m.adValorem ?? 0)) + m.excisePerLPA * lpa) * m.channelMultiple * (1 + m.vat);
 }
@@ -115,12 +250,24 @@ export function exportEligible(p: Pick<Product, 'category' | 'oakMonths' | 'ageY
   return true;
 }
 
+/** 수출 수요 — sameCategoryCount는 같은 카테고리 제품 수(근사). 정확한 나눔은 exportDemands */
 export function exportDemandFor(s: GameState, p: Product, entry: ExportEntry, sameCategoryCount: number): number {
+  return exportDemandWithSplit(s, p, entry, skuSplitEqual(sameCategoryCount));
+}
+
+/** 이 수출 시장의 이번 달 수요(병) — 재고 있는 제품끼리 카테고리별로 나눈다 */
+export function exportDemands(s: GameState, entry: ExportEntry): Map<string, number> {
+  const alone = s.commerce.products.filter((p) => p.stockBottles > 0).map((p) => ({ p, standaloneBottles: exportDemandWithSplit(s, p, entry, 1) }));
+  const f = splitByCategory(alone);
+  return new Map(alone.map((x) => [x.p.id, x.standaloneBottles * (f.get(x.p.id) ?? 1)]));
+}
+
+function exportDemandWithSplit(s: GameState, p: Product, entry: ExportEntry, split: number): number {
   const m = EXPORT_MARKETS[entry.marketId];
   const c = m.categories[p.category];
   if (!c || !exportEligible(p, m)) return 0;
-  const marketL = (c.baseCases * 9 / 12) * (m.regionScale?.[s.regionId] ?? 1) * (s.trend[p.category] ?? 1) * mod(s, 'demand:all') * mod(s, `export:${m.id}`) * mod(s, 'export:all');
-  const reach = (entry.awareness * c.shareCap) / Math.sqrt(Math.max(1, sameCategoryCount));
+  const marketL = (c.baseCases * 9 / 12) * (m.regionScale?.[s.regionId] ?? 1) * (s.world.trend[p.category] ?? 1) * mod(s, 'demand:all') * mod(s, `export:${m.id}`) * mod(s, 'export:all');
+  const reach = entry.awareness * c.shareCap * split;
   const bottleL = p.bottleMl / 1000;
   const ref = c.refConsumerPricePerL * Math.pow(p.abv / c.refAbv, 0.7);
   const priceFactor = Math.pow(exportShelfPrice(s, p, m, entry.priceFactor ?? 1) / bottleL / ref, -c.elasticity * sourcedElasticityFactor(p));
@@ -129,11 +276,11 @@ export function exportDemandFor(s: GameState, p: Product, entry: ExportEntry, sa
 
 /** 해외 명성 (#96): 진출 시장의 현지 인지도 상한을 높이고, 바닥(명성 × 0.5)을 깐다. 매달 1.5%씩 식는다 */
 export const ACCLAIM = { maxBonus: 0.4, floor: 0.5, decay: 0.015 };
-export const exportAwarenessMax = (s: Pick<GameState, 'acclaim'>, id: keyof typeof EXPORT_MARKETS) => Math.min(0.95, EXPORT_MARKETS[id].awareness.max + ACCLAIM.maxBonus * (s.acclaim ?? 0));
+export const exportAwarenessMax = (s: { commerce: Pick<GameState['commerce'], 'acclaim'> }, id: keyof typeof EXPORT_MARKETS) => Math.min(0.95, EXPORT_MARKETS[id].awareness.max + ACCLAIM.maxBonus * (s.commerce.acclaim ?? 0));
 
 /** 수출 인지도: 매달 상승(계약 마케팅 분담이 클수록 빠르게, #101) + 국내 인지도 후광(면세점만, #102) + 해외 명성 상한·바닥(#96) */
 export function updateExportAwareness(s: GameState): void {
-  for (const e of s.exports ?? []) {
+  for (const e of s.commerce.exports ?? []) {
     if (e.readyMonth > s.month) continue;
     const m = EXPORT_MARKETS[e.marketId];
     const a = m.awareness;
@@ -141,9 +288,9 @@ export function updateExportAwareness(s: GameState): void {
     // 마케팅 분담 = 시장 기준 월 비용이면 ×1, 0이면 ×0.3, 2배면 ×1.5 (체감)
     const push = e.marketingPerMonth == null ? 1 : 0.3 + 0.7 * Math.sqrt(e.marketingPerMonth / m.monthlyCost) * (e.marketingPerMonth > m.monthlyCost ? 0.85 : 1);
     const target = Math.min(max, e.awareness + a.perMonth * push * (1 - e.awareness) * mod(s, 'awareness_gain'));
-    e.awareness = clamp(Math.max(target, s.awareness * a.domesticSpill, (s.acclaim ?? 0) * ACCLAIM.floor), 0, max);
+    e.awareness = clamp(Math.max(target, awarenessOf(s) * a.domesticSpill, (s.commerce.acclaim ?? 0) * ACCLAIM.floor), 0, max);
   }
-  if (s.acclaim) s.acclaim = Math.max(0, s.acclaim * (1 - ACCLAIM.decay));
+  if (s.commerce.acclaim) s.commerce.acclaim = Math.max(0, s.commerce.acclaim * (1 - ACCLAIM.decay));
 }
 
 export interface SalesResult { productId: string; name: string; bottles: number; revenue: number; demandBottles: number; distribution: number; overflowBottles?: number; /** 면세 채널 판매 병수 (bottles에 포함, 주세 없음) — 결정 #87 */ dutyFree?: number }
@@ -156,9 +303,18 @@ export function distributionCostPerBottle(price: number, bottleMl: number, outbo
   return price * DISTRIBUTION.channelFeeRate + logisticsCost(bottleMl) * outbound;
 }
 
-/** 이 제품의 면세 채널 수요 (제주) */
+/** 이 제품의 면세 채널 수요 (제주) — sameCategoryCount는 같은 카테고리 제품 수(근사). 정확한 나눔은 dutyFreeDemands */
 export function productDutyFreeDemand(s: GameState, p: Product, sameCategoryCount: number, monthOfYear: number): number {
-  return dutyFreeDemand(s, p, sameCategoryCount, monthOfYear, (x) => appeal(x, s), coverage(s));
+  return dutyFreeDemand(s, p, skuSplitEqual(sameCategoryCount), monthOfYear, (x) => appeal(x, s), coverage(s));
+}
+
+/** 이번 달 면세 채널 수요(병) — 재고 있는 제품(국내·면세 전용 모두)끼리 카테고리별로 나눈다. 면세점이 없으면 빈 맵 */
+export function dutyFreeDemands(s: GameState, monthOfYear: number): Map<string, number> {
+  if (!siteOf(s).dutyFree) return new Map();
+  const cov = coverage(s);
+  const alone = s.commerce.products.filter((p) => p.stockBottles > 0).map((p) => ({ p, standaloneBottles: dutyFreeDemand(s, p, 1, monthOfYear, (x) => appeal(x, s), cov) }));
+  const f = splitByCategory(alone);
+  return new Map(alone.map((x) => [x.p.id, x.standaloneBottles * (f.get(x.p.id) ?? 1)]));
 }
 
 /** 병당 공헌이익과 공헌이익률 (출고가 − 생산 원가 − 유통비) */
@@ -168,23 +324,23 @@ export function bottleMargin(p: Pick<Product, 'price' | 'unitCost' | 'bottleMl'>
 }
 
 export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results: SalesResult[]; retail: RetailSummary; exports: ExportSale[] } {
-  const counts: Partial<Record<ProductCategory, number>> = {};
-  for (const p of s.products) if (p.stockBottles > 0) counts[p.category] = (counts[p.category] ?? 0) + 1;
-  // 1) 제품별 수요
+  // 1) 제품별 수요 — 같은 카테고리 제품끼리 채널별로 나눈다 (#154). 판매 전 재고 기준으로 한 번에 계산
+  const domestic = domesticDemands(s, monthOfYear);
+  const dutyFree = dutyFreeDemands(s, monthOfYear);
+  const active = (s.commerce.exports ?? []).filter((e) => e.readyMonth <= s.month);
+  const exportD = new Map(active.map((e) => [e, exportDemands(s, e)]));
   const wants: { p: Product; demand: number; want: number }[] = [];
-  for (const p of s.products) {
+  for (const p of s.commerce.products) {
     if (p.stockBottles <= 0) { p.lastMonthSold = 0; p.salesEma = (p.salesEma ?? 0) * 0.7; continue; }
-    const d = demandFor(s, p, counts[p.category] ?? 1, monthOfYear);
-    const demand = Math.round(d.demandBottles * rng.range(0.9, 1.1));
+    const demand = Math.round(domestic.get(p.id)!.demandBottles * rng.range(0.9, 1.1));
     wants.push({ p, demand, want: Math.min(p.stockBottles, demand) });
   }
   // 1-b) 수출 수요 (#95·#109): 재고가 모자라면 병당 순수입이 높은 판로부터 채운다(EXPORT_SALES.allocation, 같으면 국내 먼저).
   //      숙성 원액은 정해진 양뿐이라, 수요 비율로 나누면 싸게 파는 판로가 비싸게 파는 판로의 몫을 빼앗는다.
   //      수출가를 올리면(#108) 수출이 먼저 채워진다. 수출은 수입상이 받아 가므로 소매 처리 역량을 쓰지 않는다
   const exportWants = new Map<string, { entry: ExportEntry; demand: number; want: number }[]>();
-  const active = (s.exports ?? []).filter((e) => e.readyMonth <= s.month);
   for (const w of wants) {
-    const list = active.map((entry) => ({ entry, demand: Math.round(exportDemandFor(s, w.p, entry, counts[w.p.category] ?? 1) * rng.range(0.9, 1.1)), want: 0 })).filter((x) => x.demand > 0);
+    const list = active.map((entry) => ({ entry, demand: Math.round((exportD.get(entry)!.get(w.p.id) ?? 0) * rng.range(0.9, 1.1)), want: 0 })).filter((x) => x.demand > 0);
     if (!list.length) continue;
     exportWants.set(w.p.id, list);
     if (EXPORT_SALES.allocation === 'margin') {
@@ -235,9 +391,9 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
   }
   // 3) 지정면세점 채널 (제주, 결정 #87) — 면세점이 진열·판매하므로 소매 처리 역량을 쓰지 않고, 섬 안에서 팔려 육지 출고 물류 할증도 없다
   if (siteOf(s).dutyFree) {
-    for (const p of s.products) {
+    for (const p of s.commerce.products) {
       if (p.stockBottles <= 0) { p.lastMonthDutyFree = 0; continue; }
-      const df = Math.min(p.stockBottles, Math.round(productDutyFreeDemand(s, p, counts[p.category] ?? 1, monthOfYear) * rng.range(0.9, 1.1)));
+      const df = Math.min(p.stockBottles, Math.round((dutyFree.get(p.id) ?? 0) * rng.range(0.9, 1.1)));
       p.lastMonthDutyFree = df;
       if (df <= 0) continue;
       p.stockBottles -= df;
@@ -273,25 +429,53 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
 
 /** 인지도 계수 [튜닝] — 월 500만 원 마케팅 단독이면 평형 인지도 ≈ 0.4 */
 export const AWARENESS = { marketing: 0.012, wordOfMouth: 0.000003, decay: 0.012 };
+/** 판매 기록에 제품이 없을 때(이론상 없음) 입소문에 쓰는 품질 */
+const WOM_DEFAULT_QUALITY = 50;
 
 /**
- * 인지도 갱신: 마케팅 + 입소문(판매량 × 품질) − 망각.
+ * 인지도 갱신 — 브랜드 라인별 (PRD §11.2 ④, 결정 #155). 브랜드 b의 자체 성장
+ *   G_b = 마케팅(브랜드 b의 마케팅비) + 입소문(브랜드 b 제품의 이번 달 판매 병수 × 그 제품의 품질/60)
+ *   하우스  A_h ← A_h + (G_h + s × Σ G_세컨드) × (1 − A_h) − 망각 × A_h
+ *   세컨드  A_b ← A_b + (G_b + s × G_h) × (1 − A_b) − 망각 × A_b          s = BRANDS.spillover (#52·#53)
+ * 세컨드 브랜드가 없으면 옛 회사 인지도 성장식과 같다. 판매는 판매 시점의 브랜드로 센다.
  * 면세 판매 1병은 입소문에서 DUTY_FREE.wordOfMouthWeight병으로 친다 — 출도 관광객이 육지로 가져간다 (결정 #87).
- * 반환: 그중 면세 판매 입소문 몫(인지도 증가분)
+ * 반환: 그중 면세 판매 입소문 몫(브랜드별 자체 증가분의 합)
  */
 export function updateAwareness(s: GameState, sales: SalesResult[]): number {
-  const dutyFree = sales.reduce((t, x) => t + (x.dutyFree ?? 0), 0);
-  const bottles = sales.reduce((t, x) => t + x.bottles, 0) + (DUTY_FREE.wordOfMouthWeight - 1) * dutyFree;
-  const avgQ = s.products.length ? s.products.reduce((t, p) => t + p.quality, 0) / s.products.length : 50;
-  const a = s.awareness;
-  const gain = (AWARENESS.marketing * Math.log10(1 + s.marketingBudget / 1_000_000) * mod(s, 'awareness_gain') + AWARENESS.wordOfMouth * bottles * (avgQ / 60)) * (1 - a);
-  s.awareness = clamp(a + gain - AWARENESS.decay * a, 0.001, 0.95);
-  return AWARENESS.wordOfMouth * DUTY_FREE.wordOfMouthWeight * dutyFree * (avgQ / 60) * (1 - a);
+  // 입소문 = 이번 달 판 병 × 그 병의 품질 (결정 #163 — 옛 '역대 전 제품 평균 품질'을 대체, §15.3 #18).
+  // 기억은 인지도 자체가 맡는다(월 망각 AWARENESS.decay) — 품질 평균에 따로 기간을 두지 않는다
+  const qBottles = new Map<string, { all: number; dutyFree: number }>(); // 브랜드별 Σ 병 × 품질/60
+  for (const x of sales) {
+    const p = s.commerce.products.find((q) => q.id === x.productId);
+    const id = p ? brandOf(s, p).id : houseBrand(s).id;
+    const q = (p?.quality ?? WOM_DEFAULT_QUALITY) / 60;
+    const b = qBottles.get(id) ?? { all: 0, dutyFree: 0 };
+    b.all += (x.bottles + (DUTY_FREE.wordOfMouthWeight - 1) * (x.dutyFree ?? 0)) * q;
+    b.dutyFree += DUTY_FREE.wordOfMouthWeight * (x.dutyFree ?? 0) * q;
+    qBottles.set(id, b);
+  }
+  const own = new Map(s.commerce.brands.map((b) => {
+    const n = qBottles.get(b.id) ?? { all: 0, dutyFree: 0 };
+    const g = AWARENESS.marketing * Math.log10(1 + brandMarketing(s, b) / 1_000_000) * mod(s, 'awareness_gain') + AWARENESS.wordOfMouth * n.all;
+    return [b.id, { g, df: AWARENESS.wordOfMouth * n.dutyFree }];
+  }));
+  const house = houseBrand(s);
+  const gHouse = own.get(house.id)!.g;
+  const gSeconds = secondBrands(s).reduce((t, b) => t + own.get(b.id)!.g, 0);
+  let dutyFreeGain = 0;
+  for (const b of s.commerce.brands) {
+    const a = b.awareness;
+    const o = own.get(b.id)!;
+    const g = b.isHouse ? gHouse + BRANDS.spillover * gSeconds : o.g + BRANDS.spillover * gHouse;
+    b.awareness = clamp(a + g * (1 - a) - AWARENESS.decay * a, 0.001, 0.95);
+    dutyFreeGain += o.df * (1 - a);
+  }
+  return dutyFreeGain;
 }
 
 export function updateTrends(s: GameState, rng: Rng): void {
-  for (const k of Object.keys(s.trend) as ProductCategory[]) {
-    const t = s.trend[k];
-    s.trend[k] = clamp(t * Math.exp(rng.normal(0, 0.015)) + 0.05 * (1 - t), 0.6, 1.5);
+  for (const k of Object.keys(s.world.trend) as ProductCategory[]) {
+    const t = s.world.trend[k];
+    s.world.trend[k] = clamp(t * Math.exp(rng.normal(0, 0.015)) + 0.05 * (1 - t), 0.6, 1.5);
   }
 }

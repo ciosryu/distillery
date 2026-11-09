@@ -71,9 +71,10 @@ export function NumberField({ value, onCommit, min, max, step = 1, width = 'w-24
 
 export function Select<T extends string>({ value, onChange, options, label }: { value: T; onChange: (v: T) => void; options: { value: T; label: string }[]; label?: string }) {
   return (
-    <label className="inline-flex items-center gap-1 text-sm">
-      {label && <span className="text-stone-600 dark:text-stone-300">{label}</span>}
-      <select className={inputCls} value={value} onChange={(e) => onChange(e.target.value as T)} aria-label={label}>
+    // 긴 선택지(원액 이름 등)가 칸을 넘어 옆 칸을 덮지 않게 — 드롭다운은 칸 너비까지만, 넘치는 글자는 잘린다 (플레이테스트 2026-11-07: 통입 버튼이 안 눌림)
+    <label className="inline-flex min-w-0 max-w-full items-center gap-1 text-sm">
+      {label && <span className="shrink-0 text-stone-600 dark:text-stone-300">{label}</span>}
+      <select className={`${inputCls} min-w-0 max-w-full truncate`} value={value} onChange={(e) => onChange(e.target.value as T)} aria-label={label}>
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </label>

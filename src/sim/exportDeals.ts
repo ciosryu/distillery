@@ -22,14 +22,14 @@ export const EXPORT_DEAL = {
 /** 이 시장에 지금 팔 수 있는 제품이 있는가 (재고·주종·현지 숙성 규정) */
 export function hasExportableProduct(s: GameState, marketId: ExportOffer['marketId']): boolean {
   const m = EXPORT_MARKETS[marketId];
-  return s.products.some((p) => p.stockBottles > 0 && !p.dutyFreeOnly && exportEligible(p, m));
+  return s.commerce.products.some((p) => p.stockBottles > 0 && !p.dutyFreeOnly && exportEligible(p, m));
 }
 
 export function makeExportOffer(s: GameState, marketId: ExportOffer['marketId'], rng: Rng): ExportOffer {
   const m = EXPORT_MARKETS[marketId];
   const [lo, hi] = m.offer.priceFactor;
   // 품질이 좋을수록 매입가 비율이 높게 제안된다
-  const bestQ = Math.max(0, ...s.products.filter((p) => p.stockBottles > 0 && exportEligible(p, m)).map((p) => p.quality));
+  const bestQ = Math.max(0, ...s.commerce.products.filter((p) => p.stockBottles > 0 && exportEligible(p, m)).map((p) => p.quality));
   const q = Math.min(1, Math.max(0, (bestQ - 50) / 30));
   const priceFactor = Math.round((lo + (hi - lo) * (0.5 * q + 0.5 * rng.next())) * 100) / 100;
   return {
@@ -38,45 +38,45 @@ export function makeExportOffer(s: GameState, marketId: ExportOffer['marketId'],
     termMonths: rng.pick(EXPORT_DEAL.terms),
     minBottlesPerYear: Math.round((m.offer.minBottlesPerYear * rng.pick(EXPORT_DEAL.minScale)) / 50) * 50,
     paymentDelay: EXPORT_DEAL.paymentDelay,
-    entryCost: (s.exportEntered ?? []).includes(marketId) ? 0 : m.entryCost,
+    entryCost: (s.commerce.exportEntered ?? []).includes(marketId) ? 0 : m.entryCost,
     expiresMonth: s.month + EXPORT_DEAL.offerMonths,
   };
 }
 
 /** 월말: 계약이 없는 시장마다 가끔 수입사 제안이 들어온다 */
 export function refreshExportOffers(s: GameState, rng: Rng): void {
-  s.exportOffers = (s.exportOffers ?? []).filter((o) => o.expiresMonth > s.month);
+  s.commerce.exportOffers = (s.commerce.exportOffers ?? []).filter((o) => o.expiresMonth > s.month);
   for (const id of exportMarketsFor(s.regionId)) {
-    if ((s.exports ?? []).some((e) => e.marketId === id) || s.exportOffers.some((o) => o.marketId === id)) continue;
+    if ((s.commerce.exports ?? []).some((e) => e.marketId === id) || s.commerce.exportOffers.some((o) => o.marketId === id)) continue;
     if (!hasExportableProduct(s, id)) continue;
-    const good = s.products.some((p) => p.stockBottles > 0 && p.quality >= 70 && exportEligible(p, EXPORT_MARKETS[id]));
-    if (rng.chance(EXPORT_DEAL.offerChance * (good ? 1.5 : 1))) s.exportOffers.push(makeExportOffer(s, id, rng));
+    const good = s.commerce.products.some((p) => p.stockBottles > 0 && p.quality >= 70 && exportEligible(p, EXPORT_MARKETS[id]));
+    if (rng.chance(EXPORT_DEAL.offerChance * (good ? 1.5 : 1))) s.commerce.exportOffers.push(makeExportOffer(s, id, rng));
   }
 }
 
 /** 제안 수락 (s는 변경 가능한 복제본) — 오류 문구 또는 null */
 export function acceptExportOffer(s: GameState, offerId: string): string | null {
-  const o = (s.exportOffers ?? []).find((x) => x.id === offerId);
+  const o = (s.commerce.exportOffers ?? []).find((x) => x.id === offerId);
   if (!o) return '수입사 제안이 없습니다';
-  if ((s.exports ?? []).some((e) => e.marketId === o.marketId)) return '이미 계약한 시장입니다 (시장당 수입사 1곳)';
-  if (s.cash < o.entryCost) return '현금이 부족합니다 (시장 개척비)';
+  if ((s.commerce.exports ?? []).some((e) => e.marketId === o.marketId)) return '이미 계약한 시장입니다 (시장당 수입사 1곳)';
+  if (s.finance.cash < o.entryCost) return '현금이 부족합니다 (시장 개척비)';
   const m = EXPORT_MARKETS[o.marketId];
-  s.cash -= o.entryCost;
+  s.finance.cash -= o.entryCost;
   const { id: _id, expiresMonth: _e, marketId, ...terms } = o;
   const ready = s.month + (o.entryCost > 0 ? m.entryMonths : 1);
-  (s.exports ??= []).push({ marketId, ...terms, openedMonth: s.month, readyMonth: ready, awareness: m.awareness.start, totalBottles: 0, yearStartMonth: ready, bottlesThisYear: 0 });
-  (s.exportEntered ??= []).includes(marketId) || s.exportEntered.push(marketId);
-  s.exportOffers = (s.exportOffers ?? []).filter((x) => x.id !== offerId);
+  (s.commerce.exports ??= []).push({ marketId, ...terms, openedMonth: s.month, readyMonth: ready, awareness: m.awareness.start, totalBottles: 0, yearStartMonth: ready, bottlesThisYear: 0 });
+  (s.commerce.exportEntered ??= []).includes(marketId) || s.commerce.exportEntered.push(marketId);
+  s.commerce.exportOffers = (s.commerce.exportOffers ?? []).filter((x) => x.id !== offerId);
   return null;
 }
 
 /** 우리가 해지 — 마케팅 분담 몇 달 치 위약금. 반환: 위약금 */
 export function cancelExport(s: GameState, marketId: ExportEntry['marketId']): number | null {
-  const e = (s.exports ?? []).find((x) => x.marketId === marketId);
+  const e = (s.commerce.exports ?? []).find((x) => x.marketId === marketId);
   if (!e) return null;
   const fee = Math.round((e.marketingPerMonth ?? 0) * EXPORT_DEAL.cancelMonths);
-  s.cash -= fee;
-  s.exports = (s.exports ?? []).filter((x) => x.marketId !== marketId);
+  s.finance.cash -= fee;
+  s.commerce.exports = (s.commerce.exports ?? []).filter((x) => x.marketId !== marketId);
   return fee;
 }
 
@@ -84,7 +84,7 @@ export function cancelExport(s: GameState, marketId: ExportEntry['marketId']): n
 export function runExportContracts(s: GameState, report: MonthReport): number {
   let fixed = 0;
   const ended: string[] = [];
-  for (const e of s.exports ?? []) {
+  for (const e of s.commerce.exports ?? []) {
     const m = EXPORT_MARKETS[e.marketId];
     fixed += e.marketingPerMonth ?? m.monthlyCost;
     if (e.readyMonth > s.month || e.minBottlesPerYear == null) continue;
@@ -104,6 +104,6 @@ export function runExportContracts(s: GameState, report: MonthReport): number {
       report.notes.push(`${e.partner}(${m.nameKo}) 수입사 계약 갱신`);
     }
   }
-  if (ended.length) s.exports = (s.exports ?? []).filter((e) => !ended.includes(e.marketId));
+  if (ended.length) s.commerce.exports = (s.commerce.exports ?? []).filter((e) => !ended.includes(e.marketId));
   return fixed;
 }

@@ -31,7 +31,7 @@ const RETAIL_SPEC: Partial<Record<ProductCategory, { ml: number; abv: number; oa
 };
 
 export function makeRetailOffer(s: GameState, rng: Rng): RetailOffer {
-  const owned = [...new Set(s.products.filter((p) => p.stockBottles > 0 && !p.dutyFreeOnly && RETAIL_SPEC[p.category]).map((p) => p.category))];
+  const owned = [...new Set(s.commerce.products.filter((p) => p.stockBottles > 0 && !p.dutyFreeOnly && RETAIL_SPEC[p.category]).map((p) => p.category))];
   const category = owned.length ? rng.pick(owned) : 'soju_distilled';
   const spec = RETAIL_SPEC[category]!;
   const ref = suggestedPrice(regionOf(s), category, spec.ml, 60, spec.oakMonths, spec.abv);
@@ -50,12 +50,12 @@ export function oemPackageCost(s: GameState): number {
 /** 위탁생산에 내줄 수 있는 월 배치 수 = (증류기 가동 여력 − 자사 생산 지시 − 기존 위탁) / 배치당 증류 횟수 */
 export function oemSpareBatches(s: GameState): number {
   let cap = 0;
-  for (const e of s.equipment) {
+  for (const e of s.production.equipment) {
     const d = EQUIPMENT[e.catalogId];
     if (d?.kind === 'still' && e.readyMonth <= s.month && d.stillType !== 'column') cap += d.runsPerMonth;
   }
-  const own = s.orders.reduce((t, o) => t + o.batchesPerMonth * (s.recipes.find((r) => r.id === o.recipeId)?.runs ?? 1), 0);
-  const runs = cap - own - s.oemContracts.filter((c) => !c.stillId).reduce((t, c) => t + c.batchesPerMonth * OEM.runs, 0);
+  const own = s.production.orders.reduce((t, o) => t + o.batchesPerMonth * (s.production.recipes.find((r) => r.id === o.recipeId)?.runs ?? 1), 0);
+  const runs = cap - own - s.b2b.oemContracts.filter((c) => !c.stillId).reduce((t, c) => t + c.batchesPerMonth * OEM.runs, 0);
   return Math.max(0, Math.floor(runs / OEM.runs));
 }
 
@@ -80,12 +80,12 @@ export function makeOemOffer(s: GameState, rng: Rng): OemOffer | null {
 /** 월말: 입지 대표 거래 제안 갱신 */
 export function refreshDeals(s: GameState, rng: Rng): void {
   const deals = siteOf(s).deals ?? [];
-  s.retailOffers = s.retailOffers.filter((o) => o.expiresMonth > s.month);
-  s.oemOffers = s.oemOffers.filter((o) => o.expiresMonth > s.month);
-  if (deals.includes('retail') && !s.retailOffers.length && s.retailContracts.length < RETAIL_DEAL.maxActive && rng.chance(RETAIL_DEAL.offerChance)) s.retailOffers.push(makeRetailOffer(s, rng));
-  if (deals.includes('oem') && !s.oemOffers.length && s.oemContracts.length < OEM.maxActive && rng.chance(oemSpareBatches(s) >= 2 ? OEM.offerChanceSpare : OEM.offerChance)) {
+  s.commerce.retailOffers = s.commerce.retailOffers.filter((o) => o.expiresMonth > s.month);
+  s.b2b.oemOffers = s.b2b.oemOffers.filter((o) => o.expiresMonth > s.month);
+  if (deals.includes('retail') && !s.commerce.retailOffers.length && s.commerce.retailContracts.length < RETAIL_DEAL.maxActive && rng.chance(RETAIL_DEAL.offerChance)) s.commerce.retailOffers.push(makeRetailOffer(s, rng));
+  if (deals.includes('oem') && !s.b2b.oemOffers.length && s.b2b.oemContracts.length < OEM.maxActive && rng.chance(oemSpareBatches(s) >= 2 ? OEM.offerChanceSpare : OEM.offerChance)) {
     const o = makeOemOffer(s, rng);
-    if (o) s.oemOffers.push(o);
+    if (o) s.b2b.oemOffers.push(o);
   }
 }
 
@@ -103,14 +103,14 @@ export function startOem(s: GameState, o: OemOffer): OemContract | null {
   const { expiresMonth: _e, ...terms } = o;
   if (!o.dedicated) return { ...terms, startMonth: s.month, monthsDone: 0, missed: 0 };
   const net = oemPackageCost(s) - (o.capexSupport ?? 0);
-  if (s.cash < net) return null;
-  s.cash -= net;
+  if (s.finance.cash < net) return null;
+  s.finance.cash -= net;
   let stillId: string | undefined;
   let ready = s.month;
   for (const id of OEM.dedicated.package) {
     const def = EQUIPMENT[id]!;
     const inst = { id: nid(s, 'E'), catalogId: id, readyMonth: s.month + def.leadMonths, ...(def.kind === 'still' ? { feintsLPA: 0 } : {}) };
-    s.equipment.push(inst);
+    s.production.equipment.push(inst);
     if (def.kind === 'still') stillId = inst.id;
     ready = Math.max(ready, inst.readyMonth);
   }
@@ -121,11 +121,11 @@ export function startOem(s: GameState, o: OemOffer): OemContract | null {
 export function fulfillRetail(s: GameState, report: MonthReport): void {
   const outbound = outboundLogistics(s);
   const done: string[] = [];
-  for (const c of s.retailContracts) {
+  for (const c of s.commerce.retailContracts) {
     let need = c.bottlesPerMonth;
     let amount = 0;
     let logistics = 0;
-    for (const p of s.products.filter((x) => x.category === c.category && x.stockBottles > 0 && !x.dutyFreeOnly).sort((a, b) => a.createdMonth - b.createdMonth)) {
+    for (const p of s.commerce.products.filter((x) => x.category === c.category && x.stockBottles > 0 && !x.dutyFreeOnly).sort((a, b) => a.createdMonth - b.createdMonth)) {
       if (need <= 0) break;
       const take = Math.min(need, p.stockBottles);
       p.stockBottles -= take;
@@ -136,11 +136,11 @@ export function fulfillRetail(s: GameState, report: MonthReport): void {
     }
     const delivered = c.bottlesPerMonth - need;
     if (amount > 0) {
-      s.receivables.push({ dueMonth: s.month + c.paymentDelay, amount: Math.round(amount), label: `${c.partner} 납품 대금` });
+      s.finance.receivables.push({ dueMonth: s.month + c.paymentDelay, amount: Math.round(amount), label: `${c.partner} 납품 대금` });
       report.retailDealRevenue = (report.retailDealRevenue ?? 0) + Math.round(amount);
     }
     const penalty = need * c.penaltyPerBottle;
-    s.cash -= Math.round(logistics + penalty);
+    s.finance.cash -= Math.round(logistics + penalty);
     report.expenses.distribution = (report.expenses.distribution ?? 0) + Math.round(logistics);
     if (penalty > 0) {
       report.expenses.penalty = (report.expenses.penalty ?? 0) + penalty;
@@ -152,16 +152,16 @@ export function fulfillRetail(s: GameState, report: MonthReport): void {
     if (c.shortfall >= 2 * c.bottlesPerMonth) { report.notes.push(`${c.partner} 납품 계약 파기 — 누적 미납 과다`); done.push(c.id); }
     else if (c.monthsDone >= c.termMonths) { report.notes.push(`${c.partner} 납품 계약 만료 — 총 ${c.delivered.toLocaleString()}병 (${CATEGORY[c.category].nameKo})`); done.push(c.id); }
   }
-  s.retailContracts = s.retailContracts.filter((c) => !done.includes(c.id));
+  s.commerce.retailContracts = s.commerce.retailContracts.filter((c) => !done.includes(c.id));
 }
 
 /** 월말: 만기 도래 매출채권 입금 */
 export function collectReceivables(s: GameState, report: MonthReport): void {
-  const due = s.receivables.filter((r) => r.dueMonth <= s.month);
+  const due = s.finance.receivables.filter((r) => r.dueMonth <= s.month);
   if (!due.length) return;
   const amount = due.reduce((t, r) => t + r.amount, 0);
-  s.cash += amount;
+  s.finance.cash += amount;
   report.revenue += amount;
   report.receivablesCollected = (report.receivablesCollected ?? 0) + amount;
-  s.receivables = s.receivables.filter((r) => r.dueMonth > s.month);
+  s.finance.receivables = s.finance.receivables.filter((r) => r.dueMonth > s.month);
 }

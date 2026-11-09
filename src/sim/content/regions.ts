@@ -1,4 +1,5 @@
 import demandData from '../../../data/market/base-demand.json';
+import { PRESETS_HOKKAIDO, PRESETS_JEJU, PRESETS_JP, PRESETS_KR, PRESETS_TW, type PresetRecipe } from './presets';
 import type { CaskTypeId, GameState, ProductCategory, RegionId, SpiritKind } from '../types';
 import type { EventCategory } from './events';
 
@@ -99,6 +100,8 @@ export interface SiteDef {
   caskPriceFactor?: Partial<Record<CaskTypeId, number>>;
   /** 창업 멤버·증류소 이름 (없으면 지역 기본) */
   starter?: { name: string; distillery: string };
+  /** 입지 원료 프리셋 — 지역 프리셋 앞에 붙는다 (S-3) */
+  presets?: PresetRecipe[];
 }
 
 /** 스코틀랜드·EU식 3년 규정 — 지역 정의가 없을 때의 기본값 */
@@ -126,8 +129,8 @@ export interface RegionDef {
   domesticSpiritPremium: number;
   /** 원액 B2B 시장 깊이 — 계약 제안 물량 배수 */
   bulkMarketDepth: number;
-  /** 그레인 현물 시장 깊이(LPA, #81) — 최근 현물 판매량이 이만큼이면 현물 단가가 절반이 된다 */
-  grainSpotDepthLPA: number;
+  /** 그레인 현물 시장 깊이(LPA, #81) — 최근 현물 판매량이 이만큼이면 현물 단가가 절반이 된다. null = 포화 없음 (JSON에 Infinity가 없어서, S-7) */
+  grainSpotDepthLPA: number | null;
   eventWeights: Partial<Record<EventCategory, number>>;
   /** 매입 원액 병입의 브랜드 가치 감점 계수 — 싸게 사 온 원액일수록 감점이 그대로 적용된다 (v0.8)
    *  매력도 × (1 − sourcedPenalty × 매입 비중 × (1 − 매입 원액 브랜드 가치)) */
@@ -138,6 +141,14 @@ export interface RegionDef {
   sites?: SiteDef[];
   /** 기본 입지의 산지 특성 (기후는 지역 값을 쓴다) */
   defaultSite?: Omit<Partial<SiteDef>, 'id' | 'tempC' | 'humidity'>;
+  /** 새 게임 프리셋 레시피 (순서 = 레시피 id 순서) — content/presets.ts (S-3) */
+  presets: PresetRecipe[];
+  /** 창업 디스틸러·증류소 이름·시작 빈 캐스크 (입지 starter가 이름을 덮어쓴다) (S-3) */
+  starter: { name: string; distillery: string; casks: CaskTypeId[] };
+  /** 직원 후보 이름 풀 (S-3) */
+  namePool: { surnames: string[]; given: string[] };
+  /** 위스키 산지 구분 — 주요 산지(major) / 신흥 산지(emerging). 수상 이벤트의 해외 인지도 보너스용 자리 (scotland.md §6.3, 규칙은 단계 P) */
+  whiskyOrigin?: 'major' | 'emerging';
   /** 일본 미즈나라 백단·인센스 향(incense ≥ 8) 매력도 배수 (결정 #86) */
   incensePremium?: number;
   /** 비지터 센터 관광 잠재력 (한국 = 1) */
@@ -158,6 +169,10 @@ const twWhisky = casesOf('TW.whisky_total.imports.2023');
 export const REGIONS: Record<RegionId, RegionDef> = {
   KR: {
     id: 'KR',
+    presets: PRESETS_KR,
+    starter: { name: '윤도현', distillery: '한빛 증류소', casks: Array(10).fill('ex_bourbon_barrel') },
+    namePool: { surnames: ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '한', '오', '서', '신', '권', '황'], given: ['민준', '서연', '도윤', '지우', '하준', '서윤', '은우', '하은', '지호', '수아', '현우', '지민', '예준', '채원', '건우', '다은'] },
+    whiskyOrigin: 'emerging',
     nameKo: '대한민국 (경기 내륙)',
     tempC: [-3, 0, 6, 13, 18, 23, 26, 26, 21, 14, 6, -1],
     humidity: [60, 58, 58, 60, 65, 72, 82, 80, 74, 68, 65, 62],
@@ -185,7 +200,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     domesticSpiritPremium: 0.25,
     bulkMarketDepth: 0.8,
     // 포화 없음(무한) — 한국 국내 그레인 수요 근거 없음 `[확인 필요]`. 일본과 함께 밸런스가 경계선이라 보류 (§16.18)
-    grainSpotDepthLPA: Infinity,
+    grainSpotDepthLPA: null,
     eventWeights: { market: 1.0, supply: 1.0, disaster: 1.2, regulation: 1.3, b2b: 0.8, opportunity: 1.0, people: 1.0 },
     // 종가세라 수입 완제품은 브랜드 값까지 세금이 붙어 비싸다 → 국내 병입 매입 원액이 가격으로 경쟁할 여지가 크다 (골든블루식 국내 병입)
     sourcedPenalty: 0.4,
@@ -218,7 +233,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       tourism: 1.2,
     }, {
       // 제주 (결정 #86): 화산암반수·지정면세점, 대신 취수 허가·해운 물류
-      id: 'jeju', nameKo: '제주',
+      id: 'jeju', nameKo: '제주', presets: PRESETS_JEJU,
       tagline: '화산암반수와 면세점, 대신 물을 마음대로 퍼 올릴 수 없다', difficulty: 3,
       // 제주 평년값 근사 [확인 필요: 기상청 월별 평년값]
       tempC: [6, 7, 10, 14, 18, 21.5, 26, 27, 23.5, 18.5, 13, 8.5],
@@ -244,6 +259,10 @@ export const REGIONS: Record<RegionId, RegionDef> = {
   },
   JP: {
     id: 'JP',
+    presets: PRESETS_JP,
+    starter: { name: '사토 겐타', distillery: '아카리 증류소', casks: [...Array(8).fill('ex_bourbon_barrel'), 'mizunara_hogshead', 'mizunara_hogshead'] },
+    namePool: { surnames: ['사토 ', '스즈키 ', '다카하시 ', '다나카 ', '와타나베 ', '이토 ', '야마모토 ', '나카무라 '], given: ['하루토', '유이', '소타', '미오', '렌', '히나', '유토', '사쿠라'] },
+    whiskyOrigin: 'major',
     nameKo: '일본 (간토 내륙)',
     tempC: [3, 4, 8, 13, 18, 21, 25, 26, 22, 16, 10, 5],
     humidity: [52, 52, 58, 63, 68, 76, 78, 76, 76, 72, 66, 56],
@@ -277,7 +296,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
     bulkMarketDepth: 1.0,
     // 포화 없음(무한) — 재패니즈 위스키 표기 기준(일본 내 증류) 이후 국산 그레인이 귀하다.
     // 깊이 80,000만 줘도 그레인형 파산이 8 → 13/20으로 늘 만큼 일본 그레인은 경계선이다 (§16.18)
-    grainSpotDepthLPA: Infinity,
+    grainSpotDepthLPA: null,
     eventWeights: { market: 1.1, supply: 1.0, disaster: 1.4, regulation: 0.8, b2b: 1.1, opportunity: 1.0, people: 1.0 },
     // 수입 원액 병입은 "재패니즈 위스키"가 될 수 없고 하이볼용 저가 위스키로 소비된다
     sourcedPenalty: 0.85,
@@ -311,7 +330,7 @@ export const REGIONS: Record<RegionId, RegionDef> = {
       ],
     }, {
       // 홋카이도 (결정 #86): 싸고 느린 땅, 재고 담보대출로 버티는 장기 숙성
-      id: 'hokkaido', nameKo: '홋카이도',
+      id: 'hokkaido', nameKo: '홋카이도', presets: PRESETS_HOKKAIDO,
       tagline: '싸고 느린 땅에 오래 묵히는 재고전', difficulty: 3,
       tempC: [-3.5, -3, 0.5, 6, 11, 15, 19.5, 21, 17, 10.5, 4, -1],
       humidity: [76, 74, 70, 68, 72, 78, 82, 81, 78, 74, 74, 76],
@@ -335,6 +354,10 @@ export const REGIONS: Record<RegionId, RegionDef> = {
   },
   TW: {
     id: 'TW',
+    presets: PRESETS_TW,
+    starter: { name: '린즈하오', distillery: '란양 증류소', casks: Array(10).fill('ex_bourbon_barrel') },
+    namePool: { surnames: ['천', '린', '황', '장', '리', '왕', '우', '류'], given: ['즈하오', '이팅', '젠훙', '샤오웨이', '자오', '옌쥔', '이린', '웨이훙'] },
+    whiskyOrigin: 'emerging',
     nameKo: '대만 (이란현)',
     tempC: [16, 16, 18, 21, 25, 27, 29, 29, 27, 24, 21, 17],
     humidity: [83, 84, 83, 82, 82, 82, 78, 79, 80, 82, 83, 82],

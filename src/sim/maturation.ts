@@ -1,8 +1,11 @@
-import { CASKS, SEASONING_EXTRACT, WOOD_EXTRACT } from './content/catalog';
+import { CASKS, NON_WOOD_VESSEL, SEASONING_EXTRACT, WOOD_EXTRACT } from './content/catalog';
 import { clamp, clampFlavor } from './flavor';
-import type { AxisId, Cask, Flavor, SpiritLot } from './types';
+import type { AxisId, Cask, CaskTypeId, Flavor, SpiritLot, VesselMaterial } from './types';
 
 // 숙성 모델 (PRD §5.3, flavor-model §4.5). 수치 [튜닝].
+
+/** 레어 캐스크 추출 배수 — blendTable.RARE.extractBoost와 같은 값(순환 참조를 피해 여기 둔다) */
+export const RARE_EXTRACT_BOOST = 1.3;
 
 /** 200L 배럴 기준, 10°C에서의 월 증발률 (스코틀랜드형 기후에서 연 약 2%) */
 export const R0_EVAP = 0.001684;
@@ -49,7 +52,8 @@ export function matureCask(cask: Cask, climate: Climate, opts: MatureOptions): {
   const rate = R0_EVAP * evapTempFactor(climate.tempC) * sf * (1 - 0.2 * (opts.control / 100)) * (opts.evaporationFactor ?? 1);
   const evap = evaporate(lot.volumeL, lot.abv, rate, climate.humidity);
   const m = sf * tf;
-  const act = cask.activity;
+  // 레어 캐스크(결정 #124 P8)는 목재 추출이 남달리 강하다 — 진한 프로파일, 육각형의 꼭짓점
+  const act = cask.activity * (cask.rare ? RARE_EXTRACT_BOOST : 1);
   const f: Flavor = { ...lot.flavor };
   const bump = (k: AxisId, amount: number, cap = 100) => {
     const cur = f[k] ?? 0;
@@ -73,7 +77,10 @@ export function matureCask(cask: Cask, climate: Climate, opts: MatureOptions): {
   // ② 추출 (목재 + 시즈닝)
   for (const [k, v] of Object.entries(WOOD_EXTRACT[cask.wood]) as [AxisId, number][]) bump(k, v * act * m);
   const seasoningType = CASKS[cask.typeId].seasoningType;
-  for (const [k, v] of Object.entries(SEASONING_EXTRACT[seasoningType]) as [AxisId, number][]) bump(k, v * cask.seasoning * m);
+  // 피니싱 캐스크의 시즈닝 향은 초기에 빠르게 옮겨 오고 이후 둔화한다 (PRD §5.2, #158). 첫 통입은 그대로(×1)
+  const fin = finishOf(lot);
+  const seasonK = fin ? FINISH.seasoningBoost * Math.exp(-fin.months / FINISH.tauMonths) : 1;
+  for (const [k, v] of Object.entries(SEASONING_EXTRACT[seasoningType]) as [AxisId, number][]) bump(k, v * cask.seasoning * m * seasonK);
 
   // ③ 반응 (시간 비례 — 크기와 무관)
   const months = lot.oakMonths + 1;
@@ -91,6 +98,49 @@ export function matureCask(cask: Cask, climate: Climate, opts: MatureOptions): {
   return { cask: { ...cask, contents }, lostL: evap.lostL };
 }
 
+/** 용기 재질 — 콘텐츠에 없으면 나무 (S-10) */
+export const vesselMaterial = (cask: Pick<Cask, 'typeId'>): VesselMaterial => CASKS[cask.typeId]?.material ?? 'wood';
+
+/** 숙성 용기 1개월 (틱 3단계의 입구, S-10) — 나무는 matureCask, 그 밖의 재질은 matureNonWood */
+export function matureVessel(cask: Cask, climate: Climate, opts: MatureOptions): { cask: Cask; lostL: number } {
+  const material = vesselMaterial(cask);
+  return material === 'wood' ? matureCask(cask, climate, opts) : matureNonWood(cask, material, climate, opts);
+}
+
+/**
+ * 나무가 아닌 용기(옹기·스테인리스 휴지) 1개월 (#161, flavor-model §4.5.1) — 나무의 ②추출 없이 ①제거·③반응만.
+ * 제거는 크기·온도를 타고(m), 반응은 시간 비례다(나무와 같은 구조). 증발은 재질 배수.
+ * oakMonths는 늘지 않고 restMonths가 는다 — 위스키 법정 숙성(나무통)에 안 들어간다
+ */
+export function matureNonWood(cask: Cask, material: Exclude<VesselMaterial, 'wood'>, climate: Climate, opts: MatureOptions): { cask: Cask; lostL: number } {
+  const lot = cask.contents;
+  if (!lot) return { cask, lostL: 0 };
+  const v = NON_WOOD_VESSEL[material];
+  const sf = sizeFactor(cask.sizeL);
+  const rate = R0_EVAP * evapTempFactor(climate.tempC) * sf * v.evapFactor * (1 - 0.2 * (opts.control / 100)) * (opts.evaporationFactor ?? 1);
+  const evap = rate > 0 ? evaporate(lot.volumeL, lot.abv, rate, climate.humidity) : { volumeL: lot.volumeL, abv: lot.abv, lostL: 0 };
+  const f: Flavor = { ...lot.flavor };
+  const bump = (k: AxisId, amount: number, cap = 100) => {
+    const cur = f[k] ?? 0;
+    f[k] = cur + amount * Math.max(0, 1 - cur / cap);
+  };
+  // ① 제거 (숨쉬기·산화 — 나무보다 느리다)
+  const d = v.removal * sf * tempFactor(climate.tempC);
+  f.sulfur_meaty = (f.sulfur_meaty ?? 0) * (1 - d * 1.5);
+  f.harshness = (f.harshness ?? 0) * (1 - d);
+  f.solvent = (f.solvent ?? 0) * (1 - d * 0.5);
+  f.feinty = (f.feinty ?? 0) * (1 - d * 0.2);
+  // ③ 반응 (시간 비례)
+  bump('fresh_fruit', v.fruit, 80);
+  bump('floral', v.floral, 80);
+  bump('integration', v.integration);
+  const oldLPA = lot.volumeL * lot.abv;
+  const newLPA = evap.volumeL * evap.abv;
+  const costPerLPA = newLPA > 0 ? (lot.costPerLPA * oldLPA) / newLPA : lot.costPerLPA;
+  const contents: SpiritLot = { ...lot, volumeL: evap.volumeL, abv: evap.abv, flavor: clampFlavor(f), restMonths: (lot.restMonths ?? 0) + 1, costPerLPA };
+  return { cask: { ...cask, contents }, lostL: evap.lostL };
+}
+
 /** 스테인리스 탱크 보관 원액: 천천히 안정화 */
 export function restLot(lot: SpiritLot): SpiritLot {
   const f: Flavor = { ...lot.flavor };
@@ -102,7 +152,7 @@ export function restLot(lot: SpiritLot): SpiritLot {
 /** 캐스크를 비울 때: 재사용 시 활성도·시즈닝 감소 */
 export function emptyCask(cask: Cask): Cask {
   // 오염 통은 비우면서 오염이 드러난다(재탄화로 제거). 숙성고 자리도 비운다
-  return { ...cask, contents: undefined, filledMonth: undefined, slot: undefined, activity: cask.activity * 0.6, seasoning: cask.seasoning * 0.35, ...(cask.contamination ? { contaminationKnown: true } : {}) };
+  return { ...cask, contents: undefined, filledMonth: undefined, slot: undefined, samples: undefined, sampleLog: undefined, labAnalyzed: undefined, rare: undefined, rareKnown: undefined, activity: cask.activity * 0.6, seasoning: cask.seasoning * 0.35, ...(cask.contamination ? { contaminationKnown: true } : {}) };
 }
 
 /** 재탄화: 활성도 0.7까지 회복 (시즈닝은 회복 안 됨). 최대 2회 */
@@ -111,4 +161,49 @@ export function recharCask(cask: Cask): Cask {
   // 재탄화는 내벽을 다시 태워 TCA·곰팡이 오염층도 없앤다
   if (cask.contamination) cask = { ...cask, contamination: undefined, contaminationKnown: undefined };
   return { ...cask, activity: Math.max(cask.activity, 0.7), char: 4, recharCount: cask.recharCount + 1 };
+}
+
+// ───────────── 피니싱 (PRD §5.2, 결정 #49·#143 자리 → 규칙 #158) ─────────────
+// 숙성 중인 원액을 시즈닝 캐스크(버번·셰리)로 옮겨 마무리한다. 원액이 이력(caskHistory)을 들고 다니고, 숙성 연수는 최초 통입 기준(oakMonths 그대로).
+// 과하게 오래 두면 시즈닝 향이 한 축을 덮어 복합성·축 상한 감점으로 품질이 내려간다 — 따로 감점 규칙을 두지 않는다(오너 결정 2026-11-06)
+
+export const FINISH = {
+  /** 옮길 때 원액 손실 비율 — PRD 0.5~1%의 중간 `[튜닝]` */
+  lossShare: 0.0075,
+  /** 피니싱 첫 달의 시즈닝 전이 배수와 감쇠 시간(개월) — 배수 × exp(−지난 개월/τ). 합계는 약 배수 × τ개월치 `[튜닝]` */
+  seasoningBoost: 2.5,
+  tauMonths: 6,
+  /** 권장 기간 (화면 안내) */
+  recommendedMonths: [3, 24] as const,
+  /** 기본 = 1회 피니싱. 더블·트리플 캐스크는 테크 WHI-3 해금 후 (#49) */
+  maxFinishes: 1,
+};
+
+/** 피니싱에 쓸 수 있는 캐스크 — 버번·셰리 시즈닝 통 (#49). 시즈닝 없는 신품 참나무·미즈나라·이국 시즈닝은 테크 WHI-3 뒤 */
+export const canFinishInto = (typeId: CaskTypeId): boolean => CASKS[typeId]?.seasoningType !== 'none';
+
+/** 라벨 문구 — "셰리 캐스크 피니시" */
+export const finishLabel = (typeId: CaskTypeId): string => `${CASKS[typeId].seasoningType === 'sherry' ? '셰리' : '버번'} 캐스크 피니시`;
+
+/** 피니싱 중(또는 마친) 원액의 마지막 구간 — 캐스크 종류와 그 통에서 지난 개월. 피니싱하지 않았으면 null */
+export function finishOf(lot: Pick<SpiritLot, 'caskHistory' | 'oakMonths'>): { typeId: CaskTypeId; months: number } | null {
+  const h = lot.caskHistory;
+  if (!h || h.length < 2) return null;
+  const closed = h.slice(0, -1).reduce((t, x) => t + x.months, 0);
+  return { typeId: h.at(-1)!.typeId, months: Math.max(0, lot.oakMonths - closed) };
+}
+
+/** 지금까지 한 피니싱 횟수 */
+export const finishCount = (lot: Pick<SpiritLot, 'caskHistory'>): number => Math.max(0, (lot.caskHistory?.length ?? 1) - 1);
+
+/**
+ * 옮긴 뒤의 이력 — 지금 구간을 닫고(개월 확정) 새 구간을 연다. 이력이 없으면 첫 통입 구간부터 만든다
+ * (첫 구간의 시작 달 = 지금 달 − 숙성 개월, 매입 원액처럼 통입 달을 모르는 경우도 같은 식)
+ */
+export function historyAfterTransfer(lot: Pick<SpiritLot, 'caskHistory' | 'oakMonths'>, fromType: CaskTypeId, toType: CaskTypeId, month: number): NonNullable<SpiritLot['caskHistory']> {
+  const h = lot.caskHistory?.length ? lot.caskHistory.map((x) => ({ ...x })) : [{ typeId: fromType, fromMonth: month - lot.oakMonths, months: 0 }];
+  const closed = h.slice(0, -1).reduce((t, x) => t + x.months, 0);
+  h[h.length - 1]!.months = Math.max(0, lot.oakMonths - closed);
+  h.push({ typeId: toType, fromMonth: month, months: 0 });
+  return h;
 }

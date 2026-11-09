@@ -7,16 +7,16 @@ import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';
 export function Exports() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
-  const last = s.reports.at(-1);
-  const opened = s.exports ?? [];
-  const offers = s.exportOffers ?? [];
+  const last = s.history.reports.at(-1);
+  const opened = s.commerce.exports ?? [];
+  const offers = s.commerce.exportOffers ?? [];
   const markets = exportMarketsFor(s.regionId);
 
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Stat label="계약 시장" value={`${opened.length} / ${markets.length}`} hint={offers.length ? `수입사 제안 ${offers.length}건` : '제안은 가끔 들어옵니다'} />
-        <Stat label="해외 명성" value={pct(s.acclaim ?? 0, 0)} hint="품평회·평론으로 오르고 매달 식는다 — 현지 인지도 상한·바닥을 올린다" tone={(s.acclaim ?? 0) >= 0.2 ? 'good' : undefined} />
+        <Stat label="해외 명성" value={pct(s.commerce.acclaim ?? 0, 0)} hint="품평회·평론으로 오르고 매달 식는다 — 현지 인지도 상한·바닥을 올린다" tone={(s.commerce.acclaim ?? 0) >= 0.2 ? 'good' : undefined} />
         <Stat label="지난달 수출 매출" value={won(last?.exportRevenue ?? 0)} hint="수출가(FOB = 출고가 × 수출가 배수) — 대금은 계약의 지급 기한 뒤 입금" />
         <Stat label="지난달 수출 운임" value={won(last?.expenses.export_freight ?? 0)} />
         <Stat label="월 현지 마케팅 분담" value={won(last?.expenses.export_fixed ?? 0)} hint="많이 낼수록 현지 인지도가 빨리 오른다" />
@@ -28,7 +28,7 @@ export function Exports() {
         const offer = offers.find((o) => o.marketId === id);
         const ready = !!entry && entry.readyMonth <= s.month;
         const sales = last?.exports?.filter((x) => x.marketId === id) ?? [];
-        const products = s.products.filter((p) => p.stockBottles > 0 && !p.dutyFreeOnly && m.categories[p.category]);
+        const products = s.commerce.products.filter((p) => p.stockBottles > 0 && !p.dutyFreeOnly && m.categories[p.category]);
         const factor = entry?.priceFactor ?? offer?.priceFactor ?? 1;
         const tariff = effectiveTariff(s, m);
         return (
@@ -61,7 +61,7 @@ export function Exports() {
               <div className="mb-3 rounded-md border border-sky-200 bg-sky-50 p-2 text-xs dark:border-sky-900 dark:bg-sky-950/40">
                 <b>{offer.partner}</b> 제안 — 수출가 출고가의 <b>{pct(offer.priceFactor, 0)}</b>(계약 뒤 조정 가능) · 마케팅 분담 월 <b>{won(offer.marketingPerMonth)}</b> · {offer.termMonths}개월 · 연 최소 <b>{num(offer.minBottlesPerYear)}병</b> · 대금 {offer.paymentDelay}개월 뒤
                 {offer.entryCost > 0 && <> · 시장 개척비 <b>{won(offer.entryCost)}</b> ({m.entryMonths}개월 준비)</>} · {offer.expiresMonth - s.month}개월 후 만료
-                <div className="mt-1"><Button small variant="primary" disabled={s.cash < offer.entryCost} onClick={() => dispatch({ type: 'acceptExportOffer', offerId: offer.id })}>계약</Button></div>
+                <div className="mt-1"><Button small variant="primary" disabled={s.finance.cash < offer.entryCost} onClick={() => dispatch({ type: 'acceptExportOffer', offerId: offer.id })}>계약</Button></div>
               </div>
             )}
 
