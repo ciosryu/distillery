@@ -105,7 +105,7 @@ export default function App() {
             <Button variant="ghost" onClick={() => exportPlayFile(s)} title="세이브 + 플레이 기록(턴별 시간·행동 수)을 한 파일로 내려받는다 — 플레이테스트 피드백에 붙이면 그 판을 그대로 재현한다">기록 내보내기</Button>
             <label className="inline-flex cursor-pointer items-center rounded-md px-3 py-1.5 text-sm font-medium text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800" title="내보낸 기록 파일이나 세이브 JSON을 불러온다 (지금 진행은 사라진다)">
               불러오기
-              <input type="file" accept="application/json,.json" className="hidden" aria-label="기록 파일 불러오기" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void f.text().then(loadFile); }} />
+              <input type="file" accept="application/json,.json" className="hidden" aria-label="기록 파일 불러오기" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void f.text().then((t) => { if (loadFile(t)) { setPlanOpen(false); setNewGameOpen(false); } }); }} /* 불러오면 처음 열린 사업 계획서를 닫는다 — 열린 채로 두면 [사업 시작]을 눌러 불러온 판을 덮을 수 있었다(4차 전 점검) */ />
             </label>
           </div>
         </div>

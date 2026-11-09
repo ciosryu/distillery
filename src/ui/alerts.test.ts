@@ -148,6 +148,7 @@ describe('3차 MVP 플레이테스트 대응 (#203) — 멈춘 몰트 생산 · 
     expect([...ranks].sort((a, b) => a - b)).toEqual(ranks);
     expect(TODO_ORDER.slice(0, 3)).toEqual(['loan-jump', 'malt-stopped', 'visitor']);
     expect(TODO_ORDER.at(-1)).toBe('sample');
+    expect(TODO_ORDER.indexOf('stockout')).toBe(TODO_ORDER.indexOf('visitor') + 1); // 결품(#204)은 비지터 센터 다음, 통입·병입보다 위
   });
 
   it('원액 현물 판매의 대가 — 지금 받는 돈은 B2B 견적, 위스키 병 수는 공급 전망(#178)의 탱크·통 몫 그대로, 탱크와 숙성 중인 통을 나눈다', () => {

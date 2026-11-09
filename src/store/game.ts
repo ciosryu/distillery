@@ -31,7 +31,8 @@ interface GameStore {
   /** 사업 계획서로 시나리오 새 게임 (S-8) */
   startScenario: (plan: BusinessPlan) => void;
   /** 기록 파일(세이브 + 플레이 기록) 또는 세이브 JSON을 불러온다 — 플레이테스트 피드백 재현용 (mvp.md §7.2) */
-  loadFile: (text: string) => void;
+  /** 기록 파일(또는 세이브 JSON)을 불러온다 — 성공하면 true (화면이 사업 계획서 같은 열린 창을 닫는 데 쓴다) */
+  loadFile: (text: string) => boolean;
   /**
    * 직전 진행(1개월·분기·1년·다음 알림까지) 전으로 한 번 되돌린다 (3차 MVP 플레이테스트 오너 요청: 실수로 분기 진행을 누를 때가 있다).
    * 진행 뒤에 한 행동도 함께 사라진다. 한 단계만 — 되돌린 뒤 다시 진행해야 또 쓸 수 있다. 시드가 같으니 같은 행동이면 같은 결과다(운을 다시 뽑지 못한다)
@@ -133,13 +134,14 @@ export const useGame = create<GameStore>((set) => {
     },
     loadFile: (text) => {
       const r = parsePlayFile(text);
-      if ('error' in r) { toast('error', r.error); return; }
+      if ('error' in r) { toast('error', r.error); return false; }
       replacePlaylog(r.playlog);
       undoState = null; set({ undoInfo: null });
       lastMonth = r.save.month; // 불러온 달까지를 새 진행으로 기록하지 않는다
       engine.load(r.save);
       const res = saveNow(r.save);
       toast(res.ok ? 'ok' : 'error', res.ok ? `불러왔습니다 — ${r.save.distilleryName}${r.playlog ? ' (플레이 기록 포함)' : ''}` : res.error);
+      return true;
     },
   };
 });
