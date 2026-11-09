@@ -46,11 +46,17 @@ export type ProdAction =
   | { type: 'delegateBlend'; targetId: string; caskIds: string[]; bottles: number; options: BottleOptions }
   /** 입지 특성 (결정 #86~): 취수 증량 신청(제주), 대형 유통 납품(경기), 위탁생산(간토) */
   | { type: 'applyWaterPermit' }
+  /** 품절 제품을 목록에서 지운다 (2026-11-09 오너 요청 — MVP는 품절 제품이 자동으로 사라지지 않는다). 재고가 남은 제품은 지울 수 없다 */
+  | { type: 'archiveProduct'; productId: string }
+  /** 통에서 원액을 빼서 탱크로 (2026-11-09 오너 요청 — 실수로 잘못 넣은 통). 통입한 달·샘플 전이면 통입 취소, 아니면 숙성을 지닌 채 탱크로 */
+  | { type: 'unfillCask'; caskId: string }
   /** 자동 최적 가격 켜기·끄기 (#200) — 켜면 바로 한 번 값을 정한다 */
   | { type: 'setAutoPrice'; productId: string; on: boolean };
 
 export const PROD_CASH_KEY: CashKeys<ProdAction> = {
   setOrder: null,
+  archiveProduct: null,
+  unfillCask: null,
   setAutoPrice: null,
   saveRecipe: null,
   deleteRecipe: null,
@@ -85,6 +91,38 @@ function bottleMessage(p: Product, r?: BlendReveal): string {
 }
 
 export const PROD_HANDLERS: Handlers<ProdAction> = {
+  archiveProduct: (s, prev, a) => {
+    const i = s.commerce.products.findIndex((x) => x.id === a.productId);
+    const p = s.commerce.products[i];
+    if (!p) return fail(prev, '제품이 없습니다');
+    if (p.stockBottles > 0) return fail(prev, `재고가 ${p.stockBottles.toLocaleString()}병 남아 있어 지울 수 없습니다 — 다 판 뒤에 지운다`);
+    s.commerce.productArchive.push({ id: p.id, name: p.name, category: p.category, createdMonth: p.createdMonth, lastMonthSold: p.lastMonthSold, totalSold: p.totalSold, quality: p.quality, price: p.price });
+    s.commerce.products.splice(i, 1);
+    return { state: s, message: `「${p.name}」을 판매 목록에서 지웠습니다 (판매 기록은 남는다)` };
+  },
+  unfillCask: (s, prev, a) => {
+    const ci = s.inventory.casks.findIndex((c) => c.id === a.caskId);
+    const cask = s.inventory.casks[ci];
+    if (!cask?.contents) return fail(prev, '원액이 든 통이 없습니다');
+    if (cask.owner) return fail(prev, '고객 소유 통입니다');
+    const lot = cask.contents;
+    // 통입한 달에 샘플도 안 떴으면 통입 취소 — 통은 넣기 전 그대로, 원액은 통 원가 배분만 되돌려 탱크로
+    const sameMonth = cask.filledMonth === s.month && !cask.samples && !cask.sampleLog?.length;
+    const lpa = lot.volumeL * lot.abv;
+    const name = lot.name.split(' → ')[0]!;
+    if (sameMonth) {
+      const caskShare = CASKS[cask.typeId].price * CASK_COST_SHARE_PER_FILL;
+      s.inventory.lots.push({ ...lot, id: nid(s, 'L'), name: `${name} (통입 취소 ${cask.id})`, costPerLPA: Math.max(0, lot.costPerLPA - (lpa > 0 ? caskShare / lpa : 0)) });
+      const { contents: _c, filledMonth: _f, slot: _s, rare: _r, rareKnown: _k, ...rest } = cask;
+      s.inventory.casks[ci] = { ...rest, fills: Math.max(0, cask.fills - 1) };
+      return { state: s, message: `${cask.id} 통입 취소 — 원액 ${Math.round(lot.volumeL).toLocaleString()}L(${(lot.abv * 100).toFixed(1)}%, 물을 탄 도수)를 탱크로 되돌렸다. 통은 넣기 전 그대로` };
+    }
+    // 그 뒤에는 옮겨 붓는 것 — 손실 0.75%(피니싱 옮기기와 같다), 통은 한 번 쓴 통이 된다. 원액은 오크·옹기 개월을 지닌 채 탱크에(다시 통입하면 이어서 숙성)
+    const kept = 1 - FINISH.lossShare;
+    s.inventory.lots.push({ ...lot, id: nid(s, 'L'), name: `${name} (${cask.id}에서 뺌)`, volumeL: lot.volumeL * kept });
+    s.inventory.casks[ci] = emptyCask(cask);
+    return { state: s, message: `${cask.id}에서 원액 ${Math.round(lot.volumeL * kept).toLocaleString()}L를 빼 탱크로 옮겼다(손실 ${(FINISH.lossShare * 100).toFixed(2)}%) — 숙성 ${lot.oakMonths}개월은 원액에 남고, 통은 한 번 쓴 통이 된다` };
+  },
   setAutoPrice: (s, prev, a) => {
     const p = s.commerce.products.find((x) => x.id === a.productId);
     if (!p) return fail(prev, '제품이 없습니다');

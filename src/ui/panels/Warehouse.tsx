@@ -167,6 +167,7 @@ function Casks() {
                 <Td className="flex gap-1">
                   {finishing && !c.owner && finishCount(lot) < FINISH.maxFinishes && <Button small variant={finishFor === c.id ? 'secondary' : 'ghost'} onClick={() => setFinishFor(finishFor === c.id ? null : c.id)} title="빈 버번·셰리 시즈닝 캐스크로 옮겨 마무리한다 — 손실 0.75%, 숙성 연수는 그대로">피니싱</Button>}
                   {canOwn && !c.owner && !lot.sourced && (lot.kind === 'malt' || lot.kind === 'grain') && <Button small variant="ghost" onClick={() => dispatch({ type: 'sellCaskOwnership', caskId: c.id })} title="개인 고객에게 선도 판매 — 지금 현금, 8년 숙성 시점에 인도">오너십 판매</Button>}
+                  {!c.owner && <Button small variant="ghost" onClick={() => dispatch({ type: 'unfillCask', caskId: c.id })} title={c.filledMonth === s.month && !c.sampleLog?.length ? '통입 취소 — 원액을 탱크로 되돌리고 통은 넣기 전 그대로' : '원액을 빼 탱크로 옮긴다 — 손실 0.75%, 숙성 개월은 원액에 남고 통은 한 번 쓴 통이 된다'}>{c.filledMonth === s.month && !c.sampleLog?.length ? '통입 취소' : '원액 빼기'}</Button>}
                   {c.contaminationKnown && !c.owner && <Button small variant="ghost" onClick={() => dispatch({ type: 'dumpCask', caskId: c.id })}>폐기</Button>}
                 </Td>
               </tr>

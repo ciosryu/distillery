@@ -15,7 +15,11 @@ import { Badge, Button, Card, Empty, Meter, NumberField, Select, Stat, Table, Td
 // 판매 화면 (파트 MKT → MKT 종료 뒤 PROD가 임시로 맡음, 오너 2026-11-07) — MVP 판매 화면(mvp.md §1 ⑤: 가격 설정 · 수요 한도 · 한국 주세 내역)
 // PriceDesk는 MVP 단일 화면(설계 세션)이 그대로 끼워 쓸 수 있게 따로 내보낸다
 
-const sellingProducts = (s: GameState) => s.commerce.products.filter((p) => p.stockBottles > 0 || p.lastMonthSold > 0);
+/**
+ * 판매 목록 — 재고 있는 제품 먼저, 품절 제품은 뒤에. MVP는 품절 제품이 자동으로 사라지지 않는다(2026-11-09 오너 요청) — 지울 때는 × (archiveProduct).
+ * 샌드박스는 시뮬레이션이 판매 없는 품절 제품을 몇 달 뒤 보관한다
+ */
+const sellingProducts = (s: GameState) => [...s.commerce.products].sort((a, b) => Number(b.stockBottles > 0) - Number(a.stockBottles > 0));
 const lastReport = (s: GameState) => s.history.reports.at(-1);
 
 /** 지금 조건(품질·숙성·주세 경감)으로 다시 계산한 권장 출고가 — 병입 때 값과 다를 수 있다 */
@@ -111,7 +115,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
   const [openGroups, setOpenGroups] = useState<string[]>([]);
   const { monthOfYear } = calendar(s);
   const region = regionOf(s);
-  const active = compact ? sellingProducts(s).filter((p) => p.stockBottles > 0) : sellingProducts(s);
+  const active = sellingProducts(s);
   // 같은 카테고리 제품끼리 나눈 이번 달 수요 (#154). 재고 없는 제품은 혼자일 때의 수요(다시 채우면)
   const domestic = domesticDemands(s, monthOfYear);
   const dutyFree = dutyFreeDemands(s, monthOfYear);
@@ -140,8 +144,15 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
     return [
       <tr key={p.id} className={isPicked ? 'bg-amber-50/60 dark:bg-amber-950/30' : ''}>
         <Td className="font-medium">
-          {p.name}
+          <span className="inline-flex items-center gap-1">
+            {p.name}
+            {/* 품절 제품 지우기 (2026-11-09 오너 요청) — 누르지 않으면 남아 있고, 재고 보충으로 다시 채울 수 있다 */}
+            {p.stockBottles <= 0 && !dfOnly && <button type="button" className="rounded px-1 text-stone-400 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950" aria-label={`${p.name} 목록에서 지우기`} title="판매 목록에서 지운다 — 판매 기록은 남는다. 지우지 않으면 남아 있고, 블렌딩·병입의 [기존 제품 재고 보충]으로 다시 채울 수 있다" onClick={() => dispatch({ type: 'archiveProduct', productId: p.id })}>×</button>}
+          </span>
           <div className="mt-0.5 flex flex-wrap gap-1">
+            {/* 결품 안내 — 품절, 또는 재고가 이번 달 수요보다 적어 다음 턴에 바닥난다 */}
+            {!dfOnly && p.stockBottles <= 0 && <Badge tone="bad">품절 — 다시 채우면 수요 약 {num(Math.round(demand))}병/월</Badge>}
+            {!dfOnly && p.stockBottles > 0 && p.stockBottles < Math.round(demand) && <Badge tone="warn">다음 달 결품 예상 (재고 {num(p.stockBottles)} &lt; 수요 약 {num(Math.round(demand))})</Badge>}
             <Badge tone="info">{categoryName(region, p.category, CATEGORY[p.category].nameKo)}</Badge>
             {p.ageYears != null && <Badge tone="good">{p.ageYears}년</Badge>}
             {p.premiumLabel && region.whisky.premiumLabel && <Badge tone="good">{region.whisky.premiumLabel.name}</Badge>}
@@ -255,7 +266,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
         })()}
       </span>}>
         {!compact && <SalesPrimer />}
-        {!active.length ? <Empty>{compact ? '재고가 있는 제품이 없습니다 — 블렌딩·병입 탭에서 병입하세요. 품절 제품은 판매 탭에서 본다.' : '판매 중인 제품이 없습니다. 블렌딩·병입 탭에서 병입하세요.'}</Empty> : (
+        {!active.length ? <Empty>{compact ? '판매 중인 제품이 없습니다 — 블렌딩·병입 탭에서 병입하세요.' : '판매 중인 제품이 없습니다. 블렌딩·병입 탭에서 병입하세요.'}</Empty> : (
           <Table head={['제품', '재고', '출고가(병)', '소비자가', '이번 달 수요 한도', '지난달 수요 → 판매', '예상 월 매출', '병당 공헌이익', '']}>
             {body}
           </Table>
