@@ -329,7 +329,7 @@ describe('자동 샘플 (#177, 오너 요청 2026-11-08)', () => {
   });
 });
 
-describe('자동 샘플 설정 (P-PROD-24, 2026-11-09 오너 요청)', () => {
+describe('자동 샘플 설정 (#207, 2026-11-09 오너 요청)', () => {
   function mvpMixed(): GameState {
     const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 3 });
     const add = (id: string, kind: 'malt' | 'soju', oak: number, rest = 0, type: 'ex_bourbon_barrel' | 'onggi_jar' = 'ex_bourbon_barrel') => {

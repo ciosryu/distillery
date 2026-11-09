@@ -1,4 +1,4 @@
-// 자동 샘플 설정 (P-PROD-24, 2026-11-09 오너 요청 — 파트 PROD) — 증류소 탭 "숙성 중인 캐스크" 칸에 끼워 쓴다.
+// 자동 샘플 설정 (#207, 2026-11-09 오너 요청 — 파트 PROD) — 증류소 탭 "숙성 중인 캐스크" 칸에 끼워 쓴다.
 // 자동 샘플(#201)은 그 달에 직접 뜬 통이 없으면 오래 안 뜬 통부터 여력만큼 뜬다. 여기서 고를 원액 묶음·최소 숙성·다시 뜨는 간격·월 최대 통 수를 좁힌다.
 // 자주 쓰는 조합은 프리셋 버튼 한 번으로. 아래에 이번 턴에 자동으로 뜰 통과 비용을 바로 보인다
 import { AUTO_SAMPLE_GROUP_LABEL, AUTO_SAMPLE_GROUPS, autoSamplePicks, knownReads, SAMPLING, samplingCapacity } from '../../sim/blendTable';

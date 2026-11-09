@@ -378,7 +378,7 @@ function WarehouseCard() {
               <Button key={k} small variant={cat === k ? 'primary' : 'secondary'} onClick={() => setCat(k)}>{k} {n}</Button>
             ))}
           </div>
-          {/* 자동 샘플 설정 (P-PROD-24) — 묶음·최소 숙성·간격·월 최대, 이번 턴 미리 보기 */}
+          {/* 자동 샘플 설정 (#207) — 묶음·최소 숙성·간격·월 최대, 이번 턴 미리 보기 */}
           {sampledThisMonth ? <div className="text-xs text-stone-500">이번 달은 직접 샘플을 떠서 자동 샘플이 없다.</div> : <AutoSampleSettingsRow />}
           <div className="text-[11px] text-stone-500">자동 샘플은 통당 횟수({SAMPLING.maxSamples}회)를 쓰지 않지만 오차도 줄이지 않는다 — 오차를 줄이려면 직접 고른다.</div>
         </div>

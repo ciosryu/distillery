@@ -252,7 +252,7 @@ export function autoSamplePicks(s: GameState, known: Map<string, KnownRead> = kn
   const cfg = s.inventory.autoSample ?? {};
   if (cfg.off) return [];
   if (s.inventory.casks.some((c) => c.contents && c.sampleLog?.at(-1)?.month === s.month)) return [];
-  // 매 턴 여력만큼 오래 안 뜬 통부터 (#201) — 통당 횟수 제한 없음. 설정(P-PROD-24)으로 묶음·최소 숙성·다시 뜨는 간격·월 최대 통 수를 좁힌다
+  // 매 턴 여력만큼 오래 안 뜬 통부터 (#201) — 통당 횟수 제한 없음. 설정(#207)으로 묶음·최소 숙성·다시 뜨는 간격·월 최대 통 수를 좁힌다
   const groups = cfg.groups?.length ? new Set(cfg.groups) : null;
   const ok = (c: Cask): boolean => {
     if (!autoSampleable(c)) return false;

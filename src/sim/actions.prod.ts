@@ -55,7 +55,7 @@ export type ProdAction =
   | { type: 'setAutoPrice'; productId: string; on: boolean }
   /** 자동 납품 (#206) — months: 유지할 재고 개월분(1·2·3·6), null이면 끔 */
   | { type: 'setAutoRestock'; productId: string; months: number | null }
-  /** 자동 샘플 설정 (P-PROD-24) — 비운 칸은 기본값 */
+  /** 자동 샘플 설정 (#207) — 비운 칸은 기본값 */
   | { type: 'setAutoSample'; settings: AutoSampleSettings };
 
 export const PROD_CASH_KEY: CashKeys<ProdAction> = {
