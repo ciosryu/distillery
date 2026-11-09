@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { advanceMonth, advanceMonths, applyAction, BANKRUPT_AFTER_MONTHS, newScenarioGame, type GameState } from '../sim';
+import { advanceMonth, advanceMonths, applyAction, BANKRUPT_AFTER_MONTHS, newGame, newScenarioGame, type GameState } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { cashAlert, runway, lastMonthFlow, loanSchedule, monthTodos, paymentJump, SAMPLE_STALE_MONTHS } from './alerts';
 
@@ -104,5 +104,19 @@ describe('런웨이 — 한 번 나가는 설비 구매는 "이 속도"에 넣�
     expect(s.history.reports.at(-1)!.offTurn?.equipment).toBeLessThan(0);
     expect(runway(s).months!).toBeGreaterThan(6);
     expect(cashAlert(s)).toBeNull();
+  });
+});
+
+describe('비지터 센터 할 일 (#139 P-MGT-14, mvp.md §7.8)', () => {
+  it('MVP 판에서 비지터 센터가 없으면 뜨고, 발주하면(짓는 중 포함) 사라진다. 샌드박스는 안 뜬다', () => {
+    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const t = monthTodos(s).find((x) => x.id === 'visitor');
+    expect(t?.level).toBe('warn');
+    expect(t?.target).toEqual({ anchor: 'mvp-crafting' });
+    expect(t?.text).toMatch(/관광 매출 0원/);
+    s = applyAction(s, { type: 'buyEquipment', catalogId: 'visitor_basic' }).state;
+    expect(s.production.equipment.some((e) => e.catalogId === 'visitor_basic' && e.readyMonth > s.month)).toBe(true);
+    expect(monthTodos(s).some((x) => x.id === 'visitor')).toBe(false);
+    expect(monthTodos(newGame({ seed: 1 })).some((x) => x.id === 'visitor')).toBe(false);
   });
 });

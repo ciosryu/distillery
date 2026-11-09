@@ -5,6 +5,10 @@
 import { regionOf } from '../sim/content/regions';
 import { BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, selfFundedCash, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
+import { EQUIPMENT } from '../sim/content/catalog';
+import { isLocked } from '../sim/scenario';
+import { equipmentCost } from '../sim/sites';
+import { tourismFactor } from '../sim/tourism';
 
 // ───────────── ① 파산 카운트다운 ─────────────
 
@@ -126,6 +130,10 @@ export function monthTodos(s: GameState): Todo[] {
   // 대출 거치가 3개월 안에 끝나 납부가 뛴다
   const jump = paymentJump(loanSchedule(s, 4));
   if (jump) out.push({ id: 'loan-jump', level: 'warn', text: `${jump.month - s.month === 0 ? '이번 달' : `${jump.month - s.month}개월 뒤`} 대출 거치가 끝나 월 납부가 ${fmtWon(jump.from)} → ${fmtWon(jump.to)}로 뛴다`, action: '대출 보기', target: { tab: 'finance' } });
+  // 비지터 센터가 없다 (#139 P-MGT-14, mvp.md §7.8) — 3차 판은 73개월 동안 없는 줄 몰랐고, 봇 재현에서 이것 하나가 파산(20/20 → 0/20)·목표(0 → 17/20)를 갈랐다.
+  // 시나리오 게임(MVP)만. 짓는 중이어도 발주했으면 뜨지 않는다
+  const tour = visitorTodo(s);
+  if (tour) out.push(tour);
   // 탱크 몰트·그레인 통입 대기 — 통에 넣어야 숙성이 시작된다
   const tankMalt = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced).reduce((t, l) => t + l.volumeL, 0);
   if (tankMalt >= 50) {
@@ -147,6 +155,24 @@ export function monthTodos(s: GameState): Todo[] {
     if (stale > 0) out.push({ id: 'sample', level: 'info', text: `샘플 기록이 ${SAMPLE_STALE_MONTHS}개월 넘은(또는 없는) 통 ${stale}개 — 병입 전에 맛을 확인한다`, action: '숙성 중인 캐스크', target: { anchor: 'mvp-warehouse' } });
   }
   return out;
+}
+
+/** 비지터 센터 할 일이 열어 보여 줄 설비 블록의 앵커 (MvpHome CraftingFold) */
+export const CRAFTING_ANCHOR = 'mvp-crafting';
+const VISITOR_BASIC = 'visitor_basic';
+
+/** 비지터 센터 할 일 — 시나리오 게임에서 비지터 설비가 하나도 없고(짓는 중 포함) 베이직 투어를 살 수 있을 때. 방문객·매출은 기본값(계절·인지도 보정 전)이다 */
+export function visitorTodo(s: GameState): Todo | null {
+  if (!s.scenario || isLocked(s, `facility:${VISITOR_BASIC}`)) return null;
+  if (s.production.equipment.some((e) => EQUIPMENT[e.catalogId]?.kind === 'visitor')) return null;
+  const d = EQUIPMENT[VISITOR_BASIC];
+  if (!d || d.kind !== 'visitor') return null;
+  const visitors = Math.round((d.visitorsPerMonth * tourismFactor(s)) / 10) * 10;
+  return {
+    id: 'visitor', level: 'warn',
+    text: `비지터 센터가 없다 — 관광 매출 0원. 베이직 투어 ${fmtWon(equipmentCost(s, d))}, ${d.leadMonths}개월 뒤부터 방문객 월 약 ${visitors.toLocaleString()}명 · 관광 매출 월 약 ${fmtWon(visitors * d.spendPerVisitor)}`,
+    action: '설비 보기', target: { anchor: CRAFTING_ANCHOR },
+  };
 }
 
 // ───────────── ④ 지난달 현금 흐름 한 줄 ─────────────

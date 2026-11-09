@@ -13,7 +13,7 @@ import { useUi } from '../store/ui';
 import { FixedCostLine } from './panels/FixedCost';
 import { LineChart } from './charts';
 import { CashFlowLine, MonthTodo, OPEN_FOLD_EVENT } from './AlertsView';
-import { cashAlert, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
+import { cashAlert, CRAFTING_ANCHOR, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
 import { monthlyFixedBreakdown } from '../sim/loans';
 import { PriceDesk } from './panels/Sales';
 import { Equipment, Orders, RecipeEditor } from './panels/Production';
@@ -79,7 +79,7 @@ export function MvpHome() {
       <div id="mvp-warehouse" className="scroll-mt-28"><WarehouseFold /></div>
       <div id="mvp-space" className="scroll-mt-28"><SpaceCard /></div>
       {/* ── 참고 ── */}
-      <CraftingFold />
+      <div id="mvp-crafting" className="scroll-mt-28"><CraftingFold /></div>
     </div>
   );
 }
@@ -257,6 +257,19 @@ const LIST_FIRST = 30;
 /** 크래프팅 레버(#156)·설비는 자주 안 바꾸므로 접어 둔다 — 처음 2시간을 가볍게 (mvp.md §1.2) */
 function CraftingFold() {
   const [open, setOpen] = useState(false);
+  // "이번 달 할 일"의 [설비 보기](비지터 센터 없음, #139 P-MGT-14)가 연다. 레시피 편집기가 위에 길게 있어 설비 표까지 내려 준다
+  const [focus, setFocus] = useState(0);
+  useEffect(() => {
+    const on = (e: Event) => { if ((e as CustomEvent).detail === CRAFTING_ANCHOR) { setOpen(true); setFocus((n) => n + 1); } };
+    window.addEventListener(OPEN_FOLD_EVENT, on);
+    return () => window.removeEventListener(OPEN_FOLD_EVENT, on);
+  }, []);
+  useEffect(() => {
+    if (!focus) return;
+    // 할 일 링크의 블록 머리 스크롤(AlertsView) 뒤에 한 번 더 — 마지막 스크롤이 이긴다
+    const id = window.setTimeout(() => document.getElementById('mvp-equipment')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+    return () => window.clearTimeout(id);
+  }, [focus]);
   return (
     <div className="grid gap-4">
       <div>
@@ -265,7 +278,7 @@ function CraftingFold() {
       {open && (
         <>
           <RecipeEditor />
-          <Equipment />
+          <div id="mvp-equipment" className="scroll-mt-28"><Equipment /></div>
         </>
       )}
     </div>
