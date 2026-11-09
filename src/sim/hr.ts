@@ -5,6 +5,7 @@ import { rngFor, type Rng } from './rng';
 import type { Candidate, GameState, Staff, StaffRole, StaffTrait } from './types';
 import { houseBrand } from './brands';
 import { systemOn } from './scenario';
+import { SCENARIOS } from './content/scenarios';
 import { nid } from './util';
 import { addModifier, isActive, mod } from './modifiers';
 import type { MonthReport } from './types';
@@ -319,7 +320,15 @@ export function handleDeparture(s: GameState, leaving: Staff, notes: string[]): 
   for (const x of s.hr.staff) if (x.apprenticeOf === leaving.id) x.apprenticeOf = undefined;
 }
 
+/** 시나리오 단계가 이번 달 HR을 열었나 (P-MGT-25) */
+export function hrOpenedThisMonth(s: Pick<GameState, 'scenario' | 'month'>): boolean {
+  const def = s.scenario ? SCENARIOS[s.scenario.id] : undefined;
+  return !!def?.stages?.some((st) => st.month === s.month && st.unlock.includes('system:hr') && s.scenario!.stagesDone?.includes(st.id));
+}
+
 export function runStaffLifecycle(s: GameState, report: MonthReport, rng: Rng): void {
+  // 단계가 HR을 연 달에는 분기 갱신을 기다리지 않고 채용 후보를 바로 채운다 — 독립 난수라 다른 결과는 그대로
+  if (hrOpenedThisMonth(s) && !s.hr.candidates.length) refreshCandidates(s, rngFor(s.seed, s.month, 'candidates:stage'));
   const master = masterDistiller(s);
   if (master) s.hr.houseStyle = clamp(s.hr.houseStyle + 0.4 * (master.stats.c / 60), 0, 100);
   for (const x of [...s.hr.staff]) {

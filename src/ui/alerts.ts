@@ -188,8 +188,8 @@ export function monthTodos(s: GameState): Todo[] {
   const def = s.scenario ? SCENARIOS[s.scenario.id] : undefined;
   for (const st of def?.stages ?? []) {
     if (!s.scenario?.stagesDone?.includes(st.id) || s.month - st.month >= 3) continue;
-    const tab = st.unlock.includes('system:commissions') ? 'blendlab' : st.unlock.includes('system:exports') ? 'exports' : st.unlock.includes('system:caskBids') ? 'b2b' : 'sales';
-    out.push({ id: `stage-${st.id}`, level: 'warn', text: `새로 열림 — ${st.title}. ${st.text}`, action: tab === 'blendlab' ? '블렌딩 테이블' : tab === 'exports' ? '수출' : tab === 'b2b' ? '원액 B2B' : '판매', target: { tab } });
+    const tab = st.unlock.includes('system:commissions') ? 'blendlab' : st.unlock.includes('system:exports') ? 'exports' : st.unlock.includes('system:caskBids') ? 'b2b' : st.unlock.includes('system:hr') ? 'staff' : 'sales';
+    out.push({ id: `stage-${st.id}`, level: 'warn', text: `새로 열림 — ${st.title}. ${st.text}`, action: tab === 'blendlab' ? '블렌딩 테이블' : tab === 'exports' ? '수출' : tab === 'b2b' ? '원액 B2B' : tab === 'staff' ? '직원' : '판매', target: { tab } });
   }
   const min = whiskyMinMonths(regionOf(s).whisky); // 병입·표기와 같은 식 (blending.ts)
   // IB 캐스크 입찰 (10년 차 해금, #224) — 제안은 2개월 뒤 사라지고 원액 B2B 탭에만 보여서 할 일에 올린다
