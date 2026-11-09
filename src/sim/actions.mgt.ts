@@ -29,10 +29,6 @@ export type MgtAction =
   | { type: 'signForward'; ingredientId: string; kgPerMonth: number; months: number }
   | { type: 'buyInsurance'; kind: 'property' | 'inventory' | 'business_interruption' | 'product_liability' | 'credit'; coverage: number }
   | { type: 'cancelInsurance'; policyId: string }
-  /** 교육 프로그램 (P-MGT-23) — 비용을 내고 XP */
-  | { type: 'trainStaff'; staffId: string }
-  /** 헤드헌팅 (P-MGT-23) — 비용을 내고 스탯 높은 후보 1명 */
-  | { type: 'headhunt'; role: 'distiller' | 'warehouse' | 'sales' | 'office' | 'blender' }
   /** 투자 유치 */
   | { type: 'takeInvestment'; offerId: string }
   /** 수출 (#95·#101): 수입사 제안 수락 / 계약 해지 */
@@ -43,7 +39,11 @@ export type MgtAction =
   | { type: 'takeLoan'; offerId: string; amount: number }
   /** 대출 상환 — amount가 없거나 잔액 이상이면 전액, 있으면 일부(#181: 남은 기간 그대로 월 납부를 다시 계산) */
   | { type: 'repayLoan'; loanId: string; amount?: number }
-  | { type: 'resolveEvent'; eventId: string; choice: number };
+  | { type: 'resolveEvent'; eventId: string; choice: number }
+  /** 교육 프로그램 (P-MGT-23) — 비용을 내고 XP */
+  | { type: 'trainStaff'; staffId: string }
+  /** 헤드헌팅 (P-MGT-23) — 비용을 내고 스탯 높은 후보 1명 */
+  | { type: 'headhunt'; role: 'distiller' | 'warehouse' | 'sales' | 'office' | 'blender' };
 
 /** 대출 일부 상환 최소액 (#181) [튜닝] — 대출 실행 최소액과 같다 */
 export const PARTIAL_REPAY_MIN = 10_000_000;
@@ -57,15 +57,15 @@ export const MGT_CASH_KEY: CashKeys<MgtAction> = {
   buyInsurance: null,
   cancelInsurance: null,
   hire: null,
-  // 교육·헤드헌팅 비용 — 전용 항목이 없어 '기타 행동'으로 센다
-  trainStaff: 'other',
-  headhunt: 'other',
   takeInvestment: 'investment',
   sellCaskOwnership: 'caskOwnership',
   fire: 'severance',
   takeLoan: 'loan',
   repayLoan: 'loanRepay',
   resolveEvent: 'event',
+  // 교육·헤드헌팅 비용 — 전용 항목이 없어 '기타 행동'으로 센다
+  trainStaff: 'other',
+  headhunt: 'other',
 };
 
 export const MGT_HANDLERS: Handlers<MgtAction> = {
