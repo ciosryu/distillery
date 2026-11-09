@@ -14,7 +14,7 @@ import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
 import { equipmentCost } from './sites';
 import { applyWaterPermit } from './waterPermit';
-import type { Cask, CaskTypeId, Product, Recipe } from './types';
+import type { AutoSampleSettings, Cask, CaskTypeId, Product, Recipe } from './types';
 import { nid, staffOf, warehouseCapacity } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
 
@@ -54,7 +54,9 @@ export type ProdAction =
   /** 자동 최적 가격 켜기·끄기 (#200) — 켜면 바로 한 번 값을 정한다 */
   | { type: 'setAutoPrice'; productId: string; on: boolean }
   /** 자동 납품 (#206) — months: 유지할 재고 개월분(1·2·3·6), null이면 끔 */
-  | { type: 'setAutoRestock'; productId: string; months: number | null };
+  | { type: 'setAutoRestock'; productId: string; months: number | null }
+  /** 자동 샘플 설정 (P-PROD-24) — 비운 칸은 기본값 */
+  | { type: 'setAutoSample'; settings: AutoSampleSettings };
 
 export const PROD_CASH_KEY: CashKeys<ProdAction> = {
   setOrder: null,
@@ -62,6 +64,7 @@ export const PROD_CASH_KEY: CashKeys<ProdAction> = {
   unfillCask: null,
   setAutoPrice: null,
   setAutoRestock: null,
+  setAutoSample: null,
   saveRecipe: null,
   deleteRecipe: null,
   fillCasks: null,
@@ -126,6 +129,17 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     s.inventory.lots.push({ ...lot, id: nid(s, 'L'), name: `${name} (${cask.id}에서 뺌)`, volumeL: lot.volumeL * kept });
     s.inventory.casks[ci] = emptyCask(cask);
     return { state: s, message: `${cask.id}에서 원액 ${Math.round(lot.volumeL * kept).toLocaleString()}L를 빼 탱크로 옮겼다(손실 ${(FINISH.lossShare * 100).toFixed(2)}%) — 숙성 ${lot.oakMonths}개월은 원액에 남고, 통은 한 번 쓴 통이 된다` };
+  },
+  setAutoSample: (s, _prev, a) => {
+    const x = a.settings;
+    const clean: AutoSampleSettings = {};
+    if (x.off) clean.off = true;
+    if (x.groups?.length && x.groups.length < 3) clean.groups = [...new Set(x.groups)].filter((g) => g === 'whisky' || g === 'spirit' || g === 'soju');
+    if (x.minAgeMonths && x.minAgeMonths > 0) clean.minAgeMonths = Math.floor(x.minAgeMonths);
+    if (x.minGapMonths && x.minGapMonths > 0) clean.minGapMonths = Math.floor(x.minGapMonths);
+    if (x.maxPerMonth && x.maxPerMonth > 0) clean.maxPerMonth = Math.floor(x.maxPerMonth);
+    if (Object.keys(clean).length) s.inventory.autoSample = clean; else delete s.inventory.autoSample;
+    return { state: s };
   },
   setAutoRestock: (s, prev, a) => {
     const p = s.commerce.products.find((x) => x.id === a.productId);

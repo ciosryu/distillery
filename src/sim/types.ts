@@ -648,6 +648,25 @@ export interface InventorySlice {
   rotatedThisMonth: number;
   /** 이번 달 샘플링 횟수 — 블렌더 여력 (결정 #124) */
   samplesThisMonth: number;
+  /** 자동 샘플 설정 (P-PROD-24) — 없으면 기본값(켬, 모든 원액, 나이·간격 제한 없음, 여력만큼) */
+  autoSample?: AutoSampleSettings;
+}
+
+/** 자동 샘플이 고를 원액 묶음 — 위스키 표기 가능 통 / 숙성 중 몰트·그레인 스피릿 / 소주·진·고량주(옹기 등) */
+export type AutoSampleGroup = 'whisky' | 'spirit' | 'soju';
+
+/** 자동 샘플 설정 (P-PROD-24, 2026-11-09 오너 요청) — 비운 칸은 기본값 */
+export interface AutoSampleSettings {
+  /** true면 자동 샘플을 하지 않는다 */
+  off?: boolean;
+  /** 고를 원액 묶음 — 없으면 모두 */
+  groups?: AutoSampleGroup[];
+  /** 이만큼 숙성한 통만(개월, 오크·옹기 중 긴 쪽) — 없으면 0 */
+  minAgeMonths?: number;
+  /** 자기 기록이 이만큼 지난 통만 다시 뜬다(개월) — 없으면 0(매 턴 오래 안 뜬 순) */
+  minGapMonths?: number;
+  /** 한 달 최대 통 수 — 없으면 샘플 여력만큼 */
+  maxPerMonth?: number;
 }
 
 export interface CommerceSlice {
