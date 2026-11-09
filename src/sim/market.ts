@@ -1,5 +1,5 @@
 import { DISTRIBUTION, PACKAGING, logisticsCost } from './content/catalog';
-import { BRANDS, PRICE_CURVE, SKU } from './content/market';
+import { agedWhitePerception, BRANDS, PRICE_CURVE, SKU } from './content/market';
 import { rivalShare } from './rivals';
 import { awarenessOf, brandMarketing, brandOf, houseBrand, secondBrands } from './brands';
 import { consumerPrice, refPricePerL, regionOf, siteOf, traditionalTaxFactor, type RegionDef } from './content/regions';
@@ -68,7 +68,7 @@ export function priceBreakdown(s: GameState, p: Pick<Product, 'price' | 'bottleM
 
 export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId'>): number {
   const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
-  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : 1;
+  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths); // 숙성 소주 표기 P-MKT-8
   const lux = PACKAGING[p.packagingId]?.luxury ?? 1;
   // 시장 국면: 피트·셰리 유행
   // 시장 국면: 향미 트렌드 이동 (결정 #125 — 옛 피트·셰리 계단식 보정치를 육각형 축 기반 연속 배수로 대체)
@@ -130,9 +130,10 @@ function splitByCategory(items: readonly { p: Product; standaloneBottles: number
 //   ln 수요 = −ε·ln(E/기준가) − ε·((소비자가/E)^K − 1)/K          K → 0이면 옛 공식
 
 /** 이 제품을 사는 사람이 기대하는 소비자가(원/L) — 권장 출고가(blending.ts suggestedPrice)가 맞추는 값과 같다 */
-export function expectedPricePerL(region: RegionDef, p: Pick<Product, 'category' | 'abv' | 'quality' | 'oakMonths' | 'ageYears'>): number {
+export function expectedPricePerL(region: RegionDef, p: Pick<Product, 'category' | 'abv' | 'quality' | 'oakMonths' | 'ageYears' | 'restMonths'>): number {
   const aged = isWhiskyCategory(p.category);
-  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : 1;
+  // 위스키는 숙성 인식, 숙성 소주·고량주는 숙성 표기(P-MKT-8) — 매력도(appeal)와 같은 배수
+  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths);
   return refPricePerL(region, p.category, p.abv) * Math.sqrt(Math.max(p.quality, 20) / 60) * ageBonus;
 }
 

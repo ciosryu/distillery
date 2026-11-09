@@ -1,4 +1,5 @@
 import type { EquipmentDef } from './production';
+import type { ProductCategory } from '../types';
 
 // 시장 콘텐츠 (파트 MKT, 결정 #144) — 패키징·마진 구조(병입 인건비·유통)·원액 B2B·비지터 센터 설비. 모든 수치 [튜닝]
 
@@ -101,3 +102,18 @@ export const BRANDS = {
  * 기대가에서는 옛 공식과 값·기울기가 같다. k = 0이면 옛 공식(어디서나 같은 탄력성)
  */
 export const PRICE_CURVE = { k: 1 };
+
+// ── 숙성 소주 표기 ([결정 P-MKT-8], 오너 승인 2026-11-09 — A안: 매력도·기대가 모두, 최대 3년, 6개월 이상) [튜닝] ──
+/**
+ * 옹기·오크에서 숙성한 화이트 스피릿(증류식 소주·고량주)의 숙성 표기 효과 — 위스키 숙성 인식(agePerception)과 같은 자리에 곱한다.
+ * 섞은 원액이 모두 같은 용기에서 minMonths 이상 숙성했을 때만(제품의 최저 오크 개월·최저 옹기 개월 중 큰 쪽). 진은 제외
+ */
+export const AGED_WHITE = { categories: ['soju_distilled', 'baijiu'] as readonly ProductCategory[], minMonths: 6, ratePerYear: 0.08, capYears: 3 };
+
+/** 숙성 소주 표기 배수 — 대상이 아니거나 minMonths 미만이면 1, 그 위로 1 + 0.08 × 연수(개월/12, 최대 3년 → 1.24) */
+export function agedWhitePerception(category: ProductCategory, oakMonths: number | undefined, restMonths: number | undefined): number {
+  if (!AGED_WHITE.categories.includes(category)) return 1;
+  const months = Math.max(oakMonths ?? 0, restMonths ?? 0);
+  if (months < AGED_WHITE.minMonths) return 1;
+  return 1 + AGED_WHITE.ratePerYear * Math.min(months / 12, AGED_WHITE.capYears);
+}
