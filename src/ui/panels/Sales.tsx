@@ -5,7 +5,7 @@ import { AXIS } from '../../sim/content/axes';
 import { ProfileRadar } from './Production';
 import { caskShort } from './Bottling';
 import { categoryName, consumerPrice, regionOf, traditionalTaxFactor } from '../../sim/content/regions';
-import { finishLabel, hexOf, HEX_AXES, HEX_LABEL, topNotes, type ProductCategory, type ProfileAxis, bottleMargin, calendar, coverage, demandFor, domesticDemands, DUTY_FREE, dutyFreeDemands, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, expectedPricePerL, priceOptions, productConsumerPrice, retailCapacityCases, suggestedPrice, type GameState, type Product } from '../../sim';
+import { agedWhiteLabel, finishLabel, hexOf, HEX_AXES, HEX_LABEL, topNotes, type ProductCategory, type ProfileAxis, bottleMargin, calendar, coverage, demandFor, domesticDemands, DUTY_FREE, dutyFreeDemands, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, expectedPricePerL, priceOptions, productConsumerPrice, retailCapacityCases, suggestedPrice, type GameState, type Product } from '../../sim';
 import { awarenessOf, brandMarketing, brandOf, rebrandCost, secondBrands } from '../../sim/brands';
 import { BRANDS } from '../../sim/content/market';
 import { isLocked } from '../../sim/scenario';
@@ -71,7 +71,7 @@ function PriceInput({ s, p, value, suggested, onSet }: { s: GameState; p: Produc
 function currentSuggestedPrice(s: GameState, p: Product): number {
   const region = regionOf(s);
   const oak = isWhiskyCategory(p.category) ? p.oakMonths ?? (p.ageYears ?? 0) * 12 : null;
-  return suggestedPrice(region, p.category, p.bottleMl, p.quality, oak, p.abv, traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL));
+  return suggestedPrice(region, p.category, p.bottleMl, p.quality, oak, p.abv, traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL), { oakMonths: p.oakMonths, restMonths: p.restMonths });
 }
 
 /**
@@ -156,6 +156,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
             {!dfOnly && p.stockBottles > 0 && p.stockBottles < Math.round(demand) && <Badge tone="warn">다음 달 결품 예상 (재고 {num(p.stockBottles)} &lt; 수요 약 {num(Math.round(demand))})</Badge>}
             <Badge tone="info">{categoryName(region, p.category, CATEGORY[p.category].nameKo)}</Badge>
             {p.ageYears != null && <Badge tone="good">{p.ageYears}년</Badge>}
+            {agedWhiteLabel(p.category, p.oakMonths, p.restMonths) && <Badge tone="good">{agedWhiteLabel(p.category, p.oakMonths, p.restMonths)}</Badge>}
             {p.premiumLabel && region.whisky.premiumLabel && <Badge tone="good">{region.whisky.premiumLabel.name}</Badge>}
             {p.specialty && <Badge tone="good">{region.specialties?.find((x) => x.id === p.specialty)?.label}</Badge>}
             {p.traditional && <Badge tone="good">{region.traditionalRelief?.label}</Badge>}
@@ -178,7 +179,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
             : <PriceInput s={s} p={p} value={p.price} suggested={suggested} onSet={(v) => dispatch({ type: 'setPrice', productId: p.id, price: v })} />}
           {/* 자동 납품 (#206) — 매달 판매 전에 재고를 n개월분으로 채운다 */}
           {autoRestockSupported(p) && (
-            <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400" title={isWhiskyCategory(p.category) ? `매달 판매 직전에 재고가 모자라면 ${p.ageYears ? `${p.ageYears}년 이상` : '법정 숙성 이상'} 숙성된 통(같은 피니시) 중 표기에 가장 가까운 통부터 골라 이 제품에 보충한다 — 숙성 표기 유지` : '매달 판매 직전에 재고가 모자라면 탱크 원액(먼저 만든 것부터)으로 이 제품에 보충한다'}>
+            <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400" title={isWhiskyCategory(p.category) ? `매달 판매 직전에 재고가 모자라면 ${p.ageYears ? `${p.ageYears}년 이상` : '법정 숙성 이상'} 숙성된 통(같은 피니시) 중 표기에 가장 가까운 통부터 골라 이 제품에 보충한다 — 숙성 표기 유지` : agedWhiteLabel(p.category, p.oakMonths, p.restMonths) ? `매달 판매 직전에 재고가 모자라면 「${agedWhiteLabel(p.category, p.oakMonths, p.restMonths)}」 표기를 채운 같은 용기의 통 중 어린 통부터 골라 이 제품에 보충한다 — 숙성 표기 유지(탱크 원액은 쓰지 않는다)` : '매달 판매 직전에 재고가 모자라면 탱크 원액(먼저 만든 것부터)으로 이 제품에 보충한다'}>
               자동 납품
               <select className="rounded border border-stone-300 bg-white px-1 py-0 text-[11px] dark:border-stone-700 dark:bg-stone-800" value={p.autoRestock ?? 0} onChange={(e) => dispatch({ type: 'setAutoRestock', productId: p.id, months: Number(e.target.value) || null })} aria-label={`${p.name} 자동 납품`}>
                 <option value={0}>끔</option>
@@ -327,6 +328,7 @@ function ProductFlavor({ p }: { p: Product }) {
   const facts = (x: Product) => [
     categoryName(region, x.category, CATEGORY[x.category].nameKo),
     x.ageYears != null ? `${x.ageYears}년` : null,
+    agedWhiteLabel(x.category, x.oakMonths, x.restMonths),
     x.finish ? finishLabel(x.finish) : null,
     // 통 구성 (#176) — 병입 때 기록. 기록 전 제품은 없다
     x.caskMix?.length ? `통: ${x.caskMix.map((m) => `${caskShort(m.typeId)} ${pct(m.share, 0)}`).join(' · ')}${(() => { const rest = 1 - x.caskMix!.reduce((t, m) => t + m.share, 0); return rest >= 0.005 ? ` · 탱크 ${pct(rest, 0)}` : ''; })()}` : null,

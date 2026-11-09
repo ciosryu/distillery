@@ -3,6 +3,7 @@ import { BOTTLE_SIZES, CASKS, PACKAGING, packagingCost } from '../../sim/content
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
 import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength } from '../../sim';
+import { agedWhitePerception } from '../../sim/content/market';
 import { regionOf } from '../../sim/content/regions';
 import { stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
 import { useGame } from '../../store/game';
@@ -107,7 +108,7 @@ export function Bottling() {
   const dfForecast = (() => {
     if (masked || !preview?.ok || !preview.dfEdition || !preview.category || !preview.evaluation) return null;
     const p: Product = {
-      id: 'preview', name: '', category: preview.category, ageYears: preview.ageYears, oakMonths: preview.minOakMonths, abv: preview.finalAbv, bottleMl: opts.bottleMl, chillFiltered: opts.chillFilter, packagingId: opts.packagingId,
+      id: 'preview', name: '', category: preview.category, ageYears: preview.ageYears, oakMonths: preview.minOakMonths, restMonths: preview.minRestMonths, abv: preview.finalAbv, bottleMl: opts.bottleMl, chillFiltered: opts.chillFilter, packagingId: opts.packagingId,
       flavor: preview.flavor, quality: preview.evaluation.quality, typicity: preview.evaluation.typicity, style: preview.evaluation.style, sourcedShare: preview.sourcedShare,
       stockBottles: preview.bottles, price: preview.suggestedPrice, unitCost: preview.unitCost, createdMonth: s.month, lastMonthSold: 0, totalSold: 0,
       dutyFreeOnly: true, localIngredient: preview.localIngredient, dfEdition: preview.dfEdition,
@@ -123,7 +124,7 @@ export function Bottling() {
     const quality = masked ? (est?.quality ?? 50) : (preview.evaluation?.quality ?? 50);
     const price = masked ? (priceAtQuality(s, preview, opts, quality) ?? preview.suggestedPrice) : preview.suggestedPrice;
     const p: Product = {
-      id: 'preview', name: '', category: preview.category, ageYears: preview.ageYears, oakMonths: preview.minOakMonths, abv: preview.finalAbv, bottleMl: opts.bottleMl, chillFiltered: opts.chillFilter, packagingId: opts.packagingId,
+      id: 'preview', name: '', category: preview.category, ageYears: preview.ageYears, oakMonths: preview.minOakMonths, restMonths: preview.minRestMonths, abv: preview.finalAbv, bottleMl: opts.bottleMl, chillFiltered: opts.chillFilter, packagingId: opts.packagingId,
       flavor: preview.flavor, quality, typicity: preview.evaluation?.typicity ?? 50, style: preview.evaluation?.style ?? null, sourcedShare: preview.sourcedShare,
       stockBottles: preview.bottles, price, unitCost: preview.unitCost, createdMonth: s.month, lastMonthSold: 0, totalSold: 0, localIngredient: preview.localIngredient,
     };
@@ -303,6 +304,7 @@ export function Bottling() {
               <div className="flex flex-wrap gap-1">
                 {preview.category && <Badge tone="info">{CATEGORY[preview.category].nameKo}</Badge>}
                 {preview.ageYears != null && <Badge tone="good">{preview.ageYears}년</Badge>}
+                {preview.agedLabel && <Badge tone="good">{preview.agedLabel}</Badge>}
                 {!masked && preview.evaluation?.style && <Badge>{preview.evaluation.style}</Badge>}
                 {preview.finish && <Badge tone="good">{finishLabel(preview.finish)}</Badge>}
                 {preview.sourcedShare > 0 && <Badge tone="warn">매입 원액 {pct(preview.sourcedShare, 0)} · 브랜드 가치 {Math.round(preview.sourcedPrestige * 100)}</Badge>}
@@ -328,6 +330,7 @@ export function Bottling() {
                   return lo != null && hi != null ? `${won(lo)} ~ ${won(hi)}` : '병입 후 공개';
                 })() : <>{won(preview.suggestedPrice)}{preview.dfEdition ? ' (면세 기준)' : ''}</>}</dd>
                 {preview.category && isWhiskyCategory(preview.category) && <><dt className="text-stone-500" title="권장 출고가와 매력도에 같이 곱한다. 3년 = ×1.18, 그 뒤는 원액 시가와 같은 속도로 오른다(18년 상한)">숙성 프리미엄</dt><dd className="text-right tabular-nums">×{agePerception(preview.minOakMonths, preview.category).toFixed(2)}</dd></>}
+                {preview.agedLabel && preview.category && <><dt className="text-stone-500" title="옹기·오크에서 6개월 이상 쉰 증류식 소주·고량주 — 권장 출고가와 매력도에 같이 곱한다. 1년 +0.08, 3년 상한 ×1.24 (P-MKT-8)">숙성 표기 프리미엄</dt><dd className="text-right tabular-nums">×{agedWhitePerception(preview.category, preview.minOakMonths, preview.minRestMonths).toFixed(2)}</dd></>}
                 {dfForecast && <><dt className="text-stone-500">예상 면세 판매</dt><dd className={`text-right tabular-nums ${dfForecast.window < preview.bottles ? 'text-amber-800 dark:text-amber-300' : ''}`}>월 {num(dfForecast.perMonth)}병 · {DUTY_FREE.sellOutMonths}개월 {num(dfForecast.window)}병</dd></>}
               </dl>
               {preview.dfEdition && !preview.localIngredient && dutyFreeAgedAppeal(preview.ageYears) > 1 && <p className="text-xs text-stone-500">숙성 한정판 보너스는 수요만 올립니다. 숙성 연수에 따른 값은 권장 출고가의 숙성 프리미엄에 이미 들어 있습니다</p>}
