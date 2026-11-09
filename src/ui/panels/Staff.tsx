@@ -1,6 +1,6 @@
 import { ROLE_INFO } from '../../sim/content/catalog';
 import type { Staff as StaffT } from '../../sim';
-import { ageOf, AGING_TENURE_MONTHS, APPRENTICE_MONTHS, masterDistiller, RETIRE_AGE, tenureOf } from '../../sim/hr';
+import { ageOf, AGING_TENURE_MONTHS, APPRENTICE_MONTHS, HEADHUNT, headhuntCost, headhuntedThisMonth, masterDistiller, mentoringXp, RETIRE_AGE, tenureOf, TRAINING, trainingCooldown, trainingCost } from '../../sim/hr';
 import { useGame } from '../../store/game';
 import { won } from '../format';
 import { Badge, Button, Card, Empty } from '../kit';
@@ -58,8 +58,16 @@ export function Staff() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {s.hr.staff.map((x) => {
               const master = masterDistiller(s);
-              const tag = x.id === master?.id ? <Badge tone="good">마스터 디스틸러</Badge> : x.apprenticeOf ? <Badge tone="info">부사수 · 수련 {s.month - x.hiredMonth}/{APPRENTICE_MONTHS}개월</Badge> : null;
-              return <Person key={x.id} x={x} month={s.month} tag={tag} action={<Button small variant="danger" onClick={() => dispatch({ type: 'fire', staffId: x.id })}>내보내기 (위로금 1개월)</Button>} />;
+              const mentor = mentoringXp(s, x);
+              const tag = <>
+                {x.id === master?.id ? <Badge tone="good">마스터 디스틸러</Badge> : x.apprenticeOf ? <Badge tone="info">부사수 · 수련 {s.month - x.hiredMonth}/{APPRENTICE_MONTHS}개월</Badge> : null}
+                {mentor > 0 && <span className="ml-1 text-xs text-emerald-700 dark:text-emerald-400" title="부사수이거나 같은 직군에 레벨 2 이상 높은 선배가 있으면 매달 XP를 더 얻는다">멘토링 XP +{mentor}/월</span>}
+              </>;
+              const wait = trainingCooldown(s, x.id);
+              return <Person key={x.id} x={x} month={s.month} tag={tag} action={<div className="flex flex-wrap gap-1">
+                <Button small disabled={wait > 0 || s.finance.cash < trainingCost(x)} onClick={() => dispatch({ type: 'trainStaff', staffId: x.id })} title={`교육 프로그램 — 월급 ${TRAINING.costMonths}개월 치, XP +${TRAINING.xpPerLevel * x.level}(반 레벨), 같은 직원은 ${TRAINING.cooldownMonths}개월에 한 번`}>{wait > 0 ? `교육 (${wait}개월 뒤)` : `교육 ${won(trainingCost(x))}`}</Button>
+                <Button small variant="danger" onClick={() => dispatch({ type: 'fire', staffId: x.id })}>내보내기 (위로금 1개월)</Button>
+              </div>} />;
             })}
           </div>
         )}
@@ -68,6 +76,12 @@ export function Staff() {
         <ul className="mb-3 grid gap-1 text-xs text-stone-500">
           {(Object.keys(ROLE_EFFECT) as StaffT['role'][]).map((r) => <li key={r}><span className="font-medium text-stone-700 dark:text-stone-300">{ROLE_INFO[r].nameKo}</span> — {ROLE_EFFECT[r]}</li>)}
         </ul>
+        <div className="mb-3 flex flex-wrap items-center gap-1 text-xs text-stone-500">
+          <span title={`비용 = 그 직군 기본급 ${HEADHUNT.costMonths}개월 치(지역 인건비 반영), 스탯 평균 ${HEADHUNT.statMean} 안팎 후보 1명 — 다음 후보 갱신 때까지 남는다`}>헤드헌팅 (직군마다 한 달에 한 번):</span>
+          {(Object.keys(ROLE_INFO) as StaffT['role'][]).map((r) => (
+            <Button key={r} small disabled={headhuntedThisMonth(s, r) || s.finance.cash < headhuntCost(s, r)} onClick={() => dispatch({ type: 'headhunt', role: r })}>{ROLE_INFO[r].nameKo} {won(headhuntCost(s, r))}</Button>
+          ))}
+        </div>
         {!s.hr.candidates.length ? <Empty>후보가 없습니다</Empty> : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {s.hr.candidates.map((x) => <Person key={x.id} x={x} month={s.month} action={<div className="flex gap-1"><Button small variant="primary" onClick={() => dispatch({ type: 'hire', candidateId: x.id })}>채용</Button>{x.role === 'distiller' && <Button small onClick={() => dispatch({ type: 'hire', candidateId: x.id, asApprentice: true })} title="급여 60%, 마스터 곁에서 24개월 이상 배우면 은퇴 때 하우스 스타일을 잇는다">부사수로 채용</Button>}</div>} />)}

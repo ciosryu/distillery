@@ -2,7 +2,9 @@ import { forwardRoomKg, marketIndex } from './forwards';
 import { FORWARD, INGREDIENTS } from './content/catalog';
 import { LOAN_OFFERS } from './content/catalog';
 import { awarenessOf } from './brands';
-import { handleDeparture, masterDistiller } from './hr';
+import { handleDeparture, headhunt, masterDistiller, TRAINING, trainingCost, trainStaff } from './hr';
+import { ROLE_INFO } from './content/catalog';
+import { isLocked } from './scenario';
 import { INVESTMENT_OFFERS } from './content/catalog';
 import { OWNERSHIP } from './investment';
 import { ensureBoard } from './board';
@@ -27,6 +29,10 @@ export type MgtAction =
   | { type: 'signForward'; ingredientId: string; kgPerMonth: number; months: number }
   | { type: 'buyInsurance'; kind: 'property' | 'inventory' | 'business_interruption' | 'product_liability' | 'credit'; coverage: number }
   | { type: 'cancelInsurance'; policyId: string }
+  /** 교육 프로그램 (P-MGT-23) — 비용을 내고 XP */
+  | { type: 'trainStaff'; staffId: string }
+  /** 헤드헌팅 (P-MGT-23) — 비용을 내고 스탯 높은 후보 1명 */
+  | { type: 'headhunt'; role: 'distiller' | 'warehouse' | 'sales' | 'office' | 'blender' }
   /** 투자 유치 */
   | { type: 'takeInvestment'; offerId: string }
   /** 수출 (#95·#101): 수입사 제안 수락 / 계약 해지 */
@@ -51,6 +57,9 @@ export const MGT_CASH_KEY: CashKeys<MgtAction> = {
   buyInsurance: null,
   cancelInsurance: null,
   hire: null,
+  // 교육·헤드헌팅 비용 — 전용 항목이 없어 '기타 행동'으로 센다
+  trainStaff: 'other',
+  headhunt: 'other',
   takeInvestment: 'investment',
   sellCaskOwnership: 'caskOwnership',
   fire: 'severance',
@@ -136,6 +145,21 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     s.finance.cash += price;
     cask.owner = { name: `개인 고객 ${cask.id}`, soldMonth: s.month, deliverMonth: s.month + Math.max(OWNERSHIP.minDeliverWait, OWNERSHIP.deliverAtMonths - cask.contents.oakMonths) };
     return { state: s, message: `캐스크 ${cask.id} 오너십 판매 ${price.toLocaleString()}원 — ${cask.owner.deliverMonth - s.month}개월 뒤 인도` };
+  },
+  trainStaff: (s, prev, a) => {
+    if (isLocked(s, 'system:hr')) return fail(prev, '이 시나리오에서는 직원을 관리할 수 없습니다');
+    const x = s.hr.staff.find((y) => y.id === a.staffId);
+    const cost = x ? trainingCost(x) : 0;
+    const why = trainStaff(s, a.staffId);
+    if (why) return fail(prev, why);
+    return { state: s, message: `${x!.name} 교육 — ${cost.toLocaleString()}원, XP +${TRAINING.xpPerLevel * x!.level} (${TRAINING.cooldownMonths}개월 뒤 다시 가능)` };
+  },
+  headhunt: (s, prev, a) => {
+    if (isLocked(s, 'system:hr')) return fail(prev, '이 시나리오에서는 직원을 관리할 수 없습니다');
+    const cash = s.finance.cash;
+    const r = headhunt(s, a.role);
+    if (typeof r === 'string') return fail(prev, r);
+    return { state: s, message: `${ROLE_INFO[a.role].nameKo} 헤드헌팅 — ${(cash - s.finance.cash).toLocaleString()}원, 후보 ${r.name} (Lv.${r.level}, 다음 후보 갱신 때까지)` };
   },
   hire: (s, prev, a) => {
     const c = s.hr.candidates.find((x) => x.id === a.candidateId);
