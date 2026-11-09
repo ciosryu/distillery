@@ -12,7 +12,7 @@ import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
 import { FixedCostLine } from './panels/FixedCost';
 import { LineChart } from './charts';
-import { CashFlowLine, MonthTodo, OPEN_FOLD_EVENT } from './AlertsView';
+import { CashFlowLine, JourneyStrip, MonthTodo, OPEN_FOLD_EVENT } from './AlertsView';
 import { AutoSampleSettingsRow } from './panels/AutoSample';
 import { cashAlert, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
 import { monthlyFixedBreakdown } from '../sim/loans';
@@ -66,6 +66,8 @@ export function MvpHome() {
     <div className="grid gap-4">
       {/* ── 이번 달 ── 할 일 (1차 MVP 플레이테스트 대응 ③) */}
       <MonthTodo />
+      {/* 15년 여정 — 단계 해금·중반 목표 (4차 MVP 플레이테스트) */}
+      <JourneyStrip />
       <Headline />
       {/* ── 상태 ── 돈 흐름: 한 줄 요약, 현금 경고·재고 과잉·거치 종료 임박이면 기본 펼침 */}
       <MoneyFold />
