@@ -217,7 +217,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         break;
       }
       case 'softenBacklash': {
-        // 아직 끝나지 않은 반동 보정치(지금 걸렸거나 곧 걸릴)를 1에 가깝게 — 앰버서더 대응 (P-MGT-20)
+        // 아직 끝나지 않은 반동 보정치(지금 걸렸거나 곧 걸릴)를 1에 가깝게 — 앰버서더 대응 (#213)
         let n = 0;
         for (const x of s.world.modifiers) {
           if (!x.label.endsWith('— 반동') || x.untilMonth <= s.month || x.factor >= 1) continue;
@@ -256,12 +256,12 @@ function fire(s: GameState, base: EventDef, rng: Rng, report: MonthReport): void
   const notes = applyEffects(s, def.effects ?? [], rng, def.title, ledger);
   if (ledger) notes.push(...settleClaims(s, ledger, report));
   log(s, report, def.title, [def.text, ...notes].join(' '));
-  // 연구가 여는 이어지는 선택 이벤트 (P-MGT-20) — 연구하지 않은 판은 아무 일도 없다
+  // 연구가 여는 이어지는 선택 이벤트 (#213) — 연구하지 않은 판은 아무 일도 없다
   const next = def.followUp && isUnlocked(s, def.followUp.unlockKey) ? EVENT[def.followUp.eventId] : undefined;
   if (next) fire(s, next, rngFor(s.seed, s.month, `event:${next.id}`), report);
 }
 
-/** PRO-3 장인 전수 (P-MGT-20): 마스터 디스틸러가 12개월 안에 은퇴하고, 아직 묻지 않았으면 선택 이벤트를 띄운다 */
+/** PRO-3 장인 전수 (#213): 마스터 디스틸러가 12개월 안에 은퇴하고, 아직 묻지 않았으면 선택 이벤트를 띄운다 */
 export const ARTISAN_NOTICE_MONTHS = 12;
 function artisanTransferDue(s: GameState): boolean {
   if (!isUnlocked(s, 'event:artisan_retire=transfer')) return false;
@@ -336,7 +336,7 @@ export const MACRO_CATEGORIES: EventDef['category'][] = ['market', 'supply', 're
 export function runEvents(s: GameState, report: MonthReport, monthOfYear: number): void {
   for (const p of [...s.events.pending]) resolvePending(s, p.id, p.defaultChoice, report);
 
-  // 연구가 여는 조건부 선택 이벤트 (P-MGT-20) — 무작위 발생 판정과 상관없다. 연구하지 않은 판은 그대로
+  // 연구가 여는 조건부 선택 이벤트 (#213) — 무작위 발생 판정과 상관없다. 연구하지 않은 판은 그대로
   if (artisanTransferDue(s)) {
     s.events.lastFired.artisan_retire = s.month;
     fire(s, EVENT.artisan_retire!, rngFor(s.seed, s.month, 'event:artisan_retire'), report);

@@ -35,7 +35,7 @@ export type Effect =
   | { type: 'criticVerdict'; rave: number; pan: number; raveEffects: Effect[]; panEffects: Effect[]; mildEffects: Effect[] }
   /** 세무조사: 최근 3개월 주세 × rate 추징, 사무직 세무 스탯으로 감면 */
   | { type: 'taxAudit'; rate: number }
-  /** 인플루언서 반동(hypeBestSeller의 '— 반동' 보정치)을 share만큼 1에 가깝게 — BIZ-3 앰버서더 대응 (P-MGT-20) */
+  /** 인플루언서 반동(hypeBestSeller의 '— 반동' 보정치)을 share만큼 1에 가깝게 — BIZ-3 앰버서더 대응 (#213) */
   | { type: 'softenBacklash'; share: number };
 
 export type Requirement = 'activeContract' | 'filledCasks' | 'whiskyStock' | 'twoStaff' | 'still' | 'products' | 'highQualityProduct' | 'agedWhisky' | 'exportUS' | 'exportCN';
@@ -66,7 +66,7 @@ export interface EventDef {
   defaultChoice?: number;
   /** 이 방재 설비가 있으면 피해 없음 (테크트리 도입 전 대체) */
   defense?: string;
-  /** 이 이벤트가 일어난 뒤, 연구로 unlockKey가 열려 있으면 이어서 띄우는 선택 이벤트 (TRIGGERED_EVENTS의 id) — 연구 효과 '이벤트 선택지' (P-MGT-20) */
+  /** 이 이벤트가 일어난 뒤, 연구로 unlockKey가 열려 있으면 이어서 띄우는 선택 이벤트 (TRIGGERED_EVENTS의 id) — 연구 효과 '이벤트 선택지' (#213) */
   followUp?: { eventId: string; unlockKey: string };
 }
 
@@ -247,7 +247,7 @@ export const EVENTS: EventDef[] = [
 ];
 
 /**
- * 연구가 여는 선택 이벤트 (P-MGT-20, tech-tree §4 — 노드의 `event:` 해금 키). 무작위로 일어나지 않는다(EVENTS와 따로 둔다 —
+ * 연구가 여는 선택 이벤트 (#213, tech-tree §4 — 노드의 `event:` 해금 키). 무작위로 일어나지 않는다(EVENTS와 따로 둔다 —
  * 월 발생 판정·조기 경보·이벤트 수에 영향 없음). 조건이 맞으면 코드가 띄운다: 앞선 이벤트의 followUp, 또는 events.ts runEvents의 조건 확인.
  * 비용·효과 수치는 모두 [튜닝]
  */

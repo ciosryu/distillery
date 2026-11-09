@@ -93,7 +93,7 @@ export function handleDeparture(s: GameState, leaving: Staff, notes: string[]): 
   const master = masterDistiller(s);
   if (leaving.role !== 'distiller' || master?.id !== leaving.id) return;
   const heir = s.hr.staff.find((x) => x.apprenticeOf === leaving.id && s.month - x.hiredMonth >= APPRENTICE_MONTHS);
-  // 장인 전수 기록(PRO-3 선택지, P-MGT-20)이 살아 있으면 손실이 그 배수만큼 준다 — 없으면 1(옛 규칙 그대로)
+  // 장인 전수 기록(PRO-3 선택지, #213)이 살아 있으면 손실이 그 배수만큼 준다 — 없으면 1(옛 규칙 그대로)
   const lossMul = mod(s, 'house_style_loss');
   if (heir) {
     heir.apprenticeOf = undefined;
