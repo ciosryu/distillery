@@ -762,6 +762,8 @@ export interface GoalVerdict {
 /** 진행 (S-9, 스키마 v10) — 마일스톤·목표 판정·게임이 끝난 이유 */
 export interface ProgressSlice {
   milestones: Milestone[];
+  /** 중반 목표 결과 (content/scenarios.ts midGoals) — 이뤘거나(done) 기한이 지났다(missed). 아직이면 없다 */
+  midGoals?: { id: string; month: number; result: 'done' | 'missed' }[];
   verdict?: GoalVerdict;
   ending?: { reason: GameEnding; month: number };
 }
@@ -825,6 +827,8 @@ export interface ScenarioState {
   /** 시작 자기자본 — 순자산 목표의 기준 (#141) */
   equity: number;
   goal: { months: number; netWorthMultiple: number; flagshipMinMonths: number };
+  /** 이미 연 단계 id (content/scenarios.ts stages) — 옛 세이브에는 없다 */
+  stagesDone?: string[];
 }
 
 export interface GameState {

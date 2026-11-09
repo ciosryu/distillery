@@ -45,6 +45,32 @@ export interface ScenarioDef {
   };
   tiers: ScenarioTierDef[];
   defaultTier: ScenarioTierDef['id'];
+  /** 판이 진행되면 차례로 여는 기능 (#215, 4차 MVP 플레이테스트: 중반 이후 쉽고 지루하다) */
+  stages?: ScenarioStage[];
+  /** 중반 목표 — 기한 안에 이루면 보상 (#216) */
+  midGoals?: MidGoalDef[];
+}
+
+/** 단계 해금 — 그 달이 되면 잠금 키를 푼다. 진행 중인 판에도 적용된다(정의는 콘텐츠에서 읽는다) */
+export interface ScenarioStage {
+  id: string;
+  /** 이 달(경과 개월)부터 */
+  month: number;
+  /** 풀 잠금 키 */
+  unlock: string[];
+  title: string;
+  /** 열릴 때 안내 */
+  text: string;
+}
+
+/** 중반 목표 — 판정은 progress.ts의 midGoalMet(id)가 한다 */
+export interface MidGoalDef {
+  id: 'aged3_sold' | 'commission_done' | 'export_open' | 'revenue_8';
+  /** 이 달(경과 개월) 말까지 */
+  byMonth: number;
+  title: string;
+  /** 보상 — 하우스 브랜드 인지도 +(0~1) */
+  rewardAwareness: number;
 }
 
 const ALL_KINDS: SpiritKind[] = ['soju', 'gin', 'malt', 'grain', 'baijiu'];
@@ -71,6 +97,23 @@ export const MVP_KR: ScenarioDef = {
     'facility:pot_onion_1000', 'facility:pot_lantern_1000', 'facility:pot_worm_1000', 'facility:hybrid_600', 'facility:pot_large_5000', 'facility:column_2',
   ],
   goal: { months: 180, netWorthMultiple: 3, flagshipMinMonths: 144 },
+  // 중반 콘텐츠 (4차 MVP 플레이테스트 2026-11-09: 6년 차 흑자 뒤 "너무 쉽고 지루하다" — 오너 승인 1·2·3·4)
+  stages: [
+    { id: 'y5_market', month: 60, title: '6년 차 — 시장이 움직이고, 의뢰가 들어온다',
+      unlock: ['system:events', 'system:commissions', 'action:delegateBlend', 'action:labAnalyze', 'facility:facility_storm', 'facility:facility_snow', 'facility:facility_heating', 'facility:facility_dehumid'],
+      text: '랜덤 이벤트(재해·원재료 값·트렌드·평론가 방문)가 시작되고, 블렌딩 테이블 탭에서 평론가·바이어의 블렌딩 의뢰를 받을 수 있다. 재해에 대비한 방재 설비(배수·제설·난방·제습)도 지을 수 있다' },
+    { id: 'y7_export', month: 84, title: '8년 차 — 수출 문이 열린다',
+      unlock: ['system:exports', 'action:acceptExportOffer', 'action:setExportPrice', 'action:closeExport'],
+      text: '수출 탭에서 해외 수입사의 제안을 받아 시장에 진출할 수 있다. 인지도가 낮은 시장은 마케팅 분담이 크다' },
+    // 10년 차 두 번째 브랜드는 뺐다 ([결정 P-MKT-9], 오너 승인 2026-11-09): 세컨드 브랜드의 장점(럭셔리·브랜드별 수요 나눔)이
+    // 아직 없어 열면 손해만 보는 선택지다 — 4차 판 세이브 36개월 비교로 어떻게 나눠도 현금 −1.5억~−2.6억. 장점 설계는 단계 T 안건
+  ],
+  midGoals: [
+    { id: 'aged3_sold', byMonth: 72, title: '3년 숙성 위스키를 판다', rewardAwareness: 0.03 },
+    { id: 'commission_done', byMonth: 108, title: '블렌딩 의뢰 1건 성사', rewardAwareness: 0.03 },
+    { id: 'export_open', byMonth: 132, title: '수출 시장 1곳 진출', rewardAwareness: 0.03 },
+    { id: 'revenue_8', byMonth: 156, title: '연 매출 8억(최근 12개월)', rewardAwareness: 0.03 },
+  ],
   defaultTier: 'micro',
   tiers: [
     {
