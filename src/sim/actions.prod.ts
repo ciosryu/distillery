@@ -98,7 +98,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (p.stockBottles > 0) return fail(prev, `재고가 ${p.stockBottles.toLocaleString()}병 남아 있어 지울 수 없습니다 — 다 판 뒤에 지운다`);
     s.commerce.productArchive.push({ id: p.id, name: p.name, category: p.category, createdMonth: p.createdMonth, lastMonthSold: p.lastMonthSold, totalSold: p.totalSold, quality: p.quality, price: p.price });
     s.commerce.products.splice(i, 1);
-    return { state: s, message: `「${p.name}」을 판매 목록에서 지웠습니다 (판매 기록은 남는다)` };
+    return { state: s, message: `판매 목록에서 지움 — 「${p.name}」 (판매 기록은 남는다)` };
   },
   unfillCask: (s, prev, a) => {
     const ci = s.inventory.casks.findIndex((c) => c.id === a.caskId);
