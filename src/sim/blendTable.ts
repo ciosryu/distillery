@@ -2,8 +2,9 @@ import { HEX_AXES, HEX_LABEL, hexDistance, hexOf, matchScore, mixHex, perceivedH
 import { clamp } from './flavor';
 import { RARE_EXTRACT_BOOST } from './maturation';
 import { rngFor, type Rng } from './rng';
-import type { AxisId, BlendCommission, Cask, GameState, Hex, HexAxis, MonthReport, ProductCategory, SampleRecord, SpiritKind, Staff, TrendShift } from './types';
+import type { AutoSampleGroup, AxisId, BlendCommission, Cask, GameState, Hex, HexAxis, MonthReport, ProductCategory, SampleRecord, SpiritKind, Staff, TrendShift } from './types';
 import { CATEGORY } from './content/categories';
+import { regionOf } from './content/regions';
 import type { BlendComponent, BottleOptions } from './blending';
 import { nid, staffOf } from './util';
 
@@ -227,11 +228,41 @@ export const AUTO_SAMPLE_EXPENSE = '자동 샘플';
 export const AUTO_SAMPLE_MIN_AGE = 6;
 
 /** 이번 달에 자동 샘플이 뜰 통 — 그 달에 직접 뜬 기록이 있으면 빈 목록. 화면 안내도 같은 목록을 쓴다 */
+/** 자동 샘플 묶음 이름 (화면) */
+export const AUTO_SAMPLE_GROUP_LABEL: Record<AutoSampleGroup, string> = { whisky: '위스키 표기 가능 통', spirit: '숙성 중 스피릿(몰트·그레인)', soju: '소주·진·고량주(옹기 등)' };
+export const AUTO_SAMPLE_GROUPS = ['whisky', 'spirit', 'soju'] as const satisfies readonly AutoSampleGroup[];
+
+/** 이 통의 자동 샘플 묶음 — 몰트·그레인은 법정 숙성(오크)을 채웠으면 위스키, 아니면 숙성 중 스피릿. 나머지 주종은 소주 묶음 */
+export function autoSampleGroupOf(s: GameState, c: Cask): AutoSampleGroup | null {
+  const l = c.contents;
+  if (!l) return null;
+  if (l.kind === 'malt' || l.kind === 'grain') {
+    const rules = regionOf(s).whisky;
+    const min = Math.max(rules.minMonths, rules.requiresOak ? 1 : 0); // blending.whiskyMinMonths와 같은 식 (모듈 순환 때문에 여기서 계산)
+    return l.oakMonths >= min ? 'whisky' : 'spirit';
+  }
+  return 'soju';
+}
+
+/** 통의 숙성 개월 — 오크·옹기 중 긴 쪽 */
+const caskAge = (c: Cask) => Math.max(c.contents?.oakMonths ?? 0, c.contents?.restMonths ?? 0);
+
 export function autoSamplePicks(s: GameState, known: Map<string, KnownRead> = knownReads(s), affordable = Infinity): Cask[] {
   if (!s.scenario) return [];
+  const cfg = s.inventory.autoSample ?? {};
+  if (cfg.off) return [];
   if (s.inventory.casks.some((c) => c.contents && c.sampleLog?.at(-1)?.month === s.month)) return [];
-  // 매 턴 여력만큼 오래 안 뜬 통부터 (#201, 3차 MVP 플레이테스트 오너 요청 "샘플은 턴마다 무조건 확인") — 통당 횟수 제한 없음
-  return stalestCasks(s, Math.max(0, Math.min(samplingCapacity(s), affordable)), known, autoSampleable);
+  // 매 턴 여력만큼 오래 안 뜬 통부터 (#201) — 통당 횟수 제한 없음. 설정(P-PROD-24)으로 묶음·최소 숙성·다시 뜨는 간격·월 최대 통 수를 좁힌다
+  const groups = cfg.groups?.length ? new Set(cfg.groups) : null;
+  const ok = (c: Cask): boolean => {
+    if (!autoSampleable(c)) return false;
+    if (groups) { const g = autoSampleGroupOf(s, c); if (!g || !groups.has(g)) return false; }
+    if (cfg.minAgeMonths && caskAge(c) < cfg.minAgeMonths) return false;
+    if (cfg.minGapMonths) { const own = c.sampleLog?.at(-1); if (own && s.month - own.month < cfg.minGapMonths) return false; }
+    return true;
+  };
+  const n = Math.min(samplingCapacity(s), affordable, cfg.maxPerMonth ?? Infinity);
+  return stalestCasks(s, Math.max(0, n), known, ok);
 }
 
 /**
@@ -250,7 +281,7 @@ export function autoSample(s: GameState, report: MonthReport, qualityOf: (lot: N
   const cost = picks.length * SAMPLING.cost;
   s.finance.cash -= cost;
   report.expenses[AUTO_SAMPLE_EXPENSE] = (report.expenses[AUTO_SAMPLE_EXPENSE] ?? 0) + cost;
-  report.notes.push(`자동 샘플 ${picks.length}통 (${cost.toLocaleString()}원) — 이번 달 직접 뜬 샘플이 없어 오래 안 뜬 통부터 떴다(통당 횟수는 쓰지 않음): ${picks.map((c) => c.id).join(', ')}${found.length ? ` · 레어 캐스크 발견: ${found.join(', ')}` : ''}`);
+  report.notes.push(`자동 샘플 ${picks.length}통 (${cost.toLocaleString()}원) — 이번 달 직접 뜬 샘플이 없어 설정에 맞는 통 중 오래 안 뜬 통부터 떴다(통당 횟수는 쓰지 않음): ${picks.map((c) => c.id).join(', ')}${found.length ? ` · 레어 캐스크 발견: ${found.join(', ')}` : ''}`);
   return picks.length;
 }
 
