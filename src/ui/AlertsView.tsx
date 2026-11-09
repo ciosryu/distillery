@@ -1,6 +1,7 @@
 // 위기 경고·이번 달 할 일·지난달 현금 흐름·대출 상환 예정 — 화면 (코어 UI, 1차 MVP 플레이테스트 대응 ①~④, 계산은 alerts.ts)
 // 파일 이름이 alerts.ts와 대소문자만 다르면 대소문자를 가리지 않는 파일 시스템(macOS·Windows 기본)에서 './Alerts'가 alerts.ts로 풀릴 수 있어 AlertsView로 둔다
-import { BANKRUPT_AFTER_MONTHS, monthLabel } from '../sim';
+import { BANKRUPT_AFTER_MONTHS, midGoalsOf, monthLabel } from '../sim';
+import { SCENARIOS } from '../sim/content/scenarios';
 import { productionValue } from '../sim/economics';
 import { loanRoomTotal, monthlyFixedCost } from '../sim/loans';
 import { won } from './format';
@@ -170,6 +171,42 @@ export function CashFlowLine() {
           {' '}<button className="underline" onClick={() => go({ tab: 'finance' })}>재무</button>
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * 15년 여정 — 단계 해금(언제 무엇이 열리나)과 중반 목표(기한·결과·보상) 한 줄씩 (P-ARCH-MID-1·P-META-MID-1, 4차 MVP 플레이테스트:
+ * 6년 차 흑자 뒤 "너무 쉽고 지루하다"). 증류소 탭 현금 카드 위
+ */
+export function JourneyStrip() {
+  const s = useGame((g) => g.state);
+  const def = s.scenario ? SCENARIOS[s.scenario.id] : undefined;
+  if (!def || (!def.stages?.length && !def.midGoals?.length)) return null;
+  const done = new Set(s.scenario!.stagesDone ?? []);
+  const res = new Map((s.progress.midGoals ?? []).map((g) => [g.id, g]));
+  const ym = (m: number) => `${Math.floor(m / 12) + 1}년 차`;
+  return (
+    <div className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs dark:border-stone-800 dark:bg-stone-900">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="font-medium text-stone-700 dark:text-stone-200">15년 여정</span>
+        {(def.stages ?? []).map((st) => (
+          <span key={st.id} title={st.text} className={done.has(st.id) ? 'text-emerald-700 dark:text-emerald-400' : 'text-stone-500'}>
+            {done.has(st.id) ? '✓' : '🔒'} {st.title.split(' — ')[1] ?? st.title} <span className="opacity-70">({done.has(st.id) ? '열림' : s.month >= st.month ? '다음 턴에 열림' : `${ym(st.month)} · ${st.month - s.month}개월 뒤`})</span>
+          </span>
+        ))}
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="font-medium text-stone-700 dark:text-stone-200">중반 목표</span>
+        {midGoalsOf(s).map((g) => {
+          const r = res.get(g.id);
+          return (
+            <span key={g.id} title={`보상: 인지도 +${Math.round(g.rewardAwareness * 100)}%p`} className={r?.result === 'done' ? 'text-emerald-700 dark:text-emerald-400' : r?.result === 'missed' ? 'text-stone-400 line-through' : 'text-amber-800 dark:text-amber-300'}>
+              {r?.result === 'done' ? '✓' : r?.result === 'missed' ? '✗' : '◎'} {g.title} <span className="opacity-70 no-underline">({r?.result === 'done' ? `${monthLabel(s.startYear, r.month)} 달성` : r?.result === 'missed' ? '놓침' : g.byMonth - s.month > 0 ? `${ym(g.byMonth - 1)}까지 · ${g.byMonth - s.month}개월 남음` : '이번 턴에 판정'})</span>
+            </span>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 // 1차 MVP 판: 117개월째 파산, 대출 누적 20억 실행(파산 때 잔액 약 7.2억) — 현금 부족을 몰랐고, 돈이 어디로 나가는지, 언제 상환이 몰리는지 보이지 않았다 (mvp.md §7.4)
 
 import { regionOf } from '../sim/content/regions';
+import { SCENARIOS } from '../sim/content/scenarios';
 import { calendar, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
@@ -183,6 +184,13 @@ const todoRank = (id: string) => { const i = TODO_ORDER.indexOf(id); return i < 
  */
 export function monthTodos(s: GameState): Todo[] {
   const out: Todo[] = [];
+  // 새로 열린 기능 (P-ARCH-MID-1) — 연 뒤 3개월 동안 할 일 맨 위에 둔다
+  const def = s.scenario ? SCENARIOS[s.scenario.id] : undefined;
+  for (const st of def?.stages ?? []) {
+    if (!s.scenario?.stagesDone?.includes(st.id) || s.month - st.month >= 3) continue;
+    const tab = st.unlock.includes('system:commissions') ? 'blendlab' : st.unlock.includes('system:exports') ? 'exports' : 'sales';
+    out.push({ id: `stage-${st.id}`, level: 'warn', text: `새로 열림 — ${st.title}. ${st.text}`, action: tab === 'blendlab' ? '블렌딩 테이블' : tab === 'exports' ? '수출' : '판매', target: { tab } });
+  }
   const min = whiskyMinMonths(regionOf(s).whisky); // 병입·표기와 같은 식 (blending.ts)
   // 비지터 센터가 없다 — 3차 MVP 판은 설비가 접힌 칸 안에 있어 "못 찾았다"(오너). 첫해 가장 큰 수입원(월 약 700만, 사람형 봇 실험)이라 할 일에 올린다
   const visitor = EQUIPMENT.visitor_basic;
