@@ -6,7 +6,7 @@ import { loanRoomTotal, monthlyFixedCost } from '../sim/loans';
 import { won } from './format';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
-import { cashAlert, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, type TodoTarget } from './alerts';
+import { cashAlert, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, spotSaleStake, type TodoTarget } from './alerts';
 import { Button } from './kit';
 
 /** 증류소 탭의 접힌 블록을 여는 신호 — detail = 블록 id(= 스크롤 앵커). MvpHome의 useFold가 듣는다 (#182) */
@@ -50,12 +50,37 @@ export function CashBanner() {
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
         <span className="opacity-80">지금 할 수 있는 일:</span>
         <Button small variant={danger ? 'primary' : 'secondary'} onClick={() => go({ tab: 'finance' })}>{room > 0 ? <>대출·급전 받기 — 아직 {fmtWon(room)}</> : '대출·급전 — 남은 한도 없음'}</Button>
-        <Button small onClick={() => go({ tab: 'b2b' })}>원액 현물 판매</Button>
+        {/* 원액 현물 판매는 미래 위스키를 판다 — 대출 다음, 대가를 바로 아래 줄에 (P-ARCH-25) */}
+        <Button small onClick={() => go({ tab: 'b2b' })}>원액 현물 판매{s.scenario && spotSaleStake(s) ? ' ↓ 대가 확인' : ''}</Button>
         <Button small onClick={() => go({ tab: 'sales' })}>값 낮춰 재고 팔기</Button>
         {s.scenario && <Button small variant="ghost" onClick={() => go({ anchor: 'mvp-fixed' })}>매달 나가는 돈 줄이기</Button>}
         <Button small variant="ghost" onClick={() => go({ tab: 'dashboard' })}>월 결산표</Button>
       </div>
+      <SpotSaleTruth s={s} />
       <ProductionTruth s={s} />
+    </div>
+  );
+}
+
+/**
+ * 원액 현물 판매의 대가 (P-ARCH-25) — 3차 MVP 판은 이 경고를 보고 "패닉에" 몰트 원액을 8번(1.58억) 팔았고, 48개월 뒤 몰트는 거의 통에 들어가지 못했다.
+ * 사람형 실험: 3차 판의 행동 중 원액 현물 판매 하나만 빼면 파산 10/10 → 3/10 (mvp.md §7.9). 2차의 [생산 지시 줄이기]와 같은 모양의 함정이라
+ * 버튼은 두되, 누르기 전에 무엇을 파는지 돈으로 보인다. 숫자는 B2B 견적·공급 전망(#178)·생산 가치(#185)를 그대로 쓴다(alerts.ts spotSaleStake)
+ */
+function SpotSaleTruth({ s }: { s: Parameters<typeof spotSaleStake>[0] }) {
+  if (!s.scenario) return null;
+  const v = spotSaleStake(s);
+  if (!v) return null;
+  const later = (b: number, r: number | null) => <>위스키 약 <b>{b.toLocaleString()}병</b>{r != null && <>(≈ 매출 <b>{won(r)}</b>)</>}</>;
+  return (
+    <div className="mt-2 rounded border border-current/20 px-2 py-1 text-xs opacity-90">
+      <div className="font-medium">원액 현물 판매는 앞으로 팔 위스키를 지금 파는 것이다 — 대출로 버틸 수 있으면 대출이 먼저다</div>
+      <ul className="mt-0.5 list-inside list-disc">
+        {v.tank && <li>탱크 뉴메이크 {v.tank.count}로트: 지금 팔면 <b>{won(v.tank.spotNow)}</b> · 통에 넣어 두면 {v.minMonths}개월 뒤 {later(v.tank.bottles, v.tank.revenue)}</li>}
+        {v.casks && <li>숙성 중인 통 {v.casks.count}통: 지금 팔면 <b>{won(v.casks.spotNow)}</b> · 그대로 두면 {v.minMonths}개월 안에 {later(v.casks.bottles, v.casks.revenue)} — 이미 들인 숙성 기간까지 판다</li>}
+        {v.ready && <li>숙성을 채운 통 {v.ready.count}통(현물가 {won(v.ready.spotNow)})은 이미 위스키다 — 병입해 팔 수 있다</li>}
+      </ul>
+      <div className="mt-0.5 opacity-80">매출은 1년 숙성 권장 출고가 기준 추정(증발 연 5%) · 판매 속도를 넘는 양은 바로 팔리지 않는다</div>
     </div>
   );
 }
@@ -73,7 +98,7 @@ function ProductionTruth({ s }: { s: Parameters<typeof productionValue>[0] }) {
     <p className="mt-2 text-xs opacity-90">
       참고: 지금 생산비는 월 <b>{won(v.costPerMonth)}</b>뿐이고 고정비 월 <b>{won(fixed)}</b>은 생산과 상관없이 나간다 — 생산을 멈춰도 이만큼만 아낀다.
       {v.whiskyBottlesPerYear > 0 && v.pricePerBottle != null && <> 대신 {v.minMonths}개월 뒤부터 해마다 위스키 약 {v.whiskyBottlesPerYear.toLocaleString()}병(≈ 매출 {won(v.whiskyBottlesPerYear * v.pricePerBottle)}, 추정)이 사라진다.</>}
-      {' '}현금은 대출·급전, 원액 현물 판매, 가격에서 만든다 — 대출 일부 상환은 월 납부를 줄이지만 지금 현금을 더 줄인다.
+      {' '}급한 현금은 먼저 대출·급전으로 만든다 — 대출 일부 상환은 월 납부를 줄이지만 지금 현금을 더 줄인다.
     </p>
   );
 }
