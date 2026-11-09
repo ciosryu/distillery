@@ -3,8 +3,9 @@
 // 1차 MVP 판: 117개월째 파산, 대출 누적 20억 실행(파산 때 잔액 약 7.2억) — 현금 부족을 몰랐고, 돈이 어디로 나가는지, 언제 상환이 몰리는지 보이지 않았다 (mvp.md §7.4)
 
 import { regionOf } from '../sim/content/regions';
-import { BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, selfFundedCash, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport } from '../sim';
+import { BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
+import { productionValue, STANDARD_BOTTLE } from '../sim/economics';
 
 // ───────────── ① 파산 카운트다운 ─────────────
 
@@ -113,6 +114,45 @@ export const SAMPLE_STALE_MONTHS = AUTO_SAMPLE_MIN_AGE;
 export const staleSampleCasks = (s: GameState) =>
   s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.oakMonths >= SAMPLE_STALE_MONTHS && s.month - (c.sampleLog?.at(-1)?.month ?? -Infinity) >= SAMPLE_STALE_MONTHS);
 
+/**
+ * 원액 현물 판매가 파는 것 (P-ARCH-25, 3차 MVP 플레이테스트 — "파산 경고를 보고 패닉에 원액을 팔았다", mvp.md §7.9).
+ * 지금 우리 몰트·그레인 원액(탱크 + 통, 위탁 통 제외)을 모두 현물로 팔면 받는 돈과, 숙성을 채워 위스키로 병입하면 생길 병 수·매출(추정).
+ * 병 수 = LPA × 남은 숙성 동안 증발(연 5% 근사, productionValue와 같은 가정) ÷ 700ml·40% — 매출은 1년 숙성 몰트 권장 출고가로 센다(그레인도 같은 값, 추정).
+ * 게임 규칙을 바꾸지 않는다 — 현물 견적(spotQuote)은 B2B 화면과 같은 식이고 참값 품질이다(사는 쪽이 맛을 본다). 원액이 없으면 null
+ */
+export function spiritsAtStake(s: GameState): { lpa: number; spotNow: number; bottles: number; revenue: number | null } | null {
+  const min = whiskyMinMonths(regionOf(s).whisky);
+  const bottleLPA = (STANDARD_BOTTLE.whisky.bottleMl / 1000) * STANDARD_BOTTLE.whisky.abv;
+  const items = [
+    ...s.inventory.lots.filter((l) => isBulkKind(l) && !l.sourced).map((l) => ({ lot: l, cask: undefined })),
+    ...s.inventory.casks.filter((c) => c.contents && !c.owner && isBulkKind(c.contents) && !c.contents.sourced).map((c) => ({ lot: c.contents!, cask: c })),
+  ];
+  if (!items.length) return null;
+  let lpa = 0, spotNow = 0, bottles = 0;
+  for (const { lot, cask } of items) {
+    const l = lot.volumeL * lot.abv;
+    lpa += l;
+    spotNow += spotQuote(s, lot, lot.volumeL, cask);
+    bottles += (l * Math.pow(0.95, Math.max(0, min - lot.oakMonths) / 12)) / bottleLPA;
+  }
+  if (lpa < 1) return null;
+  const price = s.scenario ? productionValue(s).pricePerBottle : null;
+  return { lpa, spotNow, bottles: Math.round(bottles), revenue: price != null ? Math.round(bottles) * price : null };
+}
+
+/** 몰트·그레인 생산 지시가 0으로 이어진 개월 수 (월 결산의 실제 생산 기준). 지금 지시가 있으면 0 */
+export function maltStoppedMonths(s: GameState): number {
+  const kindOf = new Map(s.production.recipes.map((r) => [r.id, r.kind]));
+  const now = s.production.orders.some((o) => o.batchesPerMonth > 0 && (kindOf.get(o.recipeId) === 'malt' || kindOf.get(o.recipeId) === 'grain'));
+  if (now) return 0;
+  let n = 0;
+  for (const r of [...s.history.reports].reverse()) {
+    if (r.production.some((b) => b.lpa > 0 && ['malt', 'grain'].includes(kindOf.get((b as { recipeId?: string }).recipeId ?? '') ?? ''))) break;
+    n++;
+  }
+  return n;
+}
+
 /** 재고가 이보다 적으면 "병입할 때" — 화면 안내 기준 */
 export const RESTOCK_MONTHS = 2;
 
@@ -125,6 +165,12 @@ export function monthTodos(s: GameState): Todo[] {
   const min = whiskyMinMonths(regionOf(s).whisky); // 병입·표기와 같은 식 (blending.ts)
   // 대출 거치가 3개월 안에 끝나 납부가 뛴다
   const jump = paymentJump(loanSchedule(s, 4));
+  // 몰트·그레인 생산이 멈춰 있다 (P-ARCH-25 — 3차 판 "잠깐 멈췄다가 다시 켜는 걸 잊었다"). 시나리오 게임에서 위스키 레시피가 있을 때만
+  if (s.scenario && s.month > 0 && s.production.recipes.some((r) => r.kind === 'malt' || r.kind === 'grain')) {
+    const hasMaltOrder = s.production.orders.some((o) => o.batchesPerMonth > 0 && s.production.recipes.some((r) => r.id === o.recipeId && (r.kind === 'malt' || r.kind === 'grain')));
+    const stopped = hasMaltOrder ? 0 : maltStoppedMonths(s);
+    if (!hasMaltOrder) out.push({ id: 'malt-stopped', level: 'warn', text: `몰트 생산이 멈춰 있다${stopped > 0 ? ` (${stopped}개월째)` : ''} — 멈춘 달만큼 ${min}개월 뒤에 새로 팔 위스키가 빈다. 생산비는 고정비보다 훨씬 작다`, action: '생산 지시', target: { anchor: 'mvp-orders' } });
+  }
   if (jump) out.push({ id: 'loan-jump', level: 'warn', text: `${jump.month - s.month === 0 ? '이번 달' : `${jump.month - s.month}개월 뒤`} 대출 거치가 끝나 월 납부가 ${fmtWon(jump.from)} → ${fmtWon(jump.to)}로 뛴다`, action: '대출 보기', target: { tab: 'finance' } });
   // 탱크 몰트·그레인 통입 대기 — 통에 넣어야 숙성이 시작된다
   const tankMalt = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced).reduce((t, l) => t + l.volumeL, 0);

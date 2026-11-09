@@ -199,7 +199,7 @@ function Headline() {
     <Card title="현금과 순자산 — 지금 정리하면 받을 수 있는 돈">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Stat label="현금" value={won(s.finance.cash)} tone={s.finance.cash < 0 ? 'bad' : undefined}
-          hint={run.months != null ? `이 속도면 약 ${run.months}개월 버팀` : run.avg != null ? '자체 현금 흐름 흑자' : '기록 없음'} />
+          hint={run.months != null ? (run.months ? `이 속도면 약 ${run.months}개월 버팀` : '이 속도면 이번 달 말 바닥') : run.avg != null ? '자체 현금 흐름 흑자' : '기록 없음'} />
         <Stat label="순자산" value={won(nw)} tone={target != null && nw >= target ? 'good' : undefined}
           hint={target != null ? `목표 ${won(target)}의 ${pct(nw / target, 0)}` : '현금 − 대출 + 재고 평가액'} />
         <Stat label="재고 평가액" value={won(inv)} hint="원액 현물가 + 제품 재고 원가 (소주 원액 0)" />

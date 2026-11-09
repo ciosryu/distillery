@@ -6,7 +6,7 @@ import { loanRoomTotal, monthlyFixedCost } from '../sim/loans';
 import { won } from './format';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
-import { cashAlert, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, type TodoTarget } from './alerts';
+import { cashAlert, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, spiritsAtStake, type TodoTarget } from './alerts';
 import { Button } from './kit';
 
 /** 증류소 탭의 접힌 블록을 여는 신호 — detail = 블록 id(= 스크롤 앵커). MvpHome의 useFold가 듣는다 (#182) */
@@ -43,19 +43,21 @@ export function CashBanner() {
     ? <>현금 부족 <b>{a.negativeMonths}개월째</b> — {a.monthEndsLeft === 1 ? <b>이번 달 말에도 현금이 마이너스면 파산합니다</b> : <>월말 현금이 <b>{a.monthEndsLeft}번 더</b> 마이너스면 파산합니다</>}</>
     : a.kind === 'belowZeroNow'
       ? <>지금 현금이 <b>마이너스</b>입니다 — 이번 달 말까지 메우지 못하면 현금 부족 1개월째 (월말 {BANKRUPT_AFTER_MONTHS}번 연속이면 파산)</>
-      : <>이 속도면 <b>약 {a.runwayMonths}개월 뒤</b> 현금이 바닥납니다 — 그 뒤 월말 {BANKRUPT_AFTER_MONTHS}번 연속 마이너스면 파산</>;
+      : <>이 속도면 {a.runwayMonths ? <b>약 {a.runwayMonths}개월 뒤</b> : <b>이번 달 말</b>} 현금이 바닥납니다 — 그 뒤 월말 {BANKRUPT_AFTER_MONTHS}번 연속 마이너스면 파산</>; /* 0개월 = 한 달 치도 안 남음 ('약 0개월 뒤'로 보였다) */
   return (
     <div role="alert" className={`mb-4 rounded-lg border p-3 text-sm ${box}`}>
       <div>{danger ? '🚨 ' : '⚠ '}{head}{a.avgSelfFunded != null && a.avgSelfFunded < 0 && <span className="opacity-80"> · 최근 3개월 자체 현금 흐름 월 {fmtWon(a.avgSelfFunded)}</span>}</div>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
         <span className="opacity-80">지금 할 수 있는 일:</span>
         <Button small variant={danger ? 'primary' : 'secondary'} onClick={() => go({ tab: 'finance' })}>{room > 0 ? <>대출·급전 받기 — 아직 {fmtWon(room)}</> : '대출·급전 — 남은 한도 없음'}</Button>
-        <Button small onClick={() => go({ tab: 'b2b' })}>원액 현물 판매</Button>
-        <Button small onClick={() => go({ tab: 'sales' })}>값 낮춰 재고 팔기</Button>
-        {s.scenario && <Button small variant="ghost" onClick={() => go({ anchor: 'mvp-fixed' })}>매달 나가는 돈 줄이기</Button>}
+        {s.scenario && <Button small onClick={() => go({ anchor: 'mvp-fixed' })}>매달 나가는 돈 줄이기</Button>}
+        <Button small onClick={() => go({ tab: 'sales' })}>재고 팔기</Button>
+        {/* 원액 현물 판매는 미래 위스키를 판다 — 맨 뒤, 대가를 아래 줄에 (P-ARCH-25, 3차 판 "패닉에 원액을 팔았다") */}
+        <Button small variant="ghost" onClick={() => go({ tab: 'b2b' })}>원액 현물 판매</Button>
         <Button small variant="ghost" onClick={() => go({ tab: 'dashboard' })}>월 결산표</Button>
       </div>
       <ProductionTruth s={s} />
+      <SpotSaleTruth s={s} />
     </div>
   );
 }
@@ -73,7 +75,22 @@ function ProductionTruth({ s }: { s: Parameters<typeof productionValue>[0] }) {
     <p className="mt-2 text-xs opacity-90">
       참고: 지금 생산비는 월 <b>{won(v.costPerMonth)}</b>뿐이고 고정비 월 <b>{won(fixed)}</b>은 생산과 상관없이 나간다 — 생산을 멈춰도 이만큼만 아낀다.
       {v.whiskyBottlesPerYear > 0 && v.pricePerBottle != null && <> 대신 {v.minMonths}개월 뒤부터 해마다 위스키 약 {v.whiskyBottlesPerYear.toLocaleString()}병(≈ 매출 {won(v.whiskyBottlesPerYear * v.pricePerBottle)}, 추정)이 사라진다.</>}
-      {' '}현금은 대출·급전, 원액 현물 판매, 가격에서 만든다 — 대출 일부 상환은 월 납부를 줄이지만 지금 현금을 더 줄인다.
+      {' '}급한 현금은 먼저 대출·급전으로 만든다 — 대출 일부 상환은 월 납부를 줄이지만 지금 현금을 더 줄인다.
+    </p>
+  );
+}
+
+/**
+ * 원액 현물 판매의 대가 (P-ARCH-25) — 3차 MVP 판은 이 경고를 보고 "패닉에" 몰트 원액을 8번(1.58억) 팔았고, 48개월 뒤 몰트는 거의 통에 들어가지 못했다.
+ * 사람형 실험: 3차 판의 행동 중 원액 현물 판매 하나만 빼면 파산 10/10 → 3/10 (mvp.md §7.9). 버튼은 두되, 파는 것이 무엇인지 돈으로 보인다
+ */
+function SpotSaleTruth({ s }: { s: Parameters<typeof spiritsAtStake>[0] }) {
+  if (!s.scenario) return null;
+  const v = spiritsAtStake(s);
+  if (!v || v.bottles < 1) return null;
+  return (
+    <p className="mt-1 text-xs opacity-90">
+      원액 현물 판매: 지금 몰트·그레인 원액(탱크·통)을 모두 팔면 약 <b>{won(v.spotNow)}</b>을 바로 받는다. 대신 숙성을 채워 병입하면 위스키 약 <b>{v.bottles.toLocaleString()}병</b>{v.revenue != null && <>(≈ 매출 <b>{won(v.revenue)}</b>, 추정)</>}이 될 원액이다 — 팔면 그 위스키가 사라진다. 대출로 버틸 수 없을 때, 필요한 만큼만.
     </p>
   );
 }

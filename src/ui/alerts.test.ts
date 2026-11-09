@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonth, advanceMonths, applyAction, BANKRUPT_AFTER_MONTHS, newScenarioGame, type GameState } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
-import { cashAlert, runway, lastMonthFlow, loanSchedule, monthTodos, paymentJump, SAMPLE_STALE_MONTHS } from './alerts';
+import { cashAlert, runway, lastMonthFlow, loanSchedule, maltStoppedMonths, monthTodos, paymentJump, SAMPLE_STALE_MONTHS, spiritsAtStake } from './alerts';
 
 // 1차 MVP 플레이테스트 대응 ①~④ — 화면용 계산이 시뮬레이션과 같은 값을 내는지 (코어 UI)
 const mvp = (loanAmount = 0) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount, seed: 1 });
@@ -104,5 +104,34 @@ describe('런웨이 — 한 번 나가는 설비 구매는 "이 속도"에 넣�
     expect(s.history.reports.at(-1)!.offTurn?.equipment).toBeLessThan(0);
     expect(runway(s).months!).toBeGreaterThan(6);
     expect(cashAlert(s)).toBeNull();
+  });
+});
+
+describe('3차 MVP 플레이테스트 대응 (P-ARCH-25) — 멈춘 생산 · 원액 현물 판매의 대가', () => {
+  const recipeOf = (s: GameState, kind: string) => s.production.recipes.find((r) => r.kind === kind)!.id;
+  it('몰트 생산 지시가 0이면 "몰트 생산이 멈춰 있다 (n개월째)"를 할 일 맨 위에 띄우고, 다시 켜면 사라진다', () => {
+    let s: GameState = mvp();
+    s = applyAction(s, { type: 'setOrder', recipeId: recipeOf(s, 'malt'), batchesPerMonth: 2 }).state;
+    s = advanceMonths(s, 2);
+    expect(monthTodos(s).some((t) => t.id === 'malt-stopped')).toBe(false);
+    s = applyAction(s, { type: 'setOrder', recipeId: recipeOf(s, 'malt'), batchesPerMonth: 0 }).state;
+    expect(monthTodos(s)[0]).toMatchObject({ id: 'malt-stopped', level: 'warn', target: { anchor: 'mvp-orders' } });
+    s = advanceMonths(s, 3);
+    expect(maltStoppedMonths(s)).toBe(3);
+    expect(monthTodos(s).find((t) => t.id === 'malt-stopped')!.text).toContain('3개월째');
+    s = applyAction(s, { type: 'setOrder', recipeId: recipeOf(s, 'malt'), batchesPerMonth: 1 }).state;
+    expect(monthTodos(s).some((t) => t.id === 'malt-stopped')).toBe(false);
+  });
+
+  it('원액 현물 판매의 대가 — 지금 받는 돈(현물 견적 합)보다 숙성 뒤 위스키 매출(추정)이 크고, 원액이 없으면 null', () => {
+    let s: GameState = mvp();
+    expect(spiritsAtStake(s)).toBeNull();
+    s = applyAction(s, { type: 'setOrder', recipeId: recipeOf(s, 'malt'), batchesPerMonth: 2 }).state;
+    s = advanceMonths(s, 2);
+    const v = spiritsAtStake(s)!;
+    const tank = s.inventory.lots.filter((l) => l.kind === 'malt').reduce((t, l) => t + l.volumeL * l.abv, 0);
+    expect(v.lpa).toBeCloseTo(tank, 3);
+    expect(v.bottles).toBeGreaterThan(0);
+    expect(v.revenue!).toBeGreaterThan(v.spotNow * 2); // 3차 판: 현물로 판 원액이 위스키였으면 훨씬 컸다
   });
 });
