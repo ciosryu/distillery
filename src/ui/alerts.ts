@@ -3,8 +3,9 @@
 // 1차 MVP 판: 117개월째 파산, 대출 누적 20억 실행(파산 때 잔액 약 7.2억) — 현금 부족을 몰랐고, 돈이 어디로 나가는지, 언제 상환이 몰리는지 보이지 않았다 (mvp.md §7.4)
 
 import { regionOf } from '../sim/content/regions';
-import { BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, selfFundedCash, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport } from '../sim';
+import { BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
+import { productionValue, whiskySupplyForecast } from '../sim/economics';
 
 // ───────────── ① 파산 카운트다운 ─────────────
 
@@ -117,12 +118,60 @@ export const staleSampleCasks = (s: GameState) =>
 export const RESTOCK_MONTHS = 2;
 
 /**
+ * 원액 현물 판매가 파는 것 (P-ARCH-25, 3차 MVP 플레이테스트 — "파산 경고를 보고 패닉에 몰트 원액을 8번(1.58억) 팔았다", mvp.md §7.9).
+ * 새 식을 만들지 않는다: 지금 받는 돈 = B2B 현물 판매 화면과 같은 견적(`spotQuote`), 위스키 병 수 = 공급 전망(#178 `whiskySupplyForecast`)의
+ * 탱크·숙성 중인 통 몫, 매출 = 생산 가치(#185 `productionValue`)의 1년 숙성 권장 출고가. 탱크 뉴메이크와 숙성 중인 통을 나눈다.
+ * 이미 법정 숙성을 채운 통은 "지금 위스키"라 병 수 대신 통 수만 센다. 우리 원액(위탁 통·매입 원액 제외)이 없으면 null
+ */
+export interface SpiritStake { count: number; spotNow: number; bottles: number; revenue: number | null }
+export function spotSaleStake(s: GameState): { tank: SpiritStake | null; casks: SpiritStake | null; ready: { count: number; spotNow: number } | null; minMonths: number } | null {
+  const v = productionValue(s);
+  const min = v.minMonths;
+  const f = whiskySupplyForecast(s, Math.max(1, Math.ceil(min / 12)), min);
+  const price = v.pricePerBottle;
+  const mine = s.inventory.casks.filter((c) => c.contents && !c.owner && isBulkKind(c.contents) && !c.contents.sourced);
+  const lots = s.inventory.lots.filter((l) => isBulkKind(l) && !l.sourced);
+  const aging = mine.filter((c) => c.contents!.oakMonths < min);
+  const ready = mine.filter((c) => c.contents!.oakMonths >= min);
+  const stake = (count: number, spotNow: number, bottles: number): SpiritStake | null => (count ? { count, spotNow, bottles, revenue: price != null ? bottles * price : null } : null);
+  const tank = stake(lots.length, lots.reduce((t, l) => t + spotQuote(s, l, l.volumeL), 0), f.reduce((t, y) => t + y.fromTank, 0));
+  const casks = stake(aging.length, aging.reduce((t, c) => t + spotQuote(s, c.contents!, c.contents!.volumeL, c), 0), f.reduce((t, y) => t + y.fromCasks, 0));
+  const r = ready.length ? { count: ready.length, spotNow: ready.reduce((t, c) => t + spotQuote(s, c.contents!, c.contents!.volumeL, c), 0) } : null;
+  return tank || casks || r ? { tank, casks, ready: r, minMonths: min } : null;
+}
+
+/** 몰트·그레인을 마지막으로 만든 뒤 지난 개월 수 (월 결산의 실제 생산 기준). 이번 달에 멈췄으면 0 */
+export function maltStoppedMonths(s: GameState): number {
+  const kindOf = new Map(s.production.recipes.map((r) => [r.id, r.kind]));
+  let n = 0;
+  for (const r of [...s.history.reports].reverse()) {
+    if (r.production.some((b) => b.lpa > 0 && (kindOf.get(b.recipeId) === 'malt' || kindOf.get(b.recipeId) === 'grain'))) break;
+    n++;
+  }
+  return n;
+}
+
+/** 이번 달 할 일 우선순위 (P-ARCH-25) — 위기 > 생산 멈춤 > 비지터 센터 > 통입·병입 > 샘플. 목록에 없는 id는 병입 다음 */
+export const TODO_ORDER = ['loan-jump', 'malt-stopped', 'visitor', 'fill', 'whisky', 'soju', 'sample'];
+const todoRank = (id: string) => { const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
+
+/**
  * 이번 달 할 일 — 급한 순서. 시나리오 게임(MVP) 증류소 탭에 보인다. 규칙이 아니라 놓치기 쉬운 신호를 모은 안내다
  * (현금 위기는 화면 맨 위 경고가 따로 맡는다 — 여기서는 대출 거치 종료만)
  */
 export function monthTodos(s: GameState): Todo[] {
   const out: Todo[] = [];
   const min = whiskyMinMonths(regionOf(s).whisky); // 병입·표기와 같은 식 (blending.ts)
+  // 몰트 생산이 멈춰 있다 (P-ARCH-25 — 3차 판 "잠깐 멈추려다 다시 켜는 걸 잊었다"). 생산 지시 칸의 빨간 경고(#185)와 같은 조건·같은 말
+  if (s.scenario && s.month > 0) {
+    const v = productionValue(s);
+    if (v.perBatch.length && v.whiskyBottlesPerYear === 0) {
+      const n = maltStoppedMonths(s);
+      const never = n >= s.history.reports.length; // 한 번도 만든 적이 없다 (새 판의 기본 생산 지시는 몰트 0) — "멈췄다"가 아니다
+      const head = never ? '몰트 생산 지시가 없다 — 위스키가 될 원액을 아직 만들지 않았다' : `몰트 생산이 멈춰 있다 — ${n > 0 ? `${n}개월째` : '이번 달부터'}`;
+      out.push({ id: 'malt-stopped', level: 'warn', text: `${head}. ${Math.ceil(v.minMonths / 12)}년 뒤부터 새로 팔 위스키가 없다 (${never ? '몰트 1배치 생산비는' : '생산을 멈춰 아끼는 돈은 몰트 1배치당'} 월 ${fmtWon(v.perBatch[0]!.costPerMonth)}뿐)`, action: '생산 지시로', target: { anchor: 'mvp-orders' } });
+    }
+  }
   // 대출 거치가 3개월 안에 끝나 납부가 뛴다
   const jump = paymentJump(loanSchedule(s, 4));
   if (jump) out.push({ id: 'loan-jump', level: 'warn', text: `${jump.month - s.month === 0 ? '이번 달' : `${jump.month - s.month}개월 뒤`} 대출 거치가 끝나 월 납부가 ${fmtWon(jump.from)} → ${fmtWon(jump.to)}로 뛴다`, action: '대출 보기', target: { tab: 'finance' } });
@@ -146,7 +195,8 @@ export function monthTodos(s: GameState): Todo[] {
     const stale = staleSampleCasks(s).length;
     if (stale > 0) out.push({ id: 'sample', level: 'info', text: `샘플 기록이 ${SAMPLE_STALE_MONTHS}개월 넘은(또는 없는) 통 ${stale}개 — 병입 전에 맛을 확인한다`, action: '숙성 중인 캐스크', target: { anchor: 'mvp-warehouse' } });
   }
-  return out;
+  // 위에서부터 급한 순서 (항목이 늘었다 — 3차 대응). 같은 순위는 넣은 순서 그대로(안정 정렬)
+  return out.sort((a, b) => todoRank(a.id) - todoRank(b.id));
 }
 
 // ───────────── ④ 지난달 현금 흐름 한 줄 ─────────────

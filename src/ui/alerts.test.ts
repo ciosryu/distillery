@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonth, advanceMonths, applyAction, BANKRUPT_AFTER_MONTHS, newScenarioGame, type GameState } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
-import { cashAlert, runway, lastMonthFlow, loanSchedule, monthTodos, paymentJump, SAMPLE_STALE_MONTHS } from './alerts';
+import { cashAlert, runway, lastMonthFlow, loanSchedule, maltStoppedMonths, monthTodos, paymentJump, SAMPLE_STALE_MONTHS, spotSaleStake, TODO_ORDER } from './alerts';
+import { productionValue, whiskySupplyForecast } from '../sim/economics';
+import { spotQuote } from '../sim';
 
 // 1차 MVP 플레이테스트 대응 ①~④ — 화면용 계산이 시뮬레이션과 같은 값을 내는지 (코어 UI)
 const mvp = (loanAmount = 0) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount, seed: 1 });
@@ -104,5 +106,58 @@ describe('런웨이 — 한 번 나가는 설비 구매는 "이 속도"에 넣�
     expect(s.history.reports.at(-1)!.offTurn?.equipment).toBeLessThan(0);
     expect(runway(s).months!).toBeGreaterThan(6);
     expect(cashAlert(s)).toBeNull();
+  });
+});
+
+describe('3차 MVP 플레이테스트 대응 (P-ARCH-25) — 멈춘 몰트 생산 · 원액 현물 판매의 대가 · 할 일 순서', () => {
+  const maltId = (s: GameState) => s.production.recipes.find((r) => r.kind === 'malt')!.id;
+  const setMalt = (s: GameState, n: number) => applyAction(s, { type: 'setOrder', recipeId: maltId(s), batchesPerMonth: n }).state;
+
+  it('몰트 생산 지시가 0이면 "몰트 생산이 멈춰 있다 — n개월째"를 띄운다 — 생산 지시 칸의 빨간 경고(#185)와 같은 조건, 다시 켜면 사라진다', () => {
+    const fresh = advanceMonth(setMalt(mvp(), 0)); // 한 번도 안 만들었으면 "멈췄다"가 아니라 "지시가 없다"
+    expect(monthTodos(fresh).find((t) => t.id === 'malt-stopped')!.text).toMatch(/^몰트 생산 지시가 없다/);
+    let s: GameState = advanceMonths(setMalt(mvp(), 2), 2);
+    expect(monthTodos(s).some((t) => t.id === 'malt-stopped')).toBe(false);
+    s = setMalt(s, 0);
+    for (const o of s.production.orders) if (s.production.recipes.find((r) => r.id === o.recipeId)?.kind === 'grain') o.batchesPerMonth = 0;
+    expect(productionValue(s).whiskyBottlesPerYear).toBe(0); // #185가 빨강으로 보이는 조건
+    expect(monthTodos(s).find((t) => t.id === 'malt-stopped')).toMatchObject({ level: 'warn', action: '생산 지시로', target: { anchor: 'mvp-orders' } });
+    expect(monthTodos(s).find((t) => t.id === 'malt-stopped')!.text).toContain('이번 달부터');
+    s = advanceMonths(s, 3);
+    expect(maltStoppedMonths(s)).toBe(3);
+    expect(monthTodos(s).find((t) => t.id === 'malt-stopped')!.text).toMatch(/3개월째\. 1년 뒤부터 새로 팔 위스키가 없다/);
+    s = setMalt(s, 1);
+    expect(monthTodos(s).some((t) => t.id === 'malt-stopped')).toBe(false);
+  });
+
+  it('할 일은 위기 > 생산 멈춤 > 비지터 센터 > 통입·병입 > 샘플 순서로 보인다', () => {
+    let s: GameState = advanceMonths(setMalt(mvp(), 2), 1); // 탱크 몰트 → 통입 대기
+    s = setMalt(s, 0);
+    const ids = monthTodos(s).map((t) => t.id);
+    expect(ids.indexOf('malt-stopped')).toBeLessThan(ids.indexOf('fill'));
+    const ranks = ids.map((id) => (TODO_ORDER.includes(id) ? TODO_ORDER.indexOf(id) : 5.5));
+    expect([...ranks].sort((a, b) => a - b)).toEqual(ranks);
+    expect(TODO_ORDER.slice(0, 3)).toEqual(['loan-jump', 'malt-stopped', 'visitor']);
+    expect(TODO_ORDER.at(-1)).toBe('sample');
+  });
+
+  it('원액 현물 판매의 대가 — 지금 받는 돈은 B2B 견적, 위스키 병 수는 공급 전망(#178)의 탱크·통 몫 그대로, 탱크와 숙성 중인 통을 나눈다', () => {
+    let s: GameState = mvp();
+    expect(spotSaleStake(s)).toBeNull();
+    s = advanceMonths(setMalt(s, 2), 2);
+    const v1 = spotSaleStake(s)!;
+    const f = whiskySupplyForecast(s, 1);
+    expect(v1.tank!.bottles).toBe(f.reduce((t, y) => t + y.fromTank, 0));
+    expect(v1.tank!.spotNow).toBe(s.inventory.lots.filter((l) => l.kind === 'malt').reduce((t, l) => t + spotQuote(s, l, l.volumeL), 0));
+    expect(v1.tank!.revenue).toBe(v1.tank!.bottles * productionValue(s).pricePerBottle!);
+    expect(v1.tank!.revenue!).toBeGreaterThan(v1.tank!.spotNow * 2);
+    // 통에 넣으면 숙성 중인 통 쪽으로 옮겨 간다
+    const lot = s.inventory.lots.find((l) => l.kind === 'malt')!;
+    s = applyAction(s, { type: 'buySpotCasks', caskType: 'ex_bourbon_barrel', qty: 3 }).state;
+    s = applyAction(s, { type: 'fillCasks', lotId: lot.id, caskIds: s.inventory.casks.filter((c) => !c.contents).slice(0, 3).map((c) => c.id), entryAbv: 0.635 }).state;
+    const v2 = spotSaleStake(s)!;
+    expect(v2.casks!.count).toBeGreaterThan(0);
+    expect(v2.casks!.bottles).toBe(whiskySupplyForecast(s, 1).reduce((t, y) => t + y.fromCasks, 0));
+    expect(v2.ready).toBeNull();
   });
 });
