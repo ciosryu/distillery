@@ -289,10 +289,20 @@ function artisanTransferDue(s: GameState): boolean {
   return last === undefined || s.month - last >= ARTISAN_NOTICE_MONTHS;
 }
 
-/** 연봉 협상 (#225): 해마다 1월, 사기 시스템이 켜져 있고(HR이 열린 판) 직원이 있으면. 첫해(창업 직후)는 건너뛴다 */
-function salaryReviewDue(s: GameState, monthOfYear: number): boolean {
+/** 연봉 협상을 볼 지난 기간 — 영업 현금흐름 합계가 0 이하면 열지 않는다 (#232, 오너 "수익이 안 날 때는 연봉 협상을 실시하지 않는다") */
+export const SALARY_REVIEW_LOOKBACK = 12;
+/** 지난 12개월 영업 현금흐름(설비·캐스크 투자와 대출·투자 유치를 뺀 돈) 합계 — 옛 보고서는 순현금으로 */
+export const recentOperatingCash = (s: Pick<GameState, 'history'>, months = SALARY_REVIEW_LOOKBACK) =>
+  s.history.reports.slice(-months).reduce((t, r) => t + (r.operatingCash ?? r.netCash), 0);
+
+/**
+ * 연봉 협상 (#225): 해마다 1월, 사기 시스템이 켜져 있고(HR이 열린 판) 직원이 있으면. 첫해(창업 직후)는 건너뛴다.
+ * 지난 1년 영업 현금흐름이 적자(0 이하)면 열지 않는다 — 'skipped'(동결 벌점 없음, 리포트 알림만) (#232)
+ */
+function salaryReviewDue(s: GameState, monthOfYear: number): boolean | 'skipped' {
   if (monthOfYear !== 1 || s.month < 12 || !moraleOn(s) || !s.hr.staff.length) return false;
-  return !s.events.pending.some((p) => p.defId === 'salary_review');
+  if (s.events.pending.some((p) => p.defId === 'salary_review')) return false;
+  return recentOperatingCash(s) > 0 ? true : 'skipped';
 }
 
 /** 이벤트 하나를 지금 일으킨다 — 테스트·디버그용 (발생 판정·조건·쿨다운을 건너뛴다) */
@@ -361,7 +371,9 @@ export function runEvents(s: GameState, report: MonthReport, monthOfYear: number
     s.events.lastFired.artisan_retire = s.month;
     fire(s, EVENT.artisan_retire!, rngFor(s.seed, s.month, 'event:artisan_retire'), report);
   }
-  if (salaryReviewDue(s, monthOfYear)) {
+  const review = salaryReviewDue(s, monthOfYear);
+  if (review === 'skipped') report.notes.push(`연봉 협상 없음 — 지난 ${SALARY_REVIEW_LOOKBACK}개월 영업 현금흐름이 적자라 올해는 열지 않습니다 (사기 변화 없음)`);
+  else if (review) {
     s.events.lastFired.salary_review = s.month;
     fire(s, EVENT.salary_review!, rngFor(s.seed, s.month, 'event:salary_review'), report);
   }
