@@ -5,7 +5,7 @@
 
 import { CASK_COST_SHARE_PER_FILL, CASK_STORAGE, CASKS } from './content/catalog';
 import { regionOf, siteOf, traditionalTaxFactor } from './content/regions';
-import { executeBlend, isCaskStrength, isWhiskyCategory, previewBlend, suggestedPrice, whiskyMinMonths, type BlendComponent, type BottleOptions } from './blending';
+import { agedWhiteLabel, agedWhiteLabelMonths, executeBlend, isCaskStrength, isWhiskyCategory, previewBlend, suggestedPrice, whiskyMinMonths, type BlendComponent, type BottleOptions } from './blending';
 import { finishOf, matureCask, vesselMaterial } from './maturation';
 import { previewBatch } from './production';
 import { demandFor, distributionCostPerBottle, domesticDemands, priceOptions } from './market';
@@ -273,7 +273,7 @@ export function productionValue(s: GameState, minMonths = regionOf(s).whisky.min
 export function currentSuggested(s: GameState, p: Product): number {
   const region = regionOf(s);
   const oak = isWhiskyCategory(p.category) ? p.oakMonths ?? (p.ageYears ?? 0) * 12 : null;
-  return suggestedPrice(region, p.category, p.bottleMl, p.quality, oak, p.abv, traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL));
+  return suggestedPrice(region, p.category, p.bottleMl, p.quality, oak, p.abv, traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL), { oakMonths: p.oakMonths, restMonths: p.restMonths });
 }
 
 /** 자동 가격 후보 — 권장 출고가의 0.6~2배 + 지금 값 */
@@ -329,6 +329,16 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
   if (!kind) return [];
   if (!isWhiskyCategory(p.category)) {
     const minAbv = isCaskStrength(p) ? 0.4 : p.abv - 1e-9;
+    // 숙성 소주 표기 제품 (P-PROD-28) — 탱크 원액을 섞으면 표기가 빠지므로, 표기 개월 이상 쉰 같은 용기(옹기/오크)의 통에서 어린 통부터
+    if (agedWhiteLabel(p.category, p.oakMonths, p.restMonths)) {
+      const onggi = (p.restMonths ?? 0) >= (p.oakMonths ?? 0);
+      const need = agedWhiteLabelMonths(Math.max(p.restMonths ?? 0, p.oakMonths ?? 0));
+      const months = (l: SpiritLot) => (onggi ? l.restMonths ?? 0 : l.oakMonths);
+      return s.inventory.casks.filter((c): c is Cask & { contents: SpiritLot } => !!c.contents && !c.owner && !c.contaminationKnown && (vesselMaterial(c) === 'wood') !== onggi
+          && c.contents.kind === kind && !c.contents.sourced && months(c.contents) >= need && c.contents.abv >= minAbv && (finishOf(c.contents)?.typeId ?? null) === (p.finish ?? null))
+        .sort((a, b) => months(a.contents) - months(b.contents) || a.id.localeCompare(b.id))
+        .map((c) => ({ comp: { source: 'cask' as const, id: c.id }, lot: c.contents }));
+    }
     return s.inventory.lots.filter((l) => l.kind === kind && l.abv >= minAbv && !l.sourced && l.oakMonths === 0)
       .sort((a, b) => a.createdMonth - b.createdMonth || a.id.localeCompare(b.id))
       .map((l) => ({ comp: { source: 'lot' as const, id: l.id }, lot: l }));

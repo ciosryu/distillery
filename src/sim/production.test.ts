@@ -725,3 +725,58 @@ describe('캐스크 스트렝스 제품 재고 보충 (2026-11-09 오너 보고:
     expect(isCaskStrength({ abv: 0.46 })).toBe(false);
   });
 });
+
+describe('숙성 소주 표기 — 병입·보충·권장가·자동 납품 (#187 P-MKT-8 · P-PROD-28)', () => {
+  const setup = async () => {
+    const { emptyCaskOf } = await import('./index');
+    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const add = (id: string, rest: number, type: 'onggi_jar' | 'ex_bourbon_barrel' = 'onggi_jar', oak = 0) => {
+      const c = emptyCaskOf(s, type); c.id = id;
+      c.contents = { id: `L${id}`, name: id, kind: 'soju', volumeL: 150, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: oak, restMonths: rest || undefined, sourced: false, costPerLPA: 10_000, batchId: `B${id}` };
+      s.inventory.casks.push(c);
+    };
+    add('J24', 24); add('J30', 30); add('J8', 8); add('J4', 4);
+    s.inventory.lots.push({ id: 'T1', name: '탱크', kind: 'soju', volumeL: 300, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 10_000, batchId: 'BT' });
+    s.finance.cash = 1e9;
+    return s;
+  };
+  const opts = { name: '', targetAbv: 0.4, bottleMl: 375, chillFilter: true, packagingId: 'standard' } as const;
+
+  it('옹기 2년 원액 → 제품에 restMonths·기본 이름 표기, 권장가는 표기 배수(×1.16)만큼 높다', async () => {
+    const { agedWhiteLabel } = await import('./index');
+    const s = await setup();
+    const aged = previewBlend(s, [{ source: 'cask', id: 'J24', liters: 50 }], opts);
+    expect(aged.minRestMonths).toBe(24);
+    expect(aged.agedLabel).toBe('옹기 2년 숙성');
+    // 같은 원액을 숙성 0으로 바꾼 비교 — 품질이 같으니 권장가 비는 배수(반올림 오차 안)
+    const s0 = structuredClone(s);
+    s0.inventory.casks.find((c) => c.id === 'J24')!.contents!.restMonths = undefined;
+    const plain = previewBlend(s0, [{ source: 'cask', id: 'J24', liters: 50 }], opts);
+    expect(plain.agedLabel).toBeNull();
+    expect(aged.suggestedPrice / plain.suggestedPrice).toBeGreaterThan(1.1);
+    // 6개월 미만 원액이 섞이면 표기 없음, 8개월은 "개월"
+    expect(previewBlend(s, [{ source: 'cask', id: 'J24', liters: 50 }, { source: 'cask', id: 'J4', liters: 10 }], opts).agedLabel).toBeNull();
+    expect(previewBlend(s, [{ source: 'cask', id: 'J8', liters: 50 }], opts).agedLabel).toBe('옹기 8개월 숙성');
+    const after = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id: 'J24', liters: 50 }], options: opts }).state;
+    const p = after.commerce.products.at(-1)!;
+    expect(p.restMonths).toBe(24);
+    expect(p.name.endsWith('옹기 2년 숙성')).toBe(true);
+    expect(agedWhiteLabel(p.category, p.oakMonths, p.restMonths)).toBe('옹기 2년 숙성');
+    // 판매 화면 권장가(currentSuggested)도 같은 배수 — 병입 권장가와 같다
+    const { currentSuggested } = await import('./economics');
+    expect(currentSuggested(after, p)).toBe(p.price);
+  });
+
+  it('탱크 원액으로 보충하면 경고 후 표기가 빠지고, 자동 납품은 표기 개월 이상 옹기 통만 어린 통부터 쓴다', async () => {
+    const { autoRestockSources } = await import('./economics');
+    let s = await setup();
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id: 'J24', liters: 50 }], options: opts }).state;
+    const p = s.commerce.products.at(-1)!;
+    const pv = previewBlend(s, [{ source: 'lot', id: 'T1', liters: 30 }], { ...opts, restockId: p.id });
+    expect(pv.warnings.some((w) => w.includes('「옹기 2년 숙성」 → 없음'))).toBe(true);
+    const r = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: 'T1', liters: 30 }], options: { ...opts, restockId: p.id } }).state;
+    expect(r.commerce.products.find((x) => x.id === p.id)!.restMonths).toBeUndefined();
+    // 자동 납품 후보: 24개월 이상 옹기 통만, 어린 통부터(남은 J24 → J30) — J8·J4·탱크는 표기를 깎는다
+    expect(autoRestockSources(s, p).map((x) => x.comp.id)).toEqual(['J24', 'J30']);
+  });
+});
