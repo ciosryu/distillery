@@ -278,7 +278,7 @@ describe('자동 샘플 (#177, 오너 요청 2026-11-08)', () => {
     const r = t.history.reports.at(-1)!;
     expect(r.expenses[AUTO_SAMPLE_EXPENSE]).toBe(got.length * SAMPLING.cost);
     expect(r.notes.some((n) => n.startsWith('자동 샘플'))).toBe(true);
-    // P-PROD-17: 매 턴 여력만큼 — 다음 달에는 아직 안 뜬 통부터, 남는 여력은 가장 오래전에 뜬 통으로
+    // #201: 매 턴 여력만큼 — 다음 달에는 아직 안 뜬 통부터, 남는 여력은 가장 오래전에 뜬 통으로
     const u = advanceMonth(t);
     const next = sampledIn(u, t.month);
     expect(next).toHaveLength(Math.min(cap, 8));

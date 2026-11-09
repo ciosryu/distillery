@@ -46,7 +46,7 @@ export type ProdAction =
   | { type: 'delegateBlend'; targetId: string; caskIds: string[]; bottles: number; options: BottleOptions }
   /** 입지 특성 (결정 #86~): 취수 증량 신청(제주), 대형 유통 납품(경기), 위탁생산(간토) */
   | { type: 'applyWaterPermit' }
-  /** 자동 최적 가격 켜기·끄기 (P-PROD-18) — 켜면 바로 한 번 값을 정한다 */
+  /** 자동 최적 가격 켜기·끄기 (#200) — 켜면 바로 한 번 값을 정한다 */
   | { type: 'setAutoPrice'; productId: string; on: boolean };
 
 export const PROD_CASH_KEY: CashKeys<ProdAction> = {

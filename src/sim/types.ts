@@ -200,7 +200,7 @@ export interface Product {
   stockBottles: number;
   /** 출고가(세전) / 병 */
   price: number;
-  /** 자동 최적 가격 (P-PROD-18) — 켜 두면 매달 판매 직전에 이번 달 이익이 가장 큰 값으로 바뀐다(economics.applyAutoPrices). 옛 세이브에는 없다 = 끔 */
+  /** 자동 최적 가격 (#200) — 켜 두면 매달 판매 직전에 이번 달 이익이 가장 큰 값으로 바뀐다(economics.applyAutoPrices). 옛 세이브에는 없다 = 끔 */
   autoPrice?: boolean;
   /** 병당 생산 원가 = 원액 + 포장 + 병입 인건비 (유통비 제외) */
   unitCost: number;

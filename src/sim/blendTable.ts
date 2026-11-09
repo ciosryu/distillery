@@ -185,7 +185,7 @@ export function knownReads(s: GameState): Map<string, KnownRead> {
  * 참 품질은 호출 측이 계산해 넘긴다(lotQuality — bulk.ts를 여기서 불러오면 모듈 순환이 생긴다). 비용·월 여력은 호출 측
  */
 export function takeSample(s: GameState, c: Cask, blender: BlenderView | null, qualityOf: (lot: NonNullable<Cask['contents']>) => number, counted = true): boolean {
-  // counted = false: 자동 샘플(P-PROD-17) — 통당 횟수(SAMPLING.maxSamples)를 쓰지 않고 오차도 줄이지 않는다. 같은 오차 크기·같은 난수로 다시 읽으므로
+  // counted = false: 자동 샘플(#201) — 통당 횟수(SAMPLING.maxSamples)를 쓰지 않고 오차도 줄이지 않는다. 같은 오차 크기·같은 난수로 다시 읽으므로
   // 매달 떠도 참값으로 수렴하지 않는다(평균 내기로 오차를 지우는 누수 없음). 원액 손실·비용은 같다
   const n = (c.samples ?? 0) + (counted ? 1 : 0);
   c.samples = n;
@@ -202,7 +202,7 @@ export function takeSample(s: GameState, c: Cask, blender: BlenderView | null, q
 
 /** 샘플을 뜰 수 있는 통 — 원액이 있고, 고객 소유가 아니고, 횟수가 남은 통 */
 export const sampleableCask = (c: Cask): boolean => !!c.contents && !c.owner && (c.samples ?? 0) < SAMPLING.maxSamples;
-/** 자동 샘플이 뜰 수 있는 통 — 횟수 제한 없음(P-PROD-17) */
+/** 자동 샘플이 뜰 수 있는 통 — 횟수 제한 없음(#201) */
 const autoSampleable = (c: Cask): boolean => !!c.contents && !c.owner;
 
 /**
@@ -222,7 +222,7 @@ export function stalestCasks(s: GameState, n: number, known: Map<string, KnownRe
 export const AUTO_SAMPLE_EXPENSE = '자동 샘플';
 /**
  * "샘플 기록이 오래됐다"의 기준(개월) — 이번 달 할 일의 샘플 시기 안내가 쓴다 `[튜닝]`.
- * (P-PROD-17 이전에는 자동 샘플이 이보다 오래된 통만 떴다. 지금 자동 샘플은 통당 횟수를 쓰지 않으므로 매달 여력만큼 오래 안 뜬 통부터 뜬다)
+ * (#201 이전에는 자동 샘플이 이보다 오래된 통만 떴다. 지금 자동 샘플은 통당 횟수를 쓰지 않으므로 매달 여력만큼 오래 안 뜬 통부터 뜬다)
  */
 export const AUTO_SAMPLE_MIN_AGE = 6;
 
@@ -230,12 +230,12 @@ export const AUTO_SAMPLE_MIN_AGE = 6;
 export function autoSamplePicks(s: GameState, known: Map<string, KnownRead> = knownReads(s), affordable = Infinity): Cask[] {
   if (!s.scenario) return [];
   if (s.inventory.casks.some((c) => c.contents && c.sampleLog?.at(-1)?.month === s.month)) return [];
-  // 매 턴 여력만큼 오래 안 뜬 통부터 (P-PROD-17, 3차 MVP 플레이테스트 오너 요청 "샘플은 턴마다 무조건 확인") — 통당 횟수 제한 없음
+  // 매 턴 여력만큼 오래 안 뜬 통부터 (#201, 3차 MVP 플레이테스트 오너 요청 "샘플은 턴마다 무조건 확인") — 통당 횟수 제한 없음
   return stalestCasks(s, Math.max(0, Math.min(samplingCapacity(s), affordable)), known, autoSampleable);
 }
 
 /**
- * 자동 샘플 (#177, 오너 요청 2026-11-08 → P-PROD-17 매 턴) — **그 달에 직접 뜬 샘플이 하나도 없으면** 달이 넘어갈 때 오래 안 뜬 통부터 여력만큼 뜬다.
+ * 자동 샘플 (#177, 오너 요청 2026-11-08 → #201 매 턴) — **그 달에 직접 뜬 샘플이 하나도 없으면** 달이 넘어갈 때 오래 안 뜬 통부터 여력만큼 뜬다.
  * 통당 횟수(maxSamples)를 쓰지 않고 오차도 줄이지 않는다 — 오차는 직접 뜬 횟수로만 준다.
  * 직접 뜬 달은 건드리지 않는다. 시나리오(MVP) 게임만 — 샌드박스는 블렌딩 테이블로 직접 관리한다.
  * 틱 3단계(숙성) 맨 앞에서 부른다 — 숙성 전 상태를 읽어, 플레이어가 그 달에 눌렀을 때와 같다. 월 여력(samplesThisMonth)은 새 달 몫이라 쓰지 않는다.

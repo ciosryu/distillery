@@ -573,7 +573,7 @@ describe('재고 보충 — 매대 재고가 0이면 새 배치의 숙성 표기
   });
 });
 
-describe('자동 최적 가격 (P-PROD-18, 3차 MVP 플레이테스트 오너 요청)', () => {
+describe('자동 최적 가격 (#200, 3차 MVP 플레이테스트 오너 요청)', () => {
   const setup = () => {
     let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     const soju = s.production.recipes.find((r) => r.kind === 'soju')!;

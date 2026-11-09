@@ -75,7 +75,7 @@ describe('월 고정비 내역 (#181)', () => {
     expect(recentHouseRevenue(s, 1)).toBe(50);
   });
 
-  // P-MGT-16 — 한 번만 받는 대출을 일부만 받으면 나머지 한도가 사라진다 (mvp.md §7.8)
+  // #196 — 한 번만 받는 대출을 일부만 받으면 나머지 한도가 사라진다 (mvp.md §7.8)
   it('대출 일부 실행: 남는 한도 = 한도 − 신청액, 받은 뒤·막힌 상품은 0', () => {
     let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     expect(forfeitedLoanRoom(s, 'kr_startup', 50_000_000)).toBe(150_000_000);
@@ -86,7 +86,7 @@ describe('월 고정비 내역 (#181)', () => {
     expect(applyAction(s, { type: 'takeLoan', offerId: 'kr_startup', amount: 50_000_000 }).error).toBeTruthy();
   });
 
-  // P-MGT-17 — HR이 잠긴 MVP에서 레벨이 오르면 급여가 저절로 오른다
+  // #197 — HR이 잠긴 MVP에서 레벨이 오르면 급여가 저절로 오른다
   it('MVP 급여 인상분: 시작엔 0, 레벨이 오르면 그만큼, HR이 열린 판은 null', () => {
     let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     const r0 = salaryRaiseSinceStart(s)!;

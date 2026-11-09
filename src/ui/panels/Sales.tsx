@@ -19,7 +19,7 @@ const sellingProducts = (s: GameState) => s.commerce.products.filter((p) => p.st
 const lastReport = (s: GameState) => s.history.reports.at(-1);
 
 /** 지금 조건(품질·숙성·주세 경감)으로 다시 계산한 권장 출고가 — 병입 때 값과 다를 수 있다 */
-/** 가격 확인 기준 — 권장가 대비 이 범위 밖이거나 병당 손해면 한 번 더 묻는다 (P-PROD-16, 3차 MVP 플레이테스트) */
+/** 가격 확인 기준 — 권장가 대비 이 범위 밖이거나 병당 손해면 한 번 더 묻는다 (#199, 3차 MVP 플레이테스트) */
 export const PRICE_GUARD = { low: 0.5, high: 3 } as const;
 
 /**
@@ -247,7 +247,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
     <div className="grid gap-4">
       <Card title="가격과 수요" actions={<span className="flex flex-wrap items-center gap-2 text-xs text-stone-500">한 달 판매 = min(재고, 수요 한도 ±10%, 소매 처리 역량)
         {(() => {
-          // 모든 제품 자동 최적 가격 (P-PROD-18) — 면세 한정판 제외
+          // 모든 제품 자동 최적 가격 (#200) — 면세 한정판 제외
           const ps = s.commerce.products.filter((p) => !p.dutyFreeOnly);
           if (!ps.length) return null;
           const allOn = ps.every((p) => p.autoPrice);
@@ -353,7 +353,7 @@ function ProductDetail({ p }: { p: Product }) {
   if (p.dutyFreeOnly) return <Card title={`${p.name} — 면세 전용`}><p className="text-sm text-stone-600 dark:text-stone-300">면세 전용 한정판은 주세·부가세가 없습니다. 면세가 = 출고가 × 면세점 마진 {DUTY_FREE.markup}.</p></Card>;
   const b = priceBreakdown(s, p, region);
   const d = domesticDemands(s, monthOfYear, region).get(p.id) ?? demandFor(s, p, 1, monthOfYear, region);
-  // 가격 비교는 지금 값 근처 + 권장가 — 값이 기대가에서 멀리 벗어났을 때도 돌아갈 길이 보이게 (P-MKT-5)
+  // 가격 비교는 지금 값 근처 + 권장가 — 값이 기대가에서 멀리 벗어났을 때도 돌아갈 길이 보이게 (#198)
   const suggested = currentSuggestedPrice(s, p);
   const baseFactors = [0.8, 0.9, 1, 1.1, 1.25, 1.5];
   const sf = suggested / Math.max(1, p.price);
@@ -361,7 +361,7 @@ function ProductDetail({ p }: { p: Product }) {
   const opts = priceOptions(s, p, monthOfYear, factors);
   const best = opts.reduce((a, x) => (x.contribution > a.contribution ? x : a), opts[0]!);
   const bestRev = opts.reduce((a, x) => (x.revenue > a.revenue ? x : a), opts[0]!);
-  // 기대 소비자가 (P-MKT-5) — 여기서 멀어질수록 수요가 가파르게(비쌀 때) 또는 완만하게(쌀 때) 변한다
+  // 기대 소비자가 (#198) — 여기서 멀어질수록 수요가 가파르게(비쌀 때) 또는 완만하게(쌀 때) 변한다
   const expected = expectedPricePerL(region, p) * (p.bottleMl / 1000);
   const vsExpected = b.consumer / expected;
   const t = region.tax;

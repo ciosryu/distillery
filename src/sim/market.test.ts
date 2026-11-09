@@ -571,7 +571,7 @@ describe('원액 B2B 견적 — 아는 품질로만 (#164, #136·#159)', () => {
   });
 });
 
-describe('가격 반응 곡선 (P-MKT-5, PRD §9.2)', () => {
+describe('가격 반응 곡선 (#198, PRD §9.2)', () => {
   it('기대 소비자가에서는 옛 공식과 값이 같고, k = 0이면 어디서나 옛 공식이다', () => {
     const ref = 170_000, exp = 120_000;
     expect(priceResponse(exp, ref, exp, 1.1)).toBeCloseTo(Math.pow(exp / ref, -1.1), 12);
