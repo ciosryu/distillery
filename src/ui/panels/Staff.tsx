@@ -1,6 +1,7 @@
 import { ROLE_INFO } from '../../sim/content/catalog';
 import type { Staff as StaffT } from '../../sim';
 import { ageOf, AGING_TENURE_MONTHS, APPRENTICE_MONTHS, HEADHUNT, headhuntCost, headhuntedThisMonth, marketSalary, masterDistiller, mentoringXp, MORALE, moraleOf, moraleOn, payShortfall, RETIRE_AGE, tenureOf, TRAINING, trainingCooldown, trainingCost, TRAIT_INFO } from '../../sim/hr';
+import { pendingStages } from '../../sim/scenario';
 import { useGame } from '../../store/game';
 import { won } from '../format';
 import { Badge, Button, Card, Empty } from '../kit';
@@ -71,6 +72,10 @@ function Person({ x, action, month, tag, morale }: { x: StaffT & { askSalary?: n
 export function Staff() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
+  // HR이 잠긴 시나리오(MVP)는 직원 관리 버튼을 숨기고 언제 열리는지 알린다 (P-MGT-25 — 11년 차 단계)
+  const hrOn = moraleOn(s);
+  const opens = hrOn ? undefined : pendingStages(s).find((st) => st.unlock.includes('system:hr'));
+  const lockedNote = opens ? `직원 관리(채용·교육·헤드헌팅·해고)는 ${Math.floor(opens.month / 12) + 1}년 차에 열린다 — ${opens.month - s.month}개월 뒤` : '이 시나리오에서는 직원을 관리할 수 없다';
   return (
     <div className="grid gap-4">
       <Card title={`직원 (${s.hr.staff.length}명 · 월 급여 ${won(s.hr.staff.reduce((t, x) => t + x.salary, 0))}) · 하우스 스타일 ${Math.round(s.hr.houseStyle)}`}>
@@ -86,7 +91,7 @@ export function Staff() {
               const wait = trainingCooldown(s, x.id);
               const short = payShortfall(s, x);
               const morale = moraleOn(s) ? <MoraleBar value={moraleOf(x)} title={`매달 ${MORALE.base} 쪽으로 돌아간다. 시세 ${won(Math.round(marketSalary(s, x)))}/월${short > 0 ? ` — ${Math.round(short * 100)}% 덜 받아 매달 −${(short * 100 * MORALE.payShortfall).toFixed(1)}` : ''}. 교육 +${MORALE.training}, 해고 때 남은 직원 −${MORALE.fired}, 1월 연봉 협상(인상 +${MORALE.raiseMorale} / 동결 ${MORALE.freezeMorale}). ${MORALE.quitBelow} 미만이면 이직할 수 있다`} /> : null;
-              return <Person key={x.id} x={x} month={s.month} tag={tag} morale={morale} action={<div className="flex flex-wrap gap-1">
+              return <Person key={x.id} x={x} month={s.month} tag={tag} morale={morale} action={!hrOn ? null : <div className="flex flex-wrap gap-1">
                 <Button small disabled={wait > 0 || s.finance.cash < trainingCost(x)} onClick={() => dispatch({ type: 'trainStaff', staffId: x.id })} title={`교육 프로그램 — 월급 ${TRAINING.costMonths}개월 치, XP +${TRAINING.xpPerLevel * x.level}(반 레벨), 같은 직원은 ${TRAINING.cooldownMonths}개월에 한 번`}>{wait > 0 ? `교육 (${wait}개월 뒤)` : `교육 ${won(trainingCost(x))}`}</Button>
                 <Button small variant="danger" onClick={() => dispatch({ type: 'fire', staffId: x.id })}>내보내기 (위로금 1개월)</Button>
               </div>} />;
@@ -94,7 +99,7 @@ export function Staff() {
           </div>
         )}
       </Card>
-      <Card title="채용 후보 (분기마다 갱신)">
+      {!hrOn ? <Card title="채용"><Empty>{lockedNote}</Empty></Card> : <Card title="채용 후보 (분기마다 갱신)">
         <ul className="mb-3 grid gap-1 text-xs text-stone-500">
           {(Object.keys(ROLE_EFFECT) as StaffT['role'][]).map((r) => <li key={r}><span className="font-medium text-stone-700 dark:text-stone-300">{ROLE_INFO[r].nameKo}</span> — {ROLE_EFFECT[r]}</li>)}
         </ul>
@@ -109,7 +114,7 @@ export function Staff() {
             {s.hr.candidates.map((x) => <Person key={x.id} x={x} month={s.month} action={<div className="flex gap-1"><Button small variant="primary" onClick={() => dispatch({ type: 'hire', candidateId: x.id })}>채용</Button>{x.role === 'distiller' && <Button small onClick={() => dispatch({ type: 'hire', candidateId: x.id, asApprentice: true })} title="급여 60%, 마스터 곁에서 24개월 이상 배우면 은퇴 때 하우스 스타일을 잇는다">부사수로 채용</Button>}</div>} />)}
           </div>
         )}
-      </Card>
+      </Card>}
       <Research />
     </div>
   );

@@ -161,8 +161,11 @@ describe('MVP 중반 콘텐츠 — 단계 해금·중반 목표 (4차 MVP 플레
     expect(isLocked(s, 'facility:visitor_vip')).toBe(false);
     expect(isLocked(s, 'facility:visitor_restaurant')).toBe(true);
     expect(s.scenario!.stagesDone).toEqual(['y5_market', 'y7_export', 'y9_casks']);
-    // 채용이 잠긴 MVP에서는 직원 이벤트가 나오지 않는다 — hr는 계속 잠김
+    // 채용이 잠긴 MVP에서는 직원 이벤트가 나오지 않는다 — hr는 11년 차(120개월)까지 잠김 (P-MGT-25)
     expect(isLocked(s, 'system:hr')).toBe(true);
+    s.month = 120; s = advanceMonth(s);
+    expect(isLocked(s, 'system:hr')).toBe(false);
+    expect(s.scenario!.stagesDone).toEqual(['y5_market', 'y7_export', 'y9_casks', 'y11_people']);
     void applyAction;
   });
 

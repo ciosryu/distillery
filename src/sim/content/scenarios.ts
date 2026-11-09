@@ -113,6 +113,11 @@ export const MVP_KR: ScenarioDef = {
     { id: 'y9_casks', month: 108, title: '10년 차 — 숙성 통을 사려는 곳이 생기고, VIP 라운지를 지을 수 있다',
       unlock: ['system:caskBids', 'action:acceptCaskBid', 'facility:visitor_vip'],
       text: '독립 병입자(IB)가 3년 이상·품질 65 이상 통을 현물가의 1.35배에 사겠다고 가끔 제안한다(원액 B2B 탭, 2개월 안에 답). 병입해 팔 때보다는 싸서 다 못 팔 통에만 이득이고, 팔면 12년 플래그십 후보가 준다. 설비에서 VIP 테이스팅 라운지(2억, 월 유지비 400만)도 지을 수 있다 — 방문객·입소문이 늘지만 본전까지 4~5년 걸린다' },
+    // 11년 차 직원 관리 (P-MGT-25, 오너 "A안, 연봉 협상 포함" 2026-11-09) — 채용·해고·교육·헤드헌팅·사기·연봉 협상(#222·#225)을 연다.
+    // 10년 차는 #224가 차지해 한 해 뒤로 뒀다(오너 선택). 열린 달에 채용 후보를 바로 채운다(hr.ts runStaffLifecycle)
+    { id: 'y11_people', month: 120, title: '11년 차 — 직원을 뽑고 키울 수 있다',
+      unlock: ['system:hr', 'action:hire', 'action:fire'],
+      text: '직원 탭에서 채용·헤드헌팅·교육·해고를 할 수 있다. 직원마다 사기가 있어 30 아래로 떨어지면 나갈 수 있다(하나뿐인 디스틸러는 남는다). 해마다 1월 연봉 협상이 열린다 — 지난 1년 영업 현금흐름이 적자면 열리지 않는다. 경쟁사 스카우트 제안 같은 직원 이벤트도 생긴다' },
   ],
   midGoals: [
     { id: 'aged3_sold', byMonth: 72, title: '3년 숙성 위스키를 판다', rewardAwareness: 0.03 },
