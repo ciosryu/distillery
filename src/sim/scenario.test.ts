@@ -138,3 +138,40 @@ describe('시나리오 경제 값은 판 시작 때 복사된다 (#190 사후 �
     expect(advanceMonth(fresh).history.reports.at(-1)!.expenses.overhead).toBe(3_000_000);
   });
 });
+
+describe('MVP 중반 콘텐츠 — 단계 해금·중반 목표 (4차 MVP 플레이테스트 2026-11-09)', () => {
+  it('60개월(6년 차)에 이벤트·블렌딩 의뢰·방재 설비, 84개월에 수출, 108개월에 두 번째 브랜드가 열린다', async () => {
+    const { advanceMonth, newScenarioGame, isLocked, applyAction } = await import('./index');
+    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    expect(isLocked(s, 'system:events')).toBe(true);
+    s.month = 59; s = advanceMonth(s); // 59월 틱 — 아직 아니다
+    expect(isLocked(s, 'system:events')).toBe(true);
+    s = advanceMonth(s); // 60월 틱의 준비 단계에서 연다
+    expect(isLocked(s, 'system:events')).toBe(false);
+    expect(isLocked(s, 'system:commissions')).toBe(false);
+    expect(isLocked(s, 'facility:facility_dehumid')).toBe(false);
+    expect(isLocked(s, 'system:exports')).toBe(true);
+    expect(s.history.reports.at(-1)!.notes.some((n) => n.startsWith('새 기능 열림 — 6년 차'))).toBe(true);
+    expect(s.scenario!.stagesDone).toEqual(['y5_market']);
+    s.month = 108; s = advanceMonth(s); // 늦게 들어와도(옛 세이브) 지난 단계를 모두 연다
+    expect(isLocked(s, 'system:exports')).toBe(false);
+    expect(isLocked(s, 'action:openBrand')).toBe(false);
+    expect(s.scenario!.stagesDone).toEqual(['y5_market', 'y7_export', 'y9_brand']);
+    // 채용이 잠긴 MVP에서는 직원 이벤트가 나오지 않는다 — hr는 계속 잠김
+    expect(isLocked(s, 'system:hr')).toBe(true);
+    void applyAction;
+  });
+
+  it('중반 목표 — 이루면 인지도 보상, 기한이 지나면 놓침', async () => {
+    const { advanceMonth, newScenarioGame } = await import('./index');
+    const { houseBrand } = await import('./brands');
+    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.commerce.exports = [{ marketId: 'US' } as never];
+    const a0 = houseBrand(s).awareness;
+    s = advanceMonth(s);
+    expect(s.progress.midGoals?.find((g) => g.id === 'export_open')?.result).toBe('done');
+    expect(houseBrand(s).awareness).toBeGreaterThan(a0);
+    s.month = 71; s = advanceMonth(s); // 72개월 기한 — 3년 위스키를 안 팔았다
+    expect(s.progress.midGoals?.find((g) => g.id === 'aged3_sold')?.result).toBe('missed');
+  });
+});

@@ -12,8 +12,8 @@ import { currentLoanPayment, inventoryLoanRoom, inventoryLtv } from './loans';
 import { annuityPayment, nid } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
 import { TECH_BY_ID } from './content/tech';
-import { researchBlocker } from './research';
-import { insurancePremium, insuranceProduct } from './insurance';
+import { isUnlocked, researchBlocker } from './research';
+import { factoringProceeds, insurancePremium, insuranceProduct } from './insurance';
 
 // 플레이어 행동 — 재무·인사·이벤트 (MGT) (결정 #144 — 파일 쪼개기로 actions.ts에서 옮겨 왔다. 규칙 불변)
 // 행동을 더할 때: 아래 타입·처리기·현금 분류 세 곳만 고친다. 코어(actions.ts)는 이 파일의 타입을 통째로 합친다
@@ -27,6 +27,8 @@ export type MgtAction =
   | { type: 'signForward'; ingredientId: string; kgPerMonth: number; months: number }
   | { type: 'buyInsurance'; kind: 'property' | 'inventory' | 'business_interruption' | 'product_liability' | 'credit'; coverage: number }
   | { type: 'cancelInsurance'; policyId: string }
+  /** 미수금 팩토링 (BIZ-2b, #214) — 지금 있는 미수금 전부를 수수료를 떼고 현금으로 */
+  | { type: 'factorReceivables' }
   /** 투자 유치 */
   | { type: 'takeInvestment'; offerId: string }
   /** 수출 (#95·#101): 수입사 제안 수락 / 계약 해지 */
@@ -50,6 +52,8 @@ export const MGT_CASH_KEY: CashKeys<MgtAction> = {
   signForward: null,
   buyInsurance: null,
   cancelInsurance: null,
+  // 미수금을 앞당겨 받는 영업 현금 — 전용 항목이 없어 '기타 행동'으로 센다
+  factorReceivables: 'other',
   hire: null,
   takeInvestment: 'investment',
   sellCaskOwnership: 'caskOwnership',
@@ -97,12 +101,22 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
   // 보험 (#171) — 종류마다 1건. 가입한 다음 달부터 보장, 보험료는 재무 단계에서 매달. 해지하면 바로 끝난다(환급 없음 — 보험료는 매달 낸다)
   buyInsurance: (s, prev, a) => {
     const p = insuranceProduct(a.kind);
-    if (!p) return fail(prev, a.kind === 'credit' ? '매출채권 신용보험은 고급 상품입니다 (연구 BIZ-2b 재무 리스크 관리 뒤)' : '제조물 책임 보험은 아직 없습니다 (리콜 사고가 생기면 함께)');
+    if (!p) return fail(prev, '제조물 책임 보험은 아직 없습니다 (리콜 사고가 생기면 함께)');
+    if (p.unlockKey && !isUnlocked(s, p.unlockKey)) return fail(prev, `${p.nameKo}은 고급 상품입니다 (연구 BIZ-2b 재무 리스크 관리 뒤)`);
     if (s.finance.insurance.some((x) => x.kind === p.kind)) return fail(prev, '같은 종류 보험에 이미 가입했습니다 — 금액을 바꾸려면 해지 후 다시 가입');
     const coverage = Math.round(Math.min(p.maxCoverage, Math.max(p.minCoverage, a.coverage)) / 1_000_000) * 1_000_000;
     const premium = insurancePremium(s, p.kind, coverage);
     s.finance.insurance.push({ id: nid(s, 'I'), kind: p.kind, premiumPerMonth: premium, coverage, fromMonth: s.month + 1 });
     return { state: s, message: `${p.nameKo} 가입 — ${p.basis === 'monthly' ? '월 보상 한도' : '가입금액'} ${coverage.toLocaleString()}원, 월 보험료 ${premium.toLocaleString()}원 (다음 달부터 보장)` };
+  },
+  factorReceivables: (s, prev) => {
+    if (!isUnlocked(s, 'contract:factoring')) return fail(prev, '팩토링은 연구 BIZ-2b 재무 리스크 관리 뒤에 쓸 수 있습니다');
+    if (!s.finance.receivables.length) return fail(prev, '받을 미수금이 없습니다');
+    const face = s.finance.receivables.reduce((t, r) => t + r.amount, 0);
+    const cash = s.finance.receivables.reduce((t, r) => t + factoringProceeds(s, r), 0);
+    s.finance.receivables = [];
+    s.finance.cash += cash;
+    return { state: s, message: `미수금 ${face.toLocaleString()}원 팩토링 — ${cash.toLocaleString()}원 입금 (수수료 ${(face - cash).toLocaleString()}원)` };
   },
   cancelInsurance: (s, prev, a) => {
     const x = s.finance.insurance.find((y) => y.id === a.policyId);
