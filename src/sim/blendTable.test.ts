@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { houseBrand } from './brands';
 import {
-  addTrendShift, appeal, applyAction, blenderOf, blendTargets, delegatePlan, estimateBlend, previewBlend, priceAtQuality, revealNotes, SIBLING_MIN_VOLUME_RATIO, findTarget, hexOf, knownRead, knownReads, matchScore, migrateSave, newGame, readCask, readSigma, samplingCapacity, trendFactor,
+  SAMPLING, addTrendShift, appeal, applyAction, blenderOf, blendTargets, delegatePlan, estimateBlend, previewBlend, priceAtQuality, revealNotes, SIBLING_MIN_VOLUME_RATIO, findTarget, hexOf, knownRead, knownReads, matchScore, migrateSave, newGame, readCask, readSigma, samplingCapacity, trendFactor,
   type Flavor, type GameState, type Staff,
 } from '.';
 import { emptyCaskOf } from './newGame';
@@ -84,7 +84,7 @@ describe('정보 구매 — 샘플링·실험실 분석 (P1)', () => {
     const c = s.inventory.casks.find((k) => k.id === ids[0])!;
     expect(c.samples).toBe(1);
     expect(readSigma(s, c)).toBeCloseTo(sigma0 / Math.SQRT2, 6);
-    expect(c.contents!.volumeL).toBeCloseTo(189.5, 6);
+    expect(c.contents!.volumeL).toBeCloseTo(190 - SAMPLING.lossL, 6); // 190L 통에서 샘플 1회(0.1L, P-PROD-25)
     expect(cash0 - s.finance.cash).toBe(3 * 30_000);
     expect(applyAction(s, { type: 'sampleCask', caskIds: [...caskIdsOf(s, 'B'), ...caskIdsOf(s, 'P'), ...ids] }).error).toMatch(/여력/);
   });
