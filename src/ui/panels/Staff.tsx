@@ -24,7 +24,7 @@ function StatBar({ name, value }: { name: string; value: number }) {
   );
 }
 
-/** 사기 막대 (P-MGT-24) — 낮을 때만 눈에 띄게: 30 미만 이직 위험, 50 미만 주의 */
+/** 사기 막대 (#225) — 낮을 때만 눈에 띄게: 30 미만 이직 위험, 50 미만 주의 */
 function MoraleBar({ value, title }: { value: number; title: string }) {
   const low = value < MORALE.quitBelow;
   const color = low ? 'bg-rose-600' : value < 50 ? 'bg-amber-500' : 'bg-emerald-600';

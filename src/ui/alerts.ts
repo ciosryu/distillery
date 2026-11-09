@@ -192,7 +192,7 @@ export function monthTodos(s: GameState): Todo[] {
     out.push({ id: `stage-${st.id}`, level: 'warn', text: `새로 열림 — ${st.title}. ${st.text}`, action: tab === 'blendlab' ? '블렌딩 테이블' : tab === 'exports' ? '수출' : tab === 'b2b' ? '원액 B2B' : '판매', target: { tab } });
   }
   const min = whiskyMinMonths(regionOf(s).whisky); // 병입·표기와 같은 식 (blending.ts)
-  // IB 캐스크 입찰 (10년 차 해금, P-ARCH-Y10-1) — 제안은 2개월 뒤 사라지고 원액 B2B 탭에만 보여서 할 일에 올린다
+  // IB 캐스크 입찰 (10년 차 해금, #224) — 제안은 2개월 뒤 사라지고 원액 B2B 탭에만 보여서 할 일에 올린다
   if (s.scenario && s.b2b.caskBids.length) {
     const b = [...s.b2b.caskBids].sort((x, y) => x.expiresMonth - y.expiresMonth)[0]!;
     const c = s.inventory.casks.find((x) => x.id === b.caskId)?.contents;

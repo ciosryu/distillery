@@ -267,7 +267,7 @@ describe('실명 레지스트리 (결정 #44)', () => {
   });
 });
 
-describe('독립 병입자 입찰은 IB 자신의 시음치로 (P-MKT-10)', () => {
+describe('독립 병입자 입찰은 IB 자신의 시음치로 (#223)', () => {
   const casks = (n: number) => {
     const src = newGame({ seed: 3, region: 'KR' });
     const base = src.b2b.brokerOffers[0]!.cask;

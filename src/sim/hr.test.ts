@@ -55,8 +55,8 @@ describe('HR 성장 (#222)', () => {
 
 const rep = (s: GameState): MonthReport => ({ month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] });
 
-// 사기·성격 특성 1단계 (P-MGT-24, PRD §7.2) — MVP(HR 잠김)에서는 꺼진다
-describe('사기·성격 특성 (P-MGT-24)', () => {
+// 사기·성격 특성 1단계 (#225, PRD §7.2) — MVP(HR 잠김)에서는 꺼진다
+describe('사기·성격 특성 (#225)', () => {
   const sales = (s: GameState, extra: Partial<Staff> = {}): Staff => {
     const d = s.hr.staff[0]!;
     const x: Staff = { ...d, id: `S-x${s.hr.staff.length}`, role: 'sales', apprenticeOf: undefined, ...extra };

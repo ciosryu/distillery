@@ -289,7 +289,7 @@ function artisanTransferDue(s: GameState): boolean {
   return last === undefined || s.month - last >= ARTISAN_NOTICE_MONTHS;
 }
 
-/** 연봉 협상 (P-MGT-24): 해마다 1월, 사기 시스템이 켜져 있고(HR이 열린 판) 직원이 있으면. 첫해(창업 직후)는 건너뛴다 */
+/** 연봉 협상 (#225): 해마다 1월, 사기 시스템이 켜져 있고(HR이 열린 판) 직원이 있으면. 첫해(창업 직후)는 건너뛴다 */
 function salaryReviewDue(s: GameState, monthOfYear: number): boolean {
   if (monthOfYear !== 1 || s.month < 12 || !moraleOn(s) || !s.hr.staff.length) return false;
   return !s.events.pending.some((p) => p.defId === 'salary_review');

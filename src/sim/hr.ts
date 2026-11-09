@@ -37,7 +37,7 @@ export function makeCandidate(s: GameState, rng: Rng, role?: StaffRole): Candida
   };
 }
 
-// ───────────── 성격 특성 (P-MGT-24, PRD §7.2) — 1단계는 MGT 효과만. 확률·배수 [튜닝] ─────────────
+// ───────────── 성격 특성 (#225, PRD §7.2) — 1단계는 MGT 효과만. 확률·배수 [튜닝] ─────────────
 
 export const TRAIT_INFO: Record<StaffTrait, { nameKo: string; desc: string }> = {
   mentor: { nameKo: '멘토', desc: '멘토링으로 주는 XP 2배' },
@@ -75,7 +75,7 @@ function rollTraits(s: GameState, id: string, role: StaffRole, stats: Staff['sta
   return out;
 }
 
-// ───────────── 사기 (P-MGT-24, PRD §7.2) — HR이 잠긴 시나리오(MVP)에서는 꺼진다. 수치 [튜닝] ─────────────
+// ───────────── 사기 (#225, PRD §7.2) — HR이 잠긴 시나리오(MVP)에서는 꺼진다. 수치 [튜닝] ─────────────
 
 export const MORALE = {
   /** 기준값 — 필드가 없으면 이 값으로 읽는다 */
@@ -201,7 +201,7 @@ export const TRAINING = { costMonths: 2, xpPerLevel: 50, cooldownMonths: 12 };
 /** 헤드헌팅: 비용 = 그 직군 기본급 × 지역 인건비 × costMonths, 스탯 평균 statMean(표준편차 statSd, 40~95) 후보 1명, 직군마다 한 달에 한 번 */
 export const HEADHUNT = { costMonths: 3, statMean: 68, statSd: 8 };
 
-/** 멘토링으로 이번 달 더 얻는 XP — 가르치는 쪽에 '멘토' 특성이 있으면 2배 (P-MGT-24) */
+/** 멘토링으로 이번 달 더 얻는 XP — 가르치는 쪽에 '멘토' 특성이 있으면 2배 (#225) */
 export function mentoringXp(s: Pick<GameState, 'hr'>, x: Staff): number {
   const master = x.apprenticeOf ? s.hr.staff.find((y) => y.id === x.apprenticeOf) : undefined;
   if (master) return MENTORING.apprenticeXp * (hasTrait(master, 'mentor') ? 2 : 1);
@@ -265,7 +265,7 @@ export function gainXp(s: GameState, rng: Rng, activity: Record<StaffRole, numbe
   // 멘토링은 이번 달 시작 레벨로 판단한다 (같은 달 레벨업 순서와 무관)
   const mentor = new Map(s.hr.staff.map((x) => [x.id, mentoringXp(s, x)]));
   for (const x of s.hr.staff) {
-    // 사기 배수 (P-MGT-24) — 사기 70(기본값)이면 ×1이라 사기가 꺼진 시나리오는 그대로
+    // 사기 배수 (#225) — 사기 70(기본값)이면 ×1이라 사기가 꺼진 시나리오는 그대로
     x.xp += (10 + activity[x.role] + (mentor.get(x.id) ?? 0)) * xpMultiplier(x);
     while (x.xp >= 100 * x.level) {
       x.xp -= 100 * x.level;

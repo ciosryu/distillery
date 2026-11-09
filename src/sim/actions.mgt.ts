@@ -198,7 +198,7 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     const notes: string[] = [];
     handleDeparture(s, x, notes);
     s.hr.staff = s.hr.staff.filter((y) => y.id !== x.id);
-    // 해고는 남은 직원의 사기를 깎는다 (P-MGT-24) — HR이 잠긴 시나리오는 사기가 꺼져 있다
+    // 해고는 남은 직원의 사기를 깎는다 (#225) — HR이 잠긴 시나리오는 사기가 꺼져 있다
     if (moraleOn(s) && s.hr.staff.length) {
       for (const y of s.hr.staff) shiftMorale(y, -MORALE.fired);
       notes.push(`남은 직원 사기 −${MORALE.fired}`);
