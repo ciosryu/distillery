@@ -199,3 +199,18 @@ describe('품절 제품 유지 · 결품 예고 (2026-11-09 오너 요청)', () 
     expect(s.commerce.products.find((p) => p.id === id)!.stockBottles).toBe(0);
   });
 });
+
+describe('IB 캐스크 입찰 — 10년 차 해금 (P-ARCH-Y10-1)', () => {
+  it('제안이 있으면 할 일에 값·만료·판단 기준을 올리고 원액 B2B 탭으로 보낸다, 열린 달에는 새로 열림 안내도 B2B로', () => {
+    let s = mvp();
+    s.month = 108; s = advanceMonth(s);
+    const stage = monthTodos(s).find((t) => t.id === 'stage-y9_casks');
+    expect(stage?.target).toEqual({ tab: 'b2b' });
+    expect(monthTodos(s).some((t) => t.id === 'cask-bid')).toBe(false);
+    s.b2b.caskBids = [{ id: 'I1', buyerName: '테스트 병입자', caskId: 'KX', price: 3_800_000, expiresMonth: s.month + 2 }];
+    const t = monthTodos(s).find((x) => x.id === 'cask-bid')!;
+    expect(t.target).toEqual({ tab: 'b2b' });
+    expect(t.text).toContain('380만');
+    expect(t.text).toContain('2개월 안에');
+  });
+});
