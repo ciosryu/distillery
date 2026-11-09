@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BOTTLE_SIZES, CASKS, PACKAGING, packagingCost } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
-import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength } from '../../sim';
 import { regionOf } from '../../sim/content/regions';
 import { stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
 import { useGame } from '../../store/game';
@@ -190,7 +190,8 @@ export function Bottling() {
   // 보충 대상이 판매 목록에서 빠졌으면(보관 처리) 새 제품으로 돌아간다
   useEffect(() => { if (opts.restockId && !restockTarget) setOpts((o) => ({ ...o, restockId: undefined })); }, [opts.restockId, restockTarget]);
   const restockChoices = restockable(s).filter((p) => !preview?.category || p.category === preview.category);
-  const pickRestock = (p: Product) => setOpts({ ...opts, restockId: p.id, name: '', bottleMl: p.bottleMl, targetAbv: p.abv, chillFilter: p.chillFiltered, packagingId: p.packagingId, dutyFreeOnly: false, targetId: undefined, line: undefined });
+  // 캐스크 스트렝스 제품은 도수를 맞추지 않고 "캐스크 스트렝스"로 병입한다 (통마다 도수가 다르다)
+  const pickRestock = (p: Product) => setOpts({ ...opts, restockId: p.id, name: '', bottleMl: p.bottleMl, targetAbv: isCaskStrength(p) ? 'cask' : p.abv, chillFilter: p.chillFiltered, packagingId: p.packagingId, dutyFreeOnly: false, targetId: undefined, line: undefined });
   // 보충 뒤 품질 예상 — 남은 재고(병입한 제품이라 품질을 안다)와 새 병의 가중 평균. 시나리오 게임은 새 원액의 추정 품질(±오차)로
   const restockAfter = (() => {
     if (!restockTarget || !preview?.ok || !preview.evaluation) return null;
@@ -251,7 +252,7 @@ export function Bottling() {
           {restockTarget ? (
             <div className="grid gap-1">
               <Select label="보충할 제품" value={restockTarget.id} options={(restockChoices.some((p) => p.id === restockTarget.id) ? restockChoices : [restockTarget, ...restockChoices]).map((p) => ({ value: p.id, label: `${p.name} · ${p.bottleMl}ml ${Math.round(p.abv * 1000) / 10}% · 재고 ${num(p.stockBottles)}병 · 품질 ${p.quality} · ${monthLabel(s.startYear, p.createdMonth)} 출시` }))} onChange={(id) => { const t1 = s.commerce.products.find((p) => p.id === id); if (t1) pickRestock(t1); }} />
-              <p className="text-xs text-stone-500">병·도수·포장은 「{restockTarget.name}」과 같게 맞춘다: {restockTarget.bottleMl}ml · {Math.round(restockTarget.abv * 1000) / 10}% · {restockTarget.chillFiltered ? '칠 필터링' : '논칠필터'} · {PACKAGING[restockTarget.packagingId]?.nameKo ?? restockTarget.packagingId}. 이름·출고가({won(restockTarget.price)})·판매 기록은 그대로, 품질·향·원가는 남은 재고와 새 병 수로 평균 낸다.</p>
+              <p className="text-xs text-stone-500">병·도수·포장은 「{restockTarget.name}」과 같게 맞춘다: {restockTarget.bottleMl}ml · {isCaskStrength(restockTarget) ? `캐스크 스트렝스(지금 ${Math.round(restockTarget.abv * 1000) / 10}% — 통마다 달라 병 수로 평균)` : `${Math.round(restockTarget.abv * 1000) / 10}%`} · {restockTarget.chillFiltered ? '칠 필터링' : '논칠필터'} · {PACKAGING[restockTarget.packagingId]?.nameKo ?? restockTarget.packagingId}. 이름·출고가({won(restockTarget.price)})·판매 기록은 그대로, 품질·향·원가는 남은 재고와 새 병 수로 평균 낸다.</p>
             </div>
           ) : (
             <>
