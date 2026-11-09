@@ -45,7 +45,7 @@ const newReport = (s: GameState, offTurn: CashFlows): MonthReport => ({ month: s
 
 /** 0 준비: 지난 보정치 정리, 주문 캐스크 도착, 입지 인허가 */
 function phasePrepare(s: GameState, report: MonthReport): void {
-  // 시나리오 단계 해금 (P-ARCH-MID-1) — 이벤트·의뢰·수출 등이 그 달부터 돈다
+  // 시나리오 단계 해금 (#215) — 이벤트·의뢰·수출 등이 그 달부터 돈다
   applyScenarioStages(s, report);
   pruneModifiers(s);
   s.inventory.rotatedThisMonth = 0;

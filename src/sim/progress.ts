@@ -109,7 +109,7 @@ export function updateProgress(s: GameState, report: MonthReport): void {
 export const timelineOf = (s: Pick<GameState, 'progress'>) =>
   s.progress.milestones.filter((m) => MILESTONES[m.id].timeline).sort((a, b) => a.month - b.month);
 
-// ───────────── 중반 목표 (P-META-MID-1, 4차 MVP 플레이테스트: 중반 이후 방향감이 없다) ─────────────
+// ───────────── 중반 목표 (#216, 4차 MVP 플레이테스트: 중반 이후 방향감이 없다) ─────────────
 
 /** 지금 이 중반 목표를 이뤘는가 */
 export function midGoalMet(s: GameState, id: MidGoalDef['id']): boolean {

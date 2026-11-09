@@ -438,8 +438,8 @@ describe('홋카이도 재고 담보대출 (결정 #90)', () => {
   });
 });
 
-// BIZ-2b 재무 리스크 관리 (P-MGT-21) — 매출채권 신용보험·팩토링. 선물환·금리 스왑은 막을 위험(환율 변동·변동금리)이 없어 아직 없다
-describe('BIZ-2b 신용보험·팩토링 (P-MGT-21)', () => {
+// BIZ-2b 재무 리스크 관리 (#214) — 매출채권 신용보험·팩토링. 선물환·금리 스왑은 막을 위험(환율 변동·변동금리)이 없어 아직 없다
+describe('BIZ-2b 신용보험·팩토링 (#214)', () => {
   const defaulting = (unlocked: string[]) => {
     const s = newGame({ seed: 1, region: 'KR' });
     s.research.unlocked.push(...unlocked);

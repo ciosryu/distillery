@@ -184,7 +184,7 @@ const todoRank = (id: string) => { const i = TODO_ORDER.indexOf(id); return i < 
  */
 export function monthTodos(s: GameState): Todo[] {
   const out: Todo[] = [];
-  // 새로 열린 기능 (P-ARCH-MID-1) — 연 뒤 3개월 동안 할 일 맨 위에 둔다
+  // 새로 열린 기능 (#215) — 연 뒤 3개월 동안 할 일 맨 위에 둔다
   const def = s.scenario ? SCENARIOS[s.scenario.id] : undefined;
   for (const st of def?.stages ?? []) {
     if (!s.scenario?.stagesDone?.includes(st.id) || s.month - st.month >= 3) continue;

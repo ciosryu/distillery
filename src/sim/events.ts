@@ -52,7 +52,7 @@ function eligibleAt(s: GameState, def: EventDef, month: number, monthOfYear: num
   if (def.sitesOnly && !atSite) return false;
   if (!atSite && def.regions && !def.regions.includes(s.regionId)) return false;
   if (def.minMonth != null && month < def.minMonth) return false;
-  // 직원 이벤트(스카우트 등)는 채용이 열린 판에서만 — 채용이 잠긴 MVP에서는 잃은 직원을 다시 뽑을 수 없다 (P-ARCH-MID-1)
+  // 직원 이벤트(스카우트 등)는 채용이 열린 판에서만 — 채용이 잠긴 MVP에서는 잃은 직원을 다시 뽑을 수 없다 (#215)
   if (def.category === 'people' && !systemOn(s, 'hr')) return false;
   if (def.months && !def.months.includes(monthOfYear)) return false;
   const last = s.events.lastFired[def.id];
@@ -146,7 +146,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         s.finance.cash -= unpaid;
         s.b2b.contracts = s.b2b.contracts.filter((x) => x.id !== c.id);
         notes.push(`${c.buyerName} 계약 종료 — 미수금 ${unpaid.toLocaleString()}원 손실`);
-        // 매출채권 신용보험 (BIZ-2b, P-MGT-21) — 가입하지 않았으면 0
+        // 매출채권 신용보험 (BIZ-2b, #214) — 가입하지 않았으면 0
         const claim = creditClaim(s, unpaid);
         if (claim > 0) { s.finance.cash += claim; notes.push(`신용보험금 ${claim.toLocaleString()}원 수령`); }
         break;

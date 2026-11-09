@@ -22,7 +22,7 @@ export function pendingStages(s: Pick<GameState, 'scenario'>): ScenarioStage[] {
 }
 
 /**
- * 단계 해금 (P-ARCH-MID-1, 4차 MVP 플레이테스트: 6년 차 흑자 뒤 "너무 쉽고 지루하다") — 월 틱 0단계(준비)에서 그 달이 된 단계의 잠금 키를 푼다.
+ * 단계 해금 (#215, 4차 MVP 플레이테스트: 6년 차 흑자 뒤 "너무 쉽고 지루하다") — 월 틱 0단계(준비)에서 그 달이 된 단계의 잠금 키를 푼다.
  * 잠금은 상태(scenario.locked)에서 빠지므로 isLocked는 그대로다. 연 단계는 stagesDone에 남고 리포트 메모로 알린다
  */
 export function applyScenarioStages(s: GameState, report: MonthReport): void {

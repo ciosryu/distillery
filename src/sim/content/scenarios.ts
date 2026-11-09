@@ -45,9 +45,9 @@ export interface ScenarioDef {
   };
   tiers: ScenarioTierDef[];
   defaultTier: ScenarioTierDef['id'];
-  /** 판이 진행되면 차례로 여는 기능 (P-ARCH-MID-1, 4차 MVP 플레이테스트: 중반 이후 쉽고 지루하다) */
+  /** 판이 진행되면 차례로 여는 기능 (#215, 4차 MVP 플레이테스트: 중반 이후 쉽고 지루하다) */
   stages?: ScenarioStage[];
-  /** 중반 목표 — 기한 안에 이루면 보상 (P-META-MID-1) */
+  /** 중반 목표 — 기한 안에 이루면 보상 (#216) */
   midGoals?: MidGoalDef[];
 }
 
