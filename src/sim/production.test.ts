@@ -611,3 +611,59 @@ describe('자동 최적 가격 (#200, 3차 MVP 플레이테스트 오너 요청)
     expect(t2.commerce.products.find((x) => x.id === p.id)!.price).toBeLessThan(p.price * 3); // 다음 판매 전에 다시 맞춘다
   });
 });
+
+describe('품절 제품 지우기 · 통에서 원액 빼기 (2026-11-09 오너 요청)', () => {
+  const base = () => {
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
+    const soju = s.production.recipes.find((r) => r.kind === 'soju')!;
+    s = applyAction(s, { type: 'setOrder', recipeId: malt.id, batchesPerMonth: 2 }).state;
+    s = applyAction(s, { type: 'setOrder', recipeId: soju.id, batchesPerMonth: 1 }).state;
+    return advanceMonth(s);
+  };
+  it('재고가 남은 제품은 못 지우고, 품절이면 지워 판매 기록만 남긴다', () => {
+    let s = base();
+    const lot = s.inventory.lots.find((l) => l.kind === 'soju')!;
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: 3 }], options: { name: 'x', targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' } }).state;
+    const id = s.commerce.products.at(-1)!.id;
+    expect(applyAction(s, { type: 'archiveProduct', productId: id }).error).toContain('재고');
+    s.commerce.products.find((p) => p.id === id)!.stockBottles = 0;
+    const r = applyAction(s, { type: 'archiveProduct', productId: id });
+    expect(r.error).toBeUndefined();
+    expect(r.state.commerce.products.some((p) => p.id === id)).toBe(false);
+    expect(r.state.commerce.productArchive.some((p) => p.id === id)).toBe(true);
+  });
+  it('통입한 달·샘플 전이면 통입 취소 — 통은 넣기 전 그대로, 원액은 탱크로', () => {
+    let s = base();
+    const lot = s.inventory.lots.find((l) => l.kind === 'malt')!;
+    const cask = s.inventory.casks.find((c) => !c.contents)!;
+    s = applyAction(s, { type: 'fillCasks', lotId: lot.id, caskIds: [cask.id], entryAbv: 0.635 }).state;
+    const filled = s.inventory.casks.find((c) => c.id === cask.id)!;
+    const vol = filled.contents!.volumeL;
+    const r = applyAction(s, { type: 'unfillCask', caskId: cask.id });
+    expect(r.error).toBeUndefined();
+    const after = r.state.inventory.casks.find((c) => c.id === cask.id)!;
+    expect(after.contents).toBeUndefined();
+    expect(after.fills).toBe(cask.fills);
+    expect(after.activity).toBe(cask.activity);
+    const back = r.state.inventory.lots.find((l) => l.name.includes('통입 취소'))!;
+    expect(back.volumeL).toBeCloseTo(vol, 6);
+  });
+  it('몇 달 뒤에는 옮겨 붓기 — 0.75% 손실, 숙성 개월은 원액에 남고 통은 한 번 쓴 통', () => {
+    let s = base();
+    const lot = s.inventory.lots.find((l) => l.kind === 'malt')!;
+    const cask = s.inventory.casks.find((c) => !c.contents)!;
+    s = applyAction(s, { type: 'fillCasks', lotId: lot.id, caskIds: [cask.id], entryAbv: 0.635 }).state;
+    s = advanceMonths(s, 3);
+    const before = s.inventory.casks.find((c) => c.id === cask.id)!;
+    const r = applyAction(s, { type: 'unfillCask', caskId: cask.id });
+    const back = r.state.inventory.lots.find((l) => l.name.includes('에서 뺌'))!;
+    expect(back.oakMonths).toBe(before.contents!.oakMonths);
+    expect(back.oakMonths).toBeGreaterThan(0);
+    expect(back.volumeL).toBeCloseTo(before.contents!.volumeL * (1 - 0.0075), 6);
+    expect(r.state.inventory.casks.find((c) => c.id === cask.id)!.activity).toBeLessThan(before.activity);
+    // 숙성 원액은 새 뉴메이크와 탱크에서 섞이지 않는다
+    const t2 = advanceMonth(r.state);
+    expect(t2.inventory.lots.some((l) => l.id === back.id && l.oakMonths === back.oakMonths)).toBe(true);
+  });
+});
