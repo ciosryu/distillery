@@ -2,7 +2,7 @@ import { forwardRoomKg, marketIndex } from './forwards';
 import { FORWARD, INGREDIENTS } from './content/catalog';
 import { LOAN_OFFERS } from './content/catalog';
 import { awarenessOf } from './brands';
-import { handleDeparture, headhunt, masterDistiller, TRAINING, trainingCost, trainStaff } from './hr';
+import { handleDeparture, headhunt, masterDistiller, MORALE, moraleOn, shiftMorale, TRAINING, trainingCost, trainStaff } from './hr';
 import { ROLE_INFO } from './content/catalog';
 import { isLocked } from './scenario';
 import { INVESTMENT_OFFERS } from './content/catalog';
@@ -198,6 +198,11 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     const notes: string[] = [];
     handleDeparture(s, x, notes);
     s.hr.staff = s.hr.staff.filter((y) => y.id !== x.id);
+    // 해고는 남은 직원의 사기를 깎는다 (P-MGT-24) — HR이 잠긴 시나리오는 사기가 꺼져 있다
+    if (moraleOn(s) && s.hr.staff.length) {
+      for (const y of s.hr.staff) shiftMorale(y, -MORALE.fired);
+      notes.push(`남은 직원 사기 −${MORALE.fired}`);
+    }
     return { state: s, message: [`${x.name} 퇴사 (위로금 1개월분 지급)`, ...notes].join(' — ') };
   },
   takeLoan: (s, prev, a) => {

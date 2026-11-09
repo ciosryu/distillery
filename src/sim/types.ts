@@ -252,7 +252,14 @@ export interface Staff {
   ageAtHire?: number;
   /** 부사수: 이 직원을 가르치는 마스터 디스틸러 id */
   apprenticeOf?: string;
+  /** 사기 0~100 (P-MGT-24). 없으면 70으로 읽는다 — 옛 세이브·창업 멤버·HR이 잠긴 시나리오 */
+  morale?: number;
+  /** 성격 특성 (P-MGT-24). 없으면 없음 */
+  traits?: StaffTrait[];
 }
+
+/** 성격 특성 (P-MGT-24, 1단계는 MGT 효과만): 멘토 / 철새 / 토박이 / 협상가 */
+export type StaffTrait = 'mentor' | 'drifter' | 'loyal' | 'negotiator';
 
 export interface Candidate extends Staff { askSalary: number }
 

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { applyAction, newGame, newScenarioGame } from './index';
-import { headhuntCost, mentoringXp } from './hr';
+import { applyAction, newGame, newScenarioGame, type GameState, type MonthReport, type Staff } from './index';
+import { headhuntCost, makeCandidate, marketSalary, mentoringXp, MORALE, moraleOf, quitChance, runMorale, xpMultiplier } from './hr';
+import { houseBrand } from './brands';
+import { resolvePending, runEvents } from './events';
+import { rngFor } from './rng';
 
 // HR 성장 — 교육·멘토링·헤드헌팅 (PRD §7.3, #222). MVP는 HR이 잠겨 있다
 describe('HR 성장 (#222)', () => {
@@ -47,5 +50,143 @@ describe('HR 성장 (#222)', () => {
     const m = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     expect(applyAction(m, { type: 'trainStaff', staffId: m.hr.staff[0]!.id }).error).toMatch(/시나리오/);
     expect(applyAction(m, { type: 'headhunt', role: 'sales' }).error).toMatch(/시나리오/);
+  });
+});
+
+const rep = (s: GameState): MonthReport => ({ month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] });
+
+// 사기·성격 특성 1단계 (P-MGT-24, PRD §7.2) — MVP(HR 잠김)에서는 꺼진다
+describe('사기·성격 특성 (P-MGT-24)', () => {
+  const sales = (s: GameState, extra: Partial<Staff> = {}): Staff => {
+    const d = s.hr.staff[0]!;
+    const x: Staff = { ...d, id: `S-x${s.hr.staff.length}`, role: 'sales', apprenticeOf: undefined, ...extra };
+    x.salary = extra.salary ?? marketSalary(s, x);
+    s.hr.staff.push(x);
+    return x;
+  };
+
+  it('매달: 70 쪽으로 10% 돌아가고, 시세보다 덜 받으면 부족 % × 0.5만큼, 인지도 50% 이상이면 +1', () => {
+    const s = newGame({ seed: 1 });
+    const d = s.hr.staff[0]!;
+    expect(moraleOf(d)).toBe(70);
+    d.morale = 40;
+    const under = sales(s, { morale: 70 });
+    under.salary = Math.round(marketSalary(s, under) * 0.9);
+    runMorale(s, rep(s));
+    expect(d.morale).toBe(43);
+    expect(under.morale).toBeCloseTo(65, 0);
+    houseBrand(s).awareness = 0.6;
+    d.morale = 70;
+    runMorale(s, rep(s));
+    expect(d.morale).toBe(71);
+  });
+
+  it('부사수는 시세의 60%를 시세로 본다 — 채용 급여(60%)로는 사기가 깎이지 않는다', () => {
+    const s = newGame({ seed: 1 });
+    const m = s.hr.staff[0]!;
+    const ap: Staff = { ...m, id: 'S-ap', apprenticeOf: m.id, salary: 0 };
+    ap.salary = Math.round(marketSalary(s, ap));
+    s.hr.staff.push(ap);
+    runMorale(s, rep(s));
+    expect(ap.morale).toBe(70);
+  });
+
+  it('이직: 사기 30 미만이면 (30 − 사기)/30 × 3% — 철새 ×2, 토박이 ×0.5. 하나뿐인 디스틸러는 나가지 않는다', () => {
+    const s = newGame({ seed: 1 });
+    const x = sales(s, { morale: 0 });
+    expect(quitChance(x)).toBeCloseTo(0.03);
+    expect(quitChance({ ...x, morale: 15 })).toBeCloseTo(0.015);
+    expect(quitChance({ ...x, morale: 30 })).toBe(0);
+    expect(quitChance({ ...x, traits: ['drifter'] })).toBeCloseTo(0.06);
+    expect(quitChance({ ...x, traits: ['loyal'] })).toBeCloseTo(0.015);
+    const d = s.hr.staff[0]!;
+    let quitAt = -1;
+    for (let m = 1; m <= 400 && quitAt < 0; m++) {
+      s.month = m; d.morale = 0;
+      const sx = s.hr.staff.find((y) => y.id === x.id);
+      if (!sx) { quitAt = m; break; }
+      sx.morale = 0;
+      const r = rep(s);
+      runMorale(s, r);
+      if (!s.hr.staff.some((y) => y.id === x.id)) { quitAt = m; expect(r.notes.join(' ')).toMatch(/사기 저하로 이직/); }
+    }
+    expect(quitAt).toBeGreaterThan(0);
+    expect(s.hr.staff.some((y) => y.id === d.id)).toBe(true);
+  });
+
+  it('XP 배수: 사기 70이면 ×1, 0이면 ×0.5', () => {
+    const s = newGame({ seed: 1 });
+    const d = s.hr.staff[0]!;
+    expect(xpMultiplier(d)).toBe(1);
+    expect(xpMultiplier({ ...d, morale: 0 })).toBe(0.5);
+  });
+
+  it('교육 +10, 해고하면 남은 직원 −10', () => {
+    const s = newGame({ seed: 1 });
+    const x = sales(s);
+    const y = sales(s);
+    const r = applyAction(s, { type: 'trainStaff', staffId: x.id });
+    expect(r.state.hr.staff.find((z) => z.id === x.id)!.morale).toBe(80);
+    const f = applyAction(r.state, { type: 'fire', staffId: y.id });
+    expect(f.state.hr.staff.find((z) => z.id === x.id)!.morale).toBe(70);
+    expect(f.state.hr.staff[0]!.morale).toBe(60);
+    expect(f.message).toMatch(/사기 −10/);
+  });
+
+  it('성격 특성: 후보 0~2개, 철새와 토박이는 함께 없다. 협상가 영업은 협상 스탯 +5. 후보 스탯 난수는 그대로', () => {
+    const s = newGame({ seed: 7 });
+    const all = Array.from({ length: 200 }, (_, i) => makeCandidate(s, rngFor(7, i, 'c'), 'sales'));
+    expect(all.some((c) => c.traits?.length)).toBe(true);
+    expect(all.some((c) => !c.traits)).toBe(true);
+    for (const c of all) {
+      expect(c.traits?.length ?? 0).toBeLessThanOrEqual(2);
+      expect(c.traits?.includes('drifter') && c.traits?.includes('loyal')).toBeFalsy();
+    }
+    const neg = all.find((c) => c.traits?.includes('negotiator'))!;
+    const plain = makeCandidate({ ...s, seed: -1 }, rngFor(7, all.indexOf(neg), 'c'), 'sales');
+    expect(neg.stats.c - plain.stats.c).toBe(plain.traits?.includes('negotiator') ? 0 : Math.min(5, 100 - plain.stats.c));
+  });
+
+  it('멘토 특성: 멘토링으로 주는 XP 2배', () => {
+    const s = newGame({ seed: 1 });
+    const m = s.hr.staff[0]!;
+    const ap: Staff = { ...m, id: 'S-ap', level: 1, apprenticeOf: m.id };
+    s.hr.staff.push(ap);
+    expect(mentoringXp(s, ap)).toBe(8);
+    m.traits = ['mentor'];
+    expect(mentoringXp(s, ap)).toBe(16);
+  });
+
+  it('연봉 협상: 1월에 선택 이벤트(첫해 제외). 인상 +5%(협상가 +2.5%)·사기 +15 / 동결(기본값) 사기 −15(토박이 −7.5)', () => {
+    const s = newGame({ seed: 1 });
+    runEvents(s, rep(s), 1);
+    expect(s.events.pending.some((p) => p.defId === 'salary_review')).toBe(false);
+    s.month = 12;
+    const neg = sales(s, { traits: ['negotiator'] });
+    const loyal = sales(s, { traits: ['loyal'] });
+    neg.salary = 4_000_000; loyal.salary = 4_000_000;
+    runEvents(s, rep(s), 1);
+    const p = s.events.pending.find((x) => x.defId === 'salary_review')!;
+    expect(p.defaultChoice).toBe(1);
+    const raise = structuredClone(s);
+    resolvePending(raise, p.id, 0);
+    expect(raise.hr.staff.find((x) => x.id === loyal.id)!.salary).toBe(4_200_000);
+    expect(raise.hr.staff.find((x) => x.id === neg.id)!.salary).toBe(4_100_000);
+    expect(raise.hr.staff.find((x) => x.id === neg.id)!.morale).toBe(85);
+    resolvePending(s, p.id, 1);
+    expect(s.hr.staff.find((x) => x.id === neg.id)!.morale).toBe(55);
+    expect(s.hr.staff.find((x) => x.id === loyal.id)!.morale).toBe(62.5);
+    expect(s.hr.staff.find((x) => x.id === neg.id)!.salary).toBe(4_000_000);
+  });
+
+  it('MVP(HR 잠김)에서는 꺼진다 — 사기가 변하지 않고 연봉 협상도 없다', () => {
+    const m = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    for (const x of m.hr.staff) x.salary = 1;
+    runMorale(m, rep(m));
+    expect(m.hr.staff.every((x) => x.morale === undefined)).toBe(true);
+    m.month = 12;
+    runEvents(m, rep(m), 1);
+    expect(m.events.pending.some((p) => p.defId === 'salary_review')).toBe(false);
+    expect(MORALE.base).toBe(70);
   });
 });
