@@ -29,7 +29,7 @@
 | [design/tech-tree.md](design/tech-tree.md) | 테크트리·연구 | 정본(설계) — 코드는 게이트만 | MGT |
 | [design/export.md](design/export.md) | 수출 시장 설계 | 정본(구현됨 #100~#109) | MKT |
 | [design/regions.md](design/regions.md) | 지역·입지 특성 원안 | **§0.1 이식 현황만 정본**, 본문은 기록(초안 번호 #57~#72는 이 원장과 다르다) | 공정관리(정리) |
-| [design/scotland.md](design/scotland.md) | 스코틀랜드 지역 | 초안 v0.2 (구현은 ciosryu/distillery#9) | 콘텐츠 |
+| [design/scotland.md](design/scotland.md) | 스코틀랜드 지역 | 초안 v0.2 (구현은 MVP 플레이테스트 뒤 `main`에서 다시, #195) | 콘텐츠 |
 | [research/](research/) | 수요·시장 조사 | 조사 | 조사 |
 | [`data/market/base-demand.json`](../data/market/base-demand.json) | 게임에 넣는 기본 수요 | 정본(생성물 — `npm run data:demand`) | MKT |
 
