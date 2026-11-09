@@ -159,8 +159,8 @@ describe('효과 조회 (#170)', () => {
   });
 });
 
-// 실적 보너스 (P-MGT-22, 안 A) — 이미 세이브에 있는 누적 기록으로 센다. 최대 +30%
-describe('실적 보너스 (P-MGT-22)', () => {
+// 실적 보너스 (#218, 안 A) — 이미 세이브에 있는 누적 기록으로 센다. 최대 +30%
+describe('실적 보너스 (#218)', () => {
   it('새 판은 실적 0 → 보너스 0, 진행 속도는 옛 공식과 같다', () => {
     const s = newGame({ seed: 1 });
     expect(milestoneBonus(s, 'PRO-1')).toMatchObject({ bonus: 0, metric: 'lpa', value: 0, target: MILESTONE_TARGETS.lpa[0] });

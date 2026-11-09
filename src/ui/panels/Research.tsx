@@ -24,7 +24,7 @@ export function Research() {
   const monthly = s.research.active.filter((a) => !a.paused && a.leadStaffId).reduce((t, a) => t + (TECH_BY_ID[a.techId]?.research.monthlyCost ?? 0), 0);
   const nameOf = (id?: string) => s.hr.staff.find((x) => x.id === id)?.name ?? '없음';
   const trees = [...new Set(TECH_NODES.map((n) => n.tree))];
-  // 실적 보너스 (P-MGT-22) — "+18%" 와 근거(지표 지금/기준)
+  // 실적 보너스 (#218) — "+18%" 와 근거(지표 지금/기준)
   const bonusOf = (techId: string) => {
     const b = milestoneBonus(s, techId);
     if (!b) return null;

@@ -618,7 +618,7 @@ describe('가격 반응 곡선 (#198, PRD §9.2)', () => {
   });
 });
 
-describe('숙성 소주 표기 (P-MKT-8, PRD §9.2)', () => {
+describe('숙성 소주 표기 (#217, PRD §9.2)', () => {
   const soju = (over: Partial<Product> = {}): Product => ({ id: 's', name: 's', category: 'soju_distilled', ageYears: null, oakMonths: 0, abv: 0.4, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 60, typicity: 80, style: null, sourcedShare: 0, stockBottles: 5000, price: 15_000, unitCost: 5_000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, ...over });
 
   it('배수: 6개월 미만·대상 밖은 1, 6개월 1.04, 2년 1.16, 3년 넘어도 1.24에서 멈춘다', () => {
