@@ -84,7 +84,7 @@ describe('정보 구매 — 샘플링·실험실 분석 (P1)', () => {
     const c = s.inventory.casks.find((k) => k.id === ids[0])!;
     expect(c.samples).toBe(1);
     expect(readSigma(s, c)).toBeCloseTo(sigma0 / Math.SQRT2, 6);
-    expect(c.contents!.volumeL).toBeCloseTo(190 - SAMPLING.lossL, 6); // 190L 통에서 샘플 1회(0.1L, P-PROD-25)
+    expect(c.contents!.volumeL).toBeCloseTo(190 - SAMPLING.lossL, 6); // 190L 통에서 샘플 1회(0.1L, #209)
     expect(cash0 - s.finance.cash).toBe(3 * 30_000);
     expect(applyAction(s, { type: 'sampleCask', caskIds: [...caskIdsOf(s, 'B'), ...caskIdsOf(s, 'P'), ...ids] }).error).toMatch(/여력/);
   });
