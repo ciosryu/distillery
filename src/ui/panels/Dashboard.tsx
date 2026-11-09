@@ -67,7 +67,8 @@ export function Dashboard() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card title="현금 추이" className="lg:col-span-2">
-          <Sparkline values={s.history.reports.map((r) => r.cashEnd)} label="월말 현금 추이" />
+          {/* 마우스를 올리면 그 달 월말 현금 (2026-11-09 오너 요청) */}
+          <Sparkline values={s.history.reports.map((r) => r.cashEnd)} label="월말 현금 추이" fmtValue={won} fmtPoint={(i) => `${monthLabel(s.startYear, s.history.reports[i]!.month)} 말`} />
           <div className="mt-2 flex justify-between text-xs text-stone-500">
             <span>{s.history.reports.length ? monthLabel(s.startYear, s.history.reports[0]!.month) : ''}</span>
             <span>{last ? monthLabel(s.startYear, last.month) : ''}</span>
