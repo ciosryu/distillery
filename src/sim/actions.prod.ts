@@ -1,4 +1,5 @@
-import { bestAutoPrice } from './economics';
+import { isWhiskyCategory } from './blending';
+import { AUTO_RESTOCK_MONTHS, autoRestockSupported, bestAutoPrice } from './economics';
 import { CASK_COST_SHARE_PER_FILL, CASK_MARKET, CASKS, EQUIPMENT, RECHAR_COST } from './content/catalog';
 import { assignSlot, rotateWarehouse, SlotIndex } from './warehouse';
 import { usedCaskPrice } from './casks';
@@ -51,13 +52,16 @@ export type ProdAction =
   /** 통에서 원액을 빼서 탱크로 (2026-11-09 오너 요청 — 실수로 잘못 넣은 통). 통입한 달·샘플 전이면 통입 취소, 아니면 숙성을 지닌 채 탱크로 */
   | { type: 'unfillCask'; caskId: string }
   /** 자동 최적 가격 켜기·끄기 (#200) — 켜면 바로 한 번 값을 정한다 */
-  | { type: 'setAutoPrice'; productId: string; on: boolean };
+  | { type: 'setAutoPrice'; productId: string; on: boolean }
+  /** 자동 납품 (#206) — months: 유지할 재고 개월분(1·2·3·6), null이면 끔 */
+  | { type: 'setAutoRestock'; productId: string; months: number | null };
 
 export const PROD_CASH_KEY: CashKeys<ProdAction> = {
   setOrder: null,
   archiveProduct: null,
   unfillCask: null,
   setAutoPrice: null,
+  setAutoRestock: null,
   saveRecipe: null,
   deleteRecipe: null,
   fillCasks: null,
@@ -122,6 +126,15 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     s.inventory.lots.push({ ...lot, id: nid(s, 'L'), name: `${name} (${cask.id}에서 뺌)`, volumeL: lot.volumeL * kept });
     s.inventory.casks[ci] = emptyCask(cask);
     return { state: s, message: `${cask.id}에서 원액 ${Math.round(lot.volumeL * kept).toLocaleString()}L를 빼 탱크로 옮겼다(손실 ${(FINISH.lossShare * 100).toFixed(2)}%) — 숙성 ${lot.oakMonths}개월은 원액에 남고, 통은 한 번 쓴 통이 된다` };
+  },
+  setAutoRestock: (s, prev, a) => {
+    const p = s.commerce.products.find((x) => x.id === a.productId);
+    if (!p) return fail(prev, '제품이 없습니다');
+    if (a.months == null) { delete p.autoRestock; return { state: s, message: `${p.name} 자동 납품 끔` }; }
+    if (!autoRestockSupported(p)) return fail(prev, '이 제품은 자동 납품을 쓸 수 없습니다 (소주·진·고량주·싱글 몰트·그레인 위스키만, 면세 한정판 제외)');
+    if (!(AUTO_RESTOCK_MONTHS as readonly number[]).includes(a.months)) return fail(prev, '유지 개월분은 1·2·3·6 중에서 고른다');
+    p.autoRestock = a.months;
+    return { state: s, message: `${p.name} 자동 납품 켬 — 매달 판매 전에 재고를 약 ${a.months}개월분으로 채운다${p.ageYears ? ` (${p.ageYears}년 이상 숙성 통만, 표기에 가까운 통부터)` : isWhiskyCategory(p.category) ? ' (법정 숙성 이상 통만, 어린 통부터)' : ' (탱크 원액, 먼저 만든 것부터)'}` };
   },
   setAutoPrice: (s, prev, a) => {
     const p = s.commerce.products.find((x) => x.id === a.productId);
