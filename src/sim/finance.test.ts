@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { advanceMonths, annuityPayment, applyAction, demandFor, newGame, newScenarioGame, type GameState, type SpiritLot, inventoryCollateral, inventoryLoanRoom, inventoryMarginCall, type MonthReport } from './index';
 import { ownsFacility } from './util';
 import { forwardNotionalPerKg, forwardRoomKg, marketIndex, monthlyUsageKg, settleForwards } from './forwards';
-import { fireEvent } from './events';
+import { applyEffects, fireEvent } from './events';
+import { mulberry32 } from './rng';
 import { INSURANCE_PRODUCTS } from './content/catalog';
-import { claimFor, insuredInventoryValue, insuredPropertyValue, newLedger } from './insurance';
+import { claimFor, creditClaim, factoringProceeds, insuredInventoryValue, insuredPropertyValue, newLedger } from './insurance';
 import { isLocked } from './scenario';
 import { availableLoans, currentLoanPayment, loanRoomTotal, loanTerms } from './loans';
 
@@ -434,5 +435,50 @@ describe('홋카이도 재고 담보대출 (결정 #90)', () => {
     s.b2b.bulkIndex = 0.5;
     const paid = inventoryMarginCall(s, report(s));
     expect(paid).toBeGreaterThan(0);
+  });
+});
+
+// BIZ-2b 재무 리스크 관리 (#214) — 매출채권 신용보험·팩토링. 선물환·금리 스왑은 막을 위험(환율 변동·변동금리)이 없어 아직 없다
+describe('BIZ-2b 신용보험·팩토링 (#214)', () => {
+  const defaulting = (unlocked: string[]) => {
+    const s = newGame({ seed: 1, region: 'KR' });
+    s.research.unlocked.push(...unlocked);
+    const terms = { spirit: 'malt_newmake' as const, domestic: true, style: 'any' as const, lpaPerMonth: 100, termMonths: 12, pricePerLPA: 15_000, minQuality: 40, prepayShare: 0, penaltyPerLPA: 4_500, startMonth: 0, monthsDone: 0, deliveredLPA: 0, shortfallLPA: 0, prepaidRemaining: 0 };
+    s.b2b.contracts = [{ ...terms, id: 'C2', buyerId: 'hanra', buyerName: '한라 블렌디드 컴퍼니' }];
+    return s;
+  };
+
+  it('연구 전에는 신용보험을 팔지 않고, BIZ-2b 뒤에는 가입할 수 있다', () => {
+    expect(applyAction(defaulting([]), { type: 'buyInsurance', kind: 'credit', coverage: 1e8 }).error).toMatch(/BIZ-2b/);
+    const r = applyAction(defaulting(['BIZ-2b']), { type: 'buyInsurance', kind: 'credit', coverage: 1e8 });
+    expect(r.error).toBeUndefined();
+    expect(r.state.finance.insurance[0]).toMatchObject({ kind: 'credit', coverage: 100_000_000, premiumPerMonth: Math.round((1e8 * 0.02) / 12) });
+  });
+
+  it('거래처 부도: 신용보험이 못 받은 대금의 90%를 가입금액까지 — 가입한 다음 달부터', () => {
+    const unpaid = 100 * 15_000; // lpaPerMonth × pricePerLPA × (1 − 선급 0)
+    let s = applyAction(defaulting(['BIZ-2b']), { type: 'buyInsurance', kind: 'credit', coverage: 1e8 }).state;
+    expect(creditClaim(s, unpaid)).toBe(0); // 가입한 달은 아직 보장 전
+    s.month += 1;
+    const cash = s.finance.cash;
+    applyEffects(s, [{ type: 'buyerDefault' }], mulberry32(1), 'test');
+    expect(cash - s.finance.cash).toBe(unpaid - Math.round(unpaid * 0.9));
+    s = applyAction(defaulting(['BIZ-2b']), { type: 'buyInsurance', kind: 'credit', coverage: 1e7 }).state;
+    s.month += 1;
+    expect(creditClaim(s, 50_000_000)).toBe(10_000_000); // 가입금액까지
+  });
+
+  it('팩토링: 미수금 전부를 수수료(남은 달 × 1.5%, 최소 1%)를 떼고 지금 현금으로 — 연구 전엔 막힌다', () => {
+    const s = defaulting([]);
+    s.finance.receivables = [{ dueMonth: s.month + 2, amount: 10_000_000, label: 'a' }, { dueMonth: s.month, amount: 5_000_000, label: 'b' }];
+    expect(applyAction(s, { type: 'factorReceivables' }).error).toMatch(/BIZ-2b/);
+    s.research.unlocked.push('BIZ-2b');
+    expect(factoringProceeds(s, s.finance.receivables[0]!)).toBe(9_700_000);
+    expect(factoringProceeds(s, s.finance.receivables[1]!)).toBe(4_950_000);
+    const r = applyAction(s, { type: 'factorReceivables' });
+    expect(r.error).toBeUndefined();
+    expect(r.state.finance.cash - s.finance.cash).toBe(14_650_000);
+    expect(r.state.finance.receivables).toHaveLength(0);
+    expect(applyAction(r.state, { type: 'factorReceivables' }).error).toMatch(/미수금이 없/);
   });
 });

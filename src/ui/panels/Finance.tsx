@@ -1,7 +1,8 @@
 import { forwardRoomKg, forwardSettlement, marketIndex, monthlyUsageKg } from '../../sim/forwards';
 import { useState } from 'react';
 import { FORWARD, INGREDIENTS, INSURANCE_PRODUCTS, LOAN_OFFERS } from '../../sim/content/catalog';
-import { insurancePremium, insuredInventoryValue, insuredPropertyValue } from '../../sim/insurance';
+import { factoringProceeds, insurancePremium, insuredInventoryValue, insuredPropertyValue } from '../../sim/insurance';
+import { isUnlocked } from '../../sim/research';
 import { isLocked } from '../../sim';
 import { INVESTMENT_OFFERS } from '../../sim/content/catalog';
 import { annuityPayment, availableLoans, forfeitedLoanRoom, currentLoanPayment, monthlyFixedCost as monthlyFixed, inventoryCollateral, inventoryLoanRoom, inventoryLtv, loanTerms, monthLabel } from '../../sim';
@@ -58,6 +59,7 @@ export function Finance() {
       <ForecastCard />
 
       <InsuranceCard />
+      <FactoringCard />
 
       {/* 투자 유치 — MVP는 잠겨 있어 숨긴다(누르면 "쓸 수 없는 기능"만 떠서 위기 때 헛걸음이 된다) */}
       {!isLocked(s, 'action:takeInvestment') && <Card title={`투자 유치 — 외부 지분 ${pct(s.finance.investorShare, 1)}`}>
@@ -250,22 +252,23 @@ function InsuranceCard() {
   const dispatch = useGame((g) => g.dispatch);
   const [amounts, setAmounts] = useState<Record<string, number>>({});
   if (isLocked(s, 'action:buyInsurance')) return null;
-  const insuredValue = { property: insuredPropertyValue(s), inventory: insuredInventoryValue(s) } as Record<string, number>;
+  const receivables = s.finance.receivables.reduce((t, r) => t + r.amount, 0);
+  const insuredValue = { property: insuredPropertyValue(s), inventory: insuredInventoryValue(s), credit: receivables } as Record<string, number>;
   const total = s.finance.insurance.reduce((t, x) => t + x.premiumPerMonth, 0);
   return (
     <Card title={`보험 — 월 보험료 ${won(total)}`}>
       <p className="mb-2 text-xs text-stone-500">재해 이벤트의 피해만 보상한다 — 복구비(재산) · 잃은 숙성 원액의 원가(재고) · 생산이 멈춘 달의 고정비(영업중단). 곰팡이·오염·폭염 증발은 제외. 가입한 다음 달부터 보장한다. 방재 설비가 피해를 막으면 청구할 피해도 없다.</p>
       <Table head={['보험', '보험가액·기준', '연 보험료율', '가입금액·한도', '월 보험료', '']}>
-        {INSURANCE_PRODUCTS.map((p) => {
+        {INSURANCE_PRODUCTS.filter((p) => !p.unlockKey || isUnlocked(s, p.unlockKey) || s.finance.insurance.some((x) => x.kind === p.kind)).map((p) => {
           const policy = s.finance.insurance.find((x) => x.kind === p.kind);
-          const base = p.basis === 'value' ? insuredValue[p.kind]! : monthlyFixed(s); // 기본 금액: 보험가액 / 지금 월 고정비
+          const base = p.basis === 'monthly' ? monthlyFixed(s) : insuredValue[p.kind]!; // 기본 금액: 보험가액 / 지금 월 고정비 / 지금 미수금(신용보험, BIZ-2b)
           const amt = (amounts[p.kind] ?? Math.max(p.minCoverage, Math.round(base / 1e6) * 1e6 || p.minCoverage) / 1e6) * 1e6;
           const shown = policy ? policy.coverage : amt;
           const ratio = p.basis === 'value' && base > 0 ? Math.min(1, shown / base) : 1;
           return (
             <tr key={p.kind}>
               <Td className="font-medium">{p.nameKo}<div className="max-w-md text-xs font-normal text-stone-500">{p.note}</div></Td>
-              <Td right>{p.basis === 'value' ? won(base) : <span className="text-xs">월 고정비까지 (지금 {won(monthlyFixed(s))})</span>}</Td>
+              <Td right>{p.basis === 'value' ? won(base) : p.basis === 'receivable' ? <span className="text-xs">지금 미수금 {won(base)}</span> : <span className="text-xs">월 고정비까지 (지금 {won(monthlyFixed(s))})</span>}</Td>
               <Td right>{pct(p.annualRate, 1)}</Td>
               <Td right>
                 {policy ? won(policy.coverage) : <NumberField value={amt / 1e6} min={p.minCoverage / 1e6} max={p.maxCoverage / 1e6} width="w-20" suffix="백만" onCommit={(v) => setAmounts({ ...amounts, [p.kind]: v })} />}
@@ -279,6 +282,28 @@ function InsuranceCard() {
           );
         })}
       </Table>
+    </Card>
+  );
+}
+
+/** 미수금 팩토링 (BIZ-2b, #214) — 원액 계약·수출 대금을 수수료를 떼고 지금 받는다. 연구 전·미수금이 없으면 숨긴다 */
+function FactoringCard() {
+  const s = useGame((g) => g.state);
+  const dispatch = useGame((g) => g.dispatch);
+  if (!isUnlocked(s, 'contract:factoring') || !s.finance.receivables.length) return null;
+  const face = s.finance.receivables.reduce((t, r) => t + r.amount, 0);
+  const cash = s.finance.receivables.reduce((t, r) => t + factoringProceeds(s, r), 0);
+  return (
+    <Card title={`미수금 팩토링 — 지금 받으면 ${won(cash)}`}>
+      <Table head={['미수금', '만기', '금액', '지금 받으면']}>
+        {s.finance.receivables.map((r, i) => (
+          <tr key={i}><Td>{r.label}</Td><Td right>{r.dueMonth - s.month}개월 뒤</Td><Td right>{won(r.amount)}</Td><Td right>{won(factoringProceeds(s, r))}</Td></tr>
+        ))}
+      </Table>
+      <div className="mt-2 flex items-center gap-2 text-xs text-stone-500">
+        <Button small variant="primary" onClick={() => dispatch({ type: 'factorReceivables' })}>전부 팩토링</Button>
+        <span>수수료 {won(face - cash)} — 만기까지 남은 달마다 1.5%, 최소 1% (연구 BIZ-2b)</span>
+      </div>
     </Card>
   );
 }

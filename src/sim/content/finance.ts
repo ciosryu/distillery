@@ -37,14 +37,17 @@ export const FORWARD = {
 // ── 보험 (#171, PRD §8.4 "화재·홍수" 줄 — 재산·재고·영업중단). 수치 [튜닝] ──
 // 보장 대상은 재해(category 'disaster') 이벤트의 피해만: 복구비(현금) · 캐스크 소실·원액 손실 · 생산 중단 개월.
 // 곰팡이·오염·폭염(증발)은 보상하지 않는다. 가입한 다음 달부터 보장한다(재해 직전 가입 방지).
-// 제조물 책임은 대응하는 사고 이벤트가 아직 없고, 매출채권 신용보험은 고급 상품(테크 BIZ-2b, #49)이라 아직 팔지 않는다
+// 제조물 책임은 대응하는 사고 이벤트가 아직 없다. 매출채권 신용보험은 고급 상품 — 테크 BIZ-2b(#49) 연구 뒤에만 판다(#214)
 export interface InsuranceProductDef {
-  kind: 'property' | 'inventory' | 'business_interruption';
+  kind: 'property' | 'inventory' | 'business_interruption' | 'credit';
   nameKo: string;
   /** 연 보험료율 — value: 보험가입금액 대비 / monthly: 월 보상 한도 대비 */
   annualRate: number;
-  /** value = 보험가입금액이 보험가액(설비 취득가·재고 원가)보다 적으면 비례 보상(일부보험) / monthly = 생산이 멈춘 달마다 월 보상 한도까지 */
-  basis: 'value' | 'monthly';
+  /** value = 보험가입금액이 보험가액(설비 취득가·재고 원가)보다 적으면 비례 보상(일부보험) / monthly = 생산이 멈춘 달마다 월 보상 한도까지 /
+   *  receivable = 거래처 부도로 못 받은 대금을 가입금액까지 (CREDIT_INSURANCE.share만큼) — 화면의 기준 금액은 지금 미수금 */
+  basis: 'value' | 'monthly' | 'receivable';
+  /** 연구 해금 키 — 열리기 전에는 가입할 수 없다 (research.ts isUnlocked) */
+  unlockKey?: string;
   minCoverage: number;
   maxCoverage: number;
   note: string;
@@ -54,7 +57,14 @@ export const INSURANCE_PRODUCTS: InsuranceProductDef[] = [
   { kind: 'property', nameKo: '재산 종합보험 (건물·설비)', annualRate: 0.016, basis: 'value', minCoverage: 10_000_000, maxCoverage: 10_000_000_000, note: '재해 복구비를 보상한다. 보험가입금액이 설비 취득가보다 적으면 그 비율만큼만' },
   { kind: 'inventory', nameKo: '재고 보험 (숙성 원액)', annualRate: 0.022, basis: 'value', minCoverage: 10_000_000, maxCoverage: 20_000_000_000, note: '화재·붕괴·침수로 잃은 숙성 원액을 원가로 보상한다. 곰팡이·오염은 제외. 가입금액이 재고 원가보다 적으면 비례 보상' },
   { kind: 'business_interruption', nameKo: '영업중단 보험', annualRate: 0.6, basis: 'monthly', minCoverage: 10_000_000, maxCoverage: 1_000_000_000, note: '재해로 생산이 멈춘 달의 고정비를 월 보상 한도까지 보상한다' },
+  // 매출채권 신용보험 (BIZ-2b, #214) [튜닝]
+  { kind: 'credit', nameKo: '매출채권 신용보험', annualRate: 0.02, basis: 'receivable', minCoverage: 10_000_000, maxCoverage: 1_000_000_000, unlockKey: 'contract:credit_insurance', note: '거래처(블렌더) 부도로 못 받은 대금의 90%를 가입금액까지 보상한다. 가입한 다음 달부터' },
 ];
+
+/** 매출채권 신용보험: 못 받은 대금 중 보상 비율 [튜닝] */
+export const CREDIT_INSURANCE = { share: 0.9 };
+/** 팩토링 (BIZ-2b, #214): 미수금을 지금 현금으로 — 수수료 = 만기까지 남은 개월 × feePerMonth, 최소 minFee [튜닝] */
+export const FACTORING = { feePerMonth: 0.015, minFee: 0.01 };
 
 // ── 직원 ──
 export const ROLE_INFO: Record<StaffRole, { nameKo: string; stats: [string, string, string]; baseSalary: number }> = {

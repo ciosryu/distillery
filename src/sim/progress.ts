@@ -1,5 +1,6 @@
 import { isWhiskyCategory } from './blending';
-import { awarenessOf } from './brands';
+import { awarenessOf, houseBrand } from './brands';
+import { SCENARIOS, type MidGoalDef } from './content/scenarios';
 import { isBulkKind, spotBidPerLPA } from './bulk';
 import { MILESTONES } from './content/milestones';
 import type { GameEnding, GameState, GoalCheck, GoalVerdict, MilestoneId, MonthReport, Product } from './types';
@@ -95,6 +96,7 @@ export function updateProgress(s: GameState, report: MonthReport): void {
     s.progress.milestones.push({ id: f.id, month: s.month, ...(f.value != null ? { value: f.value } : {}) });
     report.notes.push(`마일스톤: ${MILESTONES[f.id].nameKo}`);
   }
+  updateMidGoals(s, report);
   if (!s.scenario || s.progress.verdict) return;
   const ended = s.status !== 'running';
   if (ended || s.month + 1 >= s.scenario.goal.months) {
@@ -106,3 +108,37 @@ export function updateProgress(s: GameState, report: MonthReport): void {
 /** 결과 화면 연표 — 연표에 보이는 마일스톤을 달 순서로 */
 export const timelineOf = (s: Pick<GameState, 'progress'>) =>
   s.progress.milestones.filter((m) => MILESTONES[m.id].timeline).sort((a, b) => a.month - b.month);
+
+// ───────────── 중반 목표 (#216, 4차 MVP 플레이테스트: 중반 이후 방향감이 없다) ─────────────
+
+/** 지금 이 중반 목표를 이뤘는가 */
+export function midGoalMet(s: GameState, id: MidGoalDef['id']): boolean {
+  switch (id) {
+    case 'aged3_sold': return s.commerce.products.some((p) => isWhiskyCategory(p.category) && (p.ageYears ?? 0) >= 3 && p.totalSold > 0);
+    case 'commission_done': return s.commerce.commissions.some((c) => !!c.fulfilledBy) || s.commerce.products.some((p) => p.blend?.source === 'critic' && (p.blend.appealBonus ?? 0) > 0);
+    case 'export_open': return (s.commerce.exports ?? []).length > 0;
+    case 'revenue_8': return s.history.reports.slice(-12).reduce((t, r) => t + r.revenue, 0) >= 800_000_000;
+  }
+}
+
+/** 이 판의 중반 목표 정의 (없으면 빈 목록) */
+export const midGoalsOf = (s: Pick<GameState, 'scenario'>): MidGoalDef[] => (s.scenario ? SCENARIOS[s.scenario.id]?.midGoals ?? [] : []);
+
+/** 월말: 아직 결과가 없는 중반 목표를 판정한다 — 이루면 보상(하우스 브랜드 인지도), 기한이 지나면 놓침(벌은 없다) */
+function updateMidGoals(s: GameState, report: MonthReport): void {
+  const defs = midGoalsOf(s);
+  if (!defs.length || s.status !== 'running') return;
+  const have = new Set((s.progress.midGoals ?? []).map((g) => g.id));
+  for (const g of defs) {
+    if (have.has(g.id)) continue;
+    if (midGoalMet(s, g.id)) {
+      s.progress.midGoals = [...(s.progress.midGoals ?? []), { id: g.id, month: s.month, result: 'done' }];
+      const b = houseBrand(s);
+      b.awareness = Math.min(0.95, b.awareness + g.rewardAwareness);
+      report.notes.push(`중반 목표 달성 — ${g.title}: 인지도 +${Math.round(g.rewardAwareness * 100)}%p`);
+    } else if (s.month + 1 >= g.byMonth) {
+      s.progress.midGoals = [...(s.progress.midGoals ?? []), { id: g.id, month: s.month, result: 'missed' }];
+      report.notes.push(`중반 목표 기한 지남 — ${g.title}`);
+    }
+  }
+}
