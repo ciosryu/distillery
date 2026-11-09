@@ -72,7 +72,7 @@ function Person({ x, action, month, tag, morale }: { x: StaffT & { askSalary?: n
 export function Staff() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
-  // HR이 잠긴 시나리오(MVP)는 직원 관리 버튼을 숨기고 언제 열리는지 알린다 (P-MGT-25 — 11년 차 단계)
+  // HR이 잠긴 시나리오(MVP)는 직원 관리 버튼을 숨기고 언제 열리는지 알린다 (#232 — 11년 차 단계)
   const hrOn = moraleOn(s);
   const opens = hrOn ? undefined : pendingStages(s).find((st) => st.unlock.includes('system:hr'));
   const lockedNote = opens ? `직원 관리(채용·교육·헤드헌팅·해고)는 ${Math.floor(opens.month / 12) + 1}년 차에 열린다 — ${opens.month - s.month}개월 뒤` : '이 시나리오에서는 직원을 관리할 수 없다';

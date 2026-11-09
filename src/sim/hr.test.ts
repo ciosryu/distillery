@@ -162,7 +162,7 @@ describe('사기·성격 특성 (#225)', () => {
     runEvents(s, rep(s), 1);
     expect(s.events.pending.some((p) => p.defId === 'salary_review')).toBe(false);
     s.month = 12;
-    s.history.reports = [{ ...rep(s), operatingCash: 1_000_000 }]; // 지난 1년 흑자 (P-MGT-25)
+    s.history.reports = [{ ...rep(s), operatingCash: 1_000_000 }]; // 지난 1년 흑자 (#232)
     const neg = sales(s, { traits: ['negotiator'] });
     const loyal = sales(s, { traits: ['loyal'] });
     neg.salary = 4_000_000; loyal.salary = 4_000_000;
@@ -192,8 +192,8 @@ describe('사기·성격 특성 (#225)', () => {
   });
 });
 
-// MVP 11년 차 직원 관리 단계 + 적자면 연봉 협상 없음 (P-MGT-25)
-describe('MVP 11년 차 HR 단계·연봉 협상 조건 (P-MGT-25)', () => {
+// MVP 11년 차 직원 관리 단계 + 적자면 연봉 협상 없음 (#232)
+describe('MVP 11년 차 HR 단계·연봉 협상 조건 (#232)', () => {
   it('120개월에 HR이 열리고 채용 후보가 바로 채워진다 — 그 전에는 잠겨 있다', async () => {
     const { advanceMonth, isLocked } = await import('./index');
     let m = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });

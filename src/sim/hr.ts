@@ -320,7 +320,7 @@ export function handleDeparture(s: GameState, leaving: Staff, notes: string[]): 
   for (const x of s.hr.staff) if (x.apprenticeOf === leaving.id) x.apprenticeOf = undefined;
 }
 
-/** 시나리오 단계가 이번 달 HR을 열었나 (P-MGT-25) */
+/** 시나리오 단계가 이번 달 HR을 열었나 (#232) */
 export function hrOpenedThisMonth(s: Pick<GameState, 'scenario' | 'month'>): boolean {
   const def = s.scenario ? SCENARIOS[s.scenario.id] : undefined;
   return !!def?.stages?.some((st) => st.month === s.month && st.unlock.includes('system:hr') && s.scenario!.stagesDone?.includes(st.id));
