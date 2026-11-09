@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { advanceMonth, advanceMonths, applyAction, BANKRUPT_AFTER_MONTHS, newScenarioGame, type GameState } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { cashAlert, runway, lastMonthFlow, loanSchedule, maltStoppedMonths, monthTodos, paymentJump, SAMPLE_STALE_MONTHS, spotSaleStake, TODO_ORDER } from './alerts';
-import { productionValue, whiskySupplyForecast } from '../sim/economics';
+import { AUTO_RESTOCK_EXPENSE, productionValue, whiskySupplyForecast } from '../sim/economics';
 import { spotQuote } from '../sim';
 
 // 1차 MVP 플레이테스트 대응 ①~④ — 화면용 계산이 시뮬레이션과 같은 값을 내는지 (코어 UI)
@@ -92,6 +92,10 @@ describe('ARCH 사후 검토 (#90) — 시뮬레이션이 쓰는 지출 키는 �
     const r = { ...mvp().history.reports.at(-1), month: 0, revenue: 0, bulkRevenue: 0, netCash: -150, expenses: { hedge: 100, [AUTO_SAMPLE_EXPENSE]: 50 }, offTurn: {}, sales: [] } as never;
     const f = lastMonthFlow(r);
     expect(f.outflow.map((p) => p.label).sort()).toEqual(['샘플·분석', '선도계약 정산']);
+  });
+  it('자동 납품(#206) 병입비는 턴 사이 병입과 같은 "병입"으로 묶인다 — "기타"로 빠지지 않는다 (사후 검토)', () => {
+    const r = { ...mvp().history.reports.at(-1), month: 0, revenue: 0, bulkRevenue: 0, netCash: -300, expenses: { [AUTO_RESTOCK_EXPENSE]: 200 }, offTurn: { bottling: -100 }, sales: [] } as never;
+    expect(lastMonthFlow(r).outflow).toEqual([{ label: '병입', amount: -300 }]);
   });
   it('"샘플 시기" 기준 = 자동 샘플이 뜨는 기준', () => {
     expect(SAMPLE_STALE_MONTHS).toBe(AUTO_SAMPLE_MIN_AGE);

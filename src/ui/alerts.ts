@@ -7,7 +7,7 @@ import { calendar, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBu
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
-import { productionValue, whiskySupplyForecast } from '../sim/economics';
+import { AUTO_RESTOCK_EXPENSE, productionValue, whiskySupplyForecast } from '../sim/economics';
 
 // ───────────── ① 파산 카운트다운 ─────────────
 
@@ -245,6 +245,8 @@ const EXPENSE_GROUP: Record<string, string> = {
   salaries: '고정비', overhead: '고정비', heating: '고정비', maintenance: '고정비', marketing: '고정비', storage: '고정비', insurance: '고정비', research: '고정비',
   interest: '대출 상환', principal: '대출 상환',
   hedge: '선도계약 정산', [AUTO_SAMPLE_EXPENSE]: '샘플·분석',
+  // 자동 납품(#206)은 틱 안에서 병입한다 — 턴 사이 병입(offTurn.bottling)과 같은 "병입"으로 묶는다 (사후 검토: "기타"로 빠졌다)
+  [AUTO_RESTOCK_EXPENSE]: '병입',
 };
 const OFFTURN_GROUP: Partial<Record<CashFlowKey, string>> = {
   spotBulk: '원액 판매', caskBid: '원액 판매', caskOwnership: '원액 판매', bottling: '병입', blending: '샘플·분석',
