@@ -162,6 +162,20 @@ describe('MVP 중반 콘텐츠 — 단계 해금·중반 목표 (4차 MVP 플레
     void applyAction;
   });
 
+  it('120개월(11년 차)에 IB 캐스크 입찰이 열린다 (P-ARCH-29) — 캐스크 오너십은 연구 게이트라 잠긴 채', async () => {
+    const { advanceMonth, newScenarioGame, isLocked } = await import('./index');
+    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    expect(isLocked(s, 'system:caskBids')).toBe(true);
+    s.month = 119; s = advanceMonth(s);
+    expect(isLocked(s, 'system:caskBids')).toBe(true);
+    s = advanceMonth(s);
+    expect(isLocked(s, 'system:caskBids')).toBe(false);
+    expect(isLocked(s, 'action:acceptCaskBid')).toBe(false);
+    expect(isLocked(s, 'action:sellCaskOwnership')).toBe(true);
+    expect(s.scenario!.stagesDone).toContain('y10_ib');
+    expect(s.history.reports.at(-1)!.notes.some((n) => n.startsWith('새 기능 열림 — 11년 차'))).toBe(true);
+  });
+
   it('중반 목표 — 이루면 인지도 보상, 기한이 지나면 놓침', async () => {
     const { advanceMonth, newScenarioGame } = await import('./index');
     const { houseBrand } = await import('./brands');
