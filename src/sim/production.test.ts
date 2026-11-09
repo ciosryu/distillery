@@ -705,3 +705,23 @@ describe('자동 납품 (#206, 2026-11-09 오너 요청)', () => {
     expect(applyAction(s, { type: 'setAutoRestock', productId: 'X', months: 2 }).error).toBeDefined();
   });
 });
+
+describe('캐스크 스트렝스 제품 재고 보충 (2026-11-09 오너 보고: 61.0% 제품에 61.0% 통을 못 넣음)', () => {
+  it('표준 도수가 아닌 제품은 캐스크 스트렝스 — 도수가 조금 달라도 보충되고 제품 도수는 병 수 가중 평균', async () => {
+    const { isCaskStrength } = await import('./blending');
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const mk = (id: string, abv: number) => { s.inventory.casks.push({ id, typeId: 'ex_bourbon_barrel', sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: { id: `L${id}`, name: id, kind: 'malt', volumeL: 150, abv, flavor: { vanilla_caramel: 40, cereal: 20 }, createdMonth: 0, oakMonths: 40, sourced: false, costPerLPA: 10000 } } as Cask); };
+    mk('A', 0.6104); mk('B', 0.6098);
+    const o = { name: '셰리', targetAbv: 'cask' as const, bottleMl: 700, chillFilter: false, packagingId: 'standard' };
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id: 'A', liters: 150 }], options: o }).state;
+    const p = s.commerce.products.at(-1)!;
+    expect(isCaskStrength(p)).toBe(true);
+    const r = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id: 'B', liters: 150 }], options: { ...o, name: '', restockId: p.id } });
+    expect(r.error).toBeUndefined();
+    const after = r.state.commerce.products.find((x) => x.id === p.id)!;
+    expect(after.abv).toBeLessThan(0.6104);
+    expect(after.abv).toBeGreaterThan(0.6098);
+    // 표준 도수 제품은 지금처럼 도수를 맞춰야 한다
+    expect(isCaskStrength({ abv: 0.46 })).toBe(false);
+  });
+});

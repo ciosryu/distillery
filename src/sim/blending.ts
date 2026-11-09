@@ -314,13 +314,24 @@ function packagingUnitCost(s: GameState, opts: Pick<BottleOptions, 'packagingId'
 /** 재고를 보충할 수 있는 제품 — 지금 판매 목록에 있고(보관 처리 전) 면세 한정판이 아닌 것 */
 export const restockable = (s: GameState): Product[] => s.commerce.products.filter((p) => !p.dutyFreeOnly);
 
+/** 병입 화면이 고르는 표준 도수(가수) — 이 밖의 도수는 캐스크 스트렝스로 병입한 제품이다 */
+export const STANDARD_BOTTLING_ABVS = [0.25, 0.3, 0.34, 0.38, 0.4, 0.43, 0.46, 0.58] as const;
+/**
+ * 캐스크 스트렝스 제품인가 — 물을 타지 않아 통마다 도수가 다르다. 재고 보충은 도수를 맞추지 않고 새 배치도 캐스크 스트렝스로 병입하며,
+ * 제품 도수는 병 수 가중 평균이 된다 (2026-11-09 오너 보고: 61.0% 제품에 61.0% 통을 보충할 수 없었다 — 실제로는 61.04% 대 61.0x%)
+ */
+export const isCaskStrength = (p: Pick<Product, 'abv'>): boolean => !STANDARD_BOTTLING_ABVS.some((a) => Math.abs(a - p.abv) < 0.0005);
+
 function restockChecks(s: GameState, opts: BottleOptions, b: { category: ProductCategory; finalAbv: number; finish: CaskTypeId | null; ageYears: number | null; premiumLabel: boolean; traditional: boolean; specialty: string | null }, errors: string[], warnings: string[]): void {
   const t = s.commerce.products.find((p) => p.id === opts.restockId);
   if (!t) { errors.push('보충할 제품이 판매 목록에 없습니다'); return; }
   if (t.dutyFreeOnly || opts.dutyFreeOnly) { errors.push('면세 한정판은 재고를 보충할 수 없습니다 — 판(Vol.)마다 새로 낸다'); return; }
   if (t.category !== b.category) errors.push(`「${t.name}」은 ${CATEGORY[t.category].nameKo} — 이 원액은 ${CATEGORY[b.category].nameKo}라 보충할 수 없습니다`);
   if (opts.bottleMl !== t.bottleMl) errors.push(`병 크기를 「${t.name}」과 같은 ${t.bottleMl}ml로 맞추세요`);
-  if (Math.abs(b.finalAbv - t.abv) > 0.0005) errors.push(`도수를 「${t.name}」과 같은 ${(t.abv * 100).toFixed(1)}%로 맞추세요`);
+  if (isCaskStrength(t)) {
+    // 캐스크 스트렝스 — 배치마다 도수가 달라도 된다(라벨 도수는 병 수 가중 평균). 표준 도수로 물을 타면 캐스크 스트렝스가 아니다
+    if (opts.targetAbv !== 'cask' && STANDARD_BOTTLING_ABVS.some((a) => Math.abs(a - b.finalAbv) < 0.0005)) errors.push(`「${t.name}」은 캐스크 스트렝스 제품 — 도수를 "캐스크 스트렝스"로 두세요`);
+  } else if (Math.abs(b.finalAbv - t.abv) > 0.0005) errors.push(`도수를 「${t.name}」과 같은 ${(t.abv * 100).toFixed(1)}%로 맞추세요`);
   if ((b.finish ?? null) !== (t.finish ?? null)) errors.push(t.finish ? `「${t.name}」은 ${finishLabel(t.finish)} 피니시 제품 — 같은 피니시 원액만 보충할 수 있습니다` : `「${t.name}」은 피니시 표기가 없는 제품 — 피니싱한 원액은 새 제품으로 내세요`);
   if (t.ageYears != null && b.ageYears != null && b.ageYears < t.ageYears) warnings.push(`숙성 표기가 ${t.ageYears}년 → ${b.ageYears}년으로 내려갑니다 (가장 어린 원액 기준)`);
   if (t.premiumLabel && !b.premiumLabel) warnings.push('이 원액은 프리미엄 표기 조건을 못 채워 제품의 표기가 빠집니다');
@@ -364,6 +375,8 @@ export function restockedProduct(old: Product, batch: Product): Product {
     premiumLabel: fresh ? !!batch.premiumLabel : !!old.premiumLabel && !!batch.premiumLabel,
     stockBottles: a + b,
     unitCost: Math.round(avg(old.unitCost, batch.unitCost)),
+    // 캐스크 스트렝스는 배치마다 도수가 달라 병 수 가중 평균(표준 도수 제품은 같은 도수라 그대로)
+    abv: Math.round(avg(old.abv, batch.abv) * 10000) / 10000,
   };
   const keep = (o: unknown, b: unknown, same = true) => (fresh ? !!b : !!o && !!b && same);
   if (keep(old.traditional, batch.traditional)) merged.traditional = true; else delete merged.traditional;

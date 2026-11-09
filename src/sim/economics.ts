@@ -5,7 +5,7 @@
 
 import { CASK_COST_SHARE_PER_FILL, CASK_STORAGE, CASKS } from './content/catalog';
 import { regionOf, siteOf, traditionalTaxFactor } from './content/regions';
-import { executeBlend, isWhiskyCategory, previewBlend, suggestedPrice, whiskyMinMonths, type BlendComponent, type BottleOptions } from './blending';
+import { executeBlend, isCaskStrength, isWhiskyCategory, previewBlend, suggestedPrice, whiskyMinMonths, type BlendComponent, type BottleOptions } from './blending';
 import { finishOf, matureCask, vesselMaterial } from './maturation';
 import { previewBatch } from './production';
 import { demandFor, distributionCostPerBottle, domesticDemands, priceOptions } from './market';
@@ -328,14 +328,16 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
   const kind = RESTOCK_KIND[p.category];
   if (!kind) return [];
   if (!isWhiskyCategory(p.category)) {
-    return s.inventory.lots.filter((l) => l.kind === kind && l.abv >= p.abv - 1e-9 && !l.sourced && l.oakMonths === 0)
+    const minAbv = isCaskStrength(p) ? 0.4 : p.abv - 1e-9;
+    return s.inventory.lots.filter((l) => l.kind === kind && l.abv >= minAbv && !l.sourced && l.oakMonths === 0)
       .sort((a, b) => a.createdMonth - b.createdMonth || a.id.localeCompare(b.id))
       .map((l) => ({ comp: { source: 'lot' as const, id: l.id }, lot: l }));
   }
   const minOak = p.ageYears ? p.ageYears * 12 : whiskyMinMonths(regionOf(s).whisky);
+  const minAbv = isCaskStrength(p) ? 0.4 : p.abv - 1e-9; // 캐스크 스트렝스는 통 도수 그대로 병입한다
   const finish = p.finish ?? null;
   return s.inventory.casks.filter((c): c is Cask & { contents: SpiritLot } => !!c.contents && !c.owner && !c.contaminationKnown && vesselMaterial(c) === 'wood'
-      && c.contents.kind === kind && !c.contents.sourced && c.contents.oakMonths >= minOak && c.contents.abv >= p.abv - 1e-9 && (finishOf(c.contents)?.typeId ?? null) === finish)
+      && c.contents.kind === kind && !c.contents.sourced && c.contents.oakMonths >= minOak && c.contents.abv >= minAbv && (finishOf(c.contents)?.typeId ?? null) === finish)
     .sort((a, b) => a.contents.oakMonths - b.contents.oakMonths || a.id.localeCompare(b.id))
     .map((c) => ({ comp: { source: 'cask' as const, id: c.id }, lot: c.contents }));
 }
@@ -357,7 +359,7 @@ export function autoRestockPlan(s: GameState, p: Product, monthOfYear = calendar
     got += Math.floor(liters * 10) / 10 * x.lot.abv;
   }
   if (!components.length) return null;
-  const opts: BottleOptions = { name: '', targetAbv: p.abv, bottleMl: p.bottleMl, chillFilter: p.chillFiltered, packagingId: p.packagingId, restockId: p.id };
+  const opts: BottleOptions = { name: '', targetAbv: isCaskStrength(p) ? 'cask' : p.abv, bottleMl: p.bottleMl, chillFilter: p.chillFiltered, packagingId: p.packagingId, restockId: p.id };
   return { components, opts, target, need };
 }
 
