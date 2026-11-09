@@ -3,7 +3,7 @@
 // 1차 MVP 판: 117개월째 파산, 대출 누적 20억 실행(파산 때 잔액 약 7.2억) — 현금 부족을 몰랐고, 돈이 어디로 나가는지, 언제 상환이 몰리는지 보이지 않았다 (mvp.md §7.4)
 
 import { regionOf } from '../sim/content/regions';
-import { BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport } from '../sim';
+import { calendar, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
@@ -110,6 +110,23 @@ function stockMonths(s: GameState, inCat: (c: string) => boolean): { stock: numb
   return { stock, months: per > 0 ? stock / per : stock > 0 ? Infinity : 0 };
 }
 
+/**
+ * 결품 — 재고가 있지만 이번 달 수요(같은 범주 나눔 반영)보다 적어 다음 턴에 바닥날 제품, 이미 품절인 제품(면세 한정판 제외).
+ * 판매 화면과 같은 수요 계산(domesticDemands)이다. 실제 판매는 ±10%·소매 역량에 따라 조금 다르다
+ */
+export function stockoutSoon(s: GameState): { soon: { id: string; name: string; stock: number; demand: number }[]; empty: { id: string; name: string }[] } {
+  const d = domesticDemands(s, calendar(s).monthOfYear);
+  const soon: { id: string; name: string; stock: number; demand: number }[] = [];
+  const empty: { id: string; name: string }[] = [];
+  for (const p of s.commerce.products) {
+    if (p.dutyFreeOnly) continue;
+    if (p.stockBottles <= 0) { empty.push({ id: p.id, name: p.name }); continue; }
+    const dem = Math.round(d.get(p.id)?.demandBottles ?? 0);
+    if (dem > 0 && p.stockBottles < dem) soon.push({ id: p.id, name: p.name, stock: p.stockBottles, demand: dem });
+  }
+  return { soon, empty };
+}
+
 /** 샘플 기록이 이만큼 오래된 통은 "샘플 시기" — 자동 샘플(#177)이 뜨는 기준과 같게 둔다 */
 export const SAMPLE_STALE_MONTHS = AUTO_SAMPLE_MIN_AGE;
 /** "샘플 시기"인 통 — 오크 숙성 SAMPLE_STALE_MONTHS개월 이상이고 자기 샘플 기록이 그만큼 오래됐거나 없다 (할 일·증류소 탭 숙성고 요약이 같이 쓴다) */
@@ -178,6 +195,16 @@ export function monthTodos(s: GameState): Todo[] {
       const head = never ? '몰트 생산 지시가 없다 — 위스키가 될 원액을 아직 만들지 않았다' : `몰트 생산이 멈춰 있다 — ${n > 0 ? `${n}개월째` : '이번 달부터'}`;
       out.push({ id: 'malt-stopped', level: 'warn', text: `${head}. ${Math.ceil(v.minMonths / 12)}년 뒤부터 새로 팔 위스키가 없다 (${never ? '몰트 1배치 생산비는' : '생산을 멈춰 아끼는 돈은 몰트 1배치당'} 월 ${fmtWon(v.perBatch[0]!.costPerMonth)}뿐)`, action: '생산 지시로', target: { anchor: 'mvp-orders' } });
     }
+  }
+  // 결품 — 이번 달 수요보다 재고가 적어 다음 턴에 바닥난다 / 이미 품절 (2026-11-09 오너 요청: 다음 턴 재고 0 예정이면 미리 알려 달라)
+  const sOut = stockoutSoon(s);
+  if (sOut.soon.length || sOut.empty.length) {
+    const names = (xs: { name: string }[]) => xs.slice(0, 3).map((x) => `「${x.name}」`).join(' · ') + (xs.length > 3 ? ` 외 ${xs.length - 3}개` : '');
+    const parts = [
+      sOut.soon.length ? `다음 달 결품 예상 ${names(sOut.soon)}(재고 ${sOut.soon[0]!.stock.toLocaleString()}병 < 수요 약 ${sOut.soon[0]!.demand.toLocaleString()}병${sOut.soon.length > 1 ? ' 등' : ''})` : '',
+      sOut.empty.length ? `품절 ${names(sOut.empty)}` : '',
+    ].filter(Boolean);
+    out.push({ id: 'stockout', level: sOut.soon.length ? 'warn' : 'info', text: `${parts.join(' · ')} — 병입하거나 [기존 제품 재고 보충]으로 채운다`, action: '블렌딩·병입', target: { tab: 'bottling' } });
   }
   // 대출 거치가 3개월 안에 끝나 납부가 뛴다
   const jump = paymentJump(loanSchedule(s, 4));

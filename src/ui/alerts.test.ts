@@ -170,3 +170,27 @@ describe('3차 MVP 플레이테스트 대응 (#203) — 멈춘 몰트 생산 · 
     expect(v2.ready).toBeNull();
   });
 });
+
+describe('품절 제품 유지 · 결품 예고 (2026-11-09 오너 요청)', () => {
+  const withSoju = () => {
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const soju = s.production.recipes.find((r) => r.kind === 'soju')!;
+    s = applyAction(s, { type: 'setOrder', recipeId: soju.id, batchesPerMonth: 1 }).state;
+    s = advanceMonths(s, 2);
+    const lot = s.inventory.lots.find((l) => l.kind === 'soju')!;
+    return applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: 3 }], options: { name: '작은 소주', targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' } }).state;
+  };
+  it('재고가 이번 달 수요보다 적으면 결품 예고, 다 팔리면 품절로 알린다', () => {
+    let s = withSoju();
+    expect(monthTodos(s).find((t) => t.id === 'stockout')?.text).toContain('다음 달 결품 예상');
+    s = advanceMonths(s, 2);
+    expect(monthTodos(s).find((t) => t.id === 'stockout')?.text).toContain('품절');
+  });
+  it('MVP에서는 품절 제품이 몇 달이 지나도 목록에 남는다', () => {
+    let s = withSoju();
+    const id = s.commerce.products.at(-1)!.id;
+    s = advanceMonths(s, 8);
+    expect(s.commerce.products.some((p) => p.id === id)).toBe(true);
+    expect(s.commerce.products.find((p) => p.id === id)!.stockBottles).toBe(0);
+  });
+});
