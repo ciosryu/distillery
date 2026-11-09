@@ -20,6 +20,8 @@ export interface Playlog {
   activeMs: number;
   actions: number;
   turns: PlayTurn[];
+  /** 되돌리기 횟수 (3차 MVP 플레이테스트 오너 요청) — 기록을 해석할 때 본다. 옛 기록에는 없다 */
+  undos?: number;
 }
 
 /** 기록 내보내기 파일 */
@@ -71,6 +73,8 @@ export function resetPlaylog(): void { log = freshPlaylog(); store(); }
 export function replacePlaylog(l: Playlog | null): void { log = l?.v === 1 ? l : freshPlaylog(); store(); }
 export function recordAction(): void { log = { ...log, actions: log.actions + 1 }; store(); }
 export function recordTurns(fromMonth: number, toMonth: number): void { log = withTurns(log, fromMonth, toMonth); store(); }
+/** 한 턴 되돌리기 — 되돌린 달 뒤의 턴 기록을 지우고 횟수를 센다. 플레이 시간은 그대로(실제로 쓴 시간이다) */
+export function recordUndo(toMonth: number): void { log = { ...log, turns: log.turns.filter((t) => t.month <= toMonth), undos: (log.undos ?? 0) + 1 }; store(); }
 
 /** 브라우저에서 한 번 부른다 — 입력을 보고, 화면이 보이며 최근에 입력이 있었던 동안만 시간을 더한다 */
 export function startPlayClock(): void {
