@@ -5,13 +5,13 @@
 
 import { CASK_COST_SHARE_PER_FILL, CASK_STORAGE, CASKS } from './content/catalog';
 import { regionOf, siteOf, traditionalTaxFactor } from './content/regions';
-import { isWhiskyCategory, previewBlend, suggestedPrice, type BottleOptions } from './blending';
-import { matureCask } from './maturation';
+import { executeBlend, isWhiskyCategory, previewBlend, suggestedPrice, whiskyMinMonths, type BlendComponent, type BottleOptions } from './blending';
+import { finishOf, matureCask, vesselMaterial } from './maturation';
 import { previewBatch } from './production';
-import { demandFor, distributionCostPerBottle, priceOptions } from './market';
+import { demandFor, distributionCostPerBottle, domesticDemands, priceOptions } from './market';
 import { outboundLogistics } from './sites';
 import { calendar, warehouseCapacity } from './util';
-import type { Cask, GameState, Product, ProductCategory, Recipe, SpiritLot } from './types';
+import type { Cask, GameState, MonthReport, Product, ProductCategory, Recipe, SpiritKind, SpiritLot } from './types';
 
 /** 표준 병 — 소주는 대중 규격, 몰트는 위스키 규격 (봇·사전 점검과 같은 값) */
 export const STANDARD_BOTTLE: Record<'soju' | 'whisky', { bottleMl: number; abv: number }> = {
@@ -296,5 +296,95 @@ export function applyAutoPrices(s: GameState, monthOfYear = calendar(s).monthOfY
     if (!p.autoPrice) continue;
     const v = bestAutoPrice(s, p, monthOfYear);
     if (v != null) p.price = v;
+  }
+}
+
+
+// ───────────── 자동 납품(재고 자동 보충) (P-PROD-21, 2026-11-09 오너 요청) ─────────────
+// 토글을 켠 제품은 매달 판매 직전에 재고가 "n개월분" 아래면 원액을 골라 그 제품에 재고 보충(restock)한다 — 결품이 나지 않게.
+// 소주·진·고량주: 탱크 원액, 오래된 것부터(먼저 만든 것부터). 위스키: 그 제품의 숙성 표기(n년)를 채운 통 중 **표기에 가장 가까운(어린) 통부터**
+// (오너 선택 — 오래된 통은 플래그십 후보로 아낀다). 병·도수·포장·피니시는 제품 그대로이고, 품질·향은 재고 보충과 같은 가중 평균이다.
+// 원액이 모자라면 있는 만큼, 현금이 모자라면 건너뛴다. 봇은 쓰지 않는다
+
+/** 결산표 비용 항목 이름 */
+export const AUTO_RESTOCK_EXPENSE = '자동 납품 병입';
+/** 자동 납품 목표 — 몇 개월분 재고를 유지할지 */
+export const AUTO_RESTOCK_MONTHS = [1, 2, 3, 6] as const;
+
+/** 범주 → 원액 주종 (자동 납품을 지원하는 범주만). 블렌디드·몰트 스피릿·기타는 지원하지 않는다 */
+const RESTOCK_KIND: Partial<Record<ProductCategory, SpiritKind>> = { soju_distilled: 'soju', gin: 'gin', baijiu: 'baijiu', whisky: 'malt', grain_whisky: 'grain' };
+export const autoRestockSupported = (p: Product): boolean => !p.dutyFreeOnly && !!RESTOCK_KIND[p.category];
+
+/** 이 제품의 한 달 판매 기대 — 이번 달 수요(같은 범주 나눔 반영, 품절이면 혼자일 때)와 최근 3개월 판매 중 큰 값 */
+export function productMonthlyPace(s: GameState, p: Product, monthOfYear = calendar(s).monthOfYear): number {
+  const d = domesticDemands(s, monthOfYear).get(p.id)?.demandBottles ?? demandFor(s, p, 1, monthOfYear).demandBottles;
+  const rs = s.history.reports.slice(-3);
+  const sold = rs.length ? rs.reduce((t, r) => t + r.sales.filter((x) => x.productId === p.id).reduce((u, x) => u + x.bottles, 0), 0) / rs.length : 0;
+  return Math.max(d, sold);
+}
+
+/** 자동 납품 원액 후보 — 쓸 순서대로. 위스키는 숙성 표기를 채우고 피니시가 같고 도수가 충분한 나무 통, 어린 통부터 */
+export function autoRestockSources(s: GameState, p: Product): { comp: Omit<BlendComponent, 'liters'>; lot: SpiritLot }[] {
+  const kind = RESTOCK_KIND[p.category];
+  if (!kind) return [];
+  if (!isWhiskyCategory(p.category)) {
+    return s.inventory.lots.filter((l) => l.kind === kind && l.abv >= p.abv - 1e-9 && !l.sourced && l.oakMonths === 0)
+      .sort((a, b) => a.createdMonth - b.createdMonth || a.id.localeCompare(b.id))
+      .map((l) => ({ comp: { source: 'lot' as const, id: l.id }, lot: l }));
+  }
+  const minOak = p.ageYears ? p.ageYears * 12 : whiskyMinMonths(regionOf(s).whisky);
+  const finish = p.finish ?? null;
+  return s.inventory.casks.filter((c): c is Cask & { contents: SpiritLot } => !!c.contents && !c.owner && !c.contaminationKnown && vesselMaterial(c) === 'wood'
+      && c.contents.kind === kind && !c.contents.sourced && c.contents.oakMonths >= minOak && c.contents.abv >= p.abv - 1e-9 && (finishOf(c.contents)?.typeId ?? null) === finish)
+    .sort((a, b) => a.contents.oakMonths - b.contents.oakMonths || a.id.localeCompare(b.id))
+    .map((c) => ({ comp: { source: 'cask' as const, id: c.id }, lot: c.contents }));
+}
+
+/** 이번 달 자동 납품 계획 — 채울 병 수만큼 원액을 고른다. 필요 없거나 원액이 없으면 null */
+export function autoRestockPlan(s: GameState, p: Product, monthOfYear = calendar(s).monthOfYear): { components: BlendComponent[]; opts: BottleOptions; target: number; need: number } | null {
+  if (!p.autoRestock || !autoRestockSupported(p)) return null;
+  const target = Math.ceil(productMonthlyPace(s, p, monthOfYear) * p.autoRestock);
+  const need = target - p.stockBottles;
+  if (need < 1) return null;
+  const lpaNeed = (need + 1) * (p.bottleMl / 1000) * p.abv; // 병 수 내림을 생각해 1병 여유
+  const components: BlendComponent[] = [];
+  let got = 0;
+  for (const x of autoRestockSources(s, p)) {
+    if (got >= lpaNeed) break;
+    const liters = Math.min(x.lot.volumeL, (lpaNeed - got) / x.lot.abv);
+    if (liters < 0.5) continue;
+    components.push({ ...x.comp, liters: Math.floor(liters * 10) / 10 });
+    got += Math.floor(liters * 10) / 10 * x.lot.abv;
+  }
+  if (!components.length) return null;
+  const opts: BottleOptions = { name: '', targetAbv: p.abv, bottleMl: p.bottleMl, chillFilter: p.chillFiltered, packagingId: p.packagingId, restockId: p.id };
+  return { components, opts, target, need };
+}
+
+/** 판매 직전(틱 5단계 맨 앞): 자동 납품을 켠 제품을 차례로 채운다. 결과는 리포트 메모에 남는다 */
+export function applyAutoRestock(s: GameState, report: MonthReport, monthOfYear = calendar(s).monthOfYear): void {
+  for (const p0 of [...s.commerce.products]) {
+    if (!p0.autoRestock) continue;
+    const p = s.commerce.products.find((x) => x.id === p0.id);
+    if (!p) continue;
+    const plan = autoRestockPlan(s, p, monthOfYear);
+    if (!plan) {
+      if (p.stockBottles < Math.ceil(productMonthlyPace(s, p, monthOfYear) * (p.autoRestock ?? 0))) report.notes.push(`자동 납품 「${p.name}」 — 쓸 원액이 없어 못 채웠다${isWhiskyCategory(p.category) ? ` (${p.ageYears ? `${p.ageYears}년 이상` : '법정 숙성 이상'} 숙성·같은 피니시·도수 ${Math.round(p.abv * 1000) / 10}% 이상 통이 필요)` : ' (탱크 원액 필요)'}`);
+      continue;
+    }
+    const pv = previewBlend(s, plan.components, plan.opts);
+    if (!pv.ok) { report.notes.push(`자동 납품 「${p.name}」 건너뜀 — ${pv.errors.join(' / ')}`); continue; }
+    // 병입 때 나가는 현금 = 포장·병입 인건비 (원액 원가는 이미 쓴 돈) — 병당 원가에서 원액 몫을 뺀다
+    const spirit = plan.components.reduce((tot, c) => { const l = c.source === 'cask' ? s.inventory.casks.find((k) => k.id === c.id)?.contents : s.inventory.lots.find((k) => k.id === c.id); return tot + (l ? c.liters * l.abv * l.costPerLPA : 0); }, 0);
+    const cost = Math.max(0, Math.round(pv.unitCost * pv.bottles - spirit));
+    if (s.finance.cash < cost) { report.notes.push(`자동 납품 「${p.name}」 건너뜀 — 현금 부족(병입비 약 ${cost.toLocaleString()}원)`); continue; }
+    const before = p.stockBottles;
+    const res = executeBlend(s, plan.components, plan.opts);
+    if (res.error || !res.product) { report.notes.push(`자동 납품 「${p.name}」 실패 — ${res.error ?? ''}`); continue; }
+    const used = plan.components.map((c) => c.source === 'cask' ? c.id : '탱크').filter((v, i, a) => a.indexOf(v) === i).join(', ');
+    const short = res.product.stockBottles < plan.target ? ` — 원액이 모자라 목표의 ${Math.round((res.product.stockBottles / plan.target) * 100)}%까지만` : '';
+    report.notes.push(`자동 납품 「${res.product.name}」 +${(res.product.stockBottles - before).toLocaleString()}병 (목표 ${plan.target.toLocaleString()}병 = ${p0.autoRestock}개월분, 원액 ${used})${short}`);
+    // 결산표에 보이게 — 현금은 executeBlend가 이미 뺐다(리포트 표시용)
+    report.expenses[AUTO_RESTOCK_EXPENSE] = (report.expenses[AUTO_RESTOCK_EXPENSE] ?? 0) + cost;
   }
 }

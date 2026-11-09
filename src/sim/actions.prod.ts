@@ -1,4 +1,5 @@
-import { bestAutoPrice } from './economics';
+import { isWhiskyCategory } from './blending';
+import { AUTO_RESTOCK_MONTHS, autoRestockSupported, bestAutoPrice } from './economics';
 import { CASK_COST_SHARE_PER_FILL, CASK_MARKET, CASKS, EQUIPMENT, RECHAR_COST } from './content/catalog';
 import { assignSlot, rotateWarehouse, SlotIndex } from './warehouse';
 import { usedCaskPrice } from './casks';
@@ -47,11 +48,14 @@ export type ProdAction =
   /** 입지 특성 (결정 #86~): 취수 증량 신청(제주), 대형 유통 납품(경기), 위탁생산(간토) */
   | { type: 'applyWaterPermit' }
   /** 자동 최적 가격 켜기·끄기 (#200) — 켜면 바로 한 번 값을 정한다 */
-  | { type: 'setAutoPrice'; productId: string; on: boolean };
+  | { type: 'setAutoPrice'; productId: string; on: boolean }
+  /** 자동 납품 (P-PROD-21) — months: 유지할 재고 개월분(1·2·3·6), null이면 끔 */
+  | { type: 'setAutoRestock'; productId: string; months: number | null };
 
 export const PROD_CASH_KEY: CashKeys<ProdAction> = {
   setOrder: null,
   setAutoPrice: null,
+  setAutoRestock: null,
   saveRecipe: null,
   deleteRecipe: null,
   fillCasks: null,
@@ -85,6 +89,15 @@ function bottleMessage(p: Product, r?: BlendReveal): string {
 }
 
 export const PROD_HANDLERS: Handlers<ProdAction> = {
+  setAutoRestock: (s, prev, a) => {
+    const p = s.commerce.products.find((x) => x.id === a.productId);
+    if (!p) return fail(prev, '제품이 없습니다');
+    if (a.months == null) { delete p.autoRestock; return { state: s, message: `${p.name} 자동 납품 끔` }; }
+    if (!autoRestockSupported(p)) return fail(prev, '이 제품은 자동 납품을 쓸 수 없습니다 (소주·진·고량주·싱글 몰트·그레인 위스키만, 면세 한정판 제외)');
+    if (!(AUTO_RESTOCK_MONTHS as readonly number[]).includes(a.months)) return fail(prev, '유지 개월분은 1·2·3·6 중에서 고른다');
+    p.autoRestock = a.months;
+    return { state: s, message: `${p.name} 자동 납품 켬 — 매달 판매 전에 재고를 약 ${a.months}개월분으로 채운다${p.ageYears ? ` (${p.ageYears}년 이상 숙성 통만, 표기에 가까운 통부터)` : isWhiskyCategory(p.category) ? ' (법정 숙성 이상 통만, 어린 통부터)' : ' (탱크 원액, 먼저 만든 것부터)'}` };
+  },
   setAutoPrice: (s, prev, a) => {
     const p = s.commerce.products.find((x) => x.id === a.productId);
     if (!p) return fail(prev, '제품이 없습니다');

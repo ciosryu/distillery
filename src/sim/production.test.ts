@@ -611,3 +611,41 @@ describe('자동 최적 가격 (#200, 3차 MVP 플레이테스트 오너 요청)
     expect(t2.commerce.products.find((x) => x.id === p.id)!.price).toBeLessThan(p.price * 3); // 다음 판매 전에 다시 맞춘다
   });
 });
+
+describe('자동 납품 (P-PROD-21, 2026-11-09 오너 요청)', () => {
+  it('소주: 매달 판매 전에 재고를 n개월분으로 채운다 — 탱크 원액, 먼저 만든 것부터', async () => {
+    const { autoRestockPlan, productMonthlyPace } = await import('./economics');
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const soju = s.production.recipes.find((r) => r.kind === 'soju')!;
+    s = applyAction(s, { type: 'setOrder', recipeId: soju.id, batchesPerMonth: 2 }).state;
+    s = advanceMonths(s, 2);
+    const lot = s.inventory.lots.find((l) => l.kind === 'soju')!;
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: 3 }], options: { name: '소주', targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' } }).state;
+    const id = s.commerce.products.at(-1)!.id;
+    s = applyAction(s, { type: 'setAutoRestock', productId: id, months: 2 }).state;
+    const p = s.commerce.products.find((x) => x.id === id)!;
+    const plan = autoRestockPlan(s, p)!;
+    expect(plan.components.every((c) => c.source === 'lot')).toBe(true);
+    expect(plan.target).toBe(Math.ceil(productMonthlyPace(s, p) * 2));
+    const n0 = s.commerce.products.length;
+    const t = advanceMonth(s);
+    expect(t.commerce.products.length).toBe(n0); // 새 제품이 아니라 보충
+    expect(t.history.reports.at(-1)!.notes.some((n) => n.startsWith('자동 납품 「소주」 +'))).toBe(true);
+    expect(t.history.reports.at(-1)!.sales.find((x) => x.productId === id)!.bottles).toBeGreaterThan(5); // 결품 없이 팔렸다
+  });
+
+  it('위스키: 숙성 표기를 채운 통 중 표기에 가장 가까운(어린) 통부터, 피니시·표기 미달 통은 쓰지 않는다', async () => {
+    const { autoRestockSources } = await import('./economics');
+    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const mk = (id: string, oak: number) => { const c = { id, typeId: 'ex_bourbon_barrel', sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: { id: `L${id}`, name: id, kind: 'malt', volumeL: 190, abv: 0.6, flavor: {}, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10000 } } as Cask; s.inventory.casks.push(c); };
+    mk('A', 20); mk('B', 50); mk('C', 38); mk('D', 144);
+    const p = { id: 'W', name: 'w', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 50, style: null, sourcedShare: 0, stockBottles: 0, price: 40000, unitCost: 10000, createdMonth: 0, lastMonthSold: 0, totalSold: 0 } as Product;
+    expect(autoRestockSources(s, p).map((x) => x.comp.id)).toEqual(['C', 'B', 'D']); // 20개월 통은 3년 표기 미달
+  });
+
+  it('면세 한정판·블렌디드는 켤 수 없다', () => {
+    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.commerce.products.push({ id: 'X', name: 'x', category: 'blended_whisky', stockBottles: 0 } as Product);
+    expect(applyAction(s, { type: 'setAutoRestock', productId: 'X', months: 2 }).error).toBeDefined();
+  });
+});

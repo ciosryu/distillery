@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CATEGORY } from '../../sim/content/categories';
+import { AUTO_RESTOCK_MONTHS, autoRestockSupported } from '../../sim/economics';
 import { AXIS } from '../../sim/content/axes';
 import { ProfileRadar } from './Production';
 import { caskShort } from './Bottling';
@@ -164,6 +165,16 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
           {p.autoPrice
             ? <div className="text-sm tabular-nums" title="매달 판매 직전에 이번 달 이익(팔 수 있는 양 × 병당 공헌이익)이 가장 큰 값으로 바뀐다">{wonFull(p.price)} <Badge tone="good">자동</Badge></div>
             : <PriceInput s={s} p={p} value={p.price} suggested={suggested} onSet={(v) => dispatch({ type: 'setPrice', productId: p.id, price: v })} />}
+          {/* 자동 납품 (P-PROD-21) — 매달 판매 전에 재고를 n개월분으로 채운다 */}
+          {autoRestockSupported(p) && (
+            <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400" title={isWhiskyCategory(p.category) ? `매달 판매 직전에 재고가 모자라면 ${p.ageYears ? `${p.ageYears}년 이상` : '법정 숙성 이상'} 숙성된 통(같은 피니시) 중 표기에 가장 가까운 통부터 골라 이 제품에 보충한다 — 숙성 표기 유지` : '매달 판매 직전에 재고가 모자라면 탱크 원액(먼저 만든 것부터)으로 이 제품에 보충한다'}>
+              자동 납품
+              <select className="rounded border border-stone-300 bg-white px-1 py-0 text-[11px] dark:border-stone-700 dark:bg-stone-800" value={p.autoRestock ?? 0} onChange={(e) => dispatch({ type: 'setAutoRestock', productId: p.id, months: Number(e.target.value) || null })} aria-label={`${p.name} 자동 납품`}>
+                <option value={0}>끔</option>
+                {AUTO_RESTOCK_MONTHS.map((m) => <option key={m} value={m}>{m}개월분</option>)}
+              </select>
+            </label>
+          )}
           {!dfOnly && <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400" title="켜면 매달 판매 직전에 이번 달 이익이 가장 큰 값(권장가의 0.6~2배 중)으로 정한다. 재고가 적으면 올리고 많으면 내린다"><input type="checkbox" className="accent-amber-700" checked={!!p.autoPrice} onChange={(e) => dispatch({ type: 'setAutoPrice', productId: p.id, on: e.target.checked })} /> 자동 최적 가격</label>}
           {suggested != null && suggested !== p.price && (
             <button className="mt-0.5 block text-xs text-amber-800 underline decoration-dotted dark:text-amber-300" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: suggested })} title="기준 소비자가 × √(품질/60) × 숙성 인식에 맞춘 출고가">권장 {wonFull(suggested)}</button>
