@@ -32,8 +32,12 @@ export function Radar({ flavor, axes, size = 200 }: { flavor: Flavor; axes: Axis
   );
 }
 
-/** 현금 추이 등 단순 선 그래프 */
-export function Sparkline({ values, height = 56, label }: { values: number[]; height?: number; label: string }) {
+/**
+ * 현금 추이 등 단순 선 그래프. fmtValue·fmtPoint를 주면 마우스를 올린 위치의 점과 값이 뜬다
+ * (2026-11-09 오너 요청: 대시보드 현금 추이에서 커서 위치의 현금 금액을 보고 싶다)
+ */
+export function Sparkline({ values, height = 56, label, fmtValue, fmtPoint }: { values: number[]; height?: number; label: string; fmtValue?: (v: number) => string; fmtPoint?: (i: number) => string }) {
+  const [hover, setHover] = useState<number | null>(null);
   if (values.length < 2) return <div className="text-xs text-stone-500">데이터가 쌓이면 표시됩니다</div>;
   const w = 320;
   const lo = Math.min(...values);
@@ -42,12 +46,33 @@ export function Sparkline({ values, height = 56, label }: { values: number[]; he
   const min = lo - pad;
   const max = hi + pad;
   const y = (v: number) => height - 4 - ((v - min) / (max - min || 1)) * (height - 8);
-  const d = values.map((v, i) => `${i === 0 ? 'M' : 'L'}${(i / (values.length - 1)) * w},${y(v)}`).join(' ');
+  const x = (i: number) => (i / (values.length - 1)) * w;
+  const d = values.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(v)}`).join(' ');
+  const interactive = !!fmtValue;
+  const onMove = (e: MouseEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    setHover(Math.round(ratio * (values.length - 1)));
+  };
+  const h = hover != null ? Math.min(values.length - 1, Math.max(0, hover)) : null;
   return (
-    <svg viewBox={`0 0 ${w} ${height}`} className="h-14 w-full" preserveAspectRatio="none" role="img" aria-label={label}>
-      {min < 0 && max > 0 && <line x1={0} x2={w} y1={y(0)} y2={y(0)} className="stroke-rose-400" strokeDasharray="3 3" />}
-      <path d={d} fill="none" className="stroke-amber-600 dark:stroke-amber-400" strokeWidth={2} vectorEffect="non-scaling-stroke" />
-    </svg>
+    <div className={`relative ${interactive ? 'cursor-crosshair' : ''}`} onMouseMove={interactive ? onMove : undefined} onMouseLeave={interactive ? () => setHover(null) : undefined}>
+      <svg viewBox={`0 0 ${w} ${height}`} className="h-14 w-full" preserveAspectRatio="none" role="img" aria-label={label}>
+        {min < 0 && max > 0 && <line x1={0} x2={w} y1={y(0)} y2={y(0)} className="stroke-rose-400" strokeDasharray="3 3" />}
+        <path d={d} fill="none" className="stroke-amber-600 dark:stroke-amber-400" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+        {h != null && <line x1={x(h)} x2={x(h)} y1={0} y2={height} className="stroke-stone-400" strokeWidth={1} vectorEffect="non-scaling-stroke" />}
+      </svg>
+      {h != null && (
+        <>
+          {/* 점은 SVG 밖에 그린다 — viewBox가 가로로 늘어나도(preserveAspectRatio none) 동그랗게 */}
+          <span className="pointer-events-none absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-600 ring-2 ring-white dark:bg-amber-400 dark:ring-stone-900" style={{ left: `${(x(h) / w) * 100}%`, top: `${(y(values[h]!) / height) * 100}%` }} />
+          <div className={`pointer-events-none absolute -top-1 z-10 -translate-y-full whitespace-nowrap rounded-md bg-stone-900 px-2 py-1 text-xs text-white shadow dark:bg-stone-100 dark:text-stone-900 ${x(h) / w > 0.7 ? '-translate-x-full' : x(h) / w > 0.3 ? '-translate-x-1/2' : ''}`} style={{ left: `${(x(h) / w) * 100}%` }}>
+            {fmtPoint && <span className="mr-1 opacity-70">{fmtPoint(h)}</span>}
+            <b className={values[h]! < 0 ? 'text-rose-300 dark:text-rose-700' : ''}>{fmtValue!(values[h]!)}</b>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
