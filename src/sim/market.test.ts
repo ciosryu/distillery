@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { houseBrand } from './brands';
 import { advanceMonths, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, demandFor, evaluate, spotBidPerLPA, spotQuote, makeContractOffer, makeCraftContractOffer, contractAgingImpact, mulberry32, newGame, previewBlend, qualityFactor, type Cask, type GameState, type SpiritLot, appeal, applyEffects, buyersFor, type Product, agePerception, suggestedPrice, spotSaturation, sourcedElasticityFactor, sourcedPrestigeOf, executeBlend, runSales, updateAwareness, DUTY_FREE, dutyFreeSlotBlocker, makeOemOffer, makeRetailOffer, oemPackageCost, OEM, productDutyFreeDemand, resolveDutyFreeEditions, startOem, startRetail, type MonthReport } from './index';
 import { overhangFactor, retailCapacityCases } from './retail';
-import { domesticDemands, priceBreakdown, priceOptions, priceResponse, skuSplit, skuSplitEqual } from './market';
+import { domesticDemands, expectedPricePerL, priceBreakdown, priceOptions, priceResponse, skuSplit, skuSplitEqual } from './market';
 import { lotQuality, spotQuoteEstimate } from './bulk';
-import { PRICE_CURVE, SKU } from './content/market';
+import { AGED_WHITE, agedWhitePerception, PRICE_CURVE, SKU } from './content/market';
 import { BULK } from './content/catalog';
 import { BUYERS } from './content/names';
 import { REGIONS, traditionalTaxFactor, refPricePerL } from './content/regions';
@@ -615,5 +615,36 @@ describe('가격 반응 곡선 (#198, PRD §9.2)', () => {
     const p = product({ price: 60_000, stockBottles: 1_000_000 });
     const rev = (price: number) => demandFor(s, { ...p, price }, 1, 6).demandBottles * price;
     expect(rev(600_000)).toBeLessThan(rev(60_000) * 0.05);
+  });
+});
+
+describe('숙성 소주 표기 (P-MKT-8, PRD §9.2)', () => {
+  const soju = (over: Partial<Product> = {}): Product => ({ id: 's', name: 's', category: 'soju_distilled', ageYears: null, oakMonths: 0, abv: 0.4, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 60, typicity: 80, style: null, sourcedShare: 0, stockBottles: 5000, price: 15_000, unitCost: 5_000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, ...over });
+
+  it('배수: 6개월 미만·대상 밖은 1, 6개월 1.04, 2년 1.16, 3년 넘어도 1.24에서 멈춘다', () => {
+    expect(agedWhitePerception('soju_distilled', 0, 5)).toBe(1);
+    expect(agedWhitePerception('soju_distilled', 0, undefined)).toBe(1);
+    expect(agedWhitePerception('soju_distilled', 0, 6)).toBeCloseTo(1.04, 9);
+    expect(agedWhitePerception('baijiu', 24, 0)).toBeCloseTo(1.16, 9); // 오크 숙성도 같다
+    expect(agedWhitePerception('soju_distilled', 0, 60)).toBeCloseTo(1 + AGED_WHITE.ratePerYear * AGED_WHITE.capYears, 9);
+    expect(agedWhitePerception('gin', 0, 24)).toBe(1);
+    expect(agedWhitePerception('whisky', 24, 0)).toBe(1); // 위스키는 agePerception이 맡는다
+  });
+
+  it('옹기 2년 소주: 매력도·기대가가 같은 배수로 오른다 — 옛 제품(필드 없음)은 그대로', () => {
+    const s = newGame({ seed: 1, region: 'KR' });
+    const region = REGIONS.KR;
+    const plain = soju();
+    const onggi = soju({ restMonths: 24 });
+    expect(appeal(onggi, s) / appeal(plain, s)).toBeCloseTo(1.16, 9);
+    expect(expectedPricePerL(region, onggi) / expectedPricePerL(region, plain)).toBeCloseTo(1.16, 9);
+    const { restMonths: _, ...legacy } = onggi;
+    expect(appeal(legacy as Product, s)).toBe(appeal(plain, s));
+  });
+
+  it('같은 출고가면 숙성 표기가 있는 쪽 수요가 크다', () => {
+    const s = newGame({ seed: 1, region: 'KR' });
+    houseBrand(s).awareness = 1;
+    expect(demandFor(s, soju({ restMonths: 24 }), 1, 3).demandBottles).toBeGreaterThan(demandFor(s, soju(), 1, 3).demandBottles);
   });
 });
