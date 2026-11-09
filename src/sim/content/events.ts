@@ -36,7 +36,11 @@ export type Effect =
   /** 세무조사: 최근 3개월 주세 × rate 추징, 사무직 세무 스탯으로 감면 */
   | { type: 'taxAudit'; rate: number }
   /** 인플루언서 반동(hypeBestSeller의 '— 반동' 보정치)을 share만큼 1에 가깝게 — BIZ-3 앰버서더 대응 (#213) */
-  | { type: 'softenBacklash'; share: number };
+  | { type: 'softenBacklash'; share: number }
+  /** 전 직원 급여 +share (협상가는 절반) — 연봉 협상 (#225) */
+  | { type: 'raiseAll'; share: number }
+  /** 전 직원 사기 +delta (떨어질 때 토박이는 절반) — 연봉 협상 (#225) */
+  | { type: 'moraleAll'; delta: number };
 
 export type Requirement = 'activeContract' | 'filledCasks' | 'whiskyStock' | 'twoStaff' | 'still' | 'products' | 'highQualityProduct' | 'agedWhisky' | 'exportUS' | 'exportCN';
 
@@ -266,6 +270,14 @@ export const TRIGGERED_EVENTS: EventDef[] = [
     choices: [
       { label: '앰버서더 대응 캠페인', detail: '1,500만 원 — 반동 폭을 절반으로 더 줄인다', effects: [{ type: 'cash', amount: -15_000_000 }, { type: 'softenBacklash', share: 0.5 }] },
       { label: '대응하지 않는다', detail: '비용 없음 — 연구 효과(반동 폭 −50%)만 남는다', effects: [] },
+    ], defaultChoice: 1 },
+  // 연봉 협상 (#225) — 해마다 1월, HR이 열린 판에서 직원이 있으면 (events.ts salaryReviewDue). 고르지 않으면 동결.
+  // 수치는 hr.ts MORALE.raise·raiseMorale·freezeMorale과 같게 둔다 [튜닝]
+  { id: 'salary_review', title: '연봉 협상', category: 'people', chance: 0, cooldown: 0,
+    text: '새해 연봉 협상 철입니다. 직원들이 인상을 기대하고 있습니다.',
+    choices: [
+      { label: '인상', detail: '전 직원 급여 +5%(협상가는 +2.5%) — 사기 +15', effects: [{ type: 'raiseAll', share: 0.05 }, { type: 'moraleAll', delta: 15 }] },
+      { label: '동결', detail: '비용 없음 — 사기 −15(토박이는 −7.5)', effects: [{ type: 'moraleAll', delta: -15 }] },
     ], defaultChoice: 1 },
 ];
 

@@ -1,6 +1,6 @@
 import { ROLE_INFO } from '../../sim/content/catalog';
 import type { Staff as StaffT } from '../../sim';
-import { ageOf, AGING_TENURE_MONTHS, APPRENTICE_MONTHS, HEADHUNT, headhuntCost, headhuntedThisMonth, masterDistiller, mentoringXp, RETIRE_AGE, tenureOf, TRAINING, trainingCooldown, trainingCost } from '../../sim/hr';
+import { ageOf, AGING_TENURE_MONTHS, APPRENTICE_MONTHS, HEADHUNT, headhuntCost, headhuntedThisMonth, marketSalary, masterDistiller, mentoringXp, MORALE, moraleOf, moraleOn, payShortfall, RETIRE_AGE, tenureOf, TRAINING, trainingCooldown, trainingCost, TRAIT_INFO } from '../../sim/hr';
 import { useGame } from '../../store/game';
 import { won } from '../format';
 import { Badge, Button, Card, Empty } from '../kit';
@@ -24,7 +24,26 @@ function StatBar({ name, value }: { name: string; value: number }) {
   );
 }
 
-function Person({ x, action, month, tag }: { x: StaffT & { askSalary?: number }; action: React.ReactNode; month: number; tag?: React.ReactNode }) {
+/** 사기 막대 (#225) — 낮을 때만 눈에 띄게: 30 미만 이직 위험, 50 미만 주의 */
+function MoraleBar({ value, title }: { value: number; title: string }) {
+  const low = value < MORALE.quitBelow;
+  const color = low ? 'bg-rose-600' : value < 50 ? 'bg-amber-500' : 'bg-emerald-600';
+  return (
+    <div className="flex items-center gap-2 text-xs" title={title}>
+      <span className="w-14 text-stone-500">사기</span>
+      <div className="h-1.5 flex-1 rounded bg-stone-200 dark:bg-stone-800"><div className={`h-1.5 rounded ${color}`} style={{ width: `${value}%` }} /></div>
+      <span className="w-6 text-right tabular-nums">{Math.round(value)}</span>
+      {low && <Badge tone="bad">이직 위험</Badge>}
+    </div>
+  );
+}
+
+function Traits({ x }: { x: StaffT }) {
+  if (!x.traits?.length) return null;
+  return <span className="ml-1 inline-flex gap-1">{x.traits.map((t) => <span key={t} title={TRAIT_INFO[t].desc}><Badge tone="info">{TRAIT_INFO[t].nameKo}</Badge></span>)}</span>;
+}
+
+function Person({ x, action, month, tag, morale }: { x: StaffT & { askSalary?: number }; action: React.ReactNode; month: number; tag?: React.ReactNode; morale?: React.ReactNode }) {
   const info = ROLE_INFO[x.role];
   const age = Math.floor(ageOf(x, Math.max(month, x.hiredMonth)));
   const tenureY = x.hiredMonth >= 0 ? Math.floor(tenureOf(x, month) / 12) : 0;
@@ -32,7 +51,7 @@ function Person({ x, action, month, tag }: { x: StaffT & { askSalary?: number };
     <div className="rounded-lg border border-stone-200 p-3 dark:border-stone-800">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div>
-          <div className="font-medium">{x.name}</div>
+          <div className="font-medium">{x.name}<Traits x={x} /></div>
           <div className="text-xs text-stone-500">{info.nameKo} · Lv.{x.level}{x.hiredMonth >= 0 && ` · XP ${Math.round(x.xp)}/${100 * x.level}`} · {age}세{x.hiredMonth >= 0 ? ` · 근속 ${tenureY}년` : ''}{x.hiredMonth >= 0 && tenureOf(x, month) >= AGING_TENURE_MONTHS ? ' (근속 20년↑ 기량 하락기)' : ''}{RETIRE_AGE - age <= 3 ? ` · ${RETIRE_AGE}세 은퇴 임박` : ''}</div>
           {tag}
         </div>
@@ -42,6 +61,7 @@ function Person({ x, action, month, tag }: { x: StaffT & { askSalary?: number };
         <StatBar name={info.stats[0]} value={x.stats.a} />
         <StatBar name={info.stats[1]} value={x.stats.b} />
         <StatBar name={info.stats[2]} value={x.stats.c} />
+        {morale}
       </div>
       <div className="mt-2">{action}</div>
     </div>
@@ -64,7 +84,9 @@ export function Staff() {
                 {mentor > 0 && <span className="ml-1 text-xs text-emerald-700 dark:text-emerald-400" title="부사수이거나 같은 직군에 레벨 2 이상 높은 선배가 있으면 매달 XP를 더 얻는다">멘토링 XP +{mentor}/월</span>}
               </>;
               const wait = trainingCooldown(s, x.id);
-              return <Person key={x.id} x={x} month={s.month} tag={tag} action={<div className="flex flex-wrap gap-1">
+              const short = payShortfall(s, x);
+              const morale = moraleOn(s) ? <MoraleBar value={moraleOf(x)} title={`매달 ${MORALE.base} 쪽으로 돌아간다. 시세 ${won(Math.round(marketSalary(s, x)))}/월${short > 0 ? ` — ${Math.round(short * 100)}% 덜 받아 매달 −${(short * 100 * MORALE.payShortfall).toFixed(1)}` : ''}. 교육 +${MORALE.training}, 해고 때 남은 직원 −${MORALE.fired}, 1월 연봉 협상(인상 +${MORALE.raiseMorale} / 동결 ${MORALE.freezeMorale}). ${MORALE.quitBelow} 미만이면 이직할 수 있다`} /> : null;
+              return <Person key={x.id} x={x} month={s.month} tag={tag} morale={morale} action={<div className="flex flex-wrap gap-1">
                 <Button small disabled={wait > 0 || s.finance.cash < trainingCost(x)} onClick={() => dispatch({ type: 'trainStaff', staffId: x.id })} title={`교육 프로그램 — 월급 ${TRAINING.costMonths}개월 치, XP +${TRAINING.xpPerLevel * x.level}(반 레벨), 같은 직원은 ${TRAINING.cooldownMonths}개월에 한 번`}>{wait > 0 ? `교육 (${wait}개월 뒤)` : `교육 ${won(trainingCost(x))}`}</Button>
                 <Button small variant="danger" onClick={() => dispatch({ type: 'fire', staffId: x.id })}>내보내기 (위로금 1개월)</Button>
               </div>} />;

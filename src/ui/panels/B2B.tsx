@@ -131,7 +131,7 @@ export function B2B() {
         )}
       </Card>
 
-      <Card title="독립 병입자(IB) 캐스크 매입 제안 — 5년 이상·품질 70 이상 캐스크">
+      <Card title="독립 병입자(IB) 캐스크 매입 제안 — 3년 이상·품질 65 이상 캐스크">
         {!s.b2b.caskBids.length ? <Empty>제안이 없습니다 (조건에 맞는 캐스크가 있으면 가끔 들어옵니다)</Empty> : (
           <Table head={['병입자', '캐스크', '숙성', '품질', '제안가(현물가의 135%)', '만료', '']}>
             {s.b2b.caskBids.map((b) => {

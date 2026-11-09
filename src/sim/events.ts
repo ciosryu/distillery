@@ -5,7 +5,7 @@ import { BUYERS, COMPETITIONS, CRITICS, displayName } from './content/names';
 import { makeSpecialContractOffer } from './bulk';
 import { EQUIPMENT } from './content/catalog';
 import { ownsFacility } from './util';
-import { ageOf, masterDistiller, RETIRE_AGE, taxAuditDefense } from './hr';
+import { ageOf, masterDistiller, moraleOn, raiseAllSalaries, RETIRE_AGE, shiftAllMorale, taxAuditDefense } from './hr';
 import { systemOn } from './scenario';
 import { clamp } from './flavor';
 import { addModifier } from './modifiers';
@@ -157,6 +157,17 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         if (pool.length) { const x = rng.pick(pool); s.hr.staff = s.hr.staff.filter((y) => y.id !== x.id); notes.push(`${x.name} 퇴사`); }
         break;
       }
+      case 'raiseAll': {
+        const added = raiseAllSalaries(s, e.share);
+        if (added) notes.push(`월 급여 합계 +${added.toLocaleString()}원`);
+        break;
+      }
+      case 'moraleAll': {
+        if (!s.hr.staff.length) break;
+        shiftAllMorale(s, e.delta);
+        notes.push(`전 직원 사기 ${e.delta > 0 ? '+' : ''}${e.delta}`);
+        break;
+      }
       case 'raiseSalary': {
         if (!s.hr.staff.length) break;
         const x = rng.pick(s.hr.staff);
@@ -278,6 +289,12 @@ function artisanTransferDue(s: GameState): boolean {
   return last === undefined || s.month - last >= ARTISAN_NOTICE_MONTHS;
 }
 
+/** 연봉 협상 (#225): 해마다 1월, 사기 시스템이 켜져 있고(HR이 열린 판) 직원이 있으면. 첫해(창업 직후)는 건너뛴다 */
+function salaryReviewDue(s: GameState, monthOfYear: number): boolean {
+  if (monthOfYear !== 1 || s.month < 12 || !moraleOn(s) || !s.hr.staff.length) return false;
+  return !s.events.pending.some((p) => p.defId === 'salary_review');
+}
+
 /** 이벤트 하나를 지금 일으킨다 — 테스트·디버그용 (발생 판정·조건·쿨다운을 건너뛴다) */
 export function fireEvent(s: GameState, defId: string, report: MonthReport): void {
   const def = EVENT[defId];
@@ -343,6 +360,10 @@ export function runEvents(s: GameState, report: MonthReport, monthOfYear: number
   if (artisanTransferDue(s)) {
     s.events.lastFired.artisan_retire = s.month;
     fire(s, EVENT.artisan_retire!, rngFor(s.seed, s.month, 'event:artisan_retire'), report);
+  }
+  if (salaryReviewDue(s, monthOfYear)) {
+    s.events.lastFired.salary_review = s.month;
+    fire(s, EVENT.salary_review!, rngFor(s.seed, s.month, 'event:salary_review'), report);
   }
 
   // 예보 확정: 예보마다 독립 난수 (S-5) — 키는 이벤트 id + 확정 달(엔티티 번호와 무관), 다른 예보·이벤트 수와 무관하다

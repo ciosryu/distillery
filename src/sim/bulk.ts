@@ -4,7 +4,9 @@ import { regionOf, siteOf } from './content/regions';
 import { mod } from './modifiers';
 import { clamp, evaluate } from './flavor';
 import { lotCategory } from './blending';
-import type { Rng } from './rng';
+import { rngFor, type Rng } from './rng';
+import { sampledSigma } from './blendRadar';
+import { QUALITY_SIGMA_PER_HEX } from './blendTable';
 import type { Cask, Contract, ContractOffer, ContractTerms, GameState, MonthReport, SpiritLot } from './types';
 import { nid } from './util';
 
@@ -295,13 +297,26 @@ export function updateBulkIndex(s: GameState, rng: Rng): void {
 // ── 독립 병입자(IB) 캐스크 매입 제안 ──
 
 /** 3년 이상·품질 65 이상인 자사 캐스크가 있으면 IB가 현물가의 135%에 캐스크째 사겠다고 제안한다 (초기 런웨이 — 통떼기 매각) */
+/**
+ * 독립 병입자가 시음해 읽은 통 품질 ([결정 #223], 오너 승인 2026-11-09 — #164와 같은 원칙).
+ * 시나리오(MVP)는 플레이어가 샘플 추정치만 보므로, 입찰이 참 품질을 드러내면 안 된다(옛 식: 참 품질 65↑만 후보 + 제안가 = 참 품질 현물가 × 1.35 →
+ * 제안가로 참 품질을 정확히 역산). 그래서 참 품질 + 첫 샘플과 같은 크기의 오차(블렌더 없이 1회, 약 ±14)로 읽는다. 오차는 **통마다 고정**(같은 통은 늘 같은 IB 판단) —
+ * 매달 새로 뽑으면 여러 번의 제안을 평균해 참값을 좁힐 수 있다. 샌드박스는 참 품질 그대로(옛 동작)
+ */
+export function ibTastedQuality(s: GameState, cask: Cask): number {
+  const q = lotQuality(cask.contents!);
+  if (!s.scenario) return q;
+  const r = rngFor(s.seed, 0, `ib-taste:${cask.id}`);
+  return clamp(q + r.normal(0, sampledSigma(null, 1) * QUALITY_SIGMA_PER_HEX), 0, 100);
+}
+
 export function refreshCaskBids(s: GameState, rng: Rng): void {
   s.b2b.caskBids = s.b2b.caskBids.filter((b) => b.expiresMonth > s.month && s.inventory.casks.some((c) => c.id === b.caskId && c.contents));
   if (s.b2b.caskBids.length >= 2 || !rng.chance(0.25)) return;
-  const candidates = s.inventory.casks.filter((c) => c.contents && !c.owner && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= 36 && lotQuality(c.contents) >= 65 && !s.b2b.caskBids.some((b) => b.caskId === c.id));
+  const candidates = s.inventory.casks.filter((c) => c.contents && !c.owner && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= 36 && ibTastedQuality(s, c) >= 65 && !s.b2b.caskBids.some((b) => b.caskId === c.id));
   if (!candidates.length) return;
   const cask = rng.pick(candidates);
   const ib = rng.pick(INDEPENDENT_BOTTLERS);
-  s.b2b.caskBids.push({ id: nid(s, 'I'), buyerName: displayName(ib), caskId: cask.id, price: Math.round(spotQuote(s, cask.contents!, cask.contents!.volumeL, cask) * 1.35), expiresMonth: s.month + 2 });
+  s.b2b.caskBids.push({ id: nid(s, 'I'), buyerName: displayName(ib), caskId: cask.id, price: Math.round(spotQuote(s, cask.contents!, cask.contents!.volumeL, cask, ibTastedQuality(s, cask)) * 1.35), expiresMonth: s.month + 2 });
 }
 
