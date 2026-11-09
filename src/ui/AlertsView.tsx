@@ -50,7 +50,7 @@ export function CashBanner() {
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
         <span className="opacity-80">지금 할 수 있는 일:</span>
         <Button small variant={danger ? 'primary' : 'secondary'} onClick={() => go({ tab: 'finance' })}>{room > 0 ? <>대출·급전 받기 — 아직 {fmtWon(room)}</> : '대출·급전 — 남은 한도 없음'}</Button>
-        {/* 원액 현물 판매는 미래 위스키를 판다 — 대출 다음, 대가를 바로 아래 줄에 (P-ARCH-25) */}
+        {/* 원액 현물 판매는 미래 위스키를 판다 — 대출 다음, 대가를 바로 아래 줄에 (#203) */}
         <Button small onClick={() => go({ tab: 'b2b' })}>원액 현물 판매{s.scenario && spotSaleStake(s) ? ' ↓ 대가 확인' : ''}</Button>
         <Button small onClick={() => go({ tab: 'sales' })}>값 낮춰 재고 팔기</Button>
         {s.scenario && <Button small variant="ghost" onClick={() => go({ anchor: 'mvp-fixed' })}>매달 나가는 돈 줄이기</Button>}
@@ -63,7 +63,7 @@ export function CashBanner() {
 }
 
 /**
- * 원액 현물 판매의 대가 (P-ARCH-25) — 3차 MVP 판은 이 경고를 보고 "패닉에" 몰트 원액을 8번(1.58억) 팔았고, 48개월 뒤 몰트는 거의 통에 들어가지 못했다.
+ * 원액 현물 판매의 대가 (#203) — 3차 MVP 판은 이 경고를 보고 "패닉에" 몰트 원액을 8번(1.58억) 팔았고, 48개월 뒤 몰트는 거의 통에 들어가지 못했다.
  * 사람형 실험: 3차 판의 행동 중 원액 현물 판매 하나만 빼면 파산 10/10 → 3/10 (mvp.md §7.9). 2차의 [생산 지시 줄이기]와 같은 모양의 함정이라
  * 버튼은 두되, 누르기 전에 무엇을 파는지 돈으로 보인다. 숫자는 B2B 견적·공급 전망(#178)·생산 가치(#185)를 그대로 쓴다(alerts.ts spotSaleStake)
  */

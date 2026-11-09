@@ -120,7 +120,7 @@ export const staleSampleCasks = (s: GameState) =>
 export const RESTOCK_MONTHS = 2;
 
 /**
- * 원액 현물 판매가 파는 것 (P-ARCH-25, 3차 MVP 플레이테스트 — "파산 경고를 보고 패닉에 몰트 원액을 8번(1.58억) 팔았다", mvp.md §7.9).
+ * 원액 현물 판매가 파는 것 (#203, 3차 MVP 플레이테스트 — "파산 경고를 보고 패닉에 몰트 원액을 8번(1.58억) 팔았다", mvp.md §7.9).
  * 새 식을 만들지 않는다: 지금 받는 돈 = B2B 현물 판매 화면과 같은 견적(`spotQuote`), 위스키 병 수 = 공급 전망(#178 `whiskySupplyForecast`)의
  * 탱크·숙성 중인 통 몫, 매출 = 생산 가치(#185 `productionValue`)의 1년 숙성 권장 출고가. 탱크 뉴메이크와 숙성 중인 통을 나눈다.
  * 이미 법정 숙성을 채운 통은 "지금 위스키"라 병 수 대신 통 수만 센다. 우리 원액(위탁 통·매입 원액 제외)이 없으면 null
@@ -153,7 +153,7 @@ export function maltStoppedMonths(s: GameState): number {
   return n;
 }
 
-/** 이번 달 할 일 우선순위 (P-ARCH-25) — 위기 > 생산 멈춤 > 비지터 센터 > 통입·병입 > 샘플. 목록에 없는 id는 병입 다음 */
+/** 이번 달 할 일 우선순위 (#203) — 위기 > 생산 멈춤 > 비지터 센터 > 통입·병입 > 샘플. 목록에 없는 id는 병입 다음 */
 export const TODO_ORDER = ['loan-jump', 'malt-stopped', 'visitor', 'fill', 'whisky', 'soju', 'sample'];
 const todoRank = (id: string) => { const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
 
@@ -169,7 +169,7 @@ export function monthTodos(s: GameState): Todo[] {
   if (s.scenario && visitor && !isLocked(s, 'facility:visitor_basic') && !s.production.equipment.some((e) => EQUIPMENT[e.catalogId]?.kind === 'visitor')) {
     out.push({ id: 'visitor', level: s.month < 24 ? 'warn' : 'info', text: `비지터 센터(베이직 투어)가 없다 — ${fmtWon(visitor.cost)}, ${'leadMonths' in visitor ? visitor.leadMonths : 4}개월 뒤 문을 열면 관광 수입 월 약 600만~800만(유지비 월 ${fmtWon(visitor.maintenance)}). 첫해 소주보다 큰 수입원이다`, action: '설비에서 짓기', target: { anchor: 'mvp-equipment' } });
   }
-  // 몰트 생산이 멈춰 있다 (P-ARCH-25 — 3차 판 "잠깐 멈추려다 다시 켜는 걸 잊었다"). 생산 지시 칸의 빨간 경고(#185)와 같은 조건·같은 말
+  // 몰트 생산이 멈춰 있다 (#203 — 3차 판 "잠깐 멈추려다 다시 켜는 걸 잊었다"). 생산 지시 칸의 빨간 경고(#185)와 같은 조건·같은 말
   if (s.scenario && s.month > 0) {
     const v = productionValue(s);
     if (v.perBatch.length && v.whiskyBottlesPerYear === 0) {

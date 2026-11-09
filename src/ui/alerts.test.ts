@@ -118,7 +118,7 @@ describe('이번 달 할 일 — 비지터 센터 (3차 MVP 플레이테스트: 
   });
 });
 
-describe('3차 MVP 플레이테스트 대응 (P-ARCH-25) — 멈춘 몰트 생산 · 원액 현물 판매의 대가 · 할 일 순서', () => {
+describe('3차 MVP 플레이테스트 대응 (#203) — 멈춘 몰트 생산 · 원액 현물 판매의 대가 · 할 일 순서', () => {
   const maltId = (s: GameState) => s.production.recipes.find((r) => r.kind === 'malt')!.id;
   const setMalt = (s: GameState, n: number) => applyAction(s, { type: 'setOrder', recipeId: maltId(s), batchesPerMonth: n }).state;
 
