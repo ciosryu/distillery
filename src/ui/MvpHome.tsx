@@ -401,7 +401,11 @@ function WarehouseCard() {
                 <Td right>{liters(lot.volumeL)}</Td>
                 <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>{vesselMaterial(c) === 'onggi' ? '옹기 ' : ''}숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : vesselMaterial(c) !== 'wood' && lot.oakMonths < minM ? <Badge tone="warn">옹기 — 위스키 숙성에 안 들어감</Badge> : lot.oakMonths >= minM ? <Badge tone="good">위스키{lot.oakMonths < 36 ? ' (어림)' : ''}</Badge> : <Badge tone="warn">{minM - lot.oakMonths}개월 남음</Badge>}</Td>
                 <Td><SampleCell s={s} c={c} known={known.get(c.id)} /></Td>
-                <Td>{c.contaminationKnown && !c.owner && <Button small variant="ghost" onClick={() => dispatch({ type: 'dumpCask', caskId: c.id })}>폐기</Button>}</Td>
+                <Td className="whitespace-nowrap">
+                  {/* 실수로 잘못 넣은 통 (2026-11-09 오너 요청, #205) — 통입한 달·샘플 전이면 통입 취소, 아니면 옮겨 붓기 */}
+                  {!c.owner && (() => { const undo = c.filledMonth === s.month && !c.sampleLog?.length; return <Button small variant="ghost" onClick={() => dispatch({ type: 'unfillCask', caskId: c.id })} title={undo ? '통입 취소 — 원액을 탱크로 되돌리고 통은 넣기 전 그대로' : '원액을 빼 탱크로 옮긴다 — 손실 0.75%, 숙성 개월은 원액에 남고 통은 한 번 쓴 통이 된다'}>{undo ? '통입 취소' : '원액 빼기'}</Button>; })()}
+                  {c.contaminationKnown && !c.owner && <Button small variant="ghost" onClick={() => dispatch({ type: 'dumpCask', caskId: c.id })}>폐기</Button>}
+                </Td>
               </tr>
             );
           })}

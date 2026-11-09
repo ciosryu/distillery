@@ -7,15 +7,24 @@ import type { GameState, Product, ProductArchiveEntry, YearSummary } from './typ
 /** 품절 뒤 이 개월 수가 지나야 아카이브 (판매 화면이 직전 판매를 보여 줄 여유) */
 export const ARCHIVE_AFTER_MONTHS = 3;
 
-/** 품절·판매 없음·면세 한정판 판정 끝난 제품을 아카이브로 옮긴다 */
+/** 제품 한 개를 아카이브 이력으로 옮긴다 (향미 객체 없이 이력만) */
+export function toArchiveEntry(p: Product): ProductArchiveEntry {
+  return { id: p.id, name: p.name, category: p.category, createdMonth: p.createdMonth, lastMonthSold: p.lastMonthSold, totalSold: p.totalSold, quality: p.quality, price: p.price };
+}
+
+/**
+ * 품절·판매 없음·면세 한정판 판정 끝난 제품을 아카이브로 옮긴다.
+ * **시나리오(MVP) 게임은 국내 제품을 자동으로 옮기지 않는다** (#204, 2026-11-09 오너 요청: 품절된 브랜드가 사라지지 않게, 지울 때는 × 버튼 —
+ * 행동 archiveProduct). 품절 제품은 수요 나눔에 들지 않으므로(재고 있는 제품만) 남겨 둬도 판매가 바뀌지 않는다. 면세 한정판은 판이 끝나면 그대로 옮긴다.
+ * 샌드박스(봇 실험 포함)는 지금 규칙 — 봇은 병입마다 새 제품을 만들어 목록이 끝없이 커진다
+ */
 export function archiveSoldOutProducts(s: GameState): number {
   const keep: Product[] = [];
   let moved = 0;
   for (const p of s.commerce.products) {
-    const done = p.stockBottles <= 0 && p.lastMonthSold === 0 && s.month - p.createdMonth >= ARCHIVE_AFTER_MONTHS && (!p.dfEdition || p.dfEdition.done);
+    const done = p.stockBottles <= 0 && p.lastMonthSold === 0 && s.month - p.createdMonth >= ARCHIVE_AFTER_MONTHS && (!p.dfEdition || p.dfEdition.done) && (!s.scenario || !!p.dfEdition);
     if (!done) { keep.push(p); continue; }
-    const entry: ProductArchiveEntry = { id: p.id, name: p.name, category: p.category, createdMonth: p.createdMonth, lastMonthSold: p.lastMonthSold, totalSold: p.totalSold, quality: p.quality, price: p.price };
-    s.commerce.productArchive.push(entry);
+    s.commerce.productArchive.push(toArchiveEntry(p));
     moved++;
   }
   if (moved) s.commerce.products = keep;
