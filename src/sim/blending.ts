@@ -13,6 +13,7 @@ import { mod } from './modifiers';
 import { hexOf, matchScore, mixHex } from './blendRadar';
 import { COMMISSION, findTarget, knownReads, QUALITY_SIGMA_PER_HEX, revealNotes, sampleAxesOf } from './blendTable';
 import { productCountEver } from './lifecycle';
+import { agedWhitePerception } from './content/market';
 import type { AxisId, CaskTypeId, Flavor, GameState, Hex, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
 
 export interface BlendComponent { source: 'cask' | 'lot'; id: string; liters: number }
@@ -45,6 +46,10 @@ export interface BlendPreview {
   finalAbv: number;
   bottles: number;
   minOakMonths: number;
+  /** 최저 옹기(비목재 용기) 숙성 개월 — 섞은 원액의 restMonths 중 가장 짧은 값 (#217) */
+  minRestMonths: number;
+  /** 숙성 소주 표기 "옹기 N년 숙성" 등 — 대상이 아니면 null (#217 · #221) */
+  agedLabel: string | null;
   ageYears: number | null;
   flavor: Flavor;
   evaluation: Evaluation | null;
@@ -125,8 +130,27 @@ export function agePerception(oakMonths: number, category: ProductCategory = 'wh
   return (1.18 * (1 + r * years)) / (1 + 3 * r);
 }
 
-export function suggestedPrice(region: RegionDef, category: ProductCategory, bottleMl: number, quality: number, oakMonths: number | null, abv: number, taxFactor = 1): number {
-  const ageBonus = isWhiskyCategory(category) && oakMonths != null ? agePerception(oakMonths, category) : 1;
+/**
+ * 숙성 소주 표기 (#217 · #221) — 증류식 소주·고량주가 옹기 또는 오크에서 6개월 이상(섞은 원액 모두) 쉬었으면
+ * "옹기 2년 숙성"·"오크 8개월 숙성"(1년 미만은 개월). 판매 효과(매력도·기대가 배수)는 MKT `agedWhitePerception`. 대상이 아니면 null
+ */
+export function agedWhiteLabel(category: ProductCategory, oakMonths: number | undefined, restMonths: number | undefined): string | null {
+  if (agedWhitePerception(category, oakMonths, restMonths) <= 1) return null;
+  const rest = restMonths ?? 0;
+  const oak = oakMonths ?? 0;
+  const m = Math.max(rest, oak);
+  return `${rest >= oak ? '옹기' : '오크'} ${m < 12 ? `${m}개월` : `${Math.floor(m / 12)}년`} 숙성`;
+}
+
+/** 숙성 소주 표기가 약속하는 최저 개월 — "2년" = 24, "8개월" = 8. 자동 납품이 표기를 지키는 기준 */
+export const agedWhiteLabelMonths = (months: number): number => (months < 12 ? months : Math.floor(months / 12) * 12);
+
+/**
+ * 권장 출고가. `aged`(제품·블렌드의 최저 오크·옹기 개월)를 주면 숙성 소주 표기 배수를 곱한다 — #198은 권장 출고가가 맞추는 소비자가를
+ * 기대가 E로 정했고, E에 그 배수가 들어가기 때문(#217). 위스키·진은 배수 1
+ */
+export function suggestedPrice(region: RegionDef, category: ProductCategory, bottleMl: number, quality: number, oakMonths: number | null, abv: number, taxFactor = 1, aged?: { oakMonths?: number; restMonths?: number }): number {
+  const ageBonus = (isWhiskyCategory(category) && oakMonths != null ? agePerception(oakMonths, category) : 1) * (aged ? agedWhitePerception(category, aged.oakMonths, aged.restMonths) : 1);
   const consumer = refPricePerL(region, category, abv) * (bottleMl / 1000) * Math.sqrt(Math.max(quality, 20) / 60) * ageBonus;
   const p = priceForConsumer(region, consumer, bottleMl, abv, taxFactor);
   return Math.round(p / 100) * 100;
@@ -144,7 +168,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     if (c.liters > lot.volumeL + 1e-6) errors.push(`${lot.name}: 보유량(${lot.volumeL.toFixed(1)}L)보다 많이 선택했습니다`);
     items.push({ lot, liters: Math.min(c.liters, lot.volumeL) });
   }
-  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, sourcedPrestige: 1, specialty: null, premiumLabel: false, traditional: false, suggestedPrice: 0, localIngredient: false, dfEdition: null, finish: null };
+  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, minRestMonths: 0, agedLabel: null, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, sourcedPrestige: 1, specialty: null, premiumLabel: false, traditional: false, suggestedPrice: 0, localIngredient: false, dfEdition: null, finish: null };
   const region = regionOf(s);
   const rules = region.whisky;
   if (!items.length) { errors.push('블렌딩할 원액을 선택하세요'); return empty; }
@@ -161,6 +185,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   let finalAbv = opts.targetAbv === 'cask' ? mixAbv : opts.targetAbv;
   if (finalAbv > mixAbv + 1e-6) { errors.push(`목표 도수(${(finalAbv * 100).toFixed(1)}%)가 원액 도수(${(mixAbv * 100).toFixed(1)}%)보다 높습니다`); finalAbv = mixAbv; }
   const minOakMonths = Math.min(...items.map((i) => i.lot.oakMonths));
+  const minRestMonths = Math.min(...items.map((i) => i.lot.restMonths ?? 0));
   // 피니시 라벨: 섞은 원액이 모두 같은 종류 캐스크로 피니싱됐을 때만 붙인다 — 피니싱 안 한 원액이 섞이면 라벨 없음 (#158)
   const finishes = items.map((i) => finishOf(i.lot)?.typeId ?? null);
   const finish = finishes.every((f) => f && f === finishes[0]) ? finishes[0]! : null;
@@ -228,14 +253,14 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   const perBottleFixed = packagingUnitCost(s, opts) + BOTTLING_LABOR_PER_BOTTLE;
   const unitCost = bottles > 0 ? spiritCost / bottles + perBottleFixed : 0;
   const evaluation = evaluate(flavor, category);
-  if (opts.restockId) restockChecks(s, opts, { category, finalAbv, finish, ageYears, premiumLabel, traditional, specialty: specialty?.id ?? null }, errors, warnings);
+  if (opts.restockId) restockChecks(s, opts, { category, finalAbv, finish, ageYears, premiumLabel, traditional, specialty: specialty?.id ?? null, oakMonths: minOakMonths, restMonths: minRestMonths }, errors, warnings);
   return {
     ok: errors.length === 0, errors, warnings, kind, category, volumeL: finalVolume, lpa, mixAbv, finalAbv, bottles,
-    minOakMonths, ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare, sourcedPrestige, specialty: specialty?.id ?? null, premiumLabel, traditional,
+    minOakMonths, minRestMonths, agedLabel: agedWhiteLabel(category, minOakMonths, minRestMonths), ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare, sourcedPrestige, specialty: specialty?.id ?? null, premiumLabel, traditional,
     // 면세 전용 한정판은 면세 기준가로 권장가를 잡는다 (주세·부가세 없음)
     suggestedPrice: dutyFree && hasDutyFree(s)
       ? dutyFreeSuggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? agePerception(minOakMonths, category) : 1, finalAbv)
-      : suggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? minOakMonths : null, finalAbv, traditionalTaxFactor(region, traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL)),
+      : suggestedPrice(region, category, opts.bottleMl, evaluation.quality, isWhiskyCategory(category) ? minOakMonths : null, finalAbv, traditionalTaxFactor(region, traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL), { oakMonths: minOakMonths, restMonths: minRestMonths }),
     localIngredient,
     dfEdition: dutyFree && hasDutyFree(s) ? nextDutyFreeEdition(s) : null,
     finish,
@@ -298,7 +323,7 @@ export function estimateBlend(s: GameState, components: BlendComponent[]): { qua
 export function priceAtQuality(s: GameState, p: BlendPreview, opts: BottleOptions, quality: number): number | null {
   if (!p.category || p.dfEdition) return null;
   const region = regionOf(s);
-  return suggestedPrice(region, p.category, opts.bottleMl, quality, isWhiskyCategory(p.category) ? p.minOakMonths : null, p.finalAbv, traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL));
+  return suggestedPrice(region, p.category, opts.bottleMl, quality, isWhiskyCategory(p.category) ? p.minOakMonths : null, p.finalAbv, traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL), { oakMonths: p.minOakMonths, restMonths: p.minRestMonths });
 }
 
 /** 병당 포장재 원가 — 이벤트 보정 × 입지 운송 할증 (결정 #86) */
@@ -322,7 +347,7 @@ export const STANDARD_BOTTLING_ABVS = [0.25, 0.3, 0.34, 0.38, 0.4, 0.43, 0.46, 0
  */
 export const isCaskStrength = (p: Pick<Product, 'abv'>): boolean => !STANDARD_BOTTLING_ABVS.some((a) => Math.abs(a - p.abv) < 0.0005);
 
-function restockChecks(s: GameState, opts: BottleOptions, b: { category: ProductCategory; finalAbv: number; finish: CaskTypeId | null; ageYears: number | null; premiumLabel: boolean; traditional: boolean; specialty: string | null }, errors: string[], warnings: string[]): void {
+function restockChecks(s: GameState, opts: BottleOptions, b: { category: ProductCategory; finalAbv: number; finish: CaskTypeId | null; ageYears: number | null; premiumLabel: boolean; traditional: boolean; specialty: string | null; oakMonths: number; restMonths: number }, errors: string[], warnings: string[]): void {
   const t = s.commerce.products.find((p) => p.id === opts.restockId);
   if (!t) { errors.push('보충할 제품이 판매 목록에 없습니다'); return; }
   if (t.dutyFreeOnly || opts.dutyFreeOnly) { errors.push('면세 한정판은 재고를 보충할 수 없습니다 — 판(Vol.)마다 새로 낸다'); return; }
@@ -334,6 +359,12 @@ function restockChecks(s: GameState, opts: BottleOptions, b: { category: Product
   } else if (Math.abs(b.finalAbv - t.abv) > 0.0005) errors.push(`도수를 「${t.name}」과 같은 ${(t.abv * 100).toFixed(1)}%로 맞추세요`);
   if ((b.finish ?? null) !== (t.finish ?? null)) errors.push(t.finish ? `「${t.name}」은 ${finishLabel(t.finish)} 피니시 제품 — 같은 피니시 원액만 보충할 수 있습니다` : `「${t.name}」은 피니시 표기가 없는 제품 — 피니싱한 원액은 새 제품으로 내세요`);
   if (t.ageYears != null && b.ageYears != null && b.ageYears < t.ageYears) warnings.push(`숙성 표기가 ${t.ageYears}년 → ${b.ageYears}년으로 내려갑니다 (가장 어린 원액 기준)`);
+  // 숙성 소주 표기 (#221) — 가장 짧은 원액 기준이라 덜 쉰 원액(탱크 등)을 섞으면 표기가 내려가거나 빠진다
+  const tAged = agedWhiteLabel(t.category, t.oakMonths, t.restMonths);
+  if (tAged && agedWhitePerception(b.category, b.oakMonths, b.restMonths) < agedWhitePerception(t.category, t.oakMonths, t.restMonths) && t.stockBottles > 0) {
+    const bAged = agedWhiteLabel(b.category, b.oakMonths, b.restMonths);
+    warnings.push(`숙성 표기가 「${tAged}」 → ${bAged ? `「${bAged}」` : '없음'}으로 바뀝니다 (가장 짧게 쉰 원액 기준 · 제품 이름은 그대로)`);
+  }
   if (t.premiumLabel && !b.premiumLabel) warnings.push('이 원액은 프리미엄 표기 조건을 못 채워 제품의 표기가 빠집니다');
   if (t.traditional && !b.traditional) warnings.push('이 원액은 전통주 주세 경감 대상이 아니라 제품의 경감 표기가 빠집니다');
   if (t.specialty && t.specialty !== b.specialty) warnings.push('이 원액은 특산물 표기 조건을 못 채워 제품의 특산물 표기가 빠집니다');
@@ -365,6 +396,8 @@ export function restockedProduct(old: Product, batch: Product): Product {
     ...old,
     ageYears: minAge,
     oakMonths: fresh ? batch.oakMonths : Math.min(old.oakMonths ?? batch.oakMonths ?? 0, batch.oakMonths ?? old.oakMonths ?? 0),
+    // 옹기 개월도 매대에 섞이는 병 중 가장 짧은 값 (#221) — 없으면 0(옛 제품·탱크 원액)
+    restMonths: fresh ? batch.restMonths : Math.min(old.restMonths ?? 0, batch.restMonths ?? 0),
     flavor,
     hex: hexOf(flavor),
     quality: Math.round(avg(old.quality, batch.quality) * 10) / 10,
@@ -383,6 +416,7 @@ export function restockedProduct(old: Product, batch: Product): Product {
   if (keep(old.specialty, batch.specialty, old.specialty === batch.specialty)) merged.specialty = batch.specialty; else delete merged.specialty;
   if (keep(old.localIngredient, batch.localIngredient)) merged.localIngredient = true; else delete merged.localIngredient;
   if (caskMix) merged.caskMix = caskMix; else delete merged.caskMix;
+  if (!merged.restMonths) delete merged.restMonths;
   return merged;
 }
 
@@ -427,10 +461,12 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   }
   const product: Product = {
     id: nid(s, 'P'),
-    name: opts.name.trim() || `${CATEGORY[p.category].nameKo} ${productCountEver(s) + 1}${p.finish ? ` ${finishLabel(p.finish)}` : ''}`,
+    // 기본 이름에 숙성 소주 표기를 붙인다 (#221) — 직접 쓴 이름은 그대로(표기는 판매 화면 배지로 보인다)
+    name: opts.name.trim() || `${CATEGORY[p.category].nameKo} ${productCountEver(s) + 1}${p.finish ? ` ${finishLabel(p.finish)}` : ''}${p.agedLabel ? ` ${p.agedLabel}` : ''}`,
     category: p.category,
     ageYears: p.ageYears,
     oakMonths: p.minOakMonths,
+    ...(p.minRestMonths > 0 ? { restMonths: p.minRestMonths } : {}),
     abv: p.finalAbv,
     bottleMl: opts.bottleMl,
     chillFiltered: opts.chillFilter,

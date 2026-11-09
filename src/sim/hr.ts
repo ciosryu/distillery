@@ -4,7 +4,7 @@ import { clamp } from './flavor';
 import { rngFor, type Rng } from './rng';
 import type { Candidate, GameState, Staff, StaffRole } from './types';
 import { nid } from './util';
-import { mod } from './modifiers';
+import { addModifier, isActive, mod } from './modifiers';
 import type { MonthReport } from './types';
 import { staffOf } from './util';
 
@@ -53,11 +53,74 @@ export function salaryRaiseSinceStart(s: Pick<GameState, 'hr' | 'scenario'>): { 
   return { now, start };
 }
 
-/** 월간 XP와 레벨업 */
+// ───────────── 성장: 교육·멘토링·헤드헌팅 (PRD §7.3, #222) — 수치 [튜닝] ─────────────
+
+/** 멘토링: 매달 더 얻는 XP. 부사수(마스터 곁) / 같은 직군에 레벨이 seniorGap 이상 높은 선배가 있으면 */
+export const MENTORING = { apprenticeXp: 8, seniorXp: 4, seniorGap: 2 };
+/** 교육 프로그램: 비용 = 월급 × costMonths, XP += xpPerLevel × 지금 레벨(반 레벨), 같은 직원은 cooldownMonths 뒤에 다시 */
+export const TRAINING = { costMonths: 2, xpPerLevel: 50, cooldownMonths: 12 };
+/** 헤드헌팅: 비용 = 그 직군 기본급 × 지역 인건비 × costMonths, 스탯 평균 statMean(표준편차 statSd, 40~95) 후보 1명, 직군마다 한 달에 한 번 */
+export const HEADHUNT = { costMonths: 3, statMean: 68, statSd: 8 };
+
+/** 멘토링으로 이번 달 더 얻는 XP */
+export function mentoringXp(s: Pick<GameState, 'hr'>, x: Staff): number {
+  if (x.apprenticeOf && s.hr.staff.some((y) => y.id === x.apprenticeOf)) return MENTORING.apprenticeXp;
+  return s.hr.staff.some((y) => y.id !== x.id && y.role === x.role && y.level >= x.level + MENTORING.seniorGap) ? MENTORING.seniorXp : 0;
+}
+
+/** 보정치 표식(쿨다운) — 상태 필드 없이 world.modifiers로 기억한다 */
+const marked = (s: Pick<GameState, 'world' | 'month'>, key: string) => s.world.modifiers.find((m) => m.key === key && isActive(m, s.month));
+
+export const trainingCost = (x: Staff) => Math.round(x.salary * TRAINING.costMonths);
+/** 교육을 다시 받을 수 있을 때까지 남은 개월 (0 = 지금 가능) */
+export function trainingCooldown(s: Pick<GameState, 'world' | 'month'>, staffId: string): number {
+  const m = marked(s, `training:${staffId}`);
+  return m ? m.untilMonth - s.month : 0;
+}
+/** 교육 — 비용을 내고 XP를 얻는다. 레벨업은 다음 결산의 gainXp가 처리한다. 실패하면 이유 */
+export function trainStaff(s: GameState, staffId: string): string | null {
+  const x = s.hr.staff.find((y) => y.id === staffId);
+  if (!x) return '직원이 없습니다';
+  const wait = trainingCooldown(s, staffId);
+  if (wait > 0) return `${wait}개월 뒤에 다시 교육할 수 있습니다`;
+  const cost = trainingCost(x);
+  if (s.finance.cash < cost) return '현금이 부족합니다';
+  s.finance.cash -= cost;
+  x.xp += TRAINING.xpPerLevel * x.level;
+  addModifier(s, `training:${staffId}`, 1, TRAINING.cooldownMonths, `${x.name} 교육`);
+  return null;
+}
+
+export const headhuntCost = (s: GameState, role: StaffRole) => Math.round(ROLE_INFO[role].baseSalary * regionOf(s).laborCost * HEADHUNT.costMonths);
+export const headhuntedThisMonth = (s: Pick<GameState, 'world' | 'month'>, role: StaffRole) => !!marked(s, `headhunt:${role}`);
+/** 헤드헌팅 — 비용을 내고 스탯이 높은 후보 1명을 지금 받는다. 후보 난수는 따로(채용 풀 갱신과 무관). 실패하면 이유 */
+export function headhunt(s: GameState, role: StaffRole): string | Candidate {
+  if (headhuntedThisMonth(s, role)) return '이 직군은 이번 달에 이미 헤드헌팅했습니다';
+  const cost = headhuntCost(s, role);
+  if (s.finance.cash < cost) return '현금이 부족합니다';
+  const rng = rngFor(s.seed, s.month, `headhunt:${role}`);
+  const stat = () => Math.round(clamp(rng.normal(HEADHUNT.statMean, HEADHUNT.statSd), 40, 95));
+  const stats = { a: stat(), b: stat(), c: stat() };
+  const level = 1 + Math.floor(((stats.a + stats.b + stats.c) / 3) / 30);
+  const salary = salaryFor(role, stats, level, regionOf(s).laborCost);
+  const pool = regionOf(s).namePool;
+  const c: Candidate = {
+    id: nid(s, 'C'), name: `${rng.pick(pool.surnames)}${rng.pick(pool.given)}`, role, level, xp: 0, stats, salary, askSalary: salary, hiredMonth: -1,
+    ageAtHire: Math.round(clamp(rng.normal(36 + (level - 1) * 5, 7), 24, 58)),
+  };
+  s.finance.cash -= cost;
+  s.hr.candidates.push(c);
+  addModifier(s, `headhunt:${role}`, 1, 1, `${ROLE_INFO[role].nameKo} 헤드헌팅`);
+  return c;
+}
+
+/** 월간 XP와 레벨업 (+ 멘토링 XP) */
 export function gainXp(s: GameState, rng: Rng, activity: Record<StaffRole, number>): string[] {
   const notes: string[] = [];
+  // 멘토링은 이번 달 시작 레벨로 판단한다 (같은 달 레벨업 순서와 무관)
+  const mentor = new Map(s.hr.staff.map((x) => [x.id, mentoringXp(s, x)]));
   for (const x of s.hr.staff) {
-    x.xp += 10 + activity[x.role];
+    x.xp += 10 + activity[x.role] + (mentor.get(x.id) ?? 0);
     while (x.xp >= 100 * x.level) {
       x.xp -= 100 * x.level;
       x.level += 1;
