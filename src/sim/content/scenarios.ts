@@ -105,9 +105,8 @@ export const MVP_KR: ScenarioDef = {
     { id: 'y7_export', month: 84, title: '8년 차 — 수출 문이 열린다',
       unlock: ['system:exports', 'action:acceptExportOffer', 'action:setExportPrice', 'action:closeExport'],
       text: '수출 탭에서 해외 수입사의 제안을 받아 시장에 진출할 수 있다. 인지도가 낮은 시장은 마케팅 분담이 크다' },
-    { id: 'y9_brand', month: 108, title: '10년 차 — 두 번째 브랜드',
-      unlock: ['action:openBrand', 'action:setProductBrand'],
-      text: '판매 탭에서 두 번째 브랜드(고급·대중 라인)를 열고 제품을 옮길 수 있다' },
+    // 10년 차 두 번째 브랜드는 뺐다 (P-PROD-27, 오너 승인 2026-11-09) — 브랜드를 나누는 장점(럭셔리 지수·브랜드별 나눔)이
+    // 아직 없어 열면 비용만 든다(MKT 점검: 같은 세이브 36개월, 어떻게 나눠도 하우스만보다 현금 −1.5억~−2.6억). 장점이 생기면 다시 단계로
   ],
   midGoals: [
     { id: 'aged3_sold', byMonth: 72, title: '3년 숙성 위스키를 판다', rewardAwareness: 0.03 },
