@@ -3,7 +3,7 @@ import { houseBrand } from './brands';
 import { advanceMonths, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, demandFor, evaluate, spotBidPerLPA, spotQuote, makeContractOffer, makeCraftContractOffer, contractAgingImpact, mulberry32, newGame, previewBlend, qualityFactor, type Cask, type GameState, type SpiritLot, appeal, applyEffects, buyersFor, type Product, agePerception, suggestedPrice, spotSaturation, sourcedElasticityFactor, sourcedPrestigeOf, executeBlend, runSales, updateAwareness, DUTY_FREE, dutyFreeSlotBlocker, makeOemOffer, makeRetailOffer, oemPackageCost, OEM, productDutyFreeDemand, resolveDutyFreeEditions, startOem, startRetail, type MonthReport } from './index';
 import { overhangFactor, retailCapacityCases } from './retail';
 import { domesticDemands, expectedPricePerL, priceBreakdown, priceOptions, priceResponse, skuSplit, skuSplitEqual } from './market';
-import { lotQuality, spotQuoteEstimate } from './bulk';
+import { ibTastedQuality, lotQuality, refreshCaskBids, spotQuoteEstimate } from './bulk';
 import { AGED_WHITE, agedWhitePerception, PRICE_CURVE, SKU } from './content/market';
 import { BULK } from './content/catalog';
 import { BUYERS } from './content/names';
@@ -264,6 +264,41 @@ describe('실명 레지스트리 (결정 #44)', () => {
     expect(s.finance.cash).toBe(cash + 12_000_000);
     expect(s.inventory.casks.some((c) => c.id === cask.id)).toBe(false);
     expect(s.b2b.caskBids).toEqual([]);
+  });
+});
+
+describe('독립 병입자 입찰은 IB 자신의 시음치로 (P-MKT-10)', () => {
+  const casks = (n: number) => {
+    const src = newGame({ seed: 3, region: 'KR' });
+    const base = src.b2b.brokerOffers[0]!.cask;
+    return Array.from({ length: n }, (_, i) => ({ ...base, id: `IBC${i}`, contents: { ...base.contents!, oakMonths: 48, sourced: false } }));
+  };
+
+  it('샌드박스는 참 품질, 시나리오는 참 품질 + 통마다 고정된 시음 오차', async () => {
+    const { newScenarioGame } = await import('./index');
+    const sandbox = newGame({ seed: 1, region: 'KR' });
+    const mvp = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const cs = casks(200);
+    for (const c of cs) expect(ibTastedQuality(sandbox, c)).toBe(lotQuality(c.contents!));
+    const err = cs.map((c) => ibTastedQuality(mvp, c) - lotQuality(c.contents!));
+    for (const c of cs.slice(0, 5)) expect(ibTastedQuality(mvp, c)).toBe(ibTastedQuality(mvp, c)); // 같은 통은 늘 같은 판단
+    const mean = err.reduce((t, x) => t + x, 0) / err.length;
+    const sd = Math.sqrt(err.reduce((t, x) => t + (x - mean) ** 2, 0) / err.length);
+    expect(Math.abs(mean)).toBeLessThan(3); // 100에서 잘리는 쪽 치우침만
+    expect(sd).toBeGreaterThan(8); // 참값이 그대로 새지 않는다 — 첫 샘플 수준(약 ±14)
+  });
+
+  it('시나리오 입찰 제안가는 시음치로 매긴다 — 참 품질 견적과 다르다', async () => {
+    const { newScenarioGame } = await import('./index');
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.inventory.casks.push(...casks(40));
+    const always = { ...mulberry32(7), chance: () => true } as ReturnType<typeof mulberry32>;
+    refreshCaskBids(s, always);
+    expect(s.b2b.caskBids.length).toBe(1);
+    const bid = s.b2b.caskBids[0]!;
+    const c = s.inventory.casks.find((x) => x.id === bid.caskId)!;
+    expect(ibTastedQuality(s, c)).toBeGreaterThanOrEqual(65);
+    expect(bid.price).toBe(Math.round(spotQuote(s, c.contents!, c.contents!.volumeL, c, ibTastedQuality(s, c)) * 1.35));
   });
 });
 
