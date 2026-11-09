@@ -286,7 +286,7 @@ function InsuranceCard() {
   );
 }
 
-/** 미수금 팩토링 (BIZ-2b, P-MGT-21) — 원액 계약·수출 대금을 수수료를 떼고 지금 받는다. 연구 전·미수금이 없으면 숨긴다 */
+/** 미수금 팩토링 (BIZ-2b, #214) — 원액 계약·수출 대금을 수수료를 떼고 지금 받는다. 연구 전·미수금이 없으면 숨긴다 */
 function FactoringCard() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);

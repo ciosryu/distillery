@@ -87,7 +87,7 @@ export function settleClaims(s: GameState, ledger: LossLedger, report?: MonthRep
   return [`보험금 ${total.toLocaleString()}원 — ${parts.join(' · ')}`];
 }
 
-// ───────────── 매출채권 신용보험·팩토링 (BIZ-2b, P-MGT-21) ─────────────
+// ───────────── 매출채권 신용보험·팩토링 (BIZ-2b, #214) ─────────────
 
 /** 거래처 부도로 unpaid를 못 받았을 때 신용보험금 — 가입 다음 달부터, 못 받은 돈 × 보상 비율, 가입금액까지. 보험이 없으면 0 */
 export function creditClaim(s: GameState, unpaid: number): number {

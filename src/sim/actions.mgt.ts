@@ -27,7 +27,7 @@ export type MgtAction =
   | { type: 'signForward'; ingredientId: string; kgPerMonth: number; months: number }
   | { type: 'buyInsurance'; kind: 'property' | 'inventory' | 'business_interruption' | 'product_liability' | 'credit'; coverage: number }
   | { type: 'cancelInsurance'; policyId: string }
-  /** 미수금 팩토링 (BIZ-2b, P-MGT-21) — 지금 있는 미수금 전부를 수수료를 떼고 현금으로 */
+  /** 미수금 팩토링 (BIZ-2b, #214) — 지금 있는 미수금 전부를 수수료를 떼고 현금으로 */
   | { type: 'factorReceivables' }
   /** 투자 유치 */
   | { type: 'takeInvestment'; offerId: string }
