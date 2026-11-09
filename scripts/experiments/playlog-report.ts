@@ -28,6 +28,8 @@ else {
   const whiskySale = ms(s.progress.milestones, 'first_whisky_sale');
   const tWhisky = whiskySale != null ? activeMsAt(playlog, whiskySale + 1) : null;
   console.log(`- 총 플레이 시간 ${min(playlog.activeMs)} · 행동 ${playlog.actions}번 · 기록된 턴 ${playlog.turns.length}개`);
+  // 빌드 (P-ARCH-30 ⑤) — 판 도중 페이지를 다시 열면 빌드가 바뀐다. 옛 기록에는 없다
+  console.log(`- 빌드: ${playlog.builds?.length ? playlog.builds.map((b) => `${b.build}(${b.month}개월째~)`).join(' → ') : '기록 없음(이 기능 전의 판)'}${playlog.builds && playlog.builds.length > 1 ? ' — **판 도중 빌드가 바뀌었다**' : ''}`);
   console.log(`- 첫 24턴 ≤ 90분: ${t24 == null ? '아직 24턴 전' : `${min(t24)} ${t24 <= 90 * 60_000 ? '✅' : '❌'}`}`);
   console.log(`- 2시간 안에 첫 위스키 판매: ${whiskySale == null ? '아직 없음' : `${whiskySale}개월째, 그때까지 ${min(tWhisky)} ${tWhisky != null && tWhisky <= 120 * 60_000 ? '✅' : '❌'}`}`);
   slowTurns(playlog);
