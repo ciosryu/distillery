@@ -1,4 +1,5 @@
 import { migrateSave, type GameState } from '../sim';
+import { BUILD_ID } from '../build';
 
 // 플레이 기록 (플레이테스트용, mvp.md §7.2) — 사람이 한 판을 하는 데 실제로 든 시간을 잰다(mvp.md §7: 첫 24턴 ≤ 90분).
 // GameState 밖에 둔다 — 세이브 스키마는 그대로이고 시뮬레이션은 이 값을 모른다.
@@ -22,6 +23,8 @@ export interface Playlog {
   turns: PlayTurn[];
   /** 되돌리기 횟수 (3차 MVP 플레이테스트 오너 요청) — 기록을 해석할 때 본다. 옛 기록에는 없다 */
   undos?: number;
+  /** 빌드가 바뀐 기록 (#227) — 이 빌드로 처음 기록한 달. 옛 기록에는 없다 */
+  builds?: { build: string; month: number; at: number }[];
 }
 
 /** 기록 내보내기 파일 */
@@ -31,6 +34,8 @@ export interface PlayFile {
   exportedAt: string;
   playlog: Playlog | null;
   save: GameState;
+  /** 내보낸 빌드(커밋) — 옛 파일에는 없다 */
+  build?: string;
 }
 
 const KEY = 'distillery-tycoon/playlog';
@@ -46,6 +51,12 @@ export function withTurns(log: Playlog, fromMonth: number, toMonth: number): Pla
   const add: PlayTurn[] = [];
   for (let m = fromMonth + 1; m <= toMonth; m++) add.push({ month: m, activeMs: log.activeMs, actions: log.actions });
   return { ...log, turns: [...log.turns, ...add] };
+}
+
+/** 빌드가 바뀌었으면 기록한다 (순수 함수) — 마지막으로 남긴 빌드와 같으면 그대로 */
+export function withBuild(log: Playlog, build: string, month: number, now = Date.now()): Playlog {
+  if (log.builds?.at(-1)?.build === build) return log;
+  return { ...log, builds: [...(log.builds ?? []), { build, month, at: now }] };
 }
 
 /** 이 달에 처음 닿았을 때의 누적 플레이 시간(ms). 아직 못 닿았으면 null */
@@ -72,7 +83,9 @@ export const getPlaylog = (): Playlog => log;
 export function resetPlaylog(): void { log = freshPlaylog(); store(); }
 export function replacePlaylog(l: Playlog | null): void { log = l?.v === 1 ? l : freshPlaylog(); store(); }
 export function recordAction(): void { log = { ...log, actions: log.actions + 1 }; store(); }
-export function recordTurns(fromMonth: number, toMonth: number): void { log = withTurns(log, fromMonth, toMonth); store(); }
+export function recordTurns(fromMonth: number, toMonth: number): void { log = withBuild(withTurns(log, fromMonth, toMonth), BUILD_ID, fromMonth); store(); }
+/** 화면을 연 빌드를 남긴다 — 페이지를 다시 열어 빌드가 바뀌었으면 그 달로 (App 시작 때 한 번) */
+export function recordBuild(month: number): void { const next = withBuild(log, BUILD_ID, month); if (next !== log) { log = next; store(); } }
 /** 한 턴 되돌리기 — 되돌린 달 뒤의 턴 기록을 지우고 횟수를 센다. 플레이 시간은 그대로(실제로 쓴 시간이다) */
 export function recordUndo(toMonth: number): void { log = { ...log, turns: log.turns.filter((t) => t.month <= toMonth), undos: (log.undos ?? 0) + 1 }; store(); }
 
@@ -88,7 +101,7 @@ export function startPlayClock(): void {
 
 /** 세이브 + 플레이 기록을 파일로 내려받는다 */
 export function exportPlayFile(s: GameState): void {
-  const file: PlayFile = { kind: 'distillery-playtest', v: 1, exportedAt: new Date().toISOString(), playlog: log, save: s };
+  const file: PlayFile = { kind: 'distillery-playtest', v: 1, exportedAt: new Date().toISOString(), build: BUILD_ID, playlog: log, save: s };
   const blob = new Blob([JSON.stringify(file)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);

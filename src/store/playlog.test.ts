@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonths, newScenarioGame, SAVE_VERSION } from '../sim';
-import { activeMsAt, freshPlaylog, parsePlayFile, withTurns, type PlayFile } from './playlog';
+import { activeMsAt, freshPlaylog, parsePlayFile, withBuild, withTurns, type PlayFile } from './playlog';
 
 // 플레이 기록 (mvp.md §7.2) — 순수한 부분만. 시계(입력·화면 보임)는 브라우저에서만 돈다
 
@@ -32,5 +32,14 @@ describe('플레이 기록', () => {
     expect(!('error' in b) && b.playlog).toBeNull();
     expect(parsePlayFile('not json')).toEqual({ error: 'JSON 파일이 아닙니다' });
     expect('error' in parsePlayFile(JSON.stringify({ hello: 1 }))).toBe(true);
+  });
+
+  it('빌드가 바뀐 달을 남긴다 — 같은 빌드면 그대로 (#227, 4차: 페이지를 다시 열 때 빌드가 말없이 바뀌었다)', () => {
+    let l = withBuild(freshPlaylog(0), 'aaa1111', 0, 1);
+    expect(withBuild(l, 'aaa1111', 5, 2)).toBe(l);
+    l = withBuild(l, 'bbb2222', 20, 3);
+    expect(l.builds).toEqual([{ build: 'aaa1111', month: 0, at: 1 }, { build: 'bbb2222', month: 20, at: 3 }]);
+    // 옛 기록(빌드 없음)도 그대로 읽힌다
+    expect(withBuild(freshPlaylog(0), 'x', 3, 0).builds).toEqual([{ build: 'x', month: 3, at: 0 }]);
   });
 });
