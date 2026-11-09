@@ -170,8 +170,11 @@ export function maltStoppedMonths(s: GameState): number {
   return n;
 }
 
-/** 이번 달 할 일 우선순위 (#203) — 위기 > 생산 멈춤 > 비지터 센터 > 통입·병입 > 샘플. 목록에 없는 id는 병입 다음 */
-export const TODO_ORDER = ['loan-jump', 'malt-stopped', 'visitor', 'fill', 'whisky', 'soju', 'sample'];
+/**
+ * 이번 달 할 일 우선순위 (#203) — 위기 > 생산 멈춤 > 비지터 센터 > 결품 > 통입·병입 > 샘플. 목록에 없는 id는 병입 다음.
+ * 결품(#205, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
+ */
+export const TODO_ORDER = ['loan-jump', 'malt-stopped', 'visitor', 'stockout', 'fill', 'whisky', 'soju', 'sample'];
 const todoRank = (id: string) => { const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
 
 /**
