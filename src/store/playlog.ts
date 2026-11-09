@@ -23,7 +23,7 @@ export interface Playlog {
   turns: PlayTurn[];
   /** 되돌리기 횟수 (3차 MVP 플레이테스트 오너 요청) — 기록을 해석할 때 본다. 옛 기록에는 없다 */
   undos?: number;
-  /** 빌드가 바뀐 기록 (P-ARCH-30 ⑤) — 이 빌드로 처음 기록한 달. 옛 기록에는 없다 */
+  /** 빌드가 바뀐 기록 (#227) — 이 빌드로 처음 기록한 달. 옛 기록에는 없다 */
   builds?: { build: string; month: number; at: number }[];
 }
 

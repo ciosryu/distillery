@@ -336,7 +336,7 @@ function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead |
 function WarehouseCard() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
-  // [원액 빼기]는 두 번 눌러 확인 (P-ARCH-26) — 손실 0.75%·통은 한 번 쓴 통이 되어 되돌릴 수 없다(3차 판의 가격표 오조작 교훈).
+  // [원액 빼기]는 두 번 눌러 확인 (#226) — 손실 0.75%·통은 한 번 쓴 통이 되어 되돌릴 수 없다(3차 판의 가격표 오조작 교훈).
   // 같은 달 통입 취소는 손실이 없어 한 번. 확인 대기는 "통@달"로 둬서 다른 통을 누르거나 달이 바뀌면 풀린다
   const [armedUnfill, setArmedUnfill] = useState<string | null>(null);
   const [picked, setPicked] = useState<string[]>([]);

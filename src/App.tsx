@@ -51,7 +51,7 @@ export default function App() {
   const [, setClockTick] = useState(0);
   useEffect(() => {
     startPlayClock();
-    recordBuild(useGame.getState().state.month); // 이 빌드로 연 달 (P-ARCH-30 ⑤)
+    recordBuild(useGame.getState().state.month); // 이 빌드로 연 달 (#227)
     const t = setInterval(() => setClockTick((v) => v + 1), 15_000);
     return () => clearInterval(t);
   }, []);

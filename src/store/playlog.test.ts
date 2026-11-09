@@ -34,7 +34,7 @@ describe('플레이 기록', () => {
     expect('error' in parsePlayFile(JSON.stringify({ hello: 1 }))).toBe(true);
   });
 
-  it('빌드가 바뀐 달을 남긴다 — 같은 빌드면 그대로 (P-ARCH-30 ⑤, 4차: 페이지를 다시 열 때 빌드가 말없이 바뀌었다)', () => {
+  it('빌드가 바뀐 달을 남긴다 — 같은 빌드면 그대로 (#227, 4차: 페이지를 다시 열 때 빌드가 말없이 바뀌었다)', () => {
     let l = withBuild(freshPlaylog(0), 'aaa1111', 0, 1);
     expect(withBuild(l, 'aaa1111', 5, 2)).toBe(l);
     l = withBuild(l, 'bbb2222', 20, 3);
