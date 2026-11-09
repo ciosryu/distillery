@@ -19,6 +19,50 @@ const sellingProducts = (s: GameState) => s.commerce.products.filter((p) => p.st
 const lastReport = (s: GameState) => s.history.reports.at(-1);
 
 /** 지금 조건(품질·숙성·주세 경감)으로 다시 계산한 권장 출고가 — 병입 때 값과 다를 수 있다 */
+/** 가격 확인 기준 — 권장가 대비 이 범위 밖이거나 병당 손해면 한 번 더 묻는다 (P-PROD-16, 3차 MVP 플레이테스트) */
+export const PRICE_GUARD = { low: 0.5, high: 3 } as const;
+
+/**
+ * 가격 판단 — 새 값이 권장가의 절반 아래·3배 위이거나 병당 손해면 경고 문구, 아니면 null.
+ * 3차 판: 위스키를 권장가의 약 1/3(1만 1,700원)에 10개월 팔아 매출 약 1.2억을 잃었다(오너: "싼 값은 실수"). 입력 칸에 확인이 없었다
+ */
+export function priceWarning(s: GameState, p: Product, v: number, suggested: number | null): string | null {
+  const q = { ...p, price: v };
+  const per = bottleMargin(q, outboundLogistics(s)).perBottle;
+  const parts: string[] = [];
+  if (suggested != null && suggested > 0) {
+    const r = v / suggested;
+    if (r < PRICE_GUARD.low) parts.push(`권장가 ${wonFull(suggested)}의 ${Math.round(r * 100)}%`);
+    if (r > PRICE_GUARD.high) parts.push(`권장가 ${wonFull(suggested)}의 ${(r).toFixed(1)}배`);
+  }
+  if (per < 0) parts.push(`한 병 팔 때마다 ${wonFull(-per)} 손해`);
+  if (!parts.length) return null;
+  const { monthOfYear } = calendar(s);
+  const [now, next] = priceOptions(s, p, monthOfYear, [1, v / p.price]);
+  const flow = now && next ? ` · 이번 달 판매 ${num(now.sellBottles)} → ${num(next.sellBottles)}병, 월 매출 ${won(now.revenue)} → ${won(next.revenue)}` : '';
+  return `${parts.join(' · ')}${flow}`;
+}
+
+/** 출고가 입력 — 한글 금액을 옆에 보이고(자릿수 실수), 극단적인 값은 한 번 더 확인한다 */
+function PriceInput({ s, p, value, suggested, onSet }: { s: GameState; p: Product; value: number; suggested: number | null; onSet: (v: number) => void }) {
+  const [pending, setPending] = useState<{ v: number; msg: string } | null>(null);
+  return (
+    <div>
+      <NumberField value={value} min={100} step={100} width="w-24" onCommit={(v) => { const msg = priceWarning(s, p, v, suggested); if (msg) setPending({ v, msg }); else { setPending(null); onSet(v); } }} />
+      <div className="text-[11px] text-stone-500 tabular-nums">{wonFull(value)}</div>
+      {pending && (
+        <div className="mt-1 w-56 rounded border border-amber-300 bg-amber-50 p-1.5 text-[11px] text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+          ⚠ <b>{wonFull(pending.v)}</b>로 바꿀까요? {pending.msg}
+          <div className="mt-1 flex gap-1">
+            <Button small variant="primary" onClick={() => { onSet(pending.v); setPending(null); }}>이 값으로</Button>
+            <Button small variant="ghost" onClick={() => setPending(null)}>취소</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function currentSuggestedPrice(s: GameState, p: Product): number {
   const region = regionOf(s);
   const oak = isWhiskyCategory(p.category) ? p.oakMonths ?? (p.ageYears ?? 0) * 12 : null;
@@ -117,7 +161,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
         </Td>
         <Td right>{num(p.stockBottles)}{p.stockBottles > 0 && sell > 0 && <div className="text-xs text-stone-500">{p.stockBottles / sell > 60 ? '5년 치 넘게' : `약 ${Math.max(1, Math.round(p.stockBottles / sell))}개월 치`}</div>}</Td>
         <Td>
-          <NumberField value={p.price} min={100} step={100} width="w-24" onCommit={(v) => dispatch({ type: 'setPrice', productId: p.id, price: v })} />
+          <PriceInput s={s} p={p} value={p.price} suggested={suggested} onSet={(v) => dispatch({ type: 'setPrice', productId: p.id, price: v })} />
           {suggested != null && suggested !== p.price && (
             <button className="mt-0.5 block text-xs text-amber-800 underline decoration-dotted dark:text-amber-300" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: suggested })} title="기준 소비자가 × √(품질/60) × 숙성 인식에 맞춘 출고가">권장 {wonFull(suggested)}</button>
           )}
@@ -172,7 +216,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
         </Td>
         <Td right>{num(stock)}{sell > 0 && <div className="text-xs text-stone-500">{stock / sell > 60 ? '5년 치 넘게' : `약 ${Math.max(1, Math.round(stock / sell))}개월 치`}</div>}</Td>
         <Td>
-          <NumberField value={lo} min={100} step={100} width="w-24" onCommit={(v) => { for (const p of items) if (p.price !== v) dispatch({ type: 'setPrice', productId: p.id, price: v }); }} />
+          <PriceInput s={s} p={p0} value={lo} suggested={currentSuggestedPrice(s, p0)} onSet={(v) => { for (const p of items) if (p.price !== v) dispatch({ type: 'setPrice', productId: p.id, price: v }); }} />
           <div className="mt-0.5 text-xs text-stone-500" title="묶음 줄에서 값을 바꾸면 묶인 제품 모두 같은 값이 된다">{lo === hi ? '묶인 제품 모두 같은 값' : <>제품마다 {num(lo)}~{num(hi)}원 — 바꾸면 모두 같게 · <button className="underline decoration-dotted" onClick={() => { for (const p of items) if (p.price !== lo) dispatch({ type: 'setPrice', productId: p.id, price: lo }); }}>모두 {num(lo)}원으로</button></>}</div>
         </Td>
         <Td right>{wonFull(ms[0]!.consumer)}{lo !== hi && <div className="text-xs text-stone-500">첫 제품 기준</div>}</Td>
