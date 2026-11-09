@@ -176,6 +176,11 @@ export interface Product {
   ageYears: number | null;
   /** 최저 오크 숙성 개월 (어린 위스키 인식 할인용) */
   oakMonths?: number;
+  /**
+   * 최저 비목재 용기(옹기) 숙성 개월 — 섞은 원액의 `SpiritLot.restMonths` 중 가장 짧은 값. 숙성 소주 표기("옹기 N년 숙성")와
+   * 그 판매 효과([결정 #217], PRD §9.2)에 쓴다. 병입이 채운다(PROD). 없으면 0으로 읽는다(옛 제품·탱크 원액) — 스키마 버전 그대로(#187)
+   */
+  restMonths?: number;
   abv: number;
   bottleMl: number;
   chillFiltered: boolean;

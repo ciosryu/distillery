@@ -1,6 +1,6 @@
-import { TECH_BY_ID, TECH_FACILITY_NAMES, TECH_GATING, TECH_NODES, type TechEffect } from './content/tech';
+import { TECH_BY_ID, TECH_FACILITY_NAMES, TECH_GATING, TECH_NODES, type TechEffect, type TreeId } from './content/tech';
 import { EQUIPMENT } from './content/catalog';
-import type { GameState, MonthReport } from './types';
+import type { GameState, MonthReport, ProductCategory } from './types';
 import { ownsFacility } from './util';
 
 // 테크트리 게이트 (docs/design/tech-tree.md §7, PRD §14 Phase 1 각주)
@@ -32,7 +32,7 @@ export function unlockingNodes(key: string): { id: string; nameKo: string }[] {
 
 // ───────────── 연구 진행 (skeleton S-6, #149, tech-tree §2.1) ─────────────
 // 연구 = 기간 + 월 연구비(현금) + 담당자. 'R&D 포인트' 화폐는 없다(#46).
-// 진행도/월 = (1 / 기본기간) × (1 + 담당 스탯 / 200) × 실적 보너스(지표는 단계 P — 지금 1).
+// 진행도/월 = (1 / 기본기간) × (1 + 담당 스탯 / 200) × 실적 보너스(아래 milestoneBonus, #218).
 // 일시정지·담당자 없음 = 진행·비용 정지. 담당자가 떠나면 진행도 −25%. 연구 중 본업 효율 −30%는 단계 P(생산·영업 쪽 규칙)
 
 /** 연구 수치 `[튜닝]` */
@@ -71,12 +71,81 @@ export function researchBlocker(s: GameState, techId: string, leadStaffId?: stri
   return null;
 }
 
+// ───────────── 실적 보너스 (#218, tech-tree §2.1 "해 보면서 배운다") ─────────────
+// 실적 보너스 = 1 + min(MAX, 누적 실적 / 기준 × MAX). 실적은 이미 세이브에 있는 누적 기록으로 센다(스키마 변경 없음 — 안 A):
+// 연 요약(history.years) + 아직 연 요약에 들어가지 않은 올해 월 리포트, 제품·보관 제품의 누적 판매 병 수, 지금 숙성 중인 통 수.
+// 연구 시작 전에 쌓은 실적도 센다. 연구 중에도 실적이 늘면 보너스가 오른다
+
+/** 실적 지표 */
+export type MetricId = 'lpa' | 'casks' | 'bottles' | 'bottles:whisky' | 'bottles:white' | 'bottles:asian';
+
+/** 최대 보너스 (+30%) [튜닝] */
+export const MILESTONE_MAX = 0.3;
+
+/** 계통별 지표 — 노드에 research.milestone이 있으면 그것을 먼저 쓴다 */
+export const TREE_METRIC: Record<TreeId, MetricId> = {
+  production: 'lpa', engineering: 'lpa', maturation: 'casks', business: 'bottles',
+  whisky: 'bottles:whisky', white: 'bottles:white', asian: 'bottles:asian',
+  // 아직 노드가 없는 계통 — 노드가 생기면 그 주종 판매로 바꾼다
+  brandy: 'bottles', tequila: 'bottles', rum: 'bottles',
+};
+
+/** 지표별 기준 실적 [T1, T2, T3] [튜닝] — 4차 MVP 판 감각: 생산 연 약 5,200 LPA, 판매 5년 누적 약 5만 병 */
+export const MILESTONE_TARGETS: Record<MetricId, [number, number, number]> = {
+  lpa: [5_000, 15_000, 40_000],
+  casks: [20, 50, 100],
+  bottles: [5_000, 20_000, 60_000],
+  'bottles:whisky': [3_000, 10_000, 30_000],
+  'bottles:white': [3_000, 10_000, 30_000],
+  'bottles:asian': [3_000, 10_000, 30_000],
+};
+
+export const METRIC_LABEL: Record<MetricId, { nameKo: string; unit: string }> = {
+  lpa: { nameKo: '누적 생산', unit: 'LPA' },
+  casks: { nameKo: '숙성 중인 통', unit: '통' },
+  bottles: { nameKo: '누적 판매', unit: '병' },
+  'bottles:whisky': { nameKo: '위스키 누적 판매', unit: '병' },
+  'bottles:white': { nameKo: '진·화이트 누적 판매', unit: '병' },
+  'bottles:asian': { nameKo: '소주·백주 누적 판매', unit: '병' },
+};
+
+const METRIC_CATEGORIES: Partial<Record<MetricId, ProductCategory[]>> = {
+  'bottles:whisky': ['whisky', 'grain_whisky', 'blended_whisky', 'malt_spirit'],
+  'bottles:white': ['gin', 'flavored_spirit'],
+  'bottles:asian': ['soju_distilled', 'baijiu'],
+};
+
+/** 연 요약에 아직 들어가지 않은 월 리포트 (올해) */
+function unrolledReports(s: Pick<GameState, 'history' | 'startYear'>) {
+  const rolled = new Set(s.history.years.map((y) => y.year));
+  return s.history.reports.filter((r) => !rolled.has(Math.floor(r.month / 12) + s.startYear));
+}
+
+/** 지금까지의 실적 — 상태를 바꾸지 않는다 */
+export function researchMetric(s: Pick<GameState, 'history' | 'startYear' | 'inventory' | 'commerce'>, metric: MetricId): number {
+  if (metric === 'casks') return s.inventory.casks.filter((c) => c.contents).length;
+  if (metric === 'lpa') return s.history.years.reduce((t, y) => t + y.lpaProduced, 0) + unrolledReports(s).reduce((t, r) => t + r.production.reduce((a, x) => a + x.lpa, 0), 0);
+  if (metric === 'bottles') return s.history.years.reduce((t, y) => t + y.bottlesSold, 0) + unrolledReports(s).reduce((t, r) => t + r.sales.reduce((a, x) => a + x.bottles, 0), 0);
+  const cats = new Set<string>(METRIC_CATEGORIES[metric] ?? []);
+  return [...s.commerce.products, ...s.commerce.productArchive].reduce((t, p) => t + (cats.has(p.category) ? p.totalSold : 0), 0);
+}
+
+/** 노드의 실적 보너스 (0 ~ MILESTONE_MAX) — 지표·현재 실적·기준도 돌려준다(화면용) */
+export function milestoneBonus(s: Pick<GameState, 'history' | 'startYear' | 'inventory' | 'commerce'>, techId: string): { bonus: number; metric: MetricId; value: number; target: number } | null {
+  const node = TECH_BY_ID[techId];
+  if (!node) return null;
+  const metric = (node.research.milestone?.metric as MetricId | undefined) ?? TREE_METRIC[node.tree];
+  const target = node.research.milestone?.target ?? MILESTONE_TARGETS[metric][Math.min(3, Math.max(1, node.tier)) - 1]!;
+  const value = researchMetric(s, metric);
+  return { bonus: Math.min(MILESTONE_MAX, (value / target) * MILESTONE_MAX), metric, value, target };
+}
+
 /** 이번 달 진행도 증가분 */
 export function researchRate(s: GameState, techId: string, leadStaffId?: string): number {
   const node = TECH_BY_ID[techId];
   const lead = s.hr.staff.find((x) => x.id === leadStaffId);
   if (!node || !lead) return 0;
-  return (1 / node.research.baseMonths) * (1 + lead.stats[node.research.leadStat] / RESEARCH.statDivisor);
+  return (1 / node.research.baseMonths) * (1 + lead.stats[node.research.leadStat] / RESEARCH.statDivisor) * (1 + (milestoneBonus(s, techId)?.bonus ?? 0));
 }
 
 /** 틱 8단계: 담당자 확인 → 월 연구비 → 진행 → 완료 시 해금. 진행 중인 연구가 없으면 아무 일도 하지 않는다 */

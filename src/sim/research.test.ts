@@ -3,7 +3,7 @@ import { advanceMonth, advanceMonths, applyAction, isUnlocked, migrateSave, newG
 import { TECH_BY_ID, TECH_NODES } from './content/tech';
 import { EQUIPMENT } from './content/catalog';
 import { SCENARIOS } from './content/scenarios';
-import { infoBonus, isGated, lossReductionMul, riskMul } from './research';
+import { infoBonus, isGated, lossReductionMul, MILESTONE_MAX, MILESTONE_TARGETS, milestoneBonus, researchMetric, riskMul } from './research';
 import fixture from './fixtures/save-v11.json';
 
 // 연구 진행 (skeleton S-6, #149, tech-tree §2.1)
@@ -156,5 +156,48 @@ describe('효과 조회 (#170)', () => {
     expect(infoBonus(done, 'cask_fault').detectAdd).toBeCloseTo(0.15, 10);
     expect(infoBonus(done, 'ingredient_price').forecastMonths).toBe(3);
     expect(lossReductionMul(done, 'grain_conversion')).toBe(1);
+  });
+});
+
+// 실적 보너스 (#218, 안 A) — 이미 세이브에 있는 누적 기록으로 센다. 최대 +30%
+describe('실적 보너스 (#218)', () => {
+  it('새 판은 실적 0 → 보너스 0, 진행 속도는 옛 공식과 같다', () => {
+    const s = newGame({ seed: 1 });
+    expect(milestoneBonus(s, 'PRO-1')).toMatchObject({ bonus: 0, metric: 'lpa', value: 0, target: MILESTONE_TARGETS.lpa[0] });
+    const lead = s.hr.staff.find((x) => x.role === 'distiller')!;
+    expect(researchRate(s, 'PRO-1', lead.id)).toBeCloseTo((1 / TECH_BY_ID['PRO-1']!.research.baseMonths) * (1 + lead.stats.b / RESEARCH.statDivisor), 12);
+  });
+
+  it('누적 생산 = 연 요약 + 아직 묶이지 않은 올해 월 리포트, 기준의 절반이면 +15%, 넘으면 +30%에서 멈춘다', () => {
+    const s = newGame({ seed: 1 });
+    s.history.years = [{ year: s.startYear, revenue: 0, bulkRevenue: 0, expenses: 0, cashEnd: 0, bottlesSold: 0, lpaProduced: 2_000, angelsShareL: 0, filledCasksEnd: 0 }];
+    s.history.reports = [
+      { month: 3, production: [{ lpa: 999 }], sales: [] } as never, // 이미 연 요약에 들어간 해 — 세지 않는다
+      { month: 13, production: [{ lpa: 500 }], sales: [] } as never,
+    ];
+    expect(researchMetric(s, 'lpa')).toBe(2_500);
+    expect(milestoneBonus(s, 'PRO-1')!.bonus).toBeCloseTo(MILESTONE_MAX * 0.5, 12); // T1 기준 5,000
+    s.history.years[0]!.lpaProduced = 50_000;
+    expect(milestoneBonus(s, 'PRO-1')!.bonus).toBe(MILESTONE_MAX);
+    expect(milestoneBonus(s, 'PRO-3')!.target).toBe(MILESTONE_TARGETS.lpa[2]);
+  });
+
+  it('주종 계통은 그 주종 판매(제품 + 보관 제품), 숙성 계통은 지금 숙성 중인 통 수', () => {
+    const s = newGame({ seed: 1 });
+    s.commerce.products.push({ id: 'P1', category: 'whisky', totalSold: 1_500 } as never, { id: 'P2', category: 'soju_distilled', totalSold: 900 } as never);
+    s.commerce.productArchive.push({ id: 'P0', name: 'x', category: 'malt_spirit', createdMonth: 0, lastMonthSold: 0, totalSold: 1_500, quality: 50, price: 1 });
+    expect(milestoneBonus(s, 'WHI-1')).toMatchObject({ metric: 'bottles:whisky', value: 3_000, bonus: MILESTONE_MAX });
+    expect(milestoneBonus(s, 'ASN-1')).toMatchObject({ metric: 'bottles:asian', value: 900 });
+    expect(milestoneBonus(s, 'MAT-1')!.metric).toBe('casks');
+    expect(researchMetric(s, 'casks')).toBe(s.inventory.casks.filter((c) => c.contents).length);
+  });
+
+  it('보너스는 진행 속도에 곱해진다 (+30%면 1.3배)', () => {
+    const s = newGame({ seed: 1 });
+    const lead = s.hr.staff.find((x) => x.role === 'distiller')!;
+    const base = researchRate(s, 'PRO-1', lead.id);
+    s.history.years = [{ year: s.startYear, revenue: 0, bulkRevenue: 0, expenses: 0, cashEnd: 0, bottlesSold: 0, lpaProduced: 99_999, angelsShareL: 0, filledCasksEnd: 0 }];
+    s.history.reports = [];
+    expect(researchRate(s, 'PRO-1', lead.id)).toBeCloseTo(base * (1 + MILESTONE_MAX), 12);
   });
 });
