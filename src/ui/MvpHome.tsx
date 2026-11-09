@@ -399,7 +399,7 @@ function WarehouseCard() {
                 <Td><SampleCell s={s} c={c} known={known.get(c.id)} /></Td>
                 <Td className="whitespace-nowrap">
                   {/* 실수로 잘못 넣은 통 (2026-11-09 오너 요청, #205) — 통입한 달·샘플 전이면 통입 취소, 아니면 옮겨 붓기 */}
-                  {!c.owner && (() => { const undo = c.filledMonth === s.month && !c.sampleLog?.length; return <Button small variant="ghost" onClick={() => dispatch({ type: 'unfillCask', caskId: c.id })} title={undo ? '통입 취소 — 원액을 탱크로 되돌리고 통은 넣기 전 그대로' : '원액을 빼 탱크로 옮긴다 — 손실 0.75%, 숙성 개월은 원액에 남고 통은 한 번 쓴 통이 된다'}>{undo ? '통입 취소' : '원액 빼기'}</Button>; })()}
+                  {!c.owner && (() => { const undo = c.filledMonth === s.month && !c.samples && !c.sampleLog?.length; /* 행동(unfillCask)과 같은 조건 — 사후 검토 */ return <Button small variant="ghost" onClick={() => dispatch({ type: 'unfillCask', caskId: c.id })} title={undo ? '통입 취소 — 원액을 탱크로 되돌리고 통은 넣기 전 그대로' : '원액을 빼 탱크로 옮긴다 — 손실 0.75%, 숙성 개월은 원액에 남고 통은 한 번 쓴 통이 된다'}>{undo ? '통입 취소' : '원액 빼기'}</Button>; })()}
                   {c.contaminationKnown && !c.owner && <Button small variant="ghost" onClick={() => dispatch({ type: 'dumpCask', caskId: c.id })}>폐기</Button>}
                 </Td>
               </tr>

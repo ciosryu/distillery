@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { newGame, type GameState, type MonthReport } from './index';
-import { fireEvent } from './events';
+import { fireEvent, resolvePending, runEvents } from './events';
+import { handleDeparture, masterDistiller, RETIRE_AGE } from './hr';
+import { addModifier } from './modifiers';
 
 // 이벤트 리스크 배수 (#184, tech-tree P3 "면역 대신 크기 감소") — 연구한 노드의 risk_scale이 이벤트 피해를 줄인다
 
@@ -42,5 +44,74 @@ describe('이벤트 리스크 배수 (#184)', () => {
     };
     expect(backlash([])).toBeCloseTo(0.85, 10);
     expect(backlash(['BIZ-3'])).toBeCloseTo(1 - 0.15 * 0.5, 10);
+  });
+});
+
+// 연구가 여는 선택 이벤트 (#213) — PRO-3 장인 전수, BIZ-3 앰버서더 대응. 연구하지 않은 판은 아무 일도 없다
+describe('연구 선택 이벤트 (#213)', () => {
+  /** 마스터 디스틸러가 은퇴까지 monthsLeft개월 남은 판 */
+  const retiring = (unlocked: string[], monthsLeft = 6) => {
+    const s = game(unlocked);
+    const m = masterDistiller(s)!;
+    m.ageAtHire = RETIRE_AGE - monthsLeft / 12 - (s.month - m.hiredMonth) / 12;
+    s.hr.houseStyle = 50;
+    return s;
+  };
+
+  it('PRO-3: 은퇴 12개월 안이면 전수 선택 이벤트가 한 번 뜬다 — 연구 전·은퇴가 멀면 안 뜬다', () => {
+    const s = retiring(['PRO-3']);
+    runEvents(s, rep(s), 1);
+    expect(s.events.pending.filter((p) => p.defId === 'artisan_retire')).toHaveLength(1);
+    // 다음 달: 기본값(그대로 보낸다)으로 처리되고 다시 묻지 않는다
+    s.month += 1;
+    runEvents(s, rep(s), 2);
+    expect(s.events.pending.some((p) => p.defId === 'artisan_retire')).toBe(false);
+    const none = retiring([]); runEvents(none, rep(none), 1);
+    expect(none.events.pending.some((p) => p.defId === 'artisan_retire')).toBe(false);
+    const far = retiring(['PRO-3'], 24); runEvents(far, rep(far), 1);
+    expect(far.events.pending.some((p) => p.defId === 'artisan_retire')).toBe(false);
+  });
+
+  it('PRO-3 전수 기록: 2,000만, 부사수 없이 은퇴해도 하우스 스타일 90% 보존 (기록 없으면 0)', () => {
+    const s = retiring(['PRO-3']);
+    runEvents(s, rep(s), 1);
+    const p = s.events.pending.find((x) => x.defId === 'artisan_retire')!;
+    const cash = s.finance.cash;
+    resolvePending(s, p.id, 0, rep(s));
+    expect(cash - s.finance.cash).toBe(20_000_000);
+    const notes: string[] = [];
+    handleDeparture(s, masterDistiller(s)!, notes);
+    expect(s.hr.houseStyle).toBe(45);
+    const plain = retiring([]);
+    handleDeparture(plain, masterDistiller(plain)!, []);
+    expect(plain.hr.houseStyle).toBe(0);
+  });
+
+  it('전수 기록이 있으면 부사수 승계 손실도 10% → 1%', () => {
+    const s = retiring([]);
+    const m = masterDistiller(s)!;
+    s.hr.staff.push({ ...m, id: 'S-heir', name: '부사수', level: 1, apprenticeOf: m.id, hiredMonth: s.month - 30 });
+    s.month = 30;
+    addModifier(s, 'house_style_loss', 0.1, 24, 'test');
+    handleDeparture(s, m, []);
+    expect(s.hr.houseStyle).toBe(Math.round(50 * 0.99));
+  });
+
+  it('BIZ-3: 바이럴 뒤 앰버서더 대응 선택 이벤트 — 고르면 반동 폭이 절반 더 준다(0.925 → 0.9625). 연구 전엔 안 뜬다', () => {
+    const viral = (unlocked: string[]) => {
+      const s = game(unlocked);
+      s.commerce.products.push({ id: 'P1', name: 'p', category: 'whisky', ageYears: null, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 60, typicity: 100, style: null, sourcedShare: 0, stockBottles: 100, price: 50_000, unitCost: 0, createdMonth: 0, lastMonthSold: 10, totalSold: 10 } as never);
+      fireEvent(s, 'influencer_viral', rep(s));
+      return s;
+    };
+    const plain = viral([]);
+    expect(plain.events.pending.some((p) => p.defId === 'ambassador_response')).toBe(false);
+    const s = viral(['BIZ-3']);
+    const p = s.events.pending.find((x) => x.defId === 'ambassador_response')!;
+    expect(p).toBeTruthy();
+    const back = () => s.world.modifiers.find((x) => x.label.endsWith('— 반동'))!.factor;
+    expect(back()).toBeCloseTo(0.925, 10);
+    resolvePending(s, p.id, 0, rep(s));
+    expect(back()).toBeCloseTo(0.9625, 10);
   });
 });
