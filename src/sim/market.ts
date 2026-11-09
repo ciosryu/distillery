@@ -1,11 +1,11 @@
 import { DISTRIBUTION, PACKAGING, logisticsCost } from './content/catalog';
-import { BRANDS, SKU } from './content/market';
+import { BRANDS, PRICE_CURVE, SKU } from './content/market';
 import { rivalShare } from './rivals';
 import { awarenessOf, brandMarketing, brandOf, houseBrand, secondBrands } from './brands';
 import { consumerPrice, refPricePerL, regionOf, siteOf, traditionalTaxFactor, type RegionDef } from './content/regions';
 import { outboundLogistics } from './sites';
 import { DUTY_FREE, dutyFreeDemand, dutyFreeEditionAppeal } from './dutyFree';
-import { agePerception } from './blending';
+import { agePerception, isWhiskyCategory } from './blending';
 import { overhangFactor, retailCapacityCases, RETAIL } from './retail';
 import { ownershipOversold, OWNERSHIP } from './investment';
 import { clamp } from './flavor';
@@ -122,6 +122,27 @@ function splitByCategory(items: readonly { p: Product; standaloneBottles: number
   return out;
 }
 
+// ── 가격 반응 곡선 (결정 P-MKT-5, PRD §9.2) ──
+// 옛 공식: 수요 ∝ (소비자가/기준가)^(−ε) — 탄력성이 어디서나 같다. 위스키는 ε 1.1 × 영업 매력 보정 ≈ 1.0이라
+// 값을 몇 배로 바꿔도 매출이 그대로였고(3차 플레이테스트: 출고가 8천 원~195만 원 모두 월 550만 원), 비쌀수록 무조건 이득이었다.
+// 새 공식: 이 제품의 기대 소비자가 E(기준가 × √(품질/60) × 숙성 인식 — 권장 출고가의 소비자가)에서 옛 곡선과 값·기울기가 같고,
+// 국소 탄력성 = ε × (소비자가/E)^K — 기대가보다 비쌀수록 가파르고(값을 크게 올리면 수요가 무너진다), 쌀수록 완만하다(값을 크게 내려도 수요가 끝없이 늘지 않는다).
+//   ln 수요 = −ε·ln(E/기준가) − ε·((소비자가/E)^K − 1)/K          K → 0이면 옛 공식
+
+/** 이 제품을 사는 사람이 기대하는 소비자가(원/L) — 권장 출고가(blending.ts suggestedPrice)가 맞추는 값과 같다 */
+export function expectedPricePerL(region: RegionDef, p: Pick<Product, 'category' | 'abv' | 'quality' | 'oakMonths' | 'ageYears'>): number {
+  const aged = isWhiskyCategory(p.category);
+  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : 1;
+  return refPricePerL(region, p.category, p.abv) * Math.sqrt(Math.max(p.quality, 20) / 60) * ageBonus;
+}
+
+/** 가격 계수 — consumer·ref·expected는 원/L, elasticity는 기대가에서의 탄력성 */
+export function priceResponse(consumerPerL: number, refPerL: number, expectedPerL: number, elasticity: number, k = PRICE_CURVE.k): number {
+  const base = Math.pow(expectedPerL / refPerL, -elasticity);
+  if (k <= 0) return base * Math.pow(consumerPerL / expectedPerL, -elasticity);
+  return base * Math.exp((-elasticity * (Math.pow(consumerPerL / expectedPerL, k) - 1)) / k);
+}
+
 export interface DemandBreakdown {
   marketL: number;
   /** 도달률(인지도 × 커버리지 × 점유 상한) — 나눔 전 */
@@ -159,7 +180,7 @@ function demandWithSplit(s: GameState, p: Product, split: number, monthOfYear: n
   const charm = Math.max(0, ...staffOf(s, 'sales').map((x) => x.stats.a));
   const elasticity = m.elasticity * (1 - 0.15 * (charm / 100)) * sourcedElasticityFactor(p);
   const ref = refPricePerL(region, p.category, p.abv);
-  const priceFactor = m.baseCases > 0 ? Math.pow(consumerPricePerL / ref, -elasticity) : 0;
+  const priceFactor = m.baseCases > 0 ? priceResponse(consumerPricePerL, ref, expectedPricePerL(region, p), elasticity) : 0;
   // 재고 적체(할인 이미지)·첫 출시 오픈런·캐스크 오너십 과다 판매(매니아 신뢰↓)
   const launch = p.launchBoost && s.month < p.launchBoost.untilMonth ? p.launchBoost.factor : 1;
   const oversold = ownershipOversold(s) ? OWNERSHIP.oversellAppeal : 1;

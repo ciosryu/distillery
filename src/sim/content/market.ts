@@ -94,3 +94,10 @@ export const BRANDS = {
   rebrandPerBottle: 300,
   maxNameLength: 20,
 };
+
+// ── 가격 반응 곡선 (PRD §9.2 → 결정 P-MKT-5) [튜닝] ──
+/**
+ * k — 국소 탄력성이 (소비자가 / 기대 소비자가)^k로 변한다. k = 1이면 기대가의 2배에서 탄력성 2배, 절반에서 절반.
+ * 기대가에서는 옛 공식과 값·기울기가 같다. k = 0이면 옛 공식(어디서나 같은 탄력성)
+ */
+export const PRICE_CURVE = { k: 1 };
