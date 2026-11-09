@@ -34,8 +34,8 @@ export function blenderOf(s: GameState): BlenderView | null {
 export const SAMPLING = {
   /** 샘플 1회 비용(원) — 시음·기록 인건비 */
   cost: 30_000,
-  /** 샘플 1회에 빠지는 원액(L) */
-  lossL: 0.5,
+  /** 샘플 1회 원액 손실(L) — 0.5 → 0.1 (#209, 2026-11-09 오너: "샘플 한 번에 500ml는 이상하다". 실제 샘플은 50~100ml) */
+  lossL: 0.1,
   /** 캐스크당 최대 샘플 수 — 그 이상은 오차가 거의 줄지 않는다 */
   maxSamples: 6,
   /** 블렌더 없이 대표가 한 달에 뜰 수 있는 샘플 */
