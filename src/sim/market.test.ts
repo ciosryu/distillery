@@ -499,7 +499,7 @@ describe('판매 화면 — 소비자가 내역·가격 비교 (MVP 판매 화�
     expect(opts.find((o) => o.price === 60_000)).toBeTruthy();
   });
 
-  it('가격 비교 진열 전체(P-MKT-7): 혼자면 자기 것과 같고, 형제가 있으면 값을 내려 늘어난 판매 일부는 형제에게서 뺏은 것', () => {
+  it('가격 비교 진열 전체(#212): 혼자면 자기 것과 같고, 형제가 있으면 값을 내려 늘어난 판매 일부는 형제에게서 뺏은 것', () => {
     const s = newGame({ seed: 1, region: 'KR' });
     const a = product({ id: 'a', stockBottles: 100_000 });
     s.commerce.products = [a];

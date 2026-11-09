@@ -189,7 +189,7 @@ function demandWithSplit(s: GameState, p: Product, split: number, monthOfYear: n
 }
 
 /** 가격을 바꾸면 — 판매 화면의 가격 비교. 판매 가능 = min(재고, 수요 기댓값). 소매 처리 역량·±10% 난수는 넣지 않는다 */
-/** 가격 비교 한 줄. lineup*은 국내 진열 전체(이 제품 포함) — 같은 카테고리 나눔(#154) 때문에 이 제품 값을 내리면 형제 제품 판매를 뺏어 온다([결정 P-MKT-7]) */
+/** 가격 비교 한 줄. lineup*은 국내 진열 전체(이 제품 포함) — 같은 카테고리 나눔(#154) 때문에 이 제품 값을 내리면 형제 제품 판매를 뺏어 온다([결정 #212]) */
 export interface PriceOption { price: number; consumer: number; demandBottles: number; sellBottles: number; revenue: number; contribution: number; lineupRevenue: number; lineupContribution: number }
 
 export function priceOptions(s: GameState, p: Product, monthOfYear: number, factors: readonly number[] = [0.8, 0.9, 1, 1.1, 1.25, 1.5]): PriceOption[] {

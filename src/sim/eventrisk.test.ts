@@ -47,8 +47,8 @@ describe('이벤트 리스크 배수 (#184)', () => {
   });
 });
 
-// 연구가 여는 선택 이벤트 (P-MGT-20) — PRO-3 장인 전수, BIZ-3 앰버서더 대응. 연구하지 않은 판은 아무 일도 없다
-describe('연구 선택 이벤트 (P-MGT-20)', () => {
+// 연구가 여는 선택 이벤트 (#213) — PRO-3 장인 전수, BIZ-3 앰버서더 대응. 연구하지 않은 판은 아무 일도 없다
+describe('연구 선택 이벤트 (#213)', () => {
   /** 마스터 디스틸러가 은퇴까지 monthsLeft개월 남은 판 */
   const retiring = (unlocked: string[], monthsLeft = 6) => {
     const s = game(unlocked);
