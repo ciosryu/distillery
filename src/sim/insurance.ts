@@ -1,4 +1,4 @@
-import { EQUIPMENT, INSURANCE_PRODUCTS, type InsuranceProductDef } from './content/catalog';
+import { CREDIT_INSURANCE, EQUIPMENT, FACTORING, INSURANCE_PRODUCTS, type InsuranceProductDef } from './content/catalog';
 import { monthlyFixedCost } from './loans';
 import { riskMul } from './research';
 import type { GameState, InsurancePolicy, MonthReport } from './types';
@@ -85,4 +85,18 @@ export function settleClaims(s: GameState, ledger: LossLedger, report?: MonthRep
     c.interruption ? `영업중단 ${c.interruption.toLocaleString()}원` : '',
   ].filter(Boolean);
   return [`보험금 ${total.toLocaleString()}원 — ${parts.join(' · ')}`];
+}
+
+// ───────────── 매출채권 신용보험·팩토링 (BIZ-2b, P-MGT-21) ─────────────
+
+/** 거래처 부도로 unpaid를 못 받았을 때 신용보험금 — 가입 다음 달부터, 못 받은 돈 × 보상 비율, 가입금액까지. 보험이 없으면 0 */
+export function creditClaim(s: GameState, unpaid: number): number {
+  const p = active(s, 'credit');
+  return p && unpaid > 0 ? Math.min(p.coverage, Math.round(unpaid * CREDIT_INSURANCE.share)) : 0;
+}
+
+/** 미수금 한 건을 지금 팩토링하면 받는 돈 — 수수료는 만기까지 남은 개월 비례, 최소 minFee */
+export function factoringProceeds(s: Pick<GameState, 'month'>, r: { dueMonth: number; amount: number }): number {
+  const fee = Math.max(FACTORING.minFee, FACTORING.feePerMonth * Math.max(0, r.dueMonth - s.month));
+  return Math.round(r.amount * (1 - fee));
 }

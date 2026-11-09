@@ -102,7 +102,7 @@ export const TECH_NODES: TechNodeDef[] = [
     pending: 'PROD — 열교환기·고효율 보일러 설비(완공 시 에너지비 −15%)' },
   { id: 'ENG-2a', nameKo: '순환 시스템 설계', tree: 'engineering', tier: 2, prereq: ['ENG-1'], research: { ...T2, leadRoles: ['distiller'], leadStat: 'b' },
     unlockKeys: ['facility:biogas', 'facility:effluent_treatment'],
-    pending: 'PROD — 바이오가스·폐액 정화 설비 / MGT — 가동 중 폐액 규제 이벤트 면제' },
+    pending: 'PROD — 바이오가스·폐액 정화 설비 / MGT — 가동 중 폐액 규제 이벤트 면제 (폐액 정화 설비가 생길 때 규제 이벤트와 함께 넣는다, P-MGT-21)' },
   { id: 'ENG-2b', nameKo: '방재 엔지니어링', tree: 'engineering', tier: 2, prereq: ['ENG-1'], research: { ...T2, leadRoles: ['distiller', 'warehouse'], leadStat: 'b' },
     unlockKeys: ['facility:fire_suppression'],
     // 보험료 −15% (#171, PRD §8.4) — 가입할 때 보험료에 적용 [튜닝]
@@ -126,8 +126,9 @@ export const TECH_NODES: TechNodeDef[] = [
     effects: [{ kind: 'info', target: 'bulk_fraud', detectAdd: 0.25 }],
     pending: 'MKT — 매입 원액 위조 감지 +25%p(상한 95%)·브로커 신용 이력·보증 조건부 매입' },
   { id: 'BIZ-2b', nameKo: '재무 리스크 관리', tree: 'business', tier: 2, prereq: ['BIZ-1a'], research: { ...T2, leadRoles: ['office'], leadStat: 'a' },
-    unlockKeys: ['contract:fx_forward', 'contract:rate_swap', 'contract:credit_insurance', 'contract:factoring'],
-    pending: 'MGT — 고급 헷징(선물환·금리 스왑·신용보험·팩토링, 재무 확장 뒤)' },
+    // 신용보험·팩토링은 적용됨(P-MGT-21). 선물환·금리 스왑은 막을 위험(환율 변동·변동금리)이 게임에 없어 해금 목록에서 뺐다
+    unlockKeys: ['contract:credit_insurance', 'contract:factoring'],
+    pending: 'MGT — 선물환·금리 스왑 (환율 변동·변동금리가 게임에 생기면)' },
   { id: 'BIZ-3', nameKo: '글로벌 앰버서더 프로그램', tree: 'business', tier: 3, prereq: ['BIZ-1a'], research: { ...T3, leadRoles: ['sales'], leadStat: 'a' },
     unlockKeys: ['contract:ambassador', 'event:influencer_backlash=ambassador'],
     effects: [{ kind: 'risk_scale', riskId: 'influencer_backlash', mul: 0.5 }],

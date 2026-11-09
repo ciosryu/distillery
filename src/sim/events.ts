@@ -15,7 +15,7 @@ import { nid } from './util';
 import { addWeatherShock } from './weather';
 import { addTrendShift } from './blendTable';
 import { HEX_LABEL } from './blendRadar';
-import { caskBookValue, newLedger, settleClaims, type LossLedger } from './insurance';
+import { caskBookValue, creditClaim, newLedger, settleClaims, type LossLedger } from './insurance';
 import { isUnlocked, riskMul } from './research';
 
 // 이벤트 엔진: 예보 → 발생 → (선택지) → 효과. 결정론적 난수 스트림 사용.
@@ -143,6 +143,9 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         s.finance.cash -= unpaid;
         s.b2b.contracts = s.b2b.contracts.filter((x) => x.id !== c.id);
         notes.push(`${c.buyerName} 계약 종료 — 미수금 ${unpaid.toLocaleString()}원 손실`);
+        // 매출채권 신용보험 (BIZ-2b, P-MGT-21) — 가입하지 않았으면 0
+        const claim = creditClaim(s, unpaid);
+        if (claim > 0) { s.finance.cash += claim; notes.push(`신용보험금 ${claim.toLocaleString()}원 수령`); }
         break;
       }
       case 'loseStaff': {
