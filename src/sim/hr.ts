@@ -37,6 +37,21 @@ export function refreshCandidates(s: GameState, rng: Rng): void {
   s.hr.candidates.push(makeCandidate(s, rngFor(s.seed, s.month, 'candidates:blender'), 'blender'));
 }
 
+/** 레벨이 오를 때마다 급여가 오르는 비율 (gainXp와 같다) */
+export const LEVEL_RAISE = 0.05;
+
+/**
+ * 직원 급여가 시작보다 얼마나 올랐나 (#197, mvp.md §7.8) — HR이 잠긴 시나리오(MVP)에서만 계산한다.
+ * 거기서는 직원이 모두 레벨 1로 시작해 고용·해고가 없으므로, 레벨이 오른 만큼(×1.05씩)이 곧 인상분이다(반올림 오차 만 원 단위).
+ * HR이 열린 판은 입사 레벨을 알 수 없어 null. 상태를 바꾸지 않는다
+ */
+export function salaryRaiseSinceStart(s: Pick<GameState, 'hr' | 'scenario'>): { now: number; start: number } | null {
+  if (!s.scenario?.locked.includes('system:hr')) return null;
+  const now = s.hr.staff.reduce((t, x) => t + x.salary, 0);
+  const start = s.hr.staff.reduce((t, x) => t + Math.round(x.salary / (1 + LEVEL_RAISE) ** (x.level - 1) / 10_000) * 10_000, 0);
+  return { now, start };
+}
+
 /** 월간 XP와 레벨업 */
 export function gainXp(s: GameState, rng: Rng, activity: Record<StaffRole, number>): string[] {
   const notes: string[] = [];
@@ -47,7 +62,7 @@ export function gainXp(s: GameState, rng: Rng, activity: Record<StaffRole, numbe
       x.level += 1;
       const k = rng.pick(['a', 'b', 'c'] as const);
       x.stats[k] = Math.min(100, x.stats[k] + rng.int(2, 4));
-      x.salary = Math.round((x.salary * 1.05) / 10_000) * 10_000;
+      x.salary = Math.round((x.salary * (1 + LEVEL_RAISE)) / 10_000) * 10_000;
       notes.push(`${x.name}(${ROLE_INFO[x.role].nameKo}) 레벨 ${x.level} 달성`);
     }
   }

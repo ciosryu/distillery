@@ -1,3 +1,4 @@
+import { bestAutoPrice } from './economics';
 import { CASK_COST_SHARE_PER_FILL, CASK_MARKET, CASKS, EQUIPMENT, RECHAR_COST } from './content/catalog';
 import { assignSlot, rotateWarehouse, SlotIndex } from './warehouse';
 import { usedCaskPrice } from './casks';
@@ -44,10 +45,13 @@ export type ProdAction =
   | { type: 'labAnalyze'; caskIds: string[] }
   | { type: 'delegateBlend'; targetId: string; caskIds: string[]; bottles: number; options: BottleOptions }
   /** 입지 특성 (결정 #86~): 취수 증량 신청(제주), 대형 유통 납품(경기), 위탁생산(간토) */
-  | { type: 'applyWaterPermit' };
+  | { type: 'applyWaterPermit' }
+  /** 자동 최적 가격 켜기·끄기 (#200) — 켜면 바로 한 번 값을 정한다 */
+  | { type: 'setAutoPrice'; productId: string; on: boolean };
 
 export const PROD_CASH_KEY: CashKeys<ProdAction> = {
   setOrder: null,
+  setAutoPrice: null,
   saveRecipe: null,
   deleteRecipe: null,
   fillCasks: null,
@@ -81,6 +85,16 @@ function bottleMessage(p: Product, r?: BlendReveal): string {
 }
 
 export const PROD_HANDLERS: Handlers<ProdAction> = {
+  setAutoPrice: (s, prev, a) => {
+    const p = s.commerce.products.find((x) => x.id === a.productId);
+    if (!p) return fail(prev, '제품이 없습니다');
+    if (p.dutyFreeOnly) return fail(prev, '면세 한정판은 자동 가격을 쓸 수 없습니다');
+    if (!a.on) { delete p.autoPrice; return { state: s, message: `${p.name} 자동 가격 끔 — 지금 값 ${p.price.toLocaleString()}원 유지` }; }
+    p.autoPrice = true;
+    const v = bestAutoPrice(s, p);
+    if (v != null) p.price = v;
+    return { state: s, message: `${p.name} 자동 가격 켬 — 매달 이번 달 이익이 가장 큰 값으로 (지금 ${p.price.toLocaleString()}원)` };
+  },
   setOrder: (s, prev, a) => {
     const recipe = s.production.recipes.find((r) => r.id === a.recipeId);
     if (!recipe) return fail(prev, '레시피가 없습니다');

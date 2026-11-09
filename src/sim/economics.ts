@@ -4,11 +4,11 @@
 // 위스키는 표준 조건(새 ex-버번 배럴·입지 연평균 기후)으로 숙성을 굴린 **예상**이다 — 실제 캐스크는 샘플로 확인한다. 게임 상태를 바꾸지 않는다.
 
 import { CASK_COST_SHARE_PER_FILL, CASK_STORAGE, CASKS } from './content/catalog';
-import { regionOf, siteOf } from './content/regions';
-import { previewBlend, type BottleOptions } from './blending';
+import { regionOf, siteOf, traditionalTaxFactor } from './content/regions';
+import { isWhiskyCategory, previewBlend, suggestedPrice, type BottleOptions } from './blending';
 import { matureCask } from './maturation';
 import { previewBatch } from './production';
-import { demandFor, distributionCostPerBottle } from './market';
+import { demandFor, distributionCostPerBottle, priceOptions } from './market';
 import { outboundLogistics } from './sites';
 import { calendar, warehouseCapacity } from './util';
 import type { Cask, GameState, Product, ProductCategory, Recipe, SpiritLot } from './types';
@@ -262,4 +262,39 @@ export function productionValue(s: GameState, minMonths = regionOf(s).whisky.min
     costPerMonth: Math.round(cost), whiskyCostPerMonth: Math.round(whiskyCost), whiskyBottlesPerYear: yearly(whiskyLpa),
     pricePerBottle: row?.price ?? null, marginPerBottle: row?.margin ?? null, perBatch, minMonths: min,
   };
+}
+
+
+// ───────────── 자동 최적 가격 (#200, 3차 MVP 플레이테스트 오너 요청·선택 "이번 달 이익 최대") ─────────────
+// 토글을 켠 제품은 매달 판매 직전에 값을 정한다 — 판매 화면의 가격 비교(priceOptions)와 같은 식으로, 이번 달 팔 수 있는 양 × 병당 공헌이익이
+// 가장 큰 값. 재고가 적으면 올리고 많으면 내린다. 병당 손해 나는 값은 고르지 않는다. 3차 판은 입력 실수로 위스키를 권장가의 1/3에 10개월 팔았다
+
+/** 지금 권장 출고가 — 품질·숙성·주세 경감으로 정해진다(판매 화면의 "권장"과 같은 값) */
+export function currentSuggested(s: GameState, p: Product): number {
+  const region = regionOf(s);
+  const oak = isWhiskyCategory(p.category) ? p.oakMonths ?? (p.ageYears ?? 0) * 12 : null;
+  return suggestedPrice(region, p.category, p.bottleMl, p.quality, oak, p.abv, traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL));
+}
+
+/** 자동 가격 후보 — 권장 출고가의 0.6~2배 + 지금 값 */
+export const AUTO_PRICE_FACTORS = [0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.35, 1.5, 1.75, 2] as const;
+
+/** 이번 달 이익이 가장 큰 출고가 — 이익이 나는 값이 없으면 null(지금 값을 그대로 둔다). 면세 한정판·재고 없는 제품은 null */
+export function bestAutoPrice(s: GameState, p: Product, monthOfYear = calendar(s).monthOfYear): number | null {
+  if (p.dutyFreeOnly || p.stockBottles <= 0 || p.price <= 0) return null;
+  const base = currentSuggested(s, p);
+  const prices = [...new Set([p.price, ...AUTO_PRICE_FACTORS.map((f) => Math.max(100, Math.round((base * f) / 100) * 100))])];
+  const opts = priceOptions(s, p, monthOfYear, prices.map((x) => x / p.price));
+  let best: (typeof opts)[number] | null = null;
+  for (const o of opts) if (o.contribution > 0 && (!best || o.contribution > best.contribution)) best = o;
+  return best?.price ?? null;
+}
+
+/** 판매 직전(틱 5단계 맨 앞): 자동 가격을 켠 제품의 값을 차례로 정한다 — 앞 제품의 새 값이 뒤 제품의 수요 나눔에 반영된다 */
+export function applyAutoPrices(s: GameState, monthOfYear = calendar(s).monthOfYear): void {
+  for (const p of s.commerce.products) {
+    if (!p.autoPrice) continue;
+    const v = bestAutoPrice(s, p, monthOfYear);
+    if (v != null) p.price = v;
+  }
 }

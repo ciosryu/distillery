@@ -4,7 +4,7 @@ import { AXIS } from '../../sim/content/axes';
 import { ProfileRadar } from './Production';
 import { caskShort } from './Bottling';
 import { categoryName, consumerPrice, regionOf, traditionalTaxFactor } from '../../sim/content/regions';
-import { finishLabel, hexOf, HEX_AXES, HEX_LABEL, topNotes, type ProductCategory, type ProfileAxis, bottleMargin, calendar, coverage, demandFor, domesticDemands, DUTY_FREE, dutyFreeDemands, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, priceOptions, productConsumerPrice, retailCapacityCases, suggestedPrice, type GameState, type Product } from '../../sim';
+import { finishLabel, hexOf, HEX_AXES, HEX_LABEL, topNotes, type ProductCategory, type ProfileAxis, bottleMargin, calendar, coverage, demandFor, domesticDemands, DUTY_FREE, dutyFreeDemands, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, expectedPricePerL, priceOptions, productConsumerPrice, retailCapacityCases, suggestedPrice, type GameState, type Product } from '../../sim';
 import { awarenessOf, brandMarketing, brandOf, rebrandCost, secondBrands } from '../../sim/brands';
 import { BRANDS } from '../../sim/content/market';
 import { isLocked } from '../../sim/scenario';
@@ -19,6 +19,50 @@ const sellingProducts = (s: GameState) => s.commerce.products.filter((p) => p.st
 const lastReport = (s: GameState) => s.history.reports.at(-1);
 
 /** 지금 조건(품질·숙성·주세 경감)으로 다시 계산한 권장 출고가 — 병입 때 값과 다를 수 있다 */
+/** 가격 확인 기준 — 권장가 대비 이 범위 밖이거나 병당 손해면 한 번 더 묻는다 (#199, 3차 MVP 플레이테스트) */
+export const PRICE_GUARD = { low: 0.5, high: 3 } as const;
+
+/**
+ * 가격 판단 — 새 값이 권장가의 절반 아래·3배 위이거나 병당 손해면 경고 문구, 아니면 null.
+ * 3차 판: 위스키를 권장가의 약 1/3(1만 1,700원)에 10개월 팔아 매출 약 1.2억을 잃었다(오너: "싼 값은 실수"). 입력 칸에 확인이 없었다
+ */
+export function priceWarning(s: GameState, p: Product, v: number, suggested: number | null): string | null {
+  const q = { ...p, price: v };
+  const per = bottleMargin(q, outboundLogistics(s)).perBottle;
+  const parts: string[] = [];
+  if (suggested != null && suggested > 0) {
+    const r = v / suggested;
+    if (r < PRICE_GUARD.low) parts.push(`권장가 ${wonFull(suggested)}의 ${Math.round(r * 100)}%`);
+    if (r > PRICE_GUARD.high) parts.push(`권장가 ${wonFull(suggested)}의 ${(r).toFixed(1)}배`);
+  }
+  if (per < 0) parts.push(`한 병 팔 때마다 ${wonFull(-per)} 손해`);
+  if (!parts.length) return null;
+  const { monthOfYear } = calendar(s);
+  const [now, next] = priceOptions(s, p, monthOfYear, [1, v / p.price]);
+  const flow = now && next ? ` · 이번 달 판매 ${num(now.sellBottles)} → ${num(next.sellBottles)}병, 월 매출 ${won(now.revenue)} → ${won(next.revenue)}` : '';
+  return `${parts.join(' · ')}${flow}`;
+}
+
+/** 출고가 입력 — 한글 금액을 옆에 보이고(자릿수 실수), 극단적인 값은 한 번 더 확인한다 */
+function PriceInput({ s, p, value, suggested, onSet }: { s: GameState; p: Product; value: number; suggested: number | null; onSet: (v: number) => void }) {
+  const [pending, setPending] = useState<{ v: number; msg: string } | null>(null);
+  return (
+    <div>
+      <NumberField value={value} min={100} step={100} width="w-24" onCommit={(v) => { const msg = priceWarning(s, p, v, suggested); if (msg) setPending({ v, msg }); else { setPending(null); onSet(v); } }} />
+      <div className="text-[11px] text-stone-500 tabular-nums">{wonFull(value)}</div>
+      {pending && (
+        <div className="mt-1 w-56 rounded border border-amber-300 bg-amber-50 p-1.5 text-[11px] text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+          ⚠ <b>{wonFull(pending.v)}</b>(으)로 바꿀까요? {pending.msg}
+          <div className="mt-1 flex gap-1">
+            <Button small variant="primary" onClick={() => { onSet(pending.v); setPending(null); }}>이 값으로</Button>
+            <Button small variant="ghost" onClick={() => setPending(null)}>취소</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function currentSuggestedPrice(s: GameState, p: Product): number {
   const region = regionOf(s);
   const oak = isWhiskyCategory(p.category) ? p.oakMonths ?? (p.ageYears ?? 0) * 12 : null;
@@ -117,7 +161,10 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
         </Td>
         <Td right>{num(p.stockBottles)}{p.stockBottles > 0 && sell > 0 && <div className="text-xs text-stone-500">{p.stockBottles / sell > 60 ? '5년 치 넘게' : `약 ${Math.max(1, Math.round(p.stockBottles / sell))}개월 치`}</div>}</Td>
         <Td>
-          <NumberField value={p.price} min={100} step={100} width="w-24" onCommit={(v) => dispatch({ type: 'setPrice', productId: p.id, price: v })} />
+          {p.autoPrice
+            ? <div className="text-sm tabular-nums" title="매달 판매 직전에 이번 달 이익(팔 수 있는 양 × 병당 공헌이익)이 가장 큰 값으로 바뀐다">{wonFull(p.price)} <Badge tone="good">자동</Badge></div>
+            : <PriceInput s={s} p={p} value={p.price} suggested={suggested} onSet={(v) => dispatch({ type: 'setPrice', productId: p.id, price: v })} />}
+          {!dfOnly && <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400" title="켜면 매달 판매 직전에 이번 달 이익이 가장 큰 값(권장가의 0.6~2배 중)으로 정한다. 재고가 적으면 올리고 많으면 내린다"><input type="checkbox" className="accent-amber-700" checked={!!p.autoPrice} onChange={(e) => dispatch({ type: 'setAutoPrice', productId: p.id, on: e.target.checked })} /> 자동 최적 가격</label>}
           {suggested != null && suggested !== p.price && (
             <button className="mt-0.5 block text-xs text-amber-800 underline decoration-dotted dark:text-amber-300" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: suggested })} title="기준 소비자가 × √(품질/60) × 숙성 인식에 맞춘 출고가">권장 {wonFull(suggested)}</button>
           )}
@@ -172,7 +219,10 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
         </Td>
         <Td right>{num(stock)}{sell > 0 && <div className="text-xs text-stone-500">{stock / sell > 60 ? '5년 치 넘게' : `약 ${Math.max(1, Math.round(stock / sell))}개월 치`}</div>}</Td>
         <Td>
-          <NumberField value={lo} min={100} step={100} width="w-24" onCommit={(v) => { for (const p of items) if (p.price !== v) dispatch({ type: 'setPrice', productId: p.id, price: v }); }} />
+          {items.every((p) => p.autoPrice)
+            ? <div className="text-sm tabular-nums">{lo === hi ? wonFull(lo) : `${num(lo)}~${num(hi)}원`} <Badge tone="good">자동</Badge></div>
+            : <PriceInput s={s} p={p0} value={lo} suggested={currentSuggestedPrice(s, p0)} onSet={(v) => { for (const p of items) { if (p.autoPrice) dispatch({ type: 'setAutoPrice', productId: p.id, on: false }); if (p.price !== v) dispatch({ type: 'setPrice', productId: p.id, price: v }); } }} />}
+          <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400"><input type="checkbox" className="accent-amber-700" checked={items.every((p) => p.autoPrice)} onChange={(e) => { for (const p of items) dispatch({ type: 'setAutoPrice', productId: p.id, on: e.target.checked }); }} /> 묶음 모두 자동 최적 가격</label>
           <div className="mt-0.5 text-xs text-stone-500" title="묶음 줄에서 값을 바꾸면 묶인 제품 모두 같은 값이 된다">{lo === hi ? '묶인 제품 모두 같은 값' : <>제품마다 {num(lo)}~{num(hi)}원 — 바꾸면 모두 같게 · <button className="underline decoration-dotted" onClick={() => { for (const p of items) if (p.price !== lo) dispatch({ type: 'setPrice', productId: p.id, price: lo }); }}>모두 {num(lo)}원으로</button></>}</div>
         </Td>
         <Td right>{wonFull(ms[0]!.consumer)}{lo !== hi && <div className="text-xs text-stone-500">첫 제품 기준</div>}</Td>
@@ -195,7 +245,15 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="grid gap-4">
-      <Card title="가격과 수요" actions={<span className="text-xs text-stone-500">한 달 판매 = min(재고, 수요 한도 ±10%, 소매 처리 역량)</span>}>
+      <Card title="가격과 수요" actions={<span className="flex flex-wrap items-center gap-2 text-xs text-stone-500">한 달 판매 = min(재고, 수요 한도 ±10%, 소매 처리 역량)
+        {(() => {
+          // 모든 제품 자동 최적 가격 (#200) — 면세 한정판 제외
+          const ps = s.commerce.products.filter((p) => !p.dutyFreeOnly);
+          if (!ps.length) return null;
+          const allOn = ps.every((p) => p.autoPrice);
+          return <Button small variant={allOn ? 'secondary' : 'ghost'} onClick={() => { for (const p of ps) if (!!p.autoPrice === allOn) dispatch({ type: 'setAutoPrice', productId: p.id, on: !allOn }); }} title="매달 판매 직전에 제품마다 이번 달 이익이 가장 큰 값으로 정한다">{allOn ? '모든 제품 자동 가격 끄기' : '모든 제품 자동 최적 가격 켜기'}</Button>;
+        })()}
+      </span>}>
         {!compact && <SalesPrimer />}
         {!active.length ? <Empty>{compact ? '재고가 있는 제품이 없습니다 — 블렌딩·병입 탭에서 병입하세요. 품절 제품은 판매 탭에서 본다.' : '판매 중인 제품이 없습니다. 블렌딩·병입 탭에서 병입하세요.'}</Empty> : (
           <Table head={['제품', '재고', '출고가(병)', '소비자가', '이번 달 수요 한도', '지난달 수요 → 판매', '예상 월 매출', '병당 공헌이익', '']}>
@@ -295,8 +353,17 @@ function ProductDetail({ p }: { p: Product }) {
   if (p.dutyFreeOnly) return <Card title={`${p.name} — 면세 전용`}><p className="text-sm text-stone-600 dark:text-stone-300">면세 전용 한정판은 주세·부가세가 없습니다. 면세가 = 출고가 × 면세점 마진 {DUTY_FREE.markup}.</p></Card>;
   const b = priceBreakdown(s, p, region);
   const d = domesticDemands(s, monthOfYear, region).get(p.id) ?? demandFor(s, p, 1, monthOfYear, region);
-  const opts = priceOptions(s, p, monthOfYear);
+  // 가격 비교는 지금 값 근처 + 권장가 — 값이 기대가에서 멀리 벗어났을 때도 돌아갈 길이 보이게 (#198)
+  const suggested = currentSuggestedPrice(s, p);
+  const baseFactors = [0.8, 0.9, 1, 1.1, 1.25, 1.5];
+  const sf = suggested / Math.max(1, p.price);
+  const factors = baseFactors.some((f) => Math.abs(f / sf - 1) < 0.05) ? baseFactors : [...baseFactors, sf].sort((a, b) => a - b);
+  const opts = priceOptions(s, p, monthOfYear, factors);
   const best = opts.reduce((a, x) => (x.contribution > a.contribution ? x : a), opts[0]!);
+  const bestRev = opts.reduce((a, x) => (x.revenue > a.revenue ? x : a), opts[0]!);
+  // 기대 소비자가 (#198) — 여기서 멀어질수록 수요가 가파르게(비쌀 때) 또는 완만하게(쌀 때) 변한다
+  const expected = expectedPricePerL(region, p) * (p.bottleMl / 1000);
+  const vsExpected = b.consumer / expected;
   const t = region.tax;
   const rows: [string, number, string?][] = [
     ['출고가 (우리 매출)', b.price],
@@ -331,7 +398,7 @@ function ProductDetail({ p }: { p: Product }) {
           <dt className="text-stone-500">도달률 (인지도 {pct(awarenessOf(s, p), 1)} × 커버리지 {pct(coverage(s), 0)} × 점유 상한)</dt><dd className="text-right tabular-nums">{pct(d.reach, 4)} → {num(d.marketL * d.reach, 1)}L</dd>
           {d.split < 0.995 && <><dt className="text-stone-500">같은 카테고리 제품끼리 나눔</dt><dd className="text-right tabular-nums">× {d.split.toFixed(2)}</dd></>}
           <dt className="text-stone-500">매력도 (품질·전형성·숙성·포장)</dt><dd className="text-right tabular-nums">× {d.appeal.toFixed(2)}</dd>
-          <dt className="text-stone-500">가격 계수 (소비자가 / 기준가 {wonFull(d.refPricePerL * p.bottleMl / 1000)})</dt><dd className="text-right tabular-nums">× {d.priceFactor.toFixed(2)}</dd>
+          <dt className="text-stone-500">가격 계수 (기준가 {wonFull(d.refPricePerL * p.bottleMl / 1000)} · 이 제품 기대가 {wonFull(expected)})</dt><dd className="text-right tabular-nums">× {d.priceFactor.toFixed(2)}</dd>
           <dt className="font-medium">수요 한도</dt><dd className="text-right font-medium tabular-nums">{num(d.demandBottles)}병</dd>
         </dl>
         <div className="mt-3">
@@ -342,14 +409,16 @@ function ProductDetail({ p }: { p: Product }) {
                 <Td right>{wonFull(o.consumer)}</Td>
                 <Td right>{num(o.demandBottles)}</Td>
                 <Td right>{num(o.sellBottles)}</Td>
-                <Td right>{won(o.revenue)}</Td>
+                <Td right className={o === bestRev ? 'text-sky-700 dark:text-sky-400' : ''}>{won(o.revenue)}</Td>
                 <Td right className={o === best ? 'text-emerald-700 dark:text-emerald-400' : ''}>{won(o.contribution)}</Td>
-                <Td>{o.price !== p.price && <Button small variant="ghost" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: o.price })}>적용</Button>}</Td>
+                <Td>{o.price !== p.price && <Button small variant="ghost" onClick={() => { if (p.autoPrice) dispatch({ type: 'setAutoPrice', productId: p.id, on: false }); dispatch({ type: 'setPrice', productId: p.id, price: o.price }); }}>적용</Button>}{Math.abs(o.price - suggested) < 100 && <span className="ml-1 text-xs text-amber-800 dark:text-amber-300">권장</span>}</Td>
               </tr>
             ))}
           </Table>
         </div>
-        <p className="mt-2 text-xs text-stone-500">이번 달 기댓값이다(실제는 ±10%, 소매 처리 역량을 넘으면 고비용 채널). 재고가 적으면 비싸게 팔수록, 재고가 많으면 많이 팔수록 낫다 — 재고가 6개월 치를 넘게 쌓이면 할인 이미지로 수요가 준다.</p>
+        {vsExpected > 1.5 && <p className="mt-2 text-xs font-medium text-rose-700 dark:text-rose-400">소비자가가 이 제품 기대가의 {vsExpected.toFixed(1)}배 — 기대가보다 비쌀수록 사는 사람이 빠르게 줄어 매출이 떨어진다.</p>}
+        {vsExpected < 0.67 && <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">소비자가가 이 제품 기대가의 {pct(vsExpected, 0)} — 이만큼 싸게 팔아도 수요는 덜 늘어 매출이 줄고, 재고만 빨리 빠진다. 현금이 급하면 값을 내리기보다 대출·뉴메이크 현물 판매를 본다.</p>}
+        <p className="mt-2 text-xs text-stone-500">이번 달 기댓값이다(실제는 ±10%, 소매 처리 역량을 넘으면 고비용 채널). <span className="text-sky-700 dark:text-sky-400">파란 매출</span>이 가장 큰 가격, <span className="text-emerald-700 dark:text-emerald-400">초록 공헌이익</span>이 가장 큰 가격이다. 기대가(권장가) 근처가 보통 둘 다 좋고, 재고가 적으면 조금 비싸게, 많으면 조금 싸게 — 재고가 6개월 치를 넘게 쌓이면 할인 이미지로 수요가 준다.</p>
       </Card>
     </div>
   );

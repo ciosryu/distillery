@@ -4,7 +4,7 @@ import { FORWARD, INGREDIENTS, INSURANCE_PRODUCTS, LOAN_OFFERS } from '../../sim
 import { insurancePremium, insuredInventoryValue, insuredPropertyValue } from '../../sim/insurance';
 import { isLocked } from '../../sim';
 import { INVESTMENT_OFFERS } from '../../sim/content/catalog';
-import { annuityPayment, availableLoans, currentLoanPayment, monthlyFixedCost as monthlyFixed, inventoryCollateral, inventoryLoanRoom, inventoryLtv, loanTerms, monthLabel } from '../../sim';
+import { annuityPayment, availableLoans, forfeitedLoanRoom, currentLoanPayment, monthlyFixedCost as monthlyFixed, inventoryCollateral, inventoryLoanRoom, inventoryLtv, loanTerms, monthLabel } from '../../sim';
 import { useGame } from '../../store/game';
 import { BoardCard } from './Board';
 import { ForecastCard } from './Forecast';
@@ -39,7 +39,13 @@ export function Finance() {
                   {locked && <div className="text-xs text-stone-500">증류식 소주를 한 번 생산하면 열린다</div>}
                   {o.emergency && <div className="text-xs text-stone-500">심사 없이 바로</div>}
                 </Td>
-                <Td><NumberField value={amounts[o.id] ?? 0} min={10} max={o.max / 1e6} width="w-20" suffix="백만" onCommit={(v) => setAmounts({ ...amounts, [o.id]: v })} /></Td>
+                <Td>
+                  <NumberField value={amounts[o.id] ?? 0} min={10} max={o.max / 1e6} width="w-20" suffix="백만" onCommit={(v) => setAmounts({ ...amounts, [o.id]: v })} />
+                  {/* #196 — 한 번만 받는 상품: 일부만 받으면 나머지 한도는 사라진다 */}
+                  {!using && !locked && forfeitedLoanRoom(s, o.id, amt) > 0 && (
+                    <div className="mt-0.5 max-w-[12rem] whitespace-normal text-xs text-amber-800 dark:text-amber-300">한 번만 받는 상품 — 남는 {won(forfeitedLoanRoom(s, o.id, amt))}은 다시 받을 수 없다</div>
+                  )}
+                </Td>
                 <Td right><PaymentPlan amount={amt} offer={o} /></Td>
                 <Td><Button small variant="primary" disabled={using || locked} onClick={() => dispatch({ type: 'takeLoan', offerId: o.id, amount: amt })}>{using ? '이용 중' : '실행'}</Button></Td>
               </tr>

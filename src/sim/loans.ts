@@ -82,6 +82,13 @@ export function availableLoans(s: GameState): LoanOption[] {
   return out;
 }
 
+/** 한 번만 받는 상품을 amount만 받으면 다시 받을 수 없게 되는 나머지 한도 (#196, mvp.md §7.8 — 3차 판은 창업자금 2억 중 0.5억만 받아 1.5억을 잃었다).
+ *  이용 중이거나 받을 수 없는 상품이면 0 */
+export function forfeitedLoanRoom(s: GameState, offerId: string, amount: number): number {
+  const o = availableLoans(s).find((x) => x.offer.id === offerId);
+  return !o || o.blocked ? 0 : Math.max(0, o.max - amount);
+}
+
 /** 지금 바로 더 빌릴 수 있는 돈의 합 (조건이 모자란 상품은 뺀다) */
 export const loanRoomTotal = (s: GameState) => availableLoans(s).reduce((t, x) => t + (x.blocked ? 0 : x.max), 0);
 

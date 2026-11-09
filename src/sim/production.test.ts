@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeIntoTank, sameTank, HEX_AXES, basePresetOf, craftPresets, flavorProfile, leverEffects, leverSummary, newScenarioGame, presetAsRecipe, previewBatch, type GameState, type Recipe, advanceMonths, applyAction, bulkValuePerLPA, categorize, evaporate, heartsFraction, matureCask, newGame, previewBlend, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type SpiritLot, appeal, type Product, caskStorageCost, fermentDaysAt, waterPermitCap } from './index';
+import { mergeIntoTank, sameTank, HEX_AXES, basePresetOf, craftPresets, flavorProfile, leverEffects, leverSummary, newScenarioGame, presetAsRecipe, previewBatch, type GameState, type Recipe, advanceMonths, advanceMonth, applyAction, bulkValuePerLPA, categorize, evaporate, heartsFraction, matureCask, newGame, previewBlend, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type SpiritLot, appeal, type Product, caskStorageCost, fermentDaysAt, waterPermitCap } from './index';
 import { AGING_HORIZONS, recipeEconomics, STANDARD_BOTTLE, stockMonthsAfter, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast, productionValue } from './economics';
 import { slotClimate } from './warehouse';
 import { EQUIPMENT } from './content/catalog';
@@ -570,5 +570,44 @@ describe('재고 보충 — 매대 재고가 0이면 새 배치의 숙성 표기
     expect(empty.oakMonths).toBe(38);
     expect(empty.quality).toBe(75);
     expect(empty.price).toBe(40000); // 출고가는 플레이어 몫 — 화면이 올리라고 알린다
+  });
+});
+
+describe('자동 최적 가격 (#200, 3차 MVP 플레이테스트 오너 요청)', () => {
+  const setup = () => {
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const soju = s.production.recipes.find((r) => r.kind === 'soju')!;
+    s = applyAction(s, { type: 'setOrder', recipeId: soju.id, batchesPerMonth: 1 }).state;
+    s = advanceMonths(s, 2);
+    const lot = s.inventory.lots.find((l) => l.kind === 'soju')!;
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: 120 }], options: { name: '소주', targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' } }).state;
+    return s;
+  };
+  it('켜면 이번 달 공헌이익이 가장 큰 후보 값으로 바뀌고, 그 값은 가격 비교표의 최대와 같다', async () => {
+    const { bestAutoPrice, AUTO_PRICE_FACTORS, currentSuggested } = await import('./economics');
+    const { priceOptions, calendar } = await import('./index');
+    const s = setup();
+    const p = s.commerce.products.at(-1)!;
+    const best = bestAutoPrice(s, p)!;
+    expect(best).toBeGreaterThan(0);
+    const base = currentSuggested(s, p);
+    const cands = [...new Set([p.price, ...AUTO_PRICE_FACTORS.map((f) => Math.max(100, Math.round((base * f) / 100) * 100))])];
+    const opts = priceOptions(s, p, calendar(s).monthOfYear, cands.map((x) => x / p.price));
+    const top = opts.reduce((a, b) => (b.contribution > a.contribution ? b : a));
+    expect(best).toBe(top.price);
+    const on = applyAction(s, { type: 'setAutoPrice', productId: p.id, on: true }).state;
+    expect(on.commerce.products.find((x) => x.id === p.id)!.price).toBe(best);
+    expect(on.commerce.products.find((x) => x.id === p.id)!.autoPrice).toBe(true);
+  });
+  it('매달 판매 직전에 다시 정한다 — 끈 제품은 손대지 않는다', () => {
+    let s = setup();
+    const p = s.commerce.products.at(-1)!;
+    s = applyAction(s, { type: 'setPrice', productId: p.id, price: p.price * 3 }).state;
+    const off = advanceMonth(s);
+    expect(off.commerce.products.find((x) => x.id === p.id)!.price).toBe(p.price * 3 >= 100 ? Math.round((p.price * 3) / 100) * 100 : 100);
+    s = applyAction(s, { type: 'setAutoPrice', productId: p.id, on: true }).state;
+    s = applyAction(s, { type: 'setPrice', productId: p.id, price: p.price * 3 }).state; // 수동으로 틀어도
+    const t2 = advanceMonth(s);
+    expect(t2.commerce.products.find((x) => x.id === p.id)!.price).toBeLessThan(p.price * 3); // 다음 판매 전에 다시 맞춘다
   });
 });

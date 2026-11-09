@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
-import { AUTO_SAMPLE_MIN_AGE, autoSamplePicks, knownReads, lastSample, readSigma, sampleAxesOf, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
+import { autoSamplePicks, knownReads, lastSample, readSigma, sampleAxesOf, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
 import { AXIS } from '../sim/content/axes';
 import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
 import { vesselMaterial } from '../sim/maturation';
@@ -256,16 +256,17 @@ const LIST_FIRST = 30;
 
 /** 크래프팅 레버(#156)·설비는 자주 안 바꾸므로 접어 둔다 — 처음 2시간을 가볍게 (mvp.md §1.2) */
 function CraftingFold() {
-  const [open, setOpen] = useState(false);
+  // "이번 달 할 일"의 [설비에서 짓기](비지터 센터)가 이 블록을 열고 설비로 스크롤한다 (3차 MVP 플레이테스트: 비지터 센터를 못 찾았다)
+  const [open, toggle] = useFold('mvp-craft', false, ['mvp-equipment']);
   return (
     <div className="grid gap-4">
       <div>
-        <Button variant="ghost" onClick={() => setOpen((v) => !v)}>{open ? '▾' : '▸'} 레시피·크래프팅 레버 · 설비(비지터 센터·증류기) {open ? '접기' : '펼치기'}</Button>
+        <Button variant="ghost" onClick={toggle}>{open ? '▾' : '▸'} 레시피·크래프팅 레버 · 설비(비지터 센터·증류기) {open ? '접기' : '펼치기'}</Button>
       </div>
       {open && (
         <>
           <RecipeEditor />
-          <Equipment />
+          <div id="mvp-equipment" className="scroll-mt-28"><Equipment /></div>
         </>
       )}
     </div>
@@ -381,8 +382,8 @@ function WarehouseCard() {
             {sampledThisMonth
               ? '이번 달은 직접 샘플을 떠서 자동 샘플이 없다.'
               : autoCount
-                ? `이번 달에 아무 통도 직접 뜨지 않고 다음 달로 넘기면, ${AUTO_SAMPLE_MIN_AGE}개월 넘게 안 뜬 통 ${autoCount}통을 자동으로 뜬다(${won(autoCount * SAMPLING.cost)}). 직접 고르면 고른 통만 뜬다.`
-                : `자동으로 뜰 통이 없다 — 모든 통을 최근 ${AUTO_SAMPLE_MIN_AGE}개월 안에 떴거나 통당 최대 횟수(${SAMPLING.maxSamples}회)를 다 썼다. 직접 고르면 뜰 수 있다.`}
+                ? `이번 달에 아무 통도 직접 뜨지 않고 다음 달로 넘기면, 오래 안 뜬 통 ${autoCount}통을 자동으로 뜬다(${won(autoCount * SAMPLING.cost)}). 자동 샘플은 통당 횟수(${SAMPLING.maxSamples}회)를 쓰지 않지만 오차도 줄이지 않는다 — 오차를 줄이려면 직접 고른다.`
+                : `자동으로 뜰 통이 없다 — 숙성 중인 통이 없거나 현금이 모자라다.`}
           </div>
         </div>
       )}
