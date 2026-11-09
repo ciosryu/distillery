@@ -4,6 +4,7 @@ import { clamp } from './flavor';
 import { rngFor, type Rng } from './rng';
 import type { Candidate, GameState, Staff, StaffRole } from './types';
 import { nid } from './util';
+import { mod } from './modifiers';
 import type { MonthReport } from './types';
 import { staffOf } from './util';
 
@@ -92,10 +93,16 @@ export function handleDeparture(s: GameState, leaving: Staff, notes: string[]): 
   const master = masterDistiller(s);
   if (leaving.role !== 'distiller' || master?.id !== leaving.id) return;
   const heir = s.hr.staff.find((x) => x.apprenticeOf === leaving.id && s.month - x.hiredMonth >= APPRENTICE_MONTHS);
+  // 장인 전수 기록(PRO-3 선택지, P-MGT-20)이 살아 있으면 손실이 그 배수만큼 준다 — 없으면 1(옛 규칙 그대로)
+  const lossMul = mod(s, 'house_style_loss');
   if (heir) {
     heir.apprenticeOf = undefined;
-    s.hr.houseStyle = Math.round(s.hr.houseStyle * 0.9);
+    s.hr.houseStyle = Math.round(s.hr.houseStyle * (1 - 0.1 * lossMul));
     notes.push(`부사수 ${heir.name}이(가) 하우스 스타일을 이어받았습니다 (${s.hr.houseStyle})`);
+  } else if (lossMul < 1) {
+    const before = Math.round(s.hr.houseStyle);
+    s.hr.houseStyle = Math.round(s.hr.houseStyle * (1 - lossMul));
+    if (before > 0) notes.push(`부사수는 없지만 전수 기록 덕분에 하우스 스타일을 지켰습니다 (${before} → ${s.hr.houseStyle})`);
   } else {
     if (s.hr.houseStyle > 0) notes.push(`부사수 없이 마스터 디스틸러가 떠나 하우스 스타일이 초기화됐습니다 (${Math.round(s.hr.houseStyle)} → 0)`);
     s.hr.houseStyle = 0;
