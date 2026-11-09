@@ -336,6 +336,9 @@ function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead |
 function WarehouseCard() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
+  // [원액 빼기]는 두 번 눌러 확인 (P-ARCH-26) — 손실 0.75%·통은 한 번 쓴 통이 되어 되돌릴 수 없다(3차 판의 가격표 오조작 교훈).
+  // 같은 달 통입 취소는 손실이 없어 한 번. 확인 대기는 "통@달"로 둬서 다른 통을 누르거나 달이 바뀌면 풀린다
+  const [armedUnfill, setArmedUnfill] = useState<string | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [all, setAll] = useState(false);
   const known = useMemo(() => knownReads(s), [s]);
@@ -401,7 +404,7 @@ function WarehouseCard() {
                 <Td><SampleCell s={s} c={c} known={known.get(c.id)} /></Td>
                 <Td className="whitespace-nowrap">
                   {/* 실수로 잘못 넣은 통 (2026-11-09 오너 요청, #205) — 통입한 달·샘플 전이면 통입 취소, 아니면 옮겨 붓기 */}
-                  {!c.owner && (() => { const undo = c.filledMonth === s.month && !c.samples && !c.sampleLog?.length; /* 행동(unfillCask)과 같은 조건 — 사후 검토 */ return <Button small variant="ghost" onClick={() => dispatch({ type: 'unfillCask', caskId: c.id })} title={undo ? '통입 취소 — 원액을 탱크로 되돌리고 통은 넣기 전 그대로' : '원액을 빼 탱크로 옮긴다 — 손실 0.75%, 숙성 개월은 원액에 남고 통은 한 번 쓴 통이 된다'}>{undo ? '통입 취소' : '원액 빼기'}</Button>; })()}
+                  {!c.owner && (() => { const undo = c.filledMonth === s.month && !c.samples && !c.sampleLog?.length; /* 행동(unfillCask)과 같은 조건 — 사후 검토 */ const key = `${c.id}@${s.month}`; const armed = !undo && armedUnfill === key; return <Button small variant={armed ? 'danger' : 'ghost'} onClick={() => { if (!undo && !armed) { setArmedUnfill(key); return; } setArmedUnfill(null); dispatch({ type: 'unfillCask', caskId: c.id }); }} title={undo ? '통입 취소 — 원액을 탱크로 되돌리고 통은 넣기 전 그대로' : '원액을 빼 탱크로 옮긴다 — 손실 0.75%, 숙성 개월은 원액에 남고 통은 한 번 쓴 통이 된다'}>{undo ? '통입 취소' : armed ? `한 번 더 누르면 빼기 — 손실 0.75%` : '원액 빼기'}</Button>; })()}
                   {c.contaminationKnown && !c.owner && <Button small variant="ghost" onClick={() => dispatch({ type: 'dumpCask', caskId: c.id })}>폐기</Button>}
                 </Td>
               </tr>
