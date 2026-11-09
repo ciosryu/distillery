@@ -105,7 +105,7 @@ export const MVP_KR: ScenarioDef = {
     { id: 'y7_export', month: 84, title: '8년 차 — 수출 문이 열린다',
       unlock: ['system:exports', 'action:acceptExportOffer', 'action:setExportPrice', 'action:closeExport'],
       text: '수출 탭에서 해외 수입사의 제안을 받아 시장에 진출할 수 있다. 인지도가 낮은 시장은 마케팅 분담이 크다' },
-    // 10년 차 두 번째 브랜드는 뺐다 ([결정 P-MKT-9], 오너 승인 2026-11-09): 세컨드 브랜드의 장점(럭셔리·브랜드별 수요 나눔)이
+    // 10년 차 두 번째 브랜드는 뺐다 ([결정 #219], 오너 승인 2026-11-09): 세컨드 브랜드의 장점(럭셔리·브랜드별 수요 나눔)이
     // 아직 없어 열면 손해만 보는 선택지다 — 4차 판 세이브 36개월 비교로 어떻게 나눠도 현금 −1.5억~−2.6억. 장점 설계는 단계 T 안건
   ],
   midGoals: [
