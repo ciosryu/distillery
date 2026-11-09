@@ -6,7 +6,8 @@ import { SCENARIOS } from './sim/content/scenarios';
 const stars = (n?: number) => (n ? ` ${'★'.repeat(n)}` : '');
 import { startedFresh, useGame } from './store/game';
 import { BusinessPlan } from './ui/BusinessPlan';
-import { exportPlayFile, getPlaylog, startPlayClock } from './store/playlog';
+import { exportPlayFile, getPlaylog, recordBuild, startPlayClock } from './store/playlog';
+import { BUILD_ID } from './build';
 import { MvpHome } from './ui/MvpHome';
 import { CashBanner } from './ui/AlertsView';
 import { Verdict } from './ui/Verdict';
@@ -50,6 +51,7 @@ export default function App() {
   const [, setClockTick] = useState(0);
   useEffect(() => {
     startPlayClock();
+    recordBuild(useGame.getState().state.month); // 이 빌드로 연 달 (P-ARCH-30 ⑤)
     const t = setInterval(() => setClockTick((v) => v + 1), 15_000);
     return () => clearInterval(t);
   }, []);
@@ -90,6 +92,7 @@ export default function App() {
               <span className="font-semibold">{monthLabel(s.startYear, s.month)}</span> · 현금 <span className={`font-semibold tabular-nums ${s.finance.cash < 0 ? 'text-rose-700 dark:text-rose-400' : ''}`}>{won(s.finance.cash)}</span>
               {s.scenario && !s.progress.verdict && <> · 15년 목표까지 <span className="tabular-nums">{s.scenario.goal.months - s.month}개월</span></>}
               {s.scenario && <> · <span className="tabular-nums text-stone-500" title="화면이 보이고 최근 2분 안에 입력이 있었던 시간만 센다 — 플레이테스트 기록(기록 내보내기)">플레이 {Math.floor(playMin / 60)}:{String(playMin % 60).padStart(2, '0')}</span></>}
+              <> · <span className="tabular-nums text-stone-400" title="이 화면의 빌드(커밋). 페이지를 다시 열면 새 빌드로 바뀔 수 있다 — 바뀐 달은 플레이 기록에 남는다">빌드 {BUILD_ID}</span></>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -103,8 +106,9 @@ export default function App() {
             <Button variant="ghost" disabled={!undoInfo || !!advancing} onClick={undo} title={undoInfo ? `${monthLabel(s.startYear, undoInfo.month)}로 되돌린다 — 직전 진행 ${undoInfo.months}개월과 그 뒤에 한 행동이 사라진다(한 번만)` : '되돌릴 진행이 없다'}>↶ 되돌리기{undoInfo && undoInfo.months > 1 ? ` (${undoInfo.months}개월)` : ''}</Button>
             <Button variant="ghost" onClick={() => { setPlanOpen((v) => !v); setNewGameOpen(false); }}>새 게임</Button>
             <Button variant="ghost" onClick={() => exportPlayFile(s)} title="세이브 + 플레이 기록(턴별 시간·행동 수)을 한 파일로 내려받는다 — 플레이테스트 피드백에 붙이면 그 판을 그대로 재현한다">기록 내보내기</Button>
-            <label className="inline-flex cursor-pointer items-center rounded-md px-3 py-1.5 text-sm font-medium text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800" title="내보낸 기록 파일이나 세이브 JSON을 불러온다 (지금 진행은 사라진다)">
-              불러오기
+            <label className="inline-flex cursor-pointer items-center rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-800 hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-100 dark:hover:bg-stone-700" title="내보낸 기록 파일이나 세이브 JSON을 불러온다 (지금 진행은 사라진다)">
+              {/* 4차 오너 답변 5: "불러오기 기능을 찾지 못했다" — 글자 링크처럼 보여서 테두리 버튼으로 */}
+              기록 파일 불러오기
               <input type="file" accept="application/json,.json" className="hidden" aria-label="기록 파일 불러오기" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void f.text().then((t) => { if (loadFile(t)) { setPlanOpen(false); setNewGameOpen(false); } }); }} /* 불러오면 처음 열린 사업 계획서를 닫는다 — 열린 채로 두면 [사업 시작]을 눌러 불러온 판을 덮을 수 있었다(4차 전 점검) */ />
             </label>
           </div>
