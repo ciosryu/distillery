@@ -19,21 +19,8 @@ export const secondBrands = (s: Pick<GameState, 'commerce'>): BrandLine[] => s.c
 export const brandOf = (s: Pick<GameState, 'commerce'>, p: Pick<Product, 'brandId'>): BrandLine =>
   (p.brandId ? s.commerce.brands.find((b) => b.id === p.brandId) : undefined) ?? houseBrand(s);
 
-/**
- * 인지도 — 제품을 주면 그 제품의 브랜드, 안 주면 하우스(회사 단위로 쓰는 곳: 관광·이벤트·오너십·수출 후광·판정).
- * 리브랜딩 전환기([결정 P-MKT-13]): 판 적 있는 제품을 옮긴 뒤 BRANDS.rebrandTransitionMonths 동안은
- * max(새 브랜드, 옛 브랜드 × (1 − 지난 개월/전환 개월)) — 손님이 옛 이름을 기억하는 동안은 바로 반으로 떨어지지 않는다
- */
-export function awarenessOf(s: Pick<GameState, 'commerce'> & Partial<Pick<GameState, 'month'>>, p?: Pick<Product, 'brandId' | 'rebrand'>): number {
-  if (!p) return houseBrand(s).awareness;
-  const own = brandOf(s, p).awareness;
-  const r = p.rebrand;
-  if (!r || s.month == null) return own;
-  const left = 1 - (s.month - r.month) / BRANDS.rebrandTransitionMonths;
-  if (left <= 0) return own;
-  const from = s.commerce.brands.find((b) => b.id === r.from);
-  return from ? Math.max(own, from.awareness * left) : own;
-}
+/** 인지도 — 제품을 주면 그 제품의 브랜드, 안 주면 하우스(회사 단위로 쓰는 곳: 관광·이벤트·오너십·수출 후광·판정) */
+export const awarenessOf = (s: Pick<GameState, 'commerce'>, p?: Pick<Product, 'brandId'>): number => (p ? brandOf(s, p) : houseBrand(s)).awareness;
 
 /** 브랜드의 월 마케팅비 — 하우스는 commerce.marketingBudget, 세컨드는 브랜드별 */
 export const brandMarketing = (s: Pick<GameState, 'commerce'>, b: BrandLine): number => (b.isHouse ? s.commerce.marketingBudget : b.marketingBudget ?? 0);
@@ -68,9 +55,6 @@ export function assignProductBrand(s: GameState, productId: string, brandId: str
   const cost = rebrandCost(p);
   if (s.finance.cash < cost) return `현금이 부족합니다 (리브랜딩 ${cost.toLocaleString()}원)`;
   s.finance.cash -= cost;
-  // 리브랜딩 전환기(P-MKT-13): 판 적 있는 제품만 — 아직 안 판 제품은 알려진 이름이 없다
-  if (p.totalSold > 0) p.rebrand = { from: brandOf(s, p).id, month: s.month };
-  else delete p.rebrand;
   if (to.isHouse) delete p.brandId;
   else p.brandId = to.id;
   return cost;

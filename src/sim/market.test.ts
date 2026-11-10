@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assignProductBrand, awarenessOf, brandLuxuryFactor, brandLuxuryOn, houseBrand, productLuxury, updateBrandLuxury } from './brands';
+import { brandLuxuryFactor, brandLuxuryOn, houseBrand, productLuxury, updateBrandLuxury } from './brands';
 import { advanceMonths, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, demandFor, evaluate, spotBidPerLPA, spotQuote, makeContractOffer, makeCraftContractOffer, contractAgingImpact, mulberry32, newGame, previewBlend, qualityFactor, type Cask, type GameState, type SpiritLot, appeal, applyEffects, buyersFor, type Product, agePerception, suggestedPrice, spotSaturation, sourcedElasticityFactor, sourcedPrestigeOf, executeBlend, runSales, updateAwareness, DUTY_FREE, dutyFreeSlotBlocker, makeOemOffer, makeRetailOffer, oemPackageCost, OEM, productDutyFreeDemand, resolveDutyFreeEditions, startOem, startRetail, type MonthReport } from './index';
 import { overhangFactor, retailCapacityCases } from './retail';
 import { domesticDemands, expectedPricePerL, priceBreakdown, priceOptions, priceResponse, skuSplit, skuSplitEqual } from './market';
@@ -751,25 +751,5 @@ describe('세컨드 브랜드 방패 (#235, PRD §11.2.1)', () => {
     expect(brandLuxuryOn(mvp)).toBe(false);
     expect(brandLuxuryFactor(mvp, product({ oakMonths: 120 }))).toBe(1);
     expect(brandLuxuryOn(newGame({ seed: 1, region: 'KR' }))).toBe(true);
-  });
-});
-
-describe('리브랜딩 전환기 (P-MKT-13)', () => {
-  it('판 적 있는 제품을 옮기면 12개월 동안 옛 브랜드 인지도를 선형으로 줄여 가며 쳐 준다 — 안 판 제품은 없다', () => {
-    const s = newGame({ seed: 2, region: 'KR' });
-    houseBrand(s).awareness = 0.6;
-    s.commerce.brands.push({ id: 'B2', name: '세컨드', isHouse: false, openedMonth: 0, awareness: 0.3, luxury: 0, marketingBudget: 0 });
-    const sold = product({ id: 'S', totalSold: 100 }), fresh = product({ id: 'F', totalSold: 0 });
-    s.commerce.products = [sold, fresh];
-    s.month = 10;
-    expect(typeof assignProductBrand(s, 'S', 'B2')).toBe('number');
-    expect(typeof assignProductBrand(s, 'F', 'B2')).toBe('number');
-    expect(sold.rebrand).toEqual({ from: 'house', month: 10 });
-    expect(fresh.rebrand).toBeUndefined();
-    expect(awarenessOf(s, sold)).toBeCloseTo(0.6, 9); // 옮긴 달
-    expect(awarenessOf(s, fresh)).toBeCloseTo(0.3, 9);
-    s.month = 16; expect(awarenessOf(s, sold)).toBeCloseTo(0.3, 9); // 0.6 × 0.5 = 0.3 → 둘 중 큰 쪽
-    s.month = 13; expect(awarenessOf(s, sold)).toBeCloseTo(0.45, 9);
-    s.month = 22; expect(awarenessOf(s, sold)).toBeCloseTo(0.3, 9); // 전환기 끝 — 새 브랜드만
   });
 });
