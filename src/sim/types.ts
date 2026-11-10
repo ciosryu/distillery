@@ -215,6 +215,8 @@ export interface Product {
   autoPrice?: boolean;
   /** 자동 납품 (#206) — 몇 개월분 재고를 유지할지(1·2·3·6). 켜 두면 매달 판매 직전에 모자란 만큼 원액을 골라 재고 보충(economics.applyAutoRestock). 없으면 끔 */
   autoRestock?: number;
+  /** 자동 납품이 쓸 통의 최소 숙성(개월, P-PROD-41) — 없으면 제품 표기 연수. 표기보다 낮추면 보충할 때 표기도 그만큼 내려갈 수 있다 */
+  autoRestockMinMonths?: number;
   /** 병당 생산 원가 = 원액 + 포장 + 병입 인건비 (유통비 제외) */
   unitCost: number;
   createdMonth: number;
