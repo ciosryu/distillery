@@ -152,7 +152,16 @@ describe('3차 MVP 플레이테스트 대응 (#203) — 멈춘 몰트 생산 · 
     expect([...ranks].sort((a, b) => a - b)).toEqual(ranks);
     expect(TODO_ORDER.slice(0, 3)).toEqual(['loan-jump', 'malt-stopped', 'visitor']);
     expect(TODO_ORDER.at(-1)).toBe('sample');
-    expect(TODO_ORDER.indexOf('stockout')).toBe(TODO_ORDER.indexOf('visitor') + 1); // 결품(#204)은 비지터 센터 다음, 통입·병입보다 위
+    expect(TODO_ORDER.indexOf('stockout')).toBe(TODO_ORDER.indexOf('visitor') + 1);
+  });
+
+  it('새로 열린 기능(#215)은 열린 뒤 3개월 동안 할 일 맨 위 — 결품·통입보다 위 (5차 전 점검)', async () => {
+    const { advanceMonth } = await import('../sim');
+    let s: GameState = advanceMonths(setMalt(mvp(), 2), 2); // 탱크 몰트 → 통입 할 일
+    s.month = 59; s = advanceMonth(s); s = advanceMonth(s); // 60월 틱 — 6년 차 단계가 열린다
+    const ids = monthTodos(s).map((t) => t.id);
+    expect(ids[0]).toBe('stage-y5_market');
+    expect(ids.indexOf('stage-y5_market')).toBeLessThan(ids.indexOf('fill')); // 결품(#204)은 비지터 센터 다음, 통입·병입보다 위
   });
 
   it('원액 현물 판매의 대가 — 지금 받는 돈은 B2B 견적, 위스키 병 수는 공급 전망(#178)의 탱크·통 몫 그대로, 탱크와 숙성 중인 통을 나눈다', () => {

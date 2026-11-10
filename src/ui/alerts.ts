@@ -176,7 +176,8 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 export const TODO_ORDER = ['loan-jump', 'malt-stopped', 'visitor', 'stockout', 'cask-bid', 'fill', 'whisky', 'soju', 'sample'];
-const todoRank = (id: string) => { const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
+// 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
+const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
 
 /**
  * 이번 달 할 일 — 급한 순서. 시나리오 게임(MVP) 증류소 탭에 보인다. 규칙이 아니라 놓치기 쉬운 신호를 모은 안내다
