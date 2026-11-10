@@ -85,7 +85,21 @@ export const GIFT_SHOP = { id: 'visitor_giftshop', newMakeBuyRate: 0.25, merchPe
  * 똑같은 제품 n개면 총수요 n^(1/ρ)배: ρ = 2 → √n(옛 공식과 같음), ρ = 3 → ∛n, ρ → ∞ → 늘지 않음.
  * 약한 제품을 하나 더 내도 총수요가 거의 늘지 않고 강한 제품의 몫도 거의 안 깎인다(몫 ∝ 단독 수요^ρ)
  */
-export const SKU = { rho: 3 };
+export const SKU = { rho: 3, /** 브랜드 라인 사이 ρ ([결정 #235] B, PRD §11.2.1) — ρ_in(=rho)보다 작아야 브랜드끼리 덜 뺏는다 */ rhoBrand: 2 };
+
+// ── 럭셔리 지수 · 브랜드 방패 ([결정 #235] A, PRD §11.2 ①~③ 최소 구현 · §11.2.1) [튜닝] ──
+/**
+ * 제품 럭셔리 L_p(0~100) = 패키징 + 숙성 표기 + 희소성 (라벨 속성은 연구 — 아직 0), 품질 게이트 L_p ≤ 품질.
+ * 브랜드 B_b = alpha × 최근 windowMonths개월 판매 병수 가중 평균 L_p + (1 − alpha) × 같은 기간 최고 L_p.
+ * 매력도 ×= 1 + kappa × beta × (B_b − L_p) / 100 — 세컨드 브랜드가 열리는 모드에서만(MVP는 #219로 잠겨 피할 수단이 없다)
+ */
+export const BRAND_LUXURY = {
+  packaging: { standard: 0, premium: 30 } as Record<string, number>,
+  whiskyPerYear: 5, whiskyCap: 25,
+  agedWhitePerYear: 5, agedWhiteCap: 15,
+  rare: 15,
+  alpha: 0.6, beta: 0.3, kappa: 1, windowMonths: 12,
+};
 
 // ── 브랜드 라인 — 세컨드 브랜드 (PRD §11.2 ④, 결정 #51~#55 → 결정 #155) [튜닝] ──
 export const BRANDS = {

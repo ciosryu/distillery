@@ -5,13 +5,14 @@ import type { TickContext } from './tick';
 import { runSales, updateAwareness, updateExportAwareness } from './market';
 import { EXPORT_MARKETS } from './content/exports';
 import { runExportContracts } from './exportDeals';
-import { secondBrandMonthlyCost } from './brands';
+import { secondBrandMonthlyCost, updateBrandLuxury } from './brands';
 
 // 판매·주세 단계(틱 5) 본문 (파트 MKT, 결정 #144 — 파일 쪼개기로 옮겨 왔다. 규칙·수치 불변)
 
 /** 5 판매·주세 — 이번 달 판매 결과를 돌려준다(성장 단계의 XP에 쓰임). step.ts가 부른다 */
 export function settleSales(s: GameState, report: MonthReport, ctx: TickContext): ReturnType<typeof runSales>['results'] {
   updateExportAwareness(s); // 판매 전에 갱신 — 면세는 국내 인지도가 첫 달부터 넘어온다
+  updateBrandLuxury(s); // 브랜드 럭셔리 B_b(#235 A) — 판매 전에 최근 12개월 기록으로 갱신(옛 세이브도 첫 달부터 맞는 값)
   const { results: sales, retail, exports } = runSales(s, rngFor(s.seed, s.month, 'sales'), ctx.monthOfYear);
   // 수출 (#95·#101): 수입사 매입가(출고가 × 계약 비율)가 대금 지급 기한 뒤 들어오고(국내 주세 면세), 운임은 우리가, 마케팅 분담은 매달 낸다
   if (s.commerce.exports?.length) {

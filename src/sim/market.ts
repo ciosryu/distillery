@@ -1,7 +1,7 @@
 import { DISTRIBUTION, PACKAGING, logisticsCost } from './content/catalog';
 import { agedWhitePerception, BRANDS, PRICE_CURVE, SKU } from './content/market';
 import { rivalShare } from './rivals';
-import { awarenessOf, brandMarketing, brandOf, houseBrand, secondBrands } from './brands';
+import { awarenessOf, brandLuxuryFactor, brandMarketing, brandOf, houseBrand, secondBrands } from './brands';
 import { consumerPrice, refPricePerL, regionOf, siteOf, traditionalTaxFactor, type RegionDef } from './content/regions';
 import { outboundLogistics } from './sites';
 import { DUTY_FREE, dutyFreeDemand, dutyFreeEditionAppeal } from './dutyFree';
@@ -90,7 +90,9 @@ export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regi
   const premium = s && aged ? mod(s, 'appeal:premium') : 1;
   const incense = region?.incensePremium && (p.flavor.incense ?? 0) >= 8 ? region.incensePremium : 1;
   const edition = dutyFreeEditionAppeal(p);
-  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * brand * label * specialty * trend * premium * incense * edition * blendBonus * rare;
+  // 브랜드 방패 ([결정 #235] A): 브랜드 럭셔리 B_b와 제품 L_p의 차이 — 세컨드 브랜드가 열리는 모드에서만
+  const shield = brandLuxuryFactor(s as Partial<GameState> | undefined, p);
+  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * brand * label * specialty * trend * premium * incense * edition * blendBonus * rare * shield;
 }
 
 /** 브랜드 가치가 낮은 매입 원액 병입은 저가 하이볼 수요라 가격에 훨씬 민감하다 */
@@ -116,8 +118,21 @@ function splitByCategory(items: readonly { p: Product; standaloneBottles: number
   for (const it of items) byCat.set(it.p.category, [...(byCat.get(it.p.category) ?? []), it]);
   const out = new Map<string, number>();
   for (const list of byCat.values()) {
-    const f = skuSplit(list.map((x) => (x.standaloneBottles * x.p.bottleMl) / 1000));
-    list.forEach((x, i) => out.set(x.p.id, f[i]!));
+    // 중첩 나눔 ([결정 #235] B, PRD §11.2.1): 카테고리 안을 브랜드 라인별로 먼저 묶어 ρ_in(SKU.rho)으로 나누고,
+    // 브랜드 묶음끼리 다시 ρ_out(SKU.rhoBrand)으로 나눈다. 배수 = 브랜드 안 배수 × 브랜드 배수. 브랜드가 하나면 옛 식과 같다
+    const byBrand = new Map<string, { p: Product; standaloneBottles: number }[]>();
+    for (const it of list) byBrand.set(it.p.brandId ?? '', [...(byBrand.get(it.p.brandId ?? '') ?? []), it]);
+    const groups = [...byBrand.values()];
+    const totals: number[] = [];
+    for (const g of groups) {
+      const litres = g.map((x) => (x.standaloneBottles * x.p.bottleMl) / 1000);
+      const f = skuSplit(litres);
+      g.forEach((x, i) => out.set(x.p.id, f[i]!));
+      totals.push(Math.pow(litres.reduce((t, l) => t + (l > 0 ? Math.pow(l, SKU.rho) : 0), 0), 1 / SKU.rho));
+    }
+    if (groups.length < 2) continue;
+    const h = skuSplit(totals, SKU.rhoBrand);
+    groups.forEach((g, k) => g.forEach((x) => out.set(x.p.id, out.get(x.p.id)! * h[k]!)));
   }
   return out;
 }
