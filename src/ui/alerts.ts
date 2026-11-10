@@ -10,6 +10,8 @@ import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
 import { handfillCask, hasHandfillZone } from '../sim/handfill';
+import { exportShortfalls } from '../sim/market';
+import { ibAgedCaskCount } from '../sim/bulk';
 import { autoFillPreview } from '../sim/autoFill';
 import { autoRestockSources, autoRestockSupported, productMonthlyPace } from '../sim/economics';
 import { AUTO_RESTOCK_EXPENSE, productionValue, whiskySupplyForecast } from '../sim/economics';
@@ -198,7 +200,7 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(P-MKT-19)
-export const TODO_ORDER = ['loan-jump', 'malt-stopped', 'visitor', 'stockout', 'cask-bid', 'restock-short', 'handfill', 'fill', 'whisky', 'soju', 'sample'];
+export const TODO_ORDER = ['loan-jump', 'malt-stopped', 'visitor', 'stockout', 'cask-bid', 'export-starve', 'restock-short', 'handfill', 'fill', 'whisky', 'soju', 'sample'];
 // 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
 
@@ -213,7 +215,9 @@ export function monthTodos(s: GameState): Todo[] {
   for (const st of def?.stages ?? []) {
     if (!s.scenario?.stagesDone?.includes(st.id) || s.month - st.month >= 3) continue;
     const tab = st.unlock.includes('system:commissions') ? 'blendlab' : st.unlock.includes('system:exports') ? 'exports' : st.unlock.includes('system:caskBids') ? 'b2b' : st.unlock.includes('system:hr') ? 'staff' : 'sales';
-    out.push({ id: `stage-${st.id}`, level: 'warn', text: `새로 열림 — ${st.title}. ${st.text}`, action: tab === 'blendlab' ? '블렌딩 테이블' : tab === 'exports' ? '수출' : tab === 'b2b' ? '원액 B2B' : tab === 'staff' ? '직원' : '판매', target: { tab } });
+    // P-MKT-18: IB 입찰 해금 안내에 나이 조건(3년↑)을 채운 통 수 — 0이면 제안이 오지 않는다(후반 확인 판)
+    const ibNote = st.unlock.includes('system:caskBids') ? (() => { const n = ibAgedCaskCount(s); return n ? ` 지금 3년 이상 통 ${n}개.` : ' 지금 3년 이상 통이 없어 제안이 오지 않는다 — 통 일부를 남겨 두라.'; })() : '';
+    out.push({ id: `stage-${st.id}`, level: 'warn', text: `새로 열림 — ${st.title}. ${st.text}${ibNote}`, action: tab === 'blendlab' ? '블렌딩 테이블' : tab === 'exports' ? '수출' : tab === 'b2b' ? '원액 B2B' : tab === 'staff' ? '직원' : '판매', target: { tab } });
   }
   const min = whiskyMinMonths(regionOf(s).whisky); // 병입·표기와 같은 식 (blending.ts)
   // IB 캐스크 입찰 (10년 차 해금, #224) — 제안은 2개월 뒤 사라지고 원액 B2B 탭에만 보여서 할 일에 올린다
@@ -222,6 +226,14 @@ export function monthTodos(s: GameState): Todo[] {
     const c = s.inventory.casks.find((x) => x.id === b.caskId)?.contents;
     const more = s.b2b.caskBids.length > 1 ? ` 외 ${s.b2b.caskBids.length - 1}건` : '';
     out.push({ id: 'cask-bid', level: 'warn', text: `IB 입찰 제안 — ${b.buyerName}에서 통 ${b.caskId}${c ? `(숙성 ${Math.floor(c.oakMonths / 12)}년 ${c.oakMonths % 12}개월)` : ''}를 ${fmtWon(b.price)}에 사겠다고 한다${more} — ${b.expiresMonth - s.month <= 0 ? '이번 달까지' : '다음 달까지'} 답(안 하면 사라진다). 병입해 팔 때보다 싸다 — 다 못 팔 통이면 팔고, 12년 플래그십 후보면 남긴다`, action: '원액 B2B', target: { tab: 'b2b' } });
+  }
+  // 수출이 국내 재고를 먼저 가져갔다 (P-MKT-16, 후반 확인 판 오너: 「더 퍼스트」 국내 품절을 몰랐다)
+  if (s.scenario) {
+    const short = exportShortfalls(s.history.reports.at(-1));
+    if (short.length) {
+      const unmet = short.reduce((t, x) => t + x.unmet, 0);
+      out.push({ id: 'export-starve', level: 'warn', text: `수출이 국내 재고를 먼저 가져갔다 — 지난달 국내 ${unmet.toLocaleString()}병 품절(「${short[0]!.name}」${short.length > 1 ? ` 외 ${short.length - 1}개` : ''}). 국내 판매만 인지도를 키운다 — 재고를 늘리거나 수출가 배수를 약 0.9 아래로 낮추면 국내가 먼저 채워진다`, action: '판매', target: { tab: 'sales' } });
+    }
   }
   // 자동 납품이 원액을 못 찾는 제품 (#243, 5차 판: 「안성 소주」가 탱크를 다 써 「옹기소주」가 못 채워졌는데 이유를 몰랐다)
   if (s.scenario) {

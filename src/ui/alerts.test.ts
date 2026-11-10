@@ -227,6 +227,26 @@ describe('IB 캐스크 입찰 — 10년 차 해금 (#224)', () => {
   });
 });
 
+describe('수출이 국내를 굶김 (P-MKT-16) · IB 해금 안내 통 수 (P-MKT-18)', () => {
+  it('지난달 수출된 제품이 국내 수요를 못 채웠으면 판매 탭으로 보내는 경고, 아니면 없다', () => {
+    const s = mvp();
+    const r = { ...s.history.reports.at(-1), month: s.month - 1, sales: [{ productId: 'a', name: '더 퍼스트', bottles: 10, revenue: 0, demandBottles: 130 }], exports: [{ marketId: 'JP', productId: 'a', name: '더 퍼스트', bottles: 200, revenue: 0, demandBottles: 200, freight: 0 }] } as never;
+    s.history.reports = [...s.history.reports, r];
+    const t = monthTodos(s).find((x) => x.id === 'export-starve')!;
+    expect(t.level).toBe('warn');
+    expect(t.text).toContain('120병');
+    expect(t.target).toEqual({ tab: 'sales' });
+    s.history.reports = s.history.reports.slice(0, -1);
+    expect(monthTodos(s).some((x) => x.id === 'export-starve')).toBe(false);
+  });
+
+  it('IB 해금 안내에 3년 이상 통 수 — 없으면 제안이 오지 않는다고 말한다', () => {
+    let s = mvp();
+    s.month = 108; s = advanceMonth(s);
+    expect(monthTodos(s).find((t) => t.id === 'stage-y9_casks')!.text).toContain('3년 이상 통이 없어 제안이 오지 않는다');
+  });
+});
+
 describe('핸드필 존 할 일 (#233)', () => {
   it('지었고 비지터 센터가 있는데 지정한 통이 없으면 할 일에 올린다 — 통을 지정하면 사라진다', () => {
     const s = mvp();
