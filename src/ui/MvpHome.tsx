@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { AutoFillRow } from './panels/AutoFill';
 import { PendingEventChoices } from './panels/Events';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
 import { knownReads, lastSample, readSigma, sampleAxesOf, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
@@ -457,6 +458,8 @@ function FillCard() {
   return (
     <Card title="탱크 원액 → 빈 통에 통입" actions={<span className="text-xs text-stone-500">빈 통 {empties.length}개 · 빈 통 사기·증설은 아래 숙성고 공간</span>}>
     <div className="grid min-w-0 content-start gap-2">
+        {/* 자동 통입 (P-PROD-34) — 켜 두면 진행할 때 넣는다 */}
+        <AutoFillRow />
         {!malts.length ? <Empty>탱크에 숙성할 원액(몰트·소주)이 없습니다 — 생산 지시를 내리고 한 달을 진행하세요</Empty> : (
           <>
             <Select label="원액" value={lot!.id} options={malts.map((l) => ({ value: l.id, label: lotLabel(l) }))} onChange={(v) => { setLotId(v); setFillType(''); }} />
