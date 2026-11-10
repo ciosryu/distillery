@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { houseBrand } from './brands';
+import { brandLuxuryFactor, brandLuxuryOn, houseBrand, productLuxury, updateBrandLuxury } from './brands';
 import { advanceMonths, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, demandFor, evaluate, spotBidPerLPA, spotQuote, makeContractOffer, makeCraftContractOffer, contractAgingImpact, mulberry32, newGame, previewBlend, qualityFactor, type Cask, type GameState, type SpiritLot, appeal, applyEffects, buyersFor, type Product, agePerception, suggestedPrice, spotSaturation, sourcedElasticityFactor, sourcedPrestigeOf, executeBlend, runSales, updateAwareness, DUTY_FREE, dutyFreeSlotBlocker, makeOemOffer, makeRetailOffer, oemPackageCost, OEM, productDutyFreeDemand, resolveDutyFreeEditions, startOem, startRetail, type MonthReport } from './index';
 import { overhangFactor, retailCapacityCases } from './retail';
 import { domesticDemands, expectedPricePerL, priceBreakdown, priceOptions, priceResponse, skuSplit, skuSplitEqual } from './market';
@@ -671,7 +671,8 @@ describe('숙성 소주 표기 (#217, PRD §9.2)', () => {
     const region = REGIONS.KR;
     const plain = soju();
     const onggi = soju({ restMonths: 24 });
-    expect(appeal(onggi, s) / appeal(plain, s)).toBeCloseTo(1.16, 9);
+    // 브랜드 방패(#235 A)는 L_p(숙성 표기 +10)에 따라 따로 움직이므로 나눠서 표기 배수만 본다
+    expect((appeal(onggi, s) / brandLuxuryFactor(s, onggi)) / (appeal(plain, s) / brandLuxuryFactor(s, plain))).toBeCloseTo(1.16, 9);
     expect(expectedPricePerL(region, onggi) / expectedPricePerL(region, plain)).toBeCloseTo(1.16, 9);
     const { restMonths: _, ...legacy } = onggi;
     expect(appeal(legacy as Product, s)).toBe(appeal(plain, s));
@@ -707,5 +708,48 @@ describe('기프트 샵 (#234)', () => {
   it('베이직 투어가 있어야 짓는다', () => {
     const s = newGame({ seed: 1, region: 'KR' });
     expect(applyAction(s, { type: 'buyEquipment', catalogId: 'visitor_giftshop' }).error).toBeTruthy();
+  });
+});
+
+describe('세컨드 브랜드 방패 (#235, PRD §11.2.1)', () => {
+  const lineup = (...ps: Product[]) => { const s = newGame({ seed: 2, region: 'KR' }); s.commerce.products = ps; return s; };
+  const total = (s: GameState) => [...domesticDemands(s, 3).values()].reduce((t, d) => t + d.demandBottles, 0);
+  const second = (s: GameState, awareness: number) => { s.commerce.brands.push({ id: 'B2', name: '세컨드', isHouse: false, openedMonth: 0, awareness, luxury: 0, marketingBudget: 0 }); };
+
+  it('B 중첩 나눔: 브랜드가 하나면 옛 식과 같고, 다른 브랜드의 같은 제품은 덜 뺏는다(ρ_out < ρ_in)', () => {
+    const one = total(lineup(product({ id: 'a' }), product({ id: 'b' })));
+    expect(one / total(lineup(product({ id: 'a' })))).toBeCloseTo(Math.pow(2, 1 / SKU.rho), 6); // #154 그대로
+    const s = lineup(product({ id: 'a' }), product({ id: 'b', brandId: 'B2' }));
+    second(s, houseBrand(s).awareness); // 인지도가 같으면 단독 수요가 같다 → 총수요 2^(1/ρ_out)
+    expect(SKU.rhoBrand).toBeLessThan(SKU.rho);
+    expect(total(s) / total(lineup(product({ id: 'a' })))).toBeCloseTo(Math.pow(2, 1 / SKU.rhoBrand), 6);
+  });
+
+  it('A L_p: 패키징 + 숙성 표기 + 희소성, 품질 게이트', () => {
+    expect(productLuxury(product({ packagingId: 'standard', oakMonths: 60, quality: 70 }))).toBe(25);
+    expect(productLuxury(product({ packagingId: 'premium', oakMonths: 12, quality: 70 }))).toBe(35);
+    expect(productLuxury(product({ packagingId: 'premium', oakMonths: 120, rareSingleCask: true, quality: 50 }))).toBe(50); // 30+25+15=70 → 품질 50
+    expect(productLuxury(product({ category: 'soju_distilled', oakMonths: 0, restMonths: 24, ageYears: null }))).toBeCloseTo(10, 9);
+  });
+
+  it('A 방패: 싼 제품이 하우스 B를 끌어내려 고급 제품이 깎이고, 세컨드로 옮기면 사라진다 — MVP는 꺼짐', () => {
+    const premium = product({ id: 'P', oakMonths: 60 }); // L_p 25
+    const cheap = product({ id: 'C', category: 'soju_distilled', oakMonths: 0, ageYears: null }); // L_p 0
+    const rep = (s: GameState) => { s.history.reports = [{ month: 0, sales: [{ productId: 'P', name: 'P', bottles: 100, revenue: 0, demandBottles: 100 }, { productId: 'C', name: 'C', bottles: 900, revenue: 0, demandBottles: 900 }] } as unknown as MonthReport]; };
+    const mixed = lineup(premium, cheap); rep(mixed); updateBrandLuxury(mixed);
+    expect(houseBrand(mixed).luxury).toBeCloseTo(0.6 * 2.5 + 0.4 * 25, 9); // 병수 가중 2.5, 최고 25
+    expect(brandLuxuryFactor(mixed, premium)).toBeCloseTo(1 + 0.3 * (11.5 - 25) / 100, 9);
+    const shielded = lineup(premium, { ...cheap, brandId: 'B2' }); second(shielded, 0.3); rep(shielded); updateBrandLuxury(shielded);
+    expect(houseBrand(shielded).luxury).toBeCloseTo(25, 9);
+    expect(brandLuxuryFactor(shielded, premium)).toBe(1);
+    expect(brandLuxuryFactor(mixed, premium)).toBeLessThan(brandLuxuryFactor(shielded, premium));
+  });
+
+  it('A는 세컨드 브랜드가 잠긴 MVP에서 꺼진다', async () => {
+    const { newScenarioGame } = await import('./index');
+    const mvp = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    expect(brandLuxuryOn(mvp)).toBe(false);
+    expect(brandLuxuryFactor(mvp, product({ oakMonths: 120 }))).toBe(1);
+    expect(brandLuxuryOn(newGame({ seed: 1, region: 'KR' }))).toBe(true);
   });
 });
