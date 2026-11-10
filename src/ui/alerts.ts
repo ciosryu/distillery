@@ -2,6 +2,7 @@
 // 게임 규칙·상태를 바꾸지 않는다. 시뮬레이션과 같은 식(step.ts 파산 판정, loans.ts runFinance 대출 납부)을 읽기만 한다.
 // 1차 MVP 판: 117개월째 파산, 대출 누적 20억 실행(파산 때 잔액 약 7.2억) — 현금 부족을 몰랐고, 돈이 어디로 나가는지, 언제 상환이 몰리는지 보이지 않았다 (mvp.md §7.4)
 
+import { isFlagshipCandidate } from '../sim/delegateCheck';
 import { regionOf } from '../sim/content/regions';
 import { SCENARIOS } from '../sim/content/scenarios';
 import { calendar, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport } from '../sim';
@@ -160,6 +161,24 @@ export function spotSaleStake(s: GameState): { tank: SpiritStake | null; casks: 
   const casks = stake(aging.length, aging.reduce((t, c) => t + spotQuote(s, c.contents!, c.contents!.volumeL, c), 0), f.reduce((t, y) => t + y.fromCasks, 0));
   const r = ready.length ? { count: ready.length, spotNow: ready.reduce((t, c) => t + spotQuote(s, c.contents!, c.contents!.volumeL, c), 0) } : null;
   return tank || casks || r ? { tank, casks, ready: r, minMonths: min } : null;
+}
+
+/**
+ * 12년 플래그십 후보 통 (#240) — 판이 끝나기 전에 플래그십 숙성(MVP 144개월)을 채울 수 있는 우리 몰트·그레인 통. 식은 #238의
+ * `isFlagshipCandidate`(sim/delegateCheck.ts) 하나만 쓴다(같은 숫자를 두 식으로 만들지 않는다). 고객 소유(캐스크 오너십) 통은 뺀다.
+ * 시나리오에서 이 수가 0이 되면 15년 목표(플래그십 판매)를 이룰 수 없다 — 5차 판이 70개월째 맡기기로 그렇게 됐다(mvp.md §7.16)
+ */
+export const flagshipCandidates = (s: GameState) => s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c));
+
+/** 고른 통 가운데 플래그십 후보가 몇 개이고, 쓰고 나면 몇 개 남는지 — 확인 미리보기(③ 남는 자원 경고)용 */
+export function flagshipImpact(s: GameState, caskIds: string[]): { using: number; left: number; before: number; final: boolean } {
+  const all = flagshipCandidates(s);
+  const ids = new Set(caskIds);
+  const using = all.filter((c) => ids.has(c.id)).length;
+  // final: 목표까지 남은 달이 플래그십 숙성보다 짧아 새로 넣는 통은 후보가 될 수 없다 — 이때 후보 0은 15년 목표를 이룰 수 없다는 뜻
+  const sc = s.scenario;
+  const final = !!sc && sc.goal.months - s.month < sc.goal.flagshipMinMonths;
+  return { using, left: all.length - using, before: all.length, final };
 }
 
 /** 몰트·그레인을 마지막으로 만든 뒤 지난 개월 수 (월 결산의 실제 생산 기준). 이번 달에 멈췄으면 0 */
