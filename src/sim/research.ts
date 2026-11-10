@@ -5,7 +5,7 @@ import { ownsFacility } from './util';
 
 // 테크트리 게이트 (docs/design/tech-tree.md §7, PRD §14 Phase 1 각주)
 // 모든 선택지·설비·계약·행동은 isUnlocked(state, key) 하나로 잠금을 판정한다.
-// TECH_GATING = false인 동안은 항상 true (게임 동작 불변). 연구 진행은 아래 runResearch (S-6).
+// TECH_GATING = true(#174, content/tech.ts) — 테크 키는 연구를 끝내야 열린다. false면 항상 true. 연구 진행은 아래 runResearch (S-6).
 // 키 규칙: 'action:<Action.type>' · 'facility:<catalogId>' · 'recipe:<path>=<value>' · 'label:<claimId>' · 'contract:<id>' · 'info:<target>'
 
 /** 키 → 그 키를 해금하는 노드 id 목록 (노드 데이터에서 한 번 만든다) */

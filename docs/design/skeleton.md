@@ -1,7 +1,7 @@
 # 뼈대 설계 v0.1 — 시스템 지도 · 파트 경계 · 구조 결정 백로그
 
 > 상위 문서: [PRD](../PRD.md) · [개발 공정](../PROCESS.md) §2 단계 S · 관련: [아키텍처](architecture.md)(코드 구조·Godot 이식 명세)
-> 상태: **v0.1 초안 — 공정관리 세션이 단계 S 시작용으로 작성(2026-11-06). 설계 세션이 이어받아 §4를 오너와 결정한다.**
+> 상태: **단계 S 완료(#153, 2026-11-06) — §4 필수 결정은 모두 번호를 받았고, §3 파트 경계가 확정됐다. 지금은 단계 P에서 §1~§3을 현재 상태로 갱신하며 쓴다.** (v0.1 초안은 공정관리 세션이 단계 S 시작용으로 작성)
 > 이 문서가 답하는 것: 게임에 어떤 시스템이 있고(§2), 각각 어느 파트가 소유하며(§3), 뼈대를 완성하려면 무엇을 먼저 정해야 하는가(§4)
 
 ---
@@ -15,7 +15,7 @@
 3. 세이브 마이그레이션 체인이 새 스키마까지 이어진다
 4. §3 파트 경계와 코어 파일 목록이 확정되어, 파트 세션이 서로의 파일을 건드리지 않고 일할 수 있다
 
-**스텁의 뜻:** 타입·슬라이스·명령·틱 단계가 존재하고, 테스트가 통과하고, 게임 동작은 바꾸지 않는다(기능 플래그 꺼짐·빈 목록·no-op). 예: 이미 있는 `isUnlocked` + `TECH_GATING = false`(#118)가 스텁의 모범이다.
+**스텁의 뜻:** 타입·슬라이스·명령·틱 단계가 존재하고, 테스트가 통과하고, 게임 동작은 바꾸지 않는다(기능 플래그 꺼짐·빈 목록·no-op). 예: 이미 있는 `isUnlocked` + `TECH_GATING = false`(#118)가 스텁의 모범이다(게이트는 단계 P에서 켰다 — #174).
 
 ---
 
@@ -30,7 +30,7 @@
 | 난수 | mulberry32, `rngFor(seed, month, stream)` 독립 스트림 | PRD §13.2 |
 | 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8 → v9 → v10 → v11 → v12 → v13 → v14 → v15) | #118, S-8, S-10, S-9, S-2, S-6, S-11·S-12, #158, #176 |
 | 스키마 버전을 올리는 때 `[결정 #187, 오너 승인 2026-11-08]` | **올린다** — 옛 세이브에 값을 채우거나 옮기거나 지워야 할 때(필수 필드 추가·이름·구조 변경·의미 변경). `migrate.ts` 다음 버전 + 픽스처 테스트(옛 세이브가 그대로 이어지고 진행 결과가 같다). **올리지 않는다** — **선택 필드(`?`)를 더하는데 읽는 쪽이 없을 때를 처리하고 옮길 값이 없을 때**(예: `BrandLine.marketingBudget?` #155, `MonthReport.netWorth?` #159, `SampleRecord.axes?` #183). 그때는 "없으면 어떻게 읽는지"를 필드 주석에 적고, 옛 세이브 픽스처로 테스트가 계속 통과하는지만 본다. 앞선 선택 필드 버전 올림(#158 `Product.finish?`·#176 `Product.caskMix?`)은 그대로 둔다(되돌리지 않는다) | 선례가 섞여 있었다 |
-| 테크 게이트 | `isUnlocked(state, key)` 하나로 판정, 키 규칙 고정, Phase 1은 꺼짐 | #118, tech-tree §7 |
+| 테크 게이트 | `isUnlocked(state, key)` 하나로 판정, 키 규칙 고정, **켜짐**(`TECH_GATING = true`, #174 — Phase 1은 꺼져 있었다) | #118, #174, tech-tree §7 |
 | 설계 규모 | 30년(360턴) · 원액 든 캐스크 2,500개 | #119 |
 | 화면 규칙 — 되돌릴 수 없는 행동 `[결정 #240]` | 통·원액·설비·직원·대출을 바꾸고 다음 진행 전에 되돌릴 길이 없는 행동은 코어 부품 `kit.tsx` `ConfirmButton`(또는 미리보기 상자를 따로 그리면 `useConfirm` 훅)으로: ① 두 번 눌러 확인 ② 첫 누름에 결과 미리보기(무엇이 얼마나 — 숫자) ③ 남는 자원 경고 — 특히 12년 플래그십 후보(`alerts.ts flagshipCandidates`·`flagshipImpact`, 식은 #238 `isFlagshipCandidate` 하나) ④ 조건(`armKey`: 대상·달·수량)이 바뀌면 처음부터 ⑤ 되돌리기 안내(`UNDO_HINT`). 병입처럼 자주 하는 일은 매번 묻지 않는다(#178 재고 12개월 초과 때만). 파트 버튼은 소유 파트가 같은 부품으로 바꾼다 | #240, mvp.md §7.16 |
 | 기후 | 입지 평년값 + AR(1) 이상치, 이벤트는 입력(기온·습도) 충격 | #120 |
@@ -82,7 +82,7 @@
 | 파트 | 범위 (단계 P에서 할 일 — 초안) | 소유 파일 | PRD 절 |
 |---|---|---|---|
 | **PROD** 생산·숙성·블렌딩 | 피니싱, 정보 불확실성(샘플링), 블렌딩 테이블 화면·보상 연결, 생산 테크 노드의 효과 데이터 | `production.ts`(+ 생산 단계 `runProduction`)·`maturation.ts`·**`warehouse.ts`**(+ 숙성 단계)·**`casks.ts`**·**`waterPermit.ts`**·`flavor.ts`·`blending.ts`·`blendTable.ts`·`blendRadar.ts`·`weather.ts`·**`actions.prod.ts`**, **`content/production.ts`**·`content/axes.ts`·`categories.ts`, **`economics.ts`**(병당 손익 #173), 테스트 **`production.test.ts`**·`vessel.test.ts`·`blendTable.test.ts`, 화면 `Production`·`Warehouse`·`Bottling`·`BlendLab`·**`AutoSample`**(자동 샘플 설정 줄, #207 — 증류소 탭에 끼움) · **`Sales`(MKT 종료로 임시 소유, #173)** | §4~§6, flavor-model, blending-minigame |
-| **MKT** 시장·판매·B2B·수출 — **종료(2026-11-07, 자리를 MGT에 넘김)**. 다시 열 때까지 아래 파일 변경은 PM이 배정한다. `Sales` 화면은 PROD 임시 소유(#173) | 브랜드 라인(세컨드 브랜드 개설·배정·브랜드별 인지도 성장·B_brand), 수요 공식 정리(SKU √n) | `market.ts`·**`brands.ts`**·**`sales.ts`**(판매·주세 단계)·**`retail.ts`**·**`tourism.ts`**·**`dutyFree.ts`**·`bulk.ts`·`broker.ts`·`deals.ts`·`exportDeals.ts`·**`actions.mkt.ts`**, **`content/market.ts`**·`content/exports.ts`·`names.ts`, `data/market/`, 테스트 **`market.test.ts`**·`exports.test.ts`·**`brands.test.ts`**, 화면 ~~`Sales`~~(→ PROD 임시)·`B2B`·`Exports` | §8.3, §8.5~§8.6, §9, §11 |
+| **MKT** 시장·판매·B2B·수출 — **재개(2026-11-08, 오너)**. 2026-11-07에 종료해 자리를 MGT에 넘겼다가 다시 열었다. `Sales` 화면은 여전히 PROD 임시 소유(#173) | 브랜드 라인(세컨드 브랜드 개설·배정·브랜드별 인지도 성장·B_brand), 수요 공식 정리(SKU √n) | `market.ts`·**`brands.ts`**·**`sales.ts`**(판매·주세 단계)·**`retail.ts`**·**`tourism.ts`**·**`dutyFree.ts`**·`bulk.ts`·`broker.ts`·`deals.ts`·`exportDeals.ts`·**`actions.mkt.ts`**, **`content/market.ts`**·`content/exports.ts`·`names.ts`, `data/market/`, 테스트 **`market.test.ts`**·`exports.test.ts`·**`brands.test.ts`**, 화면 ~~`Sales`~~(→ PROD 임시)·`B2B`·`Exports` | §8.3, §8.5~§8.6, §9, §11 |
 | **MGT** 재무·HR·이벤트·연구 | 연구 노드 전체(공통 4계통 + 주종 브랜치)·효과·실적 보너스·연구 화면·게이트 켜기(`TECH_GATING`), 재무 확장(이사회·헷징·보험) | `cashflow.ts`·**`loans.ts`**(+ 재무 단계)·**`investment.ts`**·`hr.ts`(+ 생애주기·사무직)·`events.ts`·`research.ts`·**`insurance.ts`**(#171)·**`forwards.ts`**(#179)·**`board.ts`**(#180)·**`forecast.ts`**(ENG-3 가격 예측, #188)·**`earlyWarning.ts`**(매크로 조기 경보, #189)·**`actions.mgt.ts`**, **`content/finance.ts`**·`content/events.ts`·`tech.ts`, 테스트 **`finance.test.ts`**·`fixedcost.test.ts`·`board.test.ts`·`repay.test.ts`·`otherincome.test.ts`·`eventrisk.test.ts`·`events.test.ts`·`research.test.ts`·`forecast.test.ts`·`earlyWarning.test.ts`, 화면 `Finance`·`Staff`·`Events`·`Dashboard`·**`Board`**(#180)·**`FixedCost`**(증류소 탭에 끼움, #181)·`Research`·**`Forecast`**(#188) | §7, §8.1~§8.2, §8.4, §10, tech-tree |
 | **META** 시나리오·진행·경쟁 | 가상 이력 생성기, 면허 취소 규칙, 마일스톤 추가·업적(단계 V), (후속) 경쟁 AI | `progress.ts`·`actions.meta.ts`·`content/milestones.ts`, 테스트 `progress.test.ts`, 화면 `Verdict` | §12, §9.4 |
 
@@ -270,7 +270,9 @@ MVP 완료 기준 1(15년 목표 → 결과 화면 → 계속 운영)이 이 위
 | **증류소** (사이트마다) | 헤더 `regionId`·`siteId`·`distilleryName` · `production` · `inventory` · `site` · `hr`(직원은 사이트 소속, 하우스 스타일 포함) · `commerce.localBuzz`(비지터 센터)·`traditionalReleasedL`·`retailOffers/Contracts`(입지 대표 거래) · `b2b.contracts`(납품 사이트가 필요) · `world.weather`(입지 기후) |
 | **세계** (공유) | `world.priceIndex`·`trend`·`flavorTrend`·`modifiers`(지역 한정 이벤트는 보정치에 지역 태그) · `world.rivals` · `events`(재해는 사이트 태그) · `history`(연결 + 사이트 태그) |
 
-## 5. 다음 행동 (설계 세션)
+## 5. 다음 행동 (설계 세션) — **완료 (단계 S 시작 때의 계획, 기록용)**
+
+아래 1~3은 모두 끝났다 — 필수 결정 #127~#152, 단계 P 전환 #153(2026-11-06).
 
 1. S-0(MVP·코어 루프)은 결정됐다(#129~#134). **MVP에 필요한 것부터** S-2 이후를 제안한다 — MVP 모드 설정(S-8 시나리오 초기화), 숙성 용기 일반화(S-10), 파일 쪼개기(S-4) 순을 권장 — 근거·대안(최소 2개)·리스크·스키마 영향·마이그레이션 비용
 2. 결정되면 코어에 스텁으로 넣고(동작 불변), 마이그레이션 버전을 올리고, 이 문서 §2·§3을 갱신한다
