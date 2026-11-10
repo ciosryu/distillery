@@ -5,7 +5,7 @@ import { regionOf } from './content/regions';
 import { emptyCask, vesselMaterial } from './maturation';
 import type { Cask, GameState, MonthReport, SpiritLot } from './types';
 
-// ───────────── 핸드필 존 (P-PROD-31, 2026-11-10 오너 요청 — 비지터 센터 확장 중 PROD 몫) ─────────────
+// ───────────── 핸드필 존 (#233, 2026-11-10 오너 요청 — 비지터 센터 확장 중 PROD 몫) ─────────────
 // 숙성고 한쪽에 통 하나를 내놓고, 비지터 센터 방문객이 직접 병에 담아 이름·날짜를 적어 가는 한정판.
 // 플레이어가 위스키 표기가 되는 자사 통 1개를 "핸드필 전용"으로 지정한다 → 매달 방문객의 일부가 500ml 캐스크 스트렝스로 사 간다.
 // 값은 같은 통을 병입했을 때 권장 출고가의 약 2배(중간 유통 없음·한정판) — 대신 그 통은 플래그십·병입·IB 입찰에 쓸 수 없게 소진된다.

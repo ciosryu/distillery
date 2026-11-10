@@ -148,7 +148,7 @@ export interface Cask {
   /** 레어 캐스크 (숨김값) — 추출이 남달리 강해 육각형의 꼭짓점이 된다. 통입 때 정해지고 샘플링·감정력으로 드러난다 */
   rare?: boolean;
   rareKnown?: boolean;
-  /** 핸드필 존 전용 통 (P-PROD-31) — 비지터 센터 방문객이 이 통에서 직접 병에 담아 간다. 한 번에 하나 */
+  /** 핸드필 존 전용 통 (#233) — 비지터 센터 방문객이 이 통에서 직접 병에 담아 간다. 한 번에 하나 */
   handfill?: boolean;
   /** 최근 샘플 기록 (최대 SAMPLE_LOG_KEPT개, 오래된 것부터) — MVP 숙성고 화면은 참값 대신 이것만 보여 준다 (#136) */
   sampleLog?: SampleRecord[];

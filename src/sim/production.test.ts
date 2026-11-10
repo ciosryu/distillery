@@ -783,7 +783,7 @@ describe('숙성 소주 표기 — 병입·보충·권장가·자동 납품 (#21
   });
 });
 
-describe('핸드필 존 (P-PROD-31, 2026-11-10 오너 요청)', () => {
+describe('핸드필 존 (#233, 2026-11-10 오너 요청)', () => {
   const setup = async () => {
     const { emptyCaskOf } = await import('./index');
     let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });

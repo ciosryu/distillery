@@ -102,7 +102,7 @@ export const PRODUCTION_EQUIPMENT: Record<string, EquipmentDef> = {
   ferm_onggi_set: { id: 'ferm_onggi_set', kind: 'fermenter', nameKo: '옹기 발효 세트 (1,200L 상당)', cost: 30_000_000, leadMonths: 1, maintenance: 300_000, fermenterType: 'onggi', capacityL: 1200 },
   warehouse_rack_100: { id: 'warehouse_rack_100', kind: 'warehouse', nameKo: '랙 숙성고 10단 (+100 캐스크)', cost: 150_000_000, leadMonths: 6, maintenance: 800_000, casks: 100, warehouseType: 'racked', tiers: 10 },
   warehouse_dunnage_45: { id: 'warehouse_dunnage_45', kind: 'warehouse', nameKo: '더니지 숙성고 3단 (+45 캐스크, 흙바닥·두꺼운 석벽)', cost: 120_000_000, leadMonths: 8, maintenance: 500_000, casks: 45, warehouseType: 'dunnage', tiers: 3 },
-  // 핸드필 존 (P-PROD-31, 2026-11-10 오너 요청) — 숙성고 한쪽에 통 하나를 내놓고 방문객이 직접 병에 담아 간다. 비지터 센터가 있어야 손님이 온다
+  // 핸드필 존 (#233, 2026-11-10 오너 요청) — 숙성고 한쪽에 통 하나를 내놓고 방문객이 직접 병에 담아 간다. 비지터 센터가 있어야 손님이 온다
   handfill_zone: { id: 'handfill_zone', kind: 'facility', nameKo: '핸드필 존 (방문객이 통에서 직접 담는 한정판)', cost: 30_000_000, leadMonths: 2, maintenance: 500_000, defends: [], note: '통 1개를 핸드필 전용으로 지정 — 방문객이 500ml 캐스크 스트렝스로 담아 간다(병입 출고가의 약 2배)', requires: 'visitor_basic' },
 };
 

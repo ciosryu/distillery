@@ -1,4 +1,4 @@
-// 핸드필 존 (P-PROD-31, 2026-11-10 오너 요청 — 파트 PROD) — 증류소 탭 "숙성 중인 캐스크" 칸과 숙성고 탭에 끼워 쓴다.
+// 핸드필 존 (#233, 2026-11-10 오너 요청 — 파트 PROD) — 증류소 탭 "숙성 중인 캐스크" 칸과 숙성고 탭에 끼워 쓴다.
 // 설비(핸드필 존)를 지으면 보인다. 위스키 표기가 되는 자사 통 1개를 고르면 비지터 센터 방문객이 매달 그 통에서 500ml씩 담아 간다.
 // 시나리오(MVP)는 참 품질을 숨기므로 고르는 목록·값 미리 보기는 샘플로 아는 추정 품질로 보인다(실제 판매는 참값)
 import { HANDFILL, handfillBlocker, handfillBottleCost, handfillBottles, handfillCask, handfillPrice, knownReads, lotQuality, type Cask, type SpiritLot } from '../../sim';

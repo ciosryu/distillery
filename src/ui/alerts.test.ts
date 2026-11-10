@@ -215,7 +215,7 @@ describe('IB 캐스크 입찰 — 10년 차 해금 (#224)', () => {
   });
 });
 
-describe('핸드필 존 할 일 (P-PROD-31)', () => {
+describe('핸드필 존 할 일 (#233)', () => {
   it('지었고 비지터 센터가 있는데 지정한 통이 없으면 할 일에 올린다 — 통을 지정하면 사라진다', () => {
     const s = mvp();
     s.production.equipment.push({ id: 'EV', catalogId: 'visitor_basic', readyMonth: 0 } as never, { id: 'EH', catalogId: 'handfill_zone', readyMonth: 0 } as never);

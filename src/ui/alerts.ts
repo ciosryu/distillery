@@ -200,7 +200,7 @@ export function monthTodos(s: GameState): Todo[] {
     const more = s.b2b.caskBids.length > 1 ? ` 외 ${s.b2b.caskBids.length - 1}건` : '';
     out.push({ id: 'cask-bid', level: 'info', text: `${b.buyerName}에서 통 ${b.caskId}${c ? `(숙성 ${Math.floor(c.oakMonths / 12)}년 ${c.oakMonths % 12}개월)` : ''}를 ${fmtWon(b.price)}에 사겠다고 한다${more} — ${b.expiresMonth - s.month <= 1 ? '이번 달까지' : `${b.expiresMonth - s.month}개월 안에`} 답. 병입해 팔 때보다 싸다 — 다 못 팔 통이면 팔고, 12년 플래그십 후보면 남긴다`, action: '원액 B2B', target: { tab: 'b2b' } });
   }
-  // 핸드필 존 (P-PROD-31) — 지었는데 지정한 통이 없다(처음, 또는 통이 비어 풀림). 숙성 중인 캐스크 칸이 접혀 있어 놓치기 쉽다
+  // 핸드필 존 (#233) — 지었는데 지정한 통이 없다(처음, 또는 통이 비어 풀림). 숙성 중인 캐스크 칸이 접혀 있어 놓치기 쉽다
   if (s.scenario && hasHandfillZone(s) && !handfillCask(s) && s.production.equipment.some((e) => EQUIPMENT[e.catalogId]?.kind === 'visitor' && e.readyMonth <= s.month)) {
     out.push({ id: 'handfill', level: 'info', text: '핸드필 존에 통이 없다 — 숙성 중인 캐스크 칸에서 핸드필 전용 통을 고르면 방문객이 매달 500ml씩 담아 간다(병입 권장가의 약 2배)', action: '통 고르기', target: { anchor: 'mvp-warehouse' } });
   }
