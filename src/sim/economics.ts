@@ -374,7 +374,7 @@ export function autoRestockPlan(s: GameState, p: Product, monthOfYear = calendar
     got += Math.floor(liters * 10) / 10 * x.lot.abv;
   }
   if (!components.length) return null;
-  const opts: BottleOptions = { name: '', targetAbv: isCaskStrength(p) ? 'cask' : p.abv, bottleMl: p.bottleMl, chillFilter: p.chillFiltered, packagingId: p.packagingId, restockId: p.id };
+  const opts: BottleOptions = { name: '', targetAbv: isCaskStrength(p) ? 'cask' : p.abv, bottleMl: p.bottleMl, chillFilter: p.chillFiltered, packagingId: p.packagingId, restockId: p.id , ...(p.packaging ? { packaging: p.packaging } : {}) };
   return { components, opts, target, need };
 }
 
