@@ -28,16 +28,18 @@ describe('가상 커뮤니티 피드 (#247)', () => {
     expect(JSON.stringify(s)).toBe(before);
   });
 
-  it('출현 비율: 매니아(CS) → 위스키베이스, 대중(소주) → 위스키베이스가 작다, 가격 극단 → 디시가 커진다', () => {
+  it('출현 비율(v2): 매니아(CS) → 위스키베이스·위갤, 대중(소주) → 주갤·카페, 가격 극단 → 디시 둘 다 커진다', () => {
     const cs = styleWeights({ category: 'whisky' }, { mania: 1, mass: 0, extreme: 0, launch: false });
     expect(cs.whiskybase).toBeGreaterThan(cs.cafe);
-    expect(cs.whiskybase).toBeGreaterThan(cs.dc);
+    expect(cs.dc_whisky).toBeGreaterThan(cs.dc_jugal);
     const soju = styleWeights({ category: 'soju_distilled' }, { mania: 0, mass: 1, extreme: 0, launch: false });
     expect(soju.whiskybase).toBeLessThan(0.1);
+    expect(soju.dc_jugal).toBeGreaterThan(soju.dc_whisky);
     const calm = styleWeights({ category: 'whisky' }, { mania: 0, mass: 0, extreme: 0, launch: false });
     const wild = styleWeights({ category: 'whisky' }, { mania: 0, mass: 0, extreme: 1, launch: false });
-    expect(wild.dc).toBeGreaterThan(calm.dc);
-    for (const w of [cs, soju, calm, wild]) expect(w.whiskybase + w.cafe + w.dc).toBeCloseTo(1, 9);
+    expect(wild.dc_jugal).toBeGreaterThan(calm.dc_jugal);
+    expect(wild.dc_whisky).toBeGreaterThan(calm.dc_whisky);
+    for (const w of [cs, soju, calm, wild]) expect(w.whiskybase + w.cafe + w.dc_whisky + w.dc_jugal).toBeCloseTo(1, 9);
   });
 
   it('상황: 품질 좋은데 너무 싸면 가격 신호, 최하인데 싸면 하이볼용, 비싸면 조롱', () => {
@@ -57,20 +59,39 @@ describe('가상 커뮤니티 피드 (#247)', () => {
     expect(posts[0]!.signal).toBe('raise_price'); // 같은 달 안에서 맨 위
   });
 
-  it('거친 말 수위(오너 결정 5): 긍정 ≤ 0.5, 디시 부정 ≥ 1, 심한 부정에서만 가끔 2', () => {
-    let n2 = 0, nNeg = 0;
+  it('거친 말 수위(v2): 카페·위스키베이스 0 · 위갤 긍정 ≤ 0.5 · 주갤은 칭찬도 1, 부정의 2 비율이 위갤보다 높다', () => {
+    const c = { w: { neg: 0, two: 0 }, j: { neg: 0, two: 0 } };
     for (let seed = 1; seed <= 40; seed++) {
       const bad = product({ id: 'x', name: '창렬 위스키', quality: 40, price: 200_000, flavor: { solvent: 20, cereal: 10 } });
       const good = product({ id: 'y', name: '좋은 위스키', quality: 82, price: 70_000 });
       for (const p of feedFor(world([bad, good], 3, 300, seed), 3, 100)) {
-        if (p.tone === 'pos') expect(p.harsh).toBeLessThanOrEqual(0.5);
-        if (p.style === 'dc' && p.tone === 'neg') { expect(p.harsh).toBeGreaterThanOrEqual(1); nNeg++; if (p.harsh === 2) n2++; }
-        if (p.style !== 'dc') expect(p.harsh).toBe(0);
+        if (p.style === 'cafe' || p.style === 'whiskybase') expect(p.harsh).toBe(0);
+        if (p.style === 'dc_whisky' && p.tone === 'pos') expect(p.harsh).toBeLessThanOrEqual(0.5);
+        if (p.style === 'dc_jugal') expect(p.harsh).toBeGreaterThanOrEqual(1);
+        if (p.tone === 'neg' && p.style === 'dc_whisky') { c.w.neg++; if (p.harsh === 2) c.w.two++; }
+        if (p.tone === 'neg' && p.style === 'dc_jugal') { c.j.neg++; if (p.harsh === 2) c.j.two++; }
       }
     }
-    expect(nNeg).toBeGreaterThan(10);
-    expect(n2).toBeGreaterThan(0); // 나올 수는 있다
-    expect(n2 / nNeg).toBeLessThan(0.45); // 빈도는 낮다
+    expect(c.w.neg).toBeGreaterThan(5);
+    expect(c.j.neg).toBeGreaterThan(5);
+    expect(c.w.two / c.w.neg).toBeLessThan(0.45); // 위갤: 욕은 가끔
+    expect(c.j.two / c.j.neg).toBeGreaterThan(c.w.two / c.w.neg); // 주갤: 욕설 중심
+  });
+
+  it('다양성(v2): 여러 판에서 글이 거의 겹치지 않고, 주갤 뻘글·댓글이 나온다', () => {
+    const texts = new Set<string>();
+    let offtopic = 0, replies = 0, total = 0;
+    for (let seed = 1; seed <= 30; seed++) {
+      const ps = [product({ id: 'a', name: '피트 몰트', quality: 75, flavor: { peat_smoke: 40, cereal: 20 } }), product({ id: 'b', name: '소주', category: 'soju_distilled', ageYears: null, oakMonths: 0, abv: 0.25, quality: 52, price: 12_000, flavor: { nuruk_rice: 30 } })];
+      for (const p of feedFor(world(ps, 3, 600, seed), 3, 100)) {
+        total++; texts.add(p.text);
+        if (p.style === 'dc_jugal' && p.tone === 'neu' && !p.id.includes(':cmp:')) offtopic++;
+        if (p.replies?.length) replies++;
+      }
+    }
+    expect(texts.size / total).toBeGreaterThan(0.6);
+    expect(offtopic).toBeGreaterThan(0);
+    expect(replies).toBeGreaterThan(total * 0.3);
   });
 
   it('비교 글(오너 결정 6): 같은 주종을 둘 이상 팔면 "A vs B"가 나온다 — 낮은 품질 쪽이 진다', () => {

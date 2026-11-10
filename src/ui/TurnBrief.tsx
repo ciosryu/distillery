@@ -21,7 +21,7 @@ export function turnNews(s: ReturnType<typeof useGame.getState>['state'], fromMo
     return { ...e, urgent: !!def && URGENT.has(def.category) };
   }).sort((a, b) => Number(b.urgent) - Number(a.urgent) || a.month - b.month);
   const notes = s.history.reports.filter((r) => r.month >= fromMonth && r.month < s.month)
-    .flatMap((r) => r.notes.filter((n) => /^(새 기능 열림|중반 목표|마일스톤|핸드필 .*비었다|자동 통입 못 함)/.test(n)).map((n) => ({ month: r.month, text: n })));
+    .flatMap((r) => r.notes.filter((n) => /^(새 기능 열림|중반 목표|마일스톤|핸드필 .*비었다|자동 통입 못 함|IB 입찰 제안)/.test(n)).map((n) => ({ month: r.month, text: n })));
   return { events, notes };
 }
 

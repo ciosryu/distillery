@@ -7,6 +7,7 @@ import { liters, months, num, pct, won, wonFull } from '../format';
 import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';
 import { useState, type ReactNode } from 'react';
 import { isFlagshipCandidate } from '../../sim/delegateCheck';
+import { ibAgedCaskCount } from '../../sim/bulk';
 
 const STYLE_LABEL = { any: '무관', unpeated: '논피트', peated: '피트' } as const;
 
@@ -173,6 +174,11 @@ export function B2B() {
       </Card>
 
       <Card title="독립 병입자(IB) 캐스크 매입 제안 — 3년 이상·품질 65 이상 캐스크">
+        {(() => {
+          // #259: 나이 조건(3년↑)을 채운 통 수 — 0이면 제안이 오지 않는다(후반 확인 판: 해금됐지만 쓸 통이 없었다)
+          const aged = ibAgedCaskCount(s);
+          return <p className={`mb-2 text-xs ${aged ? 'text-stone-500' : 'text-amber-800 dark:text-amber-300'}`}>{aged ? `지금 3년 이상 통 ${aged}개 — 그중 품질 65 이상이면 가끔 제안이 온다(받을 기한은 다음 달까지)` : '지금 3년 이상 통이 없어 제안이 오지 않는다 — 자동 납품·병입이 어린 통부터 쓰면 3년을 못 넘긴다. 플래그십 후보와 함께 통 일부를 남겨 두라'}</p>;
+        })()}
         {!s.b2b.caskBids.length ? <Empty>제안이 없습니다 (조건에 맞는 캐스크가 있으면 가끔 들어옵니다)</Empty> : (
           <Table head={['병입자', '캐스크', '숙성', '품질', '제안가(현물가의 135%)', '만료', '']}>
             {s.b2b.caskBids.map((b) => {
@@ -184,7 +190,7 @@ export function B2B() {
                   <Td right>{c?.contents ? months(c.contents.oakMonths) : '—'}</Td>
                   <Td right>{c?.contents ? caskQuality(s, hide, c, known?.get(c.id)) : '—'}</Td>
                   <Td right>{won(b.price)}</Td>
-                  <Td right>{b.expiresMonth - s.month}개월 후</Td>
+                  <Td right>{b.expiresMonth - s.month <= 0 ? <Badge tone="bad">이번 달까지</Badge> : <Badge tone="warn">다음 달까지</Badge>}</Td>
                   <Td><SellConfirm arm={arm} id={`bid:${b.id}`} label="판매" variant="primary" preview={<>캐스크 <b>{b.caskId}</b>{c?.contents ? <> ({liters(c.contents.volumeL)} · 숙성 {months(c.contents.oakMonths)})</> : null}를 {b.buyerName}에 넘기고 <b>{won(b.price)}</b>을 받는다. 남는 숙성 통 {maltCasks.length - 1}개</>} warnings={c ? caskSellWarnings(s, c) : []} onConfirm={() => dispatch({ type: 'acceptCaskBid', bidId: b.id })} /></Td>
                 </tr>
               );

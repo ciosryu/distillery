@@ -9,9 +9,10 @@ import { Badge, Card, Empty } from './kit';
 const STYLE_TONE: Record<FeedStyle, string> = {
   whiskybase: 'border-l-indigo-400 dark:border-l-indigo-500',
   cafe: 'border-l-emerald-400 dark:border-l-emerald-500',
-  dc: 'border-l-sky-400 dark:border-l-sky-500',
+  dc_whisky: 'border-l-sky-400 dark:border-l-sky-500',
+  dc_jugal: 'border-l-rose-400 dark:border-l-rose-500',
 };
-const STYLE_LABEL: Record<FeedStyle, string> = { whiskybase: '리뷰', cafe: '카페', dc: '갤러리' };
+const STYLE_LABEL: Record<FeedStyle, string> = { whiskybase: '리뷰', cafe: '카페', dc_whisky: '위갤', dc_jugal: '주갤' };
 
 function Post({ p, startYear }: { p: FeedPost; startYear: number }) {
   return (
@@ -25,6 +26,9 @@ function Post({ p, startYear }: { p: FeedPost; startYear: number }) {
         {p.score != null && <Badge tone="info">{p.score}점</Badge>}
       </div>
       <p className="mt-0.5 text-sm leading-snug text-stone-800 dark:text-stone-200">{p.text}</p>
+      {p.replies?.map((r, i) => (
+        <p key={i} className="mt-0.5 pl-3 text-xs leading-snug text-stone-600 dark:text-stone-400"><span className="text-stone-400">ㄴ {r.author}</span> {r.text}</p>
+      ))}
     </li>
   );
 }
@@ -42,7 +46,7 @@ export function FeedCard() {
       title="커뮤니티 반응 (최근 3개월)"
       actions={
         <span className="flex flex-wrap items-center gap-2 text-xs text-stone-500">
-          {(['whiskybase', 'cafe', 'dc'] as FeedStyle[]).map((k) => <span key={k}>{STYLE_LABEL[k]} {counts[k] ?? 0}</span>)}
+          {(['whiskybase', 'cafe', 'dc_whisky', 'dc_jugal'] as FeedStyle[]).map((k) => <span key={k}>{STYLE_LABEL[k]} {counts[k] ?? 0}</span>)}
           <select className="rounded border border-stone-300 bg-white px-1 py-0.5 dark:border-stone-700 dark:bg-stone-900" value={only} onChange={(e) => setOnly(e.target.value)}>
             <option value="">모든 제품</option>
             {ids.map((id) => <option key={id} value={id}>{s.commerce.products.find((x) => x.id === id)?.name ?? id}</option>)}

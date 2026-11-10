@@ -23,6 +23,9 @@
 //     maltOff = [a, b] a개월에 몰트 지시 0, b개월에 원래대로(6년 차 증류기 고장 뒤 다시 켜지 않음)
 //   P6=1 이면 "현금이 n개월 고정비 아래면 그 달 생산을 건너뛴다"(QoL SOP 안, 오너 2026-11-10) 실험 — skipBelow = n.
 //     그 달 월초 현금 < n × 매달 나가는 돈(monthlyFixedCost)이면 생산 지시를 0으로, 아니면 원래대로. 4차 재현(Q0)·비지터 없음(Q1)·3차 행동 셋(Q6) 위에서
+//   P7=1 이면 플래그십 후보가 어디서 사라지나(후반 확인 판, 표준 규모 166개월 — 숙성 통 최장 16개월) 실험 — 위스키 병입 순서와 보호를 바꾼다.
+//     order 'young' = 표기 이상 통 중 어린 통부터(자동 납품 #206의 규칙) · labelFrom = [m, 개월] 그 달부터 병입 최소 숙성(3년 표기 제품 = 36) ·
+//     protect = 플래그십 후보(isFlagshipCandidate) 중 가장 오래된 n통은 병입하지 않는다(#249 QoL ② "보호" 태그를 흉내) — TIER=standard로 돌린다
 //   DUMP=<폴더> 이면 정책 묶음의 첫 정책·시드 1 판을 59·83·107·119·179개월에 기록 파일(playlog 없음)로 떨군다 — 화면에서 "기록 파일 불러오기"로 열어
 //     단계 해금(6·8·10·11년 차)을 직접 지나가 보는 점검용(5차 전 점검, mvp.md §7.1). 출력 표는 그대로다
 //   SPLIT=1 이면 15년 순자산 분해 표를 더 낸다(현금·대출·원액 현물가·제품, 위스키 매출 시기, 원액 평가액 증가 대 생산비 — #191 정정, mvp.md §7.6)
@@ -33,6 +36,7 @@ import { EVENTS } from '../../src/sim/content/events';
 import { cashAlert } from '../../src/ui/alerts';
 import { netWorth } from '../../src/sim/progress';
 import { monthlyFixedCost } from '../../src/sim/loans';
+import { isFlagshipCandidate } from '../../src/sim/delegateCheck';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
 const DUMP = process.env.DUMP;
@@ -45,7 +49,7 @@ const TIER = (process.env.TIER ?? 'micro') as 'micro' | 'standard';
 const LOAN = Number(process.env.LOAN ?? 0);
 EVENTS.splice(0); // MVP: 랜덤 이벤트 OUT (#130)
 
-interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number }
+interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number }
 const P = (name: string, o: Partial<Policy>): Policy => ({ name, soju: 'stock', loans: 'banner', cut: 'none', visitor: true, farm: false, bigMalt: false, ...o });
 const POLICIES: Policy[] = [
   P('A 봇 기준', { loans: 'bot' }),
@@ -96,6 +100,16 @@ const P6_POLICIES: Policy[] = [0, 0.5, 1, 2, 3].flatMap((n) => [
   P4(`U 비지터 없음 · n=${n}`, { visitor: false, skipBelow: n }),
   P4(`V 3차 행동 셋 · n=${n}`, { visitor: false, cut: 'p3', sellNewMake: true, skipBelow: n }),
 ]);
+// 플래그십 후보 실험 (P7) — 4차 재현(Q0) 위에서 병입 순서·표기·보호만 바꾼다. 후반 확인 판: 1년 표기 17개월 → 3년 표기 43개월 → 자동 납품(어린 통부터)
+const LABEL3: [number, number] = [43, 36];
+const P7_POLICIES: Policy[] = [
+  P4('W0 4차 재현 — 오래된 통부터 병입(봇 기본)', {}),
+  P4('W1 어린 통부터(자동 납품 방식) · 1년 표기', { order: 'young' }),
+  P4('W2 어린 통부터 · 43개월부터 3년 표기(후반 확인 판에 가까움)', { order: 'young', labelFrom: LABEL3 }),
+  P4('W3 W0 + 후보 2통 보호', { protect: 2 }),
+  P4('W4 W2 + 후보 2통 보호', { order: 'young', labelFrom: LABEL3, protect: 2 }),
+  P4('W5 W2 + 후보 5통 보호', { order: 'young', labelFrom: LABEL3, protect: 5 }),
+];
 const P3_POLICIES: Policy[] = [
   P3('R0 3차 규모 · 사람 기준(배너 대출·비지터 지음)', {}),
   P3('R1 R0 + 비지터 센터 안 지음', { visitor: false }),
@@ -149,7 +163,10 @@ function bottle(s: GameState, p: Policy, t: { firstWhisky: number }): GameState 
   const target = Math.max(600, demandLast(s, 'whisky') * 1.5);
   if (stock < target) {
     const n = Math.min(10, Math.max(1, Math.ceil((target - stock) / 330)));
-    const ready = s.inventory.casks.filter((c) => c.contents && c.contents.kind === 'malt' && c.contents.oakMonths >= 12).sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths).slice(0, n);
+    const minOak = p.labelFrom && s.month >= p.labelFrom[0] ? p.labelFrom[1] : 12;
+    const kept = new Set(p.protect ? s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c)).sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths).slice(0, p.protect).map((c) => c.id) : []);
+    const ready = s.inventory.casks.filter((c) => c.contents && c.contents.kind === 'malt' && c.contents.oakMonths >= minOak && !kept.has(c.id))
+      .sort((a, b) => (p.order === 'young' ? 1 : -1) * (a.contents!.oakMonths - b.contents!.oakMonths)).slice(0, n);
     if (ready.length) {
       const comps = ready.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }));
       const opts = { name: `싱글 몰트 ${s.month}`, targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' };
@@ -202,7 +219,7 @@ const spiritsValue = (s: GameState) => [...s.inventory.lots, ...s.inventory.cask
   .reduce((t, l) => t + (isBulkKind(l) ? l.volumeL * l.abv * spotBidPerLPA(s, l) : 0), 0);
 
 interface Split { cash: number; loans: number; spirits: number; products: number; whiskyRevY6to9: number; whiskyRevY10to15: number; spiritsGainY2to5: number; productionY2to5: number }
-interface Row { split: Split; cutMonth: number; policy: string; bankrupt3: number; bankrupt6: number; minCash: number; minCashMonth: number; loansMax: number; firstWhisky: number; nw: number; goal: boolean; verdict: string; whiskyY6to9: number }
+interface Row { cands: number[]; flagCasks: number; split: Split; cutMonth: number; policy: string; bankrupt3: number; bankrupt6: number; minCash: number; minCashMonth: number; loansMax: number; firstWhisky: number; nw: number; goal: boolean; verdict: string; whiskyY6to9: number }
 
 function play(p: Policy, seed: number): Row {
   let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: TIER, loanAmount: LOAN, seed });
@@ -213,6 +230,7 @@ function play(p: Policy, seed: number): Row {
   s = setOrders(s, sojuBatches(p), maltBatches(p));
   const split: Split = { cash: 0, loans: 0, spirits: 0, products: 0, whiskyRevY6to9: 0, whiskyRevY10to15: 0, spiritsGainY2to5: 0, productionY2to5: 0 };
   let spirits12 = 0;
+  const cands: number[] = [];
   let bankrupt3 = -1, bankrupt6 = -1, neg = 0, cut = false, cutMonth = -1, minCash = s.finance.cash, minCashMonth = 0, loansMax = 0, whiskyY6to9 = 0;
   const cats = () => new Map([...s.commerce.products, ...s.commerce.productArchive].map((x) => [x.id, x.category]));
   for (let m = 0; m < MONTHS; m++) {
@@ -238,6 +256,7 @@ function play(p: Policy, seed: number): Row {
     if (s.finance.cash < minCash) { minCash = s.finance.cash; minCashMonth = s.month; }
     loansMax = Math.max(loansMax, s.finance.loans.reduce((x, l) => x + l.balance, 0));
     if (s.month === 12) spirits12 = spiritsValue(s);
+    if ([36, 72, 108, 144].includes(s.month)) cands.push(s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c)).length);
     if (s.month === 60) split.spiritsGainY2to5 = spiritsValue(s) - spirits12;
     if (s.month > 12 && s.month <= 60) split.productionY2to5 += s.history.reports.at(-1)?.expenses.production ?? 0;
     if (s.month >= 60) { const c = cats(); const rev = (s.history.reports.at(-1)?.sales ?? []).filter((x) => c.get(x.productId) === 'whisky').reduce((a, x) => a + x.revenue, 0); if (s.month < 108) split.whiskyRevY6to9 += rev; else split.whiskyRevY10to15 += rev; }
@@ -247,7 +266,8 @@ function play(p: Policy, seed: number): Row {
   Object.assign(split, { cash: s.finance.cash, loans: s.finance.loans.reduce((x, l) => x + l.balance, 0), spirits: spiritsValue(s), products: s.commerce.products.reduce((x, q) => x + q.stockBottles * q.unitCost, 0) });
   const nw = alive ? netWorth(s) : NaN;
   const v = s.progress.verdict;
-  return { split, cutMonth, policy: p.name, bankrupt3, bankrupt6, minCash, minCashMonth, loansMax, firstWhisky: t.firstWhisky, nw, goal: alive && bankrupt3 < 0 && !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', whiskyY6to9 };
+  const flagCasks = s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.kind === 'malt' && c.contents.oakMonths >= (s.scenario?.goal.flagshipMinMonths ?? 144)).length;
+  return { cands, flagCasks, split, cutMonth, policy: p.name, bankrupt3, bankrupt6, minCash, minCashMonth, loansMax, firstWhisky: t.firstWhisky, nw, goal: alive && bankrupt3 < 0 && !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', whiskyY6to9 };
 }
 
 const eok = (v: number) => (Number.isFinite(v) ? `${(v / 1e8).toFixed(2)}억` : '—');
@@ -255,7 +275,9 @@ const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.le
 const med = (xs: number[]) => { const a = [...xs].sort((x, y) => x - y); return a.length ? a[Math.floor(a.length / 2)]! : NaN; };
 const mo = (v: number) => (Number.isFinite(v) ? `${Math.round(v)}월` : '—');
 
-console.log(process.env.P5
+console.log(process.env.P7
+  ? `플래그십 후보 실험 — 4차 재현 봇(한국 경기, ${TIER}, ${SEEDS}시드 × ${MONTHS}개월, 이벤트 끔)에서 위스키 병입 순서·표기·후보 보호만 바꾼다`
+  : process.env.P5
   ? `5차 MVP 플레이테스트 재현 — 4차 재현 봇(한국 경기, ${TIER}, ${SEEDS}시드 × ${MONTHS}개월, 이벤트 끔)에 통입 감소·66~75개월 몰트 0·70개월 숙성 통 소진을 넣는다`
   : process.env.P4
   ? `4차 MVP 플레이테스트 재현 — 한국 경기, ${TIER}, 시작 대출 ${eok(LOAN)}, ${SEEDS}시드 × ${MONTHS}개월, 이벤트 끔, 소주 1·언피티드 몰트 4배치, 스테인리스 발효조 2기, 전통주 등록, 마케팅 350 → 500만`
@@ -265,13 +287,24 @@ console.log(process.env.P5
 console.log('| 정책 | 파산 (3개월 규칙, 중앙 월) | 파산 (6개월 규칙, 중앙 월) | 최저 현금 중앙값 (그 달) | 최대 대출 잔액 평균 | 첫 위스키 | 6~9년 차 위스키 판매(병, 평균) | 15년 순자산 평균(3개월 규칙 생존) | 순자산 목표 달성 |');
 console.log('|---|---|---|---|---|---|---|---|---|');
 const ALL = new Map<string, Row[]>();
-const RUN = process.env.P6 ? P6_POLICIES : process.env.P5 ? P5_POLICIES : process.env.P4 ? P4_POLICIES : process.env.P3 ? P3_POLICIES : POLICIES;
+const RUN = process.env.P7 ? P7_POLICIES : process.env.P6 ? P6_POLICIES : process.env.P5 ? P5_POLICIES : process.env.P4 ? P4_POLICIES : process.env.P3 ? P3_POLICIES : POLICIES;
 for (const p of RUN) {
   const rows = Array.from({ length: SEEDS }, (_, i) => play(p, i + 1));
   ALL.set(p.name, rows);
   const b3 = rows.filter((r) => r.bankrupt3 >= 0), b6 = rows.filter((r) => r.bankrupt6 >= 0);
   const alive3 = rows.filter((r) => r.bankrupt3 < 0 && r.bankrupt6 < 0);
   console.log(`| ${p.name} | ${b3.length}/${SEEDS} (${mo(med(b3.map((r) => r.bankrupt3)))}) | ${b6.length}/${SEEDS} (${mo(med(b6.map((r) => r.bankrupt6)))}) | ${eok(med(rows.map((r) => r.minCash)))} (${mo(med(rows.map((r) => r.minCashMonth)))}) | ${eok(avg(rows.map((r) => r.loansMax)))} | ${mo(med(rows.map((r) => r.firstWhisky).filter((x) => x >= 0)))} | ${Math.round(avg(rows.map((r) => r.whiskyY6to9))).toLocaleString()} | ${eok(avg(alive3.map((r) => r.nw)))} | ${rows.filter((r) => r.goal).length}/${SEEDS} |${rows.some((r) => r.cutMonth >= 0) ? ` 생산 중단 ${mo(med(rows.map((r) => r.cutMonth).filter((x) => x >= 0)))}` : ''}`);
+}
+
+if (process.env.P7) {
+  // 플래그십 후보 = 판이 끝나기 전 144개월을 채울 수 있는 자체 원액 통(#240, isFlagshipCandidate). 끝에 144개월 이상 통이 1개라도 있어야 플래그십을 낼 수 있다
+  console.log('\n| 정책 | 후보 36개월 | 72개월 | 108개월 | 144개월 | 끝에 144개월 이상 통(평균) | 플래그십 가능 판 | 15년 순자산 평균 |');
+  console.log('|---|---|---|---|---|---|---|---|');
+  for (const p of RUN) {
+    const rows = ALL.get(p.name) ?? [];
+    const c = (i: number) => avg(rows.map((r) => r.cands[i] ?? 0)).toFixed(1);
+    console.log(`| ${p.name} | ${c(0)} | ${c(1)} | ${c(2)} | ${c(3)} | ${avg(rows.map((r) => r.flagCasks)).toFixed(1)} | ${rows.filter((r) => r.flagCasks > 0).length}/${rows.length} | ${eok(avg(rows.filter((r) => r.bankrupt3 < 0 && r.bankrupt6 < 0).map((r) => r.nw)))} |`);
+  }
 }
 
 if (process.env.SPLIT) {
