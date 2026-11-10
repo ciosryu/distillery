@@ -1,4 +1,4 @@
-import { DISTRIBUTION, PACKAGING, logisticsCost } from './content/catalog';
+import { DISTRIBUTION, logisticsCost } from './content/catalog';
 import { agedWhitePerception, BRANDS, PRICE_CURVE, SKU } from './content/market';
 import { rivalShare } from './rivals';
 import { awarenessOf, brandLuxuryFactor, brandMarketing, brandOf, houseBrand, secondBrands } from './brands';
@@ -13,6 +13,7 @@ import { hexOf } from './blendRadar';
 import { RARE, trendFactor } from './blendTable';
 import { staffOf } from './util';
 import { mod } from './modifiers';
+import { packagingAppealFactor } from './packaging';
 import type { ExportEntry, ExportSale, GameState, Product, ProductCategory } from './types';
 import { EXPORT_MARKETS, EXPORT_SALES, tariffKey, type ExportMarketDef } from './content/exports';
 import type { Rng } from './rng';
@@ -69,7 +70,7 @@ export function priceBreakdown(s: GameState, p: Pick<Product, 'price' | 'bottleM
 export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId'>): number {
   const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
   const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths); // 숙성 소주 표기 #217
-  const lux = PACKAGING[p.packagingId]?.luxury ?? 1;
+  const lux = packagingAppealFactor(p); // 패키징 매력 배수 — 조합 점수(#248) 0~30 → 1.0~1.15, 프리셋은 옛 PACKAGING[id].luxury와 같다
   // 시장 국면: 피트·셰리 유행
   // 시장 국면: 향미 트렌드 이동 (결정 #125 — 옛 피트·셰리 계단식 보정치를 육각형 축 기반 연속 배수로 대체)
   const trend = s ? mod(s, 'appeal:all') * trendFactor(s, p.hex ?? hexOf(p.flavor)) : 1;

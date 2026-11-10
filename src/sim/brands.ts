@@ -1,5 +1,6 @@
 import { AGED_WHITE, BRAND_LUXURY, BRANDS } from './content/market';
 import { isLocked } from './scenario';
+import { packagingLuxury } from './packaging';
 import { nid } from './util';
 import type { BrandLine, GameState, Product, ProductCategory } from './types';
 
@@ -76,9 +77,9 @@ export function closeSecondBrand(s: GameState, brandId: string): BrandLine | str
 const WHISKY_CATEGORIES: readonly ProductCategory[] = ['whisky', 'blended_whisky', 'grain_whisky'];
 
 /** 제품 럭셔리 L_p(0~100) — 패키징 + 숙성 표기(위스키 연수 · 숙성 소주 표기 #217) + 희소성. 품질 게이트: L_p ≤ 품질. 가격은 넣지 않는다(§11.2 ①) */
-export function productLuxury(p: Pick<Product, 'packagingId' | 'category' | 'oakMonths' | 'ageYears' | 'restMonths' | 'rareSingleCask' | 'quality'>): number {
+export function productLuxury(p: Pick<Product, 'packagingId' | 'packaging' | 'bottleMl' | 'category' | 'oakMonths' | 'ageYears' | 'restMonths' | 'rareSingleCask' | 'quality'>): number {
   const L = BRAND_LUXURY;
-  let v = L.packaging[p.packagingId] ?? 0;
+  let v = packagingLuxury(p); // 패키징 0~30 — 병입 때 고정한 조합(#248), 옛 제품은 packagingId 프리셋
   if (WHISKY_CATEGORIES.includes(p.category)) {
     const years = Math.floor((p.oakMonths ?? (p.ageYears ?? 0) * 12) / 12);
     v += Math.min(L.whiskyCap, years * L.whiskyPerYear);
