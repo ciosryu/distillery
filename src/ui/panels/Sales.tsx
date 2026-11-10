@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PRODUCT_NAME_MAX } from '../../sim/actions.prod';
 import { CATEGORY } from '../../sim/content/categories';
 import { AUTO_RESTOCK_MONTHS, autoRestockSupported } from '../../sim/economics';
 import { AXIS } from '../../sim/content/axes';
@@ -114,6 +115,9 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
   const dispatch = useGame((g) => g.dispatch);
   const [picked, setPicked] = useState<string | null>(null);
   const [openGroups, setOpenGroups] = useState<string[]>([]);
+  // 이름 바꾸기 (P-PROD-32) — 연필을 누른 제품 하나만 입력 칸으로
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const commitRename = () => { if (renaming && dispatch({ type: 'renameProduct', productId: renaming.id, name: renaming.name })) setRenaming(null); };
   const { monthOfYear } = calendar(s);
   const region = regionOf(s);
   const active = sellingProducts(s);
@@ -146,7 +150,14 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
       <tr key={p.id} className={isPicked ? 'bg-amber-50/60 dark:bg-amber-950/30' : ''}>
         <Td className="font-medium">
           <span className="inline-flex items-center gap-1">
-            {p.name}
+            {renaming?.id === p.id ? (
+              <input autoFocus aria-label={`${p.name} 새 이름`} maxLength={PRODUCT_NAME_MAX} value={renaming.name} onChange={(e) => setRenaming({ id: p.id, name: e.target.value })}
+                onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(null); }} onBlur={commitRename}
+                className="w-48 rounded border border-amber-400 bg-white px-1 py-0.5 text-sm font-normal dark:bg-stone-800" />
+            ) : <>
+              {p.name}
+              <button type="button" className="rounded px-1 text-xs text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:hover:bg-stone-800" aria-label={`${p.name} 이름 바꾸기`} title="이름 바꾸기 — 무료, 판매 기록·숙성 표기는 그대로 (Enter로 저장, Esc로 취소)" onClick={() => setRenaming({ id: p.id, name: p.name })}>✎</button>
+            </>}
             {/* 품절 제품 지우기 (2026-11-09 오너 요청) — 누르지 않으면 남아 있고, 재고 보충으로 다시 채울 수 있다 */}
             {p.stockBottles <= 0 && !dfOnly && <button type="button" className="rounded px-1 text-stone-400 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950" aria-label={`${p.name} 목록에서 지우기`} title="판매 목록에서 지운다 — 판매 기록은 남는다. 지우지 않으면 남아 있고, 블렌딩·병입의 [기존 제품 재고 보충]으로 다시 채울 수 있다" onClick={() => dispatch({ type: 'archiveProduct', productId: p.id })}>×</button>}
           </span>
