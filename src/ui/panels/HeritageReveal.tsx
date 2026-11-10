@@ -1,4 +1,4 @@
-// 헤리티지 병입 연출 (P-PROD-37, 2026-11-10 오너 요청 — "12년 동안 데스밸리를 견디며 묵혀 둔 캐스크를 병입하는 과정이 버튼 한 번으로 싱겁게 끝난다")
+// 헤리티지 병입 연출 (#244, 2026-11-10 오너 요청 — "12년 동안 데스밸리를 견디며 묵혀 둔 캐스크를 병입하는 과정이 버튼 한 번으로 싱겁게 끝난다")
 // 10년 이상 통 · 플래그십이 되는 병입 직후 화면 가운데에 그 통의 연표(증류 → 통입 → 견딘 재해·통의 사고 → 샘플 → 이정표)와 새 제품을 보인다.
 // 연표는 병입 전 상태로 계산해 넘겨받는다(병입하면 통이 빈다). 화면만 — 규칙은 그대로
 import { caskStory, heritageCasks, monthLabel, type BlendComponent, type BottleOptions, type CaskStory, type GameState, type Product } from '../../sim';
@@ -52,7 +52,7 @@ export function HeritageReveal({ data, onClose }: { data: HeritageRevealData; on
   );
 }
 
-/** 헤리티지 병입 (P-PROD-37) — 병입 전 연표를 만들고, 병입이 되면 새(또는 보충한) 제품과 함께 연출 창 데이터를 돌려준다 */
+/** 헤리티지 병입 (#244) — 병입 전 연표를 만들고, 병입이 되면 새(또는 보충한) 제품과 함께 연출 창 데이터를 돌려준다 */
 export function bottleWithHeritage(s: GameState, dispatch: (a: Parameters<ReturnType<typeof useGame.getState>['dispatch']>[0]) => boolean, components: BlendComponent[], options: BottleOptions): HeritageRevealData | null | false {
   const casks = heritageCasks(s, components);
   const stories = casks.map((c) => caskStory(s, c));

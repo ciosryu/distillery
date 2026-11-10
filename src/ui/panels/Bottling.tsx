@@ -375,7 +375,7 @@ export function Bottling() {
               <Button variant="primary" disabled={!preview.ok} onClick={() => {
                 if (strongStock && !isArmed) { setArmed(blendKey); return; }
                 setArmed(null);
-                const r = bottleWithHeritage(s, dispatch, components, opts); // 10년 이상·플래그십이면 연표 창 (P-PROD-37)
+                const r = bottleWithHeritage(s, dispatch, components, opts); // 10년 이상·플래그십이면 연표 창 (#244)
                 if (r !== false) { setPicked({}); setOpts({ ...opts, name: '' }); if (r) setReveal(r); }
               }}>{strongStock ? (isArmed ? `정말 ${num(preview.bottles)}병 병입 — 한 번 더 누르면 병입합니다` : `${restockTarget ? '재고 보충' : '병입하기'} (재고 과다 — 확인 필요)`) : restockTarget ? `「${restockTarget.name}」 재고 보충` : '병입하기'}</Button>
             </div>

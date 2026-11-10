@@ -961,7 +961,7 @@ describe('자동 납품은 같은 레시피 원액만 (#243, 5차 MVP 플레이�
   });
 });
 
-describe('헤리티지 병입 연표 (P-PROD-37, 2026-11-10 오너 요청)', () => {
+describe('헤리티지 병입 연표 (#244, 2026-11-10 오너 요청)', () => {
   it('10년 이상 통만 연출 대상이고, 연표에 증류·통입·숙성 중 재해·통의 사고·샘플·이정표가 시간순으로 모인다', async () => {
     const { emptyCaskOf, heritageCasks, caskStory } = await import('./index');
     const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
