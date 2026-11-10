@@ -113,6 +113,8 @@ export const BRANDS = {
   rebrandFixed: 2_000_000,
   rebrandPerBottle: 300,
   maxNameLength: 20,
+  /** 리브랜딩 전환기 개월 ([결정 P-MKT-13]) — 판 적 있는 제품을 옮기면 이 기간 동안 옛 브랜드 인지도를 선형으로 줄여 가며 함께 쳐 준다 */
+  rebrandTransitionMonths: 12,
 };
 
 // ── 가격 반응 곡선 (PRD §9.2 → 결정 #198) [튜닝] ──
