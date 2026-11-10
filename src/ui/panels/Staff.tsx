@@ -1,10 +1,10 @@
 import { ROLE_INFO } from '../../sim/content/catalog';
-import type { Staff as StaffT } from '../../sim';
-import { ageOf, AGING_TENURE_MONTHS, APPRENTICE_MONTHS, HEADHUNT, headhuntCost, headhuntedThisMonth, marketSalary, masterDistiller, mentoringXp, MORALE, moraleOf, moraleOn, payShortfall, RETIRE_AGE, tenureOf, TRAINING, trainingCooldown, trainingCost, TRAIT_INFO } from '../../sim/hr';
+import type { GameState, Staff as StaffT } from '../../sim';
+import { ageOf, AGING_TENURE_MONTHS, APPRENTICE_MONTHS, departureHouseStyle, HEADHUNT, headhuntCost, headhuntedThisMonth, marketSalary, masterDistiller, mentoringXp, MORALE, moraleOf, moraleOn, payShortfall, RETIRE_AGE, tenureOf, TRAINING, trainingCooldown, trainingCost, TRAIT_INFO } from '../../sim/hr';
 import { pendingStages } from '../../sim/scenario';
 import { useGame } from '../../store/game';
 import { won } from '../format';
-import { Badge, Button, Card, Empty } from '../kit';
+import { Badge, Button, Card, ConfirmButton, Empty } from '../kit';
 import { Research } from './Research';
 
 const ROLE_EFFECT: Record<StaffT['role'], string> = {
@@ -69,6 +69,23 @@ function Person({ x, action, month, tag, morale }: { x: StaffT & { askSalary?: n
   );
 }
 
+/** 해고 확인 미리보기 (#240, P-MGT-26) — 위로금·급여·사기·하우스 스타일·부사수. 계산은 actions.mgt.ts fire·hr.ts handleDeparture와 같다 */
+function FirePreview({ s, x }: { s: GameState; x: StaffT }) {
+  const others = s.hr.staff.filter((y) => y.id !== x.id);
+  const house = departureHouseStyle(s, x);
+  const apprentices = others.filter((y) => y.apprenticeOf === x.id && y.id !== house?.heir?.id);
+  const lastDistiller = x.role === 'distiller' && !others.some((y) => y.role === 'distiller');
+  return <>
+    {x.name}({ROLE_INFO[x.role].nameKo}, Lv.{x.level})을(를) 내보낸다 — 위로금 <b>{won(x.salary)}</b> 지금 지급, 월 급여 {won(s.hr.staff.reduce((t, y) => t + y.salary, 0))} → {won(others.reduce((t, y) => t + y.salary, 0))}.
+    {moraleOn(s) && others.length > 0 && <> 남은 직원 {others.length}명 사기 −{MORALE.fired}{others.some((y) => moraleOf(y) - MORALE.fired < MORALE.quitBelow) ? ` (${MORALE.quitBelow} 아래로 떨어지는 직원이 생긴다 — 이직 위험)` : ''}.</>}
+    {house && house.mode === 'heir' && <> 마스터 디스틸러 — 부사수 {house.heir!.name}이(가) 잇는다: 하우스 스타일 {Math.round(s.hr.houseStyle)} → {house.after}.</>}
+    {house && house.mode === 'record' && <> 마스터 디스틸러 — 전수 기록 덕분에 하우스 스타일 {Math.round(s.hr.houseStyle)} → {house.after}.</>}
+    {house && house.mode === 'reset' && <b> 마스터 디스틸러 — 이을 부사수(24개월 이상)가 없어 하우스 스타일 {Math.round(s.hr.houseStyle)} → 0.</b>}
+    {apprentices.length > 0 && <> 부사수 {apprentices.map((y) => y.name).join('·')}은(는) 스승을 잃는다.</>}
+    {lastDistiller && <b> 마지막 디스틸러다 — 새로 뽑을 때까지 생산할 수 없다.</b>}
+  </>;
+}
+
 export function Staff() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
@@ -93,7 +110,7 @@ export function Staff() {
               const morale = moraleOn(s) ? <MoraleBar value={moraleOf(x)} title={`매달 ${MORALE.base} 쪽으로 돌아간다. 시세 ${won(Math.round(marketSalary(s, x)))}/월${short > 0 ? ` — ${Math.round(short * 100)}% 덜 받아 매달 −${(short * 100 * MORALE.payShortfall).toFixed(1)}` : ''}. 교육 +${MORALE.training}, 해고 때 남은 직원 −${MORALE.fired}, 1월 연봉 협상(인상 +${MORALE.raiseMorale} / 동결 ${MORALE.freezeMorale}). ${MORALE.quitBelow} 미만이면 이직할 수 있다`} /> : null;
               return <Person key={x.id} x={x} month={s.month} tag={tag} morale={morale} action={!hrOn ? null : <div className="flex flex-wrap gap-1">
                 <Button small disabled={wait > 0 || s.finance.cash < trainingCost(x)} onClick={() => dispatch({ type: 'trainStaff', staffId: x.id })} title={`교육 프로그램 — 월급 ${TRAINING.costMonths}개월 치, XP +${TRAINING.xpPerLevel * x.level}(반 레벨), 같은 직원은 ${TRAINING.cooldownMonths}개월에 한 번`}>{wait > 0 ? `교육 (${wait}개월 뒤)` : `교육 ${won(trainingCost(x))}`}</Button>
-                <Button small variant="danger" onClick={() => dispatch({ type: 'fire', staffId: x.id })}>내보내기 (위로금 1개월)</Button>
+                <ConfirmButton small variant="danger" armKey={`fire-${x.id}@${s.month}`} armedLabel="한 번 더 누르면 내보낸다" preview={() => <FirePreview s={s} x={x} />} onConfirm={() => dispatch({ type: 'fire', staffId: x.id })}>내보내기 (위로금 1개월)</ConfirmButton>
               </div>} />;
             })}
           </div>
