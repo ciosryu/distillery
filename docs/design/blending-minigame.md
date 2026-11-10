@@ -80,7 +80,7 @@
 
 - **오차는 고정값이다.** 같은 캐스크를 다시 열어도 같은 예상 차트가 나온다 → 창을 닫았다 열어 다시 굴리는 스커밍이 통하지 않는다. 바꾸려면 **샘플을 더 떠야** 한다(비용·원액 손실)
 - **여러 캐스크를 섞으면 오차가 서로 상쇄돼 띠가 좁아진다** (실제 블렌더의 경험칙과 같다). 반대로 싱글 캐스크는 예측이 가장 어렵다 → "싱글 캐스크 = 도박, 블렌드 = 안정"이라는 자연스러운 긴장
-- **블렌더 직군:** PRD §7.1에는 마스터 블렌더(후각·미각·직관·감정력)가 있지만 코드에는 아직 없다 → §6 질문 1
+- **블렌더 직군:** PRD §7.1에는 마스터 블렌더(후각·미각·직관·감정력)가 있지만 코드에는 아직 없다 → §6 질문 1 → **구현(#123):** 직군 `blender`(후각·미각·감정력). 없으면 대표가 직접 읽는다(오차 ×1.4)
 
 ---
 
@@ -187,7 +187,7 @@ previewVat(parts, seed, blender)     // 예상·띠·실제
 matchScore(hex, target) → 0~100      // 100·exp(−½(d/허용)²), d = 가중 RMS 거리
 ```
 
-**아직 상태(GameState)에 넣지 않은 것** — §6 결정 뒤: 캐스크별 샘플 횟수(`inventory.casks[].samples`), 진행 중 목표(`commerce.blendTargets`), 코어 레인지의 기준 육각형(`Product.hexRef`).
+**상태(GameState)에 넣은 것** — §6 결정 뒤(#124, 세이브 v7) 이후: 캐스크별 샘플 횟수(`inventory.casks[].samples`)·실험실 분석(`labAnalyzed`)·레어(`rare`·`rareKnown`), 샘플 기록(`Cask.sampleLog`, #136·#143), 이번 달 샘플 여력(`inventory.samplesThisMonth`), 진행 중 의뢰(`commerce.commissions`), 코어 레인지 기준 육각형(`commerce.lines[라인].refHex` — 처음 구상한 `Product.hexRef` 대신). **넣지 않은 것:** 목표 목록(`blendTargets`) — 트렌드·의뢰·코어 레인지에서 그때그때 만든다(`blendTable.ts`).
 
 ---
 

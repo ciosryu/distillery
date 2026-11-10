@@ -35,7 +35,7 @@ export function applyAction(prev: GameState, a: Action): ActionResult {
 
 function applyActionRaw(prev: GameState, a: Action): ActionResult {
   if (prev.status !== 'running') return fail(prev, '게임이 종료되었습니다');
-  // 테크 게이트 (tech-tree §7) — Phase 1은 TECH_GATING = false라 항상 통과
+  // 테크 게이트 (tech-tree §7) — TECH_GATING = true(#174)라 테크 키는 연구를 끝내야 통과
   if (!isUnlocked(prev, `action:${a.type}`)) return fail(prev, `연구가 필요합니다: ${unlockingNodes(`action:${a.type}`).map((n) => `${n.id} ${n.nameKo}`).join(' 또는 ')}`);
   // 시나리오 잠금 (S-8) — 시나리오가 없으면 항상 통과
   if (isLocked(prev, `action:${a.type}`)) return fail(prev, LOCKED_MESSAGE);

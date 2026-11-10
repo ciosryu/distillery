@@ -128,7 +128,7 @@
 └──────────┘
 ```
 
-- **파트 분할 (단계 P 초안 — 확정은 단계 S 끝에서):**
+- **파트 분할 (단계 S 끝에서 확정 — #153):**
   - P1 `PROD` 생산·숙성·블렌딩
   - P2 `MKT` 시장·판매·B2B·수출
   - P3 `MGT` 재무·HR·이벤트·연구(테크트리)
@@ -183,7 +183,7 @@ skeleton.md §4 구조 결정 백로그를 우선순위대로 하나씩 나에�
 |---|---|
 | 아키텍처 재편 (`claude/distillery-tycoon-architecture-11o9nq`) | 머지 완료(ciosryu/distillery#10). **종료한다.** 이어서 할 일이 있으면 새 설계 세션이 `main`에서 시작한다 |
 | 스코틀랜드 (`claude/hopeful-pascal-wm32n3`, PR #9) | 일시 정지. 재개하면 먼저 `main`을 따라잡는다(STATUS.md "따라잡기") |
-| 병 가격 숙성 (`claude/fervent-mccarthy-anosrs`, PR #6) | 보류. 단계 P에서 MKT 파트가 `main` 기준으로 다시 올린다 |
+| 병 가격 숙성 (`claude/fervent-mccarthy-anosrs`, PR #6) | 닫음. 같은 규칙을 ciosryu/distillery#15가 `main`에 구현했다(결정 #117) |
 | 확장형 안전장치 (`claude/expand-stage-fix`, PR #5) | 보류. 단계 T에서 BAL이 `main` 기준으로 다시 올린다 |
 
 - 옛 세션을 이어서 쓸 때는 첫 메시지로 "CLAUDE.md와 docs/PROCESS.md를 읽고 이 공정을 따르라, 먼저 `main`을 따라잡아라"를 보낸다. 옛 세션은 이 규칙이 생기기 전 지시를 기억하고 있다
