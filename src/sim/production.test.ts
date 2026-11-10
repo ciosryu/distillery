@@ -867,3 +867,45 @@ describe('제품 이름 바꾸기 (#236, 2026-11-10 오너 요청)', () => {
     expect(applyAction(r.state, { type: 'renameProduct', productId: b!.id, name: 'x'.repeat(41) }).error).toContain('40자');
   });
 });
+
+describe('자동 통입 (P-PROD-34, 5차 MVP 플레이테스트)', () => {
+  const setup = async () => {
+    const { emptyCaskOf } = await import('./index');
+    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.inventory.casks = [];
+    for (const [id, fills] of [['N1', 0], ['N2', 0], ['U1', 2]] as const) { const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.id = id; c.fills = fills; s.inventory.casks.push(c); }
+    s.inventory.lots = [{ id: 'T1', name: '몰트', kind: 'malt', volumeL: 1000, abv: 0.68, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 10_000, batchId: 'BT' }];
+    return s;
+  };
+  it('끄면 아무것도 안 하고, 켜면 진행 때 빈 나무 통에 넣는다 — 새 통 먼저, 모자라면 남은 양을 메모', async () => {
+    const { applyAutoFill } = await import('./index');
+    const s = await setup();
+    const rep = () => ({ month: s.month, notes: [] as string[], expenses: {} as Record<string, number> }) as unknown as Parameters<typeof applyAutoFill>[1];
+    const r0 = rep(); applyAutoFill(s, r0);
+    expect(s.inventory.casks.some((c) => c.contents)).toBe(false);
+    const on = applyAction(s, { type: 'setAutoFill', settings: { prefer: 'new' } }).state;
+    const r1 = rep(); applyAutoFill(on, r1);
+    const filled = on.inventory.casks.filter((c) => c.contents).map((c) => c.id);
+    expect(filled).toEqual(['N1', 'N2', 'U1']); // 1000L × 68% → 200L × 63.5% 통 5통 분량이라 셋 다 차고 남는다
+    expect(on.inventory.casks.find((c) => c.id === 'N1')!.contents!.abv).toBeCloseTo(0.635, 6);
+    expect(r1.notes.some((n) => n.includes('자동 통입 3통') && n.includes('남았다'))).toBe(true);
+    expect(on.inventory.lots[0]!.volumeL).toBeLessThan(1000);
+  });
+  it('간격·재사용 통 먼저·원액 종류 — 설정은 정리해 저장한다', async () => {
+    const { applyAutoFill, autoFillCasks } = await import('./index');
+    let s = await setup();
+    s = applyAction(s, { type: 'setAutoFill', settings: { everyMonths: 3, prefer: 'used', kinds: ['grain'], entryAbv: 0.635 } }).state;
+    expect(s.inventory.autoFill).toEqual({ everyMonths: 3, prefer: 'used', kinds: ['grain'] });
+    expect(autoFillCasks(s, s.inventory.autoFill!)[0]!.id).toBe('U1');
+    s.month = 3;
+    applyAutoFill(s, { month: 3, notes: [], expenses: {} } as never);
+    expect(s.inventory.casks.some((c) => c.contents)).toBe(false); // 몰트뿐이라 그레인 설정이면 넣지 않는다
+    s = applyAction(s, { type: 'setAutoFill', settings: { everyMonths: 3, prefer: 'used' } }).state;
+    s.month = 4; applyAutoFill(s, { month: 4, notes: [], expenses: {} } as never);
+    expect(s.inventory.casks.some((c) => c.contents)).toBe(false); // 3개월마다 — 4월은 아니다
+    s.month = 6; applyAutoFill(s, { month: 6, notes: [], expenses: {} } as never);
+    expect(s.inventory.casks.find((c) => c.id === 'U1')!.contents).toBeDefined();
+    s = applyAction(s, { type: 'setAutoFill', settings: null }).state;
+    expect(s.inventory.autoFill).toBeUndefined();
+  });
+});
