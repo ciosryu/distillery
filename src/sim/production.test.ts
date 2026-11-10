@@ -941,3 +941,22 @@ describe('자동 통입 (#239, 5차 MVP 플레이테스트)', () => {
     expect(s.inventory.autoFill).toBeUndefined();
   });
 });
+
+describe('자동 납품은 같은 레시피 원액만 (#243, 5차 MVP 플레이테스트)', () => {
+  it('병입이 레시피를 기록하고, 자동 납품은 그 레시피 탱크만 쓴다 — 기록 없는 옛 제품은 모든 탱크', async () => {
+    const { autoRestockSources } = await import('./economics');
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const lot = (id: string, recipeId: string) => ({ id, name: id, kind: 'soju' as const, volumeL: 300, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 10_000, batchId: `B${id}`, recipeId });
+    s.inventory.lots = [lot('TA', 'RA'), lot('TB', 'RB')];
+    const opts = { name: '옹기', targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' } as const;
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: 'TB', liters: 50 }], options: opts }).state;
+    const p = s.commerce.products.at(-1)!;
+    expect(p.recipeIds).toEqual(['RB']);
+    expect(autoRestockSources(s, p).map((x) => x.comp.id)).toEqual(['TB']);
+    const legacy = { ...p, recipeIds: undefined };
+    expect(autoRestockSources(s, legacy).map((x) => x.comp.id).sort()).toEqual(['TA', 'TB']);
+    // 다른 레시피로 보충하면 합집합 — 그 뒤로는 둘 다 쓴다
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: 'TA', liters: 20 }], options: { ...opts, restockId: p.id } }).state;
+    expect(s.commerce.products.find((x) => x.id === p.id)!.recipeIds).toEqual(['RA', 'RB']);
+  });
+});

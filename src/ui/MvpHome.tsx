@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { AutoFillRow } from './panels/AutoFill';
 import { PendingEventChoices } from './panels/Events';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
@@ -17,13 +18,13 @@ import { LineChart } from './charts';
 import { CashFlowLine, JourneyStrip, MonthTodo, OPEN_FOLD_EVENT } from './AlertsView';
 import { AutoSampleSettingsRow } from './panels/AutoSample';
 import { HandfillRow } from './panels/Handfill';
-import { cashAlert, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
+import { cashAlert, flagshipCandidates, flagshipImpact, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
 import { monthlyFixedBreakdown } from '../sim/loans';
 import { PriceDesk } from './panels/Sales';
 import { Equipment, Orders, RecipeEditor } from './panels/Production';
 import { CATEGORY_ORDER, sourceCategory } from './panels/Bottling';
 import { liters, months, num, pct, won } from './format';
-import { Badge, Button, Card, Empty, Meter, NumberField, Select, Stat, Table, Td } from './kit';
+import { Badge, Button, Card, ConfirmButton, Empty, Meter, NumberField, Select, Stat, Table, Td } from './kit';
 
 // MVP 단일 화면 (mvp.md §5, #136·#137·#138·#146) — 코어 UI(ARCH).
 // 원칙: 캐스크의 참 향미·품질은 보여 주지 않는다. 숙성 연수·남은 양·통 이력처럼 증류소가 실제로 아는 값과 **마지막 샘플 기록**만 보인다(#136).
@@ -181,6 +182,8 @@ function WarehouseFold() {
         <FoldBar open={open} onToggle={toggle} title={`숙성 중인 캐스크 ${filled.length}통`} hint="펼치기 — 샘플 목록 · 샘플 뜨기">
           <span className="text-stone-600 dark:text-stone-300">샘플 기록 있는 통 {recorded}</span>
           {stale > 0 && <Badge tone="warn">샘플 시기 {stale}통</Badge>}
+          {/* 핸드필 통이 빈 것을 접힌 칸에서도 (5차 판: "빈 사실을 확인하기 힘들다") */}
+          {hasHandfillZone(s) && !handfillCask(s) && <Badge tone="warn">핸드필 통 없음 — 펼쳐서 고르기</Badge>}
           <span className="text-stone-600 dark:text-stone-300">자리 {s.inventory.casks.length}/{warehouseCapacity(s)}</span>
         </FoldBar>
       </Card>
@@ -203,6 +206,12 @@ function Headline() {
   const oldest = s.inventory.casks.filter((c) => c.contents && !c.owner && !c.contents.sourced && (c.contents.kind === 'malt' || c.contents.kind === 'grain'))
     .reduce((m, c) => Math.max(m, c.contents!.oakMonths), 0);
   const left = sc ? sc.goal.months - s.month : null;
+  // 12년 플래그십 후보 통 (#240) — 판이 끝나기 전에 플래그십 숙성을 채울 수 있는 통. 목표까지 남은 달이 플래그십 숙성보다 짧아지면
+  // 새로 넣는 통은 후보가 될 수 없다 → 그 뒤 후보 0이면 15년 목표(플래그십 판매)를 이룰 수 없다(5차 판, mvp.md §7.16)
+  const cands = sc ? flagshipCandidates(s).length : 0;
+  const flagDone = s.progress.milestones.some((m) => m.id === 'flagship_sold');
+  const noMoreNew = left != null && left < flagMin;
+  const flagHint = !sc ? null : flagDone ? '플래그십 판매 완료' : cands > 0 ? `후보 ${cands}통${noMoreNew ? ' — 새 통은 더 후보가 될 수 없다' : ''}` : noMoreNew ? '후보 0통 — 15년 안에 플래그십을 낼 수 없다' : `후보 0통 — ${Math.max(0, (sc.goal.months - flagMin) - s.month)}개월 안에 넣은 통이 후보가 된다`;
   return (
     <Card title="현금과 순자산 — 지금 정리하면 받을 수 있는 돈">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -212,8 +221,8 @@ function Headline() {
           hint={target != null ? `목표 ${won(target)}의 ${pct(nw / target, 0)}` : '현금 − 대출 + 재고 평가액'} />
         <Stat label="재고 평가액" value={won(inv)} hint="원액 현물가 + 제품 재고 원가 (소주 원액 0)" />
         <Stat label="대출 잔액" value={won(loans)} hint={loans ? `${s.finance.loans.length}건` : '없음'} />
-        <Stat label="가장 오래된 자체 원액" value={months(oldest)} tone={oldest >= flagMin ? 'good' : undefined}
-          hint={left != null ? `플래그십 ${Math.floor(flagMin / 12)}년 · 목표까지 ${left}개월` : `플래그십 ${Math.floor(flagMin / 12)}년`} />
+        <Stat label="가장 오래된 자체 원액" value={months(oldest)} tone={oldest >= flagMin ? 'good' : sc && !flagDone && noMoreNew && cands === 0 ? 'bad' : undefined}
+          hint={<>{left != null ? `플래그십 ${Math.floor(flagMin / 12)}년 · 목표까지 ${left}개월` : `플래그십 ${Math.floor(flagMin / 12)}년`}{flagHint && <div className={!flagDone && cands === 0 && noMoreNew ? 'font-medium text-rose-700 dark:text-rose-400' : ''}>{flagHint}</div>}</>} />
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
         <span className="self-center text-stone-500">바로 가기:</span>
@@ -341,9 +350,6 @@ function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead |
 function WarehouseCard() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
-  // [원액 빼기]는 두 번 눌러 확인 (#226) — 손실 0.75%·통은 한 번 쓴 통이 되어 되돌릴 수 없다(3차 판의 가격표 오조작 교훈).
-  // 같은 달 통입 취소는 손실이 없어 한 번. 확인 대기는 "통@달"로 둬서 다른 통을 누르거나 달이 바뀌면 풀린다
-  const [armedUnfill, setArmedUnfill] = useState<string | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [all, setAll] = useState(false);
   const known = useMemo(() => knownReads(s), [s]);
@@ -411,8 +417,20 @@ function WarehouseCard() {
                 <Td><SampleCell s={s} c={c} known={known.get(c.id)} /></Td>
                 <Td className="whitespace-nowrap">
                   {/* 실수로 잘못 넣은 통 (2026-11-09 오너 요청, #205) — 통입한 달·샘플 전이면 통입 취소, 아니면 옮겨 붓기 */}
-                  {!c.owner && (() => { const undo = c.filledMonth === s.month && !c.samples && !c.sampleLog?.length; /* 행동(unfillCask)과 같은 조건 — 사후 검토 */ const key = `${c.id}@${s.month}`; const armed = !undo && armedUnfill === key; return <Button small variant={armed ? 'danger' : 'ghost'} onClick={() => { if (!undo && !armed) { setArmedUnfill(key); return; } setArmedUnfill(null); dispatch({ type: 'unfillCask', caskId: c.id }); }} title={undo ? '통입 취소 — 원액을 탱크로 되돌리고 통은 넣기 전 그대로' : '원액을 빼 탱크로 옮긴다 — 손실 0.75%, 숙성 개월은 원액에 남고 통은 한 번 쓴 통이 된다'}>{undo ? '통입 취소' : armed ? `한 번 더 누르면 빼기 — 손실 0.75%` : '원액 빼기'}</Button>; })()}
-                  {c.contaminationKnown && !c.owner && <Button small variant="ghost" onClick={() => dispatch({ type: 'dumpCask', caskId: c.id })}>폐기</Button>}
+                  {!c.owner && (() => {
+                    const undo = c.filledMonth === s.month && !c.samples && !c.sampleLog?.length; // 행동(unfillCask)과 같은 조건 — 사후 검토
+                    if (undo) return <Button small variant="ghost" onClick={() => dispatch({ type: 'unfillCask', caskId: c.id })} title="통입 취소 — 원액을 탱크로 되돌리고 통은 넣기 전 그대로">통입 취소</Button>;
+                    // [원액 빼기] — 손실 0.75%·통은 한 번 쓴 통 (#226 → #240 공통 부품). 같은 달 통입 취소는 손실이 없어 한 번
+                    const f = flagshipImpact(s, [c.id]);
+                    return <ConfirmButton small variant="ghost" armKey={`unfill-${c.id}@${s.month}`} armedLabel="한 번 더 누르면 빼기" onConfirm={() => dispatch({ type: 'unfillCask', caskId: c.id })}
+                      title="원액을 빼 탱크로 옮긴다 — 손실 0.75%, 숙성 개월은 원액에 남고 통은 한 번 쓴 통이 된다"
+                      preview={() => <>{c.id} 원액 {num(lot.volumeL * 0.9925)}L를 탱크로(손실 {num(lot.volumeL * 0.0075, 1)}L) · 숙성 {months(lot.oakMonths)}은 원액에 남지만 탱크에서는 숙성이 멈춘다 · 통은 한 번 쓴 통이 된다{f.using ? <b className="block">⚠ 12년 플래그십 후보 통 — 다시 통에 넣기 전까지 후보에서 빠진다(남은 후보 {f.before} → {f.left}통)</b> : null}</>}>원액 빼기</ConfirmButton>;
+                  })()}
+                  {c.contaminationKnown && !c.owner && (
+                    // 오염 통 폐기 (#240 — 코어 화면의 되돌릴 수 없는 행동)
+                    <ConfirmButton small variant="ghost" armKey={`dump-${c.id}@${s.month}`} armedLabel="한 번 더 누르면 폐기" onConfirm={() => dispatch({ type: 'dumpCask', caskId: c.id })}
+                      preview={() => { const f = flagshipImpact(s, [c.id]); return <>{c.id}의 오염된 원액 {num(lot.volumeL)}L를 버린다(숙성 {months(lot.oakMonths)}){f.using ? <b className="block">⚠ 12년 플래그십 후보 통이다 — 남은 후보 {f.before} → {f.left}통</b> : null}</>; }}>폐기</ConfirmButton>
+                  )}
                 </Td>
               </tr>
             );

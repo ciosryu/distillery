@@ -2,6 +2,7 @@
 // 게임 규칙·상태를 바꾸지 않는다. 시뮬레이션과 같은 식(step.ts 파산 판정, loans.ts runFinance 대출 납부)을 읽기만 한다.
 // 1차 MVP 판: 117개월째 파산, 대출 누적 20억 실행(파산 때 잔액 약 7.2억) — 현금 부족을 몰랐고, 돈이 어디로 나가는지, 언제 상환이 몰리는지 보이지 않았다 (mvp.md §7.4)
 
+import { isFlagshipCandidate } from '../sim/delegateCheck';
 import { regionOf } from '../sim/content/regions';
 import { SCENARIOS } from '../sim/content/scenarios';
 import { calendar, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport } from '../sim';
@@ -10,6 +11,7 @@ import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
 import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { autoFillPreview } from '../sim/autoFill';
+import { autoRestockSources, autoRestockSupported, productMonthlyPace } from '../sim/economics';
 import { AUTO_RESTOCK_EXPENSE, productionValue, whiskySupplyForecast } from '../sim/economics';
 
 // ───────────── ① 파산 카운트다운 ─────────────
@@ -162,6 +164,24 @@ export function spotSaleStake(s: GameState): { tank: SpiritStake | null; casks: 
   return tank || casks || r ? { tank, casks, ready: r, minMonths: min } : null;
 }
 
+/**
+ * 12년 플래그십 후보 통 (#240) — 판이 끝나기 전에 플래그십 숙성(MVP 144개월)을 채울 수 있는 우리 몰트·그레인 통. 식은 #238의
+ * `isFlagshipCandidate`(sim/delegateCheck.ts) 하나만 쓴다(같은 숫자를 두 식으로 만들지 않는다). 고객 소유(캐스크 오너십) 통은 뺀다.
+ * 시나리오에서 이 수가 0이 되면 15년 목표(플래그십 판매)를 이룰 수 없다 — 5차 판이 70개월째 맡기기로 그렇게 됐다(mvp.md §7.16)
+ */
+export const flagshipCandidates = (s: GameState) => s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c));
+
+/** 고른 통 가운데 플래그십 후보가 몇 개이고, 쓰고 나면 몇 개 남는지 — 확인 미리보기(③ 남는 자원 경고)용 */
+export function flagshipImpact(s: GameState, caskIds: string[]): { using: number; left: number; before: number; final: boolean } {
+  const all = flagshipCandidates(s);
+  const ids = new Set(caskIds);
+  const using = all.filter((c) => ids.has(c.id)).length;
+  // final: 목표까지 남은 달이 플래그십 숙성보다 짧아 새로 넣는 통은 후보가 될 수 없다 — 이때 후보 0은 15년 목표를 이룰 수 없다는 뜻
+  const sc = s.scenario;
+  const final = !!sc && sc.goal.months - s.month < sc.goal.flagshipMinMonths;
+  return { using, left: all.length - using, before: all.length, final };
+}
+
 /** 몰트·그레인을 마지막으로 만든 뒤 지난 개월 수 (월 결산의 실제 생산 기준). 이번 달에 멈췄으면 0 */
 export function maltStoppedMonths(s: GameState): number {
   const kindOf = new Map(s.production.recipes.map((r) => [r.id, r.kind]));
@@ -177,7 +197,7 @@ export function maltStoppedMonths(s: GameState): number {
  * 이번 달 할 일 우선순위 (#203) — 위기 > 생산 멈춤 > 비지터 센터 > 결품 > 통입·병입 > 샘플. 목록에 없는 id는 병입 다음.
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
-export const TODO_ORDER = ['loan-jump', 'malt-stopped', 'visitor', 'stockout', 'cask-bid', 'fill', 'whisky', 'soju', 'sample'];
+export const TODO_ORDER = ['loan-jump', 'malt-stopped', 'visitor', 'stockout', 'restock-short', 'handfill', 'cask-bid', 'fill', 'whisky', 'soju', 'sample'];
 // 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
 
@@ -202,9 +222,20 @@ export function monthTodos(s: GameState): Todo[] {
     const more = s.b2b.caskBids.length > 1 ? ` 외 ${s.b2b.caskBids.length - 1}건` : '';
     out.push({ id: 'cask-bid', level: 'info', text: `${b.buyerName}에서 통 ${b.caskId}${c ? `(숙성 ${Math.floor(c.oakMonths / 12)}년 ${c.oakMonths % 12}개월)` : ''}를 ${fmtWon(b.price)}에 사겠다고 한다${more} — ${b.expiresMonth - s.month <= 1 ? '이번 달까지' : `${b.expiresMonth - s.month}개월 안에`} 답. 병입해 팔 때보다 싸다 — 다 못 팔 통이면 팔고, 12년 플래그십 후보면 남긴다`, action: '원액 B2B', target: { tab: 'b2b' } });
   }
+  // 자동 납품이 원액을 못 찾는 제품 (#243, 5차 판: 「안성 소주」가 탱크를 다 써 「옹기소주」가 못 채워졌는데 이유를 몰랐다)
+  if (s.scenario) {
+    const short = s.commerce.products.filter((p) => p.autoRestock && autoRestockSupported(p) && p.stockBottles < productMonthlyPace(s, p) && !autoRestockSources(s, p).length);
+    if (short.length) {
+      const p = short[0]!;
+      const recNames = (p.recipeIds ?? []).map((id) => s.production.recipes.find((r) => r.id === id)?.name ?? id);
+      const whisky = WHISKY_CATS.has(p.category);
+      const why = whisky ? `${p.ageYears ? `${p.ageYears}년 이상` : '위스키 숙성 기간을 채운'} 같은 피니시 통이 없다` : recNames.length ? `같은 레시피(${recNames.join(', ')}) 탱크 원액이 없다 — 그 레시피를 생산 지시에 넣거나 늘리세요` : '탱크에 같은 주종 원액이 없다 — 생산 지시를 늘리세요';
+      out.push({ id: 'restock-short', level: 'warn', text: `자동 납품 — 「${p.name}」 채울 원액이 없다(재고 ${p.stockBottles.toLocaleString()}병) — ${why}${short.length > 1 ? ` · 외 ${short.length - 1}개 제품` : ''}`, action: whisky ? '통입·병입' : '생산 지시로', target: whisky ? { tab: 'bottling' } : { anchor: 'mvp-orders' } });
+    }
+  }
   // 핸드필 존 (#233) — 지었는데 지정한 통이 없다(처음, 또는 통이 비어 풀림). 숙성 중인 캐스크 칸이 접혀 있어 놓치기 쉽다
   if (s.scenario && hasHandfillZone(s) && !handfillCask(s) && s.production.equipment.some((e) => EQUIPMENT[e.catalogId]?.kind === 'visitor' && e.readyMonth <= s.month)) {
-    out.push({ id: 'handfill', level: 'info', text: '핸드필 존에 통이 없다 — 숙성 중인 캐스크 칸에서 핸드필 전용 통을 고르면 방문객이 매달 500ml씩 담아 간다(병입 권장가의 약 2배)', action: '통 고르기', target: { anchor: 'mvp-warehouse' } });
+    out.push({ id: 'handfill', level: 'warn', text: '핸드필 존에 통이 없다 — 숙성 중인 캐스크 칸에서 핸드필 전용 통을 고르면 방문객이 매달 500ml씩 담아 간다(병입 권장가의 약 2배)', action: '통 고르기', target: { anchor: 'mvp-warehouse' } });
   }
   // 비지터 센터가 없다 — 3차 MVP 판은 설비가 접힌 칸 안에 있어 "못 찾았다"(오너). 첫해 가장 큰 수입원(월 약 700만, 사람형 봇 실험)이라 할 일에 올린다
   const visitor = EQUIPMENT.visitor_basic;
