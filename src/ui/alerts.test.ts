@@ -220,7 +220,10 @@ describe('IB 캐스크 입찰 — 10년 차 해금 (#224)', () => {
     const t = monthTodos(s).find((x) => x.id === 'cask-bid')!;
     expect(t.target).toEqual({ tab: 'b2b' });
     expect(t.text).toContain('380만');
-    expect(t.text).toContain('2개월 안에');
+    expect(t.text).toContain('다음 달까지');
+    expect(t.level).toBe('warn'); // 기한 있는 제안 — 놓치지 않게(P-MKT-19)
+    s.b2b.caskBids[0]!.expiresMonth = s.month; // 마지막 턴
+    expect(monthTodos(s).find((x) => x.id === 'cask-bid')!.text).toContain('이번 달까지');
   });
 });
 

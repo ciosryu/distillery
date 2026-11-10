@@ -288,6 +288,15 @@ describe('독립 병입자 입찰은 IB 자신의 시음치로 (#223)', () => {
     expect(sd).toBeGreaterThan(8); // 참값이 그대로 새지 않는다 — 첫 샘플 수준(약 ±14)
   });
 
+  it('새 제안은 월 결산 메모로 남는다 — 진행 뒤 소식 창(P-MKT-19)', async () => {
+    const { newScenarioGame } = await import('./index');
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.inventory.casks.push(...casks(40));
+    const report = { notes: [] as string[] } as unknown as MonthReport;
+    refreshCaskBids(s, { ...mulberry32(7), chance: () => true } as ReturnType<typeof mulberry32>, report);
+    expect(report.notes.some((n) => n.startsWith('IB 입찰 제안 — ') && n.includes('원액 B2B'))).toBe(true);
+  });
+
   it('시나리오 입찰 제안가는 시음치로 매긴다 — 참 품질 견적과 다르다', async () => {
     const { newScenarioGame } = await import('./index');
     const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
