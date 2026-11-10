@@ -178,7 +178,7 @@ function PaymentPlan({ amount, offer }: { amount: number; offer: Parameters<type
   return <>이자 {won(t.paymentNow)}<div className="text-xs text-rose-700 dark:text-rose-400">{monthLabel(s.startYear, t.graceEndMonth)}부터 {won(t.paymentAfterGrace)}</div></>;
 }
 
-/** 대출 실행 확인 미리보기 (#240, P-MGT-26) — 받는 돈·월 납부·총이자. 금액은 takeLoan과 같이 백만 원 단위·1천만 원 이상·한도 이하로 맞춘다 */
+/** 대출 실행 확인 미리보기 (#240, #246) — 받는 돈·월 납부·총이자. 금액은 takeLoan과 같이 백만 원 단위·1천만 원 이상·한도 이하로 맞춘다 */
 function LoanPreview({ offer: o, amount }: { offer: (typeof LOAN_OFFERS)[number]; amount: number }) {
   const s = useGame((g) => g.state);
   const max = o.collateral === 'inventory' ? Math.min(o.max, inventoryLoanRoom(s)) : o.max;
@@ -194,7 +194,7 @@ function LoanPreview({ offer: o, amount }: { offer: (typeof LOAN_OFFERS)[number]
   </>;
 }
 
-/** 상환 확인 미리보기 (#240, P-MGT-26) — 현금이 지금 나가고 월 납부가 얼마로 주는지. 위약금은 없다 */
+/** 상환 확인 미리보기 (#240, #246) — 현금이 지금 나가고 월 납부가 얼마로 주는지. 위약금은 없다 */
 function RepayConfirm({ loan: l, amount }: { loan: { name: string; balance: number; annualRate: number; termMonths: number; graceMonths: number; startMonth: number; monthlyPayment: number }; amount: number }) {
   const s = useGame((g) => g.state);
   const full = amount >= l.balance;

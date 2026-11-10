@@ -229,8 +229,8 @@ describe('MVP 11년 차 HR 단계·연봉 협상 조건 (#232)', () => {
   });
 });
 
-// 해고 확인 미리보기와 실제 퇴사가 같은 계산을 쓴다 (#240, P-MGT-26)
-describe('departureHouseStyle — 미리보기 = 실제 (P-MGT-26)', () => {
+// 해고 확인 미리보기와 실제 퇴사가 같은 계산을 쓴다 (#240, #246)
+describe('departureHouseStyle — 미리보기 = 실제 (#246)', () => {
   it('마스터가 떠날 때: 부사수 있음 90% / 없음 0, 마스터가 아니면 null — handleDeparture 결과와 같다', async () => {
     const { departureHouseStyle, handleDeparture } = await import('./hr');
     const s = newGame({ seed: 1 });

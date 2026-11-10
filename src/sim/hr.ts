@@ -301,7 +301,7 @@ export const APPRENTICE_MONTHS = 24;
 
 /**
  * 이 직원이 떠나면 하우스 스타일이 어떻게 되나 — 마스터 디스틸러가 아니면 null. 상태를 바꾸지 않는다
- * (handleDeparture와 해고 확인 미리보기(#240, P-MGT-26)가 같은 계산을 쓴다)
+ * (handleDeparture와 해고 확인 미리보기(#240, #246)가 같은 계산을 쓴다)
  */
 export function departureHouseStyle(s: GameState, leaving: Staff): { heir?: Staff; mode: 'heir' | 'record' | 'reset'; after: number } | null {
   const master = masterDistiller(s);

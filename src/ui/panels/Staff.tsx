@@ -69,7 +69,7 @@ function Person({ x, action, month, tag, morale }: { x: StaffT & { askSalary?: n
   );
 }
 
-/** 해고 확인 미리보기 (#240, P-MGT-26) — 위로금·급여·사기·하우스 스타일·부사수. 계산은 actions.mgt.ts fire·hr.ts handleDeparture와 같다 */
+/** 해고 확인 미리보기 (#240, #246) — 위로금·급여·사기·하우스 스타일·부사수. 계산은 actions.mgt.ts fire·hr.ts handleDeparture와 같다 */
 function FirePreview({ s, x }: { s: GameState; x: StaffT }) {
   const others = s.hr.staff.filter((y) => y.id !== x.id);
   const house = departureHouseStyle(s, x);
