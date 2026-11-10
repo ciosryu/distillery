@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { AutoFillRow } from './panels/AutoFill';
 import { PendingEventChoices } from './panels/Events';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
@@ -181,6 +182,8 @@ function WarehouseFold() {
         <FoldBar open={open} onToggle={toggle} title={`숙성 중인 캐스크 ${filled.length}통`} hint="펼치기 — 샘플 목록 · 샘플 뜨기">
           <span className="text-stone-600 dark:text-stone-300">샘플 기록 있는 통 {recorded}</span>
           {stale > 0 && <Badge tone="warn">샘플 시기 {stale}통</Badge>}
+          {/* 핸드필 통이 빈 것을 접힌 칸에서도 (5차 판: "빈 사실을 확인하기 힘들다") */}
+          {hasHandfillZone(s) && !handfillCask(s) && <Badge tone="warn">핸드필 통 없음 — 펼쳐서 고르기</Badge>}
           <span className="text-stone-600 dark:text-stone-300">자리 {s.inventory.casks.length}/{warehouseCapacity(s)}</span>
         </FoldBar>
       </Card>

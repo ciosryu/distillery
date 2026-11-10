@@ -166,7 +166,7 @@ export function BlendLab() {
                   if (delegateStep < need) { setArmed({ key: delegateKey, step: delegateStep + 1 }); return; }
                   setArmed(null);
                   dispatch({ type: 'delegateBlend', targetId: target.id, caskIds: delegateIds, bottles, options });
-                }}>{delegateStep === 0 ? '블렌더에게 맡기기' : check && !('error' in check) && check.alreadyThisMonth.length && delegateStep === 1 ? '이번 달 이미 맡겼다 — 한 번 더 누르면 계속' : `한 번 더 누르면 맡긴다 — 통 ${check && !('error' in check) ? check.casks.length : '?'}개 사용`}</Button>
+                }}>{delegateStep === 0 ? '블렌더에게 맡기기 (바로 병입)' : check && !('error' in check) && check.alreadyThisMonth.length && delegateStep === 1 ? '이번 달 이미 맡겼다 — 한 번 더 누르면 계속' : `한 번 더 누르면 맡긴다 — 통 ${check && !('error' in check) ? check.casks.length : '?'}개 사용`}</Button>
               {delegateStep > 0 && <Button variant="ghost" onClick={() => setArmed(null)}>취소</Button>}
               {best && <Button variant="ghost" onClick={() => setShares(best.shares)}>블렌더 추천 비율 불러오기</Button>}
               <Button variant="ghost" onClick={() => setShares({})}>비율 초기화</Button>
