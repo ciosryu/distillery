@@ -59,7 +59,12 @@ export type ProdAction =
   /** 자동 샘플 설정 (#207) — 비운 칸은 기본값 */
   | { type: 'setAutoSample'; settings: AutoSampleSettings }
   /** 핸드필 존 전용 통 지정 (#233) — caskId null이면 해제. 한 번에 하나 */
-  | { type: 'setHandfillCask'; caskId: string | null };
+  | { type: 'setHandfillCask'; caskId: string | null }
+  /** 판매 중인 제품 이름 바꾸기 (#236, 2026-11-10 오너 요청) — 무료, 판매 기록·표기는 그대로 */
+  | { type: 'renameProduct'; productId: string; name: string };
+
+/** 제품 이름 최대 글자 수 (#236) */
+export const PRODUCT_NAME_MAX = 40;
 
 export const PROD_CASH_KEY: CashKeys<ProdAction> = {
   setOrder: null,
@@ -69,6 +74,7 @@ export const PROD_CASH_KEY: CashKeys<ProdAction> = {
   setAutoRestock: null,
   setAutoSample: null,
   setHandfillCask: null,
+  renameProduct: null,
   saveRecipe: null,
   deleteRecipe: null,
   fillCasks: null,
@@ -133,6 +139,18 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     s.inventory.lots.push({ ...lot, id: nid(s, 'L'), name: `${name} (${cask.id}에서 뺌)`, volumeL: lot.volumeL * kept });
     s.inventory.casks[ci] = emptyCask(cask);
     return { state: s, message: `${cask.id}에서 원액 ${Math.round(lot.volumeL * kept).toLocaleString()}L를 빼 탱크로 옮겼다(손실 ${(FINISH.lossShare * 100).toFixed(2)}%) — 숙성 ${lot.oakMonths}개월은 원액에 남고, 통은 한 번 쓴 통이 된다` };
+  },
+  renameProduct: (s, prev, a) => {
+    const p = s.commerce.products.find((x) => x.id === a.productId);
+    if (!p) return fail(prev, '그런 제품이 없습니다');
+    const name = a.name.replace(/\s+/g, ' ').trim();
+    if (!name) return fail(prev, '이름을 입력하세요');
+    if (name.length > PRODUCT_NAME_MAX) return fail(prev, `이름은 ${PRODUCT_NAME_MAX}자까지입니다`);
+    if (name === p.name) return { state: s };
+    if (s.commerce.products.some((x) => x.id !== p.id && x.name === name)) return fail(prev, `「${name}」은 이미 판매 목록에 있는 이름입니다`);
+    const old = p.name;
+    p.name = name;
+    return { state: s, message: `「${old}」 → 「${name}」 이름을 바꿨다` };
   },
   setHandfillCask: (s, prev, a) => {
     if (!s.production.equipment.some((e) => e.catalogId === HANDFILL.facilityId)) return fail(prev, '핸드필 존부터 지어야 합니다(설비)');

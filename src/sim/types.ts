@@ -174,6 +174,11 @@ export interface Product {
   name: string;
   /** 브랜드 라인 id (S-2) — 없으면 하우스 브랜드 */
   brandId?: string;
+  /**
+   * 리브랜딩 전환기 ([결정 P-MKT-13], PRD §11.2.1) — 판 적 있는 제품을 다른 브랜드로 옮긴 기록(옮기기 전 브랜드 id·옮긴 달).
+   * 판매(MKT)가 전환 기간 동안 도달 인지도를 max(새 브랜드, 옛 브랜드 × 감쇠)로 본다. 없으면 전환기 없음 — 스키마 버전 그대로(#187)
+   */
+  rebrand?: { from: string; month: number };
   category: ProductCategory;
   ageYears: number | null;
   /** 최저 오크 숙성 개월 (어린 위스키 인식 할인용) */

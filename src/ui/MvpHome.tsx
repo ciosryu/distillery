@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { PendingEventChoices } from './panels/Events';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
 import { knownReads, lastSample, readSigma, sampleAxesOf, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
 import { AXIS } from '../sim/content/axes';
@@ -65,6 +66,8 @@ export function overstock(s: GameState): { category: string; stock: number; perM
 export function MvpHome() {
   return (
     <div className="grid gap-4">
+      {/* 선택 대기 이벤트 — 고르지 않으면 다음 달 기본값 (5차 MVP 플레이테스트: 대시보드에만 있어 못 찾았다) */}
+      <PendingEventChoices />
       {/* ── 이번 달 ── 할 일 (1차 MVP 플레이테스트 대응 ③) */}
       <MonthTodo />
       {/* 15년 여정 — 단계 해금·중반 목표 (4차 MVP 플레이테스트) */}
