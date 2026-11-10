@@ -313,7 +313,7 @@ export function ibTastedQuality(s: GameState, cask: Cask): number {
 export function refreshCaskBids(s: GameState, rng: Rng): void {
   s.b2b.caskBids = s.b2b.caskBids.filter((b) => b.expiresMonth > s.month && s.inventory.casks.some((c) => c.id === b.caskId && c.contents));
   if (s.b2b.caskBids.length >= 2 || !rng.chance(0.25)) return;
-  const candidates = s.inventory.casks.filter((c) => c.contents && !c.owner && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= 36 && ibTastedQuality(s, c) >= 65 && !s.b2b.caskBids.some((b) => b.caskId === c.id));
+  const candidates = s.inventory.casks.filter((c) => c.contents && !c.owner && !c.handfill && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= 36 && ibTastedQuality(s, c) >= 65 && !s.b2b.caskBids.some((b) => b.caskId === c.id));
   if (!candidates.length) return;
   const cask = rng.pick(candidates);
   const ib = rng.pick(INDEPENDENT_BOTTLERS);
