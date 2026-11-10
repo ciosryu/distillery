@@ -942,7 +942,7 @@ describe('자동 통입 (#239, 5차 MVP 플레이테스트)', () => {
   });
 });
 
-describe('자동 납품은 같은 레시피 원액만 (P-PROD-36, 5차 MVP 플레이테스트)', () => {
+describe('자동 납품은 같은 레시피 원액만 (#243, 5차 MVP 플레이테스트)', () => {
   it('병입이 레시피를 기록하고, 자동 납품은 그 레시피 탱크만 쓴다 — 기록 없는 옛 제품은 모든 탱크', async () => {
     const { autoRestockSources } = await import('./economics');
     let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });

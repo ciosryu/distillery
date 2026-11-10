@@ -250,7 +250,7 @@ describe('자동 통입과 통입 대기 안내 (#239)', () => {
   });
 });
 
-describe('자동 납품 원액 없음 할 일 (P-PROD-36)', () => {
+describe('자동 납품 원액 없음 할 일 (#243)', () => {
   it('자동 납품을 켠 제품이 판매 속도보다 재고가 적은데 같은 레시피 원액이 없으면 레시피 이름과 함께 알린다', () => {
     const s = mvp();
     const r = s.production.recipes.find((x) => x.kind === 'soju')!;

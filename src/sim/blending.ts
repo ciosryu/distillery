@@ -462,7 +462,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
       else s.inventory.lots[idx] = { ...lot, volumeL: remain };
     }
   }
-  // 섞은 원액의 레시피 (P-PROD-36) — 자동 납품이 다른 제품 몫 원액을 가져가지 않게(5차 판: 「안성 소주」 자동 납품이 탱크 소주를 다 써 「옹기소주」를 못 채움)
+  // 섞은 원액의 레시피 (#243) — 자동 납품이 다른 제품 몫 원액을 가져가지 않게(5차 판: 「안성 소주」 자동 납품이 탱크 소주를 다 써 「옹기소주」를 못 채움)
   const recipeIds = [...new Set(components.filter((c) => c.liters > 0).map((c) => lotOf(s, c)?.recipeId).filter((x): x is string => !!x))].sort();
   const product: Product = {
     id: nid(s, 'P'),

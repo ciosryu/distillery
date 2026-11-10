@@ -342,7 +342,7 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
         .sort((a, b) => months(a.contents) - months(b.contents) || a.id.localeCompare(b.id))
         .map((c) => ({ comp: { source: 'cask' as const, id: c.id }, lot: c.contents }));
     }
-    // 같은 레시피 탱크만 (P-PROD-36) — 레시피 기록이 없는 옛 제품은 모든 탱크
+    // 같은 레시피 탱크만 (#243) — 레시피 기록이 없는 옛 제품은 모든 탱크
     const rec = p.recipeIds?.length ? new Set(p.recipeIds) : null;
     return s.inventory.lots.filter((l) => l.kind === kind && l.abv >= minAbv && !l.sourced && l.oakMonths === 0 && (!rec || (!!l.recipeId && rec.has(l.recipeId))))
       .sort((a, b) => a.createdMonth - b.createdMonth || a.id.localeCompare(b.id))

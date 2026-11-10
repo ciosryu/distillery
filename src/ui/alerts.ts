@@ -222,7 +222,7 @@ export function monthTodos(s: GameState): Todo[] {
     const more = s.b2b.caskBids.length > 1 ? ` 외 ${s.b2b.caskBids.length - 1}건` : '';
     out.push({ id: 'cask-bid', level: 'info', text: `${b.buyerName}에서 통 ${b.caskId}${c ? `(숙성 ${Math.floor(c.oakMonths / 12)}년 ${c.oakMonths % 12}개월)` : ''}를 ${fmtWon(b.price)}에 사겠다고 한다${more} — ${b.expiresMonth - s.month <= 1 ? '이번 달까지' : `${b.expiresMonth - s.month}개월 안에`} 답. 병입해 팔 때보다 싸다 — 다 못 팔 통이면 팔고, 12년 플래그십 후보면 남긴다`, action: '원액 B2B', target: { tab: 'b2b' } });
   }
-  // 자동 납품이 원액을 못 찾는 제품 (P-PROD-36, 5차 판: 「안성 소주」가 탱크를 다 써 「옹기소주」가 못 채워졌는데 이유를 몰랐다)
+  // 자동 납품이 원액을 못 찾는 제품 (#243, 5차 판: 「안성 소주」가 탱크를 다 써 「옹기소주」가 못 채워졌는데 이유를 몰랐다)
   if (s.scenario) {
     const short = s.commerce.products.filter((p) => p.autoRestock && autoRestockSupported(p) && p.stockBottles < productMonthlyPace(s, p) && !autoRestockSources(s, p).length);
     if (short.length) {
