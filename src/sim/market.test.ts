@@ -753,3 +753,16 @@ describe('세컨드 브랜드 방패 (#235, PRD §11.2.1)', () => {
     expect(brandLuxuryOn(newGame({ seed: 1, region: 'KR' }))).toBe(true);
   });
 });
+
+describe('패키징 커스터마이징 반영 (#248 접근자 — MKT 교체)', () => {
+  it('직접 고른 조합의 점수(0~30)가 매력도·제품 럭셔리에 그대로 들어간다 — 프리셋으로 반올림하지 않는다', async () => {
+    const { productPackaging } = await import('./packaging');
+    const s = newGame({ seed: 1, region: 'KR' });
+    const std = product({ packagingId: 'standard', oakMonths: 0, ageYears: 0 });
+    const custom = { ...std, packaging: { ...productPackaging(std), luxury: 20 } };
+    // 매력도(방패 배수는 나눠서 패키징 배수만): 1 + 0.15 × 20/30 = 1.10
+    expect((appeal(custom, s) / brandLuxuryFactor(s, custom)) / (appeal(std, s) / brandLuxuryFactor(s, std))).toBeCloseTo(1.1, 9);
+    expect(productLuxury(custom) - productLuxury(std)).toBe(20);
+    expect(productLuxury(product({ packagingId: 'premium', oakMonths: 0, ageYears: 0 }))).toBe(30); // 프리셋은 옛 값 그대로
+  });
+});
