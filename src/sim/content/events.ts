@@ -274,7 +274,7 @@ export const TRIGGERED_EVENTS: EventDef[] = [
   // 연봉 협상 (#225) — 해마다 1월, HR이 열린 판에서 직원이 있으면 (events.ts salaryReviewDue). 고르지 않으면 동결.
   // 수치는 hr.ts MORALE.raise·raiseMorale·freezeMorale과 같게 둔다 [튜닝]
   { id: 'salary_review', title: '연봉 협상', category: 'people', chance: 0, cooldown: 0,
-    text: '새해 연봉 협상 철입니다. 직원들이 인상을 기대하고 있습니다.',
+    text: '새해 연봉 협상 철입니다. 직원들이 인상을 기대하고 있습니다. 직원 탭에서 인상·동결 뒤의 급여와 사기를 숫자로 볼 수 있습니다.',
     choices: [
       { label: '인상', detail: '전 직원 급여 +5%(협상가는 +2.5%) — 사기 +15', effects: [{ type: 'raiseAll', share: 0.05 }, { type: 'moraleAll', delta: 15 }] },
       { label: '동결', detail: '비용 없음 — 사기 −15(토박이는 −7.5)', effects: [{ type: 'moraleAll', delta: -15 }] },
