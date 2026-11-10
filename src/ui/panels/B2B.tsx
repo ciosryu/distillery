@@ -184,7 +184,7 @@ export function B2B() {
                   <Td right>{c?.contents ? months(c.contents.oakMonths) : '—'}</Td>
                   <Td right>{c?.contents ? caskQuality(s, hide, c, known?.get(c.id)) : '—'}</Td>
                   <Td right>{won(b.price)}</Td>
-                  <Td right>{b.expiresMonth - s.month}개월 후</Td>
+                  <Td right>{b.expiresMonth - s.month <= 0 ? <Badge tone="bad">이번 달까지</Badge> : <Badge tone="warn">다음 달까지</Badge>}</Td>
                   <Td><SellConfirm arm={arm} id={`bid:${b.id}`} label="판매" variant="primary" preview={<>캐스크 <b>{b.caskId}</b>{c?.contents ? <> ({liters(c.contents.volumeL)} · 숙성 {months(c.contents.oakMonths)})</> : null}를 {b.buyerName}에 넘기고 <b>{won(b.price)}</b>을 받는다. 남는 숙성 통 {maltCasks.length - 1}개</>} warnings={c ? caskSellWarnings(s, c) : []} onConfirm={() => dispatch({ type: 'acceptCaskBid', bidId: b.id })} /></Td>
                 </tr>
               );
