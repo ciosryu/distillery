@@ -9,6 +9,7 @@ import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
 import { handfillCask, hasHandfillZone } from '../sim/handfill';
+import { autoFillPreview } from '../sim/autoFill';
 import { AUTO_RESTOCK_EXPENSE, productionValue, whiskySupplyForecast } from '../sim/economics';
 
 // ───────────── ① 파산 카운트다운 ─────────────
@@ -235,10 +236,15 @@ export function monthTodos(s: GameState): Todo[] {
   if (jump) out.push({ id: 'loan-jump', level: 'warn', text: `${jump.month - s.month === 0 ? '이번 달' : `${jump.month - s.month}개월 뒤`} 대출 거치가 끝나 월 납부가 ${fmtWon(jump.from)} → ${fmtWon(jump.to)}로 뛴다`, action: '대출 보기', target: { tab: 'finance' } });
   // 탱크 몰트·그레인 통입 대기 — 통에 넣어야 숙성이 시작된다
   const tankMalt = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced).reduce((t, l) => t + l.volumeL, 0);
-  if (tankMalt >= 50) {
+  // 자동 통입(#239)이 켜져 있으면 넣을 통이 있는 동안은 안내하지 않는다 — 빈 통이 모자랄 때만 "통을 사라"로 줄인다
+  const af = s.inventory.autoFill;
+  const afLeft = af && tankMalt >= 50 ? autoFillPreview(s, af).leftL : 0;
+  if (tankMalt >= 50 && (!af || afLeft >= 50)) {
     const empties = s.inventory.casks.filter((c) => !c.contents && !(c.contamination && c.contaminationKnown)).length;
     const free = Math.max(0, warehouseCapacity(s) - s.inventory.casks.length);
-    out.push({ id: 'fill', level: 'info', text: `탱크 몰트·그레인 ${Math.round(tankMalt).toLocaleString()}L 통입 대기 — 빈 통 ${empties}개 · 남은 자리 ${free}통 (통에 넣어야 숙성이 시작된다)`, action: '통입', target: { anchor: 'mvp-fill' } });
+    out.push(af
+      ? { id: 'fill', level: 'info', text: `자동 통입이 켜져 있지만 빈 나무 통이 모자라 탱크 몰트·그레인 ${Math.round(afLeft).toLocaleString()}L가 남는다 — 빈 통 ${empties}개 · 남은 자리 ${free}통. 통을 사거나 숙성고를 늘리세요`, action: '통 사기', target: { anchor: 'mvp-space' } }
+      : { id: 'fill', level: 'info', text: `탱크 몰트·그레인 ${Math.round(tankMalt).toLocaleString()}L 통입 대기 — 빈 통 ${empties}개 · 남은 자리 ${free}통 (통에 넣어야 숙성이 시작된다 · 자동 통입을 켜 둘 수 있다)`, action: '통입', target: { anchor: 'mvp-fill' } });
   }
   // 위스키 재고가 떨어져 가는데 숙성을 채운 통이 있다
   const ready = s.inventory.casks.filter((c) => c.contents && !c.owner && (c.contents.kind === 'malt' || c.contents.kind === 'grain') && c.contents.oakMonths >= min).length;

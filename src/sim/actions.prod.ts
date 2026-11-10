@@ -15,7 +15,7 @@ import { validateRecipe } from './production';
 import { equipmentCost } from './sites';
 import { applyWaterPermit } from './waterPermit';
 import { HANDFILL, handfillBlocker } from './handfill';
-import type { AutoSampleSettings, Cask, CaskTypeId, Product, Recipe } from './types';
+import type { AutoFillSettings, AutoSampleSettings, Cask, CaskTypeId, Product, Recipe } from './types';
 import { nid, staffOf, warehouseCapacity } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
 
@@ -58,6 +58,8 @@ export type ProdAction =
   | { type: 'setAutoRestock'; productId: string; months: number | null }
   /** 자동 샘플 설정 (#207) — 비운 칸은 기본값 */
   | { type: 'setAutoSample'; settings: AutoSampleSettings }
+  /** 자동 통입 (#239) — settings null이면 끔, 비운 칸은 기본값 */
+  | { type: 'setAutoFill'; settings: AutoFillSettings | null }
   /** 핸드필 존 전용 통 지정 (#233) — caskId null이면 해제. 한 번에 하나 */
   | { type: 'setHandfillCask'; caskId: string | null }
   /** 판매 중인 제품 이름 바꾸기 (#236, 2026-11-10 오너 요청) — 무료, 판매 기록·표기는 그대로 */
@@ -73,6 +75,7 @@ export const PROD_CASH_KEY: CashKeys<ProdAction> = {
   setAutoPrice: null,
   setAutoRestock: null,
   setAutoSample: null,
+  setAutoFill: null,
   setHandfillCask: null,
   renameProduct: null,
   saveRecipe: null,
@@ -162,6 +165,18 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (why) return fail(prev, why);
     c.handfill = true;
     return { state: s, message: `통 ${c.id}를 핸드필 전용으로 지정 — 다음 달부터 방문객이 담아 간다` };
+  },
+  setAutoFill: (s, _prev, a) => {
+    if (!a.settings) { delete s.inventory.autoFill; return { state: s, message: '자동 통입을 껐다' }; }
+    const x = a.settings;
+    const clean: AutoFillSettings = {};
+    if (x.everyMonths && [3, 6].includes(x.everyMonths)) clean.everyMonths = x.everyMonths;
+    const kinds = [...new Set(x.kinds ?? [])].filter((k) => k === 'malt' || k === 'grain');
+    if (kinds.length === 1) clean.kinds = kinds;
+    if (x.prefer === 'used') clean.prefer = 'used';
+    if (x.entryAbv != null && x.entryAbv >= 0.4 && x.entryAbv <= 0.75 && Math.abs(x.entryAbv - 0.635) > 1e-9) clean.entryAbv = Math.round(x.entryAbv * 1000) / 1000;
+    s.inventory.autoFill = clean;
+    return { state: s };
   },
   setAutoSample: (s, _prev, a) => {
     const x = a.settings;

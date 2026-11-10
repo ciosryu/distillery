@@ -4,6 +4,7 @@ import {
   type BlendComponent, type BlendTarget, type Cask, type Hex,
 } from '../../sim';
 import { useGame } from '../../store/game';
+import { delegateCheck } from '../../sim/delegateCheck';
 import { months, num, won } from '../format';
 import { Badge, Button, Card, Empty, NumberField, Table, Td, TextField } from '../kit';
 
@@ -85,6 +86,9 @@ export function BlendLab() {
   const [abv, setAbv] = useState(46);
   const [name, setName] = useState('');
   const [line, setLine] = useState('');
+  // [블렌더에게 맡기기] 확인 (#238, 5차 플레이테스트) — 바로 확정되는 줄 모르고 연달아 눌러 위스키 통이 모두 사라졌다.
+  // 첫 누름은 쓸 통·병 수·남는 위스키 통을 보이고, 두 번째에 맡긴다. 이번 달 같은 목표로 이미 맡겼으면 한 번 더 묻는다(세 번째)
+  const [armed, setArmed] = useState<{ key: string; step: number } | null>(null);
   const blender = blenderOf(s);
   const target = targets.find((t) => t.id === targetId) ?? targets[0]!;
 
@@ -120,6 +124,10 @@ export function BlendLab() {
   })();
   const options = { name, targetAbv: abv / 100, bottleMl: 700, chillFilter: false, packagingId: 'standard', targetId: target.source === 'core' ? undefined : target.id, line: target.source === 'core' ? target.id.slice(5) : line || undefined };
   const capLeft = samplingCapacity(s) - s.inventory.samplesThisMonth;
+  const delegateIds = (picked.length ? picked : knownCohorts).flatMap((c) => c.casks.map((k) => k.id));
+  const delegateKey = JSON.stringify([s.month, target.id, delegateIds, bottles, options]);
+  const delegateStep = armed?.key === delegateKey ? armed.step : 0; // 조건이 바뀌면 처음부터 다시 묻는다
+  const check = delegateStep > 0 && knownCohorts.length ? delegateCheck(s, target, delegateIds, bottles, options) : null;
 
   return (
     <div className="grid gap-4">
@@ -150,10 +158,27 @@ export function BlendLab() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="primary" disabled={!components.length} onClick={() => dispatch({ type: 'bottle', components, options })}>배팅 확정·병입</Button>
-              <Button disabled={!knownCohorts.length} title="선택한 코호트(없으면 샘플 기록이 있는 전체) 안에서 블렌더가 기록을 보고 비율을 정한다 — 서툴거나 샘플이 오래되면 빗나간다" onClick={() => dispatch({ type: 'delegateBlend', targetId: target.id, caskIds: (picked.length ? picked : knownCohorts).flatMap((c) => c.casks.map((k) => k.id)), bottles, options })}>블렌더에게 맡기기</Button>
+              <Button variant={delegateStep > 0 ? 'danger' : 'secondary'} disabled={!knownCohorts.length} title="선택한 코호트(없으면 샘플 기록이 있는 전체) 안에서 블렌더가 기록을 보고 비율을 정한다 — 서툴거나 샘플이 오래되면 빗나간다. 누르면 먼저 쓸 통을 보여 주고, 한 번 더 누르면 맡긴다"
+                onClick={() => {
+                  const c = check ?? delegateCheck(s, target, delegateIds, bottles, options); // 첫 누름에는 아직 계산 전 — 여기서 잰다
+                  if ('error' in c) { dispatch({ type: 'delegateBlend', targetId: target.id, caskIds: delegateIds, bottles, options }); return; } // 맡길 수 없는 경우 — 오류 문구는 행동이 낸다(아무것도 바뀌지 않는다)
+                  const need = c.alreadyThisMonth.length ? 2 : 1;
+                  if (delegateStep < need) { setArmed({ key: delegateKey, step: delegateStep + 1 }); return; }
+                  setArmed(null);
+                  dispatch({ type: 'delegateBlend', targetId: target.id, caskIds: delegateIds, bottles, options });
+                }}>{delegateStep === 0 ? '블렌더에게 맡기기' : check && !('error' in check) && check.alreadyThisMonth.length && delegateStep === 1 ? '이번 달 이미 맡겼다 — 한 번 더 누르면 계속' : `한 번 더 누르면 맡긴다 — 통 ${check && !('error' in check) ? check.casks.length : '?'}개 사용`}</Button>
+              {delegateStep > 0 && <Button variant="ghost" onClick={() => setArmed(null)}>취소</Button>}
               {best && <Button variant="ghost" onClick={() => setShares(best.shares)}>블렌더 추천 비율 불러오기</Button>}
               <Button variant="ghost" onClick={() => setShares({})}>비율 초기화</Button>
             </div>
+            {check && !('error' in check) && (
+              <div className="rounded-md border border-rose-300 bg-rose-50 p-2 text-xs dark:border-rose-800 dark:bg-rose-950/40">
+                <div className="font-medium text-rose-900 dark:text-rose-200">맡기면 바로 병입된다 — 되돌릴 수 없다</div>
+                <div className="mt-1">약 <b>{num(check.bottles)}병</b> · 쓸 통 <b>{check.casks.length}개</b>({check.casks.filter((c) => c.empties).length}개는 비워짐): {check.casks.map((c) => `${c.id} ${num(c.liters, 1)}L${c.empties ? '(비움)' : ''}`).join(', ')}</div>
+                <div>남는 위스키 통 <b>{check.whiskyBefore} → {check.whiskyLeft}개</b>{check.unknown ? ` · 샘플 기록이 없는 ${check.unknown}통은 빠진다` : ''}</div>
+                {check.warnings.map((w) => <div key={w} className="mt-1 font-medium text-rose-800 dark:text-rose-300">⚠ {w}</div>)}
+              </div>
+            )}
           </div>
         </div>
       </Card>

@@ -235,3 +235,17 @@ describe('핸드필 존 할 일 (#233)', () => {
     expect(monthTodos(s).some((t) => t.id === 'handfill')).toBe(false);
   });
 });
+
+describe('자동 통입과 통입 대기 안내 (#239)', () => {
+  it('자동 통입이 켜져 있고 빈 통이 넉넉하면 안내하지 않고, 모자라면 "통을 사라"로 바꾼다', () => {
+    const s = mvp();
+    s.inventory.lots.push({ id: 'TX', name: '몰트', kind: 'malt', volumeL: 400, abv: 0.68, flavor: {}, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 1, batchId: 'BX' });
+    expect(monthTodos(s).find((t) => t.id === 'fill')?.target).toEqual({ anchor: 'mvp-fill' });
+    s.inventory.autoFill = {};
+    const empties = s.inventory.casks.filter((c) => !c.contents).length;
+    const t = monthTodos(s).find((x) => x.id === 'fill');
+    if (empties >= 3) expect(t).toBeUndefined();
+    s.inventory.casks = s.inventory.casks.filter((c) => c.contents); // 빈 통 없음
+    expect(monthTodos(s).find((x) => x.id === 'fill')?.target).toEqual({ anchor: 'mvp-space' });
+  });
+});
