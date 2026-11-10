@@ -684,7 +684,7 @@ describe('숙성 소주 표기 (#217, PRD §9.2)', () => {
   });
 });
 
-describe('기프트 샵 (P-MKT-11)', () => {
+describe('기프트 샵 (#234)', () => {
   it('방문객은 그대로, 굿즈 수입 + 뉴메이크 소포장 구매율 10% → 25% (탱크 원액을 더 쓴다)', async () => {
     const { runTourism, NEW_MAKE_BOTTLE } = await import('./tourism');
     const { GIFT_SHOP } = await import('./content/market');

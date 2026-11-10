@@ -72,11 +72,11 @@ export const VISITOR_EQUIPMENT: Record<string, EquipmentDef> = {
   // 결정 #92: VIP·레스토랑은 소수 고객 상품 — v1.4 수치(VIP 월 400명 × 6만 원)는 관광 배수가 높은 입지에서 본업보다 많이 벌어(오사카·교토 순자산 54억) 방문객·객단가를 낮췄다 [튜닝]
   visitor_vip: { id: 'visitor_vip', kind: 'visitor', nameKo: '비지터 센터 — VIP 테이스팅 라운지', cost: 200_000_000, leadMonths: 6, maintenance: 4_000_000, tier: 2, visitorsPerMonth: 150, spendPerVisitor: 50_000, buzzQuality: 1.2, requires: 'visitor_basic' },
   visitor_restaurant: { id: 'visitor_restaurant', kind: 'visitor', nameKo: '비지터 센터 — 레스토랑 결합형', cost: 500_000_000, leadMonths: 9, maintenance: 8_000_000, tier: 3, visitorsPerMonth: 300, spendPerVisitor: 40_000, buzzQuality: 1.5, requires: 'visitor_vip' },
-  // 기프트 샵 ([결정 P-MKT-11], 오너 승인 2026-11-10 — B안): 방문객은 늘지 않는다. 뉴메이크 소포장 구매율을 올리고 굿즈 수입을 더한다(tourism.ts)
+  // 기프트 샵 ([결정 #234], 오너 승인 2026-11-10 — B안): 방문객은 늘지 않는다. 뉴메이크 소포장 구매율을 올리고 굿즈 수입을 더한다(tourism.ts)
   visitor_giftshop: { id: 'visitor_giftshop', kind: 'visitor', nameKo: '비지터 센터 — 기프트 샵', cost: 20_000_000, leadMonths: 1, maintenance: 500_000, tier: 1, visitorsPerMonth: 0, spendPerVisitor: 0, buzzQuality: 0, requires: 'visitor_basic', note: '뉴메이크 소포장(방문객 구매율 10% → 25%, 탱크 몰트·그레인 원액을 쓴다) · 티셔츠·로고 글렌캐런 잔(방문객 1인 순수입 4,000원) — 방문객은 늘지 않는다' },
 };
 
-/** 기프트 샵 효과 ([결정 P-MKT-11]) [튜닝] — 뉴메이크 소포장 구매율(기본 NEW_MAKE_BOTTLE.buyRate 10%를 대체)과 굿즈 1인 순수입 */
+/** 기프트 샵 효과 ([결정 #234]) [튜닝] — 뉴메이크 소포장 구매율(기본 NEW_MAKE_BOTTLE.buyRate 10%를 대체)과 굿즈 1인 순수입 */
 export const GIFT_SHOP = { id: 'visitor_giftshop', newMakeBuyRate: 0.25, merchPerVisitor: 4_000 };
 
 // ── 같은 카테고리 제품끼리 수요 나눔 (PRD §9.2, §15.3 #12 → 결정 #154) [튜닝] ──

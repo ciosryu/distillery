@@ -33,7 +33,7 @@ export function runTourism(s: GameState, report: MonthReport, monthOfYear: numbe
     revenue += v * t.spendPerVisitor;
     buzz += v * t.buzzQuality;
   }
-  // 기프트 샵(P-MKT-11): 굿즈 수입 + 뉴메이크 소포장 구매율 상승
+  // 기프트 샵(#234): 굿즈 수입 + 뉴메이크 소포장 구매율 상승
   const giftShop = tiers.some((t) => t.id === GIFT_SHOP.id);
   if (giftShop) revenue += visitors * GIFT_SHOP.merchPerVisitor;
   // 뉴메이크 한정판: 탱크의 몰트·그레인 원액을 쓴다 — 숙성에 넣을 원액을 당겨 쓰는 대가
