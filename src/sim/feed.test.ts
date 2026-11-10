@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { newGame, type GameState, type MonthReport, type Product } from './index';
 import { feedFor, feedSituation, styleWeights } from './feed';
 
-// 가상 주류 커뮤니티 피드 (P-MKT-15) — 순수 연출, 세이브에 남기지 않는다
+// 가상 주류 커뮤니티 피드 (#247) — 순수 연출, 세이브에 남기지 않는다
 
 const product = (over: Partial<Product> = {}): Product => ({ id: 'p', name: '테스트 위스키', category: 'whisky', ageYears: 4, oakMonths: 48, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: { vanilla_caramel: 40, dried_fruit: 30, cereal: 20 }, quality: 70, typicity: 80, style: null, sourcedShare: 0, stockBottles: 5000, price: 60_000, unitCost: 20_000, createdMonth: 0, lastMonthSold: 0, totalSold: 1000, ...over });
 
@@ -18,7 +18,7 @@ function world(ps: Product[], months = 3, bottles = 300, seed = 1): GameState {
   return s;
 }
 
-describe('가상 커뮤니티 피드 (P-MKT-15)', () => {
+describe('가상 커뮤니티 피드 (#247)', () => {
   it('시드 고정 — 같은 판이면 같은 피드, 상태를 바꾸지 않는다(세이브·시뮬 난수 불변)', () => {
     const s = world([product({ id: 'a' }), product({ id: 'b', name: '다른 위스키', quality: 60 })]);
     const before = JSON.stringify(s);

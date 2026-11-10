@@ -8,7 +8,7 @@ import { expectedPricePerL, productConsumerPrice } from './market';
 import { rngFor, type Rng } from './rng';
 import type { AxisId, GameState, MonthReport, Product } from './types';
 
-// 가상 주류 커뮤니티 피드 ([결정 P-MKT-15], 오너 2026-11-10) — 파트 MKT. **순수 연출: 판매·인지도에 영향 없음.**
+// 가상 주류 커뮤니티 피드 ([결정 #247], 오너 2026-11-10) — 파트 MKT. **순수 연출: 판매·인지도에 영향 없음.**
 // 세이브에 아무것도 남기지 않는다: 최근 월 리포트(판매량·매출·수요)와 지금 제품 값(품질·향 — 판매 화면에 이미 보이는 값)으로
 // (시드, 달, 제품)마다 고정된 난수 스트림으로 화면에서 만든다 → 새로고침해도 같은 피드, 세이브 크기 0, 시뮬레이션 난수 순서 불변.
 // 보관(단종)된 제품은 향·품질 기록이 없어 뺀다.

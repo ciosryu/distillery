@@ -4,7 +4,7 @@ import { monthLabel } from '../sim/util';
 import { useGame } from '../store/game';
 import { Badge, Card, Empty } from './kit';
 
-// 가상 주류 커뮤니티 피드 카드 ([결정 P-MKT-15]) — 파트 MKT. 순수 연출: 판매에 영향 없음. 판매 화면(Sales.tsx)이 붙인다
+// 가상 주류 커뮤니티 피드 카드 ([결정 #247]) — 파트 MKT. 순수 연출: 판매에 영향 없음. 판매 화면(Sales.tsx)이 붙인다
 
 const STYLE_TONE: Record<FeedStyle, string> = {
   whiskybase: 'border-l-indigo-400 dark:border-l-indigo-500',

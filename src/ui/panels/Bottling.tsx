@@ -269,7 +269,7 @@ export function Bottling() {
           <div className="flex flex-wrap items-center gap-3">
             <label className="inline-flex items-center gap-1 text-sm"><input type="checkbox" checked={opts.chillFilter} onChange={(e) => setOpts({ ...opts, chillFilter: e.target.checked })} className="accent-amber-700" /> 칠 필터링</label>
             {hasDutyFree(s) && <label className="inline-flex items-center gap-1 text-sm" title={`국내 판매 없이 지정면세점 전용 매대(${DUTY_FREE.slots}칸)에서만 판매. 제주 원료(차조·청귤) 기념품은 매력도 ×${DUTY_FREE.localAppeal}, 위스키는 숙성 ${DUTY_FREE.agedTiers.map((t) => `${t.years}년 ×${t.appeal}`).join(' · ')}. ${DUTY_FREE.sellOutMonths}개월 안에 완판하면 다음 판 매력도 +${Math.round(DUTY_FREE.streakAppeal * 100)}%(최대 ${DUTY_FREE.maxStreak}연속), ${DUTY_FREE.returnMonths}개월 안에 못 팔면 국내 매대로 넘어갑니다`}><input type="checkbox" checked={!!opts.dutyFreeOnly} onChange={(e) => setOpts({ ...opts, dutyFreeOnly: e.target.checked })} className="accent-amber-700" /> 면세 전용 한정판</label>}
-            {/* 패키징 — 프리셋 두 개 + 직접 고르기 (P-PROD-38). 재고 보충 때는 이 칸이 없고 대상 제품 패키징을 그대로 쓴다(pickRestock) */}
+            {/* 패키징 — 프리셋 두 개 + 직접 고르기 (#248). 재고 보충 때는 이 칸이 없고 대상 제품 패키징을 그대로 쓴다(pickRestock) */}
             <PackagingPicker opts={opts} setOpts={setOpts} />
           </div>
             </>

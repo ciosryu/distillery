@@ -1,4 +1,4 @@
-// 병입 패키징 고르기 (P-PROD-38, 2026-11-10 오너 요청 — MVP는 프리셋 두 개 + "직접 고르기" 접기)
+// 병입 패키징 고르기 (#248, 2026-11-10 오너 요청 — MVP는 프리셋 두 개 + "직접 고르기" 접기)
 // 프리셋(스탠다드 / 디캔터+케이스)은 예전과 같다. 접기를 펼치면 병·마개·왁스·라벨·상자·라벨 색을 고르고 병당 포장 원가·패키징 럭셔리(0~30)를 바로 본다.
 // 왁스 실링은 코르크에만(스크류 캡과 같이 못 씀). 재고 보충은 대상 제품과 같은 패키징이어야 해 고를 수 없게 잠근다
 import { BOTTLES, BOXES, CLOSURES, LABEL_COLOR_KO, LABEL_COLORS, LABELS, PACKAGING_LUXURY_MAX, WAX, type PackagingChoice } from '../../sim/content/packaging';

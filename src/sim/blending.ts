@@ -30,7 +30,7 @@ export interface BottleOptions {
    * 병 크기·도수·피니시·범주가 같아야 하고, 품질·향·원가는 남은 재고와 새 병 수로 가중 평균한다. 이름·출고가·판매 기록은 그대로
    */
   restockId?: string;
-  /** 패키징 직접 고르기 (P-PROD-38) — 있으면 packagingId 대신 이 부품 조합으로 원가·럭셔리를 정한다 */
+  /** 패키징 직접 고르기 (#248) — 있으면 packagingId 대신 이 부품 조합으로 원가·럭셔리를 정한다 */
   packaging?: PackagingChoice;
 }
 
@@ -332,7 +332,7 @@ export function priceAtQuality(s: GameState, p: BlendPreview, opts: BottleOption
 
 /** 병당 포장재 원가 — 이벤트 보정 × 입지 운송 할증 (결정 #86) */
 function packagingUnitCost(s: GameState, opts: Pick<BottleOptions, 'packagingId' | 'bottleMl' | 'packaging'>): number {
-  const base = opts.packaging ? packagingPartsCost(opts.packaging, opts.bottleMl) : packagingCost(opts.packagingId, opts.bottleMl); // 직접 고른 부품이면 부품 합 (P-PROD-38)
+  const base = opts.packaging ? packagingPartsCost(opts.packaging, opts.bottleMl) : packagingCost(opts.packagingId, opts.bottleMl); // 직접 고른 부품이면 부품 합 (#248)
   return base * mod(s, 'packaging') * siteFreight(s, 'packaging');
 }
 
@@ -358,7 +358,7 @@ function restockChecks(s: GameState, opts: BottleOptions, b: { category: Product
   if (t.dutyFreeOnly || opts.dutyFreeOnly) { errors.push('면세 한정판은 재고를 보충할 수 없습니다 — 판(Vol.)마다 새로 낸다'); return; }
   if (t.category !== b.category) errors.push(`「${t.name}」은 ${CATEGORY[t.category].nameKo} — 이 원액은 ${CATEGORY[b.category].nameKo}라 보충할 수 없습니다`);
   if (opts.bottleMl !== t.bottleMl) errors.push(`병 크기를 「${t.name}」과 같은 ${t.bottleMl}ml로 맞추세요`);
-  // 패키징이 같아야 보충한다 (P-PROD-38 — 다른 병은 새 제품으로, 오너 "권장안대로")
+  // 패키징이 같아야 보충한다 (#248 — 다른 병은 새 제품으로, 오너 "권장안대로")
   if (!sameChoice(productPackaging(t), opts.packaging ?? presetChoice(opts.packagingId))) errors.push(`패키징을 「${t.name}」과 같게 맞추세요 — 다른 병·마개·라벨·상자는 새 제품으로 낸다`);
   if (isCaskStrength(t)) {
     // 캐스크 스트렝스 — 배치마다 도수가 달라도 된다(라벨 도수는 병 수 가중 평균). 표준 도수로 물을 타면 캐스크 스트렝스가 아니다

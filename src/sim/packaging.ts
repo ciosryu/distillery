@@ -2,7 +2,7 @@ import { BOTTLES, BOXES, CLOSURES, LABEL_COLORS, LABELS, PACKAGING_LUXURY_MAX, P
 import type { BottleMl } from './content/market';
 import type { Product, ProductPackaging } from './types';
 
-// ───────────── 병입 패키징 커스터마이징 (P-PROD-38, 2026-11-10 오너 요청) ─────────────
+// ───────────── 병입 패키징 커스터마이징 (#248, 2026-11-10 오너 요청) ─────────────
 // 부품 조합 → 병당 포장 원가·패키징 럭셔리(0~30). 병입 순간에 제품에 고정한다(Product.packaging) — 뒤에 카탈로그 수치를 바꿔도 만든 제품은 그대로.
 // 옛 제품(필드 없음)은 packagingId 프리셋에서 읽는다(세이브를 고쳐 쓰지 않는다). MKT는 아래 접근자로 수요에 반영한다(판매 공식은 MKT 몫)
 

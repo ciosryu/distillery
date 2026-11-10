@@ -987,7 +987,7 @@ describe('헤리티지 병입 연표 (#244, 2026-11-10 오너 요청)', () => {
   });
 });
 
-describe('병입 패키징 커스터마이징 (P-PROD-38, 2026-11-10 오너 요청)', () => {
+describe('병입 패키징 커스터마이징 (#248, 2026-11-10 오너 요청)', () => {
   it('기존 두 패키징은 부품 조합으로 원가·럭셔리가 예전과 같다 — 접근자도 옛 제품에 같은 값', async () => {
     const { packagingPartsCost, packagingPartsLuxury, presetChoice, packagingLuxury, packagingAppealFactor } = await import('./index');
     const { packagingCost, PACKAGING } = await import('./content/catalog');
