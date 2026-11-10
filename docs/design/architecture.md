@@ -1,6 +1,6 @@
 # 아키텍처 설계 v0.3 — 역제시(Step 1) → 승인·구현(Step 2·3) → Godot 확정
 
-> 상위 문서: [PRD §13 기술 아키텍처](../PRD.md) · 관련: [테크트리](tech-tree.md) · [블렌딩 미니게임](blending-minigame.md) · 상태: **v0.2 — §7의 권장안 승인(PRD 결정 #118~#121), 단 질문 1(최종 플랫폼)은 답 대기.** 설계 규모는 오너가 30년·2,500개로 정했다(#119). 구현 현황은 §8
+> 상위 문서: [PRD §13 기술 아키텍처](../PRD.md) · 관련: [테크트리](tech-tree.md) · [블렌딩 미니게임](blending-minigame.md) · 상태: **v0.3 — §7의 권장안 승인(PRD 결정 #118~#121), 질문 1(최종 플랫폼)은 Godot 4 + C#로 확정(#122, §9).** 설계 규모는 오너가 30년·2,500개로 정했다(#119). 구현 현황은 §8
 > 표기 규칙은 PRD와 같다 — `[결정]` `[제안]` `[튜닝]` `[확인 필요]`
 > 측정 환경: Node v22.23.4(V8), 2026-11-06. §2는 PRD v1.5 코드(v0.1 시점), §8은 v1.6 코드. 측정 재현: `npm run bench` · `DIAG=1 npm run balance`
 
@@ -283,7 +283,7 @@ interface GameState {
 
 | # | 질문 | 답 | 기록 |
 |---|---|---|---|
-| 1 | 최종 플랫폼 | **답 대기** — "전부 권장안"이었지만 이 질문의 권장안 칸은 "오너 결정"이었다 | PRD §15.3 #17 |
+| 1 | 최종 플랫폼 | **답 대기** — "전부 권장안"이었지만 이 질문의 권장안 칸은 "오너 결정"이었다. → 뒤에 Godot 4 + C#로 확정(#122, §9) | PRD §15.3 #17 |
 | 2 | 상태 스키마 | A안 — v6 도메인 슬라이스 | 결정 #118 |
 | 3 | 날씨 난수 | 도입, 이벤트는 입력 충격으로 | 결정 #120 |
 | 4 | 블렌딩 미니게임 | 레이더 차트 "The Art of Blending" (오너 원안) | 결정 #121, [blending-minigame.md](blending-minigame.md) |
@@ -296,7 +296,7 @@ interface GameState {
 | A (Step 2) | GameState v6 슬라이스 — 상태 접근 896곳을 타입 기반 코드모드로 변환(`scripts/codemods/v6-slices.mjs`) | 밸런스 골든 16개 파일(KR·JP·TW + 5개 입지, 월간 현금 흐름 DIAG 포함) **리팩터 전후 바이트 동일** |
 | A | 세이브 마이그레이션 체인(`migrate.ts`, v5 → v6, 옛 `normalizeState` 흡수) | 리팩터 전 코드로 만든 v5 세이브 픽스처 — 모든 v5 필드가 v6 위치에 같은 값(무손실), 브라우저에서 옛 키 자동 이전 확인 |
 | A | 저장: 디바운스 + 실패 토스트(D1 해결), UI 상태 `useUi` 분리, 슬라이스 셀렉터 | 브라우저 8개 탭 콘솔 오류 0 |
-| A | 테크 게이트 `isUnlocked(state, key)` — 행동 입구에서 조회, Phase 1은 `TECH_GATING = false` | 단위 테스트 |
+| A | 테크 게이트 `isUnlocked(state, key)` — 행동 입구에서 조회, Phase 1은 `TECH_GATING = false`(지금은 켜짐 — `TECH_GATING = true`, #174) | 단위 테스트 |
 | B (Step 3) | 월 틱 파이프라인 0~9단계 + 틱 컨텍스트(칸 기후표·칸 점유·QC 스탯) | 골든 바이트 동일 |
 | B | 칸 점유 인덱스(P1 해결) — 캐스크 1만 개 전체 자리 배정 **2,698ms → 3ms** | `npm run bench` |
 | B | 기상 이상치 AR(1) + 폭염·한파를 외기 충격으로(#120) | AR(1) 통계(평균·σ·ρ)·결정론·충격 테스트, 밸런스는 PRD §16.26 |
@@ -348,11 +348,11 @@ interface GameState {
 
 | TypeScript (기준 구현) | C# (이식) | 검증 |
 |---|---|---|
-| `GameState` v7 (헤더 + 슬라이스) | `GameState` 클래스 + 슬라이스 클래스 1:1 | 같은 JSON 세이브를 양쪽이 읽고 쓴다 |
+| `GameState` v15 (헤더 + 슬라이스) | `GameState` 클래스 + 슬라이스 클래스 1:1 | 같은 JSON 세이브를 양쪽이 읽고 쓴다 |
 | `engine.ts` GameEngine(dispatch·advance·snapshot) | `IGameEngine` | 같은 명령 열 → 같은 스냅샷 |
 | `step.ts` 0~9단계 파이프라인 + `tick.ts` 컨텍스트 | 같은 단계 순서 | 단계별 중간 상태 비교 |
 | `rng.ts` mulberry32 + `rngFor(seed, month, stream)` | 같은 알고리즘·같은 스트림 이름 | 난수 열 일치 |
-| `migrate.ts` 체인 | 같은 체인 | v5·v6 세이브 픽스처 |
+| `migrate.ts` 체인 | 같은 체인 | v5·v7~v14 세이브 픽스처(`src/sim/fixtures/`) |
 | `DIAG=1 npm run balance` 골든 | C# 헤드리스 러너 | 월간 현금 흐름 허용 오차 비교(부동소수점 누적 차이 — PRD §13.1) |
 
 **다음 단계 제안 `[제안]`:** ① 콘텐츠(`src/sim/content/*.ts`)를 엔진 중립 JSON으로 빼기 — **형식·규칙 고정, 내보내기 스크립트 있음(skeleton §4.9, `[결정 #151]`)** ② 골든 출력을 C# 비교용 고정 픽스처로 저장 ③ 이벤트 엔진의 섞기 방식 교체(§9.3) — 이식 전에 한 번만 밸런스를 다시 잡는다
