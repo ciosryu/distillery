@@ -867,3 +867,35 @@ describe('제품 이름 바꾸기 (#236, 2026-11-10 오너 요청)', () => {
     expect(applyAction(r.state, { type: 'renameProduct', productId: b!.id, name: 'x'.repeat(41) }).error).toContain('40자');
   });
 });
+
+describe('[블렌더에게 맡기기] 확인 (P-PROD-33, 5차 MVP 플레이테스트)', () => {
+  it('맡기기 전에 쓸 통·병 수·남는 위스키 통을 행동과 같은 계획으로 보이고, 다 쓰면·플래그십 후보면·이번 달 또 맡기면 경고한다', async () => {
+    const { emptyCaskOf, delegateCheck, findTarget, blendTargets } = await import('./index');
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.month = 40;
+    s.inventory.casks = s.inventory.casks.filter((c) => !c.contents); // 이 통만 위스키 통
+    s.scenario!.locked = s.scenario!.locked.filter((k) => k !== 'action:delegateBlend'); // 6년 차 해금 전이라 직접 연다
+    const hex = { peat: 10, fruit: 40, floral: 30, spicy: 20, woody: 30, sweet: 40 };
+    for (const [id, oak] of [['D1', 30]] as const) { // 통 하나 — 같은 맛 통이 여럿이면 블렌더는 한 통만 쓸 수 있다
+      const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.id = id;
+      c.contents = { id: `L${id}`, name: id, kind: 'malt', volumeL: 100, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10_000, batchId: `B${id}` };
+      c.sampleLog = [{ month: 40, hex, sigma: 3, estQuality: 70 }];
+      s.inventory.casks.push(c);
+    }
+    const target = blendTargets(s)[0]!;
+    const opts = { name: '맡김', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' } as const;
+    const chk = delegateCheck(s, target, ['D1'], 50_000, opts);
+    if ('error' in chk) throw new Error(chk.error);
+    expect(chk.casks.every((c) => c.empties)).toBe(true);     // 병 수가 커서 통을 다 쓴다
+    expect(chk.whiskyLeft).toBe(0);
+    expect(chk.warnings.some((w) => w.includes('하나도 남지 않는다'))).toBe(true);
+    expect(chk.warnings.some((w) => w.includes('플래그십 후보'))).toBe(true); // 30 + (180 − 40) ≥ 144
+    const before = s.inventory.casks.filter((c) => c.contents).length;
+    s = applyAction(s, { type: 'delegateBlend', targetId: target.id, caskIds: ['D1'], bottles: 100, options: opts }).state;
+    expect(s.inventory.casks.filter((c) => c.contents).length).toBe(before); // 100병은 통을 비우지 않는다 — 미리 보기와 같은 계획
+    const again = delegateCheck(s, findTarget(s, target.id)!, ['D1'], 100, opts);
+    if ('error' in again) throw new Error(again.error);
+    expect(again.alreadyThisMonth.length).toBe(1);
+    expect(again.warnings.some((w) => w.includes('이미 맡겼다'))).toBe(true);
+  });
+});
