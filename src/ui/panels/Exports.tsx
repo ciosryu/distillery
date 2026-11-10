@@ -1,4 +1,5 @@
 import { EXPORT_MARKETS, domesticNetPerBottle, effectiveTariff, exportEligible, exportFob, exportMarketsFor, exportNetPerBottle, exportShelfPrice, productConsumerPrice } from '../../sim';
+import { ExportShortfallNote } from '../ExportShortfallNote'; // P-MKT-16
 import { useGame } from '../../store/game';
 import { num, pct, won, wonFull } from '../format';
 import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';
@@ -21,6 +22,8 @@ export function Exports() {
         <Stat label="지난달 수출 운임" value={won(last?.expenses.export_freight ?? 0)} />
         <Stat label="월 현지 마케팅 분담" value={won(last?.expenses.export_fixed ?? 0)} hint="많이 낼수록 현지 인지도가 빨리 오른다" />
       </div>
+
+      <ExportShortfallNote s={s} />
 
       {markets.map((id) => {
         const m = EXPORT_MARKETS[id];

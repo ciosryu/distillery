@@ -1,6 +1,6 @@
 import { CATEGORY } from './content/categories';
 import { regionOf } from './content/regions';
-import { COMPARE_LINES, COMPARE_REASON, CAFE_LINES, DC_LINES, FEED_AUTHORS, FEED_BENCHMARKS, FEED_COMMUNITIES, WB_VERDICT, type FeedSituation, type FeedStyle, type Harsh } from './content/feed';
+import { CAFE_CLOSE, CAFE_LINES, CAFE_OPEN, COMPARE_LINES, COMPARE_REASON, DCJ_CLOSE, DCJ_LINES, DCJ_OFFTOPIC, DCJ_OPEN, DCW_CLOSE, DCW_FEATURE, DCW_LINES, DCW_OPEN, FEED_AUTHORS, FEED_BENCHMARKS, FEED_COMMUNITIES, REPLIES, WB_FINISH, WB_NOSE_ADJ, WB_VERDICT, type FeedFeature, type FeedSituation, type FeedStyle, type Harsh } from './content/feed';
 import { AXIS } from './content/axes';
 import { productLuxury } from './brands';
 import { topNotes } from './flavor';
@@ -8,7 +8,8 @@ import { expectedPricePerL, productConsumerPrice } from './market';
 import { rngFor, type Rng } from './rng';
 import type { AxisId, GameState, MonthReport, Product } from './types';
 
-// 가상 주류 커뮤니티 피드 ([결정 #247], 오너 2026-11-10) — 파트 MKT. **순수 연출: 판매·인지도에 영향 없음.**
+// 가상 주류 커뮤니티 피드 ([결정 #247] → v2 [결정 P-MKT-20], 오너 2026-11-10) — 파트 MKT. **순수 연출: 판매·인지도에 영향 없음.**
+// v2: 디시를 위스키 갤러리(거칠지만 진지)·주류 갤러리(욕설·뻘소리)로 나누고, 머리말·본문·특징·맺음말을 섞어 만들며 댓글을 단다
 // 세이브에 아무것도 남기지 않는다: 최근 월 리포트(판매량·매출·수요)와 지금 제품 값(품질·향 — 판매 화면에 이미 보이는 값)으로
 // (시드, 달, 제품)마다 고정된 난수 스트림으로 화면에서 만든다 → 새로고침해도 같은 피드, 세이브 크기 0, 시뮬레이션 난수 순서 불변.
 // 보관(단종)된 제품은 향·품질 기록이 없어 뺀다.
@@ -30,6 +31,8 @@ export interface FeedPost {
   harsh: Harsh;
   /** 가격 신호 (오너 결정 2): 품질은 좋은데 너무 싸면 '가격 올려라' */
   signal?: 'raise_price';
+  /** 댓글 (v2) — 위스키베이스는 없다 */
+  replies?: { author: string; text: string }[];
 }
 
 /** 한 제품·한 달의 반응 재료 */
@@ -81,11 +84,13 @@ export function feedSignals(s: GameState, p: Product, sale: MonthReport['sales']
 
 /** 세 커뮤니티 출현 비율 — 매니아 성향은 위스키베이스, 대중 성향·가격 극단은 디시, 무난·신제품은 카페. 소주·진·고량주는 위스키베이스 ×0.3 */
 export function styleWeights(p: Pick<Product, 'category'>, g: Pick<FeedSignals, 'mania' | 'mass' | 'extreme' | 'launch'>): Record<FeedStyle, number> {
-  const w = (0.25 + 0.45 * g.mania) * (WHITE.includes(p.category) ? 0.3 : 1);
-  const c = 0.4 + 0.2 * (1 - g.extreme) + (g.launch ? 0.15 : 0);
-  const d = 0.25 + 0.3 * g.mass + 0.35 * g.extreme;
-  const t = w + c + d;
-  return { whiskybase: w / t, cafe: c / t, dc: d / t };
+  const white = WHITE.includes(p.category);
+  const w = (0.22 + 0.4 * g.mania) * (white ? 0.3 : 1);
+  const c = 0.32 + 0.18 * (1 - g.extreme) + (g.launch ? 0.12 : 0);
+  const gw = (0.16 + 0.35 * g.mania + 0.2 * g.extreme) * (white ? 0.35 : 1); // 위갤 — 매니아·위스키
+  const gj = 0.14 + 0.35 * g.mass + 0.25 * g.extreme; // 주갤 — 대중·가격 극단
+  const t = w + c + gw + gj;
+  return { whiskybase: w / t, cafe: c / t, dc_whisky: gw / t, dc_jugal: gj / t };
 }
 
 /** 상황 판정 — 오너 결정 2: 품질 좋은데 너무 싸면 'raise'(가격 올려라 신호), 품질 최하인데 싸면 'cheapLow' */
@@ -105,8 +110,9 @@ const NEGATIVE: readonly FeedSituation[] = ['cheapLow', 'pricey', 'ripoff', 'bad
 const toneOf = (x: FeedSituation): FeedPost['tone'] => (POSITIVE.includes(x) ? 'pos' : NEGATIVE.includes(x) ? 'neg' : 'neu');
 
 function pickStyle(rng: Rng, w: Record<FeedStyle, number>): FeedStyle {
-  const r = rng.next();
-  return r < w.whiskybase ? 'whiskybase' : r < w.whiskybase + w.cafe ? 'cafe' : 'dc';
+  let r = rng.next();
+  for (const k of ['whiskybase', 'cafe', 'dc_whisky'] as const) { if (r < w[k]) return k; r -= w[k]; }
+  return 'dc_jugal';
 }
 
 function benchmarkFor(p: Product, consumer: number): string {
@@ -128,35 +134,87 @@ function fill(t: string, v: Record<string, string>): string {
   return t.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? '');
 }
 
-/** 디시 거친 말 수위 — 긍정 0.5, 부정 1, 심한 부정은 25%만 2(오너 결정 5: 빈도는 낮지만 나올 수 있다) */
-function dcHarsh(rng: Rng, x: FeedSituation, sentiment: number): Harsh {
-  if (toneOf(x) !== 'neg') return 0.5;
-  return sentiment <= -0.5 && DC_LINES[x][2] && rng.next() < 0.25 ? 2 : 1;
+/**
+ * 디시 거친 말 수위 (v2, 오너 2026-11-10) — 위갤: 긍정 0.5 · 부정 1 · 심한 부정에서 25%만 2.
+ * 주갤(욕설·뻘소리 중심): 칭찬도 1(욕 섞인 칭찬) · 부정은 60%가 2
+ */
+function dcHarsh(rng: Rng, style: 'dc_whisky' | 'dc_jugal', x: FeedSituation, sentiment: number): Harsh {
+  const lines = style === 'dc_whisky' ? DCW_LINES[x] : DCJ_LINES[x];
+  if (style === 'dc_whisky') {
+    if (toneOf(x) !== 'neg') return lines[0.5] ? 0.5 : 1;
+    return sentiment <= -0.5 && lines[2] && rng.next() < 0.25 ? 2 : 1;
+  }
+  if (toneOf(x) !== 'neg') return 1;
+  return lines[2] && rng.next() < 0.6 ? 2 : 1;
+}
+
+/** 제품 특징 — 위갤·위스키베이스 디테일 문장 */
+function featuresOf(p: Product): FeedFeature[] {
+  const out: FeedFeature[] = [];
+  const years = Math.floor((p.oakMonths ?? (p.ageYears ?? 0) * 12) / 12);
+  if ((p.flavor.peat_smoke ?? 0) >= 30) out.push('peat');
+  if ((p.flavor.dried_fruit ?? 0) >= 30 || (p.finish ?? '').includes('oloroso')) out.push('sherry');
+  if (p.abv >= 0.55) out.push('cs');
+  if (!WHITE.includes(p.category) && years >= 5) out.push('aged');
+  if (!WHITE.includes(p.category) && years <= 1) out.push('young');
+  if ((p.restMonths ?? 0) >= 6) out.push('onggi');
+  if (p.category === 'soju_distilled') out.push('soju');
+  if (p.category === 'gin') out.push('gin');
+  return out;
 }
 
 function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style: FeedStyle, month: number, i: number): FeedPost {
   const notes = topNotes(p.flavor, 3).map((n) => n.nameKo);
   const off = offNote(p);
+  const years = Math.floor((p.oakMonths ?? (p.ageYears ?? 0) * 12) / 12);
   const vars: Record<string, string> = {
     name: p.name, n1: notes[0] ?? '은은한 곡물', n2: notes[1] ?? notes[0] ?? '단맛', n3: notes[2] ?? notes[1] ?? '여운',
     off: off ?? '알코올 자극', price: fmtPrice(g.consumer), bench: benchmarkFor(p, g.consumer), cat: CATEGORY[p.category].nameKo,
+    abv: `${Math.round(p.abv * 100)}%`, age: years > 0 ? `${years}년` : '어린',
   };
   const white = WHITE.includes(p.category);
   const community = FEED_COMMUNITIES[style][white ? 'white' : 'whisky'];
   const author = rng.pick(FEED_AUTHORS[style]);
-  const base = { id: `${month}:${p.id}:${i}`, month, style, community, author, productId: p.id, productName: p.name, tone: toneOf(x), ...(x === 'raise' ? { signal: 'raise_price' as const } : {}) };
+  const tone = toneOf(x);
+  const base = { id: `${month}:${p.id}:${i}`, month, style, community, author, productId: p.id, productName: p.name, tone, ...(x === 'raise' ? { signal: 'raise_price' as const } : {}) };
+  const feats = featuresOf(p);
   if (style === 'whiskybase') {
     const score = clamp(Math.round(60 + p.quality * 0.38 + rng.int(-3, 3)), 50, 98);
-    const finish = p.quality >= 75 ? '길고 따뜻함' : p.quality >= 60 ? '중간 길이' : '짧고 거칠다';
+    const finish = rng.pick(WB_FINISH[p.quality >= 75 ? 'long' : p.quality >= 60 ? 'mid' : 'short']);
     const palate = `${vars.n3}${off ? `, 옅은 ${off}` : ''}`;
     const verdict = fill(rng.pick(WB_VERDICT[x]), vars);
-    const tasting = ['stockout', 'priceUp', 'priceDown', 'forgotten'].includes(x) ? '' : `Nose: ${vars.n1}, ${vars.n2}. Palate: ${palate}. Finish: ${finish}. `;
+    const tasting = ['stockout', 'priceUp', 'priceDown', 'forgotten'].includes(x) ? '' : `Nose: ${rng.pick(WB_NOSE_ADJ)} ${vars.n1}, ${vars.n2}. Palate: ${palate}. Finish: ${finish}. `;
     return { ...base, text: `${tasting}${verdict} ${score}점`, score, harsh: 0 };
   }
-  if (style === 'cafe') return { ...base, text: fill(rng.pick(CAFE_LINES[x]), vars), harsh: 0 };
-  const harsh = dcHarsh(rng, x, g.sentiment);
-  const pool = DC_LINES[x][harsh] ?? DC_LINES[x][1] ?? DC_LINES[x][0.5]!;
-  return { ...base, text: fill(rng.pick(pool), vars), harsh };
+  if (style === 'cafe') {
+    const text = `${rng.pick(CAFE_OPEN)}${fill(rng.pick(CAFE_LINES[x]), vars)}${rng.pick(CAFE_CLOSE)}`;
+    return { ...base, text, harsh: 0, replies: replies(rng, style, tone) };
+  }
+  const harsh = dcHarsh(rng, style, x, g.sentiment);
+  if (style === 'dc_whisky') {
+    const pool = DCW_LINES[x][harsh] ?? DCW_LINES[x][1] ?? DCW_LINES[x][0.5]!;
+    const feat = feats.length && rng.next() < 0.5 ? ` — ${fill(rng.pick(DCW_FEATURE[rng.pick(feats)]), vars)}` : '';
+    return { ...base, text: `${rng.pick(DCW_OPEN)}${fill(rng.pick(pool), vars)}${feat}${rng.pick(DCW_CLOSE)}`, harsh, replies: replies(rng, style, tone) };
+  }
+  // 주갤 — 30%는 뻘글(제품 이름만 걸친 헛소리). 가격 신호 글은 뻘글로 바꾸지 않는다
+  if (x !== 'raise' && rng.next() < 0.3) {
+    return { ...base, tone: 'neu', text: `${rng.pick(DCJ_OPEN)}${fill(rng.pick(DCJ_OFFTOPIC), vars)}${rng.pick(DCJ_CLOSE)}`, harsh: 1, replies: replies(rng, style, 'neu') };
+  }
+  const pool = DCJ_LINES[x][harsh] ?? DCJ_LINES[x][1] ?? DCJ_LINES[x][0.5]!;
+  return { ...base, text: `${rng.pick(DCJ_OPEN)}${fill(rng.pick(pool), vars)}${rng.pick(DCJ_CLOSE)}`, harsh, replies: replies(rng, style, tone) };
+}
+
+/** 댓글 0~3개 (위갤·주갤은 더 많이, 카페는 0~2) */
+function replies(rng: Rng, style: Exclude<FeedStyle, 'whiskybase'>, tone: FeedPost['tone']): FeedPost['replies'] {
+  const n = style === 'cafe' ? rng.int(0, 2) : rng.int(0, 3);
+  const pool = REPLIES[style][tone];
+  const out: { author: string; text: string }[] = [];
+  for (let k = 0; k < n; k++) {
+    const text = rng.pick(pool);
+    if (out.some((r) => r.text === text)) continue;
+    out.push({ author: rng.pick(FEED_AUTHORS[style]), text });
+  }
+  return out.length ? out : undefined;
 }
 
 /** 한 제품·한 달의 글 수 — 판매량(로그)·오픈런·출시 직후·화제(품절·가격 변동)로 0~4개. 판매가 줄면 글도 준다 */
@@ -216,7 +274,7 @@ export function feedFor(s: GameState, months = 3, maxPosts = 14): FeedPost[] {
       const reason = win.p.quality - lose.p.quality >= 5 ? COMPARE_REASON.quality : COMPARE_REASON.price;
       const text = fill(rng.pick(COMPARE_LINES[style]), { winner: win.p.name, loser: lose.p.name, reason });
       const white = WHITE.includes(win.p.category);
-      all.push({ id: `${r.month}:cmp:${win.p.id}:${lose.p.id}`, month: r.month, style, community: FEED_COMMUNITIES[style][white ? 'white' : 'whisky'], author: rng.pick(FEED_AUTHORS[style]), productId: win.p.id, productName: `${win.p.name} vs ${lose.p.name}`, text, tone: 'neu', harsh: style === 'dc' ? 0.5 : 0 });
+      all.push({ id: `${r.month}:cmp:${win.p.id}:${lose.p.id}`, month: r.month, style, community: FEED_COMMUNITIES[style][white ? 'white' : 'whisky'], author: rng.pick(FEED_AUTHORS[style]), productId: win.p.id, productName: `${win.p.name} vs ${lose.p.name}`, text, tone: 'neu', harsh: style === 'dc_jugal' ? 1 : style === 'dc_whisky' ? 0.5 : 0 });
     }
   }
   // 잊혀 가는 제품 — 판 적은 있는데 최근 3개월 리포트에 판매가 없다

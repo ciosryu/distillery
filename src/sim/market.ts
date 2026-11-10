@@ -14,7 +14,7 @@ import { RARE, trendFactor } from './blendTable';
 import { staffOf } from './util';
 import { mod } from './modifiers';
 import { packagingAppealFactor } from './packaging';
-import type { ExportEntry, ExportSale, GameState, Product, ProductCategory } from './types';
+import type { ExportEntry, ExportSale, GameState, MonthReport, Product, ProductCategory } from './types';
 import { EXPORT_MARKETS, EXPORT_SALES, tariffKey, type ExportMarketDef } from './content/exports';
 import type { Rng } from './rng';
 
@@ -231,6 +231,20 @@ export function priceOptions(s: GameState, p: Product, monthOfYear: number, fact
     }
     return { price: q.price, consumer: productConsumerPrice(s, q), demandBottles: d.demandBottles, sellBottles: sell, revenue, contribution, lineupRevenue, lineupContribution };
   });
+}
+
+// ── 수출이 국내를 굶기는지 ([결정 P-MKT-16], 오너 2026-11-10 — 후반 확인 판: 「더 퍼스트」 국내 품절을 몰랐다) ──
+
+/** 지난달 수출된 제품 중 국내 수요를 다 못 채운 것 — 재고가 모자라면 병당 순수입이 높은 판로부터 채우므로(#109 margin) 수출이 먼저 가져간다. 화면 표시용 */
+export interface ExportShortfall { productId: string; name: string; domesticSold: number; domesticDemand: number; unmet: number; exported: number }
+export function exportShortfalls(r: Pick<MonthReport, 'sales' | 'exports'> | undefined): ExportShortfall[] {
+  if (!r?.exports?.length) return [];
+  const ex = new Map<string, number>();
+  for (const x of r.exports) ex.set(x.productId, (ex.get(x.productId) ?? 0) + x.bottles);
+  return r.sales
+    .filter((x) => (ex.get(x.productId) ?? 0) > 0 && x.demandBottles - x.bottles >= 1)
+    .map((x) => ({ productId: x.productId, name: x.name, domesticSold: x.bottles, domesticDemand: Math.round(x.demandBottles), unmet: Math.round(x.demandBottles - x.bottles), exported: ex.get(x.productId)! }))
+    .sort((a, b) => b.unmet - a.unmet);
 }
 
 // ── 수출 (#95) ──
