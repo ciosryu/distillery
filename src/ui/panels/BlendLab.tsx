@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './HeritageReveal';
 import {
   blendTargets, blenderOf, HEX_AXES, HEX_LABEL, knownReads, LAB, matchScore, mixHex, optimizeShares, reachableEnvelope, SAMPLING, samplingCapacity,
   type BlendComponent, type BlendTarget, type Cask, type Hex,
@@ -79,6 +80,7 @@ const hexRow = (h: Hex) => HEX_AXES.map((a) => num(h[a])).join(' · ');
 export function BlendLab() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
+  const [reveal, setReveal] = useState<HeritageRevealData | null>(null);
   const targets = useMemo(() => blendTargets(s), [s]);
   const cohorts = useMemo(() => cohortsOf(s), [s]);
   const [targetId, setTargetId] = useState('trend');
@@ -133,6 +135,7 @@ export function BlendLab() {
 
   return (
     <div className="grid gap-4">
+      {reveal && <HeritageReveal data={reveal} onClose={() => setReveal(null)} />}
       <Card title="블렌딩 테이블 — The Art of Blending" actions={<span className="text-xs text-stone-500">{blender ? `마스터 블렌더 ${blender.name} · Lv.${blender.level} · 읽기 ${num(blender.nose)} · 감정력 ${blender.appraisal}` : '마스터 블렌더 없음 — 대표가 직접 읽는다(오차 큼). 직원 탭에서 채용'}</span>}>
         <div className="flex flex-wrap items-start gap-4">
           <HexRadar target={target.hex} predicted={predicted} band={band} envelope={envelope} actual={lastBlend?.hex} />
@@ -159,7 +162,7 @@ export function BlendLab() {
               {target.source !== 'core' && <TextField label="코어 레인지(선택)" value={line} onChange={setLine} width="w-32" />}
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="primary" disabled={!components.length} onClick={() => dispatch({ type: 'bottle', components, options })}>배팅 확정·병입</Button>
+              <Button variant="primary" disabled={!components.length} onClick={() => { const r = bottleWithHeritage(s, dispatch, components, options); if (r) setReveal(r); }}>배팅 확정·병입</Button>
               <Button variant={delegateStep > 0 ? 'danger' : 'secondary'} disabled={!knownCohorts.length} title="선택한 코호트(없으면 샘플 기록이 있는 전체) 안에서 블렌더가 기록을 보고 비율을 정한다 — 서툴거나 샘플이 오래되면 빗나간다. 누르면 먼저 쓸 통을 보여 주고, 한 번 더 누르면 맡긴다"
                 onClick={() => {
                   const c = check ?? delegateCheck(s, target, delegateIds, bottles, options); // 첫 누름에는 아직 계산 전 — 여기서 잰다
