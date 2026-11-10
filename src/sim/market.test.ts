@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { brandLuxuryFactor, brandLuxuryOn, houseBrand, productLuxury, updateBrandLuxury } from './brands';
 import { advanceMonths, applyAction, bottleMargin, brokerAskPerLPA, bulkValuePerLPA, demandFor, evaluate, spotBidPerLPA, spotQuote, makeContractOffer, makeCraftContractOffer, contractAgingImpact, mulberry32, newGame, previewBlend, qualityFactor, type Cask, type GameState, type SpiritLot, appeal, applyEffects, buyersFor, type Product, agePerception, suggestedPrice, spotSaturation, sourcedElasticityFactor, sourcedPrestigeOf, executeBlend, runSales, updateAwareness, DUTY_FREE, dutyFreeSlotBlocker, makeOemOffer, makeRetailOffer, oemPackageCost, OEM, productDutyFreeDemand, resolveDutyFreeEditions, startOem, startRetail, type MonthReport } from './index';
 import { overhangFactor, retailCapacityCases } from './retail';
-import { domesticDemands, expectedPricePerL, priceBreakdown, priceOptions, priceResponse, skuSplit, skuSplitEqual } from './market';
-import { ibTastedQuality, lotQuality, refreshCaskBids, spotQuoteEstimate } from './bulk';
+import { domesticDemands, exportShortfalls, expectedPricePerL, priceBreakdown, priceOptions, priceResponse, skuSplit, skuSplitEqual } from './market';
+import { ibAgedCaskCount, ibTastedQuality, lotQuality, refreshCaskBids, spotQuoteEstimate } from './bulk';
 import { AGED_WHITE, agedWhitePerception, PRICE_CURVE, SKU } from './content/market';
 import { BULK } from './content/catalog';
 import { BUYERS } from './content/names';
@@ -773,5 +773,35 @@ describe('패키징 커스터마이징 반영 (#248 접근자 — MKT 교체)', 
     expect((appeal(custom, s) / brandLuxuryFactor(s, custom)) / (appeal(std, s) / brandLuxuryFactor(s, std))).toBeCloseTo(1.1, 9);
     expect(productLuxury(custom) - productLuxury(std)).toBe(20);
     expect(productLuxury(product({ packagingId: 'premium', oakMonths: 0, ageYears: 0 }))).toBe(30); // 프리셋은 옛 값 그대로
+  });
+});
+
+describe('수출이 국내를 굶기는지 보이기 (P-MKT-16) · IB 나이 조건 통 수 (P-MKT-18)', () => {
+  it('수출된 제품 중 국내 수요를 다 못 채운 것만, 미충족 큰 순', () => {
+    const r = {
+      sales: [
+        { productId: 'a', name: 'A', bottles: 50, revenue: 0, demandBottles: 200 }, // 수출 중 + 국내 미충족 → 잡힌다
+        { productId: 'b', name: 'B', bottles: 100, revenue: 0, demandBottles: 100 }, // 다 채움
+        { productId: 'c', name: 'C', bottles: 10, revenue: 0, demandBottles: 90 }, // 미충족이지만 수출 안 함
+        { productId: 'd', name: 'D', bottles: 0, revenue: 0, demandBottles: 300 },
+      ],
+      exports: [{ marketId: 'JP', productId: 'a', name: 'A', bottles: 120, revenue: 0, demandBottles: 120, freight: 0 }, { marketId: 'DF', productId: 'b', name: 'B', bottles: 30, revenue: 0, demandBottles: 30, freight: 0 }, { marketId: 'CN', productId: 'd', name: 'D', bottles: 80, revenue: 0, demandBottles: 80, freight: 0 }],
+    } as unknown as MonthReport;
+    const out = exportShortfalls(r);
+    expect(out.map((x) => x.productId)).toEqual(['d', 'a']);
+    expect(out[1]).toMatchObject({ domesticSold: 50, domesticDemand: 200, unmet: 150, exported: 120 });
+    expect(exportShortfalls({ sales: r.sales } as MonthReport)).toEqual([]);
+  });
+
+  it('IB 나이 조건 통 수: 3년 이상·자사 원액만(매입·핸드필 제외)', () => {
+    const s = newGame({ seed: 3, region: 'KR' });
+    const base = s.b2b.brokerOffers[0]!.cask;
+    s.inventory.casks = [
+      { ...base, id: 'A', contents: { ...base.contents!, oakMonths: 40, sourced: false } },
+      { ...base, id: 'B', contents: { ...base.contents!, oakMonths: 20, sourced: false } },
+      { ...base, id: 'C', contents: { ...base.contents!, oakMonths: 50, sourced: true } },
+      { ...base, id: 'D', handfill: true, contents: { ...base.contents!, oakMonths: 60, sourced: false } },
+    ] as Cask[];
+    expect(ibAgedCaskCount(s)).toBe(1);
   });
 });
