@@ -664,6 +664,20 @@ export interface InventorySlice {
   samplesThisMonth: number;
   /** 자동 샘플 설정 (#207) — 없으면 기본값(켬, 모든 원액, 나이·간격 제한 없음, 여력만큼) */
   autoSample?: AutoSampleSettings;
+  /** 자동 통입 설정 (P-PROD-34) — 없으면 끔 */
+  autoFill?: AutoFillSettings;
+}
+
+/** 자동 통입 (P-PROD-34, 5차 MVP 플레이테스트 — 통입을 "잊었고 귀찮았다") — 비운 칸은 기본값 */
+export interface AutoFillSettings {
+  /** 몇 개월마다 — 1·3·6, 없으면 1(매달) */
+  everyMonths?: number;
+  /** 통에 넣을 원액 — 없으면 몰트·그레인 모두 */
+  kinds?: ('malt' | 'grain')[];
+  /** 빈 통 순서 — 'new' 새 통(첫 통입) 먼저(기본) · 'used' 재사용 통 먼저 */
+  prefer?: 'new' | 'used';
+  /** 통입 도수 — 없으면 0.635 (원액이 더 낮으면 원액 그대로) */
+  entryAbv?: number;
 }
 
 /** 자동 샘플이 고를 원액 묶음 — 위스키 표기 가능 통 / 숙성 중 몰트·그레인 스피릿 / 소주·진·고량주(옹기 등) */
