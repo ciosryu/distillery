@@ -249,3 +249,16 @@ describe('자동 통입과 통입 대기 안내 (#239)', () => {
     expect(monthTodos(s).find((x) => x.id === 'fill')?.target).toEqual({ anchor: 'mvp-space' });
   });
 });
+
+describe('자동 납품 원액 없음 할 일 (P-PROD-36)', () => {
+  it('자동 납품을 켠 제품이 판매 속도보다 재고가 적은데 같은 레시피 원액이 없으면 레시피 이름과 함께 알린다', () => {
+    const s = mvp();
+    const r = s.production.recipes.find((x) => x.kind === 'soju')!;
+    s.inventory.lots = [];
+    s.commerce.products.push({ id: 'PX', name: '옹기소주', category: 'soju_distilled', ageYears: null, abv: 0.4, bottleMl: 700, chillFiltered: true, packagingId: 'standard', flavor: {}, quality: 50, typicity: 50, style: '', sourcedShare: 0, stockBottles: 0, price: 15000, unitCost: 5000, createdMonth: 0, lastMonthSold: 100, totalSold: 100, autoRestock: 2, recipeIds: [r.id] } as never);
+    const t = monthTodos(s).find((x) => x.id === 'restock-short');
+    expect(t?.text).toContain('옹기소주');
+    expect(t?.text).toContain(r.name);
+    expect(t?.target).toEqual({ anchor: 'mvp-orders' });
+  });
+});
