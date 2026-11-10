@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AutoFillRow } from './AutoFill';
 import { HandfillRow } from './Handfill';
 import { CASKS, RECHAR_COST } from '../../sim/content/catalog';
 import { canFinishInto, evaluate, FINISH, vesselMaterial, finishCount, finishLabel, finishOf, isLocked, isUnlocked, lotCategory, unlockingNodes, MAX_RECHAR, regionalCaskPrice, topNotes, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type SpiritLot } from '../../sim';
@@ -49,6 +50,7 @@ function Tanks() {
   const emptyOfType = s.inventory.casks.filter((c) => !c.contents && c.typeId === caskType);
   return (
     <Card title="탱크 원액 (뉴메이크)">
+      <AutoFillRow />
       {!s.inventory.lots.length ? <Empty>탱크가 비어 있습니다. 생산 지시를 내리고 한 달을 진행하세요.</Empty> : (
         <Table head={['원액', '액량', '도수', 'LPA', '경과', '주요 향', '품질', '']}>
           {s.inventory.lots.map((l) => (

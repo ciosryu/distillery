@@ -8,6 +8,7 @@ import { deliverOwnedCasks } from './investment';
 import { runOffice, runStaffLifecycle } from './hr';
 import { runTourism } from './tourism';
 import { runHandfill } from './handfill';
+import { applyAutoFill } from './autoFill';
 import { emptyCaskOf } from './newGame';
 import { buildTickContext, type TickContext } from './tick';
 import { updateWeather, weatherOffset } from './weather';
@@ -161,6 +162,7 @@ export function advanceMonth(prev: GameState): GameState {
   phasePrepare(s, report);                                   // 0
   phaseEvents(s, report);                                    // 1
   const ctx = buildTickContext(s);                           //   이번 달 조건 확정
+  applyAutoFill(s, report);                                  // 2 앞: 자동 통입 (#239) — 진행 전에 통입한 것과 같은 때
   const { runsUsed, mashKg } = runProduction(s, report, ctx); // 2
   runMaturation(s, report, ctx);                             // 3 엔젤스 셰어·도수·향미
   phaseContracts(s, report);                                 // 4

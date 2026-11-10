@@ -867,3 +867,96 @@ describe('제품 이름 바꾸기 (#236, 2026-11-10 오너 요청)', () => {
     expect(applyAction(r.state, { type: 'renameProduct', productId: b!.id, name: 'x'.repeat(41) }).error).toContain('40자');
   });
 });
+
+describe('[블렌더에게 맡기기] 확인 (#238, 5차 MVP 플레이테스트)', () => {
+  it('맡기기 전에 쓸 통·병 수·남는 위스키 통을 행동과 같은 계획으로 보이고, 다 쓰면·플래그십 후보면·이번 달 또 맡기면 경고한다', async () => {
+    const { emptyCaskOf, delegateCheck, findTarget, blendTargets } = await import('./index');
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.month = 40;
+    s.inventory.casks = s.inventory.casks.filter((c) => !c.contents); // 이 통만 위스키 통
+    s.scenario!.locked = s.scenario!.locked.filter((k) => k !== 'action:delegateBlend'); // 6년 차 해금 전이라 직접 연다
+    const hex = { peat: 10, fruit: 40, floral: 30, spicy: 20, woody: 30, sweet: 40 };
+    for (const [id, oak] of [['D1', 30]] as const) { // 통 하나 — 같은 맛 통이 여럿이면 블렌더는 한 통만 쓸 수 있다
+      const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.id = id;
+      c.contents = { id: `L${id}`, name: id, kind: 'malt', volumeL: 100, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10_000, batchId: `B${id}` };
+      c.sampleLog = [{ month: 40, hex, sigma: 3, estQuality: 70 }];
+      s.inventory.casks.push(c);
+    }
+    const target = blendTargets(s)[0]!;
+    const opts = { name: '맡김', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' } as const;
+    const chk = delegateCheck(s, target, ['D1'], 50_000, opts);
+    if ('error' in chk) throw new Error(chk.error);
+    expect(chk.casks.every((c) => c.empties)).toBe(true);     // 병 수가 커서 통을 다 쓴다
+    expect(chk.whiskyLeft).toBe(0);
+    expect(chk.warnings.some((w) => w.includes('하나도 남지 않는다'))).toBe(true);
+    expect(chk.warnings.some((w) => w.includes('플래그십 후보'))).toBe(true); // 30 + (180 − 40) ≥ 144
+    const before = s.inventory.casks.filter((c) => c.contents).length;
+    s = applyAction(s, { type: 'delegateBlend', targetId: target.id, caskIds: ['D1'], bottles: 100, options: opts }).state;
+    expect(s.inventory.casks.filter((c) => c.contents).length).toBe(before); // 100병은 통을 비우지 않는다 — 미리 보기와 같은 계획
+    const again = delegateCheck(s, findTarget(s, target.id)!, ['D1'], 100, opts);
+    if ('error' in again) throw new Error(again.error);
+    expect(again.alreadyThisMonth.length).toBe(1);
+    expect(again.warnings.some((w) => w.includes('이미 맡겼다'))).toBe(true);
+  });
+});
+
+describe('자동 통입 (#239, 5차 MVP 플레이테스트)', () => {
+  const setup = async () => {
+    const { emptyCaskOf } = await import('./index');
+    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.inventory.casks = [];
+    for (const [id, fills] of [['N1', 0], ['N2', 0], ['U1', 2]] as const) { const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.id = id; c.fills = fills; s.inventory.casks.push(c); }
+    s.inventory.lots = [{ id: 'T1', name: '몰트', kind: 'malt', volumeL: 1000, abv: 0.68, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 10_000, batchId: 'BT' }];
+    return s;
+  };
+  it('끄면 아무것도 안 하고, 켜면 진행 때 빈 나무 통에 넣는다 — 새 통 먼저, 모자라면 남은 양을 메모', async () => {
+    const { applyAutoFill } = await import('./index');
+    const s = await setup();
+    const rep = () => ({ month: s.month, notes: [] as string[], expenses: {} as Record<string, number> }) as unknown as Parameters<typeof applyAutoFill>[1];
+    const r0 = rep(); applyAutoFill(s, r0);
+    expect(s.inventory.casks.some((c) => c.contents)).toBe(false);
+    const on = applyAction(s, { type: 'setAutoFill', settings: { prefer: 'new' } }).state;
+    const r1 = rep(); applyAutoFill(on, r1);
+    const filled = on.inventory.casks.filter((c) => c.contents).map((c) => c.id);
+    expect(filled).toEqual(['N1', 'N2', 'U1']); // 1000L × 68% → 200L × 63.5% 통 5통 분량이라 셋 다 차고 남는다
+    expect(on.inventory.casks.find((c) => c.id === 'N1')!.contents!.abv).toBeCloseTo(0.635, 6);
+    expect(r1.notes.some((n) => n.includes('자동 통입 3통') && n.includes('남았다'))).toBe(true);
+    expect(on.inventory.lots[0]!.volumeL).toBeLessThan(1000);
+  });
+  it('간격·재사용 통 먼저·원액 종류 — 설정은 정리해 저장한다', async () => {
+    const { applyAutoFill, autoFillCasks } = await import('./index');
+    let s = await setup();
+    s = applyAction(s, { type: 'setAutoFill', settings: { everyMonths: 3, prefer: 'used', kinds: ['grain'], entryAbv: 0.635 } }).state;
+    expect(s.inventory.autoFill).toEqual({ everyMonths: 3, prefer: 'used', kinds: ['grain'] });
+    expect(autoFillCasks(s, s.inventory.autoFill!)[0]!.id).toBe('U1');
+    s.month = 3;
+    applyAutoFill(s, { month: 3, notes: [], expenses: {} } as never);
+    expect(s.inventory.casks.some((c) => c.contents)).toBe(false); // 몰트뿐이라 그레인 설정이면 넣지 않는다
+    s = applyAction(s, { type: 'setAutoFill', settings: { everyMonths: 3, prefer: 'used' } }).state;
+    s.month = 4; applyAutoFill(s, { month: 4, notes: [], expenses: {} } as never);
+    expect(s.inventory.casks.some((c) => c.contents)).toBe(false); // 3개월마다 — 4월은 아니다
+    s.month = 6; applyAutoFill(s, { month: 6, notes: [], expenses: {} } as never);
+    expect(s.inventory.casks.find((c) => c.id === 'U1')!.contents).toBeDefined();
+    s = applyAction(s, { type: 'setAutoFill', settings: null }).state;
+    expect(s.inventory.autoFill).toBeUndefined();
+  });
+});
+
+describe('자동 납품은 같은 레시피 원액만 (#243, 5차 MVP 플레이테스트)', () => {
+  it('병입이 레시피를 기록하고, 자동 납품은 그 레시피 탱크만 쓴다 — 기록 없는 옛 제품은 모든 탱크', async () => {
+    const { autoRestockSources } = await import('./economics');
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const lot = (id: string, recipeId: string) => ({ id, name: id, kind: 'soju' as const, volumeL: 300, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 10_000, batchId: `B${id}`, recipeId });
+    s.inventory.lots = [lot('TA', 'RA'), lot('TB', 'RB')];
+    const opts = { name: '옹기', targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' } as const;
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: 'TB', liters: 50 }], options: opts }).state;
+    const p = s.commerce.products.at(-1)!;
+    expect(p.recipeIds).toEqual(['RB']);
+    expect(autoRestockSources(s, p).map((x) => x.comp.id)).toEqual(['TB']);
+    const legacy = { ...p, recipeIds: undefined };
+    expect(autoRestockSources(s, legacy).map((x) => x.comp.id).sort()).toEqual(['TA', 'TB']);
+    // 다른 레시피로 보충하면 합집합 — 그 뒤로는 둘 다 쓴다
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: 'TA', liters: 20 }], options: { ...opts, restockId: p.id } }).state;
+    expect(s.commerce.products.find((x) => x.id === p.id)!.recipeIds).toEqual(['RA', 'RB']);
+  });
+});

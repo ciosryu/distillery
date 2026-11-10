@@ -25,6 +25,56 @@ export function Stat({ label, value, hint, tone }: { label: string; value: React
   );
 }
 
+
+// ───────────── 되돌릴 수 없는 행동 확인 (#240 — 코어 UI 원칙) ─────────────
+// 통·원액·설비·직원·대출을 바꾸고 다음 진행 전에 되돌릴 길이 없는 행동은 ① 두 번 눌러 확인 ② 첫 누름에 결과 미리보기(숫자)
+// ③ 남는 자원 경고(특히 12년 플래그십 후보, alerts.ts flagshipCandidates) ④ 조건(armKey)이 바뀌면 처음부터 ⑤ 되돌리기 안내.
+// 함정이 네 번 나왔다 — 3차 원액 현물 판매·3차 가격표 [적용]·#226 원액 빼기·5차 맡기기(#238). 파트 버튼도 이 부품을 쓴다(skeleton §1)
+
+/** 확인 대기 상태 — armKey(조건: 대상·달·수량 등)가 바뀌면 처음부터 다시 묻는다. 미리보기 상자를 따로 그리는 화면(블렌딩 테이블 맡기기)은 이 훅을 쓴다 */
+export function useConfirm(armKey: string) {
+  const [armed, setArmed] = useState<{ key: string; step: number } | null>(null);
+  const step = armed?.key === armKey ? armed.step : 0;
+  return {
+    /** 지금까지 누른 확인 횟수 (0 = 아직 안 누름) */
+    step,
+    /** need번 확인한 뒤 run — 그 전에는 한 단계 올리기만 한다 */
+    press: (need: number, run: () => void) => {
+      if (step < need) { setArmed({ key: armKey, step: step + 1 }); return; }
+      setArmed(null);
+      run();
+    },
+    cancel: () => setArmed(null),
+  };
+}
+
+/** 확인 상자 맨 아래에 붙이는 되돌리기 안내 — 되돌리기(#146)는 "직전 진행 전"으로 돌아가며 그 뒤에 한 행동을 함께 지운다 */
+export const UNDO_HINT = '되돌릴 수 없다 — 다음 진행을 누르기 전이면 머리글 [↶ 되돌리기]로 직전 진행 전(지난달)으로 돌아갈 수 있다(이번 달에 한 다른 일도 함께 사라진다)';
+
+/**
+ * 두 번 눌러 확인하는 버튼 (#240). 첫 누름: 빨간 버튼 + 미리보기(무엇이 얼마나 사라지고 생기는지). 두 번째: onConfirm.
+ * preview는 누른 뒤에만 계산한다(함수) — 비싼 계산을 매 렌더마다 하지 않는다
+ */
+export function ConfirmButton({ children, onConfirm, armKey, steps = 1, armedLabel = '한 번 더 누르면 실행', preview, small, variant = 'secondary', disabled, title }: {
+  children: ReactNode; onConfirm: () => void; armKey: string; steps?: number; armedLabel?: ReactNode; preview?: () => ReactNode; small?: boolean; variant?: Variant; disabled?: boolean; title?: string;
+}) {
+  const c = useConfirm(armKey);
+  return (
+    <span className="inline-flex flex-col items-start gap-1">
+      <span className="inline-flex flex-wrap items-center gap-1">
+        <Button small={small} variant={c.step > 0 ? 'danger' : variant} disabled={disabled} title={title} onClick={() => c.press(steps, onConfirm)}>{c.step > 0 ? armedLabel : children}</Button>
+        {c.step > 0 && <Button small={small} variant="ghost" onClick={c.cancel}>취소</Button>}
+      </span>
+      {c.step > 0 && (
+        <span className="block max-w-md rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-xs whitespace-normal text-rose-900 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200">
+          {preview?.()}
+          <span className="mt-0.5 block opacity-80">{UNDO_HINT}</span>
+        </span>
+      )}
+    </span>
+  );
+}
+
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
 export function Button({ children, onClick, variant = 'secondary', disabled, title, small, type = 'button' }: { children: ReactNode; onClick?: () => void; variant?: Variant; disabled?: boolean; title?: string; small?: boolean; type?: 'button' | 'submit' }) {
   const base = 'inline-flex items-center justify-center gap-1 rounded-md font-medium transition disabled:cursor-not-allowed disabled:opacity-40';
