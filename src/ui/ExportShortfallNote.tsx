@@ -1,7 +1,7 @@
 import { exportShortfalls } from '../sim/market';
 import type { GameState } from '../sim';
 
-// 수출이 국내를 굶기는지 ([결정 P-MKT-16], 파트 MKT) — 판매 탭·수출 탭이 같이 쓴다. 화면만(배분 규칙 #109는 그대로)
+// 수출이 국내를 굶기는지 ([결정 #257], 파트 MKT) — 판매 탭·수출 탭이 같이 쓴다. 화면만(배분 규칙 #109는 그대로)
 
 /** 지난달 수출된 제품 중 국내 수요를 다 못 채운 것을 보인다. 없으면 아무것도 안 그린다 */
 export function ExportShortfallNote({ s }: { s: GameState }) {

@@ -288,7 +288,7 @@ describe('독립 병입자 입찰은 IB 자신의 시음치로 (#223)', () => {
     expect(sd).toBeGreaterThan(8); // 참값이 그대로 새지 않는다 — 첫 샘플 수준(약 ±14)
   });
 
-  it('새 제안은 월 결산 메모로 남는다 — 진행 뒤 소식 창(P-MKT-19)', async () => {
+  it('새 제안은 월 결산 메모로 남는다 — 진행 뒤 소식 창(#253)', async () => {
     const { newScenarioGame } = await import('./index');
     const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     s.inventory.casks.push(...casks(40));
@@ -776,7 +776,7 @@ describe('패키징 커스터마이징 반영 (#248 접근자 — MKT 교체)', 
   });
 });
 
-describe('수출이 국내를 굶기는지 보이기 (P-MKT-16) · IB 나이 조건 통 수 (P-MKT-18)', () => {
+describe('수출이 국내를 굶기는지 보이기 (#257) · IB 나이 조건 통 수 (#259)', () => {
   it('수출된 제품 중 국내 수요를 다 못 채운 것만, 미충족 큰 순', () => {
     const r = {
       sales: [

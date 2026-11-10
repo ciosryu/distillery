@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FeedCard } from '../FeedCard'; // 가상 커뮤니티 피드 (#247, MKT)
-import { ExportShortfallNote } from '../ExportShortfallNote'; // 수출이 국내를 굶기는지 (P-MKT-16, MKT)
+import { ExportShortfallNote } from '../ExportShortfallNote'; // 수출이 국내를 굶기는지 (#257, MKT)
 import { PRODUCT_NAME_MAX } from '../../sim/actions.prod';
 import { CATEGORY } from '../../sim/content/categories';
 import { AUTO_RESTOCK_MONTHS, autoRestockSupported } from '../../sim/economics';

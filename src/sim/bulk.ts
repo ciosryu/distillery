@@ -311,14 +311,14 @@ export function ibTastedQuality(s: GameState, cask: Cask): number {
 }
 
 /**
- * IB 입찰 나이 조건(3년 이상)을 채운 통 수 ([결정 P-MKT-18]) — 품질 조건(IB 시음치 65)은 세지 않는다(시음치가 새지 않게).
+ * IB 입찰 나이 조건(3년 이상)을 채운 통 수 ([결정 #259]) — 품질 조건(IB 시음치 65)은 세지 않는다(시음치가 새지 않게).
  * 0이면 제안이 오지 않는다는 안내에 쓴다. 매입 원액·소유권 판매 통·핸드필 통은 뺀다(refreshCaskBids 후보와 같은 기준)
  */
 export function ibAgedCaskCount(s: GameState): number {
   return s.inventory.casks.filter((c) => c.contents && !c.owner && !c.handfill && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= 36).length;
 }
 
-/** IB 입찰 제안 — report를 주면 새 제안을 월 결산 메모("IB 입찰 제안 — …")로 남겨 진행 뒤 소식 창에 띄운다([결정 P-MKT-19], 후반 확인 판: 제안이 왔는데 못 봐서 사라졌다) */
+/** IB 입찰 제안 — report를 주면 새 제안을 월 결산 메모("IB 입찰 제안 — …")로 남겨 진행 뒤 소식 창에 띄운다([결정 #253], 후반 확인 판: 제안이 왔는데 못 봐서 사라졌다) */
 export function refreshCaskBids(s: GameState, rng: Rng, report?: MonthReport): void {
   s.b2b.caskBids = s.b2b.caskBids.filter((b) => b.expiresMonth > s.month && s.inventory.casks.some((c) => c.id === b.caskId && c.contents));
   if (s.b2b.caskBids.length >= 2 || !rng.chance(0.25)) return;

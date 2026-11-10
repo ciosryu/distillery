@@ -697,7 +697,7 @@ describe('자동 납품 (#206, 2026-11-09 오너 요청)', () => {
     const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     const mk = (id: string, oak: number) => { const c = { id, typeId: 'ex_bourbon_barrel', sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: { id: `L${id}`, name: id, kind: 'malt', volumeL: 190, abv: 0.6, flavor: {}, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10000 } } as Cask; s.inventory.casks.push(c); };
     mk('A', 20); mk('B', 50); mk('C', 38); mk('D', 144);
-    s.progress.milestones.push({ id: 'flagship_sold', month: 0 } as never); // 정렬 규칙만 본다 — 플래그십 후보 보호(P-PROD-39)는 판매 뒤 꺼진다(아래 P-PROD-39 테스트)
+    s.progress.milestones.push({ id: 'flagship_sold', month: 0 } as never); // 정렬 규칙만 본다 — 플래그십 후보 보호(#252)는 판매 뒤 꺼진다(아래 #252 테스트)
     const p = { id: 'W', name: 'w', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 50, style: null, sourcedShare: 0, stockBottles: 0, price: 40000, unitCost: 10000, createdMonth: 0, lastMonthSold: 0, totalSold: 0 } as Product;
     expect(autoRestockSources(s, p).map((x) => x.comp.id)).toEqual(['C', 'B', 'D']); // 20개월 통은 3년 표기 미달
   });
@@ -1022,7 +1022,7 @@ describe('병입 패키징 커스터마이징 (#248, 2026-11-10 오너 요청)',
   });
 });
 
-describe('자동 납품의 플래그십 후보 보호 (P-PROD-39, 후반 확인 판)', () => {
+describe('자동 납품의 플래그십 후보 보호 (#252, 후반 확인 판)', () => {
   it('플래그십을 팔기 전에는 후보 중 가장 오래된 4통을 자동 납품이 쓰지 않는다 — 나머지 통·플래그십 표기 제품·판매 뒤는 그대로', async () => {
     const { autoRestockSources, flagshipGuard } = await import('./economics');
     const { emptyCaskOf } = await import('./index');

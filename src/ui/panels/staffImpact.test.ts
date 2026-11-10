@@ -4,8 +4,8 @@ import { coverage } from '../../sim/market';
 import { raiseAllSalaries } from '../../sim/hr';
 import { bottlenecks, hireImpact, salaryReviewPreview, trainingImpact } from './staffImpact';
 
-// 직원 탭 "하면 무엇이 바뀌나" (P-MGT-28) — 화면 계산이 실제 규칙 함수와 같은 값을 내고 상태를 바꾸지 않는다
-describe('staffImpact (P-MGT-28)', () => {
+// 직원 탭 "하면 무엇이 바뀌나" (#251) — 화면 계산이 실제 규칙 함수와 같은 값을 내고 상태를 바꾸지 않는다
+describe('staffImpact (#251)', () => {
   it('영업 후보: 유통 커버리지 전→후와 수요 배수 — 상태는 그대로', () => {
     const s = newGame({ seed: 1 });
     const c = s.hr.candidates.find((x) => x.role === 'sales') as Candidate;
@@ -36,7 +36,7 @@ describe('staffImpact (P-MGT-28)', () => {
   });
 });
 
-describe('후보 나이 표시 (P-MGT-28 중 발견)', () => {
+describe('후보 나이 표시 (#251 중 발견)', () => {
   it('ageOf는 입사한 직원용 — 후보(hiredMonth −1)에 쓰면 판 진행만큼 나이가 붙는다', async () => {
     const { ageOf } = await import('../../sim/hr');
     const s = newGame({ seed: 1 });

@@ -110,7 +110,7 @@ function phaseGrowth(s: GameState, report: MonthReport, runsUsed: number, sales:
   if (s.month % 3 === 2 && systemOn(s, 'hr')) refreshCandidates(s, rngFor(s.seed, s.month, 'candidates'));
   if (systemOn(s, 'broker')) refreshBroker(s, rngFor(s.seed, s.month, 'broker'));
   if (systemOn(s, 'contracts')) refreshContractOffers(s, rngFor(s.seed, s.month, 'contracts'));
-  if (systemOn(s, 'caskBids')) refreshCaskBids(s, rngFor(s.seed, s.month, 'caskbids'), report); // 새 제안은 메모로 — 진행 뒤 소식 창(P-MKT-19)
+  if (systemOn(s, 'caskBids')) refreshCaskBids(s, rngFor(s.seed, s.month, 'caskbids'), report); // 새 제안은 메모로 — 진행 뒤 소식 창(#253)
   updateBulkIndex(s, rngFor(s.seed, s.month, 'bulk'));
   if (systemOn(s, 'siteDeals')) refreshDeals(s, rngFor(s.seed, s.month, 'deals'));
   if (systemOn(s, 'commissions')) refreshCommissions(s, rngFor(s.seed, s.month, 'commissions'), report);

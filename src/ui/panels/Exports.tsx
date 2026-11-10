@@ -1,5 +1,5 @@
 import { EXPORT_MARKETS, domesticNetPerBottle, effectiveTariff, exportEligible, exportFob, exportMarketsFor, exportNetPerBottle, exportShelfPrice, productConsumerPrice } from '../../sim';
-import { ExportShortfallNote } from '../ExportShortfallNote'; // P-MKT-16
+import { ExportShortfallNote } from '../ExportShortfallNote'; // #257
 import { useGame } from '../../store/game';
 import { num, pct, won, wonFull } from '../format';
 import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';

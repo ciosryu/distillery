@@ -41,7 +41,7 @@ function MoraleBar({ value, title, effect }: { value: number; title: string; eff
   );
 }
 
-/** "뽑으면" 전→후 숫자 (P-MGT-28) */
+/** "뽑으면" 전→후 숫자 (#251) */
 function Impact({ lines }: { lines: ImpactLine[] }) {
   return (
     <div className="mt-2 rounded-md bg-stone-50 px-2 py-1 text-xs dark:bg-stone-800/50">
@@ -104,7 +104,7 @@ function FirePreview({ s, x }: { s: GameState; x: StaffT }) {
   </>;
 }
 
-/** 연봉 협상이 기다리고 있으면 인상·동결의 숫자를 보이고 여기서 고를 수 있다 (P-MGT-28) — 고르지 않으면 다음 달 동결 */
+/** 연봉 협상이 기다리고 있으면 인상·동결의 숫자를 보이고 여기서 고를 수 있다 (#251) — 고르지 않으면 다음 달 동결 */
 function SalaryReviewCard() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
@@ -163,7 +163,7 @@ export function Staff() {
       </Card>
       {hrOn && <SalaryReviewCard />}
       {!hrOn ? <Card title="채용"><Empty>{lockedNote}</Empty></Card> : <Card title="채용 후보 (분기마다 갱신)">
-        {/* 지금 막힌 곳 (P-MGT-28) — 어느 직군을 뽑아야 결과가 바뀌는지 */}
+        {/* 지금 막힌 곳 (#251) — 어느 직군을 뽑아야 결과가 바뀌는지 */}
         {(() => { const b = bottlenecks(s); return b.length ? (
           <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
             <div className="font-medium">지금 막힌 곳</div>

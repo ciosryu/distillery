@@ -233,7 +233,7 @@ export function priceOptions(s: GameState, p: Product, monthOfYear: number, fact
   });
 }
 
-// ── 수출이 국내를 굶기는지 ([결정 P-MKT-16], 오너 2026-11-10 — 후반 확인 판: 「더 퍼스트」 국내 품절을 몰랐다) ──
+// ── 수출이 국내를 굶기는지 ([결정 #257], 오너 2026-11-10 — 후반 확인 판: 「더 퍼스트」 국내 품절을 몰랐다) ──
 
 /** 지난달 수출된 제품 중 국내 수요를 다 못 채운 것 — 재고가 모자라면 병당 순수입이 높은 판로부터 채우므로(#109 margin) 수출이 먼저 가져간다. 화면 표시용 */
 export interface ExportShortfall { productId: string; name: string; domesticSold: number; domesticDemand: number; unmet: number; exported: number }
