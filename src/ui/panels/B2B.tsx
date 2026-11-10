@@ -49,9 +49,9 @@ function caskQuote(s: GameState, hide: boolean, c: Cask, k: KnownRead | undefine
 
 
 /**
- * 되돌릴 수 없는 판매의 두 번 누르기 확인 ([결정 P-MKT-14], 5차 MVP 플레이테스트 뒤 PM "되돌릴 수 없는 버튼 점검") — 화면만, 규칙 불변.
+ * 되돌릴 수 없는 판매의 두 번 누르기 확인 ([결정 #245], 5차 MVP 플레이테스트 뒤 PM "되돌릴 수 없는 버튼 점검") — 화면만, 규칙 불변.
  * 첫 누름은 무엇이 사라지고 무엇을 받는지 보이고, 두 번째 누름에 판다. 다른 항목을 누르거나 달이 바뀌면 처음부터 다시 묻는다
- * (PROD #226 원액 빼기·P-PROD-33 블렌더에게 맡기기와 같은 방식). "한 턴 되돌리기"는 달 진행만 되돌리고 이 행동은 되돌리지 않는다
+ * (PROD #226 원액 빼기·#238 블렌더에게 맡기기와 같은 방식). "한 턴 되돌리기"는 달 진행만 되돌리고 이 행동은 되돌리지 않는다
  */
 function useSellArm(month: number) {
   const [armed, setArmed] = useState<string | null>(null);

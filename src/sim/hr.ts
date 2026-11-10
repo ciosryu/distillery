@@ -299,22 +299,34 @@ export function masterDistiller(s: GameState): Staff | undefined {
 /** 부사수가 하우스 스타일을 이어받으려면 최소 24개월 함께 일해야 한다 */
 export const APPRENTICE_MONTHS = 24;
 
-export function handleDeparture(s: GameState, leaving: Staff, notes: string[]): void {
+/**
+ * 이 직원이 떠나면 하우스 스타일이 어떻게 되나 — 마스터 디스틸러가 아니면 null. 상태를 바꾸지 않는다
+ * (handleDeparture와 해고 확인 미리보기(#240, #246)가 같은 계산을 쓴다)
+ */
+export function departureHouseStyle(s: GameState, leaving: Staff): { heir?: Staff; mode: 'heir' | 'record' | 'reset'; after: number } | null {
   const master = masterDistiller(s);
-  if (leaving.role !== 'distiller' || master?.id !== leaving.id) return;
+  if (leaving.role !== 'distiller' || master?.id !== leaving.id) return null;
   const heir = s.hr.staff.find((x) => x.apprenticeOf === leaving.id && s.month - x.hiredMonth >= APPRENTICE_MONTHS);
   // 장인 전수 기록(PRO-3 선택지, #213)이 살아 있으면 손실이 그 배수만큼 준다 — 없으면 1(옛 규칙 그대로)
   const lossMul = mod(s, 'house_style_loss');
-  if (heir) {
-    heir.apprenticeOf = undefined;
-    s.hr.houseStyle = Math.round(s.hr.houseStyle * (1 - 0.1 * lossMul));
-    notes.push(`부사수 ${heir.name}이(가) 하우스 스타일을 이어받았습니다 (${s.hr.houseStyle})`);
-  } else if (lossMul < 1) {
-    const before = Math.round(s.hr.houseStyle);
-    s.hr.houseStyle = Math.round(s.hr.houseStyle * (1 - lossMul));
+  if (heir) return { heir, mode: 'heir', after: Math.round(s.hr.houseStyle * (1 - 0.1 * lossMul)) };
+  if (lossMul < 1) return { mode: 'record', after: Math.round(s.hr.houseStyle * (1 - lossMul)) };
+  return { mode: 'reset', after: 0 };
+}
+
+export function handleDeparture(s: GameState, leaving: Staff, notes: string[]): void {
+  const d = departureHouseStyle(s, leaving);
+  if (!d) return;
+  const before = Math.round(s.hr.houseStyle);
+  if (d.mode === 'heir') {
+    d.heir!.apprenticeOf = undefined;
+    s.hr.houseStyle = d.after;
+    notes.push(`부사수 ${d.heir!.name}이(가) 하우스 스타일을 이어받았습니다 (${s.hr.houseStyle})`);
+  } else if (d.mode === 'record') {
+    s.hr.houseStyle = d.after;
     if (before > 0) notes.push(`부사수는 없지만 전수 기록 덕분에 하우스 스타일을 지켰습니다 (${before} → ${s.hr.houseStyle})`);
   } else {
-    if (s.hr.houseStyle > 0) notes.push(`부사수 없이 마스터 디스틸러가 떠나 하우스 스타일이 초기화됐습니다 (${Math.round(s.hr.houseStyle)} → 0)`);
+    if (s.hr.houseStyle > 0) notes.push(`부사수 없이 마스터 디스틸러가 떠나 하우스 스타일이 초기화됐습니다 (${before} → 0)`);
     s.hr.houseStyle = 0;
   }
   for (const x of s.hr.staff) if (x.apprenticeOf === leaving.id) x.apprenticeOf = undefined;
