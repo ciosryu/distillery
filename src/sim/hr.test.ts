@@ -228,3 +228,25 @@ describe('MVP 11년 차 HR 단계·연봉 협상 조건 (#232)', () => {
     expect(s.events.pending.some((p) => p.defId === 'salary_review')).toBe(true);
   });
 });
+
+// 해고 확인 미리보기와 실제 퇴사가 같은 계산을 쓴다 (#240, #246)
+describe('departureHouseStyle — 미리보기 = 실제 (#246)', () => {
+  it('마스터가 떠날 때: 부사수 있음 90% / 없음 0, 마스터가 아니면 null — handleDeparture 결과와 같다', async () => {
+    const { departureHouseStyle, handleDeparture } = await import('./hr');
+    const s = newGame({ seed: 1 });
+    const m = s.hr.staff[0]!;
+    s.hr.houseStyle = 50;
+    expect(departureHouseStyle(s, m)).toEqual({ mode: 'reset', after: 0 });
+    const ap: Staff = { ...m, id: 'S-ap', level: 1, hiredMonth: 0, apprenticeOf: m.id };
+    s.hr.staff.push(ap);
+    expect(departureHouseStyle(s, ap)).toBeNull();
+    s.month = 24;
+    const d = departureHouseStyle(s, m)!;
+    expect(d.mode).toBe('heir');
+    expect(d.after).toBe(45);
+    const notes: string[] = [];
+    handleDeparture(s, m, notes);
+    expect(s.hr.houseStyle).toBe(d.after);
+    expect(ap.apprenticeOf).toBeUndefined();
+  });
+});

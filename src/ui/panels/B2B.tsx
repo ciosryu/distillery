@@ -5,6 +5,8 @@ import { oemPackageCost, cancellationCost, capacityLPA, contractAgingImpact, con
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won, wonFull } from '../format';
 import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';
+import { useState, type ReactNode } from 'react';
+import { isFlagshipCandidate } from '../../sim/delegateCheck';
 
 const STYLE_LABEL = { any: '무관', unpeated: '논피트', peated: '피트' } as const;
 
@@ -45,6 +47,44 @@ function caskQuote(s: GameState, hide: boolean, c: Cask, k: KnownRead | undefine
   return <span title="추정 품질 ±1σ 범위. 실제 값은 사는 쪽이 맛보고 정한다">{f(lo)}~{f(hi)}</span>;
 }
 
+
+/**
+ * 되돌릴 수 없는 판매의 두 번 누르기 확인 ([결정 #245], 5차 MVP 플레이테스트 뒤 PM "되돌릴 수 없는 버튼 점검") — 화면만, 규칙 불변.
+ * 첫 누름은 무엇이 사라지고 무엇을 받는지 보이고, 두 번째 누름에 판다. 다른 항목을 누르거나 달이 바뀌면 처음부터 다시 묻는다
+ * (PROD #226 원액 빼기·#238 블렌더에게 맡기기와 같은 방식). "한 턴 되돌리기"는 달 진행만 되돌리고 이 행동은 되돌리지 않는다
+ */
+function useSellArm(month: number) {
+  const [armed, setArmed] = useState<string | null>(null);
+  const key = (id: string) => `${month}:${id}`;
+  return { isArmed: (id: string) => armed === key(id), arm: (id: string) => setArmed(key(id)), clear: () => setArmed(null) };
+}
+type SellArm = ReturnType<typeof useSellArm>;
+
+function SellConfirm({ arm, id, label, variant, preview, warnings, onConfirm }: { arm: SellArm; id: string; label: string; variant?: 'primary'; preview: ReactNode; warnings: string[]; onConfirm: () => void }) {
+  if (!arm.isArmed(id)) return <Button small variant={variant} onClick={() => arm.arm(id)}>{label}</Button>;
+  return (
+    <div className="w-72 space-y-1 whitespace-normal text-xs leading-snug">
+      <div className="text-stone-700 dark:text-stone-300">{preview}</div>
+      {warnings.map((w) => <div key={w} className="text-rose-700 dark:text-rose-400">⚠ {w}</div>)}
+      <div className="text-stone-500">되돌릴 수 없습니다 — 한 번 더 누르면 판다</div>
+      <div className="flex gap-1">
+        <Button small variant="danger" onClick={() => { arm.clear(); onConfirm(); }}>정말 판매</Button>
+        <Button small variant="ghost" onClick={arm.clear}>취소</Button>
+      </div>
+    </div>
+  );
+}
+
+/** 숙성 통을 팔 때의 경고 — 플래그십 후보(판이 끝나기 전 플래그십 숙성을 채울 수 있음)·위스키 표기 가능(3년↑) */
+function caskSellWarnings(s: GameState, c: Cask): string[] {
+  const out: string[] = [];
+  const l = c.contents;
+  if (!l) return out;
+  if (isFlagshipCandidate(s, c)) out.push(`플래그십 후보 통 — 판이 끝나기 전에 플래그십 숙성(${Math.round((s.scenario?.goal.flagshipMinMonths ?? 144) / 12)}년)을 채울 수 있다`);
+  else if (l.oakMonths >= 36) out.push('3년 이상 숙성한 통 — 위스키로 병입할 수 있다');
+  return out;
+}
+
 export function B2B() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
@@ -53,6 +93,7 @@ export function B2B() {
   const maltCasks = s.inventory.casks.filter((c) => c.contents?.kind === 'malt' || c.contents?.kind === 'grain');
   const hide = !!s.scenario; // 캐스크 원액의 참값을 숨긴다 (#136, #164)
   const known = hide ? knownReads(s) : null;
+  const arm = useSellArm(s.month);
 
   return (
     <div className="grid gap-4">
@@ -124,7 +165,7 @@ export function B2B() {
                 <Td right>{won(spotBidPerLPA(s, l))}{l.kind === 'grain' && spotSaturation(s, l, l.volumeL * l.abv) < 0.95 && <> <Badge tone="warn">전량 팔면 ×{spotSaturation(s, l, l.volumeL * l.abv).toFixed(2)}</Badge></>}</Td>
                 <Td right>{won(spotQuote(s, l, l.volumeL))}</Td>
                 <Td right>{won(l.costPerLPA)}</Td>
-                <Td><Button small onClick={() => dispatch({ type: 'sellBulk', source: 'lot', id: l.id })}>전량 판매</Button></Td>
+                <Td><SellConfirm arm={arm} id={`lot:${l.id}`} label="전량 판매" preview={<>탱크 <b>{l.name}</b> {liters(l.volumeL)} · {num(l.volumeL * l.abv, 1)} LPA를 <b>전량</b> 팔아 약 <b>{won(spotQuote(s, l, l.volumeL))}</b>을 받는다. 남는 몰트·그레인 탱크 {maltLots.length - 1}개</>} warnings={isNewMake(l) ? ['통입하면 위스키가 될 원액 — 팔면 그만큼 몇 년 뒤 위스키가 줄어든다'] : []} onConfirm={() => dispatch({ type: 'sellBulk', source: 'lot', id: l.id })} /></Td>
               </tr>
             ))}
           </Table>
@@ -144,7 +185,7 @@ export function B2B() {
                   <Td right>{c?.contents ? caskQuality(s, hide, c, known?.get(c.id)) : '—'}</Td>
                   <Td right>{won(b.price)}</Td>
                   <Td right>{b.expiresMonth - s.month}개월 후</Td>
-                  <Td><Button small variant="primary" onClick={() => dispatch({ type: 'acceptCaskBid', bidId: b.id })}>판매</Button></Td>
+                  <Td><SellConfirm arm={arm} id={`bid:${b.id}`} label="판매" variant="primary" preview={<>캐스크 <b>{b.caskId}</b>{c?.contents ? <> ({liters(c.contents.volumeL)} · 숙성 {months(c.contents.oakMonths)})</> : null}를 {b.buyerName}에 넘기고 <b>{won(b.price)}</b>을 받는다. 남는 숙성 통 {maltCasks.length - 1}개</>} warnings={c ? caskSellWarnings(s, c) : []} onConfirm={() => dispatch({ type: 'acceptCaskBid', bidId: b.id })} /></Td>
                 </tr>
               );
             })}
@@ -168,7 +209,7 @@ export function B2B() {
                   <Td right>{caskQuote(s, hide, c, known?.get(c.id), true)}</Td>
                   <Td right>{caskQuote(s, hide, c, known?.get(c.id), false)}</Td>
                   <Td right>{won(l.costPerLPA)}</Td>
-                  <Td><Button small onClick={() => dispatch({ type: 'sellBulk', source: 'cask', id: c.id })}>판매</Button></Td>
+                  <Td><SellConfirm arm={arm} id={`cask:${c.id}`} label="판매" preview={<>캐스크 <b>{c.id}</b> {liters(l.volumeL)} · 숙성 {months(l.oakMonths)}를 통째로 팔아 <b>{caskQuote(s, hide, c, known?.get(c.id), false)}</b>{hide ? '(추정 — 실제 값은 사는 쪽이 맛보고 정한다)' : ''}을 받는다. 남는 숙성 통 {maltCasks.length - 1}개</>} warnings={caskSellWarnings(s, c)} onConfirm={() => dispatch({ type: 'sellBulk', source: 'cask', id: c.id })} /></Td>
                 </tr>
               );
             })}
