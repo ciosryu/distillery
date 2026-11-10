@@ -1,6 +1,7 @@
 export * from './types';
 export * from './actions';
 export * from './blending';
+export * from './handfill';
 export * from './bulk';
 export * from './cashflow';
 export * from './events';
