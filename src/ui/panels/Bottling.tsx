@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './HeritageReveal';
 import { BOTTLE_SIZES, CASKS, PACKAGING, packagingCost } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
@@ -56,6 +57,7 @@ const ABV_PRESETS = ['cask', '0.25', '0.3', '0.34', '0.38', '0.4', '0.43', '0.46
 export function Bottling() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
+  const [reveal, setReveal] = useState<HeritageRevealData | null>(null);
   const [picked, setPicked] = useState<Record<string, number>>({});
   const [opts, setOpts] = useState<BottleOptions>({ name: '', targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' });
 
@@ -203,6 +205,7 @@ export function Bottling() {
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_23rem]">
+      {reveal && <HeritageReveal data={reveal} onClose={() => setReveal(null)} />}
       <Card title="원액 선택 (같은 주종끼리만 블렌딩)">
         {!!sources.length && (
           <div className="mb-2 flex flex-wrap items-center gap-1">
@@ -372,7 +375,8 @@ export function Bottling() {
               <Button variant="primary" disabled={!preview.ok} onClick={() => {
                 if (strongStock && !isArmed) { setArmed(blendKey); return; }
                 setArmed(null);
-                if (dispatch({ type: 'bottle', components, options: opts })) { setPicked({}); setOpts({ ...opts, name: '' }); }
+                const r = bottleWithHeritage(s, dispatch, components, opts); // 10년 이상·플래그십이면 연표 창 (P-PROD-37)
+                if (r !== false) { setPicked({}); setOpts({ ...opts, name: '' }); if (r) setReveal(r); }
               }}>{strongStock ? (isArmed ? `정말 ${num(preview.bottles)}병 병입 — 한 번 더 누르면 병입합니다` : `${restockTarget ? '재고 보충' : '병입하기'} (재고 과다 — 확인 필요)`) : restockTarget ? `「${restockTarget.name}」 재고 보충` : '병입하기'}</Button>
             </div>
           )}
