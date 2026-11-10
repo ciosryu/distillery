@@ -1,4 +1,6 @@
 import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/catalog';
+import type { PackagingChoice } from './content/packaging';
+import { fixPackaging, nearestPresetId, packagingError, packagingPartsCost, presetChoice, productPackaging, sameChoice } from './packaging';
 import { brandOf } from './brands';
 import { CATEGORY } from './content/categories';
 import { BULK, INGREDIENTS } from './content/catalog';
@@ -28,6 +30,8 @@ export interface BottleOptions {
    * 병 크기·도수·피니시·범주가 같아야 하고, 품질·향·원가는 남은 재고와 새 병 수로 가중 평균한다. 이름·출고가·판매 기록은 그대로
    */
   restockId?: string;
+  /** 패키징 직접 고르기 (P-PROD-38) — 있으면 packagingId 대신 이 부품 조합으로 원가·럭셔리를 정한다 */
+  packaging?: PackagingChoice;
 }
 
 /** 배팅 결과 공개 (P6) */
@@ -230,7 +234,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   if (kind === 'gin' && category === 'flavored_spirit') warnings.push('주니퍼가 지배적이지 않거나 도수 37.5% 미만 — "진" 표기 불가(기타 증류주)');
   if (finalAbv < MIN_BOTTLING_ABV[category]) errors.push(`${CATEGORY[category].nameKo} 최소 병입 도수는 ${(MIN_BOTTLING_ABV[category] * 100).toFixed(1)}%`);
   if (!opts.chillFilter && finalAbv < 0.46 && (hasMalt || hasGrain)) warnings.push('논칠필터 + 46% 미만 — 저온 혼탁 클레임 위험');
-  if (!PACKAGING[opts.packagingId]) errors.push('패키징을 선택하세요');
+  if (opts.packaging) { const pe = packagingError(opts.packaging, opts.bottleMl); if (pe) errors.push(pe); } else if (!PACKAGING[opts.packagingId]) errors.push('패키징을 선택하세요');
 
   const ageYears = isWhiskyCategory(category) ? Math.floor(minOakMonths / 12) : null;
   // 면세 전용 한정판 (제주, 결정 #87): 전용 매대 1칸, 제주 원료 기념품 / 위스키는 숙성 연수 보너스
@@ -327,8 +331,9 @@ export function priceAtQuality(s: GameState, p: BlendPreview, opts: BottleOption
 }
 
 /** 병당 포장재 원가 — 이벤트 보정 × 입지 운송 할증 (결정 #86) */
-function packagingUnitCost(s: GameState, opts: Pick<BottleOptions, 'packagingId' | 'bottleMl'>): number {
-  return packagingCost(opts.packagingId, opts.bottleMl) * mod(s, 'packaging') * siteFreight(s, 'packaging');
+function packagingUnitCost(s: GameState, opts: Pick<BottleOptions, 'packagingId' | 'bottleMl' | 'packaging'>): number {
+  const base = opts.packaging ? packagingPartsCost(opts.packaging, opts.bottleMl) : packagingCost(opts.packagingId, opts.bottleMl); // 직접 고른 부품이면 부품 합 (P-PROD-38)
+  return base * mod(s, 'packaging') * siteFreight(s, 'packaging');
 }
 
 /** 블렌딩·병입 실행 (s는 변경 가능한 복제본) */
@@ -353,6 +358,8 @@ function restockChecks(s: GameState, opts: BottleOptions, b: { category: Product
   if (t.dutyFreeOnly || opts.dutyFreeOnly) { errors.push('면세 한정판은 재고를 보충할 수 없습니다 — 판(Vol.)마다 새로 낸다'); return; }
   if (t.category !== b.category) errors.push(`「${t.name}」은 ${CATEGORY[t.category].nameKo} — 이 원액은 ${CATEGORY[b.category].nameKo}라 보충할 수 없습니다`);
   if (opts.bottleMl !== t.bottleMl) errors.push(`병 크기를 「${t.name}」과 같은 ${t.bottleMl}ml로 맞추세요`);
+  // 패키징이 같아야 보충한다 (P-PROD-38 — 다른 병은 새 제품으로, 오너 "권장안대로")
+  if (!sameChoice(productPackaging(t), opts.packaging ?? presetChoice(opts.packagingId))) errors.push(`패키징을 「${t.name}」과 같게 맞추세요 — 다른 병·마개·라벨·상자는 새 제품으로 낸다`);
   if (isCaskStrength(t)) {
     // 캐스크 스트렝스 — 배치마다 도수가 달라도 된다(라벨 도수는 병 수 가중 평균). 표준 도수로 물을 타면 캐스크 스트렝스가 아니다
     if (opts.targetAbv !== 'cask' && STANDARD_BOTTLING_ABVS.some((a) => Math.abs(a - b.finalAbv) < 0.0005)) errors.push(`「${t.name}」은 캐스크 스트렝스 제품 — 도수를 "캐스크 스트렝스"로 두세요`);
@@ -475,7 +482,8 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     abv: p.finalAbv,
     bottleMl: opts.bottleMl,
     chillFiltered: opts.chillFilter,
-    packagingId: opts.packagingId,
+    packagingId: opts.packaging ? nearestPresetId(opts.packaging) : opts.packagingId,
+    ...(opts.packaging ? { packaging: fixPackaging(opts.packaging, opts.bottleMl) } : {}),
     flavor: p.flavor,
     quality: p.evaluation.quality,
     typicity: p.evaluation.typicity,

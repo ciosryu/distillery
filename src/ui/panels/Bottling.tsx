@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { PackagingPicker } from './PackagingPicker';
 import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './HeritageReveal';
-import { BOTTLE_SIZES, CASKS, PACKAGING, packagingCost } from '../../sim/content/catalog';
+import { BOTTLE_SIZES, CASKS, PACKAGING } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
 import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength } from '../../sim';
@@ -194,7 +195,7 @@ export function Bottling() {
   useEffect(() => { if (opts.restockId && !restockTarget) setOpts((o) => ({ ...o, restockId: undefined })); }, [opts.restockId, restockTarget]);
   const restockChoices = restockable(s).filter((p) => !preview?.category || p.category === preview.category);
   // 캐스크 스트렝스 제품은 도수를 맞추지 않고 "캐스크 스트렝스"로 병입한다 (통마다 도수가 다르다)
-  const pickRestock = (p: Product) => setOpts({ ...opts, restockId: p.id, name: '', bottleMl: p.bottleMl, targetAbv: isCaskStrength(p) ? 'cask' : p.abv, chillFilter: p.chillFiltered, packagingId: p.packagingId, dutyFreeOnly: false, targetId: undefined, line: undefined });
+  const pickRestock = (p: Product) => setOpts({ ...opts, packaging: p.packaging, restockId: p.id, name: '', bottleMl: p.bottleMl, targetAbv: isCaskStrength(p) ? 'cask' : p.abv, chillFilter: p.chillFiltered, packagingId: p.packagingId, dutyFreeOnly: false, targetId: undefined, line: undefined });
   // 보충 뒤 품질 예상 — 남은 재고(병입한 제품이라 품질을 안다)와 새 병의 가중 평균. 시나리오 게임은 새 원액의 추정 품질(±오차)로
   const restockAfter = (() => {
     if (!restockTarget || !preview?.ok || !preview.evaluation) return null;
@@ -268,7 +269,8 @@ export function Bottling() {
           <div className="flex flex-wrap items-center gap-3">
             <label className="inline-flex items-center gap-1 text-sm"><input type="checkbox" checked={opts.chillFilter} onChange={(e) => setOpts({ ...opts, chillFilter: e.target.checked })} className="accent-amber-700" /> 칠 필터링</label>
             {hasDutyFree(s) && <label className="inline-flex items-center gap-1 text-sm" title={`국내 판매 없이 지정면세점 전용 매대(${DUTY_FREE.slots}칸)에서만 판매. 제주 원료(차조·청귤) 기념품은 매력도 ×${DUTY_FREE.localAppeal}, 위스키는 숙성 ${DUTY_FREE.agedTiers.map((t) => `${t.years}년 ×${t.appeal}`).join(' · ')}. ${DUTY_FREE.sellOutMonths}개월 안에 완판하면 다음 판 매력도 +${Math.round(DUTY_FREE.streakAppeal * 100)}%(최대 ${DUTY_FREE.maxStreak}연속), ${DUTY_FREE.returnMonths}개월 안에 못 팔면 국내 매대로 넘어갑니다`}><input type="checkbox" checked={!!opts.dutyFreeOnly} onChange={(e) => setOpts({ ...opts, dutyFreeOnly: e.target.checked })} className="accent-amber-700" /> 면세 전용 한정판</label>}
-            <Select label="패키징" value={opts.packagingId} options={Object.entries(PACKAGING).map(([k, v]) => ({ value: k, label: `${v.nameKo} (${won(packagingCost(k, opts.bottleMl))}/병)` }))} onChange={(v) => setOpts({ ...opts, packagingId: v })} />
+            {/* 패키징 — 프리셋 두 개 + 직접 고르기 (P-PROD-38). 재고 보충 때는 이 칸이 없고 대상 제품 패키징을 그대로 쓴다(pickRestock) */}
+            <PackagingPicker opts={opts} setOpts={setOpts} />
           </div>
             </>
           )}
