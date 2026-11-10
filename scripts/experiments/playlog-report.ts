@@ -5,6 +5,9 @@ import { readFileSync } from 'node:fs';
 import { monthLabel, type MonthReport } from '../../src/sim';
 import { LOAN_OFFERS } from '../../src/sim/content/catalog';
 import { activeMsAt, parsePlayFile, type Playlog } from '../../src/store/playlog';
+import { EVENT } from '../../src/sim/content/events';
+import { SCENARIOS } from '../../src/sim/content/scenarios';
+import { MORALE, moraleOf, TRAIT_INFO } from '../../src/sim/hr';
 
 const path = process.argv[2];
 if (!path) { console.error('사용: npx tsx scripts/experiments/playlog-report.ts <기록 파일.json>'); process.exit(1); }
@@ -54,6 +57,7 @@ for (const [cat, n] of stock) {
 console.log(`- 옹기: ${s.inventory.casks.filter((c) => c.typeId === 'onggi_jar').length}개 보유 · 마일스톤 ${s.progress.milestones.map((m) => `${m.id}@${m.month}`).join(' ')}`);
 
 bankScreeningCheck();
+hrCheck();
 
 /**
  * 은행 심사(#65, 닫힘) 다시 열 조건 — 결정 #192 PR(#125) 본문의 ①②③. 게임은 바꾸지 않고 기록만 센다
@@ -114,6 +118,44 @@ function bankScreeningCheck(): void {
   console.log(`- ③ 심사에 걸렸을 대출 ≥ 절반: ${borrowed > 0 && refusedAmt * 2 >= borrowed ? '✅' : missed ? '❓' : '❌'} (${won(refusedAmt)} / ${won(borrowed)}${lower})`);
   const met = survived && borrowed >= SCREEN.reopenBorrowed && borrowed > 0 && refusedAmt * 2 >= borrowed;
   console.log(`- 다시 열 조건(①②③ 모두): ${met ? '충족 — #65 재검토' : !survived ? '불충족 — 은행 심사 보류 유지' : missed ? '기록만으로는 판정 불가(②③ 하한) — 기록 밖 대출을 추정해 판단' : '불충족 — 은행 심사 보류 유지'}`);
+}
+
+/**
+ * 직원 관리(HR) — MVP 11년 차 단계(#232)·사기·연봉 협상(#225)·해고 확인(#246)을 사람이 어떻게 썼나. 게임 변경 없음.
+ * 플레이 기록은 행동 종류를 남기지 않는다 → 채용·해고는 직원 목록(입사 달)·리포트 메모로, 연봉 협상·스카우트는 이벤트 기록(최근 60건)으로 센다.
+ * 고르지 않으면 다음 달 기본값이 적용되는데, 기록에는 같은 글로 남는다 → 기본값과 같은 선택은 "직접 골랐는지 알 수 없음"
+ */
+function hrCheck(): void {
+  console.log('\n## 직원 관리 (#222·#225·#232·#246) — 기록으로 센 것 (게임 변경 없음)');
+  const stage = (s.scenario ? SCENARIOS[s.scenario.id]?.stages ?? [] : []).find((st) => st.unlock.includes('system:hr'));
+  const openMonth = !s.scenario ? 0 : stage && s.scenario.stagesDone?.includes(stage.id) ? stage.month : null;
+  if (openMonth == null) { console.log(`- HR이 아직 열리지 않았다${stage ? ` (${stage.month}개월째에 열림)` : ''}`); return; }
+  const man = (v: number) => `${Math.round(v / 10_000).toLocaleString()}만`;
+  console.log(`- HR 열림: ${openMonth}개월째 · 그 뒤 ${s.month - openMonth}개월 플레이`);
+  const hired = s.hr.staff.filter((x) => x.hiredMonth >= openMonth && x.hiredMonth > 0);
+  const notesAfter = reports.filter((r) => r.month >= openMonth).flatMap((r) => r.notes.map((n) => ({ month: r.month, n })));
+  const left = notesAfter.filter((x) => /퇴사|이직|은퇴/.test(x.n) && !/위험/.test(x.n));
+  console.log(`- 직원 ${s.hr.staff.length}명: ${s.hr.staff.map((x) => `${x.name}(${x.role} Lv.${x.level}, 월 ${man(x.salary)}, 사기 ${Math.round(moraleOf(x))}${x.traits?.length ? `, ${x.traits.map((k) => TRAIT_INFO[k].nameKo).join('·')}` : ''}${x.hiredMonth > 0 ? `, ${x.hiredMonth}개월째 입사` : ', 창업 멤버'})`).join(' · ')}`);
+  console.log(`- 열린 뒤 채용 ${hired.length}명 · 떠난 직원(메모) ${left.length}건${left.length ? ` — ${left.map((x) => `${x.month}: ${x.n.slice(0, 40)}`).join(' / ')}` : ''} · 남은 채용 후보 ${s.hr.candidates.length}명`);
+  const marks = s.world.modifiers.filter((m) => m.key.startsWith('training:') || m.key.startsWith('headhunt:'));
+  console.log(`- 교육·헤드헌팅: 행동 종류가 기록되지 않아 셀 수 없다 — 지금 남은 표식 ${marks.length}개(교육 표식은 12개월, 헤드헌팅은 1개월 남는다 — 0개면 최근 12개월 교육은 없었다)${marks.length ? ` (${marks.map((m) => m.key).join(', ')})` : ''}`);
+  const pay = (m: number) => reports.find((r) => r.month === m)?.expenses.salaries;
+  const p0 = pay(openMonth); const p1 = reports.at(-1)?.expenses.salaries;
+  if (p0 != null && p1 != null) console.log(`- 월 급여 합계: ${openMonth}개월째 ${man(p0)} → ${reports.at(-1)!.month}개월째 ${man(p1)} (${p0 ? `${p1 >= p0 ? '+' : ''}${(((p1 - p0) / p0) * 100).toFixed(0)}%` : '—'})`);
+  const log = s.events.log;
+  const capped = log.length >= 60 && log[0]!.month > openMonth;
+  const choice = (id: string) => log.filter((e) => e.month >= openMonth && e.title.startsWith(`${EVENT[id]?.title} → `)).map((e) => {
+    const label = e.title.split(' → ')[1]!;
+    const def = EVENT[id]!;
+    const isDefault = def.choices?.[def.defaultChoice ?? 0]?.label === label;
+    return `${e.month}: ${label}${isDefault ? '(기본값과 같음 — 직접 골랐는지 알 수 없음)' : '(직접 고름)'}`;
+  });
+  const skipped = notesAfter.filter((x) => x.n.startsWith('연봉 협상 없음')).map((x) => x.month);
+  console.log(`- 연봉 협상: ${choice('salary_review').join(' · ') || '없음'}${skipped.length ? ` · 적자로 안 열림 ${skipped.join(', ')}개월째` : ''}${capped ? ' — ⚠ 이벤트 기록이 60건으로 잘려 앞부분이 없다' : ''}`);
+  console.log(`- 경쟁사 스카우트 제안: ${choice('staff_poaching').join(' · ') || '없음'}`);
+  const low = notesAfter.filter((x) => x.n.includes('이직 위험'));
+  const quits = notesAfter.filter((x) => x.n.includes('사기 저하로 이직'));
+  console.log(`- 사기: 지금 최저 ${s.hr.staff.length ? Math.round(Math.min(...s.hr.staff.map(moraleOf))) : '—'} · ${MORALE.quitBelow} 아래로 떨어진 알림 ${low.length}건 · 사기 저하 이직 ${quits.length}건 (월별 사기는 기록되지 않는다)`);
 }
 
 /** 가장 오래 걸린 턴 5개 — 사람이 어디서 머뭇거렸나 */
