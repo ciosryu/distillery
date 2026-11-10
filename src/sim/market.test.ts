@@ -683,3 +683,29 @@ describe('숙성 소주 표기 (#217, PRD §9.2)', () => {
     expect(demandFor(s, soju({ restMonths: 24 }), 1, 3).demandBottles).toBeGreaterThan(demandFor(s, soju(), 1, 3).demandBottles);
   });
 });
+
+describe('기프트 샵 (P-MKT-11)', () => {
+  it('방문객은 그대로, 굿즈 수입 + 뉴메이크 소포장 구매율 10% → 25% (탱크 원액을 더 쓴다)', async () => {
+    const { runTourism, NEW_MAKE_BOTTLE } = await import('./tourism');
+    const { GIFT_SHOP } = await import('./content/market');
+    const base = newGame({ seed: 1, region: 'KR' });
+    base.production.equipment.push({ id: 'V1', catalogId: 'visitor_basic', readyMonth: 0 });
+    base.inventory.lots.push({ id: 'L1', name: 'nm', kind: 'malt', volumeL: 5000, abv: 0.68, flavor: {}, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 3000 });
+    const shop = structuredClone(base);
+    shop.production.equipment.push({ id: 'V2', catalogId: GIFT_SHOP.id, readyMonth: 0 });
+    const run = (s: GameState) => { const r = { tourismRevenue: 0, visitors: 0 } as MonthReport; const cash = s.finance.cash; const lpa = s.inventory.lots[0]!.volumeL * s.inventory.lots[0]!.abv; runTourism(s, r, 6); return { r, gain: s.finance.cash - cash, usedLPA: lpa - s.inventory.lots[0]!.volumeL * s.inventory.lots[0]!.abv }; };
+    const a = run(base), b = run(shop);
+    expect(b.r.visitors).toBe(a.r.visitors);
+    const v = a.r.visitors ?? 0;
+    expect(a.usedLPA).toBeCloseTo(Math.floor(v * NEW_MAKE_BOTTLE.buyRate) * NEW_MAKE_BOTTLE.lpa, 6);
+    expect(b.usedLPA).toBeCloseTo(Math.floor(v * GIFT_SHOP.newMakeBuyRate) * NEW_MAKE_BOTTLE.lpa, 6);
+    const extraBottles = Math.floor(v * GIFT_SHOP.newMakeBuyRate) - Math.floor(v * NEW_MAKE_BOTTLE.buyRate);
+    expect(b.gain - a.gain).toBe(v * GIFT_SHOP.merchPerVisitor + extraBottles * NEW_MAKE_BOTTLE.netPrice);
+    expect(b.r.tourismRevenue).toBe(b.gain);
+  });
+
+  it('베이직 투어가 있어야 짓는다', () => {
+    const s = newGame({ seed: 1, region: 'KR' });
+    expect(applyAction(s, { type: 'buyEquipment', catalogId: 'visitor_giftshop' }).error).toBeTruthy();
+  });
+});

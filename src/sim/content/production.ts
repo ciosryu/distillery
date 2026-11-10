@@ -83,7 +83,7 @@ export type EquipmentDef =
   /** 방재 설비 — 해당 재해의 피해를 막는다 (테크트리 도입 전 대체) */
   | { id: string; kind: 'facility'; nameKo: string; cost: number; leadMonths: number; maintenance: number; defends: string[]; note: string; regions?: RegionId[]; requires?: string }
   /** 비지터 센터 등급 — 상위 등급은 하위 등급이 있어야 지을 수 있다 */
-  | { id: string; kind: 'visitor'; nameKo: string; cost: number; leadMonths: number; maintenance: number; tier: 1 | 2 | 3; visitorsPerMonth: number; spendPerVisitor: number; buzzQuality: number; requires?: string };
+  | { id: string; kind: 'visitor'; nameKo: string; cost: number; leadMonths: number; maintenance: number; tier: 1 | 2 | 3; visitorsPerMonth: number; spendPerVisitor: number; buzzQuality: number; requires?: string; /** 방문객 대신 다른 효과를 내는 설비(기프트 샵, P-MKT-11)의 설명 — 구매 표의 사양 칸에 보인다 */ note?: string };
 
 /** 더니지 = 흙바닥 3단 (안정·소용량), 랙 = 철골 다단 (대용량·상하단 격차 큼) */
 export type WarehouseType = 'dunnage' | 'racked';
