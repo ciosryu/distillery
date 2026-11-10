@@ -416,6 +416,9 @@ export function restockedProduct(old: Product, batch: Product): Product {
   if (keep(old.specialty, batch.specialty, old.specialty === batch.specialty)) merged.specialty = batch.specialty; else delete merged.specialty;
   if (keep(old.localIngredient, batch.localIngredient)) merged.localIngredient = true; else delete merged.localIngredient;
   if (caskMix) merged.caskMix = caskMix; else delete merged.caskMix;
+  // 레시피 — 남은 재고가 있으면 합집합, 한쪽이라도 기록이 없으면(옛 제품) 기록 없음(모든 원액)
+  const rec = fresh ? batch.recipeIds : old.recipeIds && batch.recipeIds ? [...new Set([...old.recipeIds, ...batch.recipeIds])].sort() : undefined;
+  if (rec?.length) merged.recipeIds = rec; else delete merged.recipeIds;
   if (!merged.restMonths) delete merged.restMonths;
   return merged;
 }
@@ -459,6 +462,8 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
       else s.inventory.lots[idx] = { ...lot, volumeL: remain };
     }
   }
+  // 섞은 원액의 레시피 (#243) — 자동 납품이 다른 제품 몫 원액을 가져가지 않게(5차 판: 「안성 소주」 자동 납품이 탱크 소주를 다 써 「옹기소주」를 못 채움)
+  const recipeIds = [...new Set(components.filter((c) => c.liters > 0).map((c) => lotOf(s, c)?.recipeId).filter((x): x is string => !!x))].sort();
   const product: Product = {
     id: nid(s, 'P'),
     // 기본 이름에 숙성 소주 표기를 붙인다 (#221) — 직접 쓴 이름은 그대로(표기는 판매 화면 배지로 보인다)
@@ -489,6 +494,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     ...(p.localIngredient ? { localIngredient: true } : {}),
     ...(p.finish ? { finish: p.finish } : {}),
     ...(caskMix.length ? { caskMix } : {}),
+    ...(recipeIds.length ? { recipeIds } : {}),
     ...(opts.dutyFreeOnly && p.dfEdition ? { dutyFreeOnly: true, dfEdition: { ...p.dfEdition } } : {}),
   };
   // 기존 제품에 재고 보충 (#186) — 새 제품을 만들지 않고 가중 평균으로 합친다. 출시 효과·면세 판·블렌딩 목표 채점은 새 제품에만

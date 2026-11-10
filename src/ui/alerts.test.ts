@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonth, advanceMonths, applyAction, BANKRUPT_AFTER_MONTHS, newScenarioGame, type GameState } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
-import { cashAlert, runway, lastMonthFlow, loanSchedule, maltStoppedMonths, monthTodos, paymentJump, SAMPLE_STALE_MONTHS, spotSaleStake, TODO_ORDER } from './alerts';
+import { cashAlert, flagshipCandidates, flagshipImpact, runway, lastMonthFlow, loanSchedule, maltStoppedMonths, monthTodos, paymentJump, SAMPLE_STALE_MONTHS, spotSaleStake, TODO_ORDER } from './alerts';
 import { AUTO_RESTOCK_EXPENSE, productionValue, whiskySupplyForecast } from '../sim/economics';
 import { spotQuote } from '../sim';
 
@@ -247,5 +247,40 @@ describe('자동 통입과 통입 대기 안내 (#239)', () => {
     if (empties >= 3) expect(t).toBeUndefined();
     s.inventory.casks = s.inventory.casks.filter((c) => c.contents); // 빈 통 없음
     expect(monthTodos(s).find((x) => x.id === 'fill')?.target).toEqual({ anchor: 'mvp-space' });
+  });
+});
+
+describe('자동 납품 원액 없음 할 일 (#243)', () => {
+  it('자동 납품을 켠 제품이 판매 속도보다 재고가 적은데 같은 레시피 원액이 없으면 레시피 이름과 함께 알린다', () => {
+    const s = mvp();
+    const r = s.production.recipes.find((x) => x.kind === 'soju')!;
+    s.inventory.lots = [];
+    s.commerce.products.push({ id: 'PX', name: '옹기소주', category: 'soju_distilled', ageYears: null, abv: 0.4, bottleMl: 700, chillFiltered: true, packagingId: 'standard', flavor: {}, quality: 50, typicity: 50, style: '', sourcedShare: 0, stockBottles: 0, price: 15000, unitCost: 5000, createdMonth: 0, lastMonthSold: 100, totalSold: 100, autoRestock: 2, recipeIds: [r.id] } as never);
+    const t = monthTodos(s).find((x) => x.id === 'restock-short');
+    expect(t?.text).toContain('옹기소주');
+    expect(t?.text).toContain(r.name);
+    expect(t?.target).toEqual({ anchor: 'mvp-orders' });
+  });
+});
+
+describe('12년 플래그십 후보 (#240 — 되돌릴 수 없는 행동의 남는 자원 경고)', () => {
+  it('#238 isFlagshipCandidate와 같은 식 — 고객 소유 통은 빼고, 쓰고 나면 남는 수와 "새 통은 더 후보가 될 수 없다(final)"를 준다', async () => {
+    const { isFlagshipCandidate } = await import('../sim/delegateCheck');
+    let s: GameState = mvp();
+    const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
+    s = applyAction(s, { type: 'setOrder', recipeId: malt.id, batchesPerMonth: 2 }).state;
+    s = advanceMonth(s);
+    const lot = s.inventory.lots.find((l) => l.kind === 'malt')!;
+    s = applyAction(s, { type: 'buySpotCasks', caskType: 'ex_bourbon_barrel', qty: 3 }).state;
+    s = applyAction(s, { type: 'fillCasks', lotId: lot.id, caskIds: s.inventory.casks.filter((c) => !c.contents).slice(0, 3).map((c) => c.id), entryAbv: 0.635 }).state;
+    const filled = s.inventory.casks.filter((c) => c.contents);
+    expect(flagshipCandidates(s).map((c) => c.id)).toEqual(filled.filter((c) => isFlagshipCandidate(s, c)).map((c) => c.id));
+    expect(filled.length).toBeGreaterThan(0);
+    expect(flagshipCandidates(s).length).toBe(filled.length); // 1개월째에 넣은 통은 판이 끝나기 전 144개월을 채운다
+    expect(flagshipImpact(s, [filled[0]!.id])).toEqual({ using: 1, left: filled.length - 1, before: filled.length, final: false });
+    filled[0]!.owner = { name: '고객', soldMonth: s.month, deliverMonth: s.month + 60 }; // 고객 소유 통은 후보가 아니다
+    expect(flagshipCandidates(s).length).toBe(filled.length - 1);
+    s.month = 40; // 남은 140개월 < 144 — 새 통은 후보가 될 수 없다
+    expect(flagshipImpact(s, []).final).toBe(true);
   });
 });
