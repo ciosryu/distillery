@@ -1023,22 +1023,26 @@ describe('병입 패키징 커스터마이징 (#248, 2026-11-10 오너 요청)',
 });
 
 describe('자동 납품의 플래그십 후보 보호 (P-PROD-39, 후반 확인 판)', () => {
-  it('플래그십을 팔기 전에는 12년 후보 통을 자동 납품이 쓰지 않는다 — 판 끝에 못 닿는 어린 통·플래그십 표기 제품·판매 뒤는 그대로', async () => {
+  it('플래그십을 팔기 전에는 후보 중 가장 오래된 4통을 자동 납품이 쓰지 않는다 — 나머지 통·플래그십 표기 제품·판매 뒤는 그대로', async () => {
     const { autoRestockSources, flagshipGuard } = await import('./economics');
     const { emptyCaskOf } = await import('./index');
     const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     s.month = 96; // 남은 84개월 — 60개월 이상 통은 12년을 채울 수 있다
     s.inventory.casks = [];
-    for (const [id, oak] of [['Y', 40], ['O', 70]] as const) {
+    for (const [id, oak] of [['Y', 40], ['O', 70], ['O2', 66], ['O3', 64], ['O4', 62], ['Y2', 38]] as const) {
       const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.id = id;
       c.contents = { id: `L${id}`, name: id, kind: 'malt', volumeL: 150, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10_000, batchId: `B${id}` };
       s.inventory.casks.push(c);
     }
     const p3 = { category: 'whisky', ageYears: 3, abv: 0.4, finish: undefined } as unknown as Product;
-    expect(autoRestockSources(s, p3).map((x) => x.comp.id)).toEqual(['Y']); // O(70개월)는 후보 — 보호
+    // 후보(60개월 이상) 넷 O·O2·O3·O4가 가장 오래된 4통 — 보호. 어린 통(Y·Y2)은 후보가 아니라 쓴다
+    expect(autoRestockSources(s, p3).map((x) => x.comp.id)).toEqual(['Y2', 'Y']);
+    // 후보가 보호 수보다 많으면 가장 오래된 4통만 남긴다 — 한 통 더(O5 61개월)는 쓴다
+    { const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.id = 'O5'; c.contents = { ...s.inventory.casks[0]!.contents!, id: 'LO5', oakMonths: 61 }; s.inventory.casks.push(c); }
+    expect(autoRestockSources(s, p3).map((x) => x.comp.id)).toEqual(['Y2', 'Y', 'O5']);
     const p12 = { ...p3, ageYears: 12 } as Product;
     expect(flagshipGuard(s, p12)).toBe(false);
     s.progress.milestones.push({ id: 'flagship_sold', month: 95 } as never);
-    expect(autoRestockSources(s, p3).map((x) => x.comp.id)).toEqual(['Y', 'O']); // 플래그십을 팔았으면 보호하지 않는다
+    expect(autoRestockSources(s, p3).map((x) => x.comp.id)).toEqual(['Y2', 'Y', 'O5', 'O4', 'O3', 'O2', 'O']); // 플래그십을 팔았으면 보호하지 않는다
   });
 });
