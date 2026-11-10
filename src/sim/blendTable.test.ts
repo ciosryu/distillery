@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { houseBrand } from './brands';
+import { brandLuxuryFactor, houseBrand } from './brands';
 import {
   SAMPLING, addTrendShift, appeal, applyAction, blenderOf, blendTargets, delegatePlan, estimateBlend, previewBlend, priceAtQuality, revealNotes, SIBLING_MIN_VOLUME_RATIO, findTarget, hexOf, knownRead, knownReads, matchScore, migrateSave, newGame, readCask, readSigma, samplingCapacity, trendFactor,
   type Flavor, type GameState, type Staff,
@@ -129,7 +129,9 @@ describe('레어 캐스크 (P8)', () => {
     t = applyAction(t, { type: 'bottle', components: [{ source: 'cask', id, liters: 150 }], options: opts }).state;
     const p = t.commerce.products.at(-1)!;
     expect(p.rareSingleCask).toBe(true);
-    expect(appeal(p, t) / appeal({ ...p, rareSingleCask: false }, t)).toBeCloseTo(1.3, 6);
+    const plain = { ...p, rareSingleCask: false };
+    // 브랜드 방패(#235 A)는 L_p(희소성 +15)에 따라 따로 움직이므로 나눠서 레어 배수만 본다
+    expect((appeal(p, t) / brandLuxuryFactor(t, p)) / (appeal(plain, t) / brandLuxuryFactor(t, plain))).toBeCloseTo(1.3, 6);
   });
 });
 
