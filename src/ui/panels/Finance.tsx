@@ -10,7 +10,7 @@ import { useGame } from '../../store/game';
 import { BoardCard } from './Board';
 import { ForecastCard } from './Forecast';
 import { pct, won } from '../format';
-import { Badge, Button, Card, Empty, NumberField, Table, Td } from '../kit';
+import { Badge, Button, Card, ConfirmButton, Empty, NumberField, Table, Td } from '../kit';
 
 export function Finance() {
   const s = useGame((g) => g.state);
@@ -48,7 +48,9 @@ export function Finance() {
                   )}
                 </Td>
                 <Td right><PaymentPlan amount={amt} offer={o} /></Td>
-                <Td><Button small variant="primary" disabled={using || locked} onClick={() => dispatch({ type: 'takeLoan', offerId: o.id, amount: amt })}>{using ? '이용 중' : '실행'}</Button></Td>
+                <Td>{using || locked ? <Button small variant="primary" disabled>{using ? '이용 중' : '실행'}</Button> : (
+                  <ConfirmButton small variant="primary" armKey={`loan-${o.id}-${amt}@${s.month}`} armedLabel="한 번 더 누르면 실행" preview={() => <LoanPreview offer={o} amount={amt} />} onConfirm={() => dispatch({ type: 'takeLoan', offerId: o.id, amount: amt })}>실행</ConfirmButton>
+                )}</Td>
               </tr>
             );
           })}
@@ -102,8 +104,8 @@ export function Finance() {
                   <div className="flex items-center gap-1">
                     {/* 일부 상환 (#181) — 남은 기간 그대로 월 납부가 줄어든다 */}
                     <NumberField value={(repay[l.id] ?? 10_000_000) / 1e6} min={10} max={Math.floor(l.balance / 1e6)} width="w-20" suffix="백만" onCommit={(v) => setRepay({ ...repay, [l.id]: v * 1e6 })} />
-                    <Button small disabled={s.finance.cash < (repay[l.id] ?? 10_000_000) || (repay[l.id] ?? 10_000_000) >= l.balance} onClick={() => dispatch({ type: 'repayLoan', loanId: l.id, amount: repay[l.id] ?? 10_000_000 })} title="잔액 일부를 갚는다 — 남은 기간은 그대로, 월 납부·이자가 줄어든다">일부 상환</Button>
-                    <Button small disabled={s.finance.cash < l.balance} onClick={() => dispatch({ type: 'repayLoan', loanId: l.id })}>전액 상환</Button>
+                    <ConfirmButton small disabled={s.finance.cash < (repay[l.id] ?? 10_000_000) || (repay[l.id] ?? 10_000_000) >= l.balance} title="잔액 일부를 갚는다 — 남은 기간은 그대로, 월 납부·이자가 줄어든다" armKey={`repay-${l.id}-${repay[l.id] ?? 10_000_000}@${s.month}`} armedLabel="한 번 더 누르면 상환" preview={() => <RepayConfirm loan={l} amount={repay[l.id] ?? 10_000_000} />} onConfirm={() => dispatch({ type: 'repayLoan', loanId: l.id, amount: repay[l.id] ?? 10_000_000 })}>일부 상환</ConfirmButton>
+                    <ConfirmButton small disabled={s.finance.cash < l.balance} armKey={`repayall-${l.id}@${s.month}`} armedLabel="한 번 더 누르면 전액 상환" preview={() => <RepayConfirm loan={l} amount={l.balance} />} onConfirm={() => dispatch({ type: 'repayLoan', loanId: l.id })}>전액 상환</ConfirmButton>
                   </div>
                   <RepayPreview loan={l} amount={repay[l.id] ?? 10_000_000} />
                 </Td>
@@ -174,6 +176,36 @@ function PaymentPlan({ amount, offer }: { amount: number; offer: Parameters<type
   const t = loanTerms(offer, amount, s.month);
   if (!offer.graceMonths) return <>{won(t.paymentAfterGrace)}<div className="text-xs text-stone-500">바로 원리금</div></>;
   return <>이자 {won(t.paymentNow)}<div className="text-xs text-rose-700 dark:text-rose-400">{monthLabel(s.startYear, t.graceEndMonth)}부터 {won(t.paymentAfterGrace)}</div></>;
+}
+
+/** 대출 실행 확인 미리보기 (#240, P-MGT-26) — 받는 돈·월 납부·총이자. 금액은 takeLoan과 같이 백만 원 단위·1천만 원 이상·한도 이하로 맞춘다 */
+function LoanPreview({ offer: o, amount }: { offer: (typeof LOAN_OFFERS)[number]; amount: number }) {
+  const s = useGame((g) => g.state);
+  const max = o.collateral === 'inventory' ? Math.min(o.max, inventoryLoanRoom(s)) : o.max;
+  const amt = Math.min(max, Math.max(10_000_000, Math.round(amount / 1_000_000) * 1_000_000));
+  const t = loanTerms(o, amt, s.month);
+  const total = t.paymentNow * o.graceMonths + t.paymentAfterGrace * (o.termMonths - o.graceMonths);
+  const lost = forfeitedLoanRoom(s, o.id, amt);
+  return <>
+    {o.nameKo} <b>{won(amt)}</b> 실행 — 현금 {won(s.finance.cash)} → {won(s.finance.cash + amt)}.
+    {o.graceMonths ? <> 거치 {o.graceMonths}개월 동안 월 이자 {won(t.paymentNow)}, <b>{monthLabel(s.startYear, t.graceEndMonth)}부터 월 {won(t.paymentAfterGrace)}</b>.</> : <> 이번 달 결산부터 월 {won(t.paymentAfterGrace)}.</>}
+    {' '}{o.termMonths / 12}년 동안 갚는 돈 {won(total)}(이자 {won(total - amt)}){o.emergency ? <b> — 고금리 급전({pct(o.annualRate)})</b> : ''}.
+    {lost > 0 && <> 남는 한도 {won(lost)}은 다시 받을 수 없다.</>}
+  </>;
+}
+
+/** 상환 확인 미리보기 (#240, P-MGT-26) — 현금이 지금 나가고 월 납부가 얼마로 주는지. 위약금은 없다 */
+function RepayConfirm({ loan: l, amount }: { loan: { name: string; balance: number; annualRate: number; termMonths: number; graceMonths: number; startMonth: number; monthlyPayment: number }; amount: number }) {
+  const s = useGame((g) => g.state);
+  const full = amount >= l.balance;
+  const paid = full ? l.balance : Math.round(amount / 1_000_000) * 1_000_000;
+  const inGrace = s.month < l.startMonth + l.graceMonths;
+  const left = inGrace ? l.termMonths - l.graceMonths : Math.max(1, l.startMonth + l.termMonths - s.month);
+  const after = full ? 0 : annuityPayment(l.balance - paid, l.annualRate, left);
+  return <>
+    {l.name} {full ? '전액' : '일부'} 상환 <b>{won(paid)}</b> — 현금 {won(s.finance.cash)} → <b>{won(s.finance.cash - paid)}</b>, 잔액 {won(l.balance)} → {won(l.balance - paid)}.
+    {' '}{inGrace ? '거치 뒤 ' : ''}월 납부 {won(l.monthlyPayment)} → {won(after)}. 위약금은 없다. 한 번 갚은 돈은 다시 빌리려면 {full ? '같은 상품을 새로 신청해야 한다' : '이 상품으로는 더 받을 수 없다(상품마다 한 번)'}.
+  </>;
 }
 
 /** 일부 상환 미리보기 (#181) — 현금을 지금 쓰는 대신 월 납부가 얼마로 주는지. 계산은 actions.mgt.ts repayLoan과 같다 */
