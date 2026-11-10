@@ -846,7 +846,7 @@ describe('핸드필 존 (#233, 2026-11-10 오너 요청)', () => {
   });
 });
 
-describe('제품 이름 바꾸기 (P-PROD-32, 2026-11-10 오너 요청)', () => {
+describe('제품 이름 바꾸기 (#236, 2026-11-10 오너 요청)', () => {
   it('공백을 정리해 바꾸고 판매 기록은 그대로, 빈 이름·너무 긴 이름·다른 제품과 같은 이름은 막는다', () => {
     let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     const soju = s.production.recipes.find((r) => r.kind === 'soju')!;

@@ -60,10 +60,10 @@ export type ProdAction =
   | { type: 'setAutoSample'; settings: AutoSampleSettings }
   /** 핸드필 존 전용 통 지정 (#233) — caskId null이면 해제. 한 번에 하나 */
   | { type: 'setHandfillCask'; caskId: string | null }
-  /** 판매 중인 제품 이름 바꾸기 (P-PROD-32, 2026-11-10 오너 요청) — 무료, 판매 기록·표기는 그대로 */
+  /** 판매 중인 제품 이름 바꾸기 (#236, 2026-11-10 오너 요청) — 무료, 판매 기록·표기는 그대로 */
   | { type: 'renameProduct'; productId: string; name: string };
 
-/** 제품 이름 최대 글자 수 (P-PROD-32) */
+/** 제품 이름 최대 글자 수 (#236) */
 export const PRODUCT_NAME_MAX = 40;
 
 export const PROD_CASH_KEY: CashKeys<ProdAction> = {

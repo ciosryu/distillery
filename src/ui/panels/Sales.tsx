@@ -115,7 +115,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
   const dispatch = useGame((g) => g.dispatch);
   const [picked, setPicked] = useState<string | null>(null);
   const [openGroups, setOpenGroups] = useState<string[]>([]);
-  // 이름 바꾸기 (P-PROD-32) — 연필을 누른 제품 하나만 입력 칸으로
+  // 이름 바꾸기 (#236) — 연필을 누른 제품 하나만 입력 칸으로
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const commitRename = () => { if (renaming && dispatch({ type: 'renameProduct', productId: renaming.id, name: renaming.name })) setRenaming(null); };
   const { monthOfYear } = calendar(s);
