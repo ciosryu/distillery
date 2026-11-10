@@ -86,7 +86,7 @@ export function BlendLab() {
   const [abv, setAbv] = useState(46);
   const [name, setName] = useState('');
   const [line, setLine] = useState('');
-  // [블렌더에게 맡기기] 확인 (P-PROD-33, 5차 플레이테스트) — 바로 확정되는 줄 모르고 연달아 눌러 위스키 통이 모두 사라졌다.
+  // [블렌더에게 맡기기] 확인 (#238, 5차 플레이테스트) — 바로 확정되는 줄 모르고 연달아 눌러 위스키 통이 모두 사라졌다.
   // 첫 누름은 쓸 통·병 수·남는 위스키 통을 보이고, 두 번째에 맡긴다. 이번 달 같은 목표로 이미 맡겼으면 한 번 더 묻는다(세 번째)
   const [armed, setArmed] = useState<{ key: string; step: number } | null>(null);
   const blender = blenderOf(s);

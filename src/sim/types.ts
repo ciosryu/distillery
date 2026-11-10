@@ -664,11 +664,11 @@ export interface InventorySlice {
   samplesThisMonth: number;
   /** 자동 샘플 설정 (#207) — 없으면 기본값(켬, 모든 원액, 나이·간격 제한 없음, 여력만큼) */
   autoSample?: AutoSampleSettings;
-  /** 자동 통입 설정 (P-PROD-34) — 없으면 끔 */
+  /** 자동 통입 설정 (#239) — 없으면 끔 */
   autoFill?: AutoFillSettings;
 }
 
-/** 자동 통입 (P-PROD-34, 5차 MVP 플레이테스트 — 통입을 "잊었고 귀찮았다") — 비운 칸은 기본값 */
+/** 자동 통입 (#239, 5차 MVP 플레이테스트 — 통입을 "잊었고 귀찮았다") — 비운 칸은 기본값 */
 export interface AutoFillSettings {
   /** 몇 개월마다 — 1·3·6, 없으면 1(매달) */
   everyMonths?: number;

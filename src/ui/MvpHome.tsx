@@ -458,7 +458,7 @@ function FillCard() {
   return (
     <Card title="탱크 원액 → 빈 통에 통입" actions={<span className="text-xs text-stone-500">빈 통 {empties.length}개 · 빈 통 사기·증설은 아래 숙성고 공간</span>}>
     <div className="grid min-w-0 content-start gap-2">
-        {/* 자동 통입 (P-PROD-34) — 켜 두면 진행할 때 넣는다 */}
+        {/* 자동 통입 (#239) — 켜 두면 진행할 때 넣는다 */}
         <AutoFillRow />
         {!malts.length ? <Empty>탱크에 숙성할 원액(몰트·소주)이 없습니다 — 생산 지시를 내리고 한 달을 진행하세요</Empty> : (
           <>

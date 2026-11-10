@@ -868,7 +868,7 @@ describe('제품 이름 바꾸기 (#236, 2026-11-10 오너 요청)', () => {
   });
 });
 
-describe('[블렌더에게 맡기기] 확인 (P-PROD-33, 5차 MVP 플레이테스트)', () => {
+describe('[블렌더에게 맡기기] 확인 (#238, 5차 MVP 플레이테스트)', () => {
   it('맡기기 전에 쓸 통·병 수·남는 위스키 통을 행동과 같은 계획으로 보이고, 다 쓰면·플래그십 후보면·이번 달 또 맡기면 경고한다', async () => {
     const { emptyCaskOf, delegateCheck, findTarget, blendTargets } = await import('./index');
     let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
@@ -900,7 +900,7 @@ describe('[블렌더에게 맡기기] 확인 (P-PROD-33, 5차 MVP 플레이테�
   });
 });
 
-describe('자동 통입 (P-PROD-34, 5차 MVP 플레이테스트)', () => {
+describe('자동 통입 (#239, 5차 MVP 플레이테스트)', () => {
   const setup = async () => {
     const { emptyCaskOf } = await import('./index');
     const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });

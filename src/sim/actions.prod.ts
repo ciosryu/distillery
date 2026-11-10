@@ -58,7 +58,7 @@ export type ProdAction =
   | { type: 'setAutoRestock'; productId: string; months: number | null }
   /** 자동 샘플 설정 (#207) — 비운 칸은 기본값 */
   | { type: 'setAutoSample'; settings: AutoSampleSettings }
-  /** 자동 통입 (P-PROD-34) — settings null이면 끔, 비운 칸은 기본값 */
+  /** 자동 통입 (#239) — settings null이면 끔, 비운 칸은 기본값 */
   | { type: 'setAutoFill'; settings: AutoFillSettings | null }
   /** 핸드필 존 전용 통 지정 (#233) — caskId null이면 해제. 한 번에 하나 */
   | { type: 'setHandfillCask'; caskId: string | null }

@@ -2,7 +2,7 @@ import { PROD_HANDLERS } from './actions.prod';
 import { vesselMaterial } from './maturation';
 import type { AutoFillSettings, Cask, GameState, MonthReport, SpiritLot } from './types';
 
-// ───────────── 자동 통입 (P-PROD-34, 5차 MVP 플레이테스트 2026-11-10) ─────────────
+// ───────────── 자동 통입 (#239, 5차 MVP 플레이테스트 2026-11-10) ─────────────
 // 5차 판: 82개월째 숙성 중인 통이 51개 중 3개 — 오너 "통입을 잊었고 귀찮았다". 자동 납품(#206)·자동 샘플(#207)과 같은 설정 줄.
 // 켜 두면 정한 달마다 틱 맨 앞(생산 전 — 플레이어가 진행을 누르기 전에 통입한 것과 같은 때)에 탱크의 자사 몰트·그레인을
 // 빈 나무 통에 넣는다. 수동 통입(fillCasks)과 같은 처리(같은 원가 배분·레어 판정·자리 배정)를 그대로 쓴다.

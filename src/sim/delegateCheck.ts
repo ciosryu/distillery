@@ -5,7 +5,7 @@ import { regionOf } from './content/regions';
 import { DEFAULT_FLAGSHIP_MONTHS } from './progress';
 import type { Cask, GameState } from './types';
 
-// ───────────── [블렌더에게 맡기기] 확인 (P-PROD-33, 5차 MVP 플레이테스트 2026-11-10) ─────────────
+// ───────────── [블렌더에게 맡기기] 확인 (#238, 5차 MVP 플레이테스트 2026-11-10) ─────────────
 // 5차 판: 맡기기가 바로 확정되는 줄 모르고 연달아 눌러 위스키 통이 모두 사라졌다(82개월째 판이 멈춤). 규칙은 그대로 두고,
 // 화면이 두 번째 누름 전에 보일 내용을 계산한다 — 행동(delegateBlend)과 같은 계획(delegatePlan)을 쓰므로 미리 보기와 실제가 같다
 

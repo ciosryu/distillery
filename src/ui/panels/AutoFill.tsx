@@ -1,4 +1,4 @@
-// 자동 통입 설정 (P-PROD-34, 5차 MVP 플레이테스트 2026-11-10 — 파트 PROD) — 증류소 탭 "탱크 원액 → 빈 통에 통입" 칸과 숙성고 탭에 끼워 쓴다.
+// 자동 통입 설정 (#239, 5차 MVP 플레이테스트 2026-11-10 — 파트 PROD) — 증류소 탭 "탱크 원액 → 빈 통에 통입" 칸과 숙성고 탭에 끼워 쓴다.
 // 자동 납품(#206)·자동 샘플(#207)과 같은 한 줄: 켬/끔, 간격, 대상 원액, 빈 통 순서, 통입 도수 + 지금 넣으면 몇 통인지 미리 보기
 import { AUTO_FILL, autoFillDue, autoFillPreview, type AutoFillSettings } from '../../sim';
 import { useGame } from '../../store/game';
