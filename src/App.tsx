@@ -6,7 +6,7 @@ import { SCENARIOS } from './sim/content/scenarios';
 const stars = (n?: number) => (n ? ` ${'★'.repeat(n)}` : '');
 import { startedFresh, useGame } from './store/game';
 import { BusinessPlan } from './ui/BusinessPlan';
-import { exportPlayFile, getPlaylog, recordBuild, startPlayClock } from './store/playlog';
+import { ackBuild, buildDrift, exportPlayFile, getPlaylog, recordBuild, startPlayClock } from './store/playlog';
 import { BUILD_ID } from './build';
 import { MvpHome } from './ui/MvpHome';
 import { CashBanner } from './ui/AlertsView';
@@ -56,6 +56,9 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
   const playMin = Math.floor(getPlaylog().activeMs / 60_000);
+  // 판 도중 빌드가 바뀌었나 (#241) — 4·5차 모두 판 도중 바뀌었다(#231은 머지만 막는다). 확인하면 그 빌드를 기준으로 삼는다
+  const [, setAckTick] = useState(0);
+  const drift = s.scenario ? buildDrift(getPlaylog(), s.scenario.startBuild, BUILD_ID) : null;
   const advance = useGame((g) => g.advance);
   const advanceUntil = useGame((g) => g.advanceUntil);
   const undo = useGame((g) => g.undo);
@@ -150,6 +153,15 @@ export default function App() {
             </button>
           ))}
         </nav>
+        {drift && (
+          // 판 도중 빌드가 바뀌었다 (#241) — 옛 빌드로 돌아갈 길은 없다. 알리고, 기록(플레이 기록 builds)은 그대로 남긴다
+          <div role="status" className="border-t border-amber-300 bg-amber-50 px-4 py-1.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+            <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2">
+              <span>⚠ <b>판 도중 빌드가 바뀌었다</b> — 시작 {drift.from} → 지금 {drift.to}{drift.sinceMonth != null ? `(${drift.sinceMonth}개월째부터)` : ''}. 플레이테스트 판이면 판이 끝날 때까지 새 버전을 받지 않는다(#231)</span>
+              <Button small variant="ghost" onClick={() => { ackBuild(BUILD_ID); setAckTick((n) => n + 1); }}>이 빌드로 계속</Button>
+            </div>
+          </div>
+        )}
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-4">
