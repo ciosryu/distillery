@@ -845,3 +845,25 @@ describe('핸드필 존 (#233, 2026-11-10 오너 요청)', () => {
     expect(rep2.notes.some((x) => x.includes('비었다'))).toBe(true);
   });
 });
+
+describe('제품 이름 바꾸기 (#236, 2026-11-10 오너 요청)', () => {
+  it('공백을 정리해 바꾸고 판매 기록은 그대로, 빈 이름·너무 긴 이름·다른 제품과 같은 이름은 막는다', () => {
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const soju = s.production.recipes.find((r) => r.kind === 'soju')!;
+    s = applyAction(s, { type: 'setOrder', recipeId: soju.id, batchesPerMonth: 1 }).state;
+    s = advanceMonths(s, 2);
+    for (const name of ['가', '나']) {
+      const lot = s.inventory.lots.find((l) => l.kind === 'soju')!;
+      s = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: lot.id, liters: 20 }], options: { name, targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' } }).state;
+    }
+    const [a, b] = s.commerce.products.slice(-2);
+    const r = applyAction(s, { type: 'renameProduct', productId: a!.id, name: '  남양주   소주 ' });
+    expect(r.error).toBeUndefined();
+    const renamed = r.state.commerce.products.find((x) => x.id === a!.id)!;
+    expect(renamed.name).toBe('남양주 소주');
+    expect(renamed.stockBottles).toBe(a!.stockBottles);
+    expect(applyAction(r.state, { type: 'renameProduct', productId: b!.id, name: '남양주 소주' }).error).toContain('이미');
+    expect(applyAction(r.state, { type: 'renameProduct', productId: b!.id, name: '   ' }).error).toBeDefined();
+    expect(applyAction(r.state, { type: 'renameProduct', productId: b!.id, name: 'x'.repeat(41) }).error).toContain('40자');
+  });
+});
