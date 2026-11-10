@@ -17,6 +17,8 @@
 //     sellNewMake = 48개월부터 몰트 원액을 통에 넣지 않고 현물로 판다
 //   P4=1 이면 4차 MVP 플레이테스트(15년 생존·heritage A, mvp.md §7.11~§7.13) 재현 묶음 — 몰트 4·소주 1배치, 비지터 센터 0개월, 전통주 등록,
 //     싼 정책자금만(지자체 3억을 위기 다음 달), 생산을 끊지 않음, 원액 현물 판매 없음, 마케팅 350만 → 126개월 400만 → 140개월 500만. 3차 행동을 하나씩 넣어 본다
+//   DUMP=<폴더> 이면 정책 묶음의 첫 정책·시드 1 판을 59·83·107·119·179개월에 기록 파일(playlog 없음)로 떨군다 — 화면에서 "기록 파일 불러오기"로 열어
+//     단계 해금(6·8·10·11년 차)을 직접 지나가 보는 점검용(5차 전 점검, mvp.md §7.1). 출력 표는 그대로다
 //   SPLIT=1 이면 15년 순자산 분해 표를 더 낸다(현금·대출·원액 현물가·제품, 위스키 매출 시기, 원액 평가액 증가 대 생산비 — #191 정정, mvp.md §7.6)
 //   bigMalt 몰트 5배치 + 스테인리스 발효조 2기(끄면 몰트 3배치) · farm 농업경영체 등록(전통주 주세 경감) — 둘 다 켜면 mvp-survival '균형'(FARM=1)과 같은 규모
 // 파산 규칙: 지금(월말 마이너스 3개월 연속, step.ts) + 결정 대기 16의 "6개월로 완화"를 같은 판에서 따로 센다(시뮬레이션 상태의 연속 개월을 스크립트가 덮어 써서 3개월 파산을 막고, 6개월은 스크립트가 센다).
@@ -24,6 +26,10 @@ import { advanceMonth, applyAction, newScenarioGame, previewBlend, warehouseCapa
 import { EVENTS } from '../../src/sim/content/events';
 import { cashAlert } from '../../src/ui/alerts';
 import { netWorth } from '../../src/sim/progress';
+import { mkdirSync, writeFileSync } from 'node:fs';
+
+const DUMP = process.env.DUMP;
+const DUMP_MONTHS = [59, 83, 107, 119, 179];
 import { isBulkKind, spotBidPerLPA } from '../../src/sim/bulk';
 
 const SEEDS = Number(process.argv[2] ?? 10);
@@ -197,6 +203,7 @@ function play(p: Policy, seed: number): Row {
     // 6개월 규칙을 따로 세려고 시뮬레이션의 3개월 파산을 막는다(연속 개월을 1 이하로 덮어 쓴다) — 연속 개월은 스크립트가 센다(neg)
     s.finance.negativeCashMonths = Math.min(s.finance.negativeCashMonths, 1);
     s = advanceMonth(s);
+    if (DUMP && seed === 1 && p === RUN[0] && DUMP_MONTHS.includes(s.month)) { mkdirSync(DUMP, { recursive: true }); writeFileSync(`${DUMP}/bot-m${s.month}.json`, JSON.stringify({ kind: 'distillery-playtest', v: 1, exportedAt: new Date(0).toISOString(), playlog: null, save: s })); }
     neg = s.finance.cash < 0 ? neg + 1 : 0;
     if (neg >= 3 && bankrupt3 < 0) bankrupt3 = s.month;
     if (neg >= 6) { bankrupt6 = s.month; break; }
