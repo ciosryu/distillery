@@ -337,7 +337,7 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
       const onggi = (p.restMonths ?? 0) >= (p.oakMonths ?? 0);
       const need = agedWhiteLabelMonths(Math.max(p.restMonths ?? 0, p.oakMonths ?? 0));
       const months = (l: SpiritLot) => (onggi ? l.restMonths ?? 0 : l.oakMonths);
-      return s.inventory.casks.filter((c): c is Cask & { contents: SpiritLot } => !!c.contents && !c.owner && !c.contaminationKnown && (vesselMaterial(c) === 'wood') !== onggi
+      return s.inventory.casks.filter((c): c is Cask & { contents: SpiritLot } => !!c.contents && !c.owner && !c.handfill && !c.contaminationKnown && (vesselMaterial(c) === 'wood') !== onggi
           && c.contents.kind === kind && !c.contents.sourced && months(c.contents) >= need && c.contents.abv >= minAbv && (finishOf(c.contents)?.typeId ?? null) === (p.finish ?? null))
         .sort((a, b) => months(a.contents) - months(b.contents) || a.id.localeCompare(b.id))
         .map((c) => ({ comp: { source: 'cask' as const, id: c.id }, lot: c.contents }));
@@ -349,7 +349,7 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
   const minOak = p.ageYears ? p.ageYears * 12 : whiskyMinMonths(regionOf(s).whisky);
   const minAbv = isCaskStrength(p) ? 0.4 : p.abv - 1e-9; // 캐스크 스트렝스는 통 도수 그대로 병입한다
   const finish = p.finish ?? null;
-  return s.inventory.casks.filter((c): c is Cask & { contents: SpiritLot } => !!c.contents && !c.owner && !c.contaminationKnown && vesselMaterial(c) === 'wood'
+  return s.inventory.casks.filter((c): c is Cask & { contents: SpiritLot } => !!c.contents && !c.owner && !c.handfill && !c.contaminationKnown && vesselMaterial(c) === 'wood'
       && c.contents.kind === kind && !c.contents.sourced && c.contents.oakMonths >= minOak && c.contents.abv >= minAbv && (finishOf(c.contents)?.typeId ?? null) === finish)
     .sort((a, b) => a.contents.oakMonths - b.contents.oakMonths || a.id.localeCompare(b.id))
     .map((c) => ({ comp: { source: 'cask' as const, id: c.id }, lot: c.contents }));
