@@ -11,6 +11,7 @@ import { previewBatch } from './production';
 import { demandFor, distributionCostPerBottle, domesticDemands, priceOptions } from './market';
 import { outboundLogistics } from './sites';
 import { calendar, warehouseCapacity } from './util';
+import { isFlagshipCandidate } from './delegateCheck';
 import type { Cask, GameState, MonthReport, Product, ProductCategory, Recipe, SpiritKind, SpiritLot } from './types';
 
 /** 표준 병 — 소주는 대중 규격, 몰트는 위스키 규격 (봇·사전 점검과 같은 값) */
@@ -326,6 +327,25 @@ export function productMonthlyPace(s: GameState, p: Product, monthOfYear = calen
   return Math.max(d, sold);
 }
 
+/**
+ * 자동 경로의 플래그십 후보 보호 (P-PROD-39, 후반 확인 판 2026-11-10 — 2·3년 표기 제품의 자동 납품이 "어린 통부터" 쓰다 소비가 공급을 넘자
+ * 12년 후보 통까지 다 써 플래그십을 놓쳤다. 오너 "몰랐다, 장기 숙성용 캐스크가 모두 소진되어 곤란"). 시나리오 판에서, 플래그십을 아직 팔지 않았고,
+ * 이 제품의 표기가 플래그십 숙성보다 짧으면, 판이 끝나기 전에 플래그십 숙성을 채울 수 있는 통(isFlagshipCandidate)은 자동 납품이 쓰지 않는다.
+ * 손으로 병입·맡기기는 그대로 쓸 수 있다(맡기기는 확인 단계에서 경고, #238). #249 ② 캐스크 태그 "보호"가 들어오면 이 기본 보호를 태그 기본값으로 옮긴다
+ */
+export function flagshipGuard(s: GameState, p: Pick<Product, 'ageYears'>): boolean {
+  if (!s.scenario) return false;
+  if (s.progress.milestones.some((m) => m.id === 'flagship_sold')) return false;
+  return (p.ageYears ?? 0) * 12 < s.scenario.goal.flagshipMinMonths;
+}
+
+/** 이 제품의 자동 납품에서 보호 중인 플래그십 후보 통 수 — 할 일 문구용 */
+export function guardedFlagshipCasks(s: GameState, p: Product): number {
+  if (!isWhiskyCategory(p.category) || !flagshipGuard(s, p)) return 0;
+  const minOak = p.ageYears ? p.ageYears * 12 : whiskyMinMonths(regionOf(s).whisky);
+  return s.inventory.casks.filter((c) => !!c.contents && !c.owner && (c.contents.kind === 'malt' || c.contents.kind === 'grain') && c.contents.oakMonths >= minOak && isFlagshipCandidate(s, c)).length;
+}
+
 /** 자동 납품 원액 후보 — 쓸 순서대로. 위스키는 숙성 표기를 채우고 피니시가 같고 도수가 충분한 나무 통, 어린 통부터 */
 export function autoRestockSources(s: GameState, p: Product): { comp: Omit<BlendComponent, 'liters'>; lot: SpiritLot }[] {
   const kind = RESTOCK_KIND[p.category];
@@ -351,8 +371,10 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
   const minOak = p.ageYears ? p.ageYears * 12 : whiskyMinMonths(regionOf(s).whisky);
   const minAbv = isCaskStrength(p) ? 0.4 : p.abv - 1e-9; // 캐스크 스트렝스는 통 도수 그대로 병입한다
   const finish = p.finish ?? null;
+  const guard = flagshipGuard(s, p);
   return s.inventory.casks.filter((c): c is Cask & { contents: SpiritLot } => !!c.contents && !c.owner && !c.handfill && !c.contaminationKnown && vesselMaterial(c) === 'wood'
-      && c.contents.kind === kind && !c.contents.sourced && c.contents.oakMonths >= minOak && c.contents.abv >= minAbv && (finishOf(c.contents)?.typeId ?? null) === finish)
+      && c.contents.kind === kind && !c.contents.sourced && c.contents.oakMonths >= minOak && c.contents.abv >= minAbv && (finishOf(c.contents)?.typeId ?? null) === finish
+      && !(guard && isFlagshipCandidate(s, c)))
     .sort((a, b) => a.contents.oakMonths - b.contents.oakMonths || a.id.localeCompare(b.id))
     .map((c) => ({ comp: { source: 'cask' as const, id: c.id }, lot: c.contents }));
 }

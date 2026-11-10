@@ -11,7 +11,7 @@ import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
 import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { autoFillPreview } from '../sim/autoFill';
-import { autoRestockSources, autoRestockSupported, productMonthlyPace } from '../sim/economics';
+import { autoRestockSources, autoRestockSupported, guardedFlagshipCasks, productMonthlyPace } from '../sim/economics';
 import { AUTO_RESTOCK_EXPENSE, productionValue, whiskySupplyForecast } from '../sim/economics';
 
 // ───────────── ① 파산 카운트다운 ─────────────
@@ -229,7 +229,8 @@ export function monthTodos(s: GameState): Todo[] {
       const p = short[0]!;
       const recNames = (p.recipeIds ?? []).map((id) => s.production.recipes.find((r) => r.id === id)?.name ?? id);
       const whisky = WHISKY_CATS.has(p.category);
-      const why = whisky ? `${p.ageYears ? `${p.ageYears}년 이상` : '위스키 숙성 기간을 채운'} 같은 피니시 통이 없다` : recNames.length ? `같은 레시피(${recNames.join(', ')}) 탱크 원액이 없다 — 그 레시피를 생산 지시에 넣거나 늘리세요` : '탱크에 같은 주종 원액이 없다 — 생산 지시를 늘리세요';
+      const guarded = whisky ? guardedFlagshipCasks(s, p) : 0;
+      const why = whisky ? `${p.ageYears ? `${p.ageYears}년 이상` : '위스키 숙성 기간을 채운'} 같은 피니시 통이 없다${guarded ? ` (플래그십 후보 ${guarded}통은 자동 납품이 쓰지 않게 보호 중 — 직접 병입하면 쓸 수 있다)` : ''}` : recNames.length ? `같은 레시피(${recNames.join(', ')}) 탱크 원액이 없다 — 그 레시피를 생산 지시에 넣거나 늘리세요` : '탱크에 같은 주종 원액이 없다 — 생산 지시를 늘리세요';
       out.push({ id: 'restock-short', level: 'warn', text: `자동 납품 — 「${p.name}」 채울 원액이 없다(재고 ${p.stockBottles.toLocaleString()}병) — ${why}${short.length > 1 ? ` · 외 ${short.length - 1}개 제품` : ''}`, action: whisky ? '통입·병입' : '생산 지시로', target: whisky ? { tab: 'bottling' } : { anchor: 'mvp-orders' } });
     }
   }
