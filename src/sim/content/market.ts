@@ -9,8 +9,9 @@ export const BOTTLE_SIZES = [375, 500, 600, 700] as const;
 export type BottleMl = (typeof BOTTLE_SIZES)[number];
 
 export const PACKAGING: Record<string, { nameKo: string; costBySize: Record<BottleMl, number>; luxury: number }> = {
-  standard: { nameKo: '스탠다드 병 + 코르크', costBySize: { 375: 1500, 500: 2000, 600: 2400, 700: 2800 }, luxury: 1.0 },
-  premium: { nameKo: '디캔터 + 케이스', costBySize: { 375: 6000, 500: 8000, 600: 9500, 700: 11000 }, luxury: 1.15 },
+  // P-PROD-22 (2026-11-09 오너 요청 "병입비가 너무 비싸다", 오너 선택 20% 인하·모든 모드): 1500/2000/2400/2800 · 6000/8000/9500/11000의 ×0.8
+  standard: { nameKo: '스탠다드 병 + 코르크', costBySize: { 375: 1200, 500: 1600, 600: 1920, 700: 2240 }, luxury: 1.0 },
+  premium: { nameKo: '디캔터 + 케이스', costBySize: { 375: 4800, 500: 6400, 600: 7600, 700: 8800 }, luxury: 1.15 },
 };
 
 export function packagingCost(packagingId: string, bottleMl: number): number {
@@ -21,7 +22,7 @@ export function packagingCost(packagingId: string, bottleMl: number): number {
 
 // ── 마진 구조 (PRD §9.5) — 병당 고정비가 저가 제품의 마진을 깎는다 [튜닝] ──
 /** 병입 인건비·라인 비용 (병당) */
-export const BOTTLING_LABOR_PER_BOTTLE = 500;
+export const BOTTLING_LABOR_PER_BOTTLE = 400; // P-PROD-22: 500 → 400 (20% 인하)
 /** 유통: 채널 수수료(출고가 대비)와 병당 물류비 */
 export const DISTRIBUTION = {
   channelFeeRate: 0.12,

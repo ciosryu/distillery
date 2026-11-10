@@ -199,7 +199,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
               </select>
             </label>
           )}
-          {!dfOnly && <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400" title="켜면 매달 판매 직전에 이번 달 이익이 가장 큰 값(권장가의 0.6~2배 중)으로 정한다. 재고가 적으면 올리고 많으면 내린다"><input type="checkbox" className="accent-amber-700" checked={!!p.autoPrice} onChange={(e) => dispatch({ type: 'setAutoPrice', productId: p.id, on: e.target.checked })} /> 자동 최적 가격</label>}
+          {!dfOnly && <label className="mt-0.5 flex items-center gap-1 text-xs font-medium text-amber-800 dark:text-amber-300" title="켜면 매달 판매 직전에 이번 달 이익이 가장 큰 값(권장가의 0.6~2배 중)으로 정한다. 재고가 적으면 올리고 많으면 내린다"><input type="checkbox" className="accent-amber-700" checked={!!p.autoPrice} onChange={(e) => dispatch({ type: 'setAutoPrice', productId: p.id, on: e.target.checked })} /> 자동 최적 가격</label>}
           {suggested != null && suggested !== p.price && (
             <button className="mt-0.5 block text-xs text-amber-800 underline decoration-dotted dark:text-amber-300" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: suggested })} title="기준 소비자가 × √(품질/60) × 숙성 인식에 맞춘 출고가">권장 {wonFull(suggested)}</button>
           )}
@@ -286,7 +286,8 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
           const ps = s.commerce.products.filter((p) => !p.dutyFreeOnly);
           if (!ps.length) return null;
           const allOn = ps.every((p) => p.autoPrice);
-          return <Button small variant={allOn ? 'secondary' : 'ghost'} onClick={() => { for (const p of ps) if (!!p.autoPrice === allOn) dispatch({ type: 'setAutoPrice', productId: p.id, on: !allOn }); }} title="매달 판매 직전에 제품마다 이번 달 이익이 가장 큰 값으로 정한다">{allOn ? '모든 제품 자동 가격 끄기' : '모든 제품 자동 최적 가격 켜기'}</Button>;
+          // 2026-11-09 오너: "자동 가격 조정 기능을 못 찾겠다" — 회색 글자 버튼이라 눈에 안 띄었다 → 테두리 버튼, 켜지면 강조
+          return <Button small variant={allOn ? 'primary' : 'secondary'} onClick={() => { for (const p of ps) if (!!p.autoPrice === allOn) dispatch({ type: 'setAutoPrice', productId: p.id, on: !allOn }); }} title="매달 판매 직전에 제품마다 이번 달 이익이 가장 큰 값으로 정한다">{allOn ? '✓ 모든 제품 자동 가격 (끄기)' : '⚙ 모든 제품 자동 최적 가격 켜기'}</Button>;
         })()}
       </span>}>
         {!compact && <SalesPrimer />}

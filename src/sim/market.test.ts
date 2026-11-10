@@ -39,11 +39,12 @@ describe('마진 사다리', () => {
     return advanceMonths(s, 1);
   };
 
-  it('진은 권장가에서 마진율이 25% 미만, 숙성 위스키는 60% 이상', () => {
+  // 병입비 20% 인하(P-PROD-22, 오너 선택 2026-11-09)로 진 약 19% → 27% — 저가 상품의 마진이 얇다는 사다리(§9.5)는 30% 미만으로 지킨다
+  it('진은 권장가에서 마진율이 30% 미만, 숙성 위스키는 60% 이상', () => {
     const s = setup();
     const gin = s.inventory.lots.find((l) => l.kind === 'gin')!;
     const g = previewBlend(s, [{ source: 'lot', id: gin.id, liters: gin.volumeL }], { name: 'g', targetAbv: 0.43, bottleMl: 700, chillFilter: true, packagingId: 'standard' });
-    expect(bottleMargin({ price: g.suggestedPrice, unitCost: g.unitCost, bottleMl: 700 }).rate).toBeLessThan(0.25);
+    expect(bottleMargin({ price: g.suggestedPrice, unitCost: g.unitCost, bottleMl: 700 }).rate).toBeLessThan(0.3);
 
     const aged: SpiritLot = { id: 'w', name: 'w', kind: 'malt', volumeL: 180, abv: 0.6, flavor: { fresh_fruit: 30, floral: 15, cereal: 20, vanilla_caramel: 45, oak_tannin: 25, wood_spice: 20, integration: 60, harshness: 25 }, createdMonth: 0, oakMonths: 48, sourced: false, costPerLPA: 8_000 };
     const s2 = { ...s, inventory: { ...s.inventory, casks: [{ ...s.inventory.casks[0]!, contents: aged }] } };
