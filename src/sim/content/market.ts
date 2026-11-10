@@ -89,11 +89,12 @@ export const SKU = { rho: 3, /** 브랜드 라인 사이 ρ ([결정 #235] B, PR
 
 // ── 럭셔리 지수 · 브랜드 방패 ([결정 #235] A, PRD §11.2 ①~③ 최소 구현 · §11.2.1) [튜닝] ──
 /**
- * 제품 럭셔리 L_p(0~100) = 패키징 + 숙성 표기 + 희소성 (라벨 속성은 연구 — 아직 0), 품질 게이트 L_p ≤ 품질.
+ * 제품 럭셔리 L_p(0~100) = 패키징(packaging.ts packagingLuxury 0~30, #248) + 숙성 표기 + 희소성 (라벨 속성은 연구 — 아직 0), 품질 게이트 L_p ≤ 품질.
  * 브랜드 B_b = alpha × 최근 windowMonths개월 판매 병수 가중 평균 L_p + (1 − alpha) × 같은 기간 최고 L_p.
  * 매력도 ×= 1 + kappa × beta × (B_b − L_p) / 100 — 세컨드 브랜드가 열리는 모드에서만(MVP는 #219로 잠겨 피할 수단이 없다)
  */
 export const BRAND_LUXURY = {
+  /** 프리셋별 패키징 점수 — 참고값. 계산은 packaging.ts packagingLuxury(#248)가 하고, production.test가 두 값이 같은지 맞춰 본다 */
   packaging: { standard: 0, premium: 30 } as Record<string, number>,
   whiskyPerYear: 5, whiskyCap: 25,
   agedWhitePerYear: 5, agedWhiteCap: 15,
