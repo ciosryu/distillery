@@ -941,3 +941,29 @@ describe('자동 통입 (#239, 5차 MVP 플레이테스트)', () => {
     expect(s.inventory.autoFill).toBeUndefined();
   });
 });
+
+describe('헤리티지 병입 연표 (P-PROD-37, 2026-11-10 오너 요청)', () => {
+  it('10년 이상 통만 연출 대상이고, 연표에 증류·통입·숙성 중 재해·통의 사고·샘플·이정표가 시간순으로 모인다', async () => {
+    const { emptyCaskOf, heritageCasks, caskStory } = await import('./index');
+    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.month = 150;
+    const mk = (id: string, oak: number) => { const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.id = id; c.filledMonth = s.month - oak; c.contents = { id: `L${id}`, name: `몰트 → ${id}`, kind: 'malt', volumeL: 120, abv: 0.55, flavor: { cereal: 20 }, createdMonth: s.month - oak - 1, oakMonths: oak, sourced: false, costPerLPA: 10_000, batchId: `B${id}` }; s.inventory.casks.push(c); return c; };
+    const old = mk('K900', 130); mk('K901', 40);
+    old.sampleLog = [{ month: 60, hex: { peat: 0, fruit: 0, floral: 0, spicy: 0, woody: 0, sweet: 0 }, sigma: 5, estQuality: 70 }];
+    s.events.log = [{ month: 50, title: '집중호우 침수', text: '비' }, { month: 5, title: '집중호우 침수', text: '통입 전' }];
+    s.history.reports = [{ month: 80, notes: ['캐스크 K900 누수 — 6.5% 손실', '캐스크 K9000 누수'] } as never];
+    expect(heritageCasks(s, [{ source: 'cask', id: 'K901', liters: 10 }])).toHaveLength(0);
+    expect(heritageCasks(s, [{ source: 'cask', id: 'K900', liters: 10 }, { source: 'cask', id: 'K901', liters: 10 }]).map((c) => c.id)).toEqual(['K900']);
+    const st = caskStory(s, old);
+    const texts = st.lines.map((l) => l.text);
+    expect(texts[0]).toContain('증류');
+    expect(texts.some((t) => t.includes('통입'))).toBe(true);
+    expect(texts.filter((t) => t.includes('집중호우')).length).toBe(1); // 통입 전 재해는 빠진다
+    expect(texts.some((t) => t.includes('K900 누수'))).toBe(true);
+    expect(texts.some((t) => t.includes('K9000'))).toBe(false);
+    expect(texts.some((t) => t.includes('첫 샘플'))).toBe(true);
+    expect(texts.some((t) => t === '10년 숙성')).toBe(true);
+    expect(st.lines.map((l) => l.month)).toEqual([...st.lines.map((l) => l.month)].sort((a, b) => a - b));
+    expect(st.angelsShare).toBeGreaterThan(0);
+  });
+});
