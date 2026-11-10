@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { HandfillRow } from './Handfill';
 import { CASKS, RECHAR_COST } from '../../sim/content/catalog';
 import { canFinishInto, evaluate, FINISH, vesselMaterial, finishCount, finishLabel, finishOf, isLocked, isUnlocked, lotCategory, unlockingNodes, MAX_RECHAR, regionalCaskPrice, topNotes, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type SpiritLot } from '../../sim';
 import { CASK_MARKET } from '../../sim/content/catalog';
@@ -31,6 +32,7 @@ export function Warehouse() {
     <div className="grid gap-4">
       <Tanks />
       <Warehouses />
+      <HandfillRow />
       <Casks />
       <Broker />
     </div>

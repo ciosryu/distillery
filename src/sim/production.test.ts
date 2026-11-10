@@ -782,3 +782,66 @@ describe('숙성 소주 표기 — 병입·보충·권장가·자동 납품 (#21
     expect(autoRestockSources(s, p).map((x) => x.comp.id)).toEqual(['J24', 'J30']);
   });
 });
+
+describe('핸드필 존 (P-PROD-31, 2026-11-10 오너 요청)', () => {
+  const setup = async () => {
+    const { emptyCaskOf } = await import('./index');
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.finance.cash = 1e10;
+    const add = (id: string, oak: number, vol = 150) => {
+      const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.id = id;
+      c.contents = { id: `L${id}`, name: id, kind: 'malt', volumeL: vol, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10_000, batchId: `B${id}` };
+      s.inventory.casks.push(c);
+    };
+    add('H1', 40); add('H2', 6); add('H3', 30, 0.8);
+    return { s, apply: (a: Parameters<typeof applyAction>[1]) => { const r = applyAction(s, a); s = r.state; return r; }, get: () => s };
+  };
+
+  it('비지터 센터가 있어야 짓고, 설비가 있어야 통을 지정한다 — 위스키 기간을 못 채운 통은 안 된다', async () => {
+    const t = await setup();
+    expect(t.apply({ type: 'buyEquipment', catalogId: 'handfill_zone' }).error).toContain('베이직 투어');
+    expect(t.apply({ type: 'setHandfillCask', caskId: 'H1' }).error).toContain('핸드필 존');
+    t.apply({ type: 'buyEquipment', catalogId: 'visitor_basic' });
+    expect(t.apply({ type: 'buyEquipment', catalogId: 'handfill_zone' }).error).toBeUndefined();
+    expect(t.apply({ type: 'setHandfillCask', caskId: 'H2' }).error).toContain('숙성 기간');
+    t.apply({ type: 'setHandfillCask', caskId: 'H1' });
+    t.apply({ type: 'setHandfillCask', caskId: 'H3' }); // 한 번에 하나
+    expect(t.get().inventory.casks.filter((c) => c.handfill).map((c) => c.id)).toEqual(['H3']);
+    t.apply({ type: 'setHandfillCask', caskId: null });
+    expect(t.get().inventory.casks.some((c) => c.handfill)).toBe(false);
+  });
+
+  it('매달 방문객의 일부가 지정 통에서 500ml를 사 간다 — 병입 권장가의 2배, 통이 비면 지정이 풀린다, 자동 납품은 이 통을 안 쓴다', async () => {
+    const { runHandfill, handfillPrice, handfillBottleCost, HANDFILL, lotQuality } = await import('./index');
+    const { autoRestockSources } = await import('./economics');
+    const t = await setup();
+    t.apply({ type: 'buyEquipment', catalogId: 'visitor_basic' });
+    t.apply({ type: 'buyEquipment', catalogId: 'handfill_zone' });
+    const s = t.get();
+    for (const e of s.production.equipment) e.readyMonth = 0;
+    t.apply({ type: 'setHandfillCask', caskId: 'H1' });
+    const g = t.get();
+    const cask = g.inventory.casks.find((c) => c.id === 'H1')!;
+    const price = handfillPrice(g, cask.contents!, lotQuality(cask.contents!));
+    expect(price).toBeGreaterThan(0);
+    const cash0 = g.finance.cash;
+    const rep = { month: g.month, revenue: 0, expenses: {} as Record<string, number>, notes: [] as string[], visitors: 500, tourismRevenue: 1_000_000 } as unknown as Parameters<typeof runHandfill>[1];
+    runHandfill(g, rep);
+    const n = Math.round(500 * HANDFILL.buyRate);
+    expect(rep.tourismRevenue).toBe(1_000_000 + n * price);
+    expect(g.finance.cash - cash0).toBe(n * price - n * handfillBottleCost());
+    expect(g.inventory.casks.find((c) => c.id === 'H1')!.contents!.volumeL).toBeCloseTo(150 - n * 0.5, 6);
+    // 자동 납품(위스키)은 핸드필 통을 고르지 않는다
+    const p = { category: 'whisky', ageYears: 1, abv: 0.4, finish: undefined } as unknown as Product;
+    expect(autoRestockSources(g, p).map((x) => x.comp.id)).not.toContain('H1');
+    // 거의 빈 통 — 남은 만큼만 팔고 지정이 풀린다
+    t.apply({ type: 'setHandfillCask', caskId: 'H3' });
+    const g2 = t.get();
+    const rep2 = { month: g2.month, revenue: 0, expenses: {} as Record<string, number>, notes: [] as string[], visitors: 500 } as unknown as Parameters<typeof runHandfill>[1];
+    runHandfill(g2, rep2);
+    const h3 = g2.inventory.casks.find((c) => c.id === 'H3')!;
+    expect(h3.contents).toBeUndefined();
+    expect(h3.handfill).toBeUndefined();
+    expect(rep2.notes.some((x) => x.includes('비었다'))).toBe(true);
+  });
+});

@@ -152,7 +152,7 @@ export function restLot(lot: SpiritLot): SpiritLot {
 /** 캐스크를 비울 때: 재사용 시 활성도·시즈닝 감소 */
 export function emptyCask(cask: Cask): Cask {
   // 오염 통은 비우면서 오염이 드러난다(재탄화로 제거). 숙성고 자리도 비운다
-  return { ...cask, contents: undefined, filledMonth: undefined, slot: undefined, samples: undefined, sampleLog: undefined, labAnalyzed: undefined, rare: undefined, rareKnown: undefined, activity: cask.activity * 0.6, seasoning: cask.seasoning * 0.35, ...(cask.contamination ? { contaminationKnown: true } : {}) };
+  return { ...cask, contents: undefined, filledMonth: undefined, slot: undefined, samples: undefined, sampleLog: undefined, labAnalyzed: undefined, rare: undefined, rareKnown: undefined, handfill: undefined, activity: cask.activity * 0.6, seasoning: cask.seasoning * 0.35, ...(cask.contamination ? { contaminationKnown: true } : {}) };
 }
 
 /** 재탄화: 활성도 0.7까지 회복 (시즈닝은 회복 안 됨). 최대 2회 */
