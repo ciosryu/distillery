@@ -14,6 +14,7 @@ import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
 import { equipmentCost } from './sites';
 import { applyWaterPermit } from './waterPermit';
+import { HANDFILL, handfillBlocker } from './handfill';
 import type { AutoSampleSettings, Cask, CaskTypeId, Product, Recipe } from './types';
 import { nid, staffOf, warehouseCapacity } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
@@ -56,7 +57,9 @@ export type ProdAction =
   /** 자동 납품 (#206) — months: 유지할 재고 개월분(1·2·3·6), null이면 끔 */
   | { type: 'setAutoRestock'; productId: string; months: number | null }
   /** 자동 샘플 설정 (#207) — 비운 칸은 기본값 */
-  | { type: 'setAutoSample'; settings: AutoSampleSettings };
+  | { type: 'setAutoSample'; settings: AutoSampleSettings }
+  /** 핸드필 존 전용 통 지정 (#233) — caskId null이면 해제. 한 번에 하나 */
+  | { type: 'setHandfillCask'; caskId: string | null };
 
 export const PROD_CASH_KEY: CashKeys<ProdAction> = {
   setOrder: null,
@@ -65,6 +68,7 @@ export const PROD_CASH_KEY: CashKeys<ProdAction> = {
   setAutoPrice: null,
   setAutoRestock: null,
   setAutoSample: null,
+  setHandfillCask: null,
   saveRecipe: null,
   deleteRecipe: null,
   fillCasks: null,
@@ -130,6 +134,17 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     s.inventory.casks[ci] = emptyCask(cask);
     return { state: s, message: `${cask.id}에서 원액 ${Math.round(lot.volumeL * kept).toLocaleString()}L를 빼 탱크로 옮겼다(손실 ${(FINISH.lossShare * 100).toFixed(2)}%) — 숙성 ${lot.oakMonths}개월은 원액에 남고, 통은 한 번 쓴 통이 된다` };
   },
+  setHandfillCask: (s, prev, a) => {
+    if (!s.production.equipment.some((e) => e.catalogId === HANDFILL.facilityId)) return fail(prev, '핸드필 존부터 지어야 합니다(설비)');
+    for (const c of s.inventory.casks) if (c.handfill) delete c.handfill;
+    if (a.caskId == null) return { state: s, message: '핸드필 통 지정을 풀었다' };
+    const c = s.inventory.casks.find((x) => x.id === a.caskId);
+    if (!c) return fail(prev, '그런 통이 없습니다');
+    const why = handfillBlocker(s, c);
+    if (why) return fail(prev, why);
+    c.handfill = true;
+    return { state: s, message: `통 ${c.id}를 핸드필 전용으로 지정 — 다음 달부터 방문객이 담아 간다` };
+  },
   setAutoSample: (s, _prev, a) => {
     const x = a.settings;
     const clean: AutoSampleSettings = {};
@@ -189,7 +204,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const def = EQUIPMENT[a.catalogId];
     if (!def) return fail(prev, '알 수 없는 설비');
     if (isLocked(s, `facility:${def.id}`)) return fail(prev, LOCKED_MESSAGE);
-    if (def.kind === 'visitor' && def.requires && !s.production.equipment.some((e) => e.catalogId === def.requires)) return fail(prev, `${EQUIPMENT[def.requires]?.nameKo}부터 지어야 합니다`);
+    if ((def.kind === 'visitor' || def.kind === 'facility') && def.requires && !s.production.equipment.some((e) => e.catalogId === def.requires)) return fail(prev, `${EQUIPMENT[def.requires]?.nameKo}부터 지어야 합니다`);
     if ((def.kind === 'visitor' || def.kind === 'facility') && s.production.equipment.some((e) => e.catalogId === def.id)) return fail(prev, '이미 있습니다');
     if (def.kind === 'facility' && def.regions && !def.regions.includes(s.regionId)) return fail(prev, '이 지역에서는 해당 없는 설비입니다');
     // 입지 건설비·땅값 반영 (결정 #86)

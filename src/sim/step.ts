@@ -7,6 +7,7 @@ import { gainXp, refreshCandidates } from './hr';
 import { deliverOwnedCasks } from './investment';
 import { runOffice, runStaffLifecycle } from './hr';
 import { runTourism } from './tourism';
+import { runHandfill } from './handfill';
 import { emptyCaskOf } from './newGame';
 import { buildTickContext, type TickContext } from './tick';
 import { updateWeather, weatherOffset } from './weather';
@@ -84,6 +85,7 @@ function phaseOperations(s: GameState, report: MonthReport, ctx: TickContext, ma
   collectReceivables(s, report);
   updateTrends(s, rngFor(s.seed, s.month, 'trend'));
   runTourism(s, report, ctx.monthOfYear);
+  runHandfill(s, report); // 핸드필 존 (#233) — 이번 달 방문객이 지정 통에서 담아 간다
   deliverOwnedCasks(s, report);
   runOffice(s, report, rngFor(s.seed, s.month, 'office'), mashKg);
   runStaffLifecycle(s, report, rngFor(s.seed, s.month, 'lifecycle'));
