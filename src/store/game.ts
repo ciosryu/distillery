@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { createLocalEngine, DEFAULT_STOPS, newGame, newScenarioGame, type Action, type BusinessPlan, type GameState, type RegionId, type StopReason } from '../sim';
 import { flushSave, loadGame, queueSave, saveNow } from './persist';
 import { useUi } from './ui';
-import { parsePlayFile, recordAction, recordTurns, recordUndo, replacePlaylog, resetPlaylog } from './playlog';
+import { parsePlayFile, recordAction, recordBuild, recordTurns, recordUndo, replacePlaylog, resetPlaylog } from './playlog';
+import { BUILD_ID } from '../build';
 
 // 게임 상태 읽기 모델 (architecture §3.2). 권위 상태는 엔진(GameEngine) 하나 — 도메인별 store로 나누지 않는다.
 // store는 엔진 스냅샷을 비추고 명령을 넘길 뿐이다. 화면은 원시 상태 대신 selectors.ts의 셀렉터를 쓰는 것을 원칙으로 한다.
@@ -125,6 +126,7 @@ export const useGame = create<GameStore>((set) => {
     startScenario: (plan) => {
       let s: GameState;
       try { s = newScenarioGame(plan); } catch (e) { toast('error', (e as Error).message); return; }
+      if (s.scenario) s.scenario.startBuild = BUILD_ID; // 판을 시작한 빌드 (#241) — 머리글이 지금 빌드와 비교한다
       undoState = null; set({ undoInfo: null });
       resetPlaylog();
       engine.load(s);
@@ -136,6 +138,7 @@ export const useGame = create<GameStore>((set) => {
       const r = parsePlayFile(text);
       if ('error' in r) { toast('error', r.error); return false; }
       replacePlaylog(r.playlog);
+      recordBuild(r.save.month); // 불러온 판을 이 빌드로 이어 한다 — 바뀐 달을 남긴다(#227·#241)
       undoState = null; set({ undoInfo: null });
       lastMonth = r.save.month; // 불러온 달까지를 새 진행으로 기록하지 않는다
       engine.load(r.save);

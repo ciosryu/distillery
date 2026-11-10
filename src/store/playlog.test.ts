@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonths, newScenarioGame, SAVE_VERSION } from '../sim';
-import { activeMsAt, freshPlaylog, parsePlayFile, withBuild, withTurns, type PlayFile } from './playlog';
+import { activeMsAt, buildDrift, freshPlaylog, parsePlayFile, withBuild, withTurns, type PlayFile } from './playlog';
 
 // 플레이 기록 (mvp.md §7.2) — 순수한 부분만. 시계(입력·화면 보임)는 브라우저에서만 돈다
 
@@ -41,5 +41,15 @@ describe('플레이 기록', () => {
     expect(l.builds).toEqual([{ build: 'aaa1111', month: 0, at: 1 }, { build: 'bbb2222', month: 20, at: 3 }]);
     // 옛 기록(빌드 없음)도 그대로 읽힌다
     expect(withBuild(freshPlaylog(0), 'x', 3, 0).builds).toEqual([{ build: 'x', month: 3, at: 0 }]);
+  });
+
+  it('판 도중 빌드 변경 경고 (#241) — 기준은 확인한 빌드 → 세이브의 시작 빌드 → 기록의 첫 빌드', () => {
+    const log = { builds: [{ build: 'aaa', month: 0, at: 0 }, { build: 'bbb', month: 27, at: 1 }] };
+    expect(buildDrift(log, 'aaa', 'bbb')).toEqual({ from: 'aaa', to: 'bbb', sinceMonth: 27 });
+    expect(buildDrift(log, undefined, 'bbb')).toEqual({ from: 'aaa', to: 'bbb', sinceMonth: 27 }); // 옛 세이브 — 기록의 첫 빌드
+    expect(buildDrift(log, 'bbb', 'bbb')).toBeNull();
+    expect(buildDrift({ ...log, buildAck: 'bbb' }, 'aaa', 'bbb')).toBeNull(); // "이 빌드로 계속"을 눌렀다
+    expect(buildDrift({ ...log, buildAck: 'bbb' }, 'aaa', 'ccc')).toEqual({ from: 'bbb', to: 'ccc', sinceMonth: null }); // 또 바뀌면 다시
+    expect(buildDrift({}, undefined, 'x')).toBeNull(); // 기준을 모른다
   });
 });

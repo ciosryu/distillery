@@ -25,6 +25,8 @@ export interface Playlog {
   undos?: number;
   /** 빌드가 바뀐 기록 (#227) — 이 빌드로 처음 기록한 달. 옛 기록에는 없다 */
   builds?: { build: string; month: number; at: number }[];
+  /** 오너가 "이 빌드로 계속"을 누른 빌드 (#241) — 머리글 경고는 이 빌드(없으면 판 시작 빌드)와 지금 빌드가 다를 때만 뜬다 */
+  buildAck?: string;
 }
 
 /** 기록 내보내기 파일 */
@@ -59,6 +61,17 @@ export function withBuild(log: Playlog, build: string, month: number, now = Date
   return { ...log, builds: [...(log.builds ?? []), { build, month, at: now }] };
 }
 
+/**
+ * 판 도중 빌드가 바뀌었나 (#241) — 기준 = 오너가 확인한 빌드 → 판 시작 빌드(세이브 `scenario.startBuild`) → 플레이 기록의 첫 빌드.
+ * 다르면 { from: 기준, to: 지금, sinceMonth: 지금 빌드를 처음 기록한 달 }. 같거나 기준을 모르면 null (순수 함수)
+ */
+export function buildDrift(log: Pick<Playlog, 'builds' | 'buildAck'>, startBuild: string | undefined, current: string): { from: string; to: string; sinceMonth: number | null } | null {
+  const base = log.buildAck ?? startBuild ?? log.builds?.[0]?.build;
+  if (!base || base === current) return null;
+  const since = [...(log.builds ?? [])].reverse().find((b) => b.build === current)?.month ?? null;
+  return { from: base, to: current, sinceMonth: since };
+}
+
 /** 이 달에 처음 닿았을 때의 누적 플레이 시간(ms). 아직 못 닿았으면 null */
 export const activeMsAt = (log: Playlog, month: number): number | null => log.turns.find((t) => t.month >= month)?.activeMs ?? null;
 
@@ -82,6 +95,8 @@ let clock: ReturnType<typeof setInterval> | null = null;
 export const getPlaylog = (): Playlog => log;
 export function resetPlaylog(): void { log = freshPlaylog(); store(); }
 export function replacePlaylog(l: Playlog | null): void { log = l?.v === 1 ? l : freshPlaylog(); store(); }
+/** 머리글 경고에서 "이 빌드로 계속" (#241) — 기록(builds)은 그대로 남는다 */
+export function ackBuild(build: string): void { log = { ...log, buildAck: build }; store(); }
 export function recordAction(): void { log = { ...log, actions: log.actions + 1 }; store(); }
 export function recordTurns(fromMonth: number, toMonth: number): void { log = withBuild(withTurns(log, fromMonth, toMonth), BUILD_ID, fromMonth); store(); }
 /** 화면을 연 빌드를 남긴다 — 페이지를 다시 열어 빌드가 바뀌었으면 그 달로 (App 시작 때 한 번) */

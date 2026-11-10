@@ -854,6 +854,8 @@ export interface ScenarioState {
   goal: { months: number; netWorthMultiple: number; flagshipMinMonths: number };
   /** 이미 연 단계 id (content/scenarios.ts stages) — 옛 세이브에는 없다 */
   stagesDone?: string[];
+  /** 이 판을 시작한 빌드(커밋 짧은 해시, #241) — 화면이 새 판을 만들 때 남긴다. 시뮬레이션은 읽지 않는다. 옛 세이브에는 없다(플레이 기록의 첫 빌드로 대신한다) */
+  startBuild?: string;
 }
 
 export interface GameState {
