@@ -986,3 +986,37 @@ describe('헤리티지 병입 연표 (#244, 2026-11-10 오너 요청)', () => {
     expect(st.angelsShare).toBeGreaterThan(0);
   });
 });
+
+describe('병입 패키징 커스터마이징 (#248, 2026-11-10 오너 요청)', () => {
+  it('기존 두 패키징은 부품 조합으로 원가·럭셔리가 예전과 같다 — 접근자도 옛 제품에 같은 값', async () => {
+    const { packagingPartsCost, packagingPartsLuxury, presetChoice, packagingLuxury, packagingAppealFactor } = await import('./index');
+    const { packagingCost, PACKAGING } = await import('./content/catalog');
+    const { BRAND_LUXURY } = await import('./content/market');
+    for (const id of ['standard', 'premium']) {
+      for (const ml of [375, 500, 600, 700]) expect(packagingPartsCost(presetChoice(id), ml)).toBe(packagingCost(id, ml));
+      expect(packagingPartsLuxury(presetChoice(id))).toBe(BRAND_LUXURY.packaging[id]);
+      const legacy = { packagingId: id, bottleMl: 700 } as Product;
+      expect(packagingLuxury(legacy)).toBe(BRAND_LUXURY.packaging[id]);
+      expect(packagingAppealFactor(legacy)).toBeCloseTo(PACKAGING[id]!.luxury, 10);
+    }
+  });
+  it('직접 고른 조합: 왁스는 스크류와 못 쓰고, 디캔터·도자기는 375~700 모두, 병입하면 원가·럭셔리가 제품에 고정된다 · 보충은 같은 패키징만', async () => {
+    const { packagingError, packagingPartsCost } = await import('./index');
+    expect(packagingError({ bottle: 'standard', closure: 'screw', wax: true, label: 'paper', box: 'none' }, 700)).toContain('왁스');
+    for (const ml of [375, 500, 600, 700]) for (const b of ['decanter', 'stoneware'] as const) expect(packagingError({ bottle: b, closure: 'cork', label: 'foil', box: 'wooden' }, ml)).toBeNull();
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.inventory.lots = [{ id: 'T1', name: '소주', kind: 'soju', volumeL: 300, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 10_000, batchId: 'B1', recipeId: 'R1' }];
+    const pkg = { bottle: 'stoneware', closure: 'cork', wax: true, label: 'foil', box: 'none', labelColor: 'burgundy' } as const;
+    const base = { name: '도자기 소주', targetAbv: 0.4, bottleMl: 375, chillFilter: true, packagingId: 'standard' } as const;
+    const bad = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: 'T1', liters: 20 }], options: { ...base, packaging: { ...pkg, closure: 'screw' } } });
+    expect(bad.error).toContain('왁스');
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: 'T1', liters: 20 }], options: { ...base, packaging: pkg } }).state;
+    const p = s.commerce.products.at(-1)!;
+    expect(p.packaging).toMatchObject({ bottle: 'stoneware', wax: true, label: 'foil', labelColor: 'burgundy', luxury: 24, costPerBottle: packagingPartsCost(pkg, 375) });
+    expect(p.packagingId).toBe('premium'); // 24점 ≥ 15 → 옛 공식용 근사
+    const plain = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: 'T1', liters: 10 }], options: { ...base, restockId: p.id } });
+    expect(plain.error).toContain('패키징');
+    const ok = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: 'T1', liters: 10 }], options: { ...base, restockId: p.id, packaging: { ...pkg, labelColor: 'navy' } } });
+    expect(ok.error).toBeUndefined(); // 라벨 색은 보기만 — 보충을 막지 않는다
+  });
+});

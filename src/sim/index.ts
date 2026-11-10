@@ -5,6 +5,7 @@ export * from './handfill';
 export * from './delegateCheck';
 export * from './autoFill';
 export * from './caskStory';
+export * from './packaging';
 export * from './bulk';
 export * from './cashflow';
 export * from './events';

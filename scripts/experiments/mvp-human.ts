@@ -21,6 +21,8 @@
 //     fillEvery = n개월마다만 통입("까먹고 귀찮다") · fillStopAt = 그 달부터 통입 안 함(탱크에 쌓이기만, 팔지 않음) ·
 //     wipeAt = 그 달에 숙성 12개월 이상 통의 원액을 모두 잃는다([블렌더에게 맡기기] 연타 — 받은 돈은 0으로 본다, 가장 나쁜 경우) ·
 //     maltOff = [a, b] a개월에 몰트 지시 0, b개월에 원래대로(6년 차 증류기 고장 뒤 다시 켜지 않음)
+//   P6=1 이면 "현금이 n개월 고정비 아래면 그 달 생산을 건너뛴다"(QoL SOP 안, 오너 2026-11-10) 실험 — skipBelow = n.
+//     그 달 월초 현금 < n × 매달 나가는 돈(monthlyFixedCost)이면 생산 지시를 0으로, 아니면 원래대로. 4차 재현(Q0)·비지터 없음(Q1)·3차 행동 셋(Q6) 위에서
 //   DUMP=<폴더> 이면 정책 묶음의 첫 정책·시드 1 판을 59·83·107·119·179개월에 기록 파일(playlog 없음)로 떨군다 — 화면에서 "기록 파일 불러오기"로 열어
 //     단계 해금(6·8·10·11년 차)을 직접 지나가 보는 점검용(5차 전 점검, mvp.md §7.1). 출력 표는 그대로다
 //   SPLIT=1 이면 15년 순자산 분해 표를 더 낸다(현금·대출·원액 현물가·제품, 위스키 매출 시기, 원액 평가액 증가 대 생산비 — #191 정정, mvp.md §7.6)
@@ -30,6 +32,7 @@ import { advanceMonth, applyAction, newScenarioGame, previewBlend, warehouseCapa
 import { EVENTS } from '../../src/sim/content/events';
 import { cashAlert } from '../../src/ui/alerts';
 import { netWorth } from '../../src/sim/progress';
+import { monthlyFixedCost } from '../../src/sim/loans';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
 const DUMP = process.env.DUMP;
@@ -42,7 +45,7 @@ const TIER = (process.env.TIER ?? 'micro') as 'micro' | 'standard';
 const LOAN = Number(process.env.LOAN ?? 0);
 EVENTS.splice(0); // MVP: 랜덤 이벤트 OUT (#130)
 
-interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number] }
+interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number }
 const P = (name: string, o: Partial<Policy>): Policy => ({ name, soju: 'stock', loans: 'banner', cut: 'none', visitor: true, farm: false, bigMalt: false, ...o });
 const POLICIES: Policy[] = [
   P('A 봇 기준', { loans: 'bot' }),
@@ -87,6 +90,12 @@ const P5_POLICIES: Policy[] = [
   P4('S5 S4 + 70개월째 숙성 통 소진 (5차 판에 가장 가까움)', { maltOff: [66, 76], wipeAt: 70 }),
   P4('S6 S2 + 70개월째 숙성 통 소진', { fillStopAt: 48, wipeAt: 70 }),
 ];
+// 생산 건너뛰기 규칙의 n 찾기 (P6) — n = 0은 규칙 없음
+const P6_POLICIES: Policy[] = [0, 0.5, 1, 2, 3].flatMap((n) => [
+  P4(`T 4차 재현 · n=${n}`, { skipBelow: n }),
+  P4(`U 비지터 없음 · n=${n}`, { visitor: false, skipBelow: n }),
+  P4(`V 3차 행동 셋 · n=${n}`, { visitor: false, cut: 'p3', sellNewMake: true, skipBelow: n }),
+]);
 const P3_POLICIES: Policy[] = [
   P3('R0 3차 규모 · 사람 기준(배너 대출·비지터 지음)', {}),
   P3('R1 R0 + 비지터 센터 안 지음', { visitor: false }),
@@ -209,6 +218,7 @@ function play(p: Policy, seed: number): Row {
   for (let m = 0; m < MONTHS; m++) {
     for (const [mm, amt] of p.mkt ?? []) if (m === mm) s = act(s, { type: 'setMarketing', amount: amt });
     if (p.maltOff && (m === p.maltOff[0] || m === p.maltOff[1])) s = setOrders(s, sojuBatches(p), m === p.maltOff[0] ? 0 : maltBatches(p));
+    if (p.skipBelow) { const skip = s.finance.cash < p.skipBelow * monthlyFixedCost(s); s = skip ? setOrders(s, 0, 0) : setOrders(s, sojuBatches(p), maltBatches(p)); }
     if (p.cut === 'y2to5') s = setOrders(s, sojuBatches(p), m >= 12 && m < 60 ? 1 : maltBatches(p));
     if (p.cut === 'p3' && (m === 25 || m === 35 || m === 40)) { s = setOrders(s, m === 35 ? 0 : sojuBatches(p), m === 35 ? 0 : m === 25 ? Math.ceil(maltBatches(p) / 2) : maltBatches(p)); if (cutMonth < 0) cutMonth = m; }
     // 2차 판: 경고(파산 배너 — 주의 단계 포함)를 처음 보고 생산을 모두 0으로 했다. 대출을 먼저 받으면 현금은 음수가 되지 않으므로 '배너가 뜬 때'로 본다
@@ -255,7 +265,7 @@ console.log(process.env.P5
 console.log('| 정책 | 파산 (3개월 규칙, 중앙 월) | 파산 (6개월 규칙, 중앙 월) | 최저 현금 중앙값 (그 달) | 최대 대출 잔액 평균 | 첫 위스키 | 6~9년 차 위스키 판매(병, 평균) | 15년 순자산 평균(3개월 규칙 생존) | 순자산 목표 달성 |');
 console.log('|---|---|---|---|---|---|---|---|---|');
 const ALL = new Map<string, Row[]>();
-const RUN = process.env.P5 ? P5_POLICIES : process.env.P4 ? P4_POLICIES : process.env.P3 ? P3_POLICIES : POLICIES;
+const RUN = process.env.P6 ? P6_POLICIES : process.env.P5 ? P5_POLICIES : process.env.P4 ? P4_POLICIES : process.env.P3 ? P3_POLICIES : POLICIES;
 for (const p of RUN) {
   const rows = Array.from({ length: SEEDS }, (_, i) => play(p, i + 1));
   ALL.set(p.name, rows);

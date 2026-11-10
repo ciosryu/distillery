@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FeedCard } from '../FeedCard'; // 가상 커뮤니티 피드 (#247, MKT)
 import { PRODUCT_NAME_MAX } from '../../sim/actions.prod';
 import { CATEGORY } from '../../sim/content/categories';
 import { AUTO_RESTOCK_MONTHS, autoRestockSupported } from '../../sim/economics';
@@ -487,6 +488,7 @@ export function Sales() {
       </div>
 
       <PriceDesk />
+      <FeedCard />
       {!isLocked(s, 'action:openBrand') && <BrandLines />}
 
       <Card title={`${region.nameKo} 시장 (연간 기본 수요)`}>

@@ -187,6 +187,8 @@ export interface Product {
   bottleMl: number;
   chillFiltered: boolean;
   packagingId: string;
+  /** 패키징 부품·원가·럭셔리 (#248) — 병입 때 고정. 없으면(옛 제품) packagingId 프리셋으로 읽는다(packaging.ts productPackaging) */
+  packaging?: ProductPackaging;
   flavor: Flavor;
   quality: number;
   typicity: number;
@@ -890,3 +892,14 @@ export interface GameState {
   progress: ProgressSlice;
 }
 
+/** 제품에 고정한 패키징 (#248) — 부품 + 병입 때 정해진 럭셔리(0~30)·병당 포장 원가(이벤트·입지 할증 전) */
+export interface ProductPackaging {
+  bottle: 'standard' | 'decanter' | 'stoneware';
+  closure: 'screw' | 'cork';
+  wax?: boolean;
+  label: 'paper' | 'embossed' | 'foil';
+  box: 'none' | 'case' | 'wooden';
+  labelColor?: 'ivory' | 'black' | 'navy' | 'burgundy' | 'forest' | 'gold';
+  luxury: number;
+  costPerBottle: number;
+}
