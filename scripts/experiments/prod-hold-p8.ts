@@ -3,7 +3,7 @@
 // MGT가 P8에 보유 훅(hold)을 넣으면 이 래퍼는 지운다(prod-stage-t.md 「MGT에 요청」). P8 원본이 바뀌어 붙일 자리가 없으면 바로 멈춘다(조용히 틀린 값을 내지 않는다).
 //
 // 보유 규칙(hold): 통이 at개월(기본 36)이 되면 그달 같은 나이가 된 통 묶음에서 share만큼을 "장기"로 정한다(몫은 소수까지 다음 달로 넘겨 경로끼리 같은 수).
-//   select 'any' = 통 번호 순(품질 무관) · 'sample' = 묶음을 모두 샘플(통당 3만 원)해 추정 품질 높은 순. 장기 통은 age개월(기본 120)이 되면
+//   select 'any' = 통 번호 순(품질 무관) · 'sample' = 묶음을 모두 샘플(통당 3만 원)해 추정 품질 높은 순 · 'cool' = 숙성고 칸이 서늘한(아래 단) 순(CP-MGT-1). 장기 통은 age개월(기본 120)이 되면
 //   「싱글 몰트 10년」 계열로 병입(그 계열 재고 600병 밑일 때 한 달 3통까지). 장기 통은 일반 병입(3년 계열)에서 빠진다. 나머지는 P8 X0 그대로.
 //
 // 실행: npx tsx scripts/experiments/prod-hold-p8.ts [시드=10] [개월=180]   (TIER 기본 standard, 이벤트 켬 — P8과 같다)
@@ -22,7 +22,7 @@ const patch = (from: string | RegExp, to: string) => {
 };
 
 // 1) 정책 필드 · 샘플 기록 읽기 · 상태 맵
-patch('interface Policy { name: string;', "interface Policy { hold?: { age: number; share: number; select: 'any' | 'sample'; at?: number }; name: string;");
+patch('interface Policy { name: string;', "interface Policy { hold?: { age: number; share: number; select: 'any' | 'sample' | 'cool'; at?: number }; name: string;");
 patch("import { isFlagshipCandidate } from '../../src/sim/delegateCheck';", "import { isFlagshipCandidate } from '../../src/sim/delegateCheck';\nimport { knownReads } from '../../src/sim/blendTable';");
 patch('const DUMP = process.env.DUMP;', 'const DUMP = process.env.DUMP;\nconst HOLD = new Map<string, boolean>(); const HOLDN = new Map<string, number>(); const HOLDSTAT = new Map<string, number>();');
 // 2) 경로 — P8 정책 목록 뒤에 붙인다
@@ -33,7 +33,10 @@ patch(/(const P8_POLICIES: Policy\[\] = \[\n)/, `$1  P8('HA 전량 3년(= X0)', 
   P8('HE 전량 장기(10년)', { hold: { age: 120, share: 1, select: 'any' } }),
   P8('HC72 25% 장기(품질 무관, 6년에 정함)', { hold: { age: 120, share: 0.25, select: 'any', at: 72 } }),
   P8('HD72 25% 장기(6년 샘플 상위)', { hold: { age: 120, share: 0.25, select: 'sample', at: 72 } }),
+  P8('HS 25% 장기(서늘한 칸, 3년에 정함)', { hold: { age: 120, share: 0.25, select: 'cool' } }),
   P8('HA6 6배치 · 전량 3년', { maltB: 6 }),
+  P8('HS6 6배치 · 25% 장기(서늘한 칸, 3년)', { maltB: 6, hold: { age: 120, share: 0.25, select: 'cool' } }),
+  P8('HS672 6배치 · 25% 장기(서늘한 칸, 6년)', { maltB: 6, hold: { age: 120, share: 0.25, select: 'cool', at: 72 } }),
   P8('HC6 6배치 · 25% 장기(품질 무관, 3년)', { maltB: 6, hold: { age: 120, share: 0.25, select: 'any' } }),
   P8('HD6 6배치 · 25% 장기(3년 샘플 상위)', { maltB: 6, hold: { age: 120, share: 0.25, select: 'sample' } }),
   P8('HC672 6배치 · 25% 장기(품질 무관, 6년)', { maltB: 6, hold: { age: 120, share: 0.25, select: 'any', at: 72 } }),
@@ -49,6 +52,7 @@ patch("  const stock = stockOf(s, 'whisky');\n", `  if (p.hold) {
       const k = Math.min(cohort.length, Math.floor(quota + 1e-9));
       HOLDN.set(pk, quota - k);
       let order = [...cohort].sort((a, b) => a.id.localeCompare(b.id));
+      if (p.hold.select === 'cool') order = [...cohort].sort((a, b) => (a.slot?.tier ?? 9) - (b.slot?.tier ?? 9) || a.id.localeCompare(b.id));
       if (p.hold.select === 'sample' && p.hold.share < 1) {
         const est = new Map<string, number>();
         for (const c of cohort) { const r = applyAction(s, { type: 'sampleCask', caskIds: [c.id] }); if (!r.error) s = r.state; est.set(c.id, knownReads(s).get(c.id)?.estQuality ?? -1); }
@@ -65,7 +69,8 @@ patch("  const stock = stockOf(s, 'whisky');\n", `  if (p.hold) {
 `);
 patch("c.contents.oakMonths >= minOak && !kept.has(c.id))", "c.contents.oakMonths >= minOak && !kept.has(c.id) && !(p.hold && HOLD.get(`${p.name}|${s.seed}|${c.id}|${c.filledMonth ?? -1}`)))");
 // 4) 이 경로들만 돌린다
-patch(/const RUN = process\.env\.P8 \? P8_POLICIES/, "const RUN = process.env.P8 ? P8_POLICIES.filter((p) => /^H[A-E]/.test(p.name) && (!process.env.ONLY || process.env.ONLY.split(',').some((k) => p.name.startsWith(k + ' '))))");
+// P8의 ONLY 필터(#289)는 그대로 쓰고, ONLY가 없으면 이 래퍼의 경로(H…)만 돈다
+patch(/const RUN = ONLY \? ALL_RUN\.filter\(\(p\) => ONLY\.has\(p\.name\.split\(' '\)\[0\]!\)\) : ALL_RUN;/, "const RUN = ALL_RUN.filter((p) => /^H[A-ES]/.test(p.name) && (!ONLY || ONLY.has(p.name.split(' ')[0]!)));");
 // 5) 끝 — 같은 시드 짝 비교와 장기 지정 통 수
 src += `
 {
@@ -79,7 +84,7 @@ src += `
     const m = d.reduce((t, v) => t + v, 0) / d.length, sd = Math.sqrt(d.reduce((t, v) => t + (v - m) ** 2, 0) / (d.length - 1));
     console.log(\`PAIRED \${a} − \${b}: \${(m / 1e8).toFixed(2)}억 · t \${(m / (sd / Math.sqrt(d.length))).toFixed(1)} · 이긴 시드 \${d.filter((v) => v > 0).length}/\${d.length}\`);
   };
-  for (const [a, b] of [['HC', 'HA'], ['HD', 'HA'], ['HD', 'HC'], ['HC72', 'HA'], ['HD72', 'HC72'], ['HC6', 'HA6'], ['HD6', 'HC6'], ['HC672', 'HA6'], ['HD672', 'HC672']] as const) pair(a, b);
+  for (const [a, b] of [['HC', 'HA'], ['HD', 'HA'], ['HD', 'HC'], ['HS', 'HC'], ['HC72', 'HA'], ['HD72', 'HC72'], ['HC6', 'HA6'], ['HD6', 'HC6'], ['HS6', 'HC6'], ['HC672', 'HA6'], ['HD672', 'HC672'], ['HS672', 'HC672']] as const) pair(a, b);
   const held = new Map<string, number[]>();
   for (const [k, v] of HOLDSTAT) { const n = k.split('|')[0]!.split(' ')[0]!; held.set(n, [...(held.get(n) ?? []), v]); }
   console.log('HELD ' + [...held].map(([n, v]) => \`\${n} \${(v.reduce((a, b) => a + b, 0) / v.length).toFixed(1)}통\`).join(' · '));
