@@ -179,7 +179,7 @@ export function refreshCandidates(s: GameState, rng: Rng): void {
 }
 
 /**
- * HR 수치 손잡이 (단계 T 측정 준비 T-0, mvp.md 단계 T MGT 측정 계획 M1) — 게임 기본값이다. 실험 스크립트만 바꾼다(scripts/experiments/mgtKnobs.ts).
+ * HR 수치 손잡이 (단계 T 측정 준비 T-0, docs/design/mgt-stage-t.md M1) — 게임 기본값이다. 실험 스크립트만 바꾼다(scripts/experiments/mgtKnobs.ts).
  * levelRaise = 레벨이 오를 때마다 급여가 오르는 비율 (gainXp·salaryRaiseSinceStart·직원 탭 교육 효과가 같은 값을 쓴다) [튜닝]
  */
 export const HR_TUNING = { levelRaise: 0.05 };

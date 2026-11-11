@@ -1,4 +1,4 @@
-// 단계 T — MGT 측정 표 (T-0, mvp.md "단계 T — MGT 측정 계획" M1·M2·M4·M5). 게임 규칙은 바꾸지 않는다 — 손잡이(mgtKnobs.ts)를 켠 자식 프로세스를 돌려 요약 줄을 모은다.
+// 단계 T — MGT 측정 표 (T-0, docs/design/mgt-stage-t.md M1·M2·M4·M5). 게임 규칙은 바꾸지 않는다 — 손잡이(mgtKnobs.ts)를 켠 자식 프로세스를 돌려 요약 줄을 모은다.
 // 실행: npx tsx scripts/experiments/mgt-stage-t.ts <M1|M2|M4|M5|all> [시드=10] [개월=180]
 //   판정은 40시드(BAL, 단계 T). 10시드는 방향만 본다. EVENTS=1(기본)로 MVP 이벤트를 켠다 — 끄려면 EVENTS=0
 //   M1 레벨업 급여 인상률 0.05·0.02·0 × MVP micro·standard (mvp-survival)
