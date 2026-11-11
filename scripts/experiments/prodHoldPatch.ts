@@ -5,6 +5,7 @@
 //   applyHoldPatches(src, { filterRun: true })    + P8 RUN을 H… 경로만으로(ONLY는 그대로 걸린다)
 //   applyHoldPatches(src, { stats: true })        + 끝에 PAIRED(같은 시드 순자산 짝 비교)·HELD(장기 지정 통 수) 줄
 // 다른 래퍼에서 쓸 때: P8 정책에 { hold: { age: 120, share: 0.25, select: 'cool' } }처럼 hold를 주면 된다. 장기 계열 제품 이름은 LONG_LINE_NAME
+//   hold.stopAt = <달>: 그 달부터 새 장기 지정을 멈춘다 — 이미 정한 통이 다 팔리면 장기 계열 보충이 끊긴다(유한 재고형, AP3 장기 숙성 조건 (b))
 export const LONG_LINE_NAME = '싱글 몰트 10년';
 
 export interface HoldPatchOptions { paths?: boolean; filterRun?: boolean; stats?: boolean }
@@ -18,7 +19,7 @@ export function applyHoldPatches(source: string, o: HoldPatchOptions = {}): stri
   };
 
   // 1) 정책 필드 · 샘플 기록 읽기 · 상태 맵
-  patch('interface Policy { name: string;', "interface Policy { hold?: { age: number; share: number; select: 'any' | 'sample' | 'cool'; at?: number }; name: string;");
+  patch('interface Policy { name: string;', "interface Policy { hold?: { age: number; share: number; select: 'any' | 'sample' | 'cool'; at?: number; stopAt?: number }; name: string;");
   patch("import { isFlagshipCandidate } from '../../src/sim/delegateCheck';", "import { isFlagshipCandidate } from '../../src/sim/delegateCheck';\nimport { knownReads } from '../../src/sim/blendTable';");
   patch('const DUMP = process.env.DUMP;', 'const DUMP = process.env.DUMP;\nconst HOLD = new Map<string, boolean>(); const HOLDN = new Map<string, number>(); const HOLDSTAT = new Map<string, number>();');
   // 2) 경로 — P8 정책 목록 뒤에 붙인다
@@ -44,7 +45,7 @@ export function applyHoldPatches(source: string, o: HoldPatchOptions = {}): stri
     const key = (c: { id: string; filledMonth?: number }) => \`\${pk}|\${c.id}|\${c.filledMonth ?? -1}\`;
     const cohort = s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.kind === 'malt' && c.contents.oakMonths >= (p.hold!.at ?? 36) && !HOLD.has(key(c)));
     if (cohort.length) {
-      const quota = (HOLDN.get(pk) ?? 0) + p.hold.share * cohort.length;
+      const quota = p.hold.stopAt != null && s.month >= p.hold.stopAt ? 0 : (HOLDN.get(pk) ?? 0) + p.hold.share * cohort.length; // stopAt: 그 달부터 장기 지정을 멈춘다(유한 재고형 장기 계열)
       const k = Math.min(cohort.length, Math.floor(quota + 1e-9));
       HOLDN.set(pk, quota - k);
       let order = [...cohort].sort((a, b) => a.id.localeCompare(b.id));
