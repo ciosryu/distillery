@@ -21,6 +21,7 @@ import { CATEGORY } from './content/categories';
 import type { PresetRecipe } from './content/presets';
 import { isLocked } from './scenario';
 import type { ProductCategory, SpiritKind } from './types';
+import { PROD_TUNING } from './prodTuning';
 
 type StillDef = Extract<EquipmentDef, { kind: 'still' }>;
 
@@ -351,13 +352,11 @@ export const distillerRunCapacity = (process: number) => 20 + process / 5;
 interface FermenterSlot { id: string; type: FermenterType; capacityL: number; daysLeft: number }
 
 /** 2 생산 (틱 단계 본문 — step.ts가 부른다) */
-/** 생산 건너뛰기 기준 — 월초 현금 < 이만큼 × 매달 나가는 돈(고정비)이면 위스키 원액을 쉰다 `[튜닝]` (qol.md §3: 0.5 — 건강한 판 손해 없음, 무너지는 판 파산을 늦춤. 2 이상은 함정) */
-export const WHISKY_SKIP_FIXED_MONTHS = 0.5;
-
-/** 이 달 위스키 원액을 건너뛰는가 — 시나리오 판만(샌드박스·봇 실험 기준선은 그대로). 건너뛰면 그때의 현금과 기준 */
+/** 이 달 위스키 원액을 건너뛰는가 — 기준: 월초 현금 < PROD_TUNING.whiskySkipFixedMonths(기본 0.5 `[튜닝]`) × 매달 나가는 돈(고정비)
+ *  (qol.md §3: 0.5 — 건강한 판 손해 없음, 무너지는 판 파산을 늦춤. 2 이상은 함정). — 시나리오 판만(샌드박스·봇 실험 기준선은 그대로). 건너뛰면 그때의 현금과 기준 */
 export function whiskySkipCheck(s: GameState): { cash: number; threshold: number } | null {
   if (!s.scenario) return null;
-  const threshold = WHISKY_SKIP_FIXED_MONTHS * monthlyFixedCost(s);
+  const threshold = PROD_TUNING.whiskySkipFixedMonths * monthlyFixedCost(s);
   return s.finance.cash < threshold ? { cash: s.finance.cash, threshold } : null;
 }
 

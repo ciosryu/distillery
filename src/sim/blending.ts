@@ -5,6 +5,7 @@ import { brandOf } from './brands';
 import { CATEGORY } from './content/categories';
 import { BULK, INGREDIENTS } from './content/catalog';
 import { DEFAULT_WHISKY_RULES, priceForConsumer, refPricePerL, regionOf, traditionalTaxFactor, type RegionDef, type WhiskyRules } from './content/regions';
+import { PROD_TUNING } from './prodTuning';
 import { clampFlavor, evaluate, weightedAverage, type Evaluation } from './flavor';
 import { emptyCask, finishLabel, finishOf } from './maturation';
 import { ownsFacility } from './util';
@@ -124,11 +125,11 @@ export function agePremiumRate(category: ProductCategory): number {
 }
 
 /** 숙성 연수에 대한 소비자 인식 (위스키류) — 권장가·면세 권장가·매력도가 함께 쓴다.
- *  3년 미만은 법적으로 위스키라도 "어린 위스키"로 보고 크게 깎는다 — 0개월 0.47, 12개월 0.77, 24개월 0.98 (v0.8, 그대로)
+ *  3년 미만은 법적으로 위스키라도 "어린 위스키"로 보고 크게 깎는다 — 0개월 0.47, 12개월 0.77, 24개월 0.98 (v0.8, 그대로 — 곡선은 PROD_TUNING `[튜닝]`)
  *  3년 = 1.18, 그 뒤는 원액 시가와 같은 비율로 오른다: 1.18 × (1 + r·연수) / (1 + 3r), 18년 상한 (§6.2.1, 예약 #117의 규칙)
  *  몰트(r = 0.2): 6년 1.62 · 10년 2.21 · 12년 2.51 · 18년 3.39 (옛 공식: 연 +0.06, 12년 상한 1.72) */
 export function agePerception(oakMonths: number, category: ProductCategory = 'whisky'): number {
-  if (oakMonths < 36) return 1.18 * (0.4 + 0.6 * Math.pow(Math.max(0, oakMonths) / 36, 0.8));
+  if (oakMonths < 36) { const f = PROD_TUNING.youngWhiskyFloor; return 1.18 * (f + (1 - f) * Math.pow(Math.max(0, oakMonths) / 36, PROD_TUNING.youngWhiskyCurve)); }
   const r = agePremiumRate(category);
   const years = Math.min(Math.floor(oakMonths / 12), AGE_PREMIUM_CAP_YEARS);
   return (1.18 * (1 + r * years)) / (1 + 3 * r);
