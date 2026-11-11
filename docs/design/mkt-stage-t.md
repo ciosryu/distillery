@@ -3,6 +3,7 @@
 > 파트 MKT(시장·판매·B2B·수출·관광) 2026-11-10 작성(오너 "권장안대로"), 2026-11-11 수출 판정 기준 바꿈(오너 "바꿔도 돼")·측정 도구 넣음(오너 "먼저 하자"). 단계 P에서 수치 튜닝을 하지 않고 미뤄 둔 MKT 판단을 한곳에 모은다.
 > 단계 T 진입 조건(#262, PROCESS §7.2)을 넘으면 이 목록의 순서대로 본다. 수치는 모두 `[튜닝]`이고, **판정 기준이 없는 항목은 먼저 기준부터 정한다**(오너).
 > 공통 측정: 샌드박스 `npm run balance -- 40 120 all <KR|JP|TW>`(40시드, STATUS "단계 T 확인 항목"과 같은 규모) · MVP `MVP=micro|standard npx tsx scripts/experiments/mvp-survival.ts 40 180` · 사람 판 세이브 재생(4차 `y16m1`·후반 `standard-y14m11`) · **MKT 측정 도구 `scripts/experiments/mkt-*.ts`**(아래 「측정 도구」 — 항목마다 어느 스크립트로 재는지).
+> **판정용 봇은 하나다 (`[결정 #265]`, PM 머지 때 덧붙임):** 단계 T 판정은 표준 규모 사람형 봇 `mvp-human.ts` P8(MGT)과 `mvp-survival.ts` 4전략으로 한다. 아래 `mkt-lib.ts` 봇은 측정 도구로 쓰되, **P8이 머지되면 그 위에 MKT 손잡이를 얹는 방식으로 옮긴다**(지금 `mkt-lib.ts`는 시작할 때 영업 1명을 뽑아 `mvp-survival.ts`·MGT 예비 측정과 숫자를 바로 견줄 수 없다 — mgt-stage-t.md M4).
 
 ## 한눈에
 
