@@ -3,7 +3,8 @@ import { FeedCard } from '../FeedCard'; // 가상 커뮤니티 피드 (#247, MKT
 import { ExportShortfallNote } from '../ExportShortfallNote'; // 수출이 국내를 굶기는지 (#257, MKT)
 import { PRODUCT_NAME_MAX } from '../../sim/actions.prod';
 import { CATEGORY } from '../../sim/content/categories';
-import { AUTO_RESTOCK_MONTHS, autoRestockSupported } from '../../sim/economics';
+import { AUTO_RESTOCK_LONG_FLOOR, autoRestockFloor, AUTO_RESTOCK_MONTHS, autoRestockSupported } from '../../sim/economics';
+import { whiskyMinMonths } from '../../sim/blending';
 import { AXIS } from '../../sim/content/axes';
 import { ProfileRadar } from './Production';
 import { caskShort } from './Bottling';
@@ -200,6 +201,24 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
               </select>
             </label>
           )}
+          {/* 자동 납품이 쓸 통의 최소 숙성 (P-PROD-41) — 기본은 제품 표기. 표기가 길면(5년+) 가장 오래된 통만 가져간다는 경고 */}
+          {p.autoRestock && isWhiskyCategory(p.category) && (() => {
+            const legal = whiskyMinMonths(region.whisky);
+            const label = p.ageYears ? p.ageYears * 12 : legal;
+            const floor = autoRestockFloor(s, p);
+            const opts = [...new Set([legal, 24, 36, 60, 120, label].filter((m) => m >= legal && m <= label))].sort((a, b) => a - b);
+            return (
+              <div className="mt-0.5 text-[11px] text-stone-600 dark:text-stone-400">
+                <label className="flex items-center gap-1" title="자동 납품이 이 숙성 이상 된 통만 쓴다. 표기보다 낮추면 어린 통이 섞여 보충할 때 표기(n년)가 그만큼 내려갈 수 있다">통 하한
+                  <select className="rounded border border-stone-300 bg-white px-1 py-0 text-[11px] dark:border-stone-700 dark:bg-stone-800" value={floor} onChange={(e) => dispatch({ type: 'setAutoRestock', productId: p.id, months: p.autoRestock!, minMonths: Number(e.target.value) })} aria-label={`${p.name} 자동 납품 통 하한`}>
+                    {opts.map((m) => <option key={m} value={m}>{m % 12 === 0 ? `${m / 12}년` : `${m}개월`} 이상{m === label ? ' (표기)' : ''}</option>)}
+                  </select>
+                </label>
+                {floor >= AUTO_RESTOCK_LONG_FLOOR && <div className="text-amber-700 dark:text-amber-400">⚠ {Math.floor(floor / 12)}년 이상 통만 쓴다 — 자동 납품이 가장 오래된 통을 계속 가져간다(플래그십 후보 포함). 하한을 낮추거나 손으로 보충하세요</div>}
+                {floor < label && <div className="text-stone-500">표기보다 낮다 — 어린 통이 섞이면 표기가 {Math.floor(floor / 12)}년까지 내려갈 수 있다</div>}
+              </div>
+            );
+          })()}
           {!dfOnly && <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400" title="켜면 매달 판매 직전에 이번 달 이익이 가장 큰 값(권장가의 0.6~2배 중)으로 정한다. 재고가 적으면 올리고 많으면 내린다"><input type="checkbox" className="accent-amber-700" checked={!!p.autoPrice} onChange={(e) => dispatch({ type: 'setAutoPrice', productId: p.id, on: e.target.checked })} /> 자동 최적 가격</label>}
           {suggested != null && suggested !== p.price && (
             <button className="mt-0.5 block text-xs text-amber-800 underline decoration-dotted dark:text-amber-300" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: suggested })} title="기준 소비자가 × √(품질/60) × 숙성 인식에 맞춘 출고가">권장 {wonFull(suggested)}</button>

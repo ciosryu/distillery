@@ -1,4 +1,5 @@
-import { isWhiskyCategory } from './blending';
+import { isWhiskyCategory, whiskyMinMonths } from './blending';
+import { regionOf } from './content/regions';
 import { AUTO_RESTOCK_MONTHS, autoRestockSupported, bestAutoPrice } from './economics';
 import { CASK_COST_SHARE_PER_FILL, CASK_MARKET, CASKS, EQUIPMENT, RECHAR_COST } from './content/catalog';
 import { assignSlot, rotateWarehouse, SlotIndex } from './warehouse';
@@ -55,7 +56,7 @@ export type ProdAction =
   /** 자동 최적 가격 켜기·끄기 (#200) — 켜면 바로 한 번 값을 정한다 */
   | { type: 'setAutoPrice'; productId: string; on: boolean }
   /** 자동 납품 (#206) — months: 유지할 재고 개월분(1·2·3·6), null이면 끔 */
-  | { type: 'setAutoRestock'; productId: string; months: number | null }
+  | { type: 'setAutoRestock'; productId: string; months: number | null; minMonths?: number | null }
   /** 자동 샘플 설정 (#207) — 비운 칸은 기본값 */
   | { type: 'setAutoSample'; settings: AutoSampleSettings }
   /** 자동 통입 (#239) — settings null이면 끔, 비운 칸은 기본값 */
@@ -196,6 +197,15 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (!autoRestockSupported(p)) return fail(prev, '이 제품은 자동 납품을 쓸 수 없습니다 (소주·진·고량주·싱글 몰트·그레인 위스키만, 면세 한정판 제외)');
     if (!(AUTO_RESTOCK_MONTHS as readonly number[]).includes(a.months)) return fail(prev, '유지 개월분은 1·2·3·6 중에서 고른다');
     p.autoRestock = a.months;
+    // 쓸 통의 최소 숙성 (P-PROD-41) — 위스키만, 법정 숙성 이상 · 표기 이하. null/표기와 같으면 기본(표기)
+    if (a.minMonths !== undefined && isWhiskyCategory(p.category)) {
+      const legal = whiskyMinMonths(regionOf(s).whisky);
+      const label = p.ageYears ? p.ageYears * 12 : legal;
+      if (a.minMonths == null || a.minMonths >= label) delete p.autoRestockMinMonths;
+      else if (a.minMonths < legal) return fail(prev, `위스키 통은 법정 숙성 ${legal}개월 이상이어야 합니다`);
+      else p.autoRestockMinMonths = Math.floor(a.minMonths);
+    }
+    if (p.autoRestockMinMonths != null) return { state: s, message: `${p.name} 자동 납품 — ${Math.floor(p.autoRestockMinMonths / 12)}년(${p.autoRestockMinMonths}개월) 이상 통부터 쓴다. 표기보다 어린 통이 섞이면 보충 때 표기가 그만큼 내려간다` };
     return { state: s, message: `${p.name} 자동 납품 켬 — 매달 판매 전에 재고를 약 ${a.months}개월분으로 채운다${p.ageYears ? ` (${p.ageYears}년 이상 숙성 통만, 표기에 가까운 통부터)` : isWhiskyCategory(p.category) ? ' (법정 숙성 이상 통만, 어린 통부터)' : ' (탱크 원액, 먼저 만든 것부터)'}` };
   },
   setAutoPrice: (s, prev, a) => {

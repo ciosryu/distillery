@@ -352,10 +352,23 @@ export function flagshipReserve(s: GameState): Set<string> {
 /** 이 제품의 자동 납품에서 보호 중인 플래그십 후보 통 수 — 할 일 문구용 */
 export function guardedFlagshipCasks(s: GameState, p: Product): number {
   if (!isWhiskyCategory(p.category) || !flagshipGuard(s, p)) return 0;
-  const minOak = p.ageYears ? p.ageYears * 12 : whiskyMinMonths(regionOf(s).whisky);
+  const minOak = autoRestockFloor(s, p);
   const reserve = flagshipReserve(s);
   return s.inventory.casks.filter((c) => reserve.has(c.id) && c.contents!.oakMonths >= minOak).length;
 }
+
+/**
+ * 자동 납품이 쓸 통의 최소 숙성(개월) — 플레이어가 정한 하한(P-PROD-41), 없으면 제품 표기 연수(없으면 법정 숙성).
+ * 표기 하한 함정(후반 확인 판 ARCH §7.21): 오래된 통으로 처음 병입한 제품(예: 6년 표기)은 하한이 표기와 같아 자동 납품이 가장 오래된 통만 가져갔다
+ */
+export function autoRestockFloor(s: GameState, p: Pick<Product, 'ageYears' | 'autoRestockMinMonths'>): number {
+  const legal = whiskyMinMonths(regionOf(s).whisky);
+  const label = p.ageYears ? p.ageYears * 12 : legal;
+  return p.autoRestockMinMonths != null ? Math.max(legal, Math.min(label, p.autoRestockMinMonths)) : label;
+}
+
+/** 자동 납품 하한이 길어 오래된 통만 쓰는 제품인가 — 화면 경고용(5년 이상) */
+export const AUTO_RESTOCK_LONG_FLOOR = 60;
 
 /** 자동 납품 원액 후보 — 쓸 순서대로. 위스키는 숙성 표기를 채우고 피니시가 같고 도수가 충분한 나무 통, 어린 통부터 */
 export function autoRestockSources(s: GameState, p: Product): { comp: Omit<BlendComponent, 'liters'>; lot: SpiritLot }[] {
@@ -379,7 +392,7 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
       .sort((a, b) => a.createdMonth - b.createdMonth || a.id.localeCompare(b.id))
       .map((l) => ({ comp: { source: 'lot' as const, id: l.id }, lot: l }));
   }
-  const minOak = p.ageYears ? p.ageYears * 12 : whiskyMinMonths(regionOf(s).whisky);
+  const minOak = autoRestockFloor(s, p);
   const minAbv = isCaskStrength(p) ? 0.4 : p.abv - 1e-9; // 캐스크 스트렝스는 통 도수 그대로 병입한다
   const finish = p.finish ?? null;
   const guarded = flagshipGuard(s, p) ? flagshipReserve(s) : null;
