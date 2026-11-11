@@ -9,6 +9,8 @@ import { EQUIPMENT } from '../src/sim/content/catalog';
 import { EXPORT_MARKETS, EXPORT_SALES } from '../src/sim/content/exports';
 import type { ExportMarketId } from '../src/sim/types';
 import { applyMgtKnobs, mgtPolicy } from './experiments/mgtKnobs';
+// TECH-02 판정 도구 통일 (MGT AP3-MGT-1, ARCH 검토): METRICS=1 이면 게임 순자산(progress.netWorth — MVP 판정·P8과 같은 정의)으로 센 1위 분포를 덧붙인다. 기본 출력은 그대로
+import { netWorth as gameNetWorth } from '../src/sim/progress';
 applyMgtKnobs(); // MGT 실험 손잡이 (T-0) — 환경 변수가 없으면 아무 일도 하지 않는다
 const EQUIPMENT_KIND = (id: string) => EQUIPMENT[id]?.kind;
 
@@ -559,7 +561,7 @@ function diag(strategy: Strategy, seed: number, s: GameState): void {
   }));
 }
 
-interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWorth: number; bookWorth: number; firstPositive: number; y5retail: number; y5bulk: number; exportShare: number; markets: number }
+interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWorth: number; bookWorth: number; gameWorth: number; firstPositive: number; y5retail: number; y5bulk: number; exportShare: number; markets: number }
 
 function play(strategy: Strategy, seed: number): Result {
   let s = newGame({ seed, region: REGION, site: SITE });
@@ -579,7 +581,7 @@ function play(strategy: Strategy, seed: number): Result {
   if (DIAG) diag(strategy, seed, s);
   if (process.env.DBG_EXPORT) console.error(strategy, seed, exportLog.join(' | '), '| 명성', (s.commerce.acclaim ?? 0).toFixed(2), '| 위스키 최고 품질', Math.max(0, ...s.commerce.products.filter((p) => p.category === 'whisky').map((p) => p.quality)), '| 수출 누적', (s.commerce.exports ?? []).map((e) => `${e.marketId}:${e.totalBottles}병 aw${e.awareness.toFixed(2)}`).join(' '));
   return {
-    strategy, bankrupt: s.status === 'bankrupt', minCash: lo, netWorth: s.status === 'bankrupt' ? -Infinity : netWorth(s), bookWorth: s.status === 'bankrupt' ? -Infinity : bookWorth(s), firstPositive: fp,
+    strategy, bankrupt: s.status === 'bankrupt', minCash: lo, netWorth: s.status === 'bankrupt' ? -Infinity : netWorth(s), bookWorth: s.status === 'bankrupt' ? -Infinity : bookWorth(s), gameWorth: s.status === 'bankrupt' ? -Infinity : gameNetWorth(s), firstPositive: fp,
     y5retail: y5.reduce((t, r) => t + r.revenue, 0), y5bulk: y5.reduce((t, r) => t + r.bulkRevenue + (r.spotBulkRevenue ?? 0), 0),
     // 수출 지표 (#104): 전 기간 병입 매출 중 수출(수입사 매입가) 비중, 한 번이라도 진출한 시장 수
     // report.revenue에는 회수한 외상(수출 대금 포함)이 섞여 있으므로 국내 병입 매출은 sales에서 직접 센다
@@ -594,7 +596,8 @@ if (SITE_STRATEGY[SITE_KEY]) console.log(`site 전략 = ${SITE_STRATEGY[SITE_KEY
 const wins: Record<string, number> = {};
 const bookWins: Record<string, number> = {};
 const tieWins: Record<string, number> = {};
-const tally = (rs: Result[], by: 'netWorth' | 'bookWorth', into: Record<string, number>) => {
+const gameWins: Record<string, number> = {};
+const tally = (rs: Result[], by: 'netWorth' | 'bookWorth' | 'gameWorth', into: Record<string, number>) => {
   const best = rs.reduce((a, b) => (b[by] > a[by] ? b : a));
   const key = best.bankrupt ? '전멸' : best.strategy;
   into[key] = (into[key] ?? 0) + 1;
@@ -613,6 +616,7 @@ for (let seed = 1; seed <= SEEDS; seed++) {
   rs.forEach((r) => results[r.strategy].push(r));
   tally(rs, 'netWorth', wins);
   tally(rs, 'bookWorth', bookWins);
+  tally(rs, 'gameWorth', gameWins);
   tallyTie(rs, tieWins);
 }
 for (const st of list) {
@@ -627,3 +631,7 @@ const dist = (w: Record<string, number>) => [...list, '전멸'].map((st) => `${s
 console.log(`\n[${REGION}${SITE ? '/' + SITE : ''}] 시드별 1위 분포(시가 평가): ${dist(wins)}`);
 console.log(`[${REGION}] 시드별 1위 분포(원가 평가): ${dist(bookWins)}  (한 전략이 60% 이상 이기면 지배 전략 의심)`);
 console.log(`[${REGION}${SITE ? '/' + SITE : ''}] 공동 1위 집계(1위의 95% 이내 나눔, #91): ${[...list, '전멸'].map((st) => `${st} ${Number((tieWins[st] ?? 0).toFixed(1))}`).join(' · ')}`);
+if (process.env.METRICS === '1') {
+  console.log(`[${REGION}${SITE ? '/' + SITE : ''}] 시드별 1위 분포(게임 순자산 progress.netWorth — TECH-02): ${dist(gameWins)}`);
+  for (const st of list) { const alive = results[st].filter((r) => !r.bankrupt); console.log(`  ${st.padEnd(7)} 생존 판 순자산 평균 — 이 스크립트 ${eok(avg(alive.map((r) => r.netWorth)))} · 게임 ${eok(avg(alive.map((r) => r.gameWorth)))}`); }
+}

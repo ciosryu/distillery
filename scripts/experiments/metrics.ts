@@ -5,6 +5,7 @@
 import type { GameState } from '../../src/sim';
 import { awarenessOf } from '../../src/sim/brands';
 import { GRADE, netWorth } from '../../src/sim/progress';
+import { monthlyFixedCost } from '../../src/sim/loans';
 
 /** 판 하나의 결과 — 판정 달(기본 180개월) 또는 파산한 달의 상태로 만든다 */
 export interface RunOutcome {
@@ -104,24 +105,100 @@ export class MonthTracker {
   oldBottled = 0;
   oldSold = 0;
   private oldIds = new Set<string>();
+  // ── 가격 정책 지표 (AP3-MGT-1 — 자동 가격 3정책 #288, MKT AP3-MKT-1과 같은 정의) ──
+  /** 최저 현금 · 위기 개월(현금 < 월 고정비 × 3 — 화면 파산 배너 "주의"와 같은 잣대) · 현금 < 0 개월 */
+  minCash = Infinity;
+  crisisMonths = 0;
+  negMonths = 0;
+  /** 재고 개월(판매 진열 재고 ÷ 판매 EMA — retail.overhangFactor·MKT 소진 스위치와 같은 잣대), 범주별 달마다 — 24개월부터 */
+  private stockMonths: Record<string, number[]> = { whisky: [], soju_distilled: [] };
+  /** 국내 수요 대비 못 판 병(품절·한도) — 범주별 [수요, 판매] 누계 · 수요를 못 채운 제품·월 수 · 판매가 있던 제품·월 수 */
+  private demand: Record<string, [number, number]> = {};
+  shortMonths = 0;
+  sellMonths = 0;
+  /** 위스키 국내 평균 실현가(매출 ÷ 병) 누계 · 출고가 변동(제품마다 지난달 대비 |Δ값|/값, 재고 있는 위스키 제품·월 평균) */
+  private whiskyRev = 0;
+  private whiskyBottles = 0;
+  private priceMoves: number[] = [];
+  private lastPrice = new Map<string, number>();
+  /** 채널 — 국내·수출 매출·병 누계 */
+  domRevenue = 0; domBottles = 0; expRevenue = 0; expBottles = 0;
+  /** 제품 재고 장부가(재고 × 병당 원가) 달마다 — 가격 정책이 묶는 운전자본(REQ-MGT-3과 같은 뜻, 제품 쪽) */
+  private productCapital: number[] = [];
   observe(s: GameState): void {
     const r = s.history.reports.at(-1);
     if (r) this.op.push(r.operatingCash ?? r.netCash);
+    this.minCash = Math.min(this.minCash, s.finance.cash);
+    if (s.finance.cash < 0) this.negMonths++;
+    if (s.finance.cash < 3 * monthlyFixedCost(s)) this.crisisMonths++;
+    const live = s.commerce.products.filter((p) => !p.dutyFreeOnly);
+    const cat = new Map<string, string>([...s.commerce.productArchive.map((p) => [p.id, p.category] as const), ...s.commerce.products.map((p) => [p.id, p.category] as const)]);
+    if (s.month >= 24) for (const c of Object.keys(this.stockMonths)) {
+      const ps = live.filter((p) => p.category === c);
+      const ema = ps.reduce((t, p) => t + (p.salesEma ?? 0), 0);
+      if (ps.length && ema > 0) this.stockMonths[c]!.push(ps.reduce((t, p) => t + p.stockBottles, 0) / ema);
+    }
+    if (r) {
+      for (const x of r.sales) {
+        const c = cat.get(x.productId) ?? '?';
+        const d = (this.demand[c] ??= [0, 0]);
+        d[0] += x.demandBottles; d[1] += x.bottles;
+        if (x.demandBottles > 0) { this.sellMonths++; if (x.bottles < x.demandBottles - 0.5) this.shortMonths++; }
+        this.domRevenue += x.revenue; this.domBottles += x.bottles;
+        if (c === 'whisky') { this.whiskyRev += x.revenue; this.whiskyBottles += x.bottles; }
+      }
+      for (const x of r.exports ?? []) { this.expRevenue += x.revenue; this.expBottles += x.bottles; }
+    }
+    for (const p of live.filter((x) => x.category === 'whisky' && x.stockBottles > 0)) {
+      const before = this.lastPrice.get(p.id);
+      if (before && before > 0) this.priceMoves.push(Math.abs(p.price - before) / before);
+      this.lastPrice.set(p.id, p.price);
+    }
+    this.productCapital.push(s.commerce.products.reduce((t, p) => t + p.stockBottles * p.unitCost, 0));
     this.negRun = s.finance.cash < 0 ? this.negRun + 1 : 0;
     this.maxNegRun = Math.max(this.maxNegRun, this.negRun);
     const min = s.scenario?.goal.flagshipMinMonths ?? 144;
     if ([144, 168, 180].includes(s.month)) this.oldCasks[s.month] = s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.oakMonths >= min && (c.contents.kind === 'malt' || c.contents.kind === 'grain')).length;
     // 보관된 옛 제품(productArchive)에는 숙성 정보가 없다 → 살아 있을 때 본 12년↑ 제품 id를 기억해 둔다
     for (const p of s.commerce.products) if ((p.oakMonths ?? (p.ageYears ?? 0) * 12) >= min) this.oldIds.add(p.id);
-    const live = s.commerce.products.filter((p) => this.oldIds.has(p.id)), gone = s.commerce.productArchive.filter((p) => this.oldIds.has(p.id));
-    this.oldSold = [...live, ...gone].reduce((t, p) => t + p.totalSold, 0);
-    this.oldBottled = this.oldSold + live.reduce((t, p) => t + p.stockBottles, 0);
+    const oldLive = s.commerce.products.filter((p) => this.oldIds.has(p.id)), gone = s.commerce.productArchive.filter((p) => this.oldIds.has(p.id));
+    this.oldSold = [...oldLive, ...gone].reduce((t, p) => t + p.totalSold, 0);
+    this.oldBottled = this.oldSold + oldLive.reduce((t, p) => t + p.stockBottles, 0);
   }
   summary() {
     const op = this.op;
     // 영업 흑자 전환 달: 그 달부터 12개월 이동 합이 처음으로 0 이상이 되는 달(한 달 반짝 흑자는 세지 않는다)
     let breakEven = NaN;
     for (let i = 0; i + 12 <= op.length; i++) if (op.slice(i, i + 12).reduce((a, b) => a + b, 0) >= 0) { breakEven = i + 1; break; }
-    return { opMin: op.length ? Math.min(...op) : NaN, opMean: op.length ? op.reduce((a, b) => a + b, 0) / op.length : NaN, breakEven, maxNegRun: this.maxNegRun, oldCasks: this.oldCasks, oldBottled: this.oldBottled, oldSold: this.oldSold };
+    const med = (xs: number[]) => quantile(xs, 0.5);
+    const lost = (c: string) => { const d = this.demand[c]; return d && d[0] > 0 ? 1 - d[1] / d[0] : NaN; };
+    return {
+      opMin: op.length ? Math.min(...op) : NaN, opMean: op.length ? op.reduce((a, b) => a + b, 0) / op.length : NaN, breakEven, maxNegRun: this.maxNegRun, oldCasks: this.oldCasks, oldBottled: this.oldBottled, oldSold: this.oldSold,
+      // 가격 정책 지표 (AP3-MGT-1)
+      minCash: this.minCash, crisisMonths: this.crisisMonths, negMonths: this.negMonths,
+      stockMonthsWhisky: med(this.stockMonths.whisky!), stockMonthsSoju: med(this.stockMonths.soju_distilled!),
+      lostWhisky: lost('whisky'), lostSoju: lost('soju_distilled'), shortShare: this.sellMonths ? this.shortMonths / this.sellMonths : NaN,
+      whiskyPrice: this.whiskyBottles ? this.whiskyRev / this.whiskyBottles : NaN,
+      priceVolatility: this.priceMoves.length ? this.priceMoves.reduce((a, b) => a + b, 0) / this.priceMoves.length : NaN,
+      domRevenue: this.domRevenue, domBottles: this.domBottles, expRevenue: this.expRevenue, expBottles: this.expBottles,
+      productCapital: this.productCapital.length ? this.productCapital.reduce((a, b) => a + b, 0) / this.productCapital.length : NaN,
+    };
   }
+}
+
+/**
+ * 정책 비교 — 같은 시드 짝 차이와 위험조정 판단 (AP3-MGT-1, MGT 시각). a·b는 같은 시드 순서의 판 결과.
+ *  평균 차이 · t · 이긴 시드 — 기대값
+ *  하위 20% 평균(CVaR 20%) 차이 — 나쁜 판에서 얼마나 덜 무너지나(위험)
+ *  판단: "위험조정 우위" = 평균 차이 > 0이고 CVaR 차이 ≥ 0(나쁜 판에서도 지지 않는다) · "기대 우위·위험 열위" = 평균 > 0, CVaR < 0 · 반대도 같다
+ *  현금흐름 위험은 MonthTracker의 위기 개월·최저 현금으로 따로 본다 — 순자산이 같아도 위기 개월이 많으면 사람에게는 다른 판이다
+ */
+export function comparePaired(a: RunOutcome[], b: RunOutcome[]) {
+  const d = a.map((x, i) => x.netWorth - b[i]!.netWorth);
+  const n = d.length, m = d.reduce((t, x) => t + x, 0) / Math.max(1, n);
+  const sd = Math.sqrt(d.reduce((t, x) => t + (x - m) ** 2, 0) / Math.max(1, n - 1));
+  const cvar = (os: RunOutcome[]) => summarize(os).nwCVaR20;
+  const dCvar = cvar(a) - cvar(b);
+  const verdict = m > 0 && dCvar >= 0 ? '위험조정 우위' : m < 0 && dCvar <= 0 ? '위험조정 열위' : m > 0 ? '기대 우위·위험 열위' : '기대 열위·위험 우위';
+  return { meanDiff: m, t: sd > 0 ? m / (sd / Math.sqrt(n)) : NaN, wins: d.filter((x) => x > 0).length, n, cvarDiff: dCvar, verdict };
 }
