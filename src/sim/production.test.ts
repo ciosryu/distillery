@@ -1070,14 +1070,15 @@ describe('자동 납품 통 하한 (#267, 표기 하한 함정)', () => {
 
 describe('생산 건너뛰기 (#249 ④ — 위스키 원액만 자동, 소주는 별도 버튼)', () => {
   it('월초 현금이 고정비 보름치 아래면 몰트는 쉬고 소주는 만든다 · 생산 지시는 그대로 · 소주 버튼은 그 달만', async () => {
-    const { whiskySkipCheck, WHISKY_SKIP_FIXED_MONTHS } = await import('./production');
+    const { whiskySkipCheck } = await import('./production');
+    const { PROD_TUNING } = await import('./prodTuning');
     const { monthlyFixedCost } = await import('./loans');
     let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
     const soju = s.production.recipes.find((r) => r.kind === 'soju')!;
     s = applyAction(s, { type: 'setOrder', recipeId: malt.id, batchesPerMonth: 1 }).state;
     s = applyAction(s, { type: 'setOrder', recipeId: soju.id, batchesPerMonth: 1 }).state;
-    s.finance.cash = WHISKY_SKIP_FIXED_MONTHS * monthlyFixedCost(s) - 1;
+    s.finance.cash = PROD_TUNING.whiskySkipFixedMonths * monthlyFixedCost(s) - 1;
     expect(whiskySkipCheck(s)).not.toBeNull();
     const t = advanceMonth(s);
     const rep = t.history.reports.at(-1)!;
