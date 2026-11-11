@@ -5,7 +5,7 @@ import {
   type GameState, type ProfileAxis, type Recipe, type SpiritKind, type YeastId,
 } from '../../sim';
 import type { PresetRecipe } from '../../sim/content/presets';
-import { productionValue, rampOutlook, RAMP_HOLD_MONTHS, recipeEconomics, STANDARD_BOTTLE, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from '../../sim/economics';
+import { productionValue, rampOutlook, RAMP_HOLD_MONTHS, recipeEconomics, whiskyExportPace, STANDARD_BOTTLE, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from '../../sim/economics';
 import { monthlyFixedCost } from '../../sim/loans';
 import { isLocked } from '../../sim/scenario';
 import { whiskySkipCheck } from '../../sim/production';
@@ -86,8 +86,11 @@ function ProductionValueLine() {
   const s = useGame((g) => g.state);
   const v = useMemo(() => productionValue(s), [s]);
   const pace = useMemo(() => whiskyAnnualPace(s), [s]);
+  const exp = useMemo(() => whiskyExportPace(s), [s]);
   const fixed = monthlyFixedCost(s);
   const exportsLater = !!s.scenario && isLocked(s, 'system:exports');
+  // 판매 속도 = 국내 판매(또는 수요 추정) + 수출 수요(#272 — 수출이 열린 뒤 국내만 보면 증산을 말리는 쪽으로 틀린다)
+  const totalPace = (pace?.bottles ?? 0) + (exp?.demand ?? 0);
   if (!v.perBatch.length) return null;
   const years = Math.ceil(v.minMonths / 12);
   const one = v.perBatch[0]!;
@@ -109,10 +112,15 @@ function ProductionValueLine() {
         </div>
       )}
       {/* 수요 한도 — 만든 만큼 다 팔리지는 않는다 (매출 추정이 과장되지 않게) */}
-      {pace && pace.bottles > 0 && v.whiskyBottlesPerYear > pace.bottles * 1.2 && (
+      {pace && totalPace > 0 && v.whiskyBottlesPerYear > totalPace * 1.2 && (
         <div className="mt-0.5 text-amber-800 dark:text-amber-300">
-          단, 지금 위스키 판매 속도는 연 약 {num(pace.bottles)}병({pace.basis === 'sales' ? '최근 판매' : '수요 추정'})이다 — 그 이상은 바로 팔리지 않는다. 인지도·유통이 오르면 늘고{exportsLater ? ', 수출 시장이 열리면 크게 는다' : ''}. 남는 원액은 통에서 더 숙성해 비싸게 팔거나 현물로 판다
+          단, 지금 위스키 판매 속도는 국내 연 약 {num(pace.bottles)}병({pace.basis === 'sales' ? '최근 판매' : '수요 추정'})
+          {exp ? <> + 수출 수요 연 약 {num(exp.demand)}병(그중 판매 {num(exp.bottles)}병)</> : ''}이다 — 그 이상은 바로 팔리지 않는다. 인지도·유통이 오르면 는다
+          {exportsLater ? ' — 수출 시장이 열리면 크게 는다(후반 확인 판: 8년 차 뒤 수출이 국내만큼 팔았다)' : ''}. 남는 원액은 통에서 더 숙성해 비싸게 팔거나 현물로 판다
         </div>
+      )}
+      {exp && exp.demand > exp.bottles * 1.2 && (
+        <div className="mt-0.5 text-emerald-800 dark:text-emerald-300">수출 수요가 판매보다 연 약 {num(exp.demand - exp.bottles)}병 많다 — 원액이 모자라 못 판 몫이다. 증산하면 이만큼은 바로 팔 곳이 있다</div>
       )}
       <RampLine fallback={<>몰트 1배치/월 더(「{one.name}」): 생산비 +{won(one.costPerMonth)}/월 → {v.minMonths}개월 뒤부터 해마다 위스키 +{num(one.whiskyBottlesPerYear)}병 {money(one.whiskyBottlesPerYear)}</>} />
     </div>
@@ -120,7 +128,7 @@ function ProductionValueLine() {
 }
 
 /**
- * 증산 전망 (#271 · P-PROD-44, 2026-11-11) — 후반 확인 판 오너 답 "늘려봐야 기다리려면 한참 걸려 소용없다(오판)": P8 표준 규모에서 판 끝 5년 전에 늘려도 +3.7억이었다.
+ * 증산 전망 (#271 · #272, 2026-11-11) — 후반 확인 판 오너 답 "늘려봐야 기다리려면 한참 걸려 소용없다(오판)": P8 표준 규모에서 판 끝 5년 전에 늘려도 +3.7억이었다.
  * "얼마나 더 돌릴 수 있나(숙성고·설비) · 판 끝까지 얼마 · 판 끝 몇 개월 전까지 늘려도 회수되나"를 생산 지시 바로 아래에 보인다. 숫자는 rampOutlook(손익표·가동 계획 재사용)
  */
 function RampLine({ fallback }: { fallback: ReactNode }) {
@@ -129,31 +137,41 @@ function RampLine({ fallback }: { fallback: ReactNode }) {
   if (!o) return <div className="mt-0.5 text-stone-600 dark:text-stone-400">{fallback}</div>;
   const left = o.monthsLeft;
   const fmtMonths = (m: number) => (m >= 24 ? `${Math.floor(m / 12)}년${m % 12 ? ` ${m % 12}개월` : ''}` : `${m}개월`);
-  const limit = o.headroomBatches <= 0 ? (o.warehouseBatches <= 0 ? '숙성고 자리' : '증류기·발효조·디스틸러') : o.warehouseBatches <= o.equipmentBatches ? '숙성고 자리' : '증류기·발효조·디스틸러';
+  const limit = o.warehouseBatches <= o.equipmentBatches ? '숙성고 자리' : '증류기·발효조·디스틸러';
+  const yrs = (m: number) => `${m / 12}년 숙성`;
   return (
     <div className="mt-1.5 rounded border border-emerald-200 bg-emerald-50/60 px-2 py-1.5 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
       <div>
-        <b>증산 여유:</b> 몰트(「{o.name}」)를 월 <b>{o.headroomBatches}배치</b> 더 돌릴 수 있다
-        <span className="text-stone-600 dark:text-stone-400"> — 막는 것은 {limit}(숙성고 기준 +{o.warehouseBatches} · 설비 기준 +{o.equipmentBatches}, 통 하나가 {RAMP_HOLD_MONTHS / 12}년 자리를 차지한다고 볼 때 · 1배치 ≈ 200L 통 {num(o.casksPerBatch, 2)}개)</span>
+        <b>증산 여유:</b> 숙성고 빈 자리 <b>{num(o.freeSlots)}</b>{o.emptyCasks > 0 ? ` · 빈 통 ${num(o.emptyCasks)}개` : ''} — 몰트(「{o.name}」)를 월 약 <b>{o.headroomBatches}배치</b> 더 돌려도 자리가 있다
+        <span className="text-stone-600 dark:text-stone-400"> (막는 것은 {limit}: 숙성고 기준 +{o.warehouseBatches} · 설비 기준 +{o.equipmentBatches}. 지금 생산 지시를 빼고, 통 하나가 {RAMP_HOLD_MONTHS / 12}년 자리를 차지한다고 볼 때 · 1배치 ≈ 200L 통 {num(o.casksPerBatch, 2)}개)</span>
       </div>
-      <div className="mt-0.5">
-        1배치/월 더: 원료·에너지 +{won(o.costPerBatch)}/월 →{' '}
-        {o.horizons.map((h, i) => (
-          <span key={h.months}>
-            {i > 0 && ' · '}
-            {h.months / 12}년 숙성으로 팔면 배치당 약 {num(h.bottlesPerBatch)}병 × 병당 이익 {num(h.margin)}원
-            {left != null && h.profitToEnd != null && <> = 판 끝까지 <b>{h.bottlesToEnd! > 0 ? `${num(h.bottlesToEnd!)}병 · 이익 약 ${won(h.profitToEnd)}` : '병입 전에 판이 끝난다'}</b></>}
-          </span>
-        ))}
-      </div>
-      {left != null && (
+      {left != null ? (
         <div className="mt-0.5">
-          {o.horizons.filter((h) => h.recoverMonths != null).map((h) => (
-            <div key={h.months}>{left >= h.recoverMonths! ? '✓' : '✗'} {h.months / 12}년 숙성: 판 끝 <b>{fmtMonths(h.recoverMonths!)}</b> 전까지 늘리면 판 안에 원가를 회수한다{left >= h.recoverMonths! ? ` (지금 ${fmtMonths(left)} 남음 — 늦지 않았다)` : ' (이미 지났다)'}</div>
+          1배치/월 더 — 판 끝까지 {fmtMonths(left)}: 원료·에너지 합계 <b>{won(o.costToEnd!)}</b> · 200L 통 약 {num(o.casksToEnd!)}개 →
+          {o.horizons.map((h) => (
+            <div key={h.months} className="pl-3">
+              {yrs(h.months)}으로 팔면: 위스키 <b>{h.bottlesToEnd! > 0 ? `+${num(h.bottlesToEnd!)}병` : '병입 전에 판이 끝난다'}</b>
+              {h.bottlesToEnd! > 0 && <> · 이익 약 <b>{won(h.profitToEnd!)}</b> <span className="text-stone-500">(배치당 {num(h.bottlesPerBatch)}병 × 병당 {num(h.margin)}원)</span></>}
+              {h.tailValue! > 0 && <> · 판 끝에 숙성 중인 통 평가액 약 {won(h.tailValue!)}</>}
+            </div>
           ))}
         </div>
+      ) : (
+        <div className="mt-0.5">
+          1배치/월 더: 원료·에너지 +{won(o.costPerBatch)}/월 · 200L 통 {num(o.casksPerBatch, 2)}개/월 →{' '}
+          {o.horizons.map((h, i) => <span key={h.months}>{i > 0 && ' · '}{yrs(h.months)}으로 팔면 배치당 약 {num(h.bottlesPerBatch)}병 × 병당 이익 {num(h.margin)}원</span>)}
+        </div>
       )}
-      <div className="mt-0.5 text-[11px] text-stone-500">만든 만큼 판다고 본 어림이다(권장 출고가 기준) — 판매 속도가 모자라면 수출·숙성 연장으로 받는다. 판 끝에 숙성 중인 통은 현물가로 순자산에 들어간다(회수 계산에서는 0으로 보수적으로 셈)</div>
+      <div className="mt-0.5">
+        {o.horizons.filter((h) => h.recoverMonths != null).map((h) => (
+          left != null
+            ? left >= h.recoverMonths!
+              ? <div key={h.months}>✓ {yrs(h.months)}: 판 끝 약 <b>{fmtMonths(h.recoverMonths!)}</b> 전까지 늘려도 판 안에 회수된다 (지금 {fmtMonths(left)} 남음 — 늦지 않았다)</div>
+              : <div key={h.months} className="text-stone-500">✗ {yrs(h.months)}: 회수 기한(판 끝 약 {fmtMonths(h.recoverMonths!)} 전)이 지났다 — 지금 늘린 몫은 이 숙성으로는 판 안에 다 회수되지 않는다</div>
+            : <div key={h.months}>{yrs(h.months)}: 늘린 뒤 약 <b>{fmtMonths(h.recoverMonths!)}</b>이면 누적 이익이 원가를 넘는다</div>
+        ))}
+      </div>
+      <div className="mt-0.5 text-[11px] text-stone-500">만든 만큼 판다고 본 어림이다(권장 출고가 기준) — 위 판매 속도를 넘는 몫은 수출·숙성 연장으로 받는다. {left != null ? '회수 기한은 판 끝에 숙성 중인 통의 평가액을 0으로 보수적으로 셈했다(실제 순자산에는 현물가로 들어간다)' : '회수 기간은 아직 숙성 중인 통의 평가액을 0으로 보수적으로 셈했다'}</div>
     </div>
   );
 }

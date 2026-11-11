@@ -12,6 +12,7 @@ import { demandFor, distributionCostPerBottle, domesticDemands, priceOptions } f
 import { outboundLogistics } from './sites';
 import { calendar, warehouseCapacity } from './util';
 import { isFlagshipCandidate } from './delegateCheck';
+import { spotBidPerLPA } from './bulk';
 import type { Cask, GameState, MonthReport, Product, ProductCategory, Recipe, SpiritKind, SpiritLot } from './types';
 import { PROD_TUNING } from './prodTuning';
 
@@ -267,7 +268,7 @@ export function productionValue(s: GameState, minMonths = regionOf(s).whisky.min
 }
 
 
-// ───────────── 증산 전망 (#271 단계 T 진입 조건 · 형태 P-PROD-44, 2026-11-11 — 후반 확인 판 오너 답 "늘려봐야 기다리려면 한참 걸려 소용없다(오판)") ─────────────
+// ───────────── 증산 전망 (#271 단계 T 진입 조건 · #272 형태, 2026-11-11 — 후반 확인 판 오너 답 "늘려봐야 기다리려면 한참 걸려 소용없다(오판)") ─────────────
 // P8 표준 규모 10시드: 120개월(판 끝 5년 전)에 몰트를 4 → 6배치로 늘려도 15년 순자산 +3.73억(현금 +2.47억), 처음부터면 +18.26억.
 // 한계는 생산비가 아니라 숙성고 자리(8배치부터 150자리가 찬다)와 증류기다. 생산 지시 칸에 "얼마나 더 돌릴 수 있나 · 판 끝까지 얼마 · 언제까지 늘려도 회수되나"를 보인다.
 // 새 경제 모델을 만들지 않는다 — 병당 이익·병 수는 recipeEconomics(1년·3년 숙성 손익표)를, 설비 여유는 capacityReport를 그대로 쓴다. 상태를 바꾸지 않는다
@@ -284,7 +285,10 @@ export interface RampHorizon {
   /** 지금부터 판 끝까지 매달 1배치를 더 만들 때 판 끝 전에 병입할 수 있는 병 수·이익(만든 만큼 판다고 볼 때). 판 끝이 없으면 null */
   bottlesToEnd: number | null;
   profitToEnd: number | null;
-  /** 판 끝 이 개월 전까지 늘리면 판 안에 회수된다 — 팔린 병의 이익 ≥ 판 끝에 아직 숙성 중인 배치의 원가(현물가는 0으로 보수적). 이익이 없으면 null */
+  /** 판 끝에 아직 숙성 중인 배치(마지막 months개월분)의 현물 평가액 — 순자산이 원액을 세는 방식(spotBidPerLPA)과 같다. 판 끝이 없으면 null */
+  tailValue: number | null;
+  /** 판 끝 이 개월 전까지 늘리면 판 안에 회수된다 — 팔린 병의 이익 ≥ 판 끝에 아직 숙성 중인 배치의 원가(평가액은 0으로 보수적).
+   *  판 끝이 없는 판(샌드박스)에서는 같은 값이 "늘린 뒤 이 개월이면 누적 손익이 원가를 넘는다"는 뜻이다. 이익이 없으면 null */
   recoverMonths: number | null;
 }
 
@@ -301,9 +305,14 @@ export interface RampOutlook {
   equipmentBatches: number;
   /** 둘 중 작은 쪽 */
   headroomBatches: number;
+  /** 지금 숙성고 빈 자리(통이 없는 자리)와 빈 통 수 — 빈 통도 자리를 차지하지만 새 원액을 담을 수 있다 */
   freeSlots: number;
+  emptyCasks: number;
   /** 판 끝까지 남은 개월(시나리오만) */
   monthsLeft: number | null;
+  /** 지금부터 판 끝까지 매달 1배치를 더 만들 때 원료·에너지 합계와 필요한 200L 통 수. 판 끝이 없으면 null */
+  costToEnd: number | null;
+  casksToEnd: number | null;
   horizons: RampHorizon[];
 }
 
@@ -339,20 +348,59 @@ export function rampOutlook(s: GameState): RampOutlook | null {
   );
   const monthsLeft = s.scenario ? Math.max(0, s.scenario.goal.months - s.month) : null;
   const allIn = b.cost + CASKS.ex_bourbon_barrel.price * CASK_COST_SHARE_PER_FILL * casksPerBatch;
-  const horizons: RampHorizon[] = recipeEconomics(s, r).filter((row) => row.months > 0).map((row) => {
+  const rows = recipeEconomics(s, r).filter((row) => row.months > 0);
+  // 판 끝 평가액: k개월 숙성한 1배치의 현물가(표준 조건 숙성 — 손익표와 같은 통·기후). 가장 긴 숙성까지 한 번만 숙성시키며 모은다
+  const tailMonths = monthsLeft != null ? Math.min(monthsLeft, Math.max(0, ...rows.map((x) => x.months))) : 0;
+  const batchValueAt = tailMonths > 0 ? agedBatchValues(s, r, b, tailMonths) : [];
+  const horizons: RampHorizon[] = rows.map((row) => {
     const perBatch = row.bottlesPerBatch * row.margin;
     const sold = monthsLeft != null ? Math.max(0, monthsLeft - row.months) : null;
+    const tail = monthsLeft != null ? Math.min(monthsLeft, row.months) : 0;
     return {
       months: row.months, bottlesPerBatch: row.bottlesPerBatch, margin: row.margin,
       bottlesToEnd: sold != null ? sold * row.bottlesPerBatch : null,
       profitToEnd: sold != null ? Math.round(sold * perBatch) : null,
+      tailValue: monthsLeft != null ? Math.round(batchValueAt.slice(0, tail).reduce((a, v) => a + v, 0)) : null,
       recoverMonths: perBatch > 0 ? Math.ceil(row.months * (1 + allIn / perBatch)) : null,
     };
   });
+  const eq = Number.isFinite(equipmentBatches) ? equipmentBatches : 0;
   return {
-    recipeId: r.id, name: r.name, costPerBatch: Math.round(b.cost), casksPerBatch, warehouseBatches, equipmentBatches: Number.isFinite(equipmentBatches) ? equipmentBatches : 0,
-    headroomBatches: Math.min(warehouseBatches, Number.isFinite(equipmentBatches) ? equipmentBatches : 0), freeSlots: Math.max(0, capacity - s.inventory.casks.length), monthsLeft, horizons,
+    recipeId: r.id, name: r.name, costPerBatch: Math.round(b.cost), casksPerBatch, warehouseBatches, equipmentBatches: eq, headroomBatches: Math.min(warehouseBatches, eq),
+    freeSlots: Math.max(0, capacity - s.inventory.casks.length), emptyCasks: s.inventory.casks.filter((c) => !c.contents).length,
+    monthsLeft, costToEnd: monthsLeft != null ? Math.round(monthsLeft * b.cost) : null, casksToEnd: monthsLeft != null ? Math.ceil(monthsLeft * casksPerBatch) : null, horizons,
   };
+}
+
+/** 1배치를 표준 조건(새 ex-버번 배럴·입지 연평균 기후)에서 0…n−1개월 숙성했을 때의 현물 평가액 — [k] = k개월 숙성. 상태를 바꾸지 않는다 */
+function agedBatchValues(s: GameState, r: Recipe, b: { lpa: number; volumeL: number; abv: number; cost: number; flavor: SpiritLot['flavor'] }, n: number): number[] {
+  const site = siteOf(s);
+  const climate = { tempC: site.tempC.reduce((a, x) => a + x, 0) / 12, humidity: site.humidity.reduce((a, x) => a + x, 0) / 12 };
+  const def = CASKS.ex_bourbon_barrel;
+  const entry = Math.min(ENTRY_ABV, b.abv);
+  const lot: SpiritLot = {
+    id: '__ramp', name: r.name, kind: r.kind, volumeL: def.sizeL, abv: entry, flavor: b.flavor, createdMonth: s.month, oakMonths: 0, sourced: false, costPerLPA: b.cost / b.lpa, recipeId: r.id,
+    ...(r.mashBill.length ? { mashShare: Object.fromEntries(r.mashBill.map((m) => [m.ingredientId, m.ratio])) } : {}),
+  };
+  let cask: Cask & { contents: SpiritLot } = { id: '__ramp', typeId: def.id, sizeL: def.sizeL, wood: def.wood, activity: def.activity, seasoning: def.seasoning, fills: 0, recharCount: 0, char: def.char, contents: lot };
+  const caskLPA = def.sizeL * entry;
+  const out: number[] = [];
+  for (let k = 0; k < n; k++) {
+    const l = cask.contents;
+    out.push(b.lpa * ((l.volumeL * l.abv) / caskLPA) * spotBidPerLPA(s, l));
+    cask = matureCask(cask, climate, { control: 0 }).cask as typeof cask;
+  }
+  return out;
+}
+
+/** 위스키 수출 속도(병/년) — 최근 3개월 수출 판매와 수입사 수요(위스키 범주 제품). 수출 기록이 없으면 null */
+export function whiskyExportPace(s: GameState): { bottles: number; demand: number } | null {
+  const ids = new Set([...s.commerce.products, ...(s.commerce.productArchive ?? [])].filter((p) => WHISKY_CATEGORIES.includes(p.category)).map((p) => p.id));
+  const recent = s.history.reports.slice(-3);
+  const ex = recent.flatMap((x) => x.exports ?? []).filter((x) => ids.has(x.productId));
+  if (!recent.length || !ex.length) return null;
+  const per = (f: (x: (typeof ex)[number]) => number) => Math.round((ex.reduce((a, x) => a + f(x), 0) / recent.length) * 12);
+  return { bottles: per((x) => x.bottles), demand: per((x) => Math.max(x.bottles, x.demandBottles)) };
 }
 
 
