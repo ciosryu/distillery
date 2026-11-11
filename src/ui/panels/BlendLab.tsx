@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
 import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './HeritageReveal';
 import {
-  blendTargets, blenderOf, HEX_AXES, HEX_LABEL, knownReads, LAB, matchScore, mixHex, optimizeShares, reachableEnvelope, SAMPLING, samplingCapacity,
+  blendTargets, blenderOf, previewBlend, HEX_AXES, HEX_LABEL, knownReads, LAB, matchScore, mixHex, optimizeShares, reachableEnvelope, SAMPLING, samplingCapacity,
   type BlendComponent, type BlendTarget, type Cask, type Hex,
 } from '../../sim';
 import { useGame } from '../../store/game';
 import { delegateCheck } from '../../sim/delegateCheck';
-import { months, num, won } from '../format';
-import { Badge, Button, Card, Empty, NumberField, Table, Td, TextField, UNDO_HINT, useConfirm } from '../kit';
 import { flagshipImpact } from '../alerts';
+import { months, num, won } from '../format';
+import { Badge, Button, Card, ConfirmButton, Empty, NumberField, Table, Td, TextField, UNDO_HINT, useConfirm } from '../kit';
 
 // 블렌딩 테이블 (결정 #124, docs/design/blending-minigame.md) — 웹 프로토타입(와이어프레임). 최종 화면은 Godot에서 만든다(결정 #122).
 // 캐스크는 같은 배치·같은 캐스크 종류끼리 묶어(코호트) 보여 준다 — 2,500개를 한 줄씩 보여 주지 않는다.
@@ -162,7 +162,17 @@ export function BlendLab() {
               {target.source !== 'core' && <TextField label="코어 레인지(선택)" value={line} onChange={setLine} width="w-32" />}
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="primary" disabled={!components.length} onClick={() => { const r = bottleWithHeritage(s, dispatch, components, options); if (r) setReveal(r); }}>배팅 확정·병입</Button>
+              {/* 배팅 확정·병입 확인 (#269, #240 되돌릴 수 없는 버튼 — STATUS 1d의 PROD 몫 마지막) — 첫 누름에 병 수·쓸 통·비는 통·남는 위스키 통·플래그십 후보를 보이고 두 번째에 병입 */}
+              <ConfirmButton variant="primary" disabled={!components.length} armKey={JSON.stringify([s.month, components, options])} armedLabel="한 번 더 누르면 병입"
+                onConfirm={() => { const r = bottleWithHeritage(s, dispatch, components, options); if (r) setReveal(r); }}
+                preview={() => {
+                  const pv = previewBlend(s, components, options);
+                  const used = components.map((c) => s.inventory.casks.find((k) => k.id === c.id)).filter((k): k is NonNullable<typeof k> => !!k?.contents);
+                  const emptied = components.filter((c) => { const k = s.inventory.casks.find((x) => x.id === c.id); return !!k?.contents && k.contents.volumeL - c.liters < 1; }).length;
+                  const whiskyNow = s.inventory.casks.filter((k) => k.contents && (k.contents.kind === 'malt' || k.contents.kind === 'grain') && !k.owner).length;
+                  const f = flagshipImpact(s, used.map((k) => k.id));
+                  return <>{pv.ok ? <>약 <b>{num(pv.bottles)}병</b> 병입</> : <span className="text-rose-700">{pv.errors.join(' / ')}</span>} · 쓸 통 {used.length}개(비워짐 {emptied}) · 남는 숙성 통 {whiskyNow} → {whiskyNow - emptied}개{f.using ? <b className="block">⚠ 12년 플래그십 후보 통 {f.using}개를 쓴다 — 남은 후보 {f.before} → {f.left}통</b> : null}</>;
+                }}>배팅 확정·병입</ConfirmButton>
               <Button variant={delegateStep > 0 ? 'danger' : 'secondary'} disabled={!knownCohorts.length} title="선택한 코호트(없으면 샘플 기록이 있는 전체) 안에서 블렌더가 기록을 보고 비율을 정한다 — 서툴거나 샘플이 오래되면 빗나간다. 누르면 먼저 쓸 통을 보여 주고, 한 번 더 누르면 맡긴다"
                 onClick={() => {
                   const c = check ?? delegateCheck(s, target, delegateIds, bottles, options); // 첫 누름에는 아직 계산 전 — 여기서 잰다

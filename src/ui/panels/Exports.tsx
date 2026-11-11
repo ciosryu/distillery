@@ -25,6 +25,15 @@ export function Exports() {
 
       <ExportShortfallNote s={s} />
 
+      {s.commerce.products.some((p) => p.noExport && p.stockBottles > 0) && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-stone-600 dark:text-stone-400">
+          <span>수출 안 함 (#266) — 국내에만 판다:</span>
+          {s.commerce.products.filter((p) => p.noExport && p.stockBottles > 0).map((p) => (
+            <Button key={p.id} small onClick={() => dispatch({ type: 'setProductExport', productId: p.id, noExport: false })}>「{p.name}」 다시 수출</Button>
+          ))}
+        </div>
+      )}
+
       {markets.map((id) => {
         const m = EXPORT_MARKETS[id];
         const entry = opened.find((e) => e.marketId === id);
@@ -69,7 +78,7 @@ export function Exports() {
             )}
 
             {!products.length ? <Empty>이 시장에 팔 수 있는 재고가 없습니다 ({Object.keys(m.categories).length}개 주종 취급)</Empty> : (
-              <Table head={['제품', '출고가', '국내 소비자가', '수출가(FOB)', '현지 소비자가', '병당 순수입 (수출 / 국내)', '지난달 수요', '지난달 판매']}>
+              <Table head={['제품', '출고가', '국내 소비자가', '수출가(FOB)', '현지 소비자가', '병당 순수입 (수출 / 국내)', '지난달 수요', '지난달 판매', '수출']}>
                 {products.map((p) => {
                   const ok = exportEligible(p, m);
                   const sale = sales.find((x) => x.productId === p.id);
@@ -77,7 +86,7 @@ export function Exports() {
                   const domNet = domesticNetPerBottle(s, p);
                   return (
                     <tr key={p.id}>
-                      <Td className="max-w-56 truncate text-xs font-medium">{p.name}{!ok && <> <Badge tone="bad">숙성 기준 미달</Badge></>}</Td>
+                      <Td className="max-w-56 truncate text-xs font-medium">{p.name}{!ok && <> <Badge tone="bad">숙성 기준 미달</Badge></>}{p.noExport && <> <Badge>수출 안 함</Badge></>}</Td>
                       <Td right>{won(p.price)}</Td>
                       <Td right>{won(productConsumerPrice(s, p))}</Td>
                       <Td right>{wonFull(exportFob(p, factor))}</Td>
@@ -85,6 +94,9 @@ export function Exports() {
                       <Td right><span className={exNet > domNet ? 'text-emerald-700 dark:text-emerald-400' : ''}>{wonFull(exNet)}</span> / {wonFull(domNet)}</Td>
                       <Td right>{sale ? num(sale.demandBottles) : '—'}</Td>
                       <Td right>{sale ? num(sale.bottles) : '—'}</Td>
+                      <Td right>{p.noExport
+                        ? <Button small onClick={() => dispatch({ type: 'setProductExport', productId: p.id, noExport: false })}>켜기</Button>
+                        : <Button small onClick={() => dispatch({ type: 'setProductExport', productId: p.id, noExport: true })}>끄기</Button>}</Td>
                     </tr>
                   );
                 })}
@@ -93,7 +105,7 @@ export function Exports() {
           </Card>
         );
       })}
-      <p className="text-xs text-stone-500">시장마다 수입사 1곳과 계약합니다. 수입사가 제안한 수출가(출고가에 가까움)로 시작하고, 계약 뒤 배수를 조정할 수 있습니다 — 올리면 현지 소비자가가 올라 적게 팔리고 병당 많이 남습니다. 대금은 지급 기한 뒤 들어오고, 1년 판매가 연 최소 물량에 못 미치면 수입사가 계약을 끝내며, 기간이 끝나면 자동 갱신됩니다. 재고가 모자라면 병당 순수입(수출: 수출가 − 운임, 국내: 출고가 − 유통비)이 높은 판로부터 채웁니다(수출분은 국내 소매 처리 역량을 쓰지 않습니다). 현지 인지도는 0에서 시작해 마케팅 분담만큼 오르며, 공항 면세점만 국내 인지도가 그대로 넘어옵니다.</p>
+      <p className="text-xs text-stone-500">시장마다 수입사 1곳과 계약합니다. 수입사가 제안한 수출가(출고가에 가까움)로 시작하고, 계약 뒤 배수를 조정할 수 있습니다 — 올리면 현지 소비자가가 올라 적게 팔리고 병당 많이 남습니다. 대금은 지급 기한 뒤 들어오고, 1년 판매가 연 최소 물량에 못 미치면 수입사가 계약을 끝내며, 기간이 끝나면 자동 갱신됩니다. 재고가 모자라면 병당 순수입(수출: 수출가 − 운임, 국내: 출고가 − 유통비)이 높은 판로부터 채웁니다(수출분은 국내 소매 처리 역량을 쓰지 않습니다). 제품마다 「끄기」로 수출에서 뺄 수 있습니다 — 국내에만 팔고, 같은 주종의 다른 제품이 수출 몫을 받습니다. 현지 인지도는 0에서 시작해 마케팅 분담만큼 오르며, 공항 면세점만 국내 인지도가 그대로 넘어옵니다.</p>
     </div>
   );
 }

@@ -137,6 +137,33 @@ describe('재고 배분 (#109)·수출가 (#106·#108)', () => {
     expect(exportDemandFor(t, t.commerce.products[0]!, { ...e, priceFactor: 1.5 }, 1)).toBeLessThan(exportDemandFor(t, t.commerce.products[0]!, { ...e, priceFactor: 1 }, 1));
   });
 
+  it('수출 안 함(#266): 끈 제품은 수출 수요가 0 — 수출가가 높아도 재고를 모두 국내에 판다. 다시 켜면 돌아온다', () => {
+    const on = runSales(setup(5, 1.4), mulberry32(1), 6);
+    expect(exported(on)).toBeGreaterThan(0); // 끄기 전: 수출이 먼저 채워진다
+    const s = setup(5, 1.4);
+    const t = applyAction(s, { type: 'setProductExport', productId: 'w', noExport: true }).state;
+    expect(t.commerce.products[0]!.noExport).toBe(true);
+    const off = runSales(t, mulberry32(1), 6);
+    expect(off.exports).toEqual([]);
+    expect(off.results[0]!.bottles).toBe(5);
+    // 다시 켜면 끄기 전과 같다 (runSales는 재고를 줄이므로 새 판에서)
+    const back = applyAction(applyAction(setup(5, 1.4), { type: 'setProductExport', productId: 'w', noExport: true }).state, { type: 'setProductExport', productId: 'w', noExport: false }).state;
+    expect(back.commerce.products[0]!.noExport).toBeUndefined();
+    expect(exported(runSales(back, mulberry32(1), 6))).toBe(exported(on));
+  });
+
+  it('수출 안 함은 같은 주종 다른 제품의 수출 몫(SKU 나눔)에 끼지 않는다 — 남은 제품 혼자 받는다', () => {
+    const s = setup(5000, 1);
+    const e = s.commerce.exports![0]!;
+    const solo = exportDemandFor(s, s.commerce.products[0]!, e, 1);
+    s.commerce.products.push(whisky({ id: 'w2', name: 'w2', noExport: true }));
+    const r = runSales(s, mulberry32(1), 6);
+    expect(r.exports.every((x) => x.productId === 'w')).toBe(true);
+    const d = r.exports.find((x) => x.productId === 'w')!.demandBottles;
+    expect(d).toBeGreaterThan(solo * 0.85); // 난수 ±10% 안에서 혼자일 때와 같다
+    expect(d).toBeLessThan(solo * 1.15);
+  });
+
   it('수요 비율 배분(#95 원래 규칙)으로 바꾸면 모자란 재고를 수출과 나눈다 — 실험용 스위치', () => {
     EXPORT_SALES.allocation = 'proportional';
     try {

@@ -215,6 +215,10 @@ export interface Product {
   autoPrice?: boolean;
   /** 자동 납품 (#206) — 몇 개월분 재고를 유지할지(1·2·3·6). 켜 두면 매달 판매 직전에 모자란 만큼 원액을 골라 재고 보충(economics.applyAutoRestock). 없으면 끔 */
   autoRestock?: number;
+  /** 자동 납품이 쓸 통의 최소 숙성(개월, #267) — 없으면 제품 표기 연수. 표기보다 낮추면 보충할 때 표기도 그만큼 내려갈 수 있다 */
+  autoRestockMinMonths?: number;
+  /** 수출 안 함 (#266) — 켜면 이 제품은 수출 시장(공항 면세점 포함)에 내지 않는다. 국내·지정면세점(제주) 판매는 그대로. 옛 세이브에는 없다 = 수출에 낸다 */
+  noExport?: boolean;
   /** 병당 생산 원가 = 원액 + 포장 + 병입 인건비 (유통비 제외) */
   unitCost: number;
   createdMonth: number;
@@ -359,6 +363,8 @@ export interface MonthReport {
   /** 계약 만료·파기 때 돌려준 남은 선급금 (재무) */
   prepayRefunded?: number;
   production: { recipeId: string; name: string; batches: number; lpa: number; cost: number }[];
+  /** 위스키 원액 생산 건너뛰기 (#249 ④) — 월초 현금이 고정비 보름치 아래라 몰트·그레인을 만들지 않았다. 화면 맨 위 알림용 */
+  whiskySkipped?: { cash: number; threshold: number };
   angelsShareL: number;
   liquorTaxRemitted: number;
   /** 이번 달 발생한 이벤트 제목 */
@@ -652,6 +658,8 @@ export interface ProductionSlice {
   flags: { producedSoju: boolean };
   /** 사무직이 타결한 폐기물(드래프·지게미) 유상 판매 단가(원/kg) */
   wasteContractPerKg: number;
+  /** 이 달에는 소주 생산을 건너뛴다(별도 버튼, #249 ④ — 그 달 한 번만, 진행하면 풀린다) */
+  skipSojuMonth?: number;
 }
 
 export interface InventorySlice {
