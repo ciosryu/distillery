@@ -25,7 +25,7 @@ let src = applyHoldPatches(readFileSync(join(here, 'mvp-human.ts'), 'utf8'), { p
 //   장기 보유 3종 × 가격 정책 4종 경로로 바꾼다. 「…-L…」 경로는 장기 계열(「싱글 몰트 10년」)에만 그 정책을 걸고 나머지 제품은 #200 그대로
 //   (P8 정책 longPrice — 장기 계열 제품의 자동 가격을 끄고, mktP8Hooks의 월 처리는 자동 가격 켠 제품을 건너뛰므로 장기 계열만 탄다)
 //   보유: HC 품질 무관 · HS 서늘한 칸 · HSF 서늘한 칸 + 48개월부터 장기 지정 중단(유한 재고형 — 보충이 끊긴다)
-//   정책: A = #200(P-MKT-31 A) · B2g = B′ + 가드 0.1 · C13 = C 목표 1.3 · C15 = C 목표 1.5
+//   정책: A = #200(P-MKT-31 A) · B2g = B′ + 가드 0.1 · C13 = C 목표 1.3 · C15 = C 목표 1.5 · B2 = 가드 없는 B′ · B2g3 = 가드 + 지평 3개월
 if (PRICE) {
   const patch = (from: string | RegExp, to: string) => { const before = src; src = src.replace(from, to); if (src === before) throw new Error(`prod-hold-p8 PRICE: P8에서 끼울 자리를 못 찾았다 — ${String(from).slice(0, 60)}`); };
   const longPol = "{ ...p, ...(p as { longPrice?: object }).longPrice, autoPrice: false }";
@@ -41,7 +41,9 @@ if (PRICE) {
   patch('    s = fill(s, p);', '    s = fill(s, p);\n    __mkt.snap(s, p as never, m);');
   // ③ 경로
   const HOLDS: [string, string][] = [['HC', "{ age: 120, share: 0.25, select: 'any' }"], ['HS', "{ age: 120, share: 0.25, select: 'cool' }"], ['HSF', "{ age: 120, share: 0.25, select: 'cool', stopAt: 48 }"]];
-  const POLS: [string, string][] = [['A', ''], ['B2g', "autoPrice: false, price: 'profit2', guard: 0.1"], ['C13', "autoPrice: false, price: 'premium', anchor: 1.3"], ['C15', "autoPrice: false, price: 'premium', anchor: 1.5"]];
+  const POLS: [string, string][] = [['A', ''], ['B2g', "autoPrice: false, price: 'profit2', guard: 0.1"], ['C13', "autoPrice: false, price: 'premium', anchor: 1.3"], ['C15', "autoPrice: false, price: 'premium', anchor: 1.5"],
+    // B′ 변형(MKT AP3 2차와 같은 이름): B2 가드 없음 · B2g3 가드 + 지평 3개월 — 현금이 묶인 판에서 지평이 길면 지는지 본다
+    ['B2', "autoPrice: false, price: 'profit2'"], ['B2g3', "autoPrice: false, price: 'profit2', guard: 0.1, horizon: 3"]];
   const rows: string[] = [];
   for (const [hk, h] of HOLDS) {
     for (const [pk, pv] of POLS) rows.push(`P8('${hk}-${pk} 장기 25%(${hk}) · 전체 ${pk}', { hold: ${h}${pv ? `, ...({ ${pv} } as object)` : ''} })`);
