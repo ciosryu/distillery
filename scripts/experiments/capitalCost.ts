@@ -10,6 +10,7 @@ import type { GameState, SpiritLot } from '../../src/sim';
 import { LOAN_OFFERS } from '../../src/sim/content/finance';
 import { CASK_STORAGE } from '../../src/sim/content/catalog';
 import { bulkValuePerLPA, isBulkKind, spotBidPerLPA } from '../../src/sim/bulk';
+import { BULK } from '../../src/sim/content/market';
 import { monthlyFixedCost } from '../../src/sim/loans';
 import { regionOf } from '../../src/sim/content/regions';
 import { R0_EVAP } from '../../src/sim/maturation';
@@ -146,4 +147,18 @@ export function holdMargin(s: GameState, lot: SpiritLot, months: number, opts: {
   const carry = months * (CASK_STORAGE.perCaskPerMonth * labor) + ((now + later) / 2) * CASK_STORAGE.insuranceRatePerMonth * months;
   const capital = now * (Math.pow(1 + monthlyRate(annual), months) - 1);
   return { now: Math.round(now), later: Math.round(later), gain: Math.round(later - now), carry: Math.round(carry), capital: Math.round(capital), margin: Math.round(later - now - carry - capital), annual };
+}
+
+/**
+ * 손익분기 숙성 연수 (현물 기준 닫힌 식) — REQ-MGT-1. 가치 V(y) = V₀ × (1 + a·y) (a = BULK.agePerYear, #117 병 프리미엄도 같은 기울기)이면
+ * 1년 더 둘 때 가치 증가율은 a / (1 + a·y)이다. 이것이 들고 있는 비용률(증발 e + 자본비용 r + 보관·보험 k)과 같아지는 연수:
+ *   y* = 1 / (e + r + k) − 1 / a          (k = 연 보관비·보험료 ÷ 통 가치 — 통당 고정비라 비싼 통일수록 k가 작아 y*가 길다)
+ * y*가 지금 연수보다 짧으면 현물 기준으로는 더 묵힐수록 손해다. 병입 순수입 기준(병당 고정비·수요)은 PROD-A가 같은 식의 a를 바꿔 넣는다
+ */
+export function breakEvenAge(s: GameState, lot: SpiritLot, annual = discountRate(s, 'marginal'), evapPerYear = measuredEvapPerYear(s)) {
+  const a = BULK.agePerYear;
+  const value = lpa(lot) * bulkValuePerLPA(s, lot);
+  const k = value > 0 ? (12 * CASK_STORAGE.perCaskPerMonth * regionOf(s).laborCost) / value + 12 * CASK_STORAGE.insuranceRatePerMonth : Infinity;
+  const hurdle = evapPerYear + annual + k;
+  return { years: hurdle > 0 ? 1 / hurdle - 1 / a : Infinity, hurdle, e: evapPerYear, r: annual, k, growthNow: a / (1 + a * (lot.oakMonths / 12)) };
 }
