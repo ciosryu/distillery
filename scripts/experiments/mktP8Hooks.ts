@@ -2,6 +2,8 @@
 //   price: 'suggest'  병입·재고 보충 때 그 제품 값을 지금 권장가로 (자동 가격을 끈 사람이 하는 최소한 — MKT-B "결함 수정판")
 //   price: 'heur'     'suggest' + 분기마다 재고 개월(재고 ÷ 최근 3개월 국내+수출 판매)로 ±5%: 6개월치 넘게 쌓이면 내리고 1.5개월치 밑이면 올린다(권장가 × 0.8~1.5)
 //   price: 'markup'   병입·보충·분기마다 권장가 × markup(기본 1.3)
+//   clear: { above, min }  ('markup'과 같이) 재고 소진 스위치 — ARCH §10.8 `clearAboveMonths`(P-MKT-28 ⓒ). 매달 재고 개월(재고 ÷ 판매 EMA — retail.overhangFactor와 같은 잣대)이
+//                     above를 넘으면 자동 가격 후보 사다리(AUTO_PRICE_FACTORS)에서 한 단계 내린다(권장가 × min 아래로는 안 내림). 적체 중에는 분기 재설정(markup)을 건너뛴다 — 오르내림 방지
 //   price: 'table'    분기마다 판매 화면 가격표(priceOptions — 플레이어에게 보이는 값)의 최선 값(economics.bestAutoPrice와 같은 기준)을 손으로 고른다 — 자동 가격을 분기 1번 손으로 하는 것
 //   spot: { from, until, share }  그 기간 몰트 탱크 원액의 share만큼을 현물로 판다(원액 B2B 제한 매각 — MKT-D)
 //   DIAG=1 이면 24~96개월 매달 위스키 진열의 CES 총수요 배수·재고 적체 배수(retail.overhangFactor)·재고 있는 제품 수 평균을 낸다(MKT-A 원인 나누기)
@@ -11,12 +13,12 @@
 //   SNAP=<달> 이면 그 달(병입 뒤) 국내 진열의 SKU 분해(단독 수요 합·CES 총수요·최대 단독 수요)를 모아 끝에 표로 낸다(MKT-A)
 import { applyAction, demandFor, skuSplit, type Action, type GameState, type Product } from '../../src/sim';
 import { SKU } from '../../src/sim/content/market';
-import { bestAutoPrice, currentSuggested } from '../../src/sim/economics';
+import { AUTO_PRICE_FACTORS, bestAutoPrice, currentSuggested } from '../../src/sim/economics';
 import { calendar } from '../../src/sim/util';
 import { overhangFactor } from '../../src/sim/retail';
 import { netWorth } from '../../src/sim/progress';
 
-export interface MktPolicy { name: string; autoPrice?: boolean; price?: 'suggest' | 'heur' | 'markup' | 'table'; markup?: number; spot?: { from: number; until: number; share: number } }
+export interface MktPolicy { name: string; autoPrice?: boolean; price?: 'suggest' | 'heur' | 'markup' | 'table'; markup?: number; clear?: { above: number; min: number }; spot?: { from: number; until: number; share: number } }
 
 const act = (s: GameState, a: Action) => { const r = applyAction(s, a); return r.error ? s : r.state; };
 const reprice = (s: GameState, p: Product, factor = 1) => act(s, { type: 'setPrice', productId: p.id, price: Math.round(currentSuggested(s, p) * factor) });
@@ -29,6 +31,10 @@ export function afterBottle(s: GameState, p: MktPolicy, opts: { name: string; re
   if (p.price === 'table') { const best = bestAutoPrice(s, prod); return best ? act(s, { type: 'setPrice', productId: prod.id, price: best }) : reprice(s, prod); }
   return reprice(s, prod, p.price === 'markup' ? p.markup ?? 1.3 : 1);
 }
+
+/** 재고 개월 — retail.overhangFactor와 같은 잣대(재고 ÷ 판매 EMA). EMA가 아직 없으면 0(적체 아님) */
+const stockMonths = (p: Product) => (p.salesEma == null ? 0 : p.stockBottles / Math.max(1, p.salesEma));
+const overstocked = (p: MktPolicy, prod: Product) => !!p.clear && stockMonths(prod) > p.clear.above;
 
 const soldLast3 = (s: GameState, id: string) => s.history.reports.slice(-3).reduce((t, r) => t + r.sales.filter((x) => x.productId === id).reduce((a, x) => a + x.bottles, 0) + (r.exports ?? []).filter((x) => x.productId === id).reduce((a, x) => a + x.bottles, 0), 0) / 3;
 
@@ -52,9 +58,21 @@ export function monthly(s: GameState, p: MktPolicy, m: number): GameState {
   if (!p.autoPrice && (p.price === 'markup' || p.price === 'table') && m > 0 && m % 3 === 0) {
     for (const prod of [...s.commerce.products]) {
       if (prod.stockBottles <= 0 || prod.autoPrice || prod.dutyFreeOnly) continue;
-      if (p.price === 'markup') { s = reprice(s, prod, p.markup ?? 1.3); continue; }
+      if (p.price === 'markup') { if (!overstocked(p, prod)) s = reprice(s, prod, p.markup ?? 1.3); continue; }
       const best = bestAutoPrice(s, prod);
       if (best) s = act(s, { type: 'setPrice', productId: prod.id, price: best });
+    }
+  }
+  // 재고 소진 스위치(clear) — 매달, 적체면 사다리 한 단계 아래로(하한까지)
+  if (!p.autoPrice && p.clear) {
+    for (const prod of [...s.commerce.products]) {
+      if (prod.stockBottles <= 0 || prod.autoPrice || prod.dutyFreeOnly || !overstocked(p, prod)) continue;
+      const sug = currentSuggested(s, prod);
+      if (sug <= 0) continue;
+      const f = prod.price / sug;
+      const next = [...AUTO_PRICE_FACTORS].reverse().find((x) => x < f - 1e-6) ?? p.clear.min;
+      const nf = Math.max(p.clear.min, next);
+      if (nf < f - 1e-6) { s = reprice(s, prod, nf); clears[p.name] = (clears[p.name] ?? 0) + 1; }
     }
   }
   if (process.env.SKUCOST) s.finance.cash -= Number(process.env.SKUCOST) * s.commerce.products.filter((x) => x.stockBottles > 0 && !x.dutyFreeOnly).length;
@@ -64,6 +82,7 @@ export function monthly(s: GameState, p: MktPolicy, m: number): GameState {
   return s;
 }
 
+const clears: Record<string, number> = {};
 const perSeed: Record<string, Record<number, { nw: number; month: number; cash: number }>> = {};
 const contracts: Record<string, { games: Set<number>; ended: number; opened: number; seen: Set<string> }> = {};
 interface Diag { months: number; ces: number; overhang: number; n: number; overhangHit: number; stockMonths: number }
@@ -121,6 +140,12 @@ export function report(): void {
       const low3 = [...nw].filter(Number.isFinite).sort((a, b) => a - b).slice(0, 3);
       console.log(`| ${n} | ${v.map((x) => (x ? `${(x.nw / 1e8).toFixed(1)}${x.month < months ? `*${x.month}` : ''}` : '—')).join(' | ')} | ${(nw.filter(Number.isFinite).reduce((a, b) => a + b, 0) / nw.filter(Number.isFinite).length).toFixed(2)} | ${(low3.reduce((a, b) => a + b, 0) / low3.length).toFixed(2)} |`);
     }
+  }
+  if (Object.keys(clears).length) {
+    const games = (n: string) => Math.max(1, Object.keys(perSeed[n] ?? {}).length || 10);
+    console.log('\n### 재고 소진 스위치(clear) — 한 단계 내린 횟수(제품·달, 판 평균 — PERSEED=1일 때 판 수로 나눔)');
+    console.log('| 정책 | 내림 횟수/판 |\n|---|---|');
+    for (const [n, c] of Object.entries(clears)) console.log(`| ${n} | ${(c / games(n)).toFixed(1)} |`);
   }
   if (Object.keys(contracts).length) {
     console.log('\n### 수출 계약 (G07) — 판 평균: 연 최소 물량 미달로 수입사가 끝낸 횟수(위약금 0·재진입비 0)');

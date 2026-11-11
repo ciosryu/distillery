@@ -11,6 +11,7 @@
 //     a          3년 이후 숙성 프리미엄 기울기 × clamp((품질 − 55)/25, 0, 1)(P-PROD-45 a — PROD: "재측정 뒤", 변형 하나로만)
 //     s<ρ>m<배수> SKU.rho = ρ, 국내(한국) 점유 상한 × 배수 — P-MKT-25 (a) (예: s5m1.12)
 //     h          권장가(suggestedPrice) × 1.3 — 권장가 정직화(#283의 다음 단계, CP-PM-4 ⓐ). 기대가(수요 기준)는 그대로, 핸드필 값도 따라 오른다
+//     f          향미 방향 항(P-MKT-30 v2): 몰트 위스키 매력도 × 시장 취향 스타일 배수 — 가장 가까운 스타일(육각형 코사인)·fit, 국내 = 지역 id, 수출 = 시장 id 가중(PROD 초안). 끝에 시장별 평균 배수·스타일 분포 표
 //     k          수출 계약 미달 해지 = 자진 해지 위약금(현지 분담 3개월) + 재진입 개척비 다시(P-MKT-27)
 //   예: V=base,c,c+a,c+s5m1.12,c+a+s5m1.12+k ONLY=X0,X7,X21,X22,X12 METRICS=1
 import { cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -43,6 +44,12 @@ const PATCH: Record<string, Patch[]> = {
   ],
   h: [
     { file: 'src/sim/blending.ts', from: '  const p = priceForConsumer(region, consumer, bottleMl, abv, taxFactor);\n  return Math.round(p / 100) * 100;', to: '  const p = priceForConsumer(region, consumer, bottleMl, abv, taxFactor) * 1.3; // [B1 h] 권장가 정직화 — 가격표 최선 근처로(#283 다음 단계)\n  return Math.round(p / 100) * 100;' },
+  ],
+  f: [
+    { file: 'src/sim/market.ts', from: "import { hexOf } from './blendRadar';\n", to: "import { hexOf } from './blendRadar';\nimport { CATEGORY } from './content/categories';\n" },
+    { file: 'src/sim/market.ts', from: 'export function appeal(', to: '// [B1 f] 시장 취향 × 스타일 적합(P-MKT-30 v2 · CP-MKT-1 v2 — 가중은 PROD 초안 2026-11-11, 모두 가설). 몰트 위스키만\nconst B1F_W: Record<string, Record<string, number>> = {\n  KR: { peated: 0.85, sherried: 1.05, bourbon_fruity: 1.1, korean_oak: 1.0 }, JP: { peated: 1.0, sherried: 1.05, bourbon_fruity: 1.0, korean_oak: 0.95 },\n  TW: { peated: 0.93, sherried: 1.12, bourbon_fruity: 1.0, korean_oak: 0.95 }, UK: { peated: 1.12, sherried: 1.03, bourbon_fruity: 0.95, korean_oak: 0.9 },\n  EU: { peated: 1.12, sherried: 1.03, bourbon_fruity: 0.95, korean_oak: 0.9 }, US: { peated: 0.95, sherried: 1.0, bourbon_fruity: 1.1, korean_oak: 0.95 },\n  CN: { peated: 0.92, sherried: 1.1, bourbon_fruity: 0.98, korean_oak: 1.0 }, DF: { peated: 0.95, sherried: 1.05, bourbon_fruity: 1.05, korean_oak: 0.95 },\n  SEA: { peated: 0.92, sherried: 1.08, bourbon_fruity: 1.02, korean_oak: 0.98 },\n};\nconst B1F_T = CATEGORY.whisky.styles.map((st) => ({ id: st.id, hex: hexOf(st.target) }));\n/** 가장 가까운 스타일(육각형 코사인 — 세기와 분리)·적합도 fit = clamp((cos − 0.6)/0.3, 0, 1) */\nexport function b1Style(p: Pick<Product, \'category\' | \'hex\' | \'flavor\'>): { id: string; cos: number; fit: number } | null {\n  if (p.category !== \'whisky\') return null;\n  const h = p.hex ?? hexOf(p.flavor);\n  const ks = Object.keys(h) as (keyof typeof h)[];\n  const n = Math.sqrt(ks.reduce((t, k) => t + h[k] ** 2, 0));\n  if (n < 1e-6) return null;\n  let id = \'\', cos = -1;\n  for (const t of B1F_T) { const m = Math.sqrt(ks.reduce((a, k) => a + t.hex[k] ** 2, 0)); const c = ks.reduce((a, k) => a + h[k] * t.hex[k], 0) / (n * Math.max(1e-9, m)); if (c > cos) { cos = c; id = t.id; } }\n  return { id, cos, fit: clamp((cos - 0.6) / 0.3, 0, 1) };\n}\n/** 시장 key(지역 id 또는 수출 시장 id)의 스타일 배수 = 1 + (w − 1) × fit. 시장마다 네 가중 평균 1 */\nexport function b1StyleFit(p: Pick<Product, \'category\' | \'hex\' | \'flavor\'>, key: string): number {\n  const w = B1F_W[key];\n  const st = w ? b1Style(p) : null;\n  const r = st ? 1 + ((w![st.id] ?? 1) - 1) * st.fit : 1;\n  const g = (globalThis as { __b1f?: Record<string, { n: number; r: number; fit: number; by: Record<string, number> }> }).__b1f;\n  if (g && st) { const x = (g[key] ??= { n: 0, r: 0, fit: 0, by: {} }); x.n++; x.r += r; x.fit += st.fit; x.by[st.id] = (x.by[st.id] ?? 0) + 1; }\n  return r;\n}\n\nexport function appeal(' },
+    { file: 'src/sim/market.ts', from: ' * blendBonus * rare * shield;\n', to: ' * blendBonus * rare * shield * (s ? b1StyleFit(p, s.regionId) : 1); // [B1 f]\n' },
+    { file: 'src/sim/market.ts', from: 'return (marketL * reach * appeal(p, s) * priceFactor * overhangFactor(p, s.month)) / bottleL;', to: 'return (marketL * reach * (appeal(p, s) / b1StyleFit(p, s.regionId)) * b1StyleFit(p, m.id) * priceFactor * overhangFactor(p, s.month)) / bottleL; // [B1 f] 수출은 그 시장 취향' },
   ],
   k: [
     { file: 'src/sim/exportDeals.ts', from: '      if ((e.bottlesThisYear ?? 0) < e.minBottlesPerYear) {\n        ended.push(e.marketId);\n', to: '      if ((e.bottlesThisYear ?? 0) < e.minBottlesPerYear) {\n        ended.push(e.marketId);\n        fixed += Math.round((e.marketingPerMonth ?? m.monthlyCost) * EXPORT_DEAL.cancelMonths); s.commerce.exportEntered = (s.commerce.exportEntered ?? []).filter((x) => x !== e.marketId); // [B1 k]\n' },
@@ -86,7 +93,15 @@ for (const v of variants) {
     const log: string[] = [];
     const orig = console.log;
     console.log = (...a: unknown[]) => { log.push(a.map(String).join(' ')); };
+    const g = globalThis as { __b1f?: Record<string, { n: number; r: number; fit: number; by: Record<string, number> }> };
+    if (tokens.includes('f')) g.__b1f = {};
     try { await import(target); } finally { console.log = orig; }
+    if (g.__b1f) {
+      log.push('\n### [B1 f] 시장별 스타일 배수(호출 가중 평균 — 매력도 계산마다 1번) · 가장 가까운 스타일 분포');
+      log.push('| 시장 | 호출 | 평균 배수 | 평균 fit | 스타일 분포 |\n|---|---|---|---|---|');
+      for (const [k, x] of Object.entries(g.__b1f)) log.push(`| ${k} | ${x.n} | ×${(x.r / x.n).toFixed(4)} | ${(x.fit / x.n).toFixed(2)} | ${Object.entries(x.by).map(([id, c]) => `${id} ${((c / x.n) * 100).toFixed(0)}%`).join(' · ')} |`);
+      delete g.__b1f;
+    }
     results.push({ v, out: log.join('\n') });
     console.log(`\n=== 변형 ${v} (${tokens.length ? tokens.join(' + ') : '고침 없음'}) ===\n${log.join('\n')}`);
   } finally {
