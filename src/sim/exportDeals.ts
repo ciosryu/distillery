@@ -1,5 +1,5 @@
 import { EXPORT_MARKETS, exportMarketsFor } from './content/exports';
-import { exportEligible } from './market';
+import { exportDemands, exportEligible } from './market';
 import type { Rng } from './rng';
 import type { ExportEntry, ExportOffer, GameState, MonthReport } from './types';
 import { nid } from './util';
@@ -106,4 +106,27 @@ export function runExportContracts(s: GameState, report: MonthReport): number {
   }
   if (ended.length) s.commerce.exports = (s.commerce.exports ?? []).filter((e) => !ended.includes(e.marketId));
   return fixed;
+}
+
+/**
+ * 수출 계약의 연 최소 물량 전망 ([결정 #284], 화면만) — 올해 판 병 + 남은 달 × 이번 달 수출 수요(재고 있는 제품, 「수출 안 함」 #266 제품은 빠진다).
+ * 수요 기준이라 낙관적이다(재고가 모자라면 덜 판다). 계약 연도는 runExportContracts와 같다(yearStartMonth 또는 readyMonth부터 12개월, 마지막 달 판매 뒤 판정).
+ * 반환: 전망이 최소에 못 미치는 계약만. noExport = 이 시장에 낼 수 있는데 「수출 안 함」으로 뺀 재고 제품 수(원인 안내용)
+ */
+export interface ContractOutlook { marketId: ExportEntry['marketId']; partner: string; min: number; soFar: number; projected: number; monthsLeft: number; noExport: number }
+export function contractOutlook(s: GameState): ContractOutlook[] {
+  const out: ContractOutlook[] = [];
+  for (const e of s.commerce.exports ?? []) {
+    if (e.readyMonth > s.month || e.minBottlesPerYear == null) continue;
+    const start = e.yearStartMonth ?? e.readyMonth;
+    const monthsLeft = Math.max(1, start + 12 - s.month);
+    const monthly = [...exportDemands(s, e).values()].reduce((t, d) => t + d, 0);
+    const soFar = e.bottlesThisYear ?? 0;
+    const projected = Math.round(soFar + monthsLeft * monthly);
+    if (projected >= e.minBottlesPerYear) continue;
+    const m = EXPORT_MARKETS[e.marketId];
+    const noExport = s.commerce.products.filter((p) => p.noExport && p.stockBottles > 0 && !p.dutyFreeOnly && exportEligible(p, m)).length;
+    out.push({ marketId: e.marketId, partner: e.partner ?? m.nameKo, min: e.minBottlesPerYear, soFar, projected, monthsLeft, noExport });
+  }
+  return out;
 }
