@@ -7,7 +7,7 @@ import { retailCapacityCases } from '../../sim/retail';
 import { capacityReport } from '../../sim/production';
 import { samplingCapacity } from '../../sim/blendTable';
 import { rotationCapacity } from '../../sim/warehouse';
-import { LEVEL_RAISE, MORALE, TRAINING, hasTrait, moraleOf, taxAuditDefense, xpMultiplier } from '../../sim/hr';
+import { HR_TUNING, MORALE, TRAINING, hasTrait, moraleOf, taxAuditDefense, xpMultiplier } from '../../sim/hr';
 import { staffOf } from '../../sim/util';
 import { num, pct, won } from '../format';
 
@@ -82,10 +82,10 @@ export function bottlenecks(s: GameState): string[] {
 export function trainingImpact(s: GameState, x: Staff): string {
   const gain = TRAINING.xpPerLevel * x.level;
   const need = 100 * x.level - x.xp;
-  const raise = Math.round((x.salary * LEVEL_RAISE) / 10_000) * 10_000;
+  const raise = Math.round((x.salary * HR_TUNING.levelRaise) / 10_000) * 10_000;
   const lvl = gain >= need ? `다음 결산에 Lv.${x.level + 1}` : `Lv.${x.level + 1}까지 ${num(need)} → ${num(need - gain)} XP`;
   const morale = s.scenario?.locked.includes('system:hr') ? '' : ` · 사기 +${MORALE.training}`;
-  return `교육하면 XP +${num(gain)} → ${lvl}. 레벨업 때 스탯 하나 +2~4, 급여 +${Math.round(LEVEL_RAISE * 100)}%(월 +${won(raise)})${morale}`;
+  return `교육하면 XP +${num(gain)} → ${lvl}. 레벨업 때 스탯 하나 +2~4, 급여 +${Math.round(HR_TUNING.levelRaise * 100)}%(월 +${won(raise)})${morale}`;
 }
 
 /** 사기 한 줄 — 지금 사기가 무엇을 바꾸나 */

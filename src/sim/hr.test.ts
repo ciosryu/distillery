@@ -250,3 +250,23 @@ describe('departureHouseStyle — 미리보기 = 실제 (#246)', () => {
     expect(ap.apprenticeOf).toBeUndefined();
   });
 });
+
+// 단계 T 측정 손잡이 (T-0, M1) — 기본값 0.05, 실험만 바꾼다
+describe('HR_TUNING.levelRaise (T-0)', () => {
+  it('레벨업 급여 인상률이 손잡이를 따른다 — 기본 0.05', async () => {
+    const { HR_TUNING, gainXp } = await import('./hr');
+    const { rngFor } = await import('./rng');
+    expect(HR_TUNING.levelRaise).toBe(0.05);
+    const run = (r: number) => {
+      const s = newGame({ seed: 1 });
+      const x = s.hr.staff[0]!;
+      x.salary = 4_000_000; x.xp = 99; x.level = 1;
+      const keep = HR_TUNING.levelRaise;
+      HR_TUNING.levelRaise = r;
+      try { gainXp(s, rngFor(1, 0, 'hr'), { distiller: 0, warehouse: 0, sales: 0, office: 0, blender: 0 }); } finally { HR_TUNING.levelRaise = keep; }
+      return x.salary;
+    };
+    expect(run(0.05)).toBe(4_200_000);
+    expect(run(0)).toBe(4_000_000);
+  });
+});

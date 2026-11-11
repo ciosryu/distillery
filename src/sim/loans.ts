@@ -1,5 +1,6 @@
 import { runBoard } from './board';
 import { EQUIPMENT, LOAN_OFFERS, type LoanOfferDef } from './content/catalog';
+import { BANK_SCREENING } from './content/finance';
 import { siteOf } from './content/regions';
 import type { GameState, MonthReport } from './types';
 import { bulkValuePerLPA, isBulkKind } from './bulk';
@@ -97,6 +98,26 @@ export const loanRoomTotal = (s: GameState) => availableLoans(s).reduce((t, x) =
  *  다음 결산(7 재무 단계 + 판매 단계의 마케팅비)이 실제로 낼 돈과 맞춘다: 세컨드 브랜드 유지비·마케팅비(#155), 다음 달 난방비(겨울만), 완공된 설비의 유지비만 */
 export function monthlyFixedCost(s: GameState): number {
   return monthlyFixedBreakdown(s).reduce((t, x) => t + x.amount, 0);
+}
+
+// ───────────── 은행 심사 — 실험 손잡이 (T-0, M2 · #210). 게임 기본은 꺼짐(BANK_SCREENING.enabled = false) ─────────────
+
+/** 심사 대상 = 은행·정책 상품. 고금리 급전(심사 없음)과 재고 담보대출(담보가 한도를 정한다, #90)은 뺀다 */
+export const isScreenedOffer = (o: LoanOfferDef) => !o.emergency && !o.collateral;
+
+/** 은행 심사 결과 — 꺼져 있으면 늘 통과. 켜면 takeLoan이 이 값으로 거절한다 */
+export function bankScreening(s: GameState, offer: LoanOfferDef): { screened: boolean; ok: boolean; reason?: string } {
+  const cfg = BANK_SCREENING;
+  if (!cfg.enabled || !isScreenedOffer(offer) || s.month < cfg.startupMonths) return { screened: false, ok: true };
+  const recent = s.history.reports.slice(-cfg.lookbackMonths);
+  const operating = recent.reduce((t, r) => t + (r.operatingCash ?? r.netCash), 0);
+  const cashFloor = Math.round(monthlyFixedCost(s) * cfg.cashFloorMonths);
+  const deficit = recent.length > 0 && operating < 0;
+  const cashShort = s.finance.cash < cashFloor;
+  const rejected = cfg.mode === 'and' ? deficit && cashShort : deficit || cashShort;
+  if (!rejected) return { screened: true, ok: true };
+  const why = [deficit ? `최근 ${recent.length}개월 영업 적자 ${Math.round(-operating).toLocaleString()}원` : '', cashShort ? `현금이 고정비 ${cfg.cashFloorMonths}개월분(${cashFloor.toLocaleString()}원)보다 적음` : ''].filter(Boolean).join(' · ');
+  return { screened: true, ok: false, reason: `은행 심사 거절 — ${why}. 고금리 급전은 심사 없이 받을 수 있다` };
 }
 
 /** 월 고정비 예상의 내역 (#181 안 A — 증류소 탭 "매달 나가는 돈"). 합은 monthlyFixedCost와 같다. adjustable = 플레이어가 바로 조절할 수 있는 줄 */

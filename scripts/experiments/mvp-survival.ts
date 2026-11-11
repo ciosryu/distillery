@@ -27,6 +27,8 @@ import { advanceMonth, applyAction, bulkValuePerLPA, MVP_KR, newGame, newScenari
 import { EVENTS } from '../../src/sim/content/events';
 import { LOAN_OFFERS } from '../../src/sim/content/catalog';
 import { REGIONS } from '../../src/sim/content/regions';
+import { applyMgtKnobs, mgtPolicy } from './mgtKnobs';
+applyMgtKnobs(); // MGT 실험 손잡이 (T-0) — 환경 변수가 없으면 아무 일도 하지 않는다
 
 const SEEDS = Number(process.argv[2] ?? 10);
 const MONTHS = Number(process.argv[3] ?? 180);
@@ -157,6 +159,7 @@ function play(p: Plan, seed: number): Row {
     s = bottle(s, t);
     s = fill(s, t);
     s = finance(s, t);
+    s = mgtPolicy(s);
     s = advanceMonth(s);
     const last = s.history.reports.at(-1);
     if (last) reps.push(last);

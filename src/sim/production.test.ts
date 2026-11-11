@@ -1046,3 +1046,50 @@ describe('자동 납품의 플래그십 후보 보호 (#252, 후반 확인 판)'
     expect(autoRestockSources(s, p3).map((x) => x.comp.id)).toEqual(['Y2', 'Y', 'O5', 'O4', 'O3', 'O2', 'O']); // 플래그십을 팔았으면 보호하지 않는다
   });
 });
+
+describe('자동 납품 통 하한 (#267, 표기 하한 함정)', () => {
+  it('기본은 제품 표기, 낮추면 법정 숙성 ~ 표기 사이에서 그 하한부터 쓰고, 표기 이상·법정 미만은 막는다', async () => {
+    const { autoRestockSources, autoRestockFloor } = await import('./economics');
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.progress.milestones.push({ id: 'flagship_sold', month: 0 } as never); // 하한만 본다(플래그십 보호 끔)
+    const mk = (id: string, oak: number) => { const c = { id, typeId: 'ex_bourbon_barrel', sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: { id: `L${id}`, name: id, kind: 'malt', volumeL: 190, abv: 0.6, flavor: {}, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10000 } } as Cask; s.inventory.casks.push(c); };
+    mk('A', 20); mk('B', 40); mk('C', 80);
+    s.commerce.products.push({ id: 'W6', name: '6년', category: 'whisky', ageYears: 6, oakMonths: 72, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 50, style: null, sourcedShare: 0, stockBottles: 0, price: 90000, unitCost: 10000, createdMonth: 0, lastMonthSold: 0, totalSold: 0 } as Product);
+    s = applyAction(s, { type: 'setAutoRestock', productId: 'W6', months: 2 }).state;
+    const p = () => s.commerce.products.find((x) => x.id === 'W6')!;
+    expect(autoRestockFloor(s, p())).toBe(72);
+    expect(autoRestockSources(s, p()).map((x) => x.comp.id)).toEqual(['C']); // 표기 하한 함정 — 가장 오래된 통만
+    s = applyAction(s, { type: 'setAutoRestock', productId: 'W6', months: 2, minMonths: 36 }).state;
+    expect(p().autoRestockMinMonths).toBe(36);
+    expect(autoRestockSources(s, p()).map((x) => x.comp.id)).toEqual(['B', 'C']); // 어린 통부터
+    expect(applyAction(s, { type: 'setAutoRestock', productId: 'W6', months: 2, minMonths: 6 }).error).toContain('법정');
+    s = applyAction(s, { type: 'setAutoRestock', productId: 'W6', months: 2, minMonths: 72 }).state;
+    expect(p().autoRestockMinMonths).toBeUndefined(); // 표기와 같으면 기본으로
+  });
+});
+
+describe('생산 건너뛰기 (#249 ④ — 위스키 원액만 자동, 소주는 별도 버튼)', () => {
+  it('월초 현금이 고정비 보름치 아래면 몰트는 쉬고 소주는 만든다 · 생산 지시는 그대로 · 소주 버튼은 그 달만', async () => {
+    const { whiskySkipCheck, WHISKY_SKIP_FIXED_MONTHS } = await import('./production');
+    const { monthlyFixedCost } = await import('./loans');
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
+    const soju = s.production.recipes.find((r) => r.kind === 'soju')!;
+    s = applyAction(s, { type: 'setOrder', recipeId: malt.id, batchesPerMonth: 1 }).state;
+    s = applyAction(s, { type: 'setOrder', recipeId: soju.id, batchesPerMonth: 1 }).state;
+    s.finance.cash = WHISKY_SKIP_FIXED_MONTHS * monthlyFixedCost(s) - 1;
+    expect(whiskySkipCheck(s)).not.toBeNull();
+    const t = advanceMonth(s);
+    const rep = t.history.reports.at(-1)!;
+    expect(rep.whiskySkipped).toBeDefined();
+    expect(rep.production.map((p) => p.recipeId)).toEqual([soju.id]); // 소주만 만들었다
+    expect(t.production.orders.find((o) => o.recipeId === malt.id)!.batchesPerMonth).toBe(1); // 지시는 그대로
+    // 현금이 넉넉하면 둘 다, 소주 버튼은 그 달만
+    let u = structuredClone(t); u.finance.cash = 1e9;
+    u = applyAction(u, { type: 'skipSojuThisMonth', on: true }).state;
+    const v = advanceMonth(u);
+    expect(v.history.reports.at(-1)!.production.map((p) => p.recipeId)).toEqual([malt.id]);
+    const w = advanceMonth(v);
+    expect(w.history.reports.at(-1)!.production.map((p) => p.recipeId).sort()).toEqual([malt.id, soju.id].sort());
+  });
+});

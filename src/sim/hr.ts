@@ -178,8 +178,11 @@ export function refreshCandidates(s: GameState, rng: Rng): void {
   s.hr.candidates.push(makeCandidate(s, rngFor(s.seed, s.month, 'candidates:blender'), 'blender'));
 }
 
-/** 레벨이 오를 때마다 급여가 오르는 비율 (gainXp와 같다) */
-export const LEVEL_RAISE = 0.05;
+/**
+ * HR 수치 손잡이 (단계 T 측정 준비 T-0, docs/design/mgt-stage-t.md M1) — 게임 기본값이다. 실험 스크립트만 바꾼다(scripts/experiments/mgtKnobs.ts).
+ * levelRaise = 레벨이 오를 때마다 급여가 오르는 비율 (gainXp·salaryRaiseSinceStart·직원 탭 교육 효과가 같은 값을 쓴다) [튜닝]
+ */
+export const HR_TUNING = { levelRaise: 0.05 };
 
 /**
  * 직원 급여가 시작보다 얼마나 올랐나 (#197, mvp.md §7.8) — HR이 잠긴 시나리오(MVP)에서만 계산한다.
@@ -189,7 +192,7 @@ export const LEVEL_RAISE = 0.05;
 export function salaryRaiseSinceStart(s: Pick<GameState, 'hr' | 'scenario'>): { now: number; start: number } | null {
   if (!s.scenario?.locked.includes('system:hr')) return null;
   const now = s.hr.staff.reduce((t, x) => t + x.salary, 0);
-  const start = s.hr.staff.reduce((t, x) => t + Math.round(x.salary / (1 + LEVEL_RAISE) ** (x.level - 1) / 10_000) * 10_000, 0);
+  const start = s.hr.staff.reduce((t, x) => t + Math.round(x.salary / (1 + HR_TUNING.levelRaise) ** (x.level - 1) / 10_000) * 10_000, 0);
   return { now, start };
 }
 
@@ -273,7 +276,7 @@ export function gainXp(s: GameState, rng: Rng, activity: Record<StaffRole, numbe
       x.level += 1;
       const k = rng.pick(['a', 'b', 'c'] as const);
       x.stats[k] = Math.min(100, x.stats[k] + rng.int(2, 4));
-      x.salary = Math.round((x.salary * (1 + LEVEL_RAISE)) / 10_000) * 10_000;
+      x.salary = Math.round((x.salary * (1 + HR_TUNING.levelRaise)) / 10_000) * 10_000;
       notes.push(`${x.name}(${ROLE_INFO[x.role].nameKo}) 레벨 ${x.level} 달성`);
     }
   }
