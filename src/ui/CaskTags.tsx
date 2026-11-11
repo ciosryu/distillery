@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { caskTagIds, FLAGSHIP_RESERVE_TAG, planTag, TAG_COLORS, TAG_EFFECT_LABEL, TAG_LABEL_MAX, TAG_MAX, tagDefs, type Cask, type GameState, type TagColor, type TagEffect } from '../sim';
+import { caskTagIds, FLAGSHIP_RESERVE_TAG, isFlagshipCandidate, planTag, TAG_COLORS, TAG_EFFECT_LABEL, TAG_LABEL_MAX, TAG_MAX, tagDefs, type Cask, type GameState, type TagColor, type TagEffect } from '../sim';
 import { useGame } from '../store/game';
 import { BulkPlanDialog, Button, Select, TagChip, TextField } from './kit';
 
@@ -40,6 +40,8 @@ export function CaskTagBar({ s, picked, counts, tagFilter, setTagFilter, onTagge
   const [pending, setPending] = useState<{ mode: 'add' | 'remove'; plan: ReturnType<typeof planTag> } | null>(null);
   const [manage, setManage] = useState(false);
   const current = defs.some((t) => t.id === tagId) ? tagId : defs[0]?.id ?? '';
+  // 후보가 아닌 통에 예비를 붙이려 할 때 안내 (tags.ts reserveCaskIds — 자리는 후보만 차지한다)
+  const nonCandidates = picked.filter((id) => { const c = s.inventory.casks.find((x) => x.id === id); return !!c?.contents && !isFlagshipCandidate(s, c); }).length;
   const run = (mode: 'add' | 'remove', ids: string[]) => {
     if (dispatch({ type: 'tagCasks', caskIds: ids, ...(mode === 'add' ? { add: [current] } : { remove: [current] }) })) onTagged();
   };
@@ -66,7 +68,8 @@ export function CaskTagBar({ s, picked, counts, tagFilter, setTagFilter, onTagge
           <Select value={current} onChange={setTagId} options={defs.map((d) => ({ value: d.id, label: d.label }))} />
           <Button small disabled={!picked.length || !current} onClick={() => start('add')}>붙이기</Button>
           <Button small variant="ghost" disabled={!picked.length || !current} onClick={() => start('remove')}>떼기</Button>
-          {current === FLAGSHIP_RESERVE_TAG && <span className="text-stone-500">예비 통은 {'"'}가장 오래된 후보{'"'}에 자동으로 붙는다 — 떼면 다음 후보로 옮겨 가고, 다른 통에 붙이면 그 통이 자리를 차지한다</span>}
+          {current === FLAGSHIP_RESERVE_TAG && <span className="text-stone-500">예비 통은 {'"'}가장 오래된 후보{'"'}에 자동으로 붙는다 — 떼면 다음 후보로 옮겨 가고, 다른 후보 통에 붙이면 그 통이 자리를 차지한다</span>}
+          {current === FLAGSHIP_RESERVE_TAG && nonCandidates > 0 && <span className="text-amber-700 dark:text-amber-400">고른 통 중 {nonCandidates}통은 12년 후보가 아니다 — 판 안에 플래그십이 될 수 없다. 붙이면 자동 기능이 쓰지 않게 보호만 되고 예비 자리는 차지하지 않는다(그냥 남길 통이면 {'"'}보호{'"'} 태그가 맞다)</span>}
         </div>
       )}
       {manage && <TagManager s={s} />}
