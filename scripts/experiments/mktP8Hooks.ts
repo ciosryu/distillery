@@ -46,7 +46,9 @@ export function afterBottle(s: GameState, p: MktPolicy, opts: { name: string; re
   if (p.price === 'profit2') {
     let v = bestMultiPeriod(s, prod, p);
     // 보충(restock)이면 가드를 지킨다 — 새 제품의 첫 값만 가드 없이
-    if (v && p.guard && opts.restockId) { const sug = currentSuggested(s, prod), f = prod.price / sug; v = Math.round(Math.min(sug * (f + p.guard), Math.max(sug * (f - p.guard), v))); }
+    const sug = currentSuggested(s, prod);
+    if (v && p.guard && opts.restockId) { const g = guardBase(p, s, prod, prod.price / sug); v = Math.round(Math.min(sug * (g + p.guard), Math.max(sug * (g - p.guard), v))); }
+    if (v && sug > 0) lastFactor[`${p.name}:${s.seed}:${prod.id}`] = v / sug;
     return v ? act(s, { type: 'setPrice', productId: prod.id, price: v }) : reprice(s, prod, 1.3);
   }
   return reprice(s, prod, p.price === 'markup' ? p.markup ?? 1.3 : 1);
@@ -76,6 +78,9 @@ function bestMultiPeriod(s: GameState, prod: Product, p: MktPolicy): number | nu
   return best?.price ?? null;
 }
 const zeroRun: Record<string, number> = {};
+/** 가드 기준 = 정책이 마지막으로 정한 배수 — P8은 보충할 때 값을 기준가로 되돌리므로(#289) 지금 값을 기준으로 하면 가드가 ×1 근처에 묶인다 */
+const lastFactor: Record<string, number> = {};
+const guardBase = (p: MktPolicy, s: GameState, prod: Product, f: number) => lastFactor[`${p.name}:${s.seed}:${prod.id}`] ?? f;
 /** B′ + 위기 전환(switchA): 현금 < 월 비용 × 3이면 A(이번 달 공헌 최대 = #200 식)로, 현금 > 월 비용 × 6이면 B′로 되돌린다 — MGT COUNTER(#337) 검증용 */
 const modeA: Record<string, boolean> = {};
 export const switchStats: Record<string, { months: number; aMonths: number; flips: number }> = {};
@@ -105,11 +110,12 @@ function ap3Monthly(s: GameState, p: MktPolicy, m: number): GameState {
       continue;
     }
     if (p.price === 'profit2') {
-      if (p.switchA && modeA[`${p.name}:${s.seed}`]) { const b = bestAutoPrice(s, prod); if (b && b !== prod.price) s = act(s, { type: 'setPrice', productId: prod.id, price: b }); continue; }
+      if (p.switchA && modeA[`${p.name}:${s.seed}`]) { const b = bestAutoPrice(s, prod); if (b && b !== prod.price) s = act(s, { type: 'setPrice', productId: prod.id, price: b }); if (b) lastFactor[`${p.name}:${s.seed}:${prod.id}`] = b / sug; continue; }
       let v = bestMultiPeriod(s, prod, p);
       // 가드: 한 달에 기준가 배수 ±guard까지만 움직인다(진동 ⑤ · 정책 바꾼 달 한 단계 — REQ-MKT-9 불변식 ④)
-      if (v && p.guard) v = Math.round(Math.min(sug * (f + p.guard), Math.max(sug * (f - p.guard), v)));
+      if (v && p.guard) { const g = guardBase(p, s, prod, f); v = Math.round(Math.min(sug * (g + p.guard), Math.max(sug * (g - p.guard), v))); }
       if (v && v !== prod.price && profitable(s, prod, v)) s = act(s, { type: 'setPrice', productId: prod.id, price: v });
+      if (v) lastFactor[`${p.name}:${s.seed}:${prod.id}`] = v / sug;
       continue;
     }
     if (p.price === 'premium') {
