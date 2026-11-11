@@ -3,6 +3,11 @@
 //   BANK_SCREEN=and|or       은행 심사를 켠다 (게임 기본은 꺼짐, M2 · #210 — 규칙은 src/sim/loans.ts bankScreening)
 //   HIRE_SALES_AT=<개월>     그 달부터(HR이 열려 있으면) 영업 직원 1명을 채용한다 — 후보 중 네트워크(b) 최고, 없으면 헤드헌팅 (M4 · #251)
 //   SALARY_REVIEW=raise|freeze  연봉 협상 선택을 봇이 고른다 (기본: 고르지 않음 = 다음 달 동결, M5 · #225)
+//   티어 분해(MGT-B, 요구사항 감사 Phase B) — 새 판을 만든 직후 applyTierKnobs(s)가 넣는다(mvp-human.ts):
+//   TIER_OVERHEAD=<원>      월 관리비 (micro 300만 · standard 1,000만)
+//   TIER_EQUITY=<원>        시작 자기자본 — 시작 현금을 그 차이만큼 바꾸고 순자산 목표의 기준도 바꾼다 (micro 5억 · standard 8억)
+//   TIER_WAREHOUSE=<통>     시작 숙성고 용량 (micro 90 · standard 150)
+//   GOAL_MULT=<배수>        순자산 목표 배수 (기본 3) — 목표만 바꾸고 판 진행은 같다
 // balance-sim.ts·mvp-survival.ts가 맨 앞에서 applyMgtKnobs()를 부르고, 매달 행동 끝에 mgtPolicy(s)를 부른다
 import { applyAction, isLocked, type Candidate, type GameState } from '../../src/sim';
 import { HR_TUNING } from '../../src/sim/hr';
@@ -21,9 +26,24 @@ export function applyMgtKnobs(): string {
   if (env.BANK_SCREEN === 'and' || env.BANK_SCREEN === 'or') { BANK_SCREENING.enabled = true; BANK_SCREENING.mode = env.BANK_SCREEN; on.push(`bankScreen=${env.BANK_SCREEN}`); }
   if (MGT_KNOBS.hireSalesAt != null) on.push(`hireSalesAt=${MGT_KNOBS.hireSalesAt}`);
   if (MGT_KNOBS.salaryReview) on.push(`salaryReview=${MGT_KNOBS.salaryReview}`);
+  for (const k of ['TIER_OVERHEAD', 'TIER_EQUITY', 'TIER_WAREHOUSE', 'GOAL_MULT']) if (env[k] != null && env[k] !== '') on.push(`${k}=${env[k]}`);
   const label = on.join(' ');
   if (label) console.error(`MGT 손잡이: ${label}`);
   return label;
+}
+
+/** 티어 손잡이를 새 판에 넣는다(MGT-B). 아무것도 없으면 s를 그대로 돌려준다 */
+export function applyTierKnobs(s: GameState): GameState {
+  const n = (k: string) => (env[k] != null && env[k] !== '' ? Number(env[k]) : null);
+  const overhead = n('TIER_OVERHEAD'), equity = n('TIER_EQUITY'), warehouse = n('TIER_WAREHOUSE'), mult = n('GOAL_MULT');
+  if (overhead == null && equity == null && warehouse == null && mult == null) return s;
+  if (!s.scenario) throw new Error('티어 손잡이는 시나리오 판에서만 쓴다');
+  const sc = { ...s.scenario, economy: { ...s.scenario.economy }, goal: { ...s.scenario.goal } };
+  let cash = s.finance.cash;
+  if (overhead != null) sc.economy.overheadPerMonth = overhead;
+  if (equity != null) { cash += equity - sc.equity; sc.equity = equity; }
+  if (mult != null) sc.goal.netWorthMultiple = mult;
+  return { ...s, scenario: sc, finance: { ...s.finance, cash }, inventory: warehouse != null ? { ...s.inventory, warehouseBase: warehouse } : s.inventory };
 }
 
 /** 매달 봇 행동 끝 — 영업 채용·연봉 협상 선택. 손잡이가 꺼져 있으면 s를 그대로 돌려준다 */
