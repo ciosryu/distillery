@@ -4,6 +4,7 @@ export * from './blending';
 export * from './handfill';
 export * from './delegateCheck';
 export * from './tags';
+export * from './repair';
 export * from './autoFill';
 export * from './caskStory';
 export * from './packaging';
