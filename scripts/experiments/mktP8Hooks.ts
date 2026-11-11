@@ -5,12 +5,16 @@
 //   price: 'table'    분기마다 판매 화면 가격표(priceOptions — 플레이어에게 보이는 값)의 최선 값(economics.bestAutoPrice와 같은 기준)을 손으로 고른다 — 자동 가격을 분기 1번 손으로 하는 것
 //   spot: { from, until, share }  그 기간 몰트 탱크 원액의 share만큼을 현물로 판다(원액 B2B 제한 매각 — MKT-D)
 //   DIAG=1 이면 24~96개월 매달 위스키 진열의 CES 총수요 배수·재고 적체 배수(retail.overhangFactor)·재고 있는 제품 수 평균을 낸다(MKT-A 원인 나누기)
+//   SKUCOST=<원> 이면 매달 재고 있는 제품 1개당 그만큼 현금을 뺀다(면세 한정판 제외) — SKU 운영비 안 P-MKT-25 (d)를 잰다(게임 규칙이 아니라 실험 안에서만)
+//   PERSEED=1 이면 정책·시드별 마지막 순자산(파산이면 그 달)과 하위 3시드 평균을 낸다(G04-MKT-1 — 운 나쁜 판에서도 이기나)
+//   CONTRACTS=1 이면 수출 계약이 연 최소 물량 미달로 끝난 횟수·그 시장에 낸 현지 분담 합을 정책별로 센다(G07-MKT-1)
 //   SNAP=<달> 이면 그 달(병입 뒤) 국내 진열의 SKU 분해(단독 수요 합·CES 총수요·최대 단독 수요)를 모아 끝에 표로 낸다(MKT-A)
 import { applyAction, demandFor, skuSplit, type Action, type GameState, type Product } from '../../src/sim';
 import { SKU } from '../../src/sim/content/market';
 import { bestAutoPrice, currentSuggested } from '../../src/sim/economics';
 import { calendar } from '../../src/sim/util';
 import { overhangFactor } from '../../src/sim/retail';
+import { netWorth } from '../../src/sim/progress';
 
 export interface MktPolicy { name: string; autoPrice?: boolean; price?: 'suggest' | 'heur' | 'markup' | 'table'; markup?: number; spot?: { from: number; until: number; share: number } }
 
@@ -53,17 +57,28 @@ export function monthly(s: GameState, p: MktPolicy, m: number): GameState {
       if (best) s = act(s, { type: 'setPrice', productId: prod.id, price: best });
     }
   }
+  if (process.env.SKUCOST) s.finance.cash -= Number(process.env.SKUCOST) * s.commerce.products.filter((x) => x.stockBottles > 0 && !x.dutyFreeOnly).length;
   if (p.spot && m >= p.spot.from && m < p.spot.until) {
     for (const lot of s.inventory.lots.filter((l) => l.kind === 'malt' && l.volumeL > 1)) s = act(s, { type: 'sellBulk', source: 'lot', id: lot.id, liters: Math.floor(lot.volumeL * p.spot.share) });
   }
   return s;
 }
 
+const perSeed: Record<string, Record<number, { nw: number; month: number; cash: number }>> = {};
+const contracts: Record<string, { games: Set<number>; ended: number; opened: number; seen: Set<string> }> = {};
 interface Diag { months: number; ces: number; overhang: number; n: number; overhangHit: number; stockMonths: number }
 const diags: Record<string, Diag> = {};
 
 /** 매달 병입·통입 뒤 — SNAP=<달>이면 그 달 국내 진열의 SKU 분해를 기록, DIAG=1이면 위스키 진열 원인 나누기 */
 export function snap(s: GameState, p: MktPolicy, m: number): void {
+  if (process.env.PERSEED === '1') ((perSeed[p.name] ??= {})[s.seed] = { nw: netWorth(s), month: s.month, cash: s.finance.cash });
+  if (process.env.CONTRACTS === '1') {
+    const r = s.history.reports.at(-1);
+    const c = (contracts[p.name] ??= { games: new Set(), ended: 0, opened: 0, seen: new Set() });
+    c.games.add(s.seed);
+    for (const e of s.commerce.exports ?? []) { const k = `${s.seed}:${e.marketId}:${e.openedMonth}`; if (!c.seen.has(k)) { c.seen.add(k); c.opened++; } }
+    if (r && r.month === s.month - 1) c.ended += r.notes.filter((n) => n.includes('계약을 끝냈습니다')).length;
+  }
   if (process.env.DIAG === '1' && m >= 24 && m < 96) {
     const ws = s.commerce.products.filter((x) => x.category === 'whisky' && x.stockBottles > 0 && !x.dutyFreeOnly);
     if (ws.length) {
@@ -94,6 +109,24 @@ export function snap(s: GameState, p: MktPolicy, m: number): void {
 
 /** 끝에 — SNAP 분해 표 */
 export function report(): void {
+  if (Object.keys(perSeed).length) {
+    const months = Math.max(...Object.values(perSeed).flatMap((x) => Object.values(x).map((y) => y.month)));
+    console.log(`\n### 시드별 마지막 순자산 (억, 끝까지 못 간 판은 *그 달) — 하위 3시드 = 순자산 낮은 3판 평균(파산 판 포함)`);
+    const names = Object.keys(perSeed);
+    const seeds = [...new Set(names.flatMap((n) => Object.keys(perSeed[n]!).map(Number)))].sort((a, b) => a - b);
+    console.log(`| 정책 | ${seeds.map((x) => `s${x}`).join(' | ')} | 평균 | 하위 3 평균 |\n|---|${seeds.map(() => '---').join('|')}|---|---|`);
+    for (const n of names) {
+      const v = seeds.map((x) => perSeed[n]![x]);
+      const nw = v.map((x) => (x ? x.nw / 1e8 : NaN));
+      const low3 = [...nw].filter(Number.isFinite).sort((a, b) => a - b).slice(0, 3);
+      console.log(`| ${n} | ${v.map((x) => (x ? `${(x.nw / 1e8).toFixed(1)}${x.month < months ? `*${x.month}` : ''}` : '—')).join(' | ')} | ${(nw.filter(Number.isFinite).reduce((a, b) => a + b, 0) / nw.filter(Number.isFinite).length).toFixed(2)} | ${(low3.reduce((a, b) => a + b, 0) / low3.length).toFixed(2)} |`);
+    }
+  }
+  if (Object.keys(contracts).length) {
+    console.log('\n### 수출 계약 (G07) — 판 평균: 연 최소 물량 미달로 수입사가 끝낸 횟수(위약금 0·재진입비 0)');
+    console.log('| 정책 | 판 수 | 연 계약 수(진출) | 미달 해지 |\n|---|---|---|---|');
+    for (const [name, c] of Object.entries(contracts)) console.log(`| ${name} | ${c.games.size} | ${(c.opened / c.games.size).toFixed(1)} | ${(c.ended / c.games.size).toFixed(2)} |`);
+  }
   if (Object.keys(diags).length) {
     console.log(`\n### 위스키 진열 원인 나누기 (24~96개월 매달, ρ = ${SKU.rho}, 판·달 평균) — CES 배수 = 총수요 ÷ 최대 단독 수요, 적체 배수 = 재고 가중 overhangFactor(6개월치 넘으면 √(6/개월), 바닥 0.6)`);
     console.log('| 정책 | 관측 달 | 재고 있는 위스키 제품 수 | CES 총수요 배수 | 재고 적체 배수 | 적체에 걸린 달 비율 | 재고 개월(재고 ÷ 판매 EMA) |');
