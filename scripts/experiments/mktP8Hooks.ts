@@ -12,6 +12,7 @@
 //   price: 'premium'  C 프리미엄 — anchor(기본 1.5) 유지, 병입·보충·분기마다 맞춘다. 분기에 적체(재고 개월 > band[1], 기본 9)면 한 단계만 내림(하한 anchor × floor, 기본 0.9).
 //                     국내 판매 0이 3개월 이어지면 하한을 anchor × 0.8까지 낮춰 한 단계 허용(판매 0 고착 방지)
 //   guard: <배수>  ('profit2'와 같이) 한 달에 기준가 배수 ±guard까지만 움직인다(예: 0.1 = 한 단계) — B′ + 가드(결정 대기 66, AP3 2차)
+//   switchA: true  ('profit2'와 같이) 현금 < 월 비용 × 3이면 A(이번 달 공헌 최대)로, > × 6이면 B′로 — 위기 배너 전환 규칙 검증(MGT COUNTER)
 //   raise: true  (A와 같이) 재고 개월 < band[0]이면 목표 위로도 한 단계씩 올린다(최대 ×2) — A2: 재고 개월 목표를 양쪽으로 따라감
 //   AP3=1 이면 정책별 지표 표(국내·수출 매출·병, 미충족 국내 수요, 재고 개월, 품절 제품·달, 평균 배수·가격 변동성)를 낸다
 //   price: 'table'    분기마다 판매 화면 가격표(priceOptions — 플레이어에게 보이는 값)의 최선 값(economics.bestAutoPrice와 같은 기준)을 손으로 고른다 — 자동 가격을 분기 1번 손으로 하는 것
@@ -30,7 +31,7 @@ import { bottleMargin, priceOptions } from '../../src/sim/market';
 import { outboundLogistics } from '../../src/sim/sites';
 import { netWorth } from '../../src/sim/progress';
 
-export interface MktPolicy { name: string; autoPrice?: boolean; price?: 'suggest' | 'heur' | 'markup' | 'table' | 'turnover' | 'profit2' | 'premium'; markup?: number; clear?: { above: number; min: number; step?: number }; anchor?: number; band?: [number, number]; step?: number; floor?: number; horizon?: number; raise?: boolean; guard?: number; spot?: { from: number; until: number; share: number } }
+export interface MktPolicy { name: string; autoPrice?: boolean; price?: 'suggest' | 'heur' | 'markup' | 'table' | 'turnover' | 'profit2' | 'premium'; markup?: number; clear?: { above: number; min: number; step?: number }; anchor?: number; band?: [number, number]; step?: number; floor?: number; horizon?: number; raise?: boolean; guard?: number; switchA?: boolean; spot?: { from: number; until: number; share: number } }
 
 const act = (s: GameState, a: Action) => { const r = applyAction(s, a); return r.error ? s : r.state; };
 const reprice = (s: GameState, p: Product, factor = 1) => act(s, { type: 'setPrice', productId: p.id, price: Math.round(currentSuggested(s, p) * factor) });
@@ -75,8 +76,18 @@ function bestMultiPeriod(s: GameState, prod: Product, p: MktPolicy): number | nu
   return best?.price ?? null;
 }
 const zeroRun: Record<string, number> = {};
+/** B′ + 위기 전환(switchA): 현금 < 월 비용 × 3이면 A(이번 달 공헌 최대 = #200 식)로, 현금 > 월 비용 × 6이면 B′로 되돌린다 — MGT COUNTER(#337) 검증용 */
+const modeA: Record<string, boolean> = {};
+export const switchStats: Record<string, { months: number; aMonths: number; flips: number }> = {};
 function ap3Monthly(s: GameState, p: MktPolicy, m: number): GameState {
   const crisis = s.finance.cash < 2 * monthlyCost(s);
+  if (p.switchA) {
+    const k = `${p.name}:${s.seed}`, cost = monthlyCost(s), was = !!modeA[k];
+    if (!was && s.finance.cash < 3 * cost) modeA[k] = true;
+    else if (was && s.finance.cash > 6 * cost) modeA[k] = false;
+    const st = (switchStats[p.name] ??= { months: 0, aMonths: 0, flips: 0 });
+    st.months++; if (modeA[k]) st.aMonths++; if (!!modeA[k] !== was) st.flips++;
+  }
   for (const prod of [...s.commerce.products]) {
     if (prod.stockBottles <= 0 || prod.autoPrice || prod.dutyFreeOnly) continue;
     const sug = currentSuggested(s, prod);
@@ -94,6 +105,7 @@ function ap3Monthly(s: GameState, p: MktPolicy, m: number): GameState {
       continue;
     }
     if (p.price === 'profit2') {
+      if (p.switchA && modeA[`${p.name}:${s.seed}`]) { const b = bestAutoPrice(s, prod); if (b && b !== prod.price) s = act(s, { type: 'setPrice', productId: prod.id, price: b }); continue; }
       let v = bestMultiPeriod(s, prod, p);
       // 가드: 한 달에 기준가 배수 ±guard까지만 움직인다(진동 ⑤ · 정책 바꾼 달 한 단계 — REQ-MKT-9 불변식 ④)
       if (v && p.guard) v = Math.round(Math.min(sug * (f + p.guard), Math.max(sug * (f - p.guard), v)));
@@ -260,6 +272,11 @@ export function report(): void {
       const g = Math.max(1, a.games.size);
       console.log(`| ${n} | ${(a.domRev / g / 1e8).toFixed(2)} | ${(a.expRev / g / 1e8).toFixed(2)} | ${Math.round(a.domBtl / g).toLocaleString()} | ${Math.round(a.expBtl / g).toLocaleString()} | ${Math.round(a.unmet / g).toLocaleString()} | ${(a.smSum / Math.max(1, a.smN)).toFixed(1)} | ${(a.stockout / g).toFixed(1)} | ×${(a.fSum / Math.max(1, a.fN)).toFixed(2)} | ${((a.vol / Math.max(1, a.volN)) * 100).toFixed(1)}% |`);
     }
+  }
+  if (Object.keys(switchStats).length) {
+    console.log('\n### B′ + 위기 전환(switchA) — A로 지낸 달 비율 · 전환 횟수/판');
+    console.log('| 정책 | A 달 비율 | 전환/판 |\n|---|---|---|');
+    for (const [n, x] of Object.entries(switchStats)) console.log(`| ${n} | ${((x.aMonths / Math.max(1, x.months)) * 100).toFixed(0)}% | ${(x.flips / Math.max(1, Object.keys(perSeed[n] ?? {}).length || 10)).toFixed(1)} |`);
   }
   if (Object.keys(clears).length) {
     const games = (n: string) => Math.max(1, Object.keys(perSeed[n] ?? {}).length || 10);

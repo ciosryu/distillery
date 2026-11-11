@@ -86,7 +86,9 @@ const SETS: Record<string, string> = {
     ['B2g', "autoPrice: false, price: 'profit2', guard: 0.1"], ['B2g3', "autoPrice: false, price: 'profit2', guard: 0.1, horizon: 3"], ['B2g12', "autoPrice: false, price: 'profit2', guard: 0.1, horizon: 12"],
     ['B2h3', "autoPrice: false, price: 'profit2', horizon: 3"], ['B2h12', "autoPrice: false, price: 'profit2', horizon: 12"],
     // MGT 요청(#337): C 목표 배수 1.1 — 1.3(C13)·1.5(C)와 함께 기준 배수 효과를 가른다
-    ['C11', "autoPrice: false, price: 'premium', anchor: 1.1"]];
+    ['C11', "autoPrice: false, price: 'premium', anchor: 1.1"],
+    // MGT COUNTER(#337): 위기 배너 때 A로 바꾸는 규칙이 실제로 파산을 줄이나 — B′ + 가드 + 전환
+    ['B2gS', "autoPrice: false, price: 'profit2', guard: 0.1, switchA: true"]];
   const pickC = process.env.COND?.split(','), pickP = process.env.POL?.split(',');
   const rows: string[] = [];
   for (const [ck, c] of COND) if (!pickC || pickC.includes(ck)) for (const [pk, pv] of POL) if (!pickP || pickP.includes(pk)) rows.push(`P8('${ck}·${pk} ${c}${pv} })`);
