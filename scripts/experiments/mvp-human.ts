@@ -165,12 +165,12 @@ const P8_POLICIES: Policy[] = [
   P8('X16 6배치 60개월부터', { maltFrom: [60, 6] }),
   P8('X17 6배치 96개월부터', { maltFrom: [96, 6] }),
   P8('X18 6배치 120개월부터', { maltFrom: [120, 6] }),
-  // 손 가격 정책(MKT-B, mktP8Hooks.ts에서 옮김 — #278 합리 변형 후보): 자동 가격을 끄고 분기마다 손으로
-  P8('X21 X0 − 자동 가격 + 분기 가격표 최선 값(손)', { autoPrice: false, price: 'table' }),
-  P8('X22 X0 − 자동 가격 + 권장가 × 1.3(병입·보충·분기)', { autoPrice: false, price: 'markup', markup: 1.3 }),
   // 플래그십 병입(MGT-D): 예비 통이 최소 숙성을 채우면 한 번 병입한다 — 등급 A·S·플래그십 달성률을 재려면 필요하다
   P8('X19 X0 + 플래그십 병입', { flagship: true }),
   P8('X20 X12 + 플래그십 병입', { maltB: 6, flagship: true }),
+  // 손 가격 정책(MKT-B, mktP8Hooks.ts에서 옮김 — #278 합리 변형 후보): 자동 가격을 끄고 분기마다 손으로
+  P8('X21 X0 − 자동 가격 + 분기 가격표 최선 값(손)', { autoPrice: false, price: 'table' }),
+  P8('X22 X0 − 자동 가격 + 권장가 × 1.3(병입·보충·분기)', { autoPrice: false, price: 'markup', markup: 1.3 }),
 ];
 // Death Valley 생존 경로 (MGT-A, 요구사항 감사 Phase B — P8=1 DV=1). X0 위에서 한 축씩: 대출 · 비지터 센터 · 소주 비중 · 증산+대출 · 제한적 원액 B2B · 설비 시점.
 // 대출 없는 짝(−대출)을 같이 두어 "대출이 생존의 필수 조건인가, 정상 조달 수단인가"를 가른다. MKT-D(생존 대안)는 같은 틀·같은 ID로 비교한다
