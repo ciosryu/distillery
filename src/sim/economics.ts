@@ -13,6 +13,7 @@ import { outboundLogistics } from './sites';
 import { calendar, warehouseCapacity } from './util';
 import { isFlagshipCandidate } from './delegateCheck';
 import type { Cask, GameState, MonthReport, Product, ProductCategory, Recipe, SpiritKind, SpiritLot } from './types';
+import { PROD_TUNING } from './prodTuning';
 
 /** 표준 병 — 소주는 대중 규격, 몰트는 위스키 규격 (봇·사전 점검과 같은 값) */
 export const STANDARD_BOTTLE: Record<'soju' | 'whisky', { bottleMl: number; abv: number }> = {
@@ -330,7 +331,7 @@ export function productMonthlyPace(s: GameState, p: Product, monthOfYear = calen
 /**
  * 자동 경로의 플래그십 후보 보호 (#252, 후반 확인 판 2026-11-10 — 2·3년 표기 제품의 자동 납품이 "어린 통부터" 쓰다 소비가 공급을 넘자
  * 12년 후보 통까지 다 써 플래그십을 놓쳤다. 오너 "몰랐다, 장기 숙성용 캐스크가 모두 소진되어 곤란"). 시나리오 판에서, 플래그십을 아직 팔지 않았고,
- * 이 제품의 표기가 플래그십 숙성보다 짧으면, 플래그십 후보 통(isFlagshipCandidate) 중 **가장 오래된 FLAGSHIP_RESERVE통**은 자동 납품이 쓰지 않는다.
+ * 이 제품의 표기가 플래그십 숙성보다 짧으면, 플래그십 후보 통(isFlagshipCandidate) 중 **가장 오래된 n통**(`PROD_TUNING.flagshipReserve`, 기본 4)은 자동 납품이 쓰지 않는다.
  * 후보 전부가 아니라 몇 통만 — 판 초반(36개월 전)에는 모든 통이 후보라 전부 막으면 1년 표기 제품의 자동 납품이 3년 가까이 멈춘다.
  * 손으로 병입·맡기기는 그대로 쓸 수 있다(맡기기는 확인 단계에서 경고, #238). #249 ② 캐스크 태그 "보호"가 들어오면 이 기본 보호를 태그 기본값으로 옮긴다
  */
@@ -340,13 +341,10 @@ export function flagshipGuard(s: GameState, p: Pick<Product, 'ageYears'>): boole
   return (p.ageYears ?? 0) * 12 < s.scenario.goal.flagshipMinMonths;
 }
 
-/** 자동 납품이 남겨 두는 플래그십 후보 통 수 `[튜닝]` — 4통 ≈ 700ml 40% 약 1,500병(플래그십 한 번 내기에 넉넉) */
-export const FLAGSHIP_RESERVE = 4;
-
-/** 보호하는 통 — 플래그십 후보 중 가장 오래된 FLAGSHIP_RESERVE통(고객 소유·오염 확인 통 제외) */
+/** 보호하는 통 — 플래그십 후보 중 가장 오래된 PROD_TUNING.flagshipReserve통(기본 4 `[튜닝]`, 고객 소유·오염 확인 통 제외) */
 export function flagshipReserve(s: GameState): Set<string> {
   return new Set(s.inventory.casks.filter((c) => !!c.contents && !c.owner && !c.contaminationKnown && vesselMaterial(c) === 'wood' && isFlagshipCandidate(s, c))
-    .sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths || a.id.localeCompare(b.id)).slice(0, FLAGSHIP_RESERVE).map((c) => c.id));
+    .sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths || a.id.localeCompare(b.id)).slice(0, PROD_TUNING.flagshipReserve).map((c) => c.id));
 }
 
 /** 이 제품의 자동 납품에서 보호 중인 플래그십 후보 통 수 — 할 일 문구용 */
