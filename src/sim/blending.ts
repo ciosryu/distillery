@@ -454,6 +454,9 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   const single = parts.length === 1 ? parts[0]!.cask : undefined;
   const lineTarget = opts.line && s.commerce.lines[opts.line] ? findTarget(s, `line:${opts.line}`) : undefined;
   const target = lineTarget ?? findTarget(s, opts.targetId);
+  // 섞은 원액의 레시피 (#243) — 자동 납품이 다른 제품 몫 원액을 가져가지 않게(5차 판: 「안성 소주」 자동 납품이 탱크 소주를 다 써 「옹기소주」를 못 채움).
+  // 원액을 빼기 **전에** 읽는다 — 다 쓴 탱크·통은 빼고 나면 원액이 없어 기록이 빠졌다(통째 병입한 위스키는 늘 비었다)
+  const recipeIds = [...new Set(components.filter((c) => c.liters > 0).map((c) => lotOf(s, c)?.recipeId).filter((x): x is string => !!x))].sort();
   for (const c of components) {
     if (c.liters <= 0) continue;
     if (c.source === 'cask') {
@@ -470,8 +473,6 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
       else s.inventory.lots[idx] = { ...lot, volumeL: remain };
     }
   }
-  // 섞은 원액의 레시피 (#243) — 자동 납품이 다른 제품 몫 원액을 가져가지 않게(5차 판: 「안성 소주」 자동 납품이 탱크 소주를 다 써 「옹기소주」를 못 채움)
-  const recipeIds = [...new Set(components.filter((c) => c.liters > 0).map((c) => lotOf(s, c)?.recipeId).filter((x): x is string => !!x))].sort();
   const product: Product = {
     id: nid(s, 'P'),
     // 기본 이름에 숙성 소주 표기를 붙인다 (#221) — 직접 쓴 이름은 그대로(표기는 판매 화면 배지로 보인다)
