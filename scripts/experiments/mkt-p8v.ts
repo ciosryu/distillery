@@ -56,7 +56,7 @@ const SETS: Record<string, string> = {
 };
 if (!SETS[SET]) throw new Error(`SET=${SET} 없음 — ${Object.keys(SETS).join('·')}`);
 if (process.env.RHO) SKU.rho = Number(process.env.RHO);
-// MARKET=<배수>: 국내(한국) 주종별 점유 상한(shareCap)을 실험 안에서만 곱한다 — ρ를 올릴 때 줄어드는 총수요를 시장 크기로 되돌리는 안(P-MKT-24 (a))을 잰다
+// MARKET=<배수>: 국내(한국) 주종별 점유 상한(shareCap)을 실험 안에서만 곱한다 — ρ를 올릴 때 줄어드는 총수요를 시장 크기로 되돌리는 안(P-MKT-25 (a))을 잰다
 if (process.env.MARKET) for (const m of Object.values(REGIONS.KR.market)) if (m) m.shareCap *= Number(process.env.MARKET);
 
 let code = readFileSync(join(here, 'mvp-human.ts'), 'utf8');
