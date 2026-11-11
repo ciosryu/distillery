@@ -93,6 +93,6 @@ src += `
 
 process.env.P8 = '1';
 process.env.TIER ??= 'standard';
-const gen = join(here, '_gen-prod-hold-p8.ts');
+const gen = join(here, `_gen-prod-hold-p8-${process.pid}.ts`); // 프로세스마다 따로 — 여러 개를 함께 돌려도 서로 지우지 않게
 writeFileSync(gen, src);
 try { await import(pathToFileURL(gen).href); } finally { unlinkSync(gen); } // 실행할 때 만든 파일이라 정적 경로로 가져오지 않는다(타입 검사)
