@@ -32,6 +32,7 @@ import { rngFor } from './rng';
 import type { CashFlows, GameState, MonthReport, StaffRole } from './types';
 import { calendar, clone } from './util';
 import { applyAutoPrices, applyAutoRestock } from './economics';
+import { candidateVolumes, flagshipCandidateCount, noteCandidateUse } from './tags';
 
 export const BANKRUPT_AFTER_MONTHS = 3;
 const REPORTS_KEPT = 120;
@@ -41,7 +42,15 @@ const REPORTS_KEPT = 120;
 // 각 단계는 같은 상태 사본(s)을 차례로 고친다. 난수는 단계마다 독립 스트림(rngFor(seed, month, 이름))이라 단계를 더해도 다른 단계 결과가 바뀌지 않는다.
 
 /** 5 판매·주세 — 규칙 본문은 sales.ts(MKT). 판매 직전에 자동 가격을 켠 제품의 값을 정한다(#200, economics.ts) */
-const phaseSales: typeof settleSales = (s, report, ctx) => { applyAutoRestock(s, report, ctx.monthOfYear); applyAutoPrices(s, ctx.monthOfYear); return settleSales(s, report, ctx); };
+const phaseSales: typeof settleSales = (s, report, ctx) => {
+  // 자동 납품이 플래그십 후보 통을 쓰면 메모 (#261 — 기록만)
+  const cand = candidateVolumes(s);
+  const notesFrom = report.notes.length;
+  applyAutoRestock(s, report, ctx.monthOfYear);
+  noteCandidateUse(s, report, cand, notesFrom);
+  applyAutoPrices(s, ctx.monthOfYear);
+  return settleSales(s, report, ctx);
+};
 
 const newReport = (s: GameState, offTurn: CashFlows): MonthReport => ({ month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, prepayApplied: 0, prepayRefunded: 0, spotBulkRevenue: (offTurn.spotBulk ?? 0) + (offTurn.caskBid ?? 0), offTurn, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] });
 
@@ -148,6 +157,8 @@ function phaseSettle(s: GameState, report: MonthReport, cashStart: number, offTu
   s.history.reports = [...s.history.reports, report].slice(-REPORTS_KEPT);
   if (calendar(s).monthOfYear === 12) rollupYear(s, calendar(s).year);
   s.month += 1;
+  // 다음 달 화면과 같은 시점의 플래그십 후보 수 (#261 — 줄어든 달을 소식 창에 알린다, 기록만)
+  if (s.scenario) report.flagshipCandidates = flagshipCandidateCount(s);
 }
 
 /** 1개월 진행 (순수 함수 — 입력 상태를 바꾸지 않고 새 상태를 돌려준다) */

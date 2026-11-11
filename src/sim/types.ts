@@ -381,6 +381,8 @@ export interface MonthReport {
   production: { recipeId: string; name: string; batches: number; lpa: number; cost: number }[];
   /** 위스키 원액 생산 건너뛰기 (#249 ④) — 월초 현금이 고정비 보름치 아래라 몰트·그레인을 만들지 않았다. 화면 맨 위 알림용 */
   whiskySkipped?: { cash: number; threshold: number };
+  /** 이 결산 뒤(다음 달 화면 기준)의 12년 플래그십 후보 통 수 (#261, 시나리오 판만) — 줄어든 달을 소식 창에 알린다. 기록만 */
+  flagshipCandidates?: number;
   angelsShareL: number;
   liquorTaxRemitted: number;
   /** 이번 달 발생한 이벤트 제목 */
@@ -802,8 +804,11 @@ export interface GoalCheck { id: 'survive' | 'flagship' | 'netWorth'; ok: boolea
 export interface GoalVerdict {
   /** 판정한 시점 (경과 개월) */
   month: number;
-  /** heritage = 목표 모두 달성 · missed = 버텼지만 일부 미달 · failed = 기간 전에 게임이 끝났다 */
-  result: 'heritage' | 'missed' | 'failed';
+  /**
+   * heritage = 목표 모두 달성(A·S) · achieved = 버티고 순자산 목표를 채웠지만 플래그십은 없다(B, 등급제 #263 ①안 — 달성으로 본다) ·
+   * missed = 버텼지만 순자산 목표 미달(플래그십만 B, 버티기만 C) · failed = 기간 전에 게임이 끝났다
+   */
+  result: 'heritage' | 'achieved' | 'missed' | 'failed';
   /** 등급 (failed면 null) */
   grade: 'S' | 'A' | 'B' | 'C' | null;
   checks: GoalCheck[];
