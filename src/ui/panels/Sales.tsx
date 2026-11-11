@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { FeedCard } from '../FeedCard'; // 가상 커뮤니티 피드 (#247, MKT)
 import { ExportShortfallNote } from '../ExportShortfallNote'; // 수출이 국내를 굶기는지 (#257, MKT)
+import { SuggestedPriceNote } from '../SuggestedPriceNote'; // 권장가 표시의 정직성 (#283, MKT — PROD 대행)
 import { PRODUCT_NAME_MAX } from '../../sim/actions.prod';
 import { CATEGORY } from '../../sim/content/categories';
 import { AUTO_RESTOCK_LONG_FLOOR, autoRestockFloor, AUTO_RESTOCK_MONTHS, autoRestockSupported } from '../../sim/economics';
@@ -223,6 +224,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
           {suggested != null && suggested !== p.price && (
             <button className="mt-0.5 block text-xs text-amber-800 underline decoration-dotted dark:text-amber-300" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: suggested })} title="기준 소비자가 × √(품질/60) × 숙성 인식에 맞춘 출고가">권장 {wonFull(suggested)}</button>
           )}
+          {!dfOnly && <SuggestedPriceNote s={s} p={p} suggested={suggested} />}
         </Td>
         <Td right>
           {wonFull(consumer)}
