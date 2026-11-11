@@ -16,6 +16,7 @@ import { CASK_STORAGE, CASKS } from '../../src/sim/content/catalog';
 import { regionOf, siteOf } from '../../src/sim/content/regions';
 import { demandFor, distributionCostPerBottle } from '../../src/sim/market';
 import { calendar } from '../../src/sim/util';
+import { slotClimate } from '../../src/sim/warehouse';
 import { matureCask } from '../../src/sim/maturation';
 import { migrateSave, newGame, previewBatch, previewBlend, type BottleOptions, type Cask, type GameState, type Product, type RegionId, type SpiritLot } from '../../src/sim';
 import { outboundLogistics } from '../../src/sim/sites';
@@ -27,6 +28,9 @@ const CASK_IDS = list(env.CASKS, ['ex_bourbon_barrel', 'oloroso_butt', 'korean_o
 const FILLS = (env.FILLS ?? '0,2').split(',').map(Number);
 const RATES = (env.RATES ?? '0,0.025,0.075,0.2').split(',').map(Number);
 const AGES = (env.AGES ?? '36,72,120,144').split(',').map(Number);
+// CLIMATE=avg(기본 — 첫 판 결과 재현) | game  ·  TIER=0,2,5 (game일 때 기본 숙성고 랙 단 — 0 아래·5 위)
+const CLIMATES: ClimateMode[] = env.CLIMATE === 'game' ? (env.TIER ?? '0,2,5').split(',').map((x) => ({ mode: 'game' as const, tier: Number(x) })) : [{ mode: 'avg' }];
+const climateLabel = (c: ClimateMode) => (c.mode === 'avg' ? '입지 연평균' : `기본 숙성고 랙 ${c.tier + 1}/6단(달마다)`);
 const MAX = 180;
 const ENTRY_ABV = 0.635;
 const OPTS: BottleOptions = { name: '', targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' };
@@ -35,13 +39,18 @@ export interface AgingPoint { month: number; quality: number; bottles: number; p
 export interface AgingCase { region: RegionId; recipe: string; cask: string; fills: number; upfront: number; storagePerMonth: number; points: AgingPoint[] }
 
 /** 통 하나를 0~MAX개월 숙성 — 달마다 그때 병입하면 받는 돈. 상태를 바꾸지 않는다(사본에 가상 원액을 끼워 미리 보기만) */
-export function agingCase(s: GameState, recipeId: string, caskId: string, fills: number): AgingCase | null {
+/** 기후 — 'avg' = 입지 연평균(첫 판, 증발을 낮게 잡는다 — CP-MGT-1) · 'game' = 게임 기본 숙성고(랙 6단) tier단 칸 기후를 달마다(slotClimate, 틱과 같은 식) */
+export type ClimateMode = { mode: 'avg' } | { mode: 'game'; tier: number };
+
+export function agingCase(s: GameState, recipeId: string, caskId: string, fills: number, cm: ClimateMode = { mode: 'avg' }): AgingCase | null {
   const r = s.production.recipes.find((x) => x.id === recipeId)!;
   const b = previewBatch(s, r);
   const def = CASKS[caskId as keyof typeof CASKS];
   if (!b || !def) return null;
   const site = siteOf(s);
-  const climate = { tempC: site.tempC.reduce((a, x) => a + x, 0) / 12, humidity: site.humidity.reduce((a, x) => a + x, 0) / 12 };
+  const avg = { tempC: site.tempC.reduce((a, x) => a + x, 0) / 12, humidity: site.humidity.reduce((a, x) => a + x, 0) / 12 };
+  // 숙성 m개월째 달의 칸 기후 — 통입 달(s.month)부터 달력대로
+  const climate = (m: number) => (cm.mode === 'avg' ? avg : slotClimate({ ...s, month: s.month + m } as GameState, { slot: { w: 'W0', tier: cm.tier } } as Cask, ((calendar(s).monthOfYear - 1 + m) % 12) + 1));
   const entry = Math.min(ENTRY_ABV, b.abv);
   // 재사용 통 — 비울 때마다 활성도 ×0.6 · 시즈닝 ×0.35 (maturation.ts emptyCask와 같은 규칙)
   const activity = def.activity * Math.pow(0.6, fills);
@@ -54,7 +63,7 @@ export function agingCase(s: GameState, recipeId: string, caskId: string, fills:
   const storagePerMonth = CASK_STORAGE.perCaskPerMonth * regionOf(s).laborCost;
   const points: AgingPoint[] = [];
   for (let m = 0; m <= MAX; m++) {
-    if (m > 0) cask = matureCask(cask, climate, { control: 0 }).cask as typeof cask;
+    if (m > 0) cask = matureCask(cask, climate(m - 1), { control: 0 }).cask as typeof cask;
     if (m % 12 !== 0) continue;
     const l = { ...cask.contents, oakMonths: m };
     const t = { ...s, inventory: { ...s.inventory, lots: [...s.inventory.lots, l] } } as GameState;
@@ -98,18 +107,18 @@ const eok = (v: number) => `${(v / 1e4).toFixed(0)}만`;
 const pct = (v: number) => (Number.isFinite(v) ? `${(v * 100).toFixed(0)}%` : '—');
 const rate = (v: number) => `${+(v * 100).toFixed(1)}%`;
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === `file://${process.argv[1]}`) for (const cm of CLIMATES) {
   const cases: AgingCase[] = [];
   const saved = env.SAVE ? migrateSave(JSON.parse(readFileSync(env.SAVE, 'utf8'))) : null;
   for (const region of saved ? [saved.regionId] : REGION_IDS) {
     const s = saved ?? newGame({ region, seed: 1 });
     for (const r of s.production.recipes.filter((x) => x.kind === 'malt')) for (const k of CASK_IDS) for (const f of FILLS) {
       if (k === 'oloroso_butt' && f > 0) continue; // 셰리 벗 재사용은 버번 재사용과 같은 꼴 — 줄 수를 줄인다
-      const c = agingCase(s, r.id, k, f);
+      const c = agingCase(s, r.id, k, f, cm);
       if (c) cases.push(c);
     }
   }
-  console.log(`# PROD-A 1층 — 통 하나의 경제성 (수요 제약 없음, 권장 출고가에 통 전체를 판다고 볼 때)\n`);
+  console.log(`# PROD-A 1층 — 통 하나의 경제성 (수요 제약 없음, 권장 출고가에 통 전체를 판다고 볼 때) — 기후: ${climateLabel(cm)}\n`);
   console.log(`| 국가 | 레시피 | 캐스크 | 통입 | 품질 ${AGES.join('·')}개월 | 병입 순수입 ${AGES.join('·')}개월 | 월 수요(병) ${AGES.join('·')}개월 | 3년 병입 IRR | 3→6년 보유 연수익 | 6→10년 | ${RATES.map((r) => `최적 병입(r=${rate(r)})`).join(' | ')} |`);
   console.log(`|---|---|---|---|---|---|---|---|---|---|${RATES.map(() => '---').join('|')}|`);
   for (const c of cases) {
@@ -129,6 +138,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const rank = (xs: number[]) => { const o = xs.map((v, i) => [v, i] as const).sort((a, b) => a[0] - b[0]); const r = new Array<number>(xs.length); o.forEach(([, i], k) => (r[i] = k)); return r; };
   const spearman = (a: number[], b: number[]) => { const ra = rank(a), rb = rank(b), n = a.length, m = (n - 1) / 2; let num = 0, da = 0, db = 0; for (let i = 0; i < n; i++) { num += (ra[i]! - m) * (rb[i]! - m); da += (ra[i]! - m) ** 2; db += (rb[i]! - m) ** 2; } return num / Math.sqrt(da * db); };
   const q = (c: AgingCase, m: number) => c.points.find((x) => x.month === m)?.quality ?? NaN;
+  { // 10년 연 증발(LPA 감소율) — CP-MGT-1: 연평균 기후는 증발을 낮게 잡는다(증발은 기온의 지수 함수)
+    const ev = cases.map((c) => { const a = c.points.find((x) => x.month === 0)!.lpaLeft, z = c.points.find((x) => x.month === 120)!.lpaLeft; return 1 - Math.pow(z / a, 1 / 10); }).sort((x, y) => x - y);
+    const byRegion = [...new Set(cases.map((c) => c.region))].map((rg) => { const xs = cases.filter((c) => c.region === rg).map((c) => 1 - Math.pow(c.points.find((x) => x.month === 120)!.lpaLeft / c.points.find((x) => x.month === 0)!.lpaLeft, 1 / 10)).sort((x, y) => x - y); return `${rg} ${(xs[Math.floor(xs.length / 2)]! * 100).toFixed(1)}%`; });
+    console.log(`SUMMARY 10년 연 증발(LPA) 중앙값 ${(ev[Math.floor(ev.length / 2)]! * 100).toFixed(1)}% (${byRegion.join(' · ')})`);
+  }
   for (const from of [36, 72]) console.log(`SUMMARY 품질 예측력: ${from}개월 품질 → 120개월 품질 순위 상관 ${spearman(cases.map((c) => q(c, from)), cases.map((c) => q(c, 120))).toFixed(2)} (${cases.length}개 경우)`);
   if (env.DETAIL) for (const c of cases.slice(0, Number(env.DETAIL) || 4)) {
     console.log(`\n## ${c.region} ${c.recipe} · ${c.cask} ${c.fills + 1}번째 통입 — 초기 ${eok(c.upfront)} · 보관 월 ${c.storagePerMonth.toLocaleString()}원`);

@@ -8,6 +8,7 @@ import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';
 import { useState, type ReactNode } from 'react';
 import { isFlagshipCandidate } from '../../sim/delegateCheck';
 import { ibAgedCaskCount } from '../../sim/bulk';
+import { caskTagIds, isProtected, reserveCaskIds, tagDef } from '../../sim/tags';
 
 const STYLE_LABEL = { any: '무관', unpeated: '논피트', peated: '피트' } as const;
 
@@ -81,6 +82,9 @@ function caskSellWarnings(s: GameState, c: Cask): string[] {
   const out: string[] = [];
   const l = c.contents;
   if (!l) return out;
+  // 보호 태그 통(#260 예비 포함) — 자동 기능(IB 입찰 제안 포함, C-MKT-1)은 쓰지 않지만 손으로 팔 수는 있다. 이미 걸린 제안의 통이 나중에 예비가 된 경우도 여기서 알린다
+  if (reserveCaskIds(s).has(c.id)) out.push('플래그십 예비 통(#260) — 팔면 예비가 다음 후보로 옮겨 간다');
+  else if (isProtected(s, c)) out.push(`보호 태그 통(${caskTagIds(s, c).map((id) => tagDef(s, id)?.label ?? id).join('·')}) — 자동 기능이 쓰지 않게 묶어 둔 통`);
   if (isFlagshipCandidate(s, c)) out.push(`플래그십 후보 통 — 판이 끝나기 전에 플래그십 숙성(${Math.round((s.scenario?.goal.flagshipMinMonths ?? 144) / 12)}년)을 채울 수 있다`);
   else if (l.oakMonths >= 36) out.push('3년 이상 숙성한 통 — 위스키로 병입할 수 있다');
   return out;
