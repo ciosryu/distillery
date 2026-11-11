@@ -91,6 +91,22 @@ export interface SpiritLot {
   mashShare?: Record<string, number>;
   /** 입지 원료(제주 차조·청귤 등)를 쓴 원액 — 면세 기념품 매력도 (결정 #87) */
   localIngredient?: boolean;
+  /**
+   * 캐스크 태그 (#249 ①, qol.md §4) — **원액에 붙는다**. 통입·원액 빼기·옮겨 붓기에서 원액과 함께 간다(`{...lot}` 복사),
+   * 통이 비면 함께 사라진다. 여러 원액을 섞어 병입하면 제품에는 남지 않는다. 정의는 `inventory.tagDefs`·`tags.ts BUILTIN_TAGS`
+   */
+  tagIds?: string[];
+}
+
+/** 태그 효과 (#249 — 오너 답 "보호·먼저 쓰기 둘이면 충분") — protect: 자동 기능이 쓰지 않는다 · prefer: 자동 기능이 먼저 쓴다 */
+export type TagEffect = 'protect' | 'prefer';
+export type TagColor = 'stone' | 'rose' | 'amber' | 'emerald' | 'sky' | 'violet';
+/** 태그 정의 — 이름·색·효과는 여기 한 곳(바꾸면 모든 원액에 반영) */
+export interface TagDef {
+  id: string;
+  label: string;
+  color: TagColor;
+  effect?: TagEffect;
 }
 
 /** 원액이 거쳐 간 숙성 용기 한 구간 — 피니싱(다른 캐스크로 옮겨 마무리)의 이력 (S-10, #143). 원액이 들고 다닌다 */
@@ -678,6 +694,10 @@ export interface InventorySlice {
   autoSample?: AutoSampleSettings;
   /** 자동 통입 설정 (#239) — 없으면 끔 */
   autoFill?: AutoFillSettings;
+  /** 플레이어가 만든 캐스크 태그 정의 (#249 ①) — 기본 태그(플래그십 예비)는 코드에 있다(`tags.ts BUILTIN_TAGS`) */
+  tagDefs?: TagDef[];
+  /** 플레이어가 "플래그십 예비"를 뗀 원액 id (#260) — 자동으로 다시 붙이지 않는다 */
+  reserveOptOut?: string[];
 }
 
 /** 자동 통입 (#239, 5차 MVP 플레이테스트 — 통입을 "잊었고 귀찮았다") — 비운 칸은 기본값 */

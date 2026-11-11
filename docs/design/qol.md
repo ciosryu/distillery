@@ -69,6 +69,15 @@
 - 행동은 `ok`만 받고 다시 검사한다 — 행동 안에서 하나라도 실패하면 아무것도 바꾸지 않는다(한 번의 dispatch = 한 번의 복사 = #240 확인 한 번)
 - 화면 부품: 코어 `kit.tsx`에 `BulkPlanDialog`(창) · 캐스크 목록은 필터 바(태그·나이·종류·위치) + 고른 수 + 일괄 버튼 줄
 
+**구현 — #249 ① 코어 + #260 플래그십 예비 (ARCH, 2026-11-11)**
+- 상태(선택 필드, 스키마 v15 그대로): `SpiritLot.tagIds?` · `inventory.tagDefs?: TagDef[]` · `inventory.reserveOptOut?: string[]`(플레이어가 "플래그십 예비"를 뗀 원액 id) · 타입 `TagDef { id, label, color, effect? }`·`TagEffect = 'protect' | 'prefer'`·`TagColor`(6색)
+- `src/sim/tags.ts`(순수 함수): `tagDefs(s)`(기본 태그 + 플레이어 태그) · **`reserveCaskIds(s)`** · `caskTagIds(s, c)` · **`protectedCaskIds(s)`** · `preferredCaskIds(s)` · `isProtected(s, c)` · **`selectCasks(s, { tagIds, minAgeM, maxAgeM, kind, hasContents, excludeOwner, excludeProtected })`** · `planTag(s, ids, { add, remove })` → `{ ok, skipped: { id, reason }[] }`
+- 행동(`actions.core.ts`, 현금 없음): `tagCasks { caskIds, add?, remove? }`(못 하는 통이 섞이면 아무것도 바꾸지 않는다) · `defineTag { label, color, effect? }`(12개·12자까지) · `editTag { tagId, label?, color?, effect?: TagEffect | null }` · `deleteTag { tagId }`(모든 원액에서 함께 빠진다). 기본 태그는 바꾸거나 지울 수 없다
+- **플래그십 예비(#260):** 원액에 저장하지 않고 **매번 계산**한다 — ① 플레이어가 직접 붙인 통 + ② 남은 자리(`PROD_TUNING.flagshipReserve` = 4 − ①)만큼 가장 오래된 후보 통(뗀 원액 제외). 후보 조건·순서는 #252 `economics.ts flagshipReserve`와 같아 **손대지 않으면 두 집합이 같다**(테스트). 비거나 오염되면 다음 후보로 옮겨 간다. 플래그십을 팔면 없다. 샌드박스에는 없다. 상태에 저장하지 않으므로 틱 순서·시뮬레이션 출력이 바뀌지 않는다
+- 화면(`CaskTags.tsx`, 증류소 탭 숙성고 카드): 통 줄마다 태그 칩(◆ 보호 · ▲ 먼저 쓰기) · 태그 필터 줄(태그별 통 수) · 고른 통에 [붙이기]·[떼기](못 하는 통이 섞이면 `BulkPlanDialog` — 가능한 통만 / 모두 취소) · [태그 관리](만들기·색·효과·지우기). 선택 체크박스는 샘플·태그가 함께 쓴다(샘플은 그중 뜰 수 있는 통만). KPI "후보 m통 · 예비 k통". [원액 빼기] 미리보기에 "플래그십 예비 통" 경고
+- **#249 ②로 넘기는 것(각 파트):** 자동 기능은 `protectedCaskIds(s)` 한 번(또는 `selectCasks(…, { excludeProtected: true })`)으로 보호 통을 빼고, `preferredCaskIds(s)`를 먼저 고른다 — **PROD:** 자동 납품의 `flagshipReserve(s)`를 `protectedCaskIds(s)`로 바꾸면 #252가 이 태그로 옮겨진다(보호를 한 겹으로, #260). `flagshipGuard`(플래그십 표기 제품은 예비 통을 써도 된다)는 그대로 둔다. 자동 통입·핸드필 자동 지정도 · **MKT:** 맡기기 후보·IB 입찰 대상. 그 전까지 화면의 예비 통 바꾸기·플레이어 보호 태그는 **표시만**이고 자동 납품은 #252 집합(같은 4통)을 쓴다
+- 수동 행동의 경고(#240): `flagshipImpact`는 그대로 후보 수를 센다. 병입·맡기기·B2B 판매 미리보기에 "예비 통" 경고를 더하는 것은 각 버튼 소유 파트(`reserveCaskIds(s).has(id)`)
+
 ## 5. 마스터 디스틸러 SOP (오너 답변 1)
 
 오너 답변 1은 세 가지다: (a) 디스틸러 편차를 더 크게 (b) 성공한 배치 결과를 고정 재현 (c) 레시피를 골라 쓰게 관리. **(a)와 (b)는 그대로 두면 부딪힌다**(편차를 키우면 재현이 안 된다) → 둘을 잇는 안:

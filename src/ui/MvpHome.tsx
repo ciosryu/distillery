@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { handfillCask, hasHandfillZone } from '../sim/handfill';
+import { CaskTagBar, CaskTagChips } from './CaskTags';
 import { TurnBrief } from './TurnBrief';
 import { AutoFillRow } from './panels/AutoFill';
 import { PendingEventChoices } from './panels/Events';
@@ -11,7 +12,7 @@ import { vesselMaterial } from '../sim/maturation';
 import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
 import { equipmentCost } from '../sim/sites';
-import { isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
+import { caskTagIds, reserveCaskIds, isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
 import { FixedCostLine } from './panels/FixedCost';
@@ -214,7 +215,7 @@ function Headline() {
   const cands = sc ? flagshipCandidates(s).length : 0;
   const flagDone = s.progress.milestones.some((m) => m.id === 'flagship_sold');
   const noMoreNew = left != null && left < flagMin;
-  const flagHint = !sc ? null : flagDone ? '플래그십 판매 완료' : cands > 0 ? `후보 ${cands}통${noMoreNew ? ' — 새 통은 더 후보가 될 수 없다' : ''}` : noMoreNew ? '후보 0통 — 15년 안에 플래그십을 낼 수 없다' : `후보 0통 — ${Math.max(0, (sc.goal.months - flagMin) - s.month)}개월 안에 넣은 통이 후보가 된다`;
+  const flagHint = !sc ? null : flagDone ? '플래그십 판매 완료' : cands > 0 ? `후보 ${cands}통 · 예비 ${reserveCaskIds(s).size}통${noMoreNew ? ' — 새 통은 더 후보가 될 수 없다' : ''}` : noMoreNew ? '후보 0통 — 15년 안에 플래그십을 낼 수 없다' : `후보 0통 — ${Math.max(0, (sc.goal.months - flagMin) - s.month)}개월 안에 넣은 통이 후보가 된다`;
   return (
     <Card title="현금과 순자산 — 지금 정리하면 받을 수 있는 돈">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -356,11 +357,16 @@ function WarehouseCard() {
   const [picked, setPicked] = useState<string[]>([]);
   const [all, setAll] = useState(false);
   const known = useMemo(() => knownReads(s), [s]);
+  // 캐스크 태그 (#249 ①) · 플래그십 예비 (#260) — 상태마다 한 번 계산
+  const reserve = useMemo(() => reserveCaskIds(s), [s]);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const rules = regionOf(s).whisky;
   const minM = whiskyMinMonths(rules);
   const filled = s.inventory.casks.filter((c) => c.contents).sort((a, b) => ageOf(b) - ageOf(a) || a.id.localeCompare(b.id));
   const sampleable = (c: Cask) => !c.owner && (c.samples ?? 0) < SAMPLING.maxSamples;
   const left = Math.max(0, samplingCapacity(s) - s.inventory.samplesThisMonth);
+  // 고른 통 — 샘플·태그가 함께 쓴다. 샘플은 그중 뜰 수 있는 통만
+  const pickedLive = picked.filter((id) => filled.some((c) => c.id === id && !c.owner));
   const chosen = picked.filter((id) => filled.some((c) => c.id === id && sampleable(c)));
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   // 원액 종류별로 보기 (오너 요청 2026-11-08) — 고른 통은 분류와 상관없이 늘 보인다
@@ -370,7 +376,13 @@ function WarehouseCard() {
     for (const c of filled) { const k = sourceCategory(c.contents!, minM); m.set(k, (m.get(k) ?? 0) + 1); }
     return [...m.entries()].sort((a, b) => CATEGORY_ORDER.indexOf(a[0]) - CATEGORY_ORDER.indexOf(b[0]));
   }, [filled, minM]);
-  const shownCasks = cat === '전체' ? filled : filled.filter((c) => sourceCategory(c.contents!, minM) === cat || picked.includes(c.id));
+  const tagCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of filled) for (const id of caskTagIds(s, c, reserve)) m.set(id, (m.get(id) ?? 0) + 1);
+    return m;
+  }, [s, filled, reserve]);
+  const shownCasks = filled.filter((c) => picked.includes(c.id)
+    || ((cat === '전체' || sourceCategory(c.contents!, minM) === cat) && (!tagFilter || caskTagIds(s, c, reserve).includes(tagFilter))));
   const shownIds = new Set(shownCasks.map((c) => c.id));
   // 아는 것이 적은 통부터: 아무 기록 없음 → 형제 통 기록만 → 자기 기록이 오래된 순 — 자동 샘플(#177)과 같은 순서, 지금 보이는 분류 안에서
   const stalest = stalestCasks(s, Infinity, known).filter((c) => shownIds.has(c.id)).slice(0, left).map((c) => c.id);
@@ -397,6 +409,8 @@ function WarehouseCard() {
               <Button key={k} small variant={cat === k ? 'primary' : 'secondary'} onClick={() => setCat(k)}>{k} {n}</Button>
             ))}
           </div>
+          {/* 캐스크 태그 (#249 ①) — 필터·고른 통에 붙이기·떼기·태그 관리 */}
+          <CaskTagBar s={s} picked={pickedLive} counts={tagCounts} tagFilter={tagFilter} setTagFilter={setTagFilter} onTagged={() => setPicked([])} />
           {/* 자동 샘플 설정 (#207) — 묶음·최소 숙성·간격·월 최대, 이번 턴 미리 보기 */}
           {sampledThisMonth ? <div className="text-xs text-stone-500">이번 달은 직접 샘플을 떠서 자동 샘플이 없다.</div> : <AutoSampleSettingsRow />}
           {/* 핸드필 존 (#233) — 설비를 지으면 보인다 */}
@@ -411,8 +425,8 @@ function WarehouseCard() {
             const can = sampleable(c);
             return (
               <tr key={c.id}>
-                <Td><input type="checkbox" aria-label={`${c.id} 샘플 선택`} disabled={!can} checked={chosen.includes(c.id)} onChange={() => toggle(c.id)} /></Td>
-                <Td className="text-xs">{c.id} · {CASKS[c.typeId].nameKo}{c.fills > 1 && vesselMaterial(c) === 'wood' ? ` (${c.fills}필)` : ''}</Td>
+                <Td><input type="checkbox" aria-label={`${c.id} 선택`} title={can ? undefined : '샘플은 못 뜨지만(횟수 다 씀·고객 소유) 태그는 붙일 수 있다'} disabled={!!c.owner} checked={picked.includes(c.id)} onChange={() => toggle(c.id)} /></Td>
+                <Td className="text-xs">{c.id} · {CASKS[c.typeId].nameKo}{c.fills > 1 && vesselMaterial(c) === 'wood' ? ` (${c.fills}필)` : ''}<CaskTagChips s={s} c={c} reserve={reserve} /></Td>
                 <Td className="max-w-48 truncate text-xs">{lot.name}{lot.sourced && <> <Badge tone="info">매입</Badge></>}{c.owner && <> <Badge tone="info">고객 소유</Badge></>}{c.rareKnown && <> <Badge tone="good">레어</Badge></>}{c.contaminationKnown && <> <Badge tone="bad">오염</Badge></>}</Td>
                 <Td right>{vesselMaterial(c) === 'wood' ? months(lot.oakMonths) : <>옹기 {months(lot.restMonths ?? 0)}{lot.oakMonths > 0 && <div className="text-xs text-stone-500">오크 {months(lot.oakMonths)}</div>}</>}</Td>
                 <Td right>{liters(lot.volumeL)}</Td>
@@ -427,7 +441,7 @@ function WarehouseCard() {
                     const f = flagshipImpact(s, [c.id]);
                     return <ConfirmButton small variant="ghost" armKey={`unfill-${c.id}@${s.month}`} armedLabel="한 번 더 누르면 빼기" onConfirm={() => dispatch({ type: 'unfillCask', caskId: c.id })}
                       title="원액을 빼 탱크로 옮긴다 — 손실 0.75%, 숙성 개월은 원액에 남고 통은 한 번 쓴 통이 된다"
-                      preview={() => <>{c.id} 원액 {num(lot.volumeL * 0.9925)}L를 탱크로(손실 {num(lot.volumeL * 0.0075, 1)}L) · 숙성 {months(lot.oakMonths)}은 원액에 남지만 탱크에서는 숙성이 멈춘다 · 통은 한 번 쓴 통이 된다{f.using ? <b className="block">⚠ 12년 플래그십 후보 통 — 다시 통에 넣기 전까지 후보에서 빠진다(남은 후보 {f.before} → {f.left}통)</b> : null}</>}>원액 빼기</ConfirmButton>;
+                      preview={() => <>{c.id} 원액 {num(lot.volumeL * 0.9925)}L를 탱크로(손실 {num(lot.volumeL * 0.0075, 1)}L) · 숙성 {months(lot.oakMonths)}은 원액에 남지만 탱크에서는 숙성이 멈춘다 · 통은 한 번 쓴 통이 된다{f.using ? <b className="block">⚠ 12년 플래그십 후보 통 — 다시 통에 넣기 전까지 후보에서 빠진다(남은 후보 {f.before} → {f.left}통)</b> : null}{reserve.has(c.id) ? <b className="block">⚠ 플래그십 예비 통이다(#260) — 빼면 다음 후보로 예비가 옮겨 간다</b> : null}</>}>원액 빼기</ConfirmButton>;
                   })()}
                   {c.contaminationKnown && !c.owner && (
                     // 오염 통 폐기 (#240 — 코어 화면의 되돌릴 수 없는 행동)
