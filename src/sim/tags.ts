@@ -32,7 +32,7 @@ export function tagDef(s: GameState, id: string): TagDef | undefined {
 
 /**
  * 플래그십 예비 통 (#260) — 시나리오 판에서 플래그십을 아직 팔지 않았으면:
- * ① 플레이어가 "플래그십 예비"를 직접 붙인 통 + ② 남은 자리(PROD_TUNING.flagshipReserve − ①)만큼 가장 오래된 후보 통(플레이어가 뗀 원액 제외).
+ * ① 플레이어가 "플래그십 예비"를 직접 붙인 통 + ② 남은 자리(PROD_TUNING.flagshipReserve − ① 중 후보인 통 수)만큼 가장 오래된 후보 통(플레이어가 뗀 원액 제외).
  * 후보 조건·순서는 #252 `economics.ts flagshipReserve`와 같다(원액 있음·고객 소유 아님·오염 확인 아님·나무 통·isFlagshipCandidate, 오크 긴 순 → id 순) —
  * 플레이어가 손대지 않으면 두 집합이 같다. 비거나 오염되면 다음 후보로 저절로 옮겨 간다(매번 다시 계산).
  * 매번 다시 계산하므로 상태에 저장하지 않는다 — 틱 순서·출력에 영향이 없다
@@ -41,7 +41,9 @@ export function reserveCaskIds(s: GameState): Set<string> {
   if (!s.scenario || s.progress.milestones.some((m) => m.id === 'flagship_sold')) return new Set();
   const optOut = new Set(s.inventory.reserveOptOut ?? []);
   const manual = s.inventory.casks.filter((c) => !!c.contents && !c.owner && (c.contents.tagIds ?? []).includes(FLAGSHIP_RESERVE_TAG));
-  const room = Math.max(0, PROD_TUNING.flagshipReserve - manual.length);
+  // 자리는 **후보인** 직접 예비만 차지한다 — 후보가 아닌 통(플래그십이 될 수 없는 어린 통)에 붙인 예비는 보호는 되지만 진짜 후보를 밀어내지 않는다
+  // (2026-11-11 PROD #300 테스트에서 발견: 44개월 통에 예비를 붙이자 후보 하나가 보호에서 빠졌다)
+  const room = Math.max(0, PROD_TUNING.flagshipReserve - manual.filter((c) => isFlagshipCandidate(s, c)).length);
   const manualIds = new Set(manual.map((c) => c.id));
   const auto = s.inventory.casks.filter((c) => !!c.contents && !c.owner && !c.contaminationKnown && vesselMaterial(c) === 'wood' && isFlagshipCandidate(s, c)
       && !manualIds.has(c.id) && !optOut.has(c.contents.id))
