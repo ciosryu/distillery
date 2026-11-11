@@ -246,3 +246,35 @@ describe('해외 명성 (#96)', () => {
     expect(s.commerce.exports[1]!.awareness).toBeGreaterThanOrEqual(0.15);
   });
 });
+
+// ───────────── 수출 끄기의 계약 물량 경고 (#284, 화면만 — 전망 계산) ─────────────
+describe('수출 계약 연 최소 물량 전망 (#284)', () => {
+  const base = (noExport: boolean, sold: number) => {
+    const s = newGame({ seed: 7 }); houseBrand(s).awareness = 0.6; s.month = 60;
+    s.commerce.products = [whisky({ stockBottles: 5000, ...(noExport ? { noExport: true } : {}) })];
+    s.commerce.exports = [{ marketId: 'DF', openedMonth: 40, readyMonth: 40, awareness: 0.6, totalBottles: 0, priceFactor: 1, marketingPerMonth: 2_000_000, partner: '게이트원', minBottlesPerYear: 900, yearStartMonth: 50, bottlesThisYear: sold }];
+    return s;
+  };
+
+  it('남은 제품을 모두 「수출 안 함」으로 빼면 미달 전망으로 잡고, 뺀 제품 수를 원인으로 센다', async () => {
+    const { contractOutlook } = await import('./exportDeals');
+    const out = contractOutlook(base(true, 100));
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ marketId: 'DF', min: 900, soFar: 100, projected: 100, monthsLeft: 2, noExport: 1 });
+  });
+
+  it('수요로 최소를 넘길 전망이면 잡지 않는다 — 이미 다 채운 계약도', async () => {
+    const { contractOutlook } = await import('./exportDeals');
+    expect(contractOutlook(base(false, 900))).toEqual([]);
+  });
+
+  it('준비 중인 계약·최소 물량이 없는 계약은 보지 않는다', async () => {
+    const { contractOutlook } = await import('./exportDeals');
+    const s = base(true, 0);
+    s.commerce.exports![0]!.readyMonth = 70;
+    expect(contractOutlook(s)).toEqual([]);
+    const t = base(true, 0);
+    delete t.commerce.exports![0]!.minBottlesPerYear;
+    expect(contractOutlook(t)).toEqual([]);
+  });
+});

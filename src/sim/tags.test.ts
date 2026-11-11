@@ -98,3 +98,14 @@ describe('캐스크 태그 (#249 ①)', () => {
     expect(s.inventory.lots.filter((l) => l.tagIds?.includes(t)).length).toBeGreaterThan(0);
   });
 });
+
+describe('후보가 아닌 통에 붙인 예비 (2026-11-11, PROD #300 테스트에서 발견)', () => {
+  it('보호는 되지만 예비 자리를 차지하지 않는다 — 진짜 후보 4통은 그대로 예비', () => {
+    let s = withCasks([['Y', 44], ['O', 70], ['O2', 66], ['O3', 64], ['O4', 62], ['O5', 61]]); // 96개월 — 60개월 이상이 후보
+    s = ok(s, { type: 'tagCasks', caskIds: ['Y'], add: [FLAGSHIP_RESERVE_TAG] });
+    expect([...reserveCaskIds(s)].sort()).toEqual(['O', 'O2', 'O3', 'O4', 'Y']); // Y는 보호, 후보 4통도 그대로
+    expect(protectedCaskIds(s).has('Y')).toBe(true);
+    s = ok(s, { type: 'tagCasks', caskIds: ['O5'], add: [FLAGSHIP_RESERVE_TAG] }); // 후보에 직접 붙이면 그 통이 자리를 차지한다
+    expect([...reserveCaskIds(s)].sort()).toEqual(['O', 'O2', 'O3', 'O5', 'Y']);
+  });
+});
