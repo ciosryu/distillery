@@ -28,7 +28,12 @@ export const humidityK = (humidity: number) => clamp(1 + 0.012 * (humidity - 60)
 /** 습도에 따른 증발량(액량) 배수: 습하면 덜 줄고 건조하면 더 준다 */
 export const humidityVolumeFactor = (humidity: number) => clamp(1 - 0.01 * (humidity - 60), 0.7, 1.3);
 
+/** 통에 남길 수 있는 가장 적은 원액(L) — 이보다 적으면 비운다(병입·핸드필·숙성 틱 공통, C-PROD-1) */
+export const MIN_CASK_VOLUME_L = 1;
+
 export function evaporate(volumeL: number, abv: number, rate: number, humidity: number): { volumeL: number; abv: number; lostL: number } {
+  // 빈 원액(샘플이 0L까지 깎은 통 등)은 0÷0으로 도수가 NaN이 되어 보관비·현금까지 번졌다(C-PROD-1) — 양이 없으면 그대로 둔다
+  if (!(volumeL > 0)) return { volumeL: 0, abv, lostL: 0 };
   const lostL = volumeL * rate * humidityVolumeFactor(humidity);
   const alpha = Math.min(0.97, abv * humidityK(humidity));
   const newVol = volumeL - lostL;

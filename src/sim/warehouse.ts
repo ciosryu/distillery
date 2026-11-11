@@ -1,7 +1,7 @@
 import { CASKS, EQUIPMENT, type WarehouseType } from './content/catalog';
 import { siteOf } from './content/regions';
 import { clamp } from './flavor';
-import { type Climate, matureVessel, restLot } from './maturation';
+import { type Climate, emptyCask, matureVessel, MIN_CASK_VOLUME_L, restLot } from './maturation';
 import { type Rng, rngFor } from './rng';
 import type { Cask, GameState, MonthReport } from './types';
 import { staffOf, ownsFacility } from './util';
@@ -159,6 +159,13 @@ export function runMaturation(s: GameState, report: MonthReport, ctx: TickContex
       lost += c.volumeL * lossShare;
       next = { ...next, contents: { ...c, volumeL: c.volumeL * (1 - lossShare), costPerLPA: c.costPerLPA / (1 - lossShare) } };
       report.notes.push(`캐스크 ${cask.id} 누수 — ${(lossShare * 100).toFixed(1)}% 손실`);
+    }
+    // 1L 아래로 줄어든 통은 비운다(C-PROD-1) — 병입·핸드필의 "1L 미만이면 비움"과 같은 기준. 샘플(0.1L/회)·누수·증발이 작은 잔량을 0L까지 깎으면
+    // 증발식이 0÷0으로 도수 NaN을 냈다. 남은 원액은 잃는다(통값·숙성고 자리는 돌아온다)
+    if (next.contents && next.contents.volumeL < MIN_CASK_VOLUME_L) {
+      report.notes.push(`캐스크 ${cask.id} 원액이 ${next.contents.volumeL.toFixed(2)}L로 줄어 비웠다(1L 미만)`);
+      lost += next.contents.volumeL;
+      return emptyCask(next);
     }
     return next;
   });
