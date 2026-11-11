@@ -59,7 +59,7 @@ const LOAN = Number(process.env.LOAN ?? 0);
 if (!process.env.P8) EVENTS.splice(0);
 applyMgtKnobs(); // MGT 실험 손잡이 (T-0) — 환경 변수가 없으면 아무 일도 하지 않는다
 
-interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number }
+interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean }
 const P = (name: string, o: Partial<Policy>): Policy => ({ name, soju: 'stock', loans: 'banner', cut: 'none', visitor: true, farm: false, bigMalt: false, ...o });
 const POLICIES: Policy[] = [
   P('A 봇 기준', { loans: 'bot' }),
@@ -121,10 +121,11 @@ const P7_POLICIES: Policy[] = [
   P4('W5 W2 + 후보 5통 보호', { order: 'young', labelFrom: LABEL3, protect: 5 }),
 ];
 // 표준 규모 사람형 판정용 봇 (P8, #265) — 후반 확인 판(standard 166개월)의 행동. 전통주 등록·발효조 2기·몰트 4·소주 1은 4차 재현(Q0)과 같다(후반 판의 등록 여부는 기록에 없다)
-const MKT8: [number, number][] = [[0, 3_500_000], [96, 2_000_000]];
+// 마케팅(MKT 명세 — 후반 판 월 결산): 350만(54~66개월) → 400만(78~90) → 200만(102~). 54개월 전은 기록이 없어 350만으로 본다
+const MKT8: [number, number][] = [[0, 3_500_000], [78, 4_000_000], [102, 2_000_000]];
 // 보정(MKT §7.20·MGT §7.19의 사람 판 숫자, mgt-stage-t.md P8 보정): 계열마다 제품 3개를 두고 재고가 적은 쪽에 보충 + 자동 가격(사람: 진열 4제품 자동 가격),
 // 수출 84개월부터 5곳·가격 배수 1.25(사람 1.19~1.28). 보정 결과(6시드, standard): 166개월째 순자산 18.99억(사람 21.14억), 파산 0 — 수출 출발이 사람보다 1~2년 늦다
-const P8 = (name: string, o: Partial<Policy>): Policy => P4(name, { mkt: MKT8, order: 'young', labelFrom: LABEL3, protect: 2, giftshopAt: 85, handfillAt: 86, exportFrom: 84, exportMax: 5, exportPrice: 1.25, raiseIfCash: 1_000_000_000, lineup: 3, autoPrice: true, ...o });
+const P8 = (name: string, o: Partial<Policy>): Policy => P4(name, { mkt: MKT8, order: 'young', labelFrom: LABEL3, protect: 2, giftshopAt: 85, handfillAt: 86, exportFrom: 84, exportMax: 5, exportPrice: 1.25, raiseIfCash: 1_000_000_000, lineup: 3, autoPrice: true, newMake: { from: 5, until: 60, stock: 300 }, exportDemand: true, ...o });
 const P8_POLICIES: Policy[] = [
   P8('X0 표준 규모 사람형(후반 확인 판 재현)', {}),
   P8('X1 X0 − 수출', { exportFrom: undefined }),
@@ -135,7 +136,12 @@ const P8_POLICIES: Policy[] = [
   P8('X6 X0 − 계열당 2제품', { lineup: 2 }),
   P8('X7 X0 − 계열당 1제품', { lineup: 1 }),
   P8('X8 X0 − 제품 상한(병입마다 새 제품)', { lineup: undefined }),
-  P8('X9 보정 전 초안(86개월·4곳·제안가·새 제품·기본가)', { exportFrom: 86, exportMax: 4, exportPrice: undefined, lineup: undefined, autoPrice: false }),
+  P8('X9 보정 전 초안(86개월·4곳·제안가·새 제품·기본가)', { exportFrom: 86, exportMax: 4, exportPrice: undefined, lineup: undefined, autoPrice: false, newMake: undefined, exportDemand: false, mkt: [[0, 3_500_000], [96, 2_000_000]] }),
+  P8('X10 X0 − 뉴메이크 판매', { newMake: undefined }),
+  P8('X11 X0 − 병입 목표의 수출 수요', { exportDemand: false }),
+  // 공급 레버(MKT 수출 증분 분해 — 공급 ×1.5면 +13.5억): 지금 증류기·발효조로 몰트 배치를 늘린다. 사람 판은 4배치 — 지배 전략인지 BAL이 본다
+  P8('X12 X0 + 몰트 6배치', { maltB: 6 }),
+  P8('X13 X0 + 몰트 8배치', { maltB: 8 }),
 ];
 const P3_POLICIES: Policy[] = [
   P3('R0 3차 규모 · 사람 기준(배너 대출·비지터 지음)', {}),
@@ -205,9 +211,20 @@ function bottle(s: GameState, p: Policy, t: { firstWhisky: number }): GameState 
     if (p.soju === 'stock' && (stockOf(s, 'soju_distilled') >= 1500 || s.month - lot.createdMonth < 1)) continue;
     s = bottleAs(s, p, [{ source: 'lot', id: lot.id, liters: lot.volumeL }], { name: p.lineup ? '소주' : `소주 ${s.month}`, targetAbv: 0.25, bottleMl: 375, chillFilter: true, packagingId: 'standard' }, 'soju_distilled');
   }
+  // 뉴메이크 제품(P8, MKT 명세 — 후반 판: 5개월째부터 언피티드·피티드 뉴메이크를 팔았다, 합계 약 9,800병): 재고가 stock병 밑이면 몰트 원액 일부를 500ml 46%로
+  if (p.newMake && s.month >= p.newMake.from && s.month < p.newMake.until) {
+    const have = stockOf(s, 'malt_spirit');
+    const lot = s.inventory.lots.filter((l) => l.kind === 'malt').sort((a, b) => b.volumeL - a.volumeL)[0];
+    if (lot && have < p.newMake.stock) {
+      const liters = Math.min(lot.volumeL, Math.ceil(((p.newMake.stock - have) * 0.5 * 0.46) / Math.max(0.46, lot.abv)));
+      if (liters > 0) s = bottleAs(s, p, [{ source: 'lot', id: lot.id, liters }], { name: '뉴메이크', targetAbv: 0.46, bottleMl: 500, chillFilter: false, packagingId: 'standard' }, 'malt_spirit');
+    }
+  }
   // 위스키: 재고가 지난달 수요의 1.5배(최소 600병) 밑이면 12개월 넘은 통부터 (봇과 같은 규칙 — 사람·봇 차이에서 뺀다)
   const stock = stockOf(s, 'whisky');
-  const target = Math.max(600, demandLast(s, 'whisky') * 1.5);
+  // P8(MKT 명세 ②): 병입 목표에 지난달 수출 병 수를 더한다 — 수출이 국내 재고를 먼저 가져가므로(#109)
+  const exportLast = p.exportDemand ? (s.history.reports.at(-1)?.exports ?? []).reduce((a, x) => a + x.bottles, 0) : 0;
+  const target = Math.max(600, (demandLast(s, 'whisky') + exportLast) * 1.5);
   if (stock < target) {
     const n = Math.min(10, Math.max(1, Math.ceil((target - stock) / 330)));
     const minOak = p.labelFrom && s.month >= p.labelFrom[0] ? p.labelFrom[1] : 12;
