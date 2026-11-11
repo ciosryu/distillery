@@ -81,9 +81,9 @@
 
 | 파트 | 범위 (단계 P에서 할 일 — 초안) | 소유 파일 | PRD 절 |
 |---|---|---|---|
-| **PROD** 생산·숙성·블렌딩 | 피니싱, 정보 불확실성(샘플링), 블렌딩 테이블 화면·보상 연결, 생산 테크 노드의 효과 데이터 | `production.ts`(+ 생산 단계 `runProduction`)·`maturation.ts`·**`warehouse.ts`**(+ 숙성 단계)·**`casks.ts`**·**`waterPermit.ts`**·`flavor.ts`·`blending.ts`·`blendTable.ts`·`blendRadar.ts`·`weather.ts`·**`actions.prod.ts`**, **`content/production.ts`**·`content/axes.ts`·`categories.ts`, **`economics.ts`**(병당 손익 #173), 테스트 **`production.test.ts`**·`vessel.test.ts`·`blendTable.test.ts`, 화면 `Production`·`Warehouse`·`Bottling`·`BlendLab`·**`AutoSample`**(자동 샘플 설정 줄, #207 — 증류소 탭에 끼움) · **`Sales`(MKT 종료로 임시 소유, #173)** | §4~§6, flavor-model, blending-minigame |
-| **MKT** 시장·판매·B2B·수출 — **재개(2026-11-08, 오너)**. 2026-11-07에 종료해 자리를 MGT에 넘겼다가 다시 열었다. `Sales` 화면은 여전히 PROD 임시 소유(#173) | 브랜드 라인(세컨드 브랜드 개설·배정·브랜드별 인지도 성장·B_brand), 수요 공식 정리(SKU √n) | `market.ts`·**`brands.ts`**·**`sales.ts`**(판매·주세 단계)·**`retail.ts`**·**`tourism.ts`**·**`dutyFree.ts`**·`bulk.ts`·`broker.ts`·`deals.ts`·`exportDeals.ts`·**`actions.mkt.ts`**, **`content/market.ts`**·`content/exports.ts`·`names.ts`, `data/market/`, 테스트 **`market.test.ts`**·`exports.test.ts`·**`brands.test.ts`**, 화면 ~~`Sales`~~(→ PROD 임시)·`B2B`·`Exports` | §8.3, §8.5~§8.6, §9, §11 |
-| **MGT** 재무·HR·이벤트·연구 | 연구 노드 전체(공통 4계통 + 주종 브랜치)·효과·실적 보너스·연구 화면·게이트 켜기(`TECH_GATING`), 재무 확장(이사회·헷징·보험) | `cashflow.ts`·**`loans.ts`**(+ 재무 단계)·**`investment.ts`**·`hr.ts`(+ 생애주기·사무직)·`events.ts`·`research.ts`·**`insurance.ts`**(#171)·**`forwards.ts`**(#179)·**`board.ts`**(#180)·**`forecast.ts`**(ENG-3 가격 예측, #188)·**`earlyWarning.ts`**(매크로 조기 경보, #189)·**`actions.mgt.ts`**, **`content/finance.ts`**·`content/events.ts`·`tech.ts`, 테스트 **`finance.test.ts`**·`fixedcost.test.ts`·`board.test.ts`·`repay.test.ts`·`otherincome.test.ts`·`eventrisk.test.ts`·`events.test.ts`·`research.test.ts`·`forecast.test.ts`·`earlyWarning.test.ts`, 화면 `Finance`·`Staff`·`Events`·`Dashboard`·**`Board`**(#180)·**`FixedCost`**·**`staffImpact.ts`**(직원 탭 효과 숫자 계산, #251)(증류소 탭에 끼움, #181)·`Research`·**`Forecast`**(#188) | §7, §8.1~§8.2, §8.4, §10, tech-tree |
+| **PROD** 생산·숙성·블렌딩 | 피니싱, 정보 불확실성(샘플링), 블렌딩 테이블 화면·보상 연결, 생산 테크 노드의 효과 데이터 | `production.ts`(+ 생산 단계 `runProduction`)·`maturation.ts`·**`warehouse.ts`**(+ 숙성 단계)·**`casks.ts`**·**`waterPermit.ts`**·`flavor.ts`·`blending.ts`·`blendTable.ts`·`blendRadar.ts`·`weather.ts`·**`actions.prod.ts`**, **`content/production.ts`**·`content/axes.ts`·`categories.ts`, **`economics.ts`**(병당 손익 #173)·**`prodTuning.ts`**(PROD 수치 손잡이 — 단계 T 측정 준비 T-0), 테스트 **`production.test.ts`**·`vessel.test.ts`·`blendTable.test.ts`, 실험 **`scripts/experiments/prodKnobs.ts`**, 화면 `Production`·`Warehouse`·`Bottling`·`BlendLab`·**`AutoSample`**(자동 샘플 설정 줄, #207 — 증류소 탭에 끼움) · **`Sales`(MKT 종료로 임시 소유, #173)** | §4~§6, flavor-model, blending-minigame |
+| **MKT** 시장·판매·B2B·수출 — **재개(2026-11-08, 오너)**. 2026-11-07에 종료해 자리를 MGT에 넘겼다가 다시 열었다. `Sales` 화면은 여전히 PROD 임시 소유(#173) | 브랜드 라인(세컨드 브랜드 개설·배정·브랜드별 인지도 성장·B_brand), 수요 공식 정리(SKU √n) | `market.ts`·**`brands.ts`**·**`sales.ts`**(판매·주세 단계)·**`retail.ts`**·**`tourism.ts`**·**`dutyFree.ts`**·`bulk.ts`·`broker.ts`·`deals.ts`·`exportDeals.ts`·**`actions.mkt.ts`**, **`content/market.ts`**·`content/exports.ts`·`names.ts`, `data/market/`, 테스트 **`market.test.ts`**·`exports.test.ts`·**`brands.test.ts`**, 화면 ~~`Sales`~~(→ PROD 임시)·`B2B`·`Exports`·**`ExportShortfallNote.tsx`**(수출-국내 품절 표시, #257), 실험 **`scripts/experiments/mkt-*.ts`**·**`mktP8Hooks.ts`** | §8.3, §8.5~§8.6, §9, §11 |
+| **MGT** 재무·HR·이벤트·연구 | 연구 노드 전체(공통 4계통 + 주종 브랜치)·효과·실적 보너스·연구 화면·게이트 켜기(`TECH_GATING`), 재무 확장(이사회·헷징·보험) | `cashflow.ts`·**`loans.ts`**(+ 재무 단계)·**`investment.ts`**·`hr.ts`(+ 생애주기·사무직)·`events.ts`·`research.ts`·**`insurance.ts`**(#171)·**`forwards.ts`**(#179)·**`board.ts`**(#180)·**`forecast.ts`**(ENG-3 가격 예측, #188)·**`earlyWarning.ts`**(매크로 조기 경보, #189)·**`actions.mgt.ts`**, **`content/finance.ts`**·`content/events.ts`·`tech.ts`, 테스트 **`finance.test.ts`**·`fixedcost.test.ts`·`board.test.ts`·`repay.test.ts`·`otherincome.test.ts`·`eventrisk.test.ts`·`events.test.ts`·`research.test.ts`·`forecast.test.ts`·`earlyWarning.test.ts`, 화면 `Finance`·`Staff`·`Events`·`Dashboard`·**`Board`**(#180)·**`FixedCost`**·**`staffImpact.ts`**(직원 탭 효과 숫자 계산, #251, 테스트 `staffImpact.test.ts`), 실험 **`scripts/experiments/mgtKnobs.ts`**·**`mgt-stage-t.ts`**·**`capitalCost.ts`**(자본비용, MGT-C)·**`metrics.ts`**(판정 지표 정본 측정, MGT-D)(증류소 탭에 끼움, #181)·`Research`·**`Forecast`**(#188) | §7, §8.1~§8.2, §8.4, §10, tech-tree |
 | **META** 시나리오·진행·경쟁 | 가상 이력 생성기, 면허 취소 규칙, 마일스톤 추가·업적(단계 V), (후속) 경쟁 AI | `progress.ts`·`actions.meta.ts`·`content/milestones.ts`, 테스트 `progress.test.ts`, 화면 `Verdict` | §12, §9.4 |
 
 ### 3.3 여러 파트가 나눠 쓰던 파일 — **쪼갰다 (S-4, 결정 #144, 2026-11-06)**
@@ -100,6 +100,32 @@
 | `content/catalog.ts` | 원재료·설비·캐스크(PROD) · 대출·투자 상품(MGT) · 패키징(MKT) |
 | `scripts/balance-sim.ts` | 봇 정책(각 파트) · 판정(BAL) |
 | `sim.test.ts` | 모든 시스템 테스트(850줄) |
+
+### 3.4 실험 스크립트와 공동 편집 파일 (ARCH 정리, 2026-11-11)
+
+실험 스크립트(`scripts/experiments/`)는 게임 규칙이 아니지만 단계 T 판정이 기대는 도구다. 파트 전용 스크립트는 §3.2에 적었다. 여러 파트가 함께 고치는 파일은 **구역 소유**로 둔다:
+
+| 파일 | 구역 → 소유 | 규칙 |
+|---|---|---|
+| `scripts/experiments/mvp-human.ts` | 공통 틀(정책 타입·`bottle`·`bottleAs`·`fill`·`finance`·`play` 루프·표 출력) + P3~P7 묶음 → **ARCH** · **P8 묶음**(`P8_POLICIES`·`DV_POLICIES`·`AUTORESTOCK`·`METRICS`·`YEARLY`·`applyTierKnobs`·`mgtPolicy`, #265 판정용 봇) → **MGT** · 손 가격 정책(`price`·`markup`, MKT-B에서 옮김) → **MKT**(검토), 구현 위치는 공통 틀 | ① 자기 구역만 고친다 ② **공통 틀을 고치면 P8 출력이 바뀔 수 있다** — PR에 `P8=1 ONLY=X0 npx tsx scripts/experiments/mvp-human.ts 10 180` 전후 비교를 붙이고 MGT 검토를 받는다 ③ P8은 화면 모듈 `src/ui/alerts.ts`의 `cashAlert`를 읽는다(대출 정책 `cheap`·`banner`) — **`alerts.ts`의 런웨이·경보 식을 바꾸는 PR(코어 UI, ARCH)도 ②를 따른다** ④ 판정(#265·#277·#278)이 걸린 P8 기본값을 바꾸는 것은 MGT PR + PM 기록 |
+| `scripts/balance-sim.ts` | 단계 P 동안 **ARCH**(코어 도구 — 샌드박스 120개월 실험, #277 ②) · MGT 연결 2줄(#270 손잡이) → **MGT** · 단계 T에서 BAL로 넘긴다(§3.3) | 봇 정책을 바꾸면 8입지 DIAG 출력이 바뀐다 — 모든 파트 PR의 출력 비교 기준이라 바꾸는 PR은 그 사실을 본문 첫 줄에 적는다 |
+| `scripts/experiments/mvp-survival.ts` | **ARCH** | 순자산 정의를 게임과 맞추는 안 — 아래 §3.5 P-MGT-31 의견 |
+| `scripts/experiments/info-leak.ts`·`perf-casks.ts`·`playlog-report.ts`·`playtest-years.ts` | **ARCH** | — |
+
+### 3.5 코어 대행 사후 검토 기록 (ARCH)
+
+| 대상 | 결과 | 기록 |
+|---|---|---|
+| PR #260(MKT) c1e8619 — `step.ts`(IB 입찰 메모)·`TurnBrief.tsx`·`alerts.ts`(IB 할 일 수위·순서·기한) | 문제 없음. 기한 문구는 오히려 옛 코드(`≤ 1` → "이번 달까지")를 바로잡았다 — 제안 다음 달 1, 그다음 달 0, 그 달 틱에서 사라진다 | ciosryu/distillery#290 본문·커밋 7745f01 |
+| PR #260(MKT) 3b3dbf7 — `alerts.ts`(수출 품절 할 일·IB 해금 안내 3년↑ 통 수) | 문제 없음. 문구에 이후 결정 「수출 안 함」(#266) 추가 | 같은 곳 |
+| PR #259(PROD) — `alerts.ts`(자동 납품 "후보 n통 보호 중") | 문제 없음 | 같은 곳 |
+| 코어 선택 필드 `Product.noExport`(#266)·`Product.autoRestockMinMonths`(#267) | 문제 없음 — 재고 보충 합치기(`restockedProduct`)가 `...old`로 펼쳐 두 값이 유지된다. 없으면 지금 동작(수출함·표기 하한). 하한은 `autoRestockFloor`가 법정~표기로 묶는다 | 이 절 |
+| `MonthReport.whiskySkipped`·`ProductionSlice.skipSojuMonth`(#268) | 문제 없음. `skipSojuMonth`는 지난 달 값이 남지만 `=== s.month` 비교라 무해 — 다음 소주 버튼 때 덮인다 | 이 절 |
+| P8 판정용 봇(`mvp-human.ts` P8 — #265·#271·#276·#281·#289·#292) | 판정 논리는 맞다 — 3개월 파산을 스크립트가 세고 그 달 상태로 결과를 고정(`outcomeOf(s, false)`)하므로 게임 판정(`verdict`)이 파산 판에 붙는 문제는 지표에 새지 않는다. **짚을 것 셋:** ① P7 손잡이(`order`·`labelFrom`·`protect`)를 재사용 — 의미는 같다. 다만 `protect`는 봇의 **손 병입**만 막는 별도 집합이라, PROD가 #252 보호를 태그(#260)로 옮긴 뒤에는 봇도 게임의 `protectedCaskIds`를 읽게 바꾸는 것이 맞다(사람이 보는 예비 태그와 같은 규칙을 판정) `[제안 — MGT 구역]` ② `negativeCashMonths`를 1 이하로 덮어 쓰므로, 그 값을 읽는 게임 식(`cashAlert`의 남은 달)이 실제 판과 다르다 — 대출 정책 `cheap`은 경보 유무만 보므로 결과 영향은 없다 `[추론]` ③ 화면 모듈 `cashAlert` 의존 — 위 §3.4 규칙 ③ | 이 절 |
+
+**의견 (PM 요청 2026-11-11):**
+- **P-MGT-31 — `mvp-survival.ts` 순자산 정의를 게임과 맞춘다: ARCH 찬성.** 지금 그 스크립트는 원액을 `bulkValuePerLPA × 0.85`로 세고 국산 프리미엄 절반·신뢰도 보정·포화·운송비가 빠지며 고객 소유 통이 들어간다. 그런데 **같은 출력의 판정 집계**(`verdict`)는 게임의 `judgeGoal`(= `progress.netWorth`)을 쓴다 — 한 표 안에서 "목표 달성" 열과 판정이 다른 순자산을 쓴다. #277로 단계 T 판정에 이 스크립트가 들어가므로 **T 기준선 전에** `metrics.ts outcomeOf`(게임 `netWorth`)로 바꾸는 것이 맞다. 출력이 바뀌므로 오너 결정 대기 57 묶음에서 결정 → ARCH PR 하나(전후 표 첨부: 목표 달성 수·순자산 평균이 약 +11% 이동, 파산·1위 전략은 그대로일 것 `[추론]`)
+- **NaN 세이브 복구 — 버전 마이그레이션은 필요 없고, 불러오기 때 "수리" 한 단계가 필요하다 `[결정 #285]`.** [사실] JSON은 NaN을 `null`로 저장하고, 다시 불러오면 `null`은 산술에서 0처럼 굴어(`null − 100 = −100`, `null < 0`은 false) **현금이 조용히 0원**이 된다 — 오류 없이 돈이 사라지거나 생긴다. 안: `migrateSave` 뒤에 버전과 무관한 `repairSave`(코어 `migrate.ts`) — ① 원액 양·도수가 유한하지 않거나 0 이하인 통은 비운다 ② 현금이 유한하지 않으면 마지막 유한한 결산의 월말 현금으로 되돌리고 ③ 고친 것을 한 줄 알림("세이브 복구 — 통 n개 비움, 현금을 m개월째 결산 값으로")으로 보인다. 함께 **"상태에 유한하지 않은 수가 없다"** 불변식 테스트(여러 판 × 180개월)를 건다 — 다음 NaN을 판 전에 잡는다. 구현은 PROD 수정이 머지된 뒤. 대안: 아무것도 안 함(현금 0으로 이어짐 — 오너 판이면 결과가 틀어진다). 확인 필요: NaN이 사람 판 세이브에 실제로 생겼는지(봇에서만이면 우선순위 낮음)
 
 ---
 
