@@ -76,7 +76,7 @@ applyProdKnobs(); // PROD 실험 손잡이 — 환경 변수가 없으면 아무
 // 게임 자동 납품으로 위스키 보충 (PROD 요청, P8만) — 0이면 끔
 const AUTORESTOCK = process.env.P8 && process.env.AUTORESTOCK === '1' ? Number(process.env.AUTORESTOCK_MONTHS ?? 2) : 0;
 
-interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean; maltFrom?: [number, number]; autoRestock?: number; visitorAt?: number; equipAt?: number; b2b?: { share: number; until: number } }
+interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean; maltFrom?: [number, number]; autoRestock?: number; visitorAt?: number; equipAt?: number; b2b?: { share: number; until: number }; flagship?: boolean }
 const P = (name: string, o: Partial<Policy>): Policy => ({ name, soju: 'stock', loans: 'banner', cut: 'none', visitor: true, farm: false, bigMalt: false, ...o });
 const POLICIES: Policy[] = [
   P('A 봇 기준', { loans: 'bot' }),
@@ -165,6 +165,9 @@ const P8_POLICIES: Policy[] = [
   P8('X16 6배치 60개월부터', { maltFrom: [60, 6] }),
   P8('X17 6배치 96개월부터', { maltFrom: [96, 6] }),
   P8('X18 6배치 120개월부터', { maltFrom: [120, 6] }),
+  // 플래그십 병입(MGT-D): 예비 통이 최소 숙성을 채우면 한 번 병입한다 — 등급 A·S·플래그십 달성률을 재려면 필요하다
+  P8('X19 X0 + 플래그십 병입', { flagship: true }),
+  P8('X20 X12 + 플래그십 병입', { maltB: 6, flagship: true }),
 ];
 // Death Valley 생존 경로 (MGT-A, 요구사항 감사 Phase B — P8=1 DV=1). X0 위에서 한 축씩: 대출 · 비지터 센터 · 소주 비중 · 증산+대출 · 제한적 원액 B2B · 설비 시점.
 // 대출 없는 짝(−대출)을 같이 두어 "대출이 생존의 필수 조건인가, 정상 조달 수단인가"를 가른다. MKT-D(생존 대안)는 같은 틀·같은 ID로 비교한다
@@ -180,6 +183,10 @@ const DV_POLICIES: Policy[] = [
   P8('D8 보수적 설비(비지터 12개월·발효조·전통주 등록 24개월)', { visitorAt: 12, equipAt: 24 }),
   P8('D9 D8 − 대출', { visitorAt: 12, equipAt: 24, loans: 'none' }),
   P8('D10 비지터 없이 소주 2배치 + 제한적 B2B, 대출 없음(MKT-D 대안)', { visitor: false, giftshopAt: undefined, sojuB: 2, b2b: { share: 0.25, until: 60 }, loans: 'none' }),
+  // 무차입 축소 운영 — 위 무차입 짝은 생산을 줄이지 않는다(봇 한계). 자기자본에 맞춰 생산을 줄이고, 현금이 고정비 1개월치 밑이면 그달 생산을 건너뛴다(P6 규칙)
+  P8('D11 무차입 축소(몰트 2·소주 1, 현금 < 고정비 1개월이면 생산 건너뜀)', { maltB: 2, sojuB: 1, loans: 'none', skipBelow: 1 }),
+  P8('D12 무차입 최소(몰트 1·소주 2, 생산 건너뜀)', { maltB: 1, sojuB: 2, loans: 'none', skipBelow: 1 }),
+  P8('D13 D2 + 배너 대출(시설·운전자금까지 — 비싼 대출로 비지터 센터를 대신하나)', { visitor: false, giftshopAt: undefined, loans: 'banner' }),
 ];
 const P3_POLICIES: Policy[] = [
   P3('R0 3차 규모 · 사람 기준(배너 대출·비지터 지음)', {}),
@@ -251,12 +258,12 @@ function bottleAs(s: GameState, p: Policy, comps: { source: 'lot' | 'cask'; id: 
   // 자동 가격을 끈 정책: 보충한 제품의 값을 지금 권장가로 다시 맞춘다(새 제품은 병입 때 권장가로 나온다) — MKT-B가 짚은 X5 결함
   if (!p.autoPrice && opts.restockId) { const x = s.commerce.products.find((y) => y.id === opts.restockId); if (x) s = act(s, { type: 'setPrice', productId: x.id, price: currentSuggested(s, x) }); }
   // 게임 자동 납품(AUTORESTOCK): 새로 만든 위스키 제품에 켠다 — 쓸 통의 최소 숙성은 표기(기본)
-  if (p.autoRestock && isWhiskyCategory(cat)) for (const x of s.commerce.products.filter((y) => y.category === cat && !y.autoRestock && !y.dutyFreeOnly)) s = act(s, { type: 'setAutoRestock', productId: x.id, months: p.autoRestock });
+  if (p.autoRestock && isWhiskyCategory(cat)) for (const x of s.commerce.products.filter((y) => y.category === cat && !y.autoRestock && !y.dutyFreeOnly && !y.name.startsWith('플래그십'))) s = act(s, { type: 'setAutoRestock', productId: x.id, months: p.autoRestock });
   if (p.autoPrice) for (const x of s.commerce.products.filter((y) => y.category === cat && !y.autoPrice && !y.dutyFreeOnly)) s = act(s, { type: 'setAutoPrice', productId: x.id, on: true });
   return s;
 }
 
-function bottle(s: GameState, p: Policy, t: { firstWhisky: number }): GameState {
+function bottle(s: GameState, p: Policy, t: { firstWhisky: number; flagshipDone?: boolean }): GameState {
   for (const lot of [...s.inventory.lots]) {
     if (lot.kind !== 'soju') continue;
     if (p.soju === 'stock' && (stockOf(s, 'soju_distilled') >= 1500 || s.month - lot.createdMonth < 1)) continue;
@@ -269,6 +276,17 @@ function bottle(s: GameState, p: Policy, t: { firstWhisky: number }): GameState 
     if (lot && have < p.newMake.stock) {
       const liters = Math.min(lot.volumeL, Math.ceil(((p.newMake.stock - have) * 0.5 * 0.46) / Math.max(0.46, lot.abv)));
       if (liters > 0) s = bottleAs(s, p, [{ source: 'lot', id: lot.id, liters }], { name: '뉴메이크', targetAbv: 0.46, bottleMl: 500, chillFilter: false, packagingId: 'standard' }, 'malt_spirit');
+    }
+  }
+  // 플래그십 병입(MGT-D — 등급 A·S를 재려면 플래그십을 팔아야 한다): 최소 숙성(시나리오, 기본 144개월)을 채운 자체 몰트 통 중
+  // 가장 오래된 protect통(없으면 2)을 한 번 「플래그십」 제품으로 병입한다. 사람 후반 판은 플래그십을 못 냈다(X0는 그대로 끔)
+  if (p.flagship && !t.flagshipDone) {
+    const minM = s.scenario?.goal.flagshipMinMonths ?? 144;
+    const fl = s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.kind === 'malt' && c.contents.oakMonths >= minM).sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths).slice(0, p.protect || 2);
+    if (fl.length) {
+      const before = s;
+      s = bottleAs(s, { ...p, lineup: undefined }, fl.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL })), { name: '플래그십', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' }, 'whisky');
+      if (s !== before) t.flagshipDone = true;
     }
   }
   // 위스키: 재고가 지난달 수요의 1.5배(최소 600병) 밑이면 12개월 넘은 통부터 (봇과 같은 규칙 — 사람·봇 차이에서 뺀다)
@@ -480,11 +498,13 @@ if (process.env.P7 || process.env.P8) {
 if (METRICS) {
   // 판정 지표 (MGT-D, REQ-MGT-4) — 순자산 통계는 파산 판도 넣는다(파산한 달의 순자산)
   const pct = (x: number) => `${Math.round(x * 100)}%`;
-  console.log('\n| 정책 | 생존 | 순자산 목표 달성 (95% CI) | 플래그십 판매 | 등급 S/A/B/C/F | B↑ · A↑ · S | 순자산 평균(전 판) · 중앙 · P10 · 하위 20% 평균 | 생존 판 평균 | 목표 |');
-  console.log('|---|---|---|---|---|---|---|---|---|');
+  console.log('\n| 정책 | 생존 | 순자산 목표 달성 (95% CI) | 플래그십 판매 (품질 중앙) | 등급 S/A/B/C/F | B↑ · A↑ · S | 순자산 평균(전 판) · 중앙 · P10 · 하위 20% 평균 | 생존 판 평균 | 목표 | 인지도 중앙 |');
+  console.log('|---|---|---|---|---|---|---|---|---|---|');
   for (const p of RUN) {
-    const m = summarize((ALL.get(p.name) ?? []).map((r) => r.outcome));
-    console.log(`| ${p.name} | ${pct(m.survival)} | ${pct(m.goal)} (${pct(m.goalCI[0])}~${pct(m.goalCI[1])}) | ${pct(m.flagship)} | ${m.grades.S}/${m.grades.A}/${m.grades.B}/${m.grades.C}/${m.grades.F} | ${pct(m.bPlus)} · ${pct(m.aPlus)} · ${pct(m.sRate)} | ${eok(m.nwMean)} · ${eok(m.nwMedian)} · ${eok(m.nwP10)} · ${eok(m.nwCVaR20)} | ${eok(m.nwAliveMean)} | ${eok(m.target)} |`);
+    const os = (ALL.get(p.name) ?? []).map((r) => r.outcome);
+    const m = summarize(os);
+    const fq = os.filter((o) => o.flagshipQuality != null).map((o) => o.flagshipQuality!);
+    console.log(`| ${p.name} | ${pct(m.survival)} | ${pct(m.goal)} (${pct(m.goalCI[0])}~${pct(m.goalCI[1])}) | ${pct(m.flagship)}${fq.length ? ` (${Math.round(med(fq))})` : ''} | ${m.grades.S}/${m.grades.A}/${m.grades.B}/${m.grades.C}/${m.grades.F} | ${pct(m.bPlus)} · ${pct(m.aPlus)} · ${pct(m.sRate)} | ${eok(m.nwMean)} · ${eok(m.nwMedian)} · ${eok(m.nwP10)} · ${eok(m.nwCVaR20)} | ${eok(m.nwAliveMean)} | ${eok(m.target)} | ${med(os.map((o) => o.awareness)).toFixed(3)} |`);
   }
   // 자본·유동성 (MGT-C, REQ-MGT-1~3)
   console.log('\n| 정책 | 6년 안 최저 현금(중앙) | 6년 안 최저 런웨이(현금÷월 고정비, 중앙) | 현금 < 0 개월(평균) | 원액 시가 최고(평균, 그 달 중앙) | 72개월 원액 비중(유동 자산 중) | 이자 합계(평균) |');
