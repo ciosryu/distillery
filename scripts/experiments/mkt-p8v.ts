@@ -3,7 +3,7 @@
 // 같은 폴더에 두는 까닭: 다른 폴더(OS 임시 폴더)에 두면 모듈이 따로 로드돼 RHO 같은 콘텐츠 값 바꾸기가 P8에 닿지 않는다
 // 실행: SET=<B|A|D> npx tsx scripts/experiments/mkt-p8v.ts [시드=10] [개월=180]
 //   SET=B  MKT-B 가격: 자동 가격(X0) / 자동 가격 끔(X5 — 보충 뒤 값 고정 결함 그대로) / 수동 권장가 / 수동 휴리스틱
-//   SET=B2 MKT-B 추가: 분기마다 가격표 최선 값을 손으로 / 권장가 × 1.3
+//   SET=B2 MKT-B 추가: 분기마다 가격표 최선 값을 손으로 / 권장가 × 1.3 — P8에 X21·X22로 들어갔다(MGT #289·#292). 머지 뒤에는 패처 없이 P8 ONLY=X21,X22가 같다
 //   SET=A  MKT-A SKU: 계열당 3·2·1제품(자동 가격) — RHO=<ρ>로 SKU.rho를, MARKET=<배수>로 국내 점유 상한을 실험 안에서만 바꾼다. SNAP=<달>이면 그 달 SKU 분해 표, DIAG=1이면 위스키 진열 원인 나누기
 //   SET=D  MKT-D 생존 대안: 비지터 센터·소주·뉴메이크·조기 위스키·원액 현물 제한 매각을 하나씩 빼거나 바꾼다
 //   TIER(기본 standard)·YEARLY·SPLIT 등 mvp-human.ts의 다른 환경 변수는 그대로
@@ -20,7 +20,7 @@ const SET = process.env.SET ?? 'B';
 const SETS: Record<string, string> = {
   B: `[
     P8('B0 자동 가격(X0)', {}),
-    P8('B1 자동 가격 끔 — 보충 뒤 값 고정(X5 그대로)', { autoPrice: false }),
+    P8('B1 자동 가격 끔(P8 X5 — #289 전: 보충 뒤 값 고정 결함 · 뒤: B2와 같음)', { autoPrice: false }),
     P8('B2 수동: 병입·보충 때 권장가', { autoPrice: false, price: 'suggest' }),
     P8('B3 수동: B2 + 분기마다 재고 개월로 ±5%', { autoPrice: false, price: 'heur' }),
   ]`,
@@ -34,14 +34,14 @@ const SETS: Record<string, string> = {
     P8('A1 계열당 1제품', { lineup: 1 }),
   ]`,
   D: `[
-    P8('D0 X0(비지터·소주 2·뉴메이크·조기 위스키)', {}),
-    P8('D1 비지터 센터 없음(기프트 샵·핸드필도 없음)', { visitor: false, giftshopAt: undefined, handfillAt: undefined }),
-    P8('D2 소주 없음', { sojuB: 0 }),
-    P8('D3 소주 3배치', { sojuB: 3 }),
-    P8('D4 뉴메이크 제품 없음', { newMake: undefined }),
-    P8('D5 조기 위스키 없음(36개월부터)', { labelFrom: [0, 36] }),
-    P8('D6 원액 현물 제한 매각(12~48개월 탱크 30%)', { spot: { from: 12, until: 48, share: 0.3 } }),
-    P8('D7 비지터 없음 + 소주 3 + 현물 제한', { visitor: false, giftshopAt: undefined, handfillAt: undefined, sojuB: 3, spot: { from: 12, until: 48, share: 0.3 } }),
+    P8('M-D0 X0(비지터·소주 2·뉴메이크·조기 위스키)', {}),
+    P8('M-D1 비지터 센터 없음(기프트 샵·핸드필도 없음)', { visitor: false, giftshopAt: undefined, handfillAt: undefined }),
+    P8('M-D2 소주 없음', { sojuB: 0 }),
+    P8('M-D3 소주 3배치', { sojuB: 3 }),
+    P8('M-D4 뉴메이크 제품 없음', { newMake: undefined }),
+    P8('M-D5 조기 위스키 없음(36개월부터)', { labelFrom: [0, 36] }),
+    P8('M-D6 원액 현물 제한 매각(12~48개월 탱크 30%)', { spot: { from: 12, until: 48, share: 0.3 } }),
+    P8('M-D7 비지터 없음 + 소주 3 + 현물 제한', { visitor: false, giftshopAt: undefined, handfillAt: undefined, sojuB: 3, spot: { from: 12, until: 48, share: 0.3 } }),
   ]`,
 };
 if (!SETS[SET]) throw new Error(`SET=${SET} 없음 — ${Object.keys(SETS).join('·')}`);
