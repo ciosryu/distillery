@@ -6,6 +6,7 @@ import type { GameState } from '../../src/sim';
 import { awarenessOf } from '../../src/sim/brands';
 import { GRADE, netWorth } from '../../src/sim/progress';
 import { monthlyFixedCost } from '../../src/sim/loans';
+import { currentSuggested } from '../../src/sim/economics';
 
 /** 판 하나의 결과 — 판정 달(기본 180개월) 또는 파산한 달의 상태로 만든다 */
 export interface RunOutcome {
@@ -121,6 +122,15 @@ export class MonthTracker {
   private whiskyBottles = 0;
   private priceMoves: number[] = [];
   private lastPrice = new Map<string, number>();
+  /** MKT AP3=1 표와 같은 정의(mktP8Hooks.ts snap) — 24개월부터, 재고 있는 위스키 제품 기준
+   *  stockMonthsLive: 달마다 (재고 있는 위스키 제품의 재고 합 ÷ 그 제품들의 판매 EMA 합)의 판 평균 — "팔고 있는 제품의 재고가 몇 달치인가"
+   *  (위 stockMonths는 품절 제품의 판매 EMA도 분모에 넣은 범주 전체 값의 중앙값 — "범주 수요 대비 재고". 공급 부족 판에서는 둘이 크게 다르다)
+   *  stockoutProductMonths: 재고 0인데 판매 EMA > 0인 위스키 제품·월 수 · avgMultiple: 값 ÷ 기준가(currentSuggested) 평균
+   *  unmetBottles: Σ max(0, 국내 수요 − 판매) 병(전 범주, 판 누계) */
+  private liveMonths: number[] = [];
+  stockoutProductMonths = 0;
+  private multiples: number[] = [];
+  unmetBottles = 0;
   /** 채널 — 국내·수출 매출·병 누계 */
   domRevenue = 0; domBottles = 0; expRevenue = 0; expBottles = 0;
   /** 제품 재고 장부가(재고 × 병당 원가) 달마다 — 가격 정책이 묶는 운전자본(REQ-MGT-3과 같은 뜻, 제품 쪽) */
@@ -143,16 +153,25 @@ export class MonthTracker {
         const c = cat.get(x.productId) ?? '?';
         const d = (this.demand[c] ??= [0, 0]);
         d[0] += x.demandBottles; d[1] += x.bottles;
+        this.unmetBottles += Math.max(0, Math.round(x.demandBottles) - x.bottles);
         if (x.demandBottles > 0) { this.sellMonths++; if (x.bottles < x.demandBottles - 0.5) this.shortMonths++; }
         this.domRevenue += x.revenue; this.domBottles += x.bottles;
         if (c === 'whisky') { this.whiskyRev += x.revenue; this.whiskyBottles += x.bottles; }
       }
       for (const x of r.exports ?? []) { this.expRevenue += x.revenue; this.expBottles += x.bottles; }
     }
-    for (const p of live.filter((x) => x.category === 'whisky' && x.stockBottles > 0)) {
-      const before = this.lastPrice.get(p.id);
-      if (before && before > 0) this.priceMoves.push(Math.abs(p.price - before) / before);
-      this.lastPrice.set(p.id, p.price);
+    // 가격 변동·배수·재고 있는 제품 재고 개월·품절 — MKT와 같이 24개월부터(초반 출시 달의 큰 변화를 빼고)
+    if (s.month >= 24) {
+      const ws = live.filter((x) => x.category === 'whisky'), stocked = ws.filter((x) => x.stockBottles > 0);
+      if (stocked.length) this.liveMonths.push(stocked.reduce((t, x) => t + x.stockBottles, 0) / Math.max(1, stocked.reduce((t, x) => t + (x.salesEma ?? 0), 0)));
+      this.stockoutProductMonths += ws.filter((x) => x.stockBottles <= 0 && (x.salesEma ?? 0) > 0).length;
+      for (const p of stocked) {
+        const sug = currentSuggested(s, p);
+        if (sug > 0) this.multiples.push(p.price / sug);
+        const before = this.lastPrice.get(p.id);
+        if (before && before > 0) this.priceMoves.push(Math.abs(p.price - before) / before);
+        this.lastPrice.set(p.id, p.price);
+      }
     }
     this.productCapital.push(s.commerce.products.reduce((t, p) => t + p.stockBottles * p.unitCost, 0));
     this.negRun = s.finance.cash < 0 ? this.negRun + 1 : 0;
@@ -182,6 +201,10 @@ export class MonthTracker {
       priceVolatility: this.priceMoves.length ? this.priceMoves.reduce((a, b) => a + b, 0) / this.priceMoves.length : NaN,
       domRevenue: this.domRevenue, domBottles: this.domBottles, expRevenue: this.expRevenue, expBottles: this.expBottles,
       productCapital: this.productCapital.length ? this.productCapital.reduce((a, b) => a + b, 0) / this.productCapital.length : NaN,
+      // MKT AP3=1 표와 같은 정의
+      stockMonthsLive: this.liveMonths.length ? this.liveMonths.reduce((a, b) => a + b, 0) / this.liveMonths.length : NaN,
+      stockoutProductMonths: this.stockoutProductMonths, unmetBottles: this.unmetBottles,
+      avgMultiple: this.multiples.length ? this.multiples.reduce((a, b) => a + b, 0) / this.multiples.length : NaN,
     };
   }
 }

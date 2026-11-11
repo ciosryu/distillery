@@ -701,6 +701,13 @@ if (METRICS) {
     const won = (v: number) => (Number.isFinite(v) ? `${Math.round(v).toLocaleString()}원` : '—');
     console.log(`| ${p.name} | ${eok(med(ms.map((x) => x.minCash)))} · ${avg(ms.map((x) => x.crisisMonths)).toFixed(1)} | ${med(ms.map((x) => x.stockMonthsWhisky)).toFixed(1)} · ${med(ms.map((x) => x.stockMonthsSoju)).toFixed(1)} | ${pct(avg(ms.map((x) => x.lostWhisky)))} · ${pct(avg(ms.map((x) => x.lostSoju)))} | ${won(avg(ms.map((x) => x.whiskyPrice)))} · ${(avg(ms.map((x) => x.priceVolatility)) * 100).toFixed(1)}% | ${eok(avg(ms.map((x) => x.domRevenue)))} · ${eok(avg(ms.map((x) => x.expRevenue)))} | ${eok(avg(ms.map((x) => x.productCapital)))} |`);
   }
+  // MKT AP3=1 표(mktP8Hooks.ts)와 같은 열·정의 — 두 파트 표를 나란히 놓을 수 있게
+  console.log('\n| 정책 | 국내 매출 | 수출 매출 | 국내 병 | 수출 병 | 미충족 국내 수요(병) | 재고 개월(재고 있는 위스키) | 품절 제품·달 | 평균 배수(기준가 대비) | 월 가격 변동(평균 |Δ|) |');
+  console.log('|---|---|---|---|---|---|---|---|---|---|');
+  for (const p of RUN) {
+    const ms = (ALL.get(p.name) ?? []).map((r) => r.month);
+    console.log(`| ${p.name} | ${(avg(ms.map((x) => x.domRevenue)) / 1e8).toFixed(2)} | ${(avg(ms.map((x) => x.expRevenue)) / 1e8).toFixed(2)} | ${Math.round(avg(ms.map((x) => x.domBottles))).toLocaleString()} | ${Math.round(avg(ms.map((x) => x.expBottles))).toLocaleString()} | ${Math.round(avg(ms.map((x) => x.unmetBottles))).toLocaleString()} | ${avg(ms.map((x) => x.stockMonthsLive)).toFixed(1)} | ${avg(ms.map((x) => x.stockoutProductMonths)).toFixed(1)} | ×${avg(ms.map((x) => x.avgMultiple)).toFixed(2)} | ${(avg(ms.map((x) => x.priceVolatility)) * 100).toFixed(1)}% |`);
+  }
   // 위험조정 비교 — 첫 정책 대비 같은 시드 짝(metrics.ts comparePaired)
   const base0 = (ALL.get(RUN[0]!.name) ?? []).map((r) => r.outcome);
   console.log(`\n| 정책 | ${RUN[0]!.name.split(' ')[0]} 대비 순자산 차이(평균 · t · 이긴 시드) | 하위 20% 평균 차이 | 판단 |`);
