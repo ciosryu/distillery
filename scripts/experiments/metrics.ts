@@ -88,3 +88,40 @@ export function summarize(os: RunOutcome[]) {
     target: os[0]?.target ?? NaN,
   };
 }
+
+/**
+ * 달마다 보는 지표 (BALANCE-SPEC §9 열린 문제 4 — MGT) — 봇이 매달 advanceMonth 뒤 observe(s)를 부르면 판 끝에 summary()로 낸다.
+ *  월 영업 현금흐름(결산 operatingCash — 투자·차입 제외) · 현금 부족 최대 연속 개월 · 12년↑(플래그십 최소 숙성) 통의 보유·병입·판매
+ *  게임 리포트는 최근 24개월만 자세히 남으므로(lifecycle) 판 전체 지표는 이렇게 달마다 모은다
+ */
+export class MonthTracker {
+  private op: number[] = [];
+  private negRun = 0;
+  maxNegRun = 0;
+  /** 12년↑ 자체 원액 통 수 — 144·168·180개월(판정 달) 시점 */
+  oldCasks: Record<number, number> = {};
+  /** 플래그십 최소 숙성 이상으로 병입된 위스키 병 수(제품 재고 + 판매 누계, 판 끝) · 판 병 수 */
+  oldBottled = 0;
+  oldSold = 0;
+  private oldIds = new Set<string>();
+  observe(s: GameState): void {
+    const r = s.history.reports.at(-1);
+    if (r) this.op.push(r.operatingCash ?? r.netCash);
+    this.negRun = s.finance.cash < 0 ? this.negRun + 1 : 0;
+    this.maxNegRun = Math.max(this.maxNegRun, this.negRun);
+    const min = s.scenario?.goal.flagshipMinMonths ?? 144;
+    if ([144, 168, 180].includes(s.month)) this.oldCasks[s.month] = s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.oakMonths >= min && (c.contents.kind === 'malt' || c.contents.kind === 'grain')).length;
+    // 보관된 옛 제품(productArchive)에는 숙성 정보가 없다 → 살아 있을 때 본 12년↑ 제품 id를 기억해 둔다
+    for (const p of s.commerce.products) if ((p.oakMonths ?? (p.ageYears ?? 0) * 12) >= min) this.oldIds.add(p.id);
+    const live = s.commerce.products.filter((p) => this.oldIds.has(p.id)), gone = s.commerce.productArchive.filter((p) => this.oldIds.has(p.id));
+    this.oldSold = [...live, ...gone].reduce((t, p) => t + p.totalSold, 0);
+    this.oldBottled = this.oldSold + live.reduce((t, p) => t + p.stockBottles, 0);
+  }
+  summary() {
+    const op = this.op;
+    // 영업 흑자 전환 달: 그 달부터 12개월 이동 합이 처음으로 0 이상이 되는 달(한 달 반짝 흑자는 세지 않는다)
+    let breakEven = NaN;
+    for (let i = 0; i + 12 <= op.length; i++) if (op.slice(i, i + 12).reduce((a, b) => a + b, 0) >= 0) { breakEven = i + 1; break; }
+    return { opMin: op.length ? Math.min(...op) : NaN, opMean: op.length ? op.reduce((a, b) => a + b, 0) / op.length : NaN, breakEven, maxNegRun: this.maxNegRun, oldCasks: this.oldCasks, oldBottled: this.oldBottled, oldSold: this.oldSold };
+  }
+}
