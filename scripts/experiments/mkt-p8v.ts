@@ -7,7 +7,7 @@
 //   SET=M  G04-MKT-1 가격 수준 스윕: 자동 가격 대 손 배수 0.9·1.0·1.15·1.3·1.5·1.7(CP-PM-4 "내 배수 유지") — PERSEED=1과 같이
 //   SET=H  P-MKT-28 가격 정책 그릇(ARCH §10.8): 자동 가격(contribution) 대 hold(권장가 × 배수 유지) 대 hold + 재고 소진 스위치(clear) — 식 v1 위에서 재려면 mkt-b1.ts로(SCRIPT=mkt-p8v.ts V=c3+s4m1.08+h+k)
 //   SET=H2 같은 그릇을 기준가(suggestedPrice 그대로) 하나로 — 기준가 ×1.3 유지·+소진(목표의 10%씩·80%까지 또는 자동 가격 사다리)·×1.5+소진. 권장가 정직화(h) 없는 식 v1 위에서(PM 기준점 정정)
-//   SET=AP3 AUTO-PRICE-3 진단(AP3-MKT-1): §3.9 조건 8(N 정상·S 공급 부족·O 과잉·$ 현금 부족·L 낮은 인지도·P 프리미엄·K1·K2 SKU) × 정책 4(A·B·B2·C) — AP3=1과 같이. COND=·POL=로 줄인다
+//   SET=AP3 AUTO-PRICE-3 진단(AP3-MKT-1): §3.9 조건 8(N 정상·S 공급 부족·O 과잉·$ 현금 부족·L 낮은 인지도·P 프리미엄·K1·K2 SKU) × 정책 4(A·B·B2·C, C13 = C의 목표 배수를 기본 1.3으로 — P-PROD-53) — AP3=1과 같이. COND=·POL=로 줄인다
 //   SET=A  MKT-A SKU: 계열당 3·2·1제품(자동 가격) — RHO=<ρ>로 SKU.rho를, MARKET=<배수>로 국내 점유 상한을 실험 안에서만 바꾼다. SNAP=<달>이면 그 달 SKU 분해 표, DIAG=1이면 위스키 진열 원인 나누기
 //   SET=D  MKT-D 생존 대안: 비지터 센터·소주·뉴메이크·조기 위스키·원액 현물 제한 매각을 하나씩 빼거나 바꾼다
 //   TIER(기본 standard)·YEARLY·SPLIT 등 mvp-human.ts의 다른 환경 변수는 그대로
@@ -76,11 +76,11 @@ const SETS: Record<string, string> = {
 // SET=AP3 — AUTO-PRICE-3 진단(AP3-MKT-1): 지시서 §3.9 조건 8 × 정책 4(A 현금회전 · B #200 · B′ 다기간 · C 프리미엄). COND=<코드,…>·POL=<코드,…>로 줄인다
 {
   const COND: [string, string][] = [
-    ['N', "정상', {"], ['S', "공급 부족(몰트 2배치)', { maltB: 2, "], ['O', "과잉(몰트 6배치)', { maltB: 6, "], ['$', "현금 부족(대출 24개월부터)', { loansFrom: 24, "],
+    ['N', "정상', {"], ['S', "공급 부족(몰트 2배치)', { maltB: 2, "], ['O', "과잉(몰트 6배치)', { maltB: 6, "], ['$', "현금 부족(대출은 위기 배너가 뜬 뒤에만)', { loans: 'banner', "],
     ['L', "낮은 인지도(마케팅 월 100~150만)', { mkt: [[0, 1_000_000], [78, 1_500_000], [102, 1_000_000]], "], ['P', "프리미엄(60개월부터 4년↑만 + 플래그십)', { labelFrom: [60, 48], flagship: true, "],
     ['K1', "SKU 1', { lineup: 1, "], ['K2', "SKU 2', { lineup: 2, "],
   ];
-  const POL: [string, string][] = [['A', "autoPrice: false, price: 'turnover'"], ['B', ''], ['B2', "autoPrice: false, price: 'profit2'"], ['C', "autoPrice: false, price: 'premium'"]];
+  const POL: [string, string][] = [['A', "autoPrice: false, price: 'turnover'"], ['B', ''], ['B2', "autoPrice: false, price: 'profit2'"], ['C', "autoPrice: false, price: 'premium'"], ['C13', "autoPrice: false, price: 'premium', anchor: 1.3"]];
   const pickC = process.env.COND?.split(','), pickP = process.env.POL?.split(',');
   const rows: string[] = [];
   for (const [ck, c] of COND) if (!pickC || pickC.includes(ck)) for (const [pk, pv] of POL) if (!pickP || pickP.includes(pk)) rows.push(`P8('${ck}·${pk} ${c}${pv} })`);
