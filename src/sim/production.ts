@@ -1,4 +1,5 @@
 import { BOTANICALS, EQUIPMENT, GNS, INGREDIENTS, VOLUME_DISCOUNT_TIERS, YEASTS, type EquipmentDef } from './content/catalog';
+import { monthlyFixedCost } from './loans';
 import { addScaled, clamp, clampFlavor, distillFlavor, heartsFraction } from './flavor';
 import { GI_LOCK, logisticsMultiplier, regionOf, siteOf, type WaterId } from './content/regions';
 import type { Rng } from './rng';
@@ -350,6 +351,16 @@ export const distillerRunCapacity = (process: number) => 20 + process / 5;
 interface FermenterSlot { id: string; type: FermenterType; capacityL: number; daysLeft: number }
 
 /** 2 생산 (틱 단계 본문 — step.ts가 부른다) */
+/** 생산 건너뛰기 기준 — 월초 현금 < 이만큼 × 매달 나가는 돈(고정비)이면 위스키 원액을 쉰다 `[튜닝]` (qol.md §3: 0.5 — 건강한 판 손해 없음, 무너지는 판 파산을 늦춤. 2 이상은 함정) */
+export const WHISKY_SKIP_FIXED_MONTHS = 0.5;
+
+/** 이 달 위스키 원액을 건너뛰는가 — 시나리오 판만(샌드박스·봇 실험 기준선은 그대로). 건너뛰면 그때의 현금과 기준 */
+export function whiskySkipCheck(s: GameState): { cash: number; threshold: number } | null {
+  if (!s.scenario) return null;
+  const threshold = WHISKY_SKIP_FIXED_MONTHS * monthlyFixedCost(s);
+  return s.finance.cash < threshold ? { cash: s.finance.cash, threshold } : null;
+}
+
 export function runProduction(s: GameState, report: MonthReport, ctx: TickContext): { runsUsed: number; mashKg: number } {
   const { monthOfYear, fermentC: fermC } = ctx;
   const prodRng = rngFor(s.seed, s.month, 'production');
@@ -421,10 +432,21 @@ export function runProduction(s: GameState, report: MonthReport, ctx: TickContex
   }
   s.b2b.oemContracts = s.b2b.oemContracts.filter((c) => !oemDone.includes(c.id));
 
+  // 생산 건너뛰기 (#249 ④, qol.md §3 — 오너 답 ③ "위스키 원액만"): 시나리오 판에서 월초 현금이 고정비 보름치 아래면 그 달 몰트·그레인은 만들지 않는다.
+  // 생산 지시는 그대로 둔다(다음 달 현금이 돌아오면 저절로 다시 만든다 — 5차 "다시 켜는 걸 잊었다"가 생기지 않게). 소주는 계속 — 따로 [이번 달 소주 건너뛰기]
+  const skipWhisky = whiskySkipCheck(s);
+  if (skipWhisky && s.production.orders.some((o) => o.batchesPerMonth > 0 && ['malt', 'grain'].includes(s.production.recipes.find((r) => r.id === o.recipeId)?.kind ?? ''))) {
+    report.whiskySkipped = skipWhisky;
+    report.notes.push(`위스키 원액 생산을 건너뛰었다 — 현금 ${Math.round(skipWhisky.cash).toLocaleString()}원 < 고정비 보름치 ${Math.round(skipWhisky.threshold).toLocaleString()}원. 위스키는 몇 년 뒤 그만큼 빈다. 현금이 돌아오면 다음 달 다시 만든다`);
+  }
+  const skipSoju = s.production.skipSojuMonth === s.month;
+  if (skipSoju && s.production.orders.some((o) => o.batchesPerMonth > 0 && s.production.recipes.find((r) => r.id === o.recipeId)?.kind === 'soju')) report.notes.push('이번 달 소주 생산을 건너뛰었다(직접 고름)');
   for (const order of s.production.orders) {
     if (order.batchesPerMonth <= 0) continue;
     const recipe = s.production.recipes.find((r) => r.id === order.recipeId);
     if (!recipe) continue;
+    if (skipWhisky && (recipe.kind === 'malt' || recipe.kind === 'grain')) continue;
+    if (skipSoju && recipe.kind === 'soju') continue;
     const still = stillDefOf(s, recipe.stillId);
     const stillInst = s.production.equipment.find((e) => e.id === recipe.stillId);
     if (!still || !stillInst || stillInst.readyMonth > s.month) { report.notes.push(`${recipe.name}: 증류기가 준비되지 않아 생산 중단`); continue; }

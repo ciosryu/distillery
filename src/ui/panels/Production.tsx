@@ -8,6 +8,7 @@ import type { PresetRecipe } from '../../sim/content/presets';
 import { productionValue, recipeEconomics, STANDARD_BOTTLE, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from '../../sim/economics';
 import { monthlyFixedCost } from '../../sim/loans';
 import { isLocked } from '../../sim/scenario';
+import { whiskySkipCheck } from '../../sim/production';
 import { useGame } from '../../store/game';
 import { logisticsMultiplier, regionOf, REGIONS, siteOf } from '../../sim/content/regions';
 import { liters, num, pct, won } from '../format';
@@ -48,10 +49,28 @@ export function Orders() {
           );
         })}
       </Table>
+      {/* 생산 건너뛰기 (#249 ④) — 위스키 원액은 현금이 고정비 보름치 아래면 저절로 쉬고, 소주는 이 버튼으로 이번 달만 쉰다 */}
+      <SkipLine />
       <ProductionValueLine />
       <WhiskySupply />
       <p className="mt-2 text-xs text-stone-500">원액은 매달 말 탱크에 쌓입니다. 비숙성 주종(소주·진·고량주 등)은 바로 병입할 수 있고, 몰트는 {(() => { const w = regionOf(s).whisky; return w.minMonths > 0 ? `캐스크에 통입해 ${w.minMonths}개월 이상 숙성해야 "위스키"로 판매할 수 있습니다` : w.requiresOak ? '캐스크에 넣기만 하면 바로 "위스키"로 팔 수 있지만(법정 최소 숙성 없음) 3년 미만은 어린 위스키라 값을 덜 받습니다' : '숙성 없이도 "위스키"로 팔 수 있지만(법정 최소 숙성 없음) 3년 미만은 어린 위스키라 값을 덜 받습니다'; })()} 설비·인력 한도는 대시보드의 가동 계획에서 확인하세요.</p>
     </Card>
+  );
+}
+
+function SkipLine() {
+  const s = useGame((g) => g.state);
+  const dispatch = useGame((g) => g.dispatch);
+  if (!s.scenario) return null;
+  const hasSoju = s.production.orders.some((o) => o.batchesPerMonth > 0 && s.production.recipes.find((r) => r.id === o.recipeId)?.kind === 'soju');
+  const skipSoju = s.production.skipSojuMonth === s.month;
+  const whisky = whiskySkipCheck(s);
+  if (!hasSoju && !whisky) return null;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+      {whisky && <span className="rounded bg-rose-50 px-2 py-1 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300">이번 진행 때 위스키 원액은 쉰다 — 현금 {won(whisky.cash)} &lt; 고정비 보름치 {won(whisky.threshold)}. 현금이 돌아오면 다음 달 다시 만든다(생산 지시는 그대로)</span>}
+      {hasSoju && <Button small variant={skipSoju ? 'danger' : 'ghost'} onClick={() => dispatch({ type: 'skipSojuThisMonth', on: !skipSoju })} title="이번 달만 소주를 만들지 않는다(원재료·에너지비를 아낀다). 다음 달부터 다시 만든다">{skipSoju ? '이번 달 소주 건너뜀 — 취소' : '이번 달 소주 생산 건너뛰기'}</Button>}
+    </div>
   );
 }
 

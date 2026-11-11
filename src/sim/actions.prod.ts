@@ -24,6 +24,8 @@ import { fail, type CashKeys, type Handlers } from './actionKit';
 
 export type ProdAction =
   | { type: 'setOrder'; recipeId: string; batchesPerMonth: number }
+  /** 이번 달 소주 생산 건너뛰기 (#249 ④ 별도 버튼) — on=false면 취소. 진행하면 저절로 풀린다 */
+  | { type: 'skipSojuThisMonth'; on: boolean }
   | { type: 'saveRecipe'; recipe: Omit<Recipe, 'id'> & { id?: string } }
   | { type: 'deleteRecipe'; recipeId: string }
   | { type: 'buyEquipment'; catalogId: string }
@@ -70,6 +72,7 @@ export const PRODUCT_NAME_MAX = 40;
 
 export const PROD_CASH_KEY: CashKeys<ProdAction> = {
   setOrder: null,
+  skipSojuThisMonth: null,
   archiveProduct: null,
   unfillCask: null,
   setAutoPrice: null,
@@ -111,6 +114,11 @@ function bottleMessage(p: Product, r?: BlendReveal): string {
 }
 
 export const PROD_HANDLERS: Handlers<ProdAction> = {
+  skipSojuThisMonth: (s, _prev, a) => {
+    if (a.on) { s.production.skipSojuMonth = s.month; return { state: s, message: '이번 달 소주 생산을 건너뛴다 — 다음 달부터 다시 만든다' }; }
+    delete s.production.skipSojuMonth;
+    return { state: s, message: '소주 생산 건너뛰기를 취소했다' };
+  },
   archiveProduct: (s, prev, a) => {
     const i = s.commerce.products.findIndex((x) => x.id === a.productId);
     const p = s.commerce.products[i];
