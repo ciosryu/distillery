@@ -1047,6 +1047,70 @@ describe('자동 납품의 플래그십 후보 보호 (#252, 후반 확인 판)'
   });
 });
 
+describe('자동 납품의 태그 효과 (#252 → 태그 #260·#249 ② — 보호는 태그 한 곳)', () => {
+  const setup = async () => {
+    const { emptyCaskOf } = await import('./index');
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.month = 96; // 남은 84개월 — 60개월 이상 통이 12년 후보
+    s.inventory.casks = [];
+    for (const [id, oak] of [['Y', 40], ['Y2', 38], ['Y3', 44], ['O', 70], ['O2', 66], ['O3', 64], ['O4', 62]] as const) {
+      const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.id = id;
+      c.contents = { id: `L${id}`, name: id, kind: 'malt', volumeL: 150, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10_000, batchId: `B${id}` };
+      s.inventory.casks.push(c);
+    }
+    const def = (label: string, effect: 'protect' | 'prefer') => { const r = applyAction(s, { type: 'defineTag', label, color: 'sky', effect }); expect(r.error).toBeUndefined(); s = r.state; return s.inventory.tagDefs!.at(-1)!.id; };
+    const tag = (ids: string[], add: string[] = [], remove: string[] = []) => { const r = applyAction(s, { type: 'tagCasks', caskIds: ids, ...(add.length ? { add } : {}), ...(remove.length ? { remove } : {}) }); expect(r.error).toBeUndefined(); s = r.state; };
+    const p3 = { category: 'whisky', ageYears: 3, abv: 0.4, finish: undefined } as unknown as Product;
+    return { get s() { return s; }, def, tag, p3, p12: { ...p3, ageYears: 12 } as Product };
+  };
+
+  it('플레이어의 "보호" 태그 통은 쓰지 않고, "먼저 쓰기" 태그 통을 먼저 쓴다 — 그다음은 어린 통부터', async () => {
+    const { autoRestockSources } = await import('./economics');
+    const t = await setup();
+    expect(autoRestockSources(t.s, t.p3).map((x) => x.comp.id)).toEqual(['Y2', 'Y', 'Y3']); // 예비 4통(O·O2·O3·O4)은 그대로 보호
+    const keep = t.def('남길 통', 'protect');
+    t.tag(['Y'], [keep]);
+    const first = t.def('먼저', 'prefer');
+    t.tag(['Y3'], [first]);
+    expect(autoRestockSources(t.s, t.p3).map((x) => x.comp.id)).toEqual(['Y3', 'Y2']);
+  });
+
+  it('플래그십 예비는 보이는 태그 — 떼면 자동 납품이 쓰고, 다른 통에 붙이면 그 통을 지킨다(보호가 두 겹이 아니다)', async () => {
+    const { autoRestockSources } = await import('./economics');
+    const { FLAGSHIP_RESERVE_TAG } = await import('./tags');
+    const t = await setup();
+    t.tag(['O4'], [], [FLAGSHIP_RESERVE_TAG]); // 플레이어가 뗀다 → 다음 후보가 없으니 예비는 3통
+    expect(autoRestockSources(t.s, t.p3).map((x) => x.comp.id)).toEqual(['Y2', 'Y', 'Y3', 'O4']);
+    t.tag(['Y3'], [FLAGSHIP_RESERVE_TAG]); // 후보가 아닌 통에도 직접 붙일 수 있다 — 붙인 통은 지킨다
+    expect(autoRestockSources(t.s, t.p3).map((x) => x.comp.id)).toEqual(['Y2', 'Y', 'O4']);
+  });
+
+  it('플래그십 표기 제품은 예비 통을 쓴다 — 단 플레이어가 따로 "보호"를 붙인 통은 지킨다', async () => {
+    const { autoRestockSources, autoRestockExcluded } = await import('./economics');
+    const t = await setup();
+    // 12년 표기는 144개월 이상만 — 하한을 법정 숙성으로 낮춘 제품으로 본다
+    const p12 = { ...t.p12, autoRestockMinMonths: 12 } as Product;
+    expect(autoRestockExcluded(t.s, p12).size).toBe(0);
+    const keep = t.def('남길 통', 'protect');
+    t.tag(['O'], [keep]);
+    expect([...autoRestockExcluded(t.s, p12)]).toEqual(['O']);
+    expect(autoRestockSources(t.s, p12).map((x) => x.comp.id)).not.toContain('O');
+    expect(autoRestockSources(t.s, p12).map((x) => x.comp.id)).toContain('O2');
+    expect(autoRestockSources(t.s, t.p3).map((x) => x.comp.id)).toEqual(['Y2', 'Y', 'Y3']); // 3년 표기는 여전히 예비 4통 + 보호 통을 쓰지 않는다
+  });
+
+  it('샌드박스에도 플레이어 "보호" 태그는 자동 납품에 걸린다(기본 예비 태그는 없다)', async () => {
+    const { autoRestockExcluded } = await import('./economics');
+    let s = newGame({ seed: 1 });
+    const r = applyAction(s, { type: 'defineTag', label: '보관', color: 'rose', effect: 'protect' });
+    s = r.state;
+    const c = s.inventory.casks[0]!;
+    c.contents = { id: 'LX', name: 'X', kind: 'malt', volumeL: 150, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: 40, sourced: false, costPerLPA: 10_000 };
+    s = applyAction(s, { type: 'tagCasks', caskIds: [c.id], add: [s.inventory.tagDefs![0]!.id] }).state;
+    expect([...autoRestockExcluded(s, { ageYears: 3 })]).toEqual([c.id]);
+  });
+});
+
 describe('자동 납품 통 하한 (#267, 표기 하한 함정)', () => {
   it('기본은 제품 표기, 낮추면 법정 숙성 ~ 표기 사이에서 그 하한부터 쓰고, 표기 이상·법정 미만은 막는다', async () => {
     const { autoRestockSources, autoRestockFloor } = await import('./economics');
