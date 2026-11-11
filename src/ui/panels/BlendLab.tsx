@@ -5,7 +5,7 @@ import {
   type BlendComponent, type BlendTarget, type Cask, type Hex,
 } from '../../sim';
 import { useGame } from '../../store/game';
-import { delegateCheck } from '../../sim/delegateCheck';
+import { delegateCheck, delegateDefaultIds } from '../../sim/delegateCheck';
 import { flagshipImpact } from '../alerts';
 import { months, num, won } from '../format';
 import { Badge, Button, Card, ConfirmButton, Empty, NumberField, Table, Td, TextField, UNDO_HINT, useConfirm } from '../kit';
@@ -126,12 +126,14 @@ export function BlendLab() {
   })();
   const options = { name, targetAbv: abv / 100, bottleMl: 700, chillFilter: false, packagingId: 'standard', targetId: target.source === 'core' ? undefined : target.id, line: target.source === 'core' ? target.id.slice(5) : line || undefined };
   const capLeft = samplingCapacity(s) - s.inventory.samplesThisMonth;
-  const delegateIds = (picked.length ? picked : knownCohorts).flatMap((c) => c.casks.map((k) => k.id));
+  // 맡길 통 — 고른 묶음(손 선택, 보호 통도 그대로 — 확인 단계에서 경고) 또는 기본 후보(샘플 기록이 있는 전부에서 보호 태그 통을 뺀다, #260)
+  const defaultDelegate = useMemo(() => delegateDefaultIds(s, knownCohorts.flatMap((c) => c.casks.map((k) => k.id))), [s, knownCohorts]);
+  const delegateIds = picked.length ? picked.flatMap((c) => c.casks.map((k) => k.id)) : defaultDelegate.ids;
   const delegateKey = JSON.stringify([s.month, target.id, delegateIds, bottles, options]);
   // 되돌릴 수 없는 행동 확인 — 코어 공통 훅(#240). 조건(delegateKey)이 바뀌면 처음부터 다시 묻는다
   const confirm = useConfirm(delegateKey);
   const delegateStep = confirm.step;
-  const check = delegateStep > 0 && knownCohorts.length ? delegateCheck(s, target, delegateIds, bottles, options) : null;
+  const check = delegateStep > 0 && delegateIds.length ? delegateCheck(s, target, delegateIds, bottles, options) : null;
 
   return (
     <div className="grid gap-4">
@@ -173,7 +175,7 @@ export function BlendLab() {
                   const f = flagshipImpact(s, used.map((k) => k.id));
                   return <>{pv.ok ? <>약 <b>{num(pv.bottles)}병</b> 병입</> : <span className="text-rose-700">{pv.errors.join(' / ')}</span>} · 쓸 통 {used.length}개(비워짐 {emptied}) · 남는 숙성 통 {whiskyNow} → {whiskyNow - emptied}개{f.using ? <b className="block">⚠ 12년 플래그십 후보 통 {f.using}개를 쓴다 — 남은 후보 {f.before} → {f.left}통</b> : null}</>;
                 }}>배팅 확정·병입</ConfirmButton>
-              <Button variant={delegateStep > 0 ? 'danger' : 'secondary'} disabled={!knownCohorts.length} title="선택한 코호트(없으면 샘플 기록이 있는 전체) 안에서 블렌더가 기록을 보고 비율을 정한다 — 서툴거나 샘플이 오래되면 빗나간다. 누르면 먼저 쓸 통을 보여 주고, 한 번 더 누르면 맡긴다"
+              <Button variant={delegateStep > 0 ? 'danger' : 'secondary'} disabled={!delegateIds.length} title="선택한 코호트(없으면 샘플 기록이 있는 전체 — 보호 태그 통은 뺀다) 안에서 블렌더가 기록을 보고 비율을 정한다 — 서툴거나 샘플이 오래되면 빗나간다. 누르면 먼저 쓸 통을 보여 주고, 한 번 더 누르면 맡긴다"
                 onClick={() => {
                   const c = check ?? delegateCheck(s, target, delegateIds, bottles, options); // 첫 누름에는 아직 계산 전 — 여기서 잰다
                   if ('error' in c) { dispatch({ type: 'delegateBlend', targetId: target.id, caskIds: delegateIds, bottles, options }); return; } // 맡길 수 없는 경우 — 오류 문구는 행동이 낸다(아무것도 바뀌지 않는다)
@@ -184,6 +186,9 @@ export function BlendLab() {
               {best && <Button variant="ghost" onClick={() => setShares(best.shares)}>블렌더 추천 비율 불러오기</Button>}
               <Button variant="ghost" onClick={() => setShares({})}>비율 초기화</Button>
             </div>
+            {!picked.length && defaultDelegate.excluded.length > 0 && (
+              <div className="text-xs text-amber-800 dark:text-amber-300">맡기기 기본 후보에서 보호 태그 통 {defaultDelegate.excluded.length}개({defaultDelegate.excluded.join(', ')})를 뺐다 — 쓰려면 그 묶음을 직접 고른다{!defaultDelegate.ids.length ? ' · 남은 후보가 없다' : ''}</div>
+            )}
             {check && !('error' in check) && (
               <div className="rounded-md border border-rose-300 bg-rose-50 p-2 text-xs dark:border-rose-800 dark:bg-rose-950/40">
                 <div className="font-medium text-rose-900 dark:text-rose-200">맡기면 바로 병입된다 — 되돌릴 수 없다</div>
