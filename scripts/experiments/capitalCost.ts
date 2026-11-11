@@ -47,12 +47,13 @@ export function discountRate(s: GameState, basis: 'marginal' | 'debt' | 'zero' |
   return next ? next.annualRate : (LOAN_OFFERS.find((o) => o.emergency)?.annualRate ?? 0.2);
 }
 
-/** 민감도 띠 — 게임의 금리 사다리에서 읽는다: 0 · 가장 싼 정책자금 · 운전자금 · 급전 */
+/** 민감도 띠 — 게임의 금리 사다리에서 읽는다: 0 · 정책자금(창업·전통주 2.5%) · 운전자금 · 급전.
+ *  PROD prod-aging.ts RATES 기본(0·2.5·7.5·20%)과 같다(BALANCE-SPEC §9 열린 문제 2 — 지자체 2%는 3억 한 건뿐이라 대표값으로 2.5%를 쓴다) */
 export function discountBands(): { label: string; annual: number }[] {
   const rate = (id: string) => LOAN_OFFERS.find((o) => o.id === id)?.annualRate ?? NaN;
   return [
     { label: '0 (자본비용 없음)', annual: 0 },
-    { label: '정책자금(지자체)', annual: rate('kr_regional') },
+    { label: '정책자금(창업·전통주)', annual: rate('kr_startup') },
     { label: '운전자금', annual: rate('working') },
     { label: '급전', annual: rate('emergency') },
   ];

@@ -8,6 +8,8 @@
 //   TIER_EQUITY=<원>        시작 자기자본 — 시작 현금을 그 차이만큼 바꾸고 순자산 목표의 기준도 바꾼다 (micro 5억 · standard 8억)
 //   TIER_WAREHOUSE=<통>     시작 숙성고 용량 (micro 90 · standard 150)
 //   GOAL_MULT=<배수>        순자산 목표 배수 (기본 3) — 목표만 바꾸고 판 진행은 같다
+//   SALARY_SCALE=<배수>     시작 직원 급여 배수 (C-MGT-1 — MVP는 HR이 120개월까지 잠겨 급여를 못 줄인다. "급여 조정 허용"의 상한 효과)
+//   EVENTS_EARLY=1          랜덤 이벤트를 0개월부터 연다 (MVP는 60개월에 연다 — Death Valley 구간의 사건 위험을 보는 민감도)
 // balance-sim.ts·mvp-survival.ts가 맨 앞에서 applyMgtKnobs()를 부르고, 매달 행동 끝에 mgtPolicy(s)를 부른다
 import { applyAction, isLocked, type Candidate, type GameState } from '../../src/sim';
 import { HR_TUNING } from '../../src/sim/hr';
@@ -26,7 +28,7 @@ export function applyMgtKnobs(): string {
   if (env.BANK_SCREEN === 'and' || env.BANK_SCREEN === 'or') { BANK_SCREENING.enabled = true; BANK_SCREENING.mode = env.BANK_SCREEN; on.push(`bankScreen=${env.BANK_SCREEN}`); }
   if (MGT_KNOBS.hireSalesAt != null) on.push(`hireSalesAt=${MGT_KNOBS.hireSalesAt}`);
   if (MGT_KNOBS.salaryReview) on.push(`salaryReview=${MGT_KNOBS.salaryReview}`);
-  for (const k of ['TIER_OVERHEAD', 'TIER_EQUITY', 'TIER_WAREHOUSE', 'GOAL_MULT']) if (env[k] != null && env[k] !== '') on.push(`${k}=${env[k]}`);
+  for (const k of ['TIER_OVERHEAD', 'TIER_EQUITY', 'TIER_WAREHOUSE', 'GOAL_MULT', 'SALARY_SCALE', 'EVENTS_EARLY']) if (env[k] != null && env[k] !== '') on.push(`${k}=${env[k]}`);
   const label = on.join(' ');
   if (label) console.error(`MGT 손잡이: ${label}`);
   return label;
@@ -35,28 +37,35 @@ export function applyMgtKnobs(): string {
 /** 티어 손잡이를 새 판에 넣는다(MGT-B). 아무것도 없으면 s를 그대로 돌려준다 */
 export function applyTierKnobs(s: GameState): GameState {
   const n = (k: string) => (env[k] != null && env[k] !== '' ? Number(env[k]) : null);
-  const overhead = n('TIER_OVERHEAD'), equity = n('TIER_EQUITY'), warehouse = n('TIER_WAREHOUSE'), mult = n('GOAL_MULT');
-  if (overhead == null && equity == null && warehouse == null && mult == null) return s;
+  const overhead = n('TIER_OVERHEAD'), equity = n('TIER_EQUITY'), warehouse = n('TIER_WAREHOUSE'), mult = n('GOAL_MULT'), salary = n('SALARY_SCALE');
+  const early = env.EVENTS_EARLY === '1';
+  if (overhead == null && equity == null && warehouse == null && mult == null && salary == null && !early) return s;
   if (!s.scenario) throw new Error('티어 손잡이는 시나리오 판에서만 쓴다');
   const sc = { ...s.scenario, economy: { ...s.scenario.economy }, goal: { ...s.scenario.goal } };
   let cash = s.finance.cash;
   if (overhead != null) sc.economy.overheadPerMonth = overhead;
   if (equity != null) { cash += equity - sc.equity; sc.equity = equity; }
   if (mult != null) sc.goal.netWorthMultiple = mult;
-  return { ...s, scenario: sc, finance: { ...s.finance, cash }, inventory: warehouse != null ? { ...s.inventory, warehouseBase: warehouse } : s.inventory };
+  if (early) sc.locked = sc.locked.filter((k) => k !== 'system:events');
+  const hr = salary != null ? { ...s.hr, staff: s.hr.staff.map((x) => ({ ...x, salary: Math.round((x.salary * salary) / 10_000) * 10_000 })) } : s.hr;
+  return { ...s, scenario: sc, hr, finance: { ...s.finance, cash }, inventory: warehouse != null ? { ...s.inventory, warehouseBase: warehouse } : s.inventory };
+}
+
+/** 그 달부터(HR이 열려 있으면) 영업 직원 1명 채용 — 후보 중 네트워크(b) 최고, 없으면 헤드헌팅. 이미 그 뒤에 뽑았으면 그대로 */
+export function hireSales(s: GameState, from: number): GameState {
+  if (s.month < from || isLocked(s, 'system:hr') || s.hr.staff.some((x) => x.role === 'sales' && x.hiredMonth >= from)) return s;
+  let c: Candidate | undefined = s.hr.candidates.filter((x) => x.role === 'sales').sort((a, b) => b.stats.b - a.stats.b)[0];
+  if (!c) {
+    const r = applyAction(s, { type: 'headhunt', role: 'sales' });
+    if (!r.error) { s = r.state; c = s.hr.candidates.filter((x) => x.role === 'sales').at(-1); }
+  }
+  return c ? applyAction(s, { type: 'hire', candidateId: c.id }).state : s;
 }
 
 /** 매달 봇 행동 끝 — 영업 채용·연봉 협상 선택. 손잡이가 꺼져 있으면 s를 그대로 돌려준다 */
 export function mgtPolicy(s: GameState): GameState {
   const k = MGT_KNOBS;
-  if (k.hireSalesAt != null && s.month >= k.hireSalesAt && !isLocked(s, 'system:hr') && !s.hr.staff.some((x) => x.role === 'sales' && x.hiredMonth >= k.hireSalesAt!)) {
-    let c: Candidate | undefined = s.hr.candidates.filter((x) => x.role === 'sales').sort((a, b) => b.stats.b - a.stats.b)[0];
-    if (!c) {
-      const r = applyAction(s, { type: 'headhunt', role: 'sales' });
-      if (!r.error) { s = r.state; c = s.hr.candidates.filter((x) => x.role === 'sales').at(-1); }
-    }
-    if (c) s = applyAction(s, { type: 'hire', candidateId: c.id }).state;
-  }
+  if (k.hireSalesAt != null) s = hireSales(s, k.hireSalesAt);
   if (k.salaryReview) {
     const p = s.events.pending.find((e) => e.defId === 'salary_review');
     if (p) s = applyAction(s, { type: 'resolveEvent', eventId: p.id, choice: k.salaryReview === 'raise' ? 0 : 1 }).state;
