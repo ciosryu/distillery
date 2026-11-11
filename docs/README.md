@@ -21,6 +21,9 @@
 | [STATUS.md](STATUS.md) | 지금 단계·세션·열린 PR·오너 결정 대기 | 정본(수시 갱신) | 공정관리 |
 | [DECISIONS.md](DECISIONS.md) | 결정 로그·번호 원장 | 정본 | 공정관리(머지 때) |
 | [PRD.md](PRD.md) | 게임 규칙 전체 사양 | §1~§15: 정본 · §16.9 이후 밸런스 측정 표와 §17.2~§17.6: **기록** | 절마다 해당 파트. §0·§14·§15는 공정관리 |
+| [design/requirements.md](design/requirements.md) | 공통 요구사항 템플릿·REQ 색인(#279) | 정본(템플릿 `[제안 P-ARCH-39]`) | 설계(템플릿)·공정관리(색인) |
+| [design/late-game-gate.md](design/late-game-gate.md) | 후반 경험 게이트 L 설계(#274) | 초안(`[제안 P-ARCH-43]` — 기준은 오너 승인) | 설계 |
+| [design/prod-stage-t.md](design/prod-stage-t.md) · [mkt-stage-t.md](design/mkt-stage-t.md) · [mgt-stage-t.md](design/mgt-stage-t.md) | 파트별 단계 T 확인 목록·측정 도구·요구사항(REQ) 초안(#265·#279) | 정본(목록) + 초안(REQ·제안) | PROD · MKT · MGT |
 | [design/requirements-audit.md](design/requirements-audit.md) | 요구사항·핵심 재미 감사 Phase A(2026-11-11) — 규칙 대응표·우선 조사 8개·작업 패키지·의사결정 요청 | 기록 | 공정관리 |
 | [design/mvp.md](design/mvp.md) | MVP 정의·코어 루프·한 판 목표·길이·완료 기준 | 정본(결정 부분) + 초안(`[제안]` 부분) | 설계·공정관리 |
 | [design/skeleton.md](design/skeleton.md) | 뼈대 — 시스템 지도·파트 경계·구조 결정 백로그 | 정본(단계 S 작업 문서) | 설계 |

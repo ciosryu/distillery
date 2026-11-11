@@ -1,3 +1,4 @@
+import type { TagColor, TagDef } from '../sim';
 import { useEffect, useState, type ReactNode } from 'react';
 
 export function Card({ title, actions, children, className = '' }: { title?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string }) {
@@ -186,6 +187,46 @@ export function Meter({ value, max, label }: { value: number; max: number; label
       </div>
       <div className="h-1.5 rounded bg-stone-200 dark:bg-stone-800">
         <div className={`h-1.5 rounded ${over ? 'bg-rose-600' : 'bg-amber-600'}`} style={{ width: `${(over ? 1 : ratio) * 100}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/** 캐스크 태그 표시 (#249 ①) — 색은 태그 정의에서. 효과가 있으면 기호를 붙인다(◆ 보호 · ▲ 먼저 쓰기 — 글꼴에 따라 깨지는 이모지는 쓰지 않는다) */
+const TAG_TONE: Record<TagColor, string> = {
+  stone: 'border-stone-300 bg-stone-100 text-stone-700 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-200',
+  rose: 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300',
+  amber: 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300',
+  emerald: 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  sky: 'border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300',
+  violet: 'border-violet-300 bg-violet-50 text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300',
+};
+export function TagChip({ def, title }: { def: TagDef; title?: string }) {
+  const mark = def.effect === 'protect' ? '◆ ' : def.effect === 'prefer' ? '▲ ' : '';
+  return <span title={title} className={`inline-block rounded border px-1 py-px text-[11px] font-medium whitespace-nowrap ${TAG_TONE[def.color]}`}>{mark}{def.label}</span>;
+}
+
+/**
+ * 일괄 행동의 "일부는 못 한다" 창 (#249 ① — 오너 답 6 "가능한 통만 처리하고 빠진 통을 보여 줄지, 일괄 취소할지 고르게").
+ * 계획(plan*)의 skipped가 있을 때만 띄운다. 이유별로 묶어 보인다
+ */
+export function BulkPlanDialog({ title, okCount, skipped, onProceed, onCancel, proceedLabel = '가능한 통만 처리' }: {
+  title: string; okCount: number; skipped: { id: string; reason: string }[]; onProceed: () => void; onCancel: () => void; proceedLabel?: string;
+}) {
+  const byReason = new Map<string, string[]>();
+  for (const x of skipped) byReason.set(x.reason, [...(byReason.get(x.reason) ?? []), x.id]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-24" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="w-full max-w-md rounded-xl border border-stone-200 bg-white p-4 shadow-xl dark:border-stone-700 dark:bg-stone-900">
+        <h2 className="mb-2 text-base font-semibold">{title}</h2>
+        <p className="mb-2 text-sm">{skipped.length}통은 처리할 수 없다 — 처리할 수 있는 통은 {okCount}통.</p>
+        <ul className="mb-3 grid gap-1 text-xs text-stone-600 dark:text-stone-300">
+          {[...byReason].map(([reason, ids]) => <li key={reason}>• {reason}: {ids.slice(0, 8).join(', ')}{ids.length > 8 ? ` 외 ${ids.length - 8}통` : ''}</li>)}
+        </ul>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onCancel}>모두 취소</Button>
+          <Button variant="primary" disabled={!okCount} onClick={onProceed}>{proceedLabel} ({okCount}통)</Button>
+        </div>
       </div>
     </div>
   );

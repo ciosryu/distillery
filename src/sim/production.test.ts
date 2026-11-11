@@ -1094,3 +1094,60 @@ describe('생산 건너뛰기 (#249 ④ — 위스키 원액만 자동, 소주�
     expect(w.history.reports.at(-1)!.production.map((p) => p.recipeId).sort()).toEqual([malt.id, soju.id].sort());
   });
 });
+
+describe('증산 전망 (#271·#272 — 늦게 늘려도 판 안에 회수되는지 보인다)', () => {
+  const start = (batches: number) => {
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'standard', loanAmount: 0, seed: 1 });
+    const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
+    s = applyAction(s, { type: 'setOrder', recipeId: malt.id, batchesPerMonth: batches }).state;
+    return s;
+  };
+  it('숙성고·설비 여유 · 판 끝까지 이익 · 회수 마감을 낸다 — 상태를 바꾸지 않는다', async () => {
+    const { rampOutlook } = await import('./economics');
+    const s = start(4);
+    const before = JSON.stringify(s);
+    const o = rampOutlook(s)!;
+    expect(JSON.stringify(s)).toBe(before);
+    expect(o.monthsLeft).toBe(180);
+    expect(o.headroomBatches).toBeGreaterThan(0);
+    expect(o.headroomBatches).toBe(Math.min(o.warehouseBatches, o.equipmentBatches));
+    const y3 = o.horizons.find((h) => h.months === 36)!;
+    expect(y3.margin).toBeGreaterThan(0);
+    expect(y3.bottlesToEnd).toBe((180 - 36) * y3.bottlesPerBatch);
+    // 회수 마감 = 숙성 기간 × (1 + 배치 원가 / 배치 이익) — 숙성 기간보다 길고, 판 길이보다 훨씬 짧다
+    expect(y3.recoverMonths!).toBeGreaterThan(36);
+    expect(y3.recoverMonths!).toBeLessThan(60);
+    // 판 끝까지 생산비 합계·통 수 · 판 끝에 숙성 중인 마지막 36개월분의 현물 평가액(> 0)
+    expect(o.costToEnd).toBe(180 * o.costPerBatch);
+    expect(o.casksToEnd).toBe(Math.ceil(180 * o.casksPerBatch));
+    expect(y3.tailValue!).toBeGreaterThan(0);
+    expect(y3.tailValue!).toBeGreaterThan(o.horizons.find((h) => h.months === 12)!.tailValue!); // 꼬리가 길수록 크다
+    // 생산 지시를 늘리면 숙성고 여유가 준다
+    expect(rampOutlook(start(8))!.warehouseBatches).toBeLessThan(o.warehouseBatches);
+  });
+  it('판 끝이 숙성 기간보다 가까우면 그 숙성으로는 병입 전에 판이 끝난다', async () => {
+    const { rampOutlook } = await import('./economics');
+    const s = start(4);
+    s.month = s.scenario!.goal.months - 20;
+    const o = rampOutlook(s)!;
+    expect(o.horizons.find((h) => h.months === 36)!.profitToEnd).toBe(0);
+    expect(o.horizons.find((h) => h.months === 12)!.bottlesToEnd).toBe(8 * o.horizons.find((h) => h.months === 12)!.bottlesPerBatch);
+  });
+  it('샌드박스(판 끝 없음)는 판 끝까지 값이 없고 회수 기간만 낸다', async () => {
+    const { rampOutlook } = await import('./economics');
+    const o = rampOutlook(newGame({ seed: 1 }))!;
+    expect(o).not.toBeNull();
+    expect(o.monthsLeft).toBeNull();
+    expect(o.costToEnd).toBeNull();
+    for (const h of o.horizons) { expect(h.profitToEnd).toBeNull(); expect(h.tailValue).toBeNull(); expect(h.recoverMonths).toBeGreaterThan(h.months); }
+  });
+  it('위스키 수출 속도 — 최근 3개월 수출 판매와 수요(위스키 제품만)를 연으로', async () => {
+    const { whiskyExportPace } = await import('./economics');
+    let s = advanceMonths(start(1), 3);
+    expect(whiskyExportPace(s)).toBeNull();
+    s = structuredClone(s);
+    s.commerce.products.push({ ...structuredClone(s.commerce.products[0] ?? ({} as Product)), id: 'PX', name: 'X', category: 'whisky' } as Product);
+    for (const r of s.history.reports.slice(-3)) r.exports = [{ marketId: 'JP' as never, productId: 'PX', name: 'X', bottles: 100, revenue: 0, demandBottles: 150, freight: 0 }, { marketId: 'JP' as never, productId: 'SOJU', name: 'S', bottles: 999, revenue: 0, demandBottles: 999, freight: 0 }];
+    expect(whiskyExportPace(s)).toEqual({ bottles: 1200, demand: 1800 });
+  });
+});

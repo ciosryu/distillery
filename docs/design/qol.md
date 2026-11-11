@@ -53,6 +53,8 @@
 - **구현 `[결정 #268]` (PROD, 2026-11-11):** `production.ts` `whiskySkipCheck` — 시나리오 판에서 생산 단계(틱 2) 시작 때 현금 < `PROD_TUNING.whiskySkipFixedMonths`(0.5) × `monthlyFixedCost`이면 그 달 **몰트·그레인 주문만** 건너뛴다(소주·진은 그대로, 생산 지시는 안 바꿈). 보고서에 `whiskySkipped {cash, threshold}`와 메모를 남긴다 — **맨 위 큰 알림(파산 경고 자리)은 ARCH 몫으로 이 필드를 읽으면 된다.** 소주는 생산 지시 칸의 **[이번 달 소주 생산 건너뛰기]** 버튼(그 달 한 번만, `production.skipSojuMonth`). 지시 칸에 "이번 진행 때 위스키 원액은 쉰다" 줄. 샌드박스는 그대로
   - 측정(위스키만 멈추는 규칙, main 대비): 밸런스 8입지·MVP 생존(micro·standard 10시드) **바이트 동일**(봇 현금이 보름치 밑으로 안 간다). 사람형 봇 `mvp-human 10 180`: E(몰트 감산) 15년 순자산 3.29 → 3.27억, F(대출 안 씀) 최저 현금 −0.24억(33월) → −0.17억(32월), 파산 판정 그대로 — 나머지 줄 같음
 
+**맨 위 알림 구현 (#268 ARCH 몫, 2026-11-11):** `AlertsView.tsx SkipBanner` — 지난 결산에 `whiskySkipped`가 있으면 모든 탭 맨 위(파산 경고 위)에 큰 노란 상자: 건너뛴 달 수, 그때 현금 대 고정비 보름치, "몇 년 뒤 그만큼 위스키가 빈다", 지금 현금으로 이번 달도 건너뛸지(`whiskySkipCheck`), [대출·급전 받기]·[생산 지시 보기]·[매달 나가는 돈 줄이기]. 소식 창에도 같은 메모
+
 ## 4. 스마트 인벤토리 설계
 
 **상태 (모두 선택 필드 — #187, 스키마 v15 그대로)**
@@ -68,6 +70,15 @@
 - **모든 일괄 행동 앞에 순수 `plan*` 함수**: `planMove(s, ids, target) → { ok: id[], skipped: { id, reason }[], cost }`(자리 모자람·고객 소유·핸드필 지정·오염 등). 화면은 `skipped`가 있으면 **창을 띄운다**: "n통은 처리할 수 없다(이유별 목록) — [가능한 통만 처리] [모두 취소]". 자리가 모자라면 같은 창: "자리 m칸이 모자라다 — [가능한 만큼 옮기기] [취소]"
 - 행동은 `ok`만 받고 다시 검사한다 — 행동 안에서 하나라도 실패하면 아무것도 바꾸지 않는다(한 번의 dispatch = 한 번의 복사 = #240 확인 한 번)
 - 화면 부품: 코어 `kit.tsx`에 `BulkPlanDialog`(창) · 캐스크 목록은 필터 바(태그·나이·종류·위치) + 고른 수 + 일괄 버튼 줄
+
+**구현 — #249 ① 코어 + #260 플래그십 예비 (ARCH, 2026-11-11)**
+- 상태(선택 필드, 스키마 v15 그대로): `SpiritLot.tagIds?` · `inventory.tagDefs?: TagDef[]` · `inventory.reserveOptOut?: string[]`(플레이어가 "플래그십 예비"를 뗀 원액 id) · 타입 `TagDef { id, label, color, effect? }`·`TagEffect = 'protect' | 'prefer'`·`TagColor`(6색)
+- `src/sim/tags.ts`(순수 함수): `tagDefs(s)`(기본 태그 + 플레이어 태그) · **`reserveCaskIds(s)`** · `caskTagIds(s, c)` · **`protectedCaskIds(s)`** · `preferredCaskIds(s)` · `isProtected(s, c)` · **`selectCasks(s, { tagIds, minAgeM, maxAgeM, kind, hasContents, excludeOwner, excludeProtected })`** · `planTag(s, ids, { add, remove })` → `{ ok, skipped: { id, reason }[] }`
+- 행동(`actions.core.ts`, 현금 없음): `tagCasks { caskIds, add?, remove? }`(못 하는 통이 섞이면 아무것도 바꾸지 않는다) · `defineTag { label, color, effect? }`(12개·12자까지) · `editTag { tagId, label?, color?, effect?: TagEffect | null }` · `deleteTag { tagId }`(모든 원액에서 함께 빠진다). 기본 태그는 바꾸거나 지울 수 없다
+- **플래그십 예비(#260):** 원액에 저장하지 않고 **매번 계산**한다 — ① 플레이어가 직접 붙인 통 + ② 남은 자리(`PROD_TUNING.flagshipReserve` = 4 − ①)만큼 가장 오래된 후보 통(뗀 원액 제외). 후보 조건·순서는 #252 `economics.ts flagshipReserve`와 같아 **손대지 않으면 두 집합이 같다**(테스트). 비거나 오염되면 다음 후보로 옮겨 간다. 플래그십을 팔면 없다. 샌드박스에는 없다. 상태에 저장하지 않으므로 틱 순서·시뮬레이션 출력이 바뀌지 않는다
+- 화면(`CaskTags.tsx`, 증류소 탭 숙성고 카드): 통 줄마다 태그 칩(◆ 보호 · ▲ 먼저 쓰기) · 태그 필터 줄(태그별 통 수) · 고른 통에 [붙이기]·[떼기](못 하는 통이 섞이면 `BulkPlanDialog` — 가능한 통만 / 모두 취소) · [태그 관리](만들기·색·효과·지우기). 선택 체크박스는 샘플·태그가 함께 쓴다(샘플은 그중 뜰 수 있는 통만). KPI "후보 m통 · 예비 k통". [원액 빼기] 미리보기에 "플래그십 예비 통" 경고
+- **#249 ②로 넘기는 것(각 파트):** 자동 기능은 `protectedCaskIds(s)` 한 번(또는 `selectCasks(…, { excludeProtected: true })`)으로 보호 통을 빼고, `preferredCaskIds(s)`를 먼저 고른다 — **PROD:** 자동 납품의 `flagshipReserve(s)`를 `protectedCaskIds(s)`로 바꾸면 #252가 이 태그로 옮겨진다(보호를 한 겹으로, #260). `flagshipGuard`(플래그십 표기 제품은 예비 통을 써도 된다)는 그대로 둔다. 자동 통입·핸드필 자동 지정도 · **MKT:** 맡기기 후보·IB 입찰 대상. 그 전까지 화면의 예비 통 바꾸기·플레이어 보호 태그는 **표시만**이고 자동 납품은 #252 집합(같은 4통)을 쓴다
+- 수동 행동의 경고(#240): `flagshipImpact`는 그대로 후보 수를 센다. 병입·맡기기·B2B 판매 미리보기에 "예비 통" 경고를 더하는 것은 각 버튼 소유 파트(`reserveCaskIds(s).has(id)`)
 
 ## 5. 마스터 디스틸러 SOP (오너 답변 1)
 

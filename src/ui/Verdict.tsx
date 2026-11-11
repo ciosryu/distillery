@@ -6,7 +6,8 @@ import { Badge, Button, Card } from './kit';
 
 // 결과 화면 — 15년 목표 판정 (MVP §3, skeleton S-9). 확인하면 목표 없이 계속 운영(샌드박스)
 
-const TITLE = { heritage: '헤리티지 달성', missed: '목표 일부 미달', failed: '실패' } as const;
+// 등급제 (#263 ①안): 버티고 순자산을 채우면 플래그십 없이도 "달성"(B) — 플래그십까지면 헤리티지(A·S)
+const TITLE = { heritage: '헤리티지 달성', achieved: '목표 달성 — 플래그십 없이', missed: '목표 일부 미달', failed: '실패' } as const;
 const CHECK_LABEL: Record<GoalCheck['id'], string> = { survive: '파산하지 않는다', flagship: '12년 숙성 플래그십을 병입해 판다', netWorth: '순자산 목표' };
 
 function checkText(c: GoalCheck): string {
@@ -42,6 +43,7 @@ export function Verdict({ s, onNewGame }: { s: GameState; onNewGame: () => void 
             순자산 = 지금 정리하면 받는 돈(현금 − 대출 + 매출채권 + 원액 현물가 + 재고 원가). 브랜드 인지도 {(v.awareness * 100).toFixed(1)}%.
             S등급: 목표 달성 + 순자산 목표의 {GRADE.sNetWorthRatio}배 + 플래그십 품질 {GRADE.sFlagshipQuality}↑ + 인지도 {GRADE.sAwareness * 100}%↑
           </p>
+          {v.result === 'achieved' && <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">순자산 목표를 채웠다. 12년 플래그십까지 냈다면 헤리티지(A·S) — 다음 판에는 가장 오래된 통을 "플래그십 예비"로 남겨 두라.</p>}
           {ending && <p className="mt-1 text-sm text-rose-700 dark:text-rose-400">끝난 이유: {ending.reason === 'bankrupt' ? '파산' : ending.reason === 'licenseRevoked' ? '면허 취소' : '해임'} ({monthLabel(s.startYear, ending.month)})</p>}
         </section>
         <section>

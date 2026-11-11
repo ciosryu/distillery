@@ -5,7 +5,7 @@
 import { isFlagshipCandidate } from '../sim/delegateCheck';
 import { regionOf } from '../sim/content/regions';
 import { SCENARIOS } from '../sim/content/scenarios';
-import { calendar, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport } from '../sim';
+import { calendar, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport, type Product } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
@@ -13,7 +13,8 @@ import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { exportShortfalls } from '../sim/market';
 import { ibAgedCaskCount } from '../sim/bulk';
 import { autoFillPreview } from '../sim/autoFill';
-import { autoRestockSources, autoRestockSupported, guardedFlagshipCasks, productMonthlyPace } from '../sim/economics';
+import { autoRestockPlan, autoRestockSources, autoRestockSupported, guardedFlagshipCasks, productMonthlyPace } from '../sim/economics';
+import { reserveCaskIds } from '../sim/tags';
 import { AUTO_RESTOCK_EXPENSE, productionValue, whiskySupplyForecast } from '../sim/economics';
 
 // ───────────── ① 파산 카운트다운 ─────────────
@@ -172,6 +173,18 @@ export function spotSaleStake(s: GameState): { tank: SpiritStake | null; casks: 
  * 시나리오에서 이 수가 0이 되면 15년 목표(플래그십 판매)를 이룰 수 없다 — 5차 판이 70개월째 맡기기로 그렇게 됐다(mvp.md §7.16)
  */
 export const flagshipCandidates = (s: GameState) => s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c));
+/** 이 수 이하로 남으면 할 일 맨 위 (#261) `[튜닝]` */
+export const FLAGSHIP_LOW = 3;
+/**
+ * 이 제품의 다음 자동 납품이 쓸 통 중 플래그십 후보 수 (#261 — 자동 납품 설정 표의 "이 제품은 지금 후보 통을 쓴다" 표시용, 화면은 판매 탭 소유 파트).
+ * 플래그십을 팔았으면 0
+ */
+export function restockCandidateUse(s: GameState, p: Product): number {
+  if (!s.scenario || s.progress.milestones.some((m) => m.id === 'flagship_sold')) return 0;
+  const plan = autoRestockPlan(s, p);
+  if (!plan) return 0;
+  return plan.components.filter((x) => { const c = x.source === 'cask' ? s.inventory.casks.find((k) => k.id === x.id) : undefined; return !!c && !c.owner && isFlagshipCandidate(s, c); }).length;
+}
 
 /** 고른 통 가운데 플래그십 후보가 몇 개이고, 쓰고 나면 몇 개 남는지 — 확인 미리보기(③ 남는 자원 경고)용 */
 export function flagshipImpact(s: GameState, caskIds: string[]): { using: number; left: number; before: number; final: boolean } {
@@ -200,7 +213,7 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['loan-jump', 'malt-stopped', 'visitor', 'stockout', 'cask-bid', 'export-starve', 'restock-short', 'handfill', 'fill', 'whisky', 'soju', 'sample'];
+export const TODO_ORDER = ['flagship-low', 'loan-jump', 'malt-stopped', 'visitor', 'stockout', 'cask-bid', 'export-starve', 'restock-short', 'handfill', 'fill', 'whisky', 'soju', 'sample'];
 // 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
 
@@ -219,6 +232,11 @@ export function monthTodos(s: GameState): Todo[] {
     const ibNote = st.unlock.includes('system:caskBids') ? (() => { const n = ibAgedCaskCount(s); return n ? ` 지금 3년 이상 통 ${n}개.` : ' 지금 3년 이상 통이 없어 제안이 오지 않는다 — 통 일부를 남겨 두라.'; })() : '';
     out.push({ id: `stage-${st.id}`, level: 'warn', text: `새로 열림 — ${st.title}. ${st.text}${ibNote}`, action: tab === 'blendlab' ? '블렌딩 테이블' : tab === 'exports' ? '수출' : tab === 'b2b' ? '원액 B2B' : tab === 'staff' ? '직원' : '판매', target: { tab } });
   }
+  // 남은 플래그십 후보가 적다 (#261) — 후보 집합이 닫힌 뒤(목표까지 남은 달 < 플래그십 숙성)에만. 0통은 증류소 탭 KPI가 빨갛게 말한다
+  if (s.scenario && !s.progress.milestones.some((m) => m.id === 'flagship_sold') && s.scenario.goal.months - s.month < s.scenario.goal.flagshipMinMonths) {
+    const n = flagshipCandidates(s).length;
+    if (n > 0 && n <= FLAGSHIP_LOW) out.push({ id: 'flagship-low', level: 'danger', text: `남은 12년 플래그십 후보 ${n}통 — 하나라도 남겨야 15년 안에 플래그십을 낸다. 예비 ${reserveCaskIds(s).size}통 — 남길 통을 "플래그십 예비"로 묶으세요(자동 기능이 쓰지 않는다)`, action: '숙성고', target: { anchor: 'mvp-warehouse' } });
+  }
   const min = whiskyMinMonths(regionOf(s).whisky); // 병입·표기와 같은 식 (blending.ts)
   // IB 캐스크 입찰 (10년 차 해금, #224) — 제안은 2개월 뒤 사라지고 원액 B2B 탭에만 보여서 할 일에 올린다
   if (s.scenario && s.b2b.caskBids.length) {
@@ -232,7 +250,7 @@ export function monthTodos(s: GameState): Todo[] {
     const short = exportShortfalls(s.history.reports.at(-1));
     if (short.length) {
       const unmet = short.reduce((t, x) => t + x.unmet, 0);
-      out.push({ id: 'export-starve', level: 'warn', text: `수출이 국내 재고를 먼저 가져갔다 — 지난달 국내 ${unmet.toLocaleString()}병 품절(「${short[0]!.name}」${short.length > 1 ? ` 외 ${short.length - 1}개` : ''}). 국내 판매만 인지도를 키운다 — 재고를 늘리거나 수출가 배수를 약 0.9 아래로 낮추면 국내가 먼저 채워진다`, action: '판매', target: { tab: 'sales' } });
+      out.push({ id: 'export-starve', level: 'warn', text: `수출이 국내 재고를 먼저 가져갔다 — 지난달 국내 ${unmet.toLocaleString()}병 품절(「${short[0]!.name}」${short.length > 1 ? ` 외 ${short.length - 1}개` : ''}). 국내 판매만 인지도를 키운다 — 재고를 늘리거나, 수출가 배수를 약 0.9 아래로 낮추거나, 그 제품을 「수출 안 함」(#266)으로 두면 국내가 먼저 채워진다`, action: '판매', target: { tab: 'sales' } });
     }
   }
   // 자동 납품이 원액을 못 찾는 제품 (#243, 5차 판: 「안성 소주」가 탱크를 다 써 「옹기소주」가 못 채워졌는데 이유를 몰랐다)

@@ -72,10 +72,14 @@ export function judgeGoal(s: GameState, month: number): GoalVerdict | null {
     { id: 'flagship', ok: !!flag, ...(flag?.value != null ? { value: flag.value } : {}) },
     { id: 'netWorth', ok: nw >= target, value: nw, target },
   ];
-  const result = !survive ? 'failed' : checks.every((c) => c.ok) ? 'heritage' : 'missed';
+  // 등급제 (#263 ①안 — 등급표는 그대로, 결과 이름만): 버티고 순자산을 채우면 플래그십이 없어도 "달성"(B).
+  // 플래그십까지면 헤리티지(A·S), 순자산 미달이면 "일부 미달"(플래그십만 B · 버티기만 C)
+  const result: GoalVerdict['result'] = !survive ? 'failed' : checks.every((c) => c.ok) ? 'heritage' : nw >= target ? 'achieved' : 'missed';
   let grade: GoalVerdict['grade'] = null;
   if (result === 'heritage') {
     grade = nw >= target * GRADE.sNetWorthRatio && (flag?.value ?? 0) >= GRADE.sFlagshipQuality && awarenessOf(s) >= GRADE.sAwareness ? 'S' : 'A';
+  } else if (result === 'achieved') {
+    grade = 'B';
   } else if (result === 'missed') {
     grade = checks.filter((c) => c.id !== 'survive' && c.ok).length >= 1 ? 'B' : 'C';
   }

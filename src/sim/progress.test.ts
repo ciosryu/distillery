@@ -91,6 +91,9 @@ describe('목표 판정 (S-9, MVP §3)', () => {
     expect(judgeGoal(s, 180)).toMatchObject({ result: 'heritage', grade: 'S' });
     houseBrand(s).awareness = GRADE.sAwareness - 0.05;
     expect(judgeGoal(s, 180)).toMatchObject({ result: 'heritage', grade: 'A' });
+    s.progress.milestones = [];
+    expect(judgeGoal(s, 180)).toMatchObject({ result: 'achieved', grade: 'B' }); // 순자산만 — 등급제(#263): 플래그십 없이도 달성
+    s.progress.milestones.push({ id: 'flagship_sold', month: 170, value: GRADE.sFlagshipQuality + 5 });
     s.finance.cash = target - 1_000_000_000;
     expect(judgeGoal(s, 180)).toMatchObject({ result: 'missed', grade: 'B' }); // 플래그십만
     s.progress.milestones = [];

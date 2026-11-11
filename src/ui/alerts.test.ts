@@ -150,7 +150,7 @@ describe('3차 MVP 플레이테스트 대응 (#203) — 멈춘 몰트 생산 · 
     expect(ids.indexOf('malt-stopped')).toBeLessThan(ids.indexOf('fill'));
     const ranks = ids.map((id) => (TODO_ORDER.includes(id) ? TODO_ORDER.indexOf(id) : 5.5));
     expect([...ranks].sort((a, b) => a - b)).toEqual(ranks);
-    expect(TODO_ORDER.slice(0, 3)).toEqual(['loan-jump', 'malt-stopped', 'visitor']);
+    expect(TODO_ORDER.slice(0, 4)).toEqual(['flagship-low', 'loan-jump', 'malt-stopped', 'visitor']); // 남은 플래그십 후보(#261)는 맨 위 — 되돌릴 수 없다
     expect(TODO_ORDER.at(-1)).toBe('sample');
     expect(TODO_ORDER.indexOf('stockout')).toBe(TODO_ORDER.indexOf('visitor') + 1);
   });
@@ -305,5 +305,53 @@ describe('12년 플래그십 후보 (#240 — 되돌릴 수 없는 행동의 남
     expect(flagshipCandidates(s).length).toBe(filled.length - 1);
     s.month = 40; // 남은 140개월 < 144 — 새 통은 후보가 될 수 없다
     expect(flagshipImpact(s, []).final).toBe(true);
+  });
+});
+
+describe('플래그십 후보 감소 알림 (#261)', () => {
+  const withCasks = (month: number, oaks: number[]) => {
+    const s = mvp();
+    s.month = month;
+    s.inventory.casks = s.inventory.casks.filter((c) => !c.contents);
+    oaks.forEach((oak, i) => {
+      const c = { ...s.inventory.casks[0]!, id: `C${i}`, contents: { id: `LC${i}`, name: `C${i}`, kind: 'malt' as const, volumeL: 150, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10_000 } };
+      s.inventory.casks.push(c);
+    });
+    return s;
+  };
+
+  it('후보 집합이 닫힌 뒤 3통 이하이면 할 일 맨 위 — 닫히기 전·4통 이상·0통·판매 뒤는 없다', () => {
+    const s = withCasks(100, [70, 66]); // 남은 80개월 — 64개월 이상이 후보
+    expect(flagshipCandidates(s).length).toBe(2);
+    const t = monthTodos(s);
+    expect(t[0]?.id).toBe('flagship-low');
+    expect(t[0]?.text).toContain('2통');
+    expect(TODO_ORDER[0]).toBe('flagship-low');
+    expect(monthTodos(withCasks(100, [70, 69, 68, 67])).some((x) => x.id === 'flagship-low')).toBe(false); // 4통
+    expect(monthTodos(withCasks(20, [10])).some((x) => x.id === 'flagship-low')).toBe(false); // 아직 새 통이 후보가 될 수 있다
+    const sold = withCasks(100, [70]);
+    sold.progress.milestones.push({ id: 'flagship_sold', month: 99 } as never);
+    expect(monthTodos(sold).some((x) => x.id === 'flagship-low')).toBe(false);
+  });
+
+  it('결산에 후보 수가 남고, 줄어든 진행은 소식 창(turnNews)에 "a → b통"으로 — 자동 납품이 쓴 달은 메모도', async () => {
+    const { turnNews } = await import('./TurnBrief');
+    const { noteCandidateUse, candidateVolumes } = await import('../sim/tags');
+    let s = withCasks(100, [70, 66, 64]);
+    s = advanceMonth(s);
+    expect(s.history.reports.at(-1)!.flagshipCandidates).toBe(flagshipCandidates(s).length);
+    const n0 = s.history.reports.at(-1)!.flagshipCandidates!;
+    // 손으로 한 통을 비운 뒤 진행 — 후보가 하나 준다
+    s.inventory.casks = s.inventory.casks.filter((c) => c.id !== 'C0');
+    const from = s.month;
+    s = advanceMonth(s);
+    const news = turnNews(s, from);
+    expect(news.notes[0]?.text).toContain(`플래그십 후보 ${n0} → ${n0 - 1}통`);
+    // 자동 납품 메모 — 후보 통 원액이 줄면 제품 이름과 함께
+    const before = candidateVolumes(s)!;
+    const report = { notes: ['자동 납품 「안성 3년」 +300병 (목표 600병 = 2개월분 · 원액 C1)'] } as never as Parameters<typeof noteCandidateUse>[1];
+    s.inventory.casks.find((c) => c.id === 'C1')!.contents!.volumeL -= 50;
+    noteCandidateUse(s, report, before, 0);
+    expect(report.notes.at(-1)).toMatch(/^플래그십 후보 1통에서 자동 납품이 원액을 썼다 — 「안성 3년」/);
   });
 });

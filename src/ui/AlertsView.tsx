@@ -1,6 +1,6 @@
 // 위기 경고·이번 달 할 일·지난달 현금 흐름·대출 상환 예정 — 화면 (코어 UI, 1차 MVP 플레이테스트 대응 ①~④, 계산은 alerts.ts)
 // 파일 이름이 alerts.ts와 대소문자만 다르면 대소문자를 가리지 않는 파일 시스템(macOS·Windows 기본)에서 './Alerts'가 alerts.ts로 풀릴 수 있어 AlertsView로 둔다
-import { BANKRUPT_AFTER_MONTHS, midGoalsOf, monthLabel } from '../sim';
+import { BANKRUPT_AFTER_MONTHS, midGoalsOf, monthLabel, whiskySkipCheck } from '../sim';
 import { SCENARIOS } from '../sim/content/scenarios';
 import { productionValue } from '../sim/economics';
 import { loanRoomTotal, monthlyFixedCost } from '../sim/loans';
@@ -24,6 +24,35 @@ function useGo() {
       requestAnimationFrame(() => document.getElementById(t.anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     });
   };
+}
+
+/**
+ * 위스키 원액 생산 건너뛰기 (#268 — 오너 답 2 "생산 중단 알림은 다음 턴 가장 위에 크게"). 지난 결산에 `whiskySkipped`가 있으면 파산 경고 자리 위에.
+ * 이번 달도 건너뛸지는 지금 현금으로 미리 본다(`whiskySkipCheck` — 생산 단계와 같은 식)
+ */
+export function SkipBanner() {
+  const s = useGame((g) => g.state);
+  const go = useGo();
+  const last = s.history.reports.at(-1);
+  if (!s.scenario || !last?.whiskySkipped) return null;
+  let streak = 0;
+  for (let i = s.history.reports.length - 1; i >= 0 && s.history.reports[i]!.whiskySkipped; i--) streak++;
+  const again = whiskySkipCheck(s);
+  return (
+    <div role="alert" className="mb-4 rounded-lg border-2 border-amber-400 bg-amber-50 p-3 text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+      <div className="text-base font-semibold">⏸ 위스키 원액 생산을 건너뛰었다{streak > 1 ? ` — ${streak}개월째` : ''}</div>
+      <div className="mt-1 text-sm">
+        지난달 월초 현금 {fmtWon(last.whiskySkipped.cash)} &lt; 고정비 보름치 {fmtWon(last.whiskySkipped.threshold)} — 몰트·그레인을 만들지 않았다(소주는 만들었다).
+        <b> 몇 년 뒤 그만큼 위스키가 빈다.</b> 생산 지시는 그대로라 현금이 돌아오면 저절로 다시 만든다.
+        {again ? <> 지금 현금으로는 <b>이번 달도 건너뛴다</b>.</> : <> 지금 현금이면 이번 달은 만든다.</>}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+        <Button small variant="primary" onClick={() => go({ tab: 'finance' })}>대출·급전 받기 — 아직 {fmtWon(loanRoomTotal(s))}</Button>
+        <Button small onClick={() => go({ anchor: 'mvp-orders' })}>생산 지시 보기</Button>
+        {s.scenario && <Button small variant="ghost" onClick={() => go({ anchor: 'mvp-fixed' })}>매달 나가는 돈 줄이기</Button>}
+      </div>
+    </div>
+  );
 }
 
 /**

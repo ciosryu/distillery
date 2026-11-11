@@ -9,7 +9,7 @@ import { BusinessPlan } from './ui/BusinessPlan';
 import { ackBuild, buildDrift, exportPlayFile, getPlaylog, recordBuild, startPlayClock } from './store/playlog';
 import { BUILD_ID } from './build';
 import { MvpHome } from './ui/MvpHome';
-import { CashBanner } from './ui/AlertsView';
+import { CashBanner, SkipBanner } from './ui/AlertsView';
 import { Verdict } from './ui/Verdict';
 import { useUi } from './store/ui';
 import { won } from './ui/format';
@@ -181,6 +181,7 @@ export default function App() {
           </div>
         )}
         {/* 파산 카운트다운 (1차 MVP 플레이테스트 대응 ①) — 모든 탭 맨 위 */}
+        <SkipBanner />
         <CashBanner />
         {running && s.events.pending.length > 0 && tab !== 'dashboard' && (
           <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
