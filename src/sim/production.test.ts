@@ -1047,7 +1047,7 @@ describe('자동 납품의 플래그십 후보 보호 (#252, 후반 확인 판)'
   });
 });
 
-describe('자동 납품 통 하한 (P-PROD-41, 표기 하한 함정)', () => {
+describe('자동 납품 통 하한 (#267, 표기 하한 함정)', () => {
   it('기본은 제품 표기, 낮추면 법정 숙성 ~ 표기 사이에서 그 하한부터 쓰고, 표기 이상·법정 미만은 막는다', async () => {
     const { autoRestockSources, autoRestockFloor } = await import('./economics');
     let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });

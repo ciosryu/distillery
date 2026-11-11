@@ -23,7 +23,7 @@ export type MktAction =
   | { type: 'setExportPrice'; marketId: ExportMarketId; priceFactor: number }
   /** 피니싱 (S-10 자리) — 캐스크 원액을 빈 캐스크로 옮겨 마무리한다. 규칙은 단계 P(PROD): 지금은 항상 실패 */
   | { type: 'setPrice'; productId: string; price: number }
-  /** 제품별 수출 안 함 (P-MKT-21) — 수출이 국내를 굶길 때(#257) 플레이어가 고른다. 다음 달 판매부터 */
+  /** 제품별 수출 안 함 (#266) — 수출이 국내를 굶길 때(#257) 플레이어가 고른다. 다음 달 판매부터 */
   | { type: 'setProductExport'; productId: string; noExport: boolean }
   /** 월 마케팅 예산 — brandId가 없거나 하우스면 하우스(commerce.marketingBudget), 세컨드 브랜드면 그 브랜드 */
   | { type: 'setMarketing'; amount: number; brandId?: string }

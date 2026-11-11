@@ -162,7 +162,7 @@ export function BlendLab() {
               {target.source !== 'core' && <TextField label="코어 레인지(선택)" value={line} onChange={setLine} width="w-32" />}
             </div>
             <div className="flex flex-wrap gap-2">
-              {/* 배팅 확정·병입 확인 (P-PROD-43, #240 되돌릴 수 없는 버튼 — STATUS 1d의 PROD 몫 마지막) — 첫 누름에 병 수·쓸 통·비는 통·남는 위스키 통·플래그십 후보를 보이고 두 번째에 병입 */}
+              {/* 배팅 확정·병입 확인 (#269, #240 되돌릴 수 없는 버튼 — STATUS 1d의 PROD 몫 마지막) — 첫 누름에 병 수·쓸 통·비는 통·남는 위스키 통·플래그십 후보를 보이고 두 번째에 병입 */}
               <ConfirmButton variant="primary" disabled={!components.length} armKey={JSON.stringify([s.month, components, options])} armedLabel="한 번 더 누르면 병입"
                 onConfirm={() => { const r = bottleWithHeritage(s, dispatch, components, options); if (r) setReveal(r); }}
                 preview={() => {

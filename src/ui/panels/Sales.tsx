@@ -201,7 +201,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
               </select>
             </label>
           )}
-          {/* 자동 납품이 쓸 통의 최소 숙성 (P-PROD-41) — 기본은 제품 표기. 표기가 길면(5년+) 가장 오래된 통만 가져간다는 경고 */}
+          {/* 자동 납품이 쓸 통의 최소 숙성 (#267) — 기본은 제품 표기. 표기가 길면(5년+) 가장 오래된 통만 가져간다는 경고 */}
           {p.autoRestock && isWhiskyCategory(p.category) && (() => {
             const legal = whiskyMinMonths(region.whisky);
             const label = p.ageYears ? p.ageYears * 12 : legal;

@@ -358,7 +358,7 @@ export function guardedFlagshipCasks(s: GameState, p: Product): number {
 }
 
 /**
- * 자동 납품이 쓸 통의 최소 숙성(개월) — 플레이어가 정한 하한(P-PROD-41), 없으면 제품 표기 연수(없으면 법정 숙성).
+ * 자동 납품이 쓸 통의 최소 숙성(개월) — 플레이어가 정한 하한(#267), 없으면 제품 표기 연수(없으면 법정 숙성).
  * 표기 하한 함정(후반 확인 판 ARCH §7.21): 오래된 통으로 처음 병입한 제품(예: 6년 표기)은 하한이 표기와 같아 자동 납품이 가장 오래된 통만 가져갔다
  */
 export function autoRestockFloor(s: GameState, p: Pick<Product, 'ageYears' | 'autoRestockMinMonths'>): number {

@@ -288,7 +288,7 @@ export function exportDemandFor(s: GameState, p: Product, entry: ExportEntry, sa
 
 /** 이 수출 시장의 이번 달 수요(병) — 재고 있는 제품끼리 카테고리별로 나눈다 */
 export function exportDemands(s: GameState, entry: ExportEntry): Map<string, number> {
-  // 「수출 안 함」(P-MKT-21) 제품은 수출 진열에서 빠진다 — 같은 주종 다른 제품의 수출 몫(SKU 나눔)에도 끼지 않는다
+  // 「수출 안 함」(#266) 제품은 수출 진열에서 빠진다 — 같은 주종 다른 제품의 수출 몫(SKU 나눔)에도 끼지 않는다
   const alone = s.commerce.products.filter((p) => p.stockBottles > 0 && !p.noExport).map((p) => ({ p, standaloneBottles: exportDemandWithSplit(s, p, entry, 1) }));
   const f = splitByCategory(alone);
   return new Map(alone.map((x) => [x.p.id, x.standaloneBottles * (f.get(x.p.id) ?? 1)]));

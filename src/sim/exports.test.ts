@@ -137,7 +137,7 @@ describe('재고 배분 (#109)·수출가 (#106·#108)', () => {
     expect(exportDemandFor(t, t.commerce.products[0]!, { ...e, priceFactor: 1.5 }, 1)).toBeLessThan(exportDemandFor(t, t.commerce.products[0]!, { ...e, priceFactor: 1 }, 1));
   });
 
-  it('수출 안 함(P-MKT-21): 끈 제품은 수출 수요가 0 — 수출가가 높아도 재고를 모두 국내에 판다. 다시 켜면 돌아온다', () => {
+  it('수출 안 함(#266): 끈 제품은 수출 수요가 0 — 수출가가 높아도 재고를 모두 국내에 판다. 다시 켜면 돌아온다', () => {
     const on = runSales(setup(5, 1.4), mulberry32(1), 6);
     expect(exported(on)).toBeGreaterThan(0); // 끄기 전: 수출이 먼저 채워진다
     const s = setup(5, 1.4);

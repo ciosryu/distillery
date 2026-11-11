@@ -205,7 +205,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (!autoRestockSupported(p)) return fail(prev, '이 제품은 자동 납품을 쓸 수 없습니다 (소주·진·고량주·싱글 몰트·그레인 위스키만, 면세 한정판 제외)');
     if (!(AUTO_RESTOCK_MONTHS as readonly number[]).includes(a.months)) return fail(prev, '유지 개월분은 1·2·3·6 중에서 고른다');
     p.autoRestock = a.months;
-    // 쓸 통의 최소 숙성 (P-PROD-41) — 위스키만, 법정 숙성 이상 · 표기 이하. null/표기와 같으면 기본(표기)
+    // 쓸 통의 최소 숙성 (#267) — 위스키만, 법정 숙성 이상 · 표기 이하. null/표기와 같으면 기본(표기)
     if (a.minMonths !== undefined && isWhiskyCategory(p.category)) {
       const legal = whiskyMinMonths(regionOf(s).whisky);
       const label = p.ageYears ? p.ageYears * 12 : legal;

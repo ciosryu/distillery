@@ -4,7 +4,7 @@ import { useGame } from '../store/game';
 import { Button } from './kit';
 
 // 수출이 국내를 굶기는지 ([결정 #257], 파트 MKT) — 판매 탭·수출 탭이 같이 쓴다. 배분 규칙(#109)은 그대로이고,
-// 플레이어가 제품마다 「수출 끄기」(P-MKT-21)로 국내 몫을 되찾는다
+// 플레이어가 제품마다 「수출 끄기」(#266)로 국내 몫을 되찾는다
 
 /** 지난달 수출된 제품 중 국내 수요를 다 못 채운 것을 보인다. 없으면 아무것도 안 그린다 */
 export function ExportShortfallNote({ s }: { s: GameState }) {

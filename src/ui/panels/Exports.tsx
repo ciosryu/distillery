@@ -27,7 +27,7 @@ export function Exports() {
 
       {s.commerce.products.some((p) => p.noExport && p.stockBottles > 0) && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-stone-600 dark:text-stone-400">
-          <span>수출 안 함 (P-MKT-21) — 국내에만 판다:</span>
+          <span>수출 안 함 (#266) — 국내에만 판다:</span>
           {s.commerce.products.filter((p) => p.noExport && p.stockBottles > 0).map((p) => (
             <Button key={p.id} small onClick={() => dispatch({ type: 'setProductExport', productId: p.id, noExport: false })}>「{p.name}」 다시 수출</Button>
           ))}

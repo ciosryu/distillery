@@ -2,10 +2,10 @@
 // 실행: npx tsx scripts/experiments/mkt-replay.ts <세이브.json> [개월=36]
 //   ALLOCS=margin,domestic,proportional  수출 배분 방식(EXPORT_SALES.allocation, 실험 안에서만 바꾼다)
 //   MOVES=keep,lower,raise,off  플레이어 대응 — keep 그대로 · lower 수출가 ×0.85(배분이 국내 먼저로 돈다) · raise ×1.3(현지 수요가 준다)
-//                                · off 지난달 국내가 모자란 수출 제품을 「수출 끄기」(P-MKT-21)
+//                                · off 지난달 국내가 모자란 수출 제품을 「수출 끄기」(#266)
 //   SEEDS=1,2,3      굴림 난수 (세이브의 시드에 더한다 — 같은 세이브라도 다음 달 수요가 다르다)
 // 플레이어 행동은 넣지 않는다: 세이브에 켜 둔 자동 납품·자동 가격·생산 주문만 돈다. 그래서 절대값이 아니라 방식 사이 비교로만 읽는다
-// 판정(제안, 단계 T): 수출 위주는 의도(오너 2026-11-11). 국내 미충족은 보이고(#257) 「수출 끄기」(P-MKT-21, 오너 2026-11-11)로 되돌린다 —
+// 판정(제안, 단계 T): 수출 위주는 의도(오너 2026-11-11). 국내 미충족은 보이고(#257) 「수출 끄기」(#266, 오너 2026-11-11)로 되돌린다 —
 //   여기서는 대응마다 국내 판매·인지도·현금이 얼마나 달라지는지(되돌리는 값)를 잰다
 import { advanceMonth, applyAction, exportShortfalls, netWorth, type GameState, type MonthReport } from '../../src/sim';
 import { houseBrand } from '../../src/sim/brands';
