@@ -3,6 +3,7 @@ export * from './actions';
 export * from './blending';
 export * from './handfill';
 export * from './delegateCheck';
+export * from './tags';
 export * from './autoFill';
 export * from './caskStory';
 export * from './packaging';
