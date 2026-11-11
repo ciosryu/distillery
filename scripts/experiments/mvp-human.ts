@@ -26,6 +26,10 @@
 //   P7=1 이면 플래그십 후보가 어디서 사라지나(후반 확인 판, 표준 규모 166개월 — 숙성 통 최장 16개월) 실험 — 위스키 병입 순서와 보호를 바꾼다.
 //     order 'young' = 표기 이상 통 중 어린 통부터(자동 납품 #206의 규칙) · labelFrom = [m, 개월] 그 달부터 병입 최소 숙성(3년 표기 제품 = 36) ·
 //     protect = 플래그십 후보(isFlagshipCandidate) 중 가장 오래된 n통은 병입하지 않는다(#249 QoL ② "보호" 태그를 흉내) — TIER=standard로 돌린다
+//   P8=1 이면 표준 규모 사람형 판정용 봇(#265 — 단계 T 판정용 봇, MGT 작성) — 4차 재현(Q0) 위에 후반 확인 판(표준 규모, mgt-stage-t.md·mvp.md §7.18~§7.21)의 행동을 더한다:
+//     이벤트 켬(단계 해금의 6년 차 이벤트 포함) · 기프트 샵 85개월·핸드필 86개월(빈 통이면 다음 통 지정) · 86개월부터 수출 제안 수락(최대 4곳, 제안가 그대로) ·
+//     위스키는 어린 통부터·43개월부터 3년 표기·플래그십 예비 2통 보호(#260) · 마케팅 350만 → 96개월 200만 · 현금 10억 넘으면 연봉 협상 인상(아니면 기본값 동결).
+//     TIER=standard로 돌린다(micro도 된다). 손잡이(LEVEL_RAISE·BANK_SCREEN·HIRE_SALES_AT·SALARY_REVIEW, mgtKnobs.ts)를 함께 쓸 수 있다
 //   DUMP=<폴더> 이면 정책 묶음의 첫 정책·시드 1 판을 59·83·107·119·179개월에 기록 파일(playlog 없음)로 떨군다 — 화면에서 "기록 파일 불러오기"로 열어
 //     단계 해금(6·8·10·11년 차)을 직접 지나가 보는 점검용(5차 전 점검, mvp.md §7.1). 출력 표는 그대로다
 //   SPLIT=1 이면 15년 순자산 분해 표를 더 낸다(현금·대출·원액 현물가·제품, 위스키 매출 시기, 원액 평가액 증가 대 생산비 — #191 정정, mvp.md §7.6)
@@ -38,6 +42,8 @@ import { netWorth } from '../../src/sim/progress';
 import { monthlyFixedCost } from '../../src/sim/loans';
 import { isFlagshipCandidate } from '../../src/sim/delegateCheck';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { handfillBlocker, handfillCask, hasHandfillZone } from '../../src/sim/handfill';
+import { applyMgtKnobs, mgtPolicy } from './mgtKnobs';
 
 const DUMP = process.env.DUMP;
 const DUMP_MONTHS = [59, 83, 107, 119, 179];
@@ -47,9 +53,11 @@ const SEEDS = Number(process.argv[2] ?? 10);
 const MONTHS = Number(process.argv[3] ?? 180);
 const TIER = (process.env.TIER ?? 'micro') as 'micro' | 'standard';
 const LOAN = Number(process.env.LOAN ?? 0);
-EVENTS.splice(0); // MVP: 랜덤 이벤트 OUT (#130)
+// MVP: 랜덤 이벤트 OUT (#130) — P8(판정용 봇)은 켠다: 단계 해금(#215)으로 6년 차부터 이벤트가 열리는 지금 MVP와 같게
+if (!process.env.P8) EVENTS.splice(0);
+applyMgtKnobs(); // MGT 실험 손잡이 (T-0) — 환경 변수가 없으면 아무 일도 하지 않는다
 
-interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number }
+interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number }
 const P = (name: string, o: Partial<Policy>): Policy => ({ name, soju: 'stock', loans: 'banner', cut: 'none', visitor: true, farm: false, bigMalt: false, ...o });
 const POLICIES: Policy[] = [
   P('A 봇 기준', { loans: 'bot' }),
@@ -109,6 +117,16 @@ const P7_POLICIES: Policy[] = [
   P4('W3 W0 + 후보 2통 보호', { protect: 2 }),
   P4('W4 W2 + 후보 2통 보호', { order: 'young', labelFrom: LABEL3, protect: 2 }),
   P4('W5 W2 + 후보 5통 보호', { order: 'young', labelFrom: LABEL3, protect: 5 }),
+];
+// 표준 규모 사람형 판정용 봇 (P8, #265) — 후반 확인 판(standard 166개월)의 행동. 전통주 등록·발효조 2기·몰트 4·소주 1은 4차 재현(Q0)과 같다(후반 판의 등록 여부는 기록에 없다)
+const MKT8: [number, number][] = [[0, 3_500_000], [96, 2_000_000]];
+const P8 = (name: string, o: Partial<Policy>): Policy => P4(name, { mkt: MKT8, order: 'young', labelFrom: LABEL3, protect: 2, giftshopAt: 85, handfillAt: 86, exportFrom: 86, exportMax: 4, raiseIfCash: 1_000_000_000, ...o });
+const P8_POLICIES: Policy[] = [
+  P8('X0 표준 규모 사람형(후반 확인 판 재현)', {}),
+  P8('X1 X0 − 수출', { exportFrom: undefined }),
+  P8('X2 X0 − 기프트 샵·핸드필', { giftshopAt: undefined, handfillAt: undefined }),
+  P8('X3 X0 + 예비 4통 보호', { protect: 4 }),
+  P8('X4 X0 − 연봉 인상(늘 기본값 동결)', { raiseIfCash: undefined }),
 ];
 const P3_POLICIES: Policy[] = [
   P3('R0 3차 규모 · 사람 기준(배너 대출·비지터 지음)', {}),
@@ -214,6 +232,24 @@ function finance(s: GameState, p: Policy): GameState {
   return s;
 }
 
+/** 핸드필(P8): 존이 있고 지정 통이 비면 — 플래그십 후보·보호 통이 아닌 가장 어린 위스키 표기 통을 지정한다 */
+function handfill(s: GameState, p: Policy): GameState {
+  if (!hasHandfillZone(s) || handfillCask(s)) return s;
+  const kept = new Set(p.protect ? s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c)).sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths).slice(0, p.protect).map((c) => c.id) : []);
+  const c = s.inventory.casks.filter((x) => x.contents && !kept.has(x.id) && !isFlagshipCandidate(s, x) && !handfillBlocker(s, x)).sort((a, b) => a.contents!.oakMonths - b.contents!.oakMonths)[0];
+  return c ? act(s, { type: 'setHandfillCask', caskId: c.id }) : s;
+}
+
+/** 수출(P8): 제안이 오면 받는다 — 진출비 + 1억이 남을 때, 최대 exportMax곳, 제안가 그대로(후반 판: 86개월째 첫 진출, 4곳) */
+function exports(s: GameState, p: Policy): GameState {
+  for (const o of [...(s.commerce.exportOffers ?? [])]) {
+    if ((s.commerce.exports ?? []).length >= (p.exportMax ?? 4)) break;
+    if (s.finance.cash <= o.entryCost + 100_000_000) continue;
+    s = act(s, { type: 'acceptExportOffer', offerId: o.id });
+  }
+  return s;
+}
+
 /** 순자산 중 원액(탱크·캐스크) 현물 매각가 — progress.netWorth와 같은 식 */
 const spiritsValue = (s: GameState) => [...s.inventory.lots, ...s.inventory.casks.filter((c) => c.contents && !c.owner).map((c) => c.contents!)]
   .reduce((t, l) => t + (isBulkKind(l) ? l.volumeL * l.abv * spotBidPerLPA(s, l) : 0), 0);
@@ -242,10 +278,16 @@ function play(p: Policy, seed: number): Row {
     // 2차 판: 경고(파산 배너 — 주의 단계 포함)를 처음 보고 생산을 모두 0으로 했다. 대출을 먼저 받으면 현금은 음수가 되지 않으므로 '배너가 뜬 때'로 본다
     if (p.cut === 'onCrisis' && !cut && cashAlert(s)) { s = setOrders(s, 0, 0); cut = true; cutMonth = m; }
     if (p.cut === 'at27' && !cut && m >= 27) { s = setOrders(s, 0, 0); cut = true; cutMonth = m; }
+    if (p.giftshopAt === m) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_giftshop' });
+    if (p.handfillAt === m) s = act(s, { type: 'buyEquipment', catalogId: 'handfill_zone' });
+    if (p.handfillAt != null) s = handfill(s, p);
+    if (p.exportFrom != null && m >= p.exportFrom) s = exports(s, p);
     s = bottle(s, p, t);
     s = fill(s, p);
     if (p.wipeAt === m) for (const c of s.inventory.casks) if (c.contents && !c.owner && c.contents.oakMonths >= 12 && (c.contents.kind === 'malt' || c.contents.kind === 'grain')) delete (c as { contents?: unknown }).contents;
     s = finance(s, p);
+    if (p.raiseIfCash != null && s.finance.cash > p.raiseIfCash) { const ev = s.events.pending.find((e) => e.defId === 'salary_review'); if (ev) s = act(s, { type: 'resolveEvent', eventId: ev.id, choice: 0 }); }
+    s = mgtPolicy(s);
     // 6개월 규칙을 따로 세려고 시뮬레이션의 3개월 파산을 막는다(연속 개월을 1 이하로 덮어 쓴다) — 연속 개월은 스크립트가 센다(neg)
     s.finance.negativeCashMonths = Math.min(s.finance.negativeCashMonths, 1);
     s = advanceMonth(s);
@@ -275,7 +317,9 @@ const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.le
 const med = (xs: number[]) => { const a = [...xs].sort((x, y) => x - y); return a.length ? a[Math.floor(a.length / 2)]! : NaN; };
 const mo = (v: number) => (Number.isFinite(v) ? `${Math.round(v)}월` : '—');
 
-console.log(process.env.P7
+console.log(process.env.P8
+  ? `표준 규모 사람형 판정용 봇(P8, #265) — 한국 경기, ${TIER}, ${SEEDS}시드 × ${MONTHS}개월, 이벤트 켬, 4차 재현(Q0) + 후반 확인 판 행동(수출 86개월·기프트 샵·핸드필·3년 표기·어린 통부터·예비 2통 보호·마케팅 350 → 200만·현금 10억↑면 연봉 인상)`
+  : process.env.P7
   ? `플래그십 후보 실험 — 4차 재현 봇(한국 경기, ${TIER}, ${SEEDS}시드 × ${MONTHS}개월, 이벤트 끔)에서 위스키 병입 순서·표기·후보 보호만 바꾼다`
   : process.env.P5
   ? `5차 MVP 플레이테스트 재현 — 4차 재현 봇(한국 경기, ${TIER}, ${SEEDS}시드 × ${MONTHS}개월, 이벤트 끔)에 통입 감소·66~75개월 몰트 0·70개월 숙성 통 소진을 넣는다`
@@ -287,7 +331,7 @@ console.log(process.env.P7
 console.log('| 정책 | 파산 (3개월 규칙, 중앙 월) | 파산 (6개월 규칙, 중앙 월) | 최저 현금 중앙값 (그 달) | 최대 대출 잔액 평균 | 첫 위스키 | 6~9년 차 위스키 판매(병, 평균) | 15년 순자산 평균(3개월 규칙 생존) | 순자산 목표 달성 |');
 console.log('|---|---|---|---|---|---|---|---|---|');
 const ALL = new Map<string, Row[]>();
-const RUN = process.env.P7 ? P7_POLICIES : process.env.P6 ? P6_POLICIES : process.env.P5 ? P5_POLICIES : process.env.P4 ? P4_POLICIES : process.env.P3 ? P3_POLICIES : POLICIES;
+const RUN = process.env.P8 ? P8_POLICIES : process.env.P7 ? P7_POLICIES : process.env.P6 ? P6_POLICIES : process.env.P5 ? P5_POLICIES : process.env.P4 ? P4_POLICIES : process.env.P3 ? P3_POLICIES : POLICIES;
 for (const p of RUN) {
   const rows = Array.from({ length: SEEDS }, (_, i) => play(p, i + 1));
   ALL.set(p.name, rows);
@@ -296,7 +340,7 @@ for (const p of RUN) {
   console.log(`| ${p.name} | ${b3.length}/${SEEDS} (${mo(med(b3.map((r) => r.bankrupt3)))}) | ${b6.length}/${SEEDS} (${mo(med(b6.map((r) => r.bankrupt6)))}) | ${eok(med(rows.map((r) => r.minCash)))} (${mo(med(rows.map((r) => r.minCashMonth)))}) | ${eok(avg(rows.map((r) => r.loansMax)))} | ${mo(med(rows.map((r) => r.firstWhisky).filter((x) => x >= 0)))} | ${Math.round(avg(rows.map((r) => r.whiskyY6to9))).toLocaleString()} | ${eok(avg(alive3.map((r) => r.nw)))} | ${rows.filter((r) => r.goal).length}/${SEEDS} |${rows.some((r) => r.cutMonth >= 0) ? ` 생산 중단 ${mo(med(rows.map((r) => r.cutMonth).filter((x) => x >= 0)))}` : ''}`);
 }
 
-if (process.env.P7) {
+if (process.env.P7 || process.env.P8) {
   // 플래그십 후보 = 판이 끝나기 전 144개월을 채울 수 있는 자체 원액 통(#240, isFlagshipCandidate). 끝에 144개월 이상 통이 1개라도 있어야 플래그십을 낼 수 있다
   console.log('\n| 정책 | 후보 36개월 | 72개월 | 108개월 | 144개월 | 끝에 144개월 이상 통(평균) | 플래그십 가능 판 | 15년 순자산 평균 |');
   console.log('|---|---|---|---|---|---|---|---|');
