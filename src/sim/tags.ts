@@ -1,7 +1,7 @@
 import { isFlagshipCandidate } from './delegateCheck';
 import { vesselMaterial } from './maturation';
 import { PROD_TUNING } from './prodTuning';
-import type { Cask, GameState, SpiritKind, TagColor, TagDef, TagEffect } from './types';
+import type { Cask, GameState, MonthReport, SpiritKind, TagColor, TagDef, TagEffect } from './types';
 
 // 캐스크 태그 (코어 ARCH — #249 QoL ①, 설계 qol.md §4) + 플래그십 예비 통 (#260, #252의 숨은 보호를 보이는 태그로).
 // 태그는 원액(SpiritLot.tagIds)에 붙고, 정의는 BUILTIN_TAGS + inventory.tagDefs 한 곳.
@@ -134,4 +134,34 @@ export function planTag(s: GameState, caskIds: string[], change: TagChange): Bul
     else ok.push(id);
   }
   return { ok, skipped };
+}
+
+// ───────────── 플래그십 후보 감소 기록 (#261 — 화면은 소식 창·할 일, 규칙 불변) ─────────────
+
+/** 플래그십 후보 통 수 — 화면 `alerts.ts flagshipCandidates`와 같은 식(고객 소유 제외 + isFlagshipCandidate) */
+export function flagshipCandidateCount(s: GameState): number {
+  return s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c)).length;
+}
+
+/** 자동 납품 전 후보 통의 원액 양 — 시나리오 판·플래그십 판매 전만(아니면 null) */
+export function candidateVolumes(s: GameState): Map<string, number> | null {
+  if (!s.scenario || s.progress.milestones.some((m) => m.id === 'flagship_sold')) return null;
+  return new Map(s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c)).map((c) => [c.id, c.contents!.volumeL]));
+}
+
+/**
+ * 자동 납품이 후보 통에서 원액을 가져갔으면 결산 메모 한 줄 — "플래그십 후보 n통에서 자동 납품이 원액을 썼다(m통 비움) — 「제품」".
+ * 어느 제품인지는 같은 달 자동 납품 메모의 통 번호로 찾는다. 메모만 남기고 상태는 바꾸지 않는다
+ */
+export function noteCandidateUse(s: GameState, report: MonthReport, before: Map<string, number> | null, notesFrom: number): void {
+  if (!before?.size) return;
+  const drawn = [...before].filter(([id, v]) => (s.inventory.casks.find((c) => c.id === id)?.contents?.volumeL ?? 0) < v - 1e-6).map(([id]) => id);
+  if (!drawn.length) return;
+  const emptied = drawn.filter((id) => !s.inventory.casks.find((c) => c.id === id)?.contents).length;
+  const names = new Set<string>();
+  for (const n of report.notes.slice(notesFrom)) {
+    const m = /^자동 납품 「([^」]+)」/.exec(n);
+    if (m && drawn.some((id) => new RegExp(`\\b${id}\\b`).test(n))) names.add(m[1]!);
+  }
+  report.notes.push(`플래그십 후보 ${drawn.length}통에서 자동 납품이 원액을 썼다${emptied ? `(${emptied}통 비움)` : ''}${names.size ? ` — ${[...names].map((x) => `「${x}」`).join(' ')}` : ''}. 남길 통은 숙성고 카드에서 "플래그십 예비"로 묶는다`);
 }
