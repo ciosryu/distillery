@@ -22,7 +22,7 @@ export function turnNews(s: ReturnType<typeof useGame.getState>['state'], fromMo
   }).sort((a, b) => Number(b.urgent) - Number(a.urgent) || a.month - b.month);
   const span = s.history.reports.filter((r) => r.month >= fromMonth && r.month < s.month);
   const notes = span
-    .flatMap((r) => r.notes.filter((n) => /^(새 기능 열림|중반 목표|마일스톤|핸드필 .*비었다|자동 통입 못 함|IB 입찰 제안|위스키 원액 생산을 건너뛰었다|플래그십 후보 \d+통에서)/.test(n)).map((n) => ({ month: r.month, text: n })));
+    .flatMap((r) => r.notes.filter((n) => /^(새 기능 열림|중반 목표|마일스톤|핸드필 .*비었다|자동 통입 못 함|IB 입찰 제안|위스키 원액 생산을 건너뛰었다|플래그십 후보 \d+통에서|세이브 복구)/.test(n)).map((n) => ({ month: r.month, text: n })));
   // 플래그십 후보가 줄었다 (#261) — 이번 진행 직전 결산과 마지막 결산의 후보 수. 자동 납품 몫은 위 메모가, 나머지는 손 병입·맡기기·판매·빼기 등
   const before = s.history.reports.filter((r) => r.month < fromMonth).at(-1)?.flagshipCandidates;
   const after = span.at(-1)?.flagshipCandidates;
