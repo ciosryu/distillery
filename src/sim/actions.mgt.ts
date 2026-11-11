@@ -10,7 +10,7 @@ import { OWNERSHIP } from './investment';
 import { ensureBoard } from './board';
 import { isBulkKind, spotQuote } from './bulk';
 import { resolvePending } from './events';
-import { currentLoanPayment, inventoryLoanRoom, inventoryLtv } from './loans';
+import { bankScreening, currentLoanPayment, inventoryLoanRoom, inventoryLtv } from './loans';
 import { annuityPayment, nid } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
 import { TECH_BY_ID } from './content/tech';
@@ -211,6 +211,9 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     if (offer.requires === 'producedSoju' && !s.production.flags.producedSoju) return fail(prev, '전통주(증류식 소주) 생산 실적이 있어야 신청할 수 있습니다');
     if (offer.regions && !offer.regions.includes(s.regionId)) return fail(prev, '이 지역에서는 신청할 수 없는 정책자금입니다');
     if (s.finance.loans.some((l) => l.offerId === offer.id)) return fail(prev, '같은 상품을 이미 이용 중입니다');
+    // 은행 심사 — 실험 손잡이(T-0, M2). 게임 기본은 꺼져 있어 늘 통과한다
+    const screen = bankScreening(s, offer);
+    if (!screen.ok) return fail(prev, screen.reason!);
     let max = offer.max;
     if (offer.collateral === 'inventory') {
       if (inventoryLtv(s) <= 0) return fail(prev, '이 입지에서는 재고 담보대출을 받을 수 없습니다');
