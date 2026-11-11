@@ -1,3 +1,4 @@
+import { repairSave } from './repair';
 import type { GameState } from './types';
 
 // 세이브 마이그레이션 체인 (PRD §13.2, 결정 #118, docs/design/architecture.md §3.6)
@@ -161,5 +162,6 @@ export function migrateSave(raw: unknown): GameState | null {
     s = step(s);
     v = s.version;
   }
-  return s as GameState;
+  // 버전과 무관한 수리 (#285) — NaN이 null로 저장된 값을 고친다. 고칠 것이 없으면 그대로(입력을 바꾸지 않는다)
+  return repairSave(s as GameState).state;
 }
