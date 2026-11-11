@@ -901,6 +901,42 @@ describe('[블렌더에게 맡기기] 확인 (#238, 5차 MVP 플레이테스트)
   });
 });
 
+describe('맡기기 후보와 보호 태그 (#260·#249 ② — ARCH 진입 확인 #313 빈틈 ①)', () => {
+  it('기본 후보(고른 묶음 없음)에서는 보호 태그 통(플래그십 예비 + 플레이어 보호)을 빼고, 직접 고르면 쓰되 확인 단계에서 경고한다', async () => {
+    const { emptyCaskOf, blendTargets } = await import('./index');
+    const { delegateCheck, delegateDefaultIds } = await import('./delegateCheck');
+    const { reserveCaskIds } = await import('./tags');
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.month = 96; // 남은 84개월 — 60개월 이상 통이 12년 후보
+    s.inventory.casks = [];
+    s.scenario!.locked = s.scenario!.locked.filter((k) => k !== 'action:delegateBlend');
+    const hex = { peat: 10, fruit: 40, floral: 30, spicy: 20, woody: 30, sweet: 40 };
+    for (const [id, oak] of [['O', 70], ['Y', 40], ['Y2', 38]] as const) {
+      const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.id = id;
+      c.contents = { id: `L${id}`, name: id, kind: 'malt', volumeL: 100, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10_000, batchId: `B${id}` };
+      c.sampleLog = [{ month: 90, hex, sigma: 3, estQuality: 70 }];
+      s.inventory.casks.push(c);
+    }
+    expect([...reserveCaskIds(s)]).toEqual(['O']); // 후보는 O 하나 — 예비
+    const r = applyAction(s, { type: 'defineTag', label: '남길 통', color: 'sky', effect: 'protect' });
+    s = applyAction(r.state, { type: 'tagCasks', caskIds: ['Y2'], add: [r.state.inventory.tagDefs!.at(-1)!.id] }).state;
+    const d = delegateDefaultIds(s, ['O', 'Y', 'Y2']);
+    expect(d.ids).toEqual(['Y']);
+    expect(d.excluded).toEqual(['O', 'Y2']);
+    // 직접 고르면 막지 않는다 — 경고만
+    const target = blendTargets(s)[0]!;
+    const opts = { name: '맡김', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' } as const;
+    const chk = delegateCheck(s, target, ['O', 'Y', 'Y2'], 100, opts);
+    if ('error' in chk) throw new Error(chk.error);
+    expect(chk.protectedUsed.length).toBeGreaterThan(0);
+    expect(chk.warnings.some((w) => w.includes('보호 태그 통'))).toBe(true);
+    const ok = delegateCheck(s, target, d.ids, 100, opts);
+    if ('error' in ok) throw new Error(ok.error);
+    expect(ok.protectedUsed).toEqual([]);
+    expect(ok.warnings.some((w) => w.includes('보호 태그 통'))).toBe(false);
+  });
+});
+
 describe('자동 통입 (#239, 5차 MVP 플레이테스트)', () => {
   const setup = async () => {
     const { emptyCaskOf } = await import('./index');
