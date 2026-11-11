@@ -9,6 +9,7 @@ import { sampledSigma } from './blendRadar';
 import { QUALITY_SIGMA_PER_HEX } from './blendTable';
 import type { Cask, Contract, ContractOffer, ContractTerms, GameState, MonthReport, SpiritLot } from './types';
 import { nid } from './util';
+import { protectedCaskIds } from './tags';
 
 // 원액 B2B 판매 (PRD §8.6): 블렌디드 위스키 회사·브로커에 현물 벌크 판매 또는 정기 공급 계약.
 // 원칙: 현물 매입가(bid) < 기준가치 < 브로커 판매가(ask) → 사고팔기만으로 차익을 낼 수 없다.
@@ -311,18 +312,28 @@ export function ibTastedQuality(s: GameState, cask: Cask): number {
 }
 
 /**
+ * IB 입찰 후보가 될 수 있는 통 — 자사 몰트·그레인, 3년 이상, 매입 원액·소유권 판매 통·핸드필 통 제외,
+ * **보호 태그 통 제외**(플래그십 예비 #260 포함 — 자동 기능은 보호 통을 쓰지 않는다 #249 ②, C-MKT-1). 품질 조건(IB 시음치 65)은 여기서 보지 않는다
+ */
+function ibEligibleCasks(s: GameState): Cask[] {
+  const prot = protectedCaskIds(s);
+  return s.inventory.casks.filter((c) => c.contents && !c.owner && !c.handfill && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= 36 && !prot.has(c.id));
+}
+
+/**
  * IB 입찰 나이 조건(3년 이상)을 채운 통 수 ([결정 #259]) — 품질 조건(IB 시음치 65)은 세지 않는다(시음치가 새지 않게).
- * 0이면 제안이 오지 않는다는 안내에 쓴다. 매입 원액·소유권 판매 통·핸드필 통은 뺀다(refreshCaskBids 후보와 같은 기준)
+ * 0이면 제안이 오지 않는다는 안내에 쓴다. refreshCaskBids 후보와 같은 기준(ibEligibleCasks) — 보호 통은 세지 않는다(C-MKT-1)
  */
 export function ibAgedCaskCount(s: GameState): number {
-  return s.inventory.casks.filter((c) => c.contents && !c.owner && !c.handfill && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= 36).length;
+  return ibEligibleCasks(s).length;
 }
 
 /** IB 입찰 제안 — report를 주면 새 제안을 월 결산 메모("IB 입찰 제안 — …")로 남겨 진행 뒤 소식 창에 띄운다([결정 #253], 후반 확인 판: 제안이 왔는데 못 봐서 사라졌다) */
 export function refreshCaskBids(s: GameState, rng: Rng, report?: MonthReport): void {
   s.b2b.caskBids = s.b2b.caskBids.filter((b) => b.expiresMonth > s.month && s.inventory.casks.some((c) => c.id === b.caskId && c.contents));
   if (s.b2b.caskBids.length >= 2 || !rng.chance(0.25)) return;
-  const candidates = s.inventory.casks.filter((c) => c.contents && !c.owner && !c.handfill && isBulkKind(c.contents) && !c.contents.sourced && c.contents.oakMonths >= 36 && ibTastedQuality(s, c) >= 65 && !s.b2b.caskBids.some((b) => b.caskId === c.id));
+  // 이미 걸린 제안은 통이 나중에 보호(예비)가 되어도 그대로 둔다 — 수락은 손 행동이라 확인 창이 "예비 통" 경고를 한다(#260 원칙, B2B.tsx caskSellWarnings)
+  const candidates = ibEligibleCasks(s).filter((c) => ibTastedQuality(s, c) >= 65 && !s.b2b.caskBids.some((b) => b.caskId === c.id));
   if (!candidates.length) return;
   const cask = rng.pick(candidates);
   const ib = rng.pick(INDEPENDENT_BOTTLERS);

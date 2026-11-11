@@ -805,3 +805,56 @@ describe('수출이 국내를 굶기는지 보이기 (#257) · IB 나이 조건 
     expect(ibAgedCaskCount(s)).toBe(1);
   });
 });
+
+// ───────────── IB 입찰 후보에서 보호 통 빼기 (C-MKT-1, #262 진입 조건 · #249 ② · #260) ─────────────
+describe('IB 입찰은 보호 통(플래그십 예비 포함)을 후보로 쓰지 않는다 (C-MKT-1)', () => {
+  const aged = (s: GameState, n: number, oak: (i: number) => number) => {
+    const base = newGame({ seed: 3, region: 'KR' }).b2b.brokerOffers[0]!.cask;
+    s.inventory.casks = Array.from({ length: n }, (_, i) => ({ ...base, id: `IBP${i}`, contents: { ...base.contents!, id: `IBPL${i}`, oakMonths: oak(i), sourced: false } })) as Cask[];
+  };
+  const always = () => ({ ...mulberry32(11), chance: () => true }) as ReturnType<typeof mulberry32>;
+
+  it('시나리오 판: 예비 통(가장 오래된 후보 n통)에는 제안이 오지 않는다 — 여러 번 굴려도', async () => {
+    const { newScenarioGame } = await import('./index');
+    const { reserveCaskIds } = await import('./tags');
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    aged(s, 30, (i) => 48 + i); // 뒤쪽이 더 오래됐다 — 예비는 가장 오래된 통들
+    const reserve = reserveCaskIds(s);
+    expect(reserve.size).toBeGreaterThan(0);
+    const picked = new Set<string>();
+    for (let k = 0; k < 60; k++) { s.b2b.caskBids = []; refreshCaskBids(s, { ...mulberry32(100 + k), chance: () => true } as ReturnType<typeof mulberry32>); for (const b of s.b2b.caskBids) picked.add(b.caskId); }
+    expect(picked.size).toBeGreaterThan(0);
+    for (const id of picked) expect(reserve.has(id)).toBe(false);
+  });
+
+  it('플레이어가 붙인 보호 태그 통도 빠진다 — 샌드박스(예비 없음)에서도, 안내 숫자(ibAgedCaskCount)도 같은 기준', () => {
+    const s = newGame({ seed: 1, region: 'KR' });
+    aged(s, 6, () => 60);
+    s.inventory.tagDefs = [{ id: 'keep', label: '남김', color: 'sky', effect: 'protect' }];
+    for (const c of s.inventory.casks.slice(1)) c.contents!.tagIds = ['keep'];
+    expect(ibAgedCaskCount(s)).toBe(1);
+    for (let k = 0; k < 20; k++) { s.b2b.caskBids = []; refreshCaskBids(s, always()); for (const b of s.b2b.caskBids) expect(b.caskId).toBe('IBP0'); }
+  });
+
+  it('3년 넘은 통이 모두 예비면 안내 숫자는 0이고 제안이 오지 않는다', async () => {
+    const { newScenarioGame } = await import('./index');
+    const { reserveCaskIds } = await import('./tags');
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    aged(s, 2, () => 72); // 예비 자리(기본 4통)보다 적다 → 둘 다 예비
+    expect(reserveCaskIds(s).size).toBe(2);
+    expect(ibAgedCaskCount(s)).toBe(0);
+    refreshCaskBids(s, always());
+    expect(s.b2b.caskBids).toEqual([]);
+  });
+
+  it('이미 걸린 제안은 통이 나중에 예비가 되어도 지우지 않는다 — 수락은 손 행동(확인 창이 경고)', async () => {
+    const { newScenarioGame } = await import('./index');
+    const { reserveCaskIds } = await import('./tags');
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    aged(s, 1, () => 72);
+    expect(reserveCaskIds(s).has('IBP0')).toBe(true);
+    s.b2b.caskBids = [{ id: 'I1', buyerName: 'x', caskId: 'IBP0', price: 1, expiresMonth: s.month + 2 }];
+    refreshCaskBids(s, always());
+    expect(s.b2b.caskBids.map((b) => b.id)).toEqual(['I1']);
+  });
+});
