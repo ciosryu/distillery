@@ -52,7 +52,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { handfillBlocker, handfillCask, hasHandfillZone } from '../../src/sim/handfill';
 import { applyMgtKnobs, mgtPolicy } from './mgtKnobs';
 import { applyProdKnobs } from './prodKnobs';
-import { currentSuggested } from '../../src/sim/economics';
+import { bestAutoPrice, currentSuggested } from '../../src/sim/economics';
 
 const DUMP = process.env.DUMP;
 const DUMP_MONTHS = [59, 83, 107, 119, 179];
@@ -69,7 +69,7 @@ applyProdKnobs(); // PROD 실험 손잡이 — 환경 변수가 없으면 아무
 // 게임 자동 납품으로 위스키 보충 (PROD 요청, P8만) — 0이면 끔
 const AUTORESTOCK = process.env.P8 && process.env.AUTORESTOCK === '1' ? Number(process.env.AUTORESTOCK_MONTHS ?? 2) : 0;
 
-interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean; maltFrom?: [number, number]; autoRestock?: number }
+interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean; maltFrom?: [number, number]; autoRestock?: number; price?: 'table' | 'markup'; markup?: number }
 const P = (name: string, o: Partial<Policy>): Policy => ({ name, soju: 'stock', loans: 'banner', cut: 'none', visitor: true, farm: false, bigMalt: false, ...o });
 const POLICIES: Policy[] = [
   P('A 봇 기준', { loans: 'bot' }),
@@ -158,6 +158,9 @@ const P8_POLICIES: Policy[] = [
   P8('X16 6배치 60개월부터', { maltFrom: [60, 6] }),
   P8('X17 6배치 96개월부터', { maltFrom: [96, 6] }),
   P8('X18 6배치 120개월부터', { maltFrom: [120, 6] }),
+  // 손 가격 정책(MKT-B, mktP8Hooks.ts에서 옮김 — #278 합리 변형 후보): 자동 가격을 끄고 분기마다 손으로
+  P8('X21 X0 − 자동 가격 + 분기 가격표 최선 값(손)', { autoPrice: false, price: 'table' }),
+  P8('X22 X0 − 자동 가격 + 권장가 × 1.3(병입·보충·분기)', { autoPrice: false, price: 'markup', markup: 1.3 }),
 ];
 const P3_POLICIES: Policy[] = [
   P3('R0 3차 규모 · 사람 기준(배너 대출·비지터 지음)', {}),
@@ -201,6 +204,13 @@ function fill(s: GameState, p?: Policy): GameState {
   return s;
 }
 
+/** 자동 가격을 끈 정책의 손 가격 — 기본은 권장가, price 'table'은 가격표 최선 값, 'markup'은 권장가 × markup */
+function manualPrice(s: GameState, p: Policy, x: GameState['commerce']['products'][number]): GameState {
+  const best = p.price === 'table' ? bestAutoPrice(s, x) : null;
+  const price = best ?? Math.round(currentSuggested(s, x) * (p.price === 'markup' ? p.markup ?? 1.3 : 1));
+  return act(s, { type: 'setPrice', productId: x.id, price });
+}
+
 /**
  * 병입 — lineup = n이면 이름 계열(base.name)마다 제품을 n개까지 두고, n개가 차면 재고가 가장 적은 제품에 보충한다(#186).
  * 같은 주종 제품 수가 수요를 가른다(단계 T 확인 항목 24, SKU 나눔 #154) — 사람 후반 판은 진열 4제품을 자동 가격으로 돌렸다. autoPrice면 새 제품에 자동 가격(#200)
@@ -218,7 +228,11 @@ function bottleAs(s: GameState, p: Policy, comps: { source: 'lot' | 'cask'; id: 
   if (r.error) return s;
   s = r.state;
   // 자동 가격을 끈 정책: 보충한 제품의 값을 지금 권장가로 다시 맞춘다(새 제품은 병입 때 권장가로 나온다) — MKT-B가 짚은 X5 결함
-  if (!p.autoPrice && opts.restockId) { const x = s.commerce.products.find((y) => y.id === opts.restockId); if (x) s = act(s, { type: 'setPrice', productId: x.id, price: currentSuggested(s, x) }); }
+  // price(MKT-B 수동 가격, mktP8Hooks.ts에서 옮김): 'table' = 판매 화면 가격표의 최선 값(bestAutoPrice와 같은 기준)을 손으로 · 'markup' = 권장가 × markup(기본 1.3)
+  if (!p.autoPrice) {
+    const x = opts.restockId ? s.commerce.products.find((y) => y.id === opts.restockId) : p.price ? [...s.commerce.products].reverse().find((y) => y.name === opts.name) : undefined;
+    if (x) s = manualPrice(s, p, x);
+  }
   // 게임 자동 납품(AUTORESTOCK): 새로 만든 위스키 제품에 켠다 — 쓸 통의 최소 숙성은 표기(기본)
   if (p.autoRestock && isWhiskyCategory(cat)) for (const x of s.commerce.products.filter((y) => y.category === cat && !y.autoRestock && !y.dutyFreeOnly)) s = act(s, { type: 'setAutoRestock', productId: x.id, months: p.autoRestock });
   if (p.autoPrice) for (const x of s.commerce.products.filter((y) => y.category === cat && !y.autoPrice && !y.dutyFreeOnly)) s = act(s, { type: 'setAutoPrice', productId: x.id, on: true });
@@ -358,6 +372,8 @@ function play(p: Policy, seed: number): Row {
     if (p.handfillAt === m) s = act(s, { type: 'buyEquipment', catalogId: 'handfill_zone' });
     if (p.handfillAt != null) s = handfill(s, p);
     if (p.exportFrom != null && m >= p.exportFrom) s = exports(s, p);
+    // 손 가격 정책(price): 분기마다 재고 있는 제품 값을 다시 매긴다(MKT-B — 자동 가격을 분기 1번 손으로 하는 것)
+    if (!p.autoPrice && p.price && m > 0 && m % 3 === 0) for (const x of [...s.commerce.products]) if (x.stockBottles > 0 && !x.autoPrice && !x.dutyFreeOnly) s = manualPrice(s, p, x);
     s = bottle(s, p, t);
     s = fill(s, p);
     if (p.wipeAt === m) for (const c of s.inventory.casks) if (c.contents && !c.owner && c.contents.oakMonths >= 12 && (c.contents.kind === 'malt' || c.contents.kind === 'grain')) delete (c as { contents?: unknown }).contents;
