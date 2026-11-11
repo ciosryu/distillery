@@ -363,6 +363,8 @@ export interface MonthReport {
   /** 계약 만료·파기 때 돌려준 남은 선급금 (재무) */
   prepayRefunded?: number;
   production: { recipeId: string; name: string; batches: number; lpa: number; cost: number }[];
+  /** 위스키 원액 생산 건너뛰기 (#249 ④) — 월초 현금이 고정비 보름치 아래라 몰트·그레인을 만들지 않았다. 화면 맨 위 알림용 */
+  whiskySkipped?: { cash: number; threshold: number };
   angelsShareL: number;
   liquorTaxRemitted: number;
   /** 이번 달 발생한 이벤트 제목 */
@@ -656,6 +658,8 @@ export interface ProductionSlice {
   flags: { producedSoju: boolean };
   /** 사무직이 타결한 폐기물(드래프·지게미) 유상 판매 단가(원/kg) */
   wasteContractPerKg: number;
+  /** 이 달에는 소주 생산을 건너뛴다(별도 버튼, #249 ④ — 그 달 한 번만, 진행하면 풀린다) */
+  skipSojuMonth?: number;
 }
 
 export interface InventorySlice {
