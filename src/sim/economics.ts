@@ -11,10 +11,9 @@ import { capacityReport, previewBatch } from './production';
 import { demandFor, distributionCostPerBottle, domesticDemands, priceOptions } from './market';
 import { outboundLogistics } from './sites';
 import { calendar, warehouseCapacity } from './util';
-import { isFlagshipCandidate } from './delegateCheck';
+import { FLAGSHIP_RESERVE_TAG, preferredCaskIds, protectedCaskIds, reserveCaskIds, tagDef } from './tags';
 import { spotBidPerLPA } from './bulk';
 import type { Cask, GameState, MonthReport, Product, ProductCategory, Recipe, SpiritKind, SpiritLot } from './types';
-import { PROD_TUNING } from './prodTuning';
 
 /** 표준 병 — 소주는 대중 규격, 몰트는 위스키 규격 (봇·사전 점검과 같은 값) */
 export const STANDARD_BOTTLE: Record<'soju' | 'whisky', { bottleMl: number; abv: number }> = {
@@ -466,11 +465,11 @@ export function productMonthlyPace(s: GameState, p: Product, monthOfYear = calen
 }
 
 /**
- * 자동 경로의 플래그십 후보 보호 (#252, 후반 확인 판 2026-11-10 — 2·3년 표기 제품의 자동 납품이 "어린 통부터" 쓰다 소비가 공급을 넘자
- * 12년 후보 통까지 다 써 플래그십을 놓쳤다. 오너 "몰랐다, 장기 숙성용 캐스크가 모두 소진되어 곤란"). 시나리오 판에서, 플래그십을 아직 팔지 않았고,
- * 이 제품의 표기가 플래그십 숙성보다 짧으면, 플래그십 후보 통(isFlagshipCandidate) 중 **가장 오래된 n통**(`PROD_TUNING.flagshipReserve`, 기본 4)은 자동 납품이 쓰지 않는다.
- * 후보 전부가 아니라 몇 통만 — 판 초반(36개월 전)에는 모든 통이 후보라 전부 막으면 1년 표기 제품의 자동 납품이 3년 가까이 멈춘다.
- * 손으로 병입·맡기기는 그대로 쓸 수 있다(맡기기는 확인 단계에서 경고, #238). #249 ② 캐스크 태그 "보호"가 들어오면 이 기본 보호를 태그 기본값으로 옮긴다
+ * 자동 경로의 플래그십 후보 보호 (#252 → 캐스크 태그 #260·#249 ②, 2026-11-11). 후반 확인 판: 2·3년 표기 제품의 자동 납품이 "어린 통부터" 쓰다
+ * 소비가 공급을 넘자 12년 후보 통까지 다 써 플래그십을 놓쳤다(오너 "몰랐다, 장기 숙성용 캐스크가 모두 소진되어 곤란").
+ * 이제 보호는 **태그 한 곳**이다 — 숨은 "가장 오래된 4통" 대신 보이는 "플래그십 예비" 태그(`tags.ts reserveCaskIds`, 통 수 = `PROD_TUNING.flagshipReserve`)와
+ * 플레이어가 붙인 "보호" 태그를 자동 납품이 쓰지 않는다. 플래그십 예비만은 #252처럼 **표기가 플래그십 숙성보다 짧은 제품**에만 건다 —
+ * 플래그십 표기 제품의 보충은 예비 통이 바로 쓸 곳이다. 손으로 병입·맡기기는 그대로 쓸 수 있다(맡기기 태그 효과는 MKT 몫)
  */
 export function flagshipGuard(s: GameState, p: Pick<Product, 'ageYears'>): boolean {
   if (!s.scenario) return false;
@@ -478,17 +477,27 @@ export function flagshipGuard(s: GameState, p: Pick<Product, 'ageYears'>): boole
   return (p.ageYears ?? 0) * 12 < s.scenario.goal.flagshipMinMonths;
 }
 
-/** 보호하는 통 — 플래그십 후보 중 가장 오래된 PROD_TUNING.flagshipReserve통(기본 4 `[튜닝]`, 고객 소유·오염 확인 통 제외) */
-export function flagshipReserve(s: GameState): Set<string> {
-  return new Set(s.inventory.casks.filter((c) => !!c.contents && !c.owner && !c.contaminationKnown && vesselMaterial(c) === 'wood' && isFlagshipCandidate(s, c))
-    .sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths || a.id.localeCompare(b.id)).slice(0, PROD_TUNING.flagshipReserve).map((c) => c.id));
+/** 플래그십 예비 통 — `tags.ts reserveCaskIds`와 같다(보호 계산은 태그 한 곳). 옛 이름은 ARCH `tags.test.ts`(#260 "손대지 않으면 #252와 같다")가 쓴다 */
+export const flagshipReserve = (s: GameState): Set<string> => reserveCaskIds(s);
+
+/** 이 제품의 자동 납품이 쓰지 않는 통 — 보호 태그가 붙은 통(#249 ②). 플래그십 표기 제품이면 "플래그십 예비"만으로 보호된 통은 쓴다 */
+export function autoRestockExcluded(s: GameState, p: Pick<Product, 'ageYears'>): Set<string> {
+  const out = protectedCaskIds(s);
+  if (flagshipGuard(s, p) || !out.size) return out;
+  // 다른 보호 태그(플레이어가 붙인 것)가 없는 예비 통만 푼다
+  for (const id of reserveCaskIds(s)) {
+    const c = s.inventory.casks.find((x) => x.id === id);
+    const own = (c?.contents?.tagIds ?? []).some((t) => t !== FLAGSHIP_RESERVE_TAG && tagDef(s, t)?.effect === 'protect');
+    if (!own) out.delete(id);
+  }
+  return out;
 }
 
-/** 이 제품의 자동 납품에서 보호 중인 플래그십 후보 통 수 — 할 일 문구용 */
+/** 이 제품의 자동 납품에서 "플래그십 예비"로 보호 중인 통 수(표기 하한을 채운 통) — 할 일 문구용 */
 export function guardedFlagshipCasks(s: GameState, p: Product): number {
   if (!isWhiskyCategory(p.category) || !flagshipGuard(s, p)) return 0;
   const minOak = autoRestockFloor(s, p);
-  const reserve = flagshipReserve(s);
+  const reserve = reserveCaskIds(s);
   return s.inventory.casks.filter((c) => reserve.has(c.id) && c.contents!.oakMonths >= minOak).length;
 }
 
@@ -505,7 +514,7 @@ export function autoRestockFloor(s: GameState, p: Pick<Product, 'ageYears' | 'au
 /** 자동 납품 하한이 길어 오래된 통만 쓰는 제품인가 — 화면 경고용(5년 이상) */
 export const AUTO_RESTOCK_LONG_FLOOR = 60;
 
-/** 자동 납품 원액 후보 — 쓸 순서대로. 위스키는 숙성 표기를 채우고 피니시가 같고 도수가 충분한 나무 통, 어린 통부터 */
+/** 자동 납품 원액 후보 — 쓸 순서대로. 위스키는 숙성 표기를 채우고 피니시가 같고 도수가 충분한 나무 통, 보호 태그 통 빼고, "먼저 쓰기" 태그 통 먼저, 그다음 어린 통부터 */
 export function autoRestockSources(s: GameState, p: Product): { comp: Omit<BlendComponent, 'liters'>; lot: SpiritLot }[] {
   const kind = RESTOCK_KIND[p.category];
   if (!kind) return [];
@@ -516,9 +525,12 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
       const onggi = (p.restMonths ?? 0) >= (p.oakMonths ?? 0);
       const need = agedWhiteLabelMonths(Math.max(p.restMonths ?? 0, p.oakMonths ?? 0));
       const months = (l: SpiritLot) => (onggi ? l.restMonths ?? 0 : l.oakMonths);
+      const excluded = autoRestockExcluded(s, p);
+      const pref = preferredCaskIds(s);
       return s.inventory.casks.filter((c): c is Cask & { contents: SpiritLot } => !!c.contents && !c.owner && !c.handfill && !c.contaminationKnown && (vesselMaterial(c) === 'wood') !== onggi
-          && c.contents.kind === kind && !c.contents.sourced && months(c.contents) >= need && c.contents.abv >= minAbv && (finishOf(c.contents)?.typeId ?? null) === (p.finish ?? null))
-        .sort((a, b) => months(a.contents) - months(b.contents) || a.id.localeCompare(b.id))
+          && c.contents.kind === kind && !c.contents.sourced && months(c.contents) >= need && c.contents.abv >= minAbv && (finishOf(c.contents)?.typeId ?? null) === (p.finish ?? null)
+          && !excluded.has(c.id))
+        .sort((a, b) => Number(pref.has(b.id)) - Number(pref.has(a.id)) || months(a.contents) - months(b.contents) || a.id.localeCompare(b.id))
         .map((c) => ({ comp: { source: 'cask' as const, id: c.id }, lot: c.contents }));
     }
     // 같은 레시피 탱크만 (#243) — 레시피 기록이 없는 옛 제품은 모든 탱크
@@ -530,11 +542,13 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
   const minOak = autoRestockFloor(s, p);
   const minAbv = isCaskStrength(p) ? 0.4 : p.abv - 1e-9; // 캐스크 스트렝스는 통 도수 그대로 병입한다
   const finish = p.finish ?? null;
-  const guarded = flagshipGuard(s, p) ? flagshipReserve(s) : null;
+  // 보호 태그 통은 빼고(#249 ② — 플래그십 예비 #260 포함), "먼저 쓰기" 태그 통을 먼저, 그다음 어린 통부터
+  const excluded = autoRestockExcluded(s, p);
+  const pref = preferredCaskIds(s);
   return s.inventory.casks.filter((c): c is Cask & { contents: SpiritLot } => !!c.contents && !c.owner && !c.handfill && !c.contaminationKnown && vesselMaterial(c) === 'wood'
       && c.contents.kind === kind && !c.contents.sourced && c.contents.oakMonths >= minOak && c.contents.abv >= minAbv && (finishOf(c.contents)?.typeId ?? null) === finish
-      && !guarded?.has(c.id))
-    .sort((a, b) => a.contents.oakMonths - b.contents.oakMonths || a.id.localeCompare(b.id))
+      && !excluded.has(c.id))
+    .sort((a, b) => Number(pref.has(b.id)) - Number(pref.has(a.id)) || a.contents.oakMonths - b.contents.oakMonths || a.id.localeCompare(b.id))
     .map((c) => ({ comp: { source: 'cask' as const, id: c.id }, lot: c.contents }));
 }
 
