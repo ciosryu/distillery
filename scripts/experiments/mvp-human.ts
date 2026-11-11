@@ -59,7 +59,7 @@ const LOAN = Number(process.env.LOAN ?? 0);
 if (!process.env.P8) EVENTS.splice(0);
 applyMgtKnobs(); // MGT 실험 손잡이 (T-0) — 환경 변수가 없으면 아무 일도 하지 않는다
 
-interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean }
+interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean; maltFrom?: [number, number] }
 const P = (name: string, o: Partial<Policy>): Policy => ({ name, soju: 'stock', loans: 'banner', cut: 'none', visitor: true, farm: false, bigMalt: false, ...o });
 const POLICIES: Policy[] = [
   P('A 봇 기준', { loans: 'bot' }),
@@ -142,6 +142,12 @@ const P8_POLICIES: Policy[] = [
   // 공급 레버(MKT 수출 증분 분해 — 공급 ×1.5면 +13.5억): 지금 증류기·발효조로 몰트 배치를 늘린다. 사람 판은 4배치 — 지배 전략인지 BAL이 본다
   P8('X12 X0 + 몰트 6배치', { maltB: 6 }),
   P8('X13 X0 + 몰트 8배치', { maltB: 8 }),
+  // 증산 시점별(오너 답: "기다리려면 한참 걸려 소용없다" — 늦은 증산도 이득인가). 0개월은 X12와 같은 정책을 시점 규칙으로 쓴다
+  P8('X14 6배치 0개월부터', { maltFrom: [0, 6] }),
+  P8('X15 6배치 36개월부터', { maltFrom: [36, 6] }),
+  P8('X16 6배치 60개월부터', { maltFrom: [60, 6] }),
+  P8('X17 6배치 96개월부터', { maltFrom: [96, 6] }),
+  P8('X18 6배치 120개월부터', { maltFrom: [120, 6] }),
 ];
 const P3_POLICIES: Policy[] = [
   P3('R0 3차 규모 · 사람 기준(배너 대출·비지터 지음)', {}),
@@ -323,6 +329,8 @@ function play(p: Policy, seed: number): Row {
   for (let m = 0; m < MONTHS; m++) {
     for (const [mm, amt] of p.mkt ?? []) if (m === mm) s = act(s, { type: 'setMarketing', amount: amt });
     if (p.maltOff && (m === p.maltOff[0] || m === p.maltOff[1])) s = setOrders(s, sojuBatches(p), m === p.maltOff[0] ? 0 : maltBatches(p));
+    // 증산 시점(P8, 오너 답 2026-11-11 "늘려봐야 기다리려면 한참 걸려 소용없다고 판단(오판)"): maltFrom = [그 달, 배치] — 그 달부터 몰트 배치를 바꾼다
+    if (p.maltFrom && m === p.maltFrom[0]) s = setOrders(s, sojuBatches(p), p.maltFrom[1]);
     if (p.skipBelow) { const skip = s.finance.cash < p.skipBelow * monthlyFixedCost(s); s = skip ? setOrders(s, 0, 0) : setOrders(s, sojuBatches(p), maltBatches(p)); }
     if (p.cut === 'y2to5') s = setOrders(s, sojuBatches(p), m >= 12 && m < 60 ? 1 : maltBatches(p));
     if (p.cut === 'p3' && (m === 25 || m === 35 || m === 40)) { s = setOrders(s, m === 35 ? 0 : sojuBatches(p), m === 35 ? 0 : m === 25 ? Math.ceil(maltBatches(p) / 2) : maltBatches(p)); if (cutMonth < 0) cutMonth = m; }
