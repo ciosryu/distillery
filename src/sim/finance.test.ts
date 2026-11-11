@@ -482,3 +482,26 @@ describe('BIZ-2b 신용보험·팩토링 (#214)', () => {
     expect(applyAction(r.state, { type: 'factorReceivables' }).error).toMatch(/미수금이 없/);
   });
 });
+
+// 은행 심사 — 실험 손잡이 (T-0, M2 · #210). 게임 기본은 꺼짐
+describe('은행 심사 손잡이 (T-0)', () => {
+  it('기본은 꺼져 있어 늘 통과, 켜면 창업 24개월 뒤 적자·현금 부족에서 은행 상품만 거절(급전은 통과)', async () => {
+    const { BANK_SCREENING } = await import('./content/finance');
+    const { bankScreening } = await import('./loans');
+    const { LOAN_OFFERS } = await import('./content/catalog');
+    const { newGame } = await import('./index');
+    const s = newGame({ seed: 1 });
+    s.month = 30; s.finance.cash = 0;
+    s.history.reports = [{ month: 29, revenue: 0, expenses: {}, netCash: -1, operatingCash: -10_000_000, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] }];
+    const facility = LOAN_OFFERS.find((o) => o.id === 'facility')!;
+    const emergency = LOAN_OFFERS.find((o) => o.id === 'emergency')!;
+    expect(BANK_SCREENING.enabled).toBe(false);
+    expect(bankScreening(s, facility).ok).toBe(true);
+    BANK_SCREENING.enabled = true;
+    try {
+      expect(bankScreening(s, facility).ok).toBe(false);
+      expect(bankScreening(s, emergency).ok).toBe(true);
+      expect(bankScreening({ ...s, month: 10 }, facility).ok).toBe(true);
+    } finally { BANK_SCREENING.enabled = false; }
+  });
+});
