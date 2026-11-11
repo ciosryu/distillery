@@ -5,6 +5,14 @@
 //   clear: { above, min }  ('markup'과 같이) 재고 소진 스위치 — ARCH §10.8 `clearAboveMonths`(P-MKT-28 ⓒ). 매달 재고 개월(재고 ÷ 판매 EMA — retail.overhangFactor와 같은 잣대)이
 //                     above를 넘으면 자동 가격 후보 사다리(AUTO_PRICE_FACTORS)에서 한 단계 내린다(권장가 × min 아래로는 안 내림). 적체 중에는 분기 재설정(markup)을 건너뛴다 — 오르내림 방지
 //                     step을 주면 사다리 대신 기준가 배수에서 step씩 내린다(목표가의 일정 비율 — 예: 목표 ×1.3, step 0.13, min 1.04 = 목표의 10%씩·80%까지)
+//   AUTO-PRICE-3 (#288, AP3-MKT-1 — mkt-stage-t.md 「AUTO-PRICE-3」 절). 배수는 모두 기준가(suggestedPrice 그대로) 대비 한 가지 뜻:
+//   price: 'turnover' A 현금회전 — 목표 배수 anchor(기본 1.3)를 지키되 재고 개월(재고 ÷ 판매 EMA)이 band[1](기본 6)을 넘거나 현금 위기(현금 < 지난달 비용 × 2)면
+//                     매달 step(기본 0.1)씩 내린다(하한 = anchor × floor(기본 0.8), 병당 공헌 > 0). band[0](기본 2) 밑이면 곧바로 anchor로(공급 부족에 할인 안 함), 그 사이는 유지
+//   price: 'profit2'  B′ 다기간 이익 — 후보 격자(기준가 × 0.6~2)마다 h개월(기본 6) 누적 공헌 = min(재고 + 판매 EMA × h, 월 수요 × h) × 병당 공헌 + 형제 공헌 변화 × h 가 최대인 값(매달). B는 자동 가격(#200) 그대로
+//   price: 'premium'  C 프리미엄 — anchor(기본 1.5) 유지, 병입·보충·분기마다 맞춘다. 분기에 적체(재고 개월 > band[1], 기본 9)면 한 단계만 내림(하한 anchor × floor, 기본 0.9).
+//                     국내 판매 0이 3개월 이어지면 하한을 anchor × 0.8까지 낮춰 한 단계 허용(판매 0 고착 방지)
+//   raise: true  (A와 같이) 재고 개월 < band[0]이면 목표 위로도 한 단계씩 올린다(최대 ×2) — A2: 재고 개월 목표를 양쪽으로 따라감
+//   AP3=1 이면 정책별 지표 표(국내·수출 매출·병, 미충족 국내 수요, 재고 개월, 품절 제품·달, 평균 배수·가격 변동성)를 낸다
 //   price: 'table'    분기마다 판매 화면 가격표(priceOptions — 플레이어에게 보이는 값)의 최선 값(economics.bestAutoPrice와 같은 기준)을 손으로 고른다 — 자동 가격을 분기 1번 손으로 하는 것
 //   spot: { from, until, share }  그 기간 몰트 탱크 원액의 share만큼을 현물로 판다(원액 B2B 제한 매각 — MKT-D)
 //   DIAG=1 이면 24~96개월 매달 위스키 진열의 CES 총수요 배수·재고 적체 배수(retail.overhangFactor)·재고 있는 제품 수 평균을 낸다(MKT-A 원인 나누기)
@@ -17,9 +25,11 @@ import { SKU } from '../../src/sim/content/market';
 import { AUTO_PRICE_FACTORS, bestAutoPrice, currentSuggested } from '../../src/sim/economics';
 import { calendar } from '../../src/sim/util';
 import { overhangFactor } from '../../src/sim/retail';
+import { bottleMargin, priceOptions } from '../../src/sim/market';
+import { outboundLogistics } from '../../src/sim/sites';
 import { netWorth } from '../../src/sim/progress';
 
-export interface MktPolicy { name: string; autoPrice?: boolean; price?: 'suggest' | 'heur' | 'markup' | 'table'; markup?: number; clear?: { above: number; min: number; step?: number }; spot?: { from: number; until: number; share: number } }
+export interface MktPolicy { name: string; autoPrice?: boolean; price?: 'suggest' | 'heur' | 'markup' | 'table' | 'turnover' | 'profit2' | 'premium'; markup?: number; clear?: { above: number; min: number; step?: number }; anchor?: number; band?: [number, number]; step?: number; floor?: number; horizon?: number; raise?: boolean; spot?: { from: number; until: number; share: number } }
 
 const act = (s: GameState, a: Action) => { const r = applyAction(s, a); return r.error ? s : r.state; };
 const reprice = (s: GameState, p: Product, factor = 1) => act(s, { type: 'setPrice', productId: p.id, price: Math.round(currentSuggested(s, p) * factor) });
@@ -30,7 +40,69 @@ export function afterBottle(s: GameState, p: MktPolicy, opts: { name: string; re
   const prod = opts.restockId ? s.commerce.products.find((x) => x.id === opts.restockId) : [...s.commerce.products].reverse().find((x) => x.name === opts.name);
   if (!prod) return s;
   if (p.price === 'table') { const best = bestAutoPrice(s, prod); return best ? act(s, { type: 'setPrice', productId: prod.id, price: best }) : reprice(s, prod); }
+  if (p.price === 'turnover' || p.price === 'premium') return reprice(s, prod, anchorOf(p));
+  if (p.price === 'profit2') { const v = bestMultiPeriod(s, prod, p); return v ? act(s, { type: 'setPrice', productId: prod.id, price: v }) : reprice(s, prod, 1.3); }
   return reprice(s, prod, p.price === 'markup' ? p.markup ?? 1.3 : 1);
+}
+
+// ── AUTO-PRICE-3 정책 ──
+const anchorOf = (p: MktPolicy) => p.anchor ?? (p.price === 'premium' ? 1.5 : 1.3);
+const monthlyCost = (s: GameState) => Object.values(s.history.reports.at(-1)?.expenses ?? {}).reduce((a, b) => a + (b ?? 0), 0);
+/** 병당 공헌 > 0인 값만 — 원가 아래로 내리지 않는다 */
+const profitable = (s: GameState, prod: Product, price: number) => bottleMargin({ ...prod, price }, outboundLogistics(s)).perBottle > 0;
+/** B′ — 후보 격자마다 h개월 누적 공헌(재고 한도) + 형제 공헌 변화 × h */
+function bestMultiPeriod(s: GameState, prod: Product, p: MktPolicy): number | null {
+  if (prod.dutyFreeOnly || prod.stockBottles <= 0 || prod.price <= 0) return null;
+  const sug = currentSuggested(s, prod);
+  if (sug <= 0) return null;
+  const h = p.horizon ?? 6;
+  const factors = AUTO_PRICE_FACTORS.map((f) => (sug * f) / prod.price);
+  const opts = priceOptions(s, prod, calendar(s).monthOfYear, factors);
+  let best: { price: number; v: number } | null = null;
+  for (const o of opts) {
+    const per = bottleMargin({ ...prod, price: o.price }, outboundLogistics(s)).perBottle;
+    if (per <= 0) continue;
+    // 팔 수 있는 양 = 재고 + h개월 보충(지금 판매 속도로 들어온다고 봄 — 리드타임 근사)
+    const v = Math.min(prod.stockBottles + (prod.salesEma ?? 0) * h, o.demandBottles * h) * per + (o.lineupContribution - o.contribution) * h;
+    if (!best || v > best.v) best = { price: o.price, v };
+  }
+  return best?.price ?? null;
+}
+const zeroRun: Record<string, number> = {};
+function ap3Monthly(s: GameState, p: MktPolicy, m: number): GameState {
+  const crisis = s.finance.cash < 2 * monthlyCost(s);
+  for (const prod of [...s.commerce.products]) {
+    if (prod.stockBottles <= 0 || prod.autoPrice || prod.dutyFreeOnly) continue;
+    const sug = currentSuggested(s, prod);
+    if (sug <= 0) continue;
+    const f = prod.price / sug, a = anchorOf(p), months = stockMonths(prod);
+    if (p.price === 'turnover') {
+      const [lo, hi] = p.band ?? [2, 6];
+      if (prod.salesEma != null && months < lo && f < a - 1e-6) { s = reprice(s, prod, a); continue; } // 부족 — 할인 멈추고 목표로
+      // A2(raise): 목표 위에서도 부족하면 한 단계씩 올린다(최대 ×2) — 재고 개월 목표를 양쪽으로 따라간다
+      if (p.raise && prod.salesEma != null && months < lo) { const up = Math.min(2, f + (p.step ?? 0.1)); if (up > f + 1e-6) s = reprice(s, prod, up); continue; }
+      if ((months > hi || (crisis && months > lo)) && prod.salesEma != null) {
+        const nf = Math.max(a * (p.floor ?? 0.8), f - (p.step ?? 0.1));
+        if (nf < f - 1e-6 && profitable(s, prod, sug * nf)) { s = reprice(s, prod, nf); clears[p.name] = (clears[p.name] ?? 0) + 1; }
+      }
+      continue;
+    }
+    if (p.price === 'profit2') { const v = bestMultiPeriod(s, prod, p); if (v && v !== prod.price) s = act(s, { type: 'setPrice', productId: prod.id, price: v }); continue; }
+    if (p.price === 'premium') {
+      const r = s.history.reports.at(-1);
+      const sold = r?.sales.filter((x) => x.productId === prod.id).reduce((t, x) => t + x.bottles, 0) ?? 0;
+      const k = `${p.name}:${s.seed}:${prod.id}`;
+      zeroRun[k] = sold > 0 ? 0 : (zeroRun[k] ?? 0) + 1;
+      if (m % 3 !== 0) continue;
+      const [, hi] = p.band ?? [2, 9];
+      const stuck = (zeroRun[k] ?? 0) >= 3;
+      if (months > hi || stuck) {
+        const nf = Math.max(a * (stuck ? 0.8 : p.floor ?? 0.9), f - (p.step ?? 0.1));
+        if (nf < f - 1e-6 && profitable(s, prod, sug * nf)) { s = reprice(s, prod, nf); clears[p.name] = (clears[p.name] ?? 0) + 1; }
+      } else if (Math.abs(f - a) > 1e-6) s = reprice(s, prod, a);
+    }
+  }
+  return s;
 }
 
 /** 재고 개월 — retail.overhangFactor와 같은 잣대(재고 ÷ 판매 EMA). EMA가 아직 없으면 0(적체 아님) */
@@ -64,6 +136,7 @@ export function monthly(s: GameState, p: MktPolicy, m: number): GameState {
       if (best) s = act(s, { type: 'setPrice', productId: prod.id, price: best });
     }
   }
+  if (!p.autoPrice && (p.price === 'turnover' || p.price === 'profit2' || p.price === 'premium') && m > 0) s = ap3Monthly(s, p, m);
   // 재고 소진 스위치(clear) — 매달, 적체면 사다리 한 단계 아래로(하한까지)
   if (!p.autoPrice && p.clear) {
     for (const prod of [...s.commerce.products]) {
@@ -91,7 +164,32 @@ interface Diag { months: number; ces: number; overhang: number; n: number; overh
 const diags: Record<string, Diag> = {};
 
 /** 매달 병입·통입 뒤 — SNAP=<달>이면 그 달 국내 진열의 SKU 분해를 기록, DIAG=1이면 위스키 진열 원인 나누기 */
+interface Ap3 { games: Set<number>; domRev: number; expRev: number; domBtl: number; expBtl: number; unmet: number; smSum: number; smN: number; stockout: number; fSum: number; fN: number; vol: number; volN: number }
+const ap3: Record<string, Ap3> = {};
+const lastPrice: Record<string, number> = {};
 export function snap(s: GameState, p: MktPolicy, m: number): void {
+  if (process.env.AP3 === '1') {
+    const a = (ap3[p.name] ??= { games: new Set(), domRev: 0, expRev: 0, domBtl: 0, expBtl: 0, unmet: 0, smSum: 0, smN: 0, stockout: 0, fSum: 0, fN: 0, vol: 0, volN: 0 });
+    a.games.add(s.seed);
+    const r = s.history.reports.at(-1);
+    if (r && r.month === s.month - 1) {
+      for (const x of r.sales) { a.domRev += x.revenue; a.domBtl += x.bottles; a.unmet += Math.max(0, Math.round(x.demandBottles) - x.bottles); }
+      for (const x of r.exports ?? []) { a.expRev += x.revenue; a.expBtl += x.bottles; }
+    }
+    if (m >= 24) {
+      const ws = s.commerce.products.filter((x) => x.category === 'whisky' && !x.dutyFreeOnly);
+      const live = ws.filter((x) => x.stockBottles > 0);
+      if (live.length) { a.smSum += live.reduce((t, x) => t + x.stockBottles, 0) / Math.max(1, live.reduce((t, x) => t + (x.salesEma ?? 0), 0)); a.smN++; }
+      a.stockout += ws.filter((x) => x.stockBottles <= 0 && (x.salesEma ?? 0) > 0).length;
+      for (const x of live) {
+        const sug = currentSuggested(s, x);
+        if (sug > 0) { a.fSum += x.price / sug; a.fN++; }
+        const k = `${p.name}:${s.seed}:${x.id}`;
+        if (lastPrice[k]) { a.vol += Math.abs(x.price - lastPrice[k]!) / lastPrice[k]!; a.volN++; }
+        lastPrice[k] = x.price;
+      }
+    }
+  }
   if (process.env.PERSEED === '1') ((perSeed[p.name] ??= {})[s.seed] = { nw: netWorth(s), month: s.month, cash: s.finance.cash });
   if (process.env.CONTRACTS === '1') {
     const r = s.history.reports.at(-1);
@@ -141,6 +239,14 @@ export function report(): void {
       const nw = v.map((x) => (x ? x.nw / 1e8 : NaN));
       const low3 = [...nw].filter(Number.isFinite).sort((a, b) => a - b).slice(0, 3);
       console.log(`| ${n} | ${v.map((x) => (x ? `${(x.nw / 1e8).toFixed(1)}${x.month < months ? `*${x.month}` : ''}` : '—')).join(' | ')} | ${(nw.filter(Number.isFinite).reduce((a, b) => a + b, 0) / nw.filter(Number.isFinite).length).toFixed(2)} | ${(low3.reduce((a, b) => a + b, 0) / low3.length).toFixed(2)} |`);
+    }
+  }
+  if (Object.keys(ap3).length) {
+    console.log('\n### AUTO-PRICE-3 지표 (판 평균 — 매출·병은 180개월 누계, 재고 개월·배수·변동성은 24개월부터 위스키) — 억 = 1e8원');
+    console.log('| 정책 | 국내 매출 | 수출 매출 | 국내 병 | 수출 병 | 미충족 국내 수요(병) | 재고 개월 | 품절 제품·달 | 평균 배수(기준가 대비) | 월 가격 변동(평균 |Δ|) |\n|---|---|---|---|---|---|---|---|---|---|');
+    for (const [n, a] of Object.entries(ap3)) {
+      const g = Math.max(1, a.games.size);
+      console.log(`| ${n} | ${(a.domRev / g / 1e8).toFixed(2)} | ${(a.expRev / g / 1e8).toFixed(2)} | ${Math.round(a.domBtl / g).toLocaleString()} | ${Math.round(a.expBtl / g).toLocaleString()} | ${Math.round(a.unmet / g).toLocaleString()} | ${(a.smSum / Math.max(1, a.smN)).toFixed(1)} | ${(a.stockout / g).toFixed(1)} | ×${(a.fSum / Math.max(1, a.fN)).toFixed(2)} | ${((a.vol / Math.max(1, a.volN)) * 100).toFixed(1)}% |`);
     }
   }
   if (Object.keys(clears).length) {
