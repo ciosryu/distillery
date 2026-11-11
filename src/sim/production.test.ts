@@ -1215,3 +1215,46 @@ describe('증산 전망 (#271·#272 — 늦게 늘려도 판 안에 회수되는
     expect(whiskyExportPace(s)).toEqual({ bottles: 1200, demand: 1800 });
   });
 });
+
+describe('빈 원액 통의 NaN (C-PROD-1 — 샘플이 작은 잔량을 0L까지 깎으면 증발식이 0÷0)', () => {
+  it('evaporate는 양이 0이면 도수를 그대로 두고 아무것도 잃지 않는다', () => {
+    const r = evaporate(0, 0.6, 0.004, 60);
+    expect(r).toEqual({ volumeL: 0, abv: 0.6, lostL: 0 });
+  });
+
+  it('숙성 틱은 1L 미만 통을 비우고 메모를 남긴다 — 도수·현금이 NaN이 되지 않는다', async () => {
+    const { emptyCaskOf } = await import('./index');
+    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.inventory.casks = [];
+    for (const [id, vol] of [['Z0', 0], ['Z1', 0.5], ['OK', 150]] as const) {
+      const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.id = id;
+      c.contents = { id: `L${id}`, name: id, kind: 'malt', volumeL: vol, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: 20, sourced: false, costPerLPA: 10_000 };
+      s.inventory.casks.push(c);
+    }
+    const t = advanceMonth(s);
+    expect(t.inventory.casks.find((c) => c.id === 'Z0')!.contents).toBeUndefined();
+    expect(t.inventory.casks.find((c) => c.id === 'Z1')!.contents).toBeUndefined();
+    expect(t.inventory.casks.find((c) => c.id === 'OK')!.contents!.volumeL).toBeGreaterThan(140);
+    expect(t.history.reports.at(-1)!.notes.some((n) => n.includes('Z1') && n.includes('1L 미만'))).toBe(true);
+    expect(t.inventory.casks.every((c) => !c.contents || Number.isFinite(c.contents.abv))).toBe(true);
+    expect(Number.isFinite(t.finance.cash)).toBe(true);
+    // 다음 달에도 그대로 — 0L 통이 남아 보관비가 NaN이 되던 판
+    expect(Number.isFinite(advanceMonth(t).finance.cash)).toBe(true);
+  });
+
+  it('작은 잔량을 샘플이 깎아도(0.1L/회) 판이 NaN이 되지 않는다 — 2L 통을 25번 샘플하며 진행', async () => {
+    const { emptyCaskOf } = await import('./index');
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.inventory.casks = [];
+    const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.id = 'S';
+    c.contents = { id: 'LS', name: 'S', kind: 'malt', volumeL: 2, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: 20, sourced: false, costPerLPA: 10_000 };
+    s.inventory.casks.push(c);
+    s.finance.cash = 1e9;
+    for (let i = 0; i < 25; i++) {
+      for (let k = 0; k < 5; k++) { const r = applyAction(s, { type: 'sampleCask', caskIds: ['S'] }); if (!r.error) s = r.state; }
+      s = advanceMonth(s);
+      expect(Number.isFinite(s.finance.cash)).toBe(true);
+    }
+    expect(s.inventory.casks.find((x) => x.id === 'S')!.contents).toBeUndefined();
+  });
+});
