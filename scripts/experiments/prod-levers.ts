@@ -38,7 +38,7 @@ const VARIANTS: Variant[] = [
   { lever: '발효조', name: '옹기 발효조', fermenter: 'onggi' },
   { lever: '컷', name: '좁게 (c1 +0.05 · c2 −0.05)', recipe: R((r) => { r.cut = { c1: r.cut.c1 + 0.05, c2: r.cut.c2 - 0.05 }; }) },
   { lever: '컷', name: '넓게 (c1 −0.05 · c2 +0.05)', recipe: R((r) => { r.cut = { c1: Math.max(0, r.cut.c1 - 0.05), c2: Math.min(1, r.cut.c2 + 0.05) }; }) },
-  { lever: '증류 횟수', name: '3회', recipe: R((r) => { r.runs = 3; }) },
+  { lever: '증류 횟수', name: '1회(단식 1회)', recipe: R((r) => { r.runs = 1; }) },
   { lever: '캐스크 종류', name: '올로로소 셰리 벗 500L', cask: 'oloroso_butt' },
   { lever: '캐스크 종류', name: '한국 참나무 쿼터 125L', cask: 'korean_oak_quarter' },
   { lever: '캐스크 종류', name: '미즈나라 혹스헤드 250L', cask: 'mizunara_hogshead' },
