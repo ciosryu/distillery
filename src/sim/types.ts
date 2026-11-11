@@ -215,6 +215,8 @@ export interface Product {
   autoPrice?: boolean;
   /** 자동 납품 (#206) — 몇 개월분 재고를 유지할지(1·2·3·6). 켜 두면 매달 판매 직전에 모자란 만큼 원액을 골라 재고 보충(economics.applyAutoRestock). 없으면 끔 */
   autoRestock?: number;
+  /** 수출 안 함 (P-MKT-21) — 켜면 이 제품은 수출 시장(공항 면세점 포함)에 내지 않는다. 국내·지정면세점(제주) 판매는 그대로. 옛 세이브에는 없다 = 수출에 낸다 */
+  noExport?: boolean;
   /** 병당 생산 원가 = 원액 + 포장 + 병입 인건비 (유통비 제외) */
   unitCost: number;
   createdMonth: number;
