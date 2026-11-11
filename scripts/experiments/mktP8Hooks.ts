@@ -11,6 +11,7 @@
 //   price: 'profit2'  B′ 다기간 이익 — 후보 격자(기준가 × 0.6~2)마다 h개월(기본 6) 누적 공헌 = min(재고 + 판매 EMA × h, 월 수요 × h) × 병당 공헌 + 형제 공헌 변화 × h 가 최대인 값(매달). B는 자동 가격(#200) 그대로
 //   price: 'premium'  C 프리미엄 — anchor(기본 1.5) 유지, 병입·보충·분기마다 맞춘다. 분기에 적체(재고 개월 > band[1], 기본 9)면 한 단계만 내림(하한 anchor × floor, 기본 0.9).
 //                     국내 판매 0이 3개월 이어지면 하한을 anchor × 0.8까지 낮춰 한 단계 허용(판매 0 고착 방지)
+//   guard: <배수>  ('profit2'와 같이) 한 달에 기준가 배수 ±guard까지만 움직인다(예: 0.1 = 한 단계) — B′ + 가드(결정 대기 66, AP3 2차)
 //   raise: true  (A와 같이) 재고 개월 < band[0]이면 목표 위로도 한 단계씩 올린다(최대 ×2) — A2: 재고 개월 목표를 양쪽으로 따라감
 //   AP3=1 이면 정책별 지표 표(국내·수출 매출·병, 미충족 국내 수요, 재고 개월, 품절 제품·달, 평균 배수·가격 변동성)를 낸다
 //   price: 'table'    분기마다 판매 화면 가격표(priceOptions — 플레이어에게 보이는 값)의 최선 값(economics.bestAutoPrice와 같은 기준)을 손으로 고른다 — 자동 가격을 분기 1번 손으로 하는 것
@@ -29,7 +30,7 @@ import { bottleMargin, priceOptions } from '../../src/sim/market';
 import { outboundLogistics } from '../../src/sim/sites';
 import { netWorth } from '../../src/sim/progress';
 
-export interface MktPolicy { name: string; autoPrice?: boolean; price?: 'suggest' | 'heur' | 'markup' | 'table' | 'turnover' | 'profit2' | 'premium'; markup?: number; clear?: { above: number; min: number; step?: number }; anchor?: number; band?: [number, number]; step?: number; floor?: number; horizon?: number; raise?: boolean; spot?: { from: number; until: number; share: number } }
+export interface MktPolicy { name: string; autoPrice?: boolean; price?: 'suggest' | 'heur' | 'markup' | 'table' | 'turnover' | 'profit2' | 'premium'; markup?: number; clear?: { above: number; min: number; step?: number }; anchor?: number; band?: [number, number]; step?: number; floor?: number; horizon?: number; raise?: boolean; guard?: number; spot?: { from: number; until: number; share: number } }
 
 const act = (s: GameState, a: Action) => { const r = applyAction(s, a); return r.error ? s : r.state; };
 const reprice = (s: GameState, p: Product, factor = 1) => act(s, { type: 'setPrice', productId: p.id, price: Math.round(currentSuggested(s, p) * factor) });
@@ -41,7 +42,12 @@ export function afterBottle(s: GameState, p: MktPolicy, opts: { name: string; re
   if (!prod) return s;
   if (p.price === 'table') { const best = bestAutoPrice(s, prod); return best ? act(s, { type: 'setPrice', productId: prod.id, price: best }) : reprice(s, prod); }
   if (p.price === 'turnover' || p.price === 'premium') return reprice(s, prod, anchorOf(p));
-  if (p.price === 'profit2') { const v = bestMultiPeriod(s, prod, p); return v ? act(s, { type: 'setPrice', productId: prod.id, price: v }) : reprice(s, prod, 1.3); }
+  if (p.price === 'profit2') {
+    let v = bestMultiPeriod(s, prod, p);
+    // 보충(restock)이면 가드를 지킨다 — 새 제품의 첫 값만 가드 없이
+    if (v && p.guard && opts.restockId) { const sug = currentSuggested(s, prod), f = prod.price / sug; v = Math.round(Math.min(sug * (f + p.guard), Math.max(sug * (f - p.guard), v))); }
+    return v ? act(s, { type: 'setPrice', productId: prod.id, price: v }) : reprice(s, prod, 1.3);
+  }
   return reprice(s, prod, p.price === 'markup' ? p.markup ?? 1.3 : 1);
 }
 
@@ -87,7 +93,13 @@ function ap3Monthly(s: GameState, p: MktPolicy, m: number): GameState {
       }
       continue;
     }
-    if (p.price === 'profit2') { const v = bestMultiPeriod(s, prod, p); if (v && v !== prod.price) s = act(s, { type: 'setPrice', productId: prod.id, price: v }); continue; }
+    if (p.price === 'profit2') {
+      let v = bestMultiPeriod(s, prod, p);
+      // 가드: 한 달에 기준가 배수 ±guard까지만 움직인다(진동 ⑤ · 정책 바꾼 달 한 단계 — REQ-MKT-9 불변식 ④)
+      if (v && p.guard) v = Math.round(Math.min(sug * (f + p.guard), Math.max(sug * (f - p.guard), v)));
+      if (v && v !== prod.price && profitable(s, prod, v)) s = act(s, { type: 'setPrice', productId: prod.id, price: v });
+      continue;
+    }
     if (p.price === 'premium') {
       const r = s.history.reports.at(-1);
       const sold = r?.sales.filter((x) => x.productId === prod.id).reduce((t, x) => t + x.bottles, 0) ?? 0;

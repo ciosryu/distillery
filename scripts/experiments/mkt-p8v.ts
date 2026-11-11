@@ -80,7 +80,10 @@ const SETS: Record<string, string> = {
     ['L', "낮은 인지도(마케팅 월 100~150만)', { mkt: [[0, 1_000_000], [78, 1_500_000], [102, 1_000_000]], "], ['P', "프리미엄(60개월부터 4년↑만 + 플래그십)', { labelFrom: [60, 48], flagship: true, "],
     ['K1', "SKU 1', { lineup: 1, "], ['K2', "SKU 2', { lineup: 2, "],
   ];
-  const POL: [string, string][] = [['A', "autoPrice: false, price: 'turnover'"], ['B', ''], ['B2', "autoPrice: false, price: 'profit2'"], ['C', "autoPrice: false, price: 'premium'"], ['C13', "autoPrice: false, price: 'premium', anchor: 1.3"], ['A2', "autoPrice: false, price: 'turnover', raise: true"]];
+  const POL: [string, string][] = [['A', "autoPrice: false, price: 'turnover'"], ['B', ''], ['B2', "autoPrice: false, price: 'profit2'"], ['C', "autoPrice: false, price: 'premium'"], ['C13', "autoPrice: false, price: 'premium', anchor: 1.3"], ['A2', "autoPrice: false, price: 'turnover', raise: true"],
+    // AP3 2차(가드·지평): B2g = B′ + 한 달 ±0.1, 숫자는 지평 h
+    ['B2g', "autoPrice: false, price: 'profit2', guard: 0.1"], ['B2g3', "autoPrice: false, price: 'profit2', guard: 0.1, horizon: 3"], ['B2g12', "autoPrice: false, price: 'profit2', guard: 0.1, horizon: 12"],
+    ['B2h3', "autoPrice: false, price: 'profit2', horizon: 3"], ['B2h12', "autoPrice: false, price: 'profit2', horizon: 12"]];
   const pickC = process.env.COND?.split(','), pickP = process.env.POL?.split(',');
   const rows: string[] = [];
   for (const [ck, c] of COND) if (!pickC || pickC.includes(ck)) for (const [pk, pv] of POL) if (!pickP || pickP.includes(pk)) rows.push(`P8('${ck}·${pk} ${c}${pv} })`);
