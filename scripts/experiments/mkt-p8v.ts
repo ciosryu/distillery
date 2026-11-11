@@ -4,6 +4,7 @@
 // 실행: SET=<B|A|D> npx tsx scripts/experiments/mkt-p8v.ts [시드=10] [개월=180]
 //   SET=B  MKT-B 가격: 자동 가격(X0) / 자동 가격 끔(X5 — 보충 뒤 값 고정 결함 그대로) / 수동 권장가 / 수동 휴리스틱
 //   SET=B2 MKT-B 추가: 분기마다 가격표 최선 값을 손으로 / 권장가 × 1.3 — P8에 X21·X22로 들어갔다(MGT #289·#292). 머지 뒤에는 패처 없이 P8 ONLY=X21,X22가 같다
+//   SET=M  G04-MKT-1 가격 수준 스윕: 자동 가격 대 손 배수 0.9·1.0·1.15·1.3·1.5·1.7(CP-PM-4 "내 배수 유지") — PERSEED=1과 같이
 //   SET=A  MKT-A SKU: 계열당 3·2·1제품(자동 가격) — RHO=<ρ>로 SKU.rho를, MARKET=<배수>로 국내 점유 상한을 실험 안에서만 바꾼다. SNAP=<달>이면 그 달 SKU 분해 표, DIAG=1이면 위스키 진열 원인 나누기
 //   SET=D  MKT-D 생존 대안: 비지터 센터·소주·뉴메이크·조기 위스키·원액 현물 제한 매각을 하나씩 빼거나 바꾼다
 //   TIER(기본 standard)·YEARLY·SPLIT 등 mvp-human.ts의 다른 환경 변수는 그대로
@@ -27,6 +28,15 @@ const SETS: Record<string, string> = {
   B2: `[
     P8('B4 수동: 분기마다 가격표 최선 값(손으로)', { autoPrice: false, price: 'table' }),
     P8('B5 수동: 권장가 × 1.3(병입·보충·분기)', { autoPrice: false, price: 'markup', markup: 1.3 }),
+  ]`,
+  M: `[
+    P8('M0 자동 가격(X0)', {}),
+    P8('M090 손 배수 ×0.9', { autoPrice: false, price: 'markup', markup: 0.9 }),
+    P8('M100 손 배수 ×1.0', { autoPrice: false, price: 'markup', markup: 1.0 }),
+    P8('M115 손 배수 ×1.15', { autoPrice: false, price: 'markup', markup: 1.15 }),
+    P8('M130 손 배수 ×1.3(X22)', { autoPrice: false, price: 'markup', markup: 1.3 }),
+    P8('M150 손 배수 ×1.5', { autoPrice: false, price: 'markup', markup: 1.5 }),
+    P8('M170 손 배수 ×1.7', { autoPrice: false, price: 'markup', markup: 1.7 }),
   ]`,
   A: `[
     P8('A3 계열당 3제품(X0)', {}),
