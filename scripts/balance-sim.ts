@@ -8,6 +8,8 @@ import { RETAIL } from '../src/sim/retail';
 import { EQUIPMENT } from '../src/sim/content/catalog';
 import { EXPORT_MARKETS, EXPORT_SALES } from '../src/sim/content/exports';
 import type { ExportMarketId } from '../src/sim/types';
+import { applyMgtKnobs, mgtPolicy } from './experiments/mgtKnobs';
+applyMgtKnobs(); // MGT 실험 손잡이 (T-0) — 환경 변수가 없으면 아무 일도 하지 않는다
 const EQUIPMENT_KIND = (id: string) => EQUIPMENT[id]?.kind;
 
 const SEEDS = Number(process.argv[2] ?? 12);
@@ -565,7 +567,7 @@ function play(strategy: Strategy, seed: number): Result {
   exportLog = [];
   let lo = s.finance.cash;
   for (let m = 0; m < MONTHS && s.status === 'running'; m++) {
-    s = advanceMonth(policy(s, strategy));
+    s = advanceMonth(mgtPolicy(policy(s, strategy)));
     lo = Math.min(lo, s.finance.cash);
   }
   // 흑자 전환 = 영업 현금흐름 − 정기 원금 상환 (3개월 평균). 대출 실행·투자 유치·설비·캐스크 투자는 빼고,

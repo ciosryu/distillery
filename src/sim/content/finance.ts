@@ -66,6 +66,19 @@ export const CREDIT_INSURANCE = { share: 0.9 };
 /** 팩토링 (BIZ-2b, #214): 미수금을 지금 현금으로 — 수수료 = 만기까지 남은 개월 × feePerMonth, 최소 minFee [튜닝] */
 export const FACTORING = { feePerMonth: 0.015, minFee: 0.01 };
 
+/**
+ * 은행 심사 — 실험 손잡이 (단계 T 측정 준비 T-0, M2 · #210). **게임 기본은 꺼져 있다**(#65 닫힘, 오너 결정 안 D) — 켜는 것은 실험 스크립트뿐이다.
+ * 규칙은 #65 초안(브랜치 claude/mgt-bank-screening)과 같다: 대상 = 급전·재고 담보대출을 뺀 은행·정책 상품, 창업 유예 뒤
+ * 최근 lookbackMonths 영업현금흐름 합계 < 0(적자) 그리고(and)/또는(or) 현금 < 월 고정비 예상 × cashFloorMonths 이면 거절. 수치 [튜닝]
+ */
+export const BANK_SCREENING = {
+  enabled: false,
+  mode: 'and' as 'and' | 'or',
+  startupMonths: 24,
+  lookbackMonths: 6,
+  cashFloorMonths: 3,
+};
+
 // ── 직원 ──
 export const ROLE_INFO: Record<StaffRole, { nameKo: string; stats: [string, string, string]; baseSalary: number }> = {
   office: { nameKo: '사무(백오피스)', stats: ['세무', '협상', '행정'], baseSalary: 3_200_000 },
