@@ -4,6 +4,7 @@
 //   price: 'markup'   병입·보충·분기마다 권장가 × markup(기본 1.3)
 //   clear: { above, min }  ('markup'과 같이) 재고 소진 스위치 — ARCH §10.8 `clearAboveMonths`(P-MKT-28 ⓒ). 매달 재고 개월(재고 ÷ 판매 EMA — retail.overhangFactor와 같은 잣대)이
 //                     above를 넘으면 자동 가격 후보 사다리(AUTO_PRICE_FACTORS)에서 한 단계 내린다(권장가 × min 아래로는 안 내림). 적체 중에는 분기 재설정(markup)을 건너뛴다 — 오르내림 방지
+//                     step을 주면 사다리 대신 기준가 배수에서 step씩 내린다(목표가의 일정 비율 — 예: 목표 ×1.3, step 0.13, min 1.04 = 목표의 10%씩·80%까지)
 //   price: 'table'    분기마다 판매 화면 가격표(priceOptions — 플레이어에게 보이는 값)의 최선 값(economics.bestAutoPrice와 같은 기준)을 손으로 고른다 — 자동 가격을 분기 1번 손으로 하는 것
 //   spot: { from, until, share }  그 기간 몰트 탱크 원액의 share만큼을 현물로 판다(원액 B2B 제한 매각 — MKT-D)
 //   DIAG=1 이면 24~96개월 매달 위스키 진열의 CES 총수요 배수·재고 적체 배수(retail.overhangFactor)·재고 있는 제품 수 평균을 낸다(MKT-A 원인 나누기)
@@ -18,7 +19,7 @@ import { calendar } from '../../src/sim/util';
 import { overhangFactor } from '../../src/sim/retail';
 import { netWorth } from '../../src/sim/progress';
 
-export interface MktPolicy { name: string; autoPrice?: boolean; price?: 'suggest' | 'heur' | 'markup' | 'table'; markup?: number; clear?: { above: number; min: number }; spot?: { from: number; until: number; share: number } }
+export interface MktPolicy { name: string; autoPrice?: boolean; price?: 'suggest' | 'heur' | 'markup' | 'table'; markup?: number; clear?: { above: number; min: number; step?: number }; spot?: { from: number; until: number; share: number } }
 
 const act = (s: GameState, a: Action) => { const r = applyAction(s, a); return r.error ? s : r.state; };
 const reprice = (s: GameState, p: Product, factor = 1) => act(s, { type: 'setPrice', productId: p.id, price: Math.round(currentSuggested(s, p) * factor) });
@@ -70,7 +71,8 @@ export function monthly(s: GameState, p: MktPolicy, m: number): GameState {
       const sug = currentSuggested(s, prod);
       if (sug <= 0) continue;
       const f = prod.price / sug;
-      const next = [...AUTO_PRICE_FACTORS].reverse().find((x) => x < f - 1e-6) ?? p.clear.min;
+      // step이 있으면 기준가 배수에서 step씩(예: 목표 ×1.3의 10% = 0.13), 없으면 자동 가격 후보 사다리 한 칸
+      const next = p.clear.step ? f - p.clear.step : [...AUTO_PRICE_FACTORS].reverse().find((x) => x < f - 1e-6) ?? p.clear.min;
       const nf = Math.max(p.clear.min, next);
       if (nf < f - 1e-6) { s = reprice(s, prod, nf); clears[p.name] = (clears[p.name] ?? 0) + 1; }
     }
