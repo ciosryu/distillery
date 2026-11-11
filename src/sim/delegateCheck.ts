@@ -3,6 +3,7 @@ import type { BlendTarget } from './blendRadar';
 import { delegatePlan } from './blendTable';
 import { regionOf } from './content/regions';
 import { DEFAULT_FLAGSHIP_MONTHS } from './progress';
+import { protectedCaskIds, reserveCaskIds } from './tags';
 import type { Cask, GameState } from './types';
 
 // ───────────── [블렌더에게 맡기기] 확인 (#238, 5차 MVP 플레이테스트 2026-11-10) ─────────────
@@ -20,6 +21,8 @@ export interface DelegateCheck {
   whiskyBefore: number;
   /** 이번 달 같은 목표로 이미 맡긴 제품 */
   alreadyThisMonth: string[];
+  /** 쓰는 통 중 보호 태그(플래그십 예비 포함) 통 — 플레이어가 직접 고른 묶음에만 들어올 수 있다(기본 후보는 뺀다, delegateDefaultIds) */
+  protectedUsed: string[];
   warnings: string[];
 }
 
@@ -32,6 +35,16 @@ export function isFlagshipCandidate(s: GameState, c: Cask): boolean {
   const need = s.scenario?.goal.flagshipMinMonths ?? DEFAULT_FLAGSHIP_MONTHS;
   const left = s.scenario ? Math.max(0, s.scenario.goal.months - s.month) : 0;
   return l.oakMonths + left >= need;
+}
+
+/**
+ * 맡기기 기본 후보 (#260·#249 ② — 2026-11-11, ARCH 진입 확인 #313 빈틈 ①): 플레이어가 묶음을 고르지 않으면 화면은 샘플 기록이 있는 통 전부를 넘긴다.
+ * 그 기본 후보에서 보호 태그 통(플래그십 예비 + 플레이어 "보호")을 뺀다 — 보호 통은 자동으로 고르는 경로가 쓰지 않는다.
+ * 플레이어가 직접 고른 묶음은 그대로 둔다(손 행동은 막지 않는다 — 확인 단계에서 경고, protectedUsed)
+ */
+export function delegateDefaultIds(s: GameState, caskIds: string[]): { ids: string[]; excluded: string[] } {
+  const prot = protectedCaskIds(s);
+  return { ids: caskIds.filter((id) => !prot.has(id)), excluded: caskIds.filter((id) => prot.has(id)) };
 }
 
 export function delegateCheck(s: GameState, target: BlendTarget, caskIds: string[], bottles: number, opts: BottleOptions): DelegateCheck | { error: string } {
@@ -51,5 +64,13 @@ export function delegateCheck(s: GameState, target: BlendTarget, caskIds: string
   const flag = casks.filter((x) => x.flagship);
   if (flag.length) warnings.push(`플래그십 후보 통 ${flag.length}개를 쓴다(${flag.map((x) => x.id).join(', ')}) — 판이 끝나기 전 ${(s.scenario?.goal.flagshipMinMonths ?? DEFAULT_FLAGSHIP_MONTHS) / 12}년 숙성을 채울 수 있는 통`);
   if (alreadyThisMonth.length) warnings.push(`이번 달 같은 목표로 이미 맡겼다: ${alreadyThisMonth.map((n) => `「${n}」`).join(', ')}`);
-  return { casks, bottles: p.bottles, unknown: plan.unknown, whiskyLeft, whiskyBefore, alreadyThisMonth, warnings };
+  // 보호 태그 통 (#260) — 직접 고른 묶음에 들어 있으면 알린다(막지 않는다)
+  const prot = protectedCaskIds(s);
+  const reserve = reserveCaskIds(s);
+  const protectedUsed = casks.filter((x) => prot.has(x.id)).map((x) => x.id);
+  if (protectedUsed.length) {
+    const res = protectedUsed.filter((id) => reserve.has(id));
+    warnings.push(`보호 태그 통 ${protectedUsed.length}개를 쓴다(${protectedUsed.join(', ')})${res.length ? ` — 그중 플래그십 예비 ${res.length}개` : ''}. 직접 고른 묶음이라 막지 않는다 — 남기려면 그 묶음을 빼고 고르세요`);
+  }
+  return { casks, bottles: p.bottles, unknown: plan.unknown, whiskyLeft, whiskyBefore, alreadyThisMonth, protectedUsed, warnings };
 }

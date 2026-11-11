@@ -3,6 +3,7 @@
 // 시나리오(MVP)는 참 품질을 숨기므로 고르는 목록·값 미리 보기는 샘플로 아는 추정 품질로 보인다(실제 판매는 참값)
 import { HANDFILL, handfillBlocker, handfillBottleCost, handfillBottles, handfillCask, handfillPrice, knownReads, lotQuality, type Cask, type SpiritLot } from '../../sim';
 import { EQUIPMENT } from '../../sim/content/catalog';
+import { protectedCaskIds } from '../../sim/tags';
 import { useGame } from '../../store/game';
 import { months, won } from '../format';
 
@@ -23,7 +24,9 @@ export function HandfillRow() {
   const cur = handfillCask(s);
   const visitors = s.history.reports.at(-1)?.visitors ?? 0;
   const hasVisitor = s.production.equipment.some((e) => EQUIPMENT[e.catalogId]?.kind === 'visitor' && e.readyMonth <= s.month);
-  const label = (c: Cask & { contents: SpiritLot }) => `${c.id} · ${months(c.contents.oakMonths)} · ${Math.round(c.contents.volumeL)}L · 품질 ${q(c) == null ? '모름(샘플 필요)' : Math.round(q(c)!)}`;
+  // 보호 태그 통(#260 — 플래그십 예비 포함)은 고를 수는 있지만 표시한다: 핸드필은 지정한 통에서 매달 저절로 덜어 간다
+  const prot = protectedCaskIds(s);
+  const label = (c: Cask & { contents: SpiritLot }) => `${c.id} · ${months(c.contents.oakMonths)} · ${Math.round(c.contents.volumeL)}L · 품질 ${q(c) == null ? '모름(샘플 필요)' : Math.round(q(c)!)}${prot.has(c.id) ? ' · ◆ 보호 태그' : ''}`;
   const cq = cur ? q(cur) : null;
   const bottles = cur ? handfillBottles(visitors, cur.contents) : 0;
   const price = cur && cq != null ? handfillPrice(s, cur.contents, cq) : null;
@@ -38,6 +41,7 @@ export function HandfillRow() {
           {options.map((c) => <option key={c.id} value={c.id}>{label(c)}</option>)}
         </select>
         {!options.length && !cur && <span className="text-stone-500">위스키 숙성 기간을 채운 자사 나무 통이 아직 없다</span>}
+        {cur && prot.has(cur.id) && <span className="text-amber-800 dark:text-amber-300">⚠ 보호 태그 통이다(플래그십 예비 등) — 핸드필이 매달 덜어 간다. 남기려면 다른 통을 고르세요</span>}
       </div>
       <div className="mt-1 text-stone-600 dark:text-stone-400">
         {!hasVisitor ? '비지터 센터가 문을 열어야 손님이 온다.'
