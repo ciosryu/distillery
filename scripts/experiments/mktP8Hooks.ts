@@ -11,6 +11,7 @@
 //   price: 'profit2'  B′ 다기간 이익 — 후보 격자(기준가 × 0.6~2)마다 h개월(기본 6) 누적 공헌 = min(재고 + 판매 EMA × h, 월 수요 × h) × 병당 공헌 + 형제 공헌 변화 × h 가 최대인 값(매달). B는 자동 가격(#200) 그대로
 //   price: 'premium'  C 프리미엄 — anchor(기본 1.5) 유지, 병입·보충·분기마다 맞춘다. 분기에 적체(재고 개월 > band[1], 기본 9)면 한 단계만 내림(하한 anchor × floor, 기본 0.9).
 //                     국내 판매 0이 3개월 이어지면 하한을 anchor × 0.8까지 낮춰 한 단계 허용(판매 0 고착 방지)
+//   raise: true  (A와 같이) 재고 개월 < band[0]이면 목표 위로도 한 단계씩 올린다(최대 ×2) — A2: 재고 개월 목표를 양쪽으로 따라감
 //   AP3=1 이면 정책별 지표 표(국내·수출 매출·병, 미충족 국내 수요, 재고 개월, 품절 제품·달, 평균 배수·가격 변동성)를 낸다
 //   price: 'table'    분기마다 판매 화면 가격표(priceOptions — 플레이어에게 보이는 값)의 최선 값(economics.bestAutoPrice와 같은 기준)을 손으로 고른다 — 자동 가격을 분기 1번 손으로 하는 것
 //   spot: { from, until, share }  그 기간 몰트 탱크 원액의 share만큼을 현물로 판다(원액 B2B 제한 매각 — MKT-D)
@@ -28,7 +29,7 @@ import { bottleMargin, priceOptions } from '../../src/sim/market';
 import { outboundLogistics } from '../../src/sim/sites';
 import { netWorth } from '../../src/sim/progress';
 
-export interface MktPolicy { name: string; autoPrice?: boolean; price?: 'suggest' | 'heur' | 'markup' | 'table' | 'turnover' | 'profit2' | 'premium'; markup?: number; clear?: { above: number; min: number; step?: number }; anchor?: number; band?: [number, number]; step?: number; floor?: number; horizon?: number; spot?: { from: number; until: number; share: number } }
+export interface MktPolicy { name: string; autoPrice?: boolean; price?: 'suggest' | 'heur' | 'markup' | 'table' | 'turnover' | 'profit2' | 'premium'; markup?: number; clear?: { above: number; min: number; step?: number }; anchor?: number; band?: [number, number]; step?: number; floor?: number; horizon?: number; raise?: boolean; spot?: { from: number; until: number; share: number } }
 
 const act = (s: GameState, a: Action) => { const r = applyAction(s, a); return r.error ? s : r.state; };
 const reprice = (s: GameState, p: Product, factor = 1) => act(s, { type: 'setPrice', productId: p.id, price: Math.round(currentSuggested(s, p) * factor) });
@@ -78,6 +79,8 @@ function ap3Monthly(s: GameState, p: MktPolicy, m: number): GameState {
     if (p.price === 'turnover') {
       const [lo, hi] = p.band ?? [2, 6];
       if (prod.salesEma != null && months < lo && f < a - 1e-6) { s = reprice(s, prod, a); continue; } // 부족 — 할인 멈추고 목표로
+      // A2(raise): 목표 위에서도 부족하면 한 단계씩 올린다(최대 ×2) — 재고 개월 목표를 양쪽으로 따라간다
+      if (p.raise && prod.salesEma != null && months < lo) { const up = Math.min(2, f + (p.step ?? 0.1)); if (up > f + 1e-6) s = reprice(s, prod, up); continue; }
       if ((months > hi || (crisis && months > lo)) && prod.salesEma != null) {
         const nf = Math.max(a * (p.floor ?? 0.8), f - (p.step ?? 0.1));
         if (nf < f - 1e-6 && profitable(s, prod, sug * nf)) { s = reprice(s, prod, nf); clears[p.name] = (clears[p.name] ?? 0) + 1; }
