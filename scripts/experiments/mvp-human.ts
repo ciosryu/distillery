@@ -139,6 +139,9 @@ const P8_POLICIES: Policy[] = [
   P8('X9 보정 전 초안(86개월·4곳·제안가·새 제품·기본가)', { exportFrom: 86, exportMax: 4, exportPrice: undefined, lineup: undefined, autoPrice: false, newMake: undefined, exportDemand: false, mkt: [[0, 3_500_000], [96, 2_000_000]] }),
   P8('X10 X0 − 뉴메이크 판매', { newMake: undefined }),
   P8('X11 X0 − 병입 목표의 수출 수요', { exportDemand: false }),
+  // 공급 레버(MKT 수출 증분 분해 — 공급 ×1.5면 +13.5억): 지금 증류기·발효조로 몰트 배치를 늘린다. 사람 판은 4배치 — 지배 전략인지 BAL이 본다
+  P8('X12 X0 + 몰트 6배치', { maltB: 6 }),
+  P8('X13 X0 + 몰트 8배치', { maltB: 8 }),
 ];
 const P3_POLICIES: Policy[] = [
   P3('R0 3차 규모 · 사람 기준(배너 대출·비지터 지음)', {}),
