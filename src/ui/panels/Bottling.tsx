@@ -8,6 +8,8 @@ import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskT
 import { agedWhitePerception } from '../../sim/content/market';
 import { regionOf } from '../../sim/content/regions';
 import { stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
+import { protectedCaskIds, reserveCaskIds } from '../../sim/tags';
+import { CaskTagChips } from '../CaskTags';
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
 import { ProfileRadar } from './Production';
@@ -102,6 +104,13 @@ export function Bottling() {
     return src.ids.map((id) => { const lot = s.inventory.lots.find((x) => x.id === id)!; return { source: 'lot' as const, id, liters: Math.floor(((l * lot.volumeL) / src.lot.volumeL) * 10) / 10 }; }).filter((c) => c.liters > 0);
   });
   const preview = components.length ? previewBlend(s, components, opts) : null;
+  // 태그 (#260·#249 ②) — 손 병입은 막지 않고, 플래그십 예비·보호 통을 쓰면 버튼 위에 알린다(자동 납품은 이 통을 쓰지 않는다)
+  const reserve = useMemo(() => reserveCaskIds(s), [s]);
+  const guardedPicked = useMemo(() => {
+    const prot = protectedCaskIds(s);
+    const ids = components.filter((c) => c.source === 'cask').map((c) => c.id);
+    return { reserve: ids.filter((id) => reserve.has(id)), other: ids.filter((id) => prot.has(id) && !reserve.has(id)) };
+  }, [s, reserve, components]);
   // 시나리오 게임(MVP)은 캐스크의 참 향미·품질을 숨긴다 (#136·#159) — 샘플 기록으로 추정한 값만 보여 주고, 병입하면 공개된다. 샌드박스는 개발용으로 참값을 보여 준다
   const hide = !!s.scenario;
   const known = useMemo(() => (hide ? knownReads(s) : null), [hide, s]);
@@ -229,7 +238,7 @@ export function Bottling() {
             {shown.map((x) => (
               <tr key={x.key} className={picked[x.key] != null ? 'bg-amber-50 dark:bg-amber-950/30' : ''}>
                 <Td><input type="checkbox" checked={picked[x.key] != null} onChange={() => toggle(x.key, x.lot.volumeL)} aria-label={`${x.lot.name} 선택`} className="accent-amber-700" /></Td>
-                <Td className="text-xs font-medium"><div className="w-44 truncate" title={x.lot.name}>{x.lot.name.split(' → ')[0]}</div><div className="w-44 whitespace-normal font-normal text-stone-500">{x.cask ? <span className="inline-flex flex-wrap items-center gap-1">{x.where} <CaskTag c={x.cask} /></span> : x.where}</div></Td>
+                <Td className="text-xs font-medium"><div className="w-44 truncate" title={x.lot.name}>{x.lot.name.split(' → ')[0]}</div><div className="w-44 whitespace-normal font-normal text-stone-500">{x.cask ? <span className="inline-flex flex-wrap items-center gap-1">{x.where} <CaskTag c={x.cask} /><CaskTagChips s={s} c={x.cask} reserve={reserve} /></span> : x.where}</div></Td>
                 <Td><Badge>{sourceCategory(x.lot, minMonths)}</Badge></Td>
                 <Td right>{liters(x.lot.volumeL)}</Td>
                 <Td right>{pct(x.lot.abv)}</Td>
@@ -372,6 +381,12 @@ export function Bottling() {
                   {stock.months > STOCK_STRONG_WARN_MONTHS
                     ? ` — 1년 넘게 팔아야 하는 양입니다. 병값·병입 인건비가 지금 나가고 재고 ${STOCK_WARN_MONTHS}개월 치를 넘으면 할인 이미지로 수요가 줄어듭니다. 사용량을 줄여 나눠 병입하세요`
                     : stock.months > STOCK_WARN_MONTHS ? ` — ${STOCK_WARN_MONTHS}개월 치를 넘으면 할인 이미지로 수요가 줄어듭니다` : ''}
+                </p>
+              )}
+              {(guardedPicked.reserve.length > 0 || guardedPicked.other.length > 0) && (
+                <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                  ⚠ {guardedPicked.reserve.length ? `플래그십 예비 통 ${guardedPicked.reserve.length}개(${guardedPicked.reserve.join(', ')})` : ''}{guardedPicked.reserve.length && guardedPicked.other.length ? ' · ' : ''}{guardedPicked.other.length ? `「보호」 태그 통 ${guardedPicked.other.length}개(${guardedPicked.other.join(', ')})` : ''}를 쓴다
+                  — 손으로 병입하는 것은 막지 않는다(자동 납품은 이 통을 쓰지 않는다).{guardedPicked.reserve.length ? ' 예비 통이 비면 다음으로 오래된 12년 후보가 예비가 된다' : ''}
                 </p>
               )}
               <Button variant="primary" disabled={!preview.ok} onClick={() => {
