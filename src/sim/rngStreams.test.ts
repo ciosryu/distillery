@@ -67,7 +67,7 @@ describe('S1~S5 — 대상 단위 난수 (지금 실패, 고칠 대상)', () => 
     expect(pick(cb)).toEqual(pick(ca));
   });
 
-  it.fails('S5 판매 — 제품 배열 순서만 바꿔도 각 제품의 판매 병 수가 같아야 한다', () => {
+  it('S5 판매 — 제품 배열 순서만 바꿔도 각 제품의 판매 병 수가 같아야 한다', () => {
     const P = { name: 'p', category: 'soju_distilled', ageYears: null, oakMonths: 0, abv: 0.25, bottleMl: 375, chillFiltered: true, packagingId: 'standard', flavor: { cereal: 20 }, quality: 60, typicity: 60, style: null, sourcedShare: 0, stockBottles: 5000, price: 8000, unitCost: 3000, createdMonth: 0, lastMonthSold: 0, totalSold: 0 };
     const mk = () => { const s = base(); s.commerce.products = [{ ...P, id: 'A', name: 'A' }, { ...P, id: 'B', name: 'B', quality: 70 }, { ...P, id: 'C', name: 'C', category: 'gin', abv: 0.4 }] as never; return s; };
     const a = mk(); const b = mk(); b.commerce.products.reverse();
