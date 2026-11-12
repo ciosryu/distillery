@@ -222,6 +222,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (p.dutyFreeOnly) return fail(prev, '면세 한정판은 자동 가격을 쓸 수 없습니다');
     if (!a.on) { delete p.autoPrice; return { state: s, message: `${p.name} 자동 가격 끔 — 지금 값 ${p.price.toLocaleString()}원 유지` }; }
     p.autoPrice = true;
+    if (p.pricePolicy && p.pricePolicy.mode !== 'turnover') { const { lastFactor: _drop, ...rest } = p.pricePolicy; void _drop; p.pricePolicy = { ...rest, mode: 'turnover' }; } // 옛 명령 = A 현금회전 ([결정 #291])
     const v = bestAutoPrice(s, p);
     if (v != null) p.price = v;
     return { state: s, message: `${p.name} 자동 가격 켬 — 매달 이번 달 이익이 가장 큰 값으로 (지금 ${p.price.toLocaleString()}원)` };
