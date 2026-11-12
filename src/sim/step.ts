@@ -32,7 +32,8 @@ import { runEvents } from './events';
 import { rngFor } from './rng';
 import type { CashFlows, GameState, MonthReport, StaffRole } from './types';
 import { calendar, clone } from './util';
-import { applyAutoPrices, applyAutoRestock } from './economics';
+import { applyAutoRestock } from './economics';
+import { runPricePolicies } from './priceEngine';
 import { candidateVolumes, flagshipCandidateCount, noteCandidateUse } from './tags';
 
 export const BANKRUPT_AFTER_MONTHS = 3;
@@ -42,14 +43,14 @@ const REPORTS_KEPT = 120;
 // 0 준비(기상 이상치 포함) → 1 이벤트 → [틱 컨텍스트] → 2 생산 → 3 숙성 → 4 계약 납품 → 5 판매·주세 → 6 운영 → 7 재무 → 8 성장 → 9 판정·리포트
 // 각 단계는 같은 상태 사본(s)을 차례로 고친다. 난수는 단계마다 독립 스트림(rngFor(seed, month, 이름))이라 단계를 더해도 다른 단계 결과가 바뀌지 않는다.
 
-/** 5 판매·주세 — 규칙 본문은 sales.ts(MKT). 판매 직전에 자동 가격을 켠 제품의 값을 정한다(#200, economics.ts) */
+/** 5 판매·주세 — 규칙 본문은 sales.ts(MKT). 판매 직전에 자동 가격을 켠 제품의 값을 정한다(#291 3정책 — priceEngine.ts, 정책 함수는 MKT pricePolicy.ts) */
 const phaseSales: typeof settleSales = (s, report, ctx) => {
   // 자동 납품이 플래그십 후보 통을 쓰면 메모 (#261 — 기록만)
   const cand = candidateVolumes(s);
   const notesFrom = report.notes.length;
   applyAutoRestock(s, report, ctx.monthOfYear);
   noteCandidateUse(s, report, cand, notesFrom);
-  applyAutoPrices(s, ctx.monthOfYear);
+  runPricePolicies(s, report, ctx.monthOfYear); // 자동 가격 3정책 ([결정 #291] — 형제 동시 결정 S6)
   return settleSales(s, report, ctx);
 };
 
