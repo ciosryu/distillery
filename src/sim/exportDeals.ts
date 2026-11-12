@@ -14,9 +14,8 @@ export const EXPORT_DEAL = {
   terms: [24, 36],
   marketingScale: [0.5, 1, 1.5],
   minScale: [0.75, 1, 1.5],
-  /** 우리가 해지하면 마케팅 분담 몇 달 치를 위약금으로 */
+  /** 우리가 해지하면, 그리고 연 최소 물량 미달로 끝나면(B1-7) 마케팅 분담 몇 달 치를 위약금으로 */
   cancelMonths: 3,
-  /** 연 최소 물량 미달로 수입사가 끝내면 현지 인지도가 이만큼 남는다 (재진입 대비 기록용) */
 };
 
 /** 이 시장에 지금 팔 수 있는 제품이 있는가 (재고·주종·현지 숙성 규정) */
@@ -80,6 +79,11 @@ export function cancelExport(s: GameState, marketId: ExportEntry['marketId']): n
   return fee;
 }
 
+/** 연 최소 물량 미달로 끝날 때 내는 위약금 — 우리가 해지할 때와 같은 마케팅 분담 cancelMonths개월 치(B1-7). 분담이 없는 옛 계약은 시장 월 비용으로 */
+export function shortfallFee(e: Pick<ExportEntry, 'marketId' | 'marketingPerMonth'>): number {
+  return Math.round((e.marketingPerMonth ?? EXPORT_MARKETS[e.marketId].monthlyCost) * EXPORT_DEAL.cancelMonths);
+}
+
 /** 월말 계약 처리: 마케팅 분담 지출, 연 최소 물량 점검, 기간 만료 시 갱신. 반환: 이번 달 현지 비용 */
 export function runExportContracts(s: GameState, report: MonthReport): number {
   let fixed = 0;
@@ -91,9 +95,14 @@ export function runExportContracts(s: GameState, report: MonthReport): number {
     const start = e.yearStartMonth ?? e.readyMonth;
     if (s.month - start + 1 >= 12) {
       if ((e.bottlesThisYear ?? 0) < e.minBottlesPerYear) {
+        // 미달로 끝난 계약의 대가 ([결정 #290] B1-7, P-MKT-27): 우리가 해지한 것과 같은 위약금(마케팅 분담 cancelMonths개월 치) + 다시 들어가려면 개척비.
+        // 대가가 없으면 최소 물량은 "못 채우면 그냥 끝나는" 공짜 옵션이었다(P8 판당 3~3.8번 미달 해지)
+        const fee = shortfallFee(e);
+        fixed += fee;
+        s.commerce.exportEntered = (s.commerce.exportEntered ?? []).filter((x) => x !== e.marketId);
         ended.push(e.marketId);
         report.events.push(`${m.nameKo} 수입사 계약 종료`);
-        report.notes.push(`${e.partner}(${m.nameKo})가 계약을 끝냈습니다 — 연 판매 ${(e.bottlesThisYear ?? 0).toLocaleString()}병 < 최소 ${e.minBottlesPerYear.toLocaleString()}병`);
+        report.notes.push(`${e.partner}(${m.nameKo})가 계약을 끝냈습니다 — 연 판매 ${(e.bottlesThisYear ?? 0).toLocaleString()}병 < 최소 ${e.minBottlesPerYear.toLocaleString()}병 · 위약금 ${fee.toLocaleString()}원, 다시 들어가려면 개척비를 새로 낸다`);
         continue;
       }
       e.yearStartMonth = s.month + 1;
