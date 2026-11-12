@@ -1,11 +1,11 @@
 // 병당 손익 (파트 PROD — 플레이테스트 2026-11-07 오너 요청 "내가 만들 술의 원가와 판매가의 임팩트를 알기 쉽게", #173)
-import { defaultPolicyPrice } from './content/market'; // 기본 정책 가격 (B1-4, MKT)
 // 레시피 하나로 만든 술 한 병이 얼마에 만들어지고, 얼마에 팔리고, 얼마가 남고, 한 달에 몇 병 팔리는지.
 // 실제 병입(previewBlend)·판매(demandFor·bottleMargin)와 **같은 식**을 쓴다 — 가상의 탱크 원액을 하나 끼워 넣은 상태 사본에서 계산한다.
 // 위스키는 표준 조건(새 ex-버번 배럴·입지 연평균 기후)으로 숙성을 굴린 **예상**이다 — 실제 캐스크는 샘플로 확인한다. 게임 상태를 바꾸지 않는다.
 
 import { CASK_COST_SHARE_PER_FILL, CASK_STORAGE, CASKS } from './content/catalog';
 import { regionOf, siteOf, traditionalTaxFactor } from './content/regions';
+import { defaultPolicyPrice } from './content/market'; // 기본 정책 가격 (B1-4, MKT)
 import { agedWhiteLabel, agedWhiteLabelMonths, executeBlend, isCaskStrength, isWhiskyCategory, previewBlend, suggestedPrice, whiskyMinMonths, type BlendComponent, type BottleOptions } from './blending';
 import { finishOf, matureCask, vesselMaterial } from './maturation';
 import { capacityReport, previewBatch } from './production';
