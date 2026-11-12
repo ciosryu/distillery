@@ -314,6 +314,8 @@ PROD: 향미·품질(flavor.evaluate)        MKT 허브: market.ts              
 
 ## 11. Phase C — 묶음 B1 "시장·가치 식 v1" 결정 안건 (PM 통합, 2026-11-11)
 
+> **결정 #290으로 승인(오너 "권장안대로" 2026-11-12)** — B1-5는 #291로 대체. 아래는 근거 기록이다.
+
 > 근거: MKT B1-MKT-1([mkt-stage-t.md](mkt-stage-t.md) 「B1-MKT-1」 — `mkt-b1.ts`로 게임 코드를 바꾸지 않고 식만 고친 사본에서 P8 10시드 × 180개월, 기준 main `2ed24da`) · PROD G02([prod-stage-t.md](prod-stage-t.md) 「GAME 개선 프로그램 — PROD 태스크」) · MGT G02·CP-MGT-1([mgt-stage-t.md](mgt-stage-t.md)) · ARCH §10.8([architecture.md](architecture.md)). **숫자는 모두 10시드 진단이고 판정이 아니다.**
 > 결정 #281: 한 묶음으로 단계 T 전에 한 번 고치고, 판정용 봇 P8은 한 번만 다시 보정한다.
 
@@ -496,6 +498,8 @@ PROD: 향미·품질(flavor.evaluate)        MKT 허브: market.ts              
 - 10시드다 — 판정은 BAL 40시드.
 
 ### 12.11 결정 대기 66 최종안 — AP3 2차(고친 가드 · 식 v1) 뒤 (PM, 2026-11-11)
+
+> **결정 #291로 승인(오너 "권장안대로" 2026-11-12).** 단계 T 진입 조건 추가는 #292, 세이브 수리·S6은 #295.
 
 > 근거: MKT AP3 2차([mkt-stage-t.md](mkt-stage-t.md) 「AP3 2차」 — 고친 가드 `0a182d1`, 식 v1, 정책 11 × 조건 9 × 10시드 + 장기 숙성 PROD 훅) · PROD #342(현행 규칙 장기 보유) · MGT #337(P-MGT-41~43). 10시드 진단이다. 앞서 나온 "가드 붕괴"(#340)는 측정 결함으로 무효였다.
 
