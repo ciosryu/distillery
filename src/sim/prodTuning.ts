@@ -9,4 +9,6 @@ export const PROD_TUNING = {
   /** 어린 위스키(3년 미만) 인식 — 1.18 × (floor + (1 − floor) × (개월/36)^curve). 0개월 0.47 · 12개월 0.77 · 24개월 0.98 (PRD §6 v0.8 — blending.ts agePerception) */
   youngWhiskyFloor: 0.4,
   youngWhiskyCurve: 0.8,
+  /** 보호 태그 통을 서늘한 빈 칸으로 옮기는 한 달 상한 (#290 B1-3, P-PROD-50 — warehouse.ts moveProtectedToCoolSlots). 0이면 끈다. 시작값 `[가설]` */
+  coolSlotMovesPerMonth: 10,
 };

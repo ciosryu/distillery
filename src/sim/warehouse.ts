@@ -10,6 +10,8 @@ import { mod } from './modifiers';
 import type { TickContext } from './tick';
 import { autoSample } from './blendTable';
 import { lotQuality } from './bulk';
+import { protectedCaskIds } from './tags';
+import { PROD_TUNING } from './prodTuning';
 
 // 숙성고: 공간·칸 배정·내부 기후·로테이션·오염 QC·월 숙성 단계(틱 3) (파트 PROD, 결정 #144 — 파일 쪼개기로 옮겨 왔다. 규칙·수치 불변)
 
@@ -65,17 +67,60 @@ export function assignSlot(s: GameState, cask: Cask, preferW?: string, index: Sl
  * - 랙: 철골·얇은 외벽 → 연평균 +0.8°C, 위로 갈수록 덥고 건조하다. 성층 = 2 + 0.25 × max(0, 외기 − 10)°C
  */
 export function slotClimate(s: GameState, cask: Cask | null, monthOfYear: number): Climate {
-  const site = siteOf(s);
   // 외기 = 입지 평년값 + 이번 달 기상 이상치·이벤트 충격 (결정 #120)
-  const off = weatherOffset(s);
+  const w = warehousesOf(s).find((x) => x.id === cask?.slot?.w) ?? warehousesOf(s)[0]!;
+  return climateIn(s, w, cask?.slot?.tier ?? 0, monthOfYear, weatherOffset(s));
+}
+
+/** 칸 기후 식 한 곳 — slotClimate(이번 달 기상 포함)와 slotMeanTempC(평년값만)가 함께 쓴다 */
+function climateIn(s: GameState, w: WarehouseView, tier: number, monthOfYear: number, off: { tempC: number; humidity: number }): Climate {
+  const site = siteOf(s);
   const to = site.tempC[monthOfYear - 1]! + off.tempC;
   const ho = clamp(site.humidity[monthOfYear - 1]! + off.humidity, 20, 100);
   const tm = site.tempC.reduce((a, b) => a + b, 0) / 12;
-  const w = warehousesOf(s).find((x) => x.id === cask?.slot?.w) ?? warehousesOf(s)[0]!;
-  const tierFrac = w.tiers > 1 ? clamp((cask?.slot?.tier ?? 0) / (w.tiers - 1), 0, 1) : 0;
+  const tierFrac = w.tiers > 1 ? clamp(tier / (w.tiers - 1), 0, 1) : 0;
   if (w.type === 'dunnage') return { tempC: tm + 0.6 * (to - tm) + 0.3 * tierFrac, humidity: Math.min(95, ho + 6) };
   const strat = 2 + 0.25 * Math.max(0, to - 10);
   return { tempC: tm + 0.95 * (to - tm) + 0.8 + (tierFrac - 0.3) * strat, humidity: clamp(ho + 4 - 14 * tierFrac, 30, 95) };
+}
+
+/** 칸의 연평균 온도 — 입지 평년값만(이번 달 기상 이상치 없음). "서늘한 칸" 순위는 이 값 하나로 정해 달마다 뒤집히지 않는다 (#290 B1-3) */
+export function slotMeanTempC(s: GameState, w: WarehouseView, tier: number): number {
+  let t = 0;
+  for (let m = 1; m <= 12; m++) t += climateIn(s, w, tier, m, { tempC: 0, humidity: 0 }).tempC;
+  return t / 12;
+}
+
+/**
+ * 보호 태그 통은 서늘한 칸으로 (#290 B1-3, P-PROD-50 — 오너 2026-11-12: 대상 = 보호 태그 통 전체, 매달 빈 서늘한 칸으로 옮김).
+ * 매달 숙성 전에 보호 통(플래그십 예비 포함)을 오크 긴 순으로 보며, 지금 칸보다 연평균이 낮은 칸 중 가장 서늘한 **빈 자리**로 옮긴다.
+ * 다른 통을 밀어내지 않는다(빈 자리만). 한 달 `PROD_TUNING.coolSlotMovesPerMonth`통까지, 비용 없음. 칸이 아직 없는 보호 통은 여기서 칸을 받는다.
+ * 보호 통이 없으면 아무것도 바꾸지 않는다(샌드박스 판·태그를 안 쓴 판의 출력 그대로). 숙성 연속성은 그대로 — 통은 같고 기후만 바뀐다
+ */
+export function moveProtectedToCoolSlots(s: GameState, report: MonthReport, index: SlotIndex = new SlotIndex(s)): number {
+  const cap = PROD_TUNING.coolSlotMovesPerMonth;
+  if (cap <= 0) return 0;
+  const prot = protectedCaskIds(s);
+  if (!prot.size) return 0;
+  const ws = index.warehouses;
+  const ranked = ws.flatMap((w) => Array.from({ length: w.tiers }, (_, tier) => ({ w, tier, t: slotMeanTempC(s, w, tier) })))
+    .sort((a, b) => a.t - b.t || ws.indexOf(a.w) - ws.indexOf(b.w) || a.tier - b.tier);
+  const tempOf = new Map(ranked.map((x) => [`${x.w.id}:${x.tier}`, x.t]));
+  const casks = s.inventory.casks.filter((c) => c.contents && prot.has(c.id))
+    .sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths || a.id.localeCompare(b.id));
+  let moved = 0;
+  for (const c of casks) {
+    if (moved >= cap) break;
+    const cur = c.slot ? tempOf.get(`${c.slot.w}:${c.slot.tier}`) : undefined;
+    const to = ranked.find((x) => (cur === undefined || x.t < cur - 1e-9) && index.count(x.w.id, x.tier) < x.w.perTier);
+    if (!to) continue;
+    if (c.slot && cur !== undefined) index.add(c.slot.w, c.slot.tier, -1);
+    c.slot = { w: to.w.id, tier: to.tier };
+    index.add(to.w.id, to.tier, 1);
+    moved++;
+  }
+  if (moved) report.notes.push(`보호 통 ${moved}개를 숙성고의 더 서늘한 칸으로 옮겼다(장기 숙성 — 증발이 줄고 천천히 익는다)`);
+  return moved;
 }
 
 /**
@@ -141,6 +186,8 @@ export function runContamination(s: GameState, report: MonthReport, monthOfYear:
 export function runMaturation(s: GameState, report: MonthReport, ctx: TickContext): void {
   // 자동 샘플 (#177) — 이번 달 직접 뜬 샘플이 없으면 숙성 전에 오래 안 뜬 통부터. 시나리오 게임만
   autoSample(s, report, lotQuality);
+  // 보호 통 → 서늘한 칸 (#290 B1-3) — 숙성 전에 옮겨 이번 달 숙성부터 새 칸 기후를 쓴다
+  moveProtectedToCoolSlots(s, report, ctx.slots);
   const { control, observe, diligence } = ctx.warehouse;
   const evap = mod(s, 'evaporation');
   let lost = 0;
