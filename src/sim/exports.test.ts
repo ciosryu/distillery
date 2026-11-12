@@ -63,19 +63,25 @@ describe('수입사 계약 (#101)·인지도 후광 (#102)', () => {
     expect((s.commerce.exportOffers ?? []).some((o) => o.marketId === 'UK')).toBe(false);
   });
 
-  it('연 최소 물량에 못 미치면 수입사가 계약을 끝낸다 / 우리가 해지하면 마케팅 3개월 치 위약금', () => {
+  it('연 최소 물량에 못 미치면 수입사가 계약을 끝내고 위약금·재진입 개척비(B1-7) / 우리가 해지하면 마케팅 3개월 치 위약금', () => {
     const s = newGame({ seed: 2 }); s.finance.cash = 1e10; s.commerce.products = [whisky()];
     const o = { ...makeExportOffer(s, 'US', mulberry32(3)), minBottlesPerYear: 1_000_000 };
     s.commerce.exportOffers = [o];
     const t = applyAction(s, { type: 'acceptExportOffer', offerId: o.id }).state;
     const e = t.commerce.exports![0]!;
     t.month = e.readyMonth + 11;
-    runExportContracts(t, report(t));
+    const fixed = runExportContracts(t, report(t));
     expect(t.commerce.exports).toHaveLength(0);
+    // 미달 해지의 대가 (결정 #290 B1-7): 이달 분담 + 해지 위약금(분담 3개월 치), 재진입 때 개척비
+    expect(fixed).toBe(o.marketingPerMonth * 4);
+    expect(t.commerce.exportEntered ?? []).not.toContain('US');
+    expect(makeExportOffer(t, 'US', mulberry32(4)).entryCost).toBeGreaterThan(0);
+    // 우리가 해지했을 때는 개척 기록이 남아 재진입 개척비가 없다(지금 규칙 그대로)
     const u = applyAction(s, { type: 'acceptExportOffer', offerId: o.id }).state;
     const cash = u.finance.cash;
     const res = applyAction(u, { type: 'closeExport', marketId: 'US' });
     expect(cash - res.state.finance.cash).toBe(o.marketingPerMonth * 3);
+    expect(makeExportOffer(res.state, 'US', mulberry32(4)).entryCost).toBe(0);
   });
 
   it('국내 인지도 후광은 공항 면세점만 — 해외 시장은 0에서 시작한다', () => {

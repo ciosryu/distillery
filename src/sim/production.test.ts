@@ -178,6 +178,41 @@ describe('v1.0 운영 시스템', () => {
     expect(at('WD', 0).tempC).toBeLessThan(at('W0', 0).tempC);
   });
 
+  it('보호 통은 매달 더 서늘한 빈 칸으로 옮긴다 — 보호 통이 없으면 칸이 그대로 (#290 B1-3)', async () => {
+    const { moveProtectedToCoolSlots, slotMeanTempC, warehousesOf } = await import('./warehouse');
+    const { PROD_TUNING } = await import('./prodTuning');
+    const s = newGame({ seed: 1, region: 'KR' });
+    s.production.equipment.push({ id: 'WD', catalogId: 'warehouse_dunnage_45', readyMonth: 0 });
+    s.inventory.tagDefs = [{ id: 'keep', label: '오래', color: 'rose', effect: 'protect' }];
+    const proto = s.b2b.brokerOffers[0]!.cask;
+    const mk = (id: string, tagged: boolean): Cask => ({ ...structuredClone(proto), id, slot: { w: 'W0', tier: 5 }, contents: { ...structuredClone(proto.contents!), id: `L${id}`, ...(tagged ? { tagIds: ['keep'] } : {}) } });
+    s.inventory.casks = [mk('A', false), mk('B', true), mk('C', false)];
+    const report = () => ({ notes: [] as string[] }) as never as import('./types').MonthReport;
+    const before = s.inventory.casks.map((c) => ({ ...c.slot! }));
+    // 보호 통이 없으면 아무것도 바꾸지 않는다
+    s.inventory.casks[1]!.contents!.tagIds = undefined;
+    expect(moveProtectedToCoolSlots(s, report())).toBe(0);
+    expect(s.inventory.casks.map((c) => c.slot)).toEqual(before);
+    s.inventory.casks[1]!.contents!.tagIds = ['keep'];
+    // 상한 0이면 끈다
+    const cap = PROD_TUNING.coolSlotMovesPerMonth;
+    PROD_TUNING.coolSlotMovesPerMonth = 0;
+    expect(moveProtectedToCoolSlots(s, report())).toBe(0);
+    PROD_TUNING.coolSlotMovesPerMonth = cap;
+    // 보호 통 B만 가장 서늘한 칸으로 — 다른 통은 그대로, 다음 달에는 더 옮기지 않는다(뒤집히지 않음)
+    const r = report();
+    expect(moveProtectedToCoolSlots(s, r)).toBe(1);
+    expect(r.notes.length).toBe(1);
+    const coolest = warehousesOf(s).flatMap((w) => Array.from({ length: w.tiers }, (_, tier) => ({ w: w.id, tier, t: slotMeanTempC(s, w, tier) }))).sort((a, b) => a.t - b.t)[0]!;
+    expect(s.inventory.casks[1]!.slot).toEqual({ w: coolest.w, tier: coolest.tier });
+    expect(s.inventory.casks[0]!.slot).toEqual(before[0]);
+    expect(s.inventory.casks[2]!.slot).toEqual(before[2]);
+    expect(moveProtectedToCoolSlots(s, report())).toBe(0);
+    // 맨 위 칸은 맨 아래 칸보다 연평균이 덥다(랙)
+    const w0 = warehousesOf(s)[0]!;
+    expect(slotMeanTempC(s, w0, 5)).toBeGreaterThan(slotMeanTempC(s, w0, 0));
+  });
+
   it('로테이션: QC가 있어야 하고, 단을 뒤집는다', () => {
     let s = newGame({ seed: 1, region: 'KR' });
     const cask = s.b2b.brokerOffers[0]!.cask; s.inventory.casks.push(cask); cask.slot = { w: 'W0', tier: 5 };
@@ -1024,6 +1059,18 @@ describe('자동 납품은 같은 레시피 원액만 (#243, 5차 MVP 플레이�
   });
 });
 
+describe('품질 식은 피트를 세지 않는다 (#290 B1-10, P-PROD-52 ①)', () => {
+  it('피트 축만 복잡도·강도에서 빠진다 — 다른 축은 그대로 세고, 스타일 분류는 피트를 본다', async () => {
+    const { evaluate } = await import('./flavor');
+    const base = { cereal: 25, vanilla_caramel: 20, fresh_fruit: 10, oak_tannin: 8 };
+    const plain = evaluate(base, 'whisky');
+    const peated = evaluate({ ...base, peat_smoke: 45 }, 'whisky');
+    expect(peated.quality).toBe(plain.quality);
+    expect(evaluate({ ...base, dried_fruit: 45 }, 'whisky').quality).toBeGreaterThan(plain.quality); // 다른 축은 품질을 바꾼다
+    expect(peated.style).toBe('피티드');
+  });
+});
+
 describe('피티드 맥아 비중 기록 (#290 B1-9 f2 — Product.peatShare)', () => {
   const opts = { name: '피트', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' } as const;
   const setup = () => {
@@ -1051,6 +1098,33 @@ describe('피티드 맥아 비중 기록 (#290 B1-9 f2 — Product.peatShare)', 
     expect(restockedProduct({ ...base, peatShare: undefined }, { ...base, stockBottles: 100 }).peatShare).toBe(0.5); // 옛 제품(기록 없음) = 0
     expect(restockedProduct({ ...base, stockBottles: 0 }, { ...base, peatShare: undefined }).peatShare).toBeUndefined();
     expect(restockedProduct({ ...base, stockBottles: 0, peatShare: undefined }, { ...base, peatShare: 0.4 }).peatShare).toBe(0.4);
+  });
+});
+
+describe('개월 가중 통 구성 (#290 B1-9 f2 — Product.caskMonthsMix)', () => {
+  const opts = { name: '피니시', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' } as const;
+  const cask = (id: string, typeId: string, lot: SpiritLot) => ({ id, typeId, sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: lot } as Cask);
+  const malt = (id: string, extra: Partial<SpiritLot> = {}): SpiritLot => ({ id, name: id, kind: 'malt', volumeL: 180, abv: 0.6, flavor: { cereal: 20, vanilla_caramel: 20 }, createdMonth: 0, oakMonths: 36, sourced: false, costPerLPA: 10_000, ...extra });
+
+  it('피니싱한 원액은 거쳐 온 통에 머문 개월로 나눈다 — 3개월 셰리 피니시는 셰리 몫이 그만큼만, 피니싱이 없으면 필드를 두지 않는다', () => {
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const fin = malt('F', { caskHistory: [{ typeId: 'ex_bourbon_barrel', fromMonth: 0, months: 33 }, { typeId: 'oloroso_butt', fromMonth: 33, months: 0 }] });
+    s.inventory.casks = [cask('KF', 'oloroso_butt', fin), cask('KB', 'ex_bourbon_barrel', malt('B')), cask('KC', 'ex_bourbon_barrel', malt('C'))];
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id: 'KF', liters: 90 }, { source: 'cask', id: 'KB', liters: 90 }], options: opts }).state;
+    const p = s.commerce.products.at(-1)!;
+    expect(p.caskMix).toEqual([{ typeId: 'oloroso_butt', share: 0.5 }, { typeId: 'ex_bourbon_barrel', share: 0.5 }]);
+    expect(p.caskMonthsMix).toEqual([{ typeId: 'ex_bourbon_barrel', share: 0.958 }, { typeId: 'oloroso_butt', share: 0.042 }]); // 0.5 + 0.5 × 33/36 · 0.5 × 3/36
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id: 'KC', liters: 90 }], options: { ...opts, name: '버번' } }).state;
+    expect('caskMonthsMix' in s.commerce.products.at(-1)!).toBe(false); // 없음 = caskMix와 같다
+  });
+
+  it('보충은 병 수 가중 평균 — 기록 없는 쪽은 caskMix로 읽고, 둘 다 없으면 두지 않는다', async () => {
+    const { restockedProduct } = await import('./blending');
+    const base = { id: 'P', name: 'x', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 100, style: null, sourcedShare: 0, stockBottles: 100, price: 60000, unitCost: 5000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, caskMix: [{ typeId: 'oloroso_butt', share: 1 }] } as Product;
+    const finished = { ...base, caskMonthsMix: [{ typeId: 'ex_bourbon_barrel', share: 0.9 }, { typeId: 'oloroso_butt', share: 0.1 }] } as Product;
+    expect(restockedProduct(finished, { ...base, stockBottles: 100 }).caskMonthsMix).toEqual([{ typeId: 'oloroso_butt', share: 0.55 }, { typeId: 'ex_bourbon_barrel', share: 0.45 }]);
+    expect(restockedProduct(base, { ...base }).caskMonthsMix).toBeUndefined();
+    expect(restockedProduct({ ...finished, stockBottles: 0 }, { ...base }).caskMonthsMix).toEqual([{ typeId: 'oloroso_butt', share: 1 }]);
   });
 });
 
@@ -1272,6 +1346,47 @@ describe('자동 납품 함정 경고·하한 올리기 (#297, MGT P-MGT-45)', (
     v.mk('A', 20);
     v.s = applyAction(v.s, { type: 'setAutoRestock', productId: 'W1', months: 2, minMonths: 36 }).state;
     expect(autoRestockContest(v.s, v.s.commerce.products.find((x) => x.id === 'W1')!)).toBeNull();
+  });
+});
+
+describe('공급 지평 (결정 #291 P-PROD-54 — economics.ts supplyHorizon)', () => {
+  const setup = () => {
+    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.progress.milestones.push({ id: 'flagship_sold', month: 0 } as never); // 플래그십 예비 보호 끔 — 지평만 본다
+    s.inventory.casks = [];
+    const mk = (id: string, oak: number) => s.inventory.casks.push({ id, typeId: 'ex_bourbon_barrel', sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: { id: `L${id}`, name: id, kind: 'malt', volumeL: 100, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10000 } } as Cask);
+    const p = { id: 'W3', name: '3년', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 50, style: null, sourcedShare: 0, stockBottles: 50, price: 60000, unitCost: 10000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, salesEma: 100 } as Product;
+    s.commerce.products = [p];
+    return { s, mk, p };
+  };
+
+  it('지금 채울 병 = 표기 하한 이상 통, 곧 닿는 병 = 12개월 안에 하한에 닿는 통, 지평 = (재고 + 지금 병) ÷ 판매 속도', async () => {
+    const { supplyHorizon } = await import('./economics');
+    const { s, mk, p } = setup();
+    mk('READY', 40); mk('SOON', 30); mk('FAR', 10);
+    const perCask = Math.floor((100 * 0.6) / (0.7 * 0.46)); // 60 LPA ÷ 병당 0.322 LPA = 186병
+    const h = supplyHorizon(s, p);
+    expect(h.readyBottles).toBe(perCask);
+    expect(h.soonBottles).toBe(perCask);
+    expect(h.months).toBeCloseTo((50 + perCask) / 100, 6);
+    expect(h.refillGap).toBe(false);
+    s.inventory.casks = s.inventory.casks.filter((c) => c.id !== 'SOON');
+    expect(supplyHorizon(s, p).refillGap).toBe(true); // 1년 안에 다시 채울 통이 없다
+    expect(supplyHorizon(s, { ...p, salesEma: 0 }).months).toBe(Infinity);
+  });
+
+  it('보호 태그 통은 지금·곧 병에서 빠지고, 탱크 주종은 보충 끊김이 없다', async () => {
+    const { supplyHorizon } = await import('./economics');
+    const { s, mk, p } = setup();
+    mk('READY', 40); mk('SOON', 30);
+    s.inventory.tagDefs = [{ id: 'keep', label: '남김', color: 'rose', effect: 'protect' }];
+    for (const c of s.inventory.casks) c.contents!.tagIds = ['keep'];
+    const h = supplyHorizon(s, p);
+    expect(h.readyBottles).toBe(0);
+    expect(h.soonBottles).toBe(0);
+    expect(h.refillGap).toBe(true);
+    const soju = { ...p, id: 'S1', category: 'soju_distilled', ageYears: null, oakMonths: 0, abv: 0.25 } as Product;
+    expect(supplyHorizon(s, soju).refillGap).toBe(false);
   });
 });
 

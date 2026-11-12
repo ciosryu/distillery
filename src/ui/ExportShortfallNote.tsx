@@ -24,7 +24,7 @@ export function ExportShortfallNote({ s }: { s: GameState }) {
               <li key={c.marketId}>{c.partner}({EXPORT_MARKETS[c.marketId].nameKo}) 연 최소 {c.min.toLocaleString()}병 — 남은 제품 예상 {c.projected.toLocaleString()}병(올해 {c.soFar.toLocaleString()}병 + 남은 {c.monthsLeft}개월 수요){c.noExport > 0 && <> · 이 시장에 낼 수 있는 제품 {c.noExport}개를 <b>수출 끔</b></>}</li>
             ))}
           </ul>
-          <div className="mt-1 text-sky-800 dark:text-sky-300">계약 연도 끝에 최소 물량에 못 미치면 수입사가 계약을 끝낸다. 예상은 이번 달 수요 기준이라 재고가 모자라면 더 적다.</div>
+          <div className="mt-1 text-sky-800 dark:text-sky-300">계약 연도 끝에 최소 물량에 못 미치면 수입사가 계약을 끝내고, 해지 위약금(마케팅 분담 3개월 치)을 물며, 다시 들어가려면 개척비를 새로 낸다. 예상은 이번 달 수요 기준이라 재고가 모자라면 더 적다.</div>
         </div>
       )}
     </div>

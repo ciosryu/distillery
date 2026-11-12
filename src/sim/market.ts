@@ -1,5 +1,5 @@
 import { DISTRIBUTION, logisticsCost } from './content/catalog';
-import { agedWhitePerception, BRANDS, PRICE_CURVE, SKU } from './content/market';
+import { agedWhitePerception, BRANDS, PRICE_CURVE, SKU, STYLE, STYLE_WEIGHTS } from './content/market';
 import { rivalShare } from './rivals';
 import { awarenessOf, brandLuxuryFactor, brandMarketing, brandOf, houseBrand, secondBrands } from './brands';
 import { consumerPrice, refPricePerL, regionOf, siteOf, traditionalTaxFactor, type RegionDef } from './content/regions';
@@ -67,13 +67,39 @@ export function priceBreakdown(s: GameState, p: Pick<Product, 'price' | 'bottleM
   return { price: p.price, adValoremTax, educationTax, specificTax, reliefFactor: relief, vat, retail: consumer - taxed - vat, consumer };
 }
 
-export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId'>): number {
+/**
+ * 향미 방향 항 f2 "스타일 = 플레이어 선택" ([결정 #290] B1-9) — 몰트 위스키만, 시장 key(국내 = 지역 id, 수출 = 시장 id)의 가중표(content/market.ts STYLE_WEIGHTS).
+ * 피트 배수 = 1 + peatShare × (w_peat − 1) · 통 배수 = 1 + Σ 통 계열 비중 × (w_통 − 1). 비중을 선형으로 써서 블렌드에 계단이 없다.
+ * 기본 레시피(언피트 × ex-버번, 기록 전 제품 = peatShare·caskMix 없음)는 모든 시장 ×1 → 총수요 보존.
+ * incense: 이 판에 걸린 인센스 프리미엄 배수(>1이면 미즈나라 가중과 큰 쪽 하나만 — 순수 미즈나라면 max(인센스, w_미즈나라)).
+ * 피니시 통: "피니싱은 개월 가중으로"(구조 규칙) — 통 구성은 개월 가중 기록(`caskMonthsMix`, PROD #374)을 먼저 읽는다. 피니싱한 원액이 섞였을 때만 기록되고,
+ * 없으면 `caskMix`와 같다. 기록 전에 병입한 피니시 제품(옛 세이브)은 마지막 통만 아니까 피니시 통 몫을 중립(×1)으로 둔다(3개월 피니시가 통째로 그 통 대접을 받지 않게)
+ */
+export function styleFit(p: Pick<Product, 'category' | 'peatShare' | 'caskMix' | 'caskMonthsMix' | 'finish'>, key: string, incense = 1): number {
+  if (p.category !== 'whisky') return 1;
+  const w = STYLE_WEIGHTS[key];
+  if (!w) return 1;
+  const peat = 1 + clamp(p.peatShare ?? 0, 0, 1) * (w.peat - 1);
+  let cask = 1;
+  const months = p.caskMonthsMix;
+  for (const c of months ?? p.caskMix ?? []) {
+    if (!months && p.finish && c.typeId === p.finish) continue;
+    let wc = w.casks[c.typeId] ?? 1;
+    if (c.typeId === 'mizunara_hogshead' && incense > 1) wc = Math.max(1, wc / incense);
+    cask += c.share * (wc - 1);
+  }
+  return peat * cask;
+}
+
+/** 매력도. styleKey = 향미 방향 항 f2의 시장(기본 = 국내 지역 s.regionId, 수출은 그 시장 id) */
+export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId'>, styleKey: string | undefined = s?.regionId): number {
   const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
   const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths); // 숙성 소주 표기 #217
   const lux = packagingAppealFactor(p); // 패키징 매력 배수 — 조합 점수(#248) 0~30 → 1.0~1.15, 프리셋은 옛 PACKAGING[id].luxury와 같다
   // 시장 국면: 피트·셰리 유행
   // 시장 국면: 향미 트렌드 이동 (결정 #125 — 옛 피트·셰리 계단식 보정치를 육각형 축 기반 연속 배수로 대체)
-  const trend = s ? mod(s, 'appeal:all') * trendFactor(s, p.hex ?? hexOf(p.flavor)) : 1;
+  const tf = s ? trendFactor(s, p.hex ?? hexOf(p.flavor)) : 1;
+  const trend = s ? mod(s, 'appeal:all') * tf : 1;
   // 블렌딩 테이블 (결정 #124): 평론가 의뢰 블렌드는 기간 한정 가산, 코어 레인지는 일관성(0.9~1.1), 레어 싱글 캐스크
   const blendBonus = !p.blend ? 1
     : p.blend.source === 'critic' ? (s && p.blend.untilMonth != null && s.month < p.blend.untilMonth ? 1 + (p.blend.appealBonus ?? 0) : 1)
@@ -90,10 +116,13 @@ export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regi
   // 입지 특성 (결정 #86~): 대형 유통 입점은 숙성 위스키의 프리미엄 이미지를 깎는다 / 미즈나라 인센스 향은 일본 프리미엄 / 면세 한정판
   const premium = s && aged ? mod(s, 'appeal:premium') : 1;
   const incense = region?.incensePremium && (p.flavor.incense ?? 0) >= 8 ? region.incensePremium : 1;
+  // 향미 방향 항 f2 (결정 #290 B1-9) — 스타일 보너스 × 향미 트렌드 ≤ STYLE.capWithTrend(트렌드만으로 넘는 몫은 그대로, 스타일 보너스만 줄인다)
+  const fit = styleKey ? styleFit(p, styleKey, incense) : 1;
+  const style = fit > 1 ? Math.min(fit, Math.max(1, STYLE.capWithTrend / tf)) : fit;
   const edition = dutyFreeEditionAppeal(p);
   // 브랜드 방패 ([결정 #235] A): 브랜드 럭셔리 B_b와 제품 L_p의 차이 — 세컨드 브랜드가 열리는 모드에서만
   const shield = brandLuxuryFactor(s as Partial<GameState> | undefined, p);
-  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * brand * label * specialty * trend * premium * incense * edition * blendBonus * rare * shield;
+  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * brand * label * specialty * trend * premium * incense * edition * blendBonus * rare * shield * style;
 }
 
 /** 브랜드 가치가 낮은 매입 원액 병입은 저가 하이볼 수요라 가격에 훨씬 민감하다 */
@@ -303,7 +332,7 @@ function exportDemandWithSplit(s: GameState, p: Product, entry: ExportEntry, spl
   const bottleL = p.bottleMl / 1000;
   const ref = c.refConsumerPricePerL * Math.pow(p.abv / c.refAbv, 0.7);
   const priceFactor = Math.pow(exportShelfPrice(s, p, m, entry.priceFactor ?? 1) / bottleL / ref, -c.elasticity * sourcedElasticityFactor(p));
-  return (marketL * reach * appeal(p, s) * priceFactor * overhangFactor(p, s.month)) / bottleL;
+  return (marketL * reach * appeal(p, s, m.id) * priceFactor * overhangFactor(p, s.month)) / bottleL; // 향미 방향 항은 그 시장 취향(f2)
 }
 
 /** 해외 명성 (#96): 진출 시장의 현지 인지도 상한을 높이고, 바닥(명성 × 0.5)을 깐다. 매달 1.5%씩 식는다 */

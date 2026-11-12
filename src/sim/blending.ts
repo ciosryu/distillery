@@ -386,6 +386,24 @@ function restockChecks(s: GameState, opts: BottleOptions, b: { category: Product
   if (t.specialty && t.specialty !== b.specialty) warnings.push('이 원액은 특산물 표기 조건을 못 채워 제품의 특산물 표기가 빠집니다');
 }
 
+/**
+ * 개월 가중 통 구성 — 캐스크 원액마다 LPA 몫(share/total)을 거쳐 온 통 구간의 개월 비율로 나눠 통 종류별로 더한다(#290 B1-9 f2).
+ * 마지막 구간 개월 = oakMonths − 앞 구간 합(`finishOf`와 같은 규칙). 이력이 없거나 개월이 0이면 지금 통 100%
+ */
+function monthsWeightedMix(parts: { share: number; cask?: { typeId: CaskTypeId }; lot: SpiritLot }[], total: number): { typeId: CaskTypeId; share: number }[] {
+  const m = new Map<CaskTypeId, number>();
+  for (const x of parts) {
+    if (!x.cask) continue;
+    const w = x.share / total;
+    const h = x.lot.caskHistory;
+    const stints = h && h.length >= 2 ? h.map((st, i) => ({ typeId: st.typeId, months: i < h.length - 1 ? st.months : Math.max(0, x.lot.oakMonths - h.slice(0, -1).reduce((t, y) => t + y.months, 0)) })) : [];
+    const sum = stints.reduce((t, st) => t + st.months, 0);
+    if (sum <= 0) { m.set(x.cask.typeId, (m.get(x.cask.typeId) ?? 0) + w); continue; }
+    for (const st of stints) m.set(st.typeId, (m.get(st.typeId) ?? 0) + (w * st.months) / sum);
+  }
+  return [...m.entries()].map(([typeId, v]) => ({ typeId, share: Math.round(v * 1000) / 1000 })).filter((x) => x.share > 0).sort((a, b) => b.share - a.share);
+}
+
 /** 두 비중 목록(통 구성)을 병 수로 가중 평균 */
 function mergeCaskMix(a: Product['caskMix'], wa: number, b: Product['caskMix'], wb: number): Product['caskMix'] {
   const m = new Map<CaskTypeId, number>();
@@ -435,6 +453,9 @@ export function restockedProduct(old: Product, batch: Product): Product {
   // 매대 재고가 0이고 새 배치가 레어 단독이면 그 배치 그대로(2026-11-12 수정: 레어 통 하나로 처음 병입한 제품을 평범한 통으로 계속 보충해도 ×1.3이 남았다)
   if (keep(old.rareSingleCask, batch.rareSingleCask, false)) merged.rareSingleCask = true; else delete merged.rareSingleCask;
   if (caskMix) merged.caskMix = caskMix; else delete merged.caskMix;
+  // 개월 가중 통 구성 — 어느 쪽이든 기록이 있으면 병 수 가중 평균(기록 없는 쪽은 caskMix로 읽는다). 둘 다 없으면 두지 않는다(= caskMix)
+  const monthsMix = old.caskMonthsMix || batch.caskMonthsMix ? mergeCaskMix(old.caskMonthsMix ?? old.caskMix, a, batch.caskMonthsMix ?? batch.caskMix, b) : undefined;
+  if (monthsMix) merged.caskMonthsMix = monthsMix; else delete merged.caskMonthsMix;
   // 피티드 맥아 비중(#290 B1-9 f2) — 병 수 가중 평균. 기록 없는 쪽은 0(중립)으로 센다. 0이면 필드를 두지 않는다(없음 = 0)
   const peat = Math.round(avg(old.peatShare ?? 0, batch.peatShare ?? 0) * 1000) / 1000;
   if (peat > 0) merged.peatShare = peat; else delete merged.peatShare;
@@ -455,7 +476,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     const lot = lotOf(s, c)!;
     const cask = c.source === 'cask' ? s.inventory.casks.find((k) => k.id === c.id) : undefined;
     const seen = cask ? known.get(cask.id)?.hex ?? null : hexOf(lot.flavor);
-    return { seen, share: c.liters * lot.abv, cask };
+    return { seen, share: c.liters * lot.abv, cask, lot };
   });
   const seenParts = parts.filter((x): x is typeof x & { seen: Hex } => !!x.seen);
   const unknownShare = parts.reduce((t, x) => t + (x.seen ? 0 : x.share), 0) / Math.max(1e-9, parts.reduce((t, x) => t + x.share, 0));
@@ -465,6 +486,8 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   const byType = new Map<CaskTypeId, number>();
   for (const x of parts) if (x.cask) byType.set(x.cask.typeId, (byType.get(x.cask.typeId) ?? 0) + x.share);
   const caskMix = totalShare > 0 ? [...byType.entries()].map(([typeId, v]) => ({ typeId, share: Math.round((v / totalShare) * 1000) / 1000 })).sort((a, b) => b.share - a.share) : [];
+  // 개월 가중 통 구성 (#290 B1-9 f2 구조 규칙) — 피니싱한 원액이 섞였을 때만. 원액마다 LPA 몫을 거쳐 온 통에 머문 개월로 나눈다
+  const caskMonthsMix = parts.some((x) => x.cask && (x.lot.caskHistory?.length ?? 0) >= 2) && totalShare > 0 ? monthsWeightedMix(parts, totalShare) : undefined;
   const single = parts.length === 1 ? parts[0]!.cask : undefined;
   const lineTarget = opts.line && s.commerce.lines[opts.line] ? findTarget(s, `line:${opts.line}`) : undefined;
   const target = lineTarget ?? findTarget(s, opts.targetId);
@@ -518,6 +541,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     ...(p.localIngredient ? { localIngredient: true } : {}),
     ...(p.finish ? { finish: p.finish } : {}),
     ...(caskMix.length ? { caskMix } : {}),
+    ...(caskMonthsMix?.length ? { caskMonthsMix } : {}),
     ...(p.peatShare > 0 ? { peatShare: p.peatShare } : {}),
     ...(recipeIds.length ? { recipeIds } : {}),
     ...(opts.dutyFreeOnly && p.dfEdition ? { dutyFreeOnly: true, dfEdition: { ...p.dfEdition } } : {}),
