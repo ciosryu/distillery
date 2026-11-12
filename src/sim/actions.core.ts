@@ -1,8 +1,7 @@
 import { fail, type CashKeys, type Handlers } from './actionKit';
 import { FLAGSHIP_RESERVE_TAG, planTag, reserveCaskIds, TAG_COLORS, TAG_LABEL_MAX, TAG_MAX } from './tags';
 import { policyError, PRICE_MODE_LABEL, runPricePolicies } from './priceEngine';
-import { PRICE_POLICY } from './pricePolicy';
-import { resetFirstPriceOnAuto } from './content/market';
+import { PRICE_POLICY, resetFirstPriceOnAuto } from './pricePolicy';
 import { currentSuggested } from './economics';
 import type { PricePolicy, TagColor, TagEffect } from './types';
 import { calendar, nid } from './util';
@@ -49,7 +48,7 @@ export const CORE_HANDLERS: Handlers<CoreAction> = {
       if (p.pricePolicy?.mode !== a.mode) delete q.lastFactor; // 정책을 바꾸면 가드 기준을 새로 잡는다(지금 값 ÷ 기준가)
       const err = policyError(q);
       if (err) return fail(prev, `${p.name}: ${err}`);
-      if (a.mode === 'turnover') resetFirstPriceOnAuto(p, currentSuggested(s, p)); // P-MKT-34 (나): A로 켤 때만 첫 출고가 → 기준가. B·C는 ×n 출발(P-PROD-53)
+      if (a.mode === 'turnover') resetFirstPriceOnAuto(p, currentSuggested(s, p)); // 결정 #304: A로 켤 때만 첫 출고가 → 기준가. B·C는 ×n 출발(P-PROD-53)
       p.autoPrice = true;
       p.pricePolicy = q;
     }
