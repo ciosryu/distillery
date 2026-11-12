@@ -205,15 +205,15 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (!autoRestockSupported(p)) return fail(prev, '이 제품은 자동 납품을 쓸 수 없습니다 (소주·진·고량주·싱글 몰트·그레인 위스키만, 면세 한정판 제외)');
     if (!(AUTO_RESTOCK_MONTHS as readonly number[]).includes(a.months)) return fail(prev, '유지 개월분은 1·2·3·6 중에서 고른다');
     p.autoRestock = a.months;
-    // 쓸 통의 최소 숙성 (#267) — 위스키만, 법정 숙성 이상 · 표기 이하. null/표기와 같으면 기본(표기)
+    // 쓸 통의 최소 숙성 (#267) — 위스키만, 법정 숙성 이상. 표기보다 높게도 된다(#297 ②). null/표기와 같으면 기본(표기)
     if (a.minMonths !== undefined && isWhiskyCategory(p.category)) {
       const legal = whiskyMinMonths(regionOf(s).whisky);
       const label = p.ageYears ? p.ageYears * 12 : legal;
-      if (a.minMonths == null || a.minMonths >= label) delete p.autoRestockMinMonths;
+      if (a.minMonths == null || Math.floor(a.minMonths) === label) delete p.autoRestockMinMonths;
       else if (a.minMonths < legal) return fail(prev, `위스키 통은 법정 숙성 ${legal}개월 이상이어야 합니다`);
       else p.autoRestockMinMonths = Math.floor(a.minMonths);
     }
-    if (p.autoRestockMinMonths != null) return { state: s, message: `${p.name} 자동 납품 — ${Math.floor(p.autoRestockMinMonths / 12)}년(${p.autoRestockMinMonths}개월) 이상 통부터 쓴다. 표기보다 어린 통이 섞이면 보충 때 표기가 그만큼 내려간다` };
+    if (p.autoRestockMinMonths != null) return { state: s, message: `${p.name} 자동 납품 — ${Math.floor(p.autoRestockMinMonths / 12)}년(${p.autoRestockMinMonths}개월) 이상 통부터 쓴다. ${p.autoRestockMinMonths > (p.ageYears ? p.ageYears * 12 : whiskyMinMonths(regionOf(s).whisky)) ? '표기보다 오래된 통만 쓴다 — 표기는 그대로이고, 더 어린 통은 표기가 긴 제품 몫으로 남는다' : '표기보다 어린 통이 섞이면 보충 때 표기가 그만큼 내려간다'}` };
     return { state: s, message: `${p.name} 자동 납품 켬 — 매달 판매 전에 재고를 약 ${a.months}개월분으로 채운다${p.ageYears ? ` (${p.ageYears}년 이상 숙성 통만, 표기에 가까운 통부터)` : isWhiskyCategory(p.category) ? ' (법정 숙성 이상 통만, 어린 통부터)' : ' (탱크 원액, 먼저 만든 것부터)'}` };
   },
   setAutoPrice: (s, prev, a) => {

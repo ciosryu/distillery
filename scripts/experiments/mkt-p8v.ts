@@ -106,11 +106,15 @@ const patch = (from: string | RegExp, to: string) => {
   if (code === before) throw new Error(`mvp-human.ts에서 끼울 자리를 못 찾았다: ${String(from).slice(0, 80)} — P8이 바뀌었으면 mkt-p8v.ts를 맞춘다`);
 };
 // ① 병입 직후: 자동 가격을 끈 정책의 값 처리
-patch(/(\n  if \(p\.autoPrice\) for \(const x of s\.commerce\.products[^\n]*\n)/, `$1  else s = __mkt.afterBottle(s, p as never, opts);\n`);
+patch(/(\n  (?:else )?if \(p\.autoPrice\) for \(const x of s\.commerce\.products[^\n]*\n)/, `$1  else s = __mkt.afterBottle(s, p as never, opts);\n`);
 // ② 매달 병입 직전: 분기 가격·현물 매각
 patch('    s = bottle(s, p, t);', '    s = __mkt.monthly(s, p as never, m);\n    s = bottle(s, p, t);');
 // ②' 병입·통입 뒤: SKU 분해 기록(병입 전에 찍으면 품절 제품이 빠진다)
 patch('    s = fill(s, p);', '    s = fill(s, p);\n    __mkt.snap(s, p as never, m);');
+// ①' P8의 손 가격(manualPrice — MGT가 MKT-B의 'table'·'markup'을 옮겨 심음, ca1bb11)은 MKT 세트에서는 끈다 — 가격 모드(price)는 mktP8Hooks 한 곳이 맡는다.
+//    둘 다 켜 두면 'table'은 같은 분기에 값을 두 번 정해(형제 제품이 서로의 새 값을 본다) 결과가 바뀌고(B4 18.85억 ≠ X21 17.61억),
+//    MKT 모드(suggest·heur·turnover·profit2·premium)는 P8이 권장가 ×1로 되돌린다. price가 없으면(B1 = X5) P8 그대로 — 보충 뒤 권장가로 맞추는 #289 수정을 살린다
+patch("function manualPrice(s: GameState, p: Policy, x: GameState['commerce']['products'][number]): GameState {\n", "function manualPrice(s: GameState, p: Policy, x: GameState['commerce']['products'][number]): GameState {\n  if (p.price) return s; // [mkt-p8v]\n");
 // ③ P8 정책 목록을 MKT 변형 묶음으로
 patch(/const P8_POLICIES: Policy\[\] = \[[\s\S]*?\n\];/, `const P8_POLICIES: Policy[] = ${SETS[SET]} as Policy[];`);
 code = `import * as __mkt from './mktP8Hooks';\n${code}\n__mkt.report();\n`;

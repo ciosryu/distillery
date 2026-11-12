@@ -4,7 +4,7 @@ import { ExportShortfallNote } from '../ExportShortfallNote'; // 수출이 국�
 import { SuggestedPriceNote } from '../SuggestedPriceNote'; // 권장가 표시의 정직성 (#283, MKT — PROD 대행)
 import { PRODUCT_NAME_MAX } from '../../sim/actions.prod';
 import { CATEGORY } from '../../sim/content/categories';
-import { AUTO_RESTOCK_LONG_FLOOR, autoRestockFloor, AUTO_RESTOCK_MONTHS, autoRestockSupported } from '../../sim/economics';
+import { AUTO_RESTOCK_LONG_FLOOR, autoRestockContest, autoRestockFloor, AUTO_RESTOCK_MONTHS, autoRestockSupported } from '../../sim/economics';
 import { whiskyMinMonths } from '../../sim/blending';
 import { AXIS } from '../../sim/content/axes';
 import { ProfileRadar } from './Production';
@@ -207,7 +207,10 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
             const legal = whiskyMinMonths(region.whisky);
             const label = p.ageYears ? p.ageYears * 12 : legal;
             const floor = autoRestockFloor(s, p);
-            const opts = [...new Set([legal, 24, 36, 60, 120, label].filter((m) => m >= legal && m <= label))].sort((a, b) => a - b);
+            // 표기보다 높게도 고른다 (#297 ② — "1년 표기 제품도 3년 통으로만") — 같은 범주 다른 자동 납품 제품의 하한도 고를 수 있게 넣는다
+            const others = s.commerce.products.filter((q) => q.id !== p.id && q.autoRestock && q.category === p.category).map((q) => autoRestockFloor(s, q));
+            const opts = [...new Set([legal, 24, 36, 60, 120, label, floor, ...others].filter((m) => m >= legal))].sort((a, b) => a - b);
+            const contest = autoRestockContest(s, p);
             return (
               <div className="mt-0.5 text-[11px] text-stone-600 dark:text-stone-400">
                 <label className="flex items-center gap-1" title="자동 납품이 이 숙성 이상 된 통만 쓴다. 표기보다 낮추면 어린 통이 섞여 보충할 때 표기(n년)가 그만큼 내려갈 수 있다">통 하한
@@ -217,6 +220,9 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
                 </label>
                 {floor >= AUTO_RESTOCK_LONG_FLOOR && <div className="text-amber-700 dark:text-amber-400">⚠ {Math.floor(floor / 12)}년 이상 통만 쓴다 — 자동 납품이 가장 오래된 통을 계속 가져간다(플래그십 후보 포함). 하한을 낮추거나 손으로 보충하세요</div>}
                 {floor < label && <div className="text-stone-500">표기보다 낮다 — 어린 통이 섞이면 표기가 {Math.floor(floor / 12)}년까지 내려갈 수 있다</div>}
+                {floor > label && <div className="text-stone-500">표기보다 높다 — 더 오래된 통만 쓰고 표기는 그대로다. 어린 통은 표기가 긴 제품 몫으로 남는다</div>}
+                {/* 통 다툼 (#297 ①) — 하한이 긴 제품이 통이 모자란 달에만 뜬다 */}
+                {contest && <div className="text-amber-700 dark:text-amber-400">⚠ 「{contest.rival.name}」({Math.floor(contest.rivalFloor / 12)}년 이상 통)이 통이 모자라 못 채우는데, 이 제품의 자동 납품이 그 재고가 될 어린 통 {contest.youngCasks}개를 먼저 가져간다 — 통 하한을 {Math.floor(contest.rivalFloor / 12)}년으로 올리거나 자동 납품을 끄세요</div>}
               </div>
             );
           })()}
