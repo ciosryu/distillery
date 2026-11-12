@@ -431,13 +431,14 @@ export function bestAutoPrice(s: GameState, p: Product, monthOfYear = calendar(s
   return best?.price ?? null;
 }
 
-/** 판매 직전(틱 5단계 맨 앞): 자동 가격을 켠 제품의 값을 차례로 정한다 — 앞 제품의 새 값이 뒤 제품의 수요 나눔에 반영된다 */
+/**
+ * 판매 직전(틱 5단계 맨 앞): 자동 가격을 켠 제품의 값을 **동시에** 정한다 (S6 — [결정 #295], architecture §10.9 ④·§10.7 계약 5).
+ * 모든 제품이 같은 판매 전 진열(지난 값)을 보고 값을 고른 뒤 한꺼번에 적용한다 — 제품 배열 순서가 결과를 바꾸지 않는다(TECH-01).
+ * 형제의 이번 달 변화는 다음 달에 서로 반영된다
+ */
 export function applyAutoPrices(s: GameState, monthOfYear = calendar(s).monthOfYear): void {
-  for (const p of s.commerce.products) {
-    if (!p.autoPrice) continue;
-    const v = bestAutoPrice(s, p, monthOfYear);
-    if (v != null) p.price = v;
-  }
+  const picks = s.commerce.products.filter((p) => p.autoPrice).map((p) => [p, bestAutoPrice(s, p, monthOfYear)] as const);
+  for (const [p, v] of picks) if (v != null) p.price = v;
 }
 
 

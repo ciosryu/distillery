@@ -3,8 +3,8 @@ import { applyAutoPrices } from './economics';
 import type { GameState, Product } from './types';
 import { newScenarioGame } from './newScenario';
 
-// TECH-01 (AP3-ARCH-1) — 자동 가격이 제품을 차례로 정해서 배열 순서가 결과를 바꾼다. 먼저 실패 테스트로 고정한다(architecture §10.9).
-// 고치면 it.fails → it 으로 바꾼다
+// TECH-01 (AP3-ARCH-1) — 자동 가격이 제품을 차례로 정해 배열 순서가 결과를 바꿨다(A 먼저 → B 6,500원, B 먼저 → B 5,800원).
+// S6([결정 #295])에서 공유 스냅샷으로 고쳤다 — 모든 제품이 같은 판매 전 진열을 보고 정한다(architecture §10.9 ④)
 
 const BASE: Product = { id: 'P', name: 'p', category: 'soju_distilled', ageYears: null, oakMonths: 0, abv: 0.25, bottleMl: 375, chillFiltered: true, packagingId: 'standard', flavor: { cereal: 20 }, quality: 60, typicity: 60, style: null, sourcedShare: 0, stockBottles: 3000, price: 9000, unitCost: 3000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, autoPrice: true } as never;
 
@@ -19,13 +19,12 @@ function game(order: 'ab' | 'ba'): GameState {
 const prices = (s: GameState) => Object.fromEntries(s.commerce.products.map((p) => [p.id, p.price]));
 
 describe('자동 가격 순서 의존 (TECH-01)', () => {
-  it('지금 동작 — A 먼저면 B 6,500원, B 먼저면 B 5,800원(A는 둘 다 6,500원)', () => {
-    const ab = game('ab'), ba = game('ba');
-    applyAutoPrices(ab, 1); applyAutoPrices(ba, 1);
-    expect(prices(ab)).toEqual({ A: 6500, B: 6500 });
-    expect(prices(ba)).toEqual({ A: 6500, B: 5800 });
+  it('공유 스냅샷 — B는 A의 지난 값(5,000원)을 보고 정한다(차례로 정하던 때 B 먼저의 값과 같다)', () => {
+    const ab = game('ab');
+    applyAutoPrices(ab, 1);
+    expect(prices(ab)).toEqual({ A: 6500, B: 5800 });
   });
-  it.fails('배열 순서를 바꿔도 결과가 같아야 한다 — 지금은 다르다(고칠 대상)', () => {
+  it('배열 순서를 바꿔도 결과가 같다 — S6 공유 스냅샷', () => {
     const ab = game('ab'), ba = game('ba');
     applyAutoPrices(ab, 1); applyAutoPrices(ba, 1);
     expect(prices(ba)).toEqual(prices(ab));
