@@ -858,3 +858,20 @@ describe('IB 입찰은 보호 통(플래그십 예비 포함)을 후보로 쓰�
     expect(s.b2b.caskBids.map((b) => b.id)).toEqual(['I1']);
   });
 });
+
+describe('B1-6 SKU 총수요 (결정 #290)', () => {
+  it('ρ = 3 그대로 · 국내 점유 상한 ×1.08 — 국내 도달률에만 곱한다 (P-MKT-35)', async () => {
+    const { SKU } = await import('./content/market');
+    const { demandFor, newGame, coverage } = await import('./index');
+    const { regionOf } = await import('./content/regions');
+    const { awarenessOf } = await import('./brands');
+    expect(SKU.rho).toBe(3);
+    expect(SKU.domesticShareCap).toBeCloseTo(1.08, 10);
+    expect(SKU.rhoBrand).toBeLessThan(SKU.rho);
+    const s = newGame({ seed: 3, region: 'KR' });
+    const p = product();
+    s.commerce.products = [p];
+    const d = demandFor(s, p, 1, 1);
+    expect(d.reach).toBeCloseTo(awarenessOf(s, p) * coverage(s) * regionOf(s).market.whisky!.shareCap * 1.08, 12);
+  });
+});
