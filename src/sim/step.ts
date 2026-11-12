@@ -124,7 +124,7 @@ function phaseGrowth(s: GameState, report: MonthReport, runsUsed: number, sales:
   updateBulkIndex(s, rngFor(s.seed, s.month, 'bulk'));
   if (systemOn(s, 'siteDeals')) refreshDeals(s, rngFor(s.seed, s.month, 'deals'));
   if (systemOn(s, 'commissions')) refreshCommissions(s, rngFor(s.seed, s.month, 'commissions'), report);
-  if (systemOn(s, 'exports')) refreshExportOffers(s, rngFor(s.seed, s.month, 'export-offers'));
+  if (systemOn(s, 'exports')) refreshExportOffers(s); // 시장 단위 스트림 export-offer:<시장> (결정 #299 S7)
   // 그레인 현물 시장이 물량을 소화한다 (#81)
   if (s.b2b.spotSoldLPA) s.b2b.spotSoldLPA = { grain: s.b2b.spotSoldLPA.grain * BULK.spotDecay };
   // 원재료 가격 변동 (평균 회귀 랜덤 워크)
