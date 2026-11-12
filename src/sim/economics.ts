@@ -605,6 +605,8 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
 //   곧 닿는 병 = soonMonths(기본 12) 안에 그 제품 자동 납품 하한에 닿는 통(위스키만 — 같은 거름 규칙, 숙성만 [하한 − soonMonths, 하한))
 //   공급 지평(개월) = (재고 + 지금 채울 수 있는 병) ÷ 판매 속도(salesEma) — 판매가 없으면 Infinity
 //   보충 끊김(refillGap) = 위스키이고 곧 닿는 병이 0 — 지금 원액을 다 쓰면 soonMonths 안에 다시 채울 수 없다(탱크 주종은 생산이 매달 흐르므로 false)
+//   읽는 법(방향 주의 — 2026-11-12 정정): months가 크다 = 손에 물량이 넘친다(재고 적체 → 현금회전 A). "보충이 늦다 → 이익 B·가격 유지 C"는 refillGap && months < soonMonths다
+//   (지금 물량이 곧 바닥나고 그 뒤 보충이 없다). 정책 화면 안내는 pricePolicy.ts supplyHintOf가 이 규칙을 쓴다
 
 export interface SupplyHorizon {
   /** 지금 재고(병) */
