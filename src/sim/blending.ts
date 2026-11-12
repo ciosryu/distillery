@@ -423,6 +423,9 @@ export function restockedProduct(old: Product, batch: Product): Product {
   if (keep(old.traditional, batch.traditional)) merged.traditional = true; else delete merged.traditional;
   if (keep(old.specialty, batch.specialty, old.specialty === batch.specialty)) merged.specialty = batch.specialty; else delete merged.specialty;
   if (keep(old.localIngredient, batch.localIngredient)) merged.localIngredient = true; else delete merged.localIngredient;
+  // 레어 싱글 캐스크(`RARE.singleCaskAppeal` 매력도 ×1.3 · 럭셔리 희소성 15) — 한 통만 병입한 제품의 표기다. 보충으로 다른 원액이 섞이면 지운다.
+  // 매대 재고가 0이고 새 배치가 레어 단독이면 그 배치 그대로(2026-11-12 수정: 레어 통 하나로 처음 병입한 제품을 평범한 통으로 계속 보충해도 ×1.3이 남았다)
+  if (keep(old.rareSingleCask, batch.rareSingleCask, false)) merged.rareSingleCask = true; else delete merged.rareSingleCask;
   if (caskMix) merged.caskMix = caskMix; else delete merged.caskMix;
   // 레시피 — 남은 재고가 있으면 합집합, 한쪽이라도 기록이 없으면(옛 제품) 기록 없음(모든 원액)
   const rec = fresh ? batch.recipeIds : old.recipeIds && batch.recipeIds ? [...new Set([...old.recipeIds, ...batch.recipeIds])].sort() : undefined;
@@ -454,6 +457,9 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   const single = parts.length === 1 ? parts[0]!.cask : undefined;
   const lineTarget = opts.line && s.commerce.lines[opts.line] ? findTarget(s, `line:${opts.line}`) : undefined;
   const target = lineTarget ?? findTarget(s, opts.targetId);
+  // 섞은 원액의 레시피 (#243) — 자동 납품이 다른 제품 몫 원액을 가져가지 않게(5차 판: 「안성 소주」 자동 납품이 탱크 소주를 다 써 「옹기소주」를 못 채움).
+  // 원액을 빼기 **전에** 읽는다 — 다 쓴 탱크·통은 빼고 나면 원액이 없어 기록이 빠졌다(통째 병입한 위스키는 늘 비었다)
+  const recipeIds = [...new Set(components.filter((c) => c.liters > 0).map((c) => lotOf(s, c)?.recipeId).filter((x): x is string => !!x))].sort();
   for (const c of components) {
     if (c.liters <= 0) continue;
     if (c.source === 'cask') {
@@ -470,8 +476,6 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
       else s.inventory.lots[idx] = { ...lot, volumeL: remain };
     }
   }
-  // 섞은 원액의 레시피 (#243) — 자동 납품이 다른 제품 몫 원액을 가져가지 않게(5차 판: 「안성 소주」 자동 납품이 탱크 소주를 다 써 「옹기소주」를 못 채움)
-  const recipeIds = [...new Set(components.filter((c) => c.liters > 0).map((c) => lotOf(s, c)?.recipeId).filter((x): x is string => !!x))].sort();
   const product: Product = {
     id: nid(s, 'P'),
     // 기본 이름에 숙성 소주 표기를 붙인다 (#221) — 직접 쓴 이름은 그대로(표기는 판매 화면 배지로 보인다)

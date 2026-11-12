@@ -571,6 +571,16 @@ describe('재고 보충 — 매대 재고가 0이면 새 배치의 숙성 표기
     expect(empty.quality).toBe(75);
     expect(empty.price).toBe(40000); // 출고가는 플레이어 몫 — 화면이 올리라고 알린다
   });
+
+  it('레어 싱글 캐스크 표기는 보충으로 섞이면 지운다 — 재고 0에서 새 레어 단독 배치면 남긴다', async () => {
+    const { restockedProduct } = await import('./blending');
+    const base = { id: 'P', name: 'x', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 100, style: null, sourcedShare: 0, stockBottles: 100, price: 60000, unitCost: 5000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, rareSingleCask: true } as Product;
+    const plain = { ...base, rareSingleCask: undefined, stockBottles: 300 } as Product;
+    expect(restockedProduct(base, plain).rareSingleCask).toBeUndefined();
+    expect(restockedProduct(base, { ...plain, rareSingleCask: true }).rareSingleCask).toBeUndefined(); // 레어 통 둘이 섞여도 싱글 캐스크가 아니다
+    expect(restockedProduct({ ...base, stockBottles: 0 }, { ...plain, rareSingleCask: true }).rareSingleCask).toBe(true);
+    expect(restockedProduct({ ...base, stockBottles: 0 }, plain).rareSingleCask).toBeUndefined();
+  });
 });
 
 describe('자동 최적 가격 (#200, 3차 MVP 플레이테스트 오너 요청)', () => {
@@ -995,6 +1005,20 @@ describe('자동 납품은 같은 레시피 원액만 (#243, 5차 MVP 플레이�
     // 다른 레시피로 보충하면 합집합 — 그 뒤로는 둘 다 쓴다
     s = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: 'TA', liters: 20 }], options: { ...opts, restockId: p.id } }).state;
     expect(s.commerce.products.find((x) => x.id === p.id)!.recipeIds).toEqual(['RA', 'RB']);
+  });
+
+  it('다 쓴 탱크·통째 병입한 캐스크도 레시피를 기록한다 — 원액을 빼기 전에 읽는다', () => {
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.inventory.lots = [{ id: 'TC', name: 'TC', kind: 'soju', volumeL: 100, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 10_000, recipeId: 'RC' }];
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: 'TC', liters: 100 }], options: { name: '다 쓴 탱크', targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' } }).state;
+    expect(s.inventory.lots.some((l) => l.id === 'TC')).toBe(false);
+    expect(s.commerce.products.at(-1)!.recipeIds).toEqual(['RC']);
+    // 위스키 통째 병입 — 통이 비어도 기록이 남는다(피트 비중 등 레시피 기반 판정의 재료)
+    const malt = { id: 'LM', name: 'LM', kind: 'malt' as const, volumeL: 180, abv: 0.6, flavor: { cereal: 20, vanilla_caramel: 20 }, createdMonth: 0, oakMonths: 40, sourced: false, costPerLPA: 10_000, recipeId: 'RP' };
+    s.inventory.casks = [{ id: 'K1', typeId: 'ex_bourbon_barrel', sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: malt } as Cask];
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id: 'K1', liters: 180 }], options: { name: '통째', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' } }).state;
+    expect(s.inventory.casks.find((c) => c.id === 'K1')!.contents).toBeFalsy();
+    expect(s.commerce.products.at(-1)!.recipeIds).toEqual(['RP']);
   });
 });
 
