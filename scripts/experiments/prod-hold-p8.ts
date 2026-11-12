@@ -10,6 +10,7 @@
 //   ONLY=HA,HC,...   돌릴 경로(기본 아래 표 전부) · SPLIT=1 순자산 나누기 표(P8 그대로)
 //   끝에 PAIRED 줄: 같은 시드끼리 순자산 차이 평균·t·이긴 시드 수, HELD 줄: 경로별 장기 지정 통 수(판 평균)
 //   SUPPLY=1  장기 계열의 공급 지평(prodSupply.ts) 경로별 평균 — 진단만(판 결과 불변)
+//   DCF=1     실험 A 할인값(MGT-C capitalCost.ts — 같은 시드 짝 증분 현금흐름의 NPV 띠·marginal·IRR)과 경로별 증발 리터·LPA
 //   PRICE=1   AUTO-PRICE-3 장기 숙성 조건 — 보유 3종(HC·HS·HSF) × 가격 정책(#200·B′+가드·C 1.3·C 1.5), 장기 계열만 정책을 거는 「-L」 경로 포함. MKT 손잡이(mktP8Hooks.ts, PR #324) 필요
 //             식 v1 위에서: SCRIPT=prod-hold-p8.ts PRICE=1 V=c3+s4m1.08+k npx tsx scripts/experiments/mkt-b1.ts 10 180
 // 보유 규칙 패치는 prodHoldPatch.ts(다른 P8 래퍼도 쓴다)
@@ -76,6 +77,54 @@ if (process.env.SUPPLY) {
   src = src.replace(anchor, `${anchor}    for (const x of s.commerce.products.filter((x) => x.name.startsWith('${LONG_LINE_NAME}') && x.stockBottles > 0)) { const h = __supply(s, x); const k = p.name.split(' ')[0]!; const b = SUPPLYSTAT.get(k) ?? { n: 0, months: 0, gap: 0, ready: 0, soon: 0 }; SUPPLYSTAT.set(k, { n: b.n + 1, months: b.months + Math.min(60, h.months), gap: b.gap + (h.refillGap ? 1 : 0), ready: b.ready + h.readyBottles, soon: b.soon + h.soonBottles }); }\n`);
   src = src.replace('const DUMP = process.env.DUMP;', "const DUMP = process.env.DUMP;\nimport { supplyHorizon as __supply } from './prodSupply';\nconst SUPPLYSTAT = new Map<string, { n: number; months: number; gap: number; ready: number; soon: number }>();");
   src += `\nconsole.log('SUPPLY ${LONG_LINE_NAME} 계열(재고 있는 제품·달 평균, 지평은 60개월에서 자름) ' + [...SUPPLYSTAT].map(([k, v]) => \`\${k} 지평 \${(v.months / v.n).toFixed(1)}개월 · 지금 채울 병 \${(v.ready / v.n).toFixed(0)} · 곧 닿는 병 \${(v.soon / v.n).toFixed(0)} · 보충 끊김 \${((100 * v.gap) / v.n).toFixed(0)}%\`).join(' | '));\n`;
+}
+
+// DCF=1 — 실험 A 할인값(REQ-PROD-1 · MGT-C P-MGT-30): 같은 시드 짝의 **증분 현금흐름**을 할인한다.
+//   월 흐름 = (현금 − 대출)의 월 변화 차이(경로 − 기준), 끝 = (순자산 − (현금 − 대출)) 차이 = 원액·제품 평가액 차이. 할인율 0이면 순자산 차이와 같다(검산).
+//   할인율: MGT-C capitalCost.ts — 'marginal'(경로 쪽 판의 그달 "다음에 빌릴 돈의 금리", 달마다 바뀐다)과 민감도 띠(discountBands: 0 · 정책자금 · 운전자금 · 급전). IRR도 낸다
+//   증발: 경로별 판 평균 증발 리터(MonthReport.angelsShareL)와 LPA(그달 통 원액의 LPA 가중 평균 도수로 환산 — 근사)
+if (process.env.DCF) {
+  const anchor = '    s = advanceMonth(s);\n';
+  if (src.split(anchor).length !== 2) throw new Error('prod-hold-p8 DCF: P8에서 advanceMonth 자리를 하나로 찾지 못했다');
+  src = src.replace(anchor, `    const __abv = (() => { let l = 0, a = 0; for (const c of s.inventory.casks) if (c.contents) { l += c.contents.volumeL; a += c.contents.volumeL * c.contents.abv; } return l > 0 ? a / l : 0; })();
+${anchor}    { const k = \`\${p.name}|\${seed}\`; const d = DCFS.get(k) ?? { e: [s.scenario ? s.scenario.equity : 0], nw: 0, r: [] as number[], evapL: 0, evapLPA: 0 }; const ev = s.history.reports.at(-1)?.angelsShareL ?? 0; d.e.push(s.finance.cash - s.finance.loans.reduce((t, l) => t + l.balance, 0)); d.nw = netWorth(s); d.r.push(__dcf.discountRate(s, 'marginal')); d.evapL += ev; d.evapLPA += ev * __abv; DCFS.set(k, d); }
+`);
+  src = src.replace('const DUMP = process.env.DUMP;', "const DUMP = process.env.DUMP;\nimport * as __dcf from './capitalCost';\nconst DCFS = new Map<string, { e: number[]; nw: number; r: number[]; evapL: number; evapLPA: number }>();");
+  src += `
+{
+  const runs = new Map<string, Map<number, { e: number[]; nw: number; r: number[]; evapL: number; evapLPA: number }>>();
+  for (const [k, v] of DCFS) { const [name, seed] = k.split('|'); const id = name!.split(' ')[0]!; if (!runs.has(id)) runs.set(id, new Map()); runs.get(id)!.set(Number(seed), v); }
+  const full = Math.max(...[...DCFS.values()].map((v) => v.e.length));
+  const bands = __dcf.discountBands();
+  const pv = (flows: number[], rates: number[]) => { let df = 1, t = 0; for (let i = 0; i < flows.length; i++) { df /= 1 + __dcf.monthlyRate(rates[i] ?? rates.at(-1) ?? 0); t += flows[i]! * df; } return t; };
+  console.log('\\n### 실험 A 할인값 — 같은 시드 짝 증분 현금흐름의 NPV(억, 판 평균) · IRR(중앙) · 증분 흐름 = (현금 − 대출) 월 변화 차이 + 끝의 원액·제품 평가액 차이');
+  console.log(\`| 비교 | 짝 | \${bands.map((b) => \`NPV \${(b.annual * 100).toFixed(1)}%\`).join(' | ')} | NPV marginal(경로 판) | IRR 중앙(연) |\`);
+  console.log(\`|---|---|\${bands.map(() => '---|').join('')}---|---|\`);
+  const pairsDcf: [string, string][] = ${JSON.stringify([['HC','HA'],['HD','HC'],['HS','HC'],['HC72','HA'],['HC6','HA6'],['HS6','HC6'],['HC672','HA6'],['HS672','HC672'],['HD672','HC672']])};
+  for (const [a, b] of pairsDcf) {
+    const A = runs.get(a), B = runs.get(b);
+    if (!A || !B) continue;
+    const npvs = bands.map(() => [] as number[]); const marg: number[] = []; const irrs: number[] = [];
+    for (const [seed, x] of A) {
+      const y = B.get(seed);
+      if (!y || x.e.length !== full || y.e.length !== full) continue; // 파산 판은 뺀다
+      const flows = x.e.slice(1).map((v, i) => (v - x.e[i]!) - (y.e[i + 1]! - y.e[i]!));
+      flows[flows.length - 1] = flows[flows.length - 1]! + (x.nw - x.e.at(-1)!) - (y.nw - y.e.at(-1)!);
+      bands.forEach((bd, j) => npvs[j]!.push(pv(flows, [bd.annual])));
+      marg.push(pv(flows, x.r));
+      const r = __dcf.irr(flows.map((amount, i) => ({ month: i + 1, amount })));
+      if (Number.isFinite(r)) irrs.push(r);
+    }
+    if (!marg.length) continue;
+    const avg = (v: number[]) => v.reduce((t, z) => t + z, 0) / v.length / 1e8;
+    const med = (v: number[]) => { const q = [...v].sort((m, n) => m - n); return q.length ? q[Math.floor(q.length / 2)]! : NaN; };
+    console.log(\`| \${a} − \${b} | \${marg.length} | \${npvs.map((v) => avg(v).toFixed(2)).join(' | ')} | \${avg(marg).toFixed(2)} | \${irrs.length ? \`\${(med(irrs) * 100).toFixed(1)}% (\${irrs.length}판)\` : '—'} |\`);
+  }
+  console.log('\\n### 증발 — 경로별 판 평균(파산 판 포함, 판이 끝난 달까지)');
+  console.log('| 경로 | 증발 리터 | 증발 LPA(근사) |\\n|---|---|---|');
+  for (const [id, m] of runs) { const v = [...m.values()]; console.log(\`| \${id} | \${Math.round(v.reduce((t, z) => t + z.evapL, 0) / v.length).toLocaleString()} | \${Math.round(v.reduce((t, z) => t + z.evapLPA, 0) / v.length).toLocaleString()} |\`); }
+}
+`;
 }
 
 process.env.P8 = '1';
