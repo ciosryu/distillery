@@ -1,9 +1,12 @@
 import { create } from 'zustand';
-import { createLocalEngine, DEFAULT_STOPS, newGame, newScenarioGame, type Action, type BusinessPlan, type GameState, type RegionId, type StopReason } from '../sim';
+import { createLocalEngine, DEFAULT_STOPS, newGame, setInvariantMode, newScenarioGame, type Action, type BusinessPlan, type GameState, type RegionId, type StopReason } from '../sim';
 import { flushSave, loadGame, queueSave, saveNow } from './persist';
 import { useUi } from './ui';
 import { parsePlayFile, recordAction, recordBuild, recordTurns, recordUndo, replacePlaylog, resetPlaylog } from './playlog';
 import { BUILD_ID } from '../build';
+
+// 불변식 매달 검사 (INV-ARCH-1, architecture §9.5) — 개발 빌드(vite dev)만 콘솔에 적는다. 배포 빌드는 불러올 때만(persist.ts)
+if (import.meta.env.DEV) setInvariantMode('warn');
 
 // 게임 상태 읽기 모델 (architecture §3.2). 권위 상태는 엔진(GameEngine) 하나 — 도메인별 store로 나누지 않는다.
 // store는 엔진 스냅샷을 비추고 명령을 넘길 뿐이다. 화면은 원시 상태 대신 selectors.ts의 셀렉터를 쓰는 것을 원칙으로 한다.

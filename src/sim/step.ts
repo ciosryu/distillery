@@ -18,6 +18,7 @@ import { systemOn, applyScenarioStages } from './scenario';
 import { endGame, netWorth, updateProgress } from './progress';
 import { runResearch } from './research';
 import { runMaturation } from './warehouse';
+import { monthlyInvariantHook } from './invariants';
 import { runProduction } from './production';
 import { runFinance } from './loans';
 import { settleSales } from './sales';
@@ -182,6 +183,7 @@ export function advanceMonth(prev: GameState): GameState {
   runFinance(s, report, ctx.monthOfYear);                    // 7
   phaseGrowth(s, report, runsUsed, sales);                   // 8
   phaseSettle(s, report, cashStart, offTurn);                // 9
+  monthlyInvariantHook(s);                                   //   불변식(INV-ARCH-1) — 읽기만, 테스트·개발에서만 켠다
   return s;
 }
 

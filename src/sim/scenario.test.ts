@@ -173,7 +173,7 @@ describe('MVP 중반 콘텐츠 — 단계 해금·중반 목표 (4차 MVP 플레
     const { advanceMonth, newScenarioGame } = await import('./index');
     const { houseBrand } = await import('./brands');
     let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
-    s.commerce.exports = [{ marketId: 'US' } as never];
+    s.commerce.exports = [{ marketId: 'US', openedMonth: 0, readyMonth: 99, awareness: 0, totalBottles: 0 } as never]; // 불변식 검사(INV-ARCH-1)가 도는 진짜 모양
     const a0 = houseBrand(s).awareness;
     s = advanceMonth(s);
     expect(s.progress.midGoals?.find((g) => g.id === 'export_open')?.result).toBe('done');

@@ -49,3 +49,4 @@ export * from './newScenario';
 export { SCENARIOS, MVP_KR, type ScenarioDef, type ScenarioTierDef, type ScenarioSystem } from './content/scenarios';
 export { rngFor, mulberry32 } from './rng';
 export * as content from './content';
+export * from './invariants';

@@ -1,4 +1,4 @@
-import { migrateSave, type GameState } from '../sim';
+import { checkInvariants, migrateSave, type GameState } from '../sim';
 
 // 세이브 저장소 (architecture §3.6). 지금은 localStorage, 웹 최종이 정해지면 IndexedDB 세이브 슬롯으로 바꾼다(단계 C).
 // - 읽기: 현재 키 → 옛 키(v5) 순서로 찾아 마이그레이션 체인으로 올린다. 버리지 않는다
@@ -16,7 +16,12 @@ export function loadGame(): GameState | null {
       const raw = localStorage.getItem(key);
       if (!raw) continue;
       const s = migrateSave(JSON.parse(raw));
-      if (s) return s;
+      if (s) {
+        // 불러올 때 불변식 검사 (INV-ARCH-1) — 수리(#285) 뒤에도 남은 위반은 콘솔에만 적는다. 판을 막을지는 [제안 P-ARCH-52]
+        const { errors } = checkInvariants(s);
+        if (errors.length) console.error(`[불변식] 불러온 세이브 ${s.month}개월: ${errors.join(' · ')}`);
+        return s;
+      }
     } catch {
       /* 손상된 세이브 — 다음 키를 본다 */
     }
