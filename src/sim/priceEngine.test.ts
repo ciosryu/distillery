@@ -80,6 +80,20 @@ describe('실행 — 공유 스냅샷·사유·범위 (엣지 ⑦)', () => {
   });
 });
 
+describe('수렴 ([결정 #298]) — 가드 기준은 회차 사이에 고정', () => {
+  it('B는 여러 회차를 돌아도 그달 시작 lastFactor에서 한 단계(±0.1)를 넘지 않는다 · 확정 값으로만 lastFactor 갱신', () => {
+    for (const start of [0.8, 1.3, 1.9]) {
+      const s = game([{ autoPrice: true, stockBottles: 50, pricePolicy: { mode: 'profit', lastFactor: start } }, { autoPrice: true, stockBottles: 50, quality: 70, pricePolicy: { mode: 'profit', lastFactor: start } }], 1);
+      runPricePolicies(s, null, 1);
+      for (const p of s.commerce.products) {
+        const f = p.price / currentSuggested(s, p);
+        expect(Math.abs(f - start)).toBeLessThanOrEqual(0.1 + 0.02);
+        expect(Math.abs(p.pricePolicy!.lastFactor! - start)).toBeLessThanOrEqual(0.1 + 0.02); // 100원 반올림 뒤 배수(MKT factor = 값 ÷ 기준가)
+      }
+    }
+  });
+});
+
 describe('불러오기 왕복 (엣지 ⑧)', () => {
   it('정책·목표·마지막 배수가 저장 → 불러오기 뒤 그대로 · 왕복 뒤 같은 달 결과가 바이트 동일', () => {
     let s = game([{}, {}, {}], 1);

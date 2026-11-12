@@ -1,3 +1,4 @@
+import { AUTO_PRICE_MAX_ROUNDS } from './economics';
 import { decidePolicyPrice, PRICE_POLICY, type PolicySpec } from './pricePolicy';
 import type { GameState, MonthReport, PriceLogEntry, PricePolicy, Product } from './types';
 
@@ -30,26 +31,37 @@ export function policyError(q: Partial<PricePolicy>): string | null {
 }
 
 /**
- * 판매 직전 실행 (틱 5단계 — step.ts phaseSales). 공유 스냅샷: 모든 결정을 같은 판매 전 상태에서 먼저 구하고 한꺼번에 적용한다(S6).
+ * 판매 직전 실행 (틱 5단계 — step.ts phaseSales). 수렴([결정 #298]) — 한 회차 = 켠 제품 모두가 같은 진열(앞 회차 결과)을 보고
+ * `decidePolicyPrice`로 정한 뒤 한꺼번에 적용(공유 스냅샷, S6). 값이 더 바뀌지 않을 때까지 최대 `AUTO_PRICE_MAX_ROUNDS`(3)회,
+ * 3회째에도 바뀌면 3회째 값으로 끝낸다(economics.applyAutoPrices와 같은 틀 — 옛 판 A는 그것과 바이트 동일).
+ * **가드 기준은 회차 사이에 고정한다** — 모든 회차가 그달 시작의 `lastFactor`를 쓰고, 확정된 값으로만 `lastFactor`를 갱신한다(B 한 달 한 단계가 회차마다 쌓이지 않게).
  * `only`가 있으면 그 제품만(정책을 고른 순간 한 번 정할 때 — 다른 제품 값은 그대로).
- * 옛 판(autoPrice만, 그릇 없음)은 #200과 같은 값이 나오고 상태에 새 값을 쓰지 않는다 — 사유(priceLog)만 결산에 남는다
+ * 옛 판(autoPrice만, 그릇 없음)은 상태에 새 값을 쓰지 않는다 — 사유(priceLog)만 결산에 남는다
  */
 export function runPricePolicies(s: GameState, report: MonthReport | null, monthOfYear: number, only?: Set<string>): void {
-  const picks: { p: Product; mode: PriceModeId; price: number | null; factor: number | null; why: string }[] = [];
-  for (const p of s.commerce.products) {
-    const mode = priceModeOf(p);
-    if (!mode || (only && !only.has(p.id))) continue;
-    const raw = p.pricePolicy?.mode;
-    const spec: PolicySpec = { ...(p.pricePolicy ?? {}), mode };
-    const d = decidePolicyPrice(s, p, spec, monthOfYear);
-    picks.push({ p, mode, ...d, why: raw && raw !== mode ? `알 수 없는 정책 '${raw}' — 현금회전으로 처리 · ${d.why}` : d.why });
+  const live = s.commerce.products.filter((p) => { const m = priceModeOf(p); return m && (!only || only.has(p.id)); });
+  if (!live.length) return;
+  const start = new Map(live.map((p) => [p.id, p.price]));
+  const specs = new Map(live.map((p) => [p.id, { ...(p.pricePolicy ?? {}), mode: priceModeOf(p)! } as PolicySpec])); // 그달 시작의 lastFactor로 고정
+  const last = new Map<string, { factor: number | null; why: string }>();
+  for (let round = 1; round <= AUTO_PRICE_MAX_ROUNDS; round++) {
+    const picks = live.map((p) => [p, decidePolicyPrice(s, p, specs.get(p.id)!, monthOfYear)] as const);
+    let changed = false;
+    for (const [p, d] of picks) {
+      last.set(p.id, { factor: d.factor ?? last.get(p.id)?.factor ?? null, why: d.why }); // 값을 안 바꾼 회차는 앞 회차의 배수를 이어 쓴다
+      if (d.price != null && d.price !== p.price) { p.price = d.price; changed = true; }
+    }
+    if (!changed) break;
   }
   const log: PriceLogEntry[] = [];
-  for (const { p, mode, price, factor, why } of picks) {
-    if (price == null) continue;
-    if (price !== p.price) log.push({ productId: p.id, mode, from: p.price, to: price, why });
-    p.price = price;
-    if (p.pricePolicy && factor != null) p.pricePolicy = { ...p.pricePolicy, lastFactor: factor };
+  for (const p of live) {
+    const mode = priceModeOf(p)!;
+    const raw = p.pricePolicy?.mode;
+    const d = last.get(p.id)!;
+    const why = raw && raw !== mode ? `알 수 없는 정책 '${raw}' — 현금회전으로 처리 · ${d.why}` : d.why;
+    const from = start.get(p.id)!;
+    if (p.price !== from) log.push({ productId: p.id, mode, from, to: p.price, why });
+    if (p.pricePolicy && d.factor != null) p.pricePolicy = { ...p.pricePolicy, lastFactor: d.factor };
   }
   if (report && log.length) report.priceLog = [...(report.priceLog ?? []), ...log];
 }
