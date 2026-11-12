@@ -15,7 +15,7 @@
 | C6 | 공통 불변식 — 8입지 + MVP 180개월 유한성 0 · 수리 멱등 | #292 ① | ARCH | ✔ | ciosryu/distillery#348(112판 0건)·#365 |
 | C7 | 자동 가격 3정책 엔진 · 가드 · 옛 세이브 = A · `priceLog` | #291·#292 ② | ARCH·MKT | ✔ | #359(MKT 정책 함수)·#388(엔진) |
 | C8 | S6 형제 결정(GS) | #295·#300 | ARCH | ✔ | ciosryu/distillery#373 |
-| C9 | 판정 도구 통일 (a) mvp-survival · (b) P8 게임 파산 규칙 · (c) metrics.ts | #292 ③ | ARCH·MGT | (a) ✔ #361 · (b)(c) MGT `[확인 필요]` | — |
+| C9 | 판정 도구 통일 (a) mvp-survival · (b) P8 게임 파산 규칙 · (c) metrics.ts | #292 ③ | ARCH·MGT | ✔ | (a) ciosryu/distillery#361 · (b)(c) #376 |
 | C10 | 변경 전 기준선 고정 | #292 ④ | PM | ✔ | `docs/baseline/2026-11-12/` |
 | C11 | 난수 순서 계약 S1~S5 · S7 | #290 ⑤·#299 | PROD·MKT | ✔ | ciosryu/distillery#378(S1~S4 · `spotBuys?`) · #370(S5 · S7). `rngStreams.test.ts` `it.fails` 0 |
 | C12 | 시장·가치 식 v1 | #281·#290 ⑥ | MKT 주관 | **진행 중** | 들어오면 새 기준선 |
