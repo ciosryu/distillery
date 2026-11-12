@@ -8,6 +8,9 @@
 //     c          매력도(appeal)의 위스키 숙성 배수 제거 — 숙성 가치는 권장가·기대가 한 곳만(P-PROD-45 c, REQ-PROD-3)
 //     cp         매력도에서 숙성 "프리미엄 부분"만 뺀다 = min(1, agePerception) — 어린 위스키 할인(×1 미만)은 남는다(PROD 요청 c-premium-only, 2026-11-11). c는 PROD 말로 c-all
 //     c3         매력도의 위스키 배수를 3년 값(×1.18)에서 자른다 = min(agePerception(36), agePerception) — 어린 할인도 3년 수준도 남고 3년 넘는 기울기만 빠진다(MKT 비교안)
+//     c3h        (결정 #301 (라)) 매력도의 3년 넘는 숙성 기울기를 절반으로 — 3년 값 + (agePerception − 3년 값) ÷ 2
+//     c6         (결정 #301 (다)) 매력도의 위스키 배수를 6년 값에서 자른다
+//     polB       자동 가격 제품(그릇 없음)을 B 이익 극대화로 읽는다 — ④ 엔진(ARCH #388 priceEngine.ts) 위에서만. 예: SCRIPT=prod-hold-p8.ts V=base,polB,c3,c3+polB,c3h,c3h+polB
 //     a          3년 이후 숙성 프리미엄 기울기 × clamp((품질 − 55)/25, 0, 1)(P-PROD-45 a — PROD: "재측정 뒤", 변형 하나로만)
 //     s<ρ>m<배수> SKU.rho = ρ, 국내(한국) 점유 상한 × 배수 — P-MKT-25 (a) (예: s5m1.12)
 //     h          권장가(suggestedPrice) × 1.3 — 권장가 정직화(#283의 다음 단계, CP-PM-4 ⓐ). 기대가(수요 기준)는 그대로, 핸드필 값도 따라 오른다
@@ -35,6 +38,17 @@ const PATCH: Record<string, Patch[]> = {
   ],
   c3: [
     { file: 'src/sim/market.ts', from: '  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths); // 숙성 소주 표기 #217', to: '  const ageBonus = aged ? Math.min(agePerception(36, p.category), agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category)) : agedWhitePerception(p.category, p.oakMonths, p.restMonths); // [B1 c3] 3년 넘는 기울기만 뺀다(어린 할인·3년 수준은 남김)' },
+  ],
+  // 결정 #301(P-MKT-32 (가)) 재측정용 — c3 대안 (라) 3년 넘는 기울기 절반 · (다) 상한 6년
+  c3h: [
+    { file: 'src/sim/market.ts', from: '  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths); // 숙성 소주 표기 #217', to: '  const ageBonus = aged ? ((m: number) => { const a = agePerception(m, p.category), c = agePerception(36, p.category); return a > c ? c + (a - c) / 2 : a; })(p.oakMonths ?? (p.ageYears ?? 0) * 12) : agedWhitePerception(p.category, p.oakMonths, p.restMonths); // [B1 c3h] 3년 넘는 기울기 절반' },
+  ],
+  c6: [
+    { file: 'src/sim/market.ts', from: '  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths); // 숙성 소주 표기 #217', to: '  const ageBonus = aged ? Math.min(agePerception(72, p.category), agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category)) : agedWhitePerception(p.category, p.oakMonths, p.restMonths); // [B1 c6] 매력도 숙성 상한 6년' },
+  ],
+  // 자동 가격을 켠 제품(정책 그릇 없음)을 B 이익 극대화로 읽는다 — ④ 엔진(ARCH #388 priceEngine.ts) 위에서만. P8은 setAutoPrice만 쓰므로 이 변형이 "전부 B" 판이 된다
+  polB: [
+    { file: 'src/sim/priceEngine.ts', from: "  return m && PRICE_MODE_IDS.includes(m) ? m : 'turnover';", to: "  return m && PRICE_MODE_IDS.includes(m) ? m : 'profit'; // [B1 polB]" },
   ],
   a: [
     { file: 'src/sim/blending.ts', from: 'export function agePerception(oakMonths: number, category: ProductCategory = \'whisky\'): number {', to: 'export function agePerception(oakMonths: number, category: ProductCategory = \'whisky\', quality?: number): number {' },
