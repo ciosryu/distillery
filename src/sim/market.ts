@@ -67,14 +67,22 @@ export function priceBreakdown(s: GameState, p: Pick<Product, 'price' | 'bottleM
   return { price: p.price, adValoremTax, educationTax, specificTax, reliefFactor: relief, vat, retail: consumer - taxed - vat, consumer };
 }
 
-/** 매력도의 숙성 배수를 자르는 개월(B1-1 c3) — 3년. 그 위 숙성 가치는 기대가·권장가만 */
-export const AGE_APPEAL_CAP_MONTHS = 36;
+/**
+ * 매력도의 위스키 숙성 배수 ([결정 #290] B1-1 → [결정 #301] c3h): 3년(pivotMonths)까지는 agePerception 그대로(어린 할인 포함),
+ * 3년 넘는 몫은 기울기를 slopeAbove(½)만 — 3년 넘는 숙성 가치의 나머지는 권장가·기대가가 맡는다.
+ * c3 원안(3년에서 자름)은 기본 정책 A에서 "25% 장기 보유"가 "전량 3년"보다 손해(t −1.1 ~ −2.1)라 #273을 깼고, ½은 무승부(t −0.3 ~ +0.6) — `[튜닝]`
+ */
+export const AGE_APPEAL = { pivotMonths: 36, slopeAbove: 0.5 } as const;
+export function ageAppeal(oakMonths: number, category: ProductCategory): number {
+  const a = agePerception(oakMonths, category), c = agePerception(AGE_APPEAL.pivotMonths, category);
+  return a > c ? c + (a - c) * AGE_APPEAL.slopeAbove : a;
+}
 
 export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId'>): number {
   const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
-  // 숙성 가치의 단일 출처 ([결정 #290] B1-1 c3, P-PROD-45 c): 매력도의 위스키 숙성 배수는 3년 값(×1.18)에서 자른다 — 3년 넘는 가치는 권장가·기대가(아래 expectedPrice) 한 곳에만.
-  // 어린 위스키 할인(3년 미만 < ×1.18)은 남는다. 숙성 소주 표기(#217)는 그대로
-  const ageBonus = aged ? Math.min(agePerception(AGE_APPEAL_CAP_MONTHS, p.category), agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category)) : agedWhitePerception(p.category, p.oakMonths, p.restMonths);
+  // 숙성 가치 ([결정 #290] B1-1 → [결정 #301] c3h): 매력도의 3년 넘는 숙성 기울기는 절반 — 나머지는 권장가·기대가(expectedPricePerL)가 맡는다.
+  // 어린 위스키 할인(3년 미만 < ×1.18)은 그대로. 숙성 소주 표기(#217)는 그대로
+  const ageBonus = aged ? ageAppeal(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths);
   const lux = packagingAppealFactor(p); // 패키징 매력 배수 — 조합 점수(#248) 0~30 → 1.0~1.15, 프리셋은 옛 PACKAGING[id].luxury와 같다
   // 시장 국면: 피트·셰리 유행
   // 시장 국면: 향미 트렌드 이동 (결정 #125 — 옛 피트·셰리 계단식 보정치를 육각형 축 기반 연속 배수로 대체)
