@@ -718,6 +718,11 @@ export interface InventorySlice {
   rotatedThisMonth: number;
   /** 이번 달 샘플링 횟수 — 블렌더 여력 (결정 #124) */
   samplesThisMonth: number;
+  /**
+   * 즉시 통 구매(buySpotCasks)를 이 달 몇 번 했는가 — 구매 난수 키 `spot:<달>:<n번째>` (#290 B1-8 S1). 다른 달 값이면 0으로 읽는다(리셋 불필요).
+   * 없으면 이 달 구매 0번. 선택 필드라 스키마 v15 그대로(#187)
+   */
+  spotBuys?: { month: number; n: number };
   /** 자동 샘플 설정 (#207) — 없으면 기본값(켬, 모든 원액, 나이·간격 제한 없음, 여력만큼) */
   autoSample?: AutoSampleSettings;
   /** 자동 통입 설정 (#239) — 없으면 끔 */
