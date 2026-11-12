@@ -98,7 +98,9 @@ export function evaluate(f: Flavor, cat: ProductCategory): Evaluation {
   // 레이더 밖이지만 의미 있는 숙성 향도 복합성에 포함
   const extra: AxisId[] = ['vanilla_caramel', 'dried_fruit', 'nutty_rancio', 'incense', 'wood_spice', 'tropical', 'oily_waxy'];
   const all = Array.from(new Set([...axes, ...extra]));
-  const vals = all.map((a) => Math.max(0, get(f, a)));
+  // 피트는 방향(스타일 선택)이지 실행 품질이 아니다 (#290 B1-10, P-PROD-52 ①) — 복잡도·강도를 셀 때 peat_smoke만 0으로 본다.
+  // 축 수(all.length, 엔트로피 정규화)는 그대로 둔다. 피트의 시장 값은 매력도의 피트 배수(B1-9 f2, Product.peatShare)가 맡는다
+  const vals = all.map((a) => (a === 'peat_smoke' ? 0 : Math.max(0, get(f, a))));
   const total = vals.reduce((s, v) => s + v, 0);
   let entropy = 0;
   if (total > 0) {
