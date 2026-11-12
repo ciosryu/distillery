@@ -163,7 +163,11 @@ const P7_POLICIES: Policy[] = [
 const MKT8: [number, number][] = [[0, 3_500_000], [78, 4_000_000], [102, 2_000_000]];
 // 보정(MKT §7.20·MGT §7.19의 사람 판 숫자, mgt-stage-t.md P8 보정): 계열마다 제품 3개를 두고 재고가 적은 쪽에 보충 + 자동 가격(사람: 진열 4제품 자동 가격),
 // 수출 84개월부터 5곳·가격 배수 1.25(사람 1.19~1.28). 보정 결과(6시드, standard): 166개월째 순자산 18.99억(사람 21.14억), 파산 0 — 수출 출발이 사람보다 1~2년 늦다
-const P8 = (name: string, o: Partial<Policy>): Policy => P4(name, { mkt: MKT8, order: 'young', labelFrom: LABEL3, protect: 2, giftshopAt: 85, handfillAt: 86, exportFrom: 84, exportMax: 5, exportPrice: 1.25, raiseIfCash: 1_000_000_000, lineup: 3, autoPrice: true, newMake: { from: 5, until: 60, stock: 300 }, exportDemand: true, ...(AUTORESTOCK ? { autoRestock: AUTORESTOCK } : {}), ...o });
+// P8_POLICY=A|B|C (결정 #306 — #273 장기 숙성 경쟁력은 정책을 맞게 고른 판에서 판정): 정책을 따로 정하지 않은 P8 변형 전부(래퍼 prod-hold-p8.ts의 HA·HC·HD·HS 포함)를
+//   모든 계열 그 정책(3정책 엔진)으로 돌린다. 손 가격 변형(autoPrice: false)은 건드리지 않는다. 기본(없음) = 지금 그대로(X0 = A)
+const P8_POLICY = (['A', 'B', 'C'] as const).find((x) => x === process.env.P8_POLICY);
+const p8PolicyAll = (o: Partial<Policy>): Partial<Policy> => (P8_POLICY && !o.pricePolicy && o.autoPrice !== false ? { pricePolicy: { soju_distilled: P8_POLICY, malt_spirit: P8_POLICY, whisky: P8_POLICY, flagship: P8_POLICY } } : {});
+const P8 = (name: string, o: Partial<Policy>): Policy => P4(name, { mkt: MKT8, order: 'young', labelFrom: LABEL3, protect: 2, giftshopAt: 85, handfillAt: 86, exportFrom: 84, exportMax: 5, exportPrice: 1.25, raiseIfCash: 1_000_000_000, lineup: 3, autoPrice: true, newMake: { from: 5, until: 60, stock: 300 }, exportDemand: true, ...(AUTORESTOCK ? { autoRestock: AUTORESTOCK } : {}), ...o, ...p8PolicyAll(o) });
 const P8_POLICIES: Policy[] = [
   P8('X0 표준 규모 사람형(후반 확인 판 재현)', {}),
   P8('X1 X0 − 수출', { exportFrom: undefined }),
@@ -625,8 +629,9 @@ const ALL_RUN = process.env.P8 ? (process.env.DV ? DV_POLICIES : process.env.RC 
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
 // CALIB=1 (P8=1과 함께, B1-MGT-1 재보정 합격선 — 결정 #296 H1~H4): X0와 X0E(같은 판, 자동 가격만 3정책 엔진 A로 켬) 둘만 돌고 판정표를 낸다
 const CALIB = process.env.CALIB === '1' && !!process.env.P8;
-const RUN = CALIB ? [P8_POLICIES[0]!, P8('X0E X0 — 자동 가격을 3정책 엔진 A로(setPricePolicy turnover) · H4 확인용', { engineA: true })]
-  : ONLY ? ALL_RUN.filter((p) => ONLY.has(p.name.split(' ')[0]!)) : ALL_RUN;
+// RUN 줄은 그대로 둔다 — P8 래퍼(prodHoldPatch·prod-hold-p8·prod-sample-p8·prod-style-p8)가 이 줄을 글자 그대로 찾아 바꾼다. CALIB는 RUN을 만든 뒤에 바꾼다
+const RUN = ONLY ? ALL_RUN.filter((p) => ONLY.has(p.name.split(' ')[0]!)) : ALL_RUN;
+if (CALIB) { const x0 = P8_POLICIES[0]!; RUN.splice(0, RUN.length, x0, P8('X0E X0 — 자동 가격을 3정책 엔진 A로(setPricePolicy turnover) · H4 확인용', { engineA: true })); }
 for (const p of RUN) {
   const rows = Array.from({ length: SEEDS }, (_, i) => play(p, i + 1));
   ALL.set(p.name, rows);

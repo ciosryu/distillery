@@ -1390,6 +1390,28 @@ describe('공급 지평 (결정 #291 P-PROD-54 — economics.ts supplyHorizon)',
   });
 });
 
+describe('자동 가격 켤 때 메시지 — 첫 출고가를 기준가로 되돌렸으면 알린다 (결정 #304)', () => {
+  it('되돌렸으면 "첫 출고가 → 기준가에서 시작"을, 손으로 정한 값이면 아무것도 덧붙이지 않는다', async () => {
+    const { defaultPolicyPrice } = await import('./content/market');
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5 });
+    s.finance.cash = 5e9;
+    const r = s.production.recipes.find((x) => x.kind === 'soju')!;
+    const b = previewBatch(s, r)!;
+    s.inventory.lots.push({ id: 'X', name: 'x', kind: 'soju', volumeL: b.volumeL, abv: b.abv, flavor: b.flavor, createdMonth: s.month, oakMonths: 0, sourced: false, costPerLPA: b.cost / b.lpa, recipeId: r.id, mashShare: Object.fromEntries(r.mashBill.map((m) => [m.ingredientId, m.ratio])) });
+    const opts = { name: '', targetAbv: STANDARD_BOTTLE.soju.abv, bottleMl: STANDARD_BOTTLE.soju.bottleMl, chillFilter: true, packagingId: 'standard' } as const;
+    const comps = [{ source: 'lot' as const, id: 'X', liters: 100 }];
+    const base = previewBlend(s, comps, opts).suggestedPrice;
+    s = applyAction(s, { type: 'bottle', components: comps, options: opts }).state;
+    const id = s.commerce.products.at(-1)!.id;
+    const first = defaultPolicyPrice(base);
+    const on = applyAction(s, { type: 'setAutoPrice', productId: id, on: true });
+    expect(on.message).toContain(`첫 출고가 ${first.toLocaleString()}원 → 기준가 ${base.toLocaleString()}원에서 시작`);
+    // 손으로 정한 값(×1.5)은 되돌리지 않으므로 덧붙이지 않는다
+    const manual = applyAction(applyAction(s, { type: 'setPrice', productId: id, price: Math.round(base * 1.5) }).state, { type: 'setAutoPrice', productId: id, on: true });
+    expect(manual.message).not.toContain('첫 출고가');
+  });
+});
+
 describe('생산 건너뛰기 (#249 ④ — 위스키 원액만 자동, 소주는 별도 버튼)', () => {
   it('월초 현금이 고정비 보름치 아래면 몰트는 쉬고 소주는 만든다 · 생산 지시는 그대로 · 소주 버튼은 그 달만', async () => {
     const { whiskySkipCheck } = await import('./production');
