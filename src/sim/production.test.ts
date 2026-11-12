@@ -1296,6 +1296,57 @@ describe('자동 납품 통 하한 (#267, 표기 하한 함정)', () => {
   });
 });
 
+describe('자동 납품 함정 경고·하한 올리기 (#297, MGT P-MGT-45)', () => {
+  const setup = () => {
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.progress.milestones.push({ id: 'flagship_sold', month: 0 } as never); // 플래그십 보호 끔 — 하한·다툼만 본다
+    s.inventory.casks = [];
+    const mk = (id: string, oak: number, volumeL = 190) => { s.inventory.casks.push({ id, typeId: 'ex_bourbon_barrel', sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: { id: `L${id}`, name: id, kind: 'malt', volumeL, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10000 } } as Cask); };
+    const prod = (id: string, years: number) => ({ id, name: `${years}년`, category: 'whisky', ageYears: years, oakMonths: years * 12, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: { cereal: 20 }, quality: 70, typicity: 50, style: null, sourcedShare: 0, stockBottles: 0, price: 60000, unitCost: 10000, createdMonth: 0, lastMonthSold: 0, totalSold: 0 }) as Product;
+    s.commerce.products = [prod('W1', 1), prod('W3', 3)];
+    s = applyAction(s, { type: 'setAutoRestock', productId: 'W1', months: 2 }).state;
+    s = applyAction(s, { type: 'setAutoRestock', productId: 'W3', months: 2 }).state;
+    return { s, mk, p: (id: string) => s.commerce.products.find((x) => x.id === id)! };
+  };
+
+  it('② 통 하한을 표기보다 높게 고를 수 있다 — 1년 표기 제품도 3년 통으로만, 표기와 같으면 기본으로', async () => {
+    const { autoRestockFloor, autoRestockSources } = await import('./economics');
+    let { s, mk } = setup();
+    mk('A', 20); mk('B', 40);
+    const p = () => s.commerce.products.find((x) => x.id === 'W1')!;
+    expect(autoRestockSources(s, p()).map((x) => x.comp.id)).toEqual(['A', 'B']);
+    s = applyAction(s, { type: 'setAutoRestock', productId: 'W1', months: 2, minMonths: 36 }).state;
+    expect(p().autoRestockMinMonths).toBe(36);
+    expect(autoRestockFloor(s, p())).toBe(36);
+    expect(autoRestockSources(s, p()).map((x) => x.comp.id)).toEqual(['B']);
+    s = applyAction(s, { type: 'setAutoRestock', productId: 'W1', months: 2, minMonths: 12 }).state;
+    expect(p().autoRestockMinMonths).toBeUndefined();
+  });
+
+  it('① 하한이 긴 제품이 통이 모자라 굶는 달에만, 짧은 제품이 어린 통을 가져가면 다툼으로 알린다', async () => {
+    const { autoRestockContest, applyAutoRestock } = await import('./economics');
+    const t = setup();
+    t.mk('A', 20); t.mk('A2', 14);
+    const c = autoRestockContest(t.s, t.p('W1'));
+    expect(c?.rival.id).toBe('W3');
+    expect(c?.rivalFloor).toBe(36);
+    expect(c!.youngCasks).toBeGreaterThan(0);
+    expect(autoRestockContest(t.s, t.p('W3'))).toBeNull(); // 긴 제품 쪽에는 띄우지 않는다
+    const report = { notes: [] as string[], expenses: {} } as never as import('./types').MonthReport;
+    applyAutoRestock(t.s, report);
+    expect(report.notes.some((n) => n.includes('「1년」') && n.includes('「3년」'))).toBe(true);
+    // 긴 제품이 지금 채울 통이 있으면 다툼이 아니다(경고 안 뜸)
+    const u = setup();
+    u.mk('A', 20); u.mk('O1', 40, 190); u.mk('O2', 40, 190); u.mk('O3', 40, 190); u.mk('O4', 40, 190);
+    expect(autoRestockContest(u.s, u.p('W1'))).toBeNull();
+    // 짧은 제품의 하한을 긴 제품 하한까지 올리면 어린 통을 가져가지 않는다
+    const v = setup();
+    v.mk('A', 20);
+    v.s = applyAction(v.s, { type: 'setAutoRestock', productId: 'W1', months: 2, minMonths: 36 }).state;
+    expect(autoRestockContest(v.s, v.s.commerce.products.find((x) => x.id === 'W1')!)).toBeNull();
+  });
+});
+
 describe('생산 건너뛰기 (#249 ④ — 위스키 원액만 자동, 소주는 별도 버튼)', () => {
   it('월초 현금이 고정비 보름치 아래면 몰트는 쉬고 소주는 만든다 · 생산 지시는 그대로 · 소주 버튼은 그 달만', async () => {
     const { whiskySkipCheck } = await import('./production');
