@@ -287,7 +287,10 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const unit = Math.round(regionalCaskPrice(s, def.id) * mod(s, `cask:${def.id}`) * CASK_MARKET.spotPremium);
     if (s.finance.cash < unit * qty) return fail(prev, '현금이 부족합니다');
     s.finance.cash -= unit * qty;
-    const rng = rngFor(s.seed, s.month, `spot:${s.nextId}`);
+    // 구매 난수는 "이 달 n번째 즉시 구매" 단위 (#290 B1-8 S1) — 예전 키(nextId)는 태그 만들기 같은 무관한 명령으로도 바뀌었다
+    const n = s.inventory.spotBuys?.month === s.month ? s.inventory.spotBuys.n : 0;
+    s.inventory.spotBuys = { month: s.month, n: n + 1 };
+    const rng = rngFor(s.seed, s.month, `spot:${s.month}:${n}`);
     const observe = Math.max(0, ...staffOf(s, 'warehouse').map((x) => x.stats.a));
     let duds = 0;
     for (let i = 0; i < qty; i++) {
