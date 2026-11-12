@@ -220,6 +220,9 @@ export function supplyHintOf(mode: PriceMode | null, h: { months: number; refill
  * 자동 가격 후보에는 지금 값이 들어가므로(bestAutoPrice), ×n에서 출발하면 그 값에 머무는 경로가 생기고 수출 FOB(= 출고가 × 배수)가 깎였다
  * (P8 X0 −1.65억). 손으로 정한 값, 병입 뒤 기준가가 움직여 첫 값과 다른 값은 두고, 이미 켜져 있으면 아무것도 하지 않는다
  */
-export function resetFirstPriceOnAuto(p: { price: number; autoPrice?: boolean; dutyFreeOnly?: boolean }, base: number) {
-  if (!p.autoPrice && !p.dutyFreeOnly && p.price === defaultPolicyPrice(base)) p.price = base;
+export function resetFirstPriceOnAuto(p: { price: number; autoPrice?: boolean; dutyFreeOnly?: boolean }, base: number): number | null {
+  if (p.autoPrice || p.dutyFreeOnly || p.price !== defaultPolicyPrice(base)) return null;
+  const before = p.price;
+  p.price = base;
+  return before; // 되돌리기 전 값(첫 출고가) — 안 되돌렸으면 null. 켤 때 메시지에 쓴다(PROD)
 }

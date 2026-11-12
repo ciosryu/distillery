@@ -131,7 +131,7 @@ describe('자동 가격 A로 켤 때 첫 출고가 되돌리기 (결정 #304)', 
 
   it('손으로 정한 값 · 이미 켜진 제품 · 기준가가 움직여 첫 값과 다른 값은 그대로 둔다', () => {
     const p = { price: 15_000 };
-    resetFirstPriceOnAuto(p, 10_000);
+    expect(resetFirstPriceOnAuto(p, 10_000)).toBeNull();
     expect(p.price).toBe(15_000); // 손으로 정한 값
     const on = { price: 13_000, autoPrice: true };
     resetFirstPriceOnAuto(on, 10_000);
@@ -143,7 +143,7 @@ describe('자동 가격 A로 켤 때 첫 출고가 되돌리기 (결정 #304)', 
     resetFirstPriceOnAuto(df, 10_000);
     expect(df.price).toBe(13_000);
     const fresh = { price: 13_000 };
-    resetFirstPriceOnAuto(fresh, 10_000);
+    expect(resetFirstPriceOnAuto(fresh, 10_000)).toBe(13_000); // 되돌리기 전 값
     expect(fresh.price).toBe(10_000);
   });
 });
