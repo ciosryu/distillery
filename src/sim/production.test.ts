@@ -1099,6 +1099,33 @@ describe('피티드 맥아 비중 기록 (#290 B1-9 f2 — Product.peatShare)', 
   });
 });
 
+describe('개월 가중 통 구성 (#290 B1-9 f2 — Product.caskMonthsMix)', () => {
+  const opts = { name: '피니시', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' } as const;
+  const cask = (id: string, typeId: string, lot: SpiritLot) => ({ id, typeId, sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: lot } as Cask);
+  const malt = (id: string, extra: Partial<SpiritLot> = {}): SpiritLot => ({ id, name: id, kind: 'malt', volumeL: 180, abv: 0.6, flavor: { cereal: 20, vanilla_caramel: 20 }, createdMonth: 0, oakMonths: 36, sourced: false, costPerLPA: 10_000, ...extra });
+
+  it('피니싱한 원액은 거쳐 온 통에 머문 개월로 나눈다 — 3개월 셰리 피니시는 셰리 몫이 그만큼만, 피니싱이 없으면 필드를 두지 않는다', () => {
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const fin = malt('F', { caskHistory: [{ typeId: 'ex_bourbon_barrel', fromMonth: 0, months: 33 }, { typeId: 'oloroso_butt', fromMonth: 33, months: 0 }] });
+    s.inventory.casks = [cask('KF', 'oloroso_butt', fin), cask('KB', 'ex_bourbon_barrel', malt('B')), cask('KC', 'ex_bourbon_barrel', malt('C'))];
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id: 'KF', liters: 90 }, { source: 'cask', id: 'KB', liters: 90 }], options: opts }).state;
+    const p = s.commerce.products.at(-1)!;
+    expect(p.caskMix).toEqual([{ typeId: 'oloroso_butt', share: 0.5 }, { typeId: 'ex_bourbon_barrel', share: 0.5 }]);
+    expect(p.caskMonthsMix).toEqual([{ typeId: 'ex_bourbon_barrel', share: 0.958 }, { typeId: 'oloroso_butt', share: 0.042 }]); // 0.5 + 0.5 × 33/36 · 0.5 × 3/36
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id: 'KC', liters: 90 }], options: { ...opts, name: '버번' } }).state;
+    expect('caskMonthsMix' in s.commerce.products.at(-1)!).toBe(false); // 없음 = caskMix와 같다
+  });
+
+  it('보충은 병 수 가중 평균 — 기록 없는 쪽은 caskMix로 읽고, 둘 다 없으면 두지 않는다', async () => {
+    const { restockedProduct } = await import('./blending');
+    const base = { id: 'P', name: 'x', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 100, style: null, sourcedShare: 0, stockBottles: 100, price: 60000, unitCost: 5000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, caskMix: [{ typeId: 'oloroso_butt', share: 1 }] } as Product;
+    const finished = { ...base, caskMonthsMix: [{ typeId: 'ex_bourbon_barrel', share: 0.9 }, { typeId: 'oloroso_butt', share: 0.1 }] } as Product;
+    expect(restockedProduct(finished, { ...base, stockBottles: 100 }).caskMonthsMix).toEqual([{ typeId: 'oloroso_butt', share: 0.55 }, { typeId: 'ex_bourbon_barrel', share: 0.45 }]);
+    expect(restockedProduct(base, { ...base }).caskMonthsMix).toBeUndefined();
+    expect(restockedProduct({ ...finished, stockBottles: 0 }, { ...base }).caskMonthsMix).toEqual([{ typeId: 'oloroso_butt', share: 1 }]);
+  });
+});
+
 describe('헤리티지 병입 연표 (#244, 2026-11-10 오너 요청)', () => {
   it('10년 이상 통만 연출 대상이고, 연표에 증류·통입·숙성 중 재해·통의 사고·샘플·이정표가 시간순으로 모인다', async () => {
     const { emptyCaskOf, heritageCasks, caskStory } = await import('./index');
