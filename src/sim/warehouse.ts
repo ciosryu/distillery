@@ -2,7 +2,7 @@ import { CASKS, EQUIPMENT, type WarehouseType } from './content/catalog';
 import { siteOf } from './content/regions';
 import { clamp } from './flavor';
 import { type Climate, emptyCask, matureVessel, MIN_CASK_VOLUME_L, restLot } from './maturation';
-import { type Rng, rngFor } from './rng';
+import { rngFor } from './rng';
 import type { Cask, GameState, MonthReport } from './types';
 import { staffOf, ownsFacility } from './util';
 import { weatherOffset } from './weather';
@@ -110,13 +110,15 @@ export function rotateWarehouse(s: GameState, wId: string): { moved: number; err
 
 // ───────────── 숙성고 QC: 캐스크 오염 (TCA·곰팡이) ─────────────
 
-export function runContamination(s: GameState, report: MonthReport, rng: Rng, monthOfYear: number, climateOf: (cask: Cask) => Climate = climateTable(s, monthOfYear)): void {
+export function runContamination(s: GameState, report: MonthReport, monthOfYear: number, climateOf: (cask: Cask) => Climate = climateTable(s, monthOfYear)): void {
   const qc = staffOf(s, 'warehouse');
   const control = Math.max(0, ...qc.map((x) => x.stats.b));
   const observe = Math.max(0, ...qc.map((x) => x.stats.a));
   const dehumid = ownsFacility(s, 'facility_dehumid') ? 0.5 : 1;
   for (const c of s.inventory.casks) {
     if (!c.contents) continue;
+    // 통 단위 난수 (#290 B1-8 S3) — 통 × 필 수. 통 배열 순서·다른 통의 유무가 이 통의 오염·발견을 바꾸지 않는다
+    const rng = rngFor(s.seed, s.month, `contamination:${c.id}:${c.fills}`);
     if (!c.contamination) {
       const h = climateOf(c).humidity;
       const pTca = 0.0005;
@@ -140,7 +142,6 @@ export function runMaturation(s: GameState, report: MonthReport, ctx: TickContex
   // 자동 샘플 (#177) — 이번 달 직접 뜬 샘플이 없으면 숙성 전에 오래 안 뜬 통부터. 시나리오 게임만
   autoSample(s, report, lotQuality);
   const { control, observe, diligence } = ctx.warehouse;
-  const rng = rngFor(s.seed, s.month, 'maturation');
   const evap = mod(s, 'evaporation');
   let lost = 0;
   s.inventory.casks = s.inventory.casks.map((cask) => {
@@ -152,6 +153,8 @@ export function runMaturation(s: GameState, report: MonthReport, ctx: TickContex
     if (cask.activityKnown === false && cask.contents.oakMonths + 1 >= 6) res.cask.activityKnown = true;
     lost += res.lostL;
     let next = res.cask;
+    // 통 단위 난수 (#290 B1-8 S4) — 통 × 필 수. 누수 추첨이 통 배열 순서에 매이지 않는다
+    const rng = rngFor(s.seed, s.month, `maturation:${cask.id}:${cask.fills}`);
     // 누수: 성실 스탯이 확률을, 관찰 스탯이 손실량을 줄임
     if (rng.chance(0.002 * (1 - diligence / 150) * (CASKS[cask.typeId].leakFactor ?? 1))) {
       const lossShare = rng.range(0.03, 0.08) * (1 - observe / 150);
@@ -170,6 +173,6 @@ export function runMaturation(s: GameState, report: MonthReport, ctx: TickContex
     return next;
   });
   s.inventory.lots = s.inventory.lots.map(restLot);
-  runContamination(s, report, rngFor(s.seed, s.month, 'contamination'), ctx.monthOfYear, ctx.climateOf);
+  runContamination(s, report, ctx.monthOfYear, ctx.climateOf);
   report.angelsShareL = lost;
 }
