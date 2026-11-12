@@ -76,6 +76,8 @@ const GAME_TAGS = process.env.GAME_TAGS === '1';
 //   옛 묶음(BASE·P3~P7 — 사람 판 재현, #191 6개월 규칙 비교용)은 지금처럼 파산을 막고 스크립트가 3·6개월을 센다.
 //   GAME_BANKRUPT=1/0으로 어느 묶음이든 강제할 수 있다(P8에서 0이면 옛 동작 — 전후 비교용)
 const GAME_BANKRUPT = process.env.GAME_BANKRUPT ? process.env.GAME_BANKRUPT === '1' : !!process.env.P8;
+// 사람 후반 확인 판(#242, standard) — 결정 #296 H1·H3 기준값. 연말 순자산(억)은 mgt-stage-t.md 「P8 보정 결과」 표, H3 기준 차이는 P-MGT-44를 쓴 때(2026-11-12)의 X0 − 사람
+const HUMAN_REF = { month: 166, nw: 21.14e8, loan: 3e8, years: { 2: [2.08, -1.00], 4: [0.27, -1.01], 7: [3.96, -0.63], 10: [13.81, -3.88], 13: [21.56, -4.74] } as Record<number, [number, number]> };
 const MONTHS = Number(process.argv[3] ?? 180);
 const TIER = (process.env.TIER ?? 'micro') as 'micro' | 'standard';
 const LOAN = Number(process.env.LOAN ?? 0);
@@ -89,7 +91,7 @@ const AUTORESTOCK = process.env.P8 && process.env.AUTORESTOCK === '1' ? Number(p
 //   그보다 짧은 표기(1·2년)의 옛 위스키 제품은 자동 납품을 끈다 — 옛 제품의 하한(법정 12개월·표기 24개월)이 낮아 자동 납품이 3년이 되기 전의 통을 계속 쓰는지 가린다
 const AUTORESTOCK_RETIRE = process.env.AUTORESTOCK_RETIRE === '1';
 
-interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean; maltFrom?: [number, number]; autoRestock?: number; visitorAt?: number; equipAt?: number; b2b?: { share: number; until: number }; flagship?: boolean; price?: 'table' | 'markup'; markup?: number; sojuOff?: [number, number]; overprod?: [number, number]; loansFrom?: number; fixAt?: number; buyAt?: [number, string][]; repayAt?: number; protectFrom?: [number, number]; salesAt?: number; pricePolicy?: Partial<Record<PriceKey, PriceGoal>>; priceSwitch?: boolean }
+interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean; maltFrom?: [number, number]; autoRestock?: number; visitorAt?: number; equipAt?: number; b2b?: { share: number; until: number }; flagship?: boolean; price?: 'table' | 'markup'; markup?: number; sojuOff?: [number, number]; overprod?: [number, number]; loansFrom?: number; fixAt?: number; buyAt?: [number, string][]; repayAt?: number; protectFrom?: [number, number]; salesAt?: number; pricePolicy?: Partial<Record<PriceKey, PriceGoal>>; priceSwitch?: boolean; engineA?: boolean }
 /** 자동 가격 3정책(#288 — AP3) 봇 흉내: 범주별로 고른다. 플래그십 제품은 따로 */
 type PriceGoal = 'turnover' | 'profit' | 'premium';
 type PriceKey = 'soju_distilled' | 'malt_spirit' | 'whisky' | 'flagship';
@@ -405,7 +407,8 @@ function bottleAs(s: GameState, p: Policy, comps: { source: 'lot' | 'cask'; id: 
   // 게임 자동 납품(AUTORESTOCK): 새로 만든 위스키 제품에 켠다 — 쓸 통의 최소 숙성은 표기(기본)
   if (p.autoRestock && isWhiskyCategory(cat)) for (const x of s.commerce.products.filter((y) => y.category === cat && !y.autoRestock && !y.dutyFreeOnly && !y.name.startsWith('플래그십'))) s = act(s, { type: 'setAutoRestock', productId: x.id, months: p.autoRestock });
   if (p.pricePolicy) s = policyAfterBottle(s, p, cat, opts);
-  else if (p.autoPrice) for (const x of s.commerce.products.filter((y) => y.category === cat && !y.autoPrice && !y.dutyFreeOnly)) s = act(s, { type: 'setAutoPrice', productId: x.id, on: true });
+  // engineA(CALIB H4): 같은 자리에서 옛 명령(setAutoPrice) 대신 3정책 엔진의 A(setPricePolicy turnover, 결정 #291 ②)를 켠다 — 둘이 같은 판을 내는지 본다
+  else if (p.autoPrice) for (const x of s.commerce.products.filter((y) => y.category === cat && !y.autoPrice && !y.dutyFreeOnly)) s = act(s, p.engineA ? { type: 'setPricePolicy', productId: x.id, mode: 'turnover' } : { type: 'setAutoPrice', productId: x.id, on: true });
   return s;
 }
 
@@ -535,7 +538,7 @@ const spiritsValue = (s: GameState) => [...s.inventory.lots, ...s.inventory.cask
 
 interface Split { cash: number; loans: number; spirits: number; products: number; whiskyRevY6to9: number; whiskyRevY10to15: number; spiritsGainY2to5: number; productionY2to5: number }
 interface Year { dom: number; exp: number; tour: number; op: number; cash: number; nw: number; bottlesDom: number; bottlesExp: number }
-interface Row { years: Year[]; cands: number[]; flagCasks: number; split: Split; cutMonth: number; policy: string; bankrupt3: number; bankrupt6: number; minCash: number; minCashMonth: number; loansMax: number; firstWhisky: number; nw: number; goal: boolean; verdict: string; whiskyY6to9: number; outcome: RunOutcome; cap: Cap; month: ReturnType<MonthTracker['summary']> }
+interface Row { years: Year[]; cands: number[]; flagCasks: number; split: Split; cutMonth: number; policy: string; bankrupt3: number; bankrupt6: number; minCash: number; minCashMonth: number; loansMax: number; firstWhisky: number; nw: number; goal: boolean; verdict: string; whiskyY6to9: number; outcome: RunOutcome; cap: Cap; month: ReturnType<MonthTracker['summary']>; nw166: number }
 /** 자본·유동성(MGT-C) — 6년 안 최저 현금·최저 런웨이, 현금 < 0 개월, 원액 시가 최고·그 달, 72개월 원액 비중, 이자 합계 */
 interface Cap { minCash72: number; minRunway72: number; negMonths: number; peakSpirit: number; peakSpiritMonth: number; spiritShare72: number; interest: number; minCash36: number; spirit60: number; cash96: number; cash180: number }
 
@@ -549,6 +552,7 @@ function play(p: Policy, seed: number): Row {
   let spirits12 = 0;
   const cands: number[] = [];
   let outcome: RunOutcome | null = null;
+  let nw166: number | null = null;
   const tracker = new MonthTracker();
   const bought = new Set<string>();
   const cap: Cap = { minCash72: s.finance.cash, minRunway72: Infinity, negMonths: 0, peakSpirit: 0, peakSpiritMonth: 0, spiritShare72: 0, interest: 0, minCash36: s.finance.cash, spirit60: 0, cash96: NaN, cash180: NaN };
@@ -605,6 +609,7 @@ function play(p: Policy, seed: number): Row {
     }
     if (DUMP && seed === 1 && p === RUN[0] && DUMP_MONTHS.includes(s.month)) { mkdirSync(DUMP, { recursive: true }); writeFileSync(`${DUMP}/bot-m${s.month}.json`, JSON.stringify({ kind: 'distillery-playtest', v: 1, exportedAt: new Date(0).toISOString(), playlog: null, save: s })); }
     neg = s.finance.cash < 0 ? neg + 1 : 0;
+    if (s.month === HUMAN_REF.month) nw166 = netWorth(s);
     if (GAME_BANKRUPT && s.status === 'bankrupt') { bankrupt3 = bankrupt6 = s.month; outcome = outcomeOf(s, false); if (METRICS) tracker.observe(s); break; }
     if (neg >= 3 && bankrupt3 < 0) { bankrupt3 = s.month; outcome = outcomeOf(s, false); }
     if (METRICS) {
@@ -636,7 +641,7 @@ function play(p: Policy, seed: number): Row {
   const nw = alive ? netWorth(s) : NaN;
   const v = s.progress.verdict;
   const flagCasks = s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.kind === 'malt' && c.contents.oakMonths >= (s.scenario?.goal.flagshipMinMonths ?? 144)).length;
-  return { years, cands, flagCasks, split, cutMonth, policy: p.name, bankrupt3, bankrupt6, minCash, minCashMonth, loansMax, firstWhisky: t.firstWhisky, nw, goal: alive && bankrupt3 < 0 && !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', whiskyY6to9, outcome: outcome ?? outcomeOf(s, true), cap, month: tracker.summary() };
+  return { years, cands, flagCasks, split, cutMonth, policy: p.name, bankrupt3, bankrupt6, minCash, minCashMonth, loansMax, firstWhisky: t.firstWhisky, nw, goal: alive && bankrupt3 < 0 && !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', whiskyY6to9, outcome: outcome ?? outcomeOf(s, true), cap, month: tracker.summary(), nw166: nw166 ?? (outcome ?? outcomeOf(s, true)).netWorth };
 }
 
 const eok = (v: number) => (Number.isFinite(v) ? `${(v / 1e8).toFixed(2)}억` : '—');
@@ -663,7 +668,10 @@ const ALL = new Map<string, Row[]>();
 const ALL_RUN = process.env.P8 ? (process.env.DV ? DV_POLICIES : process.env.RC ? RC_POLICIES : process.env.LC ? LC_POLICIES : P8_POLICIES) : process.env.P7 ? P7_POLICIES : process.env.P6 ? P6_POLICIES : process.env.P5 ? P5_POLICIES : process.env.P4 ? P4_POLICIES : process.env.P3 ? P3_POLICIES : POLICIES;
 // ONLY=X0,X5 이면 이름의 첫 낱말이 그중 하나인 정책만 돈다(측정 시간 줄이기) — 없으면 묶음 전체
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
-const RUN = ONLY ? ALL_RUN.filter((p) => ONLY.has(p.name.split(' ')[0]!)) : ALL_RUN;
+// CALIB=1 (P8=1과 함께, B1-MGT-1 재보정 합격선 — 결정 #296 H1~H4): X0와 X0E(같은 판, 자동 가격만 3정책 엔진 A로 켬) 둘만 돌고 판정표를 낸다
+const CALIB = process.env.CALIB === '1' && !!process.env.P8;
+const RUN = CALIB ? [P8_POLICIES[0]!, P8('X0E X0 — 자동 가격을 3정책 엔진 A로(setPricePolicy turnover) · H4 확인용', { engineA: true })]
+  : ONLY ? ALL_RUN.filter((p) => ONLY.has(p.name.split(' ')[0]!)) : ALL_RUN;
 for (const p of RUN) {
   const rows = Array.from({ length: SEEDS }, (_, i) => play(p, i + 1));
   ALL.set(p.name, rows);
@@ -800,5 +808,30 @@ if (process.env.YEARLY) {
       const a = (k: keyof Year) => avg(ys.map((x) => x[k]));
       console.log(`| ${y + 1} | ${eok(a('dom'))} | ${eok(a('exp'))} | ${eok(a('tour'))} | ${eok(a('op'))} | ${eok(a('cash'))} | ${eok(a('nw'))} | ${Math.round(a('bottlesDom')).toLocaleString()} | ${Math.round(a('bottlesExp')).toLocaleString()} |`);
     }
+  }
+}
+
+// ── B1-MGT-1 재보정 판정표 (CALIB=1, 결정 #296 H1~H4) ──
+if (CALIB) {
+  const x0 = ALL.get(RUN[0]!.name) ?? [], xe = ALL.get(RUN[1]!.name) ?? [];
+  const human = TIER === 'standard';
+  const nws = x0.map((r) => r.nw166), lo = Math.min(...nws), hi = Math.max(...nws), below = nws.filter((v) => v < HUMAN_REF.nw).length;
+  const h1 = !human ? '해당 없음(사람 판은 standard)' : `${lo <= HUMAN_REF.nw && HUMAN_REF.nw <= hi ? '통과' : '불통과'} — X0 ${HUMAN_REF.month}개월 ${eok(lo)}~${eok(hi)}, 사람 ${eok(HUMAN_REF.nw)}는 ${below}/${nws.length} 판보다 위(백분위 약 ${Math.round((below / nws.length) * 100)}%)`;
+  const bk = x0.filter((r) => !r.outcome.survived).length, h2lim = human ? 0 : 1;
+  const h2 = `${bk <= h2lim ? '통과' : '불통과'} — 파산 ${bk}/${x0.length}(게임 규칙, 기준 ${human ? 'standard 0' : 'micro ≤ 1'})`;
+  const yrs = Object.keys(HUMAN_REF.years).map(Number);
+  const yrow = yrs.map((y) => { const m = avg(x0.map((r) => r.years[y - 1]?.nw ?? NaN).filter(Number.isFinite)) / 1e8, [hv, ref] = HUMAN_REF.years[y]!; const d = m - hv; return { y, m, hv, d, ref, ok: Math.abs(d) <= Math.abs(ref) + 0.5 }; });
+  const loan = avg(x0.map((r) => r.loansMax));
+  const h3 = !human ? '해당 없음(사람 판은 standard)' : `${yrow.every((r) => r.ok) ? '통과' : '확인 필요'} — 연말 계단 차이가 기준 차이(+0.5억 여유) 안: ${yrow.filter((r) => r.ok).length}/${yrow.length} · 최대 대출 평균 ${eok(loan)}(사람 ${eok(HUMAN_REF.loan)} 한 건)`;
+  const strip = (r: Row) => JSON.stringify({ ...r, policy: '' });
+  const same = x0.filter((r, i) => xe[i] && strip(r) === strip(xe[i]!)).length;
+  const h4 = `${same === x0.length ? '통과' : '불통과'} — X0(옛 setAutoPrice) = X0E(엔진 A setPricePolicy turnover) 시드별 판 전체 동일 ${same}/${x0.length}`;
+  console.log(`\n### B1-MGT-1 재보정 판정표 (결정 #296) — ${TIER}, ${SEEDS}시드 × ${MONTHS}개월\n`);
+  console.log('| 기준 | 판정 |\n|---|---|');
+  console.log(`| H1 사람 판이 X0 분포 안 | ${h1} |\n| H2 파산 | ${h2} |\n| H3 경로(연말 계단·대출) | ${h3} |\n| H4 엔진 A = 흉내 A | ${h4} |`);
+  if (human) {
+    console.log('\n| 연차(연말) | X0 평균 | 사람 | 차이 | 기준 차이(P-MGT-44 때) | 판정 |\n|---|---|---|---|---|---|');
+    for (const r of yrow) console.log(`| ${r.y} | ${r.m.toFixed(2)}억 | ${r.hv.toFixed(2)}억 | ${r.d >= 0 ? '+' : ''}${r.d.toFixed(2)} | ${r.ref.toFixed(2)} | ${r.ok ? '같거나 줄었다' : '커졌다'} |`);
+    console.log(`\n시드별 ${HUMAN_REF.month}개월 순자산(억): ${nws.map((v) => (v / 1e8).toFixed(2)).join(' · ')}`);
   }
 }
