@@ -72,6 +72,8 @@ export interface BlendPreview {
   dfEdition: { vol: number; streak: number } | null;
   /** 라벨 "○○ 캐스크 피니시" — 모든 원액이 같은 종류 캐스크로 피니싱됐을 때만 (#158) */
   finish: CaskTypeId | null;
+  /** 피티드 맥아 비중 0~1 — 원재료 배합의 `malt_peated`를 LPA 가중(#290 B1-9 f2, 병입 때 `Product.peatShare`로 남긴다). 배합 기록이 없는 원액은 0으로 센다 */
+  peatShare: number;
 }
 
 /** 기본(스코틀랜드·EU식) 위스키 최소 숙성. 지역별 규칙은 RegionDef.whisky */
@@ -173,7 +175,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     if (c.liters > lot.volumeL + 1e-6) errors.push(`${lot.name}: 보유량(${lot.volumeL.toFixed(1)}L)보다 많이 선택했습니다`);
     items.push({ lot, liters: Math.min(c.liters, lot.volumeL) });
   }
-  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, minRestMonths: 0, agedLabel: null, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, sourcedPrestige: 1, specialty: null, premiumLabel: false, traditional: false, suggestedPrice: 0, localIngredient: false, dfEdition: null, finish: null };
+  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, minRestMonths: 0, agedLabel: null, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, sourcedPrestige: 1, specialty: null, premiumLabel: false, traditional: false, suggestedPrice: 0, localIngredient: false, dfEdition: null, finish: null, peatShare: 0 };
   const region = regionOf(s);
   const rules = region.whisky;
   if (!items.length) { errors.push('블렌딩할 원액을 선택하세요'); return empty; }
@@ -269,6 +271,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     localIngredient,
     dfEdition: dutyFree && hasDutyFree(s) ? nextDutyFreeEdition(s) : null,
     finish,
+    peatShare: Math.round((mash.malt_peated ?? 0) * 1000) / 1000,
   };
 }
 
@@ -427,6 +430,9 @@ export function restockedProduct(old: Product, batch: Product): Product {
   // 매대 재고가 0이고 새 배치가 레어 단독이면 그 배치 그대로(2026-11-12 수정: 레어 통 하나로 처음 병입한 제품을 평범한 통으로 계속 보충해도 ×1.3이 남았다)
   if (keep(old.rareSingleCask, batch.rareSingleCask, false)) merged.rareSingleCask = true; else delete merged.rareSingleCask;
   if (caskMix) merged.caskMix = caskMix; else delete merged.caskMix;
+  // 피티드 맥아 비중(#290 B1-9 f2) — 병 수 가중 평균. 기록 없는 쪽은 0(중립)으로 센다. 0이면 필드를 두지 않는다(없음 = 0)
+  const peat = Math.round(avg(old.peatShare ?? 0, batch.peatShare ?? 0) * 1000) / 1000;
+  if (peat > 0) merged.peatShare = peat; else delete merged.peatShare;
   // 레시피 — 남은 재고가 있으면 합집합, 한쪽이라도 기록이 없으면(옛 제품) 기록 없음(모든 원액)
   const rec = fresh ? batch.recipeIds : old.recipeIds && batch.recipeIds ? [...new Set([...old.recipeIds, ...batch.recipeIds])].sort() : undefined;
   if (rec?.length) merged.recipeIds = rec; else delete merged.recipeIds;
@@ -507,6 +513,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     ...(p.localIngredient ? { localIngredient: true } : {}),
     ...(p.finish ? { finish: p.finish } : {}),
     ...(caskMix.length ? { caskMix } : {}),
+    ...(p.peatShare > 0 ? { peatShare: p.peatShare } : {}),
     ...(recipeIds.length ? { recipeIds } : {}),
     ...(opts.dutyFreeOnly && p.dfEdition ? { dutyFreeOnly: true, dfEdition: { ...p.dfEdition } } : {}),
   };
