@@ -67,9 +67,14 @@ export function priceBreakdown(s: GameState, p: Pick<Product, 'price' | 'bottleM
   return { price: p.price, adValoremTax, educationTax, specificTax, reliefFactor: relief, vat, retail: consumer - taxed - vat, consumer };
 }
 
+/** 매력도의 숙성 배수를 자르는 개월(B1-1 c3) — 3년. 그 위 숙성 가치는 기대가·권장가만 */
+export const AGE_APPEAL_CAP_MONTHS = 36;
+
 export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId'>): number {
   const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
-  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths); // 숙성 소주 표기 #217
+  // 숙성 가치의 단일 출처 ([결정 #290] B1-1 c3, P-PROD-45 c): 매력도의 위스키 숙성 배수는 3년 값(×1.18)에서 자른다 — 3년 넘는 가치는 권장가·기대가(아래 expectedPrice) 한 곳에만.
+  // 어린 위스키 할인(3년 미만 < ×1.18)은 남는다. 숙성 소주 표기(#217)는 그대로
+  const ageBonus = aged ? Math.min(agePerception(AGE_APPEAL_CAP_MONTHS, p.category), agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category)) : agedWhitePerception(p.category, p.oakMonths, p.restMonths);
   const lux = packagingAppealFactor(p); // 패키징 매력 배수 — 조합 점수(#248) 0~30 → 1.0~1.15, 프리셋은 옛 PACKAGING[id].luxury와 같다
   // 시장 국면: 피트·셰리 유행
   // 시장 국면: 향미 트렌드 이동 (결정 #125 — 옛 피트·셰리 계단식 보정치를 육각형 축 기반 연속 배수로 대체)

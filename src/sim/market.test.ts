@@ -192,17 +192,20 @@ describe('지역 (v0.6)', () => {
     expect(agePerception(12 * 12 + 11)).toBe(agePerception(12 * 12));
   });
 
-  it('숙성 프리미엄은 권장가와 매력도에 같이 들어간다 — 권장가로 내면 오래된 위스키도 수요(병)가 크게 줄지 않는다', () => {
+  it('숙성 가치의 단일 출처(결정 #290 B1-1 c3) — 3년 넘는 숙성 가치는 권장가·기대가에만, 매력도는 3년 값에서 자른다', () => {
     const kr = REGIONS.KR;
     const p3 = suggestedPrice(kr, 'whisky', 700, 75, 36, 0.46);
     const p12 = suggestedPrice(kr, 'whisky', 700, 75, 144, 0.46);
     expect(p12 / p3).toBeCloseTo(agePerception(144) / agePerception(36), 1);
-    // 수요(병) ∝ 매력도 × (가격)^−탄력성 — 매력도도 같은 배수로 오르므로 한국(탄력성 1.1)에서 12년 대 3년 수요는 약 0.9배
     const base = { category: 'whisky', ageYears: 3, packagingId: 'standard', flavor: {}, quality: 75, typicity: 80, sourcedShare: 0 } as unknown as Product;
-    const appealRatio = appeal({ ...base, oakMonths: 144, ageYears: 12 }) / appeal({ ...base, oakMonths: 36 });
-    const demandRatio = appealRatio * Math.pow(p12 / p3, -kr.market.whisky!.elasticity);
-    expect(demandRatio).toBeGreaterThan(0.85);
-    expect(demandRatio).toBeLessThan(1);
+    // 매력도: 3년 위로는 그대로, 어린 위스키 할인은 남는다
+    expect(appeal({ ...base, oakMonths: 144, ageYears: 12 }) / appeal({ ...base, oakMonths: 36 })).toBeCloseTo(1, 10);
+    expect(appeal({ ...base, oakMonths: 24, ageYears: 2 })).toBeLessThan(appeal({ ...base, oakMonths: 36 }));
+    // 권장가로 내면 오래된 위스키는 병 수가 줄고(희소한 값) 매출은 3년과 비슷하다 — 수요(병) ∝ (가격)^−탄력성(기대가에서)
+    const demandRatio = Math.pow(p12 / p3, -kr.market.whisky!.elasticity);
+    expect(demandRatio).toBeLessThan(0.5);
+    expect(demandRatio * (p12 / p3)).toBeGreaterThan(0.85);
+    expect(demandRatio * (p12 / p3)).toBeLessThan(1);
   });
 
   it('일본: 3년 미만 자사 위스키는 "재패니즈 위스키" 표기를 못 해 매력도가 깎인다', () => {
