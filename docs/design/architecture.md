@@ -671,11 +671,11 @@ interface GameState {
 
 | # | 대상 | 설정(고정할 것) | 지금 지키는 곳 | 상태 |
 |---|---|---|---|---|
-| G-S1 | 즉시 통 구매 난수 | `spot:${달}:${그 달 n번째}` (`InventorySlice.spotBuys?`) | `rngStreams.test.ts` S1 | PROD #378 머지 뒤 `it` |
-| G-S2 | 생산 난수 | `ferment:${레시피}:${배치}` · 소주 전용 증류기 + 7월(후류 이월·저온 무난수 배제) | S2 | 같음 |
-| G-S3·S4 | 오염·누수 난수 | `contamination:${통}:${필 수}` · `maturation:${통}:${필 수}` | S3·S4(칸 고정·자동 샘플 끔) | 같음 |
-| G-S5 | 판매 잡음 | `sales:${제품}`·`sales:${제품}:${시장}` | S5 | MKT #370 머지 뒤 `it` |
-| G-S7 | 수출 제안 | `export-offer:${시장}`(달은 `rngFor`) — [결정 #299] | MKT 테스트(US 계약 뒤 UK~TW 제안 같음, 옛 스트림 278건 다름) | MKT #370 |
+| G-S1 | 즉시 통 구매 난수 | `spot:${달}:${그 달 n번째}` (`InventorySlice.spotBuys?`) | `rngStreams.test.ts` S1 | 머지(#378) |
+| G-S2 | 생산 난수 | `ferment:${레시피}:${배치}` · 소주 전용 증류기 + 7월(후류 이월·저온 무난수 배제) | S2 | 머지(#378) |
+| G-S3·S4 | 오염·누수 난수 | `contamination:${통}:${필 수}` · `maturation:${통}:${필 수}` | S3·S4(칸 고정·자동 샘플 끔) | 머지(#378) |
+| G-S5 | 판매 잡음 | `sales:${제품}`·`sales:${제품}:${시장}` | S5 | 머지(#370) |
+| G-S7 | 수출 제안 | `export-offer:${시장}`(달은 `rngFor`) — [결정 #299] | MKT 테스트(US 계약 뒤 UK~TW 제안 같음, 옛 스트림 278건 다름) | 머지(#370) |
 | G-S6 | 자동 가격 형제 결정 | **GS: id 순 · live 값 · 최대 3바퀴(`AUTO_PRICE_MAX_ROUNDS`) · 3바퀴째 값으로 끝** — [결정 #300] | `autoPriceOrder.test.ts`(순서 무관 · 72조합 고정점) · P8 standard X0 20.68억 · 목표 2/10(#373) | 머지 |
 | G-E1 | 3정책 엔진 = S6 | 옛 판 A(`autoPrice`만) = `applyAutoPrices` · 정책 안 고른 판 바이트 동일 | `priceEngine.test.ts` · P8 X0·X12·X26 시드별 바이트(#388) | 머지 |
 | G-E2 | 정책 가드 | B 한 달 ±0.1 · C 분기 한 단계 · 범위 [min,max] · 병당 공헌 > 0 · **`lastFactor`는 바퀴 사이 고정, 확정 값으로만 갱신** | `pricePolicy.test.ts`(MKT) · `priceEngine.test.ts` 수렴·⑦ 12경우 | 머지 |
