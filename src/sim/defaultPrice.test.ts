@@ -4,7 +4,8 @@ import { applyAction, previewBatch, previewBlend, type GameState } from './index
 import { DEFAULT_POLICY_N, defaultPolicyPrice } from './content/market';
 import { PRICE_POLICY, resetFirstPriceOnAuto } from './pricePolicy';
 import { newScenarioGame } from './newScenario';
-import { recipeEconomics, STANDARD_BOTTLE } from './economics';
+import { currentSuggested, recipeEconomics, STANDARD_BOTTLE } from './economics';
+import { migrateSave } from './migrate';
 
 const mvp = (): GameState => { const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5 }); s.finance.cash = 5e9; return s; };
 function withLot(s: GameState) {
@@ -78,6 +79,43 @@ describe('자동 가격 A로 켤 때 첫 출고가 되돌리기 (결정 #304)', 
       expect(r.error).toBeUndefined();
       expect(priceOf(r.state, n.id)).toBe(n.base);
     }
+  });
+
+  it("'all'로 A를 켜면 일반 제품은 모두 기준가로, 면세 한정판은 값·정책 그대로 — 세이브 왕복 뒤에도 같다(ARCH 검토 #304)", () => {
+    const n = bottled();
+    const comps = [{ source: 'lot' as const, id: 'X', liters: 100 }];
+    const { opts } = withLot(n.s);
+    const r2 = applyAction(n.s, { type: 'bottle', components: comps, options: { ...opts, name: '둘째' } });
+    expect(r2.error).toBeUndefined();
+    const s = r2.state;
+    const normal = s.commerce.products.filter((p) => !p.dutyFreeOnly);
+    expect(normal.length).toBeGreaterThanOrEqual(2);
+    const df = { ...normal[0]!, id: 'DF', name: '면세 한정', dutyFreeOnly: true };
+    s.commerce.products.push(df);
+    for (const p of s.commerce.products) {
+      p.price = defaultPolicyPrice(currentSuggested(s, p)); // 셋 다 첫 값 = 기준가 × n
+      if (!p.dutyFreeOnly) p.stockBottles = 0; // 엔진이 값을 고르지 않는 달 — 되돌린 값이 그대로 보인다
+    }
+    const bases = new Map(s.commerce.products.map((p) => [p.id, currentSuggested(s, p)]));
+    const r = applyAction(s, { type: 'setPricePolicy', productId: 'all', mode: 'turnover' });
+    expect(r.error).toBeUndefined();
+    const after = (st: GameState) => {
+      for (const p of st.commerce.products) {
+        if (p.dutyFreeOnly) {
+          expect(p.price).toBe(defaultPolicyPrice(bases.get(p.id)!));
+          expect(p.autoPrice).toBeUndefined();
+          expect(p.pricePolicy).toBeUndefined();
+        } else {
+          expect(p.price).toBe(bases.get(p.id));
+          expect(p.autoPrice).toBe(true);
+          expect(p.pricePolicy?.mode).toBe('turnover');
+        }
+      }
+    };
+    after(r.state);
+    const loaded = migrateSave(JSON.parse(JSON.stringify(r.state)))!;
+    after(loaded);
+    expect(loaded.commerce.products).toEqual(r.state.commerce.products);
   });
 
   it('B·C로 켜면 첫 값 ×n에서 출발한다(되돌리지 않는다, P-PROD-53)', () => {
