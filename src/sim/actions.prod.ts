@@ -1,7 +1,7 @@
 import { isWhiskyCategory, whiskyMinMonths } from './blending';
-import { DEFAULT_POLICY_N } from './content/market'; // 기본 정책 배수 n (B1-4)
+import { DEFAULT_POLICY_N, resetFirstPriceOnAuto } from './content/market'; // 기본 정책 배수 n (B1-4)
 import { regionOf } from './content/regions';
-import { AUTO_RESTOCK_MONTHS, autoRestockSupported, bestAutoPrice } from './economics';
+import { AUTO_RESTOCK_MONTHS, autoRestockSupported, bestAutoPrice, currentSuggested } from './economics';
 import { CASK_COST_SHARE_PER_FILL, CASK_MARKET, CASKS, EQUIPMENT, RECHAR_COST } from './content/catalog';
 import { assignSlot, rotateWarehouse, SlotIndex } from './warehouse';
 import { usedCaskPrice } from './casks';
@@ -222,6 +222,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (!p) return fail(prev, '제품이 없습니다');
     if (p.dutyFreeOnly) return fail(prev, '면세 한정판은 자동 가격을 쓸 수 없습니다');
     if (!a.on) { delete p.autoPrice; return { state: s, message: `${p.name} 자동 가격 끔 — 지금 값 ${p.price.toLocaleString()}원 유지` }; }
+    resetFirstPriceOnAuto(p, currentSuggested(s, p)); // P-MKT-34 (나) — 첫 출고가 ×n은 수동 가격 판에만 (PROD 대행)
     p.autoPrice = true;
     if (p.pricePolicy && p.pricePolicy.mode !== 'turnover') { const { lastFactor: _drop, ...rest } = p.pricePolicy; void _drop; p.pricePolicy = { ...rest, mode: 'turnover' }; } // 옛 명령 = A 현금회전 ([결정 #291])
     const v = bestAutoPrice(s, p);
