@@ -87,6 +87,15 @@ export const GIFT_SHOP = { id: 'visitor_giftshop', newMakeBuyRate: 0.25, merchPe
  */
 export const SKU = { rho: 3, /** 브랜드 라인 사이 ρ ([결정 #235] B, PRD §11.2.1) — ρ_in(=rho)보다 작아야 브랜드끼리 덜 뺏는다 */ rhoBrand: 2 };
 
+// ── 기본 정책 배수 n ([결정 #290] B1-4 · [결정 #291] ④, P-PROD-53) [튜닝] ──
+/** 세 가격 정책의 시작 배수 = C(가격 유지) 기본 목표. 기준가(권장가 식 suggestedPrice — 기대가 기반) 대비 */
+export const DEFAULT_POLICY_N = 1.3;
+/**
+ * 기본 정책 가격 = 기준가 × n, 100원 단위 — 판매 화면 "권장" 버튼 · 새 제품 첫 값(executeBlend의 firstPriceFactor) · 병입 미리보기 · 생산 경제성 표가 이것만 부른다(한 함수).
+ * 면세 한정판(dutyFreeSuggestedPrice)은 n을 걸지 않는다 — 정책·자동 가격이 건너뛰고 채널·수요 식이 따로다
+ */
+export const defaultPolicyPrice = (base: number, n: number = DEFAULT_POLICY_N): number => Math.max(100, Math.round((base * n) / 100) * 100);
+
 // ── 럭셔리 지수 · 브랜드 방패 ([결정 #235] A, PRD §11.2 ①~③ 최소 구현 · §11.2.1) [튜닝] ──
 /**
  * 제품 럭셔리 L_p(0~100) = 패키징(packaging.ts packagingLuxury 0~30, #248) + 숙성 표기 + 희소성 (라벨 속성은 연구 — 아직 0), 품질 게이트 L_p ≤ 품질.

@@ -8,6 +8,7 @@
 import { AUTO_PRICE_FACTORS, bestAutoPrice, currentSuggested } from './economics';
 import { bottleMargin, priceOptions } from './market';
 import { outboundLogistics } from './sites';
+import { DEFAULT_POLICY_N } from './content/market';
 import type { GameState, Product } from './types';
 
 export type PriceMode = 'turnover' | 'profit' | 'premium';
@@ -35,8 +36,8 @@ export interface PolicyDecision {
 
 /** 손잡이 — 모두 `[튜닝]`(결정 #291: 구조만 확정, 수치는 단계 T) */
 export const PRICE_POLICY = {
-  /** 세 정책 공통 시작 배수 = C 기본 목표(P-PROD-53) */
-  n: 1.3,
+  /** 세 정책 공통 시작 배수 = C 기본 목표(P-PROD-53) — 한 곳(content/market.ts DEFAULT_POLICY_N) */
+  n: DEFAULT_POLICY_N,
   /** B 지평(개월) — 2차 측정에서 3이 가장 고르다(6은 현금 부족에서, 12는 거의 모든 조건에서 무너짐) */
   profitHorizon: 3,
   /** 한 단계(배수) */

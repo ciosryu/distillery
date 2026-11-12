@@ -1,4 +1,5 @@
 import { isWhiskyCategory, whiskyMinMonths } from './blending';
+import { DEFAULT_POLICY_N } from './content/market'; // 기본 정책 배수 n (B1-4)
 import { regionOf } from './content/regions';
 import { AUTO_RESTOCK_MONTHS, autoRestockSupported, bestAutoPrice } from './economics';
 import { CASK_COST_SHARE_PER_FILL, CASK_MARKET, CASKS, EQUIPMENT, RECHAR_COST } from './content/catalog';
@@ -394,7 +395,8 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     return { state: s, message: '재탄화 완료' };
   },
   bottle: (s, prev, a) => {
-    const res = executeBlend(s, a.components, a.options);
+    // 새 제품 첫 값 = 기준가 × 기본 정책 배수 n ([결정 #290] B1-4, MKT 대행) — 옵션이 정했으면 그 값
+    const res = executeBlend(s, a.components, { firstPriceFactor: DEFAULT_POLICY_N, ...a.options });
     if (res.error) return fail(prev, res.error);
     // 기존 제품 재고 보충 (#186) — 몇 병을 더했고 품질이 어떻게 됐는지
     if (a.options.restockId) {
@@ -456,7 +458,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (!target) return fail(prev, '목표가 없습니다');
     const plan = delegatePlan(s, target, a.caskIds, a.bottles, a.options);
     if ('error' in plan) return fail(prev, plan.error);
-    const res = executeBlend(s, plan.components, { ...a.options, targetId: target.source === 'core' ? undefined : target.id, line: target.source === 'core' ? target.id.slice(5) : a.options.line, delegated: true });
+    const res = executeBlend(s, plan.components, { firstPriceFactor: DEFAULT_POLICY_N, ...a.options, targetId: target.source === 'core' ? undefined : target.id, line: target.source === 'core' ? target.id.slice(5) : a.options.line, delegated: true });
     if (res.error) return fail(prev, res.error);
     return { state: s, message: `블렌더에게 맡김 — ${bottleMessage(res.product!, res.reveal)}${plan.unknown ? ` · 샘플 기록이 없는 ${plan.unknown}통은 뺐다` : ''}` };
   },

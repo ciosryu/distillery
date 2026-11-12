@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { DEFAULT_POLICY_N, defaultPolicyPrice } from '../../sim/content/market'; // 기본 정책 가격 (B1-4, MKT 대행)
 import { PackagingPicker } from './PackagingPicker';
 import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './HeritageReveal';
 import { BOTTLE_SIZES, CASKS, PACKAGING } from '../../sim/content/catalog';
@@ -134,7 +135,8 @@ export function Bottling() {
   const stock = (() => {
     if (!preview?.ok || !preview.category || preview.dfEdition) return null;
     const quality = masked ? (est?.quality ?? 50) : (preview.evaluation?.quality ?? 50);
-    const price = masked ? (priceAtQuality(s, preview, opts, quality) ?? preview.suggestedPrice) : preview.suggestedPrice;
+    // 새 제품 첫 값 = 기준가 × 기본 정책 배수 n (B1-4) — 병입하면 이 값으로 나온다
+    const price = defaultPolicyPrice(masked ? (priceAtQuality(s, preview, opts, quality) ?? preview.suggestedPrice) : preview.suggestedPrice);
     const p: Product = {
       id: 'preview', name: '', category: preview.category, ageYears: preview.ageYears, oakMonths: preview.minOakMonths, restMonths: preview.minRestMonths, abv: preview.finalAbv, bottleMl: opts.bottleMl, chillFiltered: opts.chillFilter, packagingId: opts.packagingId,
       flavor: preview.flavor, quality, typicity: preview.evaluation?.typicity ?? 50, style: preview.evaluation?.style ?? null, sourcedShare: preview.sourcedShare,
@@ -336,13 +338,13 @@ export function Bottling() {
                   ? <><dt className="text-stone-500">추정 품질</dt><dd className="text-right tabular-nums">{est?.quality != null ? `${est.quality} ±${num(est.sigma, 1)}` : '모른다'}</dd></>
                   : <><dt className="text-stone-500">품질 / 전형성</dt><dd className="text-right tabular-nums">{preview.evaluation?.quality ?? '—'} / {preview.evaluation?.typicity ?? '—'}</dd></>}
                 <dt className="text-stone-500">병당 원가</dt><dd className="text-right tabular-nums">{won(preview.unitCost)}</dd>
-                <dt className="text-stone-500">{masked ? '예상 출고가' : '권장 출고가'}</dt><dd className="text-right tabular-nums">{masked ? (() => {
+                <dt className="text-stone-500" title={`병입하면 이 값으로 나온다 = 기준가(기대 소비자가에 맞춘 출고가) × ${DEFAULT_POLICY_N}(기본 정책). 면세 한정판은 기준가 그대로`}>{masked ? '예상 첫 출고가' : '첫 출고가'}</dt><dd className="text-right tabular-nums">{masked ? (() => {
                   // 추정 품질 ± 오차로 매긴 범위 (#172) — 참 출고가는 병입하면 정해진다
                   if (est?.quality == null) return '모른다 — 샘플 필요';
                   const lo = priceAtQuality(s, preview, opts, Math.max(0, est.quality - est.sigma));
                   const hi = priceAtQuality(s, preview, opts, Math.min(100, est.quality + est.sigma));
-                  return lo != null && hi != null ? `${won(lo)} ~ ${won(hi)}` : '병입 후 공개';
-                })() : <>{won(preview.suggestedPrice)}{preview.dfEdition ? ' (면세 기준)' : ''}</>}</dd>
+                  return lo != null && hi != null ? `${won(defaultPolicyPrice(lo))} ~ ${won(defaultPolicyPrice(hi))}` : '병입 후 공개';
+                })() : preview.dfEdition ? <>{won(preview.suggestedPrice)} (면세 기준)</> : <>{won(defaultPolicyPrice(preview.suggestedPrice))}<span className="block text-xs text-stone-500">기준가 {won(preview.suggestedPrice)} × {DEFAULT_POLICY_N}(기본 정책)</span></>}</dd>
                 {preview.category && isWhiskyCategory(preview.category) && <><dt className="text-stone-500" title="권장 출고가와 매력도에 같이 곱한다. 3년 = ×1.18, 그 뒤는 원액 시가와 같은 속도로 오른다(18년 상한)">숙성 프리미엄</dt><dd className="text-right tabular-nums">×{agePerception(preview.minOakMonths, preview.category).toFixed(2)}</dd></>}
                 {preview.agedLabel && preview.category && <><dt className="text-stone-500" title="옹기·오크에서 6개월 이상 쉰 증류식 소주·고량주 — 권장 출고가와 매력도에 같이 곱한다. 1년 +0.08, 3년 상한 ×1.24 (#217)">숙성 표기 프리미엄</dt><dd className="text-right tabular-nums">×{agedWhitePerception(preview.category, preview.minOakMonths, preview.minRestMonths).toFixed(2)}</dd></>}
                 {dfForecast && <><dt className="text-stone-500">예상 면세 판매</dt><dd className={`text-right tabular-nums ${dfForecast.window < preview.bottles ? 'text-amber-800 dark:text-amber-300' : ''}`}>월 {num(dfForecast.perMonth)}병 · {DUTY_FREE.sellOutMonths}개월 {num(dfForecast.window)}병</dd></>}
@@ -367,7 +369,8 @@ export function Bottling() {
                   보충 뒤 「{restockTarget.name}」: 재고 {num(restockTarget.stockBottles)} → <b>{num(restockAfter.stock)}병</b> · 품질 {restockTarget.quality} → <b>{restockAfter.quality == null ? '모른다(샘플 필요)' : `${num(restockAfter.quality, 1)}${restockAfter.sigma >= 0.5 ? ` ±${num(restockAfter.sigma, 1)}` : ''}`}</b> (새 병 비중 {pct(restockAfter.w, 0)}) · 출고가 {won(restockTarget.price)} 그대로
                   {(() => {
                     // 출고가는 자동으로 안 바뀐다 — 새 배치가 더 비싸게 팔릴 술이면 알려 준다 (숙성 연수·품질이 오르면 권장가가 오른다)
-                    const sug = masked ? (est?.quality != null ? priceAtQuality(s, preview, opts, est.quality) : null) : preview.suggestedPrice;
+                    const base = masked ? (est?.quality != null ? priceAtQuality(s, preview, opts, est.quality) : null) : preview.suggestedPrice;
+                    const sug = base != null ? defaultPolicyPrice(base) : null; // 기본 정책 가격(B1-4)과 비교
                     return sug != null && sug > restockTarget.price * 1.1
                       ? <span className="block font-medium">새 배치 {masked ? '예상' : '권장'} 출고가 ≈ {won(sug)} — 지금 출고가보다 높다. 보충 뒤 판매 화면에서 값을 올리세요{preview.ageYears != null && restockTarget.ageYears != null && preview.ageYears > restockTarget.ageYears ? ` (숙성 ${restockTarget.ageYears}년 → ${preview.ageYears}년)` : ''}</span>
                       : null;

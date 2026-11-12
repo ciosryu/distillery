@@ -16,7 +16,7 @@ import { mod } from './modifiers';
 import { hexOf, matchScore, mixHex } from './blendRadar';
 import { COMMISSION, findTarget, knownReads, QUALITY_SIGMA_PER_HEX, revealNotes, sampleAxesOf } from './blendTable';
 import { productCountEver } from './lifecycle';
-import { agedWhitePerception } from './content/market';
+import { agedWhitePerception, defaultPolicyPrice } from './content/market';
 import type { AxisId, CaskTypeId, Flavor, GameState, Hex, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
 
 export interface BlendComponent { source: 'cask' | 'lot'; id: string; liters: number }
@@ -33,6 +33,11 @@ export interface BottleOptions {
   restockId?: string;
   /** 패키징 직접 고르기 (#248) — 있으면 packagingId 대신 이 부품 조합으로 원가·럭셔리를 정한다 */
   packaging?: PackagingChoice;
+  /**
+   * 새 제품 첫 값 = 기준가 × 이 배수(100원 단위) — 없으면 기준가 그대로. 행동(병입·맡기기)이 기본 정책 배수 n을 넣는다([결정 #290] B1-4, MKT 대행).
+   * executeBlend는 값을 받기만 한다(PROD 합의 option A). 면세 한정판·재고 보충에는 쓰지 않는다
+   */
+  firstPriceFactor?: number;
 }
 
 /** 배팅 결과 공개 (P6) */
@@ -505,7 +510,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     premiumLabel: p.premiumLabel,
     ...(p.traditional ? { traditional: true } : {}),
     stockBottles: p.bottles,
-    price: p.suggestedPrice,
+    price: p.dfEdition || !opts.firstPriceFactor ? p.suggestedPrice : defaultPolicyPrice(p.suggestedPrice, opts.firstPriceFactor), // B1-4 — 미리보기와 같은 함수
     unitCost: p.unitCost,
     createdMonth: s.month,
     lastMonthSold: 0,

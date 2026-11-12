@@ -1,4 +1,5 @@
 // 병당 손익 (파트 PROD — 플레이테스트 2026-11-07 오너 요청 "내가 만들 술의 원가와 판매가의 임팩트를 알기 쉽게", #173)
+import { defaultPolicyPrice } from './content/market'; // 기본 정책 가격 (B1-4, MKT)
 // 레시피 하나로 만든 술 한 병이 얼마에 만들어지고, 얼마에 팔리고, 얼마가 남고, 한 달에 몇 병 팔리는지.
 // 실제 병입(previewBlend)·판매(demandFor·bottleMargin)와 **같은 식**을 쓴다 — 가상의 탱크 원액을 하나 끼워 넣은 상태 사본에서 계산한다.
 // 위스키는 표준 조건(새 ex-버번 배럴·입지 연평균 기후)으로 숙성을 굴린 **예상**이다 — 실제 캐스크는 샘플로 확인한다. 게임 상태를 바꾸지 않는다.
@@ -94,18 +95,20 @@ export function recipeEconomics(s: GameState, recipe: Recipe): EconomicsRow[] {
     const bottleLPA = (fmt.bottleMl / 1000) * p.finalAbv;
     const spiritCost = lot.costPerLPA * bottleLPA;
     const packCost = Math.max(0, p.unitCost - spiritCost);
-    const distribution = distributionCostPerBottle(p.suggestedPrice, fmt.bottleMl, outboundLogistics(s));
+    // 기본 정책 가격(기준가 × n, B1-4) 기준 — 새 제품 첫 값과 같다. 수요 추정용 임시 제품 값도 같이(이익만 바꾸면 과대평가)
+    const price = defaultPolicyPrice(p.suggestedPrice);
+    const distribution = distributionCostPerBottle(price, fmt.bottleMl, outboundLogistics(s));
     const product: Product = {
       id: '__econ', name: '', category: p.category, ageYears: p.ageYears, oakMonths: p.minOakMonths, abv: p.finalAbv, bottleMl: fmt.bottleMl, chillFiltered: true, packagingId: 'standard',
       flavor: p.flavor, quality: p.evaluation.quality, typicity: p.evaluation.typicity, style: p.evaluation.style, sourcedShare: 0, stockBottles: 1,
-      price: p.suggestedPrice, unitCost: p.unitCost, createdMonth: s.month, lastMonthSold: 0, totalSold: 0, ...(p.traditional ? { traditional: true } : {}),
+      price, unitCost: p.unitCost, createdMonth: s.month, lastMonthSold: 0, totalSold: 0, ...(p.traditional ? { traditional: true } : {}),
     };
     const same = s.commerce.products.filter((x) => x.category === p.category && x.stockBottles > 0 && !x.dutyFreeOnly).length + 1;
     rows.push({
       months, category: p.category, quality: p.evaluation.quality,
       bottlesPerBatch: Math.floor((b.lpa * lpaKept) / bottleLPA),
-      spiritCost: Math.round(spiritCost), packCost: Math.round(packCost), price: p.suggestedPrice, distribution: Math.round(distribution),
-      margin: Math.round(p.suggestedPrice - p.unitCost - distribution),
+      spiritCost: Math.round(spiritCost), packCost: Math.round(packCost), price, distribution: Math.round(distribution),
+      margin: Math.round(price - p.unitCost - distribution),
       demandPerMonth: Math.round(demandFor(s, product, same, calendar(s).monthOfYear).demandBottles),
     });
   }

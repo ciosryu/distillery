@@ -12,7 +12,7 @@ import { caskShort } from './Bottling';
 import { categoryName, consumerPrice, regionOf, traditionalTaxFactor } from '../../sim/content/regions';
 import { agedWhiteLabel, finishLabel, hexOf, HEX_AXES, HEX_LABEL, topNotes, type ProductCategory, type ProfileAxis, bottleMargin, calendar, coverage, demandFor, domesticDemands, DUTY_FREE, dutyFreeDemands, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, expectedPricePerL, priceOptions, productConsumerPrice, retailCapacityCases, suggestedPrice, type GameState, type Product } from '../../sim';
 import { awarenessOf, brandMarketing, brandOf, rebrandCost, secondBrands } from '../../sim/brands';
-import { BRANDS } from '../../sim/content/market';
+import { BRANDS, DEFAULT_POLICY_N, defaultPolicyPrice } from '../../sim/content/market';
 import { isLocked } from '../../sim/scenario';
 import { useGame } from '../../store/game';
 import { num, pct, won, wonFull } from '../format';
@@ -227,8 +227,9 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
             );
           })()}
           {!dfOnly && <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400" title="켜면 매달 판매 직전에 이번 달 이익이 가장 큰 값(권장가의 0.6~2배 중)으로 정한다. 재고가 적으면 올리고 많으면 내린다"><input type="checkbox" className="accent-amber-700" checked={!!p.autoPrice} onChange={(e) => dispatch({ type: 'setAutoPrice', productId: p.id, on: e.target.checked })} /> 자동 최적 가격</label>}
-          {suggested != null && suggested !== p.price && (
-            <button className="mt-0.5 block text-xs text-amber-800 underline decoration-dotted dark:text-amber-300" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: suggested })} title="기준 소비자가 × √(품질/60) × 숙성 인식에 맞춘 출고가">권장 {wonFull(suggested)}</button>
+          {/* "권장" = 기준가 × 기본 정책 배수 n ([결정 #290] B1-4) — 새 제품 첫 값·병입 미리보기와 같은 함수 */}
+          {suggested != null && defaultPolicyPrice(suggested) !== p.price && (
+            <button className="mt-0.5 block text-xs text-amber-800 underline decoration-dotted dark:text-amber-300" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: defaultPolicyPrice(suggested) })} title={`기준가(기준 소비자가 × √(품질/60) × 숙성 인식에 맞춘 출고가) ${wonFull(suggested)} × ${DEFAULT_POLICY_N}(기본 정책)`}>권장 {wonFull(defaultPolicyPrice(suggested))} <span className="no-underline text-stone-500">= 기준가 × {DEFAULT_POLICY_N}(기본 정책)</span></button>
           )}
           {!dfOnly && <SuggestedPriceNote s={s} p={p} suggested={suggested} />}
         </Td>
@@ -479,7 +480,7 @@ function ProductDetail({ p }: { p: Product }) {
                 <Td right className="text-stone-500">{won(o.contribution)}</Td>
                 <Td right className={o === bestRev ? 'text-sky-700 dark:text-sky-400' : ''}>{won(o.lineupRevenue)}</Td>
                 <Td right className={o === best ? 'font-semibold text-emerald-700 dark:text-emerald-400' : ''}>{won(o.lineupContribution)}</Td>
-                <Td>{o.price !== p.price && <Button small variant="ghost" onClick={() => { if (p.autoPrice) dispatch({ type: 'setAutoPrice', productId: p.id, on: false }); dispatch({ type: 'setPrice', productId: p.id, price: o.price }); }}>적용</Button>}{Math.abs(o.price - suggested) < 100 && <span className="ml-1 text-xs text-amber-800 dark:text-amber-300">권장</span>}</Td>
+                <Td>{o.price !== p.price && <Button small variant="ghost" onClick={() => { if (p.autoPrice) dispatch({ type: 'setAutoPrice', productId: p.id, on: false }); dispatch({ type: 'setPrice', productId: p.id, price: o.price }); }}>적용</Button>}{Math.abs(o.price - defaultPolicyPrice(suggested)) < 100 && <span className="ml-1 text-xs text-amber-800 dark:text-amber-300">권장</span>}{Math.abs(o.price - suggested) < 100 && <span className="ml-1 text-xs text-stone-500">기준가</span>}</Td>
               </tr>
             ))}
           </Table>
