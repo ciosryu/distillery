@@ -111,6 +111,7 @@
 | `scripts/balance-sim.ts` | 단계 P 동안 **ARCH**(코어 도구 — 샌드박스 120개월 실험, #277 ②) · MGT 연결 2줄(#270 손잡이) → **MGT** · 단계 T에서 BAL로 넘긴다(§3.3) | 봇 정책을 바꾸면 8입지 DIAG 출력이 바뀐다 — 모든 파트 PR의 출력 비교 기준이라 바꾸는 PR은 그 사실을 본문 첫 줄에 적는다 |
 | `scripts/experiments/mvp-survival.ts` | **ARCH** | 순자산 정의를 게임과 맞추는 안 — 아래 §3.5 P-MGT-31 의견 |
 | `scripts/experiments/t-entry-check.sh`·`t-entry-ui.cjs` | **ARCH** | 단계 T 진입 확인 묶음([t-entry-check.md](t-entry-check.md), 결정 #290 ⑧) — 출력 불변(읽기·실행만) |
+| `scripts/experiments/golden-trace.ts` | **ARCH** | 골든 추적(TECH-04 준비, architecture §10.9 ⑦ G-T) — 읽기만, 출력 불변 |
 | `scripts/experiments/info-leak.ts`·`perf-casks.ts`·`playlog-report.ts`·`playtest-years.ts` | **ARCH** | — |
 
 ### 3.5 코어 대행 사후 검토 기록 (ARCH)
