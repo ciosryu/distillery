@@ -167,12 +167,3 @@ export function agedWhitePerception(category: ProductCategory, oakMonths: number
   if (months < AGED_WHITE.minMonths) return 1;
   return 1 + AGED_WHITE.ratePerYear * Math.min(months / 12, AGED_WHITE.capYears);
 }
-
-/**
- * 자동 가격 A(현금회전)를 켤 때 첫 출고가 되돌리기 (P-MKT-34 (나), PROD 합의) — 값이 아직 첫 출고가(그달 기준가 × n) 그대로면 기준가로.
- * 자동 가격 후보에는 지금 값이 들어가므로(bestAutoPrice), ×n에서 출발하면 그 값에 머무는 경로가 생기고 수출 FOB(= 출고가 × 배수)가 깎였다
- * (P8 X0 −1.65억). 손으로 정한 값, 병입 뒤 기준가가 움직여 첫 값과 다른 값은 두고, 이미 켜져 있으면 아무것도 하지 않는다
- */
-export function resetFirstPriceOnAuto(p: { price: number; autoPrice?: boolean; dutyFreeOnly?: boolean }, base: number) {
-  if (!p.autoPrice && !p.dutyFreeOnly && p.price === defaultPolicyPrice(base)) p.price = base;
-}

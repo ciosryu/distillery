@@ -1,8 +1,8 @@
 // 기본 정책 가격 n ([결정 #290] B1-4) — 한 함수(defaultPolicyPrice)를 병입 첫 값·병입 미리보기·생산 경제성 표·"권장" 버튼이 같이 쓴다(PROD 합의 option A)
 import { describe, expect, it } from 'vitest';
 import { applyAction, previewBatch, previewBlend, type GameState } from './index';
-import { DEFAULT_POLICY_N, defaultPolicyPrice, resetFirstPriceOnAuto } from './content/market';
-import { PRICE_POLICY } from './pricePolicy';
+import { DEFAULT_POLICY_N, defaultPolicyPrice } from './content/market';
+import { PRICE_POLICY, resetFirstPriceOnAuto } from './pricePolicy';
 import { newScenarioGame } from './newScenario';
 import { recipeEconomics, STANDARD_BOTTLE } from './economics';
 
@@ -42,8 +42,8 @@ describe('기본 정책 가격 n (B1-4)', () => {
   });
 });
 
-// P-MKT-34 (나) — 자동 가격 A를 켤 때 첫 출고가(기준가 × n) 그대로면 기준가로 되돌린다. 자동 가격 판은 n이 없던 때와 같은 길을 간다
-describe('자동 가격 A로 켤 때 첫 출고가 되돌리기 (P-MKT-34)', () => {
+// 결정 #304 — 자동 가격 A를 켤 때 첫 출고가(기준가 × n) 그대로면 기준가로 되돌린다. 자동 가격 판은 n이 없던 때와 같은 길을 간다
+describe('자동 가격 A로 켤 때 첫 출고가 되돌리기 (결정 #304)', () => {
   const bottled = (factor?: number) => {
     const s = mvp();
     const { opts } = withLot(s);
