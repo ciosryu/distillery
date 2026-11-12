@@ -72,16 +72,18 @@ export function priceBreakdown(s: GameState, p: Pick<Product, 'price' | 'bottleM
  * 피트 배수 = 1 + peatShare × (w_peat − 1) · 통 배수 = 1 + Σ 통 계열 비중 × (w_통 − 1). 비중을 선형으로 써서 블렌드에 계단이 없다.
  * 기본 레시피(언피트 × ex-버번, 기록 전 제품 = peatShare·caskMix 없음)는 모든 시장 ×1 → 총수요 보존.
  * incense: 이 판에 걸린 인센스 프리미엄 배수(>1이면 미즈나라 가중과 큰 쪽 하나만 — 순수 미즈나라면 max(인센스, w_미즈나라)).
- * 피니시 통: "피니싱은 개월 가중으로"(구조 규칙) — 피니싱한 개월 비중이 제품에 기록될 때까지 피니시 통 몫은 중립(×1)으로 둔다(마지막 통만 보면 3개월 피니시가 통째로 그 통 대접을 받는다)
+ * 피니시 통: "피니싱은 개월 가중으로"(구조 규칙) — 통 구성은 개월 가중 기록(`caskMonthsMix`, PROD #374)을 먼저 읽는다. 피니싱한 원액이 섞였을 때만 기록되고,
+ * 없으면 `caskMix`와 같다. 기록 전에 병입한 피니시 제품(옛 세이브)은 마지막 통만 아니까 피니시 통 몫을 중립(×1)으로 둔다(3개월 피니시가 통째로 그 통 대접을 받지 않게)
  */
-export function styleFit(p: Pick<Product, 'category' | 'peatShare' | 'caskMix' | 'finish'>, key: string, incense = 1): number {
+export function styleFit(p: Pick<Product, 'category' | 'peatShare' | 'caskMix' | 'caskMonthsMix' | 'finish'>, key: string, incense = 1): number {
   if (p.category !== 'whisky') return 1;
   const w = STYLE_WEIGHTS[key];
   if (!w) return 1;
   const peat = 1 + clamp(p.peatShare ?? 0, 0, 1) * (w.peat - 1);
   let cask = 1;
-  for (const c of p.caskMix ?? []) {
-    if (p.finish && c.typeId === p.finish) continue;
+  const months = p.caskMonthsMix;
+  for (const c of months ?? p.caskMix ?? []) {
+    if (!months && p.finish && c.typeId === p.finish) continue;
     let wc = w.casks[c.typeId] ?? 1;
     if (c.typeId === 'mizunara_hogshead' && incense > 1) wc = Math.max(1, wc / incense);
     cask += c.share * (wc - 1);

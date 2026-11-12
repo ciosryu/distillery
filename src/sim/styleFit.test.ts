@@ -48,8 +48,14 @@ describe('f2 향미 방향 항 (결정 #290 B1-9)', () => {
     expect(appeal(withIncense, s) / appeal(plain, s)).toBeCloseTo(1, 10);
   });
 
-  it('피니시 통 몫은 개월 비중이 기록될 때까지 중립', () => {
+  it('피니시는 개월 가중 — caskMonthsMix를 먼저 읽고, 기록 전 피니시 제품은 피니시 통 몫을 중립으로', () => {
+    // 기록 전(옛 세이브): 마지막 통만 아니까 중립
     expect(styleFit(product({ finish: 'oloroso_butt', caskMix: [{ typeId: 'oloroso_butt', share: 1 }] }), 'TW')).toBe(1);
+    // 기록 후: 33개월 버번 + 3개월 셰리 피니시 원액을 버번 원액과 반반 — 라벨이 빠져도(#158) 셰리 몫은 개월 가중 0.042
+    const half = product({ caskMix: [{ typeId: 'oloroso_butt', share: 0.5 }, { typeId: 'ex_bourbon_barrel', share: 0.5 }], caskMonthsMix: [{ typeId: 'ex_bourbon_barrel', share: 0.958 }, { typeId: 'oloroso_butt', share: 0.042 }] });
+    expect(styleFit(half, 'TW')).toBeCloseTo(1 + 0.042 * 0.12, 10);
+    // 기록이 있으면 피니시 라벨이 있어도 개월 가중 그대로(중립 규칙은 기록 전 제품만)
+    expect(styleFit({ ...half, finish: 'oloroso_butt' }, 'TW')).toBeCloseTo(1 + 0.042 * 0.12, 10);
   });
 
   it('매력도: 국내는 지역 key, 세 번째 인자로 수출 시장 key — 기본 레시피는 어느 key로도 같다', () => {
