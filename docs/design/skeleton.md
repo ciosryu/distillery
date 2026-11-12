@@ -110,6 +110,7 @@
 | `scripts/experiments/mvp-human.ts` | 공통 틀(정책 타입·`bottle`·`bottleAs`·`fill`·`finance`·`play` 루프·표 출력) + P3~P7 묶음 → **ARCH** · **P8 묶음**(`P8_POLICIES`·`DV_POLICIES`·`AUTORESTOCK`·`METRICS`·`YEARLY`·`applyTierKnobs`·`mgtPolicy`, #265 판정용 봇) → **MGT** · 손 가격 정책(`price`·`markup`, MKT-B에서 옮김) → **MKT**(검토), 구현 위치는 공통 틀 | ① 자기 구역만 고친다 ② **공통 틀을 고치면 P8 출력이 바뀔 수 있다** — PR에 `P8=1 ONLY=X0 npx tsx scripts/experiments/mvp-human.ts 10 180` 전후 비교를 붙이고 MGT 검토를 받는다 ③ P8은 화면 모듈 `src/ui/alerts.ts`의 `cashAlert`를 읽는다(대출 정책 `cheap`·`banner`) — **`alerts.ts`의 런웨이·경보 식을 바꾸는 PR(코어 UI, ARCH)도 ②를 따른다** ④ 판정(#265·#277·#278)이 걸린 P8 기본값을 바꾸는 것은 MGT PR + PM 기록 |
 | `scripts/balance-sim.ts` | 단계 P 동안 **ARCH**(코어 도구 — 샌드박스 120개월 실험, #277 ②) · MGT 연결 2줄(#270 손잡이) → **MGT** · 단계 T에서 BAL로 넘긴다(§3.3) | 봇 정책을 바꾸면 8입지 DIAG 출력이 바뀐다 — 모든 파트 PR의 출력 비교 기준이라 바꾸는 PR은 그 사실을 본문 첫 줄에 적는다 |
 | `scripts/experiments/mvp-survival.ts` | **ARCH** | 순자산 정의를 게임과 맞추는 안 — 아래 §3.5 P-MGT-31 의견 |
+| `scripts/experiments/t-entry-check.sh`·`t-entry-ui.cjs` | **ARCH** | 단계 T 진입 확인 묶음([t-entry-check.md](t-entry-check.md), 결정 #290 ⑧) — 출력 불변(읽기·실행만) |
 | `scripts/experiments/info-leak.ts`·`perf-casks.ts`·`playlog-report.ts`·`playtest-years.ts` | **ARCH** | — |
 
 ### 3.5 코어 대행 사후 검토 기록 (ARCH)
