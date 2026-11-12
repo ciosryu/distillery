@@ -362,7 +362,6 @@ export function whiskySkipCheck(s: GameState): { cash: number; threshold: number
 
 export function runProduction(s: GameState, report: MonthReport, ctx: TickContext): { runsUsed: number; mashKg: number } {
   const { monthOfYear, fermentC: fermC } = ctx;
-  const prodRng = rngFor(s.seed, s.month, 'production');
   const distillers = staffOf(s, 'distiller');
   let distillerRuns = distillers.reduce((t, d) => t + distillerRunCapacity(d.stats.b), 0);
   const lead = bestBy(distillers, 'b');
@@ -468,7 +467,8 @@ export function runProduction(s: GameState, report: MonthReport, ctx: TickContex
       stillRuns.set(stillInst.id, (stillRuns.get(stillInst.id) ?? 0) - recipe.runs);
       distillerRuns -= recipe.runs;
       runsUsed += recipe.runs;
-      const res = simulateBatch(recipe, still, ferm?.type ?? null, lead, prices, stillInst.feintsLPA ?? 0, { tempC: fermC, rng: prodRng, regionId: s.regionId, water: site.water, freight: siteFreight(s, 'ingredients'), energyFactor });
+      // 배치 단위 난수 (#290 B1-8 S2) — 레시피 × 그 달 배치 번호. 생산 지시 순서가 바뀌어도 각 레시피의 산출 잡음이 같다
+      const res = simulateBatch(recipe, still, ferm?.type ?? null, lead, prices, stillInst.feintsLPA ?? 0, { tempC: fermC, rng: rngFor(s.seed, s.month, `ferment:${recipe.id}:${b}`), regionId: s.regionId, water: site.water, freight: siteFreight(s, 'ingredients'), energyFactor });
       stillInst.feintsLPA = res.feintsOutLPA;
       s.finance.cash -= res.cost;
       for (const [id, kg] of Object.entries(res.ingredientsKg)) boughtKg[id] = (boughtKg[id] ?? 0) + kg;

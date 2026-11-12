@@ -235,6 +235,11 @@ export interface Product {
   price: number;
   /** 자동 최적 가격 (#200) — 켜 두면 매달 판매 직전에 이번 달 이익이 가장 큰 값으로 바뀐다(economics.applyAutoPrices). 옛 세이브에는 없다 = 끔 */
   autoPrice?: boolean;
+  /**
+   * 자동 가격 정책 ([결정 #291], architecture §10.9) — `autoPrice`가 켜져 있을 때만 쓴다. 없으면 A(현금회전 = #200)로 읽는다(옛 세이브).
+   * 끄면(`autoPrice` 지움) 남겨 둔다 — 다시 켜면 마지막 정책. 배수는 모두 그달 기준가(`currentSuggested`) 대비. 정책 함수는 MKT pricePolicy.ts
+   */
+  pricePolicy?: PricePolicy;
   /** 자동 납품 (#206) — 몇 개월분 재고를 유지할지(1·2·3·6). 켜 두면 매달 판매 직전에 모자란 만큼 원액을 골라 재고 보충(economics.applyAutoRestock). 없으면 끔 */
   autoRestock?: number;
   /** 자동 납품이 쓸 통의 최소 숙성(개월, #267) — 없으면 제품 표기 연수. 표기보다 낮추면 보충할 때 표기도 그만큼 내려갈 수 있다 */
@@ -357,6 +362,19 @@ export type CashFlowKey =
 /** 항목별 현금 흐름. 부호: 입금 +, 출금 − */
 export type CashFlows = Partial<Record<CashFlowKey, number>>;
 
+/** 자동 가격 정책 그릇 ([결정 #291]) — A 현금회전(#200) · B 이익(다기간) · C 가격 유지(목표 배수). MKT `PolicySpec`과 같은 모양 */
+export interface PricePolicy {
+  mode: 'turnover' | 'profit' | 'premium';
+  /** C의 목표 배수(없으면 n = 1.3) */
+  target?: number;
+  /** 플레이어가 정한 범위(배수, 엣지 ⑦) — 없으면 MKT 기본 [0.6, 2](A는 범위 없이 #200 그대로) */
+  min?: number;
+  max?: number;
+  /** 정책이 마지막으로 정한 배수 — B·C 가드 기준(재고 보충으로 값이 돌아간 달에도 같은 뜻) */
+  lastFactor?: number;
+}
+export interface PriceLogEntry { productId: string; mode: PricePolicy['mode']; from: number; to: number; why: string }
+
 export interface MonthReport {
   month: number;
   /** 제품(병입) 매출 */
@@ -389,6 +407,8 @@ export interface MonthReport {
   whiskySkipped?: { cash: number; threshold: number };
   /** 이 결산 뒤(다음 달 화면 기준)의 12년 플래그십 후보 통 수 (#261, 시나리오 판만) — 줄어든 달을 소식 창에 알린다. 기록만 */
   flagshipCandidates?: number;
+  /** 자동 가격 사유 ([결정 #291] — 값이 바뀐 제품마다 한 줄). 없으면 바뀐 값이 없다. 기록만 */
+  priceLog?: PriceLogEntry[];
   angelsShareL: number;
   liquorTaxRemitted: number;
   /** 이번 달 발생한 이벤트 제목 */
@@ -698,6 +718,11 @@ export interface InventorySlice {
   rotatedThisMonth: number;
   /** 이번 달 샘플링 횟수 — 블렌더 여력 (결정 #124) */
   samplesThisMonth: number;
+  /**
+   * 즉시 통 구매(buySpotCasks)를 이 달 몇 번 했는가 — 구매 난수 키 `spot:<달>:<n번째>` (#290 B1-8 S1). 다른 달 값이면 0으로 읽는다(리셋 불필요).
+   * 없으면 이 달 구매 0번. 선택 필드라 스키마 v15 그대로(#187)
+   */
+  spotBuys?: { month: number; n: number };
   /** 자동 샘플 설정 (#207) — 없으면 기본값(켬, 모든 원액, 나이·간격 제한 없음, 여력만큼) */
   autoSample?: AutoSampleSettings;
   /** 자동 통입 설정 (#239) — 없으면 끔 */

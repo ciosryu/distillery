@@ -16,7 +16,7 @@ import { mod } from './modifiers';
 import { packagingAppealFactor } from './packaging';
 import type { ExportEntry, ExportSale, GameState, MonthReport, Product, ProductCategory } from './types';
 import { EXPORT_MARKETS, EXPORT_SALES, tariffKey, type ExportMarketDef } from './content/exports';
-import type { Rng } from './rng';
+import { rngFor, type Rng } from './rng';
 
 // 수요 공식 (PRD §9.2) — 수치 [튜닝]
 
@@ -368,7 +368,14 @@ export function bottleMargin(p: Pick<Product, 'price' | 'unitCost' | 'bottleMl'>
   return { perBottle, rate: p.price > 0 ? perBottle / p.price : 0 };
 }
 
-export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results: SalesResult[]; retail: RetailSummary; exports: ExportSale[] } {
+/**
+ * 판매 수요 잡음(±10%)은 제품 단위 스트림에서 뽑는다 — S5(결정 #290 ⑤, architecture §10.8 ②): 국내 `sales:<제품>`, 수출 `sales:<제품>:<시장>`,
+ * 면세 `sales:<제품>:df`. 공유 스트림이던 때는 제품 하나를 더하거나 배열 순서가 바뀌면 다른 제품의 잡음까지 바뀌었다.
+ * `_rng`는 옛 호출 모양을 지키려 남긴 자리다(판매는 더 쓰지 않는다)
+ */
+const salesNoise = (s: GameState, stream: string) => rngFor(s.seed, s.month, `sales:${stream}`).range(0.9, 1.1);
+
+export function runSales(s: GameState, _rng: Rng, monthOfYear: number): { results: SalesResult[]; retail: RetailSummary; exports: ExportSale[] } {
   // 1) 제품별 수요 — 같은 카테고리 제품끼리 채널별로 나눈다 (#154). 판매 전 재고 기준으로 한 번에 계산
   const domestic = domesticDemands(s, monthOfYear);
   const dutyFree = dutyFreeDemands(s, monthOfYear);
@@ -377,7 +384,7 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
   const wants: { p: Product; demand: number; want: number }[] = [];
   for (const p of s.commerce.products) {
     if (p.stockBottles <= 0) { p.lastMonthSold = 0; p.salesEma = (p.salesEma ?? 0) * 0.7; continue; }
-    const demand = Math.round(domestic.get(p.id)!.demandBottles * rng.range(0.9, 1.1));
+    const demand = Math.round(domestic.get(p.id)!.demandBottles * salesNoise(s, p.id));
     wants.push({ p, demand, want: Math.min(p.stockBottles, demand) });
   }
   // 1-b) 수출 수요 (#95·#109): 재고가 모자라면 병당 순수입이 높은 판로부터 채운다(EXPORT_SALES.allocation, 같으면 국내 먼저).
@@ -385,7 +392,7 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
   //      수출가를 올리면(#108) 수출이 먼저 채워진다. 수출은 수입상이 받아 가므로 소매 처리 역량을 쓰지 않는다
   const exportWants = new Map<string, { entry: ExportEntry; demand: number; want: number }[]>();
   for (const w of wants) {
-    const list = active.map((entry) => ({ entry, demand: Math.round((exportD.get(entry)!.get(w.p.id) ?? 0) * rng.range(0.9, 1.1)), want: 0 })).filter((x) => x.demand > 0);
+    const list = active.map((entry) => ({ entry, demand: Math.round((exportD.get(entry)!.get(w.p.id) ?? 0) * salesNoise(s, `${w.p.id}:${entry.marketId}`)), want: 0 })).filter((x) => x.demand > 0);
     if (!list.length) continue;
     exportWants.set(w.p.id, list);
     if (EXPORT_SALES.allocation === 'margin') {
@@ -408,7 +415,8 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
   const cap = retailCapacityCases(s);
   const cases = (bottles: number, ml: number) => (bottles * ml) / 9000;
   const marginPerCase = (p: Product) => (bottleMargin(p).perBottle * 9000) / p.bottleMl;
-  const order = [...wants].sort((a, b) => marginPerCase(b.p) - marginPerCase(a.p));
+  // 케이스당 공헌이 같으면 제품 id 순 — 배열 순서가 역량 배분을 바꾸지 않게(S5와 같은 취지)
+  const order = [...wants].sort((a, b) => marginPerCase(b.p) - marginPerCase(a.p) || (a.p.id < b.p.id ? -1 : a.p.id > b.p.id ? 1 : 0));
   let normalLeft = cap;
   let overflowLeft = cap * RETAIL.overflowShare;
   const alloc = new Map<string, { sold: number; over: number }>();
@@ -438,7 +446,7 @@ export function runSales(s: GameState, rng: Rng, monthOfYear: number): { results
   if (siteOf(s).dutyFree) {
     for (const p of s.commerce.products) {
       if (p.stockBottles <= 0) { p.lastMonthDutyFree = 0; continue; }
-      const df = Math.min(p.stockBottles, Math.round((dutyFree.get(p.id) ?? 0) * rng.range(0.9, 1.1)));
+      const df = Math.min(p.stockBottles, Math.round((dutyFree.get(p.id) ?? 0) * salesNoise(s, `${p.id}:df`)));
       p.lastMonthDutyFree = df;
       if (df <= 0) continue;
       p.stockBottles -= df;
