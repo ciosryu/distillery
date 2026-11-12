@@ -219,7 +219,7 @@ function demandWithSplit(s: GameState, p: Product, split: number, monthOfYear: n
   // 면세 전용 한정판은 국내 매대에 없다 (결정 #87). 입지 수요 배수(관광·인바운드, 결정 #86)
   if (p.dutyFreeOnly) return { marketL: 0, reach: 0, split, appeal: appeal(p, s), consumerPricePerL: 0, refPricePerL: refPricePerL(region, p.category, p.abv), priceFactor: 0, demandBottles: 0 };
   const marketL = (m.baseCases * 9 / 12) * region.seasonality[monthOfYear - 1]! * (s.world.trend[p.category] ?? 1) * mod(s, `demand:${p.category}`) * mod(s, 'demand:all') * (siteOf(s).demandFactor ?? 1) * (1 - rivalShare(s, p.category)); // 경쟁 AI 몫 (S-12 훅 — 경쟁사가 없으면 0)
-  const reach = awarenessOf(s, p) * coverage(s) * m.shareCap;
+  const reach = awarenessOf(s, p) * coverage(s) * m.shareCap * SKU.domesticShareCap; // 국내 점유 상한 × B1-6 배수
   const a = appeal(p, s);
   const bottleL = p.bottleMl / 1000;
   const consumerPricePerL = productConsumerPrice(s, p, region) / bottleL;
