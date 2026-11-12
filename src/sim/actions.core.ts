@@ -1,7 +1,8 @@
 import { fail, type CashKeys, type Handlers } from './actionKit';
 import { FLAGSHIP_RESERVE_TAG, planTag, reserveCaskIds, TAG_COLORS, TAG_LABEL_MAX, TAG_MAX } from './tags';
-import type { TagColor, TagEffect } from './types';
-import { nid } from './util';
+import { DEFAULT_POLICY_FACTOR, isPolicyAvailable, policyError, PRICE_MODE_LABEL, runPricePolicies } from './pricePolicy';
+import type { PriceMode, PricePolicy, TagColor, TagEffect } from './types';
+import { calendar, nid } from './util';
 
 // 플레이어 행동 — 코어(ARCH): 캐스크 태그 (#249 QoL ①, #260 플래그십 예비). 결정 #144의 처리기 표 구조를 따른다.
 // 태그는 표시와 규칙 효과의 표지일 뿐 돈·원액을 움직이지 않는다 — 현금 분류 없음
@@ -14,13 +15,43 @@ export type CoreAction =
   /** 태그 이름·색·효과 바꾸기 (effect: null = 표시만) */
   | { type: 'editTag'; tagId: string; label?: string; color?: TagColor; effect?: TagEffect | null }
   /** 태그 지우기 — 모든 원액에서 함께 빠진다 */
-  | { type: 'deleteTag'; tagId: string };
+  | { type: 'deleteTag'; tagId: string }
+  /**
+   * 자동 가격 정책 ([결정 #291], architecture §10.9 ②) — productId 'all'이면 국내 판매 제품 전부(면세 한정판 제외).
+   * mode null = 끔(지금 값 유지, 정책은 남긴다). 고르면 바로 한 번 정한다(옛 setAutoPrice와 같다)
+   */
+  | { type: 'setPricePolicy'; productId: string | 'all'; mode: PriceMode | null; target?: number; min?: number; max?: number };
 
-export const CORE_CASH_KEY: CashKeys<CoreAction> = { tagCasks: null, defineTag: null, editTag: null, deleteTag: null };
+export const CORE_CASH_KEY: CashKeys<CoreAction> = { tagCasks: null, defineTag: null, editTag: null, deleteTag: null, setPricePolicy: null };
 
 const cleanLabel = (label: string) => label.trim().slice(0, TAG_LABEL_MAX);
 
 export const CORE_HANDLERS: Handlers<CoreAction> = {
+  setPricePolicy: (s, prev, a) => {
+    const all = a.productId === 'all';
+    const targets = all ? s.commerce.products.filter((p) => !p.dutyFreeOnly) : s.commerce.products.filter((p) => p.id === a.productId);
+    if (!targets.length) return fail(prev, all ? '자동 가격을 걸 제품이 없습니다' : '제품이 없습니다');
+    if (!all && targets[0]!.dutyFreeOnly) return fail(prev, '면세 한정판은 자동 가격을 쓸 수 없습니다');
+    if (a.mode === null) {
+      for (const p of targets) delete p.autoPrice;
+      return { state: s, message: `${all ? `제품 ${targets.length}개` : targets[0]!.name} 자동 가격 끔 — 지금 값 유지` };
+    }
+    if (!isPolicyAvailable(a.mode)) return fail(prev, `${PRICE_MODE_LABEL[a.mode]} 정책은 아직 없습니다`);
+    for (const p of targets) {
+      const q: PricePolicy = { ...(p.pricePolicy ?? {}), mode: a.mode };
+      if (a.min !== undefined) q.min = a.min;
+      if (a.max !== undefined) q.max = a.max;
+      if (a.target !== undefined) q.target = a.target;
+      else if (a.mode === 'premium' && q.target == null) q.target = DEFAULT_POLICY_FACTOR;
+      const err = policyError(q);
+      if (err) return fail(prev, `${p.name}: ${err}`);
+      p.autoPrice = true;
+      p.pricePolicy = q;
+    }
+    runPricePolicies(s, null, calendar(s).monthOfYear, new Set(targets.map((p) => p.id)));
+    const skipped = all ? s.commerce.products.length - targets.length : 0;
+    return { state: s, message: `${all ? `제품 ${targets.length}개` : targets[0]!.name} 자동 가격 — ${PRICE_MODE_LABEL[a.mode]}${skipped ? ` (면세 한정판 ${skipped}개 제외)` : ''}` };
+  },
   tagCasks: (s, prev, a) => {
     const plan = planTag(prev, a.caskIds, { add: a.add, remove: a.remove });
     if (plan.error) return fail(prev, plan.error);

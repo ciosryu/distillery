@@ -596,6 +596,14 @@ interface GameState {
 - `lastFactor`(정책이 마지막으로 정한 배수)는 **가드 기준**이다 — MKT `0a182d1`의 교훈: 재고 보충으로 값이 기준가 ×1로 돌아간 달에 "지금 값 ÷ 기준가"를 기준으로 삼으면 B′가 ×1.0~1.2에 묶였다. 새 상태지만 정책의 일부(사유 기록에도 쓴다)라 "가격 기억"(PM ⑦이 막은 수요 쪽 새 상태)과 다르다
 - C의 `target` 기본 = n(×1.3, P-PROD-53). 세 정책 모두 켜는 순간의 시작 배수는 n — 프리셋으로 읽히지 않게
 
+**구현 — 그릇 (④, 2026-11-12, [결정 #291])** — `src/sim/pricePolicy.ts`(코어). 정책 함수 B·C는 MKT가 `registerPricePolicy`로 등록한다
+- 상태: `Product.pricePolicy?: { mode; target?; min?; max?; lastFactor? }` · `MonthReport.priceLog?: { productId, mode, from, to, why }[]`(값이 바뀐 제품만). 버전 올림 없음
+- 실행: 틱 5단계 `runPricePolicies` — 공유 스냅샷(S6)으로 모든 결정을 먼저 구하고 → 범위 가드(⑦, 정책에 min·max가 있을 때만 — 없으면 #200 그대로) → 한꺼번에 적용 → `lastFactor` 기록(정책 그릇이 있을 때만) → 사유
+- **정책 함수 계약(MKT):** `(snap, p, monthOfYear) => { price, why } | null` — `snap`은 판매 전 상태(바꾸지 않는다), 값은 100원 단위, 정책 고유 가드(병당 공헌 > 0·한 단계)는 함수 안에서, 지난 배수는 `p.pricePolicy.lastFactor`. 등록 전에는 `setPricePolicy`가 그 정책을 거절한다
+- 옛 판(`autoPrice`만): A로 읽고 상태에 새 값을 쓰지 않는다(사유 기록만) — 출력 바이트 동일(아래 PR 검사) · 옛 `setAutoPrice on`은 정책을 A로 되돌린다
+- 불러오기(⑧): `repairSave`가 범위 밖 배수를 한계(0.6~2)로 자른다(메모), 알 수 없는 `mode`는 지우지 않고 A로 처리 + 사유
+- 화면(정책 선택·모두에 적용·사유 표시)은 MKT `Sales.tsx` 몫 — 이 그릇의 명령·사유를 쓴다
+
 **② 명령** — `setPricePolicy { productId: string | 'all'; mode: 'turnover' | 'profit' | 'premium' | null; target?: number }`
 - `null` = 끔(지금 `setAutoPrice on:false`와 같음 — 지금 값 유지). `'all'` = **모두에 적용**(국내 판매 제품 전부, 면세 한정판 제외 — 이유와 함께 `BulkPlan` 모양으로 빠진 제품을 보인다, §10.1 공통 plan)
 - 옛 `setAutoPrice { on: true }`는 **남긴다** → `mode: 'turnover'`로 처리(플레이 기록 재생·봇 호환). 새 화면은 쓰지 않는다
