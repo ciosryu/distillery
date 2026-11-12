@@ -31,7 +31,8 @@ if (PRICE) {
   const patch = (from: string | RegExp, to: string) => { const before = src; src = src.replace(from, to); if (src === before) throw new Error(`prod-hold-p8 PRICE: P8에서 끼울 자리를 못 찾았다 — ${String(from).slice(0, 60)}`); };
   const longPol = "{ ...p, ...(p as { longPrice?: object }).longPrice, autoPrice: false }";
   // ① 병입 직후 — 자동 가격을 끈 정책은 MKT 처리, longPrice 정책은 장기 계열 자동 가격을 끄고 장기 계열만 MKT 처리
-  patch(/(\n  if \(p\.autoPrice\) for \(const x of s\.commerce\.products[^\n]*\n)/, `$1  else s = __mkt.afterBottle(s, p as never, opts);
+  //   (#337부터 P8 줄이 `else if (p.autoPrice)`라 `(?:else )?`로 둘 다 받는다 — MGT 지적 2026-11-12)
+  patch(/(\n  (?:else )?if \(p\.autoPrice\) for \(const x of s\.commerce\.products[^\n]*\n)/, `$1  else s = __mkt.afterBottle(s, p as never, opts);
   if ((p as { longPrice?: object }).longPrice) {
     for (const x of s.commerce.products.filter((y) => y.name.startsWith('${LONG_LINE_NAME}') && y.autoPrice)) s = act(s, { type: 'setAutoPrice', productId: x.id, on: false });
     if (opts.name.startsWith('${LONG_LINE_NAME}')) s = __mkt.afterBottle(s, ${longPol} as never, opts);
