@@ -141,7 +141,7 @@ function finance(s: GameState, t: Track): GameState {
   return s;
 }
 
-interface Row { verdict: string; goal: boolean; plan: string; seed: number; bankrupt: boolean; bankruptMonth: number; minCash: number; minCashMonth: number; firstWhisky: number; flagship: boolean; netWorth: number; spotSoldL: number; sojuShare3y: number; capBlocked: number; loansMax: number ; outcome?: RunOutcome }
+interface Row { verdict: string; goal: boolean; plan: string; seed: number; bankrupt: boolean; bankruptMonth: number; minCash: number; minCashMonth: number; firstWhisky: number; flagship: boolean; netWorth: number; spotSoldL: number; sojuShare3y: number; capBlocked: number; loansMax: number; outcome?: RunOutcome }
 
 function netWorth(s: GameState): number {
   const stock = [...s.inventory.lots, ...s.inventory.casks.flatMap((c) => (c.contents ? [c.contents] : []))].reduce((t, l) => t + l.volumeL * l.abv * bulkValuePerLPA(s, l) * 0.85, 0);
@@ -233,6 +233,8 @@ if (process.env.METRICS === '1') {
     const os = rs.map((r) => r.outcome!);
     const m = summarize(os);
     const aliveOld = rs.filter((r) => !r.bankrupt).map((r) => r.netWorth), aliveNew = os.filter((o) => o.survived).map((o) => o.netWorth);
-    console.log(`| ${p.name} | ${rs.filter((r) => r.goal).length}/${rs.length} · ${Math.round(m.goal * rs.length)}/${rs.length} | ${eok(avg(aliveOld))} · ${eok(avg(aliveNew))} | ${m.grades.S}/${m.grades.A}/${m.grades.B}/${m.grades.C}/${m.grades.F} | ${eok(m.nwP10)} · ${eok(m.nwCVaR20)} | ${pc(m.survival)} 생존 |`);
+    // 시나리오 기간(MVP_KR.goal.months = 180)보다 짧게 돌리면 끝나지 않은 판도 등급이 매겨져 모두 C로 보인다(ARCH #337 검토) → 등급 대신 "판 중간"
+    const grades = MONTHS < MVP_KR.goal.months ? `— (판 중간 ${MONTHS}/${MVP_KR.goal.months}개월)` : `${m.grades.S}/${m.grades.A}/${m.grades.B}/${m.grades.C}/${m.grades.F}`;
+    console.log(`| ${p.name} | ${rs.filter((r) => r.goal).length}/${rs.length} · ${Math.round(m.goal * rs.length)}/${rs.length} | ${eok(avg(aliveOld))} · ${eok(avg(aliveNew))} | ${grades} | ${eok(m.nwP10)} · ${eok(m.nwCVaR20)} | ${pc(m.survival)} 생존 |`);
   }
 }

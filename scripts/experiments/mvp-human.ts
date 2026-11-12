@@ -663,6 +663,19 @@ for (const p of RUN) {
   console.log(`| ${p.name} | ${b3.length}/${SEEDS} (${mo(med(b3.map((r) => r.bankrupt3)))}) | ${b6.length}/${SEEDS} (${mo(med(b6.map((r) => r.bankrupt6)))}) | ${eok(med(rows.map((r) => r.minCash)))} (${mo(med(rows.map((r) => r.minCashMonth)))}) | ${eok(avg(rows.map((r) => r.loansMax)))} | ${mo(med(rows.map((r) => r.firstWhisky).filter((x) => x >= 0)))} | ${Math.round(avg(rows.map((r) => r.whiskyY6to9))).toLocaleString()} | ${eok(avg(alive3.map((r) => r.nw)))} | ${rows.filter((r) => r.goal).length}/${SEEDS} |${rows.some((r) => r.cutMonth >= 0) ? ` 생산 중단 ${mo(med(rows.map((r) => r.cutMonth).filter((x) => x >= 0)))}` : ''}`);
 }
 
+// PERSEED=1: 시드별 판 끝 순자산(게임 netWorth, 파산 판은 파산한 달)과 사람 판 한 점의 백분위 — B1-MGT-1 재보정에서 사람 판(후반 확인 판 21.14억, 166개월)을 봇 분포 안에 놓을 때 쓴다
+// HUMAN_NW(억)를 주면 "봇 판 중 그 값보다 낮은 비율"을 적는다. 기본 출력에는 영향 없음
+if (process.env.PERSEED === '1') {
+  const human = process.env.HUMAN_NW ? Number(process.env.HUMAN_NW) * 1e8 : NaN;
+  console.log('\n| 정책 | 시드별 판 끝 순자산(시드 1~N) | 최소 · 최대 | 사람 판의 백분위 |');
+  console.log('|---|---|---|---|');
+  for (const p of RUN) {
+    const nws = (ALL.get(p.name) ?? []).map((r) => r.outcome.netWorth);
+    const below = nws.filter((x) => x < human).length;
+    console.log(`| ${p.name} | ${nws.map((x) => (x / 1e8).toFixed(2)).join(' · ')} | ${eok(Math.min(...nws))} · ${eok(Math.max(...nws))} | ${Number.isFinite(human) ? `${(human / 1e8).toFixed(2)}억 → ${below}/${nws.length} 판보다 위` : '—'} |`);
+  }
+}
+
 if (process.env.P7 || process.env.P8) {
   // 플래그십 후보 = 판이 끝나기 전 144개월을 채울 수 있는 자체 원액 통(#240, isFlagshipCandidate). 끝에 144개월 이상 통이 1개라도 있어야 플래그십을 낼 수 있다
   console.log('\n| 정책 | 후보 36개월 | 72개월 | 108개월 | 144개월 | 끝에 144개월 이상 통(평균) | 플래그십 가능 판 | 15년 순자산 평균 |');
@@ -677,13 +690,15 @@ if (process.env.P7 || process.env.P8) {
 if (METRICS) {
   // 판정 지표 (MGT-D, REQ-MGT-4) — 순자산 통계는 파산 판도 넣는다(파산한 달의 순자산)
   const pct = (x: number) => `${Math.round(x * 100)}%`;
+  // 시나리오 기간(180개월)보다 짧게 돌리면 끝나지 않은 판도 등급이 매겨져 모두 C로 보인다(ARCH #337 검토 — mvp-survival과 같게) → 등급 칸은 "판 중간"
+  const gradeCols = (m: ReturnType<typeof summarize>) => (MONTHS < 180 ? `— (판 중간 ${MONTHS}/180개월) | —` : `${m.grades.S}/${m.grades.A}/${m.grades.B}/${m.grades.C}/${m.grades.F} | ${pct(m.bPlus)} · ${pct(m.aPlus)} · ${pct(m.sRate)}`);
   console.log('\n| 정책 | 생존 | 순자산 목표 달성 (95% CI) | 플래그십 판매 (품질 중앙) | 등급 S/A/B/C/F | B↑ · A↑ · S | 순자산 평균(전 판) · 중앙 · P10 · 하위 20% 평균 | 생존 판 평균 | 목표 | 인지도 중앙 |');
   console.log('|---|---|---|---|---|---|---|---|---|---|');
   for (const p of RUN) {
     const os = (ALL.get(p.name) ?? []).map((r) => r.outcome);
     const m = summarize(os);
     const fq = os.filter((o) => o.flagshipQuality != null).map((o) => o.flagshipQuality!);
-    console.log(`| ${p.name} | ${pct(m.survival)} | ${pct(m.goal)} (${pct(m.goalCI[0])}~${pct(m.goalCI[1])}) | ${pct(m.flagship)}${fq.length ? ` (${Math.round(med(fq))})` : ''} | ${m.grades.S}/${m.grades.A}/${m.grades.B}/${m.grades.C}/${m.grades.F} | ${pct(m.bPlus)} · ${pct(m.aPlus)} · ${pct(m.sRate)} | ${eok(m.nwMean)} · ${eok(m.nwMedian)} · ${eok(m.nwP10)} · ${eok(m.nwCVaR20)} | ${eok(m.nwAliveMean)} | ${eok(m.target)} | ${med(os.map((o) => o.awareness)).toFixed(3)} |`);
+    console.log(`| ${p.name} | ${pct(m.survival)} | ${pct(m.goal)} (${pct(m.goalCI[0])}~${pct(m.goalCI[1])}) | ${pct(m.flagship)}${fq.length ? ` (${Math.round(med(fq))})` : ''} | ${gradeCols(m)} | ${eok(m.nwMean)} · ${eok(m.nwMedian)} · ${eok(m.nwP10)} · ${eok(m.nwCVaR20)} | ${eok(m.nwAliveMean)} | ${eok(m.target)} | ${med(os.map((o) => o.awareness)).toFixed(3)} |`);
   }
   // 달마다 지표 (BALANCE-SPEC §9-4): 월 영업 현금흐름 · 흑자 전환 달(12개월 이동 합 ≥ 0) · 현금 부족 최대 연속 개월 · 12년↑ 통·병
   console.log('\n| 정책 | 월 영업 현금흐름 최저(중앙) · 평균(평균) | 영업 흑자 전환 달(중앙) | 현금 < 0 최대 연속 개월(최대) | 12년↑ 통 144 · 168 · 180개월(평균) | 12년↑ 병입 · 판매 병(평균) |');
