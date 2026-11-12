@@ -91,3 +91,51 @@ describe('수리 멱등성 (INV-ARCH-1 (c))', () => {
     expect(checkInvariants(once.state).errors).toEqual([]);
   });
 });
+
+describe('수리 두 줄 ([결정 #295]) — 이득이 생기지 않는 쪽으로', () => {
+  const P = { id: 'P', name: 'p', category: 'soju_distilled', ageYears: null, oakMonths: 0, abv: 0.25, bottleMl: 375, chillFiltered: true, packagingId: 'standard', flavor: {}, quality: 50, typicity: 50, style: null, sourcedShare: 0, stockBottles: 0, price: 10000, unitCost: 3000, createdMonth: 0, lastMonthSold: 0, totalSold: 0 };
+  const start = () => advanceMonth(advanceMonth(newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 4 })));
+
+  it('현금 = 마지막 결산 현금 + 그 뒤 턴 사이 행동 — 결산 뒤 통을 산 돈이 되살아나지 않는다', async () => {
+    const { migrateSaveReport } = await import('./migrate');
+    let s = start();
+    s = act(s, { type: 'buySpotCasks', caskType: 'ex_bourbon_barrel', qty: 3 });
+    const real = s.finance.cash;
+    expect(real).toBeLessThan(s.history.reports.at(-1)!.cashEnd);
+    s.finance.cash = NaN;
+    const r = migrateSaveReport(JSON.parse(JSON.stringify(s)))!;
+    expect(r.state.finance.cash).toBeCloseTo(real, 6);
+    expect(r.fixes.join()).toMatch(/그 뒤 행동 -[\d,]+원/);
+  });
+
+  it('가장 최근 결산이 망가졌으면 그 앞 결산 현금만 — 메모에 "되살리지 못했다"', () => {
+    const s = start();
+    const prev = s.history.reports.at(-2)!.cashEnd;
+    s.history.reports.at(-1)!.cashEnd = NaN;
+    s.finance.cash = NaN;
+    s.finance.pendingCash = { casks: -1_000_000 };
+    const r = repairSave(JSON.parse(JSON.stringify(s)));
+    expect(r.state.finance.cash).toBe(prev);
+    expect(r.fixes.join()).toMatch(/되살리지 못했다/);
+  });
+
+  it('원가를 모르는 제품은 재고를 비운다(원가 0으로 팔아 이익을 부풀리지 않는다) · 망가진 턴 사이 현금 기록은 지운다', () => {
+    const s = start();
+    s.commerce.products.push({ ...P, id: 'PX', stockBottles: 500, unitCost: NaN } as never);
+    s.finance.pendingCash = { casks: NaN, loan: 5_000_000 };
+    const r = repairSave(JSON.parse(JSON.stringify(s)));
+    const p = r.state.commerce.products.find((x) => x.id === 'PX')!;
+    expect(p.stockBottles).toBe(0);
+    expect(p.unitCost).toBe(0);
+    expect(r.state.finance.pendingCash).toEqual({ loan: 5_000_000 });
+    expect(nonFinitePaths(advanceMonth(r.state))).toEqual([]);
+  });
+
+  it('깨끗한 세이브는 fixes가 비고 같은 객체', async () => {
+    const { migrateSaveReport } = await import('./migrate');
+    const raw = JSON.parse(JSON.stringify(start()));
+    const r = migrateSaveReport(raw)!;
+    expect(r.fixes).toEqual([]);
+    expect(r.state).toBe(raw);
+  });
+});

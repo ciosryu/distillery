@@ -5,6 +5,7 @@ import { SCENARIOS } from './sim/content/scenarios';
 
 const stars = (n?: number) => (n ? ` ${'★'.repeat(n)}` : '');
 import { startedFresh, useGame } from './store/game';
+import { loadIssue, preRepairSave } from './store/persist';
 import { BusinessPlan } from './ui/BusinessPlan';
 import { ackBuild, buildDrift, exportPlayFile, getPlaylog, recordBuild, startPlayClock } from './store/playlog';
 import { BUILD_ID } from './build';
@@ -180,6 +181,7 @@ export default function App() {
             {s.status === 'bankrupt' ? `파산했습니다 — 월말 현금 부족이 ${BANKRUPT_AFTER_MONTHS}개월 이어졌습니다.` : '게임이 끝났습니다.'} "새 게임"으로 다시 시작하세요.
           </div>
         )}
+        <LoadIssueBanner />
         {/* 파산 카운트다운 (1차 MVP 플레이테스트 대응 ①) — 모든 탭 맨 위 */}
         <SkipBanner />
         <CashBanner />
@@ -228,5 +230,36 @@ function ModeBadge({ s }: { s: GameState }) {
     <span className="ml-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 align-middle text-xs font-semibold text-amber-900 dark:bg-amber-950 dark:text-amber-200" title="모든 시스템이 켜지고 MVP 경제 설정(#139)이 없는 개발용 판 — MVP 플레이테스트 판정에 쓰지 않는다. 플레이테스트는 새 게임 → 사업 계획서 → 사업 시작">
       개발자 샌드박스 — 플레이테스트용 아님
     </span>
+  );
+}
+
+/**
+ * 불러올 때 세이브를 고쳤거나 고치지 못한 값이 남았을 때의 알림 ([결정 #295] — 불러오기를 거부하지 않고 명확한 오류 + 원본 보존).
+ * 남은 오류가 있으면 빨강(판은 계속할 수 있지만 계산이 틀릴 수 있다), 고치기만 했으면 노랑. 수리 전 원본을 내려받을 수 있다
+ */
+function LoadIssueBanner(): ReactElement | null {
+  const [open, setOpen] = useState(true);
+  if (!loadIssue || !open) return null;
+  const bad = loadIssue.errors.length > 0;
+  const download = () => {
+    const raw = preRepairSave();
+    if (!raw) return;
+    const url = URL.createObjectURL(new Blob([raw], { type: 'application/json' }));
+    const a = document.createElement('a'); a.href = url; a.download = 'distillery-save-before-repair.json'; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  return (
+    <div role={bad ? 'alert' : 'status'} className={`mb-4 rounded-lg border p-3 text-sm ${bad ? 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200' : 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100'}`}>
+      <div className="font-semibold">{bad ? '세이브에 고치지 못한 값이 남아 있다 — 판은 계속할 수 있지만 계산이 틀릴 수 있다' : '세이브를 불러오며 망가진 값을 고쳤다'}</div>
+      {loadIssue.fixes.length > 0 && <div className="mt-1">고친 것: {loadIssue.fixes.join(' · ')}</div>}
+      {bad && <div className="mt-1 break-all text-xs">남은 오류 {loadIssue.errors.length}건: {loadIssue.errors.slice(0, 5).join(' · ')}{loadIssue.errors.length > 5 ? ' …' : ''}</div>}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {loadIssue.preserved
+          ? <Button small onClick={download}>고치기 전 세이브 내려받기</Button>
+          : <span className="text-xs">고치기 전 세이브는 저장 공간이 모자라 남기지 못했다</span>}
+        <span className="text-xs">버그 신고에 이 파일과 "기록 내보내기" 파일을 붙여 주세요</span>
+        <Button small variant="ghost" onClick={() => setOpen(false)}>닫기</Button>
+      </div>
+    </div>
   );
 }
