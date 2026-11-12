@@ -97,6 +97,15 @@ export const SKU = {
   domesticShareCap: 1.08,
 };
 
+// ── 기본 정책 배수 n ([결정 #290] B1-4 · [결정 #291] ④, P-PROD-53) [튜닝] ──
+/** 세 가격 정책의 시작 배수 = C(가격 유지) 기본 목표. 기준가(권장가 식 suggestedPrice — 기대가 기반) 대비 */
+export const DEFAULT_POLICY_N = 1.3;
+/**
+ * 기본 정책 가격 = 기준가 × n, 100원 단위 — 판매 화면 "권장" 버튼 · 새 제품 첫 값(executeBlend의 firstPriceFactor) · 병입 미리보기 · 생산 경제성 표가 이것만 부른다(한 함수).
+ * 면세 한정판(dutyFreeSuggestedPrice)은 n을 걸지 않는다 — 정책·자동 가격이 건너뛰고 채널·수요 식이 따로다
+ */
+export const defaultPolicyPrice = (base: number, n: number = DEFAULT_POLICY_N): number => Math.max(100, Math.round((base * n) / 100) * 100);
+
 // ── 향미 방향 항 f2 "스타일 = 플레이어 선택" ([결정 #290] B1-9, GAME-01 · mkt-stage-t.md 「B1-MKT-1」) [가설] ──
 /**
  * 몰트 위스키 매력도 × 피트 배수 × 통 배수 — 시장(국내 지역·수출 시장)마다 가중.
@@ -167,4 +176,13 @@ export function agedWhitePerception(category: ProductCategory, oakMonths: number
   const months = Math.max(oakMonths ?? 0, restMonths ?? 0);
   if (months < AGED_WHITE.minMonths) return 1;
   return 1 + AGED_WHITE.ratePerYear * Math.min(months / 12, AGED_WHITE.capYears);
+}
+
+/**
+ * 자동 가격 A(현금회전)를 켤 때 첫 출고가 되돌리기 (P-MKT-34 (나), PROD 합의) — 값이 아직 첫 출고가(그달 기준가 × n) 그대로면 기준가로.
+ * 자동 가격 후보에는 지금 값이 들어가므로(bestAutoPrice), ×n에서 출발하면 그 값에 머무는 경로가 생기고 수출 FOB(= 출고가 × 배수)가 깎였다
+ * (P8 X0 −1.65억). 손으로 정한 값, 병입 뒤 기준가가 움직여 첫 값과 다른 값은 두고, 이미 켜져 있으면 아무것도 하지 않는다
+ */
+export function resetFirstPriceOnAuto(p: { price: number; autoPrice?: boolean; dutyFreeOnly?: boolean }, base: number) {
+  if (!p.autoPrice && !p.dutyFreeOnly && p.price === defaultPolicyPrice(base)) p.price = base;
 }

@@ -13,7 +13,7 @@ export function SuggestedPriceNote({ s, p, suggested }: { s: GameState; p: Produ
   const k = best / suggested;
   return (
     <div className="text-[11px] text-stone-500 dark:text-stone-400" title="권장가 = 기준 소비자가 × √(품질/60) × 숙성 인식에 맞춘 출고가 — 이익을 최대로 하는 값이 아니다. 가격표의 초록 줄(진열 공헌 최대)은 재고·같은 주종 제품에 따라 달마다 달라진다. 국내 판매 기준(수출가는 수출 탭의 배수)">
-      권장가는 이익 기준 아님 — 이번 달 가격표 최선 ×{k.toFixed(2)}(국내)
+      기준가는 이익 기준 아님 — 이번 달 가격표 최선 = 기준가 ×{k.toFixed(2)}(국내)
     </div>
   );
 }

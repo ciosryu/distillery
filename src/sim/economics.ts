@@ -5,6 +5,7 @@
 
 import { CASK_COST_SHARE_PER_FILL, CASK_STORAGE, CASKS } from './content/catalog';
 import { regionOf, siteOf, traditionalTaxFactor } from './content/regions';
+import { defaultPolicyPrice } from './content/market'; // 기본 정책 가격 (B1-4, MKT)
 import { agedWhiteLabel, agedWhiteLabelMonths, executeBlend, isCaskStrength, isWhiskyCategory, previewBlend, suggestedPrice, whiskyMinMonths, type BlendComponent, type BottleOptions } from './blending';
 import { finishOf, matureCask, vesselMaterial } from './maturation';
 import { capacityReport, previewBatch } from './production';
@@ -94,18 +95,20 @@ export function recipeEconomics(s: GameState, recipe: Recipe): EconomicsRow[] {
     const bottleLPA = (fmt.bottleMl / 1000) * p.finalAbv;
     const spiritCost = lot.costPerLPA * bottleLPA;
     const packCost = Math.max(0, p.unitCost - spiritCost);
-    const distribution = distributionCostPerBottle(p.suggestedPrice, fmt.bottleMl, outboundLogistics(s));
+    // 기본 정책 가격(기준가 × n, B1-4) 기준 — 새 제품 첫 값과 같다. 수요 추정용 임시 제품 값도 같이(이익만 바꾸면 과대평가)
+    const price = defaultPolicyPrice(p.suggestedPrice);
+    const distribution = distributionCostPerBottle(price, fmt.bottleMl, outboundLogistics(s));
     const product: Product = {
       id: '__econ', name: '', category: p.category, ageYears: p.ageYears, oakMonths: p.minOakMonths, abv: p.finalAbv, bottleMl: fmt.bottleMl, chillFiltered: true, packagingId: 'standard',
       flavor: p.flavor, quality: p.evaluation.quality, typicity: p.evaluation.typicity, style: p.evaluation.style, sourcedShare: 0, stockBottles: 1,
-      price: p.suggestedPrice, unitCost: p.unitCost, createdMonth: s.month, lastMonthSold: 0, totalSold: 0, ...(p.traditional ? { traditional: true } : {}),
+      price, unitCost: p.unitCost, createdMonth: s.month, lastMonthSold: 0, totalSold: 0, ...(p.traditional ? { traditional: true } : {}),
     };
     const same = s.commerce.products.filter((x) => x.category === p.category && x.stockBottles > 0 && !x.dutyFreeOnly).length + 1;
     rows.push({
       months, category: p.category, quality: p.evaluation.quality,
       bottlesPerBatch: Math.floor((b.lpa * lpaKept) / bottleLPA),
-      spiritCost: Math.round(spiritCost), packCost: Math.round(packCost), price: p.suggestedPrice, distribution: Math.round(distribution),
-      margin: Math.round(p.suggestedPrice - p.unitCost - distribution),
+      spiritCost: Math.round(spiritCost), packCost: Math.round(packCost), price, distribution: Math.round(distribution),
+      margin: Math.round(price - p.unitCost - distribution),
       demandPerMonth: Math.round(demandFor(s, product, same, calendar(s).monthOfYear).demandBottles),
     });
   }
