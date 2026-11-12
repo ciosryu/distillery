@@ -57,7 +57,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { handfillBlocker, handfillCask, hasHandfillZone } from '../../src/sim/handfill';
 import { applyMgtKnobs, applyTierKnobs, hireSales, mgtPolicy } from './mgtKnobs';
 import { applyProdKnobs } from './prodKnobs';
-import { comparePaired, MonthTracker, outcomeOf, summarize, type RunOutcome } from './metrics';
+import { achieved, comparePaired, MonthTracker, outcomeOf, summarize, type RunOutcome } from './metrics';
 import { protectedCaskIds } from '../../src/sim/tags';
 import { liquidity, spiritCapital } from './capitalCost';
 import { AUTO_PRICE_FACTORS, bestAutoPrice, currentSuggested } from '../../src/sim/economics';
@@ -72,8 +72,10 @@ const METRICS = process.env.METRICS === '1';
 // GAME_TAGS=1 이면 병입·핸드필이 게임의 보호 태그(protectedCaskIds — 플래그십 예비 4통 #260·#300 + 플레이어 보호 태그)를 읽는다(P8 자기 규칙 protect 대신).
 // 기본은 끔 — 지금 P8 결과가 시장·가치 식 v1의 "변경 전 기준"이라(#281, balance-spec.md §7) 재보정(B1-MGT-1) 때 켠다
 const GAME_TAGS = process.env.GAME_TAGS === '1';
-// GAME_BANKRUPT=1 이면 P8이 게임의 3개월 파산을 막지 않는다(TECH-02 판정 도구 통일 — 기본은 지금처럼 막고 스크립트가 3·6개월을 센다)
-const GAME_BANKRUPT = process.env.GAME_BANKRUPT === '1';
+// 게임 파산 규칙(TECH-02 판정 도구 통일 — 결정 #292 ③(b)): P8 묶음은 기본으로 게임의 파산(status = 'bankrupt')을 막지 않고 그 달에 판을 끝낸다.
+//   옛 묶음(BASE·P3~P7 — 사람 판 재현, #191 6개월 규칙 비교용)은 지금처럼 파산을 막고 스크립트가 3·6개월을 센다.
+//   GAME_BANKRUPT=1/0으로 어느 묶음이든 강제할 수 있다(P8에서 0이면 옛 동작 — 전후 비교용)
+const GAME_BANKRUPT = process.env.GAME_BANKRUPT ? process.env.GAME_BANKRUPT === '1' : !!process.env.P8;
 const MONTHS = Number(process.argv[3] ?? 180);
 const TIER = (process.env.TIER ?? 'micro') as 'micro' | 'standard';
 const LOAN = Number(process.env.LOAN ?? 0);
@@ -83,6 +85,9 @@ applyMgtKnobs(); // MGT 실험 손잡이 (T-0) — 환경 변수가 없으면 �
 applyProdKnobs(); // PROD 실험 손잡이 — 환경 변수가 없으면 아무 일도 하지 않는다
 // 게임 자동 납품으로 위스키 보충 (PROD 요청, P8만) — 0이면 끔
 const AUTORESTOCK = process.env.P8 && process.env.AUTORESTOCK === '1' ? Number(process.env.AUTORESTOCK_MONTHS ?? 2) : 0;
+// AUTORESTOCK_RETIRE=1 (자동 납품 어긋남 조사 — 결정 #296 H1 · PM 요청 2026-11-12): 3년 표기 계열을 시작하는 달(labelFrom)부터
+//   그보다 짧은 표기(1·2년)의 옛 위스키 제품은 자동 납품을 끈다 — 옛 제품의 하한(법정 12개월·표기 24개월)이 낮아 자동 납품이 3년이 되기 전의 통을 계속 쓰는지 가린다
+const AUTORESTOCK_RETIRE = process.env.AUTORESTOCK_RETIRE === '1';
 
 interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean; maltFrom?: [number, number]; autoRestock?: number; visitorAt?: number; equipAt?: number; b2b?: { share: number; until: number }; flagship?: boolean; price?: 'table' | 'markup'; markup?: number; sojuOff?: [number, number]; overprod?: [number, number]; loansFrom?: number; fixAt?: number; buyAt?: [number, string][]; repayAt?: number; protectFrom?: [number, number]; salesAt?: number; pricePolicy?: Partial<Record<PriceKey, PriceGoal>>; priceSwitch?: boolean }
 /** 자동 가격 3정책(#288 — AP3) 봇 흉내: 범주별로 고른다. 플래그십 제품은 따로 */
@@ -405,6 +410,8 @@ function bottleAs(s: GameState, p: Policy, comps: { source: 'lot' | 'cask'; id: 
 }
 
 function bottle(s: GameState, p: Policy, t: { firstWhisky: number; flagshipDone?: boolean }): GameState {
+  if (AUTORESTOCK_RETIRE && p.autoRestock && p.labelFrom && s.month >= p.labelFrom[0])
+    for (const x of s.commerce.products.filter((y) => isWhiskyCategory(y.category) && y.autoRestock && (y.ageYears ?? 0) * 12 < p.labelFrom![1])) s = act(s, { type: 'setAutoRestock', productId: x.id, months: null });
   for (const lot of [...s.inventory.lots]) {
     if (lot.kind !== 'soju') continue;
     if (p.soju === 'stock' && (stockOf(s, 'soju_distilled') >= 1500 || s.month - lot.createdMonth < 1)) continue;
@@ -648,8 +655,10 @@ console.log(process.env.P8
   : process.env.P3
   ? `3차 MVP 플레이테스트 재현 — 한국 경기, ${TIER}, 시작 대출 ${eok(LOAN)}, ${SEEDS}시드 × ${MONTHS}개월, 이벤트 끔, 소주 1·언피티드 몰트 4배치, 스테인리스 발효조 2기`
   : `사람처럼 하는 MVP 판 — 한국 경기, ${TIER}, 시작 대출 ${eok(LOAN)}, ${SEEDS}시드 × ${MONTHS}개월, 이벤트 끔, 소주 ${SOJU_BATCHES}·언피티드 몰트 3배치(확장 정책은 5배치)`);
-console.log('| 정책 | 파산 (3개월 규칙, 중앙 월) | 파산 (6개월 규칙, 중앙 월) | 최저 현금 중앙값 (그 달) | 최대 대출 잔액 평균 | 첫 위스키 | 6~9년 차 위스키 판매(병, 평균) | 15년 순자산 평균(3개월 규칙 생존) | 순자산 목표 달성 |');
-console.log('|---|---|---|---|---|---|---|---|---|');
+// 게임 파산 규칙이면 파산 열은 하나(6개월 열 없음), 순자산·목표는 metrics.ts(outcomeOf·summarize — 판정 정본)로 센다(#292 ③(c))
+console.log(GAME_BANKRUPT
+  ? '| 정책 | 파산 (게임 규칙, 중앙 월) | 최저 현금 중앙값 (그 달) | 최대 대출 잔액 평균 | 첫 위스키 | 6~9년 차 위스키 판매(병, 평균) | 15년 순자산 평균(생존 판) | 순자산 목표 달성 |\n|---|---|---|---|---|---|---|---|'
+  : '| 정책 | 파산 (3개월 규칙, 중앙 월) | 파산 (6개월 규칙, 중앙 월) | 최저 현금 중앙값 (그 달) | 최대 대출 잔액 평균 | 첫 위스키 | 6~9년 차 위스키 판매(병, 평균) | 15년 순자산 평균(3개월 규칙 생존) | 순자산 목표 달성 |\n|---|---|---|---|---|---|---|---|---|');
 const ALL = new Map<string, Row[]>();
 const ALL_RUN = process.env.P8 ? (process.env.DV ? DV_POLICIES : process.env.RC ? RC_POLICIES : process.env.LC ? LC_POLICIES : P8_POLICIES) : process.env.P7 ? P7_POLICIES : process.env.P6 ? P6_POLICIES : process.env.P5 ? P5_POLICIES : process.env.P4 ? P4_POLICIES : process.env.P3 ? P3_POLICIES : POLICIES;
 // ONLY=X0,X5 이면 이름의 첫 낱말이 그중 하나인 정책만 돈다(측정 시간 줄이기) — 없으면 묶음 전체
@@ -660,7 +669,12 @@ for (const p of RUN) {
   ALL.set(p.name, rows);
   const b3 = rows.filter((r) => r.bankrupt3 >= 0), b6 = rows.filter((r) => r.bankrupt6 >= 0);
   const alive3 = rows.filter((r) => r.bankrupt3 < 0 && r.bankrupt6 < 0);
-  console.log(`| ${p.name} | ${b3.length}/${SEEDS} (${mo(med(b3.map((r) => r.bankrupt3)))}) | ${b6.length}/${SEEDS} (${mo(med(b6.map((r) => r.bankrupt6)))}) | ${eok(med(rows.map((r) => r.minCash)))} (${mo(med(rows.map((r) => r.minCashMonth)))}) | ${eok(avg(rows.map((r) => r.loansMax)))} | ${mo(med(rows.map((r) => r.firstWhisky).filter((x) => x >= 0)))} | ${Math.round(avg(rows.map((r) => r.whiskyY6to9))).toLocaleString()} | ${eok(avg(alive3.map((r) => r.nw)))} | ${rows.filter((r) => r.goal).length}/${SEEDS} |${rows.some((r) => r.cutMonth >= 0) ? ` 생산 중단 ${mo(med(rows.map((r) => r.cutMonth).filter((x) => x >= 0)))}` : ''}`);
+  const os = rows.map((r) => r.outcome), sm = summarize(os);
+  const bankruptCols = GAME_BANKRUPT
+    ? `${os.filter((o) => !o.survived).length}/${SEEDS} (${mo(med(b3.map((r) => r.bankrupt3)))})`
+    : `${b3.length}/${SEEDS} (${mo(med(b3.map((r) => r.bankrupt3)))}) | ${b6.length}/${SEEDS} (${mo(med(b6.map((r) => r.bankrupt6)))})`;
+  const nwCols = GAME_BANKRUPT ? `${eok(sm.nwAliveMean)} | ${os.filter(achieved).length}/${SEEDS}` : `${eok(avg(alive3.map((r) => r.nw)))} | ${rows.filter((r) => r.goal).length}/${SEEDS}`;
+  console.log(`| ${p.name} | ${bankruptCols} | ${eok(med(rows.map((r) => r.minCash)))} (${mo(med(rows.map((r) => r.minCashMonth)))}) | ${eok(avg(rows.map((r) => r.loansMax)))} | ${mo(med(rows.map((r) => r.firstWhisky).filter((x) => x >= 0)))} | ${Math.round(avg(rows.map((r) => r.whiskyY6to9))).toLocaleString()} | ${nwCols} |${rows.some((r) => r.cutMonth >= 0) ? ` 생산 중단 ${mo(med(rows.map((r) => r.cutMonth).filter((x) => x >= 0)))}` : ''}`);
 }
 
 // PERSEED=1: 시드별 판 끝 순자산(게임 netWorth, 파산 판은 파산한 달)과 사람 판 한 점의 백분위 — B1-MGT-1 재보정에서 사람 판(후반 확인 판 21.14억, 166개월)을 봇 분포 안에 놓을 때 쓴다
