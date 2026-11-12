@@ -602,6 +602,14 @@ interface GameState {
 - `lastFactor`(정책이 마지막으로 정한 배수)는 **가드 기준**이다 — MKT `0a182d1`의 교훈: 재고 보충으로 값이 기준가 ×1로 돌아간 달에 "지금 값 ÷ 기준가"를 기준으로 삼으면 B′가 ×1.0~1.2에 묶였다. 새 상태지만 정책의 일부(사유 기록에도 쓴다)라 "가격 기억"(PM ⑦이 막은 수요 쪽 새 상태)과 다르다
 - C의 `target` 기본 = n(×1.3, P-PROD-53). 세 정책 모두 켜는 순간의 시작 배수는 n — 프리셋으로 읽히지 않게
 
+**구현 — 엔진 (④, 2026-11-12, [결정 #291])** — 코어 `src/sim/priceEngine.ts` + MKT 정책 함수 `src/sim/pricePolicy.ts`(#359 `decidePolicyPrice`)
+- 상태: `Product.pricePolicy?: PricePolicy`(`types.ts` — MKT `PolicySpec`과 같은 모양) · `MonthReport.priceLog?: { productId, mode, from, to, why }[]`(값이 바뀐 제품만). 버전 올림 없음
+- 실행: 틱 5단계 `runPricePolicies` — **S6 Gauss-Seidel([결정 #300])**: 켠 제품을 id 순으로 차례로 `decidePolicyPrice`(앞 제품이 바꾼 live 값을 본다), 한 바퀴에 바뀐 값이 없을 때까지 최대 3바퀴(3바퀴째에도 바뀌면 그 값). **가드 기준(`lastFactor`)은 바퀴 사이에 고정**하고 확정 값으로만 갱신한다(B 한 단계가 바퀴마다 쌓이지 않게) → `why`를 `priceLog`에(그달 시작 값 → 확정 값)
+- 가드 위치: **MKT 함수 안에 둔다**(B 한 달 ±0.1 · C 분기 한 단계 · 범위 · 병당 공헌 > 0). §10.9 ⑥3의 "공통 장치"는 `POLICY_GUARD` 값 표로 갖추었고, 엔진으로 옮기는 것은 이득이 작아 하지 않는다(측정이 지금 위치로 됐다)
+- 옛 판(`autoPrice`만): A로 읽고 상태에 새 값을 쓰지 않는다(사유만) — S6과 출력 바이트 동일 · 옛 `setAutoPrice on`은 정책을 A로 되돌린다 · 정책을 바꾸면 `lastFactor`를 지워 가드 기준을 새로 잡는다
+- 불러오기(⑧): `repairSave`가 한계 밖 범위·목표 배수를 자르고(메모) 유한하지 않은 `lastFactor`를 지운다. 알 수 없는 `mode`는 지우지 않고 A로 처리 + 사유
+- 화면(정책 선택·모두에 적용·사유 표시)은 MKT `Sales.tsx` 몫 — 이 명령·사유를 쓴다
+
 **② 명령** — `setPricePolicy { productId: string | 'all'; mode: 'turnover' | 'profit' | 'premium' | null; target?: number }`
 - `null` = 끔(지금 `setAutoPrice on:false`와 같음 — 지금 값 유지). `'all'` = **모두에 적용**(국내 판매 제품 전부, 면세 한정판 제외 — 이유와 함께 `BulkPlan` 모양으로 빠진 제품을 보인다, §10.1 공통 plan)
 - 옛 `setAutoPrice { on: true }`는 **남긴다** → `mode: 'turnover'`로 처리(플레이 기록 재생·봇 호환). 새 화면은 쓰지 않는다
