@@ -69,3 +69,25 @@ describe('불변식 — 상태에 유한하지 않은 수가 없다 (#285)', () 
     expect(nonFinitePaths(play('standard', 2, 120))).toEqual([]);
   }, 60_000);
 });
+
+describe('수리 멱등성 (INV-ARCH-1 (c))', () => {
+  it('repairSave(repairSave(x)) = repairSave(x) · 깨끗한 세이브는 JSON 바이트가 같다', async () => {
+    const { checkInvariants } = await import('./invariants');
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 3 });
+    s = advanceMonth(advanceMonth(s));
+    const clean = JSON.stringify(s);
+    expect(JSON.stringify(migrateSave(JSON.parse(clean)))).toBe(clean);
+    const bad = emptyCaskOf(s, 'ex_bourbon_barrel'); bad.id = 'BAD';
+    bad.contents = { id: 'LBAD', name: 'bad', kind: 'malt', volumeL: NaN, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: 3, sourced: false, costPerLPA: 10_000 };
+    s.inventory.casks.push(bad);
+    s.finance.cash = NaN;
+    s.commerce.products.push({ ...{ id: 'P', name: 'p', category: 'soju_distilled', ageYears: null, oakMonths: 0, abv: 0.25, bottleMl: 375, chillFiltered: true, packagingId: 'standard', flavor: {}, quality: 50, typicity: 50, style: null, sourcedShare: 0, stockBottles: 0, price: 10000, unitCost: 3000, createdMonth: 0, lastMonthSold: 0, totalSold: 0 }, id: 'PNAN', stockBottles: NaN, price: NaN } as never);
+    s.finance.receivables.push({ amount: NaN } as never);
+    const once = repairSave(JSON.parse(JSON.stringify(s)));
+    expect(once.fixes.length).toBeGreaterThan(0);
+    const twice = repairSave(once.state);
+    expect(twice.fixes).toEqual([]);
+    expect(twice.state).toBe(once.state);
+    expect(checkInvariants(once.state).errors).toEqual([]);
+  });
+});
