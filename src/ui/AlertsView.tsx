@@ -9,6 +9,7 @@ import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
 import { cashAlert, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, spotSaleStake, type TodoTarget } from './alerts';
 import { Button } from './kit';
+import { PolicySwitchHint } from './PricePolicyPicker'; // 자동 가격 정책 정보 한 줄 (#291 ⑥, MKT)
 
 /** 증류소 탭의 접힌 블록을 여는 신호 — detail = 블록 id(= 스크롤 앵커). MvpHome의 useFold가 듣는다 (#182) */
 export const OPEN_FOLD_EVENT = 'mvp-open-fold';
@@ -88,6 +89,8 @@ export function CashBanner() {
       </div>
       <SpotSaleTruth s={s} />
       <ProductionTruth s={s} />
+      {/* 자동 가격 정책 — 정보만, 자동 전환 없음 (#291 ⑥, MKT 대행) */}
+      <PolicySwitchHint s={s} />
     </div>
   );
 }
