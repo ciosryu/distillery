@@ -1057,6 +1057,18 @@ describe('자동 납품은 같은 레시피 원액만 (#243, 5차 MVP 플레이�
   });
 });
 
+describe('품질 식은 피트를 세지 않는다 (#290 B1-10, P-PROD-52 ①)', () => {
+  it('피트 축만 복잡도·강도에서 빠진다 — 다른 축은 그대로 세고, 스타일 분류는 피트를 본다', async () => {
+    const { evaluate } = await import('./flavor');
+    const base = { cereal: 25, vanilla_caramel: 20, fresh_fruit: 10, oak_tannin: 8 };
+    const plain = evaluate(base, 'whisky');
+    const peated = evaluate({ ...base, peat_smoke: 45 }, 'whisky');
+    expect(peated.quality).toBe(plain.quality);
+    expect(evaluate({ ...base, dried_fruit: 45 }, 'whisky').quality).toBeGreaterThan(plain.quality); // 다른 축은 품질을 바꾼다
+    expect(peated.style).toBe('피티드');
+  });
+});
+
 describe('피티드 맥아 비중 기록 (#290 B1-9 f2 — Product.peatShare)', () => {
   const opts = { name: '피트', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' } as const;
   const setup = () => {
