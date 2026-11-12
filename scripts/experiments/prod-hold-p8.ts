@@ -9,7 +9,7 @@
 // 실행: npx tsx scripts/experiments/prod-hold-p8.ts [시드=10] [개월=180]   (TIER 기본 standard, 이벤트 켬 — P8과 같다)
 //   ONLY=HA,HC,...   돌릴 경로(기본 아래 표 전부) · SPLIT=1 순자산 나누기 표(P8 그대로)
 //   끝에 PAIRED 줄: 같은 시드끼리 순자산 차이 평균·t·이긴 시드 수, HELD 줄: 경로별 장기 지정 통 수(판 평균)
-//   SUPPLY=1  장기 계열의 공급 지평(prodSupply.ts) 경로별 평균 — 진단만(판 결과 불변)
+//   SUPPLY=1  장기 계열의 공급 지평(src/sim/economics.ts supplyHorizon) 경로별 평균 — 진단만(판 결과 불변)
 //   DCF=1     실험 A 할인값(MGT-C capitalCost.ts — 같은 시드 짝 증분 현금흐름의 NPV 띠·marginal·IRR)과 경로별 증발 리터·LPA
 //   PRICE=1   AUTO-PRICE-3 장기 숙성 조건 — 보유 3종(HC·HS·HSF) × 가격 정책(#200·B′+가드·C 1.3·C 1.5), 장기 계열만 정책을 거는 「-L」 경로 포함. MKT 손잡이(mktP8Hooks.ts, PR #324) 필요
 //             식 v1 위에서: SCRIPT=prod-hold-p8.ts PRICE=1 V=c3+s4m1.08+k npx tsx scripts/experiments/mkt-b1.ts 10 180
@@ -70,12 +70,12 @@ if (PRICE) {
 }
 `;
 }
-// SUPPLY=1 — 장기 계열(「싱글 몰트 10년」)의 공급 지평(prodSupply.ts, [제안 P-PROD-54])을 매달 재서 경로별 평균을 낸다(진단 — 결과 불변)
+// SUPPLY=1 — 장기 계열(「싱글 몰트 10년」)의 공급 지평(economics.ts supplyHorizon, [결정 #291] P-PROD-54)을 매달 재서 경로별 평균을 낸다(진단 — 결과 불변)
 if (process.env.SUPPLY) {
   const anchor = '    s = advanceMonth(s);\n';
   if (src.split(anchor).length !== 2) throw new Error('prod-hold-p8 SUPPLY: P8에서 advanceMonth 자리를 하나로 찾지 못했다');
   src = src.replace(anchor, `${anchor}    for (const x of s.commerce.products.filter((x) => x.name.startsWith('${LONG_LINE_NAME}') && x.stockBottles > 0)) { const h = __supply(s, x); const k = p.name.split(' ')[0]!; const b = SUPPLYSTAT.get(k) ?? { n: 0, months: 0, gap: 0, ready: 0, soon: 0 }; SUPPLYSTAT.set(k, { n: b.n + 1, months: b.months + Math.min(60, h.months), gap: b.gap + (h.refillGap ? 1 : 0), ready: b.ready + h.readyBottles, soon: b.soon + h.soonBottles }); }\n`);
-  src = src.replace('const DUMP = process.env.DUMP;', "const DUMP = process.env.DUMP;\nimport { supplyHorizon as __supply } from './prodSupply';\nconst SUPPLYSTAT = new Map<string, { n: number; months: number; gap: number; ready: number; soon: number }>();");
+  src = src.replace('const DUMP = process.env.DUMP;', "const DUMP = process.env.DUMP;\nimport { supplyHorizon as __supply } from '../../src/sim/economics';\nconst SUPPLYSTAT = new Map<string, { n: number; months: number; gap: number; ready: number; soon: number }>();");
   src += `\nconsole.log('SUPPLY ${LONG_LINE_NAME} 계열(재고 있는 제품·달 평균, 지평은 60개월에서 자름) ' + [...SUPPLYSTAT].map(([k, v]) => \`\${k} 지평 \${(v.months / v.n).toFixed(1)}개월 · 지금 채울 병 \${(v.ready / v.n).toFixed(0)} · 곧 닿는 병 \${(v.soon / v.n).toFixed(0)} · 보충 끊김 \${((100 * v.gap) / v.n).toFixed(0)}%\`).join(' | '));\n`;
 }
 

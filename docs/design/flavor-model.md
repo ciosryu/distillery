@@ -342,6 +342,8 @@ interface StylePreset {
    Penalty     = Σ offnote × offnotePenalty + harshness × k
    Quality     = wB·Balance + wC·Complexity + wI·Integration − Penalty
    (purityMode: Quality = 100 − Penalty − totalIntensity × k + body 보정)
+   [#290 B1-10] 복잡도·강도를 셀 때 peat_smoke(피트·스모크)만 0으로 본다 — 축 수(엔트로피 정규화)는 그대로.
+               피트는 방향(스타일 선택)이고 시장 값은 매력도의 피트 배수(B1-9 f2)가 맡는다. 전형성·스타일 판정은 피트를 그대로 본다
 
 ② 전형성 Typicity (0~100, 라벨 통과 여부)
    label 규칙 위반 → 주종 표기 불가 (일반 명칭으로 강등, 기준가↓)
