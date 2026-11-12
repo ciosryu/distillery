@@ -178,6 +178,41 @@ describe('v1.0 운영 시스템', () => {
     expect(at('WD', 0).tempC).toBeLessThan(at('W0', 0).tempC);
   });
 
+  it('보호 통은 매달 더 서늘한 빈 칸으로 옮긴다 — 보호 통이 없으면 칸이 그대로 (#290 B1-3)', async () => {
+    const { moveProtectedToCoolSlots, slotMeanTempC, warehousesOf } = await import('./warehouse');
+    const { PROD_TUNING } = await import('./prodTuning');
+    const s = newGame({ seed: 1, region: 'KR' });
+    s.production.equipment.push({ id: 'WD', catalogId: 'warehouse_dunnage_45', readyMonth: 0 });
+    s.inventory.tagDefs = [{ id: 'keep', label: '오래', color: 'rose', effect: 'protect' }];
+    const proto = s.b2b.brokerOffers[0]!.cask;
+    const mk = (id: string, tagged: boolean): Cask => ({ ...structuredClone(proto), id, slot: { w: 'W0', tier: 5 }, contents: { ...structuredClone(proto.contents!), id: `L${id}`, ...(tagged ? { tagIds: ['keep'] } : {}) } });
+    s.inventory.casks = [mk('A', false), mk('B', true), mk('C', false)];
+    const report = () => ({ notes: [] as string[] }) as never as import('./types').MonthReport;
+    const before = s.inventory.casks.map((c) => ({ ...c.slot! }));
+    // 보호 통이 없으면 아무것도 바꾸지 않는다
+    s.inventory.casks[1]!.contents!.tagIds = undefined;
+    expect(moveProtectedToCoolSlots(s, report())).toBe(0);
+    expect(s.inventory.casks.map((c) => c.slot)).toEqual(before);
+    s.inventory.casks[1]!.contents!.tagIds = ['keep'];
+    // 상한 0이면 끈다
+    const cap = PROD_TUNING.coolSlotMovesPerMonth;
+    PROD_TUNING.coolSlotMovesPerMonth = 0;
+    expect(moveProtectedToCoolSlots(s, report())).toBe(0);
+    PROD_TUNING.coolSlotMovesPerMonth = cap;
+    // 보호 통 B만 가장 서늘한 칸으로 — 다른 통은 그대로, 다음 달에는 더 옮기지 않는다(뒤집히지 않음)
+    const r = report();
+    expect(moveProtectedToCoolSlots(s, r)).toBe(1);
+    expect(r.notes.length).toBe(1);
+    const coolest = warehousesOf(s).flatMap((w) => Array.from({ length: w.tiers }, (_, tier) => ({ w: w.id, tier, t: slotMeanTempC(s, w, tier) }))).sort((a, b) => a.t - b.t)[0]!;
+    expect(s.inventory.casks[1]!.slot).toEqual({ w: coolest.w, tier: coolest.tier });
+    expect(s.inventory.casks[0]!.slot).toEqual(before[0]);
+    expect(s.inventory.casks[2]!.slot).toEqual(before[2]);
+    expect(moveProtectedToCoolSlots(s, report())).toBe(0);
+    // 맨 위 칸은 맨 아래 칸보다 연평균이 덥다(랙)
+    const w0 = warehousesOf(s)[0]!;
+    expect(slotMeanTempC(s, w0, 5)).toBeGreaterThan(slotMeanTempC(s, w0, 0));
+  });
+
   it('로테이션: QC가 있어야 하고, 단을 뒤집는다', () => {
     let s = newGame({ seed: 1, region: 'KR' });
     const cask = s.b2b.brokerOffers[0]!.cask; s.inventory.casks.push(cask); cask.slot = { w: 'W0', tier: 5 };
