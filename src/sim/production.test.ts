@@ -1022,6 +1022,36 @@ describe('자동 납품은 같은 레시피 원액만 (#243, 5차 MVP 플레이�
   });
 });
 
+describe('피티드 맥아 비중 기록 (#290 B1-9 f2 — Product.peatShare)', () => {
+  const opts = { name: '피트', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' } as const;
+  const setup = () => {
+    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const malt = (id: string, peated: boolean): SpiritLot => ({ id, name: id, kind: 'malt', volumeL: 180, abv: 0.6, flavor: { cereal: 20, peat_smoke: peated ? 40 : 0 }, createdMonth: 0, oakMonths: 40, sourced: false, costPerLPA: 10_000, recipeId: `R${id}`, mashShare: { [peated ? 'malt_peated' : 'malt_unpeated']: 1 } });
+    const cask = (id: string, lot: SpiritLot) => ({ id, typeId: 'ex_bourbon_barrel', sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: lot } as Cask);
+    s.inventory.casks = [cask('KP', malt('P', true)), cask('KU', malt('U', false))];
+    return s;
+  };
+
+  it('병입 때 원재료 배합의 피티드 맥아를 LPA 가중으로 남기고, 통째 병입해도 남는다 — 피트가 없으면 필드를 두지 않는다', () => {
+    let s = setup();
+    expect(previewBlend(s, [{ source: 'cask', id: 'KP', liters: 90 }, { source: 'cask', id: 'KU', liters: 30 }], opts).peatShare).toBe(0.75);
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id: 'KP', liters: 180 }, { source: 'cask', id: 'KU', liters: 60 }], options: opts }).state;
+    expect(s.inventory.casks.find((c) => c.id === 'KP')!.contents).toBeFalsy();
+    expect(s.commerce.products.at(-1)!.peatShare).toBe(0.75);
+    s = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id: 'KU', liters: 60 }], options: { ...opts, name: '언피트' } }).state;
+    expect('peatShare' in s.commerce.products.at(-1)!).toBe(false); // 없음 = 0(중립)
+  });
+
+  it('보충은 병 수로 가중 평균하고, 기록 없는 옛 제품은 0으로 센다 — 재고 0에서는 새 배치 그대로', async () => {
+    const { restockedProduct } = await import('./blending');
+    const base = { id: 'P', name: 'x', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 100, style: null, sourcedShare: 0, stockBottles: 100, price: 60000, unitCost: 5000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, peatShare: 1 } as Product;
+    expect(restockedProduct(base, { ...base, peatShare: undefined, stockBottles: 300 }).peatShare).toBe(0.25);
+    expect(restockedProduct({ ...base, peatShare: undefined }, { ...base, stockBottles: 100 }).peatShare).toBe(0.5); // 옛 제품(기록 없음) = 0
+    expect(restockedProduct({ ...base, stockBottles: 0 }, { ...base, peatShare: undefined }).peatShare).toBeUndefined();
+    expect(restockedProduct({ ...base, stockBottles: 0, peatShare: undefined }, { ...base, peatShare: 0.4 }).peatShare).toBe(0.4);
+  });
+});
+
 describe('헤리티지 병입 연표 (#244, 2026-11-10 오너 요청)', () => {
   it('10년 이상 통만 연출 대상이고, 연표에 증류·통입·숙성 중 재해·통의 사고·샘플·이정표가 시간순으로 모인다', async () => {
     const { emptyCaskOf, heritageCasks, caskStory } = await import('./index');
