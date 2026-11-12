@@ -198,3 +198,18 @@ export function switchToTurnoverGain(s: GameState, monthOfYear: number, modeOf: 
   }
   return products ? { gain: Math.round(gain), products } : null;
 }
+
+/** 정책 고를 때 둘째 안내의 문턱(개월) — `[가설]`(P-MGT-43 · PROD 공급 지평 #407) */
+export const SUPPLY_HINT_MONTHS = 12;
+/**
+ * 정책 고를 때 둘째 안내 (P-MGT-43 · PROD P-PROD-54, 조건 방향은 PROD 정정 2026-11-12):
+ *  - 'refill' — 위스키인데 SUPPLY_HINT_MONTHS 안에 보충할 통이 없고(refillGap) 지금 물량도 그 안에 바닥난다 → 이익(B)·가격 유지(C)가 어울린다. A·끔일 때만
+ *  - 'overstock' — 재고 + 지금 채울 병이 판매 속도로 SUPPLY_HINT_MONTHS개월치를 넘는다(적체) → 현금회전(A)이 어울린다. B·C일 때만
+ * 판매가 0이면(months = Infinity) 적체로 보지 않는다(판단할 판매 속도가 없다)
+ */
+export function supplyHintOf(mode: PriceMode | null, h: { months: number; refillGap: boolean }): 'refill' | 'overstock' | null {
+  const bc = mode === 'profit' || mode === 'premium';
+  if (!bc && h.refillGap && h.months < SUPPLY_HINT_MONTHS) return 'refill';
+  if (bc && Number.isFinite(h.months) && h.months > SUPPLY_HINT_MONTHS) return 'overstock';
+  return null;
+}

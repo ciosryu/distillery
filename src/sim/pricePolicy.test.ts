@@ -142,3 +142,20 @@ describe('화면용 추정 — C의 대가 · 위기 배너 "A로 바꾸면" (#2
     expect(p1.id).toBe('P1');
   });
 });
+
+describe('정책 고를 때 둘째 안내 — 공급 지평 (P-MGT-43 · PROD #407, 조건 정정)', async () => {
+  const { supplyHintOf, SUPPLY_HINT_MONTHS } = await import('./pricePolicy');
+  it('보충이 1년 넘게 없고 지금 물량이 1년 안에 바닥나면 B·C 쪽 — A·끔일 때만', () => {
+    expect(supplyHintOf('turnover', { months: 6, refillGap: true })).toBe('refill');
+    expect(supplyHintOf(null, { months: 6, refillGap: true })).toBe('refill');
+    expect(supplyHintOf('profit', { months: 6, refillGap: true })).toBeNull();
+    expect(supplyHintOf('turnover', { months: SUPPLY_HINT_MONTHS + 1, refillGap: true })).toBeNull(); // 물량이 넉넉하면 아니다
+    expect(supplyHintOf('turnover', { months: 6, refillGap: false })).toBeNull(); // 보충할 통이 있으면 아니다
+  });
+  it('재고가 1년치를 넘으면(적체) A 쪽 — B·C일 때만, 판매가 0이면 판단하지 않는다', () => {
+    expect(supplyHintOf('premium', { months: 20, refillGap: false })).toBe('overstock');
+    expect(supplyHintOf('profit', { months: 20, refillGap: true })).toBe('overstock');
+    expect(supplyHintOf('turnover', { months: 20, refillGap: false })).toBeNull();
+    expect(supplyHintOf('premium', { months: Infinity, refillGap: false })).toBeNull();
+  });
+});
