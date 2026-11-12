@@ -4,3 +4,7 @@ dist/
 .DS_Store
 # 콘텐츠 JSON 생성물 (npm run content:export, S-7)
 data/content/
+
+# 실험 스크립트가 실행 중에 만드는 임시 파일 (끝나면 스스로 지움)
+scripts/experiments/.*.tmp.ts
+scripts/experiments/_gen-*.ts
