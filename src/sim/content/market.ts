@@ -87,6 +87,27 @@ export const GIFT_SHOP = { id: 'visitor_giftshop', newMakeBuyRate: 0.25, merchPe
  */
 export const SKU = { rho: 3, /** 브랜드 라인 사이 ρ ([결정 #235] B, PRD §11.2.1) — ρ_in(=rho)보다 작아야 브랜드끼리 덜 뺏는다 */ rhoBrand: 2 };
 
+// ── 향미 방향 항 f2 "스타일 = 플레이어 선택" ([결정 #290] B1-9, GAME-01 · mkt-stage-t.md 「B1-MKT-1」) [가설] ──
+/**
+ * 몰트 위스키 매력도 × 피트 배수 × 통 배수 — 시장(국내 지역·수출 시장)마다 가중.
+ * 피트 배수 = 1 + peatShare × (peat − 1) · 통 배수 = Σ 통 계열 비중 × 가중 + 나머지(ex-버번·탱크) × 1.
+ * **기본 레시피(언피트 × ex-버번) = 모든 시장 ×1** — 표에 없는 통·시장은 1. 결정 #290은 방향과 구조만 승인, 수치는 `[가설]` 시작값(조사·단계 T 튜닝).
+ * 시장마다 1보다 큰 칸이 하나 이상, 이기는 조합이 갈리게 골랐다(PROD 조건). JP 미즈나라 1.10은 인센스 프리미엄과 겹치면 큰 쪽 하나만 쓴다(STYLE.capWithTrend 옆 규칙)
+ */
+export const STYLE_WEIGHTS: Record<string, { peat: number; casks: Partial<Record<string, number>> }> = {
+  KR: { peat: 0.92, casks: { oloroso_butt: 1.04, korean_oak_quarter: 1.08, mizunara_hogshead: 1.0 } },
+  JP: { peat: 1.0, casks: { oloroso_butt: 1.05, korean_oak_quarter: 0.95, mizunara_hogshead: 1.1 } },
+  TW: { peat: 0.93, casks: { oloroso_butt: 1.12, korean_oak_quarter: 0.95, mizunara_hogshead: 1.03 } },
+  UK: { peat: 1.12, casks: { oloroso_butt: 1.04, korean_oak_quarter: 0.92, mizunara_hogshead: 1.0 } },
+  EU: { peat: 1.08, casks: { oloroso_butt: 1.06, korean_oak_quarter: 0.93, mizunara_hogshead: 1.02 } },
+  US: { peat: 0.97, casks: { oloroso_butt: 1.0, korean_oak_quarter: 1.06, mizunara_hogshead: 1.03 } },
+  CN: { peat: 0.9, casks: { oloroso_butt: 1.1, korean_oak_quarter: 1.0, mizunara_hogshead: 1.04 } },
+  DF: { peat: 0.97, casks: { oloroso_butt: 1.05, korean_oak_quarter: 1.02, mizunara_hogshead: 1.06 } },
+  SEA: { peat: 0.94, casks: { oloroso_butt: 1.08, korean_oak_quarter: 0.98, mizunara_hogshead: 1.03 } },
+};
+/** 구조 규칙(결정 #290 B1-9): 스타일 보너스 × 향미 트렌드 ≤ capWithTrend — 트렌드만으로 넘는 몫은 그대로 두고, 스타일 보너스(>1)만 줄인다 */
+export const STYLE = { capWithTrend: 1.5 };
+
 // ── 럭셔리 지수 · 브랜드 방패 ([결정 #235] A, PRD §11.2 ①~③ 최소 구현 · §11.2.1) [튜닝] ──
 /**
  * 제품 럭셔리 L_p(0~100) = 패키징(packaging.ts packagingLuxury 0~30, #248) + 숙성 표기 + 희소성 (라벨 속성은 연구 — 아직 0), 품질 게이트 L_p ≤ 품질.
