@@ -58,7 +58,7 @@ export function PricePolicyPicker({ s, p }: { s: GameState; p: Product }) {
       </label>
       {cost && <div className="text-stone-500">이 배수면 {wonFull(cost.price)} — A(이번 달 공헌 최대 {wonFull(cost.aPrice)}) 대비 이번 달 판매 {cost.pct >= 0 ? '+' : ''}{Math.round(cost.pct * 100)}%(추정)</div>}
       {log && <div className="text-stone-500">지난달: {log.why}</div>}
-      {hint === 'refill' && <div className="text-sky-800 dark:text-sky-300" title="공급 지평(PROD) — 재고 + 지금 채울 수 있는 병 ÷ 판매 속도, 그리고 1년 안에 보충 하한에 닿는 통이 있는지">약 {Math.round(sh.months)}개월 뒤 바닥나고, {SUPPLY_HINT_MONTHS}개월 안에 보충할 통이 없다 — 이익(B)·가격 유지(C)로 천천히 파는 쪽이 어울린다</div>}
+      {hint === 'refill' && <div className="text-sky-800 dark:text-sky-300" title="공급 지평(PROD) — 재고 + 지금 채울 수 있는 병 ÷ 판매 속도, 그리고 1년 안에 보충 하한에 닿는 통이 있는지">{sh.months < 1 ? '이번 달 안에' : `약 ${Math.round(sh.months)}개월 뒤`} 바닥나고, {SUPPLY_HINT_MONTHS}개월 안에 보충할 통이 없다 — 이익(B)·가격 유지(C)로 천천히 파는 쪽이 어울린다</div>}
       {hint === 'overstock' && <div className="text-sky-800 dark:text-sky-300" title="공급 지평(PROD) — 재고 + 지금 채울 수 있는 병 ÷ 판매 속도">재고(+ 지금 채울 병)가 약 {Math.round(sh.months)}개월치 쌓여 있다 — 현금회전(A)으로 돌리는 쪽이 어울린다</div>}
       {mode && mode !== 'turnover' && r.months != null && r.months < RUNWAY_HINT_MONTHS && <div className="text-amber-700 dark:text-amber-400">현금이 약 {r.months}개월 뒤 바닥난다 — 현금이 급하면 A(현금회전)가 유리하다</div>}
     </div>
