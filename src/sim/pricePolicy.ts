@@ -161,3 +161,41 @@ export function decidePolicyPrice(s: GameState, p: Product, spec: PolicySpec, mo
   if (!profitable(s, p, price)) return { price: null, factor: null, why: `${why} — 범위 안에 이익 나는 값이 없다(범위나 원가를 보세요), 그대로` };
   return { price, factor: price / sug, why };
 }
+
+// ── 화면용 추정 (결정 #291 ④·⑥ · architecture §10.9 ③) — 판정에 쓰지 않는 정보값(등급 E 추정) ──
+
+/** 이 제품을 값 v로 팔 때 이번 달 국내 판매(병)·진열 전체 공헌 — priceOptions 한 줄 */
+function optionAt(s: GameState, p: Product, monthOfYear: number, v: number) {
+  return priceOptions(s, p, monthOfYear, [v / p.price])[0]!;
+}
+
+/**
+ * C(가격 유지)의 대가 한 줄 — 목표 배수 target으로 팔면 A(이번 달 진열 공헌 최대) 대비 이번 달 국내 판매가 몇 % 달라지나.
+ * A 값이 없거나(이익 나는 값 없음) 재고가 없으면 null
+ */
+export function premiumCost(s: GameState, p: Product, target: number, monthOfYear: number): { pct: number; price: number; aPrice: number } | null {
+  if (p.dutyFreeOnly || p.stockBottles <= 0 || p.price <= 0) return null;
+  const sug = currentSuggested(s, p);
+  const a = bestAutoPrice(s, p, monthOfYear);
+  if (sug <= 0 || a == null) return null;
+  const price = round100(sug * target);
+  const at = optionAt(s, p, monthOfYear, price).sellBottles, base = optionAt(s, p, monthOfYear, a).sellBottles;
+  return { pct: base > 0 ? at / base - 1 : 0, price, aPrice: a };
+}
+
+/**
+ * 현금 위기 배너의 정보 한 줄(#291 ⑥ — 자동 전환 없음) — B·C로 둔 제품을 A로 바꾸면 이번 달 진열 공헌이 얼마나 느나(제품마다 따로 바꿔 본 합, 형제 상호작용은 근사).
+ * 이번 달 이익만 본다 — 다음 달 이후 이익은 줄 수 있다. B·C 제품이 없거나 늘지 않으면 null
+ */
+export function switchToTurnoverGain(s: GameState, monthOfYear: number, modeOf: (p: Product) => PriceMode | null): { gain: number; products: number } | null {
+  let gain = 0, products = 0;
+  for (const p of s.commerce.products) {
+    const m = modeOf(p);
+    if (m !== 'profit' && m !== 'premium') continue;
+    const a = bestAutoPrice(s, p, monthOfYear);
+    if (a == null || a === p.price) continue;
+    const d = optionAt(s, p, monthOfYear, a).lineupContribution - optionAt(s, p, monthOfYear, p.price).lineupContribution;
+    if (d > 0) { gain += d; products++; }
+  }
+  return products ? { gain: Math.round(gain), products } : null;
+}
