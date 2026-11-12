@@ -423,6 +423,9 @@ export function restockedProduct(old: Product, batch: Product): Product {
   if (keep(old.traditional, batch.traditional)) merged.traditional = true; else delete merged.traditional;
   if (keep(old.specialty, batch.specialty, old.specialty === batch.specialty)) merged.specialty = batch.specialty; else delete merged.specialty;
   if (keep(old.localIngredient, batch.localIngredient)) merged.localIngredient = true; else delete merged.localIngredient;
+  // 레어 싱글 캐스크(`RARE.singleCaskAppeal` 매력도 ×1.3 · 럭셔리 희소성 15) — 한 통만 병입한 제품의 표기다. 보충으로 다른 원액이 섞이면 지운다.
+  // 매대 재고가 0이고 새 배치가 레어 단독이면 그 배치 그대로(2026-11-12 수정: 레어 통 하나로 처음 병입한 제품을 평범한 통으로 계속 보충해도 ×1.3이 남았다)
+  if (keep(old.rareSingleCask, batch.rareSingleCask, false)) merged.rareSingleCask = true; else delete merged.rareSingleCask;
   if (caskMix) merged.caskMix = caskMix; else delete merged.caskMix;
   // 레시피 — 남은 재고가 있으면 합집합, 한쪽이라도 기록이 없으면(옛 제품) 기록 없음(모든 원액)
   const rec = fresh ? batch.recipeIds : old.recipeIds && batch.recipeIds ? [...new Set([...old.recipeIds, ...batch.recipeIds])].sort() : undefined;

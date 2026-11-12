@@ -571,6 +571,16 @@ describe('재고 보충 — 매대 재고가 0이면 새 배치의 숙성 표기
     expect(empty.quality).toBe(75);
     expect(empty.price).toBe(40000); // 출고가는 플레이어 몫 — 화면이 올리라고 알린다
   });
+
+  it('레어 싱글 캐스크 표기는 보충으로 섞이면 지운다 — 재고 0에서 새 레어 단독 배치면 남긴다', async () => {
+    const { restockedProduct } = await import('./blending');
+    const base = { id: 'P', name: 'x', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 100, style: null, sourcedShare: 0, stockBottles: 100, price: 60000, unitCost: 5000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, rareSingleCask: true } as Product;
+    const plain = { ...base, rareSingleCask: undefined, stockBottles: 300 } as Product;
+    expect(restockedProduct(base, plain).rareSingleCask).toBeUndefined();
+    expect(restockedProduct(base, { ...plain, rareSingleCask: true }).rareSingleCask).toBeUndefined(); // 레어 통 둘이 섞여도 싱글 캐스크가 아니다
+    expect(restockedProduct({ ...base, stockBottles: 0 }, { ...plain, rareSingleCask: true }).rareSingleCask).toBe(true);
+    expect(restockedProduct({ ...base, stockBottles: 0 }, plain).rareSingleCask).toBeUndefined();
+  });
 });
 
 describe('자동 최적 가격 (#200, 3차 MVP 플레이테스트 오너 요청)', () => {
