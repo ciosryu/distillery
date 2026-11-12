@@ -85,6 +85,9 @@ applyMgtKnobs(); // MGT 실험 손잡이 (T-0) — 환경 변수가 없으면 �
 applyProdKnobs(); // PROD 실험 손잡이 — 환경 변수가 없으면 아무 일도 하지 않는다
 // 게임 자동 납품으로 위스키 보충 (PROD 요청, P8만) — 0이면 끔
 const AUTORESTOCK = process.env.P8 && process.env.AUTORESTOCK === '1' ? Number(process.env.AUTORESTOCK_MONTHS ?? 2) : 0;
+// AUTORESTOCK_RETIRE=1 (자동 납품 어긋남 조사 — 결정 #296 H1 · PM 요청 2026-11-12): 3년 표기 계열을 시작하는 달(labelFrom)부터
+//   그보다 짧은 표기(1·2년)의 옛 위스키 제품은 자동 납품을 끈다 — 옛 제품의 하한(법정 12개월·표기 24개월)이 낮아 자동 납품이 3년이 되기 전의 통을 계속 쓰는지 가린다
+const AUTORESTOCK_RETIRE = process.env.AUTORESTOCK_RETIRE === '1';
 
 interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean; maltFrom?: [number, number]; autoRestock?: number; visitorAt?: number; equipAt?: number; b2b?: { share: number; until: number }; flagship?: boolean; price?: 'table' | 'markup'; markup?: number; sojuOff?: [number, number]; overprod?: [number, number]; loansFrom?: number; fixAt?: number; buyAt?: [number, string][]; repayAt?: number; protectFrom?: [number, number]; salesAt?: number; pricePolicy?: Partial<Record<PriceKey, PriceGoal>>; priceSwitch?: boolean }
 /** 자동 가격 3정책(#288 — AP3) 봇 흉내: 범주별로 고른다. 플래그십 제품은 따로 */
@@ -407,6 +410,8 @@ function bottleAs(s: GameState, p: Policy, comps: { source: 'lot' | 'cask'; id: 
 }
 
 function bottle(s: GameState, p: Policy, t: { firstWhisky: number; flagshipDone?: boolean }): GameState {
+  if (AUTORESTOCK_RETIRE && p.autoRestock && p.labelFrom && s.month >= p.labelFrom[0])
+    for (const x of s.commerce.products.filter((y) => isWhiskyCategory(y.category) && y.autoRestock && (y.ageYears ?? 0) * 12 < p.labelFrom![1])) s = act(s, { type: 'setAutoRestock', productId: x.id, months: null });
   for (const lot of [...s.inventory.lots]) {
     if (lot.kind !== 'soju') continue;
     if (p.soju === 'stock' && (stockOf(s, 'soju_distilled') >= 1500 || s.month - lot.createdMonth < 1)) continue;
