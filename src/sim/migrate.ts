@@ -152,6 +152,11 @@ const MIGRATIONS: Record<number, (s: AnySave) => AnySave> = {
  * 순수 함수 — 입력 객체는 바꾸지 않는다 (새 객체를 만든다).
  */
 export function migrateSave(raw: unknown): GameState | null {
+  return migrateSaveReport(raw)?.state ?? null;
+}
+
+/** migrateSave + 수리(#285·#295)가 고친 것 — 불러오기 화면이 원본 보존·오류 표시를 정할 때 쓴다 */
+export function migrateSaveReport(raw: unknown): { state: GameState; fixes: string[] } | null {
   if (!raw || typeof raw !== 'object') return null;
   let s = raw as AnySave;
   let v = s.version;
@@ -163,5 +168,5 @@ export function migrateSave(raw: unknown): GameState | null {
     v = s.version;
   }
   // 버전과 무관한 수리 (#285) — NaN이 null로 저장된 값을 고친다. 고칠 것이 없으면 그대로(입력을 바꾸지 않는다)
-  return repairSave(s as GameState).state;
+  return repairSave(s as GameState);
 }
