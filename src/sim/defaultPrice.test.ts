@@ -1,10 +1,11 @@
 // 기본 정책 가격 n ([결정 #290] B1-4) — 한 함수(defaultPolicyPrice)를 병입 첫 값·병입 미리보기·생산 경제성 표·"권장" 버튼이 같이 쓴다(PROD 합의 option A)
 import { describe, expect, it } from 'vitest';
 import { applyAction, previewBatch, previewBlend, type GameState } from './index';
-import { DEFAULT_POLICY_N, defaultPolicyPrice, resetFirstPriceOnAuto } from './content/market';
-import { PRICE_POLICY } from './pricePolicy';
+import { DEFAULT_POLICY_N, defaultPolicyPrice } from './content/market';
+import { PRICE_POLICY, resetFirstPriceOnAuto } from './pricePolicy';
 import { newScenarioGame } from './newScenario';
-import { recipeEconomics, STANDARD_BOTTLE } from './economics';
+import { currentSuggested, recipeEconomics, STANDARD_BOTTLE } from './economics';
+import { migrateSave } from './migrate';
 
 const mvp = (): GameState => { const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5 }); s.finance.cash = 5e9; return s; };
 function withLot(s: GameState) {
@@ -42,8 +43,8 @@ describe('기본 정책 가격 n (B1-4)', () => {
   });
 });
 
-// P-MKT-34 (나) — 자동 가격 A를 켤 때 첫 출고가(기준가 × n) 그대로면 기준가로 되돌린다. 자동 가격 판은 n이 없던 때와 같은 길을 간다
-describe('자동 가격 A로 켤 때 첫 출고가 되돌리기 (P-MKT-34)', () => {
+// 결정 #304 — 자동 가격 A를 켤 때 첫 출고가(기준가 × n) 그대로면 기준가로 되돌린다. 자동 가격 판은 n이 없던 때와 같은 길을 간다
+describe('자동 가격 A로 켤 때 첫 출고가 되돌리기 (결정 #304)', () => {
   const bottled = (factor?: number) => {
     const s = mvp();
     const { opts } = withLot(s);
@@ -80,6 +81,43 @@ describe('자동 가격 A로 켤 때 첫 출고가 되돌리기 (P-MKT-34)', () 
     }
   });
 
+  it("'all'로 A를 켜면 일반 제품은 모두 기준가로, 면세 한정판은 값·정책 그대로 — 세이브 왕복 뒤에도 같다(ARCH 검토 #304)", () => {
+    const n = bottled();
+    const comps = [{ source: 'lot' as const, id: 'X', liters: 100 }];
+    const { opts } = withLot(n.s);
+    const r2 = applyAction(n.s, { type: 'bottle', components: comps, options: { ...opts, name: '둘째' } });
+    expect(r2.error).toBeUndefined();
+    const s = r2.state;
+    const normal = s.commerce.products.filter((p) => !p.dutyFreeOnly);
+    expect(normal.length).toBeGreaterThanOrEqual(2);
+    const df = { ...normal[0]!, id: 'DF', name: '면세 한정', dutyFreeOnly: true };
+    s.commerce.products.push(df);
+    for (const p of s.commerce.products) {
+      p.price = defaultPolicyPrice(currentSuggested(s, p)); // 셋 다 첫 값 = 기준가 × n
+      if (!p.dutyFreeOnly) p.stockBottles = 0; // 엔진이 값을 고르지 않는 달 — 되돌린 값이 그대로 보인다
+    }
+    const bases = new Map(s.commerce.products.map((p) => [p.id, currentSuggested(s, p)]));
+    const r = applyAction(s, { type: 'setPricePolicy', productId: 'all', mode: 'turnover' });
+    expect(r.error).toBeUndefined();
+    const after = (st: GameState) => {
+      for (const p of st.commerce.products) {
+        if (p.dutyFreeOnly) {
+          expect(p.price).toBe(defaultPolicyPrice(bases.get(p.id)!));
+          expect(p.autoPrice).toBeUndefined();
+          expect(p.pricePolicy).toBeUndefined();
+        } else {
+          expect(p.price).toBe(bases.get(p.id));
+          expect(p.autoPrice).toBe(true);
+          expect(p.pricePolicy?.mode).toBe('turnover');
+        }
+      }
+    };
+    after(r.state);
+    const loaded = migrateSave(JSON.parse(JSON.stringify(r.state)))!;
+    after(loaded);
+    expect(loaded.commerce.products).toEqual(r.state.commerce.products);
+  });
+
   it('B·C로 켜면 첫 값 ×n에서 출발한다(되돌리지 않는다, P-PROD-53)', () => {
     // B: 한 달에 ±step만 움직이니 출발점이 다르면 켠 뒤 값도 다르다
     const n = bottled(), one = bottled(1);
@@ -93,7 +131,7 @@ describe('자동 가격 A로 켤 때 첫 출고가 되돌리기 (P-MKT-34)', () 
 
   it('손으로 정한 값 · 이미 켜진 제품 · 기준가가 움직여 첫 값과 다른 값은 그대로 둔다', () => {
     const p = { price: 15_000 };
-    resetFirstPriceOnAuto(p, 10_000);
+    expect(resetFirstPriceOnAuto(p, 10_000)).toBeNull();
     expect(p.price).toBe(15_000); // 손으로 정한 값
     const on = { price: 13_000, autoPrice: true };
     resetFirstPriceOnAuto(on, 10_000);
@@ -105,7 +143,7 @@ describe('자동 가격 A로 켤 때 첫 출고가 되돌리기 (P-MKT-34)', () 
     resetFirstPriceOnAuto(df, 10_000);
     expect(df.price).toBe(13_000);
     const fresh = { price: 13_000 };
-    resetFirstPriceOnAuto(fresh, 10_000);
+    expect(resetFirstPriceOnAuto(fresh, 10_000)).toBe(13_000); // 되돌리기 전 값
     expect(fresh.price).toBe(10_000);
   });
 });
