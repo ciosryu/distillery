@@ -508,7 +508,37 @@ export function guardedFlagshipCasks(s: GameState, p: Product): number {
 export function autoRestockFloor(s: GameState, p: Pick<Product, 'ageYears' | 'autoRestockMinMonths'>): number {
   const legal = whiskyMinMonths(regionOf(s).whisky);
   const label = p.ageYears ? p.ageYears * 12 : legal;
-  return p.autoRestockMinMonths != null ? Math.max(legal, Math.min(label, p.autoRestockMinMonths)) : label;
+  // 표기보다 높게도 고를 수 있다 (#297 ② — "1년 표기 제품도 3년 통으로만"). 표기는 보충해도 내려가지 않는다(더 오래된 통뿐)
+  return p.autoRestockMinMonths != null ? Math.max(legal, p.autoRestockMinMonths) : label;
+}
+
+/**
+ * 자동 납품 통 다툼 (#297 ① — MGT P-MGT-45): 이 제품(짧은 하한)의 자동 납품이 이번 달 어린 통을 가져가려 하는데,
+ * 같은 범주·같은 피니시이고 하한이 더 긴 다른 자동 납품 제품이 **지금 통이 모자라 못 채우는** 달이면 그 제품을 돌려준다(하한이 가장 긴 것).
+ * 가져가는 통 중 그 제품 하한보다 어린 통이 있어야 한다 — 그 통이 몇 해 뒤 그 제품의 재고가 된다(standard 166개월: 1·2년 제품 자동 납품이 3년 계열을 굶김).
+ * 실제로 다투는 달에만 참이다(늘 뜨는 경고는 무시된다 — PM 조건). 새 상태 없음 — 지금 상태로 계산한다
+ */
+export function autoRestockContest(s: GameState, p: Product, monthOfYear = calendar(s).monthOfYear): { rival: Product; rivalFloor: number; youngCasks: number } | null {
+  if (!p.autoRestock || !isWhiskyCategory(p.category) || !autoRestockSupported(p)) return null;
+  const floor = autoRestockFloor(s, p);
+  const rivals = s.commerce.products.filter((q) => q.id !== p.id && q.autoRestock && q.category === p.category && (q.finish ?? null) === (p.finish ?? null)
+    && autoRestockSupported(q) && autoRestockFloor(s, q) > floor);
+  if (!rivals.length) return null;
+  const plan = autoRestockPlan(s, p, monthOfYear);
+  if (!plan) return null;
+  const oakOf = (id: string) => s.inventory.casks.find((c) => c.id === id)?.contents?.oakMonths ?? 0;
+  let best: { rival: Product; rivalFloor: number; youngCasks: number } | null = null;
+  for (const q of rivals) {
+    const qFloor = autoRestockFloor(s, q);
+    const target = Math.ceil(productMonthlyPace(s, q, monthOfYear) * (q.autoRestock ?? 0));
+    if (q.stockBottles >= target) continue; // 그 제품은 지금 모자라지 않다
+    const perBottle = (q.bottleMl / 1000) * q.abv;
+    const ready = autoRestockSources(s, q).reduce((t, x) => t + x.lot.volumeL * x.lot.abv, 0);
+    if (perBottle > 0 && ready / perBottle >= target - q.stockBottles) continue; // 그 제품은 지금 채울 통이 있다
+    const young = plan.components.filter((c) => c.source === 'cask' && oakOf(c.id) < qFloor).length;
+    if (young > 0 && (!best || qFloor > best.rivalFloor)) best = { rival: q, rivalFloor: qFloor, youngCasks: young };
+  }
+  return best;
 }
 
 /** 자동 납품 하한이 길어 오래된 통만 쓰는 제품인가 — 화면 경고용(5년 이상) */
@@ -579,6 +609,9 @@ export function applyAutoRestock(s: GameState, report: MonthReport, monthOfYear 
     if (!p0.autoRestock) continue;
     const p = s.commerce.products.find((x) => x.id === p0.id);
     if (!p) continue;
+    // 통 다툼 (#297 ①) — 하한이 더 긴 제품이 굶는 달에 이 제품이 어린 통을 가져가면 알린다(가져가는 것은 그대로 — 판단은 플레이어)
+    const contest = autoRestockContest(s, p, monthOfYear);
+    if (contest) report.notes.push(`자동 납품 「${p.name}」이 어린 통 ${contest.youngCasks}개를 가져간다 — 「${contest.rival.name}」(${Math.floor(contest.rivalFloor / 12)}년 이상 통)은 통이 모자라 못 채우는 중. 이 제품의 통 하한을 ${Math.floor(contest.rivalFloor / 12)}년으로 올리거나 자동 납품을 끄세요`);
     const plan = autoRestockPlan(s, p, monthOfYear);
     if (!plan) {
       if (p.stockBottles < Math.ceil(productMonthlyPace(s, p, monthOfYear) * (p.autoRestock ?? 0))) report.notes.push(`자동 납품 「${p.name}」 — 쓸 원액이 없어 못 채웠다${isWhiskyCategory(p.category) ? ` (${p.ageYears ? `${p.ageYears}년 이상` : '법정 숙성 이상'} 숙성·같은 피니시·도수 ${Math.round(p.abv * 1000) / 10}% 이상 통이 필요)` : ' (탱크 원액 필요)'}`);
