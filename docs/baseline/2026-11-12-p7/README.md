@@ -72,7 +72,7 @@
 |---|---|
 | `p8-rest-a-standard.txt` | `P8=1 METRICS=1 TIER=standard ONLY=X5,X13,X19,X20 npx tsx scripts/experiments/mvp-human.ts 40 180` |
 | `p8-rest-b-standard.txt` | `P8=1 METRICS=1 TIER=standard ONLY=X21,X22,X22h,X41 npx tsx scripts/experiments/mvp-human.ts 40 180` |
-| `p8-rest-micro.txt` | `P8=1 METRICS=1 TIER=micro ONLY=X5,X13,X19,X20,X21,X22,X22h,X41 npx tsx scripts/experiments/mvp-human.ts 40 180` — **micro X22h · X41은 뒤따름**(측정 중, 같은 PR에 추가 커밋) |
+| `p8-rest-micro.txt` | `P8=1 METRICS=1 TIER=micro ONLY=X5,X13,X19,X20,X21,X22,X22h,X41 npx tsx scripts/experiments/mvp-human.ts 40 180` |
 | `prod-hold-A-standard.txt` | `ONLY=HA,HC,HD,HS npx tsx scripts/experiments/prod-hold-p8.ts 40 180` (기본 = 자동 가격 A, #306의 참고 행) |
 
 **standard (40시드 × 180개월)**
@@ -91,7 +91,7 @@
 - **X5와 X22는 같은 판이다**(모든 칸 동일). X5의 손 가격 `defaultPolicyPrice(권장) = 권장 × 1.3`과 X22의 `round(권장 × 1.3)`이 같은 값이기 때문이다(`mvp-human.ts` `manualPrice`). 둘 중 하나는 중복 행이다.
 - X19·X41의 A 등급은 플래그십 병입에서 나온다(1차 X40 주석과 같음).
 
-**micro (끝난 6행 — X22h · X41은 뒤따름)**
+**micro (40시드 × 180개월)**
 
 | 행 | 파산 | 최대 대출 평균 | 15년 순자산 평균 | 목표 |
 |---|---|---|---|---|
@@ -101,6 +101,8 @@
 | X20 | 0/40 | 4.59억 | 38.19억 | 40/40 |
 | X21 | 0/40 | 3.13억 | 27.60억 | 40/40 |
 | X22 | 0/40 | 4.48억 | 32.00억 | 40/40 |
+| X22h | 0/40 | 4.88억 | 38.65억 | 40/40 |
+| X41 | 0/40 | 3.81억 | 30.79억 | 40/40 |
 
 **장기 보유 × A (참고 — #306은 B′로 판정하고 A 행은 참고, standard, 같은 시드 짝)**
 
