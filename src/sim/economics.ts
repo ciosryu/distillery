@@ -434,18 +434,21 @@ export function bestAutoPrice(s: GameState, p: Product, monthOfYear = calendar(s
 /** 자동 가격 수렴 반복의 최대 회차 ([결정 #298]) */
 export const AUTO_PRICE_MAX_ROUNDS = 3;
 
+/** 자동 가격을 정하는 순서 — 제품 id 순(배열 순서와 무관한 고정 순서, [제안 P-ARCH-54]) */
+export const autoPriceOrder = (s: GameState): Product[] =>
+  s.commerce.products.filter((p) => p.autoPrice).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
 /**
- * 판매 직전(틱 5단계 맨 앞): 자동 가격을 켠 제품의 값을 **동시에** 정하고, 값이 더 바뀌지 않을 때까지 되풀이한다
- * (S6 — [결정 #295] · 수렴 [결정 #298], architecture §10.9 ④).
- * 한 회차 = 모든 제품이 같은 진열(앞 회차 결과)을 보고 값을 고른 뒤 한꺼번에 적용(공유 스냅샷) — 제품 배열 순서가 결과를 바꾸지 않는다(TECH-01).
- * 한 회차로 끝내면 형제가 서로 모른 채 함께 내려 과하게 깎였다(기준선 대비 standard X0 −3.5억) → 최대 3회.
- * **마지막 회차 규칙:** 3회째에도 값이 바뀌면(2주기 진동 등) 3회째 값으로 끝낸다. 돌려주는 값 = 쓴 회차 수(값이 안 바뀐 확인 회차 포함)
+ * 판매 직전(틱 5단계 맨 앞): 자동 가격을 켠 제품의 값을 **id 순으로 차례로**(앞 제품의 새 값을 보며) 정하고, 한 바퀴에 바뀐 값이 없을 때까지
+ * 되풀이한다 — Gauss-Seidel 수렴 (S6 — [결정 #295] · [결정 #298] 수정안 [제안 P-ARCH-54], architecture §10.9 ④).
+ * 배열 순서가 결과를 바꾸지 않는다(TECH-01). 같은 형제의 공통 목적함수(진열 공헌)를 좌표 상승으로 올린다 — 공유 스냅샷(Jacobi)은 형제가 함께 과하게 내렸다.
+ * **마지막 바퀴 규칙:** 3바퀴째에도 바뀌면 3바퀴째 값으로 끝낸다. 돌려주는 값 = 쓴 바퀴 수
  */
 export function applyAutoPrices(s: GameState, monthOfYear = calendar(s).monthOfYear): number {
+  const order = autoPriceOrder(s);
   for (let round = 1; round <= AUTO_PRICE_MAX_ROUNDS; round++) {
-    const picks = s.commerce.products.filter((p) => p.autoPrice).map((p) => [p, bestAutoPrice(s, p, monthOfYear)] as const);
     let changed = false;
-    for (const [p, v] of picks) if (v != null && v !== p.price) { p.price = v; changed = true; }
+    for (const p of order) { const v = bestAutoPrice(s, p, monthOfYear); if (v != null && v !== p.price) { p.price = v; changed = true; } }
     if (!changed) return round;
   }
   return AUTO_PRICE_MAX_ROUNDS;
