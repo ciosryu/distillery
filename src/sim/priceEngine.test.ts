@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonth, applyAction, migrateSave, type GameState, type Product } from './index';
 import { newScenarioGame } from './newScenario';
-import { bestAutoPrice, currentSuggested } from './economics';
+import { applyAutoPrices, bestAutoPrice, currentSuggested } from './economics';
 import { priceModeOf, runPricePolicies } from './priceEngine';
 
 // 자동 가격 3정책 엔진 ([결정 #291], architecture §10.9 ④) — 코어 ARCH. 정책 함수는 MKT pricePolicy.ts(decidePolicyPrice)
@@ -69,7 +69,7 @@ describe('실행 — 공유 스냅샷·사유·범위 (엣지 ⑦)', () => {
     }
   });
 
-  it('배열 순서를 바꿔도 결과가 같다(형제 동시 결정) · 결산에 사유 한 줄', () => {
+  it('배열 순서를 바꿔도 결과가 같다(id 순 Gauss-Seidel, 결정 #300) · 결산에 사유 한 줄', () => {
     const mk = (rev: boolean) => { const s = game([{ autoPrice: true, price: 5000, stockBottles: 100 }, { autoPrice: true, stockBottles: 100, pricePolicy: { mode: 'profit' } }, { autoPrice: true, pricePolicy: { mode: 'premium' } }], 1); if (rev) s.commerce.products.reverse(); return s; };
     const a = advanceMonth(mk(false)), b = advanceMonth(mk(true));
     const prices = (s: GameState) => Object.fromEntries(s.commerce.products.map((p) => [p.id, p.price]));
@@ -80,7 +80,7 @@ describe('실행 — 공유 스냅샷·사유·범위 (엣지 ⑦)', () => {
   });
 });
 
-describe('수렴 ([결정 #298]) — 가드 기준은 회차 사이에 고정', () => {
+describe('수렴 ([결정 #300] Gauss-Seidel) — 가드 기준은 바퀴 사이에 고정', () => {
   it('B는 여러 회차를 돌아도 그달 시작 lastFactor에서 한 단계(±0.1)를 넘지 않는다 · 확정 값으로만 lastFactor 갱신', () => {
     for (const start of [0.8, 1.3, 1.9]) {
       const s = game([{ autoPrice: true, stockBottles: 50, pricePolicy: { mode: 'profit', lastFactor: start } }, { autoPrice: true, stockBottles: 50, quality: 70, pricePolicy: { mode: 'profit', lastFactor: start } }], 1);
@@ -91,6 +91,16 @@ describe('수렴 ([결정 #298]) — 가드 기준은 회차 사이에 고정', 
         expect(Math.abs(p.pricePolicy!.lastFactor! - start)).toBeLessThanOrEqual(0.1 + 0.02); // 100원 반올림 뒤 배수(MKT factor = 값 ÷ 기준가)
       }
     }
+  });
+});
+
+describe('엔진 = economics.applyAutoPrices (옛 판 A, 결정 #300)', () => {
+  it('옛 판(autoPrice만)은 economics.applyAutoPrices와 같은 값', () => {
+    const a = game([{ autoPrice: true, price: 5000, stockBottles: 100 }, { autoPrice: true, stockBottles: 100, quality: 50 }, { autoPrice: true, quality: 75, stockBottles: 60 }], 1);
+    const b = structuredClone(a);
+    runPricePolicies(a, null, 1);
+    applyAutoPrices(b, 1);
+    expect(a.commerce.products.map((p) => p.price)).toEqual(b.commerce.products.map((p) => p.price));
   });
 });
 

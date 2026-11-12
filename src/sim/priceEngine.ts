@@ -3,8 +3,8 @@ import { decidePolicyPrice, PRICE_POLICY, type PolicySpec } from './pricePolicy'
 import type { GameState, MonthReport, PriceLogEntry, PricePolicy, Product } from './types';
 
 // 자동 가격 3정책 실행 엔진 (코어 ARCH — [결정 #291], architecture §10.9 ④). 정책 함수(목표함수·정책 가드·범위)는 MKT `pricePolicy.ts`.
-// 흐름: 플레이어 정책(Product.autoPrice + pricePolicy?) → 판매 직전(틱 5단계) **공유 스냅샷**으로 모든 제품의 결정을 먼저 구한다(S6)
-//   → 한꺼번에 적용 → lastFactor 저장(그릇이 있을 때만) → 사유 한 줄(MonthReport.priceLog). 정책을 켜지 않은 판은 아무것도 바꾸지 않는다
+// 흐름: 플레이어 정책(Product.autoPrice + pricePolicy?) → 판매 직전(틱 5단계) 형제를 id 순으로 차례로 정하고 값이 안 바뀔 때까지 최대 3바퀴(S6 Gauss-Seidel, [결정 #300])
+//   → 확정 값으로 lastFactor 저장(그릇이 있을 때만) → 사유 한 줄(MonthReport.priceLog). 정책을 켜지 않은 판은 아무것도 바꾸지 않는다
 
 export type PriceModeId = PricePolicy['mode'];
 export const PRICE_MODE_IDS: readonly PriceModeId[] = ['turnover', 'profit', 'premium'];
@@ -31,10 +31,10 @@ export function policyError(q: Partial<PricePolicy>): string | null {
 }
 
 /**
- * 판매 직전 실행 (틱 5단계 — step.ts phaseSales). 수렴([결정 #298]) — 한 회차 = 켠 제품 모두가 같은 진열(앞 회차 결과)을 보고
- * `decidePolicyPrice`로 정한 뒤 한꺼번에 적용(공유 스냅샷, S6). 값이 더 바뀌지 않을 때까지 최대 `AUTO_PRICE_MAX_ROUNDS`(3)회,
- * 3회째에도 바뀌면 3회째 값으로 끝낸다(economics.applyAutoPrices와 같은 틀 — 옛 판 A는 그것과 바이트 동일).
- * **가드 기준은 회차 사이에 고정한다** — 모든 회차가 그달 시작의 `lastFactor`를 쓰고, 확정된 값으로만 `lastFactor`를 갱신한다(B 한 달 한 단계가 회차마다 쌓이지 않게).
+ * 판매 직전 실행 (틱 5단계 — step.ts phaseSales). 수렴 — Gauss-Seidel([결정 #300], #298 수정): 켠 제품을 **id 순으로 차례로**
+ * `decidePolicyPrice`로 정하고(앞 제품이 바꾼 live 값을 본다), 한 바퀴에 바뀐 값이 없을 때까지 최대 `AUTO_PRICE_MAX_ROUNDS`(3)바퀴,
+ * 3바퀴째에도 바뀌면 그 값으로 끝낸다(economics.applyAutoPrices와 같은 틀 — 옛 판 A는 그것과 바이트 동일).
+ * **가드 기준은 바퀴 사이에 고정한다** — 모든 바퀴가 그달 시작의 `lastFactor`를 쓰고, 확정된 값으로만 `lastFactor`를 갱신한다(B 한 달 한 단계가 바퀴마다 쌓이지 않게).
  * `only`가 있으면 그 제품만(정책을 고른 순간 한 번 정할 때 — 다른 제품 값은 그대로).
  * 옛 판(autoPrice만, 그릇 없음)은 상태에 새 값을 쓰지 않는다 — 사유(priceLog)만 결산에 남는다
  */
@@ -44,11 +44,12 @@ export function runPricePolicies(s: GameState, report: MonthReport | null, month
   const start = new Map(live.map((p) => [p.id, p.price]));
   const specs = new Map(live.map((p) => [p.id, { ...(p.pricePolicy ?? {}), mode: priceModeOf(p)! } as PolicySpec])); // 그달 시작의 lastFactor로 고정
   const last = new Map<string, { factor: number | null; why: string }>();
+  const order = [...live].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)); // id 순 — 배열 순서와 무관([결정 #300])
   for (let round = 1; round <= AUTO_PRICE_MAX_ROUNDS; round++) {
-    const picks = live.map((p) => [p, decidePolicyPrice(s, p, specs.get(p.id)!, monthOfYear)] as const);
     let changed = false;
-    for (const [p, d] of picks) {
-      last.set(p.id, { factor: d.factor ?? last.get(p.id)?.factor ?? null, why: d.why }); // 값을 안 바꾼 회차는 앞 회차의 배수를 이어 쓴다
+    for (const p of order) {
+      const d = decidePolicyPrice(s, p, specs.get(p.id)!, monthOfYear); // 앞 제품이 이번 바퀴에 바꾼 live 값을 본다(Gauss-Seidel)
+      last.set(p.id, { factor: d.factor ?? last.get(p.id)?.factor ?? null, why: d.why }); // 값을 안 바꾼 바퀴는 앞 바퀴의 배수를 이어 쓴다
       if (d.price != null && d.price !== p.price) { p.price = d.price; changed = true; }
     }
     if (!changed) break;
