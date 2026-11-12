@@ -431,14 +431,24 @@ export function bestAutoPrice(s: GameState, p: Product, monthOfYear = calendar(s
   return best?.price ?? null;
 }
 
+/** 자동 가격 수렴 반복의 최대 회차 ([결정 #298]) */
+export const AUTO_PRICE_MAX_ROUNDS = 3;
+
 /**
- * 판매 직전(틱 5단계 맨 앞): 자동 가격을 켠 제품의 값을 **동시에** 정한다 (S6 — [결정 #295], architecture §10.9 ④·§10.7 계약 5).
- * 모든 제품이 같은 판매 전 진열(지난 값)을 보고 값을 고른 뒤 한꺼번에 적용한다 — 제품 배열 순서가 결과를 바꾸지 않는다(TECH-01).
- * 형제의 이번 달 변화는 다음 달에 서로 반영된다
+ * 판매 직전(틱 5단계 맨 앞): 자동 가격을 켠 제품의 값을 **동시에** 정하고, 값이 더 바뀌지 않을 때까지 되풀이한다
+ * (S6 — [결정 #295] · 수렴 [결정 #298], architecture §10.9 ④).
+ * 한 회차 = 모든 제품이 같은 진열(앞 회차 결과)을 보고 값을 고른 뒤 한꺼번에 적용(공유 스냅샷) — 제품 배열 순서가 결과를 바꾸지 않는다(TECH-01).
+ * 한 회차로 끝내면 형제가 서로 모른 채 함께 내려 과하게 깎였다(기준선 대비 standard X0 −3.5억) → 최대 3회.
+ * **마지막 회차 규칙:** 3회째에도 값이 바뀌면(2주기 진동 등) 3회째 값으로 끝낸다. 돌려주는 값 = 쓴 회차 수(값이 안 바뀐 확인 회차 포함)
  */
-export function applyAutoPrices(s: GameState, monthOfYear = calendar(s).monthOfYear): void {
-  const picks = s.commerce.products.filter((p) => p.autoPrice).map((p) => [p, bestAutoPrice(s, p, monthOfYear)] as const);
-  for (const [p, v] of picks) if (v != null) p.price = v;
+export function applyAutoPrices(s: GameState, monthOfYear = calendar(s).monthOfYear): number {
+  for (let round = 1; round <= AUTO_PRICE_MAX_ROUNDS; round++) {
+    const picks = s.commerce.products.filter((p) => p.autoPrice).map((p) => [p, bestAutoPrice(s, p, monthOfYear)] as const);
+    let changed = false;
+    for (const [p, v] of picks) if (v != null && v !== p.price) { p.price = v; changed = true; }
+    if (!changed) return round;
+  }
+  return AUTO_PRICE_MAX_ROUNDS;
 }
 
 
