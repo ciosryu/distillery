@@ -28,8 +28,9 @@ import { EVENTS } from '../../src/sim/content/events';
 import { LOAN_OFFERS } from '../../src/sim/content/catalog';
 import { REGIONS } from '../../src/sim/content/regions';
 import { applyMgtKnobs, mgtPolicy } from './mgtKnobs';
-// TECH-02 판정 도구 통일 (MGT AP3-MGT-1, ARCH 검토): METRICS=1 이면 게임 순자산(progress.netWorth)·#263 등급으로 센 판정 표를 덧붙인다 — 기본 출력은 그대로
-import { outcomeOf, summarize, type RunOutcome } from './metrics';
+// TECH-02 판정 도구 통일 ([결정 #292] ③, P-MGT-42 (a)): 순자산·목표 달성은 게임 정의(metrics.ts outcomeOf = progress.netWorth — 판정·P8과 같다)로 센다.
+// 옛 정의(원액 = bulkValuePerLPA × 0.85)는 METRICS=1 비교 표에만 남긴다
+import { achieved, outcomeOf, summarize, type RunOutcome } from './metrics';
 applyMgtKnobs(); // MGT 실험 손잡이 (T-0) — 환경 변수가 없으면 아무 일도 하지 않는다
 
 const SEEDS = Number(process.argv[2] ?? 10);
@@ -141,9 +142,10 @@ function finance(s: GameState, t: Track): GameState {
   return s;
 }
 
-interface Row { verdict: string; goal: boolean; plan: string; seed: number; bankrupt: boolean; bankruptMonth: number; minCash: number; minCashMonth: number; firstWhisky: number; flagship: boolean; netWorth: number; spotSoldL: number; sojuShare3y: number; capBlocked: number; loansMax: number; outcome?: RunOutcome }
+interface Row { verdict: string; goal: boolean; plan: string; seed: number; bankrupt: boolean; bankruptMonth: number; minCash: number; minCashMonth: number; firstWhisky: number; flagship: boolean; netWorth: number; spotSoldL: number; sojuShare3y: number; capBlocked: number; loansMax: number; outcome: RunOutcome; legacyNetWorth: number; legacyGoal: boolean }
 
-function netWorth(s: GameState): number {
+/** 옛 정의 (TECH-02 전) — 원액 = bulkValuePerLPA × 0.85, 국산 프리미엄·신뢰도·포화·운송비 없음, 고객 소유 통 포함. METRICS=1 비교 표에만 쓴다 */
+function legacyNetWorth(s: GameState): number {
   const stock = [...s.inventory.lots, ...s.inventory.casks.flatMap((c) => (c.contents ? [c.contents] : []))].reduce((t, l) => t + l.volumeL * l.abv * bulkValuePerLPA(s, l) * 0.85, 0);
   const products = s.commerce.products.reduce((t, p) => t + p.stockBottles * p.unitCost, 0);
   return s.finance.cash - s.finance.loans.reduce((t, l) => t + l.balance, 0) + stock + products + s.finance.receivables.reduce((t, r) => t + r.amount, 0);
@@ -183,10 +185,12 @@ function play(p: Plan, seed: number): Row {
   const r3 = reps.filter((r) => r.month < 36).flatMap((r) => r.sales);
   const soju = r3.filter((x) => cats.get(x.productId) === 'soju_distilled').reduce((a, x) => a + x.revenue, 0);
   const all = r3.reduce((a, x) => a + x.revenue, 0);
-  const nw = s.status === 'bankrupt' ? NaN : netWorth(s);
+  const outcome = outcomeOf(s, s.status !== 'bankrupt');
+  const nw = s.status === 'bankrupt' ? NaN : outcome.netWorth;
+  const legacy = s.status === 'bankrupt' ? NaN : legacyNetWorth(s);
+  const target = s.scenario ? s.scenario.equity * s.scenario.goal.netWorthMultiple : NaN;
   const v = s.progress.verdict;
-  const outcome = process.env.METRICS === '1' ? outcomeOf(s, s.status !== 'bankrupt') : undefined;
-  return { ...(outcome ? { outcome } : {}), verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', goal: !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, plan: p.name, seed, bankrupt: s.status === 'bankrupt', bankruptMonth: s.status === 'bankrupt' ? s.month : -1, minCash, minCashMonth, firstWhisky: t.firstWhiskyMonth, flagship: t.flagshipBottled, netWorth: nw, spotSoldL: t.spotSoldL, sojuShare3y: all ? soju / all : 0, capBlocked: t.capBlocked, loansMax };
+  return { outcome, legacyNetWorth: legacy, legacyGoal: !!s.scenario && legacy >= target, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', goal: !!s.scenario && achieved(outcome), plan: p.name, seed, bankrupt: s.status === 'bankrupt', bankruptMonth: s.status === 'bankrupt' ? s.month : -1, minCash, minCashMonth, firstWhisky: t.firstWhiskyMonth, flagship: t.flagshipBottled, netWorth: nw, spotSoldL: t.spotSoldL, sojuShare3y: all ? soju / all : 0, capBlocked: t.capBlocked, loansMax };
 }
 
 const eok = (v: number) => (Number.isFinite(v) ? `${(v / 1e8).toFixed(2)}억` : '—');
@@ -224,17 +228,17 @@ console.log(`\n시드별 1위(생존 중 순자산): ${Object.entries(wins).map(
 console.log(`SUMMARY | ${MVP ? `MVP:${MVP}:loan${LOAN / 1e8}:visitor${VISITOR}${process.env.SALES2 === '1' ? ':sales2' : ''}` : [...VARIANT].join('+') || 'base'} | 목표(×${MVP_KR.goal.netWorthMultiple}) 달성 ${PLANS.map((p) => byPlan[p.name]!.filter((r) => r.goal).length).join(' · ')} | ${PLANS.map((p) => `${byPlan[p.name]!.filter((r) => r.bankrupt).length}/${SEEDS}`).join(' · ')} | ${Object.entries(wins).map(([k, v]) => `${k} ${v}`).join(' · ')} | ${PLANS.map((p) => eok(avg(byPlan[p.name]!.filter((r) => !r.bankrupt).map((r) => r.netWorth)))).join(' · ')} | ${PLANS.map((p) => Math.round(med(byPlan[p.name]!.filter((r) => r.firstWhisky >= 0).map((r) => r.firstWhisky)))).join(' · ')}`);
 
 if (process.env.METRICS === '1') {
-  // TECH-02: 같은 판을 두 정의로 — 이 스크립트의 순자산(원액 = bulkValuePerLPA × 0.85, 국산 프리미엄·신뢰도·포화·운송비 없음) 대 게임 순자산(progress.netWorth — 판정·P8과 같다)
+  // TECH-02: 같은 판을 두 정의로 — 옛 정의(TECH-02 전 — 원액 = bulkValuePerLPA × 0.85, 국산 프리미엄·신뢰도·포화·운송비 없음) 대 게임 순자산(progress.netWorth — 판정·P8과 같다)
   const pc = (x: number) => `${Math.round(x * 100)}%`;
-  console.log('\n| 전략 | 목표 달성 — 이 스크립트 순자산 · 게임 순자산 | 생존 판 순자산 평균 — 이 스크립트 · 게임 | 게임 정의 등급 S/A/B/C/F | 게임 정의 P10 · 하위 20% | 생존 |');
+  console.log('\n| 전략 | 목표 달성 — 옛 정의 · 게임 순자산 | 생존 판 순자산 평균 — 옛 정의 · 게임 | 게임 정의 등급 S/A/B/C/F | 게임 정의 P10 · 하위 20% | 생존 |');
   console.log('|---|---|---|---|---|---|');
   for (const p of PLANS) {
     const rs = byPlan[p.name]!;
-    const os = rs.map((r) => r.outcome!);
+    const os = rs.map((r) => r.outcome);
     const m = summarize(os);
-    const aliveOld = rs.filter((r) => !r.bankrupt).map((r) => r.netWorth), aliveNew = os.filter((o) => o.survived).map((o) => o.netWorth);
+    const aliveOld = rs.filter((r) => !r.bankrupt).map((r) => r.legacyNetWorth), aliveNew = os.filter((o) => o.survived).map((o) => o.netWorth);
     // 시나리오 기간(MVP_KR.goal.months = 180)보다 짧게 돌리면 끝나지 않은 판도 등급이 매겨져 모두 C로 보인다(ARCH #337 검토) → 등급 대신 "판 중간"
     const grades = MONTHS < MVP_KR.goal.months ? `— (판 중간 ${MONTHS}/${MVP_KR.goal.months}개월)` : `${m.grades.S}/${m.grades.A}/${m.grades.B}/${m.grades.C}/${m.grades.F}`;
-    console.log(`| ${p.name} | ${rs.filter((r) => r.goal).length}/${rs.length} · ${Math.round(m.goal * rs.length)}/${rs.length} | ${eok(avg(aliveOld))} · ${eok(avg(aliveNew))} | ${grades} | ${eok(m.nwP10)} · ${eok(m.nwCVaR20)} | ${pc(m.survival)} 생존 |`);
+    console.log(`| ${p.name} | ${rs.filter((r) => r.legacyGoal).length}/${rs.length} · ${Math.round(m.goal * rs.length)}/${rs.length} | ${eok(avg(aliveOld))} · ${eok(avg(aliveNew))} | ${grades} | ${eok(m.nwP10)} · ${eok(m.nwCVaR20)} | ${pc(m.survival)} 생존 |`);
   }
 }
