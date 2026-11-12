@@ -42,7 +42,7 @@ export function PricePolicyPicker({ s, p }: { s: GameState; p: Product }) {
   const hint = supplyHintOf(mode, sh);
   return (
     <div className="mt-0.5 text-[11px] text-stone-600 dark:text-stone-400">
-      <label className="flex items-center gap-1" title={mode ? POLICY_HELP[mode] : '켜면 매달 판매 직전에 고른 정책대로 값을 정한다. 켤 때 미리 고른 값은 A'}>
+      <label className="flex items-center gap-1" title={mode ? POLICY_HELP[mode] : `켜면 매달 판매 직전에 고른 정책대로 값을 정한다. 켤 때 미리 고른 값은 A — A로 켤 때 값이 아직 첫 출고가(기준가 × ${PRICE_POLICY.n})면 기준가에서 시작한다`}>
         자동 가격
         <select className="rounded border border-stone-300 bg-white px-1 py-0 text-[11px] dark:border-stone-700 dark:bg-stone-800" value={pick} onChange={(e) => set(e.target.value as Pick, target)} aria-label={`${p.name} 자동 가격 정책`}>
           {OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -73,7 +73,7 @@ export function PricePolicyAll({ s }: { s: GameState }) {
   const modes = new Set(ps.map((p) => priceModeOf(p) ?? 'off'));
   const now: Pick | '' = modes.size === 1 ? ([...modes][0] as Pick) : '';
   return (
-    <label className="inline-flex items-center gap-1 text-xs" title="제품마다 따로 고를 수도 있다. 켤 때 미리 고른 값은 A(현금회전)">
+    <label className="inline-flex items-center gap-1 text-xs" title={`제품마다 따로 고를 수도 있다. 켤 때 미리 고른 값은 A(현금회전) — A로 켜면 아직 첫 출고가(기준가 × ${PRICE_POLICY.n})인 제품은 기준가에서 시작한다`}>
       모든 제품 자동 가격
       <select className="rounded border border-stone-300 bg-white px-1 py-0.5 text-xs dark:border-stone-700 dark:bg-stone-800" value={now}
         onChange={(e) => { const m = e.target.value as Pick; if (m) dispatch({ type: 'setPricePolicy', productId: 'all', mode: m === 'off' ? null : m }); }} aria-label="모든 제품 자동 가격 정책">

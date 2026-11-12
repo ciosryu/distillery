@@ -411,14 +411,15 @@ describe('병당 손익 (#173, 플레이테스트 요청)', () => {
     expect(malt[0]!.category).toBe('whisky');
   });
 
-  it('권장 출고가는 같은 원액을 실제로 병입할 때의 권장 출고가와 같다(같은 식)', () => {
+  it('경제성 표의 값은 같은 원액을 실제로 병입할 때의 첫 값(기준가 × 기본 정책 n, B1-4)과 같다(같은 식)', async () => {
+    const { defaultPolicyPrice } = await import('./content/market');
     const s = mvp();
     const r = s.production.recipes.find((x) => x.kind === 'soju')!;
     const row = recipeEconomics(s, r)[0]!;
     const b = previewBatch(s, r)!;
     s.inventory.lots.push({ id: 'X', name: 'x', kind: 'soju', volumeL: b.volumeL, abv: b.abv, flavor: b.flavor, createdMonth: s.month, oakMonths: 0, sourced: false, costPerLPA: b.cost / b.lpa, recipeId: r.id, mashShare: Object.fromEntries(r.mashBill.map((m) => [m.ingredientId, m.ratio])) });
     const p = previewBlend(s, [{ source: 'lot', id: 'X', liters: 100 }], { name: '', targetAbv: STANDARD_BOTTLE.soju.abv, bottleMl: STANDARD_BOTTLE.soju.bottleMl, chillFilter: true, packagingId: 'standard' });
-    expect(row.price).toBe(p.suggestedPrice);
+    expect(row.price).toBe(defaultPolicyPrice(p.suggestedPrice)); // B1-4(MKT 대행) — 옛: 기준가 그대로
   });
 
   it('게임 상태를 바꾸지 않는다 (id 카운터 포함)', () => {
@@ -810,9 +811,10 @@ describe('숙성 소주 표기 — 병입·보충·권장가·자동 납품 (#21
     expect(p.restMonths).toBe(24);
     expect(p.name.endsWith('옹기 2년 숙성')).toBe(true);
     expect(agedWhiteLabel(p.category, p.oakMonths, p.restMonths)).toBe('옹기 2년 숙성');
-    // 판매 화면 권장가(currentSuggested)도 같은 배수 — 병입 권장가와 같다
+    // 판매 화면 기준가(currentSuggested)도 같은 배수 — 병입 첫 값 = 기준가 × 기본 정책 n (B1-4, MKT 대행)
     const { currentSuggested } = await import('./economics');
-    expect(currentSuggested(after, p)).toBe(p.price);
+    const { defaultPolicyPrice } = await import('./content/market');
+    expect(defaultPolicyPrice(currentSuggested(after, p))).toBe(p.price);
   });
 
   it('탱크 원액으로 보충하면 경고 후 표기가 빠지고, 자동 납품은 표기 개월 이상 옹기 통만 어린 통부터 쓴다', async () => {
