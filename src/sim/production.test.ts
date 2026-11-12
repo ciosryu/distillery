@@ -1347,6 +1347,47 @@ describe('자동 납품 함정 경고·하한 올리기 (#297, MGT P-MGT-45)', (
   });
 });
 
+describe('공급 지평 (결정 #291 P-PROD-54 — economics.ts supplyHorizon)', () => {
+  const setup = () => {
+    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.progress.milestones.push({ id: 'flagship_sold', month: 0 } as never); // 플래그십 예비 보호 끔 — 지평만 본다
+    s.inventory.casks = [];
+    const mk = (id: string, oak: number) => s.inventory.casks.push({ id, typeId: 'ex_bourbon_barrel', sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: { id: `L${id}`, name: id, kind: 'malt', volumeL: 100, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10000 } } as Cask);
+    const p = { id: 'W3', name: '3년', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 50, style: null, sourcedShare: 0, stockBottles: 50, price: 60000, unitCost: 10000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, salesEma: 100 } as Product;
+    s.commerce.products = [p];
+    return { s, mk, p };
+  };
+
+  it('지금 채울 병 = 표기 하한 이상 통, 곧 닿는 병 = 12개월 안에 하한에 닿는 통, 지평 = (재고 + 지금 병) ÷ 판매 속도', async () => {
+    const { supplyHorizon } = await import('./economics');
+    const { s, mk, p } = setup();
+    mk('READY', 40); mk('SOON', 30); mk('FAR', 10);
+    const perCask = Math.floor((100 * 0.6) / (0.7 * 0.46)); // 60 LPA ÷ 병당 0.322 LPA = 186병
+    const h = supplyHorizon(s, p);
+    expect(h.readyBottles).toBe(perCask);
+    expect(h.soonBottles).toBe(perCask);
+    expect(h.months).toBeCloseTo((50 + perCask) / 100, 6);
+    expect(h.refillGap).toBe(false);
+    s.inventory.casks = s.inventory.casks.filter((c) => c.id !== 'SOON');
+    expect(supplyHorizon(s, p).refillGap).toBe(true); // 1년 안에 다시 채울 통이 없다
+    expect(supplyHorizon(s, { ...p, salesEma: 0 }).months).toBe(Infinity);
+  });
+
+  it('보호 태그 통은 지금·곧 병에서 빠지고, 탱크 주종은 보충 끊김이 없다', async () => {
+    const { supplyHorizon } = await import('./economics');
+    const { s, mk, p } = setup();
+    mk('READY', 40); mk('SOON', 30);
+    s.inventory.tagDefs = [{ id: 'keep', label: '남김', color: 'rose', effect: 'protect' }];
+    for (const c of s.inventory.casks) c.contents!.tagIds = ['keep'];
+    const h = supplyHorizon(s, p);
+    expect(h.readyBottles).toBe(0);
+    expect(h.soonBottles).toBe(0);
+    expect(h.refillGap).toBe(true);
+    const soju = { ...p, id: 'S1', category: 'soju_distilled', ageYears: null, oakMonths: 0, abv: 0.25 } as Product;
+    expect(supplyHorizon(s, soju).refillGap).toBe(false);
+  });
+});
+
 describe('생산 건너뛰기 (#249 ④ — 위스키 원액만 자동, 소주는 별도 버튼)', () => {
   it('월초 현금이 고정비 보름치 아래면 몰트는 쉬고 소주는 만든다 · 생산 지시는 그대로 · 소주 버튼은 그 달만', async () => {
     const { whiskySkipCheck } = await import('./production');

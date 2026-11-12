@@ -1027,7 +1027,8 @@ MGT #281의 `mvp-human.ts`(X14~X18)를 그대로 돌려 숫자를 재현했고, 
     - ② AP3-MKT-1 조건표의 "공급 부족·장기 숙성" 조건 정의
     - ③ P8 재보정(B1-MGT-1)에서 사람형 봇의 정책 선택 규칙
   - 대안: B를 B′(h개월 누적·재고 한도)로 바꿔 B가 스스로 나눠 팔게 한다 — 그러면 C의 경제적 이점이 줄어 C가 "위험 회피형"으로만 남는다(CP-PM-6 ⑩의 ①)
-  - **실험판(MKT 요청, 2026-11-11):** `scripts/experiments/prodSupply.ts` `supplyHorizon(s, p)` → `{ stock, readyBottles, soonBottles, salesPerMonth, months, refillGap }`
+  - **게임 코드로 옮김(2026-11-12, 결정 #291 — 오너 지시):** `src/sim/economics.ts` `supplyHorizon(s, p, soonMonths = 12)` → `{ stock, readyBottles, soonBottles, salesPerMonth, months, refillGap }`. 실험판(`scripts/experiments/prodSupply.ts`)은 지웠다. `prod-hold-p8.ts SUPPLY=1`은 새 위치를 쓰고 출력이 바이트 동일하다(2시드 × 120개월). 상태·규칙 불변 — 읽는 곳(정책 화면 한 줄 P-MGT-43, P8 정책 규칙)은 MKT·MGT가 붙인다
+  - **실험판(MKT 요청, 2026-11-11 — 위로 옮김):** `scripts/experiments/prodSupply.ts` `supplyHorizon(s, p)` → `{ stock, readyBottles, soonBottles, salesPerMonth, months, refillGap }`
     - "곧 닿는 병"은 자동 납품 거름 규칙(보호 태그·피니시·도수·종류)을 그대로 쓰고 숙성만 [하한 − 12, 하한)으로 본다. `autoRestockFloor`는 법정 최소로 묶여 있어 하한만 낮춰 다시 부르면 3년 제품의 24~35개월 통을 못 잡는다
     - 장기 보유 규칙은 `scripts/experiments/prodHoldPatch.ts` `applyHoldPatches(src)`로 떼어 냈다 → 다른 P8 래퍼(MKT `mkt-p8v.ts`)가 같은 P8 사본에 얹을 수 있다. P8 정책에 `hold: { age: 120, share: 0.25, select: 'cool' }`를 주고, 장기 계열 제품은 `LONG_LINE_NAME`(「싱글 몰트 10년」)으로 가린다. `prod-hold-p8.ts`는 이 모듈을 쓰도록 바꿨다(출력 바이트 동일 확인)
     - `SUPPLY=1 npx tsx scripts/experiments/prod-hold-p8.ts` — 장기 계열의 공급 지평 경로별 평균(진단, 판 결과 불변 확인). 3시드 × 150개월 첫 값: HS 지평 0.0개월 · 곧 닿는 병 1,472 · 보충 끊김 0%, HD 0.2개월 · 546병 · 0% → **장기 계열은 "매달 다 팔리고 다음 코호트가 꾸준히 오는" 공급 제약형**이다(유한 재고형이 아니다). 유한 재고형(보충 끊김)은 보유를 멈춘 판·플래그십에서 생긴다
