@@ -222,6 +222,12 @@ export interface Product {
   finish?: CaskTypeId;
   /** 섞은 원액의 통 구성 — 마지막에 담겨 있던 통 종류별 알코올(LPA) 비중, 큰 순. 탱크 원액은 빠진다. 없으면 기록 전 제품(v15 이전)이거나 캐스크 원액이 없다. 표시용(동작 없음, #176) */
   caskMix?: { typeId: CaskTypeId; share: number }[];
+  /**
+   * 피티드 맥아 비중(0~1) — 병입 때 섞은 원액의 원재료 배합(`SpiritLot.mashShare`의 `malt_peated`)을 알코올(LPA)로 가중 평균한 값.
+   * 시장·가치 식 v1의 향미 방향 항(#290 B1-9 f2 "스타일 = 플레이어 선택")이 피트 배수 = 1 + p × (w_peat − 1)로 읽는다(MKT).
+   * 없으면 기록 전 제품이거나 배합 기록이 없는 원액뿐 → 0으로 읽는다(피트 배수 ×1, 중립). 선택 필드라 스키마는 v15 그대로(#187)
+   */
+  peatShare?: number;
   /** 섞은 원액의 레시피 (#243) — 자동 납품이 같은 레시피 원액만 쓰게 한다. 옛 제품은 없다(모든 원액) */
   recipeIds?: string[];
   stockBottles: number;
