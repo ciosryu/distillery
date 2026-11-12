@@ -8,3 +8,7 @@ data/content/
 # 실험 스크립트가 실행 중에 만드는 임시 파일 (끝나면 스스로 지움)
 scripts/experiments/.*.tmp.ts
 scripts/experiments/_gen-*.ts
+
+# 실험 스크립트 기본 출력 폴더 (ARCH — golden-trace.ts · t-entry-check.sh)
+golden-out/
+t-entry-out/
