@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bestAutoPrice, currentSuggested } from './economics';
-import { decidePolicyPrice, guardFactor, PRICE_POLICY, profitTarget, stockMonths, zeroSalesRun } from './pricePolicy';
+import { decidePolicyPrice, guardFactor, premiumCost, PRICE_POLICY, profitTarget, stockMonths, switchToTurnoverGain, zeroSalesRun } from './pricePolicy';
 import { newScenarioGame } from './newScenario';
 import type { GameState, MonthReport, Product } from './types';
 
@@ -114,5 +114,31 @@ describe('AUTO-PRICE-3 정책 함수 (REQ-MKT-9)', () => {
       const b = decidePolicyPrice(game([{}, { price: 6000 }]), game([{}, { price: 6000 }]).commerce.products[0]!, { mode }, 1);
       expect(a).toEqual(b);
     }
+  });
+});
+
+describe('화면용 추정 — C의 대가 · 위기 배너 "A로 바꾸면" (#291 ④·⑥)', () => {
+  it('C 목표 배수를 올리면 A 대비 이번 달 판매가 줄고, A 값과 같으면 0%', () => {
+    const s = game([{ price: 9000 }, { price: 6000 }]);
+    const p = s.commerce.products[0]!;
+    const a = bestAutoPrice(s, p, 1)!;
+    const hi = premiumCost(s, p, 1.8, 1)!, lo = premiumCost(s, p, 0.8, 1)!;
+    expect(hi.aPrice).toBe(a);
+    expect(hi.pct).toBeLessThan(lo.pct);
+    expect(premiumCost(s, p, a / sug(s, p), 1)!.pct).toBeCloseTo(0, 1);
+    expect(premiumCost(s, { ...p, stockBottles: 0 }, 1.3, 1)).toBeNull();
+  });
+
+  it('B·C 제품을 A로 바꾸면 이번 달 진열 공헌이 늘거나 그대로 — A·끔 제품은 세지 않는다', () => {
+    const s = game([{ price: 20000 }, { price: 6000 }]);
+    const [p0, p1] = s.commerce.products as [Product, Product];
+    const none = switchToTurnoverGain(s, 1, () => 'turnover');
+    expect(none).toBeNull();
+    const g = switchToTurnoverGain(s, 1, (p) => (p.id === p0.id ? 'premium' : null));
+    // 값 20,000원(기준가 × 2 가까이)은 A 값과 멀다 → 바꾸면 이번 달 공헌이 는다
+    expect(g).not.toBeNull();
+    expect(g!.gain).toBeGreaterThan(0);
+    expect(g!.products).toBe(1);
+    expect(p1.id).toBe('P1');
   });
 });
