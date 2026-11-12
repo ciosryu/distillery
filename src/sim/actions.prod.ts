@@ -223,12 +223,15 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (!p) return fail(prev, '제품이 없습니다');
     if (p.dutyFreeOnly) return fail(prev, '면세 한정판은 자동 가격을 쓸 수 없습니다');
     if (!a.on) { delete p.autoPrice; return { state: s, message: `${p.name} 자동 가격 끔 — 지금 값 ${p.price.toLocaleString()}원 유지` }; }
-    resetFirstPriceOnAuto(p, currentSuggested(s, p)); // 결정 #304 — 첫 출고가 ×n은 수동 가격 판에만 (PROD 대행)
+    const first = resetFirstPriceOnAuto(p, currentSuggested(s, p)); // 결정 #304 — 첫 출고가 ×n은 수동 가격 판에만 (PROD 대행)
+    const base = p.price; // 되돌린 직후 값(기준가) — 아래 bestAutoPrice가 값을 다시 고르기 전에 잡는다
     p.autoPrice = true;
     if (p.pricePolicy && p.pricePolicy.mode !== 'turnover') { const { lastFactor: _drop, ...rest } = p.pricePolicy; void _drop; p.pricePolicy = { ...rest, mode: 'turnover' }; } // 옛 명령 = A 현금회전 ([결정 #291])
     const v = bestAutoPrice(s, p);
     if (v != null) p.price = v;
-    return { state: s, message: `${p.name} 자동 가격 켬 — 매달 이번 달 이익이 가장 큰 값으로 (지금 ${p.price.toLocaleString()}원)` };
+    // 첫 출고가를 기준가로 되돌렸으면 알린다(결정 #304 — 켜는 순간 값이 내려가 보이는 이유)
+    const reset = first != null ? ` · 첫 출고가 ${first.toLocaleString()}원 → 기준가 ${base.toLocaleString()}원에서 시작` : '';
+    return { state: s, message: `${p.name} 자동 가격 켬 — 매달 이번 달 이익이 가장 큰 값으로 (지금 ${p.price.toLocaleString()}원${reset})` };
   },
   setOrder: (s, prev, a) => {
     const recipe = s.production.recipes.find((r) => r.id === a.recipeId);
