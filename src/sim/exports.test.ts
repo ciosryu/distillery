@@ -284,3 +284,29 @@ describe('수출 계약 연 최소 물량 전망 (#284)', () => {
     expect(contractOutlook(t)).toEqual([]);
   });
 });
+
+// ───────────── S7 — 수출 제안 난수를 시장 단위 스트림으로 (결정 #299) ─────────────
+describe('S7 수출 제안은 시장마다 따로 뽑는다 (결정 #299)', () => {
+  it('다른 시장이 건너뛰어져도(이미 계약) 이 시장의 제안은 같다', async () => {
+    const { refreshExportOffers } = await import('./exportDeals');
+    const make = (withUS: boolean) => {
+      const s = newGame({ seed: 11 }); s.month = 40; s.commerce.products = [whisky()];
+      if (withUS) s.commerce.exports = [{ marketId: 'US', openedMonth: 30, readyMonth: 30, awareness: 0.1, totalBottles: 0, priceFactor: 1, marketingPerMonth: 1_000_000, partner: 'x', minBottlesPerYear: 100, yearStartMonth: 30, bottlesThisYear: 0 }];
+      return s;
+    };
+    const strip = (s: GameState, id: string) => (s.commerce.exportOffers ?? []).filter((o) => o.marketId === id).map(({ id: _id, ...rest }) => rest);
+    // US 다음 차례의 시장 가운데 제안이 들어오는 달을 찾는다
+    const after = exportMarketsFor('KR').slice(exportMarketsFor('KR').indexOf('US') + 1);
+    let found = 0;
+    for (let m = 40; m < 400 && found < 3; m++) {
+      const a = make(false); const b = make(true); a.month = b.month = m;
+      refreshExportOffers(a); refreshExportOffers(b);
+      for (const id of after) {
+        if (!strip(a, id).length) continue;
+        found++;
+        expect(strip(b, id)).toEqual(strip(a, id));
+      }
+    }
+    expect(found).toBeGreaterThan(0);
+  });
+});

@@ -1,5 +1,6 @@
 import { sumCashFlows } from './cashflow';
 import { emptyCask } from './maturation';
+import { normalizePolicy } from './priceEngine';
 import type { GameState } from './types';
 import { clone } from './util';
 
@@ -57,6 +58,10 @@ export function repairSave(input: GameState): { state: GameState; fixes: string[
   const pc = s.finance.pendingCash ?? {};
   const badPending = Object.keys(pc).filter((k) => !finite(pc[k as keyof typeof pc]));
   if (badPending.length) { for (const k of badPending) delete pc[k as keyof typeof pc]; fixes.push(`턴 사이 현금 기록 ${badPending.length}항목을 지웠다`); }
+  // ⑦ 가격 정책 배수가 한계 밖·유한하지 않으면(손으로 고친 세이브) 자른다 — 정책(mode)은 바꾸지 않는다([결정 #291] 엣지 ⑧)
+  let policies = 0;
+  for (const p of s.commerce.products) if (p.pricePolicy) { const q = normalizePolicy(p.pricePolicy); if (q !== p.pricePolicy) { p.pricePolicy = q; policies++; } }
+  if (policies) fixes.push(`제품 ${policies}개의 가격 정책 배수를 범위로 잘랐다`);
   const recBefore = s.finance.receivables.length;
   s.finance.receivables = s.finance.receivables.filter((r) => finite(r.amount));
   if (s.finance.receivables.length < recBefore) fixes.push(`망가진 매출채권 ${recBefore - s.finance.receivables.length}건을 지웠다`);
@@ -71,6 +76,7 @@ function needsRepair(s: GameState): boolean {
     || !finite(s.finance.cash)
     || s.commerce.products.some((p) => !finite(p.stockBottles) || !finite(p.unitCost) || !finite(p.price))
     || s.finance.receivables.some((r) => !finite(r.amount))
+    || s.commerce.products.some((p) => p.pricePolicy && normalizePolicy(p.pricePolicy) !== p.pricePolicy)
     || Object.values(s.finance.pendingCash ?? {}).some((v) => !finite(v));
 }
 

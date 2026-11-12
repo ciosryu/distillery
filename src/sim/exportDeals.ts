@@ -1,6 +1,6 @@
 import { EXPORT_MARKETS, exportMarketsFor } from './content/exports';
 import { exportDemands, exportEligible } from './market';
-import type { Rng } from './rng';
+import { rngFor, type Rng } from './rng';
 import type { ExportEntry, ExportOffer, GameState, MonthReport } from './types';
 import { nid } from './util';
 
@@ -42,12 +42,17 @@ export function makeExportOffer(s: GameState, marketId: ExportOffer['marketId'],
   };
 }
 
-/** 월말: 계약이 없는 시장마다 가끔 수입사 제안이 들어온다 */
-export function refreshExportOffers(s: GameState, rng: Rng): void {
+/**
+ * 월말: 계약이 없는 시장마다 가끔 수입사 제안이 들어온다.
+ * 난수는 시장마다 따로(`export-offer:<시장>`, 결정 #299 S7) — 한 스트림을 시장 차례로 나눠 쓰면 앞 시장이 건너뛰어지는지(이미 계약·제안 대기·팔 제품 없음)에 따라
+ * 뒤 시장의 제안이 바뀌었다(국내 판매가 조금 달라도 수출 경로가 갈림 — #380 원인 분석)
+ */
+export function refreshExportOffers(s: GameState, rngOf: (marketId: ExportOffer['marketId']) => Rng = (id) => rngFor(s.seed, s.month, `export-offer:${id}`)): void {
   s.commerce.exportOffers = (s.commerce.exportOffers ?? []).filter((o) => o.expiresMonth > s.month);
   for (const id of exportMarketsFor(s.regionId)) {
     if ((s.commerce.exports ?? []).some((e) => e.marketId === id) || s.commerce.exportOffers.some((o) => o.marketId === id)) continue;
     if (!hasExportableProduct(s, id)) continue;
+    const rng = rngOf(id);
     const good = s.commerce.products.some((p) => p.stockBottles > 0 && p.quality >= 70 && exportEligible(p, EXPORT_MARKETS[id]));
     if (rng.chance(EXPORT_DEAL.offerChance * (good ? 1.5 : 1))) s.commerce.exportOffers.push(makeExportOffer(s, id, rng));
   }
