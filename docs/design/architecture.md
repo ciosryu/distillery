@@ -713,6 +713,28 @@ interface GameState {
 - **사유 기록(데이터, `priceLog`)은 엔진과 같이 T 전**에 넣고, **사유 화면만 G 전** — 기록은 엔진 코드 몇 줄이고 봇·P8 진단·게이트 L 행동 분석이 쓴다. 나중에 넣으면 T 기준선 판들의 사유가 비어 있다
 - 반론: T 전 일이 늘어난다. 그러나 기록은 출력(골든)을 바꾸지 않는다(결산 선택 필드)
 
+## 10.10 캠페인 승리 구현 F1~F5 — 코어 계약 ([결정 #308·#309·#323], 2026-11-13)
+
+> 정본은 [core-integration.md](core-integration.md) §2·§3·§8. 이 절은 ARCH가 구현 PR에서 확정한 **코드 모양**만 적는다. 규칙은 그쪽을 본다
+
+| 묶음 | PR | 코어 모양 | 출력 |
+|---|---|---|---|
+| **F1** RuleSet | ciosryu/distillery#475 | `CampaignGoal` · `Scenario.campaignGoal?`(새 판만) · `GameState.rulesVersion?`('legacy-v15' \| 'v16') · 세이브 v16 · 읽기 한 곳 `campaignMinOakMonths(s)`(progress.ts) | 불변 |
+| **F2** 원장 | 코어 계약(이 절) + PROD 27개 지점 연결(P-PROD-55 표) | 아래 | 불변(R1 그림자 원장) |
+| F3 병입 로트·판매 사건 | ARCH 주도 + MKT `saleEvents.ts` | `BottledLot { id, productId, bottles, bottledMonth, components, eligibleAtBottling }` · `SaleEvent { month, productId, lotId, bottles, unitPrice, settlement, kind, channel?, eligibleAtSale }` — `kind`에 `cellar_door`(#318), 로트 id는 제품 안 순번(전역 `nid` 밀림 방지) | 불변(기록만) |
+| F4 판정 | ARCH | `progress.win?` · `rulesVersion === 'legacy-v15'`면 옛 판정 보존 · `isFlagshipCandidate` → `isCampaignCandidate` · `reserveCaskIds`가 `flagship_sold` 대신 `win` · 승리는 멈춤 사유가 아니라 알림(#308 계속 운영) | **바뀜** — 새 기준선 |
+| F5 PlayerView·Rights·범위 잠금 | ARCH(+MGT) | 담보 `inventoryCollateral` 참 품질(MGT 발견) · 숨은 `contamination` 읽기(`autoFill.ts:21`·P8 봇) · #319 치환 목표 · #311 수출·HR 잠금 | 부분 바뀜 |
+
+**F2 코어 계약 — `src/sim/ledger.ts`(순수 함수, 상태를 바꾸지 않는다)**
+- 타입(`types.ts`): `SpiritLot.components?: LedgerEntry[]` · `LedgerEntry { batchId, origin: 'self' \| 'sourced' \| 'unknown', siteId, kindAtBirth, contribLPA, costKRW, woodMonths, parents? }` · `MonthReport.lossEvents?`(R5 월 × 종류 합계) · `LossKind`
+- **없으면 합성** `ledgerOf(s, lot)`: 로트 하나 = 구성 원액 하나. 출처는 `sourced`면 'sourced', 새 판(v16)이면 'self', 옛 판(`legacy-v15`)이면 **'unknown'**(증거 창작 금지 → 적격 아님). 그래서 **마이그레이션은 원장을 쓰지 않는다**(지점 26을 합성으로 대신 — 세이브가 커지지 않고 v16 그대로)
+- 갱신 헬퍼(27개 지점이 쓴다): `newEntry`(1·25) · `scaleLedger(k, 'preserve' \| 'leak')`(손실 — R4: 보존은 원가 그대로, 유출은 같은 비율) · `splitLedger(k)`(분할 — 4·17·18, 손실 아님) · `addCost`(통값 배분 — LPA 비율) · `advanceWood`(**7 `matureCask`만** +1, R3) · `mergeLedgers` = `coalesce`(2 — R6 키 `(origin, siteId, kindAtBirth, woodMonths)`, parents LPA 큰 순 8개, 결정적 순서)
+- 불변식 R2: `ledgerError(lot)` — 원장이 있는 로트만 Σ contribLPA = LPA · Σ costKRW = costPerLPA × LPA(상대 1e-9). `checkInvariants`가 탱크·통마다 부른다(오류). 연결 전에는 원장이 없어 검사하지 않는다 → 연결 PR마다 그 지점의 로트가 이 검사를 통과해야 한다
+- 적격: `ledgerEligibility(s, entries, horizonMonths = 0)` → `caskEligibility(s, cask)`(통 — MGT 이름 그대로 `{ eligible, woodMonths, origin, reasons }`) · `isCampaignCandidate(s, cask, horizonMonths)`(후보 — **지평을 인자로**, MGT 요청). 핸드필(#318)·F3 병입 로트도 `ledgerEligibility`에 `components`를 넘긴다. 규칙: 구성 원액 **모두** `kindAtBirth === 'malt'` · `origin === 'self'` · `siteId` 같음 · `min(woodMonths) + horizon ≥ A` · 고객 소유 아님(F5 `Rights` 전까지 `cask.owner`)
+- **F2에서 바꾸지 않는 것:** `isFlagshipCandidate`(그레인 포함 · `goal.months` 상한) — 집합이 달라 바꾸면 출력이 바뀐다 → F4. `delegateCheck.ts`를 코어로 옮기는 것도 F4와 함께(PROD 합의)
+- 연결 소유: 지점 1·2·4~18·27 PROD(`production`·`maturation`·`warehouse`·`actions.prod`·`blending`·`blendTable`·`events`) · 19~23·25 MKT(`handfill`·`tourism`·`bulk`·`actions.mkt`·`broker`) · 24 MGT(`actions.mgt`·`investment`) · 16 ARCH(`repair` — 비우면 원장도 사라진다, 할 일 없음). 각 연결 PR의 완료 조건 = 출력 11개·P8 바이트 동일 + `checkInvariants` R2 통과
+- 반론·리스크: 합성 출처 'self'는 "v16 판에서 `sourced`가 아닌 로트는 모두 이 입지에서 자가 증류한 것"이라는 지금 코드 사실에 기댄다(원액이 생기는 곳은 생산·브로커·통입 취소뿐 — P-PROD-55 전제 1). 다른 입지 원액이 들어오는 기능(인수 §3.4)이 생기면 그때 지점 1이 `siteId`를 직접 적으므로 합성은 쓰이지 않는다
+
 ## 11. 정보 비대칭 검증 계약 (ARCH-C, 2026-11-11) `[제안 P-ARCH-41]`
 
 > ⚠ **2026-11-13 감사(PM):** 등급 **R "병입 뒤 공개"는 #167 확정**이고 이 절은 그 위에 선다. 감사 통합안 A04(병입·판매 뒤도 참값 비공개, PlayerView 분리)와 A12(3종 가치평가)는 **결정 #310(오너 2026-11-13)으로 단계적 채택** — 1단계는 §11.4 **안 A**(화면만, 지금), 2단계(F5)에서 PlayerView·3종 평가로 #167·#146을 고친다. 설계안은 [core-integration.md](core-integration.md) §3·§4 REQ-CORE-4·5. 이 절의 I1~I4·T1~T4는 어느 안에서도 그대로 쓴다

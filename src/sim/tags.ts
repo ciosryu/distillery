@@ -1,4 +1,4 @@
-import { isFlagshipCandidate } from './delegateCheck';
+import { isFlagshipCandidate } from './ledger';
 import { vesselMaterial } from './maturation';
 import { PROD_TUNING } from './prodTuning';
 import type { Cask, GameState, MonthReport, SpiritKind, TagColor, TagDef, TagEffect } from './types';

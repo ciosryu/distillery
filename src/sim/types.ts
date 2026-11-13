@@ -96,7 +96,37 @@ export interface SpiritLot {
    * 통이 비면 함께 사라진다. 여러 원액을 섞어 병입하면 제품에는 남지 않는다. 정의는 `inventory.tagDefs`·`tags.ts BUILTIN_TAGS`
    */
   tagIds?: string[];
+  /**
+   * 구성 원액 원장 (F2 — [결정 #308·#323] R1 그림자 원장). 로트 필드(`volumeL`·`abv`·`costPerLPA`·`oakMonths`)가 게임 출력의 정본이고,
+   * 이 원장은 같은 사건에서 함께 갱신한다(`ledger.ts` 헬퍼). 승리 적격 판정(`caskEligibility`)만 이것을 읽는다.
+   * 없으면 `ledgerOf(s, lot)`가 로트 하나를 구성 원액 하나로 본다 — 옛 판(`legacy-v15`)은 `origin: 'unknown'`(증거 창작 금지), 새 판은 `sourced`로 self/sourced
+   */
+  components?: LedgerEntry[];
 }
+
+/** 원액 출처 — 'self' 같은 증류소 자가 증류 · 'sourced' 매입(브로커·스코틀랜드) · 'unknown' 옛 세이브(적격 아님) */
+export type SpiritOrigin = 'self' | 'sourced' | 'unknown';
+
+/** 구성 원액 하나 ([결정 #323] — core-integration §3 ComponentLedger) */
+export interface LedgerEntry {
+  /** 태어난 배치 — 생산 로트 id. 합치면 `parents`에 보존 */
+  batchId: string;
+  origin: SpiritOrigin;
+  /** 태어난 입지(`GameState.siteId`, 없으면 'default') — 적격은 지금 입지와 같아야 한다 */
+  siteId: string;
+  kindAtBirth: SpiritKind;
+  /** 이 구성 원액의 순수 알코올 리터 — Σ = volumeL × abv (R2) */
+  contribLPA: number;
+  /** 총원가(원) — Σ = costPerLPA × volumeL × abv (R2). 손실 "보존"은 그대로, "유출"은 LPA와 같은 비율로 준다(R4) */
+  costKRW: number;
+  /** 누적 **나무** 용기 숙성 개월 — `matureCask`에서만 +1, 평균 내지 않는다(R3). 적격은 min(woodMonths) ≥ A */
+  woodMonths: number;
+  /** 합치기로 사라진 부모 배치(LPA 큰 순 8개, R6) */
+  parents?: { batchId: string; shareLPA: number }[];
+}
+
+/** 손실 사건의 종류 (R5 — 월 × 종류 합계) */
+export type LossKind = 'evaporation' | 'leak' | 'sample' | 'transfer' | 'incident' | 'dump' | 'repair' | 'below_min';
 
 /** 태그 효과 (#249 — 오너 답 "보호·먼저 쓰기 둘이면 충분") — protect: 자동 기능이 쓰지 않는다 · prefer: 자동 기능이 먼저 쓴다 */
 export type TagEffect = 'protect' | 'prefer';
@@ -416,6 +446,8 @@ export interface MonthReport {
   flagshipCandidates?: number;
   /** 자동 가격 사유 ([결정 #291] — 값이 바뀐 제품마다 한 줄). 없으면 바뀐 값이 없다. 기록만 */
   priceLog?: PriceLogEntry[];
+  /** 원액 손실 사건 — 월 × 종류 합계 (F2 [결정 #323] R5). 기록만 */
+  lossEvents?: { kind: LossKind; lpa: number; costKRW: number }[];
   angelsShareL: number;
   liquorTaxRemitted: number;
   /** 이번 달 발생한 이벤트 제목 */
