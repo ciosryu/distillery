@@ -1097,7 +1097,7 @@ MGT #281의 `mvp-human.ts`(X14~X18)를 그대로 돌려 숫자를 재현했고, 
 
 > 정본: [core-integration.md](core-integration.md) §2.3·§3 · DECISIONS #308·#309·#311·#314. 게임 코드·밸런스 출력은 바꾸지 않았다(문서만). 필드 이름은 core-integration §3 초안(`ComponentLedger { batchId, origin, siteId, kindAtBirth, contribLPA, woodMonths, parents }`)을 따른다 — **ARCH F1에서 이름이 바뀌면 이 표를 맞춘다.**
 
-### [제안 P-PROD-55] F2 계보 — LPA가 움직이는 모든 지점과 갱신 규칙 (ARCH F2 PR 입력)
+### [제안 P-PROD-55] F2 계보 — LPA가 움직이는 모든 지점과 갱신 규칙 (ARCH F2 PR 입력) → **결정 #323(2026-11-13, R1~R6 채택)**
 
 **전제 (코드에서 확인한 사실)**
 - 원액이 만들어지는 곳은 셋뿐이다: 생산(`production.ts runProduction`) · 브로커 매입(`broker.ts makeBrokerOffer`) · 통입 취소/원액 빼기로 탱크에 다시 생기는 로트(`actions.prod.ts:146·153`). 빈 통 구매·발주 도착(`actions.prod.ts:310`·`step.ts:72`)은 원액이 없다.
