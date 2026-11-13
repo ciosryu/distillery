@@ -9,6 +9,7 @@ import { equipmentCost, outboundLogistics } from './sites';
 import type { Rng } from './rng';
 import type { GameState, MonthReport, OemContract, OemOffer, ProductCategory, RetailContract, RetailOffer } from './types';
 import { nid } from './util';
+import { sellFromLots } from './lots';
 
 // 입지 대표 거래 (결정 #88·#89, docs/design/regions.md §6.2) — 경기: 대형 유통 납품 / 간토: 위탁생산(OEM). 수치 [튜닝]
 
@@ -134,6 +135,7 @@ export function fulfillRetail(s: GameState, report: MonthReport): void {
       const take = Math.min(need, p.stockBottles);
       p.stockBottles -= take;
       p.totalSold += take;
+      sellFromLots(s, report, p.id, take, { kind: 'domestic', settlement: 'receivable', unitPrice: p.price * c.priceFactor, channel: 'retail_deal' }); // F3 판매 사건 4(MKT): 대형 유통 납품(대금 paymentDelay개월 뒤)
       amount += take * p.price * c.priceFactor;
       logistics += take * logisticsCost(p.bottleMl) * outbound;
       need -= take;

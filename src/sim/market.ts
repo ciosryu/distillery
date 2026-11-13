@@ -17,6 +17,7 @@ import { packagingAppealFactor } from './packaging';
 import type { ExportEntry, ExportSale, GameState, MonthReport, Product, ProductCategory } from './types';
 import { EXPORT_MARKETS, EXPORT_SALES, tariffKey, type ExportMarketDef } from './content/exports';
 import { rngFor, type Rng } from './rng';
+import { sellFromLots } from './lots'; // F3 판매 사건(코어 입구) — 로트·사건만, stockBottles 차감은 여기서
 
 // 수요 공식 (PRD §9.2) — 수치 [튜닝]
 
@@ -391,7 +392,7 @@ export function bottleMargin(p: Pick<Product, 'price' | 'unitCost' | 'bottleMl'>
  */
 const salesNoise = (s: GameState, stream: string) => rngFor(s.seed, s.month, `sales:${stream}`).range(0.9, 1.1);
 
-export function runSales(s: GameState, _rng: Rng, monthOfYear: number): { results: SalesResult[]; retail: RetailSummary; exports: ExportSale[] } {
+export function runSales(s: GameState, _rng: Rng, monthOfYear: number, report?: MonthReport): { results: SalesResult[]; retail: RetailSummary; exports: ExportSale[] } {
   // 1) 제품별 수요 — 같은 카테고리 제품끼리 채널별로 나눈다 (#154). 판매 전 재고 기준으로 한 번에 계산
   const domestic = domesticDemands(s, monthOfYear);
   const dutyFree = dutyFreeDemands(s, monthOfYear);
@@ -454,6 +455,8 @@ export function runSales(s: GameState, _rng: Rng, monthOfYear: number): { result
     p.stockBottles -= sold;
     p.lastMonthSold = sold;
     p.totalSold += sold;
+    // F3 판매 사건 1(MKT): 국내 소매 — 정상 채널과 초과(고비용) 채널을 따로(둘 다 domestic·cash·출고가). 로트가 없는 제품은 무동작
+    if (report) { sellFromLots(s, report, p.id, sold - over, { kind: 'domestic', settlement: 'cash', unitPrice: p.price, channel: 'retail' }); if (over > 0) sellFromLots(s, report, p.id, over, { kind: 'domestic', settlement: 'cash', unitPrice: p.price, channel: 'overflow' }); }
     p.salesEma = p.salesEma == null ? sold : 0.7 * p.salesEma + 0.3 * sold;
     const extraFee = over * p.price * (RETAIL.overflowFeeRate - DISTRIBUTION.channelFeeRate);
     out.push({ productId: p.id, name: p.name, bottles: sold, revenue: sold * p.price, demandBottles: demand, distribution: Math.round(sold * distributionCostPerBottle(p.price, p.bottleMl, outboundLogistics(s)) + extraFee), overflowBottles: over });
@@ -468,6 +471,7 @@ export function runSales(s: GameState, _rng: Rng, monthOfYear: number): { result
       p.stockBottles -= df;
       p.lastMonthSold += df;
       p.totalSold += df;
+      if (report) sellFromLots(s, report, p.id, df, { kind: 'dutyfree', settlement: 'cash', unitPrice: p.price }); // F3 판매 사건 2(MKT): 지정면세점
       const r = out.find((x) => x.productId === p.id);
       const dist = Math.round(df * distributionCostPerBottle(p.price, p.bottleMl));
       if (r) { r.bottles += df; r.revenue += df * p.price; r.demandBottles += df; r.distribution += dist; r.dutyFree = df; }
@@ -487,6 +491,8 @@ export function runSales(s: GameState, _rng: Rng, monthOfYear: number): { result
       p.stockBottles -= bottles;
       p.lastMonthSold += bottles;
       p.totalSold += bottles;
+      // F3 판매 사건 3(MKT): 수출 — 대금 지급 기한이 있으면 매출채권(sales.ts가 receivables에 넣는다), 없으면 현금. 단가는 FOB
+      if (report && bottles > 0) sellFromLots(s, report, p.id, bottles, { kind: 'export', settlement: x.entry.paymentDelay ? 'receivable' : 'cash', unitPrice: exportFob(p, x.entry.priceFactor ?? 1) });
       x.entry.totalBottles += bottles;
       const m = EXPORT_MARKETS[x.entry.marketId];
       x.entry.bottlesThisYear = (x.entry.bottlesThisYear ?? 0) + bottles;
