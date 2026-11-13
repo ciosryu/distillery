@@ -128,6 +128,58 @@ export interface LedgerEntry {
 /** 손실 사건의 종류 (R5 — 월 × 종류 합계) */
 export type LossKind = 'evaporation' | 'leak' | 'sample' | 'transfer' | 'incident' | 'dump' | 'repair' | 'below_min';
 
+// ───────────── 병입 로트 · 판매 사건 (F3 — [결정 #308·#318], architecture §10.10 · core-integration §3) ─────────────
+// 타입 이름·모양은 MKT 초안(saleEvents.ts)을 그대로 쓴다. 상태 그릇은 `commerce.lots?`(남은 병이 있는 로트만) · 그달 사건은 `MonthReport.saleEvents?`,
+// 승리 요약은 `progress.win?`(F4가 쓴다). 기록만 — 판 결과를 바꾸지 않는다
+
+/** 판매 사건 종류 — #308 §2.2 거래 종류. `b2b`는 병입 로트가 아니라 승리 대상이 아니다. `cellar_door`는 핸드필(#318) */
+export type SaleKind = 'domestic' | 'dutyfree' | 'export' | 'b2b' | 'cellar_door';
+/** 같은 종류 안의 채널 구분(표시·진단용 — 승리 판정은 kind만 본다) */
+export type SaleChannel = 'retail' | 'overflow' | 'retail_deal' | 'event';
+/** 대가 확정 방식 — 현금 또는 정상 확정 매출채권. 선수금만 받은 것은 사건이 아니다(§2.2) */
+export type Settlement = 'cash' | 'receivable';
+
+/**
+ * 병입 로트 — 제품(SKU) 안에서 "언제 병입한 병"인지. 병입·보충(#186)마다 하나씩 생기고, 판매는 FIFO로 빠져나간다.
+ * id는 제품 안 순번 `${productId}:${bottledMonth}:${n}`(전역 `nid`를 밀지 않는다 — 출력 불변)
+ */
+export interface BottledLot {
+  id: string;
+  productId: string;
+  /** 남은 병 — 판매로 줄고 0이 되면 지운다 */
+  bottles: number;
+  bottledMonth: number;
+  /** 구성 원액 원장(F2) — 병입 때 `splitLedger`로 떼어 낸 것을 이어 붙인다(평균 안 냄). 없으면 옛 세이브·연결 전 */
+  components?: LedgerEntry[];
+  /** 병입 때 적격 판정(F4 `ledgerEligibility`). 없으면 아직 판정 전(옛 세이브 origin unknown → false로 읽는다, 창작하지 않는다) */
+  eligibleAtBottling?: boolean;
+}
+
+/** 판매 사건 — 로트 하나에서 나간 병 묶음 하나. 한 거래가 로트 둘에 걸치면 사건 둘. 그달 결산 `MonthReport.saleEvents?`에만 쌓인다 */
+export interface SaleEvent {
+  month: number;
+  productId: string;
+  lotId: string;
+  bottles: number;
+  /** 병당 대가(세전 출고가 기준 — 수출은 FOB, 납품은 출고가 × 비율, 핸드필은 handfillPrice) */
+  unitPrice: number;
+  settlement: Settlement;
+  kind: SaleKind;
+  channel?: SaleChannel;
+  /** 거래 시점의 출고 로트 적격성(#308 — 거래 시점에 고정) */
+  eligibleAtSale: boolean;
+}
+
+/** 캠페인 승리 요약 (F4가 한 번 쓴다) — 승리 사건을 그대로 복사해, 결산이 120개월 뒤 잘려도 결과 화면·측정이 다시 읽을 수 있다 */
+export interface CampaignWin {
+  month: number;
+  productId: string;
+  lotId: string;
+  kind: SaleKind;
+  unitPrice: number;
+  bottles: number;
+}
+
 /** 태그 효과 (#249 — 오너 답 "보호·먼저 쓰기 둘이면 충분") — protect: 자동 기능이 쓰지 않는다 · prefer: 자동 기능이 먼저 쓴다 */
 export type TagEffect = 'protect' | 'prefer';
 export type TagColor = 'stone' | 'rose' | 'amber' | 'emerald' | 'sky' | 'violet';
@@ -448,6 +500,8 @@ export interface MonthReport {
   priceLog?: PriceLogEntry[];
   /** 원액 손실 사건 — 월 × 종류 합계 (F2 [결정 #323] R5). 기록만 */
   lossEvents?: { kind: LossKind; lpa: number; costKRW: number }[];
+  /** 유상 출하 사건(F3 [결정 #308]) — 출고가 일어난 자리에서 쌓고 9단계 판정이 읽는다. 없으면 이달 유상 출하가 없다. 기록만 */
+  saleEvents?: SaleEvent[];
   angelsShareL: number;
   liquorTaxRemitted: number;
   /** 이번 달 발생한 이벤트 제목 */
@@ -828,6 +882,8 @@ export interface CommerceSlice {
   commissions: BlendCommission[];
   /** 코어 레인지 — 라인 이름 → 기준 육각형 */
   lines: Record<string, CoreLine>;
+  /** 병입 로트(F3) — 남은 병이 있는 것만, 제품별 FIFO. 없으면 옛 세이브·연결 전(로트를 창작하지 않는다). `lots.ts`로만 만지고 판다 */
+  lots?: BottledLot[];
 }
 
 export interface B2bSlice {
@@ -895,6 +951,8 @@ export interface ProgressSlice {
   /** 중반 목표 결과 (content/scenarios.ts midGoals) — 이뤘거나(done) 기한이 지났다(missed). 아직이면 없다 */
   midGoals?: { id: string; month: number; result: 'done' | 'missed' }[];
   verdict?: GoalVerdict;
+  /** 캠페인 승리(F3 모양 · F4가 쓴다 — [결정 #308]) — 적격 로트의 최초 정상 유상 출하 1회. 멈춤 사유가 아니라 알림(계속 운영) */
+  win?: CampaignWin;
   ending?: { reason: GameEnding; month: number };
 }
 

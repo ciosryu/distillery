@@ -2,7 +2,7 @@
 // 설계: core-integration.md §3(BottledLot · SaleEvent) · mkt-stage-t.md 「결정 #308·#311 대응」 §3 판매 지점 표.
 //
 // 이 파일은 순수 함수만 둔다 — GameState를 읽지 않고 상태 그릇(`commerce.lots` · `commerce.saleEvents`, v16)도 만들지 않는다.
-// 그릇·마이그레이션·틱 연결은 F2 코어 계약(#477) 뒤 ARCH 주도 F3 PR에서 넣는다(MKT 커밋으로 합류). 그때까지 출력 불변.
+// 그릇(`commerce.lots?` · `MonthReport.saleEvents?`)과 상태를 읽는 입구는 코어 `lots.ts`(ARCH) — 판매 지점은 `sellFromLots`, 병입·보충은 `addLot`을 부른다. 기록만이라 출력 불변.
 // 타입 이름은 ARCH가 이 초안 그대로 쓰기로 했다(2026-11-13): cellar_door는 kind · eligibleAtBottling(로트)·eligibleAtSale(거래 시점) 둘 다 저장.
 //
 // 판매 지점(출고가 일어나는 자리 — 사건은 그 자리에서 쌓고, 9단계 updateProgress가 그 달 사건을 읽는다):
@@ -14,41 +14,9 @@
 //   6 handfill.ts runHandfill 핸드필                    kind cellar_door · cash · handfillPrice — 통 하나로 된 로트(#318)
 // 승리 대상이 아닌 출고(기록만 또는 제외 — F3에서 ARCH 확인): 원액·통 B2B(kind b2b) · 기프트 샵 뉴메이크(기록 없음)
 
-/** 판매 사건 종류 — #308 §2.2 거래 종류. `b2b`는 병입 로트가 아니라 승리 대상이 아니다 */
-export type SaleKind = 'domestic' | 'dutyfree' | 'export' | 'b2b' | 'cellar_door';
-/** 같은 종류 안의 채널 구분(표시·진단용 — 승리 판정은 kind만 본다) */
-export type SaleChannel = 'retail' | 'overflow' | 'retail_deal' | 'event';
-/** 대가 확정 방식 — 현금 또는 정상 확정 매출채권. 선수금만 받은 것은 사건이 아니다(§2.2) */
-export type Settlement = 'cash' | 'receivable';
-
-/**
- * 병입 로트 — 제품(SKU) 안에서 "언제 병입한 병"인지. 병입·보충(#186)마다 하나씩 생기고, 판매는 FIFO로 빠져나간다.
- * `components`(F2 ComponentLedger)는 여기 두지 않는다 — 적격성은 F4 `campaignEligibility`가 계보로 판정하고 결과만 `eligibleAtBottling`에 남는다.
- */
-export interface BottledLot {
-  id: string;
-  productId: string;
-  /** 남은 병 — 판매로 줄고 0이 되면 지운다 */
-  bottles: number;
-  bottledMonth: number;
-  /** 병입 때 적격 판정(F4). 없으면 아직 판정 전(옛 세이브 origin unknown → false로 읽는다, 창작하지 않는다) */
-  eligibleAtBottling?: boolean;
-}
-
-/** 판매 사건 — 로트 하나에서 나간 병 묶음 하나. 한 거래가 로트 둘에 걸치면 사건 둘 */
-export interface SaleEvent {
-  month: number;
-  productId: string;
-  lotId: string;
-  bottles: number;
-  /** 병당 대가(세전 출고가 기준 — 수출은 FOB, 납품은 출고가 × 비율, 핸드필은 handfillPrice) */
-  unitPrice: number;
-  settlement: Settlement;
-  kind: SaleKind;
-  channel?: SaleChannel;
-  /** 거래 시점의 출고 로트 적격성(#308 — 거래 시점에 고정) */
-  eligibleAtSale: boolean;
-}
+// 타입은 코어 `types.ts`에 있다(ARCH F3 — `commerce.lots?` · `MonthReport.saleEvents?` · `progress.win?` 그릇과 함께). 여기서는 다시 내보낸다
+import type { BottledLot, SaleChannel, SaleEvent, SaleKind, Settlement } from './types';
+export type { BottledLot, SaleChannel, SaleEvent, SaleKind, Settlement };
 
 export interface SaleMeta {
   kind: SaleKind;

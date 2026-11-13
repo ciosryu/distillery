@@ -721,7 +721,7 @@ interface GameState {
 |---|---|---|---|
 | **F1** RuleSet | ciosryu/distillery#475 | `CampaignGoal` · `Scenario.campaignGoal?`(새 판만) · `GameState.rulesVersion?`('legacy-v15' \| 'v16') · 세이브 v16 · 읽기 한 곳 `campaignMinOakMonths(s)`(progress.ts) | 불변 |
 | **F2** 원장 | 코어 계약(이 절) + PROD 27개 지점 연결(P-PROD-55 표) | 아래 | 불변(R1 그림자 원장) |
-| F3 병입 로트·판매 사건 | ARCH 주도 + MKT `saleEvents.ts` | `BottledLot { id, productId, bottles, bottledMonth, components, eligibleAtBottling }` · `SaleEvent { month, productId, lotId, bottles, unitPrice, settlement, kind, channel?, eligibleAtSale }` — `kind`에 `cellar_door`(#318), 로트 id는 제품 안 순번(전역 `nid` 밀림 방지) | 불변(기록만) |
+| **F3** 병입 로트·판매 사건 | 코어 그릇·입구(이 절) + MKT `saleEvents.ts` + PROD·MKT 9개 지점 연결 | `BottledLot { id, productId, bottles, bottledMonth, components?, eligibleAtBottling? }` · `SaleEvent { month, productId, lotId, bottles, unitPrice, settlement, kind, channel?, eligibleAtSale }` · `CampaignWin`(F4가 쓴다) — 그릇 `commerce.lots?` · `MonthReport.saleEvents?` · `progress.win?` · 입구 `lots.ts` | 불변(기록만) |
 | F4 판정 | ARCH | `progress.win?` · `rulesVersion === 'legacy-v15'`면 옛 판정 보존 · `isFlagshipCandidate` → `isCampaignCandidate` · `reserveCaskIds`가 `flagship_sold` 대신 `win` · 승리는 멈춤 사유가 아니라 알림(#308 계속 운영) | **바뀜** — 새 기준선 |
 | F5 PlayerView·Rights·범위 잠금 | ARCH(+MGT) | 담보 `inventoryCollateral` 참 품질(MGT 발견) · 숨은 `contamination` 읽기(`autoFill.ts:21`·P8 봇) · #319 치환 목표 · #311 수출·HR 잠금 | 부분 바뀜 |
 
@@ -734,6 +734,16 @@ interface GameState {
 - **F2에서 바꾸지 않는 것:** `isFlagshipCandidate`(그레인 포함 · `goal.months` 상한) — 집합이 달라 바꾸면 출력이 바뀐다 → F4. `delegateCheck.ts`를 코어로 옮기는 것도 F4와 함께(PROD 합의)
 - 연결 소유: 지점 1·2·4~18·27 PROD(`production`·`maturation`·`warehouse`·`actions.prod`·`blending`·`blendTable`·`events`) · 19~23·25 MKT(`handfill`·`tourism`·`bulk`·`actions.mkt`·`broker`) · 24 MGT(`actions.mgt`·`investment`) · 16 ARCH(`repair` — 비우면 원장도 사라진다, 할 일 없음). 각 연결 PR의 완료 조건 = 출력 11개·P8 바이트 동일 + `checkInvariants` R2 통과
 - 반론·리스크: 합성 출처 'self'는 "v16 판에서 `sourced`가 아닌 로트는 모두 이 입지에서 자가 증류한 것"이라는 지금 코드 사실에 기댄다(원액이 생기는 곳은 생산·브로커·통입 취소뿐 — P-PROD-55 전제 1). 다른 입지 원액이 들어오는 기능(인수 §3.4)이 생기면 그때 지점 1이 `siteId`를 직접 적으므로 합성은 쓰이지 않는다
+
+**F3 코어 계약 — `types.ts` 그릇 + `src/sim/lots.ts`(상태 입구) + MKT `saleEvents.ts`(순수 함수)**
+- 그릇: `commerce.lots?: BottledLot[]`(남은 병이 있는 로트만, 제품별 FIFO — 없으면 옛 세이브·연결 전, **로트를 창작하지 않는다**) · `MonthReport.saleEvents?: SaleEvent[]`(그달 유상 출하 — 영구 목록 대신 결산에만. `history.reports`가 120개월로 잘려도 판정은 같은 달 9단계에서 끝나고, 봇·측정은 매달 결산에서 가져간다) · `progress.win?: CampaignWin { month, productId, lotId, kind, unitPrice, bottles }`(F4가 승리 사건을 복사 — 120개월 뒤에도 결과 화면·측정이 읽는다). 스키마 버전 그대로(v16) — 셋 다 선택 필드
+- 로트 id는 **제품 안 순번** `${productId}:${bottledMonth}:${n}`(`lotId`·`nextLotIndex`, MKT) — 전역 `nid`를 밀지 않아 다른 id·판매 잡음 키가 바뀌지 않는다
+- 입구(`lots.ts`, 상태를 쓰는 유일한 곳): `addLot(s, productId, bottles, { components?, eligibleAtBottling?, month? })`(병입·보충 — 병은 정수로 내림, 0 이하는 안 만듦) · `sellFromLots(s, report, productId, bottles, meta)`(유상 출고 — FIFO 차감 + 로트마다 사건 하나를 `report.saleEvents`에, 로트가 없는 제품이면 아무것도 안 함, 양의 대가가 아니면 사건·차감 없음 §2.2. `stockBottles` 차감은 호출부가 지금처럼) · `dropLots(s, productId)`(단종·수명 정리) · 읽기 `lotsOf`·`productLots`·`lotBottles`
+- `BottledLot.components`: 병입이 `splitLedger`로 떼어 낸 F2 원장을 **이어 붙인다**(평균 안 냄, 지점 17). 보충(18)은 새 로트(FIFO 유지)이고 제품 필드만 `restockedProduct`로 합친다. 제품 `caskMix`·`ageYears`(가장 어린 원액, #186)는 그대로 — 적격은 로트로만 본다. `eligibleAtBottling`은 F4 `ledgerEligibility(s, lot.components)`가 채우고, 그 전에는 비어 있다(→ 판매 때 `eligibleAtSale: false`)
+- 같은 달 안 순서 = 틱 순서(1 이벤트 「수출 주문」 → 4 납품 → 5 국내·면세·수출 → 6 핸드필) — `firstEligibleSale(report.saleEvents)`의 "먼저 쌓인 것"이 곧 먼저 출고된 것
+- 불변식(`checkInvariants`): 로트 병 정수 > 0 · id 하나뿐 · 제품 있음(**오류**) · 제품별 로트 합 = `stockBottles`(연결이 끝날 때까지 **경고**, F4에서 오류로 — 병입만 먼저 연결되면 합이 재고보다 커진다)
+- 연결 소유(출력 불변 — 각 PR 완료 조건 = 골든 10개·P8 바이트 동일 + 불변식 오류 0): **로트 생성 3곳 PROD** `blending.ts executeBlend`(17)·`restockedProduct`(18)·`economics.ts` 자동 납품 → `addLot` · **단종 2곳** `actions.prod.ts`(PROD)·`lifecycle.ts`(ARCH) → `dropLots` · **판매 6곳** `market.ts` 국내·면세·수출(MKT) · `deals.ts fulfillRetail`(MKT) · `events.ts exportOrder`(MGT) · `handfill.ts`(MKT — 통 하나로 된 로트, `cellar_door`) → `sellFromLots`. 원액·통 B2B(`bulk.ts`)는 병입 로트가 아니라 **사건을 만들지 않는다**(기록도 생략 — `kind: 'b2b'`는 타입에 남겨 둔다) · 기프트 샵 뉴메이크는 기록 없음
+- 반론·리스크: 결산에만 쌓으면 "승리 뒤 어느 로트가 얼마에 팔렸나"의 전체 이력은 120개월만 남는다 — F7 측정(`mkt-stage-t.md` §5)은 봇이 매달 가져가므로 영향 없고, 사람 플레이의 결과 화면은 `progress.win` 요약으로 충분하다고 본다 `[추측]`. 영구 목록이 필요해지면 `commerce.saleEvents?`를 그때 더하면 된다(세이브 크기 ↑)
 
 ## 11. 정보 비대칭 검증 계약 (ARCH-C, 2026-11-11) `[제안 P-ARCH-41]`
 
