@@ -1841,3 +1841,62 @@ main의 게임 코드 머지마다 X0(standard, 10시드 × 180)를 다시 쟀�
 - 코드·테스트·밸런스 출력 변경 0. 결정 번호 발급 0.
 - 승리 달 · 출고 지연 · 3종 순자산의 **실측 0** — F4·F5 뒤에 잰다. 위의 "W = 180 직전에 몰린다"는 추론이다.
 - MKT·PROD 영역(취향·경쟁·공급) 손잡이는 각 파트 몫이다. 영역 태그 표는 PM 조율로 함께 만든다.
+
+## F4 대비 변경 목록 — `metrics.ts` · P8 · CALIB를 새 승리 함수로 (2026-11-13, PM 태스크 ① · P-MGT-46 구현 준비)
+
+> 등급: **변경 목록(코드 0).** F4(`campaignEligibility`·`progress.win`)가 머지되면 이 목록대로 PR 하나를 낸다. F5(3종 평가) 전에는 순자산 3종 자리에 `netWorth` 하나만 채운다. 모든 변경은 **옛 판(`rulesVersion: 'legacy-v15'`)에서 출력이 바이트 동일**해야 한다 — 그것이 이 PR의 첫 검사다.
+
+### 0. 먼저 알아 둘 것 — 지금 P8 X0는 새 규칙에서 승리할 수 없다 `[추론 — 코드 읽기, 실측 아님]`
+- X0(사람형)는 `flagship: false`라 144개월 넘은 통을 「플래그십」으로 병입하는 코드(`mvp-human.ts` `bottle()` 396~403행)를 타지 않는다. 다른 위스키 병입·자동 납품은 **어린 통부터** 쓴다. 그래서 적격 로트(구성 원액 **전부** 목재 숙성 ≥ 144)가 출고될 길이 거의 없다.
+- 그러므로 **새 규칙의 X0 승리율은 구조적으로 0에 가깝다.** 사람 판도 같은 이유로 승리하지 못했다(166개월 · 후보 소진). 이것은 측정할 것이 아니라 봇 정책의 문제다.
+- 제안: 새 규칙에서는 P8 기본(X0)에 **"적격 원액이 생기면 한 로트를 병입해 판다"(승리 시도)**를 켠다. 지금 X0(시도 없음)는 `X0L`로 남겨 CALIB H1(사람 판의 실패 양식 재현)에만 쓴다. **P8 기본 출력이 바뀌므로 ARCH 검토·오너 머지 지시 대상이다**(#294 밖).
+
+### 1. `scripts/experiments/metrics.ts` (MGT)
+
+| 대상 | 지금 | 바꿀 것 |
+|---|---|---|
+| `RunOutcome` | `survived · netWorth · target · flagshipSold · flagshipQuality? · awareness` | 그대로 두고 더한다: `rules: 'legacy-v15' \| 'v16'` · `cls: 'win' \| 'bankrupt' \| 'ended' \| 'censored_ready' \| 'censored_none'` · `winMonth?` · `winLotId?` · `winKind?`(SaleEvent.kind) · `winLotMinOak?` · `firstEligibleMonth?` · `eligibleLeftLPA` · `eligibleLeftCasks` · `nw3?: { book, est, liq }`(F5 뒤) · `window`(W) |
+| `outcomeOf(s, survived)` | 게임 상태에서 판 결과 | 시그니처 `outcomeOf(s, survived, opts?: { window?: number; firstEligibleMonth?: number })`(기존 호출은 그대로 컴파일). `cls`는 **`s.progress.win`·`s.status`만으로** 정한다. `censored_ready/none`의 구분만 게임 함수(통·탱크 적격성 조회 — ARCH F2 API)를 부른다. 도구가 계보를 직접 걷지 않는다 |
+| `classify(o)` (새) | — | `cls`를 표 이름으로("승리 · 파산 · 기타 종료 · 관측 종료(적격 있음) · 관측 종료(적격 없음)") |
+| `achieved` · `grade` | 구승리 "목표 달성"·등급 | **지우지 않는다.** 주석에 "legacy-v15 정의 — 새 규칙에서는 성과 참고"를 단다. `grade`는 새 규칙에서도 성과 등급으로 쓴다(#308 "등급은 성과 지표") |
+| `won(o)` (새) | — | `o.cls === 'win'` |
+| `summarize(os)` | 생존·목표·등급·순자산 통계 | 기존 키를 그대로 두고 더한다: `cls`별 수·비율·Wilson 구간 · `winMonth` 중앙·P10·P90(승리 판만) · **누적 승리 곡선** `cum: Record<144\|150\|156\|168\|180\|240, number>`(W 넘는 칸은 NaN) · `nw3` 통계(F5 뒤) |
+| `MonthTracker.observe(s)` | 월별 현금·가격·12년↑ 통 | 더한다: `firstEligibleMonth`(적격 원액이 처음 생긴 달 — F2 API) · `candidateDrain`(목재 숙성 ≥ A − 24인 원액이 **적격 아닌 로트**로 병입된 LPA, 원인별 `autoRestock \| manual \| spot \| loss` — F2 계보·F3 BottledLot에서 읽는다). `oldCasks`는 지금 **그레인도 넣고 `sourced`를 안 거른다** → 새 규칙 열은 적격성 조회로 따로 센다(옛 열은 그대로) |
+| `comparePaired(a, b)` | 순자산 짝 차이 | 그대로. 새 `comparePairedWin(a, b)`: 4칸(A만 승리 · B만 승리 · 둘 다 · 둘 다 아님) + 둘 다 승리한 시드의 `winMonth` 차이(평균·t) |
+| 단위 테스트 (새) | 없음 | `scripts/experiments/metrics.test.ts` — 손으로 만든 `RunOutcome` 고정값으로 `classify`·`summarize`(누적 곡선·Wilson)·`comparePairedWin` 확인(vitest 기본 포함 경로 — 설정 변경 없음) |
+
+### 2. `scripts/experiments/mvp-human.ts` (MGT, P8)
+
+| 대상 | 지금 | 바꿀 것 |
+|---|---|---|
+| 측정 창 | `MONTHS`(인자, 기본 180)에서 루프 끝 | 그대로 쓰고, **승리 뒤에도 루프를 끝까지 돈다**(성과 측정). `W=240`은 인자 `… 40 240`으로. F4 뒤 게임이 승리 달에 자동 진행을 멈추는 방식이면 봇이 그 멈춤을 넘기는 한 줄이 필요하다 — **ARCH에 확인 요청**(`advanceMonth`가 승리 뒤에도 정상으로 도는가) |
+| 플래그십 병입 `bottle()` 396~403행 | `kind === 'malt' && oakMonths ≥ goal.flagshipMinMonths` 통 중 오래된 2통 | 통 고르기를 **게임 적격성 조회**로 바꾼다(`sourced`·그레인·혼합 이력을 도구가 판단하지 않게). 최소 숙성은 `campaignGoal.minOakMonths`를 읽는다. 병입 뒤 가격은 그 계열 정책(기본 A, 보유 전략 B′ — #306)을 따른다 |
+| 정책 목록 | X0 = 플래그십 끔 | 새 규칙: X0 = 승리 시도 켬(§0). `X0L` = 지금 X0(시도 없음, CALIB H1용). X19·X20·X40~X45(이미 `flagship: true`)는 그대로 |
+| `Row` | 생존·순자산·목표·등급 등 | `outcome`에 §1 새 필드. 표에 열 더함: 분류 · 승리 달 · 첫 적격 준비 달 · 출고 지연 · 적격 잔량 · 후보 소모 LPA |
+| `METRICS` 첫 표 | 생존 · 목표 달성(CI) · 플래그십 · 등급 · 순자산 | 새 규칙이면 **분류 비율(CI) · 승리 달 분포 · 누적 승리 곡선**을 첫 표로. 순자산·등급 표는 두 번째(성과)로 내린다. 옛 판이면 지금 표 그대로 |
+| 원자료 | 정책별 표 | `PERSEED=1`일 때 시드별 한 줄(P-MGT-46 기록 양식 열 순서 그대로) |
+| P8 래퍼 호환 | `const RUN = …` 줄을 4개 래퍼가 글자 그대로 찾는다 | **이 줄은 건드리지 않는다**(#412 사고). PR 전에 `prodHoldPatch`·`prod-hold-p8`·`prod-sample-p8`·`prod-style-p8`·`mkt-p8v` 스모크(2시드)를 돌린다 |
+
+### 3. CALIB (`CALIB=1`, `mvp-human.ts` 774행~)
+
+| 기준 | 지금 코드 | 바꿀 것 |
+|---|---|---|
+| H1 | X0 166개월 순자산 분포 안에 사람 21.14억 | 새 규칙: `X0L`의 분류가 사람 판과 같은 **관측 종료 · 적격 없음**이 다수인가(사람 판 분류 상수 `HUMAN_REF.cls = 'censored_none'`). 순자산 비교는 참고 줄로 남긴다 |
+| H2 | 파산 0 / ≤ 1 | 그대로 |
+| H3 | 연말 순자산 계단(`netWorth`) · 기준 차이 | F5 전: 지금 그대로(구정의). F5 뒤: `nw3.liq`로 다시 재고, 기준 차이는 그때 PM·BAL과 다시 정한다 |
+| H4 | X0 = X0E(엔진 A) 바이트 동일 | 그대로(X0가 승리 시도를 켜도 두 판 모두 같은 코드를 타므로 비교는 유효) |
+| H5(새) | — | 판마다 `outcome.cls`·`winMonth`가 `s.progress.win`·`s.status`를 그대로 옮긴 값인지(재계산 0) 40/40 |
+
+### 4. 다른 파트 몫 (요청만)
+- **ARCH:**
+  - `mvp-survival.ts` 188행 `outcomeOf` 호출과 표 — 새 필드를 쓰려면 ARCH 쪽 PR이 필요하다(소유 파일).
+  - 통·탱크 적격성 조회 API(F2) — 위 `censored_ready/none`·`firstEligibleMonth`·플래그십 통 고르기의 전제다.
+  - 승리 뒤 `advanceMonth` 동작 확인.
+- **MKT:** 승리 로트 가격을 정하는 법(기본 A인가 B′인가) — 승리 달을 크게 바꾸는 변수라 전략군 정의(balance-spec §10)에 함께 적어야 한다.
+
+### 5. 순서와 검사
+1. F4 머지 → 이 PR(`metrics.ts` + 단위 테스트 + `mvp-human.ts` 새 열·`X0L`·CALIB H1/H5)
+2. 검사 ①: `rulesVersion: 'legacy-v15'`로 P8 기본 출력이 머지 전과 바이트 동일
+3. 검사 ②: 래퍼 5개 2시드 스모크
+4. 검사 ③: `typecheck` · `test` · `build`
+5. 새 규칙 10시드 예비 표(참고, 판정 아님)를 PR 본문에 붙인다 — X0(시도) · X0L · X40(B′) · X12, W = 180 · 240
