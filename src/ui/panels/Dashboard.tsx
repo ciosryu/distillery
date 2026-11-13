@@ -1,4 +1,4 @@
-import { CASH_FLOW_LINES, capacityReport, coverage, inventoryLoanRoom, inventoryLtv, liveDutyFreeEditions, monthLabel, monthlyFixedCost, selfFundedCash, siteOverhead, warehouseCapacity, waterPermitCap, type CashFlowKey, type MonthReport } from '../../sim';
+import { CASH_FLOW_LINES, capacityReport, coverage, inventoryLoanRoom, inventoryLtv, liveDutyFreeEditions, monthLabel, monthlyFixedCost, siteOverhead, warehouseCapacity, waterPermitCap, type CashFlowKey, type MonthReport } from '../../sim';
 import { awarenessOf } from '../../sim/brands';
 import { REGIONS, siteOf } from '../../sim/content/regions';
 import { hasPremiumChannel, retailCapacityCases } from '../../sim/retail';
@@ -6,6 +6,7 @@ import { visitorTiers } from '../../sim/tourism';
 import { useGame } from '../../store/game';
 import { Sparkline } from '../charts';
 import { won, pct, liters, num } from '../format';
+import { runway } from '../alerts';
 import { Badge, Button, Card, Empty, Meter, Stat, Table, Td } from '../kit';
 import { EventsCard } from './Events';
 
@@ -38,9 +39,10 @@ export function Dashboard() {
   const s = useGame((g) => g.state);
   const last = s.history.reports.at(-1);
   const recent = s.history.reports.slice(-3);
-  // 대출 실행·투자 유치·계약 선급금으로 들어온 돈은 빼고 본다 (차입한 달이 흑자로 보이지 않게)
-  const avgNet = recent.length ? recent.reduce((t, r) => t + selfFundedCash(r), 0) / recent.length : 0;
-  const runway = avgNet < 0 ? Math.floor(s.finance.cash / -avgNet) : null;
+  // 런웨이는 증류소 탭 배너·MVP 화면과 같은 식(alerts.ts runway — #127): 대출 실행·투자 유치·계약 선급금으로 들어온 돈과
+  // 턴 사이 설비 구매(한 번 쓰는 돈)는 빼고 최근 3개월 평균을 본다. 현금이 마이너스면 0개월
+  const run = runway(s);
+  const avgNet = run.avg ?? 0;
   const filled = s.inventory.casks.filter((c) => c.contents).length;
   const tankLPA = s.inventory.lots.reduce((t, l) => t + l.volumeL * l.abv, 0);
   const cap = capacityReport(s);
@@ -49,7 +51,7 @@ export function Dashboard() {
     <div className="grid gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="현금" value={won(s.finance.cash)} tone={s.finance.cash < 0 ? 'bad' : undefined} hint={s.finance.negativeCashMonths ? `현금 부족 ${s.finance.negativeCashMonths}개월째` : undefined} />
-        <Stat label="최근 3개월 평균 순현금(차입·투자·선급금 제외)" value={recent.length ? won(avgNet) : '—'} tone={!recent.length ? undefined : avgNet >= 0 ? 'good' : 'bad'} hint={!recent.length ? '기록 없음' : runway != null ? `이 속도면 약 ${runway}개월 버팀` : '현금 흐름 흑자'} />
+        <Stat label="최근 3개월 평균 순현금(차입·투자·선급금·설비 구매 제외)" value={recent.length ? won(avgNet) : '—'} tone={!recent.length ? undefined : avgNet >= 0 ? 'good' : 'bad'} hint={!recent.length ? '기록 없음' : run.months != null ? `이 속도면 약 ${run.months}개월 버팀` : '현금 흐름 흑자'} />
         <Stat label="월 고정비(예상)" value={won(monthlyFixedCost(s))} hint="급여·관리비·난방(겨울)·마케팅·세컨드 브랜드·유지비(완공 설비)·보관비·대출·보험" />
         <Stat label="브랜드 인지도" value={pct(awarenessOf(s))} hint={`유통 커버리지 ${pct(coverage(s))}`} />
         <Stat label="숙성 중 캐스크" value={`${filled} / ${warehouseCapacity(s)}`} hint={`빈 캐스크 ${s.inventory.casks.length - filled}개`} />
