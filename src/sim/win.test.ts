@@ -1,8 +1,9 @@
 // 캠페인 승리 판정 (F4 코어 ARCH — [결정 #308·#309], core-integration §5 `win:` 행) · 옛 판(legacy-v15) 분기 보존
 import { describe, expect, it } from 'vitest';
 import { houseBrand } from './brands';
-import { advanceMonth, advanceMonths, advanceUntil, applyAction, DEFAULT_STOPS, GRADE, type GameState, type MonthReport, type Product } from './index';
-import { addLot, sellFromLots } from './lots';
+import { advanceMonth, advanceMonths, advanceUntil, applyAction, DEFAULT_STOPS, GRADE, warehouseCapacity, type Action, type GameState, type MonthReport, type Product } from './index';
+import { caskEligibility } from './ledger';
+import { addLot, lotsOf, sellFromLots } from './lots';
 import { newScenarioGame } from './newScenario';
 import { updateProgress } from './progress';
 
@@ -119,5 +120,50 @@ describe('win: 어린 제품 판매 + 적격 보충만으로 승리 0 (C03, FIFO
     expect(t.progress.win).toMatchObject({ month: 150, productId: 'P', kind: 'domestic' });
     expect(t.history.reports.at(-1)!.saleEvents!.some((e) => e.eligibleAtSale)).toBe(true);
     expect(applyAction(t, { type: 'acknowledgeVerdict' }).error).toBeUndefined();
+  });
+});
+
+describe('win: 끝까지 — 생산 → 통입 → 숙성(원장 7·8) → 144개월 뒤 병입(addLot 자동 적격) → 판매 → progress.win (PROD #498 연결 뒤)', () => {
+  it('적격 자가 몰트 통을 145개월에 병입하면 그 달 첫 판매로 승리한다 · 판은 계속 돈다 · 옛 flagship 마일스톤도 함께 남는다', () => {
+    const act = (st: GameState, a: Action) => { const r = applyAction(st, a); if (r.error) throw new Error(`${a.type}: ${r.error}`); return r.state; };
+    let s = v16(1);
+    s.finance.cash += 30_000_000_000; // 판정만 본다 — 150개월 고정비를 버틸 돈
+    const malt = s.production.recipes.find((r) => r.kind === 'malt' && !r.mashBill.some((x) => x.ingredientId === 'malt_peated'))!.id;
+    s = act(s, { type: 'setOrder', recipeId: malt, batchesPerMonth: 2 });
+    let bottledAt = -1;
+    let productId = '';
+    for (let i = 0; i < 160 && s.status === 'running'; i++) {
+      if (s.month <= 24) for (const lot of s.inventory.lots.filter((l) => l.kind === 'malt')) {
+        const need = Math.ceil((lot.volumeL * lot.abv) / (200 * 0.635));
+        const empty = s.inventory.casks.filter((c) => !c.contents && !c.contamination).length;
+        const room = warehouseCapacity(s) - s.inventory.casks.length;
+        if (empty < need && room > 0) s = act(s, { type: 'buySpotCasks', caskType: 'ex_bourbon_barrel', qty: Math.min(need - empty, room) });
+        const ids = s.inventory.casks.filter((c) => !c.contents && !c.contamination).slice(0, need).map((c) => c.id);
+        if (ids.length) s = act(s, { type: 'fillCasks', lotId: lot.id, caskIds: ids, entryAbv: 0.635 });
+      }
+      if (s.month === 26) s = act(s, { type: 'setOrder', recipeId: malt, batchesPerMonth: 0 });
+      if (bottledAt < 0 && s.month >= 145) {
+        const elig = s.inventory.casks.filter((c) => c.contents?.kind === 'malt' && !c.owner && caskEligibility(s, c).eligible);
+        expect(elig.length).toBeGreaterThan(0);
+        const before = new Set(s.commerce.products.map((p) => p.id));
+        s = act(s, { type: 'bottle', components: elig.slice(0, 2).map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL })), options: { name: '12년', targetAbv: 0.43, bottleMl: 700, chillFilter: true, packagingId: 'standard' } });
+        productId = s.commerce.products.find((p) => !before.has(p.id))!.id;
+        s = act(s, { type: 'setPricePolicy', productId, mode: 'turnover' });
+        bottledAt = s.month;
+        const lot = lotsOf(s).find((l) => l.productId === productId)!;
+        expect(lot.eligibleAtBottling).toBe(true);
+        expect(lot.components!.every((e) => e.origin === 'self' && e.kindAtBirth === 'malt' && e.woodMonths >= 144)).toBe(true);
+      }
+      s = advanceMonth(s);
+      if (s.progress.win) break;
+    }
+    expect(bottledAt).toBe(145);
+    expect(s.progress.win).toMatchObject({ month: 145, productId, lotId: `${productId}:145:0`, kind: 'domestic' });
+    expect(s.progress.win!.bottles).toBeGreaterThan(0);
+    expect(s.progress.verdict).toMatchObject({ month: 146, result: 'heritage' });
+    expect(s.status).toBe('running');
+    const ids = s.progress.milestones.map((m) => m.id);
+    for (const id of ['flagship_bottled', 'flagship_sold', 'campaign_win']) expect(ids).toContain(id);
+    expect(advanceMonths(s, 3).progress.win).toEqual(s.progress.win); // 중복 0
   });
 });
