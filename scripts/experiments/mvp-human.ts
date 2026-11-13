@@ -507,7 +507,8 @@ interface Row { years: Year[]; cands: number[]; flagCasks: number; split: Split;
 interface Cap { minCash72: number; minRunway72: number; negMonths: number; peakSpirit: number; peakSpiritMonth: number; spiritShare72: number; interest: number; minCash36: number; spirit60: number; cash96: number; cash180: number }
 
 function play(p: Policy, seed: number): Row {
-  let s = applyTierKnobs(newScenarioGame({ scenarioId: 'mvp_kr', tierId: TIER, loanAmount: LOAN, seed, ...(process.env.RULES === 'legacy' ? { rules: 'legacy-v15' as const } : {}) })); // RULES=legacy → X0L(옛 판정 참고 판, F4 바이트 동일 검사)
+  let s = applyTierKnobs(newScenarioGame({ scenarioId: 'mvp_kr', tierId: TIER, loanAmount: LOAN, seed }));
+  if (process.env.RULES === 'legacy') s.rulesVersion = 'legacy-v15'; // RULES=legacy → X0L(옛 판정 참고 판, F4 바이트 동일 검사). 윗줄은 PROD 래퍼(prod-sample-p8.ts)가 글자 그대로 찾아 패치하므로 바꾸지 않는다
   const t = { firstWhisky: -1 };
   if (p.visitor && p.visitorAt == null) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_basic' });
   if (p.equipAt == null) s = buyEquip(s, p);
