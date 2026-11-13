@@ -3,7 +3,7 @@ import { cancellationCost, isBulkKind, recordSpotSale, spotQuote, startContract 
 import { acceptExportOffer, cancelExport } from './exportDeals';
 import { recordPendingCash } from './cashflow';
 import { EXPORT_MARKETS, type ExportMarketId } from './content/exports';
-import { OEM, RETAIL_DEAL, startOem, startRetail } from './deals';
+import { OEM, RETAIL_DEAL, retailCancellationCost, startOem, startRetail } from './deals';
 import { warehouseCapacity } from './util';
 import { BRANDS } from './content/market';
 import { assignProductBrand, brandOf, closeSecondBrand, openSecondBrand } from './brands';
@@ -173,7 +173,7 @@ export const MKT_HANDLERS: Handlers<MktAction> = {
   cancelRetail: (s, prev, a) => {
     const c = s.commerce.retailContracts.find((x) => x.id === a.contractId);
     if (!c) return fail(prev, '계약이 없습니다');
-    const cost = Math.round((c.termMonths - c.monthsDone) * c.bottlesPerMonth * c.penaltyPerBottle * 0.5);
+    const cost = retailCancellationCost(c);
     s.finance.cash -= cost;
     s.commerce.retailContracts = s.commerce.retailContracts.filter((x) => x.id !== c.id);
     return { state: s, message: `${c.partner} 납품 계약 해지 — 해지 비용 ${cost.toLocaleString()}원` };

@@ -1,10 +1,10 @@
 import { BULK, CASKS } from '../../sim/content/catalog';
 import { regionOf, siteOf } from '../../sim/content/regions';
 import { CATEGORY } from '../../sim/content/categories';
-import { oemPackageCost, cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, knownReads, lotQuality, monthLabel, QUALITY_SIGMA_PER_HEX, spotBidPerLPA, spotQuote, spotQuoteEstimate, spotSaturation, type Cask, type ContractAgingImpact, type GameState, type KnownRead } from '../../sim';
+import { oemPackageCost, retailCancellationCost, cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, knownReads, lotQuality, monthLabel, QUALITY_SIGMA_PER_HEX, spotBidPerLPA, spotQuote, spotQuoteEstimate, spotSaturation, type Cask, type ContractAgingImpact, type GameState, type KnownRead } from '../../sim';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won, wonFull } from '../format';
-import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';
+import { Badge, Button, Card, ConfirmButton, Empty, Stat, Table, Td } from '../kit';
 import { useState, type ReactNode } from 'react';
 import { isFlagshipCandidate } from '../../sim/delegateCheck';
 import { ibAgedCaskCount } from '../../sim/bulk';
@@ -149,7 +149,8 @@ export function B2B() {
                 <Td right className={c.shortfallLPA > 0 ? 'text-rose-700 dark:text-rose-400' : ''}>{num(c.shortfallLPA)} LPA</Td>
                 <Td right>{won(c.prepaidRemaining)}</Td>
                 <Td><AgingImpact s={s} i={contractAgingImpact(s, c)} /></Td>
-                <Td><Button small variant="danger" onClick={() => dispatch({ type: 'cancelContract', contractId: c.id })}>해지 ({won(cancellationCost(c))})</Button></Td>
+                <Td><ConfirmButton small variant="danger" armKey={`cancelcontract-${c.id}@${s.month}`} armedLabel="한 번 더 누르면 해지" onConfirm={() => dispatch({ type: 'cancelContract', contractId: c.id })}
+                  preview={() => <>{c.buyerName} 공급 계약을 해지한다 — 해지 비용 {won(cancellationCost(c))}(위약금 + 남은 선급금 {won(c.prepaidRemaining)} 반환) · 현금 {won(s.finance.cash)} → {won(s.finance.cash - cancellationCost(c))} · 신뢰도 −10</>}>해지 ({won(cancellationCost(c))})</ConfirmButton></Td>
               </tr>
             ))}
           </Table>
@@ -256,7 +257,8 @@ function SiteDeals() {
                 <Td className="font-medium">{c.partner}</Td><Td>{CATEGORY[c.category].nameKo}</Td><Td right>{num(c.bottlesPerMonth)}병</Td>
                 <Td right>출고가 × {pct(c.priceFactor, 0)}</Td><Td right>{c.monthsDone}/{c.termMonths}개월</Td><Td right>{won(c.penaltyPerBottle)}</Td>
                 <Td><Badge tone={c.shortfall ? 'warn' : 'good'}>진행 중 · 누적 미납 {num(c.shortfall)}병</Badge></Td>
-                <Td><Button small variant="danger" onClick={() => dispatch({ type: 'cancelRetail', contractId: c.id })}>해지</Button></Td>
+                <Td><ConfirmButton small variant="danger" armKey={`cancelretail-${c.id}@${s.month}`} armedLabel="한 번 더 누르면 해지" onConfirm={() => dispatch({ type: 'cancelRetail', contractId: c.id })}
+                  preview={() => { const cost = retailCancellationCost(c); return <>{c.partner} 납품 계약을 해지한다 — 해지 비용 {won(cost)}(남은 {c.termMonths - c.monthsDone}개월 × 월 {num(c.bottlesPerMonth)}병 × 병당 위약금의 절반) · 현금 {won(s.finance.cash)} → {won(s.finance.cash - cost)}</>; }}>해지</ConfirmButton></Td>
               </tr>
             ))}
           </Table>
@@ -270,7 +272,10 @@ function SiteDeals() {
               <tr key={o.id}>
                 <Td className="font-medium">{o.buyerName}{o.dedicated && <div className="text-xs text-stone-500">전용 증류기 패키지: 설치비 {won(oemPackageCost(s))} 중 위탁사 지원 {won(o.capexSupport ?? 0)} → 우리 부담 {won(oemPackageCost(s) - (o.capexSupport ?? 0))}, 설치 후 시작</div>}</Td><Td right>{o.batchesPerMonth}</Td><Td right>{won(o.feePerBatch)}</Td><Td right>{o.termMonths}개월</Td><Td right>{won(o.penaltyPerBatch)}</Td>
                 <Td><Badge tone="info">제안 · {o.expiresMonth - s.month}개월 후 만료</Badge></Td>
-                <Td><Button small variant="primary" onClick={() => dispatch({ type: 'acceptOem', offerId: o.id })}>체결</Button></Td>
+                <Td>{o.dedicated
+                  ? <ConfirmButton small variant="primary" armKey={`oem-${o.id}@${s.month}`} armedLabel="한 번 더 누르면 체결" onConfirm={() => dispatch({ type: 'acceptOem', offerId: o.id })}
+                      preview={() => { const pay = oemPackageCost(s) - (o.capexSupport ?? 0); return <>{o.buyerName} 위탁생산을 체결하고 전용 증류기를 발주한다 — 우리 부담 {won(pay)} · 현금 {won(s.finance.cash)} → {won(s.finance.cash - pay)}. 설비 발주는 취소할 수 없다</>; }}>체결</ConfirmButton>
+                  : <Button small variant="primary" onClick={() => dispatch({ type: 'acceptOem', offerId: o.id })}>체결</Button>}</Td>
               </tr>
             ))}
             {s.b2b.oemContracts.map((c) => (
