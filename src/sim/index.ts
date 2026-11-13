@@ -18,6 +18,8 @@ export * from './maturation';
 export * from './newGame';
 export * from './production';
 export * from './step';
+export * from './saleEvents';
+export * from './lots';
 export * from './util';
 export * from './warehouse';
 export * from './casks';

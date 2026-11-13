@@ -2,6 +2,7 @@ import { MIN_BOTTLING_ABV } from './blending';
 import { MIN_CASK_VOLUME_L } from './maturation';
 import { nonFinitePaths } from './repair';
 import { ledgerError } from './ledger';
+import { lotsOf } from './lots';
 import type { Flavor, GameState } from './types';
 
 // 공통 불변식 계약 (코어 ARCH — INV-ARCH-1, #285 이어서). 범위는 PROD `prod-stage-t.md` AP3-PROD-1 3. 표.
@@ -73,6 +74,23 @@ export function checkInvariants(s: GameState, limit = 20): InvariantReport {
     if (!(p.quality >= 0 && p.quality <= 100)) r.errors.push(`${at} quality = ${p.quality} (0~100)`);
     if (!(p.typicity >= 0 && p.typicity <= 100)) r.errors.push(`${at} typicity = ${p.typicity} (0~100)`);
     flavorCheck(p.flavor, at, r);
+  }
+
+  // 병입 로트(F3) — 남은 병이 있는 로트만 있고(정수 > 0), id는 하나뿐이고, 제품이 있어야 한다. 제품 재고와의 합치는 지점 연결이 끝날 때까지 경고(F4에서 오류로)
+  const lots = lotsOf(s);
+  if (lots.length) {
+    const products = new Map(s.commerce.products.map((p) => [p.id, p]));
+    const ids = new Set<string>();
+    const sum = new Map<string, number>();
+    for (const l of lots) {
+      const at = `로트 ${l.id}`;
+      if (!(isInt(l.bottles) && l.bottles > 0)) r.errors.push(`${at} bottles = ${l.bottles} (정수 > 0)`);
+      if (ids.has(l.id)) r.errors.push(`${at} id 중복`);
+      ids.add(l.id);
+      if (!products.has(l.productId)) r.errors.push(`${at} 제품 ${l.productId} 없음`);
+      sum.set(l.productId, (sum.get(l.productId) ?? 0) + l.bottles);
+    }
+    for (const [pid, n] of sum) { const p = products.get(pid); if (p && n !== p.stockBottles) r.warnings.push(`제품 ${pid} 로트 합 ${n} ≠ stockBottles ${p.stockBottles} (연결 중)`); }
   }
 
   r.errors.splice(limit);
