@@ -15,7 +15,7 @@
 > | §10.7 순서 계약 | P-ARCH-47 | 묶음 B3·B4 | 구현: 계약 2·3(대상 단위 난수, S1~S7) · 계약 5(형제 결정 — S6 GS, #300). 남음: 계약 1·4·6(명령·이벤트 순서 표기) |
 > | §10.8 B1 지원 | (P-MKT-28 그릇 의견) | §10.9로 대체 | — |
 > | §10.9 AP3-ARCH-1 | P-ARCH-53·54 | **#298 → #300(GS)** · 엔진 #291 | 구현 끝(#373·#388). 화면 MKT #397 |
-> | §10.10 F4 판정 코어 계약 | P-ARCH-55 | 초안(2026-11-13) — PM 게이트: 연결 PR 전부 머지 뒤 | 확인 필요 2건: v16 `verdict` 시점(승리 달·종료만) · 후보 지평(권장 36개월) |
+> | §10.10 F4 판정 코어 계약 | P-ARCH-55 | 준비 브랜치 ciosryu/distillery#494 — PM 게이트: 연결 PR 전부 머지 뒤 | 결정 대기 90(verdict 승리 달·종료만)·91(지평 36개월) 오너 "권장안대로" 2026-11-13 — 번호 PM 발급 |
 > | §11 정보 비대칭 계약 | P-ARCH-41 | 결정 대기 59 | 측정만(`info-leak.ts`). #167(순자산 곡선은 참 품질) 그대로 — 바꿀지는 오너 |
 > | §12 UX 피드백 | P-ARCH-50 | 묶음 B4 | 미구현(단계 G/V) |
 > | (mvp.md §7.22) 단계 해금 한 달 늦음 | P-ARCH-51 | 묶음 B4 | 미구현 |
@@ -747,7 +747,7 @@ interface GameState {
 - 반론·리스크: 결산에만 쌓으면 "승리 뒤 어느 로트가 얼마에 팔렸나"의 전체 이력은 120개월만 남는다 — F7 측정(`mkt-stage-t.md` §5)은 봇이 매달 가져가므로 영향 없고, 사람 플레이의 결과 화면은 `progress.win` 요약으로 충분하다고 본다 `[추측]`. 영구 목록이 필요해지면 `commerce.saleEvents?`를 그때 더하면 된다(세이브 크기 ↑)
 
 **F4 코어 계약 — 판정(초안 `[제안 P-ARCH-55]`, 2026-11-13 · PM 게이트: 원장 27개 지점 + 로트·판매 11곳 연결이 모두 main에 들어간 뒤 PR. 출력이 바뀐다 → 전후 표 필수)**
-> **브랜치 `claude/arch-f4-win` 준비 중(2026-11-13):** 아래 항목 중 승리 판정·`campaign_win` 마일스톤·승리 달 성과 판정(90 권장안)·`campaignWon`·후보 정의(`isFlagshipCandidate`가 v16에서 `isCampaignCandidate(s, c, candidateHorizon(s))`로 — 지평 상수 `CANDIDATE_HORIZON_MONTHS = 36`은 **결정 91 대기 임시값**)·`addLot` 적격 자동 판정·`BusinessPlan.rules`(옛 판 `legacy-v15` — X0L 봇 `RULES=legacy`, 옛 규칙 테스트)·`win.test.ts` 7개를 넣었다. 남은 것: 핸드필 로트 계보 기준(MKT), 난수 빈틈 단독 PR, 전후 표. 옛 규칙 테스트 19개는 `rules: 'legacy-v15'`로 분기 보존(파트 테스트 파일 — 각 파트는 v16 대응 테스트를 따로 더한다)
+> **브랜치 `claude/arch-f4-win` 준비 중(2026-11-13):** 아래 항목 중 승리 판정·`campaign_win` 마일스톤·승리 달 성과 판정(90 권장안)·`campaignWon`·후보 정의(`isFlagshipCandidate`가 v16에서 `isCampaignCandidate(s, c, candidateHorizon(s))`로 — 지평 상수 `CANDIDATE_HORIZON_MONTHS = 36` — **결정 대기 90·91 모두 오너 "권장안대로"(2026-11-13, ARCH 세션), 번호는 PM 발급**)·`addLot` 적격 자동 판정·`BusinessPlan.rules`(옛 판 `legacy-v15` — X0L 봇 `RULES=legacy`, 옛 규칙 테스트)·`win.test.ts` 7개를 넣었다. 남은 것: 핸드필 로트 계보 기준(MKT), 난수 빈틈 단독 PR, 전후 표. 옛 규칙 테스트 19개는 `rules: 'legacy-v15'`로 분기 보존(파트 테스트 파일 — 각 파트는 v16 대응 테스트를 따로 더한다)
 - **승리 판정(틱 9 `updateProgress`)** — `rulesVersionOf(s) === 'v16'`이고 `scenario.campaignGoal`이 있고 `progress.win`이 없으면 `firstEligibleSale(report.saleEvents ?? [])`. 사건이 있으면 `progress.win = { month: s.month, productId, lotId, kind, unitPrice, bottles }`(사건 복사), `report.notes`에 승리 알림, 마일스톤 **`campaign_win`**(새 id — 연표·결과 화면용; `flagship_sold`는 옛 판정 그대로 둔다). 승리는 **멈춤 사유가 아니다**(`status` 그대로, 계속 운영 — #308). 한 번만 쓴다(중복 0)
 - **옛 판 보존** — `legacy-v15`는 지금 코드 그대로: `flagship_sold` 마일스톤 + `goal.months`(180)에 강제 `judgeGoal`. v15 픽스처(`fixtures/save-v15.json`) 진행 결과 바이트 동일이 수용 테스트. 샌드박스(시나리오 없음)는 승리 판정 없음(지금과 같음)
 - **성과 판정(`verdict`) v16** `[확인 필요 — PM·오너]` — #308 "순자산은 성과만, 강제 판정 폐지"를 코드로: `goal.months`에 자동 판정하지 않는다. `verdict`는 **승리 달에 한 번**(result `heritage`, 등급 S/A는 지금 `GRADE` 기준 그대로 — 순자산·인지도·`flagshipQuality`는 승리 로트 제품 품질) 또는 **판이 끝날 때**(파산 등 → `failed`)만 쓴다. `achieved`·`missed`(버텼지만 플래그십 없음)는 v16에서 생기지 않는다 — 결과 화면 `Verdict.tsx`는 두 경우만 그린다. 대안: 180개월에 "중간 성적표"를 verdict 없이 알림으로만(결정 #312 "승리 속도와 성과를 섞지 않는다"와 맞음). **승리 달 = 기록 지표**(PM 2026-11-13), 합격선 아님

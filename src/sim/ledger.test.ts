@@ -72,7 +72,7 @@ describe('isFlagshipCandidate — 옛 판(legacy-v15)은 동작 그대로, 새 �
     expect(isFlagshipCandidate(s, c)).toBe(true); // 60 + 84 ≥ 144
     c.contents.oakMonths = 59; expect(isFlagshipCandidate(s, c)).toBe(false);
   });
-  it('새 판(v16): 지평 36개월 안에 목재 144를 채우는 자가 몰트 통만 — 그레인·매입·고객 소유 제외, 판 끝(180) 상한 없음 [결정 대기 91 임시값]', () => {
+  it('새 판(v16): 지평 36개월 안에 목재 144를 채우는 자가 몰트 통만 — 그레인·매입·고객 소유 제외, 판 끝(180) 상한 없음 [결정 대기 91 — 오너 권장안 채택, 번호 PM 발급]', () => {
     const s = mvp(); s.month = 170; // 옛 식이면 남은 10개월 → 134개월↑만 후보
     const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.contents = lot({ oakMonths: 108 });
     expect(candidateHorizon(s)).toBe(CANDIDATE_HORIZON_MONTHS);
