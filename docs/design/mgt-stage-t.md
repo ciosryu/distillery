@@ -1872,7 +1872,7 @@ main의 게임 코드 머지마다 X0(standard, 10시드 × 180)를 다시 쟀�
 | `summarize(os)` | 생존·목표·등급·순자산 통계 | 기존 키를 그대로 두고 더한다: `cls`별 수·비율·Wilson 구간 · `winMonth` 중앙·P10·P90(승리 판만) · **누적 승리 곡선** `cum: Record<144\|150\|156\|168\|180\|240, number>`(W 넘는 칸은 NaN) · `nw3` 통계(F5 뒤) |
 | `MonthTracker.observe(s)` | 월별 현금·가격·12년↑ 통 | 더한다: `firstEligibleMonth`(적격 원액이 처음 생긴 달 — F2 API) · `candidateDrain`(목재 숙성 ≥ A − 24인 원액이 **적격 아닌 로트**로 병입된 LPA, 원인별 `autoRestock \| manual \| spot \| loss` — F2 계보·F3 BottledLot에서 읽는다). `oldCasks`는 지금 **그레인도 넣고 `sourced`를 안 거른다** → 새 규칙 열은 적격성 조회로 따로 센다(옛 열은 그대로) |
 | `comparePaired(a, b)` | 순자산 짝 차이 | 그대로. 새 `comparePairedWin(a, b)`: 4칸(A만 승리 · B만 승리 · 둘 다 · 둘 다 아님) + 둘 다 승리한 시드의 `winMonth` 차이(평균·t) |
-| 단위 테스트 (새) | 없음 | `scripts/experiments/metrics.test.ts` — 손으로 만든 `RunOutcome` 고정값으로 `classify`·`summarize`(누적 곡선·Wilson)·`comparePairedWin` 확인(vitest 기본 포함 경로 — 설정 변경 없음) |
+| 단위 테스트 (새) | 없음 | `scripts/experiments/metrics.test.ts` — 손으로 만든 `RunOutcome` 고정값으로 `classify`·`summarize`(누적 곡선·Wilson)·`comparePairedWin` 확인(→ 2026-11-13 정정: vitest `include`가 `src/**`뿐이라 `vite.config.ts`에 `scripts/**/*.test.ts` 한 줄이 필요하다 — 코어 PR로 따로. **순수 함수 부분(`classifyWin`·`summarizeWin`·`comparePairedWin`·`winOutcomeOf`)은 F4 전에 먼저 넣었다** — 게임 상태를 읽는 연결만 F4 뒤) |
 
 ### 2. `scripts/experiments/mvp-human.ts` (MGT, P8)
 
