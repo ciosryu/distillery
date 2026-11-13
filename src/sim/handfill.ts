@@ -60,14 +60,14 @@ export function handfillBottles(visitors: number, lot: SpiritLot): number {
 
 /**
  * F3 판매 사건 6(MKT, 결정 #318): 담은 병을 그 통 하나로 된 로트로 만들고 바로 cellar_door 유상 출고로 기록한다 — 로트는 같은 호출에서 다 팔려 남지 않는다.
- * 제품이 없는 판매라 로트의 productId는 `handfill:<통 id>`(가상 제품 — F4 결과 화면이 접두로 구분). 원장은 담은 몫(splitLedger), 적격은 지금 통 기준(caskEligibility — F4가 로트 기준으로 바꾼다).
+ * 제품이 없는 판매라 로트의 productId는 `handfill:<통 id>`(가상 제품 — F4 결과 화면이 접두로 구분). 원장은 담은 몫(splitLedger), 적격은 `addLot`이 그 원장(로트 계보)으로 판정한다(F4).
  * **가드(ARCH #487 사후 검토):** 양의 대가가 아니면(`price ≤ 0`) `sellFromLots`가 사건도 차감도 하지 않아 가상 제품 로트가 남고 "제품 없음" 불변식 오류가 된다 → 그때는 로트를 만들지 않는다
  */
 export function recordHandfillSale(s: GameState, report: MonthReport, cask: Cask & { contents: SpiritLot }, bottles: number, price: number): void {
   if (!(bottles > 0) || !(price > 0)) return;
   const soldL = (bottles * HANDFILL.bottleMl) / 1000;
   const pid = `handfill:${cask.id}`;
-  addLot(s, pid, bottles, { components: splitLedger(ledgerOf(s, cask.contents), Math.min(1, soldL / cask.contents.volumeL))[0], eligibleAtBottling: caskEligibility(s, cask).eligible });
+  addLot(s, pid, bottles, { components: splitLedger(ledgerOf(s, cask.contents), Math.min(1, soldL / cask.contents.volumeL))[0] }); // 적격은 addLot이 로트 계보(원장)로 판정(F4)
   sellFromLots(s, report, pid, bottles, { kind: 'cellar_door', settlement: 'cash', unitPrice: price });
 }
 
@@ -80,15 +80,7 @@ export function runHandfill(s: GameState, report: MonthReport): void {
   if (bottles <= 0) return;
   const price = handfillPrice(s, cask.contents, lotQuality(cask.contents));
   const revenue = bottles * price;
-<<<<<<< HEAD
-  // F3 판매 사건 6(MKT, 결정 #318): 담은 병을 그 통 하나로 된 로트로 만들고 바로 cellar_door 유상 출고로 기록한다 — 로트는 같은 호출에서 다 팔려 남지 않는다.
-  // 제품이 없는 판매라 로트의 productId는 `handfill:<통 id>`. 원장은 담은 몫(splitLedger), 적격은 addLot이 그 원장(로트 계보)으로 판정한다(F4)
-  { const soldL = (bottles * HANDFILL.bottleMl) / 1000; const pid = `handfill:${cask.id}`;
-    addLot(s, pid, bottles, { components: splitLedger(ledgerOf(s, cask.contents), Math.min(1, soldL / cask.contents.volumeL))[0] });
-    sellFromLots(s, report, pid, bottles, { kind: 'cellar_door', settlement: 'cash', unitPrice: price }); }
-=======
   recordHandfillSale(s, report, cask, bottles, price);
->>>>>>> origin/main
   const cost = bottles * handfillBottleCost();
   s.finance.cash += revenue - cost;
   report.tourismRevenue = (report.tourismRevenue ?? 0) + revenue;
