@@ -817,7 +817,7 @@ describe('IB 입찰은 보호 통(플래그십 예비 포함)을 후보로 쓰�
   it('시나리오 판: 예비 통(가장 오래된 후보 n통)에는 제안이 오지 않는다 — 여러 번 굴려도', async () => {
     const { newScenarioGame } = await import('./index');
     const { reserveCaskIds } = await import('./tags');
-    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' });
     aged(s, 30, (i) => 48 + i); // 뒤쪽이 더 오래됐다 — 예비는 가장 오래된 통들
     const reserve = reserveCaskIds(s);
     expect(reserve.size).toBeGreaterThan(0);
@@ -839,7 +839,7 @@ describe('IB 입찰은 보호 통(플래그십 예비 포함)을 후보로 쓰�
   it('3년 넘은 통이 모두 예비면 안내 숫자는 0이고 제안이 오지 않는다', async () => {
     const { newScenarioGame } = await import('./index');
     const { reserveCaskIds } = await import('./tags');
-    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' });
     aged(s, 2, () => 72); // 예비 자리(기본 4통)보다 적다 → 둘 다 예비
     expect(reserveCaskIds(s).size).toBe(2);
     expect(ibAgedCaskCount(s)).toBe(0);
@@ -850,7 +850,7 @@ describe('IB 입찰은 보호 통(플래그십 예비 포함)을 후보로 쓰�
   it('이미 걸린 제안은 통이 나중에 예비가 되어도 지우지 않는다 — 수락은 손 행동(확인 창이 경고)', async () => {
     const { newScenarioGame } = await import('./index');
     const { reserveCaskIds } = await import('./tags');
-    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' });
     aged(s, 1, () => 72);
     expect(reserveCaskIds(s).has('IBP0')).toBe(true);
     s.b2b.caskBids = [{ id: 'I1', buyerName: 'x', caskId: 'IBP0', price: 1, expiresMonth: s.month + 2 }];

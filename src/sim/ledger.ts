@@ -96,14 +96,32 @@ export function ledgerError(lot: SpiritLot): string | null {
 
 // ───────────── 옛 후보 판정 (F2에서 코어로 옮김 — 동작 그대로, 정의 변경은 F4) ─────────────
 
-/** 플래그십 후보 — 판이 끝나기 전에 플래그십 숙성(MVP 144개월)을 채울 수 있는 통. 목표 기한이 없는 판(샌드박스)은 이미 그 숙성을 넘긴 통 */
+/**
+ * 후보 지평(F4, [결정 대기 91] — PM 권장 36개월 `[튜닝]`: 144 − 36 = 108개월이라 #319 `reserve_casks`(108개월↑ 통 3개)와 같은 선).
+ * 옛 판은 `goal.months − month`(판 끝까지 채울 수 있는가 — #308로 판 끝이 없어진 v16에서는 180개월 뒤 후보 0이 되어 못 쓴다). 샌드박스는 0(지금 적격만)
+ */
+export const CANDIDATE_HORIZON_MONTHS = 36;
+export function candidateHorizon(s: Pick<GameState, 'scenario' | 'month' | 'rulesVersion'>): number {
+  if (!s.scenario) return 0;
+  return rulesVersionOf(s) === 'legacy-v15' ? Math.max(0, s.scenario.goal.months - s.month) : CANDIDATE_HORIZON_MONTHS;
+}
+
+/**
+ * 플래그십 후보 — 옛 판(`legacy-v15`): 판이 끝나기 전에 플래그십 숙성을 채울 수 있는 몰트·그레인 통(동작 그대로, 출력 불변).
+ * 새 판(v16, F4): `isCampaignCandidate(s, c, candidateHorizon(s))` — 자가 몰트 · 같은 입지 · 고객 소유 아님 · 지평 안에 목재 A를 채우는 통(그레인·매입 제외)
+ */
 export function isFlagshipCandidate(s: GameState, c: Cask): boolean {
+  if (rulesVersionOf(s) !== 'legacy-v15') return isCampaignCandidate(s, c, candidateHorizon(s));
   const l = c.contents;
   if (!l || (l.kind !== 'malt' && l.kind !== 'grain')) return false;
-  const need = campaignMinOakMonths(s); // F1: 기준값만 캠페인 규칙에서. 180개월 상한·그레인 포함은 F2·F4에서 바꾼다(출력 불변)
+  const need = campaignMinOakMonths(s);
   const left = s.scenario ? Math.max(0, s.scenario.goal.months - s.month) : 0;
   return l.oakMonths + left >= need;
 }
+
+/** 캠페인 승리를 이뤘는가 — 새 판은 `progress.win`(F4), 옛 판은 `flagship_sold` 마일스톤. 예비 통·알림·화면이 모두 이것으로 "판매 전/후"를 가른다 */
+export const campaignWon = (s: Pick<GameState, 'progress' | 'rulesVersion'>): boolean =>
+  rulesVersionOf(s) === 'legacy-v15' ? s.progress.milestones.some((m) => m.id === 'flagship_sold') : !!s.progress.win;
 
 // ───────────── 승리 적격 (core-integration §2.3) ─────────────
 

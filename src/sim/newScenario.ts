@@ -5,7 +5,7 @@ import { regionOf } from './content/regions';
 import { salaryFor } from './hr';
 import { newGame } from './newGame';
 import { currentLoanPayment, monthlyFixedCost } from './loans';
-import type { GameState } from './types';
+import type { GameState, RulesVersion } from './types';
 import { nid } from './util';
 
 // 시나리오 새 게임 입구 (skeleton S-8, PRD §12.2) — "사업 계획서"(규모 티어 + 시작 자금 조달)로 GameState를 만든다.
@@ -18,6 +18,8 @@ export interface BusinessPlan {
   loanAmount: number;
   seed?: number;
   distilleryName?: string;
+  /** 규칙 묶음 — 기본 v16(새 캠페인). `legacy-v15`는 옛 판정(180개월 강제 판정·`flagship_sold`)을 그대로 쓰는 참고 판(X0L 봇·옛 규칙 테스트) */
+  rules?: RulesVersion;
 }
 
 export function scenarioOf(id: string): ScenarioDef {
@@ -53,6 +55,7 @@ export function newScenarioGame(plan: BusinessPlan): GameState {
   if (tier.locked) throw new Error(`${tier.nameKo}: ${tier.locked.reason}`);
   let s = newGame({ seed: plan.seed, region: d.region, site: d.site, startingCash: tier.equity, distilleryName: plan.distilleryName });
   const locked = scenarioLockedKeys(d);
+  if (plan.rules) s.rulesVersion = plan.rules;
   s.scenario = { id: d.id, tierId: tier.id, locked, economy: { overheadPerMonth: tier.overheadPerMonth }, equity: tier.equity, goal: { ...d.goal }, ...(d.campaignGoal ? { campaignGoal: { ...d.campaignGoal } } : {}) };
   // 잠긴 주종의 프리셋 레시피는 뺀다 (코드·콘텐츠는 그대로)
   s.production.recipes = s.production.recipes.filter((r) => !locked.includes(`kind:${r.kind}`));

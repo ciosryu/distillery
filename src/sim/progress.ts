@@ -3,6 +3,7 @@ import { awarenessOf, houseBrand } from './brands';
 import { SCENARIOS, type MidGoalDef } from './content/scenarios';
 import { isBulkKind, spotBidPerLPA } from './bulk';
 import { MILESTONES } from './content/milestones';
+import { firstEligibleSale } from './saleEvents';
 import type { GameEnding, GameState, GoalCheck, GoalVerdict, MilestoneId, MonthReport, Product } from './types';
 
 // 진행 — 마일스톤·목표 판정·게임이 끝난 이유 (파트 META, skeleton S-9, #145)
@@ -109,12 +110,47 @@ export function updateProgress(s: GameState, report: MonthReport): void {
     report.notes.push(`마일스톤: ${MILESTONES[f.id].nameKo}`);
   }
   updateMidGoals(s, report);
-  if (!s.scenario || s.progress.verdict) return;
+  if (!s.scenario) return;
   const ended = s.status !== 'running';
-  if (ended || s.month + 1 >= s.scenario.goal.months) {
-    const v = judgeGoal(s, s.month + 1);
-    if (v) s.progress.verdict = v;
+  if (rulesVersionOf(s) === 'legacy-v15' || !s.scenario.campaignGoal) {
+    // 옛 판 — 목표 기간(180개월)이 끝나거나 게임이 끝나면 한 번 판정(동작 그대로, 바이트 동일)
+    if (s.progress.verdict) return;
+    if (ended || s.month + 1 >= s.scenario.goal.months) {
+      const v = judgeGoal(s, s.month + 1);
+      if (v) s.progress.verdict = v;
+    }
+    return;
   }
+  // 새 판(v16, F4 [결정 #308]) — 승리 = 적격 로트의 최초 정상 유상 출하. 그달 결산의 사건에서 첫 승리 후보를 읽는다(틱 순서 = 출고 순서).
+  // 강제 판정은 없다: `verdict`는 승리 달에 한 번(성과 등급) 또는 판이 끝날 때(failed)만 — [결정 대기 90] PM 권장안. 승리는 멈춤 사유가 아니다(계속 운영)
+  if (!s.progress.win) {
+    const e = firstEligibleSale(report.saleEvents ?? []);
+    if (e) {
+      s.progress.win = { month: s.month, productId: e.productId, lotId: e.lotId, kind: e.kind, unitPrice: e.unitPrice, bottles: e.bottles };
+      const quality = s.commerce.products.find((p) => p.id === e.productId)?.quality;
+      s.progress.milestones.push({ id: 'campaign_win', month: s.month, ...(quality != null ? { value: quality } : {}) });
+      report.notes.push(`캠페인 승리 — ${MILESTONES.campaign_win.nameKo}${e.kind === 'cellar_door' ? ' (핸드필)' : ''}: ${e.bottles}병 · 병당 ${Math.round(e.unitPrice).toLocaleString()}원`);
+      if (!s.progress.verdict) s.progress.verdict = judgeWin(s, s.month + 1, quality);
+    }
+  }
+  if (ended && !s.progress.verdict) { const v = judgeGoal(s, s.month + 1); if (v) s.progress.verdict = v; }
+}
+
+/**
+ * 승리 달의 성과 판정(F4, v16) — 결과는 늘 heritage, 등급은 지금 `GRADE` 기준 그대로(S: 순자산 목표 × 1.5 · 승리 로트 품질 ≥ 80 · 인지도 ≥ 20%).
+ * 순자산은 성과이고 승리 조건이 아니다(#308) — `netWorth` 칸은 참고로 남는다. 핸드필 승리(`cellar_door`)는 제품이 없어 품질 값이 없다 → S 불가, A
+ */
+export function judgeWin(s: GameState, month: number, quality?: number): GoalVerdict {
+  const sc = s.scenario!;
+  const nw = netWorth(s);
+  const target = sc.equity * sc.goal.netWorthMultiple;
+  const checks: GoalCheck[] = [
+    { id: 'survive', ok: true },
+    { id: 'flagship', ok: true, ...(quality != null ? { value: quality } : {}) },
+    { id: 'netWorth', ok: nw >= target, value: nw, target },
+  ];
+  const grade: GoalVerdict['grade'] = nw >= target * GRADE.sNetWorthRatio && (quality ?? 0) >= GRADE.sFlagshipQuality && awarenessOf(s) >= GRADE.sAwareness ? 'S' : 'A';
+  return { month, result: 'heritage', grade, checks, netWorth: nw, ...(quality != null ? { flagshipQuality: quality } : {}), awareness: awarenessOf(s) };
 }
 
 /** 결과 화면 연표 — 연표에 보이는 마일스톤을 달 순서로 */

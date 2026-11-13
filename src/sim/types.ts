@@ -914,7 +914,7 @@ export interface EventsSlice {
 export type GameEnding = 'bankrupt' | 'licenseRevoked' | 'dismissed';
 
 /** 마일스톤 — 한 판의 연표와 업적의 원천 (S-9). 정의(이름·연표 표시)는 content/milestones.ts */
-export type MilestoneId = 'first_distill' | 'first_fill' | 'first_loan' | 'first_soju_sale' | 'first_whisky_bottled' | 'first_whisky_sale' | 'first_cash_crisis' | 'flagship_bottled' | 'flagship_sold';
+export type MilestoneId = 'first_distill' | 'first_fill' | 'first_loan' | 'first_soju_sale' | 'first_whisky_bottled' | 'first_whisky_sale' | 'first_cash_crisis' | 'flagship_bottled' | 'flagship_sold' | 'campaign_win';
 export interface Milestone {
   id: MilestoneId;
   /** 달성한 달 */

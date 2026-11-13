@@ -431,7 +431,7 @@ describe('병당 손익 (#173, 플레이테스트 요청)', () => {
 });
 
 describe('위스키 공급 전망·병입 재고 경고 (#178, 1차 MVP 플레이테스트)', () => {
-  const mvp = () => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+  const mvp = () => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' }); // 옛 규칙 분기(F4 — 후보 정의는 v16에서 다르다)
   const maltLot = (s: GameState, id: string, volumeL: number, oakMonths = 0): SpiritLot => ({
     id, name: id, kind: 'malt', volumeL, abv: 0.635, flavor: {}, createdMonth: s.month, oakMonths, sourced: false, costPerLPA: 10_000,
   });
@@ -740,7 +740,7 @@ describe('자동 납품 (#206, 2026-11-09 오너 요청)', () => {
 
   it('위스키: 숙성 표기를 채운 통 중 표기에 가장 가까운(어린) 통부터, 피니시·표기 미달 통은 쓰지 않는다', async () => {
     const { autoRestockSources } = await import('./economics');
-    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' }); // 옛 판정(flagship_sold로 보호 해제) 분기
     const mk = (id: string, oak: number) => { const c = { id, typeId: 'ex_bourbon_barrel', sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: { id: `L${id}`, name: id, kind: 'malt', volumeL: 190, abv: 0.6, flavor: {}, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10000 } } as Cask; s.inventory.casks.push(c); };
     mk('A', 20); mk('B', 50); mk('C', 38); mk('D', 144);
     s.progress.milestones.push({ id: 'flagship_sold', month: 0 } as never); // 정렬 규칙만 본다 — 플래그십 후보 보호(#252)는 판매 뒤 꺼진다(아래 #252 테스트)
@@ -919,7 +919,7 @@ describe('제품 이름 바꾸기 (#236, 2026-11-10 오너 요청)', () => {
 describe('[블렌더에게 맡기기] 확인 (#238, 5차 MVP 플레이테스트)', () => {
   it('맡기기 전에 쓸 통·병 수·남는 위스키 통을 행동과 같은 계획으로 보이고, 다 쓰면·플래그십 후보면·이번 달 또 맡기면 경고한다', async () => {
     const { emptyCaskOf, delegateCheck, findTarget, blendTargets } = await import('./index');
-    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' });
     s.month = 40;
     s.inventory.casks = s.inventory.casks.filter((c) => !c.contents); // 이 통만 위스키 통
     s.scenario!.locked = s.scenario!.locked.filter((k) => k !== 'action:delegateBlend'); // 6년 차 해금 전이라 직접 연다
@@ -953,7 +953,7 @@ describe('맡기기 후보와 보호 태그 (#260·#249 ② — ARCH 진입 확�
     const { emptyCaskOf, blendTargets } = await import('./index');
     const { delegateCheck, delegateDefaultIds } = await import('./delegateCheck');
     const { reserveCaskIds } = await import('./tags');
-    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' });
     s.month = 96; // 남은 84개월 — 60개월 이상 통이 12년 후보
     s.inventory.casks = [];
     s.scenario!.locked = s.scenario!.locked.filter((k) => k !== 'action:delegateBlend');
@@ -1192,7 +1192,7 @@ describe('자동 납품의 플래그십 후보 보호 (#252, 후반 확인 판)'
   it('플래그십을 팔기 전에는 후보 중 가장 오래된 4통을 자동 납품이 쓰지 않는다 — 나머지 통·플래그십 표기 제품·판매 뒤는 그대로', async () => {
     const { autoRestockSources, flagshipGuard } = await import('./economics');
     const { emptyCaskOf } = await import('./index');
-    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' });
     s.month = 96; // 남은 84개월 — 60개월 이상 통은 12년을 채울 수 있다
     s.inventory.casks = [];
     for (const [id, oak] of [['Y', 40], ['O', 70], ['O2', 66], ['O3', 64], ['O4', 62], ['Y2', 38]] as const) {
@@ -1216,7 +1216,7 @@ describe('자동 납품의 플래그십 후보 보호 (#252, 후반 확인 판)'
 describe('자동 납품의 태그 효과 (#252 → 태그 #260·#249 ② — 보호는 태그 한 곳)', () => {
   const setup = async () => {
     const { emptyCaskOf } = await import('./index');
-    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' });
     s.month = 96; // 남은 84개월 — 60개월 이상 통이 12년 후보
     s.inventory.casks = [];
     for (const [id, oak] of [['Y', 40], ['Y2', 38], ['Y3', 44], ['O', 70], ['O2', 66], ['O3', 64], ['O4', 62]] as const) {

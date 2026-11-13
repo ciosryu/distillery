@@ -142,7 +142,7 @@ function finance(s: GameState, t: Track): GameState {
   return s;
 }
 
-interface Row { verdict: string; goal: boolean; plan: string; seed: number; bankrupt: boolean; bankruptMonth: number; minCash: number; minCashMonth: number; firstWhisky: number; flagship: boolean; netWorth: number; spotSoldL: number; sojuShare3y: number; capBlocked: number; loansMax: number; outcome: RunOutcome; legacyNetWorth: number; legacyGoal: boolean }
+interface Row { verdict: string; won: number; goal: boolean; plan: string; seed: number; bankrupt: boolean; bankruptMonth: number; minCash: number; minCashMonth: number; firstWhisky: number; flagship: boolean; netWorth: number; spotSoldL: number; sojuShare3y: number; capBlocked: number; loansMax: number; outcome: RunOutcome; legacyNetWorth: number; legacyGoal: boolean }
 
 /** 옛 정의 (TECH-02 전) — 원액 = bulkValuePerLPA × 0.85, 국산 프리미엄·신뢰도·포화·운송비 없음, 고객 소유 통 포함. METRICS=1 비교 표에만 쓴다 */
 function legacyNetWorth(s: GameState): number {
@@ -190,7 +190,7 @@ function play(p: Plan, seed: number): Row {
   const legacy = s.status === 'bankrupt' ? NaN : legacyNetWorth(s);
   const target = s.scenario ? s.scenario.equity * s.scenario.goal.netWorthMultiple : NaN;
   const v = s.progress.verdict;
-  return { outcome, legacyNetWorth: legacy, legacyGoal: !!s.scenario && legacy >= target, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', goal: !!s.scenario && achieved(outcome), plan: p.name, seed, bankrupt: s.status === 'bankrupt', bankruptMonth: s.status === 'bankrupt' ? s.month : -1, minCash, minCashMonth, firstWhisky: t.firstWhiskyMonth, flagship: t.flagshipBottled, netWorth: nw, spotSoldL: t.spotSoldL, sojuShare3y: all ? soju / all : 0, capBlocked: t.capBlocked, loansMax };
+  return { outcome, legacyNetWorth: legacy, legacyGoal: !!s.scenario && legacy >= target, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', won: s.progress.win?.month ?? -1, goal: !!s.scenario && achieved(outcome), plan: p.name, seed, bankrupt: s.status === 'bankrupt', bankruptMonth: s.status === 'bankrupt' ? s.month : -1, minCash, minCashMonth, firstWhisky: t.firstWhiskyMonth, flagship: t.flagshipBottled, netWorth: nw, spotSoldL: t.spotSoldL, sojuShare3y: all ? soju / all : 0, capBlocked: t.capBlocked, loansMax };
 }
 
 const eok = (v: number) => (Number.isFinite(v) ? `${(v / 1e8).toFixed(2)}억` : '—');
@@ -220,7 +220,7 @@ if (MVP) {
   for (const p of PLANS) {
     const c: Record<string, number> = {};
     for (const r of byPlan[p.name]!) c[r.verdict] = (c[r.verdict] ?? 0) + 1;
-    console.log(`판정 ${p.name}: ${Object.entries(c).sort().map(([k, v]) => `${k} ${v}`).join(' · ')}`);
+    console.log(`판정 ${p.name}: ${Object.entries(c).sort().map(([k, v]) => `${k} ${v}`).join(' · ')}` + ` · 승리(F4) ${byPlan[p.name]!.filter((r) => r.won >= 0).length}/${byPlan[p.name]!.length}${byPlan[p.name]!.some((r) => r.won >= 0) ? ` (첫 ${Math.min(...byPlan[p.name]!.filter((r) => r.won >= 0).map((r) => r.won))}개월)` : ''}`);
   }
 }
 console.log(`\n시드별 1위(생존 중 순자산): ${Object.entries(wins).map(([k, v]) => `${k} ${v}`).join(' · ')}`);

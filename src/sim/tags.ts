@@ -1,4 +1,4 @@
-import { isFlagshipCandidate } from './ledger';
+import { campaignWon, isFlagshipCandidate } from './ledger';
 import { vesselMaterial } from './maturation';
 import { PROD_TUNING } from './prodTuning';
 import type { Cask, GameState, MonthReport, SpiritKind, TagColor, TagDef, TagEffect } from './types';
@@ -38,7 +38,7 @@ export function tagDef(s: GameState, id: string): TagDef | undefined {
  * 매번 다시 계산하므로 상태에 저장하지 않는다 — 틱 순서·출력에 영향이 없다
  */
 export function reserveCaskIds(s: GameState): Set<string> {
-  if (!s.scenario || s.progress.milestones.some((m) => m.id === 'flagship_sold')) return new Set();
+  if (!s.scenario || campaignWon(s)) return new Set();
   const optOut = new Set(s.inventory.reserveOptOut ?? []);
   const manual = s.inventory.casks.filter((c) => !!c.contents && !c.owner && (c.contents.tagIds ?? []).includes(FLAGSHIP_RESERVE_TAG));
   // 자리는 **후보인** 직접 예비만 차지한다 — 후보가 아닌 통(플래그십이 될 수 없는 어린 통)에 붙인 예비는 보호는 되지만 진짜 후보를 밀어내지 않는다
@@ -147,7 +147,7 @@ export function flagshipCandidateCount(s: GameState): number {
 
 /** 자동 납품 전 후보 통의 원액 양 — 시나리오 판·플래그십 판매 전만(아니면 null) */
 export function candidateVolumes(s: GameState): Map<string, number> | null {
-  if (!s.scenario || s.progress.milestones.some((m) => m.id === 'flagship_sold')) return null;
+  if (!s.scenario || campaignWon(s)) return null;
   return new Map(s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c)).map((c) => [c.id, c.contents!.volumeL]));
 }
 

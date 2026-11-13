@@ -289,7 +289,7 @@ describe('자동 납품 원액 없음 할 일 (#243)', () => {
 describe('12년 플래그십 후보 (#240 — 되돌릴 수 없는 행동의 남는 자원 경고)', () => {
   it('#238 isFlagshipCandidate와 같은 식 — 고객 소유 통은 빼고, 쓰고 나면 남는 수와 "새 통은 더 후보가 될 수 없다(final)"를 준다', async () => {
     const { isFlagshipCandidate } = await import('../sim/delegateCheck');
-    let s: GameState = mvp();
+    let s: GameState = mvp(); s.rulesVersion = 'legacy-v15'; // 옛 후보 정의(F4 전) 검사
     const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
     s = applyAction(s, { type: 'setOrder', recipeId: malt.id, batchesPerMonth: 2 }).state;
     s = advanceMonth(s);
@@ -310,7 +310,7 @@ describe('12년 플래그십 후보 (#240 — 되돌릴 수 없는 행동의 남
 
 describe('플래그십 후보 감소 알림 (#261)', () => {
   const withCasks = (month: number, oaks: number[]) => {
-    const s = mvp();
+    const s = mvp(); s.rulesVersion = 'legacy-v15'; // 옛 후보 정의(판 끝 상한) 검사 — F4
     s.month = month;
     s.inventory.casks = s.inventory.casks.filter((c) => !c.contents);
     oaks.forEach((oak, i) => {

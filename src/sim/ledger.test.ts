@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { advanceMonth, applyAction, emptyCaskOf, newGame, type GameState, type LedgerEntry, type SpiritLot } from './index';
 import { checkInvariants } from './invariants';
 import { newScenarioGame } from './newScenario';
-import { addCost, advanceWood, caskEligibility, coalesce, isCampaignCandidate, ledgerEligibility, ledgerError, ledgerOf, mergeLedgers, newEntry, scaleLedger, splitLedger } from './ledger';
+import { CANDIDATE_HORIZON_MONTHS, addCost, advanceWood, campaignWon, candidateHorizon, caskEligibility, coalesce, isCampaignCandidate, isFlagshipCandidate, ledgerEligibility, ledgerError, ledgerOf, mergeLedgers, newEntry, scaleLedger, splitLedger } from './ledger';
 
 // 구성 원액 원장 (F2, [결정 #308·#309·#323]) — 코어 ARCH. 수용 테스트 이름은 core-integration §5 `ledger:`·`eligibility:` 행
 
@@ -63,15 +63,36 @@ describe('ledger: 합치기 R6 — 키가 같으면 하나로, 부모 보존, �
   });
 });
 
-describe('isFlagshipCandidate — 코어로 옮겼을 뿐 동작 그대로(F4 전)', () => {
-  it('delegateCheck의 재내보내기와 같은 함수이고, 그레인 통도 후보로 세며 goal.months 상한을 쓴다', async () => {
+describe('isFlagshipCandidate — 옛 판(legacy-v15)은 동작 그대로, 새 판(v16)은 캠페인 후보(F4)', () => {
+  it('옛 판: delegateCheck의 재내보내기와 같은 함수이고, 그레인 통도 후보로 세며 goal.months 상한을 쓴다', async () => {
     const { isFlagshipCandidate: viaDelegate } = await import('./delegateCheck');
-    const { isFlagshipCandidate } = await import('./ledger');
     expect(viaDelegate).toBe(isFlagshipCandidate);
-    const s = mvp(); s.month = 96;
+    const s = mvp(); s.rulesVersion = 'legacy-v15'; s.month = 96;
     const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.contents = lot({ kind: 'grain', oakMonths: 60 });
     expect(isFlagshipCandidate(s, c)).toBe(true); // 60 + 84 ≥ 144
     c.contents.oakMonths = 59; expect(isFlagshipCandidate(s, c)).toBe(false);
+  });
+  it('새 판(v16): 지평 36개월 안에 목재 144를 채우는 자가 몰트 통만 — 그레인·매입·고객 소유 제외, 판 끝(180) 상한 없음 [결정 대기 91 임시값]', () => {
+    const s = mvp(); s.month = 170; // 옛 식이면 남은 10개월 → 134개월↑만 후보
+    const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.contents = lot({ oakMonths: 108 });
+    expect(candidateHorizon(s)).toBe(CANDIDATE_HORIZON_MONTHS);
+    expect(isFlagshipCandidate(s, c)).toBe(true); // 108 + 36 ≥ 144
+    c.contents.oakMonths = 107; expect(isFlagshipCandidate(s, c)).toBe(false);
+    c.contents = lot({ kind: 'grain', oakMonths: 150 }); expect(isFlagshipCandidate(s, c)).toBe(false);
+    c.contents = lot({ oakMonths: 150, sourced: true }); expect(isFlagshipCandidate(s, c)).toBe(false);
+    c.contents = lot({ oakMonths: 150 }); c.owner = { name: 'x', soldMonth: 0, price: 1 } as never; expect(isFlagshipCandidate(s, c)).toBe(false);
+    s.month = 200; c.owner = undefined; expect(isFlagshipCandidate(s, c)).toBe(true); // 180개월 뒤에도 후보
+  });
+  it('campaignWon — 새 판은 progress.win, 옛 판은 flagship_sold 마일스톤', () => {
+    const s = mvp();
+    expect(campaignWon(s)).toBe(false);
+    s.progress.milestones.push({ id: 'flagship_sold', month: 1 });
+    expect(campaignWon(s)).toBe(false);
+    s.progress.win = { month: 150, productId: 'P', lotId: 'P:150:0', kind: 'domestic', unitPrice: 1, bottles: 1 };
+    expect(campaignWon(s)).toBe(true);
+    s.rulesVersion = 'legacy-v15';
+    expect(campaignWon(s)).toBe(true); // flagship_sold
+    s.progress.milestones = []; expect(campaignWon(s)).toBe(false);
   });
 });
 

@@ -505,7 +505,7 @@ interface Row { years: Year[]; cands: number[]; flagCasks: number; split: Split;
 interface Cap { minCash72: number; minRunway72: number; negMonths: number; peakSpirit: number; peakSpiritMonth: number; spiritShare72: number; interest: number; minCash36: number; spirit60: number; cash96: number; cash180: number }
 
 function play(p: Policy, seed: number): Row {
-  let s = applyTierKnobs(newScenarioGame({ scenarioId: 'mvp_kr', tierId: TIER, loanAmount: LOAN, seed }));
+  let s = applyTierKnobs(newScenarioGame({ scenarioId: 'mvp_kr', tierId: TIER, loanAmount: LOAN, seed, ...(process.env.RULES === 'legacy' ? { rules: 'legacy-v15' as const } : {}) })); // RULES=legacy → X0L(옛 판정 참고 판, F4 바이트 동일 검사)
   const t = { firstWhisky: -1 };
   if (p.visitor && p.visitorAt == null) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_basic' });
   if (p.equipAt == null) s = buyEquip(s, p);

@@ -12,7 +12,7 @@ import { vesselMaterial } from '../sim/maturation';
 import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
 import { equipmentCost } from '../sim/sites';
-import { campaignMinOakMonths, caskTagIds, reserveCaskIds, isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
+import { campaignMinOakMonths, campaignWon, caskTagIds, reserveCaskIds, isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
 import { FixedCostLine } from './panels/FixedCost';
@@ -213,7 +213,7 @@ function Headline() {
   // 12년 플래그십 후보 통 (#240) — 판이 끝나기 전에 플래그십 숙성을 채울 수 있는 통. 목표까지 남은 달이 플래그십 숙성보다 짧아지면
   // 새로 넣는 통은 후보가 될 수 없다 → 그 뒤 후보 0이면 15년 목표(플래그십 판매)를 이룰 수 없다(5차 판, mvp.md §7.16)
   const cands = sc ? flagshipCandidates(s).length : 0;
-  const flagDone = s.progress.milestones.some((m) => m.id === 'flagship_sold');
+  const flagDone = campaignWon(s);
   const noMoreNew = left != null && left < flagMin;
   const flagHint = !sc ? null : flagDone ? '플래그십 판매 완료' : cands > 0 ? `후보 ${cands}통 · 예비 ${reserveCaskIds(s).size}통${noMoreNew ? ' — 새 통은 더 후보가 될 수 없다' : ''}` : noMoreNew ? '후보 0통 — 15년 안에 플래그십을 낼 수 없다' : `후보 0통 — ${Math.max(0, (sc.goal.months - flagMin) - s.month)}개월 안에 넣은 통이 후보가 된다`;
   return (

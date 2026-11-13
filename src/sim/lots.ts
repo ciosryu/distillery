@@ -5,6 +5,7 @@
 //   유상 출고(판매 지점 1~6 — market.ts ×3 · deals.ts · events.ts · handfill.ts) → `sellFromLots`
 //   제품이 사라질 때(단종 `actions.prod.ts` · 수명 정리 `lifecycle.ts`) → `dropLots`
 // 로트가 없는 제품(옛 세이브·연결 전)은 사건을 만들지 않는다 — 존재하지 않는 유상 출하 증거를 창작하지 않는다(core-integration §3 Migration)
+import { ledgerEligibility } from './ledger';
 import { lotId, newLot, nextLotIndex, recordSale, type SaleMeta } from './saleEvents';
 import type { BottledLot, GameState, LedgerEntry, MonthReport, SaleEvent } from './types';
 
@@ -19,7 +20,8 @@ export const lotBottles = (s: GameState, productId: string): number => productLo
 
 /**
  * 새 병입 로트 — 병입·보충이 부른다. id는 제품 안 순번(`lotId`)이라 전역 `nextId`를 움직이지 않는다.
- * `bottles`는 정수(병)로 내린다 · 0 이하면 만들지 않는다. `components`는 병입이 `splitLedger`로 떼어 낸 원장을 그대로(평균 안 냄, F2 지점 17·18)
+ * `bottles`는 정수(병)로 내린다 · 0 이하면 만들지 않는다. `components`는 병입이 `splitLedger`로 떼어 낸 원장을 그대로(평균 안 냄, F2 지점 17·18).
+ * `eligibleAtBottling`을 안 주면 `components`에서 스스로 판정한다(F4 — PROD 병입 연결은 원장만 넘기면 된다). 원장도 없으면 비워 둔다(창작 금지)
  */
 export function addLot(
   s: GameState,
@@ -31,7 +33,8 @@ export function addLot(
   if (!(n > 0)) return undefined;
   const month = opts.month ?? s.month;
   const lots = s.commerce.lots ?? (s.commerce.lots = []);
-  const lot = newLot(lotId(productId, month, nextLotIndex(lots, productId, month)), productId, n, month, opts.eligibleAtBottling);
+  const eligible = opts.eligibleAtBottling ?? (opts.components ? ledgerEligibility(s, opts.components).eligible : undefined);
+  const lot = newLot(lotId(productId, month, nextLotIndex(lots, productId, month)), productId, n, month, eligible);
   if (opts.components) lot.components = opts.components;
   lots.push(lot);
   return lot;
