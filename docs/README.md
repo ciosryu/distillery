@@ -23,7 +23,7 @@
 | [PRD.md](PRD.md) | 게임 규칙 전체 사양 | §1~§15: 정본 · §16.9 이후 밸런스 측정 표와 §17.2~§17.6: **기록** | 절마다 해당 파트. §0·§14·§15는 공정관리 |
 | [design/requirements.md](design/requirements.md) | 공통 요구사항 템플릿·REQ 색인(#279) | 정본(템플릿 `[제안 P-ARCH-39]`) | 설계(템플릿)·공정관리(색인) |
 | [design/late-game-gate.md](design/late-game-gate.md) | 후반 경험 게이트 L 설계(#274) | 초안(`[제안 P-ARCH-43]` — 기준은 오너 승인) | 설계 |
-| [design/core-integration.md](design/core-integration.md) | 2026-11-13 설계 정합성 감사(CORE-001~109)의 통합 초안 — 승리 RuleSet(15년 확정안·12년 검토안 나란히)·유상 출하 정의·최소 스키마·REQ-CORE-1~8·범위·freeze·근거 누락 | **초안**(`[제안 P-PM-1~6]`, 결정 대기 77~81) | 공정관리 |
+| [design/core-integration.md](design/core-integration.md) | 2026-11-13 설계 정합성 감사(CORE-001~109)의 통합 초안 — 승리 RuleSet(15년 확정안·12년 검토안 나란히)·유상 출하 정의·최소 스키마·REQ-CORE-1~8·범위·freeze·근거 누락 | **정본**(규칙 — 결정 #308~#315) + 초안(스키마 세부·테스트 이름) | 공정관리 |
 | [handoff-2026-11-13/](handoff-2026-11-13/README.md) | 설계 정합성 감사 패키지(오너 업로드) — README·단계별 프롬프트·결정 추적(JSON·MD)·대화 확보분·검증 기록 + PM 단계 0 [baseline-gap.md](handoff-2026-11-13/baseline-gap.md) | **조사·기록**(CORE 원문 80개 미확보 — 결정 원장이 아니다) | 공정관리(baseline-gap만) |
 | [design/prod-stage-t.md](design/prod-stage-t.md) · [mkt-stage-t.md](design/mkt-stage-t.md) · [mgt-stage-t.md](design/mgt-stage-t.md) | 파트별 단계 T 확인 목록·측정 도구·요구사항(REQ) 초안(#265·#279) | 정본(목록) + 초안(REQ·제안) | PROD · MKT · MGT |
 | [design/game-program.md](design/game-program.md) | GAME 개선 프로그램(#280) — GAME-01~09 판단표·PM 역제안·세션별 태스크·의존성·오너 승인 안건·상태판 | 정본(작업 프로그램, 수시 갱신) | 공정관리 |
