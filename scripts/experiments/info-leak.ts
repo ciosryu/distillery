@@ -7,6 +7,7 @@ import { advanceMonth, applyAction, newScenarioGame, warehouseCapacity, type Act
 import { isBulkKind, lotQuality, spotBidPerLPA } from '../../src/sim/bulk';
 import { readSigma } from '../../src/sim/blendTable';
 import { netWorth } from '../../src/sim/progress';
+import { KPI_UNIT_WON } from '../../src/ui/format';
 
 const SEEDS = Number(process.argv[2] ?? 3);
 const TIER = (process.env.TIER ?? 'micro') as 'micro' | 'standard';
@@ -15,8 +16,8 @@ const act = (s: GameState, a: Action) => applyAction(s, a).state;
 
 /** 증류소 탭과 같은 식 — 재고 평가액 */
 const inventoryShown = (s: GameState) => netWorth(s) - s.finance.cash + s.finance.loans.reduce((t, l) => t + l.balance, 0) - s.finance.receivables.reduce((t, r) => t + r.amount, 0);
-/** won()의 표시 단위 */
-const unitOf = (v: number) => (Math.abs(v) >= 1e8 ? 1e6 : Math.abs(v) >= 1e4 ? 1e4 : 1);
+/** 화면 표시 단위 — [결정 #310] 1단계(안 A) 뒤 순자산·재고 평가액은 늘 100만 원. OLD=1 이면 안 A 전의 won() 단위(1억 미만 만 원)로 재서 비교한다 */
+const unitOf = (v: number) => (process.env.OLD === '1' ? (Math.abs(v) >= 1e8 ? 1e6 : Math.abs(v) >= 1e4 ? 1e4 : 1) : KPI_UNIT_WON);
 /** 참 품질 1점당 이 통의 평가액 변화(원) — 같은 달·같은 시세에서 */
 const slope = (s: GameState, c: Cask) => { const l = c.contents!; const q = lotQuality(l); return l.volumeL * l.abv * Math.abs(spotBidPerLPA(s, l, 0, q + 1) - spotBidPerLPA(s, l, 0, q)); };
 
