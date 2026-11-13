@@ -1,6 +1,9 @@
 import { CASKS } from './content/catalog';
 import { brokerAskPerLPA, caskResidual } from './bulk';
 import { matureCask } from './maturation';
+import { EXTERNAL_SITE_ID, newEntry } from './ledger';
+/** 브로커 매입 원액의 원장 입지 — 코어 상수(우리 입지가 아니라는 표시, 승리 적격 조건 "같은 입지"에서 걸린다) */
+export const BROKER_SITE = EXTERNAL_SITE_ID;
 import type { Rng } from './rng';
 import type { BrokerOffer, Cask, Flavor, GameState } from './types';
 import { nid } from './util';
@@ -33,6 +36,8 @@ export function makeBrokerOffer(s: GameState, rng: Rng): BrokerOffer {
     cask = matureCask(cask, { tempC: SCOTLAND_TEMPS[i % 12]!, humidity: SCOTLAND_HUMIDITY }, { control: 50 }).cask;
   }
   const lot = cask.contents!;
+  // F2 원장 지점 25(MKT): 매입 원액 한 줄 — 출처 sourced, 입지는 외부(BROKER_SITE). 숙성 루프 뒤에 만들어 woodMonths = oakMonths(전제 2). 원가 0은 로트 그대로
+  lot.components = [newEntry(lot, 'sourced', BROKER_SITE)];
   const lpa = lot.volumeL * lot.abv;
   // 브로커 판매가 = 벌크 기준가치 × ask (현물 매입가보다 항상 비쌈) + 캐스크 잔존가치
   const price = Math.round((lpa * brokerAskPerLPA(s, lot) + caskResidual(cask)) / 10_000) * 10_000;

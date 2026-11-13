@@ -1,5 +1,6 @@
 import { BULK } from './content/catalog';
 import { cancellationCost, isBulkKind, recordSpotSale, spotQuote, startContract } from './bulk';
+import { scaleLedger } from './ledger';
 import { acceptExportOffer, cancelExport } from './exportDeals';
 import { recordPendingCash } from './cashflow';
 import { EXPORT_MARKETS, type ExportMarketId } from './content/exports';
@@ -145,6 +146,7 @@ export const MKT_HANDLERS: Handlers<MktAction> = {
     if (!isBulkKind(lot)) return fail(prev, '벌크 판매는 몰트·그레인 원액만 가능합니다');
     const liters = Math.min(lot.volumeL, Math.max(0, a.liters ?? lot.volumeL));
     if (liters <= 0) return fail(prev, '판매량을 입력하세요');
+    if (lot.components?.length) lot.components = scaleLedger(lot.components, (lot.volumeL - liters) / lot.volumeL, 'leak'); // F2 원장 지점 22(MKT): 현물 판매 유출(전량이면 로트가 지워진다)
     const amount = spotQuote(s, lot, liters);
     recordSpotSale(s, lot, liters * lot.abv);
     s.finance.cash += amount;

@@ -3,6 +3,7 @@ import { awarenessOf, houseBrand } from './brands';
 import { regionOf, siteOf } from './content/regions';
 import { clamp } from './flavor';
 import { GIFT_SHOP } from './content/market';
+import { scaleLedger } from './ledger';
 import type { GameState, MonthReport } from './types';
 
 // 비지터 센터·관광 (파트 MKT, 결정 #144 — 파일 쪼개기로 옮겨 왔다. 규칙·수치 불변)
@@ -41,7 +42,9 @@ export function runTourism(s: GameState, report: MonthReport, monthOfYear: numbe
   for (const lot of s.inventory.lots.filter((l) => l.kind === 'malt' || l.kind === 'grain')) {
     if (nmBottles <= 0) break;
     const take = Math.min(nmBottles, Math.floor((lot.volumeL * lot.abv) / NEW_MAKE_BOTTLE.lpa));
-    lot.volumeL -= (take * NEW_MAKE_BOTTLE.lpa) / lot.abv;
+    const left = lot.volumeL - (take * NEW_MAKE_BOTTLE.lpa) / lot.abv;
+    if (lot.components?.length) lot.components = scaleLedger(lot.components, left / lot.volumeL, 'leak'); // F2 원장 지점 20(MKT): 판매 유출
+    lot.volumeL = left;
     revenue += take * NEW_MAKE_BOTTLE.netPrice;
     nmBottles -= take;
   }
