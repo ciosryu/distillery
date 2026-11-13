@@ -979,6 +979,52 @@ P8(#271)은 위 ①의 대부분을 이미 담았다: 계열당 3제품 · 자�
 
 **FIFO가 지키는 수용 테스트:** "어린 제품 과거 판매 + 적격 보충만 → 승리 0". 보충(#186)으로 같은 제품에 적격 로트가 들어와도, 먼저 병입한 어린 로트를 다 판 뒤에야 적격 병이 나간다. 그래서 첫 적격 출고 달이 정확하다. 단, 제품의 표기 연수(`ageYears`)는 지금처럼 가장 어린 원액 기준(#186)이고 승리 판정과는 별개다.
 
+### 4. 난이도(#314) — 시장 경쟁 · 소비자 취향 손잡이 `[제안 P-MKT-37]` (MGT P-MGT-48 #447과 같은 형식)
+원칙(MGT와 같음):
+- Normal = 지금 값이다. Easy·Hard는 방향만 적고 크기는 `[튜닝]`(F7 측정 뒤)이다.
+- 값은 판의 시작 스냅샷 `GameSetup.difficulty`에서 읽는다.
+- 한 손잡이는 한 영역에만 속한다.
+- 이벤트 확률은 `EVENT_RATE` 대신 `EventDef.domain` 영역 배수를 `rollChance`(`events.ts:331`)에 곱한다.
+- #313: 모든 난이도가 같은 시장 엔진을 쓰고, **취향 변화의 속도·폭·지속성만** 바꾼다. 품질과 인기는 분리하고, 시장 보고서는 미래 유행을 공개하지 않는다.
+
+**소비자 취향 (`taste`)** — #313의 "Easy 거의 고정 · Normal 점진 · Hard 급격"
+
+| 손잡이 | 위치 | Normal(지금) | Easy | Hard |
+|---|---|---|---|---|
+| 카테고리 트렌드 랜덤 워크 — 속도 | `market.ts:548 updateTrends` 월 σ | 0.015 | ↓ (거의 0) | ↑ |
+| 같은 워크 — 지속성(평균 회귀) | 같은 줄 회귀 0.05 | 0.05 | ↑ (빨리 1로) | ↓ (추세가 오래 간다) |
+| 같은 워크 — 폭 | 같은 줄 범위 | 0.6~1.5 | 좁게 | 넓게 |
+| 향미 유행(`flavorTrend`) 발생 확률 | 이벤트 `peat_craze` · `sherry_trend` × 영역 배수 | ×1 | ↓ | ↑ |
+| 향미 유행 세기 · 기간 | 각 효과 `strength`(0.3~0.4) · `months`([18, 30]) | 지금 값 | 세기 ↓ | 세기 ↑ · 기간 ↑ |
+| 카테고리 수요 유행 이벤트 확률 | `highball_boom` · `gin_fatigue` · `traditional_revival` · `shochu_boom` · `tw_collector_boom` × 영역 배수 | ×1 | ↓ | ↑ |
+| 같은 이벤트의 수요 배수 폭 | 각 `m('demand:…', 배수, 기간)` | 지금 값 | 1에 가깝게 | 1에서 멀게 |
+| 스타일 보너스 × 트렌드 상한 | `content/market.ts STYLE.capWithTrend` | 1.5 | 그대로 | 그대로 — 상한은 구조 규칙(#290 B1-9)이라 난이도로 안 바꾼다 |
+
+**시장 경쟁 (`competition`)**
+
+| 손잡이 | 위치 | Normal(지금) | Easy | Hard |
+|---|---|---|---|---|
+| 경쟁 증류소 몫 | `rivals.ts rivalShare` — 지금 늘 0(경쟁 AI 이전 단계) | 0 | 0 | **자리만** — 경쟁 AI(S-12)가 들어올 때 ↑. 지금은 Hard에서도 0이라 이 영역이 비어 보인다(아래 리스크) |
+| 국내 가격 탄력성 | `content/regions.ts market.<범주>.elasticity`(위스키·소주·진 각 값) | 지금 값 | ↓ (값을 올려도 덜 빠진다) | ↑ |
+| 국내 점유 상한 | `market.<범주>.shareCap` × `SKU.domesticShareCap`(1.08, #307) | 지금 값 | ↑ | ↓ |
+| 인지도 감쇠 | `market.ts AWARENESS.decay` 0.012 | 0.012 | ↓ | ↑ |
+| 광고 규제 이벤트 | `ad_regulation`(인지도 상승 × 0.6, 24~36개월) × 영역 배수 | ×1 | ↓ | ↑ |
+
+**영역 태그 — MKT가 맡는 이벤트 (제안, 세 파트 합의용)**
+
+| 영역 | 이벤트 |
+|---|---|
+| `taste` | `highball_boom` · `peat_craze` · `sherry_trend` · `gin_fatigue` · `traditional_revival` · `shochu_boom`(JP) · `tw_collector_boom`(TW) |
+| `competition` | `ad_regulation` |
+| `macro` (MGT 표와 같게) | `recession` · `whisky_boom` · `whisky_glut` · `tw_bubble_burst`(TW) · 관광 붐·감소(`jeju_*` · `kansai_*`) · B2B 시세 사건(`blender_rush` · `jp_whisky_shortage` · `korean_label_rule` — 원액 현물 지수·국산 프리미엄이 거시 영역의 `bulk.ts` 손잡이와 같은 값을 움직인다) |
+| **영역 없음**(늘 ×1) | 평판 사건(`influencer_viral` · `ambassador_response` · `competition_medal` · `critic_visit` · `murray_visit` · `intl_competition` · `blind_tasting_upset` · `overseas_critic`) — 결과가 내 제품 품질(`qualityGamble`)에 달린 사건이라 난이도로 확률을 바꾸면 품질의 보상이 흔들린다 · 계약 기회(`mega_contract` · `blender_default`) · 수출 관련(`export_inquiry` · `export_support` · `us_tariff_*` · `cn_tariff_retaliation` · 이벤트 「수출 주문」) — 새 캠페인은 수출 잠금(#311) |
+
+- **겹침 판단:** `whisky_glut`(업계 증산 → 공급 과잉)는 경쟁으로 볼 수도 있다. 하지만 효과가 `bulk` 지수와 위스키 수요를 함께 움직여 MGT 거시 손잡이와 같은 값을 건드린다 → **거시**로 둔다(MGT 표와 같음).
+- **리스크·반론:**
+  1. 경쟁 영역은 지금 경쟁 AI가 없어 손잡이가 탄력성·점유 상한·감쇠에 몰린다. 이 셋은 사실상 "시장 규모"를 바꾸는 값이라 Hard 경쟁 = 작은 시장이 된다. 경쟁 AI가 오기 전까지 Custom에서 경쟁만 Hard로 바꾸면 "수요가 줄어든 판"과 구분되지 않는다. 대안은 경쟁 영역을 경쟁 AI(1.0) 전까지 Normal 고정으로 두는 것이다.
+  2. 탄력성을 바꾸면 자동 가격(A·B·C)이 고르는 값이 바뀌어 정책 간 우열(AP3)이 난이도마다 달라진다. F7에서 난이도별로 AP3 합격 원칙(각 정책이 한 조건 이상에서 최선)을 다시 본다.
+  3. 평판 사건을 "영역 없음"으로 두면 Easy·Hard에서도 같은 빈도로 온다. 반론은 Hard는 행운도 적어야 한다는 것이다. 그래도 품질 보상을 지키는 쪽을 권한다.
+
 ## 단계 T 첫 MKT 일 (정해지면)
 1. ~~측정 스크립트를 저장소에 넣는다~~ — 2026-11-11 넣음(위 「측정 도구」)
 2. ~~세컨드 브랜드·수출 수락 정책~~ — `balance-sim`이 아니라 `mkt-lib.ts` 봇에 넣음(MVP가 판정 대상이라)
