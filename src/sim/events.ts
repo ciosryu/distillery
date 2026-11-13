@@ -18,6 +18,7 @@ import { addTrendShift } from './blendTable';
 import { HEX_LABEL } from './blendRadar';
 import { caskBookValue, creditClaim, newLedger, settleClaims, type LossLedger } from './insurance';
 import { isUnlocked, riskMul } from './research';
+import { sellFromLots } from './lots';
 
 // 이벤트 엔진: 예보 → 발생 → (선택지) → 효과. 결정론적 난수 스트림 사용.
 
@@ -67,7 +68,11 @@ function log(s: GameState, report: MonthReport | null, title: string, text: stri
 }
 
 /** ledger가 있으면(재해 이벤트) 보험이 보상할 피해를 적는다 — 적기만 하고 상태·난수는 바꾸지 않는다 (#171) */
-export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: string, ledger?: LossLedger): string[] {
+/**
+ * 효과를 적용한다. `report`는 그달 결산(틱 안에서 부를 때) — 판매 효과(`exportOrder`)가 F3 판매 사건을 거기에 쌓는다.
+ * 턴 사이(행동 `resolveEvent`)에는 결산이 없어 `null`이다 — 그때도 로트 차감은 하되 사건은 남지 않는다(아래 exportOrder 주석)
+ */
+export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: string, ledger?: LossLedger, report: MonthReport | null = null): string[] {
   const notes: string[] = [];
   // 연구로 줄어드는 재해 피해 크기 (#184, tech-tree P3 "면역 대신 크기 감소") — 1이면 아래 계산을 건너뛰어 값이 그대로다
   const dm = ledger?.damageMul ?? 1;
@@ -176,7 +181,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         break;
       }
       case 'gamble':
-        notes.push(...(rng.chance(e.chance) ? ['성공!', ...applyEffects(s, e.success, rng, label)] : ['실패', ...applyEffects(s, e.failure, rng, label)]));
+        notes.push(...(rng.chance(e.chance) ? ['성공!', ...applyEffects(s, e.success, rng, label, undefined, report)] : ['실패', ...applyEffects(s, e.failure, rng, label, undefined, report)]));
         break;
       case 'contaminate': {
         const filled = s.inventory.casks.filter((c) => c.contents && !c.contamination);
@@ -189,7 +194,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         const best = Math.max(0, ...s.commerce.products.filter((p) => p.stockBottles > 0).map((p) => p.quality));
         const verdict = best >= e.rave ? 'rave' : best < e.pan ? 'pan' : 'mild';
         notes.push(verdict === 'rave' ? `극찬 — 품질 ${best} (수요 폭증, 가격 저항 감소)` : verdict === 'pan' ? `혹평 — 품질 ${best} (수요 급감, 재고 적체 주의)` : `무난한 평가 — 품질 ${best}`);
-        notes.push(...applyEffects(s, verdict === 'rave' ? e.raveEffects : verdict === 'pan' ? e.panEffects : e.mildEffects, rng, label));
+        notes.push(...applyEffects(s, verdict === 'rave' ? e.raveEffects : verdict === 'pan' ? e.panEffects : e.mildEffects, rng, label, undefined, report));
         break;
       }
       case 'taxAudit': {
@@ -203,7 +208,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
       case 'qualityGamble': {
         const best = Math.max(0, ...s.commerce.products.filter((p) => p.stockBottles > 0).map((p) => p.quality));
         const ok = rng.chance(clamp((best - 30) / 50, 0.05, 0.95));
-        notes.push(ok ? '호평' : '혹평', ...applyEffects(s, ok ? e.success : e.failure, rng, label));
+        notes.push(ok ? '호평' : '혹평', ...applyEffects(s, ok ? e.success : e.failure, rng, label, undefined, report));
         break;
       }
       case 'exportOrder': {
@@ -214,6 +219,10 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
           p.stockBottles -= take;
           p.totalSold += take;
           revenue += take * p.price * e.priceFactor;
+          // F3 판매 지점 (MGT — architecture §10.10): 로트 FIFO 차감 + 판매 사건. 로트가 없는 제품이면 아무것도 안 한다(출력 불변).
+          // 턴 사이(수락 버튼, report 없음)에는 사건을 쌓을 결산이 없다 — 로트만 맞추고(로트 합 = stockBottles) 사건은 버린다.
+          // 새 캠페인은 이 이벤트가 잠겨(#321) 승리 사건을 잃지 않는다. 턴 사이 사건을 다음 결산으로 넘기는 그릇은 ARCH 몫(코어 types)
+          sellFromLots(s, report ?? ({ month: s.month } as MonthReport), p.id, take, { kind: 'export', channel: 'event', settlement: 'cash', unitPrice: p.price * e.priceFactor });
           need -= take;
           if (need <= 0) break;
         }
@@ -267,7 +276,7 @@ function fire(s: GameState, base: EventDef, rng: Rng, report: MonthReport): void
   }
   // 재해는 피해 장부를 적어 끝에 보험금을 준다 (#171). 보험이 없으면 문구·현금 모두 그대로
   const ledger = def.category === 'disaster' ? newLedger(s, def.id) : undefined;
-  const notes = applyEffects(s, def.effects ?? [], rng, def.title, ledger);
+  const notes = applyEffects(s, def.effects ?? [], rng, def.title, ledger, report);
   if (ledger) notes.push(...settleClaims(s, ledger, report));
   log(s, report, def.title, [def.text, ...notes].join(' '));
   // 연구가 여는 이어지는 선택 이벤트 (#213) — 연구하지 않은 판은 아무 일도 없다
@@ -319,7 +328,7 @@ export function resolvePending(s: GameState, pendingId: string, choiceIndex: num
   const choice = def?.choices?.[choiceIndex];
   if (!def || !choice) return null;
   const rng = rngFor(s.seed, s.month, `event:${p.id}:${choiceIndex}`);
-  const notes = applyEffects(s, choice.effects, rng, def.title);
+  const notes = applyEffects(s, choice.effects, rng, def.title, undefined, report);
   s.events.pending = s.events.pending.filter((x) => x.id !== p.id);
   const text = `${def.title}: "${choice.label}" — ${notes.join(' ') || '처리 완료'}`;
   log(s, report, `${def.title} → ${choice.label}`, text);
