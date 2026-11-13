@@ -18,7 +18,7 @@ import { BRANDS, DEFAULT_POLICY_N, defaultPolicyPrice } from '../../sim/content/
 import { isLocked } from '../../sim/scenario';
 import { useGame } from '../../store/game';
 import { num, pct, won, wonFull } from '../format';
-import { Badge, Button, Card, Empty, Meter, NumberField, Select, Stat, Table, Td, TextField } from '../kit';
+import { Badge, Button, Card, ConfirmButton, Empty, Meter, NumberField, Select, Stat, Table, Td, TextField } from '../kit';
 
 // 판매 화면 (파트 MKT — MKT 종료 뒤 PROD가 임시로 맡았다가(2026-11-07) MKT 복귀) — MVP 판매 화면(mvp.md §1 ⑤: 가격 설정 · 수요 한도 · 한국 주세 내역)
 // PriceDesk는 MVP 단일 화면(설계 세션)이 그대로 끼워 쓸 수 있게 따로 내보낸다
@@ -165,7 +165,8 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
               <button type="button" className="rounded px-1 text-xs text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:hover:bg-stone-800" aria-label={`${p.name} 이름 바꾸기`} title="이름 바꾸기 — 무료, 판매 기록·숙성 표기는 그대로 (Enter로 저장, Esc로 취소)" onClick={() => setRenaming({ id: p.id, name: p.name })}>✎</button>
             </>}
             {/* 품절 제품 지우기 (2026-11-09 오너 요청) — 누르지 않으면 남아 있고, 재고 보충으로 다시 채울 수 있다 */}
-            {p.stockBottles <= 0 && !dfOnly && <button type="button" className="rounded px-1 text-stone-400 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950" aria-label={`${p.name} 목록에서 지우기`} title="판매 목록에서 지운다 — 판매 기록은 남는다. 지우지 않으면 남아 있고, 블렌딩·병입의 [기존 제품 재고 보충]으로 다시 채울 수 있다" onClick={() => dispatch({ type: 'archiveProduct', productId: p.id })}>×</button>}
+            {p.stockBottles <= 0 && !dfOnly && <ConfirmButton small variant="ghost" armKey={`archive-${p.id}@${s.month}`} armedLabel="한 번 더 누르면 지우기" title="판매 목록에서 지운다 — 판매 기록은 남는다. 지우지 않으면 남아 있고, 블렌딩·병입의 [기존 제품 재고 보충]으로 다시 채울 수 있다" onConfirm={() => dispatch({ type: 'archiveProduct', productId: p.id })}
+              preview={() => <>「{p.name}」을 판매 목록에서 지운다 — 판매 기록(누적 {num(p.totalSold ?? 0)}병)은 남지만, 이 제품으로 [기존 제품 재고 보충]은 더 할 수 없다. 같은 술을 다시 내려면 새 제품으로 병입한다</>}>×</ConfirmButton>}
           </span>
           <div className="mt-0.5 flex flex-wrap gap-1">
             {/* 결품 안내 — 품절, 또는 재고가 이번 달 수요보다 적어 다음 턴에 바닥난다 */}
@@ -556,7 +557,8 @@ function BrandLines() {
             <Td right>{pct(b.awareness)}</Td>
             <Td className="text-xs">{productsOf(b.id).map((p) => p.name).join(', ') || '—'}</Td>
             <Td><NumberField value={brandMarketing(s, b) / 10_000} min={0} max={100_000} width="w-24" suffix="만 원" onCommit={(v) => dispatch({ type: 'setMarketing', brandId: b.id, amount: v * 10_000 })} /></Td>
-            <Td>{!b.isHouse && <Button small variant="ghost" disabled={productsOf(b.id).length > 0} title={productsOf(b.id).length ? '재고가 남은 제품을 다 팔거나 옮겨야 폐지할 수 있다' : '유지비가 멈춘다. 이 브랜드의 남은 제품 기록은 하우스로 돌아간다'} onClick={() => dispatch({ type: 'closeBrand', brandId: b.id })}>폐지</Button>}</Td>
+            <Td>{!b.isHouse && <ConfirmButton small variant="ghost" disabled={productsOf(b.id).length > 0} title={productsOf(b.id).length ? '재고가 남은 제품을 다 팔거나 옮겨야 폐지할 수 있다' : '유지비가 멈춘다. 이 브랜드의 남은 제품 기록은 하우스로 돌아간다'} armKey={`closebrand-${b.id}@${s.month}`} armedLabel="한 번 더 누르면 폐지" onConfirm={() => dispatch({ type: 'closeBrand', brandId: b.id })}
+              preview={() => <>세컨드 브랜드 「{b.name}」를 폐지한다 — 월 유지비({won(BRANDS.monthlyUpkeep)})·마케팅비가 멈추지만 쌓은 인지도 {pct(b.awareness)}는 사라진다. 다시 열려면 개설비({won(BRANDS.openCost)})를 내고 인지도를 처음부터 쌓는다</>}>폐지</ConfirmButton>}</Td>
           </tr>
         ))}
       </Table>
