@@ -2,7 +2,8 @@
 // 설계: core-integration.md §3(BottledLot · SaleEvent) · mkt-stage-t.md 「결정 #308·#311 대응」 §3 판매 지점 표.
 //
 // 이 파일은 순수 함수만 둔다 — GameState를 읽지 않고 상태 그릇(`commerce.lots` · `commerce.saleEvents`, v16)도 만들지 않는다.
-// 그릇·마이그레이션·틱 연결은 ARCH F1(RuleSet·v16) 뒤 F3 PR에서 ARCH와 함께 넣는다. 그때까지 출력 불변.
+// 그릇·마이그레이션·틱 연결은 F2 코어 계약(#477) 뒤 ARCH 주도 F3 PR에서 넣는다(MKT 커밋으로 합류). 그때까지 출력 불변.
+// 타입 이름은 ARCH가 이 초안 그대로 쓰기로 했다(2026-11-13): cellar_door는 kind · eligibleAtBottling(로트)·eligibleAtSale(거래 시점) 둘 다 저장.
 //
 // 판매 지점(출고가 일어나는 자리 — 사건은 그 자리에서 쌓고, 9단계 updateProgress가 그 달 사건을 읽는다):
 //   1 market.ts runSales 국내 소매(정상 + 초과 채널)   kind domestic · cash · p.price
@@ -113,6 +114,16 @@ export function firstEligibleSale(events: readonly SaleEvent[]): SaleEvent | und
   return best;
 }
 
-/** 새 병입 로트 — 병입·보충이 부른다. id는 호출부가 `nid(s, 'L')`로 준다(이 파일은 상태를 읽지 않는다) */
+/**
+ * 로트 id — 전역 `nid`가 아니라 **제품 안 순번**(ARCH F3 합의 2026-11-13): `${productId}:${bottledMonth}:${n}`.
+ * 전역 카운터를 쓰지 않으므로 로트를 만들어도 `s.nextId`가 움직이지 않고, 다른 제품 id·판매 잡음 흐름(`sales:<id>`)이 바뀌지 않는다(출력 불변).
+ * n은 같은 제품·같은 달의 몇 번째 로트인지(0부터) — 호출부가 그 제품의 기존 로트에서 센다(`nextLotIndex`)
+ */
+export const lotId = (productId: string, bottledMonth: number, n: number): string => `${productId}:${bottledMonth}:${n}`;
+/** 같은 제품·같은 달에 이미 있는 로트 수 — 다음 로트의 n */
+export const nextLotIndex = (lots: readonly BottledLot[], productId: string, bottledMonth: number): number =>
+  lots.filter((l) => l.productId === productId && l.bottledMonth === bottledMonth).length;
+
+/** 새 병입 로트 — 병입·보충이 부른다. id는 `lotId(productId, bottledMonth, nextLotIndex(...))`로(이 파일은 상태를 읽지 않는다) */
 export const newLot = (id: string, productId: string, bottles: number, bottledMonth: number, eligibleAtBottling?: boolean): BottledLot =>
   ({ id, productId, bottles, bottledMonth, ...(eligibleAtBottling == null ? {} : { eligibleAtBottling }) });

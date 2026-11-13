@@ -1,6 +1,6 @@
 // F3 판매 사건 · FIFO 로트 할당 (결정 #308 · #318) — core-integration §2.3 수용 테스트 중 로트·사건 몫
 import { describe, expect, it } from 'vitest';
-import { allocateFifo, firstEligibleSale, newLot, recordSale, type BottledLot } from './saleEvents';
+import { allocateFifo, firstEligibleSale, lotId, newLot, nextLotIndex, recordSale, type BottledLot } from './saleEvents';
 
 const lots = (): BottledLot[] => [newLot('L2', 'P', 100, 24, true), newLot('L1', 'P', 50, 12, false)]; // 들어온 순서가 FIFO 순서와 다르다
 
@@ -59,5 +59,16 @@ describe('승리 후보 사건 (F4가 읽는다)', () => {
     expect(firstEligibleSale([e(150, 'b2b'), e(160, 'domestic', 0), e(170, 'domestic', 1, 0)])).toBeUndefined();
     expect(firstEligibleSale([e(160, 'domestic'), { ...e(160, 'domestic'), lotId: 'M' }, e(150, 'domestic')])).toMatchObject({ month: 150 });
     expect(firstEligibleSale([e(160, 'domestic'), { ...e(160, 'domestic'), lotId: 'M' }])!.lotId).toBe('L');
+  });
+});
+
+describe('로트 id — 제품 안 순번 (전역 nid를 쓰지 않는다)', () => {
+  it('같은 제품·같은 달이면 n이 올라가고, 다른 달·다른 제품은 0부터', () => {
+    const ls = [newLot(lotId('P', 12, 0), 'P', 10, 12), newLot(lotId('P', 12, 1), 'P', 10, 12), newLot(lotId('Q', 12, 0), 'Q', 10, 12)];
+    expect(nextLotIndex(ls, 'P', 12)).toBe(2);
+    expect(nextLotIndex(ls, 'P', 13)).toBe(0);
+    expect(nextLotIndex(ls, 'Q', 12)).toBe(1);
+    expect(lotId('P', 12, 2)).toBe('P:12:2');
+    expect(new Set(ls.map((l) => l.id)).size).toBe(3);
   });
 });
