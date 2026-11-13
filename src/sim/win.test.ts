@@ -13,7 +13,7 @@ const report = (s: GameState): MonthReport => ({ month: s.month, revenue: 0, exp
 const SALE = { kind: 'domestic', settlement: 'cash', unitPrice: 120_000 } as const;
 const self = (woodMonths: number) => [{ batchId: 'b', origin: 'self' as const, siteId: 'default', kindAtBirth: 'malt' as const, contribLPA: 10, costKRW: 1000, woodMonths }];
 
-describe('win: 미판매 running · 적격 실제 출고 1회 · 중복 0', () => {
+describe('win: 미판매 running · 적격 실제 출고 1회 · 중복 0 ([결정 #324] verdict = 승리 달 한 번 + 판 종료만)', () => {
   it('적격 로트의 첫 유상 출고가 있는 달에 progress.win을 한 번 쓰고, 마일스톤·알림·성과 판정(heritage)을 남긴다 — 판은 계속 돈다', () => {
     const s = v16(); s.month = 150;
     s.commerce.products.push(product());

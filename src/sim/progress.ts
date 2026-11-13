@@ -122,7 +122,7 @@ export function updateProgress(s: GameState, report: MonthReport): void {
     return;
   }
   // 새 판(v16, F4 [결정 #308]) — 승리 = 적격 로트의 최초 정상 유상 출하. 그달 결산의 사건에서 첫 승리 후보를 읽는다(틱 순서 = 출고 순서).
-  // 강제 판정은 없다: `verdict`는 승리 달에 한 번(성과 등급) 또는 판이 끝날 때(failed)만 — 결정 대기 90 권장안, 오너 "권장안대로" 2026-11-13(번호 PM 발급). 승리는 멈춤 사유가 아니다(계속 운영)
+  // 강제 판정은 없다: `verdict`는 승리 달에 한 번(성과 등급) 또는 판이 끝날 때(failed)만 — [결정 #324]. 승리는 멈춤 사유가 아니다(계속 운영)
   if (!s.progress.win) {
     const e = firstEligibleSale(report.saleEvents ?? []);
     if (e) {
@@ -137,7 +137,7 @@ export function updateProgress(s: GameState, report: MonthReport): void {
 }
 
 /**
- * 승리 달의 성과 판정(F4, v16) — 결과는 늘 heritage, 등급은 지금 `GRADE` 기준 그대로(S: 순자산 목표 × 1.5 · 승리 로트 품질 ≥ 80 · 인지도 ≥ 20%).
+ * 승리 달의 성과 판정(F4, v16, [결정 #324] — achieved·missed는 v16에서 생기지 않는다) — 결과는 늘 heritage, 등급은 지금 `GRADE` 기준 그대로(S: 순자산 목표 × 1.5 · 승리 로트 품질 ≥ 80 · 인지도 ≥ 20%).
  * 순자산은 성과이고 승리 조건이 아니다(#308) — `netWorth` 칸은 참고로 남는다. 핸드필 승리(`cellar_door`)는 제품이 없어 품질 값이 없다 → S 불가, A
  */
 export function judgeWin(s: GameState, month: number, quality?: number): GoalVerdict {
