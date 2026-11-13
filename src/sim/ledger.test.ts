@@ -31,6 +31,7 @@ describe('ledger: 보존·손실·중복 소비 0 (R2·R4)', () => {
     l.components = [newEntry(l, 'self', 'default')]; expect(ledgerError(l)).toBeNull();
     l.volumeL = 150; expect(ledgerError(l)).toMatch(/Σ contribLPA/);
     l.volumeL = 200; l.components[0]!.costKRW += 1; expect(ledgerError(l)).toMatch(/Σ costKRW/);
+    l.components[0]!.costKRW -= 1; l.components[0]!.woodMonths = 3; expect(ledgerError(l)).toMatch(/min\(woodMonths\) 3 ≠ oakMonths 0/); // 전제 2
   });
 });
 
@@ -58,6 +59,18 @@ describe('ledger: 합치기 R6 — 키가 같으면 하나로, 부모 보존, �
     const e = [{ ...newEntry(lot(), 'self', 'default'), woodMonths: 10 }, { ...newEntry(lot({ id: 'L2' }), 'self', 'default'), woodMonths: 50 }];
     expect(advanceWood(e).map((x) => x.woodMonths)).toEqual([11, 51]);
     expect(coalesce(advanceWood(e)).length).toBe(2); // 개월이 다르면 합치지 않는다
+  });
+});
+
+describe('isFlagshipCandidate — 코어로 옮겼을 뿐 동작 그대로(F4 전)', () => {
+  it('delegateCheck의 재내보내기와 같은 함수이고, 그레인 통도 후보로 세며 goal.months 상한을 쓴다', async () => {
+    const { isFlagshipCandidate: viaDelegate } = await import('./delegateCheck');
+    const { isFlagshipCandidate } = await import('./ledger');
+    expect(viaDelegate).toBe(isFlagshipCandidate);
+    const s = mvp(); s.month = 96;
+    const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.contents = lot({ kind: 'grain', oakMonths: 60 });
+    expect(isFlagshipCandidate(s, c)).toBe(true); // 60 + 84 ≥ 144
+    c.contents.oakMonths = 59; expect(isFlagshipCandidate(s, c)).toBe(false);
   });
 });
 

@@ -86,7 +86,21 @@ export function ledgerError(lot: SpiritLot): string | null {
   if (!rel(sumL, lpa)) return `원장 Σ contribLPA ${sumL} ≠ LPA ${lpa}`;
   if (!rel(sumC, lot.costPerLPA * lpa)) return `원장 Σ costKRW ${sumC} ≠ 원가 ${lot.costPerLPA * lpa}`;
   if (c.some((e) => e.contribLPA < -EPS || e.woodMonths < 0)) return '원장 음수';
+  // P-PROD-55 전제 2: 숙성이 시작된 원액은 병입 전에 섞이지 않으므로 min(woodMonths) = 로트의 oakMonths. 섞이는 새 행동이 들어오면 여기서 먼저 깨진다
+  const minWood = Math.min(...c.map((e) => e.woodMonths));
+  if (minWood !== lot.oakMonths) return `원장 min(woodMonths) ${minWood} ≠ oakMonths ${lot.oakMonths}`;
   return null;
+}
+
+// ───────────── 옛 후보 판정 (F2에서 코어로 옮김 — 동작 그대로, 정의 변경은 F4) ─────────────
+
+/** 플래그십 후보 — 판이 끝나기 전에 플래그십 숙성(MVP 144개월)을 채울 수 있는 통. 목표 기한이 없는 판(샌드박스)은 이미 그 숙성을 넘긴 통 */
+export function isFlagshipCandidate(s: GameState, c: Cask): boolean {
+  const l = c.contents;
+  if (!l || (l.kind !== 'malt' && l.kind !== 'grain')) return false;
+  const need = campaignMinOakMonths(s); // F1: 기준값만 캠페인 규칙에서. 180개월 상한·그레인 포함은 F2·F4에서 바꾼다(출력 불변)
+  const left = s.scenario ? Math.max(0, s.scenario.goal.months - s.month) : 0;
+  return l.oakMonths + left >= need;
 }
 
 // ───────────── 승리 적격 (core-integration §2.3) ─────────────
