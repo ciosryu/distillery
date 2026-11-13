@@ -53,7 +53,7 @@ export function newScenarioGame(plan: BusinessPlan): GameState {
   if (tier.locked) throw new Error(`${tier.nameKo}: ${tier.locked.reason}`);
   let s = newGame({ seed: plan.seed, region: d.region, site: d.site, startingCash: tier.equity, distilleryName: plan.distilleryName });
   const locked = scenarioLockedKeys(d);
-  s.scenario = { id: d.id, tierId: tier.id, locked, economy: { overheadPerMonth: tier.overheadPerMonth }, equity: tier.equity, goal: { ...d.goal } };
+  s.scenario = { id: d.id, tierId: tier.id, locked, economy: { overheadPerMonth: tier.overheadPerMonth }, equity: tier.equity, goal: { ...d.goal }, ...(d.campaignGoal ? { campaignGoal: { ...d.campaignGoal } } : {}) };
   // 잠긴 주종의 프리셋 레시피는 뺀다 (코드·콘텐츠는 그대로)
   s.production.recipes = s.production.recipes.filter((r) => !locked.includes(`kind:${r.kind}`));
   s.inventory.warehouseBase = tier.warehouseBase;

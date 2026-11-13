@@ -8,6 +8,9 @@ import { categorize, previewBlend, simulateBatch, stillDefOf, type GameState, ap
 import { logisticsMultiplier, REGIONS } from './content/regions';
 import fixtureV13 from './fixtures/save-v13.json';
 import fixtureV14 from './fixtures/save-v14.json';
+import fixtureV15 from './fixtures/save-v15.json';
+import { campaignMinOakMonths, rulesVersionOf } from './progress';
+import { newScenarioGame } from './newScenario';
 
 // v5 세이브 픽스처는 리팩터 전 코드로 만들었다(옛 코드가 실제로 쓴 세이브 모양).
 
@@ -335,5 +338,38 @@ describe('세이브 v14 → v15 (제품 통 구성 기록 자리, #176 코어)',
     expect(s.commerce.products.every((p) => p.caskMix === undefined)).toBe(true);
     const t = advanceMonths(s, 3);
     expect({ month: t.month, cash: t.finance.cash }).toEqual(fixtureV14.expectedAfter3);
+  });
+});
+
+describe('세이브 v15 → v16 (캠페인 규칙 묶음 F1, [결정 #308·#309] 코어)', () => {
+  it("옛 판은 rulesVersion 'legacy-v15'만 붙고 campaignGoal은 만들지 않는다 · 최소 숙성은 goal.flagshipMinMonths 그대로 · 진행 결과가 v15 코드와 같다", () => {
+    const s = migrateSave(structuredClone(fixtureV15.save))!;
+    expect(s.version).toBe(SAVE_VERSION);
+    expect(rulesVersionOf(s)).toBe('legacy-v15');
+    expect(s.scenario?.campaignGoal).toBeUndefined(); // 증거 창작 금지 (core-integration §3 Migration)
+    expect(campaignMinOakMonths(s)).toBe(144);
+    const t = advanceMonths(s, 3);
+    expect({ month: t.month, cash: t.finance.cash }).toEqual(fixtureV15.expectedAfter3);
+  });
+
+  it('새 판은 v16 규칙 — scenario.campaignGoal이 시나리오 정의에서 복사되고, 샌드박스는 규칙만 v16', () => {
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    expect(rulesVersionOf(s)).toBe('v16');
+    expect(s.scenario?.campaignGoal).toEqual({ minOakMonths: 144, event: 'paid_shipment', product: 'single_malt', origin: 'self_distilled_same_site' });
+    expect(campaignMinOakMonths(s)).toBe(144);
+    const g = newGame({ seed: 1, region: 'KR' });
+    expect(rulesVersionOf(g)).toBe('v16');
+    expect(g.scenario).toBeUndefined();
+    expect(campaignMinOakMonths(g)).toBe(144);
+  });
+
+  it('세이브 왕복 — 새 판·옛 판 모두 저장 → 불러오기 뒤 규칙 묶음·campaignGoal이 그대로이고 같은 달 결과가 바이트 동일', () => {
+    for (const s0 of [newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'standard', loanAmount: 0, seed: 7 }), migrateSave(structuredClone(fixtureV15.save))!]) {
+      const s = advanceMonths(s0, 2);
+      const loaded = migrateSave(JSON.parse(JSON.stringify(s)))!;
+      expect(loaded.rulesVersion).toEqual(s.rulesVersion);
+      expect(loaded.scenario?.campaignGoal).toEqual(s.scenario?.campaignGoal);
+      expect(JSON.stringify(advanceMonths(loaded, 3))).toBe(JSON.stringify(advanceMonths(s, 3)));
+    }
   });
 });
