@@ -1,8 +1,8 @@
-import { EXPORT_MARKETS, domesticNetPerBottle, effectiveTariff, exportEligible, exportFob, exportMarketsFor, exportNetPerBottle, exportShelfPrice, productConsumerPrice } from '../../sim';
+import { EXPORT_DEAL, EXPORT_MARKETS, domesticNetPerBottle, effectiveTariff, exportEligible, exportFob, exportMarketsFor, exportNetPerBottle, exportShelfPrice, productConsumerPrice } from '../../sim';
 import { ExportShortfallNote } from '../ExportShortfallNote'; // #257
 import { useGame } from '../../store/game';
 import { num, pct, won, wonFull } from '../format';
-import { Badge, Button, Card, Empty, Stat, Table, Td } from '../kit';
+import { Badge, Button, Card, ConfirmButton, Empty, Stat, Table, Td } from '../kit';
 
 /** 수출 시장 (#95, 확장 #100~#109): 수입사 제안·계약·해지, 수출가 조정, 시장 조건, 제품별 현지 소비자가와 판매 */
 export function Exports() {
@@ -47,7 +47,8 @@ export function Exports() {
           <Card
             key={id}
             title={<>{m.nameKo} {entry ? (ready ? <Badge tone="good">판매 중</Badge> : <Badge tone="warn">준비 중 — {entry.readyMonth - s.month}개월</Badge>) : offer ? <Badge tone="info">수입사 제안</Badge> : <Badge>계약 없음</Badge>}</>}
-            actions={entry ? <Button small variant="danger" onClick={() => dispatch({ type: 'closeExport', marketId: id })}>해지 (위약금 {won((entry.marketingPerMonth ?? 0) * 3)})</Button> : undefined}
+            actions={entry ? <ConfirmButton small variant="danger" armKey={`closeexport-${id}@${s.month}`} armedLabel="한 번 더 누르면 해지" onConfirm={() => dispatch({ type: 'closeExport', marketId: id })}
+              preview={() => <>{m.nameKo} 수입사 계약을 해지한다 — 위약금 {won((entry.marketingPerMonth ?? 0) * EXPORT_DEAL.cancelMonths)} · 현금 {won(s.finance.cash)} → {won(s.finance.cash - (entry.marketingPerMonth ?? 0) * EXPORT_DEAL.cancelMonths)}. 현지 인지도 {pct(entry.awareness, 1)}와 낸 시장 개척비는 돌려받지 못하고, 다시 팔려면 새 수입사 제안을 기다려 개척비·준비 기간부터 다시 거친다</>}>해지 (위약금 {won((entry.marketingPerMonth ?? 0) * EXPORT_DEAL.cancelMonths)})</ConfirmButton> : undefined}
           >
             <p className="mb-2 text-xs text-stone-500">{m.descKo}</p>
             <div className="mb-3 grid grid-cols-2 gap-2 text-xs md:grid-cols-6">
@@ -73,7 +74,10 @@ export function Exports() {
               <div className="mb-3 rounded-md border border-sky-200 bg-sky-50 p-2 text-xs dark:border-sky-900 dark:bg-sky-950/40">
                 <b>{offer.partner}</b> 제안 — 수출가 출고가의 <b>{pct(offer.priceFactor, 0)}</b>(계약 뒤 조정 가능) · 마케팅 분담 월 <b>{won(offer.marketingPerMonth)}</b> · {offer.termMonths}개월 · 연 최소 <b>{num(offer.minBottlesPerYear)}병</b> · 대금 {offer.paymentDelay}개월 뒤
                 {offer.entryCost > 0 && <> · 시장 개척비 <b>{won(offer.entryCost)}</b> ({m.entryMonths}개월 준비)</>} · {offer.expiresMonth - s.month}개월 후 만료
-                <div className="mt-1"><Button small variant="primary" disabled={s.finance.cash < offer.entryCost} onClick={() => dispatch({ type: 'acceptExportOffer', offerId: offer.id })}>계약</Button></div>
+                <div className="mt-1">{offer.entryCost > 0
+                  ? <ConfirmButton small variant="primary" disabled={s.finance.cash < offer.entryCost} armKey={`exportoffer-${offer.id}@${s.month}`} armedLabel="한 번 더 누르면 계약" onConfirm={() => dispatch({ type: 'acceptExportOffer', offerId: offer.id })}
+                      preview={() => <>{offer.partner}와 {offer.termMonths}개월 계약한다 — 시장 개척비({won(offer.entryCost)})를 지금 낸다(현금 {won(s.finance.cash)} → {won(s.finance.cash - offer.entryCost)}, 해지해도 돌려받지 못한다) · 마케팅 분담 월 {won(offer.marketingPerMonth)} · 연 최소 {num(offer.minBottlesPerYear)}병, 못 채우면 위약금</>}>계약</ConfirmButton>
+                  : <Button small variant="primary" onClick={() => dispatch({ type: 'acceptExportOffer', offerId: offer.id })}>계약</Button>}</div>
               </div>
             )}
 

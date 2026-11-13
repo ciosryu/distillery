@@ -43,6 +43,10 @@ export function makeRetailOffer(s: GameState, rng: Rng): RetailOffer {
 }
 
 /** 전용 증류기 설비 패키지 설치비 (입지 건설비 반영) */
+/** 납품 계약을 우리가 해지할 때 내는 비용 — 남은 개월 × 월 물량 × 병당 위약금의 절반. 해지 명령과 확인 미리보기(#240)가 같이 쓴다 */
+export const retailCancellationCost = (c: Pick<RetailContract, 'termMonths' | 'monthsDone' | 'bottlesPerMonth' | 'penaltyPerBottle'>) =>
+  Math.round((c.termMonths - c.monthsDone) * c.bottlesPerMonth * c.penaltyPerBottle * 0.5);
+
 export function oemPackageCost(s: GameState): number {
   return OEM.dedicated.package.reduce((t, id) => t + equipmentCost(s, EQUIPMENT[id]!), 0);
 }
