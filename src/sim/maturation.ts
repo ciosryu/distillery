@@ -1,6 +1,7 @@
 import { CASKS, NON_WOOD_VESSEL, SEASONING_EXTRACT, WOOD_EXTRACT } from './content/catalog';
 import { clamp, clampFlavor } from './flavor';
-import type { AxisId, Cask, CaskTypeId, Flavor, SpiritLot, VesselMaterial } from './types';
+import { advanceWood, scaleLedger } from './ledger';
+import type { AxisId, Cask, CaskTypeId, Flavor, LossKind, MonthReport, SpiritLot, VesselMaterial } from './types';
 
 // 숙성 모델 (PRD §5.3, flavor-model §4.5). 수치 [튜닝].
 
@@ -100,7 +101,20 @@ export function matureCask(cask: Cask, climate: Climate, opts: MatureOptions): {
   const newLPA = evap.volumeL * evap.abv;
   const costPerLPA = newLPA > 0 ? (lot.costPerLPA * oldLPA) / newLPA : lot.costPerLPA;
   const contents: SpiritLot = { ...lot, volumeL: evap.volumeL, abv: evap.abv, flavor: clampFlavor(f), oakMonths: months, costPerLPA };
+  // F2 원장 지점 7: 나무 통 1개월 — 모든 구성 원액 +1(R3, 여기서만), 증발은 같은 비율로 줄고 원가는 남는다(보존)
+  if (lot.components?.length) contents.components = scaleLedger(advanceWood(lot.components), oldLPA > 0 ? newLPA / oldLPA : 0, 'preserve');
   return { cask: { ...cask, contents }, lostL: evap.lostL };
+}
+
+/**
+ * 손실 사건 기록 (F2 R5, [결정 #323]) — 통·구성 원액마다가 아니라 **그달 × 종류 합계**로 `report.lossEvents`에 쌓는다. 기록만(판 결과·난수 불변).
+ * `costKRW`는 손실과 함께 나간 원가 — 원가가 남는 손실(증발·누수·이동 보존)은 0. 결산이 있는 틱 안 지점만 부른다(행동 단계 손실은 쌓을 결산이 없다)
+ */
+export function recordLoss(report: Pick<MonthReport, 'lossEvents'>, kind: LossKind, lpa: number, costKRW = 0): void {
+  if (!(lpa > 0)) return;
+  const list = report.lossEvents ?? (report.lossEvents = []);
+  const e = list.find((x) => x.kind === kind);
+  if (e) { e.lpa += lpa; e.costKRW += costKRW; } else list.push({ kind, lpa, costKRW });
 }
 
 /** 용기 재질 — 콘텐츠에 없으면 나무 (S-10) */
@@ -143,6 +157,8 @@ export function matureNonWood(cask: Cask, material: Exclude<VesselMaterial, 'woo
   const newLPA = evap.volumeL * evap.abv;
   const costPerLPA = newLPA > 0 ? (lot.costPerLPA * oldLPA) / newLPA : lot.costPerLPA;
   const contents: SpiritLot = { ...lot, volumeL: evap.volumeL, abv: evap.abv, flavor: clampFlavor(f), restMonths: (lot.restMonths ?? 0) + 1, costPerLPA };
+  // F2 원장 지점 8: 옹기·스테인리스 1개월 — 목재 개월은 늘지 않는다(R3). 증발만 같은 비율로(원가 보존)
+  if (lot.components?.length) contents.components = scaleLedger(lot.components, oldLPA > 0 ? newLPA / oldLPA : 0, 'preserve');
   return { cask: { ...cask, contents }, lostL: evap.lostL };
 }
 
