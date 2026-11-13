@@ -523,6 +523,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   }
   const product: Product = {
     id: nid(s, 'P'),
+    seq: productCountEver(s) + 1, // 판매 잡음 키(S5) — 전역 id와 달리 제품만 센다
     // 기본 이름에 숙성 소주 표기를 붙인다 (#221) — 직접 쓴 이름은 그대로(표기는 판매 화면 배지로 보인다)
     name: opts.name.trim() || `${CATEGORY[p.category].nameKo} ${productCountEver(s) + 1}${p.finish ? ` ${finishLabel(p.finish)}` : ''}${p.agedLabel ? ` ${p.agedLabel}` : ''}`,
     category: p.category,
