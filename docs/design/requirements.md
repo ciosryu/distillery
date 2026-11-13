@@ -172,6 +172,14 @@
 | REQ-ARCH-4 | 결정론·이식 계약 | ARCH | #118·#147 · P-ARCH-42 | architecture.md §9.4 | ② |
 | REQ-ARCH-5 | 후반 의사결정의 실재 | ARCH | #274 · P-ARCH-48·49 | late-game-gate.md §9 | ② |
 | REQ-ARCH-6 | 판매 결과 설명 | ARCH | P-ARCH-50 | architecture.md §12 | ② |
+| REQ-CORE-1 | 캠페인 승리 = 적격 로트의 최초 정상 유상 판매(출하) — 15년 확정안 180 / 12년 검토안 144 | ARCH(코어)·PM | #133·#141·#145·#263 변경 · P-PM-1 · CORE-73·79·84·105(근거 미확보 — 간접) | core-integration.md §2·§4 | ④ #308·#309 |
+| REQ-CORE-2 | 유상 출하 거래 기록(BottledLot·SaleEvent) | ARCH·MKT | #308 | core-integration.md §3·§4 | ④ |
+| REQ-CORE-3 | 배치 계보 보존(ComponentLedger) | ARCH·PROD | #166·#176·#243 변경 · CORE-19~21(근거 미확보 — 요약) · #308 | core-integration.md §3·§4 | ④ |
+| REQ-CORE-4 | 관측 경계(PlayerView) — 병입·판매 뒤도 참값 비공개 | ARCH | #167 변경 · P-ARCH-41 · CORE-18·82·101(요약) | core-integration.md §4 · architecture.md §11 | ④ #310 |
+| REQ-CORE-5 | 가치평가 3종·권리 원장 | MGT·ARCH | #146 변경 · CORE-77·80·101(요약) · #310 | core-integration.md §3·§4 | ④ |
+| REQ-CORE-6 | 난이도 6영역 × 3단계 · Easy/Normal/Hard/Custom | ARCH·MGT·MKT·PROD | **CORE-107·108(직접 문답)** · #313·#314 | core-integration.md §3·§4 | ④ |
+| REQ-CORE-7 | 새 캠페인 범위 잠금 — 수출·상세 HR 1.0, 그레인·기본 블렌드·실험 제품 MVP | PM·MKT·MGT | #130·#135·#215·#232 변경 · CORE-87·88·99·102(요약) · #311 | core-integration.md §6 | ④ |
+| REQ-CORE-8 | 저장 규칙 버전·호환(v16, `rulesVersion`) | ARCH | #118·#285·#295 KEEP · #308 | core-integration.md §3 | ④ |
 
 - 단계는 각 문서의 v1 상태("초안")를 §3 대응으로 옮긴 것이다 — PM-3이 Phase C에서 확인한다
 

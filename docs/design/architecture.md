@@ -715,6 +715,8 @@ interface GameState {
 
 ## 11. 정보 비대칭 검증 계약 (ARCH-C, 2026-11-11) `[제안 P-ARCH-41]`
 
+> ⚠ **2026-11-13 감사(PM):** 등급 **R "병입 뒤 공개"는 #167 확정**이고 이 절은 그 위에 선다. 감사 통합안 A04(병입·판매 뒤도 참값 비공개, PlayerView 분리)와 A12(3종 가치평가)는 **결정 #310(오너 2026-11-13)으로 단계적 채택** — 1단계는 §11.4 **안 A**(화면만, 지금), 2단계(F5)에서 PlayerView·3종 평가로 #167·#146을 고친다. 설계안은 [core-integration.md](core-integration.md) §3·§4 REQ-CORE-4·5. 이 절의 I1~I4·T1~T4는 어느 안에서도 그대로 쓴다
+
 > 근거: [requirements-audit.md](requirements-audit.md) §2.6 · `[결정 #136·#143·#162·#164·#167]` · 핵심 재미 ④ "불확실한 정보 속 판단". 요구사항 색인 REQ-ARCH-2. **#167은 확정 결정** — 아래 측정은 사실로 적고, 바꿀지는 오너 결정이다(PM 지시: 누수 확인 전 버그로 단정하지 않는다)
 
 ### 11.1 값의 등급
@@ -793,3 +795,7 @@ interface GameState {
 
 - **PM 분류에 대한 의견:** A만 G 전이라는 분류에 동의한다. 다만 **D는 화면만이고 데이터가 이미 있어** A와 같은 PR에 붙여도 비용이 거의 없다 — 게이트 L 외부 테스트(late-game-gate §4 — 7년 차 세이브 시작 그룹)에 "지금까지의 요약"이 필요하다는 점에서 G 전 쓸모가 있다. 결정은 오너(B4 묶음)
 - 엣지(B~D): ① B·C에서 참 품질이 새지 않게 — 이력에는 샘플 **읽기**만, 참값 없음(§11 I1) ② C 목록이 보충마다 자라 세이브가 커짐 → 상한 n ③ D 연표가 120개월 결산 보관 한도와 무관한지 — 마일스톤은 상태에 있어 잘리지 않는다
+
+## 13. CORE 통합 데이터 계약 (2026-11-13 감사, PM 초안) → core-integration.md
+
+> 등급: 초안(포인터). RuleSet/GameSetup · Batch/ComponentLedger · BottledLot/SaleEvent · CampaignProgress · Observation/PlayerView · Valuation/Rights · DifficultyConfig · Migration(v15 → v16)의 최소 스키마와 **기존 코드 매핑**은 [core-integration.md](core-integration.md) §3에 한 번만 적는다. 코어 파일(`types.ts`·`progress.ts`·`production.ts`·`blending.ts`·`migrate.ts`)을 바꾸는 일이라 ARCH가 구현 PR을 쓴다. **결정 #308~#315(2026-11-13)로 F1~F4가 동결됐다 — F1(RuleSet·v16, 출력 불변)부터 착수.** 이식 계약(§9.4)과의 관계: 새 변동 스트림은 `rngFor`와 대상별 키를 그대로 쓰고 버전을 단다(A07 KEEP).
