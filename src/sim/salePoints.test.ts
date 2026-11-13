@@ -2,7 +2,7 @@
 // 로트가 없는 제품은 무동작(연결 전·옛 세이브) — 출력 불변의 근거
 import { describe, expect, it } from 'vitest';
 import { fulfillRetail } from './deals';
-import { runHandfill } from './handfill';
+import { recordHandfillSale, runHandfill } from './handfill';
 import { checkInvariants } from './invariants';
 import { addLot, lotsOf } from './lots';
 import { runSales } from './market';
@@ -79,5 +79,19 @@ describe('F3 판매 지점 — 핸드필 (runHandfill, #318 cellar_door)', () =>
     expect(ev[0]!.unitPrice).toBeGreaterThan(0);
     expect(lotsOf(s)).toEqual([]);
     expect(checkInvariants(s).errors).toEqual([]);
+  });
+  it('가격이 0이면 로트를 만들지 않는다 — 가상 제품 로트가 남아 "제품 없음" 오류가 되지 않게 (ARCH #487 사후 검토)', () => {
+    const s = newGame({ seed: 3, region: 'KR' }); s.month = 150;
+    const base = s.b2b.brokerOffers[0]!.cask;
+    const cask = { ...base, id: 'H2', handfill: true, contents: { ...base.contents!, oakMonths: 150, sourced: false, volumeL: 200 } } as Cask & { contents: NonNullable<Cask['contents']> };
+    s.inventory.casks = [cask];
+    const rep = report(150, 100);
+    recordHandfillSale(s, rep, cask, 10, 0);
+    expect(rep.saleEvents).toBeUndefined();
+    expect(lotsOf(s)).toEqual([]);
+    expect(checkInvariants(s).errors).toEqual([]);
+    recordHandfillSale(s, rep, cask, 10, 250_000);
+    expect(rep.saleEvents).toHaveLength(1);
+    expect(lotsOf(s)).toEqual([]);
   });
 });
