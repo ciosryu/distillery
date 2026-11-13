@@ -12,9 +12,12 @@ import { whiskySkipCheck } from '../../sim/production';
 import { useGame } from '../../store/game';
 import { logisticsMultiplier, regionOf, REGIONS, siteOf } from '../../sim/content/regions';
 import { liters, num, pct, won } from '../format';
-import { Badge, Button, Card, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
+import { Badge, Button, Card, ConfirmButton, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
 
 const KIND_LABEL: Record<SpiritKind, string> = { soju: '증류식 소주·쇼추', gin: '진', malt: '몰트', grain: '그레인', baijiu: '백주(고량주)' };
+
+/** 두 번 눌러 확인할 설비 발주 금액 (#240 — "1억 이상 설비") */
+const BIG_PURCHASE = 100_000_000;
 
 export function Production() {
   return (
@@ -356,7 +359,9 @@ export function RecipeEditor() {
               }
             }}>{draft.id ? '레시피 저장' : '새 레시피로 추가'}</Button>
             {draft.id && <Button onClick={() => set({ id: undefined, name: `${draft.name} (변형)` })}>복제해서 새로</Button>}
-            {draft.id && <Button variant="danger" onClick={() => { dispatch({ type: 'deleteRecipe', recipeId: draft.id! }); setDraft(blankDraft(s, draft.kind)); }}>삭제</Button>}
+            {/* 레시피 삭제는 되돌릴 수 없다 (#240) — 이미 만든 원액은 그대로지만 레시피(레버 설정)는 사라진다 */}
+            {draft.id && <ConfirmButton variant="danger" armKey={`delrecipe-${draft.id}@${s.month}`} armedLabel="한 번 더 누르면 삭제" onConfirm={() => { dispatch({ type: 'deleteRecipe', recipeId: draft.id! }); setDraft(blankDraft(s, draft.kind)); }}
+              preview={() => <>레시피 「{draft.name}」를 지운다 — 이미 만든 원액은 그대로지만, 이 레시피의 생산 지시와 설정은 사라진다</>}>삭제</ConfirmButton>}
           </div>
           {draft.id && <p className="text-xs text-stone-500">저장하면 다음 달 배치부터 바뀐 레시피로 만든다. 이미 만든 원액은 그대로다.</p>}
         </div>
@@ -599,7 +604,11 @@ export function Equipment() {
                 </Td>
                 <Td right>{won(equipmentCost(s, d))}{equipmentCost(s, d) !== d.cost && <div className="text-xs text-stone-500">입지 반영 (기준 {won(d.cost)})</div>}</Td>
                 <Td right>{d.leadMonths}개월</Td>
-                <Td><Button small disabled={s.finance.cash < equipmentCost(s, d)} onClick={() => dispatch({ type: 'buyEquipment', catalogId: d.id })}>발주</Button></Td>
+                <Td>{equipmentCost(s, d) >= BIG_PURCHASE
+                  // 1억 이상 설비는 두 번 눌러 확인 (#240) — 발주하면 돈이 바로 나가고 취소할 수 없다
+                  ? <ConfirmButton small disabled={s.finance.cash < equipmentCost(s, d)} armKey={`buy-${d.id}@${s.month}`} armedLabel="한 번 더 누르면 발주" onConfirm={() => dispatch({ type: 'buyEquipment', catalogId: d.id })}
+                      preview={() => <>{d.nameKo}를 {won(equipmentCost(s, d))}에 발주한다 — 현금 {won(s.finance.cash)} → {won(s.finance.cash - equipmentCost(s, d))}, {d.leadMonths}개월 뒤 설치. 발주는 취소할 수 없다</>}>발주</ConfirmButton>
+                  : <Button small disabled={s.finance.cash < equipmentCost(s, d)} onClick={() => dispatch({ type: 'buyEquipment', catalogId: d.id })}>발주</Button>}</Td>
               </tr>
             ))}
           </Table>
