@@ -1,6 +1,7 @@
 import { HEX_AXES, HEX_LABEL, hexDistance, hexOf, matchScore, mixHex, perceivedHex, sampledSigma, type BlenderSkill, type BlendTarget } from './blendRadar';
 import { clamp } from './flavor';
-import { RARE_EXTRACT_BOOST } from './maturation';
+import { RARE_EXTRACT_BOOST, recordLoss } from './maturation';
+import { scaleLedger } from './ledger';
 import { rngFor, type Rng } from './rng';
 import type { AutoSampleGroup, AxisId, BlendCommission, Cask, GameState, Hex, HexAxis, MonthReport, ProductCategory, SampleRecord, SpiritKind, Staff, TrendShift } from './types';
 import { CATEGORY } from './content/categories';
@@ -190,7 +191,10 @@ export function takeSample(s: GameState, c: Cask, blender: BlenderView | null, q
   // 매달 떠도 참값으로 수렴하지 않는다(평균 내기로 오차를 지우는 누수 없음). 원액 손실·비용은 같다
   const n = (c.samples ?? 0) + (counted ? 1 : 0);
   c.samples = n;
-  c.contents = { ...c.contents!, volumeL: Math.max(0, c.contents!.volumeL - SAMPLING.lossL) };
+  // F2 원장 지점 11: 샘플 — 뜬 만큼 원가도 함께 나간다(유출)
+  const before = c.contents!;
+  const leftL = Math.max(0, before.volumeL - SAMPLING.lossL);
+  c.contents = { ...before, volumeL: leftL, ...(before.components?.length ? { components: scaleLedger(before.components, before.volumeL > 0 ? leftL / before.volumeL : 0, 'leak') } : {}) };
   // 이번 읽기를 남긴다 — 다음 샘플 전까지 화면의 추정치는 이 값이다 (S-10, #136)
   recordSample(s, c, qualityOf(c.contents));
   // 레어 캐스크는 샘플을 뜰 때 드러날 수 있다 (감정력)
@@ -277,6 +281,8 @@ export function autoSample(s: GameState, report: MonthReport, qualityOf: (lot: N
   const picks = autoSamplePicks(s, knownReads(s), Math.max(0, Math.floor(s.finance.cash / SAMPLING.cost)));
   if (!picks.length) return 0;
   const blender = blenderOf(s);
+  // F2 R5 — 자동 샘플 손실(유출)은 결산에 남긴다. 직접 뜬 샘플은 행동 단계라 쌓을 결산이 없다
+  for (const c of picks) { const l = c.contents!; const lpa = Math.min(SAMPLING.lossL, l.volumeL) * l.abv; recordLoss(report, 'sample', lpa, lpa * l.costPerLPA); }
   const found = picks.filter((c) => takeSample(s, c, blender, qualityOf, false)).map((c) => c.id);
   const cost = picks.length * SAMPLING.cost;
   s.finance.cash -= cost;

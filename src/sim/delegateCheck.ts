@@ -2,7 +2,7 @@ import { previewBlend, whiskyMinMonths, type BottleOptions } from './blending';
 import type { BlendTarget } from './blendRadar';
 import { delegatePlan } from './blendTable';
 import { regionOf } from './content/regions';
-import { campaignMinOakMonths } from './progress';
+import { campaignMinOakMonths } from './rules';
 import { protectedCaskIds, reserveCaskIds } from './tags';
 import type { Cask, GameState } from './types';
 
