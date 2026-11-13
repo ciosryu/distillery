@@ -3,13 +3,14 @@ import { awarenessOf, houseBrand } from './brands';
 import { SCENARIOS, type MidGoalDef } from './content/scenarios';
 import { isBulkKind, spotBidPerLPA } from './bulk';
 import { MILESTONES } from './content/milestones';
+import { DEFAULT_FLAGSHIP_MONTHS, campaignMinOakMonths, rulesVersionOf } from './rules';
 import type { GameEnding, GameState, GoalCheck, GoalVerdict, MilestoneId, MonthReport, Product } from './types';
 
 // 진행 — 마일스톤·목표 판정·게임이 끝난 이유 (파트 META, skeleton S-9, #145)
 // 틱 9단계(판정)에서 updateProgress가 한 번 부른다. 돈·재고를 바꾸지 않는다 — 기록과 판정만 한다
 
-/** 플래그십 최소 숙성 — 시나리오가 없으면(샌드박스) 12년 */
-export const DEFAULT_FLAGSHIP_MONTHS = 144;
+// 규칙 묶음 읽기(`DEFAULT_FLAGSHIP_MONTHS`·`campaignMinOakMonths`·`rulesVersionOf`)는 잎 모듈 `rules.ts`로 옮겼다(P-ARCH-56 — 순환 방지). 호환을 위해 다시 내보낸다
+export { DEFAULT_FLAGSHIP_MONTHS, campaignMinOakMonths, rulesVersionOf };
 
 /** 등급 기준 `[튜닝]` — 단계 T에서 정한다. 근거 없음 `[확인 불가]` */
 export const GRADE = {
@@ -22,14 +23,6 @@ export const GRADE = {
 };
 
 const oakMonthsOf = (p: Pick<Product, 'oakMonths' | 'ageYears'>) => p.oakMonths ?? (p.ageYears ?? 0) * 12;
-/**
- * 캠페인 승리 적격의 최소 목재 숙성 개월 (F1, [결정 #308·#309]) — 모든 읽는 쪽이 이 한 함수를 쓴다.
- * 새 판(v16) = `scenario.campaignGoal.minOakMonths`(144) · 옛 판(`legacy-v15`) = `goal.flagshipMinMonths`(같은 144) · 샌드박스 = 기본 144.
- * 값은 모두 같아 출력이 바뀌지 않는다 — 적격성 함수(자가 몰트·구성 원액 모두)·승리 사건은 F2~F4
- */
-export const campaignMinOakMonths = (s: Pick<GameState, 'scenario'>): number => s.scenario?.campaignGoal?.minOakMonths ?? s.scenario?.goal.flagshipMinMonths ?? DEFAULT_FLAGSHIP_MONTHS;
-/** 세이브가 따르는 규칙 묶음 — 없으면 옛 판 */
-export const rulesVersionOf = (s: Pick<GameState, 'rulesVersion'>) => s.rulesVersion ?? 'legacy-v15';
 const flagshipMonths = campaignMinOakMonths;
 const flagshipProducts = (s: GameState) => s.commerce.products.filter((p) => isWhiskyCategory(p.category) && oakMonthsOf(p) >= flagshipMonths(s));
 

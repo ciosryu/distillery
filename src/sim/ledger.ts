@@ -1,4 +1,4 @@
-import { campaignMinOakMonths, rulesVersionOf } from './progress';
+import { campaignMinOakMonths, rulesVersionOf } from './rules';
 import type { Cask, GameState, LedgerEntry, SpiritLot, SpiritOrigin } from './types';
 
 // 구성 원액 원장 (코어 ARCH — F2, [결정 #308·#309·#323], core-integration §2.3·§3, PROD P-PROD-55 R1~R6).
