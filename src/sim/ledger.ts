@@ -9,6 +9,8 @@ import type { Cask, GameState, LedgerEntry, SpiritLot, SpiritOrigin } from './ty
 const EPS = 1e-9;
 /** 순수 알코올 리터 */
 export const lpaOf = (lot: Pick<SpiritLot, 'volumeL' | 'abv'>): number => lot.volumeL * lot.abv;
+/** 외부 입지 — 매입 원액(브로커·스코틀랜드)의 `siteId`. 적격(같은 입지 자가 증류)과 절대 같지 않다 */
+export const EXTERNAL_SITE_ID = 'external';
 /** 입지 id — 없으면 지역 기본 입지 */
 export const siteIdOf = (s: Pick<GameState, 'siteId'>): string => s.siteId ?? 'default';
 
