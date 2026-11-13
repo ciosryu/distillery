@@ -1,6 +1,7 @@
 import { MIN_BOTTLING_ABV } from './blending';
 import { MIN_CASK_VOLUME_L } from './maturation';
 import { nonFinitePaths } from './repair';
+import { ledgerError } from './ledger';
 import type { Flavor, GameState } from './types';
 
 // 공통 불변식 계약 (코어 ARCH — INV-ARCH-1, #285 이어서). 범위는 PROD `prod-stage-t.md` AP3-PROD-1 3. 표.
@@ -38,6 +39,7 @@ export function checkInvariants(s: GameState, limit = 20): InvariantReport {
 
   for (const l of s.inventory.lots) {
     const at = `탱크 ${l.id}`;
+    { const e = ledgerError(l); if (e) r.errors.push(`${at} ${e}`); }
     if (!(l.abv > 0 && l.abv <= ABV_MAX)) r.errors.push(`${at} abv = ${l.abv} (0 < abv ≤ ${ABV_MAX})`);
     else if (l.abv < 0.15 || l.abv > 0.96) r.warnings.push(`${at} abv = ${l.abv.toFixed(3)} (정상 0.15~0.96)`);
     if (!(l.volumeL > 0)) r.errors.push(`${at} volumeL = ${l.volumeL} (> 0)`);
@@ -51,6 +53,7 @@ export function checkInvariants(s: GameState, limit = 20): InvariantReport {
     const l = c.contents;
     if (!l) continue;
     const at = `통 ${c.id}`;
+    { const e = ledgerError(l); if (e) r.errors.push(`${at} ${e}`); }
     if (!(l.abv > 0 && l.abv <= ABV_MAX)) r.errors.push(`${at} abv = ${l.abv} (0 < abv ≤ ${ABV_MAX})`);
     else if (l.abv < 0.3 || l.abv > 0.8) r.warnings.push(`${at} abv = ${l.abv.toFixed(3)} (정상 0.3~0.8)`);
     if (!(l.volumeL >= MIN_CASK_VOLUME_L - EPS && l.volumeL <= c.sizeL + EPS)) r.errors.push(`${at} volumeL = ${l.volumeL} (${MIN_CASK_VOLUME_L} ≤ v ≤ ${c.sizeL})`);
