@@ -1,7 +1,8 @@
 import { CASKS, EQUIPMENT, type WarehouseType } from './content/catalog';
 import { siteOf } from './content/regions';
 import { clamp } from './flavor';
-import { type Climate, emptyCask, matureVessel, MIN_CASK_VOLUME_L, restLot } from './maturation';
+import { type Climate, emptyCask, matureVessel, MIN_CASK_VOLUME_L, recordLoss, restLot, vesselMaterial } from './maturation';
+import { advanceWood, lpaOf, scaleLedger } from './ledger';
 import { rngFor } from './rng';
 import type { Cask, GameState, MonthReport } from './types';
 import { staffOf, ownsFacility } from './util';
@@ -200,6 +201,15 @@ export function runMaturation(s: GameState, report: MonthReport, ctx: TickContex
     if (cask.activityKnown === false && cask.contents.oakMonths + 1 >= 6) res.cask.activityKnown = true;
     lost += res.lostL;
     let next = res.cask;
+    // F2 원장 지점 7·8: 숙성 1개월 — 증발은 모든 구성 원액에 같은 비율로 줄고 원가는 남는다(보존). **나무 통만** 목재 개월 +1(R3 — 옹기·스테인리스는 그대로)
+    const before = cask.contents;
+    const oldLPA = lpaOf(before);
+    const newLPA = lpaOf(next.contents!);
+    if (before.components?.length) {
+      const aged = vesselMaterial(cask) === 'wood' ? advanceWood(before.components) : before.components;
+      next = { ...next, contents: { ...next.contents!, components: scaleLedger(aged, oldLPA > 0 ? newLPA / oldLPA : 0, 'preserve') } };
+    }
+    recordLoss(report, 'evaporation', oldLPA - newLPA); // F2 R5
     // 통 단위 난수 (#290 B1-8 S4) — 통 × 필 수. 누수 추첨이 통 배열 순서에 매이지 않는다
     const rng = rngFor(s.seed, s.month, `maturation:${cask.id}:${cask.fills}`);
     // 누수: 성실 스탯이 확률을, 관찰 스탯이 손실량을 줄임
@@ -207,7 +217,9 @@ export function runMaturation(s: GameState, report: MonthReport, ctx: TickContex
       const lossShare = rng.range(0.03, 0.08) * (1 - observe / 150);
       const c = next.contents!;
       lost += c.volumeL * lossShare;
-      next = { ...next, contents: { ...c, volumeL: c.volumeL * (1 - lossShare), costPerLPA: c.costPerLPA / (1 - lossShare) } };
+      // F2 원장 지점 9: 누수 — 같은 비율로 줄고 원가는 남는다(보존)
+      next = { ...next, contents: { ...c, volumeL: c.volumeL * (1 - lossShare), costPerLPA: c.costPerLPA / (1 - lossShare), ...(c.components?.length ? { components: scaleLedger(c.components, 1 - lossShare, 'preserve') } : {}) } };
+      recordLoss(report, 'leak', lpaOf(c) * lossShare);
       report.notes.push(`캐스크 ${cask.id} 누수 — ${(lossShare * 100).toFixed(1)}% 손실`);
     }
     // 1L 아래로 줄어든 통은 비운다(C-PROD-1) — 병입·핸드필의 "1L 미만이면 비움"과 같은 기준. 샘플(0.1L/회)·누수·증발이 작은 잔량을 0L까지 깎으면
@@ -215,6 +227,7 @@ export function runMaturation(s: GameState, report: MonthReport, ctx: TickContex
     if (next.contents && next.contents.volumeL < MIN_CASK_VOLUME_L) {
       report.notes.push(`캐스크 ${cask.id} 원액이 ${next.contents.volumeL.toFixed(2)}L로 줄어 비웠다(1L 미만)`);
       lost += next.contents.volumeL;
+      recordLoss(report, 'below_min', lpaOf(next.contents), next.contents.costPerLPA * lpaOf(next.contents)); // F2 원장 지점 10: 소멸(원장은 원액과 함께 사라진다)
       return emptyCask(next);
     }
     return next;

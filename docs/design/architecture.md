@@ -720,11 +720,13 @@ interface GameState {
 
 | 묶음 | PR | 코어 모양 | 출력 |
 |---|---|---|---|
-| **F1** RuleSet | ciosryu/distillery#475 | `CampaignGoal` · `Scenario.campaignGoal?`(새 판만) · `GameState.rulesVersion?`('legacy-v15' \| 'v16') · 세이브 v16 · 읽기 한 곳 `campaignMinOakMonths(s)`(progress.ts) | 불변 |
+| **F1** RuleSet | ciosryu/distillery#475 | `CampaignGoal` · `Scenario.campaignGoal?`(새 판만) · `GameState.rulesVersion?`('legacy-v15' \| 'v16') · 세이브 v16 · 읽기 한 곳 `campaignMinOakMonths(s)`(`rules.ts` — 잎 모듈, P-ARCH-56; 처음엔 progress.ts) | 불변 |
 | **F2** 원장 | 코어 계약(이 절) + PROD 27개 지점 연결(P-PROD-55 표) | 아래 | 불변(R1 그림자 원장) |
 | **F3** 병입 로트·판매 사건 | 코어 그릇·입구(이 절) + MKT `saleEvents.ts` + PROD·MKT 9개 지점 연결 | `BottledLot { id, productId, bottles, bottledMonth, components?, eligibleAtBottling? }` · `SaleEvent { month, productId, lotId, bottles, unitPrice, settlement, kind, channel?, eligibleAtSale }` · `CampaignWin`(F4가 쓴다) — 그릇 `commerce.lots?` · `MonthReport.saleEvents?` · `progress.win?` · 입구 `lots.ts` | 불변(기록만) |
 | F4 판정 | ARCH — **명세 초안 아래 P-ARCH-55** | `progress.win?` · `rulesVersion === 'legacy-v15'`면 옛 판정 보존 · `isFlagshipCandidate` → `isCampaignCandidate` · `reserveCaskIds`가 `flagship_sold` 대신 `win` · 승리는 멈춤 사유가 아니라 알림(#308 계속 운영) | **바뀜** — 새 기준선 |
 | F5 PlayerView·Rights·범위 잠금 | ARCH(+MGT) | 담보 `inventoryCollateral` 참 품질(MGT 발견) · 숨은 `contamination` 읽기(`autoFill.ts:21`·P8 봇) · #319 치환 목표 · #311 수출·HR 잠금 | 부분 바뀜 |
+
+**모듈 순환 끊기 `[제안 P-ARCH-56]`(2026-11-13):** `campaignMinOakMonths`·`rulesVersionOf`·`DEFAULT_FLAGSHIP_MONTHS`를 의존 없는 잎 모듈 **`rules.ts`**로 옮겼다(`progress.ts`는 다시 내보냄). `ledger.ts`가 `progress`를 부르지 않으므로 `ledger → progress → blending → blendTable → maturation` 순환이 사라진다 — PROD #498이 지점 7·8을 `warehouse.ts`로 우회한 원인(TDZ). 동작·출력 불변(순수 이동). 이제 `maturation.ts`·`broker.ts`(지점 25)가 `ledger.ts`를 직접 불러도 안전하다
 
 **F2 코어 계약 — `src/sim/ledger.ts`(순수 함수, 상태를 바꾸지 않는다)**
 - 타입(`types.ts`): `SpiritLot.components?: LedgerEntry[]` · `LedgerEntry { batchId, origin: 'self' \| 'sourced' \| 'unknown', siteId, kindAtBirth, contribLPA, costKRW, woodMonths, parents? }` · `MonthReport.lossEvents?`(R5 월 × 종류 합계) · `LossKind`

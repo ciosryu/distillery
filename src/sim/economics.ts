@@ -14,7 +14,7 @@ import { outboundLogistics } from './sites';
 import { calendar, warehouseCapacity } from './util';
 import { FLAGSHIP_RESERVE_TAG, preferredCaskIds, protectedCaskIds, reserveCaskIds, tagDef } from './tags';
 import { spotBidPerLPA } from './bulk';
-import { campaignMinOakMonths } from './progress';
+import { campaignMinOakMonths } from './rules';
 import { campaignWon } from './ledger';
 import type { Cask, GameState, MonthReport, Product, ProductCategory, Recipe, SpiritKind, SpiritLot } from './types';
 

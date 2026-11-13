@@ -1,6 +1,6 @@
 import { CASKS, NON_WOOD_VESSEL, SEASONING_EXTRACT, WOOD_EXTRACT } from './content/catalog';
 import { clamp, clampFlavor } from './flavor';
-import type { AxisId, Cask, CaskTypeId, Flavor, SpiritLot, VesselMaterial } from './types';
+import type { AxisId, Cask, CaskTypeId, Flavor, LossKind, MonthReport, SpiritLot, VesselMaterial } from './types';
 
 // 숙성 모델 (PRD §5.3, flavor-model §4.5). 수치 [튜닝].
 
@@ -103,10 +103,23 @@ export function matureCask(cask: Cask, climate: Climate, opts: MatureOptions): {
   return { cask: { ...cask, contents }, lostL: evap.lostL };
 }
 
+/**
+ * 손실 사건 기록 (F2 R5, [결정 #323]) — 통·구성 원액마다가 아니라 **그달 × 종류 합계**로 `report.lossEvents`에 쌓는다. 기록만(판 결과·난수 불변).
+ * `costKRW`는 손실과 함께 나간 원가 — 원가가 남는 손실(증발·누수·이동 보존)은 0. 결산이 있는 틱 안 지점만 부른다(행동 단계 손실은 쌓을 결산이 없다)
+ */
+export function recordLoss(report: Pick<MonthReport, 'lossEvents'>, kind: LossKind, lpa: number, costKRW = 0): void {
+  if (!(lpa > 0)) return;
+  const list = report.lossEvents ?? (report.lossEvents = []);
+  const e = list.find((x) => x.kind === kind);
+  if (e) { e.lpa += lpa; e.costKRW += costKRW; } else list.push({ kind, lpa, costKRW });
+}
+
 /** 용기 재질 — 콘텐츠에 없으면 나무 (S-10) */
 export const vesselMaterial = (cask: Pick<Cask, 'typeId'>): VesselMaterial => CASKS[cask.typeId]?.material ?? 'wood';
 
-/** 숙성 용기 1개월 (틱 3단계의 입구, S-10) — 나무는 matureCask, 그 밖의 재질은 matureNonWood */
+/** 숙성 용기 1개월 (틱 3단계의 입구, S-10) — 나무는 matureCask, 그 밖의 재질은 matureNonWood.
+ *  **원장(F2 `components`)은 여기서 갱신하지 않는다** — 이 파일이 ledger.ts를 불러오면 순환(ledger → progress → blending → blendTable → 여기)으로 모듈 초기화 순서가 깨진다.
+ *  게임 상태의 통을 숙성시키는 유일한 호출부 `warehouse.ts runMaturation`이 지점 7·8을 맡는다(브로커 매입 전 숙성·경제 미리보기는 원장이 없는 가상 통) */
 export function matureVessel(cask: Cask, climate: Climate, opts: MatureOptions): { cask: Cask; lostL: number } {
   const material = vesselMaterial(cask);
   return material === 'wood' ? matureCask(cask, climate, opts) : matureNonWood(cask, material, climate, opts);

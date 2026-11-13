@@ -22,6 +22,7 @@ import type { PresetRecipe } from './content/presets';
 import { isLocked } from './scenario';
 import type { ProductCategory, SpiritKind } from './types';
 import { PROD_TUNING } from './prodTuning';
+import { ledgerOf, mergeLedgers, newEntry, siteIdOf } from './ledger';
 
 type StillDef = Extract<EquipmentDef, { kind: 'still' }>;
 
@@ -495,10 +496,18 @@ export function runProduction(s: GameState, report: MonthReport, ctx: TickContex
       costPerLPA: cost / lpa,
       ...(hasLocalIngredient(site, recipe) ? { localIngredient: true } : {}),
     };
+    // F2 원장 지점 1: 생산 — 이 입지에서 자가 증류한 구성 원액 한 줄(목재 0개월). 여기서 원장이 처음 생기고, 뒤의 모든 지점이 이어서 갱신한다
+    fresh.components = [newEntry(fresh, 'self', siteIdOf(s))];
     // 같은 레시피 몰트·그레인 뉴메이크는 탱크(스피릿 리시버)에서 합친다 (#166) — 달마다 배치가 따로 쌓여 통입 화면에 원액이 수십 개가 되던 것
     const ti = s.inventory.lots.findIndex((l) => sameTank(l, fresh));
     if (ti < 0) s.inventory.lots.push(fresh);
-    else s.inventory.lots[ti] = mergeIntoTank(s.inventory.lots[ti]!, fresh, recipe.name, monthLabel(s.startYear, s.inventory.lots[ti]!.createdMonth));
+    else {
+      const tank = s.inventory.lots[ti]!;
+      const merged = mergeIntoTank(tank, fresh, recipe.name, monthLabel(s.startYear, tank.createdMonth));
+      // F2 원장 지점 2: 탱크 합치기 = 명시적 혼합(#166 → #308) — 두 원장을 이어 붙이고 키가 같으면 하나로(R6). 한쪽에만 원장이 있으면 없는 쪽은 합성(`ledgerOf`)
+      if (tank.components?.length || fresh.components?.length) merged.components = mergeLedgers(ledgerOf(s, tank), ledgerOf(s, fresh));
+      s.inventory.lots[ti] = merged;
+    }
     if (recipe.kind === 'soju') s.production.flags.producedSoju = true;
     report.production.push({ recipeId: recipe.id, name: recipe.name, batches: parts.length, lpa, cost });
     report.expenses.production = (report.expenses.production ?? 0) + cost;
