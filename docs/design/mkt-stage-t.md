@@ -1127,6 +1127,62 @@ P8(#271)은 위 ①의 대부분을 이미 담았다: 계열당 3제품 · 자�
 3. 측정: P8에 "그레인 + 블렌드" 변형(몰트 30·50·70%)을 두고 단일 그레인·단일 몰트와 LPA당 공헌을 비교한다. 블렌드가 모든 비율에서 지면 식을 고치고, 한 비율에서라도 이기면 그대로 둔다(REQ-MKT-6 "지배·공짜 옵션 없음").
 - **리스크:** 몰트 비율 항을 넣으면 "싼 그레인에 몰트를 조금 섞어 값을 올리는" 꼼수가 생길 수 있다 → 비율 하한 또는 체감 곡선이 필요하다. 반대로 식을 두면 #311의 기본 블렌드는 쓸 이유가 없는 선택지(죽은 레버, PROD G05)가 된다.
 
+### 7. F5 입력 — 결정 #319 치환 목표 명세 · #321 수출 주문 이벤트 잠금 목록 (PM 요청 2026-11-13, ARCH F5 구현용 · 문서만)
+PM 배정(STATUS 2026-11-13): #319 구현(`scenarios.ts`·`progress.ts midGoalMet`, 코어)은 **ARCH F5**, MKT는 명세·검토. 아래는 main `1f930db`(F2 27개 지점 완료) 기준으로 코드를 다시 읽고 쓴 명세다. 수치는 모두 `[튜닝]`(단계 T). 새 결정은 없다 — #311·#319·#321의 구현 선택지만 적고, 고를 것은 `[확인]`으로 표시했다.
+
+**7.0 전제 — 옛 판 보존(#311 "코드·옛 판 보존")은 콘텐츠를 바꾸는 것만으로는 안 된다 `[사실]`:**
+- `pendingStages`(`scenario.ts:17`)와 `midGoalsOf`(`progress.ts:130`)는 상태가 아니라 **콘텐츠 `SCENARIOS[id]`를 매달 읽는다**("진행 중인 판에도 적용", #215). 그래서 `MVP_KR.stages`·`midGoals`를 그냥 바꾸면 `legacy-v15` 세이브와 `RULES=legacy` X0L(ARCH #494 `newScenarioGame({ rules: 'legacy-v15' })`)의 84개월 단계가 수출 대신 대형 유통으로 열린다 → **X0L 바이트 동일이 깨진다.**
+- 반면 `locked`는 새 판을 만들 때 상태로 **복사**된다(`newScenario.ts:55~56`) → 옛 세이브의 잠금 목록은 콘텐츠를 바꿔도 그대로다.
+- 따라서 F5는 단계·중반 목표를 **규칙 묶음별로** 둬야 한다 `[제안 — 구현 선택, ARCH]`: 예) `ScenarioDef.stages`·`midGoals`는 옛 값 그대로 두고 `stagesV16`·`midGoalsV16`를 더한 뒤 `stagesOf(s)`·`midGoalsOf(s)`가 `rulesVersionOf(s)`로 고른다(`rules.ts` 잎 모듈이라 순환 없음). `locked`도 새 판(v16)에만 더하는 키를 분리한다(`lockedV16`, 7.2). 옛 판 경로는 한 줄도 바뀌지 않는다.
+- 읽는 쪽 점검 목록(바꿀 것 없음, 함수만 갈아끼움): `scenario.ts pendingStages` · `progress.ts midGoalsOf` · `ui/alerts.ts:230`(단계 안내 탭 — `system:siteDeals`면 `'b2b'` 탭으로 보내는 분기 추가 `[확인]`) · `ui/AlertsView.tsx:217~233`(단계·중반 목표 표) · `scripts/experiments/playlog-report.ts:130`(`system:hr` 단계만 찾음, 영향 없음).
+
+**7.1 단계 `y7_retail` (84개월) — `y7_export` 자리 (#319)**
+| 항목 | 값 | 근거·메모 |
+|---|---|---|
+| `id` · `month` | `y7_retail` · 84 | 옛 `y7_export`와 같은 달 — 6년 차(60) 다음 결정이 84에 오는 리듬 유지 |
+| `unlock` | `['system:siteDeals', 'action:acceptRetail', 'action:cancelRetail']` | §1-c 측정 사본과 같다. `system:siteDeals`는 OEM 제안도 돌리지만(`deals.ts refreshDeals`) 경기 입지는 `deals: ['retail']`뿐이라(`regions.ts:214`) OEM은 뜨지 않는다. `action:acceptOem`은 잠긴 채 둔다 |
+| `title` | `8년 차 — 대형 유통이 납품을 제안한다` | |
+| `text` `[제안]` | `원액 B2B 탭에서 대형 유통의 납품 제안을 받을 수 있다(월 15%, 최대 2건). 출고가의 80%에 매달 정해진 병 수를 보내고 대금은 2개월 뒤에 받는다. 매대 노출로 인지도는 빨리 오르지만 계약 중에는 숙성 위스키의 프리미엄 매력이 깎이고, 못 채우면 병당 위약금을 문다 — 보상이 아니라 맞바꿈이다` | §2 리스크 2: "맞바꿈"을 안내 문구에 쓴다. 제안이 보이는 화면은 `ui/panels/B2B.tsx`(`retailOffers`) `[확인 — 플레이어가 "원액 B2B 탭"에서 찾을지]` |
+| 수치 | `RETAIL_DEAL`(`deals.ts:16`) 그대로: 출고가 ×0.8 · 12개월 · 대금 2개월 뒤 · 미납 위약금 15% · 제안 15%/월 · 최대 2건 · 매력도 ×0.9 · 인지도 상승 ×1.2 · 물량 300/600/1000병 | 모두 `[튜닝]`. "늘 받기" 지배 여부는 F7(#319 경고) |
+| 입지 의존 | **경기 입지에서만 뜻이 있다.** `MVP_KR.site`가 비어 있어 지역 기본 입지(경기)로 시작한다(`newScenario.ts:54`) — 안동 등 `deals` 없는 입지로 시작하는 길이 생기면 84개월 단계가 아무것도 열지 않는다 | #319 반론 그대로. 지금은 막힘 아님 `[확인 — ARCH: 시나리오가 입지를 고정하는지]` |
+| 판매 사건 | 이미 연결됨(F3 지점 4): `fulfillRetail` → `sellFromLots(kind domestic · channel retail_deal · receivable · p.price × 0.8)` → **승리 대상** | 12년 적격 로트가 납품으로 먼저 나가도 #308 "정상 유상 출하"다. 납품은 소매보다 먼저 재고를 가져가므로(`fulfillRetail` 주석) 승리 로트의 첫 출하 채널이 `retail_deal`일 수 있다 — 결과 연출(ARCH)에 채널 문구 `[확인]` |
+| 봇(MGT) | P8 새 X0(#320)에 `retailFrom: 84` 규칙(§1-c 사본: 위스키 제안은 받고 병입 목표에 납품량을 더함, 소주는 재고 6개월치↑일 때만)을 옮긴다 | `exportFrom: 84`는 제안이 안 오므로 저절로 무효 — 남겨도 되지만 지우는 쪽이 읽기 쉽다 `[MGT 판단]` |
+
+**7.2 새 캠페인(v16) 잠금 목록 — 수출과 그 파급 (#311·#321)**
+"잠근다"는 `scenario.locked` 키를 뜻한다. 시작 잠금(`MVP_KR.locked`)에 이미 있는 것은 **단계에서 풀지 않으면 된다**(코드 삭제 없음).
+| # | 대상 | 지금(옛 판) | 새 캠페인 | 방법 |
+|---|---|---|---|---|
+| 1 | `system:exports`(틱 5단계 수출 판매 · `refreshExportOffers`) | 시작 잠금 → `y7_export`가 84개월에 품 | 계속 잠금 | `y7_retail`이 `system:exports`를 풀지 않는다(7.1). 끝 |
+| 2 | `action:acceptExportOffer` · `action:setExportPrice` · `action:closeExport` | 같음 | 계속 잠금 | 같음 |
+| 3 | 중반 목표 `export_open`(132개월, 인지도 +3%) | 있음 | **`reserve_casks`로 치환**(7.3) | `midGoalsV16` |
+| 4 | **랜덤 이벤트 `export_inquiry`「해외 바이어 문의」**(`content/events.ts:165`, 효과 `exportOrder` 300병 ×1.2, `requires: whiskyStock`) | `system:events`(60개월)만 열리면 뜬다 — 수출 잠금과 무관 `[사실]` | **잠금(#321 대안 ⓐ)** | **코드 한 줄 + 키 하나:** `events.ts eligibleAt`에 `if (isLocked(s, \`event:${def.id}\`)) return false;`(`scenario.ts isLocked` — 같은 파일이 이미 `systemOn`을 import) · `lockedV16`에 `'event:export_inquiry'`. 아래 7.2-a |
+| 5 | 수출 조건 이벤트 `us_tariff_hike` · `us_tariff_relief` · `cn_tariff_retaliation`(`requires: exportUS/exportCN`) | 수출 계약이 있어야 뜸 | 저절로 안 뜸(계약이 없다) | 바꿀 것 없음 |
+| 6 | 병입 목표의 수출 수요(`exportDemand`) · 「수출 안 함」(#266 `noExport`) · `ExportShortfallNote`(#257) · 계약 물량 경고(#284 `exportDeals.ts:126`) | 계약·수출 결과가 있을 때만 값이 생김 | 저절로 0·빈 목록 | 바꿀 것 없음(§2 ②④) |
+| 7 | 수출 탭(`ui/panels/Exports.tsx`) · `Production.tsx:94 exportsLater`("수출은 나중에" 안내) | `isLocked(s,'system:exports')`로 숨김·안내 | 계속 숨김. `exportsLater` 안내가 "8년 차에 열린다"는 뜻이면 **새 캠페인에서 거짓이 된다** | `[확인 — ARCH/UI: 문구가 시점을 말하는지]` |
+| 8 | `content/exports.ts` 시장 · `exportDeals.ts` · `market.ts` 수출 식 · `sales.ts` 수출 사건 | 코드 | **그대로**(1.0 #311) | 지우지 않는다 |
+| 9 | `MidGoalDef.id` 유니온(`scenarios.ts:70`) · `midGoalMet` `switch` | `export_open` 있음 | `reserve_casks` 추가, `export_open` 케이스는 옛 판용으로 남김 | 코어 타입 |
+
+- **7.2-a `export_inquiry` 잠금의 출력 영향 `[사실·추론]`:**
+  - 옛 세이브: `scenario.locked`에 새 키가 없다 → `eligibleAt`의 새 줄은 항상 false → **불변**. 샌드박스: `scenario` 없음 → `isLocked` false → **불변**. X0L(`rules: 'legacy-v15'` 새 판): `lockedV16`를 안 받으면 불변 — 그래서 v16 전용 키 목록을 분리해야 한다(7.0).
+  - 새 판(v16): 발생 판정 난수는 이벤트별 독립 스트림(`event-roll:<id>`, S-5)이라 **다른 이벤트의 발생·순위는 그대로**다. 다만 월 상한 2건(`MAX_NEW_EVENTS_PER_MONTH`) 안에서 `export_inquiry`가 차지하던 자리를 다음 순위 이벤트가 받을 수 있다 — 새 캠페인의 정당한 차이, 옛 판에는 없다.
+  - 왜 `requires`에 수출 조건을 더하는 쪽(일반 규칙)이 아닌가: 옛 MVP에서도 84개월 전 발생이 사라져 출력이 바뀐다 → #321대로 F7 단독 PR.
+  - `followUp`·조기 경보(`forecast`)는 이 이벤트에 없다 → 잠금으로 끊기는 연쇄 없음.
+
+**7.3 중반 목표 `reserve_casks` (132개월) — `export_open` 자리 (#319)**
+| 항목 | 값 | 근거·메모 |
+|---|---|---|
+| `id` · `byMonth` · `rewardAwareness` | `reserve_casks` · 132 · 0.03 | 옛 `export_open`과 같은 달·같은 보상(#319 "다른 목표와 같게") |
+| `title` `[제안]` | `12년 후보 통 3개 확보 — 자가 몰트, 목재 숙성 9년 넘게` | 플레이어에게 "무엇을 지켜야 하는지"가 보이게 조건을 제목에 넣는다 |
+| 판정 `midGoalMet('reserve_casks')` | `s.inventory.casks.filter((c) => isCampaignCandidate(s, c, <안내 지평>)).length >= 3` | `ledger.ts:155 isCampaignCandidate` = 적격 조건(자가 증류·몰트·같은 입지·고객 소유 아님) + `woodMonths + 지평 ≥ 144`. 지평 36이면 **목재 108개월↑**(#319 "108개월↑"과 같은 선, #325 보정안 ②: 안내·`reserve_casks` = 36) |
+| 지평 상수 | 결정 대기 92의 **"안내·`reserve_casks`·P8 핸드필 제외 = 36"** 쪽 상수를 쓴다(예비 보호 A=144 상수가 아님) | 92 채택 전이면 F5가 92 뒤에 오므로 상수 이름만 ARCH 것에 맞춘다 `[확인 — ARCH: 두 상수의 이름·위치]` |
+| `n = 3` 근거 | main 구규칙 P8 X0에서 목재 108개월↑ 통은 108·144개월에 평균 2.0·1.9통(§2) · MGT 10시드(STATUS 92, 지평 A): 12년↑ 통 1.9 | 봇이 저절로 닿지 않는 값 → 의식해서 지켜야 닿는다. 40시드로 다시 본다 `[튜닝]` |
+| 판정 시점 | 월말 9단계 `updateMidGoals` — 132개월 말까지 어느 달이든 한 번 3통 이상이면 `done`(보상 1회), 한 번도 아니면 132에 `missed`(벌 없음) | 기존 `updateMidGoals` 그대로. 통이 나중에 팔려도 `done`은 남는다(다른 목표와 같음) |
+| 오염 통 | **조건을 더하지 않는다** `[제안]` — `isCampaignCandidate`에 오염 조건이 없고(예비 태그·후보 안내·P8이 같은 함수, #320) 숨은 오염은 플레이어가 모른다(#310 참여자 시점) | 반론: 오염된 통 3개로 "확보"가 되면 허수 — 그러나 숙성고 QC로 드러나면 후보 감소 알림(#261)이 잡는다. 한 함수 원칙이 우선 |
+| 화면 | 중반 목표 표(`AlertsView.tsx:233`)에 현재 수 "n/3" 표시가 있으면 좋다 `[확인 — 옛 목표에는 진행 수치가 없다, QoL]` | |
+| 테스트(ARCH) | `scenario.test.ts:163~182`의 `y7_export`·`export_open` 기대값은 **옛 판 경로**로 남고, v16 경로 테스트를 더한다: ① 84개월에 `stagesDone`이 `y7_retail`·`system:siteDeals` 풀림·`system:exports` 잠김 ② 108개월↑ 자가 몰트 통 3개 → `reserve_casks done`, 2개 → 132에 `missed` ③ `export_inquiry`가 v16에서 `eligible` false·`legacy-v15`에서 true ④ `rules: 'legacy-v15'` 새 판은 옛 단계 그대로 | F2 `salePoints.v16.test.ts`의 `caskSelf` 틀(R2 맞는 원장)을 그대로 쓰면 된다 |
+
+**7.4 F5 뒤 측정(MKT, 참고 아님 — 새 규칙 본 측정):** F4 전후 표가 끝난 헤드에서 P8 새 X0(#320) 10시드 × 180·240: ① `y7_retail` 수락 정책 켬/끔 짝 비교(순자산·승리 달·`retail_deal` 첫 출하 비율) ② `reserve_casks` 달성률과 승리 10/10의 관계 ③ "늘 받기" 지배 여부(F7 손잡이: 제안 확률·×0.8·×0.9 실효·수수료 없음). 지금은 돌리지 않는다(단계 P, #312).
+
 ## 단계 T 첫 MKT 일 (정해지면)
 1. ~~측정 스크립트를 저장소에 넣는다~~ — 2026-11-11 넣음(위 「측정 도구」)
 2. ~~세컨드 브랜드·수출 수락 정책~~ — `balance-sim`이 아니라 `mkt-lib.ts` 봇에 넣음(MVP가 판정 대상이라)
