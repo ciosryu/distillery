@@ -8,6 +8,9 @@ import { INSURANCE_PRODUCTS } from './content/catalog';
 import { claimFor, creditClaim, factoringProceeds, insuredInventoryValue, insuredPropertyValue, newLedger } from './insurance';
 import { isLocked } from './scenario';
 import { availableLoans, currentLoanPayment, loanRoomTotal, loanTerms } from './loans';
+import { caskEligibility, isCampaignCandidate, newEntry, siteIdOf, splitLedger } from './ledger';
+import { checkInvariants } from './invariants';
+import { deliverOwnedCasks } from './investment';
 
 // 재무·인사·이벤트 테스트 (파트 MGT, 결정 #144 — sim.test.ts·sites.test.ts에서 옮겨 왔다. 테스트 이름·본문 불변)
 
@@ -503,5 +506,66 @@ describe('은행 심사 손잡이 (T-0)', () => {
       expect(bankScreening(s, emergency).ok).toBe(true);
       expect(bankScreening({ ...s, month: 10 }, facility).ok).toBe(true);
     } finally { BANK_SCREENING.enabled = false; }
+  });
+});
+
+// F2 원장 지점 24 — 캐스크 오너십 판매·인도 ([결정 #323], PROD P-PROD-55 표 24행 · Q3). **원장 갱신 코드는 없다(테스트로만 보장)**:
+// 판매는 권리만 옮기고(`cask.owner` — 적격 제외는 caskEligibility가 맡는다), 인도는 통째로 나가 원장도 함께 사라진다.
+// 인도는 손실(LossKind)이 아니다 — 권리 소멸은 F5 `Rights`에서 기록한다(PM·MGT 합의 2026-11-13)
+describe('원장 지점 24 — 캐스크 오너십', () => {
+  const setup = (withLedger: boolean) => {
+    const s = newGame({ seed: 1, startingCash: 5_000_000_000 });
+    s.research.unlocked.push('BIZ-1b');
+    const src = s.b2b.brokerOffers[0]!.cask;
+    const contents: SpiritLot = { ...src.contents!, sourced: false };
+    if (withLedger) {
+      // 구성 원액 둘(같은 목재 개월) — R2 합이 맞는 원장
+      const [a, b] = splitLedger([newEntry(contents, 'self', siteIdOf(s))], 0.4);
+      contents.components = [...a, { ...b[0]!, batchId: `${contents.id}-b` }];
+    }
+    const cask = { ...src, contents };
+    s.inventory.casks.push(cask);
+    return { s, id: cask.id };
+  };
+  const ledgerErrors = (s: GameState) => checkInvariants(s).errors.filter((e) => e.includes('원장'));
+
+  it('판매: 원장은 그대로, 적격은 고객 소유로 빠진다, R2 통과', () => {
+    let { s, id } = setup(true);
+    const before = structuredClone(s.inventory.casks.find((c) => c.id === id)!.contents!.components);
+    expect(ledgerErrors(s)).toEqual([]);
+    s = applyAction(s, { type: 'sellCaskOwnership', caskId: id }).state;
+    const cask = s.inventory.casks.find((c) => c.id === id)!;
+    expect(cask.owner).toBeDefined();
+    expect(cask.contents!.components).toEqual(before);
+    const e = caskEligibility(s, cask);
+    expect(e.eligible).toBe(false);
+    expect(e.reasons.some((r) => r.includes('고객 소유'))).toBe(true);
+    expect(isCampaignCandidate(s, cask, 10_000)).toBe(false);
+    expect(ledgerErrors(s)).toEqual([]);
+  });
+
+  it('판매~인도 사이: 고객 통도 우리 숙성고에서 나무 숙성이 매달 +1 계속된다(원장 woodMonths는 R1·전제 2로 oakMonths를 따른다)', () => {
+    let { s, id } = setup(false);
+    s = applyAction(s, { type: 'sellCaskOwnership', caskId: id }).state;
+    const cask0 = s.inventory.casks.find((c) => c.id === id)!;
+    const oak0 = cask0.contents!.oakMonths, wait = cask0.owner!.deliverMonth - s.month;
+    expect(wait).toBeGreaterThan(2);
+    s = advanceMonths(s, 2);
+    const cask = s.inventory.casks.find((c) => c.id === id)!;
+    expect(cask.contents!.oakMonths).toBe(oak0 + 2);
+    expect(caskEligibility(s, cask).woodMonths).toBe(oak0 + 2);
+    expect(caskEligibility(s, cask).eligible).toBe(false);
+  });
+
+  it('인도: 통이 통째로 나가 원장도 함께 사라진다 — 손실 사건 없음, 남은 원액 R2 통과', () => {
+    let { s, id } = setup(true);
+    s = applyAction(s, { type: 'sellCaskOwnership', caskId: id }).state;
+    s.inventory.casks.find((c) => c.id === id)!.owner!.deliverMonth = s.month; // 이번 달 결산에서 인도
+    const report = { notes: [] as string[] } as unknown as MonthReport;
+    deliverOwnedCasks(s, report);
+    expect(s.inventory.casks.some((c) => c.id === id)).toBe(false);
+    expect(report.notes.some((n) => n.includes('인도'))).toBe(true);
+    expect(report.lossEvents).toBeUndefined(); // 인도는 손실 사건(R5)이 아니다
+    expect(ledgerErrors(s)).toEqual([]);
   });
 });
