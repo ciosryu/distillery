@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { emptyCaskOf, newGame, type GameState, type LedgerEntry, type SpiritLot } from './index';
+import { advanceMonth, applyAction, emptyCaskOf, newGame, type GameState, type LedgerEntry, type SpiritLot } from './index';
+import { checkInvariants } from './invariants';
 import { newScenarioGame } from './newScenario';
 import { addCost, advanceWood, caskEligibility, coalesce, isCampaignCandidate, ledgerEligibility, ledgerError, ledgerOf, mergeLedgers, newEntry, scaleLedger, splitLedger } from './ledger';
 
@@ -115,5 +116,20 @@ describe('eligibility: A−1 탈락 / A 통과 · 출처·몰트·입지·소유
     expect(isCampaignCandidate(s, withCask(s, { oakMonths: 144 }), 0)).toBe(true);
     expect(isCampaignCandidate(s, withCask(s, { oakMonths: 100, kind: 'grain' }), 999)).toBe(false);
     expect(isCampaignCandidate(s, withCask(s, { oakMonths: 100 }, true), 999)).toBe(false);
+  });
+});
+
+describe('ledger: 연결 순서 — 생성 지점(1·25)과 7(matureCask)이 함께 있어야 다음 달 R2가 산다 (PM·MKT 2026-11-13)', () => {
+  it('브로커 매입 + 1개월 진행 뒤 checkInvariants 오류 0 — 매입 통의 원장(있으면)이 증발 뒤에도 Σ contribLPA = LPA', () => {
+    let s = newGame({ seed: 7 });
+    expect(s.b2b.brokerOffers.length).toBeGreaterThan(0);
+    s = applyAction(s, { type: 'buyBrokerCask', offerId: s.b2b.brokerOffers[0]!.id }).state;
+    const bought = s.inventory.casks.at(-1)!;
+    expect(bought.contents?.sourced).toBe(true);
+    s = advanceMonth(s); // VITEST에서는 매달 불변식이 throw — 여기까지 오면 R2 통과
+    const after = s.inventory.casks.find((c) => c.id === bought.id)!;
+    expect(checkInvariants(s).errors).toEqual([]);
+    expect(ledgerError(after.contents!)).toBeNull();
+    for (const e of after.contents!.components ?? []) expect(e.origin).toBe('sourced'); // 원장이 연결되면 출처는 매입이어야 한다(창작 금지)
   });
 });
