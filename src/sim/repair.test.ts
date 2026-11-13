@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonth, applyAction, emptyCaskOf, migrateSave, warehouseCapacity, type Action, type GameState } from './index';
 import { newScenarioGame } from './newScenario';
+import { checkInvariants } from './invariants';
 import { nonFinitePaths, repairSave } from './repair';
 
 // 세이브 수리 (#285, C-ARCH-2) — 코어 ARCH
@@ -129,6 +130,24 @@ describe('수리 두 줄 ([결정 #295]) — 이득이 생기지 않는 쪽으�
     expect(p.unitCost).toBe(0);
     expect(r.state.finance.pendingCash).toEqual({ loan: 5_000_000 });
     expect(nonFinitePaths(advanceMonth(r.state))).toEqual([]);
+  });
+
+  it('병입 로트(F3) — 병이 유한하지 않거나 0 이하 · 제품이 없거나 재고를 비운 제품의 로트는 지운다 · 멀쩡한 로트는 그대로', () => {
+    const s = start();
+    s.commerce.products.push({ ...P, id: 'PA', stockBottles: 10 } as never, { ...P, id: 'PX', stockBottles: 500, unitCost: NaN } as never);
+    s.commerce.lots = [
+      { id: 'PA:0:0', productId: 'PA', bottles: 10, bottledMonth: 0 },
+      { id: 'PA:0:1', productId: 'PA', bottles: NaN, bottledMonth: 0 },
+      { id: 'PX:0:0', productId: 'PX', bottles: 500, bottledMonth: 0 },
+      { id: 'ZZ:0:0', productId: 'ZZ', bottles: 3, bottledMonth: 0 },
+    ];
+    const r = repairSave(JSON.parse(JSON.stringify(s)));
+    expect(r.state.commerce.lots).toEqual([{ id: 'PA:0:0', productId: 'PA', bottles: 10, bottledMonth: 0 }]);
+    expect(r.fixes.join()).toMatch(/병입 로트 3개/);
+    expect(checkInvariants(r.state).errors).toEqual([]);
+    const clean = repairSave(r.state);
+    expect(clean.fixes).toEqual([]);
+    expect(clean.state).toBe(r.state);
   });
 
   it('깨끗한 세이브는 fixes가 비고 같은 객체', async () => {

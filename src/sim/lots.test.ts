@@ -2,7 +2,9 @@
 import { describe, expect, it } from 'vitest';
 import { checkInvariants } from './invariants';
 import { addLot, dropLots, lotBottles, lotsOf, productLots, sellFromLots } from './lots';
+import { archiveSoldOutProducts } from './lifecycle';
 import { migrateSave } from './migrate';
+import { newGame } from './newGame';
 import { newScenarioGame } from './newScenario';
 import { firstEligibleSale } from './saleEvents';
 import type { GameState, MonthReport, Product } from './types';
@@ -72,6 +74,15 @@ describe('병입 로트 그릇 (commerce.lots)', () => {
     const r2 = report(152);
     sellFromLots(s, r2, 'A', 30, SALE);
     expect(firstEligibleSale(r2.saleEvents ?? [])).toMatchObject({ month: 152, lotId: 'A:150:0', bottles: 10, eligibleAtSale: true });
+  });
+
+  it('수명 정리(lifecycle) — 샌드박스에서 품절 제품이 아카이브로 가면 그 로트도 사라진다', () => {
+    const s = newGame({ seed: 3 });
+    s.month = 12;
+    s.commerce.products.push({ ...product('OLD', 0), createdMonth: 0, lastMonthSold: 0 });
+    s.commerce.lots = [{ id: 'OLD:0:0', productId: 'OLD', bottles: 1, bottledMonth: 0 }, { id: 'K:0:0', productId: 'K', bottles: 2, bottledMonth: 0 }];
+    expect(archiveSoldOutProducts(s)).toBe(1);
+    expect(lotsOf(s).map((l) => l.id)).toEqual(['K:0:0']);
   });
 
   it('불변식 — 로트 병은 정수 > 0 · id 하나뿐 · 제품이 있어야 한다(오류) · 제품 재고와 다르면 경고(연결 중)', () => {

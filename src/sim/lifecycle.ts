@@ -1,3 +1,4 @@
+import { dropLots } from './lots';
 import type { GameState, Product, ProductArchiveEntry, YearSummary } from './types';
 
 // 데이터 수명 관리 (docs/design/architecture.md §3.7) — 30년 플레이에서 세이브가 끝없이 커지지 않게.
@@ -25,6 +26,7 @@ export function archiveSoldOutProducts(s: GameState): number {
     const done = p.stockBottles <= 0 && p.lastMonthSold === 0 && s.month - p.createdMonth >= ARCHIVE_AFTER_MONTHS && (!p.dfEdition || p.dfEdition.done) && (!s.scenario || !!p.dfEdition);
     if (!done) { keep.push(p); continue; }
     s.commerce.productArchive.push(toArchiveEntry(p));
+    dropLots(s, p.id); // F3 — 없는 제품의 병입 로트는 불변식 오류(품절 제품이라 보통 비어 있다)
     moved++;
   }
   if (moved) s.commerce.products = keep;

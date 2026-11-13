@@ -15,6 +15,7 @@
 > | §10.7 순서 계약 | P-ARCH-47 | 묶음 B3·B4 | 구현: 계약 2·3(대상 단위 난수, S1~S7) · 계약 5(형제 결정 — S6 GS, #300). 남음: 계약 1·4·6(명령·이벤트 순서 표기) |
 > | §10.8 B1 지원 | (P-MKT-28 그릇 의견) | §10.9로 대체 | — |
 > | §10.9 AP3-ARCH-1 | P-ARCH-53·54 | **#298 → #300(GS)** · 엔진 #291 | 구현 끝(#373·#388). 화면 MKT #397 |
+> | §10.10 F4 판정 코어 계약 | P-ARCH-55 | 초안(2026-11-13) — PM 게이트: 연결 PR 전부 머지 뒤 | 확인 필요 2건: v16 `verdict` 시점(승리 달·종료만) · 후보 지평(권장 36개월) |
 > | §11 정보 비대칭 계약 | P-ARCH-41 | 결정 대기 59 | 측정만(`info-leak.ts`). #167(순자산 곡선은 참 품질) 그대로 — 바꿀지는 오너 |
 > | §12 UX 피드백 | P-ARCH-50 | 묶음 B4 | 미구현(단계 G/V) |
 > | (mvp.md §7.22) 단계 해금 한 달 늦음 | P-ARCH-51 | 묶음 B4 | 미구현 |
@@ -722,7 +723,7 @@ interface GameState {
 | **F1** RuleSet | ciosryu/distillery#475 | `CampaignGoal` · `Scenario.campaignGoal?`(새 판만) · `GameState.rulesVersion?`('legacy-v15' \| 'v16') · 세이브 v16 · 읽기 한 곳 `campaignMinOakMonths(s)`(progress.ts) | 불변 |
 | **F2** 원장 | 코어 계약(이 절) + PROD 27개 지점 연결(P-PROD-55 표) | 아래 | 불변(R1 그림자 원장) |
 | **F3** 병입 로트·판매 사건 | 코어 그릇·입구(이 절) + MKT `saleEvents.ts` + PROD·MKT 9개 지점 연결 | `BottledLot { id, productId, bottles, bottledMonth, components?, eligibleAtBottling? }` · `SaleEvent { month, productId, lotId, bottles, unitPrice, settlement, kind, channel?, eligibleAtSale }` · `CampaignWin`(F4가 쓴다) — 그릇 `commerce.lots?` · `MonthReport.saleEvents?` · `progress.win?` · 입구 `lots.ts` | 불변(기록만) |
-| F4 판정 | ARCH | `progress.win?` · `rulesVersion === 'legacy-v15'`면 옛 판정 보존 · `isFlagshipCandidate` → `isCampaignCandidate` · `reserveCaskIds`가 `flagship_sold` 대신 `win` · 승리는 멈춤 사유가 아니라 알림(#308 계속 운영) | **바뀜** — 새 기준선 |
+| F4 판정 | ARCH — **명세 초안 아래 P-ARCH-55** | `progress.win?` · `rulesVersion === 'legacy-v15'`면 옛 판정 보존 · `isFlagshipCandidate` → `isCampaignCandidate` · `reserveCaskIds`가 `flagship_sold` 대신 `win` · 승리는 멈춤 사유가 아니라 알림(#308 계속 운영) | **바뀜** — 새 기준선 |
 | F5 PlayerView·Rights·범위 잠금 | ARCH(+MGT) | 담보 `inventoryCollateral` 참 품질(MGT 발견) · 숨은 `contamination` 읽기(`autoFill.ts:21`·P8 봇) · #319 치환 목표 · #311 수출·HR 잠금 | 부분 바뀜 |
 
 **F2 코어 계약 — `src/sim/ledger.ts`(순수 함수, 상태를 바꾸지 않는다)**
@@ -742,8 +743,24 @@ interface GameState {
 - `BottledLot.components`: 병입이 `splitLedger`로 떼어 낸 F2 원장을 **이어 붙인다**(평균 안 냄, 지점 17). 보충(18)은 새 로트(FIFO 유지)이고 제품 필드만 `restockedProduct`로 합친다. 제품 `caskMix`·`ageYears`(가장 어린 원액, #186)는 그대로 — 적격은 로트로만 본다. `eligibleAtBottling`은 F4 `ledgerEligibility(s, lot.components)`가 채우고, 그 전에는 비어 있다(→ 판매 때 `eligibleAtSale: false`)
 - 같은 달 안 순서 = 틱 순서(1 이벤트 「수출 주문」 → 4 납품 → 5 국내·면세·수출 → 6 핸드필) — `firstEligibleSale(report.saleEvents)`의 "먼저 쌓인 것"이 곧 먼저 출고된 것
 - 불변식(`checkInvariants`): 로트 병 정수 > 0 · id 하나뿐 · 제품 있음(**오류**) · 제품별 로트 합 = `stockBottles`(연결이 끝날 때까지 **경고**, F4에서 오류로 — 병입만 먼저 연결되면 합이 재고보다 커진다)
-- 연결 소유(출력 불변 — 각 PR 완료 조건 = 골든 10개·P8 바이트 동일 + 불변식 오류 0): **로트 생성 3곳 PROD** `blending.ts executeBlend`(17)·`restockedProduct`(18)·`economics.ts` 자동 납품 → `addLot` · **단종 2곳** `actions.prod.ts`(PROD)·`lifecycle.ts`(ARCH) → `dropLots` · **판매 6곳** `market.ts` 국내·면세·수출(MKT) · `deals.ts fulfillRetail`(MKT) · `events.ts exportOrder`(MGT) · `handfill.ts`(MKT — 통 하나로 된 로트, `cellar_door`) → `sellFromLots`. 원액·통 B2B(`bulk.ts`)는 병입 로트가 아니라 **사건을 만들지 않는다**(기록도 생략 — `kind: 'b2b'`는 타입에 남겨 둔다) · 기프트 샵 뉴메이크는 기록 없음
+- 연결 소유(출력 불변 — 각 PR 완료 조건 = 골든 10개·P8 바이트 동일 + 불변식 오류 0): **로트 생성 3곳 PROD** `blending.ts executeBlend`(17)·`restockedProduct`(18)·`economics.ts` 자동 납품 → `addLot` · **단종 2곳** `actions.prod.ts`(PROD)·`lifecycle.ts`(ARCH — **연결됨**, 세이브 수리 `repair.ts`도 망가진·제품 없는·재고 비운 제품의 로트를 지운다) → `dropLots` · **판매 6곳** `market.ts` 국내·면세·수출(MKT) · `deals.ts fulfillRetail`(MKT) · `events.ts exportOrder`(MGT) · `handfill.ts`(MKT — 통 하나로 된 로트, `cellar_door`) → `sellFromLots`. 원액·통 B2B(`bulk.ts`)는 병입 로트가 아니라 **사건을 만들지 않는다**(기록도 생략 — `kind: 'b2b'`는 타입에 남겨 둔다) · 기프트 샵 뉴메이크는 기록 없음 · **행동 단계(턴 사이) 유상 출하는 사건 없음** — 유일한 경로는 「해외 바이어 문의」를 턴 사이에 [수락]하는 `resolveEvent`(`events.ts exportOrder`)다. 결산 `report`가 없어 쌓을 곳이 없고, 새 캠페인은 #321로 이 이벤트가 잠기며 옛 판은 판정 대상이 아니다 → 로트만 맞추고(로트 합 = 재고) 사건은 버린다(MGT 발견 2026-11-13, PM·ARCH 판단). 그 밖의 병 출고(`market.ts`×3·`deals.ts`·`handfill.ts`)는 모두 틱 안이다. `commerce.pendingSaleEvents?` 같은 그릇은 행동 단계 적격 출고 경로가 생길 때(F5/#321 뒤) 더한다
 - 반론·리스크: 결산에만 쌓으면 "승리 뒤 어느 로트가 얼마에 팔렸나"의 전체 이력은 120개월만 남는다 — F7 측정(`mkt-stage-t.md` §5)은 봇이 매달 가져가므로 영향 없고, 사람 플레이의 결과 화면은 `progress.win` 요약으로 충분하다고 본다 `[추측]`. 영구 목록이 필요해지면 `commerce.saleEvents?`를 그때 더하면 된다(세이브 크기 ↑)
+
+**F4 코어 계약 — 판정(초안 `[제안 P-ARCH-55]`, 2026-11-13 · PM 게이트: 원장 27개 지점 + 로트·판매 11곳 연결이 모두 main에 들어간 뒤 PR. 출력이 바뀐다 → 전후 표 필수)**
+- **승리 판정(틱 9 `updateProgress`)** — `rulesVersionOf(s) === 'v16'`이고 `scenario.campaignGoal`이 있고 `progress.win`이 없으면 `firstEligibleSale(report.saleEvents ?? [])`. 사건이 있으면 `progress.win = { month: s.month, productId, lotId, kind, unitPrice, bottles }`(사건 복사), `report.notes`에 승리 알림, 마일스톤 **`campaign_win`**(새 id — 연표·결과 화면용; `flagship_sold`는 옛 판정 그대로 둔다). 승리는 **멈춤 사유가 아니다**(`status` 그대로, 계속 운영 — #308). 한 번만 쓴다(중복 0)
+- **옛 판 보존** — `legacy-v15`는 지금 코드 그대로: `flagship_sold` 마일스톤 + `goal.months`(180)에 강제 `judgeGoal`. v15 픽스처(`fixtures/save-v15.json`) 진행 결과 바이트 동일이 수용 테스트. 샌드박스(시나리오 없음)는 승리 판정 없음(지금과 같음)
+- **성과 판정(`verdict`) v16** `[확인 필요 — PM·오너]` — #308 "순자산은 성과만, 강제 판정 폐지"를 코드로: `goal.months`에 자동 판정하지 않는다. `verdict`는 **승리 달에 한 번**(result `heritage`, 등급 S/A는 지금 `GRADE` 기준 그대로 — 순자산·인지도·`flagshipQuality`는 승리 로트 제품 품질) 또는 **판이 끝날 때**(파산 등 → `failed`)만 쓴다. `achieved`·`missed`(버텼지만 플래그십 없음)는 v16에서 생기지 않는다 — 결과 화면 `Verdict.tsx`는 두 경우만 그린다. 대안: 180개월에 "중간 성적표"를 verdict 없이 알림으로만(결정 #312 "승리 속도와 성과를 섞지 않는다"와 맞음). **승리 달 = 기록 지표**(PM 2026-11-13), 합격선 아님
+- **`eligibleAtBottling` 채우기** — `lots.ts addLot`이 `components`를 받으면 `ledgerEligibility(s, components).eligible`을 스스로 적는다(PROD 병입 연결은 원장만 넘기면 된다). 보충(18)으로 생긴 새 로트도 같은 식. `components`가 없으면 비워 둔다(→ `eligibleAtSale: false`, 창작 금지)
+- **핸드필(#318)** — MKT #487 방식: 가상 제품 로트 `productId = 'handfill:<통 id>'`(`commerce.products`에 없음)를 만들어 같은 호출에서 다 팔아 로트가 남지 않는다(F3 불변식에 걸리지 않음). 사건은 `kind 'cellar_door'`. F4: `eligibleAtBottling`을 통 기준 `caskEligibility`에서 **로트 계보 기준 `ledgerEligibility(lot.components)`**로(MKT 합의) · `CampaignWin.productId`를 제품 이름으로 풀 때 **`handfill:` 접두 처리**(결과 화면 `Verdict.tsx`·`metrics.ts`) — #318 "연출 구분"의 판별 근거는 `win.kind === 'cellar_door'`, 통 id는 접두 뒤에서 읽는다
+- **후보 정의 변경** `isFlagshipCandidate` → `isCampaignCandidate(s, c, horizon)`: 그레인 제외 · 매입·다른 입지·고객 소유 제외 · 180개월 상한 제거. 읽는 곳 7: `tags.ts reserveCaskIds`·`flagshipCandidateCount`·`candidateVolumes`, `economics.ts flagshipReserve`, `delegateCheck.ts`, `ui/alerts.ts`(183·236), `MvpHome.tsx`(216), `step.ts flagshipCandidates` 기록, `mvp-human.ts flagCasks`. "승리했는가"는 공용 `campaignWon(s)`(v16 → `!!progress.win`, legacy → `flagship_sold`)로 바꾼다 — `reserveCaskIds`·alerts의 `flagship_sold` 직접 읽기 0
+  - **지평 `horizon` 값** `[확인 필요 — MGT·PM]`: 옛 식은 `goal.months − month`(판 끝까지). #308로 판 끝이 없으니 (가) 그대로 `goal.months − month`(180개월 뒤 후보 0 — 30년 판에서 예비 통이 사라진다) · (나) 고정 36개월(3년 안에 적격이 될 통만 — 예비 4통이 뜻을 지킨다, 값은 `[튜닝]`) · (다) 무한(모든 자가 몰트 통 — MGT가 "예비가 뜻을 잃는다"고 반대). **권장 (나)**, 상수 `CANDIDATE_HORIZON_MONTHS = 36`을 `ledger.ts`에
+- **난수 빈틈 단독 PR(F4 창)** — 받지 않은 제안의 `nid`가 제품 id를 밀어 `sales:<제품 id>` 잡음 스트림이 바뀐다(MKT 발견). 고침: `Product.seq?: number`(제품 생성 순번 = `productCountEver(s) + 1`, 코어 필드) → 잡음 키 `sales:#<seq>`(옛 제품은 없으면 id로 — 세이브 호환). 출력이 바뀌므로 F4와 같은 창에 **별도 PR**(전후 표 따로)
+- **스크립트** — `mvp-survival.ts` 188행(`flagship: t.flagshipBottled` → `progress.win` 달), `metrics.ts:27`(MGT, `classifyWin`이 이미 `progress.win`·`status`만 읽는다 — 확인), `golden-trace.ts` 분기 칸에 `win` 달 추가
+- **수용 테스트(core-integration §5 그대로)**: `eligibility: A−1 탈락 / A 통과` · `eligibility: 매입·그레인·미상 탈락`(F2에 있음) · `win: 미판매 running · 적격 실제 출고 1회 · 중복 0` · `win: 어린 제품 판매 + 적격 보충만으로 승리 0`(F3 몫 있음 — F4에서 `progress.win`까지) · `save: v15 → v16 왕복 · 옛 판 진행 바이트 동일`(F1에 있음, F4 뒤 재확인) · 승리 뒤 `advanceMonth`가 계속 돈다(MGT 요청)
+- **전후 표(PR 본문)** — MGT #467 §4.2 양식: 10시드 × 180·240개월 · standard·micro · 평균·중앙·P10·CVaR·파산 수·Wilson 구간 · **X0L(legacy-v15 P8) 바이트 동일**을 첫 검사로 · 새 X0(「플래그십 출시」 승리 시도 #320)의 승리율·승리 달 분포(기록 지표)
+- **사건은 틱 안 출고에서만 생긴다** — 행동 단계(턴 사이) 유상 출하는 `resolveEvent` 수출 주문 하나뿐이고(#321로 새 캠페인에서 잠김) 사건을 만들지 않는다(§10.10 F3). `pendingSaleEvents` 그릇은 행동 단계 적격 출고 경로가 생길 때 더한다
+- 반론·리스크: (1) `verdict`를 승리 달에 쓰면 "승리 뒤 파산"은 verdict heritage + status bankrupt가 공존한다 — MGT `classifyWin`은 "승리 뒤 파산도 승리"로 이미 정했으니 맞다. (2) 지평 (나)는 새 상수 하나를 더한다 — 단계 T 튜닝 대상으로 표시. (3) `campaign_win` 마일스톤을 새로 두면 `MILESTONES` 표(코어)와 결과 화면 연표를 함께 고쳐야 한다 — 대안은 `flagship_sold`를 재사용하는 것이지만 옛 판정과 섞여 바이트 동일 검사를 흐린다
+
 
 ## 11. 정보 비대칭 검증 계약 (ARCH-C, 2026-11-11) `[제안 P-ARCH-41]`
 
