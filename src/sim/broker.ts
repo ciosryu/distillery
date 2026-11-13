@@ -1,6 +1,7 @@
 import { CASKS } from './content/catalog';
 import { brokerAskPerLPA, caskResidual } from './bulk';
 import { matureCask } from './maturation';
+import { EXTERNAL_SITE_ID, newEntry } from './ledger';
 import type { Rng } from './rng';
 import type { BrokerOffer, Cask, Flavor, GameState } from './types';
 import { nid } from './util';
@@ -39,6 +40,8 @@ export function makeBrokerOffer(s: GameState, rng: Rng): BrokerOffer {
   const style = sherry ? '셰리 캐스크 스페이사이드 스타일' : peated ? '피티드 아일라 스타일' : '버번 캐스크 하이랜드 스타일';
   lot.name = `매입 원액 — ${style} ${years}년`;
   lot.costPerLPA = price / lpa;
+  // F2 원장 지점 25(MKT): 매입 원액 한 줄 — 출처 sourced, 입지 외부(EXTERNAL_SITE_ID). costPerLPA 확정 뒤·숙성 루프 뒤라 Σ costKRW = 원가, woodMonths = oakMonths(전제 2)
+  lot.components = [newEntry(lot, 'sourced', EXTERNAL_SITE_ID)];
   cask.filledMonth = s.month - months;
   return { id: nid(s, 'B'), description: `${style}, ${years}년 ${months % 12}개월, ${def.nameKo}`, cask, price, expiresMonth: s.month + 2 };
 }

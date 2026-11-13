@@ -65,10 +65,11 @@ describe('F3 판매 지점 — 대형 유통 납품 (fulfillRetail)', () => {
 });
 
 describe('F3 판매 지점 — 핸드필 (runHandfill, #318 cellar_door)', () => {
+  // 통 틀은 샌드박스 브로커 매물에서 빌린다. 지점 25(브로커 매입 원장) 뒤로는 매물 통에 원장이 붙어 있어, volumeL을 바꾸면 R2가 어긋난다 → `components: undefined`로 뗀다(원장 없는 통 = 합성 경로)
   it('통 하나로 된 로트를 만들고 바로 다 판다 — 사건 cellar_door, 로트는 남지 않는다, 불변식 오류 0', () => {
     const s = newGame({ seed: 3, region: 'KR' }); s.month = 150;
     const base = s.b2b.brokerOffers[0]!.cask;
-    s.inventory.casks = [{ ...base, id: 'H1', handfill: true, contents: { ...base.contents!, oakMonths: 150, sourced: false, volumeL: 200 } } as Cask];
+    s.inventory.casks = [{ ...base, id: 'H1', handfill: true, contents: { ...base.contents!, oakMonths: 150, sourced: false, volumeL: 200, components: undefined } } as Cask];
     s.production.equipment.push({ id: 'HZ', catalogId: 'handfill_zone', readyMonth: 0 });
     const rep = report(150, 100);
     runHandfill(s, rep);
@@ -83,7 +84,7 @@ describe('F3 판매 지점 — 핸드필 (runHandfill, #318 cellar_door)', () =>
   it('가격이 0이면 로트를 만들지 않는다 — 가상 제품 로트가 남아 "제품 없음" 오류가 되지 않게 (ARCH #487 사후 검토)', () => {
     const s = newGame({ seed: 3, region: 'KR' }); s.month = 150;
     const base = s.b2b.brokerOffers[0]!.cask;
-    const cask = { ...base, id: 'H2', handfill: true, contents: { ...base.contents!, oakMonths: 150, sourced: false, volumeL: 200 } } as Cask & { contents: NonNullable<Cask['contents']> };
+    const cask = { ...base, id: 'H2', handfill: true, contents: { ...base.contents!, oakMonths: 150, sourced: false, volumeL: 200, components: undefined } } as Cask & { contents: NonNullable<Cask['contents']> };
     s.inventory.casks = [cask];
     const rep = report(150, 100);
     recordHandfillSale(s, rep, cask, 10, 0);
