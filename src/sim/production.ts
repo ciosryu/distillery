@@ -22,7 +22,7 @@ import type { PresetRecipe } from './content/presets';
 import { isLocked } from './scenario';
 import type { ProductCategory, SpiritKind } from './types';
 import { PROD_TUNING } from './prodTuning';
-import { ledgerOf, mergeLedgers } from './ledger';
+import { ledgerOf, mergeLedgers, newEntry, siteIdOf } from './ledger';
 
 type StillDef = Extract<EquipmentDef, { kind: 'still' }>;
 
@@ -496,6 +496,8 @@ export function runProduction(s: GameState, report: MonthReport, ctx: TickContex
       costPerLPA: cost / lpa,
       ...(hasLocalIngredient(site, recipe) ? { localIngredient: true } : {}),
     };
+    // F2 원장 지점 1: 생산 — 이 입지에서 자가 증류한 구성 원액 한 줄(목재 0개월). 여기서 원장이 처음 생기고, 뒤의 모든 지점이 이어서 갱신한다
+    fresh.components = [newEntry(fresh, 'self', siteIdOf(s))];
     // 같은 레시피 몰트·그레인 뉴메이크는 탱크(스피릿 리시버)에서 합친다 (#166) — 달마다 배치가 따로 쌓여 통입 화면에 원액이 수십 개가 되던 것
     const ti = s.inventory.lots.findIndex((l) => sameTank(l, fresh));
     if (ti < 0) s.inventory.lots.push(fresh);

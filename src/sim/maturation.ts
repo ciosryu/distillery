@@ -1,6 +1,5 @@
 import { CASKS, NON_WOOD_VESSEL, SEASONING_EXTRACT, WOOD_EXTRACT } from './content/catalog';
 import { clamp, clampFlavor } from './flavor';
-import { advanceWood, scaleLedger } from './ledger';
 import type { AxisId, Cask, CaskTypeId, Flavor, LossKind, MonthReport, SpiritLot, VesselMaterial } from './types';
 
 // 숙성 모델 (PRD §5.3, flavor-model §4.5). 수치 [튜닝].
@@ -101,8 +100,6 @@ export function matureCask(cask: Cask, climate: Climate, opts: MatureOptions): {
   const newLPA = evap.volumeL * evap.abv;
   const costPerLPA = newLPA > 0 ? (lot.costPerLPA * oldLPA) / newLPA : lot.costPerLPA;
   const contents: SpiritLot = { ...lot, volumeL: evap.volumeL, abv: evap.abv, flavor: clampFlavor(f), oakMonths: months, costPerLPA };
-  // F2 원장 지점 7: 나무 통 1개월 — 모든 구성 원액 +1(R3, 여기서만), 증발은 같은 비율로 줄고 원가는 남는다(보존)
-  if (lot.components?.length) contents.components = scaleLedger(advanceWood(lot.components), oldLPA > 0 ? newLPA / oldLPA : 0, 'preserve');
   return { cask: { ...cask, contents }, lostL: evap.lostL };
 }
 
@@ -120,7 +117,9 @@ export function recordLoss(report: Pick<MonthReport, 'lossEvents'>, kind: LossKi
 /** 용기 재질 — 콘텐츠에 없으면 나무 (S-10) */
 export const vesselMaterial = (cask: Pick<Cask, 'typeId'>): VesselMaterial => CASKS[cask.typeId]?.material ?? 'wood';
 
-/** 숙성 용기 1개월 (틱 3단계의 입구, S-10) — 나무는 matureCask, 그 밖의 재질은 matureNonWood */
+/** 숙성 용기 1개월 (틱 3단계의 입구, S-10) — 나무는 matureCask, 그 밖의 재질은 matureNonWood.
+ *  **원장(F2 `components`)은 여기서 갱신하지 않는다** — 이 파일이 ledger.ts를 불러오면 순환(ledger → progress → blending → blendTable → 여기)으로 모듈 초기화 순서가 깨진다.
+ *  게임 상태의 통을 숙성시키는 유일한 호출부 `warehouse.ts runMaturation`이 지점 7·8을 맡는다(브로커 매입 전 숙성·경제 미리보기는 원장이 없는 가상 통) */
 export function matureVessel(cask: Cask, climate: Climate, opts: MatureOptions): { cask: Cask; lostL: number } {
   const material = vesselMaterial(cask);
   return material === 'wood' ? matureCask(cask, climate, opts) : matureNonWood(cask, material, climate, opts);
@@ -157,8 +156,6 @@ export function matureNonWood(cask: Cask, material: Exclude<VesselMaterial, 'woo
   const newLPA = evap.volumeL * evap.abv;
   const costPerLPA = newLPA > 0 ? (lot.costPerLPA * oldLPA) / newLPA : lot.costPerLPA;
   const contents: SpiritLot = { ...lot, volumeL: evap.volumeL, abv: evap.abv, flavor: clampFlavor(f), restMonths: (lot.restMonths ?? 0) + 1, costPerLPA };
-  // F2 원장 지점 8: 옹기·스테인리스 1개월 — 목재 개월은 늘지 않는다(R3). 증발만 같은 비율로(원가 보존)
-  if (lot.components?.length) contents.components = scaleLedger(lot.components, oldLPA > 0 ? newLPA / oldLPA : 0, 'preserve');
   return { cask: { ...cask, contents }, lostL: evap.lostL };
 }
 

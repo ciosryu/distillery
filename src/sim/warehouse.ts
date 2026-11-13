@@ -1,8 +1,8 @@
 import { CASKS, EQUIPMENT, type WarehouseType } from './content/catalog';
 import { siteOf } from './content/regions';
 import { clamp } from './flavor';
-import { type Climate, emptyCask, matureVessel, MIN_CASK_VOLUME_L, recordLoss, restLot } from './maturation';
-import { lpaOf, scaleLedger } from './ledger';
+import { type Climate, emptyCask, matureVessel, MIN_CASK_VOLUME_L, recordLoss, restLot, vesselMaterial } from './maturation';
+import { advanceWood, lpaOf, scaleLedger } from './ledger';
 import { rngFor } from './rng';
 import type { Cask, GameState, MonthReport } from './types';
 import { staffOf, ownsFacility } from './util';
@@ -201,7 +201,15 @@ export function runMaturation(s: GameState, report: MonthReport, ctx: TickContex
     if (cask.activityKnown === false && cask.contents.oakMonths + 1 >= 6) res.cask.activityKnown = true;
     lost += res.lostL;
     let next = res.cask;
-    recordLoss(report, 'evaporation', lpaOf(cask.contents) - lpaOf(next.contents!)); // F2 R5 — 지점 7·8(원가 보존)
+    // F2 원장 지점 7·8: 숙성 1개월 — 증발은 모든 구성 원액에 같은 비율로 줄고 원가는 남는다(보존). **나무 통만** 목재 개월 +1(R3 — 옹기·스테인리스는 그대로)
+    const before = cask.contents;
+    const oldLPA = lpaOf(before);
+    const newLPA = lpaOf(next.contents!);
+    if (before.components?.length) {
+      const aged = vesselMaterial(cask) === 'wood' ? advanceWood(before.components) : before.components;
+      next = { ...next, contents: { ...next.contents!, components: scaleLedger(aged, oldLPA > 0 ? newLPA / oldLPA : 0, 'preserve') } };
+    }
+    recordLoss(report, 'evaporation', oldLPA - newLPA); // F2 R5
     // 통 단위 난수 (#290 B1-8 S4) — 통 × 필 수. 누수 추첨이 통 배열 순서에 매이지 않는다
     const rng = rngFor(s.seed, s.month, `maturation:${cask.id}:${cask.fills}`);
     // 누수: 성실 스탯이 확률을, 관찰 스탯이 손실량을 줄임
