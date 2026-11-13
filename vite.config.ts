@@ -10,6 +10,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   define: { __BUILD__: JSON.stringify(BUILD) },
   test: {
-    include: ['src/**/*.test.ts'],
+    // scripts/experiments의 측정 도구 단위 테스트도 돈다(MGT metrics.test.ts — 새 승리 판정 지표, 결정 #312·P-MGT-46)
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
   },
 });
