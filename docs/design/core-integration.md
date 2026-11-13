@@ -44,7 +44,7 @@
 |---|---|
 | 입력 | 병입 로트(§3 BottledLot)의 구성 원액 계보(ComponentLedger) · `RuleSet.campaignGoal { minOakMonths: A, product: 'single_malt', origin: 'self_distilled_same_site' }` |
 | 출력 | `{ eligible: boolean, reasons: string[], minOakMonths: number(가장 어린 구성 원액) }` |
-| 월 처리 위치 | 틱 5단계(판매) 직후 — 판매 사건을 기록할 때 1회. 틱 9단계(`updateProgress`)가 그 사건을 읽어 승리를 기록 |
+| 월 처리 위치 | **유상 출고가 일어나는 자리마다** `SaleEvent`를 쌓는다 — 국내·면세·수출(틱 5, `market.ts`) · 납품 계약(`deals.ts`, 틱 1·4) · 이벤트 판매(`events.ts`, 틱 6) · 핸드필(행동, `cellar_door` — 적격 인정 여부는 결정 대기 84). 틱 9단계(`updateProgress`)가 그달 사건을 읽어 승리를 **한 번** 기록(2026-11-13 MKT F3 표로 보정 — 처음 적은 "5단계 직후 1회"는 출고 지점이 하나라는 가정이었다) |
 | 불변식 | ① 구성 원액 **전부**가 자가 증류·같은 증류소·몰트 뉴메이크 기원 ② `min(각 원액의 누적 목재 숙성) ≥ A` — 탱크·옹기·병 보관 불산입, 피니싱은 목재 구간의 실제 합 ③ 매입(`sourced`)·그레인·블렌디드·출처 미상(`unknown`) 포함 시 탈락 ④ 같은 거래로 승리는 **한 번** |
 | 예외 | 옛 세이브(계보 없음) → 모든 로트 `origin: 'unknown'` → 적격 아님. 창작하지 않는다(§3 Migration) |
 | 저장 호환 | v16(§3). 옛 판은 구규칙 판으로 표시하고 조용히 재판정하지 않는다 |
