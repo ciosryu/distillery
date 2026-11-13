@@ -338,6 +338,11 @@ export interface Product {
   /** 병당 생산 원가 = 원액 + 포장 + 병입 인건비 (유통비 제외) */
   unitCost: number;
   createdMonth: number;
+  /**
+   * 제품 생성 순번(1부터, 아카이브 포함 — `productCountEver + 1`). 판매 수요 잡음 스트림 키(S5 `sales:#<seq>`)로 쓴다 — 전역 `nid`가 아니라
+   * 제품 순번이므로 받지 않은 제안 등 다른 id가 밀려도 잡음이 바뀌지 않는다(MKT 발견 "난수 빈틈", ARCH F4 창 단독 PR). 옛 세이브의 제품에는 없다 → 옛 키(`sales:<id>`) 그대로
+   */
+  seq?: number;
   lastMonthSold: number;
   totalSold: number;
   /** 월 판매량 지수이동평균 — 재고 적체 판정 */

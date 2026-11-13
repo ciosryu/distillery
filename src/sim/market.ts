@@ -387,10 +387,15 @@ export function bottleMargin(p: Pick<Product, 'price' | 'unitCost' | 'bottleMl'>
 
 /**
  * 판매 수요 잡음(±10%)은 제품 단위 스트림에서 뽑는다 — S5(결정 #290 ⑤, architecture §10.8 ②): 국내 `sales:<제품>`, 수출 `sales:<제품>:<시장>`,
- * 면세 `sales:<제품>:df`. 공유 스트림이던 때는 제품 하나를 더하거나 배열 순서가 바뀌면 다른 제품의 잡음까지 바뀌었다.
+ * 면세 `sales:<제품>:df`. 공유 스트림이던 때는 제품 하나를 더하거나 배열 순서가 바뀌면 다른 제품의 잡음까지 바뀌었다. <제품> = `noiseKeyOf`(생성 순번).
  * `_rng`는 옛 호출 모양을 지키려 남긴 자리다(판매는 더 쓰지 않는다)
  */
 const salesNoise = (s: GameState, stream: string) => rngFor(s.seed, s.month, `sales:${stream}`).range(0.9, 1.1);
+/**
+ * 잡음 스트림의 제품 키 — 생성 순번 `#<seq>`(난수 빈틈 메움: 전역 `nid`는 받지 않은 제안·통·로트 id에도 밀려, 같은 판에서 제안 하나를 거절만 해도
+ * 다음 제품의 id가 달라지고 그 제품의 잡음이 바뀌었다). 옛 세이브의 제품(seq 없음)은 옛 키(id) 그대로 — 옛 판 바이트 동일
+ */
+export const noiseKeyOf = (p: Pick<Product, 'id' | 'seq'>): string => (p.seq != null ? `#${p.seq}` : p.id);
 
 export function runSales(s: GameState, _rng: Rng, monthOfYear: number, report?: MonthReport): { results: SalesResult[]; retail: RetailSummary; exports: ExportSale[] } {
   // 1) 제품별 수요 — 같은 카테고리 제품끼리 채널별로 나눈다 (#154). 판매 전 재고 기준으로 한 번에 계산
@@ -401,7 +406,7 @@ export function runSales(s: GameState, _rng: Rng, monthOfYear: number, report?: 
   const wants: { p: Product; demand: number; want: number }[] = [];
   for (const p of s.commerce.products) {
     if (p.stockBottles <= 0) { p.lastMonthSold = 0; p.salesEma = (p.salesEma ?? 0) * 0.7; continue; }
-    const demand = Math.round(domestic.get(p.id)!.demandBottles * salesNoise(s, p.id));
+    const demand = Math.round(domestic.get(p.id)!.demandBottles * salesNoise(s, noiseKeyOf(p)));
     wants.push({ p, demand, want: Math.min(p.stockBottles, demand) });
   }
   // 1-b) 수출 수요 (#95·#109): 재고가 모자라면 병당 순수입이 높은 판로부터 채운다(EXPORT_SALES.allocation, 같으면 국내 먼저).
@@ -409,7 +414,7 @@ export function runSales(s: GameState, _rng: Rng, monthOfYear: number, report?: 
   //      수출가를 올리면(#108) 수출이 먼저 채워진다. 수출은 수입상이 받아 가므로 소매 처리 역량을 쓰지 않는다
   const exportWants = new Map<string, { entry: ExportEntry; demand: number; want: number }[]>();
   for (const w of wants) {
-    const list = active.map((entry) => ({ entry, demand: Math.round((exportD.get(entry)!.get(w.p.id) ?? 0) * salesNoise(s, `${w.p.id}:${entry.marketId}`)), want: 0 })).filter((x) => x.demand > 0);
+    const list = active.map((entry) => ({ entry, demand: Math.round((exportD.get(entry)!.get(w.p.id) ?? 0) * salesNoise(s, `${noiseKeyOf(w.p)}:${entry.marketId}`)), want: 0 })).filter((x) => x.demand > 0);
     if (!list.length) continue;
     exportWants.set(w.p.id, list);
     if (EXPORT_SALES.allocation === 'margin') {
@@ -465,7 +470,7 @@ export function runSales(s: GameState, _rng: Rng, monthOfYear: number, report?: 
   if (siteOf(s).dutyFree) {
     for (const p of s.commerce.products) {
       if (p.stockBottles <= 0) { p.lastMonthDutyFree = 0; continue; }
-      const df = Math.min(p.stockBottles, Math.round((dutyFree.get(p.id) ?? 0) * salesNoise(s, `${p.id}:df`)));
+      const df = Math.min(p.stockBottles, Math.round((dutyFree.get(p.id) ?? 0) * salesNoise(s, `${noiseKeyOf(p)}:df`)));
       p.lastMonthDutyFree = df;
       if (df <= 0) continue;
       p.stockBottles -= df;
