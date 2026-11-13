@@ -13,7 +13,7 @@ import { secondBrandMonthlyCost, updateBrandLuxury } from './brands';
 export function settleSales(s: GameState, report: MonthReport, ctx: TickContext): ReturnType<typeof runSales>['results'] {
   updateExportAwareness(s); // 판매 전에 갱신 — 면세는 국내 인지도가 첫 달부터 넘어온다
   updateBrandLuxury(s); // 브랜드 럭셔리 B_b(#235 A) — 판매 전에 최근 12개월 기록으로 갱신(옛 세이브도 첫 달부터 맞는 값)
-  const { results: sales, retail, exports } = runSales(s, rngFor(s.seed, s.month, 'sales'), ctx.monthOfYear);
+  const { results: sales, retail, exports } = runSales(s, rngFor(s.seed, s.month, 'sales'), ctx.monthOfYear, report); // report: F3 판매 사건을 그 자리에서 쌓는다
   // 수출 (#95·#101): 수입사 매입가(출고가 × 계약 비율)가 대금 지급 기한 뒤 들어오고(국내 주세 면세), 운임은 우리가, 마케팅 분담은 매달 낸다
   if (s.commerce.exports?.length) {
     report.exports = exports;

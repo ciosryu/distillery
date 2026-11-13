@@ -3,7 +3,8 @@ import { lotQuality } from './bulk';
 import { BOTTLING_LABOR_PER_BOTTLE, packagingCost } from './content/market';
 import { regionOf } from './content/regions';
 import { emptyCask, vesselMaterial } from './maturation';
-import { scaleLedger } from './ledger';
+import { caskEligibility, ledgerOf, scaleLedger, splitLedger } from './ledger';
+import { addLot, sellFromLots } from './lots';
 import type { Cask, GameState, MonthReport, SpiritLot } from './types';
 
 // ───────────── 핸드필 존 (#233, 2026-11-10 오너 요청 — 비지터 센터 확장 중 PROD 몫) ─────────────
@@ -66,6 +67,11 @@ export function runHandfill(s: GameState, report: MonthReport): void {
   if (bottles <= 0) return;
   const price = handfillPrice(s, cask.contents, lotQuality(cask.contents));
   const revenue = bottles * price;
+  // F3 판매 사건 6(MKT, 결정 #318): 담은 병을 그 통 하나로 된 로트로 만들고 바로 cellar_door 유상 출고로 기록한다 — 로트는 같은 호출에서 다 팔려 남지 않는다.
+  // 제품이 없는 판매라 로트의 productId는 `handfill:<통 id>`. 원장은 담은 몫(splitLedger), 적격은 지금 통 기준(caskEligibility — F4가 로트 기준으로 바꾼다)
+  { const soldL = (bottles * HANDFILL.bottleMl) / 1000; const pid = `handfill:${cask.id}`;
+    addLot(s, pid, bottles, { components: splitLedger(ledgerOf(s, cask.contents), Math.min(1, soldL / cask.contents.volumeL))[0], eligibleAtBottling: caskEligibility(s, cask).eligible });
+    sellFromLots(s, report, pid, bottles, { kind: 'cellar_door', settlement: 'cash', unitPrice: price }); }
   const cost = bottles * handfillBottleCost();
   s.finance.cash += revenue - cost;
   report.tourismRevenue = (report.tourismRevenue ?? 0) + revenue;
