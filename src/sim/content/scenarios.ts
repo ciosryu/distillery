@@ -1,4 +1,4 @@
-import type { RegionId, SpiritKind, StaffRole } from '../types';
+import type { CampaignGoal, RegionId, SpiritKind, StaffRole } from '../types';
 
 // 시나리오 정의 (skeleton S-8, PRD §12.2) — 지역·입지·주종·잠금 키·경제 값·규모 티어를 데이터로 둔다.
 // 새 게임은 이 정의를 GameState.scenario에 **복사**한다(세이브가 스스로를 설명한다 — 콘텐츠가 바뀌어도 진행 중인 판의 규칙은 그대로).
@@ -43,6 +43,8 @@ export interface ScenarioDef {
     /** 플래그십 최소 숙성 (개월) */
     flagshipMinMonths: number;
   };
+  /** 캠페인 승리 규칙 (F1, [결정 #308·#309]) — 새 판의 `scenario.campaignGoal`로 복사된다 */
+  campaignGoal?: CampaignGoal;
   tiers: ScenarioTierDef[];
   defaultTier: ScenarioTierDef['id'];
   /** 판이 진행되면 차례로 여는 기능 (#215, 4차 MVP 플레이테스트: 중반 이후 쉽고 지루하다) */
@@ -97,6 +99,8 @@ export const MVP_KR: ScenarioDef = {
     'facility:pot_onion_1000', 'facility:pot_lantern_1000', 'facility:pot_worm_1000', 'facility:hybrid_600', 'facility:pot_large_5000', 'facility:column_2',
   ],
   goal: { months: 180, netWorthMultiple: 3, flagshipMinMonths: 144 },
+  // [결정 #308·#309] 승리 = 자가 증류 싱글 몰트 적격 로트(구성 원액 모두 목재 숙성 ≥ 144개월)의 최초 정상 유상 출하. 판정 함수·판매 사건은 F2~F4 — F1은 값만 싣는다
+  campaignGoal: { minOakMonths: 144, event: 'paid_shipment', product: 'single_malt', origin: 'self_distilled_same_site' },
   // 중반 콘텐츠 (4차 MVP 플레이테스트 2026-11-09: 6년 차 흑자 뒤 "너무 쉽고 지루하다" — 오너 승인 1·2·3·4)
   stages: [
     { id: 'y5_market', month: 60, title: '6년 차 — 시장이 움직이고, 의뢰가 들어온다',

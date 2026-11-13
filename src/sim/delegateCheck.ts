@@ -2,7 +2,7 @@ import { previewBlend, whiskyMinMonths, type BottleOptions } from './blending';
 import type { BlendTarget } from './blendRadar';
 import { delegatePlan } from './blendTable';
 import { regionOf } from './content/regions';
-import { DEFAULT_FLAGSHIP_MONTHS } from './progress';
+import { campaignMinOakMonths } from './progress';
 import { protectedCaskIds, reserveCaskIds } from './tags';
 import type { Cask, GameState } from './types';
 
@@ -32,7 +32,7 @@ const isWhiskyCask = (s: GameState, c: Cask) => !!c.contents && !c.owner && (c.c
 export function isFlagshipCandidate(s: GameState, c: Cask): boolean {
   const l = c.contents;
   if (!l || (l.kind !== 'malt' && l.kind !== 'grain')) return false;
-  const need = s.scenario?.goal.flagshipMinMonths ?? DEFAULT_FLAGSHIP_MONTHS;
+  const need = campaignMinOakMonths(s); // F1: 기준값만 캠페인 규칙에서. 180개월 상한·그레인 포함은 F2·F4에서 바꾼다(출력 불변)
   const left = s.scenario ? Math.max(0, s.scenario.goal.months - s.month) : 0;
   return l.oakMonths + left >= need;
 }
@@ -62,7 +62,7 @@ export function delegateCheck(s: GameState, target: BlendTarget, caskIds: string
   const warnings: string[] = [];
   if (whiskyLeft === 0) warnings.push('맡기고 나면 위스키 통이 하나도 남지 않는다 — 다음 병입·재고 보충을 할 수 없다');
   const flag = casks.filter((x) => x.flagship);
-  if (flag.length) warnings.push(`플래그십 후보 통 ${flag.length}개를 쓴다(${flag.map((x) => x.id).join(', ')}) — 판이 끝나기 전 ${(s.scenario?.goal.flagshipMinMonths ?? DEFAULT_FLAGSHIP_MONTHS) / 12}년 숙성을 채울 수 있는 통`);
+  if (flag.length) warnings.push(`플래그십 후보 통 ${flag.length}개를 쓴다(${flag.map((x) => x.id).join(', ')}) — 판이 끝나기 전 ${campaignMinOakMonths(s) / 12}년 숙성을 채울 수 있는 통`);
   if (alreadyThisMonth.length) warnings.push(`이번 달 같은 목표로 이미 맡겼다: ${alreadyThisMonth.map((n) => `「${n}」`).join(', ')}`);
   // 보호 태그 통 (#260) — 직접 고른 묶음에 들어 있으면 알린다(막지 않는다)
   const prot = protectedCaskIds(s);

@@ -5,7 +5,7 @@ import type { GameState } from './types';
 // 옛 세이브는 버리지 않고 v5 → v6 → … 순서로 올린다. 각 단계는 순수 함수(입력을 바꾸지 않는다).
 // 새 버전을 만들면: GameState.version을 올리고, MIGRATIONS에 `[이전 버전]: (s) => 다음 버전` 한 줄을 더한다.
 
-export const SAVE_VERSION = 15 as const;
+export const SAVE_VERSION = 16 as const;
 
 type AnySave = Record<string, any>;
 
@@ -133,6 +133,15 @@ function v14to15(s: AnySave): AnySave {
   return { ...s, version: 15 };
 }
 
+/**
+ * v15 → v16: 규칙 묶음 표시 (F1, [결정 #308] · core-integration §3 Migration). 옛 판은 `rulesVersion: 'legacy-v15'`로만 표시하고
+ * `campaignGoal`·원액 출처·판매 사건은 **만들어 넣지 않는다**(존재하지 않는 배치·유상 판매 증거를 창작하지 않는다). 동작·값은 그대로 —
+ * 읽는 쪽(`campaignMinOakMonths`)이 없으면 `goal.flagshipMinMonths`를 쓴다
+ */
+function v15to16(s: AnySave): AnySave {
+  return { ...s, version: 16, rulesVersion: 'legacy-v15' };
+}
+
 /** 버전 n 세이브 → 버전 n+1 */
 const MIGRATIONS: Record<number, (s: AnySave) => AnySave> = {
   5: v5to6,
@@ -145,6 +154,7 @@ const MIGRATIONS: Record<number, (s: AnySave) => AnySave> = {
   12: v12to13,
   13: v13to14,
   14: v14to15,
+  15: v15to16,
 };
 
 /**

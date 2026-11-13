@@ -2,7 +2,7 @@ import type { BlendComponent } from './blending';
 import { CASKS } from './content/catalog';
 import { EVENTS } from './content/events';
 import { finishOf } from './maturation';
-import { DEFAULT_FLAGSHIP_MONTHS } from './progress';
+import { campaignMinOakMonths } from './progress';
 import type { Cask, GameState } from './types';
 
 // ───────────── 헤리티지 병입 연표 (#244, 2026-11-10 오너 요청 — 병입을 "버튼"에서 "기념비적 이벤트"로) ─────────────
@@ -28,7 +28,7 @@ export interface CaskStory {
 export function heritageCasks(s: GameState, components: BlendComponent[]): Cask[] {
   const casks = components.filter((c) => c.source === 'cask' && c.liters > 0).map((c) => s.inventory.casks.find((k) => k.id === c.id)).filter((c): c is Cask => !!c?.contents);
   if (!casks.length) return [];
-  const flagship = s.scenario?.goal.flagshipMinMonths ?? DEFAULT_FLAGSHIP_MONTHS;
+  const flagship = campaignMinOakMonths(s);
   const minOak = Math.min(...casks.map((c) => c.contents!.oakMonths));
   const allLots = components.every((c) => c.source === 'cask');
   if (allLots && minOak >= flagship) return casks;

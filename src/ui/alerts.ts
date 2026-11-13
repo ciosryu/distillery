@@ -5,7 +5,7 @@
 import { isFlagshipCandidate } from '../sim/delegateCheck';
 import { regionOf } from '../sim/content/regions';
 import { SCENARIOS } from '../sim/content/scenarios';
-import { calendar, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport, type Product } from '../sim';
+import { calendar, campaignMinOakMonths, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport, type Product } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
@@ -193,7 +193,7 @@ export function flagshipImpact(s: GameState, caskIds: string[]): { using: number
   const using = all.filter((c) => ids.has(c.id)).length;
   // final: 목표까지 남은 달이 플래그십 숙성보다 짧아 새로 넣는 통은 후보가 될 수 없다 — 이때 후보 0은 15년 목표를 이룰 수 없다는 뜻
   const sc = s.scenario;
-  const final = !!sc && sc.goal.months - s.month < sc.goal.flagshipMinMonths;
+  const final = !!sc && sc.goal.months - s.month < campaignMinOakMonths(s);
   return { using, left: all.length - using, before: all.length, final };
 }
 
@@ -233,7 +233,7 @@ export function monthTodos(s: GameState): Todo[] {
     out.push({ id: `stage-${st.id}`, level: 'warn', text: `새로 열림 — ${st.title}. ${st.text}${ibNote}`, action: tab === 'blendlab' ? '블렌딩 테이블' : tab === 'exports' ? '수출' : tab === 'b2b' ? '원액 B2B' : tab === 'staff' ? '직원' : '판매', target: { tab } });
   }
   // 남은 플래그십 후보가 적다 (#261) — 후보 집합이 닫힌 뒤(목표까지 남은 달 < 플래그십 숙성)에만. 0통은 증류소 탭 KPI가 빨갛게 말한다
-  if (s.scenario && !s.progress.milestones.some((m) => m.id === 'flagship_sold') && s.scenario.goal.months - s.month < s.scenario.goal.flagshipMinMonths) {
+  if (s.scenario && !s.progress.milestones.some((m) => m.id === 'flagship_sold') && s.scenario.goal.months - s.month < campaignMinOakMonths(s)) {
     const n = flagshipCandidates(s).length;
     if (n > 0 && n <= FLAGSHIP_LOW) out.push({ id: 'flagship-low', level: 'danger', text: `남은 12년 플래그십 후보 ${n}통 — 하나라도 남겨야 15년 안에 플래그십을 낸다. 예비 ${reserveCaskIds(s).size}통 — 남길 통을 "플래그십 예비"로 묶으세요(자동 기능이 쓰지 않는다)`, action: '숙성고', target: { anchor: 'mvp-warehouse' } });
   }

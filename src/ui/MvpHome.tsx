@@ -12,7 +12,7 @@ import { vesselMaterial } from '../sim/maturation';
 import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
 import { equipmentCost } from '../sim/sites';
-import { caskTagIds, reserveCaskIds, isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
+import { campaignMinOakMonths, caskTagIds, reserveCaskIds, isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
 import { FixedCostLine } from './panels/FixedCost';
@@ -25,7 +25,7 @@ import { monthlyFixedBreakdown } from '../sim/loans';
 import { PriceDesk } from './panels/Sales';
 import { Equipment, Orders, RecipeEditor } from './panels/Production';
 import { CATEGORY_ORDER, sourceCategory } from './panels/Bottling';
-import { liters, months, num, pct, won } from './format';
+import { liters, months, num, pct, won, wonCoarse } from './format';
 import { Badge, Button, Card, ConfirmButton, Empty, Meter, NumberField, Select, Stat, Table, Td } from './kit';
 
 // MVP 단일 화면 (mvp.md §5, #136·#137·#138·#146) — 코어 UI(ARCH).
@@ -206,7 +206,7 @@ function Headline() {
   const sc = s.scenario;
   const target = sc ? sc.equity * sc.goal.netWorthMultiple : null;
   const run = runway(s);
-  const flagMin = sc?.goal.flagshipMinMonths ?? 144;
+  const flagMin = campaignMinOakMonths(s);
   const oldest = s.inventory.casks.filter((c) => c.contents && !c.owner && !c.contents.sourced && (c.contents.kind === 'malt' || c.contents.kind === 'grain'))
     .reduce((m, c) => Math.max(m, c.contents!.oakMonths), 0);
   const left = sc ? sc.goal.months - s.month : null;
@@ -221,9 +221,10 @@ function Headline() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Stat label="현금" value={won(s.finance.cash)} tone={s.finance.cash < 0 ? 'bad' : undefined}
           hint={run.months != null ? `이 속도면 약 ${run.months}개월 버팀` : run.avg != null ? '자체 현금 흐름 흑자' : '기록 없음'} />
-        <Stat label="순자산" value={won(nw)} tone={target != null && nw >= target ? 'good' : undefined}
+        {/* 순자산·재고 평가액은 참 품질 합계라 100만 원 단위로만 보인다 ([결정 #310] 1단계 — architecture §11.4 안 A, I3). 현금·대출·목표는 그대로 */}
+        <Stat label="순자산" value={wonCoarse(nw)} tone={target != null && nw >= target ? 'good' : undefined}
           hint={target != null ? `목표 ${won(target)}의 ${pct(nw / target, 0)}` : '현금 − 대출 + 재고 평가액'} />
-        <Stat label="재고 평가액" value={won(inv)} hint="원액 현물가 + 제품 재고 원가 (소주 원액 0)" />
+        <Stat label="재고 평가액" value={wonCoarse(inv)} hint="원액 현물가 + 제품 재고 원가 (소주 원액 0) · 100만 원 단위" />
         <Stat label="대출 잔액" value={won(loans)} hint={loans ? `${s.finance.loans.length}건` : '없음'} />
         <Stat label="가장 오래된 자체 원액" value={months(oldest)} tone={oldest >= flagMin ? 'good' : sc && !flagDone && noMoreNew && cands === 0 ? 'bad' : undefined}
           hint={<>{left != null ? `플래그십 ${Math.floor(flagMin / 12)}년 · 목표까지 ${left}개월` : `플래그십 ${Math.floor(flagMin / 12)}년`}{flagHint && <div className={!flagDone && cands === 0 && noMoreNew ? 'font-medium text-rose-700 dark:text-rose-400' : ''}>{flagHint}</div>}</>} />
