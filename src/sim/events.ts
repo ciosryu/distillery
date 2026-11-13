@@ -19,6 +19,8 @@ import { HEX_LABEL } from './blendRadar';
 import { caskBookValue, creditClaim, newLedger, settleClaims, type LossLedger } from './insurance';
 import { isUnlocked, riskMul } from './research';
 import { sellFromLots } from './lots';
+import { lpaOf, scaleLedger } from './ledger';
+import { recordLoss } from './maturation';
 
 // 이벤트 엔진: 예보 → 발생 → (선택지) → 효과. 결정론적 난수 스트림 사용.
 
@@ -113,6 +115,8 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         const lost = new Set<string>();
         while (lost.size < Math.min(n, filled.length)) lost.add(rng.pick(filled).id);
         if (ledger) ledger.inventory += filled.filter((c) => lost.has(c.id)).reduce((t, c) => t + caskBookValue(c), 0);
+        // F2 원장 지점 14: 통 소실 — 원장은 원액과 함께 사라진다. 손실 사건만 남긴다(R5, 결산이 있을 때)
+        if (report) for (const c of filled) if (lost.has(c.id)) recordLoss(report, 'incident', lpaOf(c.contents!), c.contents!.costPerLPA * lpaOf(c.contents!));
         s.inventory.casks = s.inventory.casks.filter((c) => !lost.has(c.id));
         notes.push(`캐스크 ${lost.size}개 소실`);
         break;
@@ -120,7 +124,9 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
       case 'caskVolumeLoss': {
         const share = scale(e.share);
         if (ledger) ledger.inventory += share * s.inventory.casks.reduce((t, c) => t + caskBookValue(c), 0);
-        s.inventory.casks = s.inventory.casks.map((c) => (c.contents ? { ...c, contents: { ...c.contents, volumeL: c.contents.volumeL * (1 - share), costPerLPA: c.contents.costPerLPA / (1 - share) } } : c));
+        // F2 원장 지점 13: 사고 원액 손실 — 같은 비율로 줄고 원가는 남는다(보존)
+        if (report) for (const c of s.inventory.casks) if (c.contents) recordLoss(report, 'incident', lpaOf(c.contents) * share);
+        s.inventory.casks = s.inventory.casks.map((c) => (c.contents ? { ...c, contents: { ...c.contents, volumeL: c.contents.volumeL * (1 - share), costPerLPA: c.contents.costPerLPA / (1 - share), ...(c.contents.components?.length ? { components: scaleLedger(c.contents.components, 1 - share, 'preserve') } : {}) } } : c));
         notes.push(`숙성 원액 ${(share * 100).toFixed(0)}% 손실`);
         break;
       }

@@ -21,6 +21,8 @@ import { HANDFILL, handfillBlocker } from './handfill';
 import type { AutoFillSettings, AutoSampleSettings, Cask, CaskTypeId, Product, Recipe } from './types';
 import { nid, staffOf, warehouseCapacity } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
+import { addCost, scaleLedger, splitLedger } from './ledger';
+import { dropLots } from './lots';
 
 // 플레이어 행동 — 생산·숙성·블렌딩 (PROD) (결정 #144 — 파일 쪼개기로 actions.ts에서 옮겨 왔다. 규칙 불변)
 // 행동을 더할 때: 아래 타입·처리기·현금 분류 세 곳만 고친다. 코어(actions.ts)는 이 파일의 타입을 통째로 합친다
@@ -129,6 +131,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (p.stockBottles > 0) return fail(prev, `재고가 ${p.stockBottles.toLocaleString()}병 남아 있어 지울 수 없습니다 — 다 판 뒤에 지운다`);
     s.commerce.productArchive.push({ id: p.id, name: p.name, category: p.category, createdMonth: p.createdMonth, lastMonthSold: p.lastMonthSold, totalSold: p.totalSold, quality: p.quality, price: p.price });
     s.commerce.products.splice(i, 1);
+    dropLots(s, p.id); // F3 — 없는 제품의 병입 로트는 불변식 오류(재고 0이라 보통 비어 있다)
     return { state: s, message: `판매 목록에서 지움 — 「${p.name}」 (판매 기록은 남는다)` };
   },
   unfillCask: (s, prev, a) => {
@@ -143,14 +146,17 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const name = lot.name.split(' → ')[0]!;
     if (sameMonth) {
       const caskShare = CASKS[cask.typeId].price * CASK_COST_SHARE_PER_FILL;
-      s.inventory.lots.push({ ...lot, id: nid(s, 'L'), name: `${name} (통입 취소 ${cask.id})`, costPerLPA: Math.max(0, lot.costPerLPA - (lpa > 0 ? caskShare / lpa : 0)) });
+      const costPerLPA = Math.max(0, lot.costPerLPA - (lpa > 0 ? caskShare / lpa : 0));
+      // F2 원장 지점 5: 통입 취소 — LPA·목재 개월 그대로, 통값 배분만 되돌린다(로트 원가가 바뀐 만큼)
+      s.inventory.lots.push({ ...lot, id: nid(s, 'L'), name: `${name} (통입 취소 ${cask.id})`, costPerLPA, ...(lot.components?.length ? { components: addCost(lot.components, (costPerLPA - lot.costPerLPA) * lpa) } : {}) });
       const { contents: _c, filledMonth: _f, slot: _s, rare: _r, rareKnown: _k, ...rest } = cask;
       s.inventory.casks[ci] = { ...rest, fills: Math.max(0, cask.fills - 1) };
       return { state: s, message: `${cask.id} 통입 취소 — 원액 ${Math.round(lot.volumeL).toLocaleString()}L(${(lot.abv * 100).toFixed(1)}%, 물을 탄 도수)를 탱크로 되돌렸다. 통은 넣기 전 그대로` };
     }
     // 그 뒤에는 옮겨 붓는 것 — 손실 0.75%(피니싱 옮기기와 같다), 통은 한 번 쓴 통이 된다. 원액은 오크·옹기 개월을 지닌 채 탱크에(다시 통입하면 이어서 숙성)
     const kept = 1 - FINISH.lossShare;
-    s.inventory.lots.push({ ...lot, id: nid(s, 'L'), name: `${name} (${cask.id}에서 뺌)`, volumeL: lot.volumeL * kept });
+    // F2 원장 지점 6: 원액 빼기 — 이동 손실만큼 원가도 함께 나간다(유출 — 피니싱 옮기기 12와 다르다, P-PROD-55 Q2). 목재 개월은 그대로
+    s.inventory.lots.push({ ...lot, id: nid(s, 'L'), name: `${name} (${cask.id}에서 뺌)`, volumeL: lot.volumeL * kept, ...(lot.components?.length ? { components: scaleLedger(lot.components, kept, 'leak') } : {}) });
     s.inventory.casks[ci] = emptyCask(cask);
     return { state: s, message: `${cask.id}에서 원액 ${Math.round(lot.volumeL * kept).toLocaleString()}L를 빼 탱크로 옮겼다(손실 ${(FINISH.lossShare * 100).toFixed(2)}%) — 숙성 ${lot.oakMonths}개월은 원액에 남고, 통은 한 번 쓴 통이 된다` };
   },
@@ -359,6 +365,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (entry < 0.4) return fail(prev, '통입 도수는 40% 이상이어야 합니다');
     let lotLeftL = lot.volumeL;
     let filled = 0;
+    let restLedger = lot.components?.length ? lot.components : undefined; // F2 원장 지점 4: 통마다 떼어 내고 남은 탱크 몫
     const slots = new SlotIndex(s); // 연달아 자리 배정 — 한 번 세고 갱신 (O(n²) 방지)
     for (const id of a.caskIds) {
       const ci = s.inventory.casks.findIndex((c) => c.id === id);
@@ -369,6 +376,9 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
       const needL = caskLPA / lot.abv;
       const useL = Math.min(needL, lotLeftL);
       const lpa = useL * lot.abv;
+      // F2 원장 지점 4: 쓴 리터 비율로 분할(손실 아님) + 통값 배분을 그 통의 구성 원액에(LPA 비율)
+      let caskLedger: ReturnType<typeof addCost> | undefined;
+      if (restLedger) { const [take, rest] = splitLedger(restLedger, useL / lotLeftL); caskLedger = take; restLedger = rest; }
       lotLeftL -= useL;
       // 캐스크 원가의 일부를 이번 회차 원액 원가에 배분
       const caskShare = CASKS[cask.typeId].price * CASK_COST_SHARE_PER_FILL;
@@ -376,7 +386,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
       const rare = rngFor(s.seed, 0, `rare:${cask.id}:${cask.fills + 1}`).chance(RARE.chance);
       s.inventory.casks[ci] = {
         ...cask, fills: cask.fills + 1, filledMonth: s.month, rare: rare || undefined, rareKnown: undefined, samples: undefined, labAnalyzed: undefined,
-        contents: { ...lot, id: nid(s, 'L'), name: `${lot.name} → ${cask.id}`, volumeL: lpa / entry, abv: entry, costPerLPA: lot.costPerLPA + caskShare / lpa },
+        contents: { ...lot, id: nid(s, 'L'), name: `${lot.name} → ${cask.id}`, volumeL: lpa / entry, abv: entry, costPerLPA: lot.costPerLPA + caskShare / lpa, ...(caskLedger ? { components: addCost(caskLedger, caskShare) } : {}) },
       };
       s.inventory.casks[ci]!.slot = undefined;
       assignSlot(s, s.inventory.casks[ci]!, a.warehouseId, slots);
@@ -384,7 +394,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     }
     if (!filled) return fail(prev, '채울 수 있는 빈 캐스크가 없습니다 (오염 통은 재탄화해야 다시 쓸 수 있다)');
     if (lotLeftL < 1) s.inventory.lots.splice(lotIdx, 1);
-    else s.inventory.lots[lotIdx] = { ...lot, volumeL: lotLeftL };
+    else s.inventory.lots[lotIdx] = { ...lot, volumeL: lotLeftL, ...(restLedger ? { components: restLedger } : {}) };
     return { state: s, message: `캐스크 ${filled}개 통입 (${(entry * 100).toFixed(1)}%)` };
   },
   rechar: (s, prev, a) => {
@@ -445,7 +455,8 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const caskShare = CASKS[to.typeId].price * CASK_COST_SHARE_PER_FILL;
     s.inventory.casks[ti] = {
       ...to, fills: to.fills + 1, filledMonth: s.month, slot: from.slot, rare: undefined, rareKnown: undefined, samples: undefined, sampleLog: undefined, labAnalyzed: undefined,
-      contents: { ...lot, name: `${lot.name} → ${to.id}`, volumeL, costPerLPA: lot.costPerLPA / keep + caskShare / lpa, caskHistory: historyAfterTransfer(lot, from.typeId, to.typeId, s.month) },
+      // F2 원장 지점 12: 피니싱 옮기기 — 이동 손실은 원가를 남기고(보존) 새 통값 배분을 더한다. 목재 개월은 그대로 이어서 센다(#308 목재 구간의 실제 합)
+      contents: { ...lot, name: `${lot.name} → ${to.id}`, volumeL, costPerLPA: lot.costPerLPA / keep + caskShare / lpa, caskHistory: historyAfterTransfer(lot, from.typeId, to.typeId, s.month), ...(lot.components?.length ? { components: addCost(scaleLedger(lot.components, keep, 'preserve'), caskShare) } : {}) },
     };
     s.inventory.casks[fi] = emptyCask(from);
     return { state: s, message: `${from.id} → ${to.id} ${finishLabel(to.typeId)} 시작 (손실 ${(lot.volumeL - volumeL).toFixed(1)}L) — 권장 ${FINISH.recommendedMonths[0]}~${FINISH.recommendedMonths[1]}개월` };

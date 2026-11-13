@@ -17,7 +17,9 @@ import { hexOf, matchScore, mixHex } from './blendRadar';
 import { COMMISSION, findTarget, knownReads, QUALITY_SIGMA_PER_HEX, revealNotes, sampleAxesOf } from './blendTable';
 import { productCountEver } from './lifecycle';
 import { agedWhitePerception, defaultPolicyPrice } from './content/market';
-import type { AxisId, CaskTypeId, Flavor, GameState, Hex, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
+import type { AxisId, CaskTypeId, Flavor, GameState, Hex, LedgerEntry, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
+import { coalesce, ledgerOf, splitLedger } from './ledger';
+import { addLot } from './lots';
 
 export interface BlendComponent { source: 'cask' | 'lot'; id: string; liters: number }
 export interface BottleOptions {
@@ -494,6 +496,13 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   // 섞은 원액의 레시피 (#243) — 자동 납품이 다른 제품 몫 원액을 가져가지 않게(5차 판: 「안성 소주」 자동 납품이 탱크 소주를 다 써 「옹기소주」를 못 채움).
   // 원액을 빼기 **전에** 읽는다 — 다 쓴 탱크·통은 빼고 나면 원액이 없어 기록이 빠졌다(통째 병입한 위스키는 늘 비었다)
   const recipeIds = [...new Set(components.filter((c) => c.liters > 0).map((c) => lotOf(s, c)?.recipeId).filter((x): x is string => !!x))].sort();
+  // F2 원장 지점 17·18: 병입 — 원천마다 뽑은 리터 비율로 분할해(손실 아님) 병입 로트에 이어 붙인다(평균 안 냄). 원장이 없는 원천은 합성(`ledgerOf` — 옛 판은 unknown)
+  const bottledLedger: LedgerEntry[] = [];
+  const takeLedger = (lot: SpiritLot, liters: number): LedgerEntry[] | undefined => {
+    const [take, rest] = splitLedger(ledgerOf(s, lot), Math.min(1, liters / lot.volumeL));
+    bottledLedger.push(...take);
+    return lot.components?.length ? rest : undefined;
+  };
   for (const c of components) {
     if (c.liters <= 0) continue;
     if (c.source === 'cask') {
@@ -501,13 +510,15 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
       const cask = s.inventory.casks[idx]!;
       const lot = cask.contents!;
       const remain = lot.volumeL - c.liters;
-      s.inventory.casks[idx] = remain < 1 ? emptyCask(cask) : { ...cask, contents: { ...lot, volumeL: remain } };
+      const rest = takeLedger(lot, c.liters);
+      s.inventory.casks[idx] = remain < 1 ? emptyCask(cask) : { ...cask, contents: { ...lot, volumeL: remain, ...(rest ? { components: rest } : {}) } };
     } else {
       const idx = s.inventory.lots.findIndex((l) => l.id === c.id);
       const lot = s.inventory.lots[idx]!;
       const remain = lot.volumeL - c.liters;
+      const rest = takeLedger(lot, c.liters);
       if (remain < 1) s.inventory.lots.splice(idx, 1);
-      else s.inventory.lots[idx] = { ...lot, volumeL: remain };
+      else s.inventory.lots[idx] = { ...lot, volumeL: remain, ...(rest ? { components: rest } : {}) };
     }
   }
   const product: Product = {
@@ -551,6 +562,8 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     const idx = s.commerce.products.findIndex((x) => x.id === opts.restockId);
     const merged = restockedProduct(s.commerce.products[idx]!, product);
     s.commerce.products[idx] = merged;
+    // F3 로트 생성(보충 18 — 수동·자동 납품 공통): 보충마다 **새 병입 로트** — 제품 칸만 가중 평균으로 합치고 로트는 섞지 않는다(FIFO, "어린 제품 판매 + 적격 보충"으로 승리 0)
+    addLot(s, merged.id, p.bottles, { components: coalesce(bottledLedger) });
     s.finance.cash -= Math.round((packagingUnitCost(s, opts) + BOTTLING_LABOR_PER_BOTTLE) * p.bottles);
     const actualBatch = hexOf(product.flavor);
     return { product: merged, reveal: { targetLabel: null, score: null, predicted, actual: actualBatch, notes: p.kind !== 'malt' && p.kind !== 'grain' ? [] : predicted ? [...revealNotes(predicted, actualBatch), ...(unknownShare >= 0.05 ? [`샘플 기록 없는 원액 ${Math.round(unknownShare * 100)}%는 예상 밖이었다`] : [])] : ['샘플 기록 없이 병입 — 예상 없이 섞었다'] } };
@@ -563,6 +576,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   // 포장재·병입 인건비는 병입 시점에 지출
   s.finance.cash -= Math.round((packagingUnitCost(s, opts) + BOTTLING_LABOR_PER_BOTTLE) * p.bottles);
   s.commerce.products.push(product);
+  addLot(s, product.id, p.bottles, { components: coalesce(bottledLedger) }); // F3 로트 생성(병입 17) — 적격(`eligibleAtBottling`)은 F4가 채운다
   // 결과 공개·채점·보상 (결정 #124 P5·P6·P8)
   const actual = hexOf(product.flavor);
   product.hex = actual;
