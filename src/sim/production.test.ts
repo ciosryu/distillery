@@ -1298,6 +1298,39 @@ describe('자동 납품 통 하한 (#267, 표기 하한 함정)', () => {
   });
 });
 
+describe('위스키·숙성 소주 자동 납품도 같은 레시피 통만 (#293)', () => {
+  const setup = () => {
+    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.progress.milestones.push({ id: 'flagship_sold', month: 0 } as never); // 플래그십 보호 끔 — 레시피 거름만 본다
+    s.inventory.casks = [];
+    const mk = (id: string, recipeId: string | undefined, extra: Partial<SpiritLot> = {}, typeId = 'ex_bourbon_barrel') => s.inventory.casks.push({ id, typeId, sizeL: 200, wood: typeId === 'onggi_jar' ? 'none' : 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: { id: `L${id}`, name: id, kind: 'malt', volumeL: 190, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: 40, sourced: false, costPerLPA: 10000, ...(recipeId ? { recipeId } : {}), ...extra } } as Cask);
+    return { s, mk };
+  };
+  const w3 = (recipeIds?: string[]) => ({ id: 'W3', name: '3년', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 50, style: null, sourcedShare: 0, stockBottles: 0, price: 60000, unitCost: 10000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, ...(recipeIds ? { recipeIds } : {}) }) as Product;
+
+  it('위스키 — 레시피가 다른 통·기록 없는 통은 고르지 않고, 기록 없는 옛 제품은 모든 통(지금 동작)', async () => {
+    const { autoRestockSources, supplyHorizon } = await import('./economics');
+    const { s, mk } = setup();
+    mk('A', 'RA'); mk('B', 'RB'); mk('N', undefined); mk('A2', 'RA', { oakMonths: 30 });
+    expect(autoRestockSources(s, w3(['RA'])).map((x) => x.comp.id)).toEqual(['A']);
+    expect(autoRestockSources(s, w3(['RA', 'RB'])).map((x) => x.comp.id).sort()).toEqual(['A', 'B']);
+    expect(autoRestockSources(s, w3()).map((x) => x.comp.id).sort()).toEqual(['A', 'B', 'N']);
+    // 공급 지평의 "곧 닿는 병"도 같은 거름 — 30개월 RA 통은 RA 제품에만 잡힌다
+    expect(supplyHorizon(s, { ...w3(['RA']), salesEma: 10 }).soonBottles).toBeGreaterThan(0);
+    expect(supplyHorizon(s, { ...w3(['RB']), salesEma: 10 }).soonBottles).toBe(0);
+  });
+
+  it('숙성 소주 표기 제품 — 같은 레시피 옹기 통만', async () => {
+    const { autoRestockSources } = await import('./economics');
+    const { s, mk } = setup();
+    mk('OA', 'SA', { kind: 'soju', oakMonths: 0, restMonths: 24 }, 'onggi_jar');
+    mk('OB', 'SB', { kind: 'soju', oakMonths: 0, restMonths: 24 }, 'onggi_jar');
+    const soju = { ...w3(['SA']), id: 'S2', category: 'soju_distilled', ageYears: null, oakMonths: 0, restMonths: 24, abv: 0.25 } as Product;
+    expect(autoRestockSources(s, soju).map((x) => x.comp.id)).toEqual(['OA']);
+    expect(autoRestockSources(s, { ...soju, recipeIds: undefined }).map((x) => x.comp.id).sort()).toEqual(['OA', 'OB']);
+  });
+});
+
 describe('자동 납품 함정 경고·하한 올리기 (#297, MGT P-MGT-45)', () => {
   const setup = () => {
     let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });

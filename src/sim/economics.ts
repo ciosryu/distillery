@@ -561,10 +561,19 @@ export function autoRestockContest(s: GameState, p: Product, monthOfYear = calen
 /** 자동 납품 하한이 길어 오래된 통만 쓰는 제품인가 — 화면 경고용(5년 이상) */
 export const AUTO_RESTOCK_LONG_FLOOR = 60;
 
-/** 자동 납품 원액 후보 — 쓸 순서대로. 위스키는 숙성 표기를 채우고 피니시가 같고 도수가 충분한 나무 통, 보호 태그 통 빼고, "먼저 쓰기" 태그 통 먼저, 그다음 어린 통부터 */
+/** 자동 납품이 쓸 원액의 레시피 거름 (#243 · #293) — 제품의 레시피 기록(recipeIds)에 든 레시피의 원액만. 기록 없는 옛 제품은 모두 통과 */
+const recipeFilter = (p: Pick<Product, 'recipeIds'>): ((l: Pick<SpiritLot, 'recipeId'>) => boolean) => {
+  const rec = p.recipeIds?.length ? new Set(p.recipeIds) : null;
+  return (l) => !rec || (!!l.recipeId && rec.has(l.recipeId));
+};
+
+/** 자동 납품 원액 후보 — 쓸 순서대로. 위스키는 숙성 표기를 채우고 피니시가 같고 도수가 충분한 나무 통, **같은 레시피**(#293), 보호 태그 통 빼고, "먼저 쓰기" 태그 통 먼저, 그다음 어린 통부터 */
 export function autoRestockSources(s: GameState, p: Product): { comp: Omit<BlendComponent, 'liters'>; lot: SpiritLot }[] {
   const kind = RESTOCK_KIND[p.category];
   if (!kind) return [];
+  // 같은 레시피 원액만 (#243 탱크 · #293 위스키·숙성 소주 통) — 숙성 표기만 맞는 다른 레시피 통으로 채워 제품의 레시피·스타일(#290 B1-9 피트 비중)이
+  // 조용히 바뀌지 않게. 레시피 기록이 없는 옛 제품은 모든 원액(지금 동작)
+  const sameRecipe = recipeFilter(p);
   if (!isWhiskyCategory(p.category)) {
     const minAbv = isCaskStrength(p) ? 0.4 : p.abv - 1e-9;
     // 숙성 소주 표기 제품 (#221) — 탱크 원액을 섞으면 표기가 빠지므로, 표기 개월 이상 쉰 같은 용기(옹기/오크)의 통에서 어린 통부터
@@ -576,13 +585,12 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
       const pref = preferredCaskIds(s);
       return s.inventory.casks.filter((c): c is Cask & { contents: SpiritLot } => !!c.contents && !c.owner && !c.handfill && !c.contaminationKnown && (vesselMaterial(c) === 'wood') !== onggi
           && c.contents.kind === kind && !c.contents.sourced && months(c.contents) >= need && c.contents.abv >= minAbv && (finishOf(c.contents)?.typeId ?? null) === (p.finish ?? null)
-          && !excluded.has(c.id))
+          && !excluded.has(c.id) && sameRecipe(c.contents))
         .sort((a, b) => Number(pref.has(b.id)) - Number(pref.has(a.id)) || months(a.contents) - months(b.contents) || a.id.localeCompare(b.id))
         .map((c) => ({ comp: { source: 'cask' as const, id: c.id }, lot: c.contents }));
     }
     // 같은 레시피 탱크만 (#243) — 레시피 기록이 없는 옛 제품은 모든 탱크
-    const rec = p.recipeIds?.length ? new Set(p.recipeIds) : null;
-    return s.inventory.lots.filter((l) => l.kind === kind && l.abv >= minAbv && !l.sourced && l.oakMonths === 0 && (!rec || (!!l.recipeId && rec.has(l.recipeId))))
+    return s.inventory.lots.filter((l) => l.kind === kind && l.abv >= minAbv && !l.sourced && l.oakMonths === 0 && sameRecipe(l))
       .sort((a, b) => a.createdMonth - b.createdMonth || a.id.localeCompare(b.id))
       .map((l) => ({ comp: { source: 'lot' as const, id: l.id }, lot: l }));
   }
@@ -594,7 +602,7 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
   const pref = preferredCaskIds(s);
   return s.inventory.casks.filter((c): c is Cask & { contents: SpiritLot } => !!c.contents && !c.owner && !c.handfill && !c.contaminationKnown && vesselMaterial(c) === 'wood'
       && c.contents.kind === kind && !c.contents.sourced && c.contents.oakMonths >= minOak && c.contents.abv >= minAbv && (finishOf(c.contents)?.typeId ?? null) === finish
-      && !excluded.has(c.id))
+      && !excluded.has(c.id) && sameRecipe(c.contents))
     .sort((a, b) => Number(pref.has(b.id)) - Number(pref.has(a.id)) || a.contents.oakMonths - b.contents.oakMonths || a.id.localeCompare(b.id))
     .map((c) => ({ comp: { source: 'cask' as const, id: c.id }, lot: c.contents }));
 }
@@ -641,9 +649,10 @@ export function supplyHorizon(s: GameState, p: Product, soonMonths = 12): Supply
     const minAbv = isCaskStrength(p) ? 0.4 : p.abv - 1e-9;
     const finish = p.finish ?? null;
     const excluded = autoRestockExcluded(s, p);
+    const sameRecipe = recipeFilter(p); // 자동 납품과 같은 레시피 거름 (#293)
     const near = s.inventory.casks.flatMap((c) => (c.contents && !c.owner && !c.handfill && !c.contaminationKnown && vesselMaterial(c) === 'wood'
       && c.contents.kind === kind && !c.contents.sourced && c.contents.oakMonths >= floor - soonMonths && c.contents.oakMonths < floor
-      && c.contents.abv >= minAbv && (finishOf(c.contents)?.typeId ?? null) === finish && !excluded.has(c.id) ? [c.contents] : []));
+      && c.contents.abv >= minAbv && (finishOf(c.contents)?.typeId ?? null) === finish && !excluded.has(c.id) && sameRecipe(c.contents) ? [c.contents] : []));
     soonBottles = lotBottles(near, p);
   }
   const salesPerMonth = p.salesEma ?? 0;
