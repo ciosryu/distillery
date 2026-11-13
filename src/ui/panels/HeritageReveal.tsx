@@ -1,7 +1,7 @@
 // 헤리티지 병입 연출 (#244, 2026-11-10 오너 요청 — "12년 동안 데스밸리를 견디며 묵혀 둔 캐스크를 병입하는 과정이 버튼 한 번으로 싱겁게 끝난다")
 // 10년 이상 통 · 플래그십이 되는 병입 직후 화면 가운데에 그 통의 연표(증류 → 통입 → 견딘 재해·통의 사고 → 샘플 → 이정표)와 새 제품을 보인다.
 // 연표는 병입 전 상태로 계산해 넘겨받는다(병입하면 통이 빈다). 화면만 — 규칙은 그대로
-import { caskStory, heritageCasks, monthLabel, type BlendComponent, type BottleOptions, type CaskStory, type GameState, type Product } from '../../sim';
+import { campaignMinOakMonths, caskStory, heritageCasks, monthLabel, type BlendComponent, type BottleOptions, type CaskStory, type GameState, type Product } from '../../sim';
 import { useGame } from '../../store/game';
 import { months, num, pct, won } from '../format';
 import { Button } from '../kit';
@@ -62,7 +62,7 @@ export function bottleWithHeritage(s: GameState, dispatch: (a: Parameters<Return
   const after = useGame.getState().state;
   const product = options.restockId ? after.commerce.products.find((p) => p.id === options.restockId) : after.commerce.products.find((p) => !before.has(p.id));
   if (!product) return null;
-  const flagshipMonths = after.scenario?.goal.flagshipMinMonths ?? 144;
+  const flagshipMonths = campaignMinOakMonths(after);
   const bottles = options.restockId ? product.stockBottles - (s.commerce.products.find((p) => p.id === options.restockId)?.stockBottles ?? 0) : product.stockBottles;
   return { stories, product, bottles, flagship: (product.oakMonths ?? 0) >= flagshipMonths };
 }

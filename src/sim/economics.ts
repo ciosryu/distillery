@@ -14,6 +14,7 @@ import { outboundLogistics } from './sites';
 import { calendar, warehouseCapacity } from './util';
 import { FLAGSHIP_RESERVE_TAG, preferredCaskIds, protectedCaskIds, reserveCaskIds, tagDef } from './tags';
 import { spotBidPerLPA } from './bulk';
+import { campaignMinOakMonths } from './progress';
 import type { Cask, GameState, MonthReport, Product, ProductCategory, Recipe, SpiritKind, SpiritLot } from './types';
 
 /** 표준 병 — 소주는 대중 규격, 몰트는 위스키 규격 (봇·사전 점검과 같은 값) */
@@ -491,7 +492,7 @@ export function productMonthlyPace(s: GameState, p: Product, monthOfYear = calen
 export function flagshipGuard(s: GameState, p: Pick<Product, 'ageYears'>): boolean {
   if (!s.scenario) return false;
   if (s.progress.milestones.some((m) => m.id === 'flagship_sold')) return false;
-  return (p.ageYears ?? 0) * 12 < s.scenario.goal.flagshipMinMonths;
+  return (p.ageYears ?? 0) * 12 < campaignMinOakMonths(s);
 }
 
 /** 플래그십 예비 통 — `tags.ts reserveCaskIds`와 같다(보호 계산은 태그 한 곳). 옛 이름은 ARCH `tags.test.ts`(#260 "손대지 않으면 #252와 같다")가 쓴다 */

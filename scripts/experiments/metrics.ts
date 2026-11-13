@@ -4,7 +4,7 @@
 // 판정용 봇(mvp-human.ts P8)이 METRICS=1이면 이 표를 낸다. mvp-survival.ts(ARCH)는 아직 자기 순자산 식을 쓴다 → REQ-MGT-4 엣지 ①
 import type { GameState } from '../../src/sim';
 import { awarenessOf } from '../../src/sim/brands';
-import { GRADE, netWorth } from '../../src/sim/progress';
+import { campaignMinOakMonths, GRADE, netWorth } from '../../src/sim/progress';
 import { monthlyFixedCost } from '../../src/sim/loans';
 import { currentSuggested } from '../../src/sim/economics';
 
@@ -176,7 +176,7 @@ export class MonthTracker {
     this.productCapital.push(s.commerce.products.reduce((t, p) => t + p.stockBottles * p.unitCost, 0));
     this.negRun = s.finance.cash < 0 ? this.negRun + 1 : 0;
     this.maxNegRun = Math.max(this.maxNegRun, this.negRun);
-    const min = s.scenario?.goal.flagshipMinMonths ?? 144;
+    const min = campaignMinOakMonths(s);
     if ([144, 168, 180].includes(s.month)) this.oldCasks[s.month] = s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.oakMonths >= min && (c.contents.kind === 'malt' || c.contents.kind === 'grain')).length;
     // 보관된 옛 제품(productArchive)에는 숙성 정보가 없다 → 살아 있을 때 본 12년↑ 제품 id를 기억해 둔다
     for (const p of s.commerce.products) if ((p.oakMonths ?? (p.ageYears ?? 0) * 12) >= min) this.oldIds.add(p.id);

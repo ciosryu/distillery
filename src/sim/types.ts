@@ -925,14 +925,37 @@ export interface ScenarioState {
   /** 시작 자기자본 — 순자산 목표의 기준 (#141) */
   equity: number;
   goal: { months: number; netWorthMultiple: number; flagshipMinMonths: number };
+  /**
+   * 캠페인 승리 규칙 ([결정 #308·#309], core-integration §2·§3 — F1). 승리 = 적격 로트의 최초 정상 유상 출하.
+   * 새 판(v16)은 시나리오 정의에서 복사한다. **옛 세이브(`rulesVersion: 'legacy-v15'`)에는 없다** — 마이그레이션이 만들어 넣지 않는다(증거 창작 금지, §3 Migration).
+   * 읽는 쪽은 `campaignMinOakMonths(s)`(progress.ts) 하나로 — 없으면 `goal.flagshipMinMonths`. 적격성 함수·판매 사건·`progress.win`은 F2~F4
+   */
+  campaignGoal?: CampaignGoal;
   /** 이미 연 단계 id (content/scenarios.ts stages) — 옛 세이브에는 없다 */
   stagesDone?: string[];
   /** 이 판을 시작한 빌드(커밋 짧은 해시, #241) — 화면이 새 판을 만들 때 남긴다. 시뮬레이션은 읽지 않는다. 옛 세이브에는 없다(플레이 기록의 첫 빌드로 대신한다) */
   startBuild?: string;
 }
 
+/** 캠페인 승리 규칙의 한 값 (RuleSet) — [결정 #308·#309] */
+export interface CampaignGoal {
+  /** 적격 원액의 최소 **목재** 숙성 개월 (A = 144, #309) — 구성 원액 모두 */
+  minOakMonths: number;
+  /** 승리 사건 — 'paid_shipment' = 정상 유상 출하(core-integration §2.2) */
+  event: 'paid_shipment';
+  /** 적격 제품 — 싱글 몰트 */
+  product: 'single_malt';
+  /** 적격 출처 — 같은 증류소에서 자가 증류 */
+  origin: 'self_distilled_same_site';
+}
+
+/** 세이브가 따르는 규칙 묶음 — 'v16' = #308 승리 규칙, 'legacy-v15' = 옛 판(순자산 ×3 + 180개월 판정, 조용히 재판정하지 않는다) */
+export type RulesVersion = 'legacy-v15' | 'v16';
+
 export interface GameState {
-  version: 15;
+  version: 16;
+  /** 규칙 묶음 (F1, [결정 #308]). 옛 세이브는 v15 → v16 마이그레이션이 'legacy-v15'로 표시한다. 없으면 'legacy-v15'로 읽는다 */
+  rulesVersion?: RulesVersion;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;

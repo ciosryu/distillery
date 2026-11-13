@@ -12,7 +12,7 @@ import { vesselMaterial } from '../sim/maturation';
 import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
 import { equipmentCost } from '../sim/sites';
-import { caskTagIds, reserveCaskIds, isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
+import { campaignMinOakMonths, caskTagIds, reserveCaskIds, isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
 import { FixedCostLine } from './panels/FixedCost';
@@ -206,7 +206,7 @@ function Headline() {
   const sc = s.scenario;
   const target = sc ? sc.equity * sc.goal.netWorthMultiple : null;
   const run = runway(s);
-  const flagMin = sc?.goal.flagshipMinMonths ?? 144;
+  const flagMin = campaignMinOakMonths(s);
   const oldest = s.inventory.casks.filter((c) => c.contents && !c.owner && !c.contents.sourced && (c.contents.kind === 'malt' || c.contents.kind === 'grain'))
     .reduce((m, c) => Math.max(m, c.contents!.oakMonths), 0);
   const left = sc ? sc.goal.months - s.month : null;

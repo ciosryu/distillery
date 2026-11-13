@@ -50,7 +50,7 @@
 import { advanceMonth, applyAction, isWhiskyCategory, newScenarioGame, previewBlend, warehouseCapacity, type Action, type GameState, type ProductCategory } from '../../src/sim';
 import { EVENTS } from '../../src/sim/content/events';
 import { cashAlert } from '../../src/ui/alerts';
-import { netWorth } from '../../src/sim/progress';
+import { campaignMinOakMonths, netWorth } from '../../src/sim/progress';
 import { monthlyFixedCost } from '../../src/sim/loans';
 import { isFlagshipCandidate } from '../../src/sim/delegateCheck';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -394,7 +394,7 @@ function bottle(s: GameState, p: Policy, t: { firstWhisky: number; flagshipDone?
   // 플래그십 병입(MGT-D — 등급 A·S를 재려면 플래그십을 팔아야 한다): 최소 숙성(시나리오, 기본 144개월)을 채운 자체 몰트 통 중
   // 가장 오래된 protect통(없으면 2)을 한 번 「플래그십」 제품으로 병입한다. 사람 후반 판은 플래그십을 못 냈다(X0는 그대로 끔)
   if (p.flagship && !t.flagshipDone) {
-    const minM = s.scenario?.goal.flagshipMinMonths ?? 144;
+    const minM = campaignMinOakMonths(s);
     const fl = s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.kind === 'malt' && c.contents.oakMonths >= minM).sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths).slice(0, p.protect || 2);
     if (fl.length) {
       const before = s;
