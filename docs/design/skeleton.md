@@ -24,11 +24,11 @@
 | 항목 | 내용 | 근거 |
 |---|---|---|
 | 플랫폼 | Godot 4 + C#, PC(Steam). TS는 설계 실험실·기준 구현 | #34·#35·#40·#122 |
-| 상태 | 단일 `GameState` **v15** = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history·progress). v14 = 제품 피니싱 표기 `Product.finish?`(#158), v15 = 병입 때 통 구성 `Product.caskMix?`(#176). **다음 코어 PR이 스키마를 올리면 v16** | #118, [architecture.md §3](architecture.md) |
+| 상태 | 단일 `GameState` **v16** = 헤더(+ `scenario`, S-8) + 슬라이스(world·finance·hr·production·inventory·commerce·b2b·events·research·site·history·progress). v14 = 제품 피니싱 표기 `Product.finish?`(#158), v15 = 병입 때 통 구성 `Product.caskMix?`(#176), **v16 = 캠페인 규칙 묶음 F1([결정 #308·#309]) — `rulesVersion`('legacy-v15' · 'v16') · `scenario.campaignGoal?`(새 판만, 옛 판에는 만들지 않는다) · 읽기는 `campaignMinOakMonths(s)` 하나**. 다음 코어 PR이 스키마를 올리면 v17 | #118, [architecture.md §3](architecture.md) |
 | 시간 | 1턴 = 1개월. 월 틱 0~9단계 파이프라인 + 틱 컨텍스트 | #1·#26, PRD §2.2 |
 | 경계 | `GameEngine` 계약 (명령 → 스냅샷) | architecture.md §3.2 |
 | 난수 | mulberry32, `rngFor(seed, month, stream)` 독립 스트림 | PRD §13.2 |
-| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8 → v9 → v10 → v11 → v12 → v13 → v14 → v15) | #118, S-8, S-10, S-9, S-2, S-6, S-11·S-12, #158, #176 |
+| 세이브 | JSON + 버전 + 마이그레이션 체인 (v5 → v6 → v7 → v8 → v9 → v10 → v11 → v12 → v13 → v14 → v15 → v16) | #118, S-8, S-10, S-9, S-2, S-6, S-11·S-12, #158, #176, #308 |
 | 스키마 버전을 올리는 때 `[결정 #187, 오너 승인 2026-11-08]` | **올린다** — 옛 세이브에 값을 채우거나 옮기거나 지워야 할 때(필수 필드 추가·이름·구조 변경·의미 변경). `migrate.ts` 다음 버전 + 픽스처 테스트(옛 세이브가 그대로 이어지고 진행 결과가 같다). **올리지 않는다** — **선택 필드(`?`)를 더하는데 읽는 쪽이 없을 때를 처리하고 옮길 값이 없을 때**(예: `BrandLine.marketingBudget?` #155, `MonthReport.netWorth?` #159, `SampleRecord.axes?` #183, `Product.peatShare?` #290 B1-9). 그때는 "없으면 어떻게 읽는지"를 필드 주석에 적고, 옛 세이브 픽스처로 테스트가 계속 통과하는지만 본다. 앞선 선택 필드 버전 올림(#158 `Product.finish?`·#176 `Product.caskMix?`)은 그대로 둔다(되돌리지 않는다) | 선례가 섞여 있었다 |
 | 테크 게이트 | `isUnlocked(state, key)` 하나로 판정, 키 규칙 고정, **켜짐**(`TECH_GATING = true`, #174 — Phase 1은 꺼져 있었다) | #118, #174, tech-tree §7 |
 | 설계 규모 | 30년(360턴) · 원액 든 캐스크 2,500개 | #119 |

@@ -17,6 +17,6 @@
 
 ## 코드 요약
 
-- `src/sim/` 순수 TypeScript 시뮬레이션(React 의존 없음) — 상태 `GameState` v15(도메인 슬라이스 + 시나리오 + 숙성 용기 + 진행 + 브랜드 + 연구 + 재무 확장·경쟁 자리 + 제품 피니싱 표기·통 구성 기록), 월 틱 `step.ts`, 행동 `actions.ts`, 엔진 계약 `engine.ts`, 세이브 마이그레이션 `migrate.ts`
+- `src/sim/` 순수 TypeScript 시뮬레이션(React 의존 없음) — 상태 `GameState` v16(도메인 슬라이스 + 시나리오 + 숙성 용기 + 진행 + 브랜드 + 연구 + 재무 확장·경쟁 자리 + 제품 피니싱 표기·통 구성 기록 + 캠페인 규칙 묶음 `rulesVersion`·`campaignGoal` #308), 월 틱 `step.ts`, 행동 `actions.ts`, 엔진 계약 `engine.ts`, 세이브 마이그레이션 `migrate.ts`
 - `src/sim/content/` 콘텐츠 데이터 · `src/store/` Zustand · `src/ui/` React 웹 프로토타입(최종은 Godot 4 + C#)
 - `scripts/balance-sim.ts` 헤드리스 밸런스 시뮬레이션 · `scripts/codemods/v6-slices.mjs` 옛 평면 상태 코드를 슬라이스로 바꾸는 코드모드 · `scripts/experiments/mvp-survival.ts` MVP 생존 실험
