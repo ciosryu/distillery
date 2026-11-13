@@ -225,3 +225,96 @@ export function comparePaired(a: RunOutcome[], b: RunOutcome[]) {
   const verdict = m > 0 && dCvar >= 0 ? '위험조정 우위' : m < 0 && dCvar <= 0 ? '위험조정 열위' : m > 0 ? '기대 우위·위험 열위' : '기대 열위·위험 우위';
   return { meanDiff: m, t: sd > 0 ? m / (sd / Math.sqrt(n)) : NaN, wins: d.filter((x) => x > 0).length, n, cvarDiff: dCvar, verdict };
 }
+
+// ───────────── 새 승리 판정 지표 (P-MGT-46 · 결정 #308·#312·#320) — F4 전에 넣는 순수 함수 ─────────────
+// 판 하나를 승리 / 파산 / 기타 종료 / 관측 종료(적격 있음 · 없음)로 나누고, 여러 판을 묶어 비율·누적 승리 곡선·짝 비교를 낸다.
+// **게임 상태를 읽지 않는다** — 부르는 쪽이 게임 판정(F4 progress.win · status · 통 단위 적격성 조회)에서 읽은 값을 넘긴다.
+// 도구가 승리를 스스로 판정하지 않는다(#312). 지금은 P8이 부르지 않는다 → P8 출력 불변. 연결은 F4 뒤 MGT PR(mgt-stage-t.md 「F4 대비 변경 목록」).
+
+/** 판 하나의 분류 (측정 창 W에서, 서로 겹치지 않음) */
+export type WinClass = 'win' | 'bankrupt' | 'ended' | 'censored_ready' | 'censored_none';
+
+export const WIN_CLASSES: readonly WinClass[] = ['win', 'bankrupt', 'ended', 'censored_ready', 'censored_none'];
+
+export const WIN_CLASS_LABEL: Record<WinClass, string> = {
+  win: '승리',
+  bankrupt: '파산',
+  ended: '기타 종료',
+  censored_ready: '관측 종료 · 적격 원액 있음(출고 실패)',
+  censored_none: '관측 종료 · 적격 원액 없음',
+};
+
+/** 분류에 넘기는 값 — 모두 게임 판정에서 읽은 것 */
+export interface WinInput {
+  /** 측정 창(개월) — 게임 종료가 아니다. 기본 180, 민감도 240 */
+  window: number;
+  /** `progress.win.month` — 없으면 승리하지 않았다 */
+  winMonth?: number;
+  /** 게임이 끝난 달(파산·면허 취소·해임 등) — 끝나지 않았으면 없음 */
+  endMonth?: number;
+  /** 끝난 이유가 파산인가(`status === 'bankrupt'`) — 아니면 기타 종료 */
+  endBankrupt?: boolean;
+  /** 측정 창 끝에 적격 원액(통·탱크·병)이 있었나 — 통 단위 적격성 조회(F2)의 결과 */
+  eligibleAtWindow: boolean;
+}
+
+/**
+ * 분류 규칙 (P-MGT-46): 창 안에 승리가 있으면 **승리**(승리 뒤 파산해도 — 사건이 먼저) ·
+ * 아니면 창 안에 게임이 끝났으면 **파산** 또는 **기타 종료** · 아니면 **관측 종료**(적격 원액 유무로 둘)
+ */
+export function classifyWin(x: WinInput): WinClass {
+  if (x.winMonth != null && x.winMonth <= x.window) return 'win';
+  if (x.endMonth != null && x.endMonth <= x.window) return x.endBankrupt ? 'bankrupt' : 'ended';
+  return x.eligibleAtWindow ? 'censored_ready' : 'censored_none';
+}
+
+/** 승리 뒤 창 안에서 파산했다 — 분류는 승리, 성과 열에 따로 적는다 */
+export const bankruptAfterWin = (x: WinInput): boolean =>
+  x.winMonth != null && x.winMonth <= x.window && !!x.endBankrupt && x.endMonth != null && x.endMonth <= x.window;
+
+/** 판 하나의 새 승리 결과 — 분류 + 승리 달(창 안일 때만) */
+export interface WinOutcome { cls: WinClass; winMonth?: number; window: number }
+
+export function winOutcomeOf(x: WinInput): WinOutcome {
+  const cls = classifyWin(x);
+  return { cls, window: x.window, ...(cls === 'win' ? { winMonth: x.winMonth! } : {}) };
+}
+
+/** 누적 승리 곡선의 눈금(개월) — A = 144(#309) 직후부터. 창을 넘는 눈금은 NaN */
+export const WIN_CURVE_MONTHS = [144, 150, 156, 168, 180, 240] as const;
+
+/** 여러 판(같은 정책·티어·창)을 묶은 새 승리 지표 — 분류 수·비율·Wilson 구간 · 승리 달 분포(승리 판만) · 누적 승리 곡선 */
+export function summarizeWin(os: WinOutcome[]) {
+  const n = os.length;
+  const window = os[0]?.window ?? NaN;
+  if (os.some((o) => o.window !== window)) throw new Error('summarizeWin: 측정 창이 다른 판을 섞었다');
+  const count = Object.fromEntries(WIN_CLASSES.map((c) => [c, os.filter((o) => o.cls === c).length])) as Record<WinClass, number>;
+  const rate = Object.fromEntries(WIN_CLASSES.map((c) => [c, n ? count[c] / n : NaN])) as Record<WinClass, number>;
+  const ci = Object.fromEntries(WIN_CLASSES.map((c) => [c, wilson(count[c], n)])) as Record<WinClass, [number, number]>;
+  const months = os.filter((o) => o.cls === 'win').map((o) => o.winMonth!);
+  const cum = Object.fromEntries(WIN_CURVE_MONTHS.map((m) => [m, m > window || !n ? NaN : months.filter((x) => x <= m).length / n])) as Record<(typeof WIN_CURVE_MONTHS)[number], number>;
+  return {
+    n, window, count, rate, ci,
+    winMonthMedian: quantile(months, 0.5),
+    winMonthP10: quantile(months, 0.1),
+    winMonthP90: quantile(months, 0.9),
+    cum,
+  };
+}
+
+/**
+ * 승리 짝 비교 (같은 시드 순서) — 관측 종료가 섞여 승리 달 평균이 정의되지 않으므로 네 칸으로 센다:
+ * A만 승리 · B만 승리 · 둘 다 · 둘 다 아님. 둘 다 승리한 시드는 승리 달 차이(A − B, 음수 = A가 빠름)의 평균·t
+ */
+export function comparePairedWin(a: WinOutcome[], b: WinOutcome[]) {
+  if (a.length !== b.length) throw new Error('comparePairedWin: 판 수가 다르다(같은 시드 목록이어야 한다)');
+  let onlyA = 0, onlyB = 0, both = 0, neither = 0;
+  const d: number[] = [];
+  a.forEach((x, i) => {
+    const y = b[i]!, wa = x.cls === 'win', wb = y.cls === 'win';
+    if (wa && wb) { both++; d.push(x.winMonth! - y.winMonth!); } else if (wa) onlyA++; else if (wb) onlyB++; else neither++;
+  });
+  const k = d.length, m = k ? d.reduce((t, v) => t + v, 0) / k : NaN;
+  const sd = k > 1 ? Math.sqrt(d.reduce((t, v) => t + (v - m) ** 2, 0) / (k - 1)) : NaN;
+  return { n: a.length, onlyA, onlyB, both, neither, winMonthDiff: m, t: sd > 0 ? m / (sd / Math.sqrt(k)) : NaN };
+}
