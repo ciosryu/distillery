@@ -3,6 +3,7 @@ import { lotQuality } from './bulk';
 import { BOTTLING_LABOR_PER_BOTTLE, packagingCost } from './content/market';
 import { regionOf } from './content/regions';
 import { emptyCask, vesselMaterial } from './maturation';
+import { scaleLedger } from './ledger';
 import type { Cask, GameState, MonthReport, SpiritLot } from './types';
 
 // ───────────── 핸드필 존 (#233, 2026-11-10 오너 요청 — 비지터 센터 확장 중 PROD 몫) ─────────────
@@ -77,7 +78,9 @@ export function runHandfill(s: GameState, report: MonthReport): void {
     s.inventory.casks[idx] = empty;
     report.notes.push(`핸드필 ${bottles}병 (${revenue.toLocaleString()}원) — 통 ${cask.id}가 비었다. 다음 핸드필 통을 지정하세요`);
   } else {
-    s.inventory.casks[idx] = { ...cask, contents: { ...cask.contents, volumeL: remain } };
+    // F2 원장 지점 19(MKT): 담아 판 몫은 원가와 함께 나간다(R4 leak) — 원장이 있는 로트만, 비율은 남은 L ÷ 전체 L
+    const lot = cask.contents;
+    s.inventory.casks[idx] = { ...cask, contents: { ...lot, volumeL: remain, ...(lot.components?.length ? { components: scaleLedger(lot.components, remain / lot.volumeL, 'leak') } : {}) } };
     report.notes.push(`핸드필 ${bottles}병 (${revenue.toLocaleString()}원) — 통 ${cask.id} 남은 ${Math.round(remain)}L`);
   }
 }

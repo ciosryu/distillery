@@ -10,6 +10,7 @@ import { QUALITY_SIGMA_PER_HEX } from './blendTable';
 import type { Cask, Contract, ContractOffer, ContractTerms, GameState, MonthReport, SpiritLot } from './types';
 import { nid } from './util';
 import { protectedCaskIds } from './tags';
+import { scaleLedger } from './ledger';
 
 // 원액 B2B 판매 (PRD §8.6): 블렌디드 위스키 회사·브로커에 현물 벌크 판매 또는 정기 공급 계약.
 // 원칙: 현물 매입가(bid) < 기준가치 < 브로커 판매가(ask) → 사고팔기만으로 차익을 낼 수 없다.
@@ -246,6 +247,7 @@ export function fulfillContracts(s: GameState, report: MonthReport): void {
       if (need <= 1e-6) break;
       const lotLPA = lot.volumeL * lot.abv;
       const take = Math.min(need, lotLPA);
+      if (lot.components?.length) lot.components = scaleLedger(lot.components, (lotLPA - take) / lotLPA, 'leak'); // F2 원장 지점 21(MKT): 납품 유출
       lot.volumeL -= take / lot.abv;
       need -= take;
     }
