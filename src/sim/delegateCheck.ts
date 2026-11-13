@@ -28,14 +28,9 @@ export interface DelegateCheck {
 
 const isWhiskyCask = (s: GameState, c: Cask) => !!c.contents && !c.owner && (c.contents.kind === 'malt' || c.contents.kind === 'grain') && c.contents.oakMonths >= whiskyMinMonths(regionOf(s).whisky);
 
-/** 플래그십 후보 — 판이 끝나기 전에 플래그십 숙성(MVP 144개월)을 채울 수 있는 통. 목표 기한이 없는 판(샌드박스)은 이미 그 숙성을 넘긴 통 */
-export function isFlagshipCandidate(s: GameState, c: Cask): boolean {
-  const l = c.contents;
-  if (!l || (l.kind !== 'malt' && l.kind !== 'grain')) return false;
-  const need = campaignMinOakMonths(s); // F1: 기준값만 캠페인 규칙에서. 180개월 상한·그레인 포함은 F2·F4에서 바꾼다(출력 불변)
-  const left = s.scenario ? Math.max(0, s.scenario.goal.months - s.month) : 0;
-  return l.oakMonths + left >= need;
-}
+// isFlagshipCandidate는 코어 `ledger.ts`로 옮겼다(F2, [결정 #323] — PM 조건 "delegateCheck 코어 이동"). 쓰는 쪽 호환을 위해 다시 내보낸다
+import { isFlagshipCandidate } from './ledger';
+export { isFlagshipCandidate };
 
 /**
  * 맡기기 기본 후보 (#260·#249 ② — 2026-11-11, ARCH 진입 확인 #313 빈틈 ①): 플레이어가 묶음을 고르지 않으면 화면은 샘플 기록이 있는 통 전부를 넘긴다.
