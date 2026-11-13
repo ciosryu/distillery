@@ -1280,7 +1280,7 @@ describe('자동 납품의 태그 효과 (#252 → 태그 #260·#249 ② — 보
 describe('자동 납품 통 하한 (#267, 표기 하한 함정)', () => {
   it('기본은 제품 표기, 낮추면 법정 숙성 ~ 표기 사이에서 그 하한부터 쓰고, 표기 이상·법정 미만은 막는다', async () => {
     const { autoRestockSources, autoRestockFloor } = await import('./economics');
-    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' }); // 옛 판정 분기 — flagship_sold로 보호를 끄는 테스트(F4 v16은 progress.win)
     s.progress.milestones.push({ id: 'flagship_sold', month: 0 } as never); // 하한만 본다(플래그십 보호 끔)
     const mk = (id: string, oak: number) => { const c = { id, typeId: 'ex_bourbon_barrel', sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: { id: `L${id}`, name: id, kind: 'malt', volumeL: 190, abv: 0.6, flavor: {}, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10000 } } as Cask; s.inventory.casks.push(c); };
     mk('A', 20); mk('B', 40); mk('C', 80);
@@ -1300,7 +1300,7 @@ describe('자동 납품 통 하한 (#267, 표기 하한 함정)', () => {
 
 describe('위스키·숙성 소주 자동 납품도 같은 레시피 통만 (#293)', () => {
   const setup = () => {
-    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' }); // 옛 판정 분기 — flagship_sold로 보호를 끄는 테스트(F4 v16은 progress.win)
     s.progress.milestones.push({ id: 'flagship_sold', month: 0 } as never); // 플래그십 보호 끔 — 레시피 거름만 본다
     s.inventory.casks = [];
     const mk = (id: string, recipeId: string | undefined, extra: Partial<SpiritLot> = {}, typeId = 'ex_bourbon_barrel') => s.inventory.casks.push({ id, typeId, sizeL: 200, wood: typeId === 'onggi_jar' ? 'none' : 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: { id: `L${id}`, name: id, kind: 'malt', volumeL: 190, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: 40, sourced: false, costPerLPA: 10000, ...(recipeId ? { recipeId } : {}), ...extra } } as Cask);
@@ -1333,7 +1333,7 @@ describe('위스키·숙성 소주 자동 납품도 같은 레시피 통만 (#29
 
 describe('자동 납품 함정 경고·하한 올리기 (#297, MGT P-MGT-45)', () => {
   const setup = () => {
-    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' }); // 옛 판정 분기 — flagship_sold로 보호를 끄는 테스트(F4 v16은 progress.win)
     s.progress.milestones.push({ id: 'flagship_sold', month: 0 } as never); // 플래그십 보호 끔 — 하한·다툼만 본다
     s.inventory.casks = [];
     const mk = (id: string, oak: number, volumeL = 190) => { s.inventory.casks.push({ id, typeId: 'ex_bourbon_barrel', sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: { id: `L${id}`, name: id, kind: 'malt', volumeL, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10000 } } as Cask); };
@@ -1384,7 +1384,7 @@ describe('자동 납품 함정 경고·하한 올리기 (#297, MGT P-MGT-45)', (
 
 describe('공급 지평 (결정 #291 P-PROD-54 — economics.ts supplyHorizon)', () => {
   const setup = () => {
-    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' }); // 옛 판정 분기 — flagship_sold로 보호를 끄는 테스트(F4 v16은 progress.win)
     s.progress.milestones.push({ id: 'flagship_sold', month: 0 } as never); // 플래그십 예비 보호 끔 — 지평만 본다
     s.inventory.casks = [];
     const mk = (id: string, oak: number) => s.inventory.casks.push({ id, typeId: 'ex_bourbon_barrel', sizeL: 200, wood: 'american_oak', activity: 1, seasoning: 1, fills: 1, recharCount: 0, char: 3, contents: { id: `L${id}`, name: id, kind: 'malt', volumeL: 100, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 10000 } } as Cask);
