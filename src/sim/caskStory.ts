@@ -2,7 +2,7 @@ import type { BlendComponent } from './blending';
 import { CASKS } from './content/catalog';
 import { EVENTS } from './content/events';
 import { finishOf } from './maturation';
-import { campaignMinOakMonths } from './progress';
+import { campaignMinOakMonths } from './rules';
 import type { Cask, GameState } from './types';
 
 // ───────────── 헤리티지 병입 연표 (#244, 2026-11-10 오너 요청 — 병입을 "버튼"에서 "기념비적 이벤트"로) ─────────────
