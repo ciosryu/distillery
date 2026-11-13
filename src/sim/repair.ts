@@ -54,6 +54,13 @@ export function repairSave(input: GameState): { state: GameState; fixes: string[
     if (touched) products++;
   }
   if (products) fixes.push(`제품 ${products}개의 재고·원가·출고가를 고쳤다(원가를 모르는 제품은 재고를 비웠다)`);
+  // ⑤b 병입 로트(F3) — 망가진 로트(병이 유한하지 않거나 0 이하)와 제품이 없는 로트는 지운다. 재고를 비운 제품의 로트도 같이(로트 합 = 재고)
+  if (s.commerce.lots?.length) {
+    const ids = new Set(s.commerce.products.filter((p) => p.stockBottles > 0).map((p) => p.id));
+    const before = s.commerce.lots.length;
+    s.commerce.lots = s.commerce.lots.filter((l) => finite(l.bottles) && l.bottles > 0 && ids.has(l.productId));
+    if (s.commerce.lots.length < before) fixes.push(`망가졌거나 제품이 없는 병입 로트 ${before - s.commerce.lots.length}개를 지웠다`);
+  }
   // ⑥ 유한하지 않은 턴 사이 현금 기록은 지운다 — 다음 결산의 순현금(netCash)이 NaN이 되지 않게(현금은 ③에서 따로 고쳤다)
   const pc = s.finance.pendingCash ?? {};
   const badPending = Object.keys(pc).filter((k) => !finite(pc[k as keyof typeof pc]));
@@ -70,11 +77,20 @@ export function repairSave(input: GameState): { state: GameState; fixes: string[
   return { state: s, fixes };
 }
 
+/** 병입 로트(F3)가 망가졌거나 제품이 없다 — 재고가 0인 제품의 로트도 지운다(로트 합 = 재고) */
+function brokenLots(s: GameState): boolean {
+  const lots = s.commerce.lots;
+  if (!lots?.length) return false;
+  const ids = new Set(s.commerce.products.filter((p) => finite(p.stockBottles) && p.stockBottles > 0).map((p) => p.id));
+  return lots.some((l) => !finite(l.bottles) || l.bottles <= 0 || !ids.has(l.productId));
+}
+
 function needsRepair(s: GameState): boolean {
   return s.inventory.casks.some((c) => c.contents && brokenSpirit(c.contents))
     || s.inventory.lots.some(brokenSpirit)
     || !finite(s.finance.cash)
     || s.commerce.products.some((p) => !finite(p.stockBottles) || !finite(p.unitCost) || !finite(p.price))
+    || brokenLots(s)
     || s.finance.receivables.some((r) => !finite(r.amount))
     || s.commerce.products.some((p) => p.pricePolicy && normalizePolicy(p.pricePolicy) !== p.pricePolicy)
     || Object.values(s.finance.pendingCash ?? {}).some((v) => !finite(v));
