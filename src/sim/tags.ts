@@ -43,9 +43,9 @@ export function reserveCaskIds(s: GameState): Set<string> {
   const manual = s.inventory.casks.filter((c) => !!c.contents && !c.owner && (c.contents.tagIds ?? []).includes(FLAGSHIP_RESERVE_TAG));
   // 자리는 **후보인** 직접 예비만 차지한다 — 후보가 아닌 통(플래그십이 될 수 없는 어린 통)에 붙인 예비는 보호는 되지만 진짜 후보를 밀어내지 않는다
   // (2026-11-11 PROD #300 테스트에서 발견: 44개월 통에 예비를 붙이자 후보 하나가 보호에서 빠졌다)
-  const room = Math.max(0, PROD_TUNING.flagshipReserve - manual.filter((c) => isFlagshipCandidate(s, c)).length);
+  const room = Math.max(0, PROD_TUNING.flagshipReserve - manual.filter((c) => isFlagshipCandidate(s, c, 'reserve')).length);
   const manualIds = new Set(manual.map((c) => c.id));
-  const auto = s.inventory.casks.filter((c) => !!c.contents && !c.owner && !c.contaminationKnown && vesselMaterial(c) === 'wood' && isFlagshipCandidate(s, c)
+  const auto = s.inventory.casks.filter((c) => !!c.contents && !c.owner && !c.contaminationKnown && vesselMaterial(c) === 'wood' && isFlagshipCandidate(s, c, 'reserve') // 예비 보호는 'reserve' 지평(F4)
       && !manualIds.has(c.id) && !optOut.has(c.contents.id))
     .sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths || a.id.localeCompare(b.id))
     .slice(0, room);

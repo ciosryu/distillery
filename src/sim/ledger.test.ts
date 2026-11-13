@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { advanceMonth, applyAction, emptyCaskOf, newGame, type GameState, type LedgerEntry, type SpiritLot } from './index';
 import { checkInvariants } from './invariants';
 import { newScenarioGame } from './newScenario';
-import { CANDIDATE_HORIZON_MONTHS, addCost, advanceWood, campaignWon, candidateHorizon, caskEligibility, coalesce, isCampaignCandidate, isFlagshipCandidate, ledgerEligibility, ledgerError, ledgerOf, mergeLedgers, newEntry, scaleLedger, splitLedger } from './ledger';
+import { HINT_HORIZON_MONTHS, RESERVE_HORIZON_MONTHS, addCost, advanceWood, campaignWon, candidateHorizon, caskEligibility, coalesce, isCampaignCandidate, isFlagshipCandidate, ledgerEligibility, ledgerError, ledgerOf, mergeLedgers, newEntry, scaleLedger, splitLedger } from './ledger';
 
 // 구성 원액 원장 (F2, [결정 #308·#309·#323]) — 코어 ARCH. 수용 테스트 이름은 core-integration §5 `ledger:`·`eligibility:` 행
 
@@ -72,13 +72,17 @@ describe('isFlagshipCandidate — 옛 판(legacy-v15)은 동작 그대로, 새 �
     expect(isFlagshipCandidate(s, c)).toBe(true); // 60 + 84 ≥ 144
     c.contents.oakMonths = 59; expect(isFlagshipCandidate(s, c)).toBe(false);
   });
-  it('새 판(v16): 지평 36개월 안에 목재 144를 채우는 자가 몰트 통만 — 그레인·매입·고객 소유 제외, 판 끝(180) 상한 없음 [결정 #325]', () => {
+  it('새 판(v16): 안내(hint)는 지평 36개월 안에 목재 144를 채우는 자가 몰트 통, 예비 보호(reserve)는 자가 몰트 통이면 처음부터 — 그레인·매입·고객 소유 제외, 판 끝(180) 상한 없음 [결정 #325 → 보정 92]', () => {
     const s = mvp(); s.month = 170; // 옛 식이면 남은 10개월 → 134개월↑만 후보
     const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.contents = lot({ oakMonths: 108 });
-    expect(candidateHorizon(s)).toBe(CANDIDATE_HORIZON_MONTHS);
+    expect(candidateHorizon(s)).toBe(HINT_HORIZON_MONTHS);
+    expect(candidateHorizon(s, 'reserve')).toBe(RESERVE_HORIZON_MONTHS);
     expect(isFlagshipCandidate(s, c)).toBe(true); // 108 + 36 ≥ 144
     c.contents.oakMonths = 107; expect(isFlagshipCandidate(s, c)).toBe(false);
-    c.contents = lot({ kind: 'grain', oakMonths: 150 }); expect(isFlagshipCandidate(s, c)).toBe(false);
+    expect(isFlagshipCandidate(s, c, 'reserve')).toBe(true); // 예비 보호: 어린 자가 몰트 통도 처음부터 후보(main 동작 유지)
+    c.contents.oakMonths = 0; expect(isFlagshipCandidate(s, c, 'reserve')).toBe(true);
+    expect(isFlagshipCandidate(s, c)).toBe(false);
+    c.contents = lot({ kind: 'grain', oakMonths: 150 }); expect(isFlagshipCandidate(s, c)).toBe(false); expect(isFlagshipCandidate(s, c, 'reserve')).toBe(false);
     c.contents = lot({ oakMonths: 150, sourced: true }); expect(isFlagshipCandidate(s, c)).toBe(false);
     c.contents = lot({ oakMonths: 150 }); c.owner = { name: 'x', soldMonth: 0, price: 1 } as never; expect(isFlagshipCandidate(s, c)).toBe(false);
     s.month = 200; c.owner = undefined; expect(isFlagshipCandidate(s, c)).toBe(true); // 180개월 뒤에도 후보

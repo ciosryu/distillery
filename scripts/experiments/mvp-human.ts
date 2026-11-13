@@ -432,7 +432,7 @@ const has = (s: GameState, id: string) => s.finance.loans.some((l) => l.offerId 
 function keptCasks(s: GameState, p: Policy): Set<string> {
   const late = p.protectFrom && s.month >= p.protectFrom[0];
   const n = late ? p.protectFrom![1] : GAME_TAGS ? 0 : p.protect;
-  const own = n ? s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c)).sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths).slice(0, n).map((c) => c.id) : [];
+  const own = n ? s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c, 'reserve')).sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths).slice(0, n).map((c) => c.id) : []; // 보호는 'reserve' 지평(F4 — 결정 대기 92)
   return GAME_TAGS ? new Set([...protectedCaskIds(s), ...own]) : new Set(own);
 }
 

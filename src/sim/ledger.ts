@@ -97,21 +97,29 @@ export function ledgerError(lot: SpiritLot): string | null {
 // ───────────── 옛 후보 판정 (F2에서 코어로 옮김 — 동작 그대로, 정의 변경은 F4) ─────────────
 
 /**
- * 후보 지평(F4, **[결정 #325]** 2026-11-13): 고정 36개월 `[튜닝]`. 144 − 36 = 108개월이라 #319 `reserve_casks`(108개월↑ 통 3개)와 같은 선.
- * 옛 판은 `goal.months − month`(판 끝까지 채울 수 있는가 — #308로 판 끝이 없어진 v16에서는 180개월 뒤 후보 0이 되어 못 쓴다). 샌드박스는 0(지금 적격만)
+ * 후보 지평 — **용도별 두 값**(F4, [결정 #325] → **보정 [결정 대기 92]**, MGT 실측 2026-11-13: 지평 36 하나면 108개월 전에는 후보가 없어
+ * 예비 태그·P8 보호가 아무것도 지키지 않고 오래된 통이 병입으로 다 나간다 → #319·#320 승리 성립 불가).
+ * - `reserve`(예비 보호 — `tags.ts reserveCaskIds`·`economics.ts flagshipReserve`·P8 `keptCasks`): 출처·입지·소유가 맞는 자가 몰트 통이면 **처음부터** 후보,
+ *   그중 목재 오래된 4통을 지킨다(main 동작 유지). 값 = A(144) → `woodMonths + 144 ≥ 144`는 늘 참. PM 권장, 오너 결정 대기 92
+ * - `hint`("곧 적격" 안내 — `alerts`·후보 수·`reserve_casks` 판정·P8 핸드필 제외): 36개월 `[튜닝]`(144 − 36 = 108개월 선, #319와 맞춤)
+ * 옛 판은 둘 다 `goal.months − month`(판 끝까지 채울 수 있는가). 샌드박스는 0(지금 적격만)
  */
-export const CANDIDATE_HORIZON_MONTHS = 36;
-export function candidateHorizon(s: Pick<GameState, 'scenario' | 'month' | 'rulesVersion'>): number {
+export type CandidatePurpose = 'reserve' | 'hint';
+export const RESERVE_HORIZON_MONTHS = 144;
+export const HINT_HORIZON_MONTHS = 36;
+export function candidateHorizon(s: Pick<GameState, 'scenario' | 'month' | 'rulesVersion'>, purpose: CandidatePurpose = 'hint'): number {
   if (!s.scenario) return 0;
-  return rulesVersionOf(s) === 'legacy-v15' ? Math.max(0, s.scenario.goal.months - s.month) : CANDIDATE_HORIZON_MONTHS;
+  if (rulesVersionOf(s) === 'legacy-v15') return Math.max(0, s.scenario.goal.months - s.month);
+  return purpose === 'reserve' ? RESERVE_HORIZON_MONTHS : HINT_HORIZON_MONTHS;
 }
 
 /**
  * 플래그십 후보 — 옛 판(`legacy-v15`): 판이 끝나기 전에 플래그십 숙성을 채울 수 있는 몰트·그레인 통(동작 그대로, 출력 불변).
- * 새 판(v16, F4): `isCampaignCandidate(s, c, candidateHorizon(s))` — 자가 몰트 · 같은 입지 · 고객 소유 아님 · 지평 안에 목재 A를 채우는 통(그레인·매입 제외)
+ * 새 판(v16, F4): `isCampaignCandidate(s, c, candidateHorizon(s, purpose))` — 자가 몰트 · 같은 입지 · 고객 소유 아님 · 지평 안에 목재 A를 채우는 통(그레인·매입 제외).
+ * `purpose`: 예비 보호는 'reserve', 안내·후보 수는 'hint'(기본)
  */
-export function isFlagshipCandidate(s: GameState, c: Cask): boolean {
-  if (rulesVersionOf(s) !== 'legacy-v15') return isCampaignCandidate(s, c, candidateHorizon(s));
+export function isFlagshipCandidate(s: GameState, c: Cask, purpose: CandidatePurpose = 'hint'): boolean {
+  if (rulesVersionOf(s) !== 'legacy-v15') return isCampaignCandidate(s, c, candidateHorizon(s, purpose));
   const l = c.contents;
   if (!l || (l.kind !== 'malt' && l.kind !== 'grain')) return false;
   const need = campaignMinOakMonths(s);
