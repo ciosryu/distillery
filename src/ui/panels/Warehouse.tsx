@@ -10,7 +10,8 @@ import { calendar } from '../../sim/util';
 import { regionOf } from '../../sim/content/regions';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won } from '../format';
-import { Badge, Button, Card, Empty, NumberField, Select, Table, Td } from '../kit';
+import { Badge, Button, Card, ConfirmButton, Empty, NumberField, Select, Table, Td } from '../kit';
+import { flagshipImpact } from '../alerts';
 import type { GameState } from '../../sim';
 
 /**
@@ -149,7 +150,9 @@ function Casks() {
               <tr key={c.id}>
                 <Td>{c.id}</Td><Td>{CASKS[c.typeId].nameKo}{c.contaminationKnown && <> <Badge tone="bad">오염 — 재탄화 필요</Badge></>}</Td><Td right>{c.fills}회</Td>{vesselMaterial(c) !== 'wood' ? <><Td right>—</Td><Td right>—</Td><Td className="text-xs text-stone-500">옹기는 닳지 않는다 — 재탄화·중고 매각 없음</Td></> : <><Td right>{c.activityKnown === false ? '? (스팟 매입)' : c.activity.toFixed(2)}</Td><Td right>{c.recharCount}/{MAX_RECHAR}</Td>
                 <Td className="flex gap-1"><Button small disabled={c.recharCount >= MAX_RECHAR || c.fills === 0} onClick={() => dispatch({ type: 'rechar', caskId: c.id })} title="활성도를 0.7까지 회복">재탄화 {won(RECHAR_COST)}</Button>
-                  <Button small variant="ghost" disabled={c.fills === 0} onClick={() => dispatch({ type: 'sellUsedCask', caskId: c.id })} title="럼·테킬라·수제 맥주 양조장에 매각">중고 매각 {won(usedCaskPrice(c))}</Button></Td></>}
+                  {/* 되돌릴 수 없는 버튼 (#240) — 통이 숙성고에서 사라진다 */}
+                  <ConfirmButton small variant="ghost" disabled={c.fills === 0} armKey={`sellused-${c.id}@${s.month}`} armedLabel="한 번 더 누르면 매각" onConfirm={() => dispatch({ type: 'sellUsedCask', caskId: c.id })} title="럼·테킬라·수제 맥주 양조장에 매각"
+                    preview={() => <>{c.id}({CASKS[c.typeId].nameKo}, {c.fills}회 사용)를 {won(usedCaskPrice(c))}에 판다 — 통이 숙성고에서 사라진다</>}>중고 매각 {won(usedCaskPrice(c))}</ConfirmButton></Td></>}
               </tr>
             );
             const rules = regionOf(s).whisky;
@@ -170,9 +173,20 @@ function Casks() {
                 <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>{vesselMaterial(c) === 'onggi' ? '옹기 ' : ''}숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : vesselMaterial(c) !== 'wood' && lot.oakMonths < minM ? <Badge tone="warn">옹기 — 위스키 숙성(오크)에 안 들어감</Badge> : lot.oakMonths >= minM ? <Badge tone="good">{lot.kind === 'grain' ? '그레인 위스키 가능' : '위스키 가능'}{rules.premiumLabel && lot.oakMonths >= rules.premiumLabel.minMonths && !lot.sourced ? ` · ${rules.premiumLabel.name}` : ''}{lot.oakMonths < 36 ? ' (어린 위스키)' : ''}</Badge> : <Badge tone="warn">{minM - lot.oakMonths}개월 남음</Badge>}</Td>
                 <Td className="flex gap-1">
                   {finishing && !c.owner && finishCount(lot) < FINISH.maxFinishes && <Button small variant={finishFor === c.id ? 'secondary' : 'ghost'} onClick={() => setFinishFor(finishFor === c.id ? null : c.id)} title="빈 버번·셰리 시즈닝 캐스크로 옮겨 마무리한다 — 손실 0.75%, 숙성 연수는 그대로">피니싱</Button>}
-                  {canOwn && !c.owner && !lot.sourced && (lot.kind === 'malt' || lot.kind === 'grain') && <Button small variant="ghost" onClick={() => dispatch({ type: 'sellCaskOwnership', caskId: c.id })} title="개인 고객에게 선도 판매 — 지금 현금, 8년 숙성 시점에 인도">오너십 판매</Button>}
-                  {!c.owner && <Button small variant="ghost" onClick={() => dispatch({ type: 'unfillCask', caskId: c.id })} title={c.filledMonth === s.month && !c.sampleLog?.length ? '통입 취소 — 원액을 탱크로 되돌리고 통은 넣기 전 그대로' : '원액을 빼 탱크로 옮긴다 — 손실 0.75%, 숙성 개월은 원액에 남고 통은 한 번 쓴 통이 된다'}>{c.filledMonth === s.month && !c.sampleLog?.length ? '통입 취소' : '원액 빼기'}</Button>}
-                  {c.contaminationKnown && !c.owner && <Button small variant="ghost" onClick={() => dispatch({ type: 'dumpCask', caskId: c.id })}>폐기</Button>}
+                  {canOwn && !c.owner && !lot.sourced && (lot.kind === 'malt' || lot.kind === 'grain') && <ConfirmButton small variant="ghost" armKey={`own-${c.id}@${s.month}`} armedLabel="한 번 더 누르면 판매" onConfirm={() => dispatch({ type: 'sellCaskOwnership', caskId: c.id })} title="개인 고객에게 선도 판매 — 지금 현금, 8년 숙성 시점에 인도"
+                    preview={() => { const f = flagshipImpact(s, [c.id]); return <>{c.id}의 원액 {liters(lot.volumeL)}(숙성 {months(lot.oakMonths)})가 고객 소유가 된다 — 지금 현금을 받고, 인도 때까지 병입·판매에 쓸 수 없다{f.using ? <b className="block">⚠ 12년 플래그십 후보 통이다 — 남은 후보 {f.before} → {f.left}통</b> : null}</>; }}>오너십 판매</ConfirmButton>}
+                  {!c.owner && (c.filledMonth === s.month && !c.samples && !c.sampleLog?.length
+                    // 같은 달 통입 취소는 손실이 없어 한 번(MvpHome과 같은 조건)
+                    ? <Button small variant="ghost" onClick={() => dispatch({ type: 'unfillCask', caskId: c.id })} title="통입 취소 — 원액을 탱크로 되돌리고 통은 넣기 전 그대로">통입 취소</Button>
+                    // [원액 빼기] — 손실 0.75%·통은 한 번 쓴 통 (#226 → #240 공통 부품, MvpHome과 같은 미리보기)
+                    : <ConfirmButton small variant="ghost" armKey={`unfill-${c.id}@${s.month}`} armedLabel="한 번 더 누르면 빼기" onConfirm={() => dispatch({ type: 'unfillCask', caskId: c.id })}
+                        title="원액을 빼 탱크로 옮긴다 — 손실 0.75%, 숙성 개월은 원액에 남고 통은 한 번 쓴 통이 된다"
+                        preview={() => { const f = flagshipImpact(s, [c.id]); return <>{c.id} 원액 {num(lot.volumeL * 0.9925)}L를 탱크로(손실 {num(lot.volumeL * 0.0075, 1)}L) · 숙성 {months(lot.oakMonths)}은 원액에 남지만 탱크에서는 숙성이 멈춘다 · 통은 한 번 쓴 통이 된다{f.using ? <b className="block">⚠ 12년 플래그십 후보 통 — 다시 통에 넣기 전까지 후보에서 빠진다(남은 후보 {f.before} → {f.left}통)</b> : null}</>; }}>원액 빼기</ConfirmButton>)}
+                  {c.contaminationKnown && !c.owner && (
+                    // 오염 통 폐기 (#240) — MvpHome과 같은 부품·미리보기
+                    <ConfirmButton small variant="ghost" armKey={`dump-${c.id}@${s.month}`} armedLabel="한 번 더 누르면 폐기" onConfirm={() => dispatch({ type: 'dumpCask', caskId: c.id })}
+                      preview={() => { const f = flagshipImpact(s, [c.id]); return <>{c.id}의 오염된 원액 {liters(lot.volumeL)}를 버린다(숙성 {months(lot.oakMonths)}){f.using ? <b className="block">⚠ 12년 플래그십 후보 통이다 — 남은 후보 {f.before} → {f.left}통</b> : null}</>; }}>폐기</ConfirmButton>
+                  )}
                 </Td>
               </tr>
             );
@@ -200,10 +214,13 @@ function FinishPanel({ from, onDone }: { from: Cask; onDone: () => void }) {
       <div><b>{from.id} 피니싱</b> — {lot.name} · {liters(lot.volumeL)} · 숙성 {months(lot.oakMonths)}</div>
       <div className="flex flex-wrap gap-2">
         {options.map((o) => (
-          <Button key={o.k} small disabled={!o.best || !o.fits} title={!o.fits ? `원액 ${Math.round(need)}L가 들어가지 않는다` : !o.best ? '빈 통이 없다 — 위에서 구매' : `시즈닝 ${o.best.seasoning.toFixed(2)} · 활성도 ${o.best.activity.toFixed(2)} (${o.best.fills}필)`}
-            onClick={() => { if (o.best && dispatch({ type: 'transferCask', fromCaskId: from.id, toCaskId: o.best.id })) onDone(); }}>
+          // 피니싱은 한 번만·손실 0.75% — 되돌릴 수 없다 (#240)
+          <ConfirmButton key={o.k} small disabled={!o.best || !o.fits} armKey={`finish-${from.id}-${o.k}@${s.month}`} armedLabel="한 번 더 누르면 옮긴다"
+            title={!o.fits ? `원액 ${Math.round(need)}L가 들어가지 않는다` : !o.best ? '빈 통이 없다 — 위에서 구매' : `시즈닝 ${o.best.seasoning.toFixed(2)} · 활성도 ${o.best.activity.toFixed(2)} (${o.best.fills}필)`}
+            onConfirm={() => { if (o.best && dispatch({ type: 'transferCask', fromCaskId: from.id, toCaskId: o.best.id })) onDone(); }}
+            preview={() => <>{from.id}의 원액 {liters(lot.volumeL)}를 {o.best?.id ?? '빈 통'}({CASKS[o.k].nameKo})로 옮긴다 — 손실 {num(lot.volumeL * FINISH.lossShare, 1)}L, 피니싱은 한 번만 할 수 있고 되돌릴 수 없다. 숙성 연수는 그대로</>}>
             {finishLabel(o.k)} — {CASKS[o.k].nameKo} (빈 통 {o.count}){!o.fits ? ' · 용량 부족' : ''}
-          </Button>
+          </ConfirmButton>
         ))}
         <Button small variant="ghost" onClick={onDone}>닫기</Button>
       </div>
