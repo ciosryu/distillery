@@ -23,6 +23,7 @@ import { HandfillRow } from './panels/Handfill';
 import { cashAlert, flagshipCandidates, flagshipImpact, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
 import { monthlyFixedBreakdown } from '../sim/loans';
 import { PriceDesk } from './panels/Sales';
+import { FeedCard } from './FeedCard'; // 커뮤니티 반응 요약 (#247, MKT — 오너 요청 2026-11-14)
 import { Equipment, Orders, RecipeEditor } from './panels/Production';
 import { CATEGORY_ORDER, sourceCategory } from './panels/Bottling';
 import { liters, months, num, pct, won, wonCoarse } from './format';
@@ -88,6 +89,8 @@ export function MvpHome() {
       <div id="mvp-fill" className="scroll-mt-28"><FillCard /></div>
       {/* 판매 — 재고 있는 제품만, 같은 술은 한 줄 (PriceDesk compact) */}
       <PriceDesk compact />
+      {/* 커뮤니티 반응 — 최근 글 3개 요약(MKT FeedCard compact, 오너 요청 2026-11-14). 팔린 제품이 없으면 자리도 없다. 순수 연출 */}
+      <FeedCard compact />
       {/* ── 상태 ── 숙성 중인 캐스크: 한 줄 요약, "샘플 시기" 할 일에서 열린다 + 숙성고 공간(증설·빈 통) */}
       <div id="mvp-warehouse" className="scroll-mt-28"><WarehouseFold /></div>
       <div id="mvp-space" className="scroll-mt-28"><SpaceCard /></div>
