@@ -49,6 +49,7 @@
 // 파산 규칙: 지금(월말 마이너스 3개월 연속, step.ts) + 결정 대기 16의 "6개월로 완화"를 같은 판에서 따로 센다(시뮬레이션 상태의 연속 개월을 스크립트가 덮어 써서 3개월 파산을 막고, 6개월은 스크립트가 센다).
 import { advanceMonth, applyAction, isWhiskyCategory, newScenarioGame, previewBlend, warehouseCapacity, type Action, type GameState, type ProductCategory } from '../../src/sim';
 import { setDefaultRulesVersion } from '../../src/sim/newScenario';
+import { p8Hooks } from './p8Hooks';
 import { specialistOffers, type SpecialistRole } from '../../src/sim/hr';
 // RULES=legacy → X0L(옛 판정 참고 판 — F4·F5 바이트 동일 검사). 생성 **전에** 기본 규칙을 바꾼다(F5a: 잠금·주종·프리셋이 생성 때 규칙으로 갈린다). PROD 래퍼가 글자 그대로 찾는 `newScenarioGame(...)` 줄은 그대로
 if (process.env.RULES === 'legacy') setDefaultRulesVersion('legacy-v15');
@@ -74,6 +75,8 @@ import { SUPPLY_HINT_MONTHS, supplyHintOf } from '../../src/sim/pricePolicy';
 
 const DUMP = process.env.DUMP;
 const DUMP_MONTHS = [59, 83, 107, 119, 179];
+/** 래퍼 끼움 자리(p8Hooks.ts) — 등록이 없으면 빈 객체라 모든 자리가 아무 일도 하지 않는다 */
+const H = p8Hooks<Policy, Row>();
 import { isBulkKind, spotBidPerLPA } from '../../src/sim/bulk';
 
 const SEEDS = Number(process.argv[2] ?? 10);
@@ -101,7 +104,7 @@ const AUTORESTOCK = process.env.P8 && process.env.AUTORESTOCK === '1' ? Number(p
 //   그보다 짧은 표기(1·2년)의 옛 위스키 제품은 자동 납품을 끈다 — 옛 제품의 하한(법정 12개월·표기 24개월)이 낮아 자동 납품이 3년이 되기 전의 통을 계속 쓰는지 가린다
 const AUTORESTOCK_RETIRE = process.env.AUTORESTOCK_RETIRE === '1';
 
-interface Policy { name: string; /** 「플래그십 출시」 승리 시도 (결정 #320 — 'new' 새 제품 · 'restock' 기존 제품 보충) */ launch?: 'new' | 'restock'; /** 게임 예비 보호(#260 4통 · 'reserve' 144)를 읽는다 — v16 판에서만(옛 판 X0L은 자기 규칙 그대로, 바이트 동일) */ gameTags?: boolean; /** 대형 유통 납품 수락(v16 `y7_retail` — MKT §1-c 규칙 사본): 그 달부터 위스키 제안은 받고 병입 목표에 납품량을 더한다, 다른 범주는 재고 6개월치↑일 때만 */ retailFrom?: number; /** 핵심 전문가 1인(#316): 열리면 이 직군을 고른다 · 'none' = 안 고름 */ specialist?: SpecialistRole | 'none'; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean; maltFrom?: [number, number]; autoRestock?: number; visitorAt?: number; equipAt?: number; b2b?: { share: number; until: number }; flagship?: boolean; price?: 'table' | 'markup'; markup?: number; sojuOff?: [number, number]; overprod?: [number, number]; loansFrom?: number; fixAt?: number; buyAt?: [number, string][]; repayAt?: number; protectFrom?: [number, number]; salesAt?: number; pricePolicy?: Partial<Record<PriceKey, PriceGoal>>; engineA?: boolean; supplyHint?: boolean }
+interface Policy { name: string; /** 「플래그십 출시」 승리 시도 (결정 #320 — 'new' 새 제품 · 'restock' 기존 제품 보충) */ launch?: 'new' | 'restock'; /** 게임 예비 보호(#260 4통 · 'reserve' 144)를 읽는다 — v16 판에서만(옛 판 X0L은 자기 규칙 그대로, 바이트 동일) */ gameTags?: boolean; /** 대형 유통 납품 수락(v16 `y7_retail` — MKT §1-c 규칙 사본): 그 달부터 위스키 제안은 받고 병입 목표에 납품량을 더한다, 다른 범주는 재고 6개월치↑일 때만 */ retailFrom?: number; /** 핵심 전문가 1인(#316): 열리면 이 직군을 고른다 · 'none' = 안 고름 */ specialist?: SpecialistRole | 'none'; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean; maltFrom?: [number, number]; autoRestock?: number; visitorAt?: number; equipAt?: number; b2b?: { share: number; until: number }; flagship?: boolean; price?: 'table' | 'markup'; markup?: number; sojuOff?: [number, number]; overprod?: [number, number]; loansFrom?: number; fixAt?: number; buyAt?: [number, string][]; repayAt?: number; protectFrom?: [number, number]; salesAt?: number; pricePolicy?: Partial<Record<PriceKey, PriceGoal>>; engineA?: boolean; supplyHint?: boolean; /** 래퍼 고유 정책 값(p8Hooks.ts — interface를 글자로 고치지 않는다) */ ext?: Record<string, unknown> }
 /** 자동 가격 3정책(#288 — AP3) 봇 흉내: 범주별로 고른다. 플래그십 제품은 따로 */
 /** 자동 가격 3정책(결정 #291) — 엔진 이름과 1:1: A = 'turnover'(#200) · B = 'profit'(다기간 B′) · C = 'premium'(목표 배수 유지) */
 type PriceGoal = 'A' | 'B' | 'C';
@@ -234,6 +237,7 @@ const P8_POLICIES: Policy[] = [
   // 합리 변형 R(P-MGT-41 → 결정 #291): 위스키 정책을 게임 화면의 공급 안내(supplyHintOf)대로 A ↔ B — 사람형(X0)은 미리 선택 A를 바꾸지 않는다
   P8('R1 합리형 — 위스키 정책을 화면 공급 안내대로(A ↔ B)', { supplyHint: true }),
 ];
+if (H.policies) P8_POLICIES.splice(0, P8_POLICIES.length, ...H.policies(P8_POLICIES.slice(), P8, X0F)); // @hook:policies
 // Death Valley 생존 경로 (MGT-A, 요구사항 감사 Phase B — P8=1 DV=1). X0 위에서 한 축씩: 대출 · 비지터 센터 · 소주 비중 · 증산+대출 · 제한적 원액 B2B · 설비 시점.
 // 대출 없는 짝(−대출)을 같이 두어 "대출이 생존의 필수 조건인가, 정상 조달 수단인가"를 가른다. MKT-D(생존 대안)는 같은 틀·같은 ID로 비교한다
 const DV_POLICIES: Policy[] = [
@@ -306,7 +310,7 @@ const SOJU_BATCHES = 2;
 const maltBatches = (p: Policy) => p.maltB ?? (p.bigMalt ? 5 : 3);
 const sojuBatches = (p: Policy) => p.sojuB ?? SOJU_BATCHES;
 const setOrders = (s: GameState, soju: number, malt: number) =>
-  act(act(s, { type: 'setOrder', recipeId: recipe(s, 'soju')!, batchesPerMonth: soju }), { type: 'setOrder', recipeId: recipe(s, 'malt')!, batchesPerMonth: malt });
+  act(act(s, { type: 'setOrder', recipeId: (H.recipe?.(s, 'soju') || recipe(s, 'soju'))!, batchesPerMonth: soju }), { type: 'setOrder', recipeId: (H.recipe?.(s, 'malt') || recipe(s, 'malt'))!, batchesPerMonth: malt }); // @hook:recipe
 
 /** 발효조 2기·전통주 등록 (보수적 설비 시점 equipAt이면 그 달에) */
 function buyEquip(s: GameState, p: Policy): GameState {
@@ -325,6 +329,7 @@ function fill(s: GameState, p?: Policy, cnt: { contamFills: number } | null = FI
   if (p?.sellNewMake && s.month >= 48) { for (const lot of s.inventory.lots.filter((l) => l.kind === 'malt')) s = act(s, { type: 'sellBulk', source: 'lot', id: lot.id }); return s; }
   const cap = warehouseCapacity(s);
   for (const lot of s.inventory.lots.filter((l) => l.kind === 'malt')) {
+    { const h = H.fillLot?.(s, p!, lot); if (h) { s = h; continue; } } // @hook:fill-lot
     const need = Math.ceil((lot.volumeL * lot.abv) / (200 * 0.635));
     const room = cap - s.inventory.casks.length;
     // F5b [결정 #310 2단계]: 새 판 봇은 **아는** 오염만 피한다(사람과 같은 정보) — 옛 판은 숨은 값 그대로(X0L 바이트 동일)
@@ -367,6 +372,7 @@ function policySupply(s: GameState): GameState {
 
 /** 자동 가격을 끈 정책의 손 가격 — 기본은 권장가, price 'table'은 가격표 최선 값, 'markup'은 권장가 × markup */
 function manualPrice(s: GameState, p: Policy, x: GameState['commerce']['products'][number]): GameState {
+  { const h = H.manualPrice?.(s, p, x); if (h) return h; } // @hook:manual-price
   const best = p.price === 'table' ? bestAutoPrice(s, x) : null;
   // 손 가격 기본 = 게임 "권장" 버튼(B1-4 #402 — 기준가 × n, defaultPolicyPrice). markup은 기준가 × markup 그대로(X22 = 기준가 × 1.3 근처 손 가격)
   const price = best ?? (p.price === 'markup' ? Math.round(currentSuggested(s, x) * (p.markup ?? 1.3)) : defaultPolicyPrice(currentSuggested(s, x)));
@@ -397,6 +403,7 @@ function bottleAs(s: GameState, p: Policy, comps: { source: 'lot' | 'cask'; id: 
   }
   // 게임 자동 납품(AUTORESTOCK): 새로 만든 위스키 제품에 켠다 — 쓸 통의 최소 숙성은 표기(기본)
   if (p.autoRestock && isWhiskyCategory(cat)) for (const x of s.commerce.products.filter((y) => y.category === cat && !y.autoRestock && !y.dutyFreeOnly && !y.name.startsWith('플래그십'))) s = act(s, { type: 'setAutoRestock', productId: x.id, months: p.autoRestock });
+  { const h = H.priceAfterBottle?.(s, p, opts, cat); if (h) return h; } // @hook:price-after-bottle
   if (p.pricePolicy) s = policyAfterBottle(s, p, cat);
   // engineA(CALIB H4): 같은 자리에서 옛 명령(setAutoPrice) 대신 3정책 엔진의 A(setPricePolicy turnover, 결정 #291 ②)를 켠다 — 둘이 같은 판을 내는지 본다
   else if (p.autoPrice) for (const x of s.commerce.products.filter((y) => y.category === cat && !y.autoPrice && !y.dutyFreeOnly)) s = act(s, p.engineA ? { type: 'setPricePolicy', productId: x.id, mode: 'turnover' } : { type: 'setAutoPrice', productId: x.id, on: true });
@@ -424,8 +431,8 @@ function bottle(s: GameState, p: Policy, t: { firstWhisky: number; flagshipDone?
   // 가장 오래된 protect통(없으면 2)을 한 번 「플래그십」 제품으로 병입한다. 사람 후반 판은 플래그십을 못 냈다(X0는 그대로 끔)
   if (p.flagship && !t.flagshipDone) {
     const minM = campaignMinOakMonths(s);
-    const fl = s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.kind === 'malt' && c.contents.oakMonths >= minM).sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths).slice(0, p.protect || 2);
-    if (fl.length) {
+    const fl = H.flagshipCasks?.(s, p, minM) || s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.kind === 'malt' && c.contents.oakMonths >= minM).sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths).slice(0, p.protect || 2);
+    if (fl.length) { // @hook:flagship-casks
       const before = s;
       s = bottleAs(s, { ...p, lineup: undefined }, fl.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL })), { name: '플래그십', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' }, 'whisky');
       if (s !== before) t.flagshipDone = true;
@@ -453,6 +460,7 @@ function bottle(s: GameState, p: Policy, t: { firstWhisky: number; flagshipDone?
     }
   }
   // 위스키: 재고가 지난달 수요의 1.5배(최소 600병) 밑이면 12개월 넘은 통부터 (봇과 같은 규칙 — 사람·봇 차이에서 뺀다)
+  s = H.beforeWhiskyBottle?.(s, p) || s; // @hook:before-whisky-bottle
   const stock = stockOf(s, 'whisky');
   // P8(MKT 명세 ②): 병입 목표에 지난달 수출 병 수를 더한다 — 수출이 국내 재고를 먼저 가져가므로(#109)
   const exportLast = p.exportDemand ? (s.history.reports.at(-1)?.exports ?? []).reduce((a, x) => a + x.bottles, 0) : 0;
@@ -466,7 +474,7 @@ function bottle(s: GameState, p: Policy, t: { firstWhisky: number; flagshipDone?
     const n = Math.min(10, Math.max(1, Math.ceil((target - stock) / 330)));
     const minOak = p.labelFrom && s.month >= p.labelFrom[0] ? p.labelFrom[1] : 12;
     const kept = keptCasks(s, p);
-    const ready = s.inventory.casks.filter((c) => c.contents && c.contents.kind === 'malt' && c.contents.oakMonths >= minOak && !kept.has(c.id))
+    const ready = s.inventory.casks.filter((c) => c.contents && !H.bottleSkip?.(s, p, c) && c.contents.kind === 'malt' && c.contents.oakMonths >= minOak && !kept.has(c.id)) // @hook:bottle-skip
       .sort((a, b) => (p.order === 'young' ? 1 : -1) * (a.contents!.oakMonths - b.contents!.oakMonths)).slice(0, n);
     if (ready.length) {
       const comps = ready.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }));
@@ -492,6 +500,7 @@ function retail(s: GameState): GameState {
 const has = (s: GameState, id: string) => s.finance.loans.some((l) => l.offerId === id);
 /** 병입·핸드필이 쓰지 않는 통 — 플래그십 후보 중 가장 오래된 protect통. protectFrom = [달, n]이면 그 달부터 n통(G03 장기 보유) */
 function keptCasks(s: GameState, p: Policy): Set<string> {
+  { const h = H.keptCasks?.(s, p); if (h) return h; } // @hook:kept-casks
   const late = p.protectFrom && s.month >= p.protectFrom[0];
   const game = GAME_TAGS || (!!p.gameTags && rulesVersionOf(s) === 'v16'); // X0W(#320): 게임 예비 4통 — 옛 판에서는 자기 규칙(X0L 바이트 동일)
   const n = late ? p.protectFrom![1] : game ? 0 : p.protect;
@@ -542,6 +551,7 @@ function finance(s: GameState, p: Policy): GameState {
 function handfill(s: GameState, p: Policy): GameState {
   if (!hasHandfillZone(s) || handfillCask(s)) return s;
   const kept = keptCasks(s, p);
+  { const h = H.handfillCask?.(s, p, kept); if (h !== undefined) return h ? act(s, { type: 'setHandfillCask', caskId: h.id }) : s; } // @hook:handfill-cask
   const c = s.inventory.casks.filter((x) => x.contents && !kept.has(x.id) && !isFlagshipCandidate(s, x) && !handfillBlocker(s, x)).sort((a, b) => a.contents!.oakMonths - b.contents!.oakMonths)[0];
   return c ? act(s, { type: 'setHandfillCask', caskId: c.id }) : s;
 }
@@ -569,6 +579,7 @@ interface Cap { minCash72: number; minRunway72: number; negMonths: number; peakS
 
 function play(p: Policy, seed: number): Row {
   let s = applyTierKnobs(newScenarioGame({ scenarioId: 'mvp_kr', tierId: TIER, loanAmount: LOAN, seed }));
+  s = H.afterCreate?.(s, p, seed) || s; // @hook:after-create
   const t: { firstWhisky: number; flagshipDone?: boolean; launchDone?: boolean; winFail?: number[]; contamFills: number } = { firstWhisky: -1, contamFills: 0 };
   FILL_COUNTER = t;
   if (p.visitor && p.visitorAt == null) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_basic' });
@@ -616,8 +627,10 @@ function play(p: Policy, seed: number): Row {
     // 손 가격 정책(price): 분기마다 재고 있는 제품 값을 다시 매긴다(MKT-B — 자동 가격을 분기 1번 손으로 하는 것)
     if (p.supplyHint) s = policySupply(s);
     if (!p.autoPrice && p.price && m > 0 && m % 3 === 0) for (const x of [...s.commerce.products]) if (x.stockBottles > 0 && !x.autoPrice && !x.dutyFreeOnly) s = manualPrice(s, p, x);
+    s = H.beforeBottle?.(s, p, m) || s; // @hook:before-bottle
     s = bottle(s, p, t);
     s = fill(s, p);
+    s = H.afterFill?.(s, p, m) || s; // @hook:after-fill
     if (p.wipeAt === m) for (const c of s.inventory.casks) if (c.contents && !c.owner && c.contents.oakMonths >= 12 && (c.contents.kind === 'malt' || c.contents.kind === 'grain')) delete (c as { contents?: unknown }).contents;
     s = finance(s, p);
     if (p.raiseIfCash != null && s.finance.cash > p.raiseIfCash) { const ev = s.events.pending.find((e) => e.defId === 'salary_review'); if (ev) s = act(s, { type: 'resolveEvent', eventId: ev.id, choice: 0 }); }
@@ -626,7 +639,9 @@ function play(p: Policy, seed: number): Row {
     // 6개월 규칙을 따로 세려고 시뮬레이션의 3개월 파산을 막는다(연속 개월을 1 이하로 덮어 쓴다) — 연속 개월은 스크립트가 센다(neg)
     // GAME_BANKRUPT=1 이면 게임 파산 규칙을 그대로 쓴다(TECH-02 — 막지 않는다. 6개월 규칙 열은 3개월과 같아진다)
     if (!GAME_BANKRUPT) s.finance.negativeCashMonths = Math.min(s.finance.negativeCashMonths, 1);
+    H.beforeAdvance?.(s, p, m, seed); // @hook:before-advance
     s = advanceMonth(s);
+    H.afterMonth?.(s, p, m, seed); // @hook:after-month
     retailRev += s.history.reports.at(-1)?.retailDealRevenue ?? 0;
     // 자동 납품: 게임이 보충한 제품(자동 가격이 아닌 것)은 다음 달 값부터 다시 맞춘다(보충은 틱 안이라 그 달 판매는 옛 값)
     // 정책 가격(price·pricePolicy)이 있으면 그 규칙으로 — 권장가 ×1.0으로 되돌리면 X22·C 정책을 깬다(AP3-MGT-1에서 찾은 봇 결함)
@@ -709,6 +724,7 @@ const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
 const CALIB = process.env.CALIB === '1' && !!process.env.P8;
 // RUN 줄은 그대로 둔다 — P8 래퍼(prodHoldPatch·prod-hold-p8·prod-sample-p8·prod-style-p8)가 이 줄을 글자 그대로 찾아 바꾼다. CALIB는 RUN을 만든 뒤에 바꾼다
 const RUN = ONLY ? ALL_RUN.filter((p) => ONLY.has(p.name.split(' ')[0]!)) : ALL_RUN;
+if (H.run) RUN.splice(0, RUN.length, ...H.run(RUN.slice())); // @hook:run
 if (CALIB) { const x0 = P8_POLICIES[0]!; RUN.splice(0, RUN.length, x0, P8('X0E X0 — 자동 가격을 3정책 엔진 A로(setPricePolicy turnover) · H4 확인용', { ...X0F, engineA: true })); }
 for (const p of RUN) {
   const rows = Array.from({ length: SEEDS }, (_, i) => play(p, i + 1));
@@ -897,3 +913,4 @@ if (CALIB) {
     console.log(`\n시드별 ${HUMAN_REF.month}개월 순자산(억): ${nws.map((v) => (v / 1e8).toFixed(2)).join(' · ')}`);
   }
 }
+H.atEnd?.(ALL); // @hook:at-end
