@@ -203,6 +203,10 @@ if (PRICE) {
     if (opts.name.startsWith(LONG_LINE_NAME)) s = mkt.afterBottle(s, longPol(p) as never, opts);
     return s;
   };
+  // ①' P8의 손 가격(mvp-human.ts manualPrice)은 가격 모드(price)를 준 정책에서 끈다 — mkt-p8v.ts(AP3 정의)와 같다. 가격은 mktP8Hooks 한 곳이 맡는다.
+  //    켜 두면 MKT 모드(profit2·premium)가 정한 값을 P8이 병입·보충 때와 분기마다 권장가 ×1로 되돌린다(2026-11-14 기록 주의 — "전체" 줄이 섞인 정의로 재졌다).
+  //    A(#200)와 「-L」 줄은 자동 가격이 켜져 있어 손 가격이 애초에 돌지 않는다 — 값 불변
+  hooks.manualPrice = (s, p) => ((p as { price?: unknown }).price ? s : undefined);
   // ② 매달 병입 직전 · ②' 통입 뒤 기록
   hooks.beforeBottle = (s, p, m) => mkt.monthly(s, (longPrice(p) ? longPol(p) : p) as never, m);
   hooks.afterFill = (s, p, m) => { mkt.snap(s, p as never, m); };
