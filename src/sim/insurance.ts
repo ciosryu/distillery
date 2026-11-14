@@ -25,7 +25,8 @@ export interface LossLedger {
   damageMul: number;
 }
 
-// 피해 크기 = 연구 효과 × 난이도 incidents.lossSize(F6b, ARCH 규약 ② — 이 한 값이 applyEffects에서 현금 피해와 통·원액 소실 비율을 함께 키운다. PROD는 따로 곱하지 않는다)
+// 피해 크기 = 연구 감면 riskMul × 난이도 incidents.lossSize(F6b — ARCH 가름 2026-11-14: 읽는 자리는 여기 하나). applyEffects scale()이 현금 피해·통 소실·원액 손실 비율을 함께 키운다.
+// PROD prodKnobs는 따로 곱하지 않는다(k² 방지). 원액 손실 비율은 events.ts에서 0.9 상한
 export const newLedger = (s: GameState, eventId?: string): LossLedger => ({ property: 0, inventory: 0, stopMonths: 0, inventoryValueBefore: insuredInventoryValue(s), damageMul: mul(eventId ? riskMul(s, `event:${eventId}`) : 1, lossSizeMul(s)) });
 
 /** 캐스크 한 통 원액의 원가 (오너십 판매분은 고객 재산이라 제외) */

@@ -124,7 +124,8 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         break;
       }
       case 'caskVolumeLoss': {
-        const share = scale(e.share);
+        // 피해 크기(연구 × 난이도 incidents.lossSize, F6b)가 1보다 크면 비율이 1을 넘지 않게 0.9로 묶는다 — dm = 1(Normal·연구 없음)은 그대로(바이트 동일)
+        const share = dm === 1 ? e.share : Math.min(0.9, scale(e.share));
         if (ledger) ledger.inventory += share * s.inventory.casks.reduce((t, c) => t + caskBookValue(c), 0);
         // F2 원장 지점 13: 사고 원액 손실 — 같은 비율로 줄고 원가는 남는다(보존)
         if (report) for (const c of s.inventory.casks) if (c.contents) recordLoss(report, 'incident', lpaOf(c.contents) * share);

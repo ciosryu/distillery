@@ -57,7 +57,7 @@ describe('F6b — 임시 Easy≠Hard 값으로 손잡이가 실제로 먹는다'
     const rec = { dueMonth: n.month + 3, amount: 100_000_000 };
     expect(factoringProceeds(h, rec)).toBeLessThan(factoringProceeds(n, rec));
     expect(factoringProceeds(e, rec)).toBeGreaterThan(factoringProceeds(n, rec));
-    expect(newLedger(h, 'fire').damageMul).toBe(2);
+    expect(newLedger(h, 'fire').damageMul).toBe(2); // = 연구 감면 riskMul('event:fire') × 난이도 — 연구 없는 새 판이라 riskMul 1. 연구가 있으면 둘을 곱한다(의도)
     expect(newLedger(e, 'fire').damageMul).toBe(0.5);
   });
 
@@ -81,5 +81,24 @@ describe('F6b — 임시 Easy≠Hard 값으로 손잡이가 실제로 먹는다'
     }
     expect(b.history.reports.some((r) => r.notes.some((t) => t.startsWith('정기 임금 조정')))).toBe(true);
     expect(a.history.reports.some((r) => r.notes.some((t) => t.startsWith('정기 임금 조정')))).toBe(false);
+  });
+});
+
+describe('F6b — 재해 피해 크기(incidents.lossSize)는 원장 damageMul 한 자리 · 원액 손실 비율 상한', () => {
+  it('Hard ×2에서 원액 손실 비율 0.6 → 1.2가 아니라 0.9로 묶인다(통 원액이 음수가 되지 않는다)', async () => {
+    setTestValues();
+    const { applyEffects } = await import('./events');
+    const { rngFor } = await import('./rng');
+    const s = game('hard');
+    const { emptyCaskOf } = await import('./index');
+    const c = emptyCaskOf(s, 'ex_bourbon_barrel'); c.id = 'T1';
+    c.contents = { id: 'LT1', name: 'T1', kind: 'malt', volumeL: 180, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: 24, sourced: false, costPerLPA: 10_000 };
+    s.inventory.casks.push(c);
+    const ledger = newLedger(s, 'flood');
+    expect(ledger.damageMul).toBe(2);
+    applyEffects(s, [{ type: 'caskVolumeLoss', share: 0.6 }], rngFor(1, 0, 't'), '시험', ledger, null);
+    const after = s.inventory.casks.find((x) => x.id === 'T1')!.contents!;
+    expect(after.volumeL).toBeCloseTo(180 * 0.1, 5); // 0.9 상한 — 1.2를 곱했다면 음수
+
   });
 });
