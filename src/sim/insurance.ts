@@ -1,7 +1,7 @@
 import { CREDIT_INSURANCE, EQUIPMENT, FACTORING, INSURANCE_PRODUCTS, type InsuranceProductDef } from './content/catalog';
 import { monthlyFixedCost } from './loans';
 import { riskMul } from './research';
-import { financeFeeMul, lossSizeMul, mul } from './mgtKnobs';
+import { financeFeeMul, mul } from './mgtKnobs';
 import type { GameState, InsurancePolicy, MonthReport } from './types';
 
 // 보험 (파트 MGT, #171, PRD §8.4) — 재산·재고·영업중단. 재해 이벤트(events.ts fire)가 피해를 장부(LossLedger)에 적고, 끝에 settleClaims가 보험금을 준다.
@@ -25,8 +25,8 @@ export interface LossLedger {
   damageMul: number;
 }
 
-// 피해 크기 = 연구 효과 × 난이도 incidents.lossSize(F6b, ARCH 규약 ② — 이 한 값이 applyEffects에서 현금 피해와 통·원액 소실 비율을 함께 키운다. PROD는 따로 곱하지 않는다)
-export const newLedger = (s: GameState, eventId?: string): LossLedger => ({ property: 0, inventory: 0, stopMonths: 0, inventoryValueBefore: insuredInventoryValue(s), damageMul: mul(eventId ? riskMul(s, `event:${eventId}`) : 1, lossSizeMul(s)) });
+// 난이도 incidents.lossSize는 여기서 곱하지 않는다 — damageMul은 applyEffects에서 통 소실 비율까지 키우므로, PROD prodKnobs.tuneEventEffects(상한 있음)와 겹쳐 k²가 된다(F6b 검토, PM·ARCH 가름)
+export const newLedger = (s: GameState, eventId?: string): LossLedger => ({ property: 0, inventory: 0, stopMonths: 0, inventoryValueBefore: insuredInventoryValue(s), damageMul: eventId ? riskMul(s, `event:${eventId}`) : 1 });
 
 /** 캐스크 한 통 원액의 원가 (오너십 판매분은 고객 재산이라 제외) */
 export const caskBookValue = (c: GameState['inventory']['casks'][number]): number => (c.contents && !c.owner ? c.contents.volumeL * c.contents.abv * c.contents.costPerLPA : 0);

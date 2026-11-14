@@ -41,7 +41,6 @@ export const KNOBS: Record<string, KnobDef> = {
   'finance.fees': { easy: 1, hard: 1, note: '보험료·팩토링 할인율 배수 — insurance.ts' },
   'finance.laborMul': { easy: 1, hard: 1, note: '인건비 배수 — 새로 정하는 급여(창업 멤버·채용·시세·전문가)에 지역 laborCost와 함께 곱한다' },
   'finance.wageDrift': { easy: 1, hard: 1, note: '정기 임금 상승 — 매년 1월 전 직원 급여 × 값(1 = 없음). [결정 대기 94] Normal은 1' },
-  'incidents.lossSize': { easy: 1, hard: 1, note: '재해 피해 크기 — 손실 원장 damageMul × 값: 현금 피해와 통·원액 소실 비율을 한 값으로(PROD·MGT 공용, ARCH 규약 ②)' },
 };
 
 /** 세 프리셋 = 6값의 묶음 (easy 전부 1 · normal 2 · hard 3). Custom은 값을 개별 선택 */

@@ -24,8 +24,8 @@ export const financeFeeMul = (s: S) => knob(s, 'finance.fees');
 export const laborMul = (s: S) => knob(s, 'finance.laborMul');
 /** 정기 임금 상승 — 매년 1월 전 직원 급여에 곱한다(1 = 오르지 않음). 선택 사건이 아니라 사기 없이도 비용 압력(P-MGT-51 · [결정 대기 94] — Normal은 1) */
 export const wageDrift = (s: S) => knob(s, 'finance.wageDrift');
-/** 사고·재난 피해 크기 — 재해 손실 원장 `damageMul`에 곱해 현금 피해(복구비)와 통·원액 소실 비율을 **한 값으로** 키운다(ARCH 규약 ②: PROD·MGT 같은 값) */
-export const lossSizeMul = (s: S) => knob(s, 'incidents.lossSize');
+// 사고 피해 크기 `incidents.lossSize`는 PROD `prodKnobs.tuneEventEffects` 한 곳이 읽는다(통·원액 소실 — 상한 있음). 재해 현금 피해(복구비)도 같은 값이면
+// 그 함수의 disaster 분기에 `cash`(음수) × lossSize 한 줄을 더하는 것이 MGT 제안이다(같은 값·같은 자리 — ARCH 규약 ②). 손실 원장 damageMul에는 곱하지 않는다(k² 방지)
 
 /** 급여를 정할 때 쓰는 인건비 계수 = 지역 laborCost × 인건비 배수 */
 export function staffLaborCost(s: Pick<GameState, 'difficulty' | 'regionId'>): number {
