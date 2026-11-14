@@ -1,5 +1,5 @@
 import { EVENT, EVENTS, type Effect, type EventDef, type Requirement } from './content/events';
-import { domainEventMul } from './rules'; // F6 난이도 영역 배수(잎 모듈)
+import { aroundOne, domainEventMul, eventDurationMul, eventMagnitudeMul } from './rules'; // F6 난이도 영역 배수·효과 크기·기간(잎 모듈)
 import { houseBrand } from './brands';
 import { regionOf, siteOf } from './content/regions';
 import { BUYERS, COMPETITIONS, CRITICS, displayName } from './content/names';
@@ -12,7 +12,7 @@ import { clamp } from './flavor';
 import { addModifier } from './modifiers';
 import { exportAwarenessMax } from './market';
 import { rngFor, type Rng } from './rng';
-import type { GameState, MonthReport } from './types';
+import type { GameState, MonthReport, DifficultyDomain } from './types';
 import { nid } from './util';
 import { addWeatherShock } from './weather';
 import { addTrendShift } from './blendTable';
@@ -76,27 +76,31 @@ function log(s: GameState, report: MonthReport | null, title: string, text: stri
  * 효과를 적용한다. `report`는 그달 결산(틱 안에서 부를 때) — 판매 효과(`exportOrder`)가 F3 판매 사건을 거기에 쌓는다.
  * 턴 사이(행동 `resolveEvent`)에는 결산이 없어 `null`이다 — 그때도 로트 차감은 하되 사건은 남지 않는다(아래 exportOrder 주석)
  */
-export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: string, ledger?: LossLedger, report: MonthReport | null = null): string[] {
+export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: string, ledger?: LossLedger, report: MonthReport | null = null, domain?: DifficultyDomain): string[] {
   const notes: string[] = [];
   // 연구로 줄어드는 재해 피해 크기 (#184, tech-tree P3 "면역 대신 크기 감소") — 1이면 아래 계산을 건너뛰어 값이 그대로다
   const dm = ledger?.damageMul ?? 1;
   const scale = (x: number) => (dm === 1 ? x : x * dm);
+  // F6 난이도 — 이벤트 영역 태그(`EventDef.domain`)로 효과 크기(`<영역>.eventMagnitude`: modifier 배수의 1에서의 거리)·기간(`<영역>.eventDuration`: 개월 × k, 반올림·최소 1)을
+  // 곱한다. 태그 없음·Normal·옛 판은 k = 1 → 아래 식을 타지 않아 값이 그대로다(바이트 동일). 난수 호출(rng.int)은 그대로 — 스트림 불변
+  const km = eventMagnitudeMul(s, domain), kd = eventDurationMul(s, domain);
+  const stretch = (m: number) => (kd === 1 ? m : Math.max(1, Math.round(m * kd)));
   for (const e of effects) {
     switch (e.type) {
       case 'modifier': {
-        const months = rng.int(e.months[0], e.months[1]);
-        addModifier(s, e.key, e.factor, months, e.label ?? label, e.delay ?? 0);
+        const months = stretch(rng.int(e.months[0], e.months[1]));
+        addModifier(s, e.key, km === 1 ? e.factor : aroundOne(e.factor, km), months, e.label ?? label, e.delay ?? 0);
         if (ledger && e.key === 'production' && e.factor === 0) ledger.stopMonths += months;
         break;
       }
       case 'weather': {
-        const months = rng.int(e.months[0], e.months[1]);
+        const months = stretch(rng.int(e.months[0], e.months[1]));
         addWeatherShock(s, `W${s.month}-${e.label ?? label}`, e.label ?? label, e.tempC, e.humidity ?? 0, months);
         notes.push(`외기 ${e.tempC > 0 ? '+' : ''}${e.tempC}°C${e.humidity ? ` · 습도 ${e.humidity > 0 ? '+' : ''}${e.humidity}%p` : ''} (${months}개월)`);
         break;
       }
       case 'flavorTrend': {
-        const months = rng.int(e.months[0], e.months[1]);
+        const months = stretch(rng.int(e.months[0], e.months[1]));
         addTrendShift(s, e.label ?? label, e.axis, e.strength, e.lo, e.hi, months);
         notes.push(`${HEX_LABEL[e.axis]} 향 유행 — 최대 매력도 ×${(1 + e.strength).toFixed(2)} (${months}개월)`);
         break;
@@ -189,7 +193,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         break;
       }
       case 'gamble':
-        notes.push(...(rng.chance(e.chance) ? ['성공!', ...applyEffects(s, e.success, rng, label, undefined, report)] : ['실패', ...applyEffects(s, e.failure, rng, label, undefined, report)]));
+        notes.push(...(rng.chance(e.chance) ? ['성공!', ...applyEffects(s, e.success, rng, label, undefined, report, domain)] : ['실패', ...applyEffects(s, e.failure, rng, label, undefined, report, domain)]));
         break;
       case 'contaminate': {
         const filled = s.inventory.casks.filter((c) => c.contents && !c.contamination);
@@ -202,7 +206,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         const best = Math.max(0, ...s.commerce.products.filter((p) => p.stockBottles > 0).map((p) => p.quality));
         const verdict = best >= e.rave ? 'rave' : best < e.pan ? 'pan' : 'mild';
         notes.push(verdict === 'rave' ? `극찬 — 품질 ${best} (수요 폭증, 가격 저항 감소)` : verdict === 'pan' ? `혹평 — 품질 ${best} (수요 급감, 재고 적체 주의)` : `무난한 평가 — 품질 ${best}`);
-        notes.push(...applyEffects(s, verdict === 'rave' ? e.raveEffects : verdict === 'pan' ? e.panEffects : e.mildEffects, rng, label, undefined, report));
+        notes.push(...applyEffects(s, verdict === 'rave' ? e.raveEffects : verdict === 'pan' ? e.panEffects : e.mildEffects, rng, label, undefined, report, domain));
         break;
       }
       case 'taxAudit': {
@@ -216,7 +220,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
       case 'qualityGamble': {
         const best = Math.max(0, ...s.commerce.products.filter((p) => p.stockBottles > 0).map((p) => p.quality));
         const ok = rng.chance(clamp((best - 30) / 50, 0.05, 0.95));
-        notes.push(ok ? '호평' : '혹평', ...applyEffects(s, ok ? e.success : e.failure, rng, label, undefined, report));
+        notes.push(ok ? '호평' : '혹평', ...applyEffects(s, ok ? e.success : e.failure, rng, label, undefined, report, domain));
         break;
       }
       case 'exportOrder': {
@@ -284,7 +288,7 @@ function fire(s: GameState, base: EventDef, rng: Rng, report: MonthReport): void
   }
   // 재해는 피해 장부를 적어 끝에 보험금을 준다 (#171). 보험이 없으면 문구·현금 모두 그대로
   const ledger = def.category === 'disaster' ? newLedger(s, def.id) : undefined;
-  const notes = applyEffects(s, def.effects ?? [], rng, def.title, ledger, report);
+  const notes = applyEffects(s, def.effects ?? [], rng, def.title, ledger, report, def.domain);
   if (ledger) notes.push(...settleClaims(s, ledger, report));
   log(s, report, def.title, [def.text, ...notes].join(' '));
   // 연구가 여는 이어지는 선택 이벤트 (#213) — 연구하지 않은 판은 아무 일도 없다
@@ -336,7 +340,7 @@ export function resolvePending(s: GameState, pendingId: string, choiceIndex: num
   const choice = def?.choices?.[choiceIndex];
   if (!def || !choice) return null;
   const rng = rngFor(s.seed, s.month, `event:${p.id}:${choiceIndex}`);
-  const notes = applyEffects(s, choice.effects, rng, def.title, undefined, report);
+  const notes = applyEffects(s, choice.effects, rng, def.title, undefined, report, def.domain);
   s.events.pending = s.events.pending.filter((x) => x.id !== p.id);
   const text = `${def.title}: "${choice.label}" — ${notes.join(' ') || '처리 완료'}`;
   log(s, report, `${def.title} → ${choice.label}`, text);
