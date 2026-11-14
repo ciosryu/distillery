@@ -1058,10 +1058,28 @@ export interface CampaignGoal {
 /** 세이브가 따르는 규칙 묶음 — 'v16' = #308 승리 규칙, 'legacy-v15' = 옛 판(순자산 ×3 + 180개월 판정, 조용히 재판정하지 않는다) */
 export type RulesVersion = 'legacy-v15' | 'v16';
 
+// ───────────── 난이도 (F6, [결정 #313·#314] — architecture §10.10 [제안 P-ARCH-58]) ─────────────
+/** 난이도 6영역 — 거시경제 · 시장 경쟁 · 소비자 취향(#313) · 원자재/공급망 · 사고/재난 · 금융 환경 */
+export type DifficultyDomain = 'macro' | 'competition' | 'taste' | 'supply' | 'incidents' | 'finance';
+/** 1 Easy · 2 Normal · 3 Hard */
+export type DifficultyLevel = 1 | 2 | 3;
+export type DifficultyPreset = 'easy' | 'normal' | 'hard' | 'custom';
+/**
+ * 난이도 설정 — 같은 엔진의 설정 묶음(네 모드가 다른 코드를 쓰지 않는다). 판 **시작 스냅샷**이고 플레이 중 바뀌지 않는다(행동 입구 없음).
+ * `preset`은 표시용 — 실행값은 `levels`만 본다(Custom 전부 Normal이어도 표시는 Custom). 프리셋 하나 = 대응 Custom과 실행 동치.
+ * 옛 판(`legacy-v15`)·옛 세이브에는 없다 = Normal로 읽는다(마이그레이션이 만들어 넣지 않는다). 읽기는 `rules.ts difficultyOf/levelOf/knob` 하나로
+ */
+export interface DifficultyConfig {
+  preset: DifficultyPreset;
+  levels: Record<DifficultyDomain, DifficultyLevel>;
+}
+
 export interface GameState {
   version: 16;
   /** 규칙 묶음 (F1, [결정 #308]). 옛 세이브는 v15 → v16 마이그레이션이 'legacy-v15'로 표시한다. 없으면 'legacy-v15'로 읽는다 */
   rulesVersion?: RulesVersion;
+  /** 난이도 시작 스냅샷 (F6, [결정 #314]) — v16 새 판만 쓴다. 없으면 Normal. 샌드박스(`newGame`)·옛 판은 두지 않는다 */
+  difficulty?: DifficultyConfig;
   seed: number;
   /** 시작부터의 경과 월. 0 = 시작 연도 1월 */
   month: number;

@@ -1,4 +1,4 @@
-import type { HexAxis, ProductCategory, RegionId } from '../types';
+import type { HexAxis, ProductCategory, RegionId, DifficultyDomain } from '../types';
 
 // 이벤트 정의 — 선언형 데이터 (Godot 이식 시 JSON으로 옮길 수 있게 함수 없이 작성). 확률·수치 [튜닝]
 // 원칙: ① 큰 악재는 예보(빗나갈 수 있음)로 대비할 시간을 준다 ② 호재와 악재를 섞는다
@@ -72,6 +72,8 @@ export interface EventDef {
   defense?: string;
   /** 이 이벤트가 일어난 뒤, 연구로 unlockKey가 열려 있으면 이어서 띄우는 선택 이벤트 (TRIGGERED_EVENTS의 id) — 연구 효과 '이벤트 선택지' (#213) */
   followUp?: { eventId: string; unlockKey: string };
+  /** 난이도 영역 태그 (F6 [결정 #314]) — 발생 확률에 `knob(s, '<영역>.eventChance')`를 곱한다. 없으면 ×1("영역 없음" — 평판 사건 등). 태그 표는 세 파트 합의로 채운다 */
+  domain?: DifficultyDomain;
 }
 
 const m = (key: string, factor: number, months: [number, number], label?: string): Effect => ({ type: 'modifier', key, factor, months, label });
