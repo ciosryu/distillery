@@ -90,6 +90,7 @@ for (const c of CASES) {
       // 분기 칸 — 정확히 같아야 한다
       m: r.month, status: s.status, neg: s.finance.negativeCashMonths,
       events: r.events, verdict: s.progress.verdict ? `${s.progress.verdict.result}:${s.progress.verdict.grade ?? ''}` : null,
+      win: s.progress.win ? `${s.progress.win.month}:${s.progress.win.kind}:${s.progress.win.lotId}` : null, // F4 캠페인 승리(새 판만)
       batches: r.production.reduce((t, p) => t + p.batches, 0),
       sold: r.sales.reduce((t, x) => t + x.bottles, 0),
       price: (r.priceLog ?? []).map((e) => `${e.productId}:${e.mode}:${e.to}`),

@@ -289,7 +289,7 @@ describe('자동 납품 원액 없음 할 일 (#243)', () => {
 describe('12년 플래그십 후보 (#240 — 되돌릴 수 없는 행동의 남는 자원 경고)', () => {
   it('#238 isFlagshipCandidate와 같은 식 — 고객 소유 통은 빼고, 쓰고 나면 남는 수와 "새 통은 더 후보가 될 수 없다(final)"를 준다', async () => {
     const { isFlagshipCandidate } = await import('../sim/delegateCheck');
-    let s: GameState = mvp();
+    let s: GameState = mvp(); s.rulesVersion = 'legacy-v15'; // 옛 후보 정의(F4 전) 검사
     const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
     s = applyAction(s, { type: 'setOrder', recipeId: malt.id, batchesPerMonth: 2 }).state;
     s = advanceMonth(s);
@@ -310,7 +310,7 @@ describe('12년 플래그십 후보 (#240 — 되돌릴 수 없는 행동의 남
 
 describe('플래그십 후보 감소 알림 (#261)', () => {
   const withCasks = (month: number, oaks: number[]) => {
-    const s = mvp();
+    const s = mvp(); s.rulesVersion = 'legacy-v15'; // 옛 후보 정의(판 끝 상한) 검사 — F4
     s.month = month;
     s.inventory.casks = s.inventory.casks.filter((c) => !c.contents);
     oaks.forEach((oak, i) => {
@@ -353,5 +353,52 @@ describe('플래그십 후보 감소 알림 (#261)', () => {
     s.inventory.casks.find((c) => c.id === 'C1')!.contents!.volumeL -= 50;
     noteCandidateUse(s, report, before, 0);
     expect(report.notes.at(-1)).toMatch(/^플래그십 후보 1통에서 자동 납품이 원액을 썼다 — 「안성 3년」/);
+  });
+});
+
+// F4 v16 짝 (MGT — 결정 #308·#325): 위 두 묶음은 옛 판(legacy-v15)의 후보 정의(판 끝 상한·그레인 포함)를 검사한다.
+// 새 판(v16)의 화면 후보는 'hint' 지평 36개월 — 지금 적격 원액과 같은 조건(자가 · 같은 입지 · 몰트 · 고객 소유 아님)이고, 목재 개월 + 36 ≥ A(144)
+describe('12년 플래그십 후보 — 새 판(v16, 결정 #325 hint 36)', () => {
+  const v16 = (month: number, casks: { oak: number; kind?: 'malt' | 'grain'; sourced?: boolean; owner?: boolean }[]) => {
+    const s = mvp();
+    expect(s.rulesVersion).toBe('v16');
+    s.month = month;
+    s.inventory.casks = s.inventory.casks.filter((c) => !c.contents);
+    casks.forEach((x, i) => {
+      const c = { ...s.inventory.casks[0]!, id: `V${i}`, contents: { id: `LV${i}`, name: `V${i}`, kind: x.kind ?? 'malt' as const, volumeL: 150, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: x.oak, sourced: !!x.sourced, costPerLPA: 10_000 } };
+      if (x.owner) (c as typeof c & { owner?: unknown }).owner = { name: '고객', soldMonth: month, deliverMonth: month + 24 };
+      s.inventory.casks.push(c);
+    });
+    return s;
+  };
+
+  it('후보 = 목재 108개월↑ 자가 몰트 통 — 어린 통 · 그레인 · 매입 · 고객 소유는 아니다', () => {
+    const s = v16(120, [{ oak: 108 }, { oak: 107 }, { oak: 130, kind: 'grain' }, { oak: 130, sourced: true }, { oak: 130, owner: true }, { oak: 144 }]);
+    expect(flagshipCandidates(s).map((c) => c.id)).toEqual(['V0', 'V5']);
+    expect(flagshipImpact(s, ['V0']).using).toBe(1);
+    expect(flagshipImpact(s, ['V0']).left).toBe(1);
+  });
+
+  it('1개월째에 넣은 통은 아직 화면 후보가 아니다(옛 판은 "판 끝까지 채울 수 있음"으로 후보였다) — 예비 보호는 따로 reserve 144로 지킨다', async () => {
+    const { reserveCaskIds } = await import('../sim/tags');
+    const s = v16(1, [{ oak: 0 }, { oak: 0 }]);
+    expect(flagshipCandidates(s)).toHaveLength(0);
+    expect(reserveCaskIds(s).size).toBe(2); // 'reserve' 지평 = A — 자가 몰트 통은 처음부터 예비 후보(#325 고침)
+  });
+
+  it('후보가 3통 이하이면 할 일 맨 위(flagship-low) — 108개월 미만 통만 있으면 후보 0이라 없다, 승리 뒤에도 없다', () => {
+    const low = v16(120, [{ oak: 115 }, { oak: 110 }]);
+    expect(monthTodos(low)[0]?.id).toBe('flagship-low');
+    expect(monthTodos(v16(120, [{ oak: 70 }, { oak: 66 }])).some((x) => x.id === 'flagship-low')).toBe(false); // 옛 판이면 2통 후보였던 판
+    const won = v16(150, [{ oak: 145 }]);
+    won.progress.win = { month: 146, productId: 'P1', lotId: 'P1:146:0', kind: 'domestic', unitPrice: 100_000, bottles: 1 };
+    expect(monthTodos(won).some((x) => x.id === 'flagship-low')).toBe(false);
+  });
+
+  it('결산의 후보 수(report.flagshipCandidates)도 같은 hint 식', () => {
+    let s = v16(120, [{ oak: 120 }, { oak: 100 }, { oak: 60 }]);
+    s = advanceMonth(s);
+    expect(s.history.reports.at(-1)!.flagshipCandidates).toBe(flagshipCandidates(s).length);
+    expect(flagshipCandidates(s).length).toBe(1); // 121 · 101(+36 = 137 < 144) · 61
   });
 });

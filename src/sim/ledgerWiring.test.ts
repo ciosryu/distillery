@@ -247,7 +247,7 @@ describe('지점 17·18 + F3 로트 생성 — 병입은 원장을 떼어 병입
     expect(comp.map((e) => e.woodMonths).sort((a, b) => a - b)).toEqual([youngLot.oakMonths, oldLot.oakMonths]);
     expect(sumLPA(comp)).toBeCloseTo(40 * oldLot.abv + 20 * youngLot.abv, 6);
     expect(ledgerEligibility(s, comp).woodMonths).toBe(youngLot.oakMonths);
-    expect(lots[0]!.eligibleAtBottling).toBeUndefined(); // F4가 채운다
+    expect(lots[0]!.eligibleAtBottling).toBe(false); // F4: addLot이 원장(가장 어린 25개월 < 144)으로 판정한다 — F4 전에는 비어 있었다
     for (const id of [old, young]) {
       const rest = caskOf(s, id).contents!;
       expect(ledgerError(rest)).toBeNull();

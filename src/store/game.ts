@@ -16,7 +16,7 @@ const STOP_LABEL: Record<StopReason, string> = {
   cashWarning: '현금 부족 경고',
   bankrupt: '파산',
   gameOver: '게임 종료',
-  verdict: '15년 목표 판정 — 결과 화면',
+  verdict: '목표 판정 — 결과 화면 (옛 판은 15년 판정, 새 캠페인은 승리 달)',
   equipmentReady: '설비 가동 시작',
   forecast: '새 예보',
   commission: '새 블렌딩 의뢰',

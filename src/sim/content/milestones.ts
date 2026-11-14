@@ -19,4 +19,6 @@ export const MILESTONES: Record<MilestoneId, MilestoneDef> = {
   first_cash_crisis: { nameKo: '첫 현금 위기', timeline: true },
   flagship_bottled: { nameKo: '플래그십 병입', timeline: true },
   flagship_sold: { nameKo: '플래그십 판매', timeline: true },
+  /** 캠페인 승리 (F4 [결정 #308]) — 적격 싱글 몰트 로트의 최초 정상 유상 출하. 값 = 그 제품 품질(핸드필은 없음) */
+  campaign_win: { nameKo: '캠페인 승리 — 12년 싱글 몰트 첫 출하', timeline: true },
 };

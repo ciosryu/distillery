@@ -15,6 +15,7 @@ import { calendar, warehouseCapacity } from './util';
 import { FLAGSHIP_RESERVE_TAG, preferredCaskIds, protectedCaskIds, reserveCaskIds, tagDef } from './tags';
 import { spotBidPerLPA } from './bulk';
 import { campaignMinOakMonths } from './rules';
+import { campaignWon } from './ledger';
 import type { Cask, GameState, MonthReport, Product, ProductCategory, Recipe, SpiritKind, SpiritLot } from './types';
 
 /** 표준 병 — 소주는 대중 규격, 몰트는 위스키 규격 (봇·사전 점검과 같은 값) */
@@ -491,7 +492,7 @@ export function productMonthlyPace(s: GameState, p: Product, monthOfYear = calen
  */
 export function flagshipGuard(s: GameState, p: Pick<Product, 'ageYears'>): boolean {
   if (!s.scenario) return false;
-  if (s.progress.milestones.some((m) => m.id === 'flagship_sold')) return false;
+  if (campaignWon(s)) return false;
   return (p.ageYears ?? 0) * 12 < campaignMinOakMonths(s);
 }
 
