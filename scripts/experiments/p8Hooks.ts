@@ -1,5 +1,6 @@
 // P8(mvp-human.ts) 끼움 자리 — 래퍼가 P8 소스를 글자 그대로 찾아 바꾸지 않고, **이름 붙은 자리**에 함수를 건다 (PM 2026-11-14 · PROD 제안 채택)
 // 이유: 글자 패치 래퍼가 P8 변경에 세 번 깨졌다(#412 · F4 `newScenarioGame` 줄 · #537 `fill`).
+// 지금 래퍼 4개(mkt-p8v #576 · prod-style-p8 #586 · prod-hold-p8·prod-sample-p8 #596)는 모두 이 자리로 옮겨졌다 — P8 소스를 글자로 찾는 래퍼는 없다.
 //
 // 쓰는 법(래퍼):
 //   import { setP8Hooks } from './p8Hooks';
@@ -50,6 +51,8 @@ export interface P8Hooks<P = any, R = any> {
   /** 일반 위스키 병입 후보에서 뺄 통 — @hook:bottle-skip */
   bottleSkip?(s: S, p: P, c: Cask): boolean;
   /** 병입 직후 가격 처리(P8의 pricePolicy·autoPrice 처리 앞). 상태를 돌려주면 P8 가격 처리를 건너뛴다 — @hook:price-after-bottle */
+  /** ⚠ 쓰는 곳: prod-hold-p8 「-L」 경로가 이 자리에서 P8 `bottleAs`의 가격 처리 줄(pricePolicy → policyAfterBottle · autoPrice → 자동 가격 켜기)을 **같은 순서로 대신** 한다.
+   *  mvp-human.ts `bottleAs`의 그 줄들을 바꾸면 PROD에 알린다(PM 2026-11-14) */
   priceAfterBottle?(s: S, p: P, opts: { name: string; restockId?: string }, cat: ProductCategory, api: P8Api<P>): S | void;
   /** P8 손 가격(manualPrice) 대신 — 상태를 돌려주면 P8 처리를 건너뛴다 — @hook:manual-price */
   manualPrice?(s: S, p: P, product: GameState['commerce']['products'][number]): S | void;
