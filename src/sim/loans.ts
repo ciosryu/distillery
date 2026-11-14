@@ -4,6 +4,7 @@ import { BANK_SCREENING } from './content/finance';
 import { siteOf } from './content/regions';
 import type { GameState, MonthReport } from './types';
 import { bulkValuePerLPA, isBulkKind } from './bulk';
+import { collateralValue, usesObservedValuation } from './valuation';
 import { heatingCost, siteOverhead } from './sites';
 import { caskStorageCost } from './casks';
 import { secondBrandMonthlyCost } from './brands';
@@ -18,8 +19,12 @@ import { mod } from './modifiers';
 
 // ───────────── 재고 담보대출 (홋카이도, 결정 #90) ─────────────
 
-/** 담보 가치 = 숙성 중인 몰트·그레인 원액의 현물 시가 (오너십 캐스크 제외) */
+/**
+ * 담보 가치 = 숙성 중인 몰트·그레인 원액의 현물 시가 (오너십 캐스크 제외). 새 판(v16, F5b #310 2단계·#326)은 **관측 품질 q̂**와 권리 제외(선판매·다른 담보)로 —
+ * 숨은 품질을 바꿔도 담보 한도가 같다. 옛 판은 참 품질 식 그대로(X0L 바이트 동일)
+ */
 export function inventoryCollateral(s: GameState): number {
+  if (usesObservedValuation(s)) return collateralValue(s);
   return s.inventory.casks.reduce((t, c) => t + (c.contents && !c.owner && isBulkKind(c.contents) ? c.contents.volumeL * c.contents.abv * bulkValuePerLPA(s, c.contents) : 0), 0);
 }
 

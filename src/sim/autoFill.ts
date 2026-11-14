@@ -1,4 +1,5 @@
 import { PROD_HANDLERS } from './actions.prod';
+import { usesObservedValuation } from './valuation';
 import { vesselMaterial } from './maturation';
 import type { AutoFillSettings, Cask, GameState, MonthReport, SpiritLot } from './types';
 
@@ -18,7 +19,9 @@ export const autoFillDue = (s: GameState, cfg: AutoFillSettings) => s.month % Ma
 /** 자동 통입이 쓸 빈 통 — 나무 통·오염 아님, 설정 순서(새 통 먼저 / 재사용 먼저), 같은 순서 안에서는 활성도 높은 통 먼저 */
 export function autoFillCasks(s: GameState, cfg: AutoFillSettings): Cask[] {
   const usedFirst = cfg.prefer === 'used';
-  return s.inventory.casks.filter((c) => !c.contents && !c.contamination && vesselMaterial(c) === 'wood')
+  // F5b [결정 #310 2단계]: 자동 통입은 플레이어가 **아는** 오염만 피한다(`contaminationKnown`) — 모르는 오염 통에 넣는 것이 새 규칙의 뜻(QC로 알게 됨). 옛 판은 숨은 값을 읽던 식 그대로(바이트 동일)
+  const hidden = (c: Cask) => (usesObservedValuation(s) ? !!c.contaminationKnown : !!c.contamination);
+  return s.inventory.casks.filter((c) => !c.contents && !hidden(c) && vesselMaterial(c) === 'wood')
     .sort((a, b) => (usedFirst ? Number(b.fills > 0) - Number(a.fills > 0) : Number(a.fills > 0) - Number(b.fills > 0)) || b.activity - a.activity || a.id.localeCompare(b.id));
 }
 
