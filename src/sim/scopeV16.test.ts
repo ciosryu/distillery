@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { advanceMonth, emptyCaskOf, isLocked, type GameState } from './index';
 import { siteOf } from './content/regions';
 import { EVENTS } from './content/events';
-import { midGoalMet, midGoalsOf } from './progress';
+import { midGoalMet, midGoalProgress, midGoalsOf } from './progress';
 import { newScenarioGame } from './newScenario';
 import { pendingStages, stagesOf } from './scenario';
 import { applyEffects } from './events';
@@ -74,6 +74,8 @@ describe('F5a — 중반 목표 reserve_casks (#319): 12년 후보 통 3개 = �
     s.inventory.casks.find((c) => c.id === 'A')!.contents!.oakMonths = 108;
     s.inventory.casks.find((c) => c.id === 'B')!.contents!.oakMonths = 120;
     expect(midGoalMet(s, 'reserve_casks')).toBe(false); // 2통
+    expect(midGoalProgress(s, 'reserve_casks')).toEqual({ have: 2, need: 3 }); // F5c-2 화면 "후보 2/3" — 판정과 같은 식
+    expect(midGoalProgress(s, 'aged3_sold')).toBeNull();
     s.inventory.casks.find((c) => c.id === 'C')!.contents!.oakMonths = 150;
     expect(midGoalMet(s, 'reserve_casks')).toBe(true); // 3통
     selfMalt(s, 'G', 150); s.inventory.casks.find((c) => c.id === 'G')!.contents!.kind = 'grain';
