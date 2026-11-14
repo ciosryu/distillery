@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactElement } from 'react';
-import { BANKRUPT_AFTER_MONTHS, isLocked, monthLabel, type GameState, type RegionId } from './sim';
+import { BANKRUPT_AFTER_MONTHS, isLocked, monthLabel, type GameState, type RegionId, rulesVersionOf } from './sim';
 import { REGIONS, siteOf } from './sim/content/regions';
 import { SCENARIOS } from './sim/content/scenarios';
 
@@ -94,7 +94,9 @@ export default function App() {
             <h1 className="text-base font-bold">{s.distilleryName} <ModeBadge s={s} /> <span className="text-xs font-normal text-stone-500">Distillery Tycoon · {s.siteId ? `${REGIONS[s.regionId].nameKo.replace(/\s*\(.*\)$/, '')} (${siteOf(s).nameKo})` : REGIONS[s.regionId].nameKo}</span></h1>
             <div className="text-sm text-stone-600 dark:text-stone-300">
               <span className="font-semibold">{monthLabel(s.startYear, s.month)}</span> · 현금 <span className={`font-semibold tabular-nums ${s.finance.cash < 0 ? 'text-rose-700 dark:text-rose-400' : ''}`}>{won(s.finance.cash)}</span>
-              {s.scenario && !s.progress.verdict && <> · 15년 목표까지 <span className="tabular-nums">{s.scenario.goal.months - s.month}개월</span></>}
+              {s.scenario && !s.progress.verdict && (rulesVersionOf(s) === 'legacy-v15'
+                ? <> · 15년 목표까지 <span className="tabular-nums">{s.scenario.goal.months - s.month}개월</span></>
+                : <> · <span title="캠페인 승리 = 이 증류소에서 만든 12년 숙성 싱글 몰트의 첫 유상 출하(결정 #308·#309). 기한은 없다 — 승리 뒤에도 계속 운영한다">캠페인 {s.month}개월째 · 목표: 12년 싱글 몰트 첫 출하</span></>)}
               {s.scenario && <> · <span className="tabular-nums text-stone-500" title="화면이 보이고 최근 2분 안에 입력이 있었던 시간만 센다 — 플레이테스트 기록(기록 내보내기)">플레이 {Math.floor(playMin / 60)}:{String(playMin % 60).padStart(2, '0')}</span></>}
               <> · <span className="tabular-nums text-stone-400" title="이 화면의 빌드(커밋). 페이지를 다시 열면 새 빌드로 바뀔 수 있다 — 바뀐 달은 플레이 기록에 남는다">빌드 {BUILD_ID}</span></>
             </div>

@@ -4,7 +4,8 @@ import { useGame } from '../store/game';
 import { won } from './format';
 import { Badge, Button, Card } from './kit';
 
-// 결과 화면 — 15년 목표 판정 (MVP §3, skeleton S-9). 확인하면 목표 없이 계속 운영(샌드박스)
+// 결과 화면 — 옛 판(legacy-v15)은 15년 목표 판정(MVP §3, skeleton S-9), 새 캠페인(v16)은 캠페인 승리 달의 성과 판정([결정 #308·#324] — heritage/failed만, 승리 뒤에도 계속 운영).
+// 확인하면 목표 없이 계속 운영(샌드박스)
 
 // 등급제 (#263 ①안): 버티고 순자산을 채우면 플래그십 없이도 "달성"(B) — 플래그십까지면 헤리티지(A·S)
 const TITLE = { heritage: '헤리티지 달성', achieved: '목표 달성 — 플래그십 없이', missed: '목표 일부 미달', failed: '실패' } as const;
@@ -27,7 +28,7 @@ export function Verdict({ s, onNewGame }: { s: GameState; onNewGame: () => void 
         <div className="flex flex-col items-center justify-center rounded-lg border border-stone-200 px-6 py-3 dark:border-stone-700">
           <div className="text-xs text-stone-500">등급</div>
           <div className="text-4xl font-bold tabular-nums">{v.grade ?? '—'}</div>
-          <div className="text-xs text-stone-500">{monthLabel(s.startYear, v.month - 1)} 판정</div>
+          <div className="text-xs text-stone-500">{monthLabel(s.startYear, v.month - 1)} {s.progress.win ? (s.progress.win.kind === 'cellar_door' ? '핸드필 승리' : '캠페인 승리') : '판정'}</div>
         </div>
         <section>
           <h3 className="mb-1 text-sm font-semibold">목표</h3>
