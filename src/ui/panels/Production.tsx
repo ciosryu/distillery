@@ -1,9 +1,9 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { rulesVersionOf } from '../../sim';
 import { BOTANICALS, EQUIPMENT, INGREDIENTS, YEASTS } from '../../sim/content/catalog';
 import {
   basePresetOf, craftPresets, equipmentCost, flavorProfile, leverEffects, leverSummary, describeLeverEffect, monthLabel, presetAsRecipe, previewBatch, stillDefOf, validateRecipe,
-  type GameState, type ProfileAxis, type Recipe, type SpiritKind, type YeastId,
-} from '../../sim';
+  type GameState, type ProfileAxis, type Recipe, type SpiritKind, type YeastId, } from '../../sim';
 import type { PresetRecipe } from '../../sim/content/presets';
 import { productionValue, rampOutlook, RAMP_HOLD_MONTHS, recipeEconomics, whiskyExportPace, STANDARD_BOTTLE, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from '../../sim/economics';
 import { monthlyFixedCost } from '../../sim/loans';
@@ -119,7 +119,7 @@ function ProductionValueLine() {
         <div className="mt-0.5 text-amber-800 dark:text-amber-300">
           단, 지금 위스키 판매 속도는 국내 연 약 {num(pace.bottles)}병({pace.basis === 'sales' ? '최근 판매' : '수요 추정'})
           {exp ? <> + 수출 수요 연 약 {num(exp.demand)}병(그중 판매 {num(exp.bottles)}병)</> : ''}이다 — 그 이상은 바로 팔리지 않는다. 인지도·유통이 오르면 는다
-          {exportsLater ? ' — 수출 시장이 열리면 크게 는다(후반 확인 판: 8년 차 뒤 수출이 국내만큼 팔았다)' : ''}. 남는 원액은 통에서 더 숙성해 비싸게 팔거나 현물로 판다
+          {exportsLater ? (rulesVersionOf(s) === 'legacy-v15' ? ' — 수출 시장이 열리면 크게 는다(후반 확인 판: 8년 차 뒤 수출이 국내만큼 팔았다)' : ' — 이 캠페인에는 수출이 없다(1.0에서 연다, 결정 #311). 국내 판로는 8년 차 대형 유통 납품으로 넓어진다') : ''}. 남는 원액은 통에서 더 숙성해 비싸게 팔거나 현물로 판다
         </div>
       )}
       {exp && exp.demand > exp.bottles * 1.2 && (

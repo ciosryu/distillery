@@ -1,7 +1,7 @@
 // 핸드필 존 (#233, 2026-11-10 오너 요청 — 파트 PROD) — 증류소 탭 "숙성 중인 캐스크" 칸과 숙성고 탭에 끼워 쓴다.
 // 설비(핸드필 존)를 지으면 보인다. 위스키 표기가 되는 자사 통 1개를 고르면 비지터 센터 방문객이 매달 그 통에서 500ml씩 담아 간다.
 // 시나리오(MVP)는 참 품질을 숨기므로 고르는 목록·값 미리 보기는 샘플로 아는 추정 품질로 보인다(실제 판매는 참값)
-import { HANDFILL, handfillBlocker, handfillBottleCost, handfillBottles, handfillCask, handfillPrice, knownReads, lotQuality, type Cask, type SpiritLot } from '../../sim';
+import { HANDFILL, handfillBlocker, handfillBottleCost, handfillBottles, handfillCask, handfillPrice, knownReads, lotQuality, type Cask, type SpiritLot, rulesVersionOf } from '../../sim';
 import { EQUIPMENT } from '../../sim/content/catalog';
 import { protectedCaskIds } from '../../sim/tags';
 import { useGame } from '../../store/game';
@@ -41,7 +41,7 @@ export function HandfillRow() {
           {options.map((c) => <option key={c.id} value={c.id}>{label(c)}</option>)}
         </select>
         {!options.length && !cur && <span className="text-stone-500">위스키 숙성 기간을 채운 자사 나무 통이 아직 없다</span>}
-        {cur && prot.has(cur.id) && <span className="text-amber-800 dark:text-amber-300">⚠ 보호 태그 통이다(플래그십 예비 등) — 핸드필이 매달 덜어 간다. 남기려면 다른 통을 고르세요</span>}
+        {cur && prot.has(cur.id) && <span className="text-amber-800 dark:text-amber-300">⚠ 보호 태그 통이다(플래그십 예비 등) — 핸드필이 매달 덜어 간다.{rulesVersionOf(s) !== 'legacy-v15' ? ' 이 통이 12년(목재 144개월)을 넘기면 핸드필 판매가 캠페인 승리로 기록된다(결정 #318 — 등급 최대 A).' : ''} 남기려면 다른 통을 고르세요</span>}
       </div>
       <div className="mt-1 text-stone-600 dark:text-stone-400">
         {!hasVisitor ? '비지터 센터가 문을 열어야 손님이 온다.'

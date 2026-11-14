@@ -1,7 +1,7 @@
 import { BULK, CASKS } from '../../sim/content/catalog';
 import { regionOf, siteOf } from '../../sim/content/regions';
 import { CATEGORY } from '../../sim/content/categories';
-import { oemPackageCost, retailCancellationCost, cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, knownReads, lotQuality, monthLabel, QUALITY_SIGMA_PER_HEX, spotBidPerLPA, spotQuote, spotQuoteEstimate, spotSaturation, type Cask, type ContractAgingImpact, type GameState, type KnownRead } from '../../sim';
+import { oemPackageCost, retailCancellationCost, cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, knownReads, lotQuality, monthLabel, QUALITY_SIGMA_PER_HEX, spotBidPerLPA, spotQuote, spotQuoteEstimate, spotSaturation, type Cask, type ContractAgingImpact, type GameState, type KnownRead, campaignMinOakMonths, HINT_HORIZON_MONTHS, rulesVersionOf } from '../../sim';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won, wonFull } from '../format';
 import { Badge, Button, Card, ConfirmButton, Empty, Stat, Table, Td } from '../kit';
@@ -85,7 +85,8 @@ function caskSellWarnings(s: GameState, c: Cask): string[] {
   // 보호 태그 통(#260 예비 포함) — 자동 기능(IB 입찰 제안 포함, C-MKT-1)은 쓰지 않지만 손으로 팔 수는 있다. 이미 걸린 제안의 통이 나중에 예비가 된 경우도 여기서 알린다
   if (reserveCaskIds(s).has(c.id)) out.push('플래그십 예비 통(#260) — 팔면 예비가 다음 후보로 옮겨 간다');
   else if (isProtected(s, c)) out.push(`보호 태그 통(${caskTagIds(s, c).map((id) => tagDef(s, id)?.label ?? id).join('·')}) — 자동 기능이 쓰지 않게 묶어 둔 통`);
-  if (isFlagshipCandidate(s, c)) out.push(`플래그십 후보 통 — 판이 끝나기 전에 플래그십 숙성(${Math.round((s.scenario?.goal.flagshipMinMonths ?? 144) / 12)}년)을 채울 수 있다`);
+  // F5c: 옛 판은 판 끝 기준 문구, 새 캠페인(v16)은 기한 없는 승리 출고 재료 — 최소 숙성은 campaignMinOakMonths(한 함수)
+  if (isFlagshipCandidate(s, c)) out.push(rulesVersionOf(s) === 'legacy-v15' ? `플래그십 후보 통 — 판이 끝나기 전에 플래그십 숙성(${Math.round(campaignMinOakMonths(s) / 12)}년)을 채울 수 있다` : `12년 후보 통 — 목재 ${campaignMinOakMonths(s) - HINT_HORIZON_MONTHS}개월을 넘긴 자가 몰트, 승리 출고(12년 싱글 몰트 첫 판매)의 재료다. 팔면 승리가 늦어질 수 있다`);
   else if (l.oakMonths >= 36) out.push('3년 이상 숙성한 통 — 위스키로 병입할 수 있다');
   return out;
 }
