@@ -58,9 +58,9 @@ import { handfillBlocker, handfillCask, hasHandfillZone } from '../../src/sim/ha
 import { applyMgtKnobs, applyTierKnobs, hireSales, mgtPolicy } from './mgtKnobs';
 import { applyProdKnobs } from './prodKnobs';
 import { achieved, comparePaired, MonthTracker, outcomeOf, summarize, summarizeWin, winOutcomeOf, WIN_CURVE_MONTHS, type RunOutcome, type WinOutcome } from './metrics';
-import { caskEligibility } from '../../src/sim/ledger';
+import { campaignWon, caskEligibility } from '../../src/sim/ledger';
 import { rulesVersionOf } from '../../src/sim/rules';
-import { protectedCaskIds } from '../../src/sim/tags';
+import { protectedCaskIds, reserveCaskIds } from '../../src/sim/tags';
 import { liquidity, spiritCapital } from './capitalCost';
 import { bestAutoPrice, currentSuggested, supplyHorizon } from '../../src/sim/economics';
 import { defaultPolicyPrice } from '../../src/sim/content/market';
@@ -95,7 +95,7 @@ const AUTORESTOCK = process.env.P8 && process.env.AUTORESTOCK === '1' ? Number(p
 //   그보다 짧은 표기(1·2년)의 옛 위스키 제품은 자동 납품을 끈다 — 옛 제품의 하한(법정 12개월·표기 24개월)이 낮아 자동 납품이 3년이 되기 전의 통을 계속 쓰는지 가린다
 const AUTORESTOCK_RETIRE = process.env.AUTORESTOCK_RETIRE === '1';
 
-interface Policy { name: string; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean; maltFrom?: [number, number]; autoRestock?: number; visitorAt?: number; equipAt?: number; b2b?: { share: number; until: number }; flagship?: boolean; price?: 'table' | 'markup'; markup?: number; sojuOff?: [number, number]; overprod?: [number, number]; loansFrom?: number; fixAt?: number; buyAt?: [number, string][]; repayAt?: number; protectFrom?: [number, number]; salesAt?: number; pricePolicy?: Partial<Record<PriceKey, PriceGoal>>; engineA?: boolean; supplyHint?: boolean }
+interface Policy { name: string; /** 「플래그십 출시」 승리 시도 (결정 #320 — 'new' 새 제품 · 'restock' 기존 제품 보충) */ launch?: 'new' | 'restock'; /** 게임 예비 보호(#260 4통 · 'reserve' 144)를 읽는다 — v16 판에서만(옛 판 X0L은 자기 규칙 그대로, 바이트 동일) */ gameTags?: boolean; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean; maltFrom?: [number, number]; autoRestock?: number; visitorAt?: number; equipAt?: number; b2b?: { share: number; until: number }; flagship?: boolean; price?: 'table' | 'markup'; markup?: number; sojuOff?: [number, number]; overprod?: [number, number]; loansFrom?: number; fixAt?: number; buyAt?: [number, string][]; repayAt?: number; protectFrom?: [number, number]; salesAt?: number; pricePolicy?: Partial<Record<PriceKey, PriceGoal>>; engineA?: boolean; supplyHint?: boolean }
 /** 자동 가격 3정책(#288 — AP3) 봇 흉내: 범주별로 고른다. 플래그십 제품은 따로 */
 /** 자동 가격 3정책(결정 #291) — 엔진 이름과 1:1: A = 'turnover'(#200) · B = 'profit'(다기간 B′) · C = 'premium'(목표 배수 유지) */
 type PriceGoal = 'A' | 'B' | 'C';
@@ -171,7 +171,8 @@ const P8_POLICY = (['A', 'B', 'C'] as const).find((x) => x === process.env.P8_PO
 const p8PolicyAll = (o: Partial<Policy>): Partial<Policy> => (P8_POLICY && !o.pricePolicy && o.autoPrice !== false ? { pricePolicy: { soju_distilled: P8_POLICY, malt_spirit: P8_POLICY, whisky: P8_POLICY, flagship: P8_POLICY } } : {});
 const P8 = (name: string, o: Partial<Policy>): Policy => P4(name, { mkt: MKT8, order: 'young', labelFrom: LABEL3, protect: 2, giftshopAt: 85, handfillAt: 86, exportFrom: 84, exportMax: 5, exportPrice: 1.25, raiseIfCash: 1_000_000_000, lineup: 3, autoPrice: true, newMake: { from: 5, until: 60, stock: 300 }, exportDemand: true, ...(AUTORESTOCK ? { autoRestock: AUTORESTOCK } : {}), ...o, ...p8PolicyAll(o) });
 const P8_POLICIES: Policy[] = [
-  P8('X0 표준 규모 사람형(후반 확인 판 재현)', {}),
+  // X0 = 새 규칙(v16)에서 「플래그십 출시」 승리 시도 + 게임 예비 4통 (결정 #320). 이름은 옛 판 X0L(RULES=legacy)과 바이트 동일을 지키려고 그대로 둔다 — 옛 판에서는 둘 다 아무 일도 하지 않는다
+  P8('X0 표준 규모 사람형(후반 확인 판 재현)', { launch: 'new', gameTags: true }),
   P8('X1 X0 − 수출', { exportFrom: undefined }),
   P8('X2 X0 − 기프트 샵·핸드필', { giftshopAt: undefined, handfillAt: undefined }),
   P8('X3 X0 + 예비 4통 보호', { protect: 4 }),
@@ -209,6 +210,12 @@ const P8_POLICIES: Policy[] = [
   P8('X44 8배치 · 전부 B', { maltB: 8, flagship: true, pricePolicy: { soju_distilled: 'B', malt_spirit: 'B', whisky: 'B', flagship: 'B' } }),
   P8('X45 8배치 · 전부 C', { maltB: 8, flagship: true, pricePolicy: { soju_distilled: 'C', malt_spirit: 'C', whisky: 'C', flagship: 'C' } }),
   P8('X46 8배치 · 전부 A(#200)', { maltB: 8, flagship: true }),
+  // 결정 #320 변형 (v16 — mgt-stage-t.md 「X0W 명세」 §5 전후 표): 무시도 대조 · 가격만 B′·C(성과 열) · 보충형(승리 달) · 예비 4통만(보호 효과 진단)
+  P8('X0N X0 − 승리 시도(v16 무시도 대조 — 지금까지의 X0, 240개월에도 출고 실패)', {}),
+  P8('X0W-B X0 + 출시 제품 가격 B′', { launch: 'new', gameTags: true, pricePolicy: { flagship: 'B' } }),
+  P8('X0W-C X0 + 출시 제품 가격 C(유지 ×1.3)', { launch: 'new', gameTags: true, pricePolicy: { flagship: 'C' } }),
+  P8('X0W-R X0 + 출시를 기존 제품 보충으로(FIFO — 승리 달 비교)', { launch: 'restock', gameTags: true }),
+  P8('X0L4 X0N + 게임 예비 4통만(출시 없음 — 보호 효과 진단)', { gameTags: true }),
   // 합리 변형 R(P-MGT-41 → 결정 #291): 위스키 정책을 게임 화면의 공급 안내(supplyHintOf)대로 A ↔ B — 사람형(X0)은 미리 선택 A를 바꾸지 않는다
   P8('R1 합리형 — 위스키 정책을 화면 공급 안내대로(A ↔ B)', { supplyHint: true }),
 ];
@@ -376,7 +383,7 @@ function bottleAs(s: GameState, p: Policy, comps: { source: 'lot' | 'cask'; id: 
   return s;
 }
 
-function bottle(s: GameState, p: Policy, t: { firstWhisky: number; flagshipDone?: boolean }): GameState {
+function bottle(s: GameState, p: Policy, t: { firstWhisky: number; flagshipDone?: boolean; launchDone?: boolean; winFail?: number[] }): GameState {
   if (AUTORESTOCK_RETIRE && p.autoRestock && p.labelFrom && s.month >= p.labelFrom[0])
     for (const x of s.commerce.products.filter((y) => isWhiskyCategory(y.category) && y.autoRestock && (y.ageYears ?? 0) * 12 < p.labelFrom![1])) s = act(s, { type: 'setAutoRestock', productId: x.id, months: null });
   for (const lot of [...s.inventory.lots]) {
@@ -402,6 +409,27 @@ function bottle(s: GameState, p: Policy, t: { firstWhisky: number; flagshipDone?
       const before = s;
       s = bottleAs(s, { ...p, lineup: undefined }, fl.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL })), { name: '플래그십', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' }, 'whisky');
       if (s !== before) t.flagshipDone = true;
+    }
+  }
+  // 「플래그십 출시」 승리 시도 (결정 #320 · MGT P-MGT-50 — mgt-stage-t.md 「X0W 명세」): 게임 적격성(caskEligibility — 자가·같은 입지·몰트·목재 ≥ A)을
+  // 통과한 통이 1통이라도 생긴 첫 달에, 예비(#260, 'reserve') 통 먼저 · 목재 긴 순 · id 순으로 최대 2통을 병입한다. 'new' = 새 제품 「플래그십」(보충형은 FIFO로
+  // 어린 병이 먼저 나가 승리가 늦다 — MKT P-MKT-38) · 'restock' = 가장 잘 팔리는 위스키 제품에 보충(X0W-R 대조). 가격은 정책 그대로(기본 A).
+  // 출시 제품은 자동 납품을 켜지 않는다(bottleAs가 「플래그십」 이름은 건너뛴다). 병입이 막히면 다음 달 다시 — 그 달을 winFail에 적는다. 승리 뒤에는 하지 않는다.
+  // 옛 판(legacy-v15)에서는 하지 않는다 — 옛 판도 새로 증류한 원액은 원장에 'self'로 남아 적격이 될 수 있지만 승리 판정은 v16만이다(X0L = 승리 시도 없음, 바이트 동일)
+  if (p.launch && !t.launchDone && rulesVersionOf(s) === 'v16' && !campaignWon(s)) {
+    const reserve = reserveCaskIds(s);
+    const pick = s.inventory.casks.filter((c) => caskEligibility(s, c).eligible)
+      .sort((a, b) => Number(reserve.has(b.id)) - Number(reserve.has(a.id)) || b.contents!.oakMonths - a.contents!.oakMonths || a.id.localeCompare(b.id)).slice(0, 2);
+    if (pick.length) {
+      const before = s;
+      const comps = pick.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL }));
+      if (p.launch === 'restock') {
+        const target = s.commerce.products.filter((x) => x.category === 'whisky' && !x.dutyFreeOnly && !x.name.startsWith('플래그십')).sort((a, b) => (b.salesEma ?? 0) - (a.salesEma ?? 0) || a.id.localeCompare(b.id))[0];
+        const opts = target ? { name: target.name, targetAbv: target.abv, bottleMl: target.bottleMl, chillFilter: target.chillFiltered, packagingId: target.packagingId, restockId: target.id } : undefined;
+        if (opts && previewBlend(s, comps, opts).ok) { const r = applyAction(s, { type: 'bottle', components: comps, options: opts }); if (!r.error) s = r.state; }
+      } else s = bottleAs(s, { ...p, lineup: undefined }, comps, { name: '플래그십', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' }, 'whisky');
+      if (s !== before) t.launchDone = true;
+      else (t.winFail ??= []).push(s.month);
     }
   }
   // 위스키: 재고가 지난달 수요의 1.5배(최소 600병) 밑이면 12개월 넘은 통부터 (봇과 같은 규칙 — 사람·봇 차이에서 뺀다)
@@ -433,9 +461,10 @@ const has = (s: GameState, id: string) => s.finance.loans.some((l) => l.offerId 
 /** 병입·핸드필이 쓰지 않는 통 — 플래그십 후보 중 가장 오래된 protect통. protectFrom = [달, n]이면 그 달부터 n통(G03 장기 보유) */
 function keptCasks(s: GameState, p: Policy): Set<string> {
   const late = p.protectFrom && s.month >= p.protectFrom[0];
-  const n = late ? p.protectFrom![1] : GAME_TAGS ? 0 : p.protect;
+  const game = GAME_TAGS || (!!p.gameTags && rulesVersionOf(s) === 'v16'); // X0W(#320): 게임 예비 4통 — 옛 판에서는 자기 규칙(X0L 바이트 동일)
+  const n = late ? p.protectFrom![1] : game ? 0 : p.protect;
   const own = n ? s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c, 'reserve')).sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths).slice(0, n).map((c) => c.id) : []; // 보호는 'reserve' 지평(F4 — [결정 #325 고침])
-  return GAME_TAGS ? new Set([...protectedCaskIds(s), ...own]) : new Set(own);
+  return game ? new Set([...protectedCaskIds(s), ...own]) : new Set(own);
 }
 
 function finance(s: GameState, p: Policy): GameState {
@@ -502,14 +531,14 @@ const spiritsValue = (s: GameState) => [...s.inventory.lots, ...s.inventory.cask
 
 interface Split { cash: number; loans: number; spirits: number; products: number; whiskyRevY6to9: number; whiskyRevY10to15: number; spiritsGainY2to5: number; productionY2to5: number }
 interface Year { dom: number; exp: number; tour: number; op: number; cash: number; nw: number; bottlesDom: number; bottlesExp: number }
-interface Row { years: Year[]; cands: number[]; flagCasks: number; split: Split; cutMonth: number; policy: string; bankrupt3: number; bankrupt6: number; minCash: number; minCashMonth: number; loansMax: number; firstWhisky: number; nw: number; goal: boolean; verdict: string; whiskyY6to9: number; outcome: RunOutcome; cap: Cap; month: ReturnType<MonthTracker['summary']>; nw166: number; /** 새 승리 판정(F4 · P-MGT-46) — v16 판만 표에 낸다 */ win: WinOutcome; v16: boolean; winKind?: string }
+interface Row { years: Year[]; cands: number[]; flagCasks: number; split: Split; cutMonth: number; policy: string; bankrupt3: number; bankrupt6: number; minCash: number; minCashMonth: number; loansMax: number; firstWhisky: number; nw: number; goal: boolean; verdict: string; whiskyY6to9: number; outcome: RunOutcome; cap: Cap; month: ReturnType<MonthTracker['summary']>; nw166: number; /** 새 승리 판정(F4 · P-MGT-46) — v16 판만 표에 낸다 */ win: WinOutcome; v16: boolean; winKind?: string; /** 「플래그십 출시」가 막힌 달 수(#320 winFail) */ winFail: number }
 /** 자본·유동성(MGT-C) — 6년 안 최저 현금·최저 런웨이, 현금 < 0 개월, 원액 시가 최고·그 달, 72개월 원액 비중, 이자 합계 */
 interface Cap { minCash72: number; minRunway72: number; negMonths: number; peakSpirit: number; peakSpiritMonth: number; spiritShare72: number; interest: number; minCash36: number; spirit60: number; cash96: number; cash180: number }
 
 function play(p: Policy, seed: number): Row {
   let s = applyTierKnobs(newScenarioGame({ scenarioId: 'mvp_kr', tierId: TIER, loanAmount: LOAN, seed }));
   if (process.env.RULES === 'legacy') s.rulesVersion = 'legacy-v15'; // RULES=legacy → X0L(옛 판정 참고 판, F4 바이트 동일 검사). 윗줄은 PROD 래퍼(prod-sample-p8.ts)가 글자 그대로 찾아 패치하므로 바꾸지 않는다
-  const t = { firstWhisky: -1 };
+  const t: { firstWhisky: number; flagshipDone?: boolean; launchDone?: boolean; winFail?: number[] } = { firstWhisky: -1 };
   if (p.visitor && p.visitorAt == null) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_basic' });
   if (p.equipAt == null) s = buyEquip(s, p);
   s = setOrders(s, p.sojuOff?.[0] === 0 ? 0 : sojuBatches(p), p.overprod ? p.overprod[0] : maltBatches(p));
@@ -612,7 +641,7 @@ function play(p: Policy, seed: number): Row {
     endBankrupt: s.status === 'bankrupt',
     eligibleAtWindow: s.inventory.casks.some((c) => caskEligibility(s, c).eligible) || (s.commerce.lots ?? []).some((l) => l.eligibleAtBottling && l.bottles > 0),
   });
-  return { win, v16: rulesVersionOf(s) === 'v16', ...(s.progress.win ? { winKind: s.progress.win.kind } : {}), years, cands, flagCasks, split, cutMonth, policy: p.name, bankrupt3, bankrupt6, minCash, minCashMonth, loansMax, firstWhisky: t.firstWhisky, nw, goal: alive && bankrupt3 < 0 && !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', whiskyY6to9, outcome: outcome ?? outcomeOf(s, true), cap, month: tracker.summary(), nw166: nw166 ?? (outcome ?? outcomeOf(s, true)).netWorth };
+  return { win, winFail: t.winFail?.length ?? 0, v16: rulesVersionOf(s) === 'v16', ...(s.progress.win ? { winKind: s.progress.win.kind } : {}), years, cands, flagCasks, split, cutMonth, policy: p.name, bankrupt3, bankrupt6, minCash, minCashMonth, loansMax, firstWhisky: t.firstWhisky, nw, goal: alive && bankrupt3 < 0 && !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', whiskyY6to9, outcome: outcome ?? outcomeOf(s, true), cap, month: tracker.summary(), nw166: nw166 ?? (outcome ?? outcomeOf(s, true)).netWorth };
 }
 
 const eok = (v: number) => (Number.isFinite(v) ? `${(v / 1e8).toFixed(2)}억` : '—');
@@ -643,7 +672,7 @@ const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
 const CALIB = process.env.CALIB === '1' && !!process.env.P8;
 // RUN 줄은 그대로 둔다 — P8 래퍼(prodHoldPatch·prod-hold-p8·prod-sample-p8·prod-style-p8)가 이 줄을 글자 그대로 찾아 바꾼다. CALIB는 RUN을 만든 뒤에 바꾼다
 const RUN = ONLY ? ALL_RUN.filter((p) => ONLY.has(p.name.split(' ')[0]!)) : ALL_RUN;
-if (CALIB) { const x0 = P8_POLICIES[0]!; RUN.splice(0, RUN.length, x0, P8('X0E X0 — 자동 가격을 3정책 엔진 A로(setPricePolicy turnover) · H4 확인용', { engineA: true })); }
+if (CALIB) { const x0 = P8_POLICIES[0]!; RUN.splice(0, RUN.length, x0, P8('X0E X0 — 자동 가격을 3정책 엔진 A로(setPricePolicy turnover) · H4 확인용', { engineA: true, launch: 'new', gameTags: true })); }
 for (const p of RUN) {
   const rows = Array.from({ length: SEEDS }, (_, i) => play(p, i + 1));
   ALL.set(p.name, rows);
@@ -687,15 +716,15 @@ if (METRICS) {
   // 새 승리 판정 (F4 · P-MGT-46 · 결정 #308·#312·#324) — v16 판에서만 낸다(옛 판 RULES=legacy = X0L은 지금 표 그대로, 바이트 동일).
   // 승리 달은 합격선이 아니라 기록 지표(#312). 관측 종료는 파산과 섞지 않는다 — 적격 원액이 있는데 못 판 판(출고 실패)과 없는 판을 나눈다
   if (RUN.some((p) => (ALL.get(p.name) ?? []).some((r) => r.v16))) {
-    console.log(`\n| 정책 | 승리 (95% CI) | 승리 달 중앙 · P10 · P90 | 승리 거래 | 파산 | 기타 종료 | 관측 종료 · 적격 있음(출고 실패) | 관측 종료 · 적격 없음 | 누적 승리 ${WIN_CURVE_MONTHS.join(' · ')}개월 |`);
-    console.log('|---|---|---|---|---|---|---|---|---|');
+    console.log(`\n| 정책 | 승리 (95% CI) | 승리 달 중앙 · P10 · P90 | 승리 거래 | 파산 | 기타 종료 | 관측 종료 · 적격 있음(출고 실패) | 관측 종료 · 적격 없음 | 누적 승리 ${WIN_CURVE_MONTHS.join(' · ')}개월 | 출시 막힌 달(평균) |`);
+    console.log('|---|---|---|---|---|---|---|---|---|---|');
     for (const p of RUN) {
       const rows = ALL.get(p.name) ?? [];
       const w = summarizeWin(rows.map((r) => r.win));
       const kinds = [...new Set(rows.flatMap((r) => (r.winKind ? [r.winKind] : [])))].map((k) => `${k} ${rows.filter((r) => r.winKind === k).length}`).join(' · ') || '—';
       const months = w.count.win ? `${w.winMonthMedian} · ${w.winMonthP10} · ${w.winMonthP90}개월` : '—';
       const cum = WIN_CURVE_MONTHS.map((m) => (Number.isFinite(w.cum[m]) ? pct(w.cum[m]) : '—')).join(' · ');
-      console.log(`| ${p.name} | ${w.count.win}/${w.n} (${pct(w.ci.win[0])}~${pct(w.ci.win[1])}) | ${months} | ${kinds} | ${w.count.bankrupt}/${w.n} | ${w.count.ended}/${w.n} | ${w.count.censored_ready}/${w.n} | ${w.count.censored_none}/${w.n} | ${cum} |`);
+      console.log(`| ${p.name} | ${w.count.win}/${w.n} (${pct(w.ci.win[0])}~${pct(w.ci.win[1])}) | ${months} | ${kinds} | ${w.count.bankrupt}/${w.n} | ${w.count.ended}/${w.n} | ${w.count.censored_ready}/${w.n} | ${w.count.censored_none}/${w.n} | ${cum} | ${avg(rows.map((r) => r.winFail)).toFixed(1)} |`);
     }
   }
   // 시나리오 기간(180개월)보다 짧게 돌리면 끝나지 않은 판도 등급이 매겨져 모두 C로 보인다(ARCH #337 검토 — mvp-survival과 같게) → 등급 칸은 "판 중간"
