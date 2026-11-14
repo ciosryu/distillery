@@ -1,6 +1,6 @@
 // 위기 경고·이번 달 할 일·지난달 현금 흐름·대출 상환 예정 — 화면 (코어 UI, 1차 MVP 플레이테스트 대응 ①~④, 계산은 alerts.ts)
 // 파일 이름이 alerts.ts와 대소문자만 다르면 대소문자를 가리지 않는 파일 시스템(macOS·Windows 기본)에서 './Alerts'가 alerts.ts로 풀릴 수 있어 AlertsView로 둔다
-import { BANKRUPT_AFTER_MONTHS, midGoalsOf, monthLabel, whiskySkipCheck, stagesOf } from '../sim';
+import { BANKRUPT_AFTER_MONTHS, midGoalProgress, midGoalsOf, monthLabel, whiskySkipCheck, stagesOf } from '../sim';
 import { productionValue } from '../sim/economics';
 import { loanRoomTotal, monthlyFixedCost } from '../sim/loans';
 import { won } from './format';
@@ -231,9 +231,10 @@ export function JourneyStrip() {
         <span className="font-medium text-stone-700 dark:text-stone-200">중반 목표</span>
         {midGoalsOf(s).map((g) => {
           const r = res.get(g.id);
+          const prog = r ? null : midGoalProgress(s, g.id); // F5c-2: 아직 판정 전인 수치 목표는 "후보 n/3"
           return (
             <span key={g.id} title={`보상: 인지도 +${Math.round(g.rewardAwareness * 100)}%p`} className={r?.result === 'done' ? 'text-emerald-700 dark:text-emerald-400' : r?.result === 'missed' ? 'text-stone-400 line-through' : 'text-amber-800 dark:text-amber-300'}>
-              {r?.result === 'done' ? '✓' : r?.result === 'missed' ? '✗' : '◎'} {g.title} <span className="opacity-70 no-underline">({r?.result === 'done' ? `${monthLabel(s.startYear, r.month)} 달성` : r?.result === 'missed' ? '놓침' : g.byMonth - s.month > 0 ? `${ym(g.byMonth - 1)}까지 · ${g.byMonth - s.month}개월 남음` : '이번 턴에 판정'})</span>
+              {r?.result === 'done' ? '✓' : r?.result === 'missed' ? '✗' : '◎'} {g.title} <span className="opacity-70 no-underline">({r?.result === 'done' ? `${monthLabel(s.startYear, r.month)} 달성` : r?.result === 'missed' ? '놓침' : `${prog ? `후보 ${prog.have}/${prog.need} · ` : ''}${g.byMonth - s.month > 0 ? `${ym(g.byMonth - 1)}까지 · ${g.byMonth - s.month}개월 남음` : '이번 턴에 판정'}`})</span>
             </span>
           );
         })}
