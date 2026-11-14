@@ -5,6 +5,7 @@ import { rngFor, type Rng } from './rng';
 import type { Candidate, GameState, Staff, StaffRole, StaffTrait } from './types';
 import { houseBrand } from './brands';
 import { stagesOf, systemOn } from './scenario';
+import { rulesVersionOf } from './rules';
 import { nid } from './util';
 import { addModifier, isActive, mod } from './modifiers';
 import type { MonthReport } from './types';
@@ -18,11 +19,12 @@ export function salaryFor(role: StaffRole, stats: Staff['stats'], level: number,
   return Math.round(raw / 10_000) * 10_000;
 }
 
-export function makeCandidate(s: GameState, rng: Rng, role?: StaffRole): Candidate {
+export function makeCandidate(s: GameState, rng: Rng, role?: StaffRole, fixedId?: string): Candidate {
   const r = role ?? rng.pick(ROLES);
   const stat = () => Math.round(clamp(rng.normal(45, 15), 15, 90));
   const stats = { a: stat(), b: stat(), c: stat() };
-  const id = nid(s, 'C');
+  // fixedId: 상태에 남기지 않는 후보(핵심 전문가 #316)는 전역 번호(nid)를 쓰지 않는다 — 고르지 않은 판의 id·난수 흐름이 그대로다
+  const id = fixedId ?? nid(s, 'C');
   const traits = rollTraits(s, id, r, stats);
   const level = 1 + Math.floor(((stats.a + stats.b + stats.c) / 3) / 30);
   const salary = salaryFor(r, stats, level, regionOf(s).laborCost);
@@ -361,6 +363,37 @@ export function runStaffLifecycle(s: GameState, report: MonthReport, rng: Rng): 
     }
   }
   runMorale(s, report);
+}
+
+// ───────────── 핵심 전문가 1인 (새 캠페인 v16 — F5a [결정 #316], MGT P-MGT-49) ─────────────
+
+/** 고를 수 있는 직군 — 숙성고 매니저(12년 후보 통 보호) · 마스터 블렌더(관측) · 영업(국내 수요). 디스틸러·사무는 1.0 상세 HR(#311) */
+export const SPECIALIST_ROLES = ['warehouse', 'blender', 'sales'] as const;
+export type SpecialistRole = (typeof SPECIALIST_ROLES)[number];
+/** 단계 id (scenarios.ts stagesV16 — 120개월) */
+export const SPECIALIST_STAGE = 'y11_specialist';
+
+/**
+ * 지금 고를 수 있는 핵심 전문가 후보 3명 — 단계 `y11_specialist`가 열린 새 판(v16)이고 아직 고르지 않았을 때만, 아니면 null.
+ * 후보는 **상태에 저장하지 않는다**: 시드·직군으로 정해진 독립 난수(`specialist:<직군>`)와 고정 id(`KS-<직군>`)로 매번 같은 3명을 만든다 →
+ * 고르지 않은 판은 상태·전역 번호·난수 흐름이 그대로다(출력 불변). 기한 없음 — 안 고르는 것도 선택이다
+ */
+export function specialistOffers(s: GameState): Candidate[] | null {
+  if (rulesVersionOf(s) !== 'v16' || !s.scenario?.stagesDone?.includes(SPECIALIST_STAGE)) return null;
+  if (s.hr.staff.some((x) => x.keySpecialist)) return null;
+  const opened = stagesOf(s).find((x) => x.id === SPECIALIST_STAGE)?.month ?? 120;
+  return SPECIALIST_ROLES.map((r) => makeCandidate(s, rngFor(s.seed, opened, `specialist:${r}`), r, `KS-${r}`));
+}
+
+/** 핵심 전문가를 고른다(1회). 성공하면 null, 아니면 이유 — 효과는 기존 직군 그대로(staffOf). 해고·사기·연봉 협상·교육은 상세 HR(1.0)이라 잠긴 채다 */
+export function pickSpecialist(s: GameState, role: SpecialistRole): string | null {
+  const offers = specialistOffers(s);
+  if (!offers) return s.hr.staff.some((x) => x.keySpecialist) ? '핵심 전문가는 이미 골랐다' : '지금은 핵심 전문가를 고를 수 없다(새 캠페인 11년 차부터)';
+  const c = offers.find((x) => x.role === role);
+  if (!c) return '고를 수 없는 직군이다';
+  const { askSalary, id: _offerId, ...rest } = c;
+  s.hr.staff.push({ ...rest, id: nid(s, 'S'), salary: askSalary, hiredMonth: s.month, keySpecialist: true });
+  return null;
 }
 
 // ───────────── 사무직: 폐기물 유상 판매 계약 ─────────────
