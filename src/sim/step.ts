@@ -1,5 +1,6 @@
 import { BULK, EQUIPMENT } from './content/catalog';
 import { PRICE_INDEX_WALK } from './content/production';
+import { priceWalkSigma } from './prodKnobs'; // F6b: 기본 시세 변동폭 손잡이(Normal ×1 — 값 불변)
 import { refreshBroker } from './broker';
 import { sumCashFlows } from './cashflow';
 import { fulfillContracts, refreshCaskBids, refreshContractOffers, updateBulkIndex } from './bulk';
@@ -134,7 +135,7 @@ function phaseGrowth(s: GameState, report: MonthReport, runsUsed: number, sales:
   const W = PRICE_INDEX_WALK;
   for (const k of Object.keys(s.world.priceIndex)) {
     const v = s.world.priceIndex[k]!;
-    s.world.priceIndex[k] = clamp(v * Math.exp(prng.normal(0, W.sigma)) + W.reversion * (1 - v), W.min, W.max);
+    s.world.priceIndex[k] = clamp(v * Math.exp(prng.normal(0, priceWalkSigma(s))) + W.reversion * (1 - v), W.min, W.max);
   }
 }
 

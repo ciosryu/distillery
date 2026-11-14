@@ -1,5 +1,6 @@
 import { EVENT, EVENTS, type Effect, type EventDef, type Requirement } from './content/events';
 import { aroundOne, domainEventMul, eventDurationMul, eventMagnitudeMul } from './rules'; // F6 난이도 영역 배수·효과 크기·기간(잎 모듈)
+import { tuneEventEffects, tuneForecast } from './prodKnobs';
 import { houseBrand } from './brands';
 import { regionOf, siteOf } from './content/regions';
 import { BUYERS, COMPETITIONS, CRITICS, displayName } from './content/names';
@@ -291,7 +292,7 @@ function fire(s: GameState, base: EventDef, rng: Rng, report: MonthReport): void
   }
   // 재해는 피해 장부를 적어 끝에 보험금을 준다 (#171). 보험이 없으면 문구·현금 모두 그대로
   const ledger = def.category === 'disaster' ? newLedger(s, def.id) : undefined;
-  const notes = applyEffects(s, def.effects ?? [], rng, def.title, ledger, report, def.domain);
+  const notes = applyEffects(s, tuneEventEffects(s, def, def.effects ?? []), rng, def.title, ledger, report, def.domain); // F6b PROD: 호재 할인·증류기 중단·발효 오염 손잡이(Normal은 그대로)
   if (ledger) notes.push(...settleClaims(s, ledger, report));
   log(s, report, def.title, [def.text, ...notes].join(' '));
   // 연구가 여는 이어지는 선택 이벤트 (#213) — 연구하지 않은 판은 아무 일도 없다
@@ -343,7 +344,7 @@ export function resolvePending(s: GameState, pendingId: string, choiceIndex: num
   const choice = def?.choices?.[choiceIndex];
   if (!def || !choice) return null;
   const rng = rngFor(s.seed, s.month, `event:${p.id}:${choiceIndex}`);
-  const notes = applyEffects(s, choice.effects, rng, def.title, undefined, report, def.domain);
+  const notes = applyEffects(s, tuneEventEffects(s, def, choice.effects), rng, def.title, undefined, report, def.domain); // F6b PROD
   s.events.pending = s.events.pending.filter((x) => x.id !== p.id);
   const text = `${def.title}: "${choice.label}" — ${notes.join(' ') || '처리 완료'}`;
   log(s, report, `${def.title} → ${choice.label}`, text);
@@ -427,8 +428,9 @@ export function runEvents(s: GameState, report: MonthReport, monthOfYear: number
     fired++;
     s.events.lastFired[def.id] = s.month;
     if (def.forecast) {
-      s.events.forecasts.push({ id: nid(s, 'F'), defId: def.id, title: def.title, text: def.forecast.text, fireMonth: s.month + def.forecast.months, certainty: def.forecast.certainty });
-      log(s, report, `예보: ${def.title}`, `${def.forecast.text} (약 ${def.forecast.months}개월 뒤, 확률 ${Math.round(def.forecast.certainty * 100)}%)`);
+      const fc = tuneForecast(s, def, def.forecast); // F6b PROD: 원가 이벤트 예보 손잡이(Normal은 그대로)
+      s.events.forecasts.push({ id: nid(s, 'F'), defId: def.id, title: def.title, text: fc.text, fireMonth: s.month + fc.months, certainty: fc.certainty });
+      log(s, report, `예보: ${def.title}`, `${fc.text} (약 ${fc.months}개월 뒤, 확률 ${Math.round(fc.certainty * 100)}%)`);
     } else fire(s, def, rngFor(s.seed, s.month, `event:${def.id}`), report);
   }
 }

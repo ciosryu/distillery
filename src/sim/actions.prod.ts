@@ -23,6 +23,7 @@ import { nid, staffOf, warehouseCapacity } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
 import { addCost, scaleLedger, splitLedger } from './ledger';
 import { dropLots } from './lots';
+import { cooperageLeadMonths } from './prodKnobs';
 import { usesObservedValuation } from './valuation';
 
 // 플레이어 행동 — 생산·숙성·블렌딩 (PROD) (결정 #144 — 파일 쪼개기로 actions.ts에서 옮겨 왔다. 규칙 불변)
@@ -289,8 +290,8 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (s.finance.cash < unit * qty) return fail(prev, '현금이 부족합니다');
     s.finance.cash -= unit * qty;
     // 쿠퍼리지 정상 주문: 카탈로그가, 2개월 뒤 도착 (결정 #66)
-    s.inventory.caskOrders.push({ id: nid(s, 'O'), typeId: a.caskType, qty, arriveMonth: s.month + CASK_MARKET.cooperageLeadMonths, source: 'cooperage' });
-    return { state: s, message: `${def.nameKo} ${qty}개 쿠퍼리지 주문 — ${CASK_MARKET.cooperageLeadMonths}개월 뒤 도착` };
+    s.inventory.caskOrders.push({ id: nid(s, 'O'), typeId: a.caskType, qty, arriveMonth: s.month + cooperageLeadMonths(s), source: 'cooperage' }); // F6b: 납기 손잡이(Normal 2개월 그대로)
+    return { state: s, message: `${def.nameKo} ${qty}개 쿠퍼리지 주문 — ${cooperageLeadMonths(s)}개월 뒤 도착` };
   },
   buySpotCasks: (s, prev, a) => {
     const def = CASKS[a.caskType];

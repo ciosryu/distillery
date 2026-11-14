@@ -64,6 +64,15 @@ export const KNOBS: Record<string, KnobDef> = {
   'finance.eventDuration': { easy: 1, hard: 1, note: '금융 이벤트 기간 배수' },
   'competition.eventMagnitude': { easy: 1, hard: 1, note: '경쟁 이벤트(광고 규제) 효과 배수 거리 — [결정 대기 96]' },
   'competition.eventDuration': { easy: 1, hard: 1, note: '경쟁 이벤트 기간 배수 — [결정 대기 96]' },
+  // ── PROD (F6b, P-PROD-56 v16 갱신) — 읽는 곳은 `prodKnobs.ts` 한 파일. 방향: Easy는 악재를 줄이고 호재를 키운다, Hard는 반대. 크기는 F7 뒤.
+  //    원가 악재의 크기·기간은 위 `supply.eventMagnitude`·`supply.eventDuration`(코어 한 자리)이 맡는다 — PROD는 곱하지 않는다
+  'supply.windfallSize': { easy: 1, hard: 1, note: '원가 호재(영역 태그 없는 rice_surplus의 원재료 값 ×0.6)의 할인 폭 × 이 값 (Easy >1 · Hard <1 — 악재와 반대 방향)' },
+  'supply.forecastMonths': { easy: 1, hard: 1, note: '원가 이벤트 예보가 미리 알려 주는 개월 × 이 값 (Easy >1 · Hard <1)' },
+  'supply.forecastCertainty': { easy: 1, hard: 1, note: '원가 이벤트 예보가 맞을 확률 × 이 값, 0.05~0.95 (Easy >1 · Hard <1)' },
+  'supply.priceWalkSigma': { easy: 1, hard: 1, note: '원재료·에너지 기본 시세의 월 변동폭 σ 0.02 × 이 값 (Easy <1 · Hard >1) — 이벤트가 열리기 전(60개월 전)에도 닿는 유일한 공급 손잡이' },
+  'supply.caskLead': { easy: 1, hard: 1, note: '쿠퍼리지 통 납기 2개월 × 이 값, 반올림 (Hard >1 — 승리 달에 1:1로 닿으니 작게. Easy는 1 그대로 권장)' },
+  'incidents.stillDownMonths': { easy: 1, hard: 1, note: '사고로 증류기가 서는 개월 × 이 값, 반올림·최소 1 (Hard >1)' },
+  'incidents.spoilSize': { easy: 1, hard: 1, note: '발효 오염 이벤트의 이취(acetic +8) × 이 값 (Easy <1 · Hard >1)' },
 };
 
 /** 세 프리셋 = 6값의 묶음 (easy 전부 1 · normal 2 · hard 3). Custom은 값을 개별 선택 */
