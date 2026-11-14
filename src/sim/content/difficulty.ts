@@ -32,6 +32,15 @@ export const KNOBS: Record<string, KnobDef> = {
   'supply.eventChance': { easy: 1, hard: 1, note: '원가 악재 이벤트(흉작·에너지·배럴 파동…) 월 발생 확률 배수 — v16은 60개월부터 이벤트가 열린다' },
   'incidents.eventChance': { easy: 1, hard: 1, note: '재난·사고 이벤트(화재·침수·고장·오염…) 월 발생 확률 배수 — v16은 60개월부터' },
   'finance.eventChance': { easy: 1, hard: 1, note: '금융 이벤트 월 발생 확률 배수(지금 태그된 이벤트 없음 — 자리)' },
+  // ── MKT F6b (P-MKT-37, [결정 #313] 취향 변화의 속도·지속성·폭) — 읽는 자리 `market.ts trendWalkOf`·`appeal` ──
+  'taste.trendSigma': { easy: 1, hard: 1, note: '카테고리 트렌드 랜덤 워크의 월 σ(0.015) 배수 — 속도. Easy ↓ · Hard ↑' },
+  'taste.trendReversion': { easy: 1, hard: 1, note: '같은 워크의 평균 회귀(0.05) 배수 — 지속성. Easy ↑(빨리 1로) · Hard ↓(추세가 오래 간다)' },
+  'taste.trendRange': { easy: 1, hard: 1, note: '같은 워크의 범위(0.6~1.5)가 1에서 떨어진 거리의 배수 — 폭. Easy 좁게 · Hard 넓게(아래 0.2 가드)' },
+  'taste.flavorTrendStrength': { easy: 1, hard: 1, note: '향미 유행(피트 열풍·셰리 인기 — trendFactor) 매력 배수가 1에서 떨어진 거리의 배수 — 세기. Easy ↓ · Hard ↑' },
+  // ── MKT F6b (P-MGT-48 거시 표 "원액 현물 지수 변동" — 자리가 MKT 소유 `bulk.ts bulkWalkOf`) ──
+  'macro.bulkSigma': { easy: 1, hard: 1, note: '원액 현물 지수 랜덤 워크의 월 σ(0.03) 배수. Easy ↓ · Hard ↑' },
+  'macro.bulkReversion': { easy: 1, hard: 1, note: '같은 워크의 평균 회귀(0.08) 배수. Easy ↑' },
+  'macro.bulkRange': { easy: 1, hard: 1, note: '같은 워크의 범위(0.6~1.5)가 1에서 떨어진 거리의 배수. Hard 넓게(하한 ↓)' },
 };
 
 /** 세 프리셋 = 6값의 묶음 (easy 전부 1 · normal 2 · hard 3). Custom은 값을 개별 선택 */
