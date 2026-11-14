@@ -133,6 +133,18 @@ describe('valuation: 옛 판 보존 (REQ-CORE-5 6) · 새 판은 처분 예상�
   });
 });
 
+describe('F5b 이행 안내 — 불러올 때 재고 담보대출 잔액 > 관측 기반 한도 110%면 한 줄 (MGT 발견)', () => {
+  it('v16 홋카이도 판에 한도를 넘는 담보대출이 있으면 알리고, 옛 판·대출 없음·한도 안이면 비어 있다', async () => {
+    const { collateralNotice } = await import('../store/persist');
+    const s = newGame({ seed: 5, region: 'JP', site: 'jp_hokkaido' });
+    expect(collateralNotice(s)).toEqual([]);
+    s.finance.loans.push({ id: 'I', offerId: 'inventory', name: 'x', principal: 500_000_000, balance: 500_000_000, annualRate: 0.06, termMonths: 60, monthlyPayment: 1, graceMonths: 12, startMonth: 0 });
+    expect(collateralNotice(s)).toHaveLength(1); // 통이 없어 한도 0 → 잔액이 넘는다
+    const o = structuredClone(s); o.rulesVersion = 'legacy-v15';
+    expect(collateralNotice(o)).toEqual([]);
+  });
+});
+
 describe('숨은 오염 읽기 제거 (#310 2단계) — 자동 통입·통입·피니싱은 아는 오염만 피한다', () => {
   it('v16: 모르는 오염 통은 자동 통입 후보에 들고 통입도 된다 · 아는 오염 통은 둘 다 빠진다 · 옛 판은 숨은 값을 읽던 그대로', () => {
     const s = v16();
