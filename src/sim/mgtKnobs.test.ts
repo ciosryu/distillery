@@ -85,7 +85,7 @@ describe('F6b — 임시 Easy≠Hard 값으로 손잡이가 실제로 먹는다'
 });
 
 describe('F6b — 재해 피해 크기(incidents.lossSize)는 원장 damageMul 한 자리 · 원액 손실 비율 상한', () => {
-  it('Hard ×2에서 원액 손실 비율 0.6 → 1.2가 아니라 0.9로 묶인다(통 원액이 음수가 되지 않는다)', async () => {
+  it('Hard ×2에서 원액 손실 비율 0.6 → 1.2가 아니라 1로 묶인다(통 원액이 음수가 되지 않는다)', async () => {
     setTestValues();
     const { applyEffects } = await import('./events');
     const { rngFor } = await import('./rng');
@@ -98,7 +98,22 @@ describe('F6b — 재해 피해 크기(incidents.lossSize)는 원장 damageMul �
     expect(ledger.damageMul).toBe(2);
     applyEffects(s, [{ type: 'caskVolumeLoss', share: 0.6 }], rngFor(1, 0, 't'), '시험', ledger, null);
     const after = s.inventory.casks.find((x) => x.id === 'T1')!.contents!;
-    expect(after.volumeL).toBeCloseTo(180 * 0.1, 5); // 0.9 상한 — 1.2를 곱했다면 음수
+    expect(after.volumeL).toBeCloseTo(0, 5); // 1 상한 — 1.2를 곱했다면 음수
+    expect(after.volumeL).toBeGreaterThanOrEqual(0);
+  });
 
+  it('통 소실: Hard ×2에서 같은 난수로 정확히 2배(고정 비율 0.1 × 20통 → 2 · 4통) · warehouse_fire 이벤트 효과도 2배(반올림 ±1)', async () => {
+    setTestValues();
+    const { applyEffects } = await import('./events');
+    const { rngFor } = await import('./rng');
+    const { emptyCaskOf } = await import('./index');
+    const { EVENT } = await import('./content/events');
+    const filled = (g: GameState, n: number) => { for (let i = 0; i < n; i++) { const c = emptyCaskOf(g, 'ex_bourbon_barrel'); c.id = `F${i}`; c.contents = { id: `LF${i}`, name: `F${i}`, kind: 'malt', volumeL: 180, abv: 0.6, flavor: { cereal: 20 }, createdMonth: 0, oakMonths: 24, sourced: false, costPerLPA: 10_000 }; g.inventory.casks.push(c); } return g; };
+    const lostBy = (g: GameState, effects: Parameters<typeof applyEffects>[1]) => { const before = g.inventory.casks.filter((c) => c.contents).length; applyEffects(g, effects, rngFor(9, 0, 'fire'), '시험', newLedger(g, 'warehouse_fire'), null); return before - g.inventory.casks.filter((c) => c.contents).length; };
+    expect(lostBy(filled(game(), 20), [{ type: 'caskLoss', share: [0.1, 0.1] }])).toBe(2);
+    expect(lostBy(filled(game('hard'), 20), [{ type: 'caskLoss', share: [0.1, 0.1] }])).toBe(4);
+    const fire = EVENT.warehouse_fire!.effects!.filter((e) => e.type === 'caskLoss');
+    const n = lostBy(filled(game(), 200), fire), h = lostBy(filled(game('hard'), 200), fire);
+    expect(Math.abs(h - 2 * n)).toBeLessThanOrEqual(1);
   });
 });

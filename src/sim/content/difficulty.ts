@@ -41,7 +41,7 @@ export const KNOBS: Record<string, KnobDef> = {
   'finance.fees': { easy: 1, hard: 1, note: '보험료·팩토링 할인율 배수 — insurance.ts' },
   'finance.laborMul': { easy: 1, hard: 1, note: '인건비 배수 — 새로 정하는 급여(창업 멤버·채용·시세·전문가)에 지역 laborCost와 함께 곱한다' },
   'finance.wageDrift': { easy: 1, hard: 1, note: '정기 임금 상승 — 매년 1월 전 직원 급여 × 값(1 = 없음). [결정 대기 94] Normal은 1' },
-  'incidents.lossSize': { easy: 1, hard: 1, note: '재해 피해 크기 — 손실 원장 damageMul × 값: 현금 피해와 통·원액 소실 비율을 한 값으로(PROD·MGT 공용, ARCH 규약 ②)' },
+  'incidents.lossSize': { easy: 1, hard: 1, note: '재해 피해 크기 — 손실 원장 damageMul(연구 riskMul × 값, insurance.ts newLedger 한 자리 — ARCH 가름): 현금 피해(복구비)·통 소실·원액 손실·오염 비율(mold_outbreak)을 한 값으로, 비율은 1 상한. 한계: 원장은 disaster 범주의 즉시 효과에만 닿는다 — 선택 이벤트(resolvePending)·gamble 안쪽 효과에는 미적용' },
 };
 
 /** 세 프리셋 = 6값의 묶음 (easy 전부 1 · normal 2 · hard 3). Custom은 값을 개별 선택 */
