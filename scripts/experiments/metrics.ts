@@ -4,7 +4,9 @@
 // 판정용 봇(mvp-human.ts P8)이 METRICS=1이면 이 표를 낸다. mvp-survival.ts(ARCH)는 아직 자기 순자산 식을 쓴다 → REQ-MGT-4 엣지 ①
 import type { GameState } from '../../src/sim';
 import { awarenessOf } from '../../src/sim/brands';
-import { campaignMinOakMonths, GRADE, netWorth } from '../../src/sim/progress';
+import { campaignMinOakMonths, GRADE, netWorth, netWorthLegacy } from '../../src/sim/progress';
+import { bookValue, collateralValue, estimatedValue, usesObservedValuation } from '../../src/sim/valuation';
+import { bulkValuePerLPA, isBulkKind } from '../../src/sim/bulk';
 import { monthlyFixedCost } from '../../src/sim/loans';
 import { currentSuggested } from '../../src/sim/economics';
 
@@ -14,6 +16,10 @@ export interface RunOutcome {
   survived: boolean;
   /** progress.netWorth — 파산한 판은 파산한 달의 값 */
   netWorth: number;
+  /** 옛 식 순자산(참 품질 현물가 — F5b 전 기준선과 비교할 때만, #317 P-MGT-47 리스크). 옛 판에서는 netWorth와 같다 */
+  netWorthLegacy: number;
+  /** 새 판(v16) 가치평가 나머지 둘(①장부 ②추정 — ③처분 = netWorth) · 담보 가치(관측 q̂ 대 참 품질, 측정용) */
+  v16?: { book: number; est: number; collateralQhat: number; collateralTrue: number };
   /** 순자산 목표 = 시작 자기자본 × 목표 배수 (#141) */
   target: number;
   /** 플래그십(최소 숙성 이상 위스키)을 판 적이 있다 — 마일스톤 flagship_sold */
@@ -22,12 +28,18 @@ export interface RunOutcome {
   awareness: number;
 }
 
+/** 측정용: F5b 전 담보 식(참 품질 현물 시가 — 고객 소유 제외). 게임은 v16에서 q̂를 쓴다(`collateralValue`) — 둘의 차이가 관측 품질 효과다 */
+export const collateralTrue = (s: GameState): number =>
+  s.inventory.casks.reduce((t, c) => t + (c.contents && !c.owner && isBulkKind(c.contents) ? c.contents.volumeL * c.contents.abv * bulkValuePerLPA(s, c.contents) : 0), 0);
+
 /** 게임 상태에서 판 하나의 결과를 읽는다. survived는 부르는 쪽이 안다(P8은 3개월 규칙을 스크립트가 센다) */
 export function outcomeOf(s: GameState, survived: boolean): RunOutcome {
   const flag = s.progress.milestones.find((m) => m.id === 'flagship_sold');
   return {
     survived,
     netWorth: netWorth(s),
+    netWorthLegacy: netWorthLegacy(s),
+    ...(usesObservedValuation(s) ? { v16: { book: bookValue(s), est: estimatedValue(s), collateralQhat: collateralValue(s), collateralTrue: collateralTrue(s) } } : {}),
     target: s.scenario ? s.scenario.equity * s.scenario.goal.netWorthMultiple : NaN,
     flagshipSold: !!flag,
     ...(flag?.value != null ? { flagshipQuality: flag.value } : {}),
