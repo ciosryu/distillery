@@ -304,7 +304,7 @@ export function monthTodos(s: GameState): Todo[] {
   const af = s.inventory.autoFill;
   const afLeft = af && tankMalt >= 50 ? autoFillPreview(s, af).leftL : 0;
   if (tankMalt >= 50 && (!af || afLeft >= 50)) {
-    const empties = s.inventory.casks.filter((c) => !c.contents && !(c.contamination && c.contaminationKnown)).length;
+    const empties = s.inventory.casks.filter((c) => !c.contents && !c.contaminationKnown).length; // 아는 오염만(F5b I1 — 숨은 값 직접 읽기 없음)
     const free = Math.max(0, warehouseCapacity(s) - s.inventory.casks.length);
     out.push(af
       ? { id: 'fill', level: 'info', text: `자동 통입이 켜져 있지만 빈 나무 통이 모자라 탱크 몰트·그레인 ${Math.round(afLeft).toLocaleString()}L가 남는다 — 빈 통 ${empties}개 · 남은 자리 ${free}통. 통을 사거나 숙성고를 늘리세요`, action: '통 사기', target: { anchor: 'mvp-space' } }

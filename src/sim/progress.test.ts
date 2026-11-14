@@ -120,8 +120,8 @@ describe('목표 판정 (S-9, MVP §3)', () => {
 });
 
 describe('순자산 (S-9) — 지금 정리하면 받는 돈', () => {
-  it('현금 − 대출 + 매출채권 + 제품 재고 원가 + 몰트 원액 현물가', () => {
-    const s = micro();
+  it('옛 판(legacy-v15): 현금 − 대출 + 매출채권 + 제품 재고 원가 + 몰트 원액 현물가 (v16은 처분 예상액 — valuation.test.ts)', () => {
+    const s = legacy();
     const base = netWorth(s);
     expect(base).toBe(s.finance.cash);
     s.finance.receivables.push({ dueMonth: 3, amount: 1_000_000, label: 'x' });
