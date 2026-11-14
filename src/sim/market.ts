@@ -69,6 +69,17 @@ export function priceBreakdown(s: GameState, p: Pick<Product, 'price' | 'bottleM
 }
 
 /**
+ * 매력도의 위스키 숙성 배수 ([결정 #290] B1-1 → [결정 #301] c3h): 3년(pivotMonths)까지는 agePerception 그대로(어린 할인 포함),
+ * 3년 넘는 몫은 기울기를 slopeAbove(½)만 — 3년 넘는 숙성 가치의 나머지는 권장가·기대가가 맡는다.
+ * c3 원안(3년에서 자름)은 기본 정책 A에서 "25% 장기 보유"가 "전량 3년"보다 손해(t −1.1 ~ −2.1)라 #273을 깼고, ½은 무승부(t −0.3 ~ +0.6) — `[튜닝]`
+ */
+export const AGE_APPEAL = { pivotMonths: 36, slopeAbove: 0.5 } as const;
+export function ageAppeal(oakMonths: number, category: ProductCategory): number {
+  const a = agePerception(oakMonths, category), c = agePerception(AGE_APPEAL.pivotMonths, category);
+  return a > c ? c + (a - c) * AGE_APPEAL.slopeAbove : a;
+}
+
+/**
  * 향미 방향 항 f2 "스타일 = 플레이어 선택" ([결정 #290] B1-9) — 몰트 위스키만, 시장 key(국내 = 지역 id, 수출 = 시장 id)의 가중표(content/market.ts STYLE_WEIGHTS).
  * 피트 배수 = 1 + peatShare × (w_peat − 1) · 통 배수 = 1 + Σ 통 계열 비중 × (w_통 − 1). 비중을 선형으로 써서 블렌드에 계단이 없다.
  * 기본 레시피(언피트 × ex-버번, 기록 전 제품 = peatShare·caskMix 없음)는 모든 시장 ×1 → 총수요 보존.
@@ -95,7 +106,9 @@ export function styleFit(p: Pick<Product, 'category' | 'peatShare' | 'caskMix' |
 /** 매력도. styleKey = 향미 방향 항 f2의 시장(기본 = 국내 지역 s.regionId, 수출은 그 시장 id) */
 export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId'>, styleKey: string | undefined = s?.regionId): number {
   const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
-  const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths); // 숙성 소주 표기 #217
+  // 숙성 가치 ([결정 #290] B1-1 → [결정 #301] c3h): 매력도의 3년 넘는 숙성 기울기는 절반 — 나머지는 권장가·기대가(expectedPricePerL)가 맡는다.
+  // 어린 위스키 할인(3년 미만 < ×1.18)은 그대로. 숙성 소주 표기(#217)는 그대로
+  const ageBonus = aged ? ageAppeal(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths);
   const lux = packagingAppealFactor(p); // 패키징 매력 배수 — 조합 점수(#248) 0~30 → 1.0~1.15, 프리셋은 옛 PACKAGING[id].luxury와 같다
   // 시장 국면: 피트·셰리 유행
   // 시장 국면: 향미 트렌드 이동 (결정 #125 — 옛 피트·셰리 계단식 보정치를 육각형 축 기반 연속 배수로 대체)
