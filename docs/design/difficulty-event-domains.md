@@ -2,6 +2,14 @@
 
 > 등급: **확정 표(ARCH 합본 2026-11-14 → PM 가름 6건 반영, 콘텐츠 `content/events.ts domain:` 태그 41개 = 이 표, 테스트 `eventDomains.test.ts`)**. 입력: MGT P-MGT-48·P-MGT-51(mgt-stage-t) · MKT P-MKT-37(mkt-stage-t §4) · PROD P-PROD-56(prod-stage-t). 세 파트가 이미 같은 쪽으로 적은 것은 그대로, 겹치거나 비어 있던 6건은 PM이 갈랐다(아래 `[PM 가름 → …]`). 태그를 붙여도 Normal·옛 판은 ×1이라 출력 불변.
 
+## 태그가 닿는 손잡이 (코어)
+| 손잡이 | 어디에 | 비고 |
+|---|---|---|
+| `<영역>.eventChance` | `events.ts rollChance` — 월 발생 확률 × k | F6a #561 |
+| `<영역>.eventMagnitude` | `events.ts applyEffects` — `modifier` 효과 배수의 **1에서의 거리** × k(`aroundOne`: 0.8 → k 2면 0.6) | #571. 직접 효과(현금·통 소실·발효 오염)는 안 닿음 — `incidents.lossSize` 등 파트 행 |
+| `<영역>.eventDuration` | `events.ts applyEffects` — `modifier`·`flavorTrend`·`weather` 개월 × k, **반올림 뒤 하한 1개월** | #571. 난수 호출은 그대로(스트림 불변) · 향미 유행 **세기**는 MKT `taste.flavorTrendStrength`가 한 번만 |
+태그 없는 이벤트는 셋 모두 ×1.
+
 ## 원칙 (세 파트 공통)
 - 한 이벤트는 한 영역. 효과가 두 영역에 걸치면 **효과의 큰 몫**이 닿는 영역으로(둘로 쪼개지 않는다).
 - `domain` 없음 = 영역 없음(늘 ×1): 결과가 **내 제품 품질에 달린 평판 사건**(난이도로 확률을 바꾸면 품질의 보상이 흔들린다 — MKT) · 새 캠페인에서 **잠긴 시스템의 사건**(수출·HR — 태그를 붙여도 v16에서 안 뜨지만, 샌드박스에서 뜨므로 영역 없음으로 둔다) · 발생 확률이 0인 **연쇄 사건**(`TRIGGERED_EVENTS`).
