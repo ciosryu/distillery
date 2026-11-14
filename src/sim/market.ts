@@ -13,6 +13,7 @@ import { hexOf } from './blendRadar';
 import { RARE, trendFactor } from './blendTable';
 import { staffOf } from './util';
 import { mod } from './modifiers';
+import { knob } from './rules'; // F6b 난이도 손잡이 읽기(잎 모듈)
 import { packagingAppealFactor } from './packaging';
 import type { ExportEntry, ExportSale, GameState, MonthReport, Product, ProductCategory } from './types';
 import { EXPORT_MARKETS, EXPORT_SALES, tariffKey, type ExportMarketDef } from './content/exports';
@@ -93,13 +94,14 @@ export function styleFit(p: Pick<Product, 'category' | 'peatShare' | 'caskMix' |
 }
 
 /** 매력도. styleKey = 향미 방향 항 f2의 시장(기본 = 국내 지역 s.regionId, 수출은 그 시장 id) */
-export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId'>, styleKey: string | undefined = s?.regionId): number {
+export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId' | 'difficulty'>, styleKey: string | undefined = s?.regionId): number {
   const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
   const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths); // 숙성 소주 표기 #217
   const lux = packagingAppealFactor(p); // 패키징 매력 배수 — 조합 점수(#248) 0~30 → 1.0~1.15, 프리셋은 옛 PACKAGING[id].luxury와 같다
   // 시장 국면: 피트·셰리 유행
   // 시장 국면: 향미 트렌드 이동 (결정 #125 — 옛 피트·셰리 계단식 보정치를 육각형 축 기반 연속 배수로 대체)
-  const tf = s ? trendFactor(s, p.hex ?? hexOf(p.flavor)) : 1;
+  // F6b [결정 #313] 향미 유행의 세기 — 난이도 `taste.flavorTrendStrength`가 배수의 1에서의 거리를 늘리고 줄인다(Normal ×1 = 그대로)
+  const tf = s ? aroundOne(trendFactor(s, p.hex ?? hexOf(p.flavor)), knob(s, 'taste.flavorTrendStrength')) : 1;
   const trend = s ? mod(s, 'appeal:all') * tf : 1;
   // 블렌딩 테이블 (결정 #124): 평론가 의뢰 블렌드는 기간 한정 가산, 코어 레인지는 일관성(0.9~1.1), 레어 싱글 캐스크
   const blendBonus = !p.blend ? 1
@@ -553,9 +555,34 @@ export function updateAwareness(s: GameState, sales: SalesResult[]): number {
   return dutyFreeGain;
 }
 
+/** 카테고리 트렌드 랜덤 워크의 기준값(Normal) — 월 σ · 평균 회귀 · 범위. 난이도(F6 `taste.*`)는 이 값에 곱한다 `[튜닝]` */
+export const TREND_WALK = { sigma: 0.015, reversion: 0.05, lo: 0.6, hi: 1.5 } as const;
+
+/**
+ * 난이도 손잡이 k로 **1에서의 거리**만 늘리고 줄인다(1.4 → k 0.5면 1.2). k = 1이면 값을 그대로 돌려준다 —
+ * `1 + (x − 1) × 1`은 부동소수 오차로 x와 달라질 수 있어 Normal 바이트 동일이 깨진다
+ */
+export const aroundOne = (x: number, k: number): number => (k === 1 ? x : 1 + (x - 1) * k);
+
+/**
+ * 이 판의 트렌드 워크 값 — F6b [결정 #313]: 모든 난이도가 같은 식을 쓰고 **속도(σ) · 지속성(평균 회귀) · 폭(범위)** 만 다르다.
+ * Easy 거의 고정(σ↓ · 회귀↑ · 범위 좁게) · Normal 지금 값 · Hard 급격(σ↑ · 회귀↓ · 범위 넓게) — 크기는 `content/difficulty.ts`(F7 뒤 오너).
+ * 가드: 회귀는 0~1, 범위 아래는 0.2 밑으로 내려가지 않는다(수요가 0이 되는 판을 만들지 않는다)
+ */
+export function trendWalkOf(s: Pick<GameState, 'difficulty'>): { sigma: number; reversion: number; lo: number; hi: number } {
+  const range = knob(s, 'taste.trendRange');
+  return {
+    sigma: Math.max(0, TREND_WALK.sigma * knob(s, 'taste.trendSigma')),
+    reversion: clamp(TREND_WALK.reversion * knob(s, 'taste.trendReversion'), 0, 1),
+    lo: Math.max(0.2, aroundOne(TREND_WALK.lo, range)),
+    hi: Math.max(1, aroundOne(TREND_WALK.hi, range)),
+  };
+}
+
 export function updateTrends(s: GameState, rng: Rng): void {
+  const w = trendWalkOf(s);
   for (const k of Object.keys(s.world.trend) as ProductCategory[]) {
     const t = s.world.trend[k];
-    s.world.trend[k] = clamp(t * Math.exp(rng.normal(0, 0.015)) + 0.05 * (1 - t), 0.6, 1.5);
+    s.world.trend[k] = clamp(t * Math.exp(rng.normal(0, w.sigma)) + w.reversion * (1 - t), w.lo, w.hi);
   }
 }
