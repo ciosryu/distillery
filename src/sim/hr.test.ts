@@ -196,7 +196,7 @@ describe('사기·성격 특성 (#225)', () => {
 describe('MVP 11년 차 HR 단계·연봉 협상 조건 (#232)', () => {
   it('120개월에 HR이 열리고 채용 후보가 바로 채워진다 — 그 전에는 잠겨 있다', async () => {
     const { advanceMonth, isLocked } = await import('./index');
-    let m = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    let m = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 , rules: 'legacy-v15' });
     m.month = 119; m = advanceMonth(m);
     expect(isLocked(m, 'system:hr')).toBe(true);
     expect(m.hr.candidates.length).toBe(0);

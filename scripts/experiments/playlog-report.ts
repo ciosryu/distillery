@@ -6,7 +6,7 @@ import { monthLabel, type MonthReport } from '../../src/sim';
 import { LOAN_OFFERS } from '../../src/sim/content/catalog';
 import { activeMsAt, parsePlayFile, type Playlog } from '../../src/store/playlog';
 import { EVENT } from '../../src/sim/content/events';
-import { SCENARIOS } from '../../src/sim/content/scenarios';
+import { stagesOf } from '../../src/sim/scenario';
 import { MORALE, moraleOf, TRAIT_INFO } from '../../src/sim/hr';
 
 const path = process.argv[2];
@@ -127,7 +127,7 @@ function bankScreeningCheck(): void {
  */
 function hrCheck(): void {
   console.log('\n## 직원 관리 (#222·#225·#232·#246) — 기록으로 센 것 (게임 변경 없음)');
-  const stage = (s.scenario ? SCENARIOS[s.scenario.id]?.stages ?? [] : []).find((st) => st.unlock.includes('system:hr'));
+  const stage = stagesOf(s).find((st) => st.unlock.includes('system:hr')); // F5a: 규칙 묶음별 단계
   const openMonth = !s.scenario ? 0 : stage && s.scenario.stagesDone?.includes(stage.id) ? stage.month : null;
   if (openMonth == null) { console.log(`- HR이 아직 열리지 않았다${stage ? ` (${stage.month}개월째에 열림)` : ''}`); return; }
   const man = (v: number) => `${Math.round(v / 10_000).toLocaleString()}만`;

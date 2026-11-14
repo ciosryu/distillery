@@ -381,6 +381,8 @@ export interface Staff {
   hiredMonth: number;
   /** 입사 시 나이 — 나이가 들면 스탯이 꺾이고 65세에 은퇴 (에이징 커브) */
   ageAtHire?: number;
+  /** 새 캠페인의 핵심 전문가(F5a [결정 #316] — `pickSpecialist`로 1회 고른 한 사람, MGT가 채움). 옛 판·샌드박스에는 없다 */
+  keySpecialist?: boolean;
   /** 부사수: 이 직원을 가르치는 마스터 디스틸러 id */
   apprenticeOf?: string;
   /** 사기 0~100 (#225). 없으면 70으로 읽는다 — 옛 세이브·창업 멤버·HR이 잠긴 시나리오 */

@@ -4,8 +4,7 @@ import { clamp } from './flavor';
 import { rngFor, type Rng } from './rng';
 import type { Candidate, GameState, Staff, StaffRole, StaffTrait } from './types';
 import { houseBrand } from './brands';
-import { systemOn } from './scenario';
-import { SCENARIOS } from './content/scenarios';
+import { stagesOf, systemOn } from './scenario';
 import { nid } from './util';
 import { addModifier, isActive, mod } from './modifiers';
 import type { MonthReport } from './types';
@@ -336,9 +335,8 @@ export function handleDeparture(s: GameState, leaving: Staff, notes: string[]): 
 }
 
 /** 시나리오 단계가 이번 달 HR을 열었나 (#232) */
-export function hrOpenedThisMonth(s: Pick<GameState, 'scenario' | 'month'>): boolean {
-  const def = s.scenario ? SCENARIOS[s.scenario.id] : undefined;
-  return !!def?.stages?.some((st) => st.month === s.month && st.unlock.includes('system:hr') && s.scenario!.stagesDone?.includes(st.id));
+export function hrOpenedThisMonth(s: Pick<GameState, 'scenario' | 'month' | 'rulesVersion'>): boolean {
+  return stagesOf(s).some((st) => st.month === s.month && st.unlock.includes('system:hr') && s.scenario!.stagesDone?.includes(st.id)); // F5a: 규칙 묶음별 단계
 }
 
 export function runStaffLifecycle(s: GameState, report: MonthReport, rng: Rng): void {

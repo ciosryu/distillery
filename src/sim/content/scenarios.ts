@@ -47,10 +47,20 @@ export interface ScenarioDef {
   campaignGoal?: CampaignGoal;
   tiers: ScenarioTierDef[];
   defaultTier: ScenarioTierDef['id'];
-  /** 판이 진행되면 차례로 여는 기능 (#215, 4차 MVP 플레이테스트: 중반 이후 쉽고 지루하다) */
+  /** 판이 진행되면 차례로 여는 기능 (#215, 4차 MVP 플레이테스트: 중반 이후 쉽고 지루하다) — 옛 판(legacy-v15). **동결** */
   stages?: ScenarioStage[];
-  /** 중반 목표 — 기한 안에 이루면 보상 (#216) */
+  /** 중반 목표 — 기한 안에 이루면 보상 (#216) — 옛 판(legacy-v15). **동결** */
   midGoals?: MidGoalDef[];
+  /**
+   * 새 캠페인(v16, F5a [결정 #311·#316·#319·#321·#322]) 전용 — 옛 배열은 그대로 두고 여기에 둔다. 읽기는 `scenario.ts stagesOf(s)`·`progress.ts midGoalsOf(s)`가
+   * `rulesVersionOf(s)`로 고른다(콘텐츠를 매달 읽는 자리라 옛 세이브·X0L 보존은 이 분리로만 된다 — MKT §7.0). 없으면 옛 배열을 쓴다
+   */
+  stagesV16?: ScenarioStage[];
+  midGoalsV16?: MidGoalDef[];
+  /** v16 새 판에만 더 잠그는 키 (예: `event:export_inquiry` — #321). 옛 판·X0L은 받지 않는다 */
+  lockedV16?: string[];
+  /** v16 새 판의 주종 — 없으면 `kinds` (#311·#322: 그레인·기본 블렌드 MVP 포함) */
+  kindsV16?: SpiritKind[];
 }
 
 /** 단계 해금 — 그 달이 되면 잠금 키를 푼다. 진행 중인 판에도 적용된다(정의는 콘텐츠에서 읽는다) */
@@ -67,7 +77,7 @@ export interface ScenarioStage {
 
 /** 중반 목표 — 판정은 progress.ts의 midGoalMet(id)가 한다 */
 export interface MidGoalDef {
-  id: 'aged3_sold' | 'commission_done' | 'export_open' | 'revenue_8';
+  id: 'aged3_sold' | 'commission_done' | 'export_open' | 'revenue_8' | 'reserve_casks';
   /** 이 달(경과 개월) 말까지 */
   byMonth: number;
   title: string;
@@ -129,6 +139,36 @@ export const MVP_KR: ScenarioDef = {
     { id: 'export_open', byMonth: 132, title: '수출 시장 1곳 진출', rewardAwareness: 0.03 },
     { id: 'revenue_8', byMonth: 156, title: '연 매출 8억(최근 12개월)', rewardAwareness: 0.03 },
   ],
+  // ───── 새 캠페인(v16, F5a — [결정 #311·#316·#319·#321·#322], 명세 architecture §10.10 P-ARCH-57 · MKT mkt-stage-t §7) ─────
+  // 수출(84개월)·상세 HR(120개월) 해금은 1.0으로(#311): 시작 잠금을 단계가 풀지 않는다 — 코드 삭제 0. 치환 #319: 대형 유통 납품 · 12년 후보 통 3개. #316: 핵심 전문가 1인
+  // 입지: `site`를 비워 지역 기본 입지(경기)로 시작한다 — 사업 계획서 화면에 입지 선택이 없어 사실상 고정이다(y7_retail은 경기 `deals: ['retail']`에서만 뜻이 있다 — F5a 확인 ③)
+  stagesV16: [
+    { id: 'y5_market', month: 60, title: '6년 차 — 시장이 움직이고, 의뢰가 들어온다',
+      unlock: ['system:events', 'system:commissions', 'action:delegateBlend', 'action:labAnalyze', 'facility:facility_storm', 'facility:facility_snow', 'facility:facility_heating', 'facility:facility_dehumid'],
+      text: '랜덤 이벤트(재해·원재료 값·트렌드·평론가 방문)가 시작되고, 블렌딩 테이블 탭에서 평론가·바이어의 블렌딩 의뢰를 받을 수 있다. 재해에 대비한 방재 설비(배수·제설·난방·제습)도 지을 수 있다' },
+    // #319 치환: 옛 y7_export(수출) 자리 — 대형 유통 납품(경기 입지 대표 거래, deals.ts). 수치는 RETAIL_DEAL 그대로 [튜닝]. "늘 받기" 지배 여부는 F7
+    { id: 'y7_retail', month: 84, title: '8년 차 — 대형 유통이 납품을 제안한다',
+      unlock: ['system:siteDeals', 'action:acceptRetail', 'action:cancelRetail'],
+      text: '원액 B2B 탭에서 대형 유통의 납품 제안을 받을 수 있다. 출고가의 80%에 매달 정해진 병 수를 보내고 대금은 2개월 뒤에 받는다. 매대 노출로 인지도는 빨리 오르지만 계약 중에는 숙성 위스키의 프리미엄 매력이 깎이고, 못 채우면 병당 위약금을 문다 — 보상이 아니라 맞바꿈이다' },
+    { id: 'y9_casks', month: 108, title: '10년 차 — 숙성 통을 사려는 곳이 생기고, VIP 라운지를 지을 수 있다',
+      unlock: ['system:caskBids', 'action:acceptCaskBid', 'facility:visitor_vip'],
+      text: '독립 병입자(IB)가 3년 이상·품질 65 이상 통을 현물가의 1.35배에 사겠다고 가끔 제안한다(원액 B2B 탭, 2개월 안에 답). 병입해 팔 때보다는 싸서 다 못 팔 통에만 이득이고, 팔면 12년 승리 후보 통이 줄 수 있다. VIP 테이스팅 라운지(2억·월 400만)는 인지도와 입소문을 산다' },
+    // #316 핵심 전문가 1인: 옛 y11_people(상세 HR) 자리 — 후보 3명 중 1명을 1회 고른다(안 고를 수도). 행동 `pickSpecialist`·후보 생성은 MGT(actions.mgt·hr.ts). system:hr·hire·fire는 잠긴 채
+    { id: 'y11_specialist', month: 120, title: '11년 차 — 핵심 전문가 한 사람을 들일 수 있다',
+      unlock: ['action:pickSpecialist'],
+      text: '직원 탭에서 숙성고 매니저·마스터 블렌더·영업 중 한 사람을 고른다(한 번만, 안 고를 수도 있다). 숙성고 매니저는 누수·오염을 줄여 12년 후보 통을 지키고, 마스터 블렌더는 샘플링과 원액 읽기를, 영업은 국내 판로를 넓힌다' },
+  ],
+  midGoalsV16: [
+    { id: 'aged3_sold', byMonth: 72, title: '3년 숙성 위스키를 판다', rewardAwareness: 0.03 },
+    { id: 'commission_done', byMonth: 108, title: '블렌딩 의뢰 1건 성사', rewardAwareness: 0.03 },
+    // #319 치환: 옛 export_open 자리 — 12년 후보 통 3개(자가 몰트, 목재 108개월↑ = 안내 지평 36). 판정 progress.ts midGoalMet('reserve_casks')
+    { id: 'reserve_casks', byMonth: 132, title: '12년 후보 통 3개 확보 — 자가 몰트, 목재 숙성 9년 넘게', rewardAwareness: 0.03 },
+    { id: 'revenue_8', byMonth: 156, title: '연 매출 8억(최근 12개월)', rewardAwareness: 0.03 },
+  ],
+  // #321 대안 ⓐ: 「해외 바이어 문의」(수출 주문 300병)는 새 캠페인에서 잠근다 — events.ts eligibleAt가 `event:<id>` 키를 본다. 옛 판·샌드박스는 키가 없어 불변
+  lockedV16: ['event:export_inquiry'],
+  // #311·#322: 그레인(기본 블렌드 재료) 포함 — 그레인 프리셋(PROD P-PROD-57)은 v16 새 판에만 뒤에 이어 붙인다(옛 레시피 id 보존)
+  kindsV16: ['soju', 'malt', 'grain'],
   defaultTier: 'micro',
   tiers: [
     {
@@ -158,5 +198,12 @@ export const MVP_KR: ScenarioDef = {
 
 export const SCENARIOS: Record<string, ScenarioDef> = { [MVP_KR.id]: MVP_KR };
 
-/** 시나리오의 잠금 키 전체 (주종 키 포함) */
-export const scenarioLockedKeys = (d: ScenarioDef): string[] => [...d.locked, ...ALL_KINDS.filter((k) => !d.kinds.includes(k)).map((k) => `kind:${k}`)];
+/** 시나리오의 잠금 키 전체 (주종 키 포함). v16 새 판은 `kindsV16`(있으면)으로 주종 키를 만들고 `lockedV16`을 더한다 — 옛 판(`legacy-v15`)은 옛 값 그대로 */
+export const scenarioLockedKeys = (d: ScenarioDef, rules: 'legacy-v15' | 'v16' = 'v16'): string[] => {
+  const v16 = rules !== 'legacy-v15';
+  const kinds = (v16 && d.kindsV16) || d.kinds;
+  return [...d.locked, ...((v16 && d.lockedV16) || []), ...ALL_KINDS.filter((k) => !kinds.includes(k)).map((k) => `kind:${k}`)];
+};
+/** 이 규칙 묶음이 쓰는 단계·중반 목표 (v16은 `*V16`이 있으면 그것, 없으면 옛 배열) */
+export const stagesForRules = (d: ScenarioDef, rules: 'legacy-v15' | 'v16'): ScenarioStage[] => (rules !== 'legacy-v15' && d.stagesV16) || d.stages || [];
+export const midGoalsForRules = (d: ScenarioDef, rules: 'legacy-v15' | 'v16'): MidGoalDef[] => (rules !== 'legacy-v15' && d.midGoalsV16) || d.midGoals || [];
