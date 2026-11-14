@@ -556,7 +556,7 @@ const spiritsValue = (s: GameState) => [...s.inventory.lots, ...s.inventory.cask
 
 interface Split { cash: number; loans: number; spirits: number; products: number; whiskyRevY6to9: number; whiskyRevY10to15: number; spiritsGainY2to5: number; productionY2to5: number }
 interface Year { dom: number; exp: number; tour: number; op: number; cash: number; nw: number; bottlesDom: number; bottlesExp: number }
-interface Row { years: Year[]; cands: number[]; flagCasks: number; split: Split; cutMonth: number; policy: string; bankrupt3: number; bankrupt6: number; minCash: number; minCashMonth: number; loansMax: number; firstWhisky: number; nw: number; goal: boolean; verdict: string; whiskyY6to9: number; outcome: RunOutcome; cap: Cap; month: ReturnType<MonthTracker['summary']>; nw166: number; /** 새 승리 판정(F4 · P-MGT-46) — v16 판만 표에 낸다 */ win: WinOutcome; v16: boolean; winKind?: string; /** 「플래그십 출시」가 막힌 달 수(#320 winFail) */ winFail: number }
+interface Row { years: Year[]; cands: number[]; flagCasks: number; split: Split; cutMonth: number; policy: string; bankrupt3: number; bankrupt6: number; minCash: number; minCashMonth: number; loansMax: number; firstWhisky: number; nw: number; goal: boolean; verdict: string; whiskyY6to9: number; outcome: RunOutcome; cap: Cap; month: ReturnType<MonthTracker['summary']>; nw166: number; /** 새 승리 판정(F4 · P-MGT-46) — v16 판만 표에 낸다 */ win: WinOutcome; v16: boolean; winKind?: string; /** 「플래그십 출시」가 막힌 달 수(#320 winFail) */ winFail: number; /** F5a: 중반 목표 결과 · 대형 유통 납품 매출 · 핵심 전문가 직군 */ mid: Record<string, 'done' | 'missed'>; retailRev: number; ks?: string }
 /** 자본·유동성(MGT-C) — 6년 안 최저 현금·최저 런웨이, 현금 < 0 개월, 원액 시가 최고·그 달, 72개월 원액 비중, 이자 합계 */
 interface Cap { minCash72: number; minRunway72: number; negMonths: number; peakSpirit: number; peakSpiritMonth: number; spiritShare72: number; interest: number; minCash36: number; spirit60: number; cash96: number; cash180: number }
 
@@ -568,6 +568,7 @@ function play(p: Policy, seed: number): Row {
   s = setOrders(s, p.sojuOff?.[0] === 0 ? 0 : sojuBatches(p), p.overprod ? p.overprod[0] : maltBatches(p));
   const split: Split = { cash: 0, loans: 0, spirits: 0, products: 0, whiskyRevY6to9: 0, whiskyRevY10to15: 0, spiritsGainY2to5: 0, productionY2to5: 0 };
   let spirits12 = 0;
+  let retailRev = 0; // F5a: 대형 유통 납품 매출 누계(대금 발생 기준)
   const cands: number[] = [];
   let outcome: RunOutcome | null = null;
   let nw166: number | null = null;
@@ -618,6 +619,7 @@ function play(p: Policy, seed: number): Row {
     // GAME_BANKRUPT=1 이면 게임 파산 규칙을 그대로 쓴다(TECH-02 — 막지 않는다. 6개월 규칙 열은 3개월과 같아진다)
     if (!GAME_BANKRUPT) s.finance.negativeCashMonths = Math.min(s.finance.negativeCashMonths, 1);
     s = advanceMonth(s);
+    retailRev += s.history.reports.at(-1)?.retailDealRevenue ?? 0;
     // 자동 납품: 게임이 보충한 제품(자동 가격이 아닌 것)은 다음 달 값부터 다시 맞춘다(보충은 틱 안이라 그 달 판매는 옛 값)
     // 정책 가격(price·pricePolicy)이 있으면 그 규칙으로 — 권장가 ×1.0으로 되돌리면 X22·C 정책을 깬다(AP3-MGT-1에서 찾은 봇 결함)
     if (p.autoRestock) for (const n of s.history.reports.at(-1)?.notes ?? []) {
@@ -668,7 +670,7 @@ function play(p: Policy, seed: number): Row {
     endBankrupt: s.status === 'bankrupt',
     eligibleAtWindow: s.inventory.casks.some((c) => caskEligibility(s, c).eligible) || (s.commerce.lots ?? []).some((l) => l.eligibleAtBottling && l.bottles > 0),
   });
-  return { win, winFail: t.winFail?.length ?? 0, v16: rulesVersionOf(s) === 'v16', ...(s.progress.win ? { winKind: s.progress.win.kind } : {}), years, cands, flagCasks, split, cutMonth, policy: p.name, bankrupt3, bankrupt6, minCash, minCashMonth, loansMax, firstWhisky: t.firstWhisky, nw, goal: alive && bankrupt3 < 0 && !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', whiskyY6to9, outcome: outcome ?? outcomeOf(s, true), cap, month: tracker.summary(), nw166: nw166 ?? (outcome ?? outcomeOf(s, true)).netWorth };
+  return { mid: Object.fromEntries((s.progress.midGoals ?? []).map((g) => [g.id, g.result])), retailRev, ...(s.hr.staff.find((x) => x.keySpecialist) ? { ks: s.hr.staff.find((x) => x.keySpecialist)!.role } : {}), win, winFail: t.winFail?.length ?? 0, v16: rulesVersionOf(s) === 'v16', ...(s.progress.win ? { winKind: s.progress.win.kind } : {}), years, cands, flagCasks, split, cutMonth, policy: p.name, bankrupt3, bankrupt6, minCash, minCashMonth, loansMax, firstWhisky: t.firstWhisky, nw, goal: alive && bankrupt3 < 0 && !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', whiskyY6to9, outcome: outcome ?? outcomeOf(s, true), cap, month: tracker.summary(), nw166: nw166 ?? (outcome ?? outcomeOf(s, true)).netWorth };
 }
 
 const eok = (v: number) => (Number.isFinite(v) ? `${(v / 1e8).toFixed(2)}억` : '—');
@@ -743,15 +745,15 @@ if (METRICS) {
   // 새 승리 판정 (F4 · P-MGT-46 · 결정 #308·#312·#324) — v16 판에서만 낸다(옛 판 RULES=legacy = X0L은 지금 표 그대로, 바이트 동일).
   // 승리 달은 합격선이 아니라 기록 지표(#312). 관측 종료는 파산과 섞지 않는다 — 적격 원액이 있는데 못 판 판(출고 실패)과 없는 판을 나눈다
   if (RUN.some((p) => (ALL.get(p.name) ?? []).some((r) => r.v16))) {
-    console.log(`\n| 정책 | 승리 (95% CI) | 승리 달 중앙 · P10 · P90 | 승리 거래 | 파산 | 기타 종료 | 관측 종료 · 적격 있음(출고 실패) | 관측 종료 · 적격 없음 | 누적 승리 ${WIN_CURVE_MONTHS.join(' · ')}개월 | 출시 막힌 달(평균) |`);
-    console.log('|---|---|---|---|---|---|---|---|---|---|');
+    console.log(`\n| 정책 | 승리 (95% CI) | 승리 달 중앙 · P10 · P90 | 승리 거래 | 파산 | 기타 종료 | 관측 종료 · 적격 있음(출고 실패) | 관측 종료 · 적격 없음 | 누적 승리 ${WIN_CURVE_MONTHS.join(' · ')}개월 | 출시 막힌 달(평균) | reserve_casks 달성 | 대형 유통 납품 매출(평균) | 핵심 전문가 |`);
+    console.log('|---|---|---|---|---|---|---|---|---|---|---|---|---|');
     for (const p of RUN) {
       const rows = ALL.get(p.name) ?? [];
       const w = summarizeWin(rows.map((r) => r.win));
       const kinds = [...new Set(rows.flatMap((r) => (r.winKind ? [r.winKind] : [])))].map((k) => `${k} ${rows.filter((r) => r.winKind === k).length}`).join(' · ') || '—';
       const months = w.count.win ? `${w.winMonthMedian} · ${w.winMonthP10} · ${w.winMonthP90}개월` : '—';
       const cum = WIN_CURVE_MONTHS.map((m) => (Number.isFinite(w.cum[m]) ? pct(w.cum[m]) : '—')).join(' · ');
-      console.log(`| ${p.name} | ${w.count.win}/${w.n} (${pct(w.ci.win[0])}~${pct(w.ci.win[1])}) | ${months} | ${kinds} | ${w.count.bankrupt}/${w.n} | ${w.count.ended}/${w.n} | ${w.count.censored_ready}/${w.n} | ${w.count.censored_none}/${w.n} | ${cum} | ${avg(rows.map((r) => r.winFail)).toFixed(1)} |`);
+      console.log(`| ${p.name} | ${w.count.win}/${w.n} (${pct(w.ci.win[0])}~${pct(w.ci.win[1])}) | ${months} | ${kinds} | ${w.count.bankrupt}/${w.n} | ${w.count.ended}/${w.n} | ${w.count.censored_ready}/${w.n} | ${w.count.censored_none}/${w.n} | ${cum} | ${avg(rows.map((r) => r.winFail)).toFixed(1)} | ${rows.filter((r) => r.mid.reserve_casks === 'done').length}/${rows.length} | ${eok(avg(rows.map((r) => r.retailRev)))} | ${[...new Set(rows.map((r) => r.ks ?? '없음'))].map((k) => `${k} ${rows.filter((r) => (r.ks ?? '없음') === k).length}`).join(' · ')} |`);
     }
   }
   // 시나리오 기간(180개월)보다 짧게 돌리면 끝나지 않은 판도 등급이 매겨져 모두 C로 보인다(ARCH #337 검토 — mvp-survival과 같게) → 등급 칸은 "판 중간"
