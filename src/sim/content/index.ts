@@ -6,3 +6,4 @@ export * from './events';
 export * from './tech';
 export * from './scenarios';
 export * from './milestones';
+export * from './difficulty';
