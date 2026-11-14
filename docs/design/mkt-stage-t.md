@@ -1173,8 +1173,8 @@ PM 배정(STATUS 2026-11-13): #319 구현(`scenarios.ts`·`progress.ts midGoalMe
 |---|---|---|
 | `id` · `byMonth` · `rewardAwareness` | `reserve_casks` · 132 · 0.03 | 옛 `export_open`과 같은 달·같은 보상(#319 "다른 목표와 같게") |
 | `title` `[제안]` | `12년 후보 통 3개 확보 — 자가 몰트, 목재 숙성 9년 넘게` | 플레이어에게 "무엇을 지켜야 하는지"가 보이게 조건을 제목에 넣는다 |
-| 판정 `midGoalMet('reserve_casks')` | `s.inventory.casks.filter((c) => isCampaignCandidate(s, c, <안내 지평>)).length >= 3` | `ledger.ts:155 isCampaignCandidate` = 적격 조건(자가 증류·몰트·같은 입지·고객 소유 아님) + `woodMonths + 지평 ≥ 144`. 지평 36이면 **목재 108개월↑**(#319 "108개월↑"과 같은 선, #325 보정안 ②: 안내·`reserve_casks` = 36) |
-| 지평 상수 | 결정 대기 92의 **"안내·`reserve_casks`·P8 핸드필 제외 = 36"** 쪽 상수를 쓴다(예비 보호 A=144 상수가 아님) | 92 채택 전이면 F5가 92 뒤에 오므로 상수 이름만 ARCH 것에 맞춘다 `[확인 — ARCH: 두 상수의 이름·위치]` |
+| 판정 `midGoalMet('reserve_casks')` | `s.inventory.casks.filter((c) => isCampaignCandidate(s, c, candidateHorizon(s, 'hint'))).length >= 3` | `ledger.ts:155 isCampaignCandidate` = 적격 조건(자가 증류·몰트·같은 입지·고객 소유 아님) + `woodMonths + 지평 ≥ 144`. 지평 36이면 **목재 108개월↑**(#319 "108개월↑"과 같은 선, **#325 고침 ②(2026-11-14 확정)**: 안내·`reserve_casks` = 36) |
+| 지평 상수 | **`HINT_HORIZON_MONTHS` = 36** — `candidateHorizon(s, 'hint')`로 읽는다(`ledger.ts`, ARCH F4 브랜치 `claude/arch-f4-win` 108~113행). 예비 보호 쪽 `RESERVE_HORIZON_MONTHS` = 144(`candidateHorizon(s, 'reserve')`)를 쓰면 안 된다 — 모든 자가 몰트 통이 후보가 되어 목표가 저절로 달성된다 | **닫음(2026-11-14):** #325 고침(결정 대기 92, 오너 "모두 권장안대로")으로 두 지평 확정 · PM이 상수 이름 확인. 상수는 F4 머지 뒤 main에 들어온다(지금 main `19d53b6`에는 없음). 수치 `[튜닝]` |
 | `n = 3` 근거 | main 구규칙 P8 X0에서 목재 108개월↑ 통은 108·144개월에 평균 2.0·1.9통(§2) · MGT 10시드(STATUS 92, 지평 A): 12년↑ 통 1.9 | 봇이 저절로 닿지 않는 값 → 의식해서 지켜야 닿는다. 40시드로 다시 본다 `[튜닝]` |
 | 판정 시점 | 월말 9단계 `updateMidGoals` — 132개월 말까지 어느 달이든 한 번 3통 이상이면 `done`(보상 1회), 한 번도 아니면 132에 `missed`(벌 없음) | 기존 `updateMidGoals` 그대로. 통이 나중에 팔려도 `done`은 남는다(다른 목표와 같음) |
 | 오염 통 | **조건을 더하지 않는다** `[제안]` — `isCampaignCandidate`에 오염 조건이 없고(예비 태그·후보 안내·P8이 같은 함수, #320) 숨은 오염은 플레이어가 모른다(#310 참여자 시점) | 반론: 오염된 통 3개로 "확보"가 되면 허수 — 그러나 숙성고 QC로 드러나면 후보 감소 알림(#261)이 잡는다. 한 함수 원칙이 우선 |
