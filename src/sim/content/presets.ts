@@ -29,6 +29,18 @@ export const PRESETS_KR: PresetRecipe[] = [
   ...MALTS,
 ];
 
+/**
+ * 새 캠페인(v16) 전용 프리셋 — 지역 프리셋 **뒤에** 이어 붙는 "프리셋으로 시작" 버튼 ([결정 #311·#322] F5a, P-PROD-57).
+ * 새 게임의 시작 레시피로는 넣지 않는다 — 시작 레시피가 하나 늘면 전역 id(`nextId`)가 밀려 통 id가 든 난수 스트림과 판 출력이 바뀐다.
+ * 버튼으로만 두면 옛 판(`legacy-v15`)은 물론 v16 판의 출력도 그대로다(플레이어가 저장할 때 레시피 id를 받는다).
+ * 그레인 — 옥수수: 원료는 가장 싼 유효 배합(옥수수 0.9 + 효소용 맥아 0.1 `[튜닝]`), 나머지는 몰트 언피티드와 같게. 단식 증류기 1회는 27.7%라 통입 하한 40%에 못 미쳐 2회
+ */
+export const PRESETS_KR_V16: PresetRecipe[] = [
+  { ...base, name: '그레인 — 옥수수', kind: 'grain', mashBill: [{ ingredientId: 'corn', ratio: 0.9 }, { ingredientId: 'malt_unpeated', ratio: 0.1 }], yeast: 'distillers', fermentDays: 4, runs: 2, cut: { c1: 0.15, c2: 0.72 } },
+];
+/** 지역별 v16 전용 프리셋 — 없는 지역은 지역 프리셋만 */
+export const PRESETS_V16: Partial<Record<string, PresetRecipe[]>> = { KR: PRESETS_KR_V16 };
+
 export const PRESETS_JP: PresetRecipe[] = [
   { ...base, name: '본격 쇼추 — 고구마(이모)', kind: 'soju', mashBill: [{ ingredientId: 'sweet_potato', ratio: 0.75 }, { ingredientId: 'rice_koji', ratio: 0.25 }], yeast: 'distillers', fermentDays: 14, runs: 1, cut: { c1: 0.12, c2: 0.7 } },
   { ...base, name: '본격 쇼추 — 보리(무기)', kind: 'soju', mashBill: [{ ingredientId: 'barley_raw', ratio: 0.7 }, { ingredientId: 'rice_koji', ratio: 0.3 }], yeast: 'distillers', fermentDays: 12, runs: 1, cut: { c1: 0.12, c2: 0.7 } },

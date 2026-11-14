@@ -302,3 +302,53 @@ describe('v16 병입 적격 — 병입·보충이 원장만 넘기고 `addLot`�
     expect(lot.eligibleAtBottling).toBe(false);
   });
 });
+
+describe('v16 그레인 프리셋 — 새 캠페인에서 그레인 레시피를 만들 길 ([결정 #311·#322] F5a, P-PROD-57)', () => {
+  it('새 판(v16): 그레인 주종이 열려 있고 "프리셋으로 시작"에 그레인 프리셋이 **맨 뒤에** 있다 — 시작 레시피·전역 id는 옛 판과 같다', async () => {
+    const { craftPresets } = await import('./production');
+    const { isLocked } = await import('./scenario');
+    const neu = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const old = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' });
+    expect(isLocked(neu, 'kind:grain')).toBe(false);
+    expect(isLocked(old, 'kind:grain')).toBe(true);
+    const presets = craftPresets(neu);
+    expect(presets.at(-1)).toMatchObject({ name: '그레인 — 옥수수', kind: 'grain', runs: 2 });
+    expect(presets.filter((p) => p.kind === 'grain')).toHaveLength(1);
+    // 옛 판: 프리셋 목록이 그대로(그레인 없음) — v16 목록에서 그레인만 뺀 것과 같다
+    expect(craftPresets(old).map((p) => p.name)).toEqual(presets.slice(0, -1).map((p) => p.name));
+    // 시작 레시피·id 카운터는 두 규칙이 같다 — 프리셋은 버튼일 뿐 생성 때 id를 쓰지 않는다(옛 판·v16 판 출력 불변)
+    expect(neu.production.recipes.map((r) => [r.id, r.name])).toEqual(old.production.recipes.map((r) => [r.id, r.name]));
+    expect(neu.production.recipes.some((r) => r.kind === 'grain')).toBe(false);
+    expect(neu.nextId).toBe(old.nextId);
+  });
+
+  it('프리셋 → 저장 → 생산 지시 → 통입 → 12개월 뒤 그레인 위스키 병입까지 막힘이 없다(시작 설비 단식 증류기 그대로) · 옛 판은 저장부터 막힌다', async () => {
+    const { advanceMonth } = await import('./index');
+    const { craftPresets, presetAsRecipe, validateRecipe } = await import('./production');
+    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.finance.cash = 5e9;
+    const preset = craftPresets(s).find((p) => p.kind === 'grain')!;
+    const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
+    const { id: _id, ...recipe } = presetAsRecipe(s, preset, malt);
+    expect(validateRecipe(s, { ...recipe, id: 'new' })).toEqual([]);
+    s = act(s, { type: 'saveRecipe', recipe });
+    const grain = s.production.recipes.find((r) => r.kind === 'grain')!;
+    s.production.orders = [];
+    s = act(s, { type: 'setOrder', recipeId: grain.id, batchesPerMonth: 4 });
+    s = advanceMonth(s);
+    const lot = s.inventory.lots.find((l) => l.kind === 'grain')!;
+    expect(lot.abv).toBeGreaterThan(0.6); // 2회 증류 — 통입 하한 40%를 넘는다
+    expect(lot.components![0]).toMatchObject({ origin: 'self', kindAtBirth: 'grain' });
+    const cask = s.inventory.casks.find((c) => !c.contents)!;
+    s.production.orders = [];
+    s = act(s, { type: 'fillCasks', lotId: lot.id, caskIds: [cask.id], entryAbv: 0.635 });
+    for (let i = 0; i < 12; i++) s = advanceMonth(s);
+    s = act(s, { type: 'bottle', components: [{ source: 'cask', id: cask.id, liters: 30 }], options: { ...BOTTLE } });
+    const p = s.commerce.products.at(-1)!;
+    expect(p.category).toBe('grain_whisky');
+    expect(productLots(s, p.id)[0]!.eligibleAtBottling).toBe(false); // 그레인은 승리 자격이 없다(싱글 몰트만)
+    // 옛 판은 주종 잠금으로 저장부터 막힌다
+    const old = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' });
+    expect(applyAction(old, { type: 'saveRecipe', recipe }).error).toBeTruthy();
+  });
+});

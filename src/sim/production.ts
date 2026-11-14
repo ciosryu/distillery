@@ -18,7 +18,8 @@ import { evaluate, type Evaluation } from './flavor';
 import { hexOf, HEX_AXES, HEX_LABEL } from './blendRadar';
 import { AXIS } from './content/axes';
 import { CATEGORY } from './content/categories';
-import type { PresetRecipe } from './content/presets';
+import { PRESETS_V16, type PresetRecipe } from './content/presets';
+import { rulesVersionOf } from './rules';
 import { isLocked } from './scenario';
 import type { ProductCategory, SpiritKind } from './types';
 import { PROD_TUNING } from './prodTuning';
@@ -586,9 +587,11 @@ export function flavorProfile(kind: SpiritKind, f: Flavor): ProfileAxis[] {
   return CATEGORY[newmakeCategory(kind)].radarAxes.map((a) => ({ id: a, label: AXIS[a].nameKo, value: f[a] ?? 0 }));
 }
 
-/** 이 판에서 고를 수 있는 프리셋 — 입지 원료 프리셋 + 지역 프리셋, 시나리오가 잠근 주종은 뺀다 */
+/** 이 판에서 고를 수 있는 프리셋 — 입지 원료 프리셋 + 지역 프리셋(+ 새 캠페인 v16 전용 프리셋, F5a), 시나리오가 잠근 주종은 뺀다.
+ *  v16 전용 프리셋은 맨 뒤에 붙는다 — 옛 판(`legacy-v15`)의 목록·순서는 그대로다 */
 export function craftPresets(s: GameState): PresetRecipe[] {
-  return [...(siteOf(s).presets ?? []), ...regionOf(s).presets].filter((p) => !isLocked(s, `kind:${p.kind}`));
+  const v16 = rulesVersionOf(s) === 'v16' ? PRESETS_V16[s.regionId] ?? [] : [];
+  return [...(siteOf(s).presets ?? []), ...regionOf(s).presets, ...v16].filter((p) => !isLocked(s, `kind:${p.kind}`));
 }
 
 const mainIngredient = (r: Pick<Recipe, 'mashBill'>) => [...r.mashBill].sort((a, b) => b.ratio - a.ratio)[0]?.ingredientId;
