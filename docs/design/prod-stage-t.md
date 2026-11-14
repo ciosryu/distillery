@@ -1256,7 +1256,7 @@ MGT 표의 "재난 이벤트 확률·피해 크기(`damageMul`)·한 달 상한"
 
 #### P-PROD-56 구현 — F6b 손잡이 연결 (2026-11-14, 출력 불변 · 값은 모두 1)
 
-- **읽는 곳은 `src/sim/prodKnobs.ts` 한 파일**(`rules.ts knob`만 부른다). 표 `content/difficulty.ts KNOBS`에 PROD 행 10개 — 지금은 모두 1(자리)이라 Normal·Easy·Hard가 같다. 크기는 F7 측정 뒤 오너가 정한다.
+- **읽는 곳은 `src/sim/prodKnobs.ts` 한 파일**(`rules.ts knob`만 부른다). 표 `content/difficulty.ts KNOBS`에 PROD 행 9개 — 지금은 모두 1(자리)이라 Normal·Easy·Hard가 같다. 크기는 F7 측정 뒤 오너가 정한다.
 
 | 손잡이 | 닿는 곳 | 방향(Easy · Hard) |
 |---|---|---|
@@ -1266,11 +1266,11 @@ MGT 표의 "재난 이벤트 확률·피해 크기(`damageMul`)·한 달 상한"
 | `supply.forecastMonths` · `supply.forecastCertainty` | 원가 이벤트 예보의 개월 · 확률(0.05~0.95) | >1 · <1 |
 | `supply.priceWalkSigma` | 원재료·에너지 기본 시세의 월 변동폭 σ 0.02 | <1 · >1 |
 | `supply.caskLead` | 쿠퍼리지 통 납기 2개월(반올림, 최소 1) — 주문·안내 문구·숙성고 화면이 같은 값 | 1 · >1 |
-| `incidents.lossSize` | 통 소실(화재·폭설)·원액 손실(침수) 비율 | <1 · >1 |
 | `incidents.stillDownMonths` | 사고로 증류기가 서는 개월(선택지 효과 포함) | <1 · >1 |
 | `incidents.spoilSize` | 발효 오염 이벤트의 이취 크기 | <1 · >1 |
 
 - **영역 태그(`EventDef.domain`)는 ARCH #563의 표**([difficulty-event-domains.md](difficulty-event-domains.md))를 따른다 — 원가 악재 9개 `supply`, 재난·사고 10개 `incidents`. **호재 `rice_surplus`는 태그하지 않는다**(PM 가름 ⑥ 고침) — 태그하면 코어의 `supply.eventChance`가 Hard에서 호재 확률까지 올린다. 크기만 `supply.windfallSize`로 받는다.
+- **통 소실·원액 손실 비율(`incidents.lossSize`)은 PROD가 곱하지 않는다** — MGT(#573)가 손실 원장 `damageMul`에 넣어 `applyEffects` 한 자리에서 현금 피해·통 소실·원액 손실·오염 비율을 함께 키운다. 처음에는 PROD도 `caskLoss`·`caskVolumeLoss`에 곱했으나 둘 다 들어가면 Hard에서 k²라 뺐다(한 손잡이 한 자리).
 - **크기 손잡이는 범주로 가른다**(supply · disaster) — 태그가 없는 `rice_surplus`도 크기 손잡이는 받게.
 - **바꾸지 않는 것은 정적 테스트로 고정**(`prodKnobs.test.ts`): `maturation`·`warehouse`·`production`·`blendTable`·`blendRadar`·`blending`·`flavor`·`ledger`는 `knob(`·`prodKnobs`를 부르지 않는다(누수·오염 추첨·증발·고온 산패·샘플 오차).
 - **기본 시세 변동폭** `supply.priceWalkSigma` — `PRICE_INDEX_WALK.sigma`(ARCH #564) × 손잡이(`prodKnobs.priceWalkSigma`, 월 틱 `step.ts`가 부른다). 이벤트가 열리기 전에도 닿는 유일한 공급 손잡이. 평균 회귀·범위는 그대로.

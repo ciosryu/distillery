@@ -41,7 +41,6 @@ export const KNOBS: Record<string, KnobDef> = {
   'supply.forecastCertainty': { easy: 1, hard: 1, note: '원가 이벤트 예보가 맞을 확률 × 이 값, 0.05~0.95 (Easy >1 · Hard <1)' },
   'supply.priceWalkSigma': { easy: 1, hard: 1, note: '원재료·에너지 기본 시세의 월 변동폭 σ 0.02 × 이 값 (Easy <1 · Hard >1) — 이벤트가 열리기 전(60개월 전)에도 닿는 유일한 공급 손잡이' },
   'supply.caskLead': { easy: 1, hard: 1, note: '쿠퍼리지 통 납기 2개월 × 이 값, 반올림 (Hard >1 — 승리 달에 1:1로 닿으니 작게. Easy는 1 그대로 권장)' },
-  'incidents.lossSize': { easy: 1, hard: 1, note: '통 소실(화재·폭설)·원액 손실(침수) 비율 × 이 값 (Easy <1 · Hard >1) — 승리 통을 없앨 수 있다(P-PROD-56 F7 필수 행)' },
   'incidents.stillDownMonths': { easy: 1, hard: 1, note: '사고로 증류기가 서는 개월 × 이 값, 반올림·최소 1 (Hard >1)' },
   'incidents.spoilSize': { easy: 1, hard: 1, note: '발효 오염 이벤트의 이취(acetic +8) × 이 값 (Easy <1 · Hard >1)' },
 };

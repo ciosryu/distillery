@@ -21,10 +21,10 @@ const game = (level?: 'easy' | 'normal' | 'hard'): GameState => {
   return s;
 };
 const mod = (effects: Effect[], key: string) => effects.find((e): e is Extract<Effect, { type: 'modifier' }> => e.type === 'modifier' && e.key === key)!;
-const PROD_KNOBS = ['supply.costSize', 'supply.costMonths', 'supply.windfallSize', 'supply.forecastMonths', 'supply.forecastCertainty', 'supply.priceWalkSigma', 'supply.caskLead', 'incidents.lossSize', 'incidents.stillDownMonths', 'incidents.spoilSize'];
+const PROD_KNOBS = ['supply.costSize', 'supply.costMonths', 'supply.windfallSize', 'supply.forecastMonths', 'supply.forecastCertainty', 'supply.priceWalkSigma', 'supply.caskLead', 'incidents.stillDownMonths', 'incidents.spoilSize'];
 
 describe('표 — PROD 손잡이 자리', () => {
-  it('열 행이 있고 지금 값은 모두 1(자리) — 크기는 F7 측정 뒤 정한다', () => {
+  it('아홉 행이 있고 지금 값은 모두 1(자리) — 크기는 F7 측정 뒤 정한다', () => {
     for (const id of PROD_KNOBS) expect(KNOBS[id]).toMatchObject({ easy: 1, hard: 1 });
   });
 
@@ -117,18 +117,20 @@ describe('공급 영역 — 기본 시세 변동폭(이벤트가 열리기 전�
 });
 
 describe('사고 영역 — 임시 Easy ≠ Hard로 손잡이가 먹는지', () => {
-  it('통 소실·원액 손실 비율: 화재 5~15% · 침수 2% → Easy 절반, Hard 두 배(현금 피해·생산 중단은 그대로)', () => {
-    setKnob('incidents.lossSize', 0.5, 2);
-    const fire = EVENT.warehouse_fire!;
-    const flood = EVENT.flood!;
-    const loss = (s: GameState) => tuneEventEffects(s, fire, fire.effects!).find((e) => e.type === 'caskLoss') as Extract<Effect, { type: 'caskLoss' }>;
-    expect(loss(game('easy')).share).toEqual([0.025, 0.075]);
-    expect(loss(game('hard')).share).toEqual([0.1, 0.3]);
-    const h = tuneEventEffects(game('hard'), flood, flood.effects!);
-    expect((h.find((e) => e.type === 'caskVolumeLoss') as Extract<Effect, { type: 'caskVolumeLoss' }>).share).toBeCloseTo(0.04, 9);
-    expect(h.find((e) => e.type === 'cash')).toEqual(flood.effects!.find((e) => e.type === 'cash'));
-    expect(mod(h, 'production').factor).toBe(0);
-    expect(mod(h, 'production').months).toEqual([1, 1]);
+  it('통 소실·원액 손실 비율은 PROD가 곱하지 않는다 — `incidents.lossSize`는 손실 원장(damageMul, MGT) 한 자리에서만 읽는다(두 번 곱하면 Hard에서 k²)', () => {
+    for (const id of PROD_KNOBS) setKnob(id, 0.5, 2);
+    KNOBS['incidents.lossSize'] = { easy: 0.5, hard: 2 }; // MGT 행이 있든 없든, 임시 값을 넣어도
+    try {
+      const fire = EVENT.warehouse_fire!;
+      const flood = EVENT.flood!;
+      const h = game('hard');
+      expect(tuneEventEffects(h, fire, fire.effects!).find((e) => e.type === 'caskLoss')).toEqual(fire.effects!.find((e) => e.type === 'caskLoss'));
+      const f = tuneEventEffects(h, flood, flood.effects!);
+      expect(f.find((e) => e.type === 'caskVolumeLoss')).toEqual(flood.effects!.find((e) => e.type === 'caskVolumeLoss'));
+      expect(f.find((e) => e.type === 'cash')).toEqual(flood.effects!.find((e) => e.type === 'cash'));
+      expect(mod(f, 'production').factor).toBe(0);
+      expect(readFileSync(new URL('./prodKnobs.ts', import.meta.url), 'utf8')).not.toMatch(/knob\(s, 'incidents\.lossSize'\)/);
+    } finally { delete KNOBS['incidents.lossSize']; }
   });
 
   it('증류기 중단 개월(일반 수리 2개월)·발효 오염 이취(+8): Hard에서 늘고 Easy에서 준다 — 선택지 효과에도 같은 손잡이', () => {
