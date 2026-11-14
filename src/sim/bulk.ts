@@ -2,6 +2,7 @@ import { BULK, CASKS, EQUIPMENT } from './content/catalog';
 import { BUYERS, displayName, INDEPENDENT_BOTTLERS } from './content/names';
 import { regionOf, siteOf } from './content/regions';
 import { mod } from './modifiers';
+import { bulkWalkOf } from './mktKnobs'; // F6b 난이도 손잡이(거시 — 현물 지수 변동)
 import { clamp, evaluate } from './flavor';
 import { lotCategory } from './blending';
 import { rngFor, type Rng } from './rng';
@@ -290,11 +291,12 @@ export function fulfillContracts(s: GameState, report: MonthReport): void {
   s.b2b.contracts = s.b2b.contracts.filter((c) => !done.includes(c.id));
 }
 
-/** 벌크 시세: 평균 회귀 랜덤 워크 + 위스키 트렌드 연동 */
+/** 벌크 시세: 평균 회귀 랜덤 워크 + 위스키 트렌드 연동. 워크 값은 `mktKnobs.ts bulkWalkOf`(기준값 `content/market.ts BULK_WALK` × 난이도) */
 export function updateBulkIndex(s: GameState, rng: Rng): void {
   const v = s.b2b.bulkIndex;
   const target = 0.5 + 0.5 * (s.world.trend.whisky ?? 1);
-  s.b2b.bulkIndex = clamp(v * Math.exp(rng.normal(0, 0.03)) + 0.08 * (target - v), 0.6, 1.5);
+  const w = bulkWalkOf(s);
+  s.b2b.bulkIndex = clamp(v * Math.exp(rng.normal(0, w.sigma)) + w.reversion * (target - v), w.lo, w.hi);
 }
 
 // ── 독립 병입자(IB) 캐스크 매입 제안 ──
