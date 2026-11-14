@@ -1095,7 +1095,7 @@ P8(#271)은 위 ①의 대부분을 이미 담았다: 계열당 3제품 · 자�
   2. 취향 이벤트의 **확률** — 코어 `taste.eventChance`가 이미 있다. 이벤트 영역 태그(`content/events.ts`)는 **ARCH가 59개 전부를 한 PR로** 낸다(PM 2026-11-14 — 표와 수 일치 테스트 포함) — 이 PR에는 없다(취향 7개: `highball_boom` · `peat_craze` · `sherry_trend` · `gin_fatigue` · `traditional_revival` · `shochu_boom` · `tw_collector_boom`).
   3. **예보** — 취향 이벤트에는 예보(`forecast`)가 없고 #313이 "미래 유행의 정답을 공개하지 않는다"라 손잡이를 두지 않는다.
   4. **경쟁 영역**(탄력성 · 점유 상한 · 인지도 감쇠) — 결정 대기 96(권장: 경쟁 AI 전까지 Normal 고정).
-- **화면과의 어긋남 `[확인 — F6c]`:** 블렌딩 테이블의 "유행 목표"(`blendTable.ts trendTarget`)는 유행의 원래 세기를 보인다. `taste.flavorTrendStrength`가 1이 아니면 실제 매력 배수는 그보다 크거나 작다 — 값이 정해질 때 화면 문구를 맞춘다.
+- **화면과의 어긋남 — 없음(정정 2026-11-14):** 앞서 "블렌딩 테이블의 유행 목표가 유행의 원래 세기를 보인다"고 적은 것은 **틀렸다.** `[사실 — main `4e97e7b`]` 블렌딩 테이블(`BlendLab.tsx:153`)은 유행 목표를 **육각형 모양·허용 범위·이름**("시장 트렌드 — 피트 열풍")으로만 보이고, 세기(`strength`)는 어느 화면에도 숫자로 나오지 않는다(`trendFactor`를 읽는 곳은 `market.ts appeal` 하나). `taste.flavorTrendStrength`는 세기만 바꾸고 목표 모양(`lo`·`hi`)은 그대로라, 값이 1이 아니게 돼도 화면과 어긋날 것이 없다 → **F6c에서 고칠 것 없음.** 판매 탭 시장 표의 "트렌드" 열(`Sales.tsx:534`)은 상태값 `world.trend`를 그대로 보여 난이도가 바꾼 결과가 그대로 나온다. 세기를 화면에 **새로** 보이고 싶으면(예: "피트 열풍 — 매력 최대 +40%") `mktKnobs.ts flavorTrendFactorOf`를 거쳐 읽는다 — 요청이 있을 때만(#313 "현재 추세의 추정만"에는 맞는다).
 - **F7에서 정할 것:** 일곱 값의 Easy·Hard 크기. 테스트(`difficultyMkt.test.ts`)는 표를 잠깐 Easy ≠ Hard로 바꿔 방향만 고정했다 — 속도는 Easy < Normal < Hard 순으로 트렌드가 1에서 멀어지고, 영역은 서로 새지 않는다(취향만 Hard면 현물 지수 그대로).
 
 ### 5. 승리 로트의 가격 정책 — 전략군 R 정의 `[제안 P-MKT-38]` (MGT 요청, balance-spec §6 R · F4 전)
