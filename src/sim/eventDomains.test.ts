@@ -12,7 +12,7 @@ const TABLE: Record<DifficultyDomain, string[]> = {
   incidents: ['warehouse_fire', 'flood', 'snowstorm', 'typhoon', 'earthquake', 'heatwave', 'cold_wave', 'mold_outbreak', 'still_breakdown', 'ferment_infection'],
   finance: ['tax_audit'],
 };
-/** 영역 없음(늘 ×1) — 원가 호재 `rice_surplus`(Hard가 호재 확률을 올리지 않게 — 크기만 `supply.windfallSize`, PROD F6b) · 평판 사건(품질 보상 보존) · 수출(v16 잠김) · 계약 기회 · 사람(v16 잠김) · 연쇄(chance 0) */
+/** 영역 없음(늘 ×1) — 평판 사건(품질 보상 보존) · 수출(v16 잠김) · 계약 기회 · 사람(v16 잠김) · 연쇄(chance 0) · **호재**(`rice_surplus` — 태그하면 Hard가 호재 확률·크기까지 키운다, PM 가름 ⑥ 정정; 크기는 PROD `supply.windfallSize`) */
 const NONE = ['rice_surplus', 'influencer_viral', 'ambassador_response', 'competition_medal', 'critic_visit', 'murray_visit', 'intl_competition', 'blind_tasting_upset', 'overseas_critic', 'export_inquiry', 'export_support', 'us_tariff_hike', 'us_tariff_relief', 'cn_tariff_retaliation', 'mega_contract', 'blender_default', 'staff_poaching', 'salary_review', 'artisan_retire'];
 
 describe('F6 — 이벤트 영역 태그 표', () => {

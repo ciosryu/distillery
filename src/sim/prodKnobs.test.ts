@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { applyAction, type GameState } from './index';
 import { KNOBS, type KnobDef } from './content/difficulty';
 import { EVENT, EVENTS, type Effect } from './content/events';
+import { fireEvent } from './events';
 import { cooperageLeadMonths, priceWalkSigma, tuneEventEffects, tuneForecast } from './prodKnobs';
 import { PRICE_INDEX_WALK } from './content/production';
 import { advanceMonth } from './index';
@@ -21,10 +22,10 @@ const game = (level?: 'easy' | 'normal' | 'hard'): GameState => {
   return s;
 };
 const mod = (effects: Effect[], key: string) => effects.find((e): e is Extract<Effect, { type: 'modifier' }> => e.type === 'modifier' && e.key === key)!;
-const PROD_KNOBS = ['supply.costSize', 'supply.costMonths', 'supply.windfallSize', 'supply.forecastMonths', 'supply.forecastCertainty', 'supply.priceWalkSigma', 'supply.caskLead', 'incidents.stillDownMonths', 'incidents.spoilSize'];
+const PROD_KNOBS = ['supply.windfallSize', 'supply.forecastMonths', 'supply.forecastCertainty', 'supply.priceWalkSigma', 'supply.caskLead', 'incidents.stillDownMonths', 'incidents.spoilSize'];
 
 describe('표 — PROD 손잡이 자리', () => {
-  it('아홉 행이 있고 지금 값은 모두 1(자리) — 크기는 F7 측정 뒤 정한다', () => {
+  it('일곱 행이 있고 지금 값은 모두 1(자리) — 크기는 F7 측정 뒤 정한다', () => {
     for (const id of PROD_KNOBS) expect(KNOBS[id]).toMatchObject({ easy: 1, hard: 1 });
   });
 
@@ -62,21 +63,28 @@ describe('Normal·옛 판·샌드박스 — 받은 것을 그대로 돌려준다
 });
 
 describe('공급 영역 — 임시 Easy ≠ Hard로 손잡이가 먹는지', () => {
-  it('원가 악재 크기·기간: 보리 흉작 맥아 ×1.5·9~15개월 → Easy는 줄고 Hard는 는다', () => {
-    setKnob('supply.costSize', 0.5, 2);
-    setKnob('supply.costMonths', 0.5, 2);
+  it('원가 악재의 크기·기간은 PROD가 곱하지 않는다 — 코어 한 자리(supply.eventMagnitude·eventDuration). 합친 상태: 보리 흉작 ×1.5가 Hard 2에서 ×2.0(두 번 곱한 ×2.5가 아님)', () => {
+    setKnob('supply.eventMagnitude', 0.5, 2);
+    setKnob('supply.eventDuration', 1, 1);
+    for (const id of PROD_KNOBS) setKnob(id, 0.5, 2); // PROD 손잡이를 모두 움직여도
     const def = EVENT.barley_failure!;
-    const e = mod(tuneEventEffects(game('easy'), def, def.effects!), 'ingredient:malt_unpeated');
-    const h = mod(tuneEventEffects(game('hard'), def, def.effects!), 'ingredient:malt_unpeated');
-    expect(e.factor).toBeCloseTo(1.25, 9);
-    expect(h.factor).toBeCloseTo(2, 9);
-    expect(e.months).toEqual([5, 8]);
-    expect(h.months).toEqual([18, 30]);
+    // PROD 식은 원가 악재 배수를 건드리지 않는다
+    expect(mod(tuneEventEffects(game('hard'), def, def.effects!), 'ingredient:malt_unpeated').factor).toBe(1.5);
+    // 게임 경로(이벤트 발생 → 효과 적용)로 실제 붙은 배수
+    const applied = (lv: 'easy' | 'normal' | 'hard') => {
+      const s = game(lv);
+      fireEvent(s, 'barley_failure', { month: s.month, events: [], notes: [], expenses: {} } as never);
+      return s.world.modifiers.find((m) => m.key === 'ingredient:malt_unpeated')!.factor;
+    };
+    expect(applied('normal')).toBeCloseTo(1.5, 9);
+    expect(applied('hard')).toBeCloseTo(2.0, 9);
+    expect(applied('easy')).toBeCloseTo(1.25, 9);
+    expect(readFileSync(new URL('./prodKnobs.ts', import.meta.url), 'utf8')).not.toMatch(/eventMagnitude'\)|eventDuration'\)|costSize|costMonths/);
   });
 
   it('호재는 반대 방향 손잡이: 가공용 쌀 ×0.6 → Easy에서 더 싸지고 Hard에서 덜 싸진다 · 악재 손잡이에는 움직이지 않는다', () => {
     const def = EVENT.rice_surplus!;
-    setKnob('supply.costSize', 0.5, 2);
+    setKnob('supply.eventMagnitude', 0.5, 2); // 태그 없는 호재는 코어 손잡이도 받지 않는다
     expect(mod(tuneEventEffects(game('hard'), def, def.effects!), 'ingredient:rice_processing').factor).toBeCloseTo(0.6, 9);
     setKnob('supply.windfallSize', 1.5, 0.5);
     expect(mod(tuneEventEffects(game('easy'), def, def.effects!), 'ingredient:rice_processing').factor).toBeCloseTo(0.4, 9);

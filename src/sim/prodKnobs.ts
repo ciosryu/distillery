@@ -10,13 +10,12 @@ import type { GameState } from './types';
 
 type S = Pick<GameState, 'difficulty'>;
 
-/** 개월 범위에 배수 — 1개월 아래로 내려가지 않는다 */
-const scaleMonths = (m: [number, number], k: number): [number, number] => [Math.max(1, Math.round(m[0] * k)), Math.max(1, Math.round(m[1] * k))];
 
 /**
  * 이벤트 효과에 난이도 크기 손잡이를 입힌다 — 이벤트 **범주**로 가른다(supply = 원가·공급 · disaster = 사고·재난).
- * - supply: 원가를 올리는 배수(>1)는 1에서 떨어진 거리 × `supply.costSize`, 지속 개월 × `supply.costMonths`.
- *   원가를 내리는 호재(<1, 예: 가공용 쌀 할인)는 거리 × `supply.windfallSize`(Easy에서 키우고 Hard에서 줄이는 방향 — 악재와 반대라 따로 둔다)
+ * - supply: 원가를 내리는 호재(영역 태그 없는 `rice_surplus`의 원재료 값 <1)의 할인 폭 × `supply.windfallSize`(Easy에서 키우고 Hard에서 줄인다).
+ *   **원가 악재의 크기·기간은 여기서 곱하지 않는다** — 코어 `events.ts applyEffects`가 `EventDef.domain`으로 `supply.eventMagnitude`·`supply.eventDuration`을
+ *   한 자리에서 곱한다(한 손잡이 한 자리 — 여기서도 곱하면 보리 흉작 ×1.5가 Hard 2에서 ×2.0이 아니라 ×2.5가 된다)
  * - disaster: 증류기 중단 개월 × `incidents.stillDownMonths` · 발효 오염 이취 × `incidents.spoilSize`.
  *   **통 소실·원액 손실 비율은 여기서 곱하지 않는다** — `incidents.lossSize`는 MGT가 손실 원장 `damageMul`에 넣어 `applyEffects` 한 자리에서
  *   현금 피해·통 소실·원액 손실·오염 비율을 함께 키운다(한 손잡이 한 자리 — 여기서도 곱하면 Hard에서 k²).
@@ -25,16 +24,12 @@ const scaleMonths = (m: [number, number], k: number): [number, number] => [Math.
  */
 export function tuneEventEffects(s: S, def: Pick<EventDef, 'category' | 'domain'>, effects: Effect[]): Effect[] {
   if (def.category === 'supply') {
-    const up = knob(s, 'supply.costSize');
-    const months = knob(s, 'supply.costMonths');
     const down = knob(s, 'supply.windfallSize');
-    if (up === 1 && months === 1 && down === 1) return effects;
+    if (down === 1) return effects;
     return effects.map((e) => {
-      if (e.type !== 'modifier') return e;
-      if (e.factor > 1) return { ...e, factor: 1 + (e.factor - 1) * up, months: scaleMonths(e.months, months) };
       // 호재 = **영역 태그가 없는** supply 이벤트(`rice_surplus`)의 원재료 값 할인만. 태그된 악재 안의 <1 배수(예: `tariff_retaliation`의 `bulk` ×0.9 = 현물가 하락)는
       // 플레이어에게 나쁜 효과라 호재 손잡이를 받지 않는다(ARCH 발견 — 받으면 Hard에서 그 악재가 줄어든다)
-      if (!def.domain && e.key.startsWith('ingredient:') && e.factor < 1 && e.factor > 0) return { ...e, factor: Math.max(0.05, 1 - (1 - e.factor) * down) };
+      if (e.type === 'modifier' && !def.domain && e.key.startsWith('ingredient:') && e.factor < 1 && e.factor > 0) return { ...e, factor: Math.max(0.05, 1 - (1 - e.factor) * down) };
       return e;
     });
   }

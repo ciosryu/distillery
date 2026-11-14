@@ -33,10 +33,31 @@ export const KNOBS: Record<string, KnobDef> = {
   'incidents.eventChance': { easy: 1, hard: 1, note: '재난·사고 이벤트(화재·침수·고장·오염…) 월 발생 확률 배수 — v16은 60개월부터' },
   'finance.eventChance': { easy: 1, hard: 1, note: '금융 이벤트(세무조사) 월 발생 확률 배수 — 금리·한도·LTV·수수료 손잡이는 MGT F6b 행' },
   'competition.eventChance': { easy: 1, hard: 1, note: '경쟁 이벤트(광고 규제) 월 발생 확률 배수 — [결정 대기 96] 경쟁 영역 Normal 고정이면 자리만(×1)' },
-  // ── PROD (F6b, P-PROD-56 v16 갱신) — 읽는 곳은 `prodKnobs.ts` 한 파일. 방향: Easy는 악재를 줄이고 호재를 키운다, Hard는 반대. 크기는 F7 뒤
-  'supply.costSize': { easy: 1, hard: 1, note: '원가 악재 이벤트의 값 배수(>1)가 1에서 떨어진 거리 × 이 값 — 예: 보리 흉작 ×1.5 → 1 + 0.5 × 값 (Easy <1 · Hard >1)' },
-  'supply.costMonths': { easy: 1, hard: 1, note: '원가 악재 이벤트 지속 개월 × 이 값 (Easy <1 · Hard >1)' },
-  'supply.windfallSize': { easy: 1, hard: 1, note: '원가 호재(값 배수 <1, 가공용 쌀 할인)의 할인 폭 × 이 값 (Easy >1 · Hard <1 — 악재와 반대 방향)' },
+  // ── MKT F6b (P-MKT-37, [결정 #313] 취향 변화의 속도·지속성·폭) — 읽는 자리 `mktKnobs.ts trendWalkOf`·`flavorTrendFactorOf` ──
+  'taste.trendSigma': { easy: 1, hard: 1, note: '카테고리 트렌드 랜덤 워크의 월 σ(0.015) 배수 — 속도. Easy ↓ · Hard ↑' },
+  'taste.trendReversion': { easy: 1, hard: 1, note: '같은 워크의 평균 회귀(0.05) 배수 — 지속성. Easy ↑(빨리 1로) · Hard ↓(추세가 오래 간다)' },
+  'taste.trendRange': { easy: 1, hard: 1, note: '같은 워크의 범위(0.6~1.5)가 1에서 떨어진 거리의 배수 — 폭. Easy 좁게 · Hard 넓게(아래 0.2 가드)' },
+  'taste.flavorTrendStrength': { easy: 1, hard: 1, note: '향미 유행(피트 열풍·셰리 인기 — trendFactor) 매력 배수가 1에서 떨어진 거리의 배수 — 세기. Easy ↓ · Hard ↑' },
+  // ── MKT F6b (P-MGT-48 거시 표 "원액 현물 지수 변동" — 자리가 MKT 소유 `bulk.ts`, 읽기 `mktKnobs.ts bulkWalkOf`) ──
+  'macro.bulkSigma': { easy: 1, hard: 1, note: '원액 현물 지수 랜덤 워크의 월 σ(0.03) 배수. Easy ↓ · Hard ↑' },
+  'macro.bulkReversion': { easy: 1, hard: 1, note: '같은 워크의 평균 회귀(0.08) 배수. Easy ↑' },
+  'macro.bulkRange': { easy: 1, hard: 1, note: '같은 워크의 범위(0.6~1.5)가 1에서 떨어진 거리의 배수. Hard 넓게(하한 ↓)' },
+  // ── 코어 F6 — 이벤트 효과 크기·기간(MKT #566 제안 ②): `events.ts applyEffects`가 `EventDef.domain`으로 읽는다. 크기 = modifier 배수의 1에서의 거리 × k · 기간 = 개월 × k(반올림) ──
+  'macro.eventMagnitude': { easy: 1, hard: 1, note: '거시 이벤트 효과 배수(수요·현물 지수·세율)의 1에서의 거리 배수' },
+  'macro.eventDuration': { easy: 1, hard: 1, note: '거시 이벤트 효과 기간 배수' },
+  'taste.eventMagnitude': { easy: 1, hard: 1, note: '취향 이벤트(하이볼 열풍 등) 수요 배수 폭 — 향미 유행 세기는 taste.flavorTrendStrength(MKT)' },
+  'taste.eventDuration': { easy: 1, hard: 1, note: '취향 이벤트 수요 보정·향미 유행 기간 배수' },
+  'supply.eventMagnitude': { easy: 1, hard: 1, note: '원가 이벤트(흉작 ×1.5 등) 배수의 1에서의 거리 배수 — PROD P-PROD-56 "원가 이벤트 크기"(= 옛 costSize)' },
+  'supply.eventDuration': { easy: 1, hard: 1, note: '원가 이벤트 기간 배수 — PROD "원가 이벤트 기간"(= 옛 costMonths)' },
+  'incidents.eventMagnitude': { easy: 1, hard: 1, note: '사고 이벤트의 modifier 효과(생산 중단 등) 배수 거리 — 통·원액 소실 비율은 incidents.lossSize(PROD)' },
+  'incidents.eventDuration': { easy: 1, hard: 1, note: '사고 이벤트 기간 배수(기상 충격 포함) — 증류기 수리 중단 개월은 incidents.stillDownMonths(PROD)' },
+  'finance.eventMagnitude': { easy: 1, hard: 1, note: '금융 이벤트(세무조사) 효과 배수 거리' },
+  'finance.eventDuration': { easy: 1, hard: 1, note: '금융 이벤트 기간 배수' },
+  'competition.eventMagnitude': { easy: 1, hard: 1, note: '경쟁 이벤트(광고 규제) 효과 배수 거리 — [결정 대기 96]' },
+  'competition.eventDuration': { easy: 1, hard: 1, note: '경쟁 이벤트 기간 배수 — [결정 대기 96]' },
+  // ── PROD (F6b, P-PROD-56 v16 갱신) — 읽는 곳은 `prodKnobs.ts` 한 파일. 방향: Easy는 악재를 줄이고 호재를 키운다, Hard는 반대. 크기는 F7 뒤.
+  //    원가 악재의 크기·기간은 위 `supply.eventMagnitude`·`supply.eventDuration`(코어 한 자리)이 맡는다 — PROD는 곱하지 않는다
+  'supply.windfallSize': { easy: 1, hard: 1, note: '원가 호재(영역 태그 없는 rice_surplus의 원재료 값 ×0.6)의 할인 폭 × 이 값 (Easy >1 · Hard <1 — 악재와 반대 방향)' },
   'supply.forecastMonths': { easy: 1, hard: 1, note: '원가 이벤트 예보가 미리 알려 주는 개월 × 이 값 (Easy >1 · Hard <1)' },
   'supply.forecastCertainty': { easy: 1, hard: 1, note: '원가 이벤트 예보가 맞을 확률 × 이 값, 0.05~0.95 (Easy >1 · Hard <1)' },
   'supply.priceWalkSigma': { easy: 1, hard: 1, note: '원재료·에너지 기본 시세의 월 변동폭 σ 0.02 × 이 값 (Easy <1 · Hard >1) — 이벤트가 열리기 전(60개월 전)에도 닿는 유일한 공급 손잡이' },

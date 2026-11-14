@@ -1256,12 +1256,10 @@ MGT 표의 "재난 이벤트 확률·피해 크기(`damageMul`)·한 달 상한"
 
 #### P-PROD-56 구현 — F6b 손잡이 연결 (2026-11-14, 출력 불변 · 값은 모두 1)
 
-- **읽는 곳은 `src/sim/prodKnobs.ts` 한 파일**(`rules.ts knob`만 부른다). 표 `content/difficulty.ts KNOBS`에 PROD 행 9개 — 지금은 모두 1(자리)이라 Normal·Easy·Hard가 같다. 크기는 F7 측정 뒤 오너가 정한다.
+- **읽는 곳은 `src/sim/prodKnobs.ts` 한 파일**(`rules.ts knob`만 부른다). 표 `content/difficulty.ts KNOBS`에 PROD 행 7개 — 지금은 모두 1(자리)이라 Normal·Easy·Hard가 같다. 크기는 F7 측정 뒤 오너가 정한다.
 
 | 손잡이 | 닿는 곳 | 방향(Easy · Hard) |
 |---|---|---|
-| `supply.costSize` | 원가 악재 이벤트의 값 배수(>1)가 1에서 떨어진 거리 | <1 · >1 |
-| `supply.costMonths` | 원가 악재 지속 개월 | <1 · >1 |
 | `supply.windfallSize` | 원가 호재(가공용 쌀 할인) 할인 폭 — 악재와 반대라 따로 | >1 · <1 |
 | `supply.forecastMonths` · `supply.forecastCertainty` | 원가 이벤트 예보의 개월 · 확률(0.05~0.95) | >1 · <1 |
 | `supply.priceWalkSigma` | 원재료·에너지 기본 시세의 월 변동폭 σ 0.02 | <1 · >1 |
@@ -1270,6 +1268,8 @@ MGT 표의 "재난 이벤트 확률·피해 크기(`damageMul`)·한 달 상한"
 | `incidents.spoilSize` | 발효 오염 이벤트의 이취 크기 | <1 · >1 |
 
 - **영역 태그(`EventDef.domain`)는 ARCH #563의 표**([difficulty-event-domains.md](difficulty-event-domains.md))를 따른다 — 원가 악재 9개 `supply`, 재난·사고 10개 `incidents`. **호재 `rice_surplus`는 태그하지 않는다**(PM 가름 ⑥ 고침) — 태그하면 코어의 `supply.eventChance`가 Hard에서 호재 확률까지 올린다. 크기만 `supply.windfallSize`로 받는다.
+- **원가 악재의 크기·기간은 PROD가 곱하지 않는다** — ARCH #571이 코어 `applyEffects` 한 자리에서 `EventDef.domain`으로 `supply.eventMagnitude`·`supply.eventDuration`을 곱한다(처음의 `supply.costSize`·`costMonths`는 뺐다). 합친 상태 테스트: 보리 흉작 ×1.5 → Hard 2에서 ×2.0.
+- **호재 손잡이 `supply.windfallSize`는 영역 태그가 없는 이벤트(`rice_surplus`)의 `ingredient:` 값 할인에만 닿는다** — 태그된 악재 안의 <1 배수(`tariff_retaliation`의 `bulk` ×0.9)는 받지 않는다(ARCH 발견).
 - **통 소실·원액 손실 비율(`incidents.lossSize`)은 PROD가 곱하지 않는다** — MGT(#573)가 손실 원장 `damageMul`에 넣어 `applyEffects` 한 자리에서 현금 피해·통 소실·원액 손실·오염 비율을 함께 키운다. 처음에는 PROD도 `caskLoss`·`caskVolumeLoss`에 곱했으나 둘 다 들어가면 Hard에서 k²라 뺐다(한 손잡이 한 자리).
 - **크기 손잡이는 범주로 가른다**(supply · disaster) — 태그가 없는 `rice_surplus`도 크기 손잡이는 받게.
 - **바꾸지 않는 것은 정적 테스트로 고정**(`prodKnobs.test.ts`): `maturation`·`warehouse`·`production`·`blendTable`·`blendRadar`·`blending`·`flavor`·`ledger`는 `knob(`·`prodKnobs`를 부르지 않는다(누수·오염 추첨·증발·고온 산패·샘플 오차).
