@@ -1,4 +1,5 @@
-import { checkInvariants, migrateSaveReport, type GameState } from '../sim';
+import { checkInvariants, inventoryCollateral, inventoryLtv, migrateSaveReport, usesObservedValuation, type GameState } from '../sim';
+import { LOAN_OFFERS } from '../sim/content/catalog';
 
 // 세이브 저장소 (architecture §3.6). 지금은 localStorage, 웹 최종이 정해지면 IndexedDB 세이브 슬롯으로 바꾼다(단계 C).
 // - 읽기: 현재 키 → 옛 키(v5) 순서로 찾아 마이그레이션 체인으로 올린다. 버리지 않는다
@@ -26,10 +27,12 @@ export function loadGame(): GameState | null {
       if (!r) continue;
       // 불러올 때 불변식 검사 (INV-ARCH-1) — 수리(#285·#295) 뒤에도 남은 위반은 화면에 알린다
       const { errors } = checkInvariants(r.state);
-      if (r.fixes.length || errors.length) {
+      // F5b 이행 안내(MGT 발견): 새 평가(관측 품질 q̂) 전에 참 품질로 받은 재고 담보대출은 한도가 내려가 다음 월말 추가 상환 요구가 날 수 있다 — 고치지 않고 알리기만
+      const fixes = [...r.fixes, ...collateralNotice(r.state)];
+      if (fixes.length || errors.length) {
         let preserved = false;
         try { localStorage.setItem(PREREPAIR_KEY, raw); preserved = true; } catch { /* 저장 공간 부족 — 알림에 적는다 */ }
-        loadIssue = { fixes: r.fixes, errors, preserved };
+        loadIssue = { fixes, errors, preserved };
         if (errors.length) console.error(`[불변식] 불러온 세이브 ${r.state.month}개월: ${errors.join(' · ')}`);
       }
       return r.state;
@@ -38,6 +41,16 @@ export function loadGame(): GameState | null {
     }
   }
   return null;
+}
+
+/** v16 판에서 재고 담보대출 잔액이 관측 기반 한도의 110%를 넘으면 한 줄 — 다음 월말 `inventoryMarginCall`이 추가 상환을 요구한다(F5b #310 2단계 이행, MGT 발견 2026-11-14) */
+export function collateralNotice(s: GameState): string[] {
+  if (!usesObservedValuation(s)) return [];
+  const inv = new Set(LOAN_OFFERS.filter((o) => o.collateral === 'inventory').map((o) => o.id));
+  const balance = s.finance.loans.filter((l) => inv.has(l.offerId)).reduce((t, l) => t + l.balance, 0);
+  if (!(balance > 0)) return [];
+  const limit = inventoryCollateral(s) * inventoryLtv(s);
+  return balance > limit * 1.1 ? [`재고 담보대출 잔액 ${Math.round(balance).toLocaleString()}원이 관측 기반 담보 한도 ${Math.round(limit).toLocaleString()}원의 110%를 넘는다 — 평가 방식이 바뀌어(샘플 기록이 없는 통은 보수적 사전값) 다음 월말 추가 상환 요구가 날 수 있다. 통을 샘플링하면 한도가 바뀐다`] : [];
 }
 
 /** 보존한 수리 전 원본(JSON 문자열) — 없으면 null */

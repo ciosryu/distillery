@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AutoFillRow } from './AutoFill';
 import { HandfillRow } from './Handfill';
 import { CASKS, RECHAR_COST } from '../../sim/content/catalog';
-import { canFinishInto, evaluate, FINISH, vesselMaterial, finishCount, finishLabel, finishOf, isLocked, isUnlocked, lotCategory, unlockingNodes, MAX_RECHAR, regionalCaskPrice, topNotes, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type SpiritLot } from '../../sim';
+import { canFinishInto, evaluate, FINISH, vesselMaterial, finishCount, finishLabel, finishOf, isLocked, isUnlocked, lotCategory, unlockingNodes, MAX_RECHAR, regionalCaskPrice, topNotes, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type SpiritLot, knownReads } from '../../sim';
 import { CASK_MARKET } from '../../sim/content/catalog';
 import { rotationCapacity, slotClimate, slotOccupancy, warehousesOf } from '../../sim/warehouse';
 import { usedCaskPrice } from '../../sim/casks';
@@ -115,6 +115,7 @@ function Warehouses() {
 
 function Casks() {
   const s = useGame((g) => g.state);
+  const known = knownReads(s); // F5c: 통 행은 아는 값만(I1)
   const dispatch = useGame((g) => g.dispatch);
   const [buyType, setBuyType] = useState<CaskTypeId>('ex_bourbon_barrel');
   const [qty, setQty] = useState(10);
@@ -157,7 +158,6 @@ function Casks() {
             );
             const rules = regionOf(s).whisky;
             const minM = whiskyMinMonths(rules);
-            const cat = lotCategory(lot, rules);
             return (
               <tr key={c.id}>
                 <Td>{c.id}</Td>
@@ -169,7 +169,7 @@ function Casks() {
                 <Td right>{pct(lot.abv)}</Td>
                 <Td right>{vesselMaterial(c) === 'wood' ? months(lot.oakMonths) : <>옹기 {months(lot.restMonths ?? 0)}{lot.oakMonths > 0 && <div className="text-xs text-stone-500">오크 {months(lot.oakMonths)}</div>}</>}</Td>
                 <Td><Notes lot={lot} />{(() => { const f = finishOf(lot); if (!f) return null; const [lo, hi] = FINISH.recommendedMonths; return <div><Badge tone={f.months < lo ? 'warn' : f.months > hi ? 'bad' : 'good'}>{finishLabel(f.typeId)} {months(f.months)}{f.months < lo ? ' — 아직 짧다' : f.months > hi ? ' — 권장보다 길다' : ''}</Badge></div>; })()}</Td>
-                <Td right>{evaluate(lot.flavor, cat).quality}</Td>
+                <Td right><span title="아는 값만 — 샘플 기록(가장 최근) 또는 형제 통 기록. 참 품질은 병입 뒤에 드러난다(#167·#310)">{(() => { const k = known.get(c.id); return k ? <>{Math.round(k.estQuality)}<span className="text-xs text-stone-400">{k.from === 'sibling' ? ' (형제)' : ''}</span></> : <span className="text-stone-400">—</span>; })()}</span></Td>
                 <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>{vesselMaterial(c) === 'onggi' ? '옹기 ' : ''}숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : vesselMaterial(c) !== 'wood' && lot.oakMonths < minM ? <Badge tone="warn">옹기 — 위스키 숙성(오크)에 안 들어감</Badge> : lot.oakMonths >= minM ? <Badge tone="good">{lot.kind === 'grain' ? '그레인 위스키 가능' : '위스키 가능'}{rules.premiumLabel && lot.oakMonths >= rules.premiumLabel.minMonths && !lot.sourced ? ` · ${rules.premiumLabel.name}` : ''}{lot.oakMonths < 36 ? ' (어린 위스키)' : ''}</Badge> : <Badge tone="warn">{minM - lot.oakMonths}개월 남음</Badge>}</Td>
                 <Td className="flex gap-1">
                   {finishing && !c.owner && finishCount(lot) < FINISH.maxFinishes && <Button small variant={finishFor === c.id ? 'secondary' : 'ghost'} onClick={() => setFinishFor(finishFor === c.id ? null : c.id)} title="빈 버번·셰리 시즈닝 캐스크로 옮겨 마무리한다 — 손실 0.75%, 숙성 연수는 그대로">피니싱</Button>}

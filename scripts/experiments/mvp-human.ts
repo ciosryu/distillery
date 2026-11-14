@@ -54,14 +54,16 @@ import { specialistOffers, type SpecialistRole } from '../../src/sim/hr';
 if (process.env.RULES === 'legacy') setDefaultRulesVersion('legacy-v15');
 import { EVENTS } from '../../src/sim/content/events';
 import { cashAlert } from '../../src/ui/alerts';
-import { campaignMinOakMonths, netWorth } from '../../src/sim/progress';
+import { campaignMinOakMonths, netWorth, netWorthLegacy } from '../../src/sim/progress';
+import { usesObservedValuation } from '../../src/sim/valuation';
+import type { Cask } from '../../src/sim/types';
 import { monthlyFixedCost } from '../../src/sim/loans';
 import { isFlagshipCandidate } from '../../src/sim/delegateCheck';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { handfillBlocker, handfillCask, hasHandfillZone } from '../../src/sim/handfill';
 import { applyMgtKnobs, applyTierKnobs, hireSales, mgtPolicy } from './mgtKnobs';
 import { applyProdKnobs } from './prodKnobs';
-import { achieved, comparePaired, MonthTracker, outcomeOf, summarize, summarizeWin, winOutcomeOf, WIN_CURVE_MONTHS, type RunOutcome, type WinOutcome } from './metrics';
+import { achieved, comparePaired, MonthTracker, outcomeOf, quantile, summarize, summarizeWin, winOutcomeOf, WIN_CURVE_MONTHS, type RunOutcome, type WinOutcome } from './metrics';
 import { campaignWon, caskEligibility } from '../../src/sim/ledger';
 import { rulesVersionOf } from '../../src/sim/rules';
 import { protectedCaskIds, reserveCaskIds } from '../../src/sim/tags';
@@ -313,7 +315,7 @@ function buyEquip(s: GameState, p: Policy): GameState {
   return s;
 }
 
-function fill(s: GameState, p?: Policy): GameState {
+function fill(s: GameState, p?: Policy, cnt?: { contamFills: number }): GameState {
   if (p?.fillStopAt != null && s.month >= p.fillStopAt) return s;
   // 제한적 원액 B2B (MGT-A): until 달 전까지 그달 몰트 원액의 share만 현물로 팔고 나머지는 통에 넣는다
   if (p?.b2b && s.month < p.b2b.until) for (const lot of s.inventory.lots.filter((l) => l.kind === 'malt')) { const liters = Math.floor(lot.volumeL * p.b2b.share); if (liters > 0) s = act(s, { type: 'sellBulk', source: 'lot', id: lot.id, liters }); }
@@ -323,9 +325,12 @@ function fill(s: GameState, p?: Policy): GameState {
   for (const lot of s.inventory.lots.filter((l) => l.kind === 'malt')) {
     const need = Math.ceil((lot.volumeL * lot.abv) / (200 * 0.635));
     const room = cap - s.inventory.casks.length;
-    const empty = s.inventory.casks.filter((c) => !c.contents && !c.contamination).length;
+    // F5b [결정 #310 2단계]: 새 판 봇은 **아는** 오염만 피한다(사람과 같은 정보) — 옛 판은 숨은 값 그대로(X0L 바이트 동일)
+    const usable = (c: Cask) => !c.contents && !(usesObservedValuation(s) ? c.contaminationKnown : c.contamination);
+    const empty = s.inventory.casks.filter(usable).length;
     if (empty < need && room > 0 && s.finance.cash > 60_000_000) s = act(s, { type: 'buySpotCasks', caskType: 'ex_bourbon_barrel', qty: Math.min(need - empty, room) });
-    const ids = s.inventory.casks.filter((c) => !c.contents && !c.contamination).slice(0, need).map((c) => c.id);
+    const ids = s.inventory.casks.filter(usable).slice(0, need).map((c) => c.id);
+    if (cnt) cnt.contamFills += s.inventory.casks.filter((c) => ids.includes(c.id) && c.contamination).length; // 측정만: 숨은 오염 통에 넣은 수(봇 결정에는 쓰지 않는다)
     if (ids.length) s = act(s, { type: 'fillCasks', lotId: lot.id, caskIds: ids, entryAbv: 0.635 });
   }
   return s;
@@ -555,14 +560,14 @@ const spiritsValue = (s: GameState) => [...s.inventory.lots, ...s.inventory.cask
   .reduce((t, l) => t + (isBulkKind(l) ? l.volumeL * l.abv * spotBidPerLPA(s, l) : 0), 0);
 
 interface Split { cash: number; loans: number; spirits: number; products: number; whiskyRevY6to9: number; whiskyRevY10to15: number; spiritsGainY2to5: number; productionY2to5: number }
-interface Year { dom: number; exp: number; tour: number; op: number; cash: number; nw: number; bottlesDom: number; bottlesExp: number }
-interface Row { years: Year[]; cands: number[]; flagCasks: number; split: Split; cutMonth: number; policy: string; bankrupt3: number; bankrupt6: number; minCash: number; minCashMonth: number; loansMax: number; firstWhisky: number; nw: number; goal: boolean; verdict: string; whiskyY6to9: number; outcome: RunOutcome; cap: Cap; month: ReturnType<MonthTracker['summary']>; nw166: number; /** 새 승리 판정(F4 · P-MGT-46) — v16 판만 표에 낸다 */ win: WinOutcome; v16: boolean; winKind?: string; /** 「플래그십 출시」가 막힌 달 수(#320 winFail) */ winFail: number; /** F5a: 중반 목표 결과 · 대형 유통 납품 매출 · 핵심 전문가 직군 */ mid: Record<string, 'done' | 'missed'>; retailRev: number; ks?: string }
+interface Year { dom: number; exp: number; tour: number; op: number; cash: number; nw: number; /** 옛 식 순자산(CALIB가 사람 판 기준과 비교 — F5b) */ nwL: number; bottlesDom: number; bottlesExp: number }
+interface Row { years: Year[]; cands: number[]; flagCasks: number; split: Split; cutMonth: number; policy: string; bankrupt3: number; bankrupt6: number; minCash: number; minCashMonth: number; loansMax: number; firstWhisky: number; nw: number; goal: boolean; verdict: string; whiskyY6to9: number; outcome: RunOutcome; cap: Cap; month: ReturnType<MonthTracker['summary']>; nw166: number; /** 새 승리 판정(F4 · P-MGT-46) — v16 판만 표에 낸다 */ win: WinOutcome; v16: boolean; winKind?: string; /** 「플래그십 출시」가 막힌 달 수(#320 winFail) */ winFail: number; /** F5a: 중반 목표 결과 · 대형 유통 납품 매출 · 핵심 전문가 직군 */ mid: Record<string, 'done' | 'missed'>; retailRev: number; ks?: string; /** F5b 측정: 숨은 오염 통에 넣은 통 수(봇은 아는 오염만 피한다) */ contamFills: number }
 /** 자본·유동성(MGT-C) — 6년 안 최저 현금·최저 런웨이, 현금 < 0 개월, 원액 시가 최고·그 달, 72개월 원액 비중, 이자 합계 */
 interface Cap { minCash72: number; minRunway72: number; negMonths: number; peakSpirit: number; peakSpiritMonth: number; spiritShare72: number; interest: number; minCash36: number; spirit60: number; cash96: number; cash180: number }
 
 function play(p: Policy, seed: number): Row {
   let s = applyTierKnobs(newScenarioGame({ scenarioId: 'mvp_kr', tierId: TIER, loanAmount: LOAN, seed }));
-  const t: { firstWhisky: number; flagshipDone?: boolean; launchDone?: boolean; winFail?: number[] } = { firstWhisky: -1 };
+  const t: { firstWhisky: number; flagshipDone?: boolean; launchDone?: boolean; winFail?: number[]; contamFills: number } = { firstWhisky: -1, contamFills: 0 };
   if (p.visitor && p.visitorAt == null) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_basic' });
   if (p.equipAt == null) s = buyEquip(s, p);
   s = setOrders(s, p.sojuOff?.[0] === 0 ? 0 : sojuBatches(p), p.overprod ? p.overprod[0] : maltBatches(p));
@@ -609,7 +614,7 @@ function play(p: Policy, seed: number): Row {
     if (p.supplyHint) s = policySupply(s);
     if (!p.autoPrice && p.price && m > 0 && m % 3 === 0) for (const x of [...s.commerce.products]) if (x.stockBottles > 0 && !x.autoPrice && !x.dutyFreeOnly) s = manualPrice(s, p, x);
     s = bottle(s, p, t);
-    s = fill(s, p);
+    s = fill(s, p, t);
     if (p.wipeAt === m) for (const c of s.inventory.casks) if (c.contents && !c.owner && c.contents.oakMonths >= 12 && (c.contents.kind === 'malt' || c.contents.kind === 'grain')) delete (c as { contents?: unknown }).contents;
     s = finance(s, p);
     if (p.raiseIfCash != null && s.finance.cash > p.raiseIfCash) { const ev = s.events.pending.find((e) => e.defId === 'salary_review'); if (ev) s = act(s, { type: 'resolveEvent', eventId: ev.id, choice: 0 }); }
@@ -629,7 +634,7 @@ function play(p: Policy, seed: number): Row {
     }
     if (DUMP && seed === 1 && p === RUN[0] && DUMP_MONTHS.includes(s.month)) { mkdirSync(DUMP, { recursive: true }); writeFileSync(`${DUMP}/bot-m${s.month}.json`, JSON.stringify({ kind: 'distillery-playtest', v: 1, exportedAt: new Date(0).toISOString(), playlog: null, save: s })); }
     neg = s.finance.cash < 0 ? neg + 1 : 0;
-    if (s.month === HUMAN_REF.month) nw166 = netWorth(s);
+    if (s.month === HUMAN_REF.month) nw166 = netWorthLegacy(s); // CALIB 사람 판(21.14억)은 옛 식으로 잰 값 — F5b 뒤에도 옛 식끼리 비교(옛 판에서는 netWorth와 같다)
     if (GAME_BANKRUPT && s.status === 'bankrupt') { bankrupt3 = bankrupt6 = s.month; outcome = outcomeOf(s, false); if (METRICS) tracker.observe(s); break; }
     if (neg >= 3 && bankrupt3 < 0) { bankrupt3 = s.month; outcome = outcomeOf(s, false); }
     if (METRICS) {
@@ -648,7 +653,7 @@ function play(p: Policy, seed: number): Row {
     if (neg >= 6) { bankrupt6 = s.month; break; }
     if (s.finance.cash < minCash) { minCash = s.finance.cash; minCashMonth = s.month; }
     loansMax = Math.max(loansMax, s.finance.loans.reduce((x, l) => x + l.balance, 0));
-    { const r = s.history.reports.at(-1); if (r) { const y = Math.floor((s.month - 1) / 12); const Y = (years[y] ??= { dom: 0, exp: 0, tour: 0, op: 0, cash: 0, nw: 0, bottlesDom: 0, bottlesExp: 0 }); Y.dom += r.sales.reduce((a, x) => a + x.revenue, 0); Y.exp += r.exportRevenue ?? 0; Y.tour += r.tourismRevenue ?? 0; Y.op += r.operatingCash ?? r.netCash; Y.cash = s.finance.cash; Y.nw = netWorth(s); Y.bottlesDom += r.sales.reduce((a, x) => a + x.bottles, 0); Y.bottlesExp += (r.exports ?? []).reduce((a, x) => a + x.bottles, 0); } }
+    { const r = s.history.reports.at(-1); if (r) { const y = Math.floor((s.month - 1) / 12); const Y = (years[y] ??= { dom: 0, exp: 0, tour: 0, op: 0, cash: 0, nw: 0, nwL: 0, bottlesDom: 0, bottlesExp: 0 }); Y.dom += r.sales.reduce((a, x) => a + x.revenue, 0); Y.exp += r.exportRevenue ?? 0; Y.tour += r.tourismRevenue ?? 0; Y.op += r.operatingCash ?? r.netCash; Y.cash = s.finance.cash; Y.nw = netWorth(s); Y.nwL = netWorthLegacy(s); Y.bottlesDom += r.sales.reduce((a, x) => a + x.bottles, 0); Y.bottlesExp += (r.exports ?? []).reduce((a, x) => a + x.bottles, 0); } }
     if (s.month === 12) spirits12 = spiritsValue(s);
     if ([36, 72, 108, 144].includes(s.month)) cands.push(s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c)).length);
     if (s.month === 60) split.spiritsGainY2to5 = spiritsValue(s) - spirits12;
@@ -670,7 +675,7 @@ function play(p: Policy, seed: number): Row {
     endBankrupt: s.status === 'bankrupt',
     eligibleAtWindow: s.inventory.casks.some((c) => caskEligibility(s, c).eligible) || (s.commerce.lots ?? []).some((l) => l.eligibleAtBottling && l.bottles > 0),
   });
-  return { mid: Object.fromEntries((s.progress.midGoals ?? []).map((g) => [g.id, g.result])), retailRev, ...(s.hr.staff.find((x) => x.keySpecialist) ? { ks: s.hr.staff.find((x) => x.keySpecialist)!.role } : {}), win, winFail: t.winFail?.length ?? 0, v16: rulesVersionOf(s) === 'v16', ...(s.progress.win ? { winKind: s.progress.win.kind } : {}), years, cands, flagCasks, split, cutMonth, policy: p.name, bankrupt3, bankrupt6, minCash, minCashMonth, loansMax, firstWhisky: t.firstWhisky, nw, goal: alive && bankrupt3 < 0 && !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', whiskyY6to9, outcome: outcome ?? outcomeOf(s, true), cap, month: tracker.summary(), nw166: nw166 ?? (outcome ?? outcomeOf(s, true)).netWorth };
+  return { mid: Object.fromEntries((s.progress.midGoals ?? []).map((g) => [g.id, g.result])), retailRev, ...(s.hr.staff.find((x) => x.keySpecialist) ? { ks: s.hr.staff.find((x) => x.keySpecialist)!.role } : {}), win, winFail: t.winFail?.length ?? 0, v16: rulesVersionOf(s) === 'v16', ...(s.progress.win ? { winKind: s.progress.win.kind } : {}), years, cands, flagCasks, split, cutMonth, policy: p.name, bankrupt3, bankrupt6, minCash, minCashMonth, loansMax, firstWhisky: t.firstWhisky, nw, goal: alive && bankrupt3 < 0 && !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', whiskyY6to9, outcome: outcome ?? outcomeOf(s, true), cap, month: tracker.summary(), nw166: nw166 ?? (outcome ?? outcomeOf(s, true)).netWorthLegacy, contamFills: t.contamFills ?? 0 };
 }
 
 const eok = (v: number) => (Number.isFinite(v) ? `${(v / 1e8).toFixed(2)}억` : '—');
@@ -754,6 +759,16 @@ if (METRICS) {
       const months = w.count.win ? `${w.winMonthMedian} · ${w.winMonthP10} · ${w.winMonthP90}개월` : '—';
       const cum = WIN_CURVE_MONTHS.map((m) => (Number.isFinite(w.cum[m]) ? pct(w.cum[m]) : '—')).join(' · ');
       console.log(`| ${p.name} | ${w.count.win}/${w.n} (${pct(w.ci.win[0])}~${pct(w.ci.win[1])}) | ${months} | ${kinds} | ${w.count.bankrupt}/${w.n} | ${w.count.ended}/${w.n} | ${w.count.censored_ready}/${w.n} | ${w.count.censored_none}/${w.n} | ${cum} | ${avg(rows.map((r) => r.winFail)).toFixed(1)} | ${rows.filter((r) => r.mid.reserve_casks === 'done').length}/${rows.length} | ${eok(avg(rows.map((r) => r.retailRev)))} | ${[...new Set(rows.map((r) => r.ks ?? '없음'))].map((k) => `${k} ${rows.filter((r) => (r.ks ?? '없음') === k).length}`).join(' · ')} |`);
+    }
+    // F5b 가치평가 3종(#317) — v16 판: ③처분 예상액 = netWorth · ②추정 시장가치 · ①장부 원가 · 옛 식(F5b 전 기준선 비교용 netWorthLegacy) · 담보 가치 q̂ 대 참 품질 · 숨은 오염 통 통입
+    console.log('\n| 정책 | ③ 처분 예상액 = 순자산 평균 · P10 | ② 추정 시장가치 평균 | ① 장부 원가 평균 | 옛 식 순자산 평균 · P10(F5b 전 비교) | 담보 가치 q̂ · 참 품질(평균) | 숨은 오염 통 통입(평균 통) | 파산 |');
+    console.log('|---|---|---|---|---|---|---|---|');
+    for (const p of RUN) {
+      const rows = (ALL.get(p.name) ?? []).filter((r) => r.v16 && r.outcome.v16);
+      if (!rows.length) continue;
+      const q = (xs: number[]) => quantile(xs, 0.1); // metrics.ts와 같은 P10 정의
+      const liq = rows.map((r) => r.outcome.netWorth), leg = rows.map((r) => r.outcome.netWorthLegacy), v = rows.map((r) => r.outcome.v16!);
+      console.log(`| ${p.name} | ${eok(avg(liq))} · ${eok(q(liq))} | ${eok(avg(v.map((x) => x.est)))} | ${eok(avg(v.map((x) => x.book)))} | ${eok(avg(leg))} · ${eok(q(leg))} | ${eok(avg(v.map((x) => x.collateralQhat)))} · ${eok(avg(v.map((x) => x.collateralTrue)))} | ${avg(rows.map((r) => r.contamFills)).toFixed(1)} | ${rows.filter((r) => !r.outcome.survived).length}/${rows.length} |`);
     }
   }
   // 시나리오 기간(180개월)보다 짧게 돌리면 끝나지 않은 판도 등급이 매겨져 모두 C로 보인다(ARCH #337 검토 — mvp-survival과 같게) → 등급 칸은 "판 중간"
@@ -864,7 +879,7 @@ if (CALIB) {
   const bk = x0.filter((r) => !r.outcome.survived).length, h2lim = human ? 0 : 1;
   const h2 = `${bk <= h2lim ? '통과' : '불통과'} — 파산 ${bk}/${x0.length}(게임 규칙, 기준 ${human ? 'standard 0' : 'micro ≤ 1'})`;
   const yrs = Object.keys(HUMAN_REF.years).map(Number);
-  const yrow = yrs.map((y) => { const m = avg(x0.map((r) => r.years[y - 1]?.nw ?? NaN).filter(Number.isFinite)) / 1e8, [hv, ref] = HUMAN_REF.years[y]!; const d = m - hv; return { y, m, hv, d, ref, ok: Math.abs(d) <= Math.abs(ref) + 0.5 }; });
+  const yrow = yrs.map((y) => { const m = avg(x0.map((r) => r.years[y - 1]?.nwL ?? NaN).filter(Number.isFinite)) / 1e8, [hv, ref] = HUMAN_REF.years[y]!; const d = m - hv; return { y, m, hv, d, ref, ok: Math.abs(d) <= Math.abs(ref) + 0.5 }; });
   const loan = avg(x0.map((r) => r.loansMax));
   const h3 = !human ? '해당 없음(사람 판은 standard)' : `${yrow.every((r) => r.ok) ? '통과' : '확인 필요'} — 연말 계단 차이가 기준 차이(+0.5억 여유) 안: ${yrow.filter((r) => r.ok).length}/${yrow.length} · 최대 대출 평균 ${eok(loan)}(사람 ${eok(HUMAN_REF.loan)} 한 건)`;
   const strip = (r: Row) => JSON.stringify({ ...r, policy: '' });

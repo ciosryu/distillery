@@ -23,6 +23,7 @@ import { nid, staffOf, warehouseCapacity } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
 import { addCost, scaleLedger, splitLedger } from './ledger';
 import { dropLots } from './lots';
+import { usesObservedValuation } from './valuation';
 
 // 플레이어 행동 — 생산·숙성·블렌딩 (PROD) (결정 #144 — 파일 쪼개기로 actions.ts에서 옮겨 왔다. 규칙 불변)
 // 행동을 더할 때: 아래 타입·처리기·현금 분류 세 곳만 고친다. 코어(actions.ts)는 이 파일의 타입을 통째로 합친다
@@ -371,7 +372,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
       const ci = s.inventory.casks.findIndex((c) => c.id === id);
       const cask = s.inventory.casks[ci];
       if (!cask || cask.contents || lotLeftL < 1) continue;
-      if (cask.contamination) continue;
+      if (usesObservedValuation(s) ? cask.contaminationKnown : cask.contamination) continue; // F5b #310 2단계: 새 판은 아는 오염만 건너뛴다(모르는 오염 통에 넣는 것이 규칙). 옛 판은 숨은 값 그대로(바이트 동일)
       const caskLPA = cask.sizeL * entry;
       const needL = caskLPA / lot.abv;
       const useL = Math.min(needL, lotLeftL);
@@ -442,7 +443,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (!from?.contents) return fail(prev, '옮길 원액이 든 캐스크가 없습니다');
     if (from.owner) return fail(prev, '고객 소유 캐스크입니다');
     if (!to || to.contents) return fail(prev, '빈 캐스크로만 옮길 수 있습니다');
-    if (to.contamination) return fail(prev, '이 통은 쓸 수 없습니다 (오염 통은 재탄화해야 다시 쓸 수 있다)');
+    if (usesObservedValuation(s) ? to.contaminationKnown : to.contamination) return fail(prev, '이 통은 쓸 수 없습니다 (오염 통은 재탄화해야 다시 쓸 수 있다)'); // F5b: 새 판은 아는 오염만
     if (!canFinishInto(to.typeId)) return fail(prev, '피니싱은 버번·셰리 시즈닝 캐스크로만 할 수 있습니다 (다른 캐스크는 테크 WHI-3 해금 후)');
     if (to.typeId === from.typeId) return fail(prev, '같은 종류의 캐스크로는 피니싱이 되지 않습니다');
     const lot = from.contents;
