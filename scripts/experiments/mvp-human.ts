@@ -57,7 +57,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { handfillBlocker, handfillCask, hasHandfillZone } from '../../src/sim/handfill';
 import { applyMgtKnobs, applyTierKnobs, hireSales, mgtPolicy } from './mgtKnobs';
 import { applyProdKnobs } from './prodKnobs';
-import { achieved, comparePaired, MonthTracker, outcomeOf, summarize, type RunOutcome } from './metrics';
+import { achieved, comparePaired, MonthTracker, outcomeOf, summarize, summarizeWin, winOutcomeOf, WIN_CURVE_MONTHS, type RunOutcome, type WinOutcome } from './metrics';
+import { caskEligibility } from '../../src/sim/ledger';
+import { rulesVersionOf } from '../../src/sim/rules';
 import { protectedCaskIds } from '../../src/sim/tags';
 import { liquidity, spiritCapital } from './capitalCost';
 import { bestAutoPrice, currentSuggested, supplyHorizon } from '../../src/sim/economics';
@@ -432,7 +434,7 @@ const has = (s: GameState, id: string) => s.finance.loans.some((l) => l.offerId 
 function keptCasks(s: GameState, p: Policy): Set<string> {
   const late = p.protectFrom && s.month >= p.protectFrom[0];
   const n = late ? p.protectFrom![1] : GAME_TAGS ? 0 : p.protect;
-  const own = n ? s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c)).sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths).slice(0, n).map((c) => c.id) : [];
+  const own = n ? s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c, 'reserve')).sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths).slice(0, n).map((c) => c.id) : []; // 보호는 'reserve' 지평(F4 — [결정 #325 고침])
   return GAME_TAGS ? new Set([...protectedCaskIds(s), ...own]) : new Set(own);
 }
 
@@ -500,12 +502,13 @@ const spiritsValue = (s: GameState) => [...s.inventory.lots, ...s.inventory.cask
 
 interface Split { cash: number; loans: number; spirits: number; products: number; whiskyRevY6to9: number; whiskyRevY10to15: number; spiritsGainY2to5: number; productionY2to5: number }
 interface Year { dom: number; exp: number; tour: number; op: number; cash: number; nw: number; bottlesDom: number; bottlesExp: number }
-interface Row { years: Year[]; cands: number[]; flagCasks: number; split: Split; cutMonth: number; policy: string; bankrupt3: number; bankrupt6: number; minCash: number; minCashMonth: number; loansMax: number; firstWhisky: number; nw: number; goal: boolean; verdict: string; whiskyY6to9: number; outcome: RunOutcome; cap: Cap; month: ReturnType<MonthTracker['summary']>; nw166: number }
+interface Row { years: Year[]; cands: number[]; flagCasks: number; split: Split; cutMonth: number; policy: string; bankrupt3: number; bankrupt6: number; minCash: number; minCashMonth: number; loansMax: number; firstWhisky: number; nw: number; goal: boolean; verdict: string; whiskyY6to9: number; outcome: RunOutcome; cap: Cap; month: ReturnType<MonthTracker['summary']>; nw166: number; /** 새 승리 판정(F4 · P-MGT-46) — v16 판만 표에 낸다 */ win: WinOutcome; v16: boolean; winKind?: string }
 /** 자본·유동성(MGT-C) — 6년 안 최저 현금·최저 런웨이, 현금 < 0 개월, 원액 시가 최고·그 달, 72개월 원액 비중, 이자 합계 */
 interface Cap { minCash72: number; minRunway72: number; negMonths: number; peakSpirit: number; peakSpiritMonth: number; spiritShare72: number; interest: number; minCash36: number; spirit60: number; cash96: number; cash180: number }
 
 function play(p: Policy, seed: number): Row {
   let s = applyTierKnobs(newScenarioGame({ scenarioId: 'mvp_kr', tierId: TIER, loanAmount: LOAN, seed }));
+  if (process.env.RULES === 'legacy') s.rulesVersion = 'legacy-v15'; // RULES=legacy → X0L(옛 판정 참고 판, F4 바이트 동일 검사). 윗줄은 PROD 래퍼(prod-sample-p8.ts)가 글자 그대로 찾아 패치하므로 바꾸지 않는다
   const t = { firstWhisky: -1 };
   if (p.visitor && p.visitorAt == null) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_basic' });
   if (p.equipAt == null) s = buyEquip(s, p);
@@ -599,8 +602,17 @@ function play(p: Policy, seed: number): Row {
   Object.assign(split, { cash: s.finance.cash, loans: s.finance.loans.reduce((x, l) => x + l.balance, 0), spirits: spiritsValue(s), products: s.commerce.products.reduce((x, q) => x + q.stockBottles * q.unitCost, 0) });
   const nw = alive ? netWorth(s) : NaN;
   const v = s.progress.verdict;
-  const flagCasks = s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.kind === 'malt' && c.contents.oakMonths >= (s.scenario?.goal.flagshipMinMonths ?? 144)).length;
-  return { years, cands, flagCasks, split, cutMonth, policy: p.name, bankrupt3, bankrupt6, minCash, minCashMonth, loansMax, firstWhisky: t.firstWhisky, nw, goal: alive && bankrupt3 < 0 && !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', whiskyY6to9, outcome: outcome ?? outcomeOf(s, true), cap, month: tracker.summary(), nw166: nw166 ?? (outcome ?? outcomeOf(s, true)).netWorth };
+  const flagCasks = s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.kind === 'malt' && c.contents.oakMonths >= campaignMinOakMonths(s)).length;
+  // 새 승리 판정(F4, P-MGT-46 · 결정 #312·#324): 도구는 승리를 스스로 판정하지 않는다 — 게임의 progress.win · status · 통 단위 적격성(caskEligibility)·병입 로트 적격 표시만 읽는다
+  const ended = s.status !== 'running';
+  const win = winOutcomeOf({
+    window: MONTHS,
+    winMonth: s.progress.win?.month,
+    endMonth: ended ? (s.progress.ending?.month ?? s.month) : undefined,
+    endBankrupt: s.status === 'bankrupt',
+    eligibleAtWindow: s.inventory.casks.some((c) => caskEligibility(s, c).eligible) || (s.commerce.lots ?? []).some((l) => l.eligibleAtBottling && l.bottles > 0),
+  });
+  return { win, v16: rulesVersionOf(s) === 'v16', ...(s.progress.win ? { winKind: s.progress.win.kind } : {}), years, cands, flagCasks, split, cutMonth, policy: p.name, bankrupt3, bankrupt6, minCash, minCashMonth, loansMax, firstWhisky: t.firstWhisky, nw, goal: alive && bankrupt3 < 0 && !!s.scenario && nw >= s.scenario.equity * s.scenario.goal.netWorthMultiple, verdict: v ? `${v.result}${v.grade ? ':' + v.grade : ''}` : '-', whiskyY6to9, outcome: outcome ?? outcomeOf(s, true), cap, month: tracker.summary(), nw166: nw166 ?? (outcome ?? outcomeOf(s, true)).netWorth };
 }
 
 const eok = (v: number) => (Number.isFinite(v) ? `${(v / 1e8).toFixed(2)}억` : '—');
@@ -672,6 +684,20 @@ if (process.env.P7 || process.env.P8) {
 if (METRICS) {
   // 판정 지표 (MGT-D, REQ-MGT-4) — 순자산 통계는 파산 판도 넣는다(파산한 달의 순자산)
   const pct = (x: number) => `${Math.round(x * 100)}%`;
+  // 새 승리 판정 (F4 · P-MGT-46 · 결정 #308·#312·#324) — v16 판에서만 낸다(옛 판 RULES=legacy = X0L은 지금 표 그대로, 바이트 동일).
+  // 승리 달은 합격선이 아니라 기록 지표(#312). 관측 종료는 파산과 섞지 않는다 — 적격 원액이 있는데 못 판 판(출고 실패)과 없는 판을 나눈다
+  if (RUN.some((p) => (ALL.get(p.name) ?? []).some((r) => r.v16))) {
+    console.log(`\n| 정책 | 승리 (95% CI) | 승리 달 중앙 · P10 · P90 | 승리 거래 | 파산 | 기타 종료 | 관측 종료 · 적격 있음(출고 실패) | 관측 종료 · 적격 없음 | 누적 승리 ${WIN_CURVE_MONTHS.join(' · ')}개월 |`);
+    console.log('|---|---|---|---|---|---|---|---|---|');
+    for (const p of RUN) {
+      const rows = ALL.get(p.name) ?? [];
+      const w = summarizeWin(rows.map((r) => r.win));
+      const kinds = [...new Set(rows.flatMap((r) => (r.winKind ? [r.winKind] : [])))].map((k) => `${k} ${rows.filter((r) => r.winKind === k).length}`).join(' · ') || '—';
+      const months = w.count.win ? `${w.winMonthMedian} · ${w.winMonthP10} · ${w.winMonthP90}개월` : '—';
+      const cum = WIN_CURVE_MONTHS.map((m) => (Number.isFinite(w.cum[m]) ? pct(w.cum[m]) : '—')).join(' · ');
+      console.log(`| ${p.name} | ${w.count.win}/${w.n} (${pct(w.ci.win[0])}~${pct(w.ci.win[1])}) | ${months} | ${kinds} | ${w.count.bankrupt}/${w.n} | ${w.count.ended}/${w.n} | ${w.count.censored_ready}/${w.n} | ${w.count.censored_none}/${w.n} | ${cum} |`);
+    }
+  }
   // 시나리오 기간(180개월)보다 짧게 돌리면 끝나지 않은 판도 등급이 매겨져 모두 C로 보인다(ARCH #337 검토 — mvp-survival과 같게) → 등급 칸은 "판 중간"
   const gradeCols = (m: ReturnType<typeof summarize>) => (MONTHS < 180 ? `— (판 중간 ${MONTHS}/180개월) | —` : `${m.grades.S}/${m.grades.A}/${m.grades.B}/${m.grades.C}/${m.grades.F} | ${pct(m.bPlus)} · ${pct(m.aPlus)} · ${pct(m.sRate)}`);
   console.log('\n| 정책 | 생존 | 순자산 목표 달성 (95% CI) | 플래그십 판매 (품질 중앙) | 등급 S/A/B/C/F | B↑ · A↑ · S | 순자산 평균(전 판) · 중앙 · P10 · 하위 20% 평균 | 생존 판 평균 | 목표 | 인지도 중앙 |');

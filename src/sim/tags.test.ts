@@ -7,7 +7,7 @@ import { caskTagIds, FLAGSHIP_RESERVE_TAG, planTag, protectedCaskIds, reserveCas
 // 캐스크 태그 (#249 ①) · 플래그십 예비 통 (#260) — 코어 ARCH
 
 function withCasks(oaks: [string, number][], month = 96): GameState {
-  const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+  const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' });
   s.month = month; // 남은 84개월 — 60개월 이상 통이 12년 후보
   s.inventory.casks = [];
   for (const [id, oak] of oaks) {

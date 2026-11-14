@@ -4,6 +4,8 @@ import { advanceMonth, advanceMonths, advanceUntil, applyAction, DEFAULT_STOPS, 
 import fixture from './fixtures/save-v9.json';
 
 const micro = (seed = 4) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed });
+/** 옛 판(legacy-v15) — 180개월 강제 판정·flagship_sold 판정을 그대로 검사한다(F4 뒤 분기 보존, core-integration §5) */
+const legacy = (seed = 4) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed, rules: 'legacy-v15' });
 const ids = (s: GameState) => s.progress.milestones.map((m) => m.id);
 const product = (over: Partial<Product>): Product => ({ id: 'P', name: 'p', category: 'whisky', ageYears: 12, oakMonths: 150, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 85, typicity: 80, style: null, sourcedShare: 0, stockBottles: 0, price: 120_000, unitCost: 30_000, createdMonth: 0, lastMonthSold: 0, totalSold: 0, ...over });
 
@@ -53,8 +55,8 @@ describe('목표 판정 (S-9, MVP §3)', () => {
     expect(advanceMonths(newGame({ seed: 1 }), 6).progress.verdict).toBeUndefined();
   });
 
-  it('시나리오 목표 기간이 끝나면 한 번 판정하고, 자동 진행은 거기서 멈춘다', () => {
-    const s = micro();
+  it('옛 판: 시나리오 목표 기간이 끝나면 한 번 판정하고, 자동 진행은 거기서 멈춘다', () => {
+    const s = legacy();
     s.scenario!.goal.months = 4;
     const r = advanceUntil(s, { months: 12, stopOn: DEFAULT_STOPS });
     expect(r.stoppedBy).toBe('verdict');
@@ -131,7 +133,7 @@ describe('순자산 (S-9) — 지금 정리하면 받는 돈', () => {
 
 describe('결과 확인 → 계속 운영 (S-9)', () => {
   it('판정이 없으면 실패, 있으면 확인 표시만 하고 게임은 계속된다', () => {
-    const s = micro();
+    const s = legacy();
     expect(applyAction(s, { type: 'acknowledgeVerdict' }).error).toBeDefined();
     s.scenario!.goal.months = 2;
     const t = advanceMonths(s, 2);
