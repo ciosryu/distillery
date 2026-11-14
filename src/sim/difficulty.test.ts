@@ -84,10 +84,12 @@ describe('F6a — 난이도 스냅샷은 v16 새 판에만, 없으면 Normal', (
 describe('F6a — 정적: 플레이 중 변경 입구 없음 · 승리 자격·순자산 정의·숙성 물리는 난이도를 읽지 않는다', () => {
   const sim = join(__dirname);
   const src = (f: string) => readFileSync(join(sim, f), 'utf8');
-  it('actions*.ts는 difficulty를 쓰지 않는다(플레이 중 불변 — 입구가 없다)', () => {
+  it('actions*.ts는 difficulty에 **쓰지** 않는다(플레이 중 불변 — 입구가 없다). 읽기(knob·levelOf·*Knobs.ts import)는 허용', () => {
     const files = readdirSync(sim).filter((f) => /^actions.*\.ts$/.test(f) && !f.endsWith('.test.ts'));
     expect(files.length).toBeGreaterThan(0);
-    for (const f of files) expect(src(f).includes('difficulty'), f).toBe(false);
+    // 쓰기 = 대입 `… .difficulty =` · 객체 리터럴 키 `difficulty:` · `delete …difficulty`. `difficultyOf(s)`·`knob(s, …)`·`import … from './mgtKnobs'`는 걸리지 않는다
+    const WRITE = /\.difficulty\s*=[^=]|\bdifficulty\s*:|delete\s+[\w.[\]'"]*difficulty/;
+    for (const f of files) for (const [i, line] of src(f).split('\n').entries()) expect(WRITE.test(line), `${f}:${i + 1} ${line.trim()}`).toBe(false);
   });
   it('rules.ts 밖의 승리·평가·숙성 모듈은 knob( 를 부르지 않는다', () => {
     for (const f of ['ledger.ts', 'valuation.ts', 'progress.ts', 'maturation.ts', 'warehouse.ts', 'lots.ts', 'saleEvents.ts']) expect(/\bknob\(/.test(src(f)), f).toBe(false);
