@@ -5,7 +5,7 @@ import { factoringProceeds, insurancePremium, insuredInventoryValue, insuredProp
 import { isUnlocked } from '../../sim/research';
 import { isLocked } from '../../sim';
 import { INVESTMENT_OFFERS } from '../../sim/content/catalog';
-import { annuityPayment, availableLoans, forfeitedLoanRoom, currentLoanPayment, monthlyFixedCost as monthlyFixed, inventoryCollateral, inventoryLoanRoom, inventoryLtv, loanTerms, monthLabel } from '../../sim';
+import { annuityPayment, availableLoans, effectiveOffer, forfeitedLoanRoom, currentLoanPayment, monthlyFixedCost as monthlyFixed, inventoryCollateral, inventoryLoanRoom, inventoryLtv, loanTerms, monthLabel } from '../../sim';
 import { useGame } from '../../store/game';
 import { BoardCard } from './Board';
 import { ForecastCard } from './Forecast';
@@ -24,7 +24,7 @@ export function Finance() {
       <Card title="대출 상품">
         <LoanRoom />
         <Table head={['상품', '금리', '기간', '거치', '한도', '조건', '신청 금액', '실행하면 월 납부', '']}>
-          {LOAN_OFFERS.filter((o) => (!o.regions || o.regions.includes(s.regionId)) && (o.collateral !== 'inventory' || inventoryLtv(s) > 0)).map((o) => {
+          {LOAN_OFFERS.map((b) => effectiveOffer(s, b)).filter((o) => (!o.regions || o.regions.includes(s.regionId)) && (o.collateral !== 'inventory' || inventoryLtv(s) > 0)).map((o) => {
             const amt = (amounts[o.id] ?? 0) * 1e6;
             const using = s.finance.loans.some((l) => l.offerId === o.id);
             const locked = o.requires === 'producedSoju' && !s.production.flags.producedSoju;

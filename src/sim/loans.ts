@@ -14,6 +14,7 @@ import { isLocked } from './scenario';
 import { houseBrand } from './brands';
 import { AWARENESS } from './market';
 import { mod } from './modifiers';
+import { inventoryLtvMul, loanGraceMul, loanLimitMul, loanRateMul, mul } from './mgtKnobs';
 
 // 대출·재고 담보대출·월 고정비·재무 단계(틱 7) (파트 MGT, 결정 #144 — 파일 쪼개기로 옮겨 왔다. 규칙·수치 불변)
 
@@ -28,7 +29,18 @@ export function inventoryCollateral(s: GameState): number {
   return s.inventory.casks.reduce((t, c) => t + (c.contents && !c.owner && isBulkKind(c.contents) ? c.contents.volumeL * c.contents.abv * bulkValuePerLPA(s, c.contents) : 0), 0);
 }
 
-export const inventoryLtv = (s: Pick<GameState, 'regionId' | 'siteId'>) => siteOf(s).inventoryLtv ?? 0;
+export const inventoryLtv = (s: Pick<GameState, 'regionId' | 'siteId' | 'difficulty'>) => mul(siteOf(s).inventoryLtv ?? 0, inventoryLtvMul(s)); // 난이도 finance.inventoryLtv(F6b)
+
+/**
+ * 난이도를 반영한 대출 상품(F6b — finance.loanRate·loanLimit·loanGrace). Normal(모두 1)이면 **같은 객체**를 돌려준다(출력 바이트 동일).
+ * 급전(`emergency`)은 법정 최고금리 연 20%를 넘지 않는다. 거치는 기간 − 1개월 이하. 실행(`takeLoan`)·화면(`availableLoans`·Finance)이 같은 값을 쓴다
+ */
+export function effectiveOffer(s: Pick<GameState, 'difficulty'>, o: LoanOfferDef): LoanOfferDef {
+  const r = loanRateMul(s), l = loanLimitMul(s), g = loanGraceMul(s);
+  if (r === 1 && l === 1 && g === 1) return o;
+  const annualRate = o.emergency ? Math.min(0.2, mul(o.annualRate, r)) : mul(o.annualRate, r);
+  return { ...o, annualRate, max: Math.round(mul(o.max, l) / 1_000_000) * 1_000_000, graceMonths: Math.min(o.termMonths - 1, Math.round(mul(o.graceMonths, g))) };
+}
 
 const isInventoryLoan = (offerId: string) => LOAN_OFFERS.find((o) => o.id === offerId)?.collateral === 'inventory';
 
@@ -73,7 +85,8 @@ export interface LoanOption { offer: LoanOfferDef; /** 지금 신청할 수 있�
 export function availableLoans(s: GameState): LoanOption[] {
   if (isLocked(s, 'action:takeLoan')) return [];
   const out: LoanOption[] = [];
-  for (const o of LOAN_OFFERS) {
+  for (const base of LOAN_OFFERS) {
+    const o = effectiveOffer(s, base);
     if (o.regions && !o.regions.includes(s.regionId)) continue;
     if (s.finance.loans.some((l) => l.offerId === o.id)) continue;
     if (o.collateral === 'inventory') {

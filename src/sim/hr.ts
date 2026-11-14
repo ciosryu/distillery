@@ -6,6 +6,7 @@ import type { Candidate, GameState, Staff, StaffRole, StaffTrait } from './types
 import { houseBrand } from './brands';
 import { stagesOf, systemOn } from './scenario';
 import { rulesVersionOf } from './rules';
+import { staffLaborCost, wageDrift } from './mgtKnobs';
 import { nid } from './util';
 import { addModifier, isActive, mod } from './modifiers';
 import type { MonthReport } from './types';
@@ -27,7 +28,7 @@ export function makeCandidate(s: GameState, rng: Rng, role?: StaffRole, fixedId?
   const id = fixedId ?? nid(s, 'C');
   const traits = rollTraits(s, id, r, stats);
   const level = 1 + Math.floor(((stats.a + stats.b + stats.c) / 3) / 30);
-  const salary = salaryFor(r, stats, level, regionOf(s).laborCost);
+  const salary = salaryFor(r, stats, level, staffLaborCost(s));
   const pool = regionOf(s).namePool;
   return {
     id,
@@ -110,7 +111,7 @@ export const moraleOn = (s: Pick<GameState, 'scenario'>) => systemOn(s, 'hr');
 
 /** 이 직원의 지금 시세 월급 (레벨·스탯·지역 인건비 기준, 부사수는 60%) */
 export function marketSalary(s: Pick<GameState, 'regionId'>, x: Staff): number {
-  const m = salaryFor(x.role, x.stats, x.level, regionOf(s).laborCost);
+  const m = salaryFor(x.role, x.stats, x.level, staffLaborCost(s));
   return x.apprenticeOf ? m * MORALE.apprenticePay : m;
 }
 /** 시세보다 덜 받는 비율 (0 = 시세 이상) */
@@ -238,7 +239,7 @@ export function trainStaff(s: GameState, staffId: string): string | null {
   return null;
 }
 
-export const headhuntCost = (s: GameState, role: StaffRole) => Math.round(ROLE_INFO[role].baseSalary * regionOf(s).laborCost * HEADHUNT.costMonths);
+export const headhuntCost = (s: GameState, role: StaffRole) => Math.round(ROLE_INFO[role].baseSalary * staffLaborCost(s) * HEADHUNT.costMonths);
 export const headhuntedThisMonth = (s: Pick<GameState, 'world' | 'month'>, role: StaffRole) => !!marked(s, `headhunt:${role}`);
 /** 헤드헌팅 — 비용을 내고 스탯이 높은 후보 1명을 지금 받는다. 후보 난수는 따로(채용 풀 갱신과 무관). 실패하면 이유 */
 export function headhunt(s: GameState, role: StaffRole): string | Candidate {
@@ -251,7 +252,7 @@ export function headhunt(s: GameState, role: StaffRole): string | Candidate {
   const id = nid(s, 'C');
   const traits = rollTraits(s, id, role, stats);
   const level = 1 + Math.floor(((stats.a + stats.b + stats.c) / 3) / 30);
-  const salary = salaryFor(role, stats, level, regionOf(s).laborCost);
+  const salary = salaryFor(role, stats, level, staffLaborCost(s));
   const pool = regionOf(s).namePool;
   const c: Candidate = {
     id, name: `${rng.pick(pool.surnames)}${rng.pick(pool.given)}`, role, level, xp: 0, stats, salary, askSalary: salary, hiredMonth: -1,
@@ -344,6 +345,12 @@ export function hrOpenedThisMonth(s: Pick<GameState, 'scenario' | 'month' | 'rul
 export function runStaffLifecycle(s: GameState, report: MonthReport, rng: Rng): void {
   // 단계가 HR을 연 달에는 분기 갱신을 기다리지 않고 채용 후보를 바로 채운다 — 독립 난수라 다른 결과는 그대로
   if (hrOpenedThisMonth(s) && !s.hr.candidates.length) refreshCandidates(s, rngFor(s.seed, s.month, 'candidates:stage'));
+  // 정기 임금 상승(F6b — 난이도 finance.wageDrift, 1이면 아무 일도 없다): 매년 1월(달 % 12 = 0, 첫 달 제외) 전 직원 급여 × 배수
+  const drift = wageDrift(s);
+  if (drift !== 1 && s.month > 0 && s.month % 12 === 0 && s.hr.staff.length) {
+    for (const x of s.hr.staff) x.salary = Math.round(x.salary * drift);
+    report.notes.push(`정기 임금 조정 — 전 직원 급여 ×${drift.toFixed(3)} (난이도)`);
+  }
   const master = masterDistiller(s);
   if (master) s.hr.houseStyle = clamp(s.hr.houseStyle + 0.4 * (master.stats.c / 60), 0, 100);
   for (const x of [...s.hr.staff]) {
