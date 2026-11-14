@@ -51,7 +51,7 @@ import { advanceMonth, applyAction, isWhiskyCategory, newScenarioGame as newScen
 import { setDefaultRulesVersion } from '../../src/sim/newScenario';
 import { p8Hooks, type P8Api } from './p8Hooks';
 import { specialistOffers, type SpecialistRole } from '../../src/sim/hr';
-// RULES=legacy → X0L(옛 판정 참고 판 — F4·F5 바이트 동일 검사). 생성 **전에** 기본 규칙을 바꾼다(F5a: 잠금·주종·프리셋이 생성 때 규칙으로 갈린다). PROD 래퍼가 글자 그대로 찾는 `newScenarioGame(...)` 줄은 그대로
+// RULES=legacy → X0L(옛 판정 참고 판 — F4·F5 바이트 동일 검사). 생성 **전에** 기본 규칙을 바꾼다(F5a: 잠금·주종·프리셋이 생성 때 규칙으로 갈린다)
 if (process.env.RULES === 'legacy') setDefaultRulesVersion('legacy-v15');
 import { EVENTS } from '../../src/sim/content/events';
 import { cashAlert } from '../../src/ui/alerts';
@@ -63,7 +63,7 @@ import { isFlagshipCandidate } from '../../src/sim/delegateCheck';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { handfillBlocker, handfillCask, hasHandfillZone } from '../../src/sim/handfill';
 import { applyMgtKnobs, applyTierKnobs, DIFF, hireSales, mgtPolicy } from './mgtKnobs';
-/** 판 만들기 — `DIFF=`(F6c)가 있으면 사업 계획서에 난이도를 넣는다. 없으면 지금 그대로. play()의 생성 줄은 PROD 래퍼(prod-sample-p8)가 글자 그대로 찾으므로 이름을 그대로 쓴다 */
+/** 판 만들기 — `DIFF=`(F6c)가 있으면 사업 계획서에 난이도를 넣는다. 없으면 지금 그대로 */
 const newScenarioGame = (plan: BusinessPlan) => newScenarioGameCore(DIFF ? { ...plan, difficulty: DIFF } : plan);
 import { applyProdKnobs } from './prodKnobs';
 import { achieved, comparePaired, MonthTracker, outcomeOf, quantile, summarize, summarizeWin, winOutcomeOf, WIN_CURVE_MONTHS, type RunOutcome, type WinOutcome } from './metrics';
@@ -341,7 +341,7 @@ function buyEquip(s: GameState, p: Policy): GameState {
   return s;
 }
 
-/** F5b 측정: 지금 판의 숨은 오염 통 통입 카운터 — play()가 판마다 건다. 인자로 넘기지 않는 이유: P8 래퍼(mkt-p8v·prod-hold-p8)가 play() 안의 fill 호출 줄(인자 둘)을 글자 그대로 찾아 패치한다 — 그 줄을 바꾸지 말 것 */
+/** F5b 측정: 지금 판의 숨은 오염 통 통입 카운터 — play()가 판마다 건다(fill의 기본 인자) */
 let FILL_COUNTER: { contamFills: number } | null = null;
 function fill(s: GameState, p?: Policy, cnt: { contamFills: number } | null = FILL_COUNTER): GameState {
   if (p?.fillStopAt != null && s.month >= p.fillStopAt) return s;
@@ -429,6 +429,7 @@ function bottleAs(s: GameState, p: Policy, comps: { source: 'lot' | 'cask'; id: 
   }
   // 게임 자동 납품(AUTORESTOCK): 새로 만든 위스키 제품에 켠다 — 쓸 통의 최소 숙성은 표기(기본)
   if (p.autoRestock && isWhiskyCategory(cat)) for (const x of s.commerce.products.filter((y) => y.category === cat && !y.autoRestock && !y.dutyFreeOnly && !y.name.startsWith('플래그십'))) s = act(s, { type: 'setAutoRestock', productId: x.id, months: p.autoRestock });
+  // ⚠ prod-hold-p8 「-L」이 이 자리에서 아래 가격 처리 줄들을 같은 순서로 대신한다 — 바꾸면 PROD에 알릴 것(p8Hooks.ts priceAfterBottle)
   { const h = H.priceAfterBottle?.(s, p, opts, cat, P8_API); if (h) return h; } // @hook:price-after-bottle
   if (p.pricePolicy) s = policyAfterBottle(s, p, cat);
   // engineA(CALIB H4): 같은 자리에서 옛 명령(setAutoPrice) 대신 3정책 엔진의 A(setPricePolicy turnover, 결정 #291 ②)를 켠다 — 둘이 같은 판을 내는지 본다
@@ -458,7 +459,7 @@ function bottle(s: GameState, p: Policy, t: { firstWhisky: number; flagshipDone?
   if (p.flagship && !t.flagshipDone) {
     const minM = campaignMinOakMonths(s);
     const fo = H.caskOrder?.(s, p, 'flagship'); // @hook:cask-order
-    const fl = H.flagshipCasks?.(s, p, minM, P8_API) || (fo ? s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.kind === 'malt' && c.contents.oakMonths >= minM).sort(fo).slice(0, p.protect || 2) : null) || s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.kind === 'malt' && c.contents.oakMonths >= minM).sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths).slice(0, p.protect || 2);
+    const fl = H.flagshipCasks?.(s, p, minM, P8_API) || s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.kind === 'malt' && c.contents.oakMonths >= minM).sort(fo ?? ((a, b) => b.contents!.oakMonths - a.contents!.oakMonths)).slice(0, p.protect || 2);
     if (fl.length) { // @hook:flagship-casks
       const before = s;
       s = bottleAs(s, { ...p, lineup: undefined }, fl.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL })), { name: '플래그십', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' }, 'whisky');
@@ -535,8 +536,8 @@ function keptCasksDefault(s: GameState, p: Policy): Set<string> {
   const late = p.protectFrom && s.month >= p.protectFrom[0];
   const game = GAME_TAGS || (!!p.gameTags && rulesVersionOf(s) === 'v16'); // X0W(#320): 게임 예비 4통 — 옛 판에서는 자기 규칙(X0L 바이트 동일)
   const n = late ? p.protectFrom![1] : game ? 0 : p.protect;
-  const ko = n ? H.caskOrder?.(s, p, 'kept') : undefined; // @hook:cask-order — 후보는 P8, 순서만 래퍼(PROD 요청 (나)). 아래 줄 끝은 PROD 래퍼가 글자로 찾으므로 그대로
-  const own = n && ko ? s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c, 'reserve')).sort(ko).slice(0, n).map((c) => c.id) : n ? s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c, 'reserve')).sort((a, b) => b.contents!.oakMonths - a.contents!.oakMonths).slice(0, n).map((c) => c.id) : []; // 보호는 'reserve' 지평(F4 — [결정 #325 고침])
+  const ko = n ? H.caskOrder?.(s, p, 'kept') : undefined; // @hook:cask-order — 후보는 P8, 순서만 래퍼
+  const own = n ? s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c, 'reserve')).sort(ko ?? ((a, b) => b.contents!.oakMonths - a.contents!.oakMonths)).slice(0, n).map((c) => c.id) : []; // 보호는 'reserve' 지평(F4 — [결정 #325 고침])
   return game ? new Set([...protectedCaskIds(s), ...own]) : new Set(own);
 }
 
@@ -584,8 +585,8 @@ function handfill(s: GameState, p: Policy): GameState {
   if (!hasHandfillZone(s) || handfillCask(s)) return s;
   const kept = keptCasks(s, p);
   { const h = H.handfillCask?.(s, p, kept, P8_API); if (h !== undefined) return h ? act(s, { type: 'setHandfillCask', caskId: h.id }) : s; } // @hook:handfill-cask
-  { const ho = H.caskOrder?.(s, p, 'handfill'); if (ho) { const c = s.inventory.casks.filter((x) => x.contents && !kept.has(x.id) && !isFlagshipCandidate(s, x) && !handfillBlocker(s, x)).sort(ho)[0]; return c ? act(s, { type: 'setHandfillCask', caskId: c.id }) : s; } } // @hook:cask-order
-  const c = s.inventory.casks.filter((x) => x.contents && !kept.has(x.id) && !isFlagshipCandidate(s, x) && !handfillBlocker(s, x)).sort((a, b) => a.contents!.oakMonths - b.contents!.oakMonths)[0];
+  const ho = H.caskOrder?.(s, p, 'handfill'); // @hook:cask-order
+  const c = s.inventory.casks.filter((x) => x.contents && !kept.has(x.id) && !isFlagshipCandidate(s, x) && !handfillBlocker(s, x)).sort(ho ?? ((a, b) => a.contents!.oakMonths - b.contents!.oakMonths))[0];
   return c ? act(s, { type: 'setHandfillCask', caskId: c.id }) : s;
 }
 
@@ -757,7 +758,7 @@ const ALL_RUN = process.env.P8 ? (process.env.DV ? DV_POLICIES : process.env.RC 
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
 // CALIB=1 (P8=1과 함께, B1-MGT-1 재보정 합격선 — 결정 #296 H1~H4): X0와 X0E(같은 판, 자동 가격만 3정책 엔진 A로 켬) 둘만 돌고 판정표를 낸다
 const CALIB = process.env.CALIB === '1' && !!process.env.P8;
-// RUN 줄은 그대로 둔다 — P8 래퍼(prodHoldPatch·prod-hold-p8·prod-sample-p8·prod-style-p8)가 이 줄을 글자 그대로 찾아 바꾼다. CALIB는 RUN을 만든 뒤에 바꾼다
+// CALIB는 RUN을 만든 뒤에 바꾼다. 래퍼는 RUN을 글자로 고치지 않고 끼움 자리 run(p8Hooks.ts)으로 바꾼다
 const RUN = ONLY ? ALL_RUN.filter((p) => ONLY.has(p.name.split(' ')[0]!)) : ALL_RUN;
 if (H.run) RUN.splice(0, RUN.length, ...H.run(RUN.slice())); // @hook:run
 if (CALIB) { const x0 = P8_POLICIES[0]!; RUN.splice(0, RUN.length, x0, P8('X0E X0 — 자동 가격을 3정책 엔진 A로(setPricePolicy turnover) · H4 확인용', { ...X0F, engineA: true })); }
