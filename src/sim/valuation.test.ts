@@ -5,7 +5,7 @@ import { inventoryCollateral, inventoryLoanRoom } from './loans';
 import { newScenarioGame } from './newScenario';
 import { netWorth, netWorthLegacy } from './progress';
 import { autoFillCasks } from './autoFill';
-import { BOTTLE_LIQ, QHAT_PRIOR, bookValue, bottleStockValue, collateralValue, estimatedValue, liquidationValue, prepaidObligations, qHat, trueQualityOf } from './valuation';
+import { BOTTLE_LIQ, QHAT_PRIOR, bookValue, bottleStockValue, collateralValue, estimatedValue, liquidationValue, prepaidObligations, qHat, recentSoldBottles, trueQualityOf } from './valuation';
 
 const v16 = (seed = 1) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed });
 const legacy = (seed = 1) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed, rules: 'legacy-v15' });
@@ -82,6 +82,20 @@ describe('valuation: rights.lien은 지금 아무 경로도 채우지 않는다 
 });
 
 describe('valuation: 병 재고 (#317 보강) · ① 장부는 시장·관측과 무관 (REQ-CORE-5 5)', () => {
+  it('최근 12개월 판매량은 모든 유상 채널의 판매 사건으로 센다 — 대형 유통 납품·수출도 들고, 사건이 없는 옛 결산은 소매 판매로(MKT 재현)', () => {
+    const s = v16(); stripInventory(s);
+    s.commerce.products.push({ id: 'P', name: 'p', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.4, bottleMl: 700, chillFiltered: true, packagingId: 'standard', flavor: {}, quality: 60, typicity: 70, style: null, sourcedShare: 0, stockBottles: 1000, price: 50_000, unitCost: 20_000, createdMonth: 0, lastMonthSold: 0, totalSold: 0 });
+    const ev = (kind: 'domestic' | 'export', bottles: number, channel?: 'retail_deal') => ({ month: 1, productId: 'P', lotId: 'P:0:0', bottles, unitPrice: 40_000, settlement: 'receivable' as const, kind, ...(channel ? { channel } : {}), eligibleAtSale: false });
+    s.history.reports = [
+      { month: 1, sales: [], saleEvents: [ev('domestic', 600, 'retail_deal'), ev('export', 100)] } as never, // 납품·수출만 — report.sales는 0
+      { month: 2, sales: [{ productId: 'P', name: 'p', bottles: 999, revenue: 0, demandBottles: 0 }] } as never, // 옛 결산(사건 없음) → 소매 판매로
+    ];
+    expect(recentSoldBottles(s, 'P')).toBe(600 + 100 + 999);
+    expect(bottleStockValue(s, 'liq')).toBe(1000 * 20_000); // 초과분 없음(판매 1,699 > 재고 1,000)
+    s.history.reports[0] = { month: 1, sales: [], saleEvents: [{ ...ev('domestic', 50), productId: 'handfill:C1' }] } as never; // 핸드필 가상 제품은 저절로 빠진다
+    expect(recentSoldBottles(s, 'P')).toBe(999);
+  });
+
   it('최근 12개월 판매량까지는 원가, 초과분은 처분 계수 · ②는 출고가', () => {
     const s = v16(); stripInventory(s);
     s.commerce.products.push({ id: 'P', name: 'p', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.4, bottleMl: 700, chillFiltered: true, packagingId: 'standard', flavor: {}, quality: 60, typicity: 70, style: null, sourcedShare: 0, stockBottles: 1000, price: 50_000, unitCost: 20_000, createdMonth: 0, lastMonthSold: 0, totalSold: 0 });

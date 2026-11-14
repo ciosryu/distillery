@@ -3,7 +3,9 @@
 // 같은 관측·다른 참 품질 짝 상태에서 세 값·담보 한도가 같다(REQ-CORE-5 1). 순수 함수 — 상태·난수를 바꾸지 않는다.
 //   ① bookValue      장부 원가 — 보험·세무·자본비용. 시장 지수·관측과 무관
 //   ② estimatedValue 추정 시장가치 — q̂의 bulkValuePerLPA(전량 포화·매입 할인 없음) + 병 재고 × 세전 출고가. 화면 "추정 가치"·가격 추천
-//   ③ liquidationValue 처분 예상액 — q̂의 spotBidPerLPA(전량 매각 포화·매입 할인·운송) + 병 재고 원가(12개월치 초과분은 처분 계수) − 남은 납품 의무(선급금). "지금 정리하면 받는 돈" = v16 netWorth
+//   ③ liquidationValue 처분 예상액 — q̂의 spotBidPerLPA(매입 할인·신뢰도·운송; **전량 매각 포화는 미적용** — lpa 0을 넘긴다. KR·JP는 그레인 현물 깊이가 없어 MVP 영향 0, 스코틀랜드 그레인만 과대 → F7, MKT 검토 2026-11-14)
+//      + 병 재고 원가(최근 12개월 **모든 유상 채널** 판매량 초과분은 처분 계수) − 남은 납품 의무(선급금). "지금 정리하면 받는 돈" = v16 netWorth
+//   범위 밖: 병입 제품 `Product.quality`의 공개(가격 책상·권장가·자동 가격·피드)는 이 파일이 다루지 않는다 — #310 "병입·판매 뒤 공개 예외 폐지"는 F5d(결정 대기 95, P-MKT-39)
 import { knownReads } from './blendTable';
 import { bulkValuePerLPA, isBulkKind, lotQuality, spotBidPerLPA } from './bulk';
 import { rulesVersionOf } from './rules';
@@ -39,9 +41,12 @@ const loans = (s: GameState) => s.finance.loans.reduce((t, l) => t + l.balance, 
 /** 선급금을 받고 아직 납품하지 않은 몫 — 재고는 한 번만 세고, 남은 의무는 부채로 한 번 뺀다(P-MGT-47 불변식 3) */
 export const prepaidObligations = (s: GameState): number => s.b2b.contracts.reduce((t, c) => t + Math.max(0, c.prepaidRemaining ?? 0), 0);
 
-/** 제품의 최근 k개월 판매 병 수(결산 기준) */
+/**
+ * 제품의 최근 k개월 **유상 출하** 병 수 — 결산의 판매 사건(F3 `saleEvents`: 국내 소매·면세·수출·대형 유통 납품·핸드필 모두)으로 센다.
+ * `report.sales`는 국내 소매만이라(MKT 재현: 납품 7,200병이 0으로 셈) 쓰지 않는다 — 사건이 없는 옛 결산(F3 전 세이브)만 `sales`로 대신한다
+ */
 export function recentSoldBottles(s: GameState, productId: string, months = BOTTLE_LIQ.months): number {
-  return s.history.reports.slice(-months).reduce((t, r) => t + r.sales.filter((x) => x.productId === productId).reduce((a, x) => a + x.bottles, 0), 0);
+  return s.history.reports.slice(-months).reduce((t, r) => t + (r.saleEvents ? r.saleEvents.filter((e) => e.productId === productId).reduce((a, e) => a + e.bottles, 0) : r.sales.filter((x) => x.productId === productId).reduce((a, x) => a + x.bottles, 0)), 0);
 }
 /** 병 재고 — 'book' 원가 · 'est' 세전 출고가 · 'liq' 원가, 단 최근 k개월 판매량을 넘는 재고는 처분 계수(#317 보강) */
 export function bottleStockValue(s: GameState, mode: 'book' | 'est' | 'liq'): number {
@@ -65,7 +70,7 @@ export function estimatedValue(s: GameState): number {
   const casks = valuedCasks(s).reduce((t, c) => t + lpaOf(c.contents) * bulkValuePerLPA(s, c.contents, qHat(s, c, known)), 0);
   return Math.round(s.finance.cash - loans(s) + receivables(s) + tanks + casks + bottleStockValue(s, 'est'));
 }
-/** ③ 처분 예상액 — "지금 정리하면 받는 돈". 통은 q̂ 현물 매입가(포화·할인·운송), 병은 원가(초과분 할인), 남은 납품 의무는 부채 */
+/** ③ 처분 예상액 — "지금 정리하면 받는 돈". 통은 q̂ 현물 매입가(할인·운송; 전량 매각 포화는 F7), 병은 원가(초과분 할인), 남은 납품 의무는 부채 */
 export function liquidationValue(s: GameState): number {
   const known = knownReads(s);
   const tanks = tankLots(s).reduce((t, l) => t + lpaOf(l) * spotBidPerLPA(s, l), 0);
