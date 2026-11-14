@@ -351,7 +351,11 @@ function fill(s: GameState, p?: Policy, cnt: { contamFills: number } | null = FI
   if (p?.sellNewMake && s.month >= 48) { for (const lot of s.inventory.lots.filter((l) => l.kind === 'malt')) s = act(s, { type: 'sellBulk', source: 'lot', id: lot.id }); return s; }
   const cap = warehouseCapacity(s);
   for (const lot of s.inventory.lots.filter((l) => l.kind === 'malt')) {
-    { const h = H.fillLot?.(s, p!, lot); if (h) { s = h; continue; } } // @hook:fill-lot
+    if (H.fillLot) { // @hook:fill-lot — 래퍼가 통입을 대신해도 숨은 오염 통 통입 수(측정)는 P8이 센다: 자리 앞의 빈 오염 통 중 자리 뒤에 원액이 든 수
+      const before = cnt ? new Set(s.inventory.casks.filter((c) => !c.contents && c.contamination).map((c) => c.id)) : null;
+      const h = H.fillLot(s, p!, lot);
+      if (h) { if (cnt && before) cnt.contamFills += h.inventory.casks.filter((c) => before.has(c.id) && c.contents).length; s = h; continue; }
+    }
     const need = Math.ceil((lot.volumeL * lot.abv) / (200 * 0.635));
     const room = cap - s.inventory.casks.length;
     // F5b [결정 #310 2단계]: 새 판 봇은 **아는** 오염만 피한다(사람과 같은 정보) — 옛 판은 숨은 값 그대로(X0L 바이트 동일)
