@@ -4,8 +4,7 @@
 
 import { isFlagshipCandidate } from '../sim/delegateCheck';
 import { regionOf } from '../sim/content/regions';
-import { SCENARIOS } from '../sim/content/scenarios';
-import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport, type Product } from '../sim';
+import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport, type Product, stagesOf } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
@@ -225,10 +224,9 @@ const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const
 export function monthTodos(s: GameState): Todo[] {
   const out: Todo[] = [];
   // 새로 열린 기능 (#215) — 연 뒤 3개월 동안 할 일 맨 위에 둔다
-  const def = s.scenario ? SCENARIOS[s.scenario.id] : undefined;
-  for (const st of def?.stages ?? []) {
+  for (const st of stagesOf(s)) { // F5a: 규칙 묶음별 단계
     if (!s.scenario?.stagesDone?.includes(st.id) || s.month - st.month >= 3) continue;
-    const tab = st.unlock.includes('system:commissions') ? 'blendlab' : st.unlock.includes('system:exports') ? 'exports' : st.unlock.includes('system:caskBids') ? 'b2b' : st.unlock.includes('system:hr') ? 'staff' : 'sales';
+    const tab = st.unlock.includes('system:commissions') ? 'blendlab' : st.unlock.includes('system:exports') ? 'exports' : st.unlock.includes('system:caskBids') || st.unlock.includes('system:siteDeals') ? 'b2b' : st.unlock.includes('system:hr') ? 'staff' : 'sales';
     // #259: IB 입찰 해금 안내에 나이 조건(3년↑)을 채운 통 수 — 0이면 제안이 오지 않는다(후반 확인 판)
     const ibNote = st.unlock.includes('system:caskBids') ? (() => { const n = ibAgedCaskCount(s); return n ? ` 지금 3년 이상 통 ${n}개.` : ' 지금 3년 이상 통이 없어 제안이 오지 않는다 — 통 일부를 남겨 두라.'; })() : '';
     out.push({ id: `stage-${st.id}`, level: 'warn', text: `새로 열림 — ${st.title}. ${st.text}${ibNote}`, action: tab === 'blendlab' ? '블렌딩 테이블' : tab === 'exports' ? '수출' : tab === 'b2b' ? '원액 B2B' : tab === 'staff' ? '직원' : '판매', target: { tab } });

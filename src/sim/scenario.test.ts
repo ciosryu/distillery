@@ -139,10 +139,10 @@ describe('시나리오 경제 값은 판 시작 때 복사된다 (#190 사후 �
   });
 });
 
-describe('MVP 중반 콘텐츠 — 단계 해금·중반 목표 (4차 MVP 플레이테스트 2026-11-09)', () => {
+describe('MVP 중반 콘텐츠 — 단계 해금·중반 목표 (4차 MVP 플레이테스트 2026-11-09) — 옛 판(legacy-v15) 경로. v16 경로는 scopeV16.test.ts(F5a)', () => {
   it('60개월(6년 차)에 이벤트·블렌딩 의뢰·방재 설비, 84개월에 수출, 108개월에 IB 캐스크 입찰·VIP 라운지가 열린다 — 두 번째 브랜드는 MVP에서 잠긴 채(#219 · #224)', async () => {
     const { advanceMonth, newScenarioGame, isLocked, applyAction } = await import('./index');
-    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' });
     expect(isLocked(s, 'system:events')).toBe(true);
     s.month = 59; s = advanceMonth(s); // 59월 틱 — 아직 아니다
     expect(isLocked(s, 'system:events')).toBe(true);
@@ -172,7 +172,7 @@ describe('MVP 중반 콘텐츠 — 단계 해금·중반 목표 (4차 MVP 플레
   it('중반 목표 — 이루면 인지도 보상, 기한이 지나면 놓침', async () => {
     const { advanceMonth, newScenarioGame } = await import('./index');
     const { houseBrand } = await import('./brands');
-    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' });
     s.commerce.exports = [{ marketId: 'US', openedMonth: 0, readyMonth: 99, awareness: 0, totalBottles: 0 } as never]; // 불변식 검사(INV-ARCH-1)가 도는 진짜 모양
     const a0 = houseBrand(s).awareness;
     s = advanceMonth(s);

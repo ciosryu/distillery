@@ -54,8 +54,8 @@ export function newScenarioGame(plan: BusinessPlan): GameState {
   const tier = tierOf(d, plan.tierId);
   if (tier.locked) throw new Error(`${tier.nameKo}: ${tier.locked.reason}`);
   let s = newGame({ seed: plan.seed, region: d.region, site: d.site, startingCash: tier.equity, distilleryName: plan.distilleryName });
-  const locked = scenarioLockedKeys(d);
   if (plan.rules) s.rulesVersion = plan.rules;
+  const locked = scenarioLockedKeys(d, s.rulesVersion ?? 'legacy-v15'); // F5a: v16 새 판은 kindsV16·lockedV16 — 옛 판(X0L)은 옛 키 그대로
   s.scenario = { id: d.id, tierId: tier.id, locked, economy: { overheadPerMonth: tier.overheadPerMonth }, equity: tier.equity, goal: { ...d.goal }, ...(d.campaignGoal ? { campaignGoal: { ...d.campaignGoal } } : {}) };
   // 잠긴 주종의 프리셋 레시피는 뺀다 (코드·콘텐츠는 그대로)
   s.production.recipes = s.production.recipes.filter((r) => !locked.includes(`kind:${r.kind}`));

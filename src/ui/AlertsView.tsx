@@ -1,7 +1,6 @@
 // 위기 경고·이번 달 할 일·지난달 현금 흐름·대출 상환 예정 — 화면 (코어 UI, 1차 MVP 플레이테스트 대응 ①~④, 계산은 alerts.ts)
 // 파일 이름이 alerts.ts와 대소문자만 다르면 대소문자를 가리지 않는 파일 시스템(macOS·Windows 기본)에서 './Alerts'가 alerts.ts로 풀릴 수 있어 AlertsView로 둔다
-import { BANKRUPT_AFTER_MONTHS, midGoalsOf, monthLabel, whiskySkipCheck } from '../sim';
-import { SCENARIOS } from '../sim/content/scenarios';
+import { BANKRUPT_AFTER_MONTHS, midGoalsOf, monthLabel, whiskySkipCheck, stagesOf } from '../sim';
 import { productionValue } from '../sim/economics';
 import { loanRoomTotal, monthlyFixedCost } from '../sim/loans';
 import { won } from './format';
@@ -213,8 +212,8 @@ export function CashFlowLine() {
  */
 export function JourneyStrip() {
   const s = useGame((g) => g.state);
-  const def = s.scenario ? SCENARIOS[s.scenario.id] : undefined;
-  if (!def || (!def.stages?.length && !def.midGoals?.length)) return null;
+  const stages = stagesOf(s); // F5a: 규칙 묶음별 단계·중반 목표
+  if (!s.scenario || (!stages.length && !midGoalsOf(s).length)) return null;
   const done = new Set(s.scenario!.stagesDone ?? []);
   const res = new Map((s.progress.midGoals ?? []).map((g) => [g.id, g]));
   const ym = (m: number) => `${Math.floor(m / 12) + 1}년 차`;
@@ -222,7 +221,7 @@ export function JourneyStrip() {
     <div className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs dark:border-stone-800 dark:bg-stone-900">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="font-medium text-stone-700 dark:text-stone-200">15년 여정</span>
-        {(def.stages ?? []).map((st) => (
+        {stages.map((st) => (
           <span key={st.id} title={st.text} className={done.has(st.id) ? 'text-emerald-700 dark:text-emerald-400' : 'text-stone-500'}>
             {done.has(st.id) ? '✓' : '🔒'} {st.title.split(' — ')[1] ?? st.title} <span className="opacity-70">({done.has(st.id) ? '열림' : s.month >= st.month ? '다음 턴에 열림' : `${ym(st.month)} · ${st.month - s.month}개월 뒤`})</span>
           </span>
