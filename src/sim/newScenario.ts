@@ -2,8 +2,8 @@ import { applyAction } from './actions';
 import { normalizeDifficulty } from './content/difficulty';
 import { LOAN_OFFERS } from './content/catalog';
 import { scenarioLockedKeys, SCENARIOS, type ScenarioDef, type ScenarioTierDef } from './content/scenarios';
-import { regionOf } from './content/regions';
 import { salaryFor } from './hr';
+import { laborMul, staffLaborCost } from './mgtKnobs';
 import { newGame } from './newGame';
 import { currentLoanPayment, monthlyFixedCost } from './loans';
 import type { GameState, RulesVersion, DifficultyConfig, DifficultyPreset } from './types';
@@ -69,6 +69,8 @@ export function newScenarioGame(plan: BusinessPlan): GameState {
   s.rulesVersion = rules;
   // F6: 난이도는 판 시작 스냅샷 — v16 새 판만. 옛 판(X0L)은 필드 자체를 두지 않아 바이트 동일(없음 = Normal)
   if (rules !== 'legacy-v15') s.difficulty = normalizeDifficulty(plan.difficulty);
+  // F6b 인건비 배수(finance.laborMul): newGame이 먼저 정한 시작 직원 급여를 난이도 반영 값으로 다시 정한다 — Normal(1)은 건너뛰어 바이트 동일
+  if (laborMul(s) !== 1) for (const x of s.hr.staff) x.salary = salaryFor(x.role, x.stats, x.level, staffLaborCost(s));
   const locked = scenarioLockedKeys(d, rules); // F5a: v16 새 판은 kindsV16·lockedV16 — 옛 판(X0L)은 옛 키 그대로. 규칙은 **생성 때** 정해진다
   s.scenario = { id: d.id, tierId: tier.id, locked, economy: { overheadPerMonth: tier.overheadPerMonth }, equity: tier.equity, goal: { ...d.goal }, ...(d.campaignGoal ? { campaignGoal: { ...d.campaignGoal } } : {}) };
   // 잠긴 주종의 프리셋 레시피는 뺀다 (코드·콘텐츠는 그대로)
@@ -76,7 +78,7 @@ export function newScenarioGame(plan: BusinessPlan): GameState {
   s.inventory.warehouseBase = tier.warehouseBase;
   // 고정 인력 — HR이 꺼진 시나리오에서도 영업 직원이 유통 커버리지를 만든다
   for (const p of tier.staff) {
-    s.hr.staff.push({ id: nid(s, 'S'), name: `창업 멤버 (${p.role === 'sales' ? '영업' : p.role})`, role: p.role, level: 1, xp: 0, stats: { ...p.stats }, salary: salaryFor(p.role, p.stats, 1, regionOf(s).laborCost), hiredMonth: 0, ageAtHire: p.ageAtHire });
+    s.hr.staff.push({ id: nid(s, 'S'), name: `창업 멤버 (${p.role === 'sales' ? '영업' : p.role})`, role: p.role, level: 1, xp: 0, stats: { ...p.stats }, salary: salaryFor(p.role, p.stats, 1, staffLaborCost(s)), hiredMonth: 0, ageAtHire: p.ageAtHire });
   }
   // 끈 시스템이 새 게임 때 만든 제안은 비운다
   if (locked.includes('system:hr')) s.hr.candidates = [];

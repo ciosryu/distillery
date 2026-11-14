@@ -81,6 +81,8 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
   // 연구로 줄어드는 재해 피해 크기 (#184, tech-tree P3 "면역 대신 크기 감소") — 1이면 아래 계산을 건너뛰어 값이 그대로다
   const dm = ledger?.damageMul ?? 1;
   const scale = (x: number) => (dm === 1 ? x : x * dm);
+  // 비율 효과(통 소실·원액 손실·오염)는 피해 크기(연구 × 난이도 incidents.lossSize, F6b)가 1보다 커도 1을 넘지 않는다 — dm = 1이면 그대로(바이트 동일)
+  const scaleShare = (x: number) => (dm === 1 ? x : Math.min(1, x * dm));
   // F6 난이도 — 이벤트 영역 태그(`EventDef.domain`)로 효과 크기(`<영역>.eventMagnitude`: modifier 배수의 1에서의 거리)·기간(`<영역>.eventDuration`: 개월 × k, 반올림·최소 1)을
   // 곱한다. 태그 없음·Normal·옛 판은 k = 1 → 아래 식을 타지 않아 값이 그대로다(바이트 동일). 난수 호출(rng.int)은 그대로 — 스트림 불변
   const km = eventMagnitudeMul(s, domain), kd = eventDurationMul(s, domain);
@@ -118,7 +120,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
       }
       case 'caskLoss': {
         const filled = s.inventory.casks.filter((c) => c.contents);
-        const n = Math.max(1, Math.round(filled.length * scale(rng.range(e.share[0], e.share[1]))));
+        const n = Math.max(1, Math.round(filled.length * scaleShare(rng.range(e.share[0], e.share[1]))));
         const lost = new Set<string>();
         while (lost.size < Math.min(n, filled.length)) lost.add(rng.pick(filled).id);
         if (ledger) ledger.inventory += filled.filter((c) => lost.has(c.id)).reduce((t, c) => t + caskBookValue(c), 0);
@@ -129,7 +131,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         break;
       }
       case 'caskVolumeLoss': {
-        const share = scale(e.share);
+        const share = scaleShare(e.share);
         if (ledger) ledger.inventory += share * s.inventory.casks.reduce((t, c) => t + caskBookValue(c), 0);
         // F2 원장 지점 13: 사고 원액 손실 — 같은 비율로 줄고 원가는 남는다(보존)
         if (report) for (const c of s.inventory.casks) if (c.contents) recordLoss(report, 'incident', lpaOf(c.contents) * share);
@@ -198,7 +200,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
         break;
       case 'contaminate': {
         const filled = s.inventory.casks.filter((c) => c.contents && !c.contamination);
-        const n = Math.min(filled.length, Math.max(1, Math.round(filled.length * scale(rng.range(e.share[0], e.share[1])))));
+        const n = Math.min(filled.length, Math.max(1, Math.round(filled.length * scaleShare(rng.range(e.share[0], e.share[1])))));
         for (let i = 0; i < n; i++) { const c = rng.pick(filled.filter((x) => !x.contamination)); c.contamination = e.kind; }
         notes.push(`캐스크 ${n}개 오염 (숙성고 QC가 찾아내야 한다)`);
         break;

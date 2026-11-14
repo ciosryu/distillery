@@ -10,7 +10,7 @@ import { OWNERSHIP } from './investment';
 import { ensureBoard } from './board';
 import { isBulkKind, spotQuote } from './bulk';
 import { resolvePending } from './events';
-import { bankScreening, currentLoanPayment, inventoryLoanRoom, inventoryLtv } from './loans';
+import { bankScreening, currentLoanPayment, effectiveOffer, inventoryLoanRoom, inventoryLtv } from './loans';
 import { annuityPayment, nid } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
 import { TECH_BY_ID } from './content/tech';
@@ -216,7 +216,8 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     return { state: s, message: [`${x.name} 퇴사 (위로금 1개월분 지급)`, ...notes].join(' — ') };
   },
   takeLoan: (s, prev, a) => {
-    const offer = LOAN_OFFERS.find((o) => o.id === a.offerId);
+    const base = LOAN_OFFERS.find((o) => o.id === a.offerId);
+    const offer = base && effectiveOffer(s, base); // 난이도 금리·한도·거치(F6b)
     if (!offer) return fail(prev, '대출 상품이 없습니다');
     if (offer.requires === 'producedSoju' && !s.production.flags.producedSoju) return fail(prev, '전통주(증류식 소주) 생산 실적이 있어야 신청할 수 있습니다');
     if (offer.regions && !offer.regions.includes(s.regionId)) return fail(prev, '이 지역에서는 신청할 수 없는 정책자금입니다');
