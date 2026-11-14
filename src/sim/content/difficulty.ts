@@ -33,6 +33,15 @@ export const KNOBS: Record<string, KnobDef> = {
   'incidents.eventChance': { easy: 1, hard: 1, note: '재난·사고 이벤트(화재·침수·고장·오염…) 월 발생 확률 배수 — v16은 60개월부터' },
   'finance.eventChance': { easy: 1, hard: 1, note: '금융 이벤트(세무조사) 월 발생 확률 배수 — 금리·한도·LTV·수수료 손잡이는 MGT F6b 행' },
   'competition.eventChance': { easy: 1, hard: 1, note: '경쟁 이벤트(광고 규제) 월 발생 확률 배수 — [결정 대기 96] 경쟁 영역 Normal 고정이면 자리만(×1)' },
+  // MGT F6b(P-MGT-48·51) — 읽기는 `mgtKnobs.ts` 이름 함수. 방향: Easy ↓·Hard ↑(LTV·한도·거치는 반대) — 크기는 F7 뒤 [튜닝]
+  'finance.loanRate': { easy: 1, hard: 1, note: '대출 연 금리 배수(급전은 법정 최고 20% 상한) — loans.ts effectiveOffer' },
+  'finance.loanLimit': { easy: 1, hard: 1, note: '대출 상품 최대액 배수 — loans.ts effectiveOffer' },
+  'finance.loanGrace': { easy: 1, hard: 1, note: '거치 개월 배수(기간 − 1 이하) — loans.ts effectiveOffer' },
+  'finance.inventoryLtv': { easy: 1, hard: 1, note: '재고 담보 인정 비율(입지 inventoryLtv) 배수 — v16 담보는 이미 관측 q̂라 보수적' },
+  'finance.fees': { easy: 1, hard: 1, note: '보험료·팩토링 할인율 배수 — insurance.ts' },
+  'finance.laborMul': { easy: 1, hard: 1, note: '인건비 배수 — 새로 정하는 급여(창업 멤버·채용·시세·전문가)에 지역 laborCost와 함께 곱한다' },
+  'finance.wageDrift': { easy: 1, hard: 1, note: '정기 임금 상승 — 매년 1월 전 직원 급여 × 값(1 = 없음). [결정 대기 94] Normal은 1' },
+  'incidents.lossSize': { easy: 1, hard: 1, note: '재해 피해 크기 — 손실 원장 damageMul(연구 riskMul × 값, insurance.ts newLedger 한 자리 — ARCH 가름): 현금 피해(복구비)·통 소실·원액 손실·오염 비율(mold_outbreak)을 한 값으로, 비율은 1 상한. 한계: 원장은 disaster 범주의 즉시 효과에만 닿는다 — 선택 이벤트(resolvePending)·gamble 안쪽 효과에는 미적용' },
   // ── MKT F6b (P-MKT-37, [결정 #313] 취향 변화의 속도·지속성·폭) — 읽는 자리 `mktKnobs.ts trendWalkOf`·`flavorTrendFactorOf` ──
   'taste.trendSigma': { easy: 1, hard: 1, note: '카테고리 트렌드 랜덤 워크의 월 σ(0.015) 배수 — 속도. Easy ↓ · Hard ↑' },
   'taste.trendReversion': { easy: 1, hard: 1, note: '같은 워크의 평균 회귀(0.05) 배수 — 지속성. Easy ↑(빨리 1로) · Hard ↓(추세가 오래 간다)' },
