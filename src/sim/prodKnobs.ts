@@ -3,6 +3,7 @@
 // 원칙: 값은 `rules.ts knob(s, id)`로만 읽는다 · Normal·옛 판·샌드박스는 늘 ×1(이 파일의 함수는 받은 것을 **그대로** 돌려준다 — 출력 불변) ·
 // 숙성 물리(누수·오염 추첨·증발)·고온 발효 산패·샘플 오차는 여기서도, 어디서도 손잡이를 읽지 않는다(#314 — `prodKnobs.test.ts` 정적 테스트)
 import { CASK_MARKET } from './content/catalog';
+import { PRICE_INDEX_WALK } from './content/production';
 import type { Effect, EventDef } from './content/events';
 import { knob } from './rules';
 import type { GameState } from './types';
@@ -61,3 +62,10 @@ export function tuneForecast<T extends { months: number; certainty: number }>(s:
 
 /** 쿠퍼리지 통 납기(개월) — 기본 2개월 × `supply.caskLead`. 통입이 늦으면 144개월 도달이 그만큼 늦는다(Hard 폭은 작게 `[튜닝]`) */
 export const cooperageLeadMonths = (s: S): number => Math.max(1, Math.round(CASK_MARKET.cooperageLeadMonths * knob(s, 'supply.caskLead')));
+
+/**
+ * 원재료·에너지 기본 시세의 월 변동폭(σ) — `PRICE_INDEX_WALK.sigma` × `supply.priceWalkSigma`. 이벤트가 열리기 전(v16은 60개월 전)에도 닿는
+ * 유일한 공급 손잡이다(P-PROD-56 v16 갱신). 평균 회귀·범위는 그대로 둔다. 월 틱(`step.ts`)이 부른다
+ */
+export const priceWalkSigma = (s: S): number => PRICE_INDEX_WALK.sigma * knob(s, 'supply.priceWalkSigma');
+

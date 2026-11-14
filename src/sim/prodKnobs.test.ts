@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { applyAction, type GameState } from './index';
 import { KNOBS, type KnobDef } from './content/difficulty';
 import { EVENT, EVENTS, type Effect } from './content/events';
-import { cooperageLeadMonths, tuneEventEffects, tuneForecast } from './prodKnobs';
+import { cooperageLeadMonths, priceWalkSigma, tuneEventEffects, tuneForecast } from './prodKnobs';
+import { PRICE_INDEX_WALK } from './content/production';
+import { advanceMonth } from './index';
 import { newScenarioGame } from './newScenario';
 
 const saved = new Map<string, KnobDef>();
@@ -19,10 +21,10 @@ const game = (level?: 'easy' | 'normal' | 'hard'): GameState => {
   return s;
 };
 const mod = (effects: Effect[], key: string) => effects.find((e): e is Extract<Effect, { type: 'modifier' }> => e.type === 'modifier' && e.key === key)!;
-const PROD_KNOBS = ['supply.costSize', 'supply.costMonths', 'supply.windfallSize', 'supply.forecastMonths', 'supply.forecastCertainty', 'supply.caskLead', 'incidents.lossSize', 'incidents.stillDownMonths', 'incidents.spoilSize'];
+const PROD_KNOBS = ['supply.costSize', 'supply.costMonths', 'supply.windfallSize', 'supply.forecastMonths', 'supply.forecastCertainty', 'supply.priceWalkSigma', 'supply.caskLead', 'incidents.lossSize', 'incidents.stillDownMonths', 'incidents.spoilSize'];
 
 describe('표 — PROD 손잡이 자리', () => {
-  it('아홉 행이 있고 지금 값은 모두 1(자리) — 크기는 F7 측정 뒤 정한다', () => {
+  it('열 행이 있고 지금 값은 모두 1(자리) — 크기는 F7 측정 뒤 정한다', () => {
     for (const id of PROD_KNOBS) expect(KNOBS[id]).toMatchObject({ easy: 1, hard: 1 });
   });
 
@@ -48,6 +50,7 @@ describe('Normal·옛 판·샌드박스 — 받은 것을 그대로 돌려준다
       expect(tuneEventEffects(s, fire, fire.effects!)).toBe(fire.effects);
       expect(tuneForecast(s, barley, barley.forecast!)).toBe(barley.forecast);
       expect(cooperageLeadMonths(s)).toBe(2);
+      expect(priceWalkSigma(s)).toBe(PRICE_INDEX_WALK.sigma);
     }
   });
 
@@ -100,6 +103,19 @@ describe('공급 영역 — 임시 Easy ≠ Hard로 손잡이가 먹는지', () 
   });
 });
 
+describe('공급 영역 — 기본 시세 변동폭(이벤트가 열리기 전에도 닿는 손잡이)', () => {
+  it('σ 0.02 → Easy는 좁게, Hard는 넓게 · 같은 시드로 12개월 돌리면 Hard의 시세가 1에서 더 멀리 움직이고 Normal은 임시 값에도 그대로', () => {
+    const drift = (s0: GameState) => { let s = s0; for (let i = 0; i < 12; i++) s = advanceMonth(s); return Object.values(s.world.priceIndex).reduce((t, v) => t + Math.abs(v - 1), 0); };
+    const base = drift(game('normal'));
+    setKnob('supply.priceWalkSigma', 0.5, 3);
+    expect(priceWalkSigma(game('easy'))).toBeCloseTo(0.01, 12);
+    expect(priceWalkSigma(game('hard'))).toBeCloseTo(0.06, 12);
+    expect(drift(game('normal'))).toBe(base);
+    expect(drift(game('easy'))).toBeLessThan(base);
+    expect(drift(game('hard'))).toBeGreaterThan(base);
+  });
+});
+
 describe('사고 영역 — 임시 Easy ≠ Hard로 손잡이가 먹는지', () => {
   it('통 소실·원액 손실 비율: 화재 5~15% · 침수 2% → Easy 절반, Hard 두 배(현금 피해·생산 중단은 그대로)', () => {
     setKnob('incidents.lossSize', 0.5, 2);
@@ -139,11 +155,13 @@ describe('난이도로 바꾸지 않는 것 — 소스에서 고정 ([결정 #31
     }
   });
 
-  it('PROD 손잡이를 읽는 곳은 prodKnobs.ts 한 파일 — 그 함수를 부르는 곳은 이벤트 적용(events.ts)과 통 주문(actions.prod.ts)뿐', () => {
+  it('PROD 손잡이를 읽는 곳은 prodKnobs.ts 한 파일 — 그 함수를 부르는 곳은 이벤트 적용(events.ts)·통 주문(actions.prod.ts)·월 시세 변동(step.ts)', () => {
     const body = src('prodKnobs.ts');
     for (const id of PROD_KNOBS) expect(body, id).toContain(`'${id}'`);
     expect(src('events.ts')).toMatch(/tuneEventEffects\(/);
     expect(src('actions.prod.ts')).toMatch(/cooperageLeadMonths\(s\)/);
+    expect(src('step.ts')).toMatch(/priceWalkSigma\(s\)/);
+    expect(src('step.ts')).not.toMatch(/\bknob\(/);
     expect(src('actions.prod.ts')).not.toMatch(/tuneEventEffects|tuneForecast|\bknob\(/);
   });
 });
