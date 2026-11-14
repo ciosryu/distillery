@@ -31,5 +31,14 @@ export function knob(s: Pick<GameState, 'difficulty'>, id: KnobId): number {
   const lv = levelOf(s, id.slice(0, id.indexOf('.')) as DifficultyDomain);
   return lv === 1 ? def.easy : lv === 3 ? def.hard : 1;
 }
+/**
+ * 난이도 손잡이 k로 배수의 **1에서의 거리**만 늘리고 줄인다(0.8 → k 2면 0.6 · 1.5 → k 0.5면 1.25). k = 1이면 값을 그대로 돌려준다 —
+ * `1 + (x − 1) × 1`은 부동소수 오차로 x와 달라질 수 있어 Normal 바이트 동일이 깨진다(MKT #566 `aroundOne`과 같은 식 — 잎 모듈에 둔 사본)
+ */
+export const aroundOne = (x: number, k: number): number => (k === 1 ? x : 1 + (x - 1) * k);
+/** 이벤트 효과 크기 배수(`<영역>.eventMagnitude`) — modifier 효과 배수의 1에서의 거리에 곱한다. 태그 없으면 1 */
+export const eventMagnitudeMul = (s: Pick<GameState, 'difficulty'>, domain?: DifficultyDomain): number => (domain ? knob(s, `${domain}.eventMagnitude`) : 1);
+/** 이벤트 효과 기간 배수(`<영역>.eventDuration`) — modifier·향미 유행·기상 충격의 개월에 곱한다(반올림, 최소 1). 태그 없으면 1 */
+export const eventDurationMul = (s: Pick<GameState, 'difficulty'>, domain?: DifficultyDomain): number => (domain ? knob(s, `${domain}.eventDuration`) : 1);
 /** 이벤트 영역 배수 — `EventDef.domain` 태그가 없으면 1(평판 사건 등 "영역 없음") */
 export const domainEventMul = (s: Pick<GameState, 'difficulty'>, domain?: DifficultyDomain): number => (domain ? knob(s, `${domain}.eventChance`) : 1);
