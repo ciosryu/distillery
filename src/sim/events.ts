@@ -89,7 +89,8 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
     switch (e.type) {
       case 'modifier': {
         const months = stretch(rng.int(e.months[0], e.months[1]));
-        addModifier(s, e.key, km === 1 ? e.factor : aroundOne(e.factor, km), months, e.label ?? label, e.delay ?? 0);
+        // 배수 0(생산 중단 `m('production', 0, …)`)은 건드리지 않는다 — 거리 × k로 음수가 되지 않게 · 그 외도 0 하한(PROD 확인 ①)
+        addModifier(s, e.key, km === 1 || e.factor === 0 ? e.factor : Math.max(0, aroundOne(e.factor, km)), months, e.label ?? label, e.delay ?? 0);
         if (ledger && e.key === 'production' && e.factor === 0) ledger.stopMonths += months;
         break;
       }
