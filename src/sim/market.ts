@@ -13,6 +13,7 @@ import { hexOf } from './blendRadar';
 import { RARE, trendFactor } from './blendTable';
 import { staffOf } from './util';
 import { mod } from './modifiers';
+import { flavorTrendFactorOf, trendWalkOf } from './mktKnobs'; // F6b 난이도 손잡이(취향 #313)
 import { packagingAppealFactor } from './packaging';
 import type { ExportEntry, ExportSale, GameState, MonthReport, Product, ProductCategory } from './types';
 import { EXPORT_MARKETS, EXPORT_SALES, tariffKey, type ExportMarketDef } from './content/exports';
@@ -93,13 +94,14 @@ export function styleFit(p: Pick<Product, 'category' | 'peatShare' | 'caskMix' |
 }
 
 /** 매력도. styleKey = 향미 방향 항 f2의 시장(기본 = 국내 지역 s.regionId, 수출은 그 시장 id) */
-export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId'>, styleKey: string | undefined = s?.regionId): number {
+export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId' | 'difficulty'>, styleKey: string | undefined = s?.regionId): number {
   const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
   const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths); // 숙성 소주 표기 #217
   const lux = packagingAppealFactor(p); // 패키징 매력 배수 — 조합 점수(#248) 0~30 → 1.0~1.15, 프리셋은 옛 PACKAGING[id].luxury와 같다
   // 시장 국면: 피트·셰리 유행
   // 시장 국면: 향미 트렌드 이동 (결정 #125 — 옛 피트·셰리 계단식 보정치를 육각형 축 기반 연속 배수로 대체)
-  const tf = s ? trendFactor(s, p.hex ?? hexOf(p.flavor)) : 1;
+  // F6b [결정 #313] 향미 유행의 세기 — 난이도 `taste.flavorTrendStrength`가 배수의 1에서의 거리를 늘리고 줄인다(Normal ×1 = 그대로)
+  const tf = s ? flavorTrendFactorOf(s, trendFactor(s, p.hex ?? hexOf(p.flavor))) : 1;
   const trend = s ? mod(s, 'appeal:all') * tf : 1;
   // 블렌딩 테이블 (결정 #124): 평론가 의뢰 블렌드는 기간 한정 가산, 코어 레인지는 일관성(0.9~1.1), 레어 싱글 캐스크
   const blendBonus = !p.blend ? 1
@@ -553,9 +555,11 @@ export function updateAwareness(s: GameState, sales: SalesResult[]): number {
   return dutyFreeGain;
 }
 
+/** 카테고리 트렌드 — 평균 회귀 랜덤 워크. 워크 값(σ·회귀·범위)은 `mktKnobs.ts trendWalkOf`(기준값 `content/market.ts TREND_WALK` × 난이도 [결정 #313]) */
 export function updateTrends(s: GameState, rng: Rng): void {
+  const w = trendWalkOf(s);
   for (const k of Object.keys(s.world.trend) as ProductCategory[]) {
     const t = s.world.trend[k];
-    s.world.trend[k] = clamp(t * Math.exp(rng.normal(0, 0.015)) + 0.05 * (1 - t), 0.6, 1.5);
+    s.world.trend[k] = clamp(t * Math.exp(rng.normal(0, w.sigma)) + w.reversion * (1 - t), w.lo, w.hi);
   }
 }
