@@ -1254,6 +1254,29 @@ MGT 표의 "재난 이벤트 확률·피해 크기(`damageMul`)·한 달 상한"
 - 반론: 이벤트가 60개월부터라 공급·사고 난이도가 초반에 무의미하다는 지적은 "초반은 금융·거시 난이도가 맡는다"로 답할 수 있다. 영역마다 닿는 시기가 달라도 6영역 Custom의 뜻은 유지된다 — 다만 **프리셋 설명 문구에 "공급·사고는 6년 차부터"를 적어야** 플레이어가 Hard를 골랐는데 초반이 같다고 느끼지 않는다.
 - 이 갱신은 문서뿐이다. 영역 태그(`EventDef.domain`)·`DifficultyConfig`는 F6(ARCH·MGT)에서 정해지며, 이름이 바뀌면 이 표를 맞춘다.
 
+#### P-PROD-56 구현 — F6b 손잡이 연결 (2026-11-14, 출력 불변 · 값은 모두 1)
+
+- **읽는 곳은 `src/sim/prodKnobs.ts` 한 파일**(`rules.ts knob`만 부른다). 표 `content/difficulty.ts KNOBS`에 PROD 행 7개 — 지금은 모두 1(자리)이라 Normal·Easy·Hard가 같다. 크기는 F7 측정 뒤 오너가 정한다.
+
+| 손잡이 | 닿는 곳 | 방향(Easy · Hard) |
+|---|---|---|
+| `supply.windfallSize` | 원가 호재(가공용 쌀 할인) 할인 폭 — 악재와 반대라 따로 | >1 · <1 |
+| `supply.forecastMonths` · `supply.forecastCertainty` | 원가 이벤트 예보의 개월 · 확률(0.05~0.95) | >1 · <1 |
+| `supply.priceWalkSigma` | 원재료·에너지 기본 시세의 월 변동폭 σ 0.02 | <1 · >1 |
+| `supply.caskLead` | 쿠퍼리지 통 납기 2개월(반올림, 최소 1) — 주문·안내 문구·숙성고 화면이 같은 값 | 1 · >1 |
+| `incidents.stillDownMonths` | 사고로 증류기가 서는 개월(선택지 효과 포함) | <1 · >1 |
+| `incidents.spoilSize` | 발효 오염 이벤트의 이취 크기 | <1 · >1 |
+
+- **영역 태그(`EventDef.domain`)는 ARCH #563의 표**([difficulty-event-domains.md](difficulty-event-domains.md))를 따른다 — 원가 악재 9개 `supply`, 재난·사고 10개 `incidents`. **호재 `rice_surplus`는 태그하지 않는다**(PM 가름 ⑥ 고침) — 태그하면 코어의 `supply.eventChance`가 Hard에서 호재 확률까지 올린다. 크기만 `supply.windfallSize`로 받는다.
+- **원가 악재의 크기·기간은 PROD가 곱하지 않는다** — ARCH #571이 코어 `applyEffects` 한 자리에서 `EventDef.domain`으로 `supply.eventMagnitude`·`supply.eventDuration`을 곱한다(처음의 `supply.costSize`·`costMonths`는 뺐다). 합친 상태 테스트: 보리 흉작 ×1.5 → Hard 2에서 ×2.0.
+- **호재 손잡이 `supply.windfallSize`는 영역 태그가 없는 이벤트(`rice_surplus`)의 `ingredient:` 값 할인에만 닿는다** — 태그된 악재 안의 <1 배수(`tariff_retaliation`의 `bulk` ×0.9)는 받지 않는다(ARCH 발견).
+- **통 소실·원액 손실 비율(`incidents.lossSize`)은 PROD가 곱하지 않는다** — MGT(#573)가 손실 원장 `damageMul`에 넣어 `applyEffects` 한 자리에서 현금 피해·통 소실·원액 손실·오염 비율을 함께 키운다. 처음에는 PROD도 `caskLoss`·`caskVolumeLoss`에 곱했으나 둘 다 들어가면 Hard에서 k²라 뺐다(한 손잡이 한 자리).
+- **크기 손잡이는 범주로 가른다**(supply · disaster) — 태그가 없는 `rice_surplus`도 크기 손잡이는 받게.
+- **바꾸지 않는 것은 정적 테스트로 고정**(`prodKnobs.test.ts`): `maturation`·`warehouse`·`production`·`blendTable`·`blendRadar`·`blending`·`flavor`·`ledger`는 `knob(`·`prodKnobs`를 부르지 않는다(누수·오염 추첨·증발·고온 산패·샘플 오차).
+- **기본 시세 변동폭** `supply.priceWalkSigma` — `PRICE_INDEX_WALK.sigma`(ARCH #564) × 손잡이(`prodKnobs.priceWalkSigma`, 월 틱 `step.ts`가 부른다). 이벤트가 열리기 전에도 닿는 유일한 공급 손잡이. 평균 회귀·범위는 그대로.
+- 남은 것(ARCH): `MvpHome.tsx`(코어)의 "쿠퍼리지 주문은 2개월 뒤 도착" 문구는 상수를 그대로 읽는다 → `prodKnobs.cooperageLeadMonths(s)`로 바꾸면 Hard에서 화면과 실제가 맞는다(값이 1인 지금은 차이 없음).
+- 메모: 파일 이름을 `difficultyProd`로 하면 F6a 정적 테스트("`actions*.ts`는 difficulty를 쓰지 않는다" — 글자 검사)에 걸린다. 뜻은 "행동이 난이도를 **바꾸지** 않는다"이므로 읽기 헬퍼는 이름을 피했다. MGT가 `actions.mgt.ts`에서 금융 손잡이를 읽을 때 같은 일이 생긴다.
+
 ### [제안 P-PROD-57] 그레인 프리셋 1개 — #311 막힘 ② (PM 태스크 2026-11-13 (가), 문서만 · 콘텐츠 PR은 F5 범위 잠금 PR과 같은 창)
 
 **왜 필요한가:** 새 캠페인 `kinds`에 그레인을 넣어도(#311 막힘 ①) 플레이어가 그레인 레시피를 만들 길이 없다. 한국 프리셋(`presets.ts PRESETS_KR`)에 그레인이 없고, 시나리오 판은 "+ 빈 레시피" 버튼을 숨긴다(`Production.tsx:336`).
