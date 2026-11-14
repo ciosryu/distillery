@@ -2013,6 +2013,7 @@ main의 게임 코드 머지마다 X0(standard, 10시드 × 180)를 다시 쟀�
 | `firstEligibleMonth` · `candidateDrain` | 병입 로트에 들어간 적격(또는 후보) 원액의 LPA | F3 `BottledLot.components`에서 읽는다(도구가 계보를 걷지 않음) |
 
 - **#477에서 달라진 점:** 옛 `isFlagshipCandidate`는 동작 그대로 `ledger.ts`로 옮겨졌고(그레인 포함 · `goal.months` 상한), **정의 변경은 F4다**(후보 집합이 바뀌어 출력이 달라짐). 그 사이 P8 `keptCasks`·`handfill()`은 옛 함수를 계속 쓴다 — F4 MGT PR에서 `isCampaignCandidate`로 바꾼다. 통·탱크 공용 판정은 `ledgerEligibility(s, entries, horizonMonths)`(핸드필 #318도 이것). 적격 원장이 없는 로트는 `ledgerOf`가 로트 하나를 구성 원액 하나로 본다(옛 판 = `unknown` → 적격 아님).
+- **지평 확정 (결정 #325 고침, 오너 2026-11-14 — MGT 측정 근거):** 용도별 두 상수 — **예비 보호 · P8 `keptCasks` = 144(`candidateHorizon(s, 'reserve')` = `RESERVE_HORIZON_MONTHS`, 자가 몰트 통은 처음부터 후보)** · **화면 "곧 적격" 안내 · `reserve_casks` 판정 · 핸드필 제외 = 36(`'hint'` = `HINT_HORIZON_MONTHS`)** `[튜닝]`. 한 값(36)으로 예비까지 묶으면 108개월 전에 아무 통도 보호되지 않아 12년 원액 0 → 승리 경로가 사라진다(F4 `1d59a48` 10시드: X19 12년↑ 병입 0/10 → 분리 뒤 `55ed4ef` 승리 10/10 · 145~146개월). X0W의 `isCampaignCandidate(s, cask, h)` 호출은 출시할 통 고르기 = 지금 적격(`caskEligibility`), 예비 보호 = `'reserve'` 144, 핸드필 제외 = `'hint'` 36.
 - **지평 인자를 요청하는 이유:** 지금 `isFlagshipCandidate`는 "남은 개월 = 180 − 지금 달"로 센다. #308로 끝 달이 없어지면, 지평이 없는 후보 판정은 **모든 몰트 통을 후보로** 만든다. 그러면 ① 예비 4통이 의미를 잃고(가장 오래된 4통으로는 같다) ② **P8 핸드필(`handfill()` 482행 — 후보가 아닌 가장 어린 통)이 고를 통이 없어진다** → P8 관광 매출이 바뀐다. 지평(예: 지금 달 + 36개월 `[튜닝]`)을 인자로 두면 봇·화면이 같은 기준을 쓸 수 있다.
 
 **3. 핸드필 승리(#318)와 봇**
