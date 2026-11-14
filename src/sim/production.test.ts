@@ -295,7 +295,7 @@ describe('크래프팅 레버 미리보기 (mvp.md §1.2, #156)', () => {
 
   it('MVP 프리셋은 잠긴 주종(진·고량주)을 빼고, 레시피는 같은 이름의 프리셋에서 출발한 것으로 본다', () => {
     const s = mvp();
-    expect(new Set(craftPresets(s).map((p) => p.kind))).toEqual(new Set(['soju', 'malt']));
+    expect(new Set(craftPresets(s).map((p) => p.kind))).toEqual(new Set(['soju', 'malt', 'grain'])); // 새 캠페인(v16)은 그레인 프리셋이 붙는다(F5a, P-PROD-57) — 옛 판은 production.v16.test.ts가 본다
     expect(basePresetOf(s, malt(s))!.name).toBe(malt(s).name);
     // 이름을 바꿔도 같은 주원료의 프리셋으로 찾는다
     expect(basePresetOf(s, { ...malt(s), name: '내 몰트' })!.mashBill[0]!.ingredientId).toBe(malt(s).mashBill[0]!.ingredientId);
