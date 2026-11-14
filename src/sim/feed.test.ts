@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newGame, type GameState, type MonthReport, type Product } from './index';
-import { feedFor, feedSituation, styleWeights } from './feed';
+import { FEED_BRIEF, briefPosts, feedFor, feedSituation, styleWeights, type FeedPost } from './feed';
 
 // 가상 주류 커뮤니티 피드 (#247) — 순수 연출, 세이브에 남기지 않는다
 
@@ -107,5 +107,33 @@ describe('가상 커뮤니티 피드 (#247)', () => {
     const s = world([product({ id: 'a', quality: 70 })], 3, 400);
     for (const p of feedFor(s, 3, 100).filter((x) => x.score != null)) expect(Math.abs(p.score! - (60 + 70 * 0.38))).toBeLessThanOrEqual(3.5);
     expect(feedFor(world([product({ id: 'a' })], 3, 0)).filter((p) => !p.id.includes(':9'))).toEqual([]);
+  });
+});
+
+describe('홈 요약 글 고르기 (오너 요청 2026-11-14 — MVP 홈에도 커뮤니티 반응)', () => {
+  const post = (id: string, month: number, signal?: 'raise_price', style: FeedPost['style'] = 'cafe', productId = 'p'): FeedPost => ({ id, month, style, community: 'c', author: 'a', productId, productName: 'n', text: id, tone: 'neu', harsh: 0, ...(signal ? { signal } : {}) });
+
+  it('새 글 순서 그대로 n개 — 가장 최근 달의 가격 신호 글만 맨 앞으로', () => {
+    const posts = [post('a', 40), post('b', 40), post('s', 40, 'raise_price'), post('c', 39), post('old', 39, 'raise_price'), post('d', 38)];
+    expect(briefPosts(posts, 3).map((p) => p.id)).toEqual(['s', 'a', 'b']);
+    expect(briefPosts(posts, 6).map((p) => p.id)).toEqual(['s', 'a', 'b', 'c', 'old', 'd']); // 지난달 신호는 제자리 — 이미 지난 얘기다
+    expect(briefPosts([], 3)).toEqual([]);
+    expect(posts.map((p) => p.id)).toEqual(['a', 'b', 's', 'c', 'old', 'd']); // 원본은 그대로
+  });
+
+  it('같은 달 안에서는 아직 안 나온 커뮤니티·제품의 글을 먼저 — 3개가 같은 카페·같은 제품으로 차지 않는다. 달 순서는 지킨다', () => {
+    const posts = [post('cafe-p1-a', 40), post('cafe-p1-b', 40), post('wb-p1', 40, undefined, 'whiskybase'), post('dc-p2', 40, undefined, 'dc_jugal', 'p2'), post('old-wb-p3', 39, undefined, 'dc_whisky', 'p3'), post('late-40', 40)];
+    expect(briefPosts(posts, 3).map((p) => p.id)).toEqual(['cafe-p1-a', 'dc-p2', 'wb-p1']); // 새 커뮤니티 + 새 제품(3점) → 새 커뮤니티(2점)
+    expect(briefPosts(posts, 6).map((p) => p.id)).toEqual(['cafe-p1-a', 'dc-p2', 'wb-p1', 'cafe-p1-b', 'late-40', 'old-wb-p3']); // 40개월 글을 다 쓴 뒤에야 39개월 글(뒤에 붙은 40개월 글 포함)
+  });
+
+  it('실제 피드에서: 싼데 좋은 제품이 있으면 홈 요약 첫 글이 가격 신호다 · 요약은 전체 피드의 부분집합', () => {
+    const s = world([product({ id: 'good', name: '좋은 위스키', quality: 88, price: 20_000 }), product({ id: 'plain', name: '보통 위스키', quality: 55 })]);
+    const all = feedFor(s, 3, 40);
+    const brief = briefPosts(all, FEED_BRIEF.shown);
+    expect(brief).toHaveLength(FEED_BRIEF.shown);
+    expect(brief[0]!.signal).toBe('raise_price');
+    expect(brief.every((p) => all.includes(p))).toBe(true);
+    expect(FEED_BRIEF.more).toBeGreaterThan(FEED_BRIEF.shown);
   });
 });
