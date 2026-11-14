@@ -16,6 +16,7 @@
 > | §10.8 B1 지원 | (P-MKT-28 그릇 의견) | §10.9로 대체 | — |
 > | §10.9 AP3-ARCH-1 | P-ARCH-53·54 | **#298 → #300(GS)** · 엔진 #291 | 구현 끝(#373·#388). 화면 MKT #397 |
 > | §10.10 F4 판정 코어 계약 | P-ARCH-55 | 준비 브랜치 ciosryu/distillery#494 — PM 게이트: 연결 PR 전부 머지 뒤 | **[결정 #324]** verdict 승리 달·종료만 · **[결정 #325 고침 2026-11-14]** 지평 용도별(예비 보호 144 · 안내 36) — 2026-11-13 |
+> | §10.10 F5 코어 계약(a 범위 잠금·치환 / b 3종 평가·권리 / c 화면) | P-ARCH-57 | 초안(2026-11-14) — F4 머지 뒤 | 확인 필요: 전문가 시점 120/60 · 그레인 프리셋 v16 전용 · 시나리오 입지 고정 · q̂ 사전값 분위 · 병 재고 ③ 원가 · Rights 최소형 |
 > | §11 정보 비대칭 계약 | P-ARCH-41 | 결정 대기 59 | 측정만(`info-leak.ts`). #167(순자산 곡선은 참 품질) 그대로 — 바꿀지는 오너 |
 > | §12 UX 피드백 | P-ARCH-50 | 묶음 B4 | 미구현(단계 G/V) |
 > | (mvp.md §7.22) 단계 해금 한 달 늦음 | P-ARCH-51 | 묶음 B4 | 미구현 |
@@ -724,7 +725,7 @@ interface GameState {
 | **F2** 원장 | 코어 계약(이 절) + PROD 27개 지점 연결(P-PROD-55 표) | 아래 | 불변(R1 그림자 원장) |
 | **F3** 병입 로트·판매 사건 | 코어 그릇·입구(이 절) + MKT `saleEvents.ts` + PROD·MKT 9개 지점 연결 | `BottledLot { id, productId, bottles, bottledMonth, components?, eligibleAtBottling? }` · `SaleEvent { month, productId, lotId, bottles, unitPrice, settlement, kind, channel?, eligibleAtSale }` · `CampaignWin`(F4가 쓴다) — 그릇 `commerce.lots?` · `MonthReport.saleEvents?` · `progress.win?` · 입구 `lots.ts` | 불변(기록만) |
 | F4 판정 | ARCH — **명세 초안 아래 P-ARCH-55** | `progress.win?` · `rulesVersion === 'legacy-v15'`면 옛 판정 보존 · `isFlagshipCandidate` → `isCampaignCandidate` · `reserveCaskIds`가 `flagship_sold` 대신 `win` · 승리는 멈춤 사유가 아니라 알림(#308 계속 운영) | **바뀜** — 새 기준선 |
-| F5 PlayerView·Rights·범위 잠금 | ARCH(+MGT) — **주의(MKT §7.3, PM 2026-11-14):** #319 `reserve_casks` 판정은 `isCampaignCandidate(s, c, candidateHorizon(s, 'hint'))` 통 ≥ 3 — `'reserve'`(144)를 쓰면 모든 자가 몰트 통이 후보라 저절로 달성된다. 테스트 "어린 통 3개로는 미달성" 필수 · 단계·중반 목표·v16 전용 잠금 키는 `rulesVersionOf`로 골라야 옛 판 바이트 동일이 산다(콘텐츠를 매달 읽음) | 담보 `inventoryCollateral` 참 품질(MGT 발견) · 숨은 `contamination` 읽기(`autoFill.ts:21`·P8 봇) · #319 치환 목표 · #311 수출·HR 잠금 | 부분 바뀜 |
+| F5 PlayerView·Rights·범위 잠금 | ARCH(+MGT·PROD) — **명세 초안 아래 P-ARCH-57**(F5a 범위 잠금·치환 목표 / F5b 3종 평가·권리 / F5c 화면) · 주의(MKT §7.3, PM 2026-11-14): #319 `reserve_casks` 판정은 `isCampaignCandidate(s, c, candidateHorizon(s, 'hint'))` 통 ≥ 3 — `'reserve'`(144)를 쓰면 모든 자가 몰트 통이 후보라 저절로 달성된다. 테스트 "어린 통 3개로는 미달성" 필수 · 단계·중반 목표·v16 전용 잠금 키는 `rulesVersionOf`로 골라야 옛 판 바이트 동일이 산다(콘텐츠를 매달 읽음) | 담보 `inventoryCollateral` 참 품질(MGT 발견) · 숨은 `contamination` 읽기(`autoFill.ts:21`·P8 봇) · #319 치환 목표 · #311 수출·HR 잠금 | 부분 바뀜 |
 
 **모듈 순환 끊기 `[제안 P-ARCH-56]`(2026-11-13):** `campaignMinOakMonths`·`rulesVersionOf`·`DEFAULT_FLAGSHIP_MONTHS`를 의존 없는 잎 모듈 **`rules.ts`**로 옮겼다(`progress.ts`는 다시 내보냄). `ledger.ts`가 `progress`를 부르지 않으므로 `ledger → progress → blending → blendTable → maturation` 순환이 사라진다 — PROD #498이 지점 7·8을 `warehouse.ts`로 우회한 원인(TDZ). 동작·출력 불변(순수 이동). 이제 `maturation.ts`·`broker.ts`(지점 25)가 `ledger.ts`를 직접 불러도 안전하다
 
@@ -764,6 +765,36 @@ interface GameState {
 - **사건은 틱 안 출고에서만 생긴다** — 행동 단계(턴 사이) 유상 출하는 `resolveEvent` 수출 주문 하나뿐이고(#321로 새 캠페인에서 잠김) 사건을 만들지 않는다(§10.10 F3). `pendingSaleEvents` 그릇은 행동 단계 적격 출고 경로가 생길 때 더한다
 - 반론·리스크: (1) `verdict`를 승리 달에 쓰면 "승리 뒤 파산"은 verdict heritage + status bankrupt가 공존한다 — MGT `classifyWin`은 "승리 뒤 파산도 승리"로 이미 정했으니 맞다. (2) 지평 (나)는 새 상수 하나를 더한다 — 단계 T 튜닝 대상으로 표시. (3) `campaign_win` 마일스톤을 새로 두면 `MILESTONES` 표(코어)와 결과 화면 연표를 함께 고쳐야 한다 — 대안은 `flagship_sold`를 재사용하는 것이지만 옛 판정과 섞여 바이트 동일 검사를 흐린다
 
+
+**F5 코어 계약 — 범위 잠금·치환 목표 / PlayerView·3종 평가 / 화면 (초안 `[제안 P-ARCH-57]`, 2026-11-14 · 입력: MKT mkt-stage-t §7(7.0~7.4) · MGT P-MGT-47(#317)·P-MGT-49(#316) · PROD P-PROD-57(#322) · 결정 #310·#311·#316·#317·#319·#320·#321·#322·#325 고침)**
+> 세 묶음으로 나눠 PR 셋. 각 PR의 머지 조건 = typecheck·test·build · **X0L 바이트 동일**(`docs/baseline/2026-11-13-x0l/` 3파일, `RULES=legacy`) · v15 픽스처 진행 동일 · 전후 표(아래 표본). 모든 v16 변경은 `rulesVersionOf(s) === 'legacy-v15'`가 아닐 때만 — 옛 세이브·X0L은 **구조로** 보존한다(콘텐츠를 매달 읽는 자리는 함수로 갈아끼운다, MKT 7.0 `[사실]`)
+
+**F5a 범위 잠금·치환 목표 — 출력 바뀜: v16 새 판만(옛 판·샌드박스 불변)**
+- 콘텐츠(`content/scenarios.ts`): `ScenarioDef`에 **`stagesV16?` · `midGoalsV16?` · `lockedV16?` · `kindsV16?`**를 더하고 옛 `stages`·`midGoals`·`locked`·`kinds`는 **그대로** 둔다. 읽기 함수 둘을 코어에: `stagesOf(s)`(`scenario.ts` — `pendingStages`·`applyScenarioStages`가 쓴다) · `midGoalsOf(s)`(`progress.ts`)가 `rulesVersionOf(s)`로 고른다(`rules.ts` 잎 모듈 — 순환 없음). `newScenarioGame`은 v16이면 `locked + lockedV16`을 복사하고 `kindsV16`으로 `kind:` 잠금을 만든다. 옛 판·X0L(`rules: 'legacy-v15'`)은 옛 배열만 읽으므로 바이트 동일
+- `stagesV16` = 옛 단계에서 **`y7_export` → `y7_retail`(84, `['system:siteDeals', 'action:acceptRetail', 'action:cancelRetail']`, 문구 MKT 7.1)** · **`y11_people` → `y11_specialist`(120, `['action:pickSpecialist']` — #316 핵심 전문가 1인: 후보 3명 중 1명 1회, 안 고를 수 있음, `system:hr`·`hire`·`fire`는 잠긴 채. 구현 MGT(`actions.mgt`·`hr.ts`), 코어는 행동 키·`Staff.keySpecialist?`만)** · `y5_market`·`y9_casks`는 그대로
+- `midGoalsV16` = `export_open` → **`reserve_casks`(132, 0.03)**: `midGoalMet` = `casks.filter((c) => isCampaignCandidate(s, c, candidateHorizon(s, 'hint'))).length >= 3`(목재 108개월↑ 자가 몰트 — **`'reserve'`(144) 금지**, 모든 자가 몰트 통이 후보라 저절로 달성됨). `MidGoalDef.id` 유니온에 추가, `export_open` 케이스는 옛 판용으로 남김. 오염 조건 없음(MKT 7.3 — 한 함수 원칙)
+- `lockedV16` = `['event:export_inquiry']`(#321 대안 ⓐ) + `events.ts eligibleAt`에 **한 줄** `if (isLocked(s, \`event:${def.id}\`)) return false;`. 옛 세이브·샌드박스·X0L은 키가 없어 불변. v16은 월 상한 2건 안에서 다음 순위 이벤트가 그 자리를 받을 수 있다(정당한 차이). 수출(`system:exports`·행동 3)·상세 HR은 **시작 잠금을 단계가 풀지 않는 것**으로 끝 — 코드 삭제 0(#311 "코드 보존")
+- `kindsV16` = `['soju', 'malt', 'grain']`(#311·#322) + PROD **그레인 프리셋 1개**(P-PROD-57). **프리셋은 레시피 id를 `nid`로 받아 전역 `nextId`를 민다** → 옛 판 출력 보존을 위해 **v16 새 판에만** 붙인다(`PRESETS_KR` 뒤에 `PRESETS_KR_V16`을 이어 붙여 옛 레시피 id는 그대로, 새 프리셋은 맨 뒤). 블렌디드 `RESTOCK_KIND` 빈틈(PROD)은 같은 PR
+- 읽는 쪽 점검(MKT 7.0 목록): `scenario.ts pendingStages` · `progress.ts midGoalsOf` · `ui/alerts.ts:230` 단계 안내 탭(`system:siteDeals` → `'b2b'`) · `AlertsView.tsx:217~233` 단계·중반 목표 표(`reserve_casks`는 "n/3" 진행 수치 — QoL) · `Production.tsx:94 exportsLater` 문구(v16은 "이 캠페인에는 수출이 없다"로) · `playlog-report.ts:130`(영향 없음)
+- **전후 표 표본:** X0L 3파일 바이트 동일(첫 행) · v15 픽스처 · P8 **새 X0 = X0W(#320, MGT 구현 중)** 10시드 × 180·240 standard·micro — MKT 7.4 ①`y7_retail` 수락 켬/끔 짝(순자산·승리 달·`retail_deal` 첫 출하 비율) ②`reserve_casks` 달성률 대 승리 10/10 ③ "늘 받기" 지배 여부는 F7. 골든 10은 바뀐다(v16) — 요약만
+- 테스트(ARCH): `scenario.test.ts:163~182` 옛 기대값은 `rules: 'legacy-v15'`로 보존 + v16 경로 ① 84개월 `stagesDone`에 `y7_retail`·`system:siteDeals` 풀림·`system:exports` 잠김 ② 108개월↑ 자가 몰트 통 3개 → `reserve_casks done`, **어린 통 3개 → 132에 `missed`** ③ `export_inquiry` v16 `eligible` false·legacy true ④ v16 새 판에 `kind:grain` 잠금 없음·그레인 프리셋 있음, 옛 판 레시피 id 그대로 ⑤ 120개월 `action:pickSpecialist` 열림·`action:hire` 잠김
+- `[확인 필요]` ① 핵심 전문가 시점 120(기본) 대 60(MGT 대안 — 숙성고 매니저가 지킬 시간) ② 그레인 프리셋을 v16 전용으로 둘지(권장) 아니면 전 판에 넣고 새 기준선을 잡을지 ③ `MVP_KR.site`가 비어 지역 기본 입지(경기)로 시작한다 — `y7_retail`은 경기(`deals: ['retail']`)에서만 뜻이 있으므로 **시나리오가 입지를 고정하는 것으로 명시**(지금도 고르는 UI가 없어 사실상 고정 `[확인 — 코드 점검 뒤 적음]`) ④ 중반 목표 진행 수치 표시(QoL)
+
+**F5b PlayerView·3종 평가·권리 — 출력 바뀜: v16(샌드박스 포함, `newGame`도 v16)·옛 판 불변**
+- 새 코어 `src/sim/valuation.ts`(순수): P-MGT-47 표대로 **`bookValue(s)`**(원가 — 보험·세무·자본비용) · **`estimatedValue(s)`**(관측 품질 q̂의 `bulkValuePerLPA` — 화면 "추정 가치"·가격 추천) · **`liquidationValue(s)`**(q̂의 `spotBidPerLPA` 전량 매각 + 병 재고 × 원가 — "지금 정리하면 받는 돈"). **`qHat(s, lot|cask)`** = 가장 최근 `SampleRecord.estQuality`, 없으면 **보수적 사전값**(레시피·범주 공개 기대 품질의 낮은 분위 `[튜닝]` — 평균으로 두면 "맛 안 보는 쪽이 평가가 높다"). 같은 관측 → 같은 q̂(샘플 오차는 시드 고정)
+- **`netWorth(s)` := v16이면 `liquidationValue`, 옛 판이면 지금 식(`netWorthLegacy`, 바이트 동일)**. 읽는 곳: `judgeGoal`·`judgeWin`(S 등급 문턱)·`MonthReport.netWorth`·#138 곡선·`mvp-survival`·`metrics`·CALIB H3. 성과 수치는 구기준선과 비교 불가 → `netWorthLegacy`로만 비교(P-MGT-47 리스크)
+- **담보 한도** `loans.ts inventoryCollateral` := q̂ 현물가(③과 같은 식) × `inventoryLtv`, **고객 소유 통·다른 대출 담보·선판매 물량 제외**(이중 담보 0). 권리 최소형: `Cask.rights?: { lien?: loanId; presold?: contractId }`(코어 타입) — 선급금 계약 물량은 재고 한 번 + 남은 납품 의무를 부채로 한 번(P-MGT-47 불변식 3)
+- **숨은 값 읽기 제거(#310 2단계)**: `autoFill.ts:21` `!c.contamination` → `!c.contaminationKnown` · P8 `mvp-human.ts fill()` 304·306행(MGT) · `handfillBlocker`·IB 후보 등 `contamination` 직접 읽기 전수 점검(`info-leak.ts` 정적 I1 테스트 T1을 **실제 테스트로**: UI·추천·자동화 모듈이 참 품질/오염 함수를 부르지 않는다). **오염 통을 모르고 통입하는 것이 새 규칙의 뜻**(QC로 알게 됨) — 출력이 바뀐다(v16·샌드박스)
+- 전후 표 표본: 짝 상태 테스트(같은 관측·다른 참 품질 → ①②③·담보 한도·가격 추천 동일 — REQ-CORE-5 1~6) · P8 X0W 10시드 × 180·240(순자산 분포 — ③은 ②보다 낮다, "② − ③ 격차 = 못 파는 재고 신호") · 담보대출 쓰는 변형(MGT DV)에서 대출 한도 변화 · X0L 바이트 동일
+- `[확인 필요]` ① 사전값 분위(`[튜닝]` — 기본 P25 제안) ② 병 재고 ③을 원가로(권장) 대 출고가 × 처분 계수 ③ `Rights`를 F5b 최소형(통의 `lien`·`presold`)으로 두고 전체 권리 원장은 1.0으로
+
+**F5c 화면 — 출력 불변(문구·표시만)**
+- PROD 메모 ① `B2B.tsx:88` "판이 끝나기 전에 플래그십 숙성" → v16 "12년 후보 통 — 목재 108개월↑, 승리 출고 재료" + `goal.flagshipMinMonths` 직접 읽기 → `campaignMinOakMonths` ② 108개월 전 "후보 0통" 대 예비 태그 4통 어긋남 → "후보 = 3년 안에 적격 · 예비 = 승리용으로 남겨 두는 통(처음부터)" 구분 문구(MvpHome·숙성고 태그 툴팁) · MKT 메모: Handfill 패널 보호 경고에 "이 통이 12년을 넘기면 핸드필 판매가 캠페인 승리로 기록된다(등급 최대 A)" · `Production.tsx exportsLater` · 단계 안내 탭 · 중반 목표 n/3
+- `pendingSaleEvents`(턴 사이 사건 그릇): **필요 없음**으로 닫는다 — F5a가 `export_inquiry`를 v16에서 잠그면 행동 단계 적격 출고 경로가 없다(옛 판은 판정 대상 아님). 경로가 다시 생길 때 더한다
+- (단계 T 메모) 옹기에 든 자가 몰트에 수동 예비 태그를 붙이면 자리 하나를 쓴다 — `'reserve'` 판정이 용기 재질을 안 봄(PROD ③)
+
+- **순서·PR 쪼개기:** F5a(코어 + 콘텐츠 + PROD 프리셋 + MGT 전문가 행동 — 한 창에 PR 2~3개, 모두 v16 전용) → F5b(코어 `valuation.ts`·`loans.ts`·`autoFill.ts` + MGT P8 fill) → F5c(화면, F5a에 묶어도 됨). 각 PR 본문에 "출력 변화 범위 · X0L 보존 방법(규칙 묶음 분기) · 전후 표 표본"을 적는다
+- 반론·리스크: (1) `*V16` 배열 복제는 콘텐츠가 두 벌이 된다 — 옛 배열은 동결(1.0에서 `legacy-v15` 지원을 끊을 때 지운다). (2) F5b의 q̂ 사전값이 낮으면 초반 순자산이 지금보다 낮게 보여 플레이어 체감이 바뀐다 — #310 1단계(100만 원 단위)와 함께 보면 "모르는 값은 낮게"가 뜻이다. (3) 그레인 프리셋을 v16 전용으로 두면 샌드박스(`newGame`)에는 없다 — 샌드박스는 빈 레시피 버튼이 열려 있어 막힘 아님
 
 ## 11. 정보 비대칭 검증 계약 (ARCH-C, 2026-11-11) `[제안 P-ARCH-41]`
 
