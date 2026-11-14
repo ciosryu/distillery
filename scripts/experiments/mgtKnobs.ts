@@ -10,8 +10,13 @@
 //   GOAL_MULT=<배수>        순자산 목표 배수 (기본 3) — 목표만 바꾸고 판 진행은 같다
 //   SALARY_SCALE=<배수>     시작 직원 급여 배수 (C-MGT-1 — MVP는 HR이 120개월까지 잠겨 급여를 못 줄인다. "급여 조정 허용"의 상한 효과)
 //   EVENTS_EARLY=1          랜덤 이벤트를 0개월부터 연다 (MVP는 60개월에 연다 — Death Valley 구간의 사건 위험을 보는 민감도)
+//   DIFF=easy|normal|hard|custom:<6자리>  난이도 시작 스냅샷(F6c, [결정 #313·#314] — architecture §10.10). custom 자리 순서 = macro·competition·taste·supply·incidents·finance, 값 1·2·3.
+//                           mvp-human.ts는 사업 계획서(`BusinessPlan.difficulty`)로, balance-sim.ts(샌드박스)는 새 판에 넣는다. 없으면 = 지금 기준선(Normal과 같은 출력)
 // balance-sim.ts·mvp-survival.ts가 맨 앞에서 applyMgtKnobs()를 부르고, 매달 행동 끝에 mgtPolicy(s)를 부른다
-import { applyAction, isLocked, type Candidate, type GameState } from '../../src/sim';
+import { applyAction, isLocked, salaryFor, type Candidate, type GameState } from '../../src/sim';
+import { DIFFICULTY_DOMAINS, normalizeDifficulty } from '../../src/sim/content/difficulty';
+import { laborMul, staffLaborCost } from '../../src/sim/mgtKnobs';
+import type { DifficultyConfig, DifficultyDomain, DifficultyLevel } from '../../src/sim/types';
 import { HR_TUNING } from '../../src/sim/hr';
 import { BANK_SCREENING } from '../../src/sim/content/finance';
 
@@ -29,6 +34,7 @@ export function applyMgtKnobs(): string {
   if (MGT_KNOBS.hireSalesAt != null) on.push(`hireSalesAt=${MGT_KNOBS.hireSalesAt}`);
   if (MGT_KNOBS.salaryReview) on.push(`salaryReview=${MGT_KNOBS.salaryReview}`);
   for (const k of ['TIER_OVERHEAD', 'TIER_EQUITY', 'TIER_WAREHOUSE', 'GOAL_MULT', 'SALARY_SCALE', 'EVENTS_EARLY']) if (env[k] != null && env[k] !== '') on.push(`${k}=${env[k]}`);
+  if (DIFF) on.push(`DIFF=${DIFF.preset}(${DIFFICULTY_DOMAINS.map((d) => DIFF!.levels[d]).join('')})`);
   const label = on.join(' ');
   if (label) console.error(`MGT 손잡이: ${label}`);
   return label;
@@ -70,5 +76,31 @@ export function mgtPolicy(s: GameState): GameState {
     const p = s.events.pending.find((e) => e.defId === 'salary_review');
     if (p) s = applyAction(s, { type: 'resolveEvent', eventId: p.id, choice: k.salaryReview === 'raise' ? 0 : 1 }).state;
   }
+  return s;
+}
+
+/**
+ * `DIFF=` 환경 변수 → 난이도 스냅샷(F6c, MGT). `easy|normal|hard` 또는 `custom:<6자리>`(자리 순서 = `DIFFICULTY_DOMAINS`, 값 1·2·3).
+ * 없으면 undefined — 판을 지금처럼 만든다(기존 기준선 그대로). 잘못된 값은 예외(조용히 Normal로 돌지 않게)
+ */
+export function difficultyFromEnv(v: string | undefined = env.DIFF): DifficultyConfig | undefined {
+  if (v == null || v === '') return undefined;
+  if (v === 'easy' || v === 'normal' || v === 'hard') return normalizeDifficulty(v);
+  const m = /^custom:([123]{6})$/.exec(v);
+  if (!m) throw new Error(`DIFF=${v} — easy|normal|hard|custom:<6자리 1~3, 순서 ${DIFFICULTY_DOMAINS.join('·')}>`);
+  const levels = Object.fromEntries(DIFFICULTY_DOMAINS.map((d, i) => [d, Number(m[1]![i]) as DifficultyLevel])) as Record<DifficultyDomain, DifficultyLevel>;
+  return normalizeDifficulty({ preset: 'custom', levels });
+}
+/** 이 실행의 실험 난이도(없으면 undefined) */
+export const DIFF = difficultyFromEnv();
+
+/**
+ * 샌드박스 판(`newGame` — 난이도 그릇이 없다, #314는 캠페인 설정)에 실험 난이도를 넣는다. 시작 직원 급여는 인건비 배수로 다시 정한다
+ * (`newScenario`와 같은 규칙 — 배수 1이면 건너뛴다). DIFF가 없으면 s를 그대로 돌려준다
+ */
+export function applyDifficulty(s: GameState, d: DifficultyConfig | undefined = DIFF): GameState {
+  if (!d) return s;
+  s.difficulty = d;
+  if (laborMul(s) !== 1) for (const x of s.hr.staff) x.salary = salaryFor(x.role, x.stats, x.level, staffLaborCost(s));
   return s;
 }
