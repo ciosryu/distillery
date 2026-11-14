@@ -9,6 +9,7 @@
 //   SET=H2 같은 그릇을 기준가(suggestedPrice 그대로) 하나로 — 기준가 ×1.3 유지·+소진(목표의 10%씩·80%까지 또는 자동 가격 사다리)·×1.5+소진. 권장가 정직화(h) 없는 식 v1 위에서(PM 기준점 정정)
 //   SET=AP3 AUTO-PRICE-3 진단(AP3-MKT-1): §3.9 조건 8(N 정상·S 공급 부족·O 과잉·$ 현금 부족·L 낮은 인지도·P 프리미엄·K1·K2 SKU) × 정책 4(A·B·B2·C, C13 = C의 목표 배수를 기본 1.3으로 — P-PROD-53) — AP3=1과 같이. COND=·POL=로 줄인다
 //   SET=A  MKT-A SKU: 계열당 3·2·1제품(자동 가격) — RHO=<ρ>로 SKU.rho를, MARKET=<배수>로 국내 점유 상한을 실험 안에서만 바꾼다. SNAP=<달>이면 그 달 SKU 분해 표, DIAG=1이면 위스키 진열 원인 나누기
+//   SET=R  F5a 대형 유통 납품(#319 `y7_retail`) 수락 정책 — mkt-stage-t §7.4 ①③: 없음 / 봇 규칙(X0) / 늘 받기 / 위스키만 / 작은 계약만 / 재고 3개월치↑일 때만, 4·6·8배치. v16 전용(옛 판은 제안이 없다). 끝에 납품 지표 표
 //   SET=D  MKT-D 생존 대안: 비지터 센터·소주·뉴메이크·조기 위스키·원액 현물 제한 매각을 하나씩 빼거나 바꾼다
 //   TIER(기본 standard)·YEARLY·SPLIT 등 mvp-human.ts의 다른 환경 변수는 그대로
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -71,6 +72,22 @@ const SETS: Record<string, string> = {
     P8('M-D5 조기 위스키 없음(36개월부터)', { labelFrom: [0, 36] }),
     P8('M-D6 원액 현물 제한 매각(12~48개월 탱크 30%)', { spot: { from: 12, until: 48, share: 0.3 } }),
     P8('M-D7 비지터 없음 + 소주 3 + 현물 제한', { visitor: false, giftshopAt: undefined, handfillAt: undefined, sojuB: 3, spot: { from: 12, until: 48, share: 0.3 } }),
+  ]`,
+  // R: 대형 유통 납품 수락 정책(F5a). X0F = P8 새 X0(출시 + 게임 예비 + retailFrom 84 + 영업 전문가, MGT). 봇 규칙을 끄고(retailFrom: undefined) MKT 손잡이(retailMode)가 대신 받는다 —
+  //    R1만 봇 규칙 그대로(= X0). 6·8배치는 수출이 없는 v16에서 국내 천장에 닿는 증산 판(§1-b)
+  R: `[
+    P8('R0 납품 없음', { ...X0F, retailFrom: undefined }),
+    P8('R1 봇 규칙(X0 — 위스키는 늘, 다른 범주는 재고 6개월치↑)', { ...X0F }),
+    P8('R2 늘 받기(모든 제안)', { ...X0F, retailFrom: undefined, retailMode: 'all' }),
+    P8('R3 위스키 제안만', { ...X0F, retailFrom: undefined, retailMode: 'whisky' }),
+    P8('R4 위스키 300병/월 제안만(작은 계약)', { ...X0F, retailFrom: undefined, retailMode: 'small' }),
+    P8('R5 재고 3개월치↑일 때만(위스키 포함)', { ...X0F, retailFrom: undefined, retailMode: 'stock3' }),
+    P8('R0·6 6배치 · 납품 없음', { ...X0F, maltB: 6, retailFrom: undefined }),
+    P8('R1·6 6배치 · 봇 규칙', { ...X0F, maltB: 6 }),
+    P8('R2·6 6배치 · 늘 받기', { ...X0F, maltB: 6, retailFrom: undefined, retailMode: 'all' }),
+    P8('R0·8 8배치 · 납품 없음', { ...X0F, maltB: 8, retailFrom: undefined }),
+    P8('R1·8 8배치 · 봇 규칙', { ...X0F, maltB: 8 }),
+    P8('R2·8 8배치 · 늘 받기', { ...X0F, maltB: 8, retailFrom: undefined, retailMode: 'all' }),
   ]`,
 };
 // SET=AP3 — AUTO-PRICE-3 진단(AP3-MKT-1): 지시서 §3.9 조건 8 × 정책 4(A 현금회전 · B #200 · B′ 다기간 · C 프리미엄). COND=<코드,…>·POL=<코드,…>로 줄인다

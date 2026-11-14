@@ -31,7 +31,7 @@ import { bottleMargin, priceOptions } from '../../src/sim/market';
 import { outboundLogistics } from '../../src/sim/sites';
 import { netWorth } from '../../src/sim/progress';
 
-export interface MktPolicy { name: string; autoPrice?: boolean; price?: 'suggest' | 'heur' | 'markup' | 'table' | 'turnover' | 'profit2' | 'premium'; markup?: number; clear?: { above: number; min: number; step?: number }; anchor?: number; band?: [number, number]; step?: number; floor?: number; horizon?: number; raise?: boolean; guard?: number; switchA?: boolean; spot?: { from: number; until: number; share: number } }
+export interface MktPolicy { name: string; autoPrice?: boolean; price?: 'suggest' | 'heur' | 'markup' | 'table' | 'turnover' | 'profit2' | 'premium'; markup?: number; clear?: { above: number; min: number; step?: number }; anchor?: number; band?: [number, number]; step?: number; floor?: number; horizon?: number; raise?: boolean; guard?: number; switchA?: boolean; spot?: { from: number; until: number; share: number }; /** 대형 유통 납품 수락(SET=R) — all 늘 받기 · whisky 위스키 제안만 · small 위스키 300병/월 제안만(미납이 겁나는 사람) · stock3 그 범주 재고가 납품 3개월치↑일 때만. 봇 규칙(retailFrom)과 같이 켜지 않는다 */ retailMode?: 'all' | 'whisky' | 'small' | 'stock3'; retailFrom?: number }
 
 const act = (s: GameState, a: Action) => { const r = applyAction(s, a); return r.error ? s : r.state; };
 const reprice = (s: GameState, p: Product, factor = 1) => act(s, { type: 'setPrice', productId: p.id, price: Math.round(currentSuggested(s, p) * factor) });
@@ -180,6 +180,16 @@ export function monthly(s: GameState, p: MktPolicy, m: number): GameState {
       if (nf < f - 1e-6) { s = reprice(s, prod, nf); clears[p.name] = (clears[p.name] ?? 0) + 1; }
     }
   }
+  // SET=R: 대형 유통 납품 수락 정책(F5a `y7_retail`) — 제안이 열린 판(v16 84개월~)에서만 제안이 있다. 잠겨 있거나 한도(2건)면 행동이 실패하고 그대로
+  if (p.retailMode) {
+    for (const o of [...s.commerce.retailOffers]) {
+      const stock = s.commerce.products.filter((x) => x.category === o.category && !x.dutyFreeOnly).reduce((t, x) => t + x.stockBottles, 0);
+      if (p.retailMode === 'whisky' && o.category !== 'whisky') continue;
+      if (p.retailMode === 'small' && (o.category !== 'whisky' || o.bottlesPerMonth > 300)) continue;
+      if (p.retailMode === 'stock3' && stock < 3 * o.bottlesPerMonth) continue;
+      s = act(s, { type: 'acceptRetail', offerId: o.id });
+    }
+  }
   if (process.env.SKUCOST) s.finance.cash -= Number(process.env.SKUCOST) * s.commerce.products.filter((x) => x.stockBottles > 0 && !x.dutyFreeOnly).length;
   if (p.spot && m >= p.spot.from && m < p.spot.until) {
     for (const lot of s.inventory.lots.filter((l) => l.kind === 'malt' && l.volumeL > 1)) s = act(s, { type: 'sellBulk', source: 'lot', id: lot.id, liters: Math.floor(lot.volumeL * p.spot.share) });
@@ -188,6 +198,8 @@ export function monthly(s: GameState, p: MktPolicy, m: number): GameState {
 }
 
 const clears: Record<string, number> = {};
+interface RetailStat { games: Set<number>; offers: Set<string>; contracts: Set<string>; byCat: Record<string, number>; revenue: number; penalty: number; shortMonths: number; broken: number; domRev: number; bottlesPm: number }
+const retail: Record<string, RetailStat> = {};
 const perSeed: Record<string, Record<number, { nw: number; month: number; cash: number }>> = {};
 const contracts: Record<string, { games: Set<number>; ended: number; opened: number; seen: Set<string> }> = {};
 interface Diag { months: number; ces: number; overhang: number; n: number; overhangHit: number; stockMonths: number }
@@ -198,6 +210,20 @@ interface Ap3 { games: Set<number>; domRev: number; expRev: number; domBtl: numb
 const ap3: Record<string, Ap3> = {};
 const lastPrice: Record<string, number> = {};
 export function snap(s: GameState, p: MktPolicy, m: number): void {
+  if (process.env.SET === 'R') {
+    const x = (retail[p.name] ??= { games: new Set(), offers: new Set(), contracts: new Set(), byCat: {}, revenue: 0, penalty: 0, shortMonths: 0, broken: 0, domRev: 0, bottlesPm: 0 });
+    x.games.add(s.seed);
+    for (const o of s.commerce.retailOffers) x.offers.add(`${s.seed}:${o.id}`);
+    for (const c of s.commerce.retailContracts) { const k = `${s.seed}:${c.id}`; x.offers.add(k); if (!x.contracts.has(k)) { x.contracts.add(k); x.byCat[c.category] = (x.byCat[c.category] ?? 0) + 1; x.bottlesPm += c.bottlesPerMonth; } } // 계약 id = 제안 id(startRetail) — 받은 제안도 제안 수에 센다
+    const r = s.history.reports.at(-1);
+    if (r && r.month === s.month - 1) {
+      x.revenue += r.retailDealRevenue ?? 0;
+      x.penalty += r.expenses.penalty ?? 0;
+      x.shortMonths += r.notes.filter((n) => n.includes('납품 부족')).length;
+      x.broken += r.notes.filter((n) => n.includes('납품 계약 파기')).length;
+      x.domRev += r.sales.reduce((t, y) => t + y.revenue, 0);
+    }
+  }
   if (process.env.AP3 === '1') {
     const a = (ap3[p.name] ??= { games: new Set(), domRev: 0, expRev: 0, domBtl: 0, expBtl: 0, unmet: 0, smSum: 0, smN: 0, stockout: 0, fSum: 0, fN: 0, vol: 0, volN: 0 });
     a.games.add(s.seed);
@@ -283,6 +309,15 @@ export function report(): void {
     console.log('\n### B′ + 위기 전환(switchA) — A로 지낸 달 비율 · 전환 횟수/판');
     console.log('| 정책 | A 달 비율 | 전환/판 |\n|---|---|---|');
     for (const [n, x] of Object.entries(switchStats)) console.log(`| ${n} | ${((x.aMonths / Math.max(1, x.months)) * 100).toFixed(0)}% | ${(x.flips / Math.max(1, Object.keys(perSeed[n] ?? {}).length || 10)).toFixed(1)} |`);
+  }
+  if (Object.keys(retail).length) {
+    console.log('\n### 대형 유통 납품 (SET=R, 판 평균 — 매출·위약금은 측정 기간 누계, 억 = 1e8원). 위약금에는 원액 계약 위약금도 들어간다(MVP는 원액 계약이 잠겨 0)');
+    console.log('| 정책 | 판 수 | 제안(건) | 계약(건) · 범주별 | 계약 평균 물량(병/월) | 납품 매출 | 국내 소매 매출 | 미납 위약금 | 미납 난 계약·달 | 미납 과다 파기 |\n|---|---|---|---|---|---|---|---|---|---|');
+    for (const [n, x] of Object.entries(retail)) {
+      const g = Math.max(1, x.games.size);
+      const cats = Object.entries(x.byCat).map(([k, v]) => `${k} ${(v / g).toFixed(1)}`).join(' · ') || '—';
+      console.log(`| ${n} | ${g} | ${(x.offers.size / g).toFixed(1)} | ${(x.contracts.size / g).toFixed(1)} · ${cats} | ${x.contracts.size ? Math.round(x.bottlesPm / x.contracts.size) : '—'} | ${(x.revenue / g / 1e8).toFixed(2)} | ${(x.domRev / g / 1e8).toFixed(2)} | ${(x.penalty / g / 1e8).toFixed(3)} | ${(x.shortMonths / g).toFixed(1)} | ${(x.broken / g).toFixed(2)} |`);
+    }
   }
   if (Object.keys(clears).length) {
     const games = (n: string) => Math.max(1, Object.keys(perSeed[n] ?? {}).length || 10);
