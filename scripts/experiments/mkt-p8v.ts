@@ -10,6 +10,7 @@
 //   SET=AP3 AUTO-PRICE-3 진단(AP3-MKT-1): §3.9 조건 8(N 정상·S 공급 부족·O 과잉·$ 현금 부족·L 낮은 인지도·P 프리미엄·K1·K2 SKU) × 정책 4(A·B·B2·C, C13 = C의 목표 배수를 기본 1.3으로 — P-PROD-53) — AP3=1과 같이. COND=·POL=로 줄인다
 //   SET=A  MKT-A SKU: 계열당 3·2·1제품(자동 가격) — RHO=<ρ>로 SKU.rho를, MARKET=<배수>로 국내 점유 상한을 실험 안에서만 바꾼다. SNAP=<달>이면 그 달 SKU 분해 표, DIAG=1이면 위스키 진열 원인 나누기
 //   SET=R  F5a 대형 유통 납품(#319 `y7_retail`) 수락 정책 — mkt-stage-t §7.4 ①③: 없음 / 봇 규칙(X0) / 늘 받기 / 위스키만 / 작은 계약만 / 재고 3개월치↑일 때만, 4·6·8배치. v16 전용(옛 판은 제안이 없다). 끝에 납품 지표 표
+//          RETAIL=penaltyShare:1,priceFactor:0.7 처럼 납품 조건을 실험 안에서만 바꿔 민감도를 본다(ONLY=R1,R4,R1·6 으로 행을 줄인다)
 //   SET=D  MKT-D 생존 대안: 비지터 센터·소주·뉴메이크·조기 위스키·원액 현물 제한 매각을 하나씩 빼거나 바꾼다
 //   TIER(기본 standard)·YEARLY·SPLIT 등 mvp-human.ts의 다른 환경 변수는 그대로
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -17,6 +18,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SKU } from '../../src/sim/content/market';
 import { REGIONS } from '../../src/sim/content/regions';
+import { RETAIL_DEAL } from '../../src/sim/deals';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SET = process.env.SET ?? 'B';
@@ -113,6 +115,15 @@ const SETS: Record<string, string> = {
 }
 if (!SETS[SET]) throw new Error(`SET=${SET} 없음 — ${Object.keys(SETS).join('·')}`);
 if (process.env.RHO) SKU.rho = Number(process.env.RHO);
+// RETAIL=<키>:<값>,…: 대형 유통 납품 조건(`deals.ts RETAIL_DEAL` — priceFactor·penaltyShare·offerChance·maxActive·appealPremium·awarenessGain·termMonths·paymentDelay)을
+// **실험 안에서만** 바꾼다(SET=R과 같이 — F7 안건 P-MKT-40의 민감도). 게임 코드·기본 출력은 그대로다. 모르는 키면 멈춘다
+if (process.env.RETAIL) {
+  for (const kv of process.env.RETAIL.split(',')) {
+    const [k, v] = kv.split(':');
+    if (!k || !(k in RETAIL_DEAL) || !Number.isFinite(Number(v))) throw new Error(`RETAIL=${kv} — 키는 ${Object.keys(RETAIL_DEAL).join('·')}`);
+    (RETAIL_DEAL as Record<string, number>)[k] = Number(v);
+  }
+}
 // MARKET=<배수>: 국내(한국) 주종별 점유 상한(shareCap)을 실험 안에서만 곱한다 — ρ를 올릴 때 줄어드는 총수요를 시장 크기로 되돌리는 안(P-MKT-25 (a))을 잰다
 if (process.env.MARKET) for (const m of Object.values(REGIONS.KR.market)) if (m) m.shareCap *= Number(process.env.MARKET);
 
@@ -139,5 +150,5 @@ const out = join(here, `.mkt-p8v-${process.pid}.tmp.ts`);
 writeFileSync(out, code);
 process.env.P8 = '1';
 process.env.TIER ??= 'standard';
-console.log(`[mkt-p8v] SET=${SET} · ρ = ${SKU.rho} · 국내 점유 상한 ×${process.env.MARKET ?? 1} · P8 원본 mvp-human.ts + MKT 손잡이(mktP8Hooks.ts)`);
+console.log(`[mkt-p8v] SET=${SET} · ρ = ${SKU.rho} · 국내 점유 상한 ×${process.env.MARKET ?? 1}${process.env.RETAIL ? ` · 납품 조건 실험값 ${process.env.RETAIL}` : ''} · P8 원본 mvp-human.ts + MKT 손잡이(mktP8Hooks.ts)`);
 try { await import(out); } finally { rmSync(out, { force: true }); }
