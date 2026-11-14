@@ -3,7 +3,7 @@
 // 원칙: 값은 `rules.ts knob(s, id)`로만 읽는다 · 전역 상수를 덮어쓰지 않는다 · Normal·옛 판·샌드박스는 늘 ×1 — 이 파일의 함수는 **기준값과 같은 수**를 돌려준다(출력 불변) ·
 // 상태를 바꾸지 않는다. 화면(F6c)도 리터럴 대신 이 함수를 읽는다. 경쟁(competition) 영역은 손잡이를 두지 않는다([결정 대기 96])
 import { BULK_WALK, TREND_WALK } from './content/market';
-import { knob } from './rules';
+import { aroundOne, knob } from './rules';
 import type { GameState } from './types';
 
 type S = Pick<GameState, 'difficulty'>;
@@ -13,11 +13,8 @@ const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 /** 범위 아래 가드 — 난이도가 범위를 넓혀도 수요·시세가 0이 되는 판을 만들지 않는다 `[튜닝]` */
 export const WALK_FLOOR = 0.2;
 
-/**
- * 난이도 손잡이 k로 **1에서의 거리**만 늘리고 줄인다(1.4 → k 0.5면 1.2). k = 1이면 값을 그대로 돌려준다 —
- * `1 + (x − 1) × 1`은 부동소수 오차로 x와 달라질 수 있어 Normal 바이트 동일이 깨진다
- */
-export const aroundOne = (x: number, k: number): number => (k === 1 ? x : 1 + (x - 1) * k);
+/** `aroundOne`은 코어 `rules.ts`(#571) 것 하나를 쓴다 — 여기서 다시 내보내 MKT 호출자·테스트의 import는 그대로 */
+export { aroundOne } from './rules';
 
 const walk = (base: WalkParams, sigma: number, reversion: number, range: number): WalkParams => ({
   sigma: Math.max(0, base.sigma * sigma),
