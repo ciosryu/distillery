@@ -32,6 +32,16 @@ export const KNOBS: Record<string, KnobDef> = {
   'supply.eventChance': { easy: 1, hard: 1, note: '원가 악재 이벤트(흉작·에너지·배럴 파동…) 월 발생 확률 배수 — v16은 60개월부터 이벤트가 열린다' },
   'incidents.eventChance': { easy: 1, hard: 1, note: '재난·사고 이벤트(화재·침수·고장·오염…) 월 발생 확률 배수 — v16은 60개월부터' },
   'finance.eventChance': { easy: 1, hard: 1, note: '금융 이벤트 월 발생 확률 배수(지금 태그된 이벤트 없음 — 자리)' },
+  // ── PROD (F6b, P-PROD-56 v16 갱신) — 읽는 곳은 `prodKnobs.ts` 한 파일. 방향: Easy는 악재를 줄이고 호재를 키운다, Hard는 반대. 크기는 F7 뒤
+  'supply.costSize': { easy: 1, hard: 1, note: '원가 악재 이벤트의 값 배수(>1)가 1에서 떨어진 거리 × 이 값 — 예: 보리 흉작 ×1.5 → 1 + 0.5 × 값 (Easy <1 · Hard >1)' },
+  'supply.costMonths': { easy: 1, hard: 1, note: '원가 악재 이벤트 지속 개월 × 이 값 (Easy <1 · Hard >1)' },
+  'supply.windfallSize': { easy: 1, hard: 1, note: '원가 호재(값 배수 <1, 가공용 쌀 할인)의 할인 폭 × 이 값 (Easy >1 · Hard <1 — 악재와 반대 방향)' },
+  'supply.forecastMonths': { easy: 1, hard: 1, note: '원가 이벤트 예보가 미리 알려 주는 개월 × 이 값 (Easy >1 · Hard <1)' },
+  'supply.forecastCertainty': { easy: 1, hard: 1, note: '원가 이벤트 예보가 맞을 확률 × 이 값, 0.05~0.95 (Easy >1 · Hard <1)' },
+  'supply.caskLead': { easy: 1, hard: 1, note: '쿠퍼리지 통 납기 2개월 × 이 값, 반올림 (Hard >1 — 승리 달에 1:1로 닿으니 작게. Easy는 1 그대로 권장)' },
+  'incidents.lossSize': { easy: 1, hard: 1, note: '통 소실(화재·폭설)·원액 손실(침수) 비율 × 이 값 (Easy <1 · Hard >1) — 승리 통을 없앨 수 있다(P-PROD-56 F7 필수 행)' },
+  'incidents.stillDownMonths': { easy: 1, hard: 1, note: '사고로 증류기가 서는 개월 × 이 값, 반올림·최소 1 (Hard >1)' },
+  'incidents.spoilSize': { easy: 1, hard: 1, note: '발효 오염 이벤트의 이취(acetic +8) × 이 값 (Easy <1 · Hard >1)' },
 };
 
 /** 세 프리셋 = 6값의 묶음 (easy 전부 1 · normal 2 · hard 3). Custom은 값을 개별 선택 */
