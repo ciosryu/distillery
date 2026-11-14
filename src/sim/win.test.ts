@@ -26,7 +26,7 @@ describe('win: 미판매 running · 적격 실제 출고 1회 · 중복 0 ([결�
     const r1 = report(s);
     sellFromLots(s, r1, 'P', 7, SALE);
     updateProgress(s, r1);
-    expect(s.progress.win).toEqual({ month: 150, productId: 'P', lotId: 'P:150:0', kind: 'domestic', unitPrice: 120_000, bottles: 7 });
+    expect(s.progress.win).toEqual({ month: 150, productId: 'P', lotId: 'P:150:0', kind: 'domestic', unitPrice: 120_000, bottles: 7 }); // 채널 없는 사건 → channel 키 없음(F5c-2)
     expect(s.progress.milestones.find((m) => m.id === 'campaign_win')).toEqual({ id: 'campaign_win', month: 150, value: 85 });
     expect(r1.notes.join()).toContain('캠페인 승리');
     expect(s.progress.verdict).toMatchObject({ month: 151, result: 'heritage', flagshipQuality: 85 });
@@ -83,6 +83,19 @@ describe('win: 미판매 running · 적격 실제 출고 1회 · 중복 0 ([결�
     expect(s.progress.win).toBeUndefined();
     expect(s.progress.verdict).toBeUndefined();
     expect(s.progress.milestones.some((m) => m.id === 'campaign_win')).toBe(false);
+  });
+});
+
+describe('win: 승리 사건의 채널을 복사한다 (F5c-2 — 결과 화면 "대형 유통 납품 승리")', () => {
+  it('retail_deal 채널 사건으로 이기면 win.channel = retail_deal · 판정·등급은 kind만 보므로 그대로', () => {
+    const s = v16(); s.month = 150;
+    s.commerce.products.push(product());
+    addLot(s, 'P', 300, { month: 150, eligibleAtBottling: true });
+    const r = report(s);
+    sellFromLots(s, r, 'P', 7, { ...SALE, settlement: 'receivable', channel: 'retail_deal' });
+    updateProgress(s, r);
+    expect(s.progress.win).toMatchObject({ kind: 'domestic', channel: 'retail_deal', bottles: 7 });
+    expect(s.progress.verdict?.result).toBe('heritage');
   });
 });
 

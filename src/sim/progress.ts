@@ -128,7 +128,7 @@ export function updateProgress(s: GameState, report: MonthReport): void {
   if (!s.progress.win) {
     const e = firstEligibleSale(report.saleEvents ?? []);
     if (e) {
-      s.progress.win = { month: s.month, productId: e.productId, lotId: e.lotId, kind: e.kind, unitPrice: e.unitPrice, bottles: e.bottles };
+      s.progress.win = { month: s.month, productId: e.productId, lotId: e.lotId, kind: e.kind, ...(e.channel ? { channel: e.channel } : {}), unitPrice: e.unitPrice, bottles: e.bottles };
       const quality = s.commerce.products.find((p) => p.id === e.productId)?.quality;
       s.progress.milestones.push({ id: 'campaign_win', month: s.month, ...(quality != null ? { value: quality } : {}) });
       report.notes.push(`캠페인 승리 — ${MILESTONES.campaign_win.nameKo}${e.kind === 'cellar_door' ? ' (핸드필)' : ''}: ${e.bottles}병 · 병당 ${Math.round(e.unitPrice).toLocaleString()}원`);
@@ -169,8 +169,18 @@ export function midGoalMet(s: GameState, id: MidGoalDef['id']): boolean {
     case 'export_open': return (s.commerce.exports ?? []).length > 0;
     case 'revenue_8': return s.history.reports.slice(-12).reduce((t, r) => t + r.revenue, 0) >= 800_000_000;
     // F5a [결정 #319]: 12년 후보 통 3개 — 안내 지평('hint' 36 → 목재 108개월↑ 자가 몰트). 'reserve'(144)를 쓰면 모든 자가 몰트 통이 후보라 저절로 달성된다(MKT §7.3). 오염 조건 없음(한 함수 원칙)
-    case 'reserve_casks': return s.inventory.casks.filter((c) => isCampaignCandidate(s, c, candidateHorizon(s, 'hint'))).length >= 3;
+    case 'reserve_casks': return reserveCandidateCount(s) >= RESERVE_CASKS_GOAL;
   }
+}
+
+/** 중반 목표 reserve_casks의 목표 통 수 (#319) */
+export const RESERVE_CASKS_GOAL = 3;
+/** 안내 지평 후보 통 수(자가 몰트 · 목재 108개월↑, 고객 소유 제외) — midGoalMet('reserve_casks')와 화면 "후보 n/3"이 같은 식을 쓴다 */
+export const reserveCandidateCount = (s: GameState): number => s.inventory.casks.filter((c) => isCampaignCandidate(s, c, candidateHorizon(s, 'hint'))).length;
+/** 중반 목표 진행 수치(F5c-2) — 수치로 보일 수 있는 목표만(지금은 reserve_casks), 나머지는 null */
+export function midGoalProgress(s: GameState, id: MidGoalDef['id']): { have: number; need: number } | null {
+  if (id === 'reserve_casks') return { have: reserveCandidateCount(s), need: RESERVE_CASKS_GOAL };
+  return null;
 }
 
 /** 이 판의 중반 목표 정의 (없으면 빈 목록) */

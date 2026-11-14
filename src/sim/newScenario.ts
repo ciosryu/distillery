@@ -1,11 +1,12 @@
 import { applyAction } from './actions';
+import { normalizeDifficulty } from './content/difficulty';
 import { LOAN_OFFERS } from './content/catalog';
 import { scenarioLockedKeys, SCENARIOS, type ScenarioDef, type ScenarioTierDef } from './content/scenarios';
 import { regionOf } from './content/regions';
 import { salaryFor } from './hr';
 import { newGame } from './newGame';
 import { currentLoanPayment, monthlyFixedCost } from './loans';
-import type { GameState, RulesVersion } from './types';
+import type { GameState, RulesVersion, DifficultyConfig, DifficultyPreset } from './types';
 import { nid } from './util';
 
 // 시나리오 새 게임 입구 (skeleton S-8, PRD §12.2) — "사업 계획서"(규모 티어 + 시작 자금 조달)로 GameState를 만든다.
@@ -20,6 +21,8 @@ export interface BusinessPlan {
   distilleryName?: string;
   /** 규칙 묶음 — 기본 v16(새 캠페인). `legacy-v15`는 옛 판정(180개월 강제 판정·`flagship_sold`)을 그대로 쓰는 참고 판(X0L 봇·옛 규칙 테스트) */
   rules?: RulesVersion;
+  /** 난이도 (F6 [결정 #314]) — 프리셋 이름 또는 6영역 값. 없으면 Normal(= 지금 값). v16 새 판에만 스냅샷으로 남는다(옛 판은 두지 않는다) */
+  difficulty?: DifficultyConfig | DifficultyPreset;
 }
 
 export function scenarioOf(id: string): ScenarioDef {
@@ -64,6 +67,8 @@ export function newScenarioGame(plan: BusinessPlan): GameState {
   let s = newGame({ seed: plan.seed, region: d.region, site: d.site, startingCash: tier.equity, distilleryName: plan.distilleryName });
   const rules = plan.rules ?? defaultRules;
   s.rulesVersion = rules;
+  // F6: 난이도는 판 시작 스냅샷 — v16 새 판만. 옛 판(X0L)은 필드 자체를 두지 않아 바이트 동일(없음 = Normal)
+  if (rules !== 'legacy-v15') s.difficulty = normalizeDifficulty(plan.difficulty);
   const locked = scenarioLockedKeys(d, rules); // F5a: v16 새 판은 kindsV16·lockedV16 — 옛 판(X0L)은 옛 키 그대로. 규칙은 **생성 때** 정해진다
   s.scenario = { id: d.id, tierId: tier.id, locked, economy: { overheadPerMonth: tier.overheadPerMonth }, equity: tier.equity, goal: { ...d.goal }, ...(d.campaignGoal ? { campaignGoal: { ...d.campaignGoal } } : {}) };
   // 잠긴 주종의 프리셋 레시피는 뺀다 (코드·콘텐츠는 그대로)

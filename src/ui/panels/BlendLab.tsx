@@ -14,7 +14,7 @@ import { Badge, Button, Card, ConfirmButton, Empty, NumberField, Table, Td, Text
 // 캐스크는 같은 배치·같은 캐스크 종류끼리 묶어(코호트) 보여 준다 — 2,500개를 한 줄씩 보여 주지 않는다.
 
 /** read = 샘플 기록(형제 기록 포함)의 평균 — 기록이 하나도 없으면 null(모른다, #157). known = 기록을 아는 통 수, readMonth = 가장 오래된 기록의 달 */
-interface Cohort { key: string; label: string; casks: Cask[]; read: Hex | null; sigma: number; known: number; readMonth: number | null; lpa: number; oakMonths: number; rare: boolean; samples: number; lab: boolean }
+interface Cohort { key: string; label: string; casks: Cask[]; read: Hex | null; sigma: number; known: number; readMonth: number | null; lpa: number; oakMonths: number; rareKnown: boolean; samples: number; lab: boolean }
 type KnownCohort = Cohort & { read: Hex };
 const isKnown = (c: Cohort): c is KnownCohort => c.read != null;
 
@@ -41,7 +41,7 @@ function cohortsOf(s: ReturnType<typeof useGame.getState>['state']): Cohort[] {
       readMonth: reads.length ? Math.min(...reads.map((r) => r.month)) : null,
       lpa: casks.reduce((t, c) => t + c.contents!.volumeL * c.contents!.abv, 0),
       oakMonths: Math.min(...casks.map((c) => c.contents!.oakMonths)),
-      rare: key.startsWith('rare:'),
+      rareKnown: key.startsWith('rare:'),
       samples: Math.min(...casks.map((c) => c.samples ?? 0)),
       lab: casks.every((c) => c.labAnalyzed),
       label: `${first.contents!.name.split(' → ')[0]} · ${first.typeId}${casks.length > 1 ? ` × ${casks.length}` : ` (${first.id})`}`,
@@ -208,7 +208,7 @@ export function BlendLab() {
           <Table head={['코호트', '숙성', 'LPA', '샘플 기록 육각형 (피트·과일·플로럴·스파이시·우디·스위트)', '오차', '정보', '비율(%)', '']}>
             {cohorts.map((c) => (
               <tr key={c.key}>
-                <Td className="text-xs">{c.label} {c.rare && <Badge tone="good">레어</Badge>}</Td>
+                <Td className="text-xs">{c.label} {c.rareKnown && <Badge tone="good">레어</Badge>}</Td>
                 <Td right>{months(c.oakMonths)}</Td>
                 <Td right>{num(c.lpa)}</Td>
                 <Td className="text-xs tabular-nums">{c.read ? hexRow(c.read) : <span className="text-stone-500">샘플 없음 — 모른다</span>}</Td>

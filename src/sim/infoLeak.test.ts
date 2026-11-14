@@ -15,8 +15,8 @@ const UI = files(join(ROOT, 'ui'));
 describe('I1 — 화면(src/ui)은 숨은 값을 직접 읽지 않는다', () => {
   it('숨은 오염·레어는 `contaminationKnown`·`rareKnown`으로만 읽는다', () => {
     // 같은 줄에 `…Known` 가드가 있으면 허용(예: `c.contaminationKnown && c.contamination === 'tca'`) — 아는 값만 보인다
-    // 거짓 양성 허용: BlendLab 코호트의 `rare` 필드는 `rareKnown`에서만 만들어진 아는 값이다(`key.startsWith('rare:')`) — 필드 이름을 `rareKnown`으로 바꾸면 지운다(PROD, F5c)
-    const ALLOW_LINES = new Set(['ui/panels/BlendLab.tsx:{c.label} {c.rare &&']);
+    // 허용 목록은 비어 있다 — BlendLab 코호트 칸을 `rareKnown`으로 바꿔 거짓 양성이 없어졌다(PROD, F5c)
+    const ALLOW_LINES = new Set<string>();
     const bad = UI.flatMap((p) => readFileSync(p, 'utf8').split('\n').flatMap((line, i) => [...line.matchAll(/\.(contamination|rare)\b(?!Known)/g)]
       .filter((m) => !line.includes(`${m[1]}Known`) && ![...ALLOW_LINES].some((a) => a.startsWith(rel(p) + ':') && line.includes(a.slice(rel(p).length + 1))))
       .map(() => `${rel(p)}:${i + 1}`)));

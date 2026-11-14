@@ -1,4 +1,5 @@
 import { MIN_BOTTLING_ABV } from './blending';
+import { difficultyError } from './content/difficulty';
 import { MIN_CASK_VOLUME_L } from './maturation';
 import { nonFinitePaths } from './repair';
 import { ledgerError } from './ledger';
@@ -37,6 +38,8 @@ function flavorCheck(f: Flavor | undefined, at: string, r: InvariantReport): voi
 export function checkInvariants(s: GameState, limit = 20): InvariantReport {
   const r: InvariantReport = { errors: [], warnings: [] };
   for (const p of nonFinitePaths(s, '', [], limit)) r.errors.push(`${p} 유한하지 않다`);
+  // F6 난이도 스냅샷(있을 때만): 단계 1·2·3 · 표시(preset) = 값(levels)에서 계산한 것(custom 제외)
+  if (s.difficulty) { const e = difficultyError(s.difficulty); if (e) r.errors.push(`난이도 ${e}`); }
 
   for (const l of s.inventory.lots) {
     const at = `탱크 ${l.id}`;

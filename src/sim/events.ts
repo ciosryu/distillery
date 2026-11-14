@@ -1,4 +1,5 @@
 import { EVENT, EVENTS, type Effect, type EventDef, type Requirement } from './content/events';
+import { domainEventMul } from './rules'; // F6 난이도 영역 배수(잎 모듈)
 import { houseBrand } from './brands';
 import { regionOf, siteOf } from './content/regions';
 import { BUYERS, COMPETITIONS, CRITICS, displayName } from './content/names';
@@ -342,9 +343,12 @@ export function resolvePending(s: GameState, pendingId: string, choiceIndex: num
   return text;
 }
 
-/** 이벤트의 월 발생 판정 확률 — 지역 분류 가중 × 입지 가중 × 전체 배수 (runEvents와 조기 경보가 같은 값을 쓴다) */
-function rollChance(def: EventDef, region: ReturnType<typeof regionOf>, site: ReturnType<typeof siteOf>): number {
-  return def.chance * (region.eventWeights[def.category] ?? 1) * (site.eventBoost?.[def.id] ?? 1) * EVENT_RATE;
+/**
+ * 이벤트의 월 발생 판정 확률 — 지역 분류 가중 × 입지 가중 × 전체 배수 × **난이도 영역 배수**(F6 [결정 #314]: `EventDef.domain` × `knob('<영역>.eventChance')`,
+ * 태그 없음·Normal·옛 판은 ×1 — 지금 값 그대로). runEvents와 조기 경보가 같은 값을 쓴다. `EVENT_RATE`(전체 배수)는 난이도 손잡이가 아니다(영역 분리)
+ */
+function rollChance(def: EventDef, region: ReturnType<typeof regionOf>, site: ReturnType<typeof siteOf>, s: Pick<GameState, 'difficulty'>): number {
+  return def.chance * (region.eventWeights[def.category] ?? 1) * (site.eventBoost?.[def.id] ?? 1) * EVENT_RATE * domainEventMul(s, def.domain);
 }
 
 // ───────────── 매크로 이벤트 조기 경보 (ENG-3, #189) ─────────────
@@ -366,7 +370,7 @@ export function macroWarnings(s: GameState, months: number, detect: number): Mac
     const moy = (month % 12) + 1;
     for (const def of EVENTS) {
       if (!MACRO_CATEGORIES.includes(def.category)) continue;
-      if (!rngFor(s.seed, month, `event-roll:${def.id}`).chance(rollChance(def, region, site))) continue;
+      if (!rngFor(s.seed, month, `event-roll:${def.id}`).chance(rollChance(def, region, site, s))) continue;
       if (!eligibleAt(s, def, month, moy)) continue;
       if (!rngFor(s.seed, month, `macro-warn:${def.id}`).chance(detect)) continue;
       out.push({ defId: def.id, title: def.title, category: def.category, month, forecastFirst: !!def.forecast });
@@ -407,7 +411,7 @@ export function runEvents(s: GameState, report: MonthReport, monthOfYear: number
   // ③ 그 순간 발생 조건을 확인하고 월 상한까지 발생시킨다 — 옛 방식(무작위 순서로 조건 확인 → 판정 → 상한)과 같은 의미다
   const region = regionOf(s);
   const site = siteOf(s);
-  const rolled = EVENTS.filter((def) => rngFor(s.seed, s.month, `event-roll:${def.id}`).chance(rollChance(def, region, site)));
+  const rolled = EVENTS.filter((def) => rngFor(s.seed, s.month, `event-roll:${def.id}`).chance(rollChance(def, region, site, s)));
   const rank = new Map(rolled.map((def) => [def.id, rngFor(s.seed, s.month, `event-rank:${def.id}`).next()]));
   let fired = 0;
   for (const def of rolled.sort((a, b) => rank.get(a.id)! - rank.get(b.id)!)) {
