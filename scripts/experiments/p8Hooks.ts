@@ -18,7 +18,8 @@ import type { Cask, SpiritLot } from '../../src/sim/types';
 type S = GameState;
 /** P = mvp-human.ts의 Policy, R = Row — 스크립트 안 타입이라 제네릭으로 받는다 */
 export interface P8Hooks<P = any, R = any> {
-  /** P8 정책 목록을 바꾼다(추가·교체). `make`는 P8(name, partial) 생성기, `base`는 새 X0 묶음(X0F) — @hook:policies */
+  /** P8 정책 목록을 바꾼다(추가·교체). `make`는 P8(name, partial) 생성기, `base`는 새 X0 묶음(X0F) — @hook:policies.
+   *  **첫 항목은 X0로 둔다** — 비교 표(「X0 대비」)와 CALIB(`P8_POLICIES[0]`)가 첫 항목을 기준으로 읽는다(ARCH 메모) */
   policies?(list: P[], make: (name: string, o: Partial<P>) => P, base: Partial<P>): P[];
   /** 실제로 돌 목록(ONLY 필터 뒤)을 바꾼다 — @hook:run */
   run?(list: P[]): P[];
