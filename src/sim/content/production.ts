@@ -159,6 +159,12 @@ export const SEASONING_EXTRACT: Record<'bourbon' | 'sherry' | 'none', Flavor> = 
 export const RECHAR_COST = 150_000;
 
 // ── 캐스크 시장 (결정 #66) [튜닝] ──
+/**
+ * 원재료·에너지 기본 시세(`world.priceIndex`)의 월 랜덤 워크 — `step.ts` 틱 8: `v × exp(N(0, sigma)) + reversion × (1 − v)`, `[min, max]`로 자른다.
+ * F6 난이도 **공급 영역** 손잡이가 닿는 자리(PROD P-PROD-56: σ ↓·회귀 ↑ / σ ↑·상한 ↑) — F6b PROD가 `× knob(s, 'supply.…')`를 붙인다. 값은 지금 그대로 `[튜닝]`
+ */
+export const PRICE_INDEX_WALK = { sigma: 0.02, reversion: 0.05, min: 0.6, max: 1.8 };
+
 export const CASK_MARKET = {
   /** 쿠퍼리지 정상 주문: 카탈로그가, 2개월 뒤 도착 */
   cooperageLeadMonths: 2,
