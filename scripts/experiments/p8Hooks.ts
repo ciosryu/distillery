@@ -12,10 +12,22 @@
 //   "대신하는" 자리(`priceAfterBottle`·`manualPrice`·`fillLot`·`keptCasks`·`flagshipCasks`·`handfillCask`)는 값을 돌려주면 P8의 그 처리를 건너뛴다.
 // - 각 자리는 mvp-human.ts에 `// @hook:<이름>` 표식이 붙어 있다. 글자 패치가 꼭 필요하면 그 표식 줄을 기준으로 삼는다(표식 문자열은 바꾸지 않는다).
 // - 래퍼 고유의 정책 값은 `Policy.ext`(자유 객체)에 둔다 — `interface Policy`를 글자로 고칠 필요가 없다.
-import type { GameState, ProductCategory } from '../../src/sim';
+import type { Action, GameState, ProductCategory } from '../../src/sim';
 import type { Cask, SpiritLot } from '../../src/sim/types';
 
 type S = GameState;
+/**
+ * P8 도우미 — 자리의 마지막 인자로 넘어온다(PROD 요청 (가)). 래퍼가 P8 함수를 베끼면 P8이 바뀔 때 조용히 어긋나므로 이것을 부른다.
+ * `keptCasks`는 **P8 기본 결과**(끼움 자리 keptCasks를 거치지 않음 — 자리 안에서 불러도 되돌아 들어가지 않는다)
+ */
+export interface P8Api<P = any> {
+  bottleAs(s: S, p: P, comps: { source: 'lot' | 'cask'; id: string; liters: number }[], base: { name: string; targetAbv: number; bottleMl: number; chillFilter: boolean; packagingId: string }, cat: ProductCategory): S;
+  keptCasks(s: S, p: P): Set<string>;
+  act(s: S, a: Action): S;
+  stockOf(s: S, cat: ProductCategory): number;
+}
+/** 통 고르기의 용도 — `caskOrder`가 받는다 */
+export type CaskPurpose = 'kept' | 'flagship' | 'handfill';
 /** P = mvp-human.ts의 Policy, R = Row — 스크립트 안 타입이라 제네릭으로 받는다 */
 export interface P8Hooks<P = any, R = any> {
   /** P8 정책 목록을 바꾼다(추가·교체). `make`는 P8(name, partial) 생성기, `base`는 새 X0 묶음(X0F) — @hook:policies.
@@ -26,29 +38,35 @@ export interface P8Hooks<P = any, R = any> {
   /** 판 생성 직후(applyTierKnobs 뒤, 첫 설비·주문 전) — @hook:after-create */
   afterCreate?(s: S, p: P, seed: number): S | void;
   /** 매달 병입(bottle) 바로 앞 — @hook:before-bottle */
-  beforeBottle?(s: S, p: P, m: number): S | void;
+  beforeBottle?(s: S, p: P, m: number, api: P8Api<P>): S | void;
   /** 매달 통입(fill) 바로 뒤 — @hook:after-fill */
-  afterFill?(s: S, p: P, m: number): S | void;
+  afterFill?(s: S, p: P, m: number, api: P8Api<P>): S | void;
   /** 매달 advanceMonth 바로 앞(결산 전 관측) — @hook:before-advance */
   beforeAdvance?(s: S, p: P, m: number, seed: number): void;
   /** 매달 advanceMonth 바로 뒤(결산 직후 관측) — @hook:after-month */
   afterMonth?(s: S, p: P, m: number, seed: number): void;
   /** bottle() 안 일반 위스키 병입 판단 바로 앞(재고·목표 계산 전) — @hook:before-whisky-bottle */
-  beforeWhiskyBottle?(s: S, p: P): S | void;
+  beforeWhiskyBottle?(s: S, p: P, api: P8Api<P>): S | void;
   /** 일반 위스키 병입 후보에서 뺄 통 — @hook:bottle-skip */
   bottleSkip?(s: S, p: P, c: Cask): boolean;
   /** 병입 직후 가격 처리(P8의 pricePolicy·autoPrice 처리 앞). 상태를 돌려주면 P8 가격 처리를 건너뛴다 — @hook:price-after-bottle */
-  priceAfterBottle?(s: S, p: P, opts: { name: string; restockId?: string }, cat: ProductCategory): S | void;
+  priceAfterBottle?(s: S, p: P, opts: { name: string; restockId?: string }, cat: ProductCategory, api: P8Api<P>): S | void;
   /** P8 손 가격(manualPrice) 대신 — 상태를 돌려주면 P8 처리를 건너뛴다 — @hook:manual-price */
   manualPrice?(s: S, p: P, product: GameState['commerce']['products'][number]): S | void;
   /** 몰트 로트 하나의 통입 대신(통 종류·수 고르기) — 상태를 돌려주면 P8 처리를 건너뛴다 — @hook:fill-lot */
-  fillLot?(s: S, p: P, lot: SpiritLot): S | void;
+  fillLot?(s: S, p: P, lot: SpiritLot, api: P8Api<P>): S | void;
   /** 병입·핸드필이 쓰지 않을(보호) 통 집합 대신 — @hook:kept-casks */
-  keptCasks?(s: S, p: P): Set<string> | void;
+  keptCasks?(s: S, p: P, api: P8Api<P>): Set<string> | void;
   /** 플래그십 병입(p.flagship) 통 고르기 대신 — @hook:flagship-casks */
-  flagshipCasks?(s: S, p: P, minOakMonths: number): Cask[] | void;
+  flagshipCasks?(s: S, p: P, minOakMonths: number, api: P8Api<P>): Cask[] | void;
   /** 핸드필 통 고르기 대신 — null = 고르지 않음, undefined(돌려주지 않음) = P8 그대로 — @hook:handfill-cask */
-  handfillCask?(s: S, p: P, kept: Set<string>): Cask | null | void;
+  handfillCask?(s: S, p: P, kept: Set<string>, api: P8Api<P>): Cask | null | void;
+  /**
+   * 통 고르기의 **순서만** 바꾼다(PROD 요청 (나)) — 후보 집합·개수는 P8이 정하고, 비교 함수를 돌려주면 기본 정렬 대신 쓴다.
+   * 'kept' = 보호 통(기본: 목재 긴 순) · 'flagship' = 플래그십 병입 통(목재 긴 순) · 'handfill' = 핸드필 통(목재 짧은 순). 돌려주지 않으면 P8 그대로 — @hook:cask-order.
+   * 같은 용도의 "대신하는" 자리(keptCasks·flagshipCasks·handfillCask)가 값을 돌려주면 그쪽이 먼저다
+   */
+  caskOrder?(s: S, p: P, purpose: CaskPurpose): ((a: Cask, b: Cask) => number) | void;
   /** 생산 주문의 레시피 id 대신(예: 피트 몰트) — @hook:recipe */
   recipe?(s: S, kind: 'soju' | 'malt'): string | void;
   /** 모든 판이 끝난 뒤(표 출력 뒤) — 래퍼 요약 — @hook:at-end */
