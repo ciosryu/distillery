@@ -2,6 +2,7 @@ import { isWhiskyCategory } from './blending';
 import { awarenessOf, houseBrand } from './brands';
 import { SCENARIOS, midGoalsForRules, type MidGoalDef } from './content/scenarios';
 import { candidateHorizon, isCampaignCandidate } from './ledger';
+import { liquidationValue, usesObservedValuation } from './valuation';
 import { isBulkKind, spotBidPerLPA } from './bulk';
 import { MILESTONES } from './content/milestones';
 import { firstEligibleSale } from './saleEvents';
@@ -34,13 +35,20 @@ const flagshipProducts = (s: GameState) => s.commerce.products.filter((p) => isW
  * 소주·진 원액은 현물 시장이 없어 0으로 센다. 캐스크 오너십으로 판 통은 고객 것이라 뺀다.
  * 재고 평가액 곡선(#138)의 평가 방식이 정해지면(오너 결정 대기) 그쪽과 맞춘다
  */
-export function netWorth(s: GameState): number {
+export function netWorthLegacy(s: GameState): number {
   const spirits = [...s.inventory.lots, ...s.inventory.casks.filter((c) => c.contents && !c.owner).map((c) => c.contents!)]
     .reduce((t, l) => t + (isBulkKind(l) ? l.volumeL * l.abv * spotBidPerLPA(s, l) : 0), 0);
   const products = s.commerce.products.reduce((t, p) => t + p.stockBottles * p.unitCost, 0);
   const receivables = s.finance.receivables.reduce((t, r) => t + r.amount, 0);
   const loans = s.finance.loans.reduce((t, l) => t + l.balance, 0);
   return Math.round(s.finance.cash - loans + receivables + spirits + products);
+}
+/**
+ * 순자산 (#146·#317) — 새 판(v16, 샌드박스 포함)은 **처분 예상액**(`valuation.ts liquidationValue` — 통 원액은 관측 품질 q̂, 병 재고 초과분 할인, 선급 의무 부채),
+ * 옛 판(`legacy-v15`)은 지금 식(`netWorthLegacy`, 참 품질 현물가 — 바이트 동일). 구기준선과는 `netWorthLegacy`로만 비교한다(P-MGT-47 리스크)
+ */
+export function netWorth(s: GameState): number {
+  return usesObservedValuation(s) ? liquidationValue(s) : netWorthLegacy(s);
 }
 
 /** 이번 달에 처음 일어난 일 — 이미 기록한 마일스톤은 다시 보지 않는다 */
