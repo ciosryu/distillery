@@ -1,6 +1,7 @@
 import { CREDIT_INSURANCE, EQUIPMENT, FACTORING, INSURANCE_PRODUCTS, type InsuranceProductDef } from './content/catalog';
 import { monthlyFixedCost } from './loans';
 import { riskMul } from './research';
+import { financeFeeMul, lossSizeMul, mul } from './mgtKnobs';
 import type { GameState, InsurancePolicy, MonthReport } from './types';
 
 // 보험 (파트 MGT, #171, PRD §8.4) — 재산·재고·영업중단. 재해 이벤트(events.ts fire)가 피해를 장부(LossLedger)에 적고, 끝에 settleClaims가 보험금을 준다.
@@ -24,7 +25,8 @@ export interface LossLedger {
   damageMul: number;
 }
 
-export const newLedger = (s: GameState, eventId?: string): LossLedger => ({ property: 0, inventory: 0, stopMonths: 0, inventoryValueBefore: insuredInventoryValue(s), damageMul: eventId ? riskMul(s, `event:${eventId}`) : 1 });
+// 피해 크기 = 연구 효과 × 난이도 incidents.lossSize(F6b, ARCH 규약 ② — 이 한 값이 applyEffects에서 현금 피해와 통·원액 소실 비율을 함께 키운다. PROD는 따로 곱하지 않는다)
+export const newLedger = (s: GameState, eventId?: string): LossLedger => ({ property: 0, inventory: 0, stopMonths: 0, inventoryValueBefore: insuredInventoryValue(s), damageMul: mul(eventId ? riskMul(s, `event:${eventId}`) : 1, lossSizeMul(s)) });
 
 /** 캐스크 한 통 원액의 원가 (오너십 판매분은 고객 재산이라 제외) */
 export const caskBookValue = (c: GameState['inventory']['casks'][number]): number => (c.contents && !c.owner ? c.contents.volumeL * c.contents.abv * c.contents.costPerLPA : 0);
@@ -43,7 +45,7 @@ export function insuredPropertyValue(s: GameState): number {
 export function insurancePremium(s: GameState, kind: InsuranceKind, coverage: number): number {
   const p = insuranceProduct(kind);
   if (!p) return 0;
-  return Math.round((coverage * p.annualRate * riskMul(s, `premium:${kind}`)) / 12);
+  return Math.round(mul(coverage * p.annualRate * riskMul(s, `premium:${kind}`), financeFeeMul(s)) / 12); // 난이도 finance.fees(F6b)
 }
 
 /** 이번 달 내는 보험료 합계 (재무 단계·월 고정비 예상) */
@@ -96,7 +98,7 @@ export function creditClaim(s: GameState, unpaid: number): number {
 }
 
 /** 미수금 한 건을 지금 팩토링하면 받는 돈 — 수수료는 만기까지 남은 개월 비례, 최소 minFee */
-export function factoringProceeds(s: Pick<GameState, 'month'>, r: { dueMonth: number; amount: number }): number {
-  const fee = Math.max(FACTORING.minFee, FACTORING.feePerMonth * Math.max(0, r.dueMonth - s.month));
+export function factoringProceeds(s: Pick<GameState, 'month' | 'difficulty'>, r: { dueMonth: number; amount: number }): number {
+  const fee = Math.min(1, mul(Math.max(FACTORING.minFee, FACTORING.feePerMonth * Math.max(0, r.dueMonth - s.month)), financeFeeMul(s))); // 난이도 finance.fees(F6b)
   return Math.round(r.amount * (1 - fee));
 }
