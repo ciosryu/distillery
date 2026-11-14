@@ -36,12 +36,13 @@ patch(
 );
 // 3) 통입 — 그 경로의 통 종류만 사고 그 종류에만 채운다. 필요한 통 수는 통 크기로
 patch('    const need = Math.ceil((lot.volumeL * lot.abv) / (200 * 0.635));\n', "    const CT = STYLE?.cask ?? 'ex_bourbon_barrel';\n    const need = Math.ceil((lot.volumeL * lot.abv) / (STYLE_CASKS[CT].sizeL * 0.635));\n");
-patch('    const empty = s.inventory.casks.filter((c) => !c.contents && !c.contamination).length;\n', '    const empty = s.inventory.casks.filter((c) => !c.contents && !c.contamination && c.typeId === CT).length;\n');
+// P8 fill()은 F5b(#310 2단계)부터 빈 통 판정을 `usable`(v16 = 아는 오염만)로 한다 — 같은 판정에 통 종류만 더한다(MGT, #537 뒤 래퍼 복구)
+patch('    const empty = s.inventory.casks.filter(usable).length;\n', '    const empty = s.inventory.casks.filter((c) => usable(c) && c.typeId === CT).length;\n');
 patch(
   "s = act(s, { type: 'buySpotCasks', caskType: 'ex_bourbon_barrel', qty: Math.min(need - empty, room) });",
   "{ const before = s.finance.cash, n0 = s.inventory.casks.length; s = act(s, { type: 'buySpotCasks', caskType: CT, qty: Math.min(need - empty, room) }); const b = STYLE_BOUGHT.get(STYLE_KEY) ?? { n: 0, won: 0 }; STYLE_BOUGHT.set(STYLE_KEY, { n: b.n + s.inventory.casks.length - n0, won: b.won + before - s.finance.cash }); }",
 );
-patch('    const ids = s.inventory.casks.filter((c) => !c.contents && !c.contamination).slice(0, need).map((c) => c.id);\n', '    const ids = s.inventory.casks.filter((c) => !c.contents && !c.contamination && c.typeId === CT).slice(0, need).map((c) => c.id);\n');
+patch('    const ids = s.inventory.casks.filter(usable).slice(0, need).map((c) => c.id);\n', '    const ids = s.inventory.casks.filter((c) => usable(c) && c.typeId === CT).slice(0, need).map((c) => c.id);\n');
 // 진단: REV=1 이면 경로별로 매출 항목(국내 위스키·그 밖 국내 판매·수출(위스키는 시장별)·원액 계약·현물)과 지출 항목 상위를 판 평균으로 낸다
 patch('    s = advanceMonth(s);\n', "    s = advanceMonth(s);\n    if (process.env.REV) { const r = s.history.reports.at(-1); if (r) { const b = STYLE_REV.get(STYLE_KEY) ?? {} as Record<string, number>; const cat = new Map(s.commerce.products.map((x) => [x.id, x.category])); const q = new Map(s.commerce.products.map((x) => [x.id, x.quality])); for (const x of r.sales) { const k = cat.get(x.productId) === 'whisky' ? '국내 위스키' : '국내 기타'; b[k] = (b[k] ?? 0) + x.revenue; if (k === '국내 위스키') { b['국내 위스키 병(만)'] = (b['국내 위스키 병(만)'] ?? 0) + x.bottles * 1e4; b['국내 위스키 수요(만)'] = (b['국내 위스키 수요(만)'] ?? 0) + x.demandBottles * 1e4; b['q×병'] = (b['q×병'] ?? 0) + (q.get(x.productId) ?? 0) * x.bottles; } } for (const x of r.exports ?? []) { b['수출 병(만)'] = (b['수출 병(만)'] ?? 0) + x.bottles * 1e4; b['수출 수요(만)'] = (b['수출 수요(만)'] ?? 0) + x.demandBottles * 1e4; if (cat.get(x.productId) === 'whisky') b[`위스키 수출:${x.marketId}`] = (b[`위스키 수출:${x.marketId}`] ?? 0) + x.revenue; } b['수출'] = (b['수출'] ?? 0) + (r.exportRevenue ?? 0); b['원액 계약'] = (b['원액 계약'] ?? 0) + r.bulkRevenue; b['현물'] = (b['현물'] ?? 0) + (r.spotBulkRevenue ?? 0); b['매출 합'] = (b['매출 합'] ?? 0) + r.revenue; for (const [k, v] of Object.entries(r.expenses)) b[`지출:${k}`] = (b[`지출:${k}`] ?? 0) + v; STYLE_REV.set(STYLE_KEY, b); } }\n");
 // 4) 경로 — P8 정책 목록 앞에 붙인다
