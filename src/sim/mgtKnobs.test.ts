@@ -11,19 +11,20 @@ import { staffLaborCost } from './mgtKnobs';
 
 const game = (difficulty?: 'easy' | 'hard') => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5, ...(difficulty ? { difficulty } : {}) });
 const offer = (id: string) => LOAN_OFFERS.find((o) => o.id === id)!;
-const IDS = ['finance.loanRate', 'finance.loanLimit', 'finance.loanGrace', 'finance.inventoryLtv', 'finance.fees', 'finance.laborMul', 'finance.wageDrift'] as const;
+const IDS = ['finance.loanRate', 'finance.loanLimit', 'finance.loanGrace', 'finance.inventoryLtv', 'finance.fees', 'finance.laborMul', 'finance.wageDrift', 'incidents.lossSize'] as const;
 const saved = Object.fromEntries(IDS.map((id) => [id, KNOBS[id]]));
 /** 시험용 값 — Easy 0.5 · Hard 2 (임금 상승만 Easy 1 · Hard 1.05). 끝나면 되돌린다 */
 const setTestValues = () => { for (const id of IDS) KNOBS[id] = id === 'finance.wageDrift' ? { easy: 1, hard: 1.05 } : { easy: 0.5, hard: 2 }; };
 afterEach(() => { for (const id of IDS) KNOBS[id] = saved[id]!; });
 
 describe('F6b — MGT 손잡이: 표에 자리가 있고 Normal은 그대로', () => {
-  it('KNOBS에 7행(값 1) · Normal에서 상품·LTV·인건비·피해 크기가 지금 값과 같다(같은 객체)', () => {
+  it('KNOBS에 8행(값 1) · Normal에서 상품·LTV·인건비·피해 크기가 지금 값과 같다(같은 객체)', () => {
     for (const id of IDS) expect(KNOBS[id]).toMatchObject({ easy: 1, hard: 1 });
     const s = game();
     for (const o of LOAN_OFFERS) expect(effectiveOffer(s, o)).toBe(o);
     expect(staffLaborCost(s)).toBe(regionOf(s).laborCost);
     expect(inventoryLtv({ regionId: 'JP', siteId: 'hokkaido', difficulty: s.difficulty })).toBe(0.6);
+    expect(newLedger(s, 'fire').damageMul).toBe(1);
   });
 });
 
@@ -45,7 +46,7 @@ describe('F6b — 임시 Easy≠Hard 값으로 손잡이가 실제로 먹는다'
     expect(loan.principal).toBe(500_000_000); // Normal 한도(3억)를 넘는 금액이 Hard 한도(6억) 안이라 그대로 나온다
   });
 
-  it('LTV · 보험료 · 팩토링: Hard ×2 · Easy ×0.5 · 재해 원장 damageMul은 난이도로 바뀌지 않는다(k² 방지)', () => {
+  it('LTV · 보험료 · 팩토링 · 피해 크기: Hard ×2 · Easy ×0.5', () => {
     setTestValues();
     const n = game(), h = game('hard'), e = game('easy');
     expect(inventoryLtv({ regionId: 'JP', siteId: 'hokkaido', difficulty: h.difficulty })).toBeCloseTo(1.2);
@@ -56,8 +57,8 @@ describe('F6b — 임시 Easy≠Hard 값으로 손잡이가 실제로 먹는다'
     const rec = { dueMonth: n.month + 3, amount: 100_000_000 };
     expect(factoringProceeds(h, rec)).toBeLessThan(factoringProceeds(n, rec));
     expect(factoringProceeds(e, rec)).toBeGreaterThan(factoringProceeds(n, rec));
-    KNOBS['incidents.lossSize'] = { easy: 0.5, hard: 2 }; // PROD 행이 있어도 원장 damageMul은 그대로여야 한다
-    try { expect(newLedger(h, 'fire').damageMul).toBe(1); expect(newLedger(e, 'fire').damageMul).toBe(1); } finally { delete KNOBS['incidents.lossSize']; }
+    expect(newLedger(h, 'fire').damageMul).toBe(2);
+    expect(newLedger(e, 'fire').damageMul).toBe(0.5);
   });
 
   it('인건비 배수: 새로 정하는 급여(창업 멤버)에 곱한다 · 정기 임금 상승: Hard만 매년 1월 ×1.05, Normal은 그대로', () => {
