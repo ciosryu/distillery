@@ -104,7 +104,7 @@ const AUTORESTOCK = process.env.P8 && process.env.AUTORESTOCK === '1' ? Number(p
 //   그보다 짧은 표기(1·2년)의 옛 위스키 제품은 자동 납품을 끈다 — 옛 제품의 하한(법정 12개월·표기 24개월)이 낮아 자동 납품이 3년이 되기 전의 통을 계속 쓰는지 가린다
 const AUTORESTOCK_RETIRE = process.env.AUTORESTOCK_RETIRE === '1';
 
-interface Policy { name: string; /** 「플래그십 출시」 승리 시도 (결정 #320 — 'new' 새 제품 · 'restock' 기존 제품 보충) */ launch?: 'new' | 'restock'; /** 게임 예비 보호(#260 4통 · 'reserve' 144)를 읽는다 — v16 판에서만(옛 판 X0L은 자기 규칙 그대로, 바이트 동일) */ gameTags?: boolean; /** 대형 유통 납품 수락(v16 `y7_retail` — MKT §1-c 규칙 사본): 그 달부터 위스키 제안은 받고 병입 목표에 납품량을 더한다, 다른 범주는 재고 6개월치↑일 때만 */ retailFrom?: number; /** 핵심 전문가 1인(#316): 열리면 이 직군을 고른다 · 'none' = 안 고름 */ specialist?: SpecialistRole | 'none'; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean; maltFrom?: [number, number]; autoRestock?: number; visitorAt?: number; equipAt?: number; b2b?: { share: number; until: number }; flagship?: boolean; price?: 'table' | 'markup'; markup?: number; sojuOff?: [number, number]; overprod?: [number, number]; loansFrom?: number; fixAt?: number; buyAt?: [number, string][]; repayAt?: number; protectFrom?: [number, number]; salesAt?: number; pricePolicy?: Partial<Record<PriceKey, PriceGoal>>; engineA?: boolean; supplyHint?: boolean; /** 래퍼 고유 정책 값(p8Hooks.ts — interface를 글자로 고치지 않는다) */ ext?: Record<string, unknown> }
+interface Policy { name: string; /** 「플래그십 출시」 승리 시도 (결정 #320 — 'new' 새 제품 · 'restock' 기존 제품 보충) */ launch?: 'new' | 'restock'; /** 게임 예비 보호(#260 4통 · 'reserve' 144)를 읽는다 — v16 판에서만(옛 판 X0L은 자기 규칙 그대로, 바이트 동일) */ gameTags?: boolean; /** 대형 유통 납품 수락(v16 `y7_retail` — MKT §1-c 규칙 사본): 그 달부터 위스키 제안은 받고 병입 목표에 납품량을 더한다, 다른 범주는 재고 6개월치↑일 때만 */ retailFrom?: number; /** 핵심 전문가 1인(#316): 열리면 이 직군을 고른다 · 'none' = 안 고름 */ specialist?: SpecialistRole | 'none'; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean; maltFrom?: [number, number]; autoRestock?: number; visitorAt?: number; equipAt?: number; b2b?: { share: number; until: number }; flagship?: boolean; price?: 'table' | 'markup'; markup?: number; sojuOff?: [number, number]; overprod?: [number, number]; loansFrom?: number; fixAt?: number; buyAt?: [number, string][]; repayAt?: number; protectFrom?: [number, number]; salesAt?: number; pricePolicy?: Partial<Record<PriceKey, PriceGoal>>; engineA?: boolean; supplyHint?: boolean; /** 래퍼 고유 정책 값(p8Hooks.ts — interface를 글자로 고치지 않는다) */ ext?: Record<string, unknown>; /** 납품 수락 방식(F7 C-2): 'selective' = 위스키 제안도 재고 6개월치↑일 때만(기본 = 위스키는 늘 받음) */ retailMode?: 'selective' }
 /** 자동 가격 3정책(#288 — AP3) 봇 흉내: 범주별로 고른다. 플래그십 제품은 따로 */
 /** 자동 가격 3정책(결정 #291) — 엔진 이름과 1:1: A = 'turnover'(#200) · B = 'profit'(다기간 B′) · C = 'premium'(목표 배수 유지) */
 type PriceGoal = 'A' | 'B' | 'C';
@@ -230,6 +230,26 @@ const P8_POLICIES: Policy[] = [
   P8('X0S0 X0 − 핵심 전문가(안 고름)', { ...X0F, specialist: 'none' }),
   P8('X0SW X0 + 전문가 숙성고 매니저(영업 대신)', { ...X0F, specialist: 'warehouse' }),
   P8('X0SB X0 + 전문가 마스터 블렌더(영업 대신)', { ...X0F, specialist: 'blender' }),
+  // F7 진단(P-MGT-52, mgt-stage-t.md): 새 기준 행 — 증산 X12F·X13F, 장기 보유 X0P(96개월부터 8통 보호) · 모두 X0F 위
+  P8('X12F X0 + 몰트 6배치', { ...X0F, maltB: 6 }),
+  P8('X13F X0 + 몰트 8배치', { ...X0F, maltB: 8 }),
+  P8('X0P X0 + 장기 보유(96개월부터 8통)', { ...X0F, protectFrom: [96, 8] }),
+  // C-1 전문가 선택 × 전략군(X0의 짝은 X0S0·X0SW·X0SB)
+  P8('X12F-S0 X12F − 전문가', { ...X0F, maltB: 6, specialist: 'none' }),
+  P8('X12F-SW X12F + 숙성고 매니저', { ...X0F, maltB: 6, specialist: 'warehouse' }),
+  P8('X12F-SB X12F + 마스터 블렌더', { ...X0F, maltB: 6, specialist: 'blender' }),
+  P8('X0P-S0 X0P − 전문가', { ...X0F, protectFrom: [96, 8], specialist: 'none' }),
+  P8('X0P-SW X0P + 숙성고 매니저', { ...X0F, protectFrom: [96, 8], specialist: 'warehouse' }),
+  P8('X0P-SB X0P + 마스터 블렌더', { ...X0F, protectFrom: [96, 8], specialist: 'blender' }),
+  // C-2 납품 끔 · 늘 받기(기본) · 선택 받기 × 4·6·8배치(4배치 끔 = X0R0)
+  P8('X0RS X0 + 납품 선택 받기(위스키도 재고 6개월치↑)', { ...X0F, retailMode: 'selective' }),
+  P8('X12F-R0 X12F − 납품', { ...X0F, maltB: 6, retailFrom: undefined }),
+  P8('X12F-RS X12F + 납품 선택 받기', { ...X0F, maltB: 6, retailMode: 'selective' }),
+  P8('X13F-R0 X13F − 납품', { ...X0F, maltB: 8, retailFrom: undefined }),
+  P8('X13F-RS X13F + 납품 선택 받기', { ...X0F, maltB: 8, retailMode: 'selective' }),
+  // C-4 보충형(FIFO) 출시를 재고가 쌓이는 판에서
+  P8('X12F-FIFO X12F + 출시를 기존 제품 보충으로', { ...X0F, maltB: 6, launch: 'restock' }),
+  P8('X13F-FIFO X13F + 출시를 기존 제품 보충으로', { ...X0F, maltB: 8, launch: 'restock' }),
   P8('X0W-B X0W + 출시 제품 가격 B′', { launch: 'new', gameTags: true, pricePolicy: { flagship: 'B' } }),
   P8('X0W-C X0W + 출시 제품 가격 C(유지 ×1.3)', { launch: 'new', gameTags: true, pricePolicy: { flagship: 'C' } }),
   P8('X0W-R X0W + 출시를 기존 제품 보충으로(FIFO — 승리 달 비교)', { launch: 'restock', gameTags: true }),
@@ -488,9 +508,9 @@ function bottle(s: GameState, p: Policy, t: { firstWhisky: number; flagshipDone?
 }
 
 /** 대형 유통 납품 수락(F5a — MKT §1-c 봇 규칙 사본): 위스키 제안은 받는다(병입 목표가 납품량을 더한다), 다른 범주는 그 범주 재고가 납품 6개월치↑일 때만. 잠겨 있거나 한도면 행동이 실패하고 그대로 */
-function retail(s: GameState): GameState {
+function retail(s: GameState, p: Policy): GameState {
   for (const o of [...s.commerce.retailOffers]) {
-    if (o.category !== 'whisky' && stockOf(s, o.category) < 6 * o.bottlesPerMonth) continue;
+    if ((o.category !== 'whisky' || p.retailMode === 'selective') && stockOf(s, o.category) < 6 * o.bottlesPerMonth) continue;
     const r = applyAction(s, { type: 'acceptRetail', offerId: o.id });
     if (!r.error) s = r.state;
   }
@@ -621,7 +641,7 @@ function play(p: Policy, seed: number): Row {
     if (p.handfillAt === m) s = act(s, { type: 'buyEquipment', catalogId: 'handfill_zone' });
     if (p.handfillAt != null) s = handfill(s, p);
     if (p.exportFrom != null && m >= p.exportFrom) s = exports(s, p);
-    if (p.retailFrom != null && m >= p.retailFrom) s = retail(s);
+    if (p.retailFrom != null && m >= p.retailFrom) s = retail(s, p);
     // 핵심 전문가(#316): 후보가 열린 달(v16 120개월~)에 정한 직군을 한 번 고른다 — 옛 판·이미 고른 판은 후보가 없어(null) 아무 일도 없다
     if (p.specialist && p.specialist !== 'none' && specialistOffers(s)) s = act(s, { type: 'pickSpecialist', role: p.specialist });
     // 손 가격 정책(price): 분기마다 재고 있는 제품 값을 다시 매긴다(MKT-B — 자동 가격을 분기 1번 손으로 하는 것)
