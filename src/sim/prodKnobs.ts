@@ -23,7 +23,7 @@ const scaleMonths = (m: [number, number], k: number): [number, number] => [Math.
  *   생산 중단(`production` ×0)·현금 피해·기상 입력은 그대로(현금 피해는 보험·연구 `damageMul` 몫, 기상은 숙성 물리로 이어진다)
  * 손잡이가 모두 1이면 받은 배열을 그대로 돌려준다(같은 객체 — Normal 바이트 동일)
  */
-export function tuneEventEffects(s: S, def: Pick<EventDef, 'category'>, effects: Effect[]): Effect[] {
+export function tuneEventEffects(s: S, def: Pick<EventDef, 'category' | 'domain'>, effects: Effect[]): Effect[] {
   if (def.category === 'supply') {
     const up = knob(s, 'supply.costSize');
     const months = knob(s, 'supply.costMonths');
@@ -32,7 +32,9 @@ export function tuneEventEffects(s: S, def: Pick<EventDef, 'category'>, effects:
     return effects.map((e) => {
       if (e.type !== 'modifier') return e;
       if (e.factor > 1) return { ...e, factor: 1 + (e.factor - 1) * up, months: scaleMonths(e.months, months) };
-      if (e.factor < 1 && e.factor > 0) return { ...e, factor: Math.max(0.05, 1 - (1 - e.factor) * down) };
+      // 호재 = **영역 태그가 없는** supply 이벤트(`rice_surplus`)의 원재료 값 할인만. 태그된 악재 안의 <1 배수(예: `tariff_retaliation`의 `bulk` ×0.9 = 현물가 하락)는
+      // 플레이어에게 나쁜 효과라 호재 손잡이를 받지 않는다(ARCH 발견 — 받으면 Hard에서 그 악재가 줄어든다)
+      if (!def.domain && e.key.startsWith('ingredient:') && e.factor < 1 && e.factor > 0) return { ...e, factor: Math.max(0.05, 1 - (1 - e.factor) * down) };
       return e;
     });
   }

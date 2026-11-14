@@ -103,6 +103,19 @@ describe('공급 영역 — 임시 Easy ≠ Hard로 손잡이가 먹는지', () 
   });
 });
 
+describe('호재 손잡이의 범위 — 태그 없는 호재의 원재료 할인만 (ARCH 발견)', () => {
+  it('tariff_retaliation의 bulk ×0.9(현물가 하락 = 악재)는 windfall을 받지 않는다 — Hard에서 그 악재가 줄어들면 안 된다', () => {
+    setKnob('supply.windfallSize', 1.5, 0.5);
+    const def = EVENT.tariff_retaliation!;
+    expect(def.domain).toBe('supply');
+    for (const lv of ['easy', 'hard'] as const) expect(mod(tuneEventEffects(game(lv), def, def.effects!), 'bulk').factor).toBe(0.9);
+    // 태그 없는 호재(rice_surplus)의 원재료 할인에는 닿는다
+    const rice = EVENT.rice_surplus!;
+    expect(rice.domain).toBeUndefined();
+    expect(mod(tuneEventEffects(game('hard'), rice, rice.effects!), 'ingredient:rice_processing').factor).toBeCloseTo(0.8, 9);
+  });
+});
+
 describe('공급 영역 — 기본 시세 변동폭(이벤트가 열리기 전에도 닿는 손잡이)', () => {
   it('σ 0.02 → Easy는 좁게, Hard는 넓게 · 같은 시드로 12개월 돌리면 Hard의 시세가 1에서 더 멀리 움직이고 Normal은 임시 값에도 그대로', () => {
     const drift = (s0: GameState) => { let s = s0; for (let i = 0; i < 12; i++) s = advanceMonth(s); return Object.values(s.world.priceIndex).reduce((t, v) => t + Math.abs(v - 1), 0); };
