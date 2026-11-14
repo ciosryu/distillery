@@ -1,4 +1,5 @@
 import { GRADE, monthLabel, timelineOf, type GameState, type GoalCheck } from '../sim';
+import { winLabel } from './winLabel'; // F5c-2 승리 채널 문구
 import { MILESTONES } from '../sim/content/milestones';
 import { useGame } from '../store/game';
 import { won } from './format';
@@ -28,7 +29,7 @@ export function Verdict({ s, onNewGame }: { s: GameState; onNewGame: () => void 
         <div className="flex flex-col items-center justify-center rounded-lg border border-stone-200 px-6 py-3 dark:border-stone-700">
           <div className="text-xs text-stone-500">등급</div>
           <div className="text-4xl font-bold tabular-nums">{v.grade ?? '—'}</div>
-          <div className="text-xs text-stone-500">{monthLabel(s.startYear, v.month - 1)} {s.progress.win ? (s.progress.win.kind === 'cellar_door' ? '핸드필 승리' : '캠페인 승리') : '판정'}</div>
+          <div className="text-xs text-stone-500">{monthLabel(s.startYear, v.month - 1)} {s.progress.win ? winLabel(s.progress.win) : '판정'}</div>
         </div>
         <section>
           <h3 className="mb-1 text-sm font-semibold">목표</h3>

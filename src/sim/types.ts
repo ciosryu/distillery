@@ -176,6 +176,8 @@ export interface CampaignWin {
   productId: string;
   lotId: string;
   kind: SaleKind;
+  /** 승리 사건의 채널(F5c-2 — 결과 화면 문구용, 판정은 kind만 본다). 사건에 채널이 없으면 비움 */
+  channel?: SaleChannel;
   unitPrice: number;
   bottles: number;
 }

@@ -790,6 +790,7 @@ interface GameState {
 
 **F5c 화면 — 출력 불변(문구·표시만)**
 - PROD 메모 ① `B2B.tsx:88` "판이 끝나기 전에 플래그십 숙성" → v16 "12년 후보 통 — 목재 108개월↑, 승리 출고 재료" + `goal.flagshipMinMonths` 직접 읽기 → `campaignMinOakMonths` ② 108개월 전 "후보 0통" 대 예비 태그 4통 어긋남 → "후보 = 3년 안에 적격 · 예비 = 승리용으로 남겨 두는 통(처음부터)" 구분 문구(MvpHome·숙성고 태그 툴팁) · MKT 메모: Handfill 패널 보호 경고에 "이 통이 12년을 넘기면 핸드필 판매가 캠페인 승리로 기록된다(등급 최대 A)" · `Production.tsx exportsLater` · 단계 안내 탭 · 중반 목표 n/3
+- **F5c-2(후속, PM 배정)**: `CampaignWin.channel?: SaleChannel` — `updateProgress`가 승리 사건의 채널을 복사(판정은 kind만, 문구용) · `ui/winLabel.ts winLabel/winChannelLabel`("핸드필 승리"·"대형 유통 납품 승리"·"국내 소매 승리"·…) → `Verdict.tsx`(META 파일, 코어 대행 한 줄)·`MvpHome` · `progress.ts midGoalProgress(s, id)`(reserve_casks만 `{have, need: RESERVE_CASKS_GOAL}`) → `AlertsView JourneyStrip` "후보 n/3". 출력 불변(골든 10 동일·X0L 동일 — golden-trace `win` 열은 month:kind:lotId만)
 - `pendingSaleEvents`(턴 사이 사건 그릇): **필요 없음**으로 닫는다 — F5a가 `export_inquiry`를 v16에서 잠그면 행동 단계 적격 출고 경로가 없다(옛 판은 판정 대상 아님). 경로가 다시 생길 때 더한다
 - (단계 T 메모) 옹기에 든 자가 몰트에 수동 예비 태그를 붙이면 자리 하나를 쓴다 — `'reserve'` 판정이 용기 재질을 안 봄(PROD ③)
 
