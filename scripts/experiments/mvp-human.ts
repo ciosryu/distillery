@@ -315,7 +315,9 @@ function buyEquip(s: GameState, p: Policy): GameState {
   return s;
 }
 
-function fill(s: GameState, p?: Policy, cnt?: { contamFills: number }): GameState {
+/** F5b 측정: 지금 판의 숨은 오염 통 통입 카운터 — play()가 판마다 건다. 인자로 넘기지 않는 이유: P8 래퍼(mkt-p8v·prod-hold-p8)가 play() 안의 fill 호출 줄(인자 둘)을 글자 그대로 찾아 패치한다 — 그 줄을 바꾸지 말 것 */
+let FILL_COUNTER: { contamFills: number } | null = null;
+function fill(s: GameState, p?: Policy, cnt: { contamFills: number } | null = FILL_COUNTER): GameState {
   if (p?.fillStopAt != null && s.month >= p.fillStopAt) return s;
   // 제한적 원액 B2B (MGT-A): until 달 전까지 그달 몰트 원액의 share만 현물로 팔고 나머지는 통에 넣는다
   if (p?.b2b && s.month < p.b2b.until) for (const lot of s.inventory.lots.filter((l) => l.kind === 'malt')) { const liters = Math.floor(lot.volumeL * p.b2b.share); if (liters > 0) s = act(s, { type: 'sellBulk', source: 'lot', id: lot.id, liters }); }
@@ -568,6 +570,7 @@ interface Cap { minCash72: number; minRunway72: number; negMonths: number; peakS
 function play(p: Policy, seed: number): Row {
   let s = applyTierKnobs(newScenarioGame({ scenarioId: 'mvp_kr', tierId: TIER, loanAmount: LOAN, seed }));
   const t: { firstWhisky: number; flagshipDone?: boolean; launchDone?: boolean; winFail?: number[]; contamFills: number } = { firstWhisky: -1, contamFills: 0 };
+  FILL_COUNTER = t;
   if (p.visitor && p.visitorAt == null) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_basic' });
   if (p.equipAt == null) s = buyEquip(s, p);
   s = setOrders(s, p.sojuOff?.[0] === 0 ? 0 : sojuBatches(p), p.overprod ? p.overprod[0] : maltBatches(p));
@@ -614,7 +617,7 @@ function play(p: Policy, seed: number): Row {
     if (p.supplyHint) s = policySupply(s);
     if (!p.autoPrice && p.price && m > 0 && m % 3 === 0) for (const x of [...s.commerce.products]) if (x.stockBottles > 0 && !x.autoPrice && !x.dutyFreeOnly) s = manualPrice(s, p, x);
     s = bottle(s, p, t);
-    s = fill(s, p, t);
+    s = fill(s, p);
     if (p.wipeAt === m) for (const c of s.inventory.casks) if (c.contents && !c.owner && c.contents.oakMonths >= 12 && (c.contents.kind === 'malt' || c.contents.kind === 'grain')) delete (c as { contents?: unknown }).contents;
     s = finance(s, p);
     if (p.raiseIfCash != null && s.finance.cash > p.raiseIfCash) { const ev = s.events.pending.find((e) => e.defId === 'salary_review'); if (ev) s = act(s, { type: 'resolveEvent', eventId: ev.id, choice: 0 }); }
