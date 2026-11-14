@@ -1078,15 +1078,15 @@ P8(#271)은 위 ①의 대부분을 이미 담았다: 계열당 3제품 · 자�
   3. 평판 사건을 "영역 없음"으로 두면 Easy·Hard에서도 같은 빈도로 온다. 반론은 Hard는 행운도 적어야 한다는 것이다. 그래도 품질 보상을 지키는 쪽을 권한다.
 
 **4-b. F6b 구현 — MKT 손잡이를 `knob`에 연결 (2026-11-14, 코어 F6a #561 위 · 값은 모두 1 = 자리)**
-- 읽기 입구는 `rules.ts knob(s, id)` 하나다. MKT 파일은 전역 상수를 덮어쓰지 않고 기준값에 곱한다. **k = 1이면 원래 값을 그대로 돌려준다**(`aroundOne` — `1 + (x − 1) × 1`은 부동소수 오차로 x와 달라질 수 있다) → Normal·자리값 판은 바이트 동일.
+- 읽기 입구는 `rules.ts knob(s, id)` 하나이고, MKT 손잡이를 읽는 함수는 **`src/sim/mktKnobs.ts`** 한 파일에 모았다(F6b 규약 ① — `<파트>Knobs.ts`: 이름 있는 함수만 내보내고 상태를 바꾸지 않는다). 기준값은 `content/market.ts`의 `TREND_WALK`·`BULK_WALK`다. 시스템 코드(`market.ts`·`bulk.ts`)는 `knob`을 직접 부르지 않고 전역 상수도 덮어쓰지 않는다. **k = 1이면 원래 값을 그대로 돌려준다**(`aroundOne` — `1 + (x − 1) × 1`은 부동소수 오차로 x와 달라질 수 있다) → Normal·자리값 판은 바이트 동일.
 
 | 손잡이 id | 영역 | 읽는 자리 | 기준값(Normal) | 뜻 |
 |---|---|---|---|---|
-| `taste.trendSigma` | 취향 | `market.ts trendWalkOf` → `updateTrends` | 월 σ 0.015 | 속도 (#313) |
+| `taste.trendSigma` | 취향 | `mktKnobs.ts trendWalkOf` → `market.ts updateTrends` | 월 σ 0.015 | 속도 (#313) |
 | `taste.trendReversion` | 취향 | 같음 | 평균 회귀 0.05 (0~1 가드) | 지속성 — 값이 클수록 빨리 1로 |
 | `taste.trendRange` | 취향 | 같음 | 범위 0.6~1.5가 1에서 떨어진 거리 (아래 0.2 가드) | 폭 |
-| `taste.flavorTrendStrength` | 취향 | `market.ts appeal`의 `trendFactor` | 향미 유행 배수가 1에서 떨어진 거리 | 세기 |
-| `macro.bulkSigma` | 거시 | `bulk.ts bulkWalkOf` → `updateBulkIndex` | 월 σ 0.03 | 원액 현물 지수 변동 (P-MGT-48 거시 표) |
+| `taste.flavorTrendStrength` | 취향 | `mktKnobs.ts flavorTrendFactorOf` → `market.ts appeal`의 `trendFactor` | 향미 유행 배수가 1에서 떨어진 거리 | 세기 |
+| `macro.bulkSigma` | 거시 | `mktKnobs.ts bulkWalkOf` → `bulk.ts updateBulkIndex` | 월 σ 0.03 | 원액 현물 지수 변동 (P-MGT-48 거시 표) |
 | `macro.bulkReversion` | 거시 | 같음 | 평균 회귀 0.08 (0~1 가드) | |
 | `macro.bulkRange` | 거시 | 같음 | 범위 0.6~1.5의 거리 (아래 0.2 가드) | |
 

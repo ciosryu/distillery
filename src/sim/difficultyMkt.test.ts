@@ -2,10 +2,12 @@
 // 값은 F7까지 모두 1(자리)이라, 여기서는 표를 **잠깐** Easy ≠ Hard로 바꿔 손잡이가 실제로 먹는지 본 뒤 되돌린다
 import { afterEach, describe, expect, it } from 'vitest';
 import { advanceMonths, type GameState, type Product } from './index';
-import { BULK_WALK, bulkWalkOf, updateBulkIndex } from './bulk';
+import { updateBulkIndex } from './bulk';
 import { addTrendShift } from './blendTable';
 import { KNOBS } from './content/difficulty';
-import { TREND_WALK, appeal, aroundOne, trendWalkOf, updateTrends } from './market';
+import { BULK_WALK, TREND_WALK } from './content/market';
+import { appeal, updateTrends } from './market';
+import { aroundOne, bulkWalkOf, flavorTrendFactorOf, trendWalkOf, WALK_FLOOR } from './mktKnobs';
 import { newScenarioGame } from './newScenario';
 import { rngFor } from './rng';
 
@@ -30,6 +32,7 @@ describe('F6b MKT — 자리값(모두 1)에서는 어느 난이도든 지금 �
       expect(bulkWalkOf(game(d))).toEqual({ ...BULK_WALK });
     }
     expect(aroundOne(1.4, 1)).toBe(1.4); // k = 1이면 식을 타지 않는다(1 + (1.4 − 1) × 1 ≠ 1.4일 수 있다)
+    expect(flavorTrendFactorOf(game('hard'), 1.37)).toBe(1.37);
     expect(aroundOne(0.6, 1)).toBe(0.6);
   });
 
@@ -66,9 +69,9 @@ describe('F6b MKT — 표를 Easy ≠ Hard로 바꾸면 손잡이가 먹는다 (
     expect(Math.min(...e)).toBeGreaterThanOrEqual(0.9);
     expect(Math.max(...e)).toBeLessThanOrEqual(1.125);
     expect(Math.max(...h)).toBeGreaterThan(TREND_WALK.hi);
-    expect(Math.min(...h)).toBeGreaterThanOrEqual(0.2);
+    expect(Math.min(...h)).toBeGreaterThanOrEqual(WALK_FLOOR);
     set('taste.trendRange', 1, 5);
-    expect(trendWalkOf(game('hard')).lo).toBe(0.2); // 1 − 0.4 × 5 = −1 → 가드
+    expect(trendWalkOf(game('hard')).lo).toBe(WALK_FLOOR); // 1 − 0.4 × 5 = −1 → 가드
   });
 
   it('향미 유행 세기: 피트 열풍의 매력 배수가 Easy에서는 1에 가깝고 Hard에서는 멀다 — 유행이 없으면 난이도와 무관', () => {

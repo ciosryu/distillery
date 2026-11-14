@@ -177,3 +177,9 @@ export function agedWhitePerception(category: ProductCategory, oakMonths: number
   if (months < AGED_WHITE.minMonths) return 1;
   return 1 + AGED_WHITE.ratePerYear * Math.min(months / 12, AGED_WHITE.capYears);
 }
+
+// ── 시장 랜덤 워크 기준값 (Normal) — 난이도(F6 `taste.*` · `macro.bulk*`)는 `mktKnobs.ts`가 이 값에 곱한다 `[튜닝]` ──
+/** 카테고리 트렌드 랜덤 워크 — 월 σ · 평균 회귀 · 범위 (`market.ts updateTrends`) */
+export const TREND_WALK = { sigma: 0.015, reversion: 0.05, lo: 0.6, hi: 1.5 } as const;
+/** 원액 현물 지수 랜덤 워크 — 월 σ · 평균 회귀 · 범위 (`bulk.ts updateBulkIndex`, P-MGT-48 거시 표) */
+export const BULK_WALK = { sigma: 0.03, reversion: 0.08, lo: 0.6, hi: 1.5 } as const;

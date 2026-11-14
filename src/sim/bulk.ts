@@ -2,7 +2,7 @@ import { BULK, CASKS, EQUIPMENT } from './content/catalog';
 import { BUYERS, displayName, INDEPENDENT_BOTTLERS } from './content/names';
 import { regionOf, siteOf } from './content/regions';
 import { mod } from './modifiers';
-import { knob } from './rules'; // F6b 난이도 손잡이 읽기(잎 모듈)
+import { bulkWalkOf } from './mktKnobs'; // F6b 난이도 손잡이(거시 — 현물 지수 변동)
 import { clamp, evaluate } from './flavor';
 import { lotCategory } from './blending';
 import { rngFor, type Rng } from './rng';
@@ -291,22 +291,7 @@ export function fulfillContracts(s: GameState, report: MonthReport): void {
   s.b2b.contracts = s.b2b.contracts.filter((c) => !done.includes(c.id));
 }
 
-/** 원액 현물 지수 랜덤 워크의 기준값(Normal) — 월 σ · 평균 회귀 · 범위. 난이도(F6 `macro.bulk*`, P-MGT-48 거시 표)는 이 값에 곱한다 `[튜닝]` */
-export const BULK_WALK = { sigma: 0.03, reversion: 0.08, lo: 0.6, hi: 1.5 } as const;
-
-/** 이 판의 현물 지수 워크 값 — F6b: Easy σ↓ · 회귀↑ / Hard σ↑ · 범위 넓게(크기는 F7 뒤). k = 1이면 기준값 그대로(Normal 바이트 동일). 가드: 회귀 0~1 · 범위 아래 0.2 */
-export function bulkWalkOf(s: Pick<GameState, 'difficulty'>): { sigma: number; reversion: number; lo: number; hi: number } {
-  const range = knob(s, 'macro.bulkRange');
-  const around = (x: number) => (range === 1 ? x : 1 + (x - 1) * range);
-  return {
-    sigma: Math.max(0, BULK_WALK.sigma * knob(s, 'macro.bulkSigma')),
-    reversion: clamp(BULK_WALK.reversion * knob(s, 'macro.bulkReversion'), 0, 1),
-    lo: Math.max(0.2, around(BULK_WALK.lo)),
-    hi: Math.max(1, around(BULK_WALK.hi)),
-  };
-}
-
-/** 벌크 시세: 평균 회귀 랜덤 워크 + 위스키 트렌드 연동 */
+/** 벌크 시세: 평균 회귀 랜덤 워크 + 위스키 트렌드 연동. 워크 값은 `mktKnobs.ts bulkWalkOf`(기준값 `content/market.ts BULK_WALK` × 난이도) */
 export function updateBulkIndex(s: GameState, rng: Rng): void {
   const v = s.b2b.bulkIndex;
   const target = 0.5 + 0.5 * (s.world.trend.whisky ?? 1);
