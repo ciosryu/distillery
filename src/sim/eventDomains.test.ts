@@ -8,16 +8,16 @@ const TABLE: Record<DifficultyDomain, string[]> = {
   macro: ['recession', 'whisky_boom', 'whisky_glut', 'tax_hike', 'tw_bubble_burst', 'jeju_tourism_boom', 'jeju_tourism_slump', 'kansai_inbound_boom', 'kansai_inbound_slump', 'korean_label_rule', 'blender_rush', 'jp_whisky_shortage'],
   taste: ['highball_boom', 'peat_craze', 'sherry_trend', 'gin_fatigue', 'traditional_revival', 'tw_collector_boom', 'shochu_boom'],
   competition: ['ad_regulation'],
-  supply: ['barley_failure', 'rice_spike', 'rice_surplus', 'corn_spike', 'energy_spike', 'glass_shortage', 'barrel_shortage', 'gns_hike', 'tariff_retaliation', 'spain_drought'],
+  supply: ['barley_failure', 'rice_spike', 'corn_spike', 'energy_spike', 'glass_shortage', 'barrel_shortage', 'gns_hike', 'tariff_retaliation', 'spain_drought'],
   incidents: ['warehouse_fire', 'flood', 'snowstorm', 'typhoon', 'earthquake', 'heatwave', 'cold_wave', 'mold_outbreak', 'still_breakdown', 'ferment_infection'],
   finance: ['tax_audit'],
 };
-/** 영역 없음(늘 ×1) — 평판 사건(품질 보상 보존) · 수출(v16 잠김) · 계약 기회 · 사람(v16 잠김) · 연쇄(chance 0) */
-const NONE = ['influencer_viral', 'ambassador_response', 'competition_medal', 'critic_visit', 'murray_visit', 'intl_competition', 'blind_tasting_upset', 'overseas_critic', 'export_inquiry', 'export_support', 'us_tariff_hike', 'us_tariff_relief', 'cn_tariff_retaliation', 'mega_contract', 'blender_default', 'staff_poaching', 'salary_review', 'artisan_retire'];
+/** 영역 없음(늘 ×1) — 평판 사건(품질 보상 보존) · 수출(v16 잠김) · 계약 기회 · 사람(v16 잠김) · 연쇄(chance 0) · **호재**(`rice_surplus` — 태그하면 Hard가 호재 확률·크기까지 키운다, PM 가름 ⑥ 정정; 크기는 PROD `supply.windfallSize`) */
+const NONE = ['rice_surplus', 'influencer_viral', 'ambassador_response', 'competition_medal', 'critic_visit', 'murray_visit', 'intl_competition', 'blind_tasting_upset', 'overseas_critic', 'export_inquiry', 'export_support', 'us_tariff_hike', 'us_tariff_relief', 'cn_tariff_retaliation', 'mega_contract', 'blender_default', 'staff_poaching', 'salary_review', 'artisan_retire'];
 
 describe('F6 — 이벤트 영역 태그 표', () => {
   const all = [...EVENTS, ...TRIGGERED_EVENTS];
-  it('태그 수 = 표의 수(41) · 표의 이벤트는 모두 있고 그 영역이다 · 영역 없음 목록은 태그가 없다 · 모든 이벤트가 표 어딘가에 있다', () => {
+  it('태그 수 = 표의 수(40) · 표의 이벤트는 모두 있고 그 영역이다 · 영역 없음 목록은 태그가 없다 · 모든 이벤트가 표 어딘가에 있다', () => {
     const tagged = all.filter((e) => e.domain);
     expect(tagged.length).toBe(Object.values(TABLE).flat().length);
     for (const d of DIFFICULTY_DOMAINS) {

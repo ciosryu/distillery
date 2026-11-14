@@ -111,7 +111,7 @@ export const EVENTS: EventDef[] = [
     effects: [m('ingredient:malt_unpeated', 1.5, [9, 15], '보리 흉작'), m('ingredient:malt_peated', 1.5, [9, 15], '보리 흉작'), m('ingredient:malt_korean', 1.4, [9, 15], '보리 흉작')] },
   { id: 'rice_spike', domain: 'supply', title: '쌀값 급등', category: 'supply', chance: 0.012, cooldown: 36, text: '작황 부진으로 쌀값이 오릅니다.',
     effects: [m('ingredient:rice_domestic', 1.35, [9, 12], '쌀값 급등'), m('ingredient:rice_processing', 1.3, [9, 12], '쌀값 급등')] },
-  { id: 'rice_surplus', domain: 'supply', title: '정부 가공용 쌀 할인 공급', category: 'supply', chance: 0.012, cooldown: 36, regions: ['KR'], text: '쌀 과잉으로 정부가 가공용 쌀을 할인 공급합니다.',
+  { id: 'rice_surplus', title: '정부 가공용 쌀 할인 공급', category: 'supply', chance: 0.012, cooldown: 36, regions: ['KR'], text: '쌀 과잉으로 정부가 가공용 쌀을 할인 공급합니다.',
     effects: [m('ingredient:rice_processing', 0.6, [12, 12], '가공용 쌀 할인')] },
   { id: 'corn_spike', domain: 'supply', title: '국제 곡물가 급등', category: 'supply', chance: 0.014, cooldown: 36, text: '국제 옥수수·밀 가격이 급등합니다. 그레인 원가가 오릅니다.',
     forecast: { months: 2, certainty: 0.7, text: '국제 곡물 시장: 주요 수출국 가뭄 소식이 들립니다.' },

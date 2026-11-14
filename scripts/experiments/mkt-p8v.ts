@@ -1,6 +1,6 @@
 // MKT 변형을 판정용 봇 P8 위에서 (#265, docs/design/mkt-stage-t.md 「요구사항」 검증 매트릭스) — P8 파일(mvp-human.ts, MGT 소유)은 고치지 않는다.
-// P8 원본을 읽어 MKT 손잡이(mktP8Hooks.ts)를 네 곳에 끼운 임시 사본을 같은 폴더에 숨김 파일로 쓰고 돌린 뒤 지운다. 끼울 자리가 바뀌면 멈춘다(조용히 틀리지 않게).
-// 같은 폴더에 두는 까닭: 다른 폴더(OS 임시 폴더)에 두면 모듈이 따로 로드돼 RHO 같은 콘텐츠 값 바꾸기가 P8에 닿지 않는다
+// MKT 손잡이(mktP8Hooks.ts)를 P8의 **이름 붙은 끼움 자리**(p8Hooks.ts — @hook:policies · price-after-bottle · manual-price · before-bottle · after-fill · at-end, MGT #569)에 걸고
+// P8 원본을 같은 프로세스에서 그대로 불러온다. P8 소스를 글자로 찾아 바꾸지 않고 사본도 만들지 않는다(2026-11-14 — 글자 패치가 P8 변경에 세 번 깨진 뒤).
 // 실행: SET=<B|A|D> npx tsx scripts/experiments/mkt-p8v.ts [시드=10] [개월=180]
 //   SET=B  MKT-B 가격: 자동 가격(X0) / 자동 가격 끔(X5 — 보충 뒤 값 고정 결함 그대로) / 수동 권장가 / 수동 휴리스틱
 //   SET=B2 MKT-B 추가: 분기마다 가격표 최선 값을 손으로 / 권장가 × 1.3 — P8에 X21·X22로 들어갔다(MGT #289·#292). 머지 뒤에는 패처 없이 P8 ONLY=X21,X22가 같다
@@ -10,15 +10,16 @@
 //   SET=AP3 AUTO-PRICE-3 진단(AP3-MKT-1): §3.9 조건 8(N 정상·S 공급 부족·O 과잉·$ 현금 부족·L 낮은 인지도·P 프리미엄·K1·K2 SKU) × 정책 4(A·B·B2·C, C13 = C의 목표 배수를 기본 1.3으로 — P-PROD-53) — AP3=1과 같이. COND=·POL=로 줄인다
 //   SET=A  MKT-A SKU: 계열당 3·2·1제품(자동 가격) — RHO=<ρ>로 SKU.rho를, MARKET=<배수>로 국내 점유 상한을 실험 안에서만 바꾼다. SNAP=<달>이면 그 달 SKU 분해 표, DIAG=1이면 위스키 진열 원인 나누기
 //   SET=R  F5a 대형 유통 납품(#319 `y7_retail`) 수락 정책 — mkt-stage-t §7.4 ①③: 없음 / 봇 규칙(X0) / 늘 받기 / 위스키만 / 작은 계약만 / 재고 3개월치↑일 때만, 4·6·8배치. v16 전용(옛 판은 제안이 없다). 끝에 납품 지표 표
+//          RETAIL=penaltyShare:1,priceFactor:0.7 처럼 납품 조건을 실험 안에서만 바꿔 민감도를 본다(ONLY=R1,R4,R1·6 으로 행을 줄인다)
 //   SET=D  MKT-D 생존 대안: 비지터 센터·소주·뉴메이크·조기 위스키·원액 현물 제한 매각을 하나씩 빼거나 바꾼다
 //   TIER(기본 standard)·YEARLY·SPLIT 등 mvp-human.ts의 다른 환경 변수는 그대로
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { SKU } from '../../src/sim/content/market';
 import { REGIONS } from '../../src/sim/content/regions';
+import { RETAIL_DEAL } from '../../src/sim/deals';
+import * as mkt from './mktP8Hooks';
+import type { MktPolicy } from './mktP8Hooks';
+import { setP8Hooks } from './p8Hooks';
 
-const here = dirname(fileURLToPath(import.meta.url));
 const SET = process.env.SET ?? 'B';
 
 // 변형 묶음 — P8(name, 덮어쓸 정책) 식 그대로. 새 필드(price·spot)는 mktP8Hooks.ts가 읽는다
@@ -113,31 +114,39 @@ const SETS: Record<string, string> = {
 }
 if (!SETS[SET]) throw new Error(`SET=${SET} 없음 — ${Object.keys(SETS).join('·')}`);
 if (process.env.RHO) SKU.rho = Number(process.env.RHO);
+// RETAIL=<키>:<값>,…: 대형 유통 납품 조건(`deals.ts RETAIL_DEAL` — priceFactor·penaltyShare·offerChance·maxActive·appealPremium·awarenessGain·termMonths·paymentDelay)을
+// **실험 안에서만** 바꾼다(SET=R과 같이 — F7 안건 P-MKT-40의 민감도). 게임 코드·기본 출력은 그대로다. 모르는 키면 멈춘다
+if (process.env.RETAIL) {
+  for (const kv of process.env.RETAIL.split(',')) {
+    const [k, v] = kv.split(':');
+    if (!k || !(k in RETAIL_DEAL) || !Number.isFinite(Number(v))) throw new Error(`RETAIL=${kv} — 키는 ${Object.keys(RETAIL_DEAL).join('·')}`);
+    (RETAIL_DEAL as Record<string, number>)[k] = Number(v);
+  }
+}
 // MARKET=<배수>: 국내(한국) 주종별 점유 상한(shareCap)을 실험 안에서만 곱한다 — ρ를 올릴 때 줄어드는 총수요를 시장 크기로 되돌리는 안(P-MKT-25 (a))을 잰다
 if (process.env.MARKET) for (const m of Object.values(REGIONS.KR.market)) if (m) m.shareCap *= Number(process.env.MARKET);
 
-let code = readFileSync(join(here, 'mvp-human.ts'), 'utf8');
-const patch = (from: string | RegExp, to: string) => {
-  const before = code;
-  code = code.replace(from, to);
-  if (code === before) throw new Error(`mvp-human.ts에서 끼울 자리를 못 찾았다: ${String(from).slice(0, 80)} — P8이 바뀌었으면 mkt-p8v.ts를 맞춘다`);
-};
-// ① 병입 직후: 자동 가격을 끈 정책의 값 처리
-patch(/(\n  (?:else )?if \(p\.autoPrice\) for \(const x of s\.commerce\.products[^\n]*\n)/, `$1  else s = __mkt.afterBottle(s, p as never, opts);\n`);
-// ② 매달 병입 직전: 분기 가격·현물 매각
-patch('    s = bottle(s, p, t);', '    s = __mkt.monthly(s, p as never, m);\n    s = bottle(s, p, t);');
-// ②' 병입·통입 뒤: SKU 분해 기록(병입 전에 찍으면 품절 제품이 빠진다)
-patch(/(    s = fill\(s, p(?:, t)?\);)/, '$1\n    __mkt.snap(s, p as never, m);'); // fill 인자가 늘어도(F5b `t` — MGT #537) 같은 자리
-// ①' P8의 손 가격(manualPrice — MGT가 MKT-B의 'table'·'markup'을 옮겨 심음, ca1bb11)은 MKT 세트에서는 끈다 — 가격 모드(price)는 mktP8Hooks 한 곳이 맡는다.
-//    둘 다 켜 두면 'table'은 같은 분기에 값을 두 번 정해(형제 제품이 서로의 새 값을 본다) 결과가 바뀌고(B4 18.85억 ≠ X21 17.61억),
-//    MKT 모드(suggest·heur·turnover·profit2·premium)는 P8이 권장가 ×1로 되돌린다. price가 없으면(B1 = X5) P8 그대로 — 보충 뒤 권장가로 맞추는 #289 수정을 살린다
-patch("function manualPrice(s: GameState, p: Policy, x: GameState['commerce']['products'][number]): GameState {\n", "function manualPrice(s: GameState, p: Policy, x: GameState['commerce']['products'][number]): GameState {\n  if (p.price) return s; // [mkt-p8v]\n");
-// ③ P8 정책 목록을 MKT 변형 묶음으로
-patch(/const P8_POLICIES: Policy\[\] = \[[\s\S]*?\n\];/, `const P8_POLICIES: Policy[] = ${SETS[SET]} as Policy[];`);
-code = `import * as __mkt from './mktP8Hooks';\n${code}\n__mkt.report();\n`;
-const out = join(here, `.mkt-p8v-${process.pid}.tmp.ts`);
-writeFileSync(out, code);
+// ── P8에 끼우기: 이름 붙은 끼움 자리(`p8Hooks.ts`, MGT #569)에 건다 — P8 소스를 글자로 찾아 바꾸지 않는다(글자 패치는 P8 변경에 세 번 깨졌다).
+//    사본 파일도 만들지 않는다: 같은 프로세스에서 P8 원본을 그대로 불러온다(모듈 싱글턴이라 위에서 바꾼 콘텐츠 값·끼움 자리 등록이 그대로 보인다).
+interface WrapPolicy extends MktPolicy { pricePolicy?: unknown }
+type Make = (name: string, o: Record<string, unknown>) => WrapPolicy;
+setP8Hooks<WrapPolicy>({
+  // ③ P8 정책 목록을 MKT 변형 묶음으로 — 묶음은 `P8(이름, 덮어쓸 정책)` 식 문자열이라 P8 생성기(make)와 새 X0 묶음(base = X0F)을 넘겨 평가한다
+  policies: (_list, make, base) => new Function('P8', 'X0F', `return ${SETS[SET]};`)(make as Make, base) as WrapPolicy[],
+  // ① 병입 직후: 자동 가격도 정책 그릇(pricePolicy)도 아닌 정책의 값 처리 — P8의 그 뒤 가격 처리(둘 다 해당 없음)를 건너뛴다
+  priceAfterBottle: (s, p, opts) => (!p.pricePolicy && !p.autoPrice ? mkt.afterBottle(s, p, opts) : undefined),
+  // ①' P8의 손 가격(manualPrice — MGT가 MKT-B의 'table'·'markup'을 옮겨 심음, ca1bb11)은 MKT 세트에서는 끈다 — 가격 모드(price)는 mktP8Hooks 한 곳이 맡는다.
+  //    둘 다 켜 두면 'table'은 같은 분기에 값을 두 번 정해(형제 제품이 서로의 새 값을 본다) 결과가 바뀌고(B4 18.85억 ≠ X21 17.61억),
+  //    MKT 모드(suggest·heur·turnover·profit2·premium)는 P8이 권장가 ×1로 되돌린다. price가 없으면(B1 = X5) P8 그대로 — 보충 뒤 권장가로 맞추는 #289 수정을 살린다
+  manualPrice: (s, p) => (p.price ? s : undefined),
+  // ② 매달 병입 직전: 분기 가격·현물 매각·납품 수락(SET=R)
+  beforeBottle: (s, p, m) => mkt.monthly(s, p, m),
+  // ②' 병입·통입 뒤: SKU 분해·납품 지표 기록(병입 전에 찍으면 품절 제품이 빠진다)
+  afterFill: (s, p, m) => { mkt.snap(s, p, m); },
+  // 끝: 요약 표
+  atEnd: () => mkt.report(),
+});
 process.env.P8 = '1';
 process.env.TIER ??= 'standard';
-console.log(`[mkt-p8v] SET=${SET} · ρ = ${SKU.rho} · 국내 점유 상한 ×${process.env.MARKET ?? 1} · P8 원본 mvp-human.ts + MKT 손잡이(mktP8Hooks.ts)`);
-try { await import(out); } finally { rmSync(out, { force: true }); }
+console.log(`[mkt-p8v] SET=${SET} · ρ = ${SKU.rho} · 국내 점유 상한 ×${process.env.MARKET ?? 1}${process.env.RETAIL ? ` · 납품 조건 실험값 ${process.env.RETAIL}` : ''} · P8 원본 mvp-human.ts + MKT 손잡이(mktP8Hooks.ts)`);
+await import('./mvp-human');

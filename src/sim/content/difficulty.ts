@@ -51,6 +51,19 @@ export const KNOBS: Record<string, KnobDef> = {
   'macro.bulkSigma': { easy: 1, hard: 1, note: '원액 현물 지수 랜덤 워크의 월 σ(0.03) 배수. Easy ↓ · Hard ↑' },
   'macro.bulkReversion': { easy: 1, hard: 1, note: '같은 워크의 평균 회귀(0.08) 배수. Easy ↑' },
   'macro.bulkRange': { easy: 1, hard: 1, note: '같은 워크의 범위(0.6~1.5)가 1에서 떨어진 거리의 배수. Hard 넓게(하한 ↓)' },
+  // ── 코어 F6 — 이벤트 효과 크기·기간(MKT #566 제안 ②): `events.ts applyEffects`가 `EventDef.domain`으로 읽는다. 크기 = modifier 배수의 1에서의 거리 × k · 기간 = 개월 × k(반올림) ──
+  'macro.eventMagnitude': { easy: 1, hard: 1, note: '거시 이벤트 효과 배수(수요·현물 지수·세율)의 1에서의 거리 배수' },
+  'macro.eventDuration': { easy: 1, hard: 1, note: '거시 이벤트 효과 기간 배수' },
+  'taste.eventMagnitude': { easy: 1, hard: 1, note: '취향 이벤트(하이볼 열풍 등) 수요 배수 폭 — 향미 유행 세기는 taste.flavorTrendStrength(MKT)' },
+  'taste.eventDuration': { easy: 1, hard: 1, note: '취향 이벤트 수요 보정·향미 유행 기간 배수' },
+  'supply.eventMagnitude': { easy: 1, hard: 1, note: '원가 이벤트(흉작 ×1.5 등) 배수의 1에서의 거리 배수 — PROD P-PROD-56 "원가 이벤트 크기"(= 옛 costSize)' },
+  'supply.eventDuration': { easy: 1, hard: 1, note: '원가 이벤트 기간 배수 — PROD "원가 이벤트 기간"(= 옛 costMonths)' },
+  'incidents.eventMagnitude': { easy: 1, hard: 1, note: '사고 이벤트의 modifier 효과(생산 중단 등) 배수 거리 — 통·원액 소실 비율은 incidents.lossSize(PROD)' },
+  'incidents.eventDuration': { easy: 1, hard: 1, note: '사고 이벤트 기간 배수(기상 충격 포함) — 증류기 수리 중단 개월은 incidents.stillDownMonths(PROD)' },
+  'finance.eventMagnitude': { easy: 1, hard: 1, note: '금융 이벤트(세무조사) 효과 배수 거리' },
+  'finance.eventDuration': { easy: 1, hard: 1, note: '금융 이벤트 기간 배수' },
+  'competition.eventMagnitude': { easy: 1, hard: 1, note: '경쟁 이벤트(광고 규제) 효과 배수 거리 — [결정 대기 96]' },
+  'competition.eventDuration': { easy: 1, hard: 1, note: '경쟁 이벤트 기간 배수 — [결정 대기 96]' },
 };
 
 /** 세 프리셋 = 6값의 묶음 (easy 전부 1 · normal 2 · hard 3). Custom은 값을 개별 선택 */
