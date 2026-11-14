@@ -8,7 +8,7 @@ import { RETAIL } from '../src/sim/retail';
 import { EQUIPMENT } from '../src/sim/content/catalog';
 import { EXPORT_MARKETS, EXPORT_SALES } from '../src/sim/content/exports';
 import type { ExportMarketId } from '../src/sim/types';
-import { applyMgtKnobs, mgtPolicy } from './experiments/mgtKnobs';
+import { applyDifficulty, applyMgtKnobs, mgtPolicy } from './experiments/mgtKnobs';
 // TECH-02 판정 도구 통일 (MGT AP3-MGT-1, ARCH 검토): METRICS=1 이면 게임 순자산(progress.netWorth — MVP 판정·P8과 같은 정의)으로 센 1위 분포를 덧붙인다. 기본 출력은 그대로
 import { netWorth as gameNetWorth } from '../src/sim/progress';
 applyMgtKnobs(); // MGT 실험 손잡이 (T-0) — 환경 변수가 없으면 아무 일도 하지 않는다
@@ -564,7 +564,7 @@ function diag(strategy: Strategy, seed: number, s: GameState): void {
 interface Result { strategy: Strategy; bankrupt: boolean; minCash: number; netWorth: number; bookWorth: number; gameWorth: number; firstPositive: number; y5retail: number; y5bulk: number; exportShare: number; markets: number }
 
 function play(strategy: Strategy, seed: number): Result {
-  let s = newGame({ seed, region: REGION, site: SITE });
+  let s = applyDifficulty(newGame({ seed, region: REGION, site: SITE })); // DIFF=(F6c, MGT) — 없으면 그대로
   closedMarkets = new Set();
   exportLog = [];
   let lo = s.finance.cash;

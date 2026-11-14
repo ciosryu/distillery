@@ -47,7 +47,7 @@
 //   SPLIT=1 이면 15년 순자산 분해 표를 더 낸다(현금·대출·원액 현물가·제품, 위스키 매출 시기, 원액 평가액 증가 대 생산비 — #191 정정, mvp.md §7.6)
 //   bigMalt 몰트 5배치 + 스테인리스 발효조 2기(끄면 몰트 3배치) · farm 농업경영체 등록(전통주 주세 경감) — 둘 다 켜면 mvp-survival '균형'(FARM=1)과 같은 규모
 // 파산 규칙: 지금(월말 마이너스 3개월 연속, step.ts) + 결정 대기 16의 "6개월로 완화"를 같은 판에서 따로 센다(시뮬레이션 상태의 연속 개월을 스크립트가 덮어 써서 3개월 파산을 막고, 6개월은 스크립트가 센다).
-import { advanceMonth, applyAction, isWhiskyCategory, newScenarioGame, previewBlend, warehouseCapacity, type Action, type GameState, type ProductCategory } from '../../src/sim';
+import { advanceMonth, applyAction, isWhiskyCategory, newScenarioGame as newScenarioGameCore, previewBlend, warehouseCapacity, type Action, type BusinessPlan, type GameState, type ProductCategory } from '../../src/sim';
 import { setDefaultRulesVersion } from '../../src/sim/newScenario';
 import { p8Hooks } from './p8Hooks';
 import { specialistOffers, type SpecialistRole } from '../../src/sim/hr';
@@ -62,7 +62,9 @@ import { monthlyFixedCost } from '../../src/sim/loans';
 import { isFlagshipCandidate } from '../../src/sim/delegateCheck';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { handfillBlocker, handfillCask, hasHandfillZone } from '../../src/sim/handfill';
-import { applyMgtKnobs, applyTierKnobs, hireSales, mgtPolicy } from './mgtKnobs';
+import { applyMgtKnobs, applyTierKnobs, DIFF, hireSales, mgtPolicy } from './mgtKnobs';
+/** 판 만들기 — `DIFF=`(F6c)가 있으면 사업 계획서에 난이도를 넣는다. 없으면 지금 그대로. play()의 생성 줄은 PROD 래퍼(prod-sample-p8)가 글자 그대로 찾으므로 이름을 그대로 쓴다 */
+const newScenarioGame = (plan: BusinessPlan) => newScenarioGameCore(DIFF ? { ...plan, difficulty: DIFF } : plan);
 import { applyProdKnobs } from './prodKnobs';
 import { achieved, comparePaired, MonthTracker, outcomeOf, quantile, summarize, summarizeWin, winOutcomeOf, WIN_CURVE_MONTHS, type RunOutcome, type WinOutcome } from './metrics';
 import { campaignWon, caskEligibility } from '../../src/sim/ledger';
