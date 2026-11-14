@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction, newGame, newScenarioGame, type GameState, type MonthReport, type Staff } from './index';
-import { headhuntCost, makeCandidate, marketSalary, mentoringXp, MORALE, moraleOf, quitChance, runMorale, xpMultiplier } from './hr';
+import { headhuntCost, makeCandidate, marketSalary, mentoringXp, MORALE, moraleOf, quitChance, runMorale, SPECIALIST_STAGE, specialistOffers, xpMultiplier } from './hr';
+import { applyScenarioStages } from './scenario';
 import { houseBrand } from './brands';
 import { resolvePending, runEvents } from './events';
 import { rngFor } from './rng';
@@ -268,5 +269,52 @@ describe('HR_TUNING.levelRaise (T-0)', () => {
     };
     expect(run(0.05)).toBe(4_200_000);
     expect(run(0)).toBe(4_000_000);
+  });
+});
+
+// 핵심 전문가 1인 (새 캠페인 v16 — F5a [결정 #316], MGT P-MGT-49): 11년 차 단계가 열린 새 판에서만 · 3명 중 1명 1회 · 안 고를 수도 · 효과는 기존 직군
+describe('핵심 전문가 1인 (#316)', () => {
+  const at120 = (rules?: 'legacy-v15') => {
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 7, ...(rules ? { rules } : {}) });
+    s.month = 120;
+    applyScenarioStages(s, { notes: [] } as unknown as MonthReport);
+    return s;
+  };
+
+  it('단계 전·옛 판에는 후보가 없다 — 행동은 실패', () => {
+    const early = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 7 });
+    expect(specialistOffers(early)).toBeNull();
+    expect(applyAction(early, { type: 'pickSpecialist', role: 'warehouse' }).error).toBeTruthy();
+    const old = at120('legacy-v15');
+    expect(specialistOffers(old)).toBeNull();
+    expect(applyAction(old, { type: 'pickSpecialist', role: 'warehouse' }).error).toMatch(/새 캠페인/);
+  });
+
+  it('11년 차(v16): 숙성고 매니저·마스터 블렌더·영업 3명 — 상태에 남지 않고 매번 같다(고르지 않은 판은 그대로)', () => {
+    const s = at120();
+    expect(s.scenario!.stagesDone).toContain(SPECIALIST_STAGE);
+    const a = specialistOffers(s)!, b = specialistOffers(s)!;
+    expect(a.map((x) => x.role)).toEqual(['warehouse', 'blender', 'sales']);
+    expect(a).toEqual(b);
+    const nextId = s.nextId, cands = s.hr.candidates.length;
+    specialistOffers(s);
+    expect(s.nextId).toBe(nextId); // 전역 번호를 쓰지 않는다
+    expect(s.hr.candidates.length).toBe(cands);
+  });
+
+  it('1명을 고르면 keySpecialist로 합류하고 다시 고를 수 없다 — 채용·해고는 잠긴 채, 효과는 기존 직군', () => {
+    let s = at120();
+    const offer = specialistOffers(s)!.find((x) => x.role === 'warehouse')!;
+    const n = s.hr.staff.length;
+    const r = applyAction(s, { type: 'pickSpecialist', role: 'warehouse' });
+    expect(r.error).toBeUndefined();
+    s = r.state;
+    expect(s.hr.staff.length).toBe(n + 1);
+    const x = s.hr.staff.at(-1)!;
+    expect(x).toMatchObject({ role: 'warehouse', keySpecialist: true, stats: offer.stats, salary: offer.askSalary, hiredMonth: 120 });
+    expect(specialistOffers(s)).toBeNull();
+    expect(applyAction(s, { type: 'pickSpecialist', role: 'sales' }).error).toMatch(/이미/);
+    expect(applyAction(s, { type: 'fire', staffId: x.id }).error).toBeTruthy(); // 상세 HR은 1.0(#311)
+    expect(s.hr.staff.filter((y) => y.role === 'warehouse')).toHaveLength(1); // 숙성고 QC 효과는 staffOf('warehouse')가 그대로 읽는다
   });
 });
