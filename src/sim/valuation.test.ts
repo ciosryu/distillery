@@ -71,6 +71,16 @@ describe('valuation: 고객 소유·선판매·담보 권리 (REQ-CORE-5 2·3·4
   });
 });
 
+describe('valuation: rights.lien은 지금 아무 경로도 채우지 않는다 (MGT 검토 — 풀형 잔액 차감과 겹치면 이중 차감·가짜 마진콜)', () => {
+  it('시뮬 코드에 `rights.lien =`·`rights: { lien` 쓰기가 없다 — 통별 lien 대출을 만들 때는 inventoryLoanRoom·inventoryMarginCall을 그 대출의 lien 통 기준으로 바꾼다', async () => {
+    const { readdirSync, readFileSync } = await import('node:fs');
+    const dir = new URL('.', import.meta.url).pathname;
+    const files = readdirSync(dir).filter((n) => n.endsWith('.ts') && !n.endsWith('.test.ts'));
+    const writers = files.filter((n) => /rights\s*[:=]\s*\{[^}]*lien|rights\.lien\s*=/.test(readFileSync(dir + n, 'utf8')));
+    expect(writers).toEqual([]);
+  });
+});
+
 describe('valuation: 병 재고 (#317 보강) · ① 장부는 시장·관측과 무관 (REQ-CORE-5 5)', () => {
   it('최근 12개월 판매량까지는 원가, 초과분은 처분 계수 · ②는 출고가', () => {
     const s = v16(); stripInventory(s);

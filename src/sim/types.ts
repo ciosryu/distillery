@@ -241,7 +241,9 @@ export interface Cask {
   owner?: { name: string; soldMonth: number; deliverMonth: number };
   /**
    * 권리 최소형 (F5b [결정 #326] — MVP·EA): `lien` = 이 통을 담보로 잡은 대출 id(담보 한도에서 뺀다, 이중 담보 0) · `presold` = 선판매 계약 id(평가·담보에서 뺀다).
-   * 전체 권리 원장은 1.0. 지금은 아무 경로도 채우지 않는다 — 담보대출은 풀(pool)형, 공급 계약은 통에 묶이지 않는다(F5b 전수 점검)
+   * 전체 권리 원장은 1.0. 지금은 아무 경로도 채우지 않는다 — 담보대출은 풀(pool)형, 공급 계약은 통에 묶이지 않는다(F5b 전수 점검).
+   * **`lien`은 풀형 잔액 차감(`inventoryLoanRoom`의 `used`)과 같이 쓰지 않는다**(MGT 검토 2026-11-14): 통별 lien을 채우는 대출이 생기면 그 대출의 한도·마진콜은 자기 lien 통으로만 계산해야
+   * 이중 차감(한도에서 통도 빼고 잔액도 뺌)·가짜 마진콜이 없다 — 1.0 권리 원장에서 함께 바꾼다. 지금은 `valuation.test.ts`가 "lien을 채우는 경로 0"을 고정한다
    */
   rights?: { lien?: string; presold?: string };
   /** 블렌딩 테이블 (결정 #124): 블렌더가 이 캐스크에서 샘플을 뜬 횟수 — 읽는 오차가 1/√(1+n)로 준다 */
