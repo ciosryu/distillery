@@ -1,4 +1,5 @@
 import { BULK, EQUIPMENT } from './content/catalog';
+import { PRICE_INDEX_WALK } from './content/production';
 import { refreshBroker } from './broker';
 import { sumCashFlows } from './cashflow';
 import { fulfillContracts, refreshCaskBids, refreshContractOffers, updateBulkIndex } from './bulk';
@@ -128,11 +129,12 @@ function phaseGrowth(s: GameState, report: MonthReport, runsUsed: number, sales:
   if (systemOn(s, 'exports')) refreshExportOffers(s); // 시장 단위 스트림 export-offer:<시장> (결정 #299 S7)
   // 그레인 현물 시장이 물량을 소화한다 (#81)
   if (s.b2b.spotSoldLPA) s.b2b.spotSoldLPA = { grain: s.b2b.spotSoldLPA.grain * BULK.spotDecay };
-  // 원재료 가격 변동 (평균 회귀 랜덤 워크)
+  // 원재료 가격 변동 (평균 회귀 랜덤 워크) — 상수는 content/production.ts PRICE_INDEX_WALK (F6 공급 손잡이 자리, 값 불변)
   const prng = rngFor(s.seed, s.month, 'prices');
+  const W = PRICE_INDEX_WALK;
   for (const k of Object.keys(s.world.priceIndex)) {
     const v = s.world.priceIndex[k]!;
-    s.world.priceIndex[k] = clamp(v * Math.exp(prng.normal(0, 0.02)) + 0.05 * (1 - v), 0.6, 1.8);
+    s.world.priceIndex[k] = clamp(v * Math.exp(prng.normal(0, W.sigma)) + W.reversion * (1 - v), W.min, W.max);
   }
 }
 

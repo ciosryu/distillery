@@ -24,14 +24,15 @@ export interface KnobDef {
 /**
  * 손잡이 표 `[튜닝 — 자리값: 모두 1]`. 영역 배수 `<영역>.eventChance`는 코어가 `events.ts rollChance`에서 읽는다(이벤트 `EventDef.domain` 태그 × 이 값).
  * 나머지 행(금리·한도·시세 σ·탄력성·원가 이벤트 크기…)은 MGT·MKT·PROD가 자기 시스템에 `× knob(s, id)`를 붙이는 PR에서 더한다 — Normal 바이트 동일이 머지 조건.
- * `competition`은 경쟁 AI 전까지 행을 두지 않는다([결정 대기 96] 권장안 — 실체 없는 손잡이로 가짜 선택지를 만들지 않는다)
+ * `competition.eventChance`는 태그(`ad_regulation`)가 있어 행을 두되 값은 1 — [결정 대기 96] 권장안(경쟁 AI 전까지 Normal 고정)이면 Custom 화면이 잠근다
  */
 export const KNOBS: Record<string, KnobDef> = {
   'macro.eventChance': { easy: 1, hard: 1, note: '거시 이벤트(불황·호황·과잉·증세…) 월 발생 확률 배수' },
   'taste.eventChance': { easy: 1, hard: 1, note: '취향·유행 이벤트(피트 유행·셰리 트렌드·하이볼 붐…) 월 발생 확률 배수' },
   'supply.eventChance': { easy: 1, hard: 1, note: '원가 악재 이벤트(흉작·에너지·배럴 파동…) 월 발생 확률 배수 — v16은 60개월부터 이벤트가 열린다' },
   'incidents.eventChance': { easy: 1, hard: 1, note: '재난·사고 이벤트(화재·침수·고장·오염…) 월 발생 확률 배수 — v16은 60개월부터' },
-  'finance.eventChance': { easy: 1, hard: 1, note: '금융 이벤트 월 발생 확률 배수(지금 태그된 이벤트 없음 — 자리)' },
+  'finance.eventChance': { easy: 1, hard: 1, note: '금융 이벤트(세무조사) 월 발생 확률 배수 — 금리·한도·LTV·수수료 손잡이는 MGT F6b 행' },
+  'competition.eventChance': { easy: 1, hard: 1, note: '경쟁 이벤트(광고 규제) 월 발생 확률 배수 — [결정 대기 96] 경쟁 영역 Normal 고정이면 자리만(×1)' },
   // ── MKT F6b (P-MKT-37, [결정 #313] 취향 변화의 속도·지속성·폭) — 읽는 자리 `market.ts trendWalkOf`·`appeal` ──
   'taste.trendSigma': { easy: 1, hard: 1, note: '카테고리 트렌드 랜덤 워크의 월 σ(0.015) 배수 — 속도. Easy ↓ · Hard ↑' },
   'taste.trendReversion': { easy: 1, hard: 1, note: '같은 워크의 평균 회귀(0.05) 배수 — 지속성. Easy ↑(빨리 1로) · Hard ↓(추세가 오래 간다)' },
