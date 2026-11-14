@@ -2,7 +2,7 @@ import { previewBlend, whiskyMinMonths, type BottleOptions } from './blending';
 import type { BlendTarget } from './blendRadar';
 import { delegatePlan } from './blendTable';
 import { regionOf } from './content/regions';
-import { campaignMinOakMonths } from './rules';
+import { campaignMinOakMonths, rulesVersionOf } from './rules';
 import { protectedCaskIds, reserveCaskIds } from './tags';
 import type { Cask, GameState } from './types';
 
@@ -29,7 +29,7 @@ export interface DelegateCheck {
 const isWhiskyCask = (s: GameState, c: Cask) => !!c.contents && !c.owner && (c.contents.kind === 'malt' || c.contents.kind === 'grain') && c.contents.oakMonths >= whiskyMinMonths(regionOf(s).whisky);
 
 // isFlagshipCandidate는 코어 `ledger.ts`로 옮겼다(F2, [결정 #323] — PM 조건 "delegateCheck 코어 이동"). 쓰는 쪽 호환을 위해 다시 내보낸다
-import { isFlagshipCandidate } from './ledger';
+import { candidateHorizon, isFlagshipCandidate } from './ledger';
 export { isFlagshipCandidate };
 
 /**
@@ -57,7 +57,9 @@ export function delegateCheck(s: GameState, target: BlendTarget, caskIds: string
   const warnings: string[] = [];
   if (whiskyLeft === 0) warnings.push('맡기고 나면 위스키 통이 하나도 남지 않는다 — 다음 병입·재고 보충을 할 수 없다');
   const flag = casks.filter((x) => x.flagship);
-  if (flag.length) warnings.push(`플래그십 후보 통 ${flag.length}개를 쓴다(${flag.map((x) => x.id).join(', ')}) — 판이 끝나기 전 ${campaignMinOakMonths(s) / 12}년 숙성을 채울 수 있는 통`);
+  // 후보의 뜻이 규칙마다 다르다 — 옛 판: 판이 끝나기 전에 채울 수 있는 통 · 새 캠페인(v16, #325): 안내 지평(36개월) 안에 채우는 통(판 끝이 없다 #308)
+  const within = rulesVersionOf(s) === 'legacy-v15' ? '판이 끝나기 전' : `${candidateHorizon(s)}개월 안에`;
+  if (flag.length) warnings.push(`플래그십 후보 통 ${flag.length}개를 쓴다(${flag.map((x) => x.id).join(', ')}) — ${within} ${campaignMinOakMonths(s) / 12}년 숙성을 채울 수 있는 통`);
   if (alreadyThisMonth.length) warnings.push(`이번 달 같은 목표로 이미 맡겼다: ${alreadyThisMonth.map((n) => `「${n}」`).join(', ')}`);
   // 보호 태그 통 (#260) — 직접 고른 묶음에 들어 있으면 알린다(막지 않는다)
   const prot = protectedCaskIds(s);
