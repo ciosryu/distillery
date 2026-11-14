@@ -70,6 +70,42 @@ describe('v16: 판매 지점 → progress.win', () => {
   });
 });
 
+describe('v16: 대형 유통 납품(retail_deal) → progress.win (#319 y7_retail 대비)', () => {
+  // 새 캠페인에서 이 길은 F5(#319 `y7_retail`, 84개월)가 `system:siteDeals`를 풀어야 열린다. 납품 처리(`fulfillRetail`)는 계약이 있으면 잠금과 무관하게 돌므로
+  // 계약을 직접 넣어 판매 지점 4를 미리 잡아 둔다 — 납품은 소매보다 먼저 재고를 가져가(틱 4단계) 승리 로트의 첫 출하 채널이 될 수 있다
+  const contract = (bottlesPerMonth: number) => ({ id: 'U1', partner: '대형 유통', category: 'whisky' as const, bottlesPerMonth, priceFactor: 0.8, termMonths: 12, paymentDelay: 2, penaltyPerBottle: 1_000, startMonth: 150, monthsDone: 0, delivered: 0, shortfall: 0 });
+
+  it('납품이 어린 로트를 다 가져간 뒤 적격 로트에 닿으면 그 달 승리 — 외상(receivable)·출고가 80%도 정상 유상 출하다', () => {
+    const s = v16(); s.month = 150; houseBrand(s).awareness = 0.6;
+    s.commerce.products.push(product({ stockBottles: 60 }));
+    addLot(s, 'P', 40, { month: 120, components: self(s, 100) }); // 어린 로트 40병
+    addLot(s, 'P', 20, { month: 150, components: self(s, 150) }); // 적격 20병
+    s.commerce.retailContracts = [contract(50)]; // 50병 = 어린 40 + 적격 10 → 소매보다 먼저(틱 4단계)
+    const next = advanceMonth(s);
+    const ev = next.history.reports.at(-1)!.saleEvents ?? [];
+    const deal = ev.filter((e) => e.channel === 'retail_deal');
+    expect(deal.map((e) => [e.lotId, e.bottles, e.eligibleAtSale])).toEqual([['P:120:0', 40, false], ['P:150:0', 10, true]]);
+    expect(deal.every((e) => e.kind === 'domestic' && e.settlement === 'receivable' && e.unitPrice === 120_000 * 0.8)).toBe(true);
+    expect(next.progress.win).toMatchObject({ month: 150, productId: 'P', lotId: 'P:150:0', kind: 'domestic', unitPrice: 96_000, bottles: 10 }); // 그달 첫 적격 사건 = 납품(소매 사건보다 먼저 쌓인다)
+    expect(next.finance.receivables.some((r) => r.dueMonth === 152 && r.amount === 50 * 96_000)).toBe(true); // 대금은 2개월 뒤 — 승리는 출하 달
+    expect(next.status).toBe('running');
+    expect(checkInvariants(next).errors).toEqual([]);
+  });
+
+  it('납품이 어린 로트만 가져가면 승리가 아니다 — 적격 로트가 남아 있어도', () => {
+    const s = v16(); s.month = 150; houseBrand(s).awareness = 0; // 인지도 0 — 소매 수요를 줄여 납품만 본다
+    s.commerce.products.push(product({ stockBottles: 320, price: 100_000_000 })); // 값이 터무니없어 소매로는 안 팔린다(납품은 계약 물량이라 값과 무관)
+    addLot(s, 'P', 300, { month: 120, components: self(s, 100) });
+    addLot(s, 'P', 20, { month: 150, components: self(s, 150) });
+    s.commerce.retailContracts = [contract(100)];
+    const next = advanceMonth(s);
+    const ev = next.history.reports.at(-1)!.saleEvents ?? [];
+    expect(ev.filter((e) => e.channel === 'retail_deal').map((e) => [e.lotId, e.bottles])).toEqual([['P:120:0', 100]]);
+    expect(ev.some((e) => e.eligibleAtSale)).toBe(false);
+    expect(next.progress.win).toBeUndefined();
+  });
+});
+
 describe('v16: 수출 잠금 아래 판매 지점 (#311)', () => {
   it('새 캠페인에서 수출이 잠겨 있으면 판매 사건은 국내·면세뿐이고, 수출 사건은 생기지 않는다', () => {
     const s = v16(); s.month = 60; houseBrand(s).awareness = 0.6;
