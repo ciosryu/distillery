@@ -1,6 +1,7 @@
 import { isWhiskyCategory } from './blending';
 import { awarenessOf, houseBrand } from './brands';
-import { SCENARIOS, type MidGoalDef } from './content/scenarios';
+import { SCENARIOS, midGoalsForRules, type MidGoalDef } from './content/scenarios';
+import { candidateHorizon, isCampaignCandidate } from './ledger';
 import { isBulkKind, spotBidPerLPA } from './bulk';
 import { MILESTONES } from './content/milestones';
 import { firstEligibleSale } from './saleEvents';
@@ -159,11 +160,13 @@ export function midGoalMet(s: GameState, id: MidGoalDef['id']): boolean {
     case 'commission_done': return s.commerce.commissions.some((c) => !!c.fulfilledBy) || s.commerce.products.some((p) => p.blend?.source === 'critic' && (p.blend.appealBonus ?? 0) > 0);
     case 'export_open': return (s.commerce.exports ?? []).length > 0;
     case 'revenue_8': return s.history.reports.slice(-12).reduce((t, r) => t + r.revenue, 0) >= 800_000_000;
+    // F5a [결정 #319]: 12년 후보 통 3개 — 안내 지평('hint' 36 → 목재 108개월↑ 자가 몰트). 'reserve'(144)를 쓰면 모든 자가 몰트 통이 후보라 저절로 달성된다(MKT §7.3). 오염 조건 없음(한 함수 원칙)
+    case 'reserve_casks': return s.inventory.casks.filter((c) => isCampaignCandidate(s, c, candidateHorizon(s, 'hint'))).length >= 3;
   }
 }
 
 /** 이 판의 중반 목표 정의 (없으면 빈 목록) */
-export const midGoalsOf = (s: Pick<GameState, 'scenario'>): MidGoalDef[] => (s.scenario ? SCENARIOS[s.scenario.id]?.midGoals ?? [] : []);
+export const midGoalsOf = (s: Pick<GameState, 'scenario' | 'rulesVersion'>): MidGoalDef[] => { const def = s.scenario ? SCENARIOS[s.scenario.id] : undefined; return def ? midGoalsForRules(def, rulesVersionOf(s)) : []; }; // F5a: 규칙 묶음별(옛 판 midGoals · v16 midGoalsV16)
 
 /** 월말: 아직 결과가 없는 중반 목표를 판정한다 — 이루면 보상(하우스 브랜드 인지도), 기한이 지나면 놓침(벌은 없다) */
 function updateMidGoals(s: GameState, report: MonthReport): void {

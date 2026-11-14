@@ -48,14 +48,23 @@ export function allocateFunding(tier: ScenarioTierDef, amount: number): { offerI
   return out;
 }
 
+/**
+ * 스크립트용 기본 규칙 묶음(X0L 옛 판정 참고 판 — `RULES=legacy`). 화면·테스트는 `plan.rules`로 명시한다.
+ * 왜 필요한가(F5a): 잠금 키·주종·(PROD 연결 뒤) 프리셋이 **생성 때** 규칙 묶음으로 갈리므로, 만든 뒤 `rulesVersion`만 바꾸면 v16 잠금을 든 옛 판이 된다(X0L 바이트 동일 깨짐 — 2026-11-14 실측).
+ * 생성 전에 기본값을 바꿔야 한다. PROD 래퍼(prod-sample-p8.ts)가 글자 그대로 찾는 `newScenarioGame(...)` 줄은 그대로 두고 이 스위치를 쓴다
+ */
+let defaultRules: RulesVersion = 'v16';
+export function setDefaultRulesVersion(rules: RulesVersion): void { defaultRules = rules; }
+
 /** 사업 계획서로 새 게임을 만든다. 잠긴 티어·알 수 없는 시나리오는 예외 */
 export function newScenarioGame(plan: BusinessPlan): GameState {
   const d = scenarioOf(plan.scenarioId);
   const tier = tierOf(d, plan.tierId);
   if (tier.locked) throw new Error(`${tier.nameKo}: ${tier.locked.reason}`);
   let s = newGame({ seed: plan.seed, region: d.region, site: d.site, startingCash: tier.equity, distilleryName: plan.distilleryName });
-  const locked = scenarioLockedKeys(d);
-  if (plan.rules) s.rulesVersion = plan.rules;
+  const rules = plan.rules ?? defaultRules;
+  s.rulesVersion = rules;
+  const locked = scenarioLockedKeys(d, rules); // F5a: v16 새 판은 kindsV16·lockedV16 — 옛 판(X0L)은 옛 키 그대로. 규칙은 **생성 때** 정해진다
   s.scenario = { id: d.id, tierId: tier.id, locked, economy: { overheadPerMonth: tier.overheadPerMonth }, equity: tier.equity, goal: { ...d.goal }, ...(d.campaignGoal ? { campaignGoal: { ...d.campaignGoal } } : {}) };
   // 잠긴 주종의 프리셋 레시피는 뺀다 (코드·콘텐츠는 그대로)
   s.production.recipes = s.production.recipes.filter((r) => !locked.includes(`kind:${r.kind}`));

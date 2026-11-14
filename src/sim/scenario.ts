@@ -1,4 +1,5 @@
-import { SCENARIOS, type ScenarioStage, type ScenarioSystem } from './content/scenarios';
+import { SCENARIOS, stagesForRules, type ScenarioStage, type ScenarioSystem } from './content/scenarios';
+import { rulesVersionOf } from './rules';
 import type { GameState, MonthReport } from './types';
 
 // 시나리오 잠금 (skeleton S-8, #140) — 기능 플래그. 테크 게이트(research.ts isUnlocked)와 같은 키 규칙을 쓴다.
@@ -13,12 +14,16 @@ export const systemOn = (s: Pick<GameState, 'scenario'>, name: ScenarioSystem): 
 
 export const LOCKED_MESSAGE = '이 시나리오에서는 쓸 수 없는 기능입니다';
 
-/** 이 판에서 아직 안 연 단계 (정의는 콘텐츠 — 진행 중인 판에도 적용된다) */
-export function pendingStages(s: Pick<GameState, 'scenario'>): ScenarioStage[] {
+/** 이 판의 단계 정의 — 규칙 묶음별(F5a): 옛 판은 `stages`, v16은 `stagesV16`. 콘텐츠를 매달 읽으므로 이 분기가 옛 세이브·X0L 보존이다 */
+export function stagesOf(s: Pick<GameState, 'scenario' | 'rulesVersion'>): ScenarioStage[] {
   const def = s.scenario ? SCENARIOS[s.scenario.id] : undefined;
-  if (!def?.stages) return [];
-  const done = new Set(s.scenario!.stagesDone ?? []);
-  return def.stages.filter((x) => !done.has(x.id));
+  return def ? stagesForRules(def, rulesVersionOf(s)) : [];
+}
+
+/** 이 판에서 아직 안 연 단계 (정의는 콘텐츠 — 진행 중인 판에도 적용된다) */
+export function pendingStages(s: Pick<GameState, 'scenario' | 'rulesVersion'>): ScenarioStage[] {
+  const done = new Set(s.scenario?.stagesDone ?? []);
+  return stagesOf(s).filter((x) => !done.has(x.id));
 }
 
 /**

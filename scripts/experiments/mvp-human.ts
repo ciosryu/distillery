@@ -48,6 +48,9 @@
 //   bigMalt 몰트 5배치 + 스테인리스 발효조 2기(끄면 몰트 3배치) · farm 농업경영체 등록(전통주 주세 경감) — 둘 다 켜면 mvp-survival '균형'(FARM=1)과 같은 규모
 // 파산 규칙: 지금(월말 마이너스 3개월 연속, step.ts) + 결정 대기 16의 "6개월로 완화"를 같은 판에서 따로 센다(시뮬레이션 상태의 연속 개월을 스크립트가 덮어 써서 3개월 파산을 막고, 6개월은 스크립트가 센다).
 import { advanceMonth, applyAction, isWhiskyCategory, newScenarioGame, previewBlend, warehouseCapacity, type Action, type GameState, type ProductCategory } from '../../src/sim';
+import { setDefaultRulesVersion } from '../../src/sim/newScenario';
+// RULES=legacy → X0L(옛 판정 참고 판 — F4·F5 바이트 동일 검사). 생성 **전에** 기본 규칙을 바꾼다(F5a: 잠금·주종·프리셋이 생성 때 규칙으로 갈린다). PROD 래퍼가 글자 그대로 찾는 `newScenarioGame(...)` 줄은 그대로
+if (process.env.RULES === 'legacy') setDefaultRulesVersion('legacy-v15');
 import { EVENTS } from '../../src/sim/content/events';
 import { cashAlert } from '../../src/ui/alerts';
 import { campaignMinOakMonths, netWorth } from '../../src/sim/progress';
@@ -537,7 +540,6 @@ interface Cap { minCash72: number; minRunway72: number; negMonths: number; peakS
 
 function play(p: Policy, seed: number): Row {
   let s = applyTierKnobs(newScenarioGame({ scenarioId: 'mvp_kr', tierId: TIER, loanAmount: LOAN, seed }));
-  if (process.env.RULES === 'legacy') s.rulesVersion = 'legacy-v15'; // RULES=legacy → X0L(옛 판정 참고 판, F4 바이트 동일 검사). 윗줄은 PROD 래퍼(prod-sample-p8.ts)가 글자 그대로 찾아 패치하므로 바꾸지 않는다
   const t: { firstWhisky: number; flagshipDone?: boolean; launchDone?: boolean; winFail?: number[] } = { firstWhisky: -1 };
   if (p.visitor && p.visitorAt == null) s = act(s, { type: 'buyEquipment', catalogId: 'visitor_basic' });
   if (p.equipAt == null) s = buyEquip(s, p);
