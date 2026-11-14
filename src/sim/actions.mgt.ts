@@ -2,7 +2,7 @@ import { forwardRoomKg, marketIndex } from './forwards';
 import { FORWARD, INGREDIENTS } from './content/catalog';
 import { LOAN_OFFERS } from './content/catalog';
 import { awarenessOf } from './brands';
-import { handleDeparture, headhunt, masterDistiller, MORALE, moraleOn, shiftMorale, TRAINING, trainingCost, trainStaff } from './hr';
+import { handleDeparture, headhunt, masterDistiller, MORALE, moraleOn, pickSpecialist, shiftMorale, TRAINING, trainingCost, trainStaff, type SpecialistRole } from './hr';
 import { ROLE_INFO } from './content/catalog';
 import { isLocked } from './scenario';
 import { INVESTMENT_OFFERS } from './content/catalog';
@@ -45,7 +45,9 @@ export type MgtAction =
   /** 교육 프로그램 (#222) — 비용을 내고 XP */
   | { type: 'trainStaff'; staffId: string }
   /** 헤드헌팅 (#222) — 비용을 내고 스탯 높은 후보 1명 */
-  | { type: 'headhunt'; role: 'distiller' | 'warehouse' | 'sales' | 'office' | 'blender' };
+  | { type: 'headhunt'; role: 'distiller' | 'warehouse' | 'sales' | 'office' | 'blender' }
+  /** 핵심 전문가 1인 (새 캠페인 v16, F5a [결정 #316]) — 11년 차부터 숙성고 매니저·마스터 블렌더·영업 중 한 사람을 1회. 안 고를 수도 있다 */
+  | { type: 'pickSpecialist'; role: SpecialistRole };
 
 /** 대출 일부 상환 최소액 (#181) [튜닝] — 대출 실행 최소액과 같다 */
 export const PARTIAL_REPAY_MIN = 10_000_000;
@@ -70,6 +72,8 @@ export const MGT_CASH_KEY: CashKeys<MgtAction> = {
   // 교육·헤드헌팅 비용 — 전용 항목이 없어 '기타 행동'으로 센다
   trainStaff: 'other',
   headhunt: 'other',
+  // 핵심 전문가는 채용 비용이 없다(급여만 매달) — hire와 같다
+  pickSpecialist: null,
 };
 
 export const MGT_HANDLERS: Handlers<MgtAction> = {
@@ -174,6 +178,12 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     const r = headhunt(s, a.role);
     if (typeof r === 'string') return fail(prev, r);
     return { state: s, message: `${ROLE_INFO[a.role].nameKo} 헤드헌팅 — ${(cash - s.finance.cash).toLocaleString()}원, 후보 ${r.name} (Lv.${r.level}, 다음 후보 갱신 때까지)` };
+  },
+  pickSpecialist: (s, prev, a) => {
+    const why = pickSpecialist(s, a.role);
+    if (why) return fail(prev, why);
+    const x = s.hr.staff.at(-1)!;
+    return { state: s, message: `핵심 전문가 — ${x.name}(${ROLE_INFO[x.role].nameKo}) 합류, 월 ${x.salary.toLocaleString()}원` };
   },
   hire: (s, prev, a) => {
     const c = s.hr.candidates.find((x) => x.id === a.candidateId);
