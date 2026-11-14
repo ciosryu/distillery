@@ -4,7 +4,10 @@
 
 ## 커밋
 - **측정 트리:** 브랜치 `claude/mgt-f5b` = ARCH #534 `182d7d6` + main `5f124de`(#533) + MGT 커밋 1개(P8 `fill()` · `metrics.ts`).
-  - 그 뒤 #534 헤드는 `c3f18c3`으로 바뀌었다. `182d7d6`과 시뮬 코드 차이는 `types.ts` 주석과 `valuation.test.ts`뿐이라 이 측정은 그대로 유효하다.
+  - **#534 `f375454`(`recentSoldBottles`가 모든 유상 채널의 `saleEvents`로 셈 — MKT 수정)에서 다시 돌렸다. 4칸 원자료가 `182d7d6` 판과 바이트 동일하다.**
+    - 이 봇은 병 재고가 판매 0.2~0.4개월치뿐이다(METRICS "재고 개월"). 그래서 어느 정의로 세도 12개월치를 넘는 초과분이 0이다.
+    - 이 수정이 값을 바꾸는 곳은 재고가 쌓인 판(납품·수출 제품을 많이 쌓아 둔 판)이다 `[추론]`.
+  - `4e856d3`은 `src/store/persist.ts` 불러오기 안내와 테스트뿐이라 시뮬 코드가 `f375454`와 같다(ARCH).
 - **첫 행 X0L 바이트 동일 ✅:** `RULES=legacy` X0 standard·micro 10 × 180 · X19 standard · `CALIB=1` standard가 [`../2026-11-13-x0l`](../2026-11-13-x0l/README.md)과 **바이트 동일**. 옛 판에서는 `netWorth = netWorthLegacy`이고, 봇 `fill()`은 숨은 값을 그대로 쓴다.
 
 ## 명령 (10시드)
