@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { feedFor, type FeedPost, type FeedStyle } from '../sim/feed';
+import { FEED_BRIEF, briefPosts, feedFor, type FeedPost, type FeedStyle } from '../sim/feed';
 import { monthLabel } from '../sim/util';
 import { useGame } from '../store/game';
 import { Badge, Card, Empty } from './kit';
 
-// 가상 주류 커뮤니티 피드 카드 ([결정 #247]) — 파트 MKT. 순수 연출: 판매에 영향 없음. 판매 화면(Sales.tsx)이 붙인다
+// 가상 주류 커뮤니티 피드 카드 ([결정 #247]) — 파트 MKT. 순수 연출: 판매에 영향 없음. 판매 화면(Sales.tsx)이 붙인다.
+// MVP 홈(MvpHome.tsx)은 `compact`로 끼운다(오너 요청 2026-11-14 — 홈에서도 반응이 보이게): 최근 글 몇 개만, 제품 고르기 없음, 글이 없으면 자리도 차지하지 않는다
 
 const STYLE_TONE: Record<FeedStyle, string> = {
   whiskybase: 'border-l-indigo-400 dark:border-l-indigo-500',
@@ -33,11 +34,35 @@ function Post({ p, startYear }: { p: FeedPost; startYear: number }) {
   );
 }
 
-/** 커뮤니티 반응 — 최근 3개월 판매(판매량·판매가·품절)와 지금 제품의 품질·향으로 만든 글. 제품을 고르면 그 제품만 */
-export function FeedCard() {
+/** 커뮤니티 반응 — 최근 3개월 판매(판매량·판매가·품절)와 지금 제품의 품질·향으로 만든 글. 제품을 고르면 그 제품만. `compact`는 MVP 홈용 요약 */
+export function FeedCard({ compact = false }: { compact?: boolean } = {}) {
   const s = useGame((g) => g.state);
   const [only, setOnly] = useState<string>('');
+  const [more, setMore] = useState(false);
   const posts = useMemo(() => feedFor(s, 3, 40), [s]);
+  if (compact) {
+    if (!posts.length) return null; // 아직 팔린 제품이 없는 초반 — 홈에 빈 칸을 두지 않는다
+    const signals = posts.filter((p) => p.signal === 'raise_price' && p.month === posts[0]!.month).length;
+    const brief = briefPosts(posts, more ? FEED_BRIEF.more : FEED_BRIEF.shown);
+    const hidden = Math.min(FEED_BRIEF.more, posts.length) - FEED_BRIEF.shown;
+    return (
+      <Card
+        title="커뮤니티 반응"
+        actions={
+          <span className="flex flex-wrap items-center gap-2 text-xs text-stone-500">
+            {signals > 0 && <Badge tone="warn">💡 가격 올릴 여지 {signals}</Badge>}
+            <span>최근 3개월 글 {posts.length}개</span>
+          </span>
+        }
+      >
+        <ul className="space-y-1.5">{brief.map((p) => <Post key={p.id} p={p} startYear={s.startYear} />)}</ul>
+        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
+          {hidden > 0 && <button type="button" aria-expanded={more} className="font-medium text-amber-800 hover:underline dark:text-amber-400" onClick={() => setMore(!more)}>{more ? '접기' : `더 보기 (${hidden}개)`}</button>}
+          <span>연출입니다 — 판매량에는 영향이 없습니다. 제품별로 보려면 판매 탭.</span>
+        </p>
+      </Card>
+    );
+  }
   const ids = [...new Set(posts.map((p) => p.productId))];
   const shown = (only ? posts.filter((p) => p.productId === only || p.productName.includes(s.commerce.products.find((x) => x.id === only)?.name ?? '\u0000')) : posts).slice(0, 12);
   const counts = posts.reduce((t, p) => ({ ...t, [p.style]: (t[p.style] ?? 0) + 1 }), {} as Partial<Record<FeedStyle, number>>);

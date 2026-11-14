@@ -296,3 +296,31 @@ export function feedFor(s: GameState, months = 3, maxPosts = 14): FeedPost[] {
     .sort((a, b) => b.month - a.month || Number(!!b.signal) - Number(!!a.signal) || rank(a) - rank(b))
     .slice(0, maxPosts);
 }
+
+/** MVP 홈 요약(`FeedCard compact`, 오너 요청 2026-11-14)에 보일 글 수 — 접힌 상태 / "더 보기" */
+export const FEED_BRIEF = { shown: 3, more: 8 } as const;
+
+/**
+ * 홈 요약에 올릴 글 n개 — `feedFor` 결과에서 **고르기만** 한다(글을 새로 만들지 않는다 → 난수·상태 불변).
+ * ① **가장 최근 달의 가격 신호 글**(💡 가격 올릴 여지)을 맨 앞에: 홈에서 바로 쓸 수 있는 신호는 그것 하나다(가격 책상이 바로 위에 있다).
+ * ② 나머지는 최근 달부터, 같은 달 안에서는 **아직 안 나온 커뮤니티·제품의 글 먼저**(3개가 같은 카페·같은 제품 글로 차지 않게). 점수가 같으면 피드 순서 그대로
+ */
+export function briefPosts(posts: readonly FeedPost[], n: number): FeedPost[] {
+  const latest = Math.max(-Infinity, ...posts.map((p) => p.month));
+  const picked = posts.filter((p) => p.signal === 'raise_price' && p.month === latest);
+  const pool = posts.filter((p) => !picked.includes(p));
+  while (picked.length < n && pool.length) {
+    const month = Math.max(...pool.map((p) => p.month));
+    const styles = new Set(picked.map((p) => p.style));
+    const products = new Set(picked.map((p) => p.productId));
+    let best = -1;
+    let bestScore = -1;
+    pool.forEach((p, k) => {
+      if (p.month !== month) return;
+      const score = (styles.has(p.style) ? 0 : 2) + (products.has(p.productId) ? 0 : 1);
+      if (score > bestScore) { best = k; bestScore = score; }
+    });
+    picked.push(pool.splice(best, 1)[0]!);
+  }
+  return picked.slice(0, n);
+}
