@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { caskTagIds, FLAGSHIP_RESERVE_TAG, isFlagshipCandidate, planTag, TAG_COLORS, TAG_EFFECT_LABEL, TAG_LABEL_MAX, TAG_MAX, tagDefs, type Cask, type GameState, type TagColor, type TagEffect } from '../sim';
+import { caskTagIds, FLAGSHIP_RESERVE_TAG, isFlagshipCandidate, rulesVersionOf, planTag, TAG_COLORS, TAG_EFFECT_LABEL, TAG_LABEL_MAX, TAG_MAX, tagDefs, type Cask, type GameState, type TagColor, type TagEffect } from '../sim';
 import { useGame } from '../store/game';
 import { BulkPlanDialog, Button, Select, TagChip, TextField } from './kit';
 
@@ -22,7 +22,7 @@ export function CaskTagChips({ s, c, reserve }: { s: GameState; c: Cask; reserve
     <span className="mt-0.5 flex flex-wrap gap-0.5">
       {ids.map((id) => {
         const d = defs.find((t) => t.id === id)!;
-        return <TagChip key={id} def={d} title={id === FLAGSHIP_RESERVE_TAG ? '플래그십 예비(#260) — 가장 오래된 12년 후보 통에 자동으로 붙는다. 떼면 다음 후보로 옮겨 간다' : EFFECT_HINT[d.effect ?? 'none']} />;
+        return <TagChip key={id} def={d} title={id === FLAGSHIP_RESERVE_TAG ? (rulesVersionOf(s) === 'legacy-v15' ? '플래그십 예비(#260) — 가장 오래된 12년 후보 통에 자동으로 붙는다. 떼면 다음 후보로 옮겨 간다' : '플래그십 예비(#260) — 승리용으로 남겨 두는 통. 가장 오래된 자가 몰트 통 4개에 처음부터 자동으로 붙어 자동 기능이 쓰지 않는다("후보"는 3년 안에 12년이 되는 통 — 뜻이 다르다). 떼면 다음 통으로 옮겨 간다') : EFFECT_HINT[d.effect ?? 'none']} />;
       })}
     </span>
   );
@@ -69,7 +69,7 @@ export function CaskTagBar({ s, picked, counts, tagFilter, setTagFilter, onTagge
           <Button small disabled={!picked.length || !current} onClick={() => start('add')}>붙이기</Button>
           <Button small variant="ghost" disabled={!picked.length || !current} onClick={() => start('remove')}>떼기</Button>
           {current === FLAGSHIP_RESERVE_TAG && <span className="text-stone-500">예비 통은 {'"'}가장 오래된 후보{'"'}에 자동으로 붙는다 — 떼면 다음 후보로 옮겨 가고, 다른 후보 통에 붙이면 그 통이 자리를 차지한다</span>}
-          {current === FLAGSHIP_RESERVE_TAG && nonCandidates > 0 && <span className="text-amber-700 dark:text-amber-400">고른 통 중 {nonCandidates}통은 12년 후보가 아니다 — 판 안에 플래그십이 될 수 없다. 붙이면 자동 기능이 쓰지 않게 보호만 되고 예비 자리는 차지하지 않는다(그냥 남길 통이면 {'"'}보호{'"'} 태그가 맞다)</span>}
+          {current === FLAGSHIP_RESERVE_TAG && nonCandidates > 0 && <span className="text-amber-700 dark:text-amber-400">고른 통 중 {nonCandidates}통은 {rulesVersionOf(s) === 'legacy-v15' ? '12년 후보가 아니다 — 판 안에 플래그십이 될 수 없다.' : '예비 대상이 아니다(자가 몰트 통이 아니거나 고객 소유).'} 붙이면 자동 기능이 쓰지 않게 보호만 되고 예비 자리는 차지하지 않는다(그냥 남길 통이면 {'"'}보호{'"'} 태그가 맞다)</span>}
         </div>
       )}
       {manage && <TagManager s={s} />}
