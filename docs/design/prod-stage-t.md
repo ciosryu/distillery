@@ -516,6 +516,7 @@ MGT #281의 `mvp-human.ts`(X14~X18)를 그대로 돌려 숫자를 재현했고, 
   - **답(11-12):** MGT가 `scripts/experiments/capitalCost.ts`로 정했다 — `discountRate(s, 'marginal')`(다음에 빌릴 돈의 금리, 다 썼으면 급전 20%) · `holdMargin` · 민감도 띠 0·2·7.5·20%(P-MGT-30). 현물 기준 손익분기 숙성 연수 중앙 6.1년(0%)·4.1년(2%) → PROD 실험 A에 아직 붙이지 않았다(남은 일)
 - **MGT (P8 소유):** `prod-hold-p8.ts`가 P8 원본을 문자열로 패치한다(원본이 바뀌면 멈춘다). P8에 **보유 훅**(정책 필드 `hold` — 결정 시점·비율·선별 방식·장기 연수)을 넣어 주면 래퍼를 지운다. 같은 자리에 `AUTORESTOCK=1`(이미 PM이 전함)도.
   - **현황(11-12):** 보유 규칙을 `prodHoldPatch.ts`(`applyHoldPatches`)로 떼어 다른 P8 래퍼(MKT `mkt-p8v`)도 얹을 수 있게 했다(#335). P8에 정식 훅이 들어오면 이 모듈을 지운다 — 요청은 그대로다
+  - **갱신(11-14):** P8 끼움 자리(`p8Hooks.ts`, MGT #569·#594)가 들어와 `prod-hold-p8`·`prod-sample-p8`·`prod-style-p8`을 모두 옮기고 `prodHoldPatch.ts`를 지웠다(기본·PRICE=1·SUPPLY=1·DCF=1 출력 바이트 동일). 보유 규칙은 `prod-hold-p8.ts` 안에 있고 정책 값은 `ext.hold`·`ext.longPrice`로 준다
 - **MKT:** 숙성 가치의 단일 출처(REQ-PROD-3). `appeal`의 `agePerception` 곱이 의도인지, 기대가·권장가와 별개로 수요를 올릴지. P-PROD-45를 고르면 MKT 식도 같은 PR·같은 결정으로 바꾼다.
   - **답(11-12):** c3로 합의(B1-1). 향미 방향은 f2(스타일 = 플레이어 선택, B1-9)로 — REQ-PROD-7
 - **ARCH:**
