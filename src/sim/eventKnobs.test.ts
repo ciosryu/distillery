@@ -1,13 +1,16 @@
 // F6 코어 — 이벤트 효과 크기·기간 손잡이(`<영역>.eventMagnitude`·`eventDuration`, MKT #566 제안 ②): applyEffects가 EventDef.domain으로 읽는다
 import { afterEach, describe, expect, it } from 'vitest';
 import { KNOBS } from './content/difficulty';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { applyEffects } from './events';
+import { EVENTS, TRIGGERED_EVENTS } from './content/events';
 import { newScenarioGame } from './newScenario';
 import { mulberry32 } from './rng';
 import type { GameState } from './types';
 import type { Effect } from './content/events';
 
-const IDS = ['macro.eventMagnitude', 'macro.eventDuration', 'taste.eventDuration'] as const;
+const IDS = ['macro.eventMagnitude', 'macro.eventDuration', 'taste.eventDuration', 'incidents.eventMagnitude'] as const;
 const saved = Object.fromEntries(IDS.map((k) => [k, { ...KNOBS[k]! }]));
 afterEach(() => { for (const k of IDS) Object.assign(KNOBS[k]!, saved[k]); });
 const game = (difficulty: 'easy' | 'normal' | 'hard' = 'normal') => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 3, difficulty });
@@ -45,5 +48,34 @@ describe('F6 — 이벤트 효과 크기·기간 손잡이', () => {
     const s2 = game('normal'); const rng2 = mulberry32(5);
     applyEffects(s2, EFFECTS, rng2, 't', undefined, null, 'taste');
     expect(rng.next()).toBe(rng2.next());
+  });
+  it('배수 0(생산 중단)은 크기 손잡이가 건드리지 않는다 · 그 외는 0 하한 (PROD 확인 ①)', () => {
+    Object.assign(KNOBS['incidents.eventMagnitude']!, { easy: 0.5, hard: 2 });
+    Object.assign(KNOBS['macro.eventMagnitude']!, { easy: 1, hard: 6 });
+    const s = game('hard');
+    applyEffects(s, [{ type: 'modifier', key: 'production', factor: 0, months: [1, 1] }], mulberry32(1), '침수', undefined, null, 'incidents');
+    expect(mods(s)).toEqual([{ key: 'production', factor: 0, months: 1 }]);
+    const s2 = game('hard');
+    applyEffects(s2, [{ type: 'modifier', key: 'demand:whisky', factor: 0.8, months: [3, 3] }], mulberry32(1), '불황', undefined, null, 'macro');
+    expect(mods(s2)[0]!.factor).toBe(0); // 1 + (−0.2) × 6 = −0.2 → 0 하한
+  });
+  it('선택지 효과 경로(resolvePending)와 발생 경로(runEvents) 둘 다 def.domain을 넘긴다 — 소스 검사 (PROD 확인 ③)', () => {
+    const src = readFileSync(join(__dirname, 'events.ts'), 'utf8');
+    const calls = src.split('\n').filter((l) => /applyEffects\(/.test(l) && !/export function applyEffects/.test(l));
+    expect(calls.length).toBeGreaterThanOrEqual(5);
+    for (const l of calls) expect(/,\s*(def\.domain|domain)\)/.test(l), l.trim().slice(0, 100)).toBe(true);
+  });
+  it('방향 규칙(PROD 확인 ②): supply·incidents·finance·competition 태그 이벤트의 modifier는 모두 불리한 방향 — Hard가 호재를 키우지 않는다', () => {
+    const COST = /^(ingredient:|energy$|packaging$|cask:)/, HARM_DOWN = /^(demand:|bulk$|dutyfree$|production$|awareness_gain$)/;
+    const effectsOf = (e: (typeof EVENTS)[number]) => [...(e.effects ?? []), ...(e.choices ?? []).flatMap((c) => c.effects)];
+    for (const e of [...EVENTS, ...TRIGGERED_EVENTS]) {
+      if (!e.domain || e.domain === 'macro' || e.domain === 'taste') continue; // 거시·취향은 변동성(양방향)
+      for (const x of effectsOf(e)) {
+        if (x.type !== 'modifier') continue;
+        const ok = COST.test(x.key) ? x.factor >= 1 : HARM_DOWN.test(x.key) ? x.factor <= 1 : false;
+        expect(ok, `${e.id} ${x.key} ×${x.factor}`).toBe(true);
+      }
+    }
+    expect(EVENTS.find((e) => e.id === 'rice_surplus')!.domain).toBeUndefined(); // 호재는 무태그
   });
 });
