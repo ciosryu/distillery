@@ -1092,7 +1092,7 @@ P8(#271)은 위 ①의 대부분을 이미 담았다: 계열당 3제품 · 자�
 
 - **위 §4 표에서 이번에 넣지 않은 것과 이유:**
   1. 향미 유행의 **기간**, 취향 이벤트(하이볼 열풍 등)의 **수요 배수 폭** — 효과를 만드는 자리가 `events.ts`(MGT)이고, 수요 보정은 `demand:<범주>` 키 하나를 거시 이벤트(불황·위스키 붐)와 같이 써서 MKT 파일에서 읽을 때는 영역을 가를 수 없다. `[제안 — 코어/MGT]` 이벤트 효과를 적용할 때 `EventDef.domain`으로 `<영역>.eventMagnitude`를 곱하는 한 줄(보정 배수의 1에서의 거리 × k)을 두면 취향·거시·공급이 한 자리에서 갈린다.
-  2. 취향 이벤트의 **확률** — 코어 `taste.eventChance`가 이미 있다. 이벤트 영역 태그(`content/events.ts`)는 MGT 파일이라 이 PR에 없다(취향 7개: `highball_boom` · `peat_craze` · `sherry_trend` · `gin_fatigue` · `traditional_revival` · `shochu_boom` · `tw_collector_boom`).
+  2. 취향 이벤트의 **확률** — 코어 `taste.eventChance`가 이미 있다. 이벤트 영역 태그(`content/events.ts`)는 **ARCH가 59개 전부를 한 PR로** 낸다(PM 2026-11-14 — 표와 수 일치 테스트 포함) — 이 PR에는 없다(취향 7개: `highball_boom` · `peat_craze` · `sherry_trend` · `gin_fatigue` · `traditional_revival` · `shochu_boom` · `tw_collector_boom`).
   3. **예보** — 취향 이벤트에는 예보(`forecast`)가 없고 #313이 "미래 유행의 정답을 공개하지 않는다"라 손잡이를 두지 않는다.
   4. **경쟁 영역**(탄력성 · 점유 상한 · 인지도 감쇠) — 결정 대기 96(권장: 경쟁 AI 전까지 Normal 고정).
 - **화면과의 어긋남 `[확인 — F6c]`:** 블렌딩 테이블의 "유행 목표"(`blendTable.ts trendTarget`)는 유행의 원래 세기를 보인다. `taste.flavorTrendStrength`가 1이 아니면 실제 매력 배수는 그보다 크거나 작다 — 값이 정해질 때 화면 문구를 맞춘다.
