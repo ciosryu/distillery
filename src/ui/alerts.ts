@@ -5,7 +5,7 @@
 import { isFlagshipCandidate } from '../sim/delegateCheck';
 import { regionOf } from '../sim/content/regions';
 import { SCENARIOS } from '../sim/content/scenarios';
-import { calendar, campaignMinOakMonths, campaignWon, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport, type Product } from '../sim';
+import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport, type Product } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
@@ -191,9 +191,10 @@ export function flagshipImpact(s: GameState, caskIds: string[]): { using: number
   const all = flagshipCandidates(s);
   const ids = new Set(caskIds);
   const using = all.filter((c) => ids.has(c.id)).length;
-  // final: 목표까지 남은 달이 플래그십 숙성보다 짧아 새로 넣는 통은 후보가 될 수 없다 — 이때 후보 0은 15년 목표를 이룰 수 없다는 뜻
+  // final: (옛 판) 목표까지 남은 달이 플래그십 숙성보다 짧아 새로 넣는 통은 후보가 될 수 없다 — 이때 후보 0은 15년 목표를 이룰 수 없다는 뜻.
+  // 새 캠페인(v16)은 판 끝이 없어(#308) 새 통도 언젠가 적격이 된다 → 늘 false(MGT 지적 2026-11-14)
   const sc = s.scenario;
-  const final = !!sc && sc.goal.months - s.month < campaignMinOakMonths(s);
+  const final = !!sc && rulesVersionOf(s) === 'legacy-v15' && sc.goal.months - s.month < campaignMinOakMonths(s);
   return { using, left: all.length - using, before: all.length, final };
 }
 
@@ -232,10 +233,12 @@ export function monthTodos(s: GameState): Todo[] {
     const ibNote = st.unlock.includes('system:caskBids') ? (() => { const n = ibAgedCaskCount(s); return n ? ` 지금 3년 이상 통 ${n}개.` : ' 지금 3년 이상 통이 없어 제안이 오지 않는다 — 통 일부를 남겨 두라.'; })() : '';
     out.push({ id: `stage-${st.id}`, level: 'warn', text: `새로 열림 — ${st.title}. ${st.text}${ibNote}`, action: tab === 'blendlab' ? '블렌딩 테이블' : tab === 'exports' ? '수출' : tab === 'b2b' ? '원액 B2B' : tab === 'staff' ? '직원' : '판매', target: { tab } });
   }
-  // 남은 플래그십 후보가 적다 (#261) — 후보 집합이 닫힌 뒤(목표까지 남은 달 < 플래그십 숙성)에만. 0통은 증류소 탭 KPI가 빨갛게 말한다
-  if (s.scenario && !campaignWon(s) && s.scenario.goal.months - s.month < campaignMinOakMonths(s)) {
+  // 남은 플래그십 후보가 적다 (#261) — 옛 판: 후보 집합이 닫힌 뒤(목표까지 남은 달 < 플래그십 숙성)에만. 새 캠페인(v16, F4): 판 끝이 없으니 후보(목재 108개월↑, 안내 지평) 수만 본다. 0통은 증류소 탭 KPI가 빨갛게 말한다
+  const legacyRules = rulesVersionOf(s) === 'legacy-v15';
+  if (s.scenario && !campaignWon(s) && (!legacyRules || s.scenario.goal.months - s.month < campaignMinOakMonths(s))) {
     const n = flagshipCandidates(s).length;
-    if (n > 0 && n <= FLAGSHIP_LOW) out.push({ id: 'flagship-low', level: 'danger', text: `남은 12년 플래그십 후보 ${n}통 — 하나라도 남겨야 15년 안에 플래그십을 낸다. 예비 ${reserveCaskIds(s).size}통 — 남길 통을 "플래그십 예비"로 묶으세요(자동 기능이 쓰지 않는다)`, action: '숙성고', target: { anchor: 'mvp-warehouse' } });
+    const why = legacyRules ? '하나라도 남겨야 15년 안에 플래그십을 낸다' : '하나라도 남겨야 승리 출고(12년 싱글 몰트 첫 판매)를 할 수 있다';
+    if (n > 0 && n <= FLAGSHIP_LOW) out.push({ id: 'flagship-low', level: 'danger', text: `남은 12년 플래그십 후보 ${n}통 — ${why}. 예비 ${reserveCaskIds(s).size}통 — 남길 통을 "플래그십 예비"로 묶으세요(자동 기능이 쓰지 않는다)`, action: '숙성고', target: { anchor: 'mvp-warehouse' } });
   }
   const min = whiskyMinMonths(regionOf(s).whisky); // 병입·표기와 같은 식 (blending.ts)
   // IB 캐스크 입찰 (10년 차 해금, #224) — 제안은 2개월 뒤 사라지고 원액 B2B 탭에만 보여서 할 일에 올린다
