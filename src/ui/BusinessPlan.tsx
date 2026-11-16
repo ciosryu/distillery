@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { MVP_KR, previewPlan, type DifficultyConfig, type DifficultyDomain, type DifficultyLevel, type DifficultyPreset, type ScenarioTierDef } from '../sim';
+import { GRADE, MVP_KR, previewPlan, type DifficultyConfig, type DifficultyDomain, type DifficultyLevel, type DifficultyPreset, type ScenarioTierDef } from '../sim';
 import { DIFFICULTY_DOMAINS, DIFFICULTY_DOMAIN_KO, normalizeDifficulty } from '../sim/content/difficulty';
 import { HARD_STACK_WARN_AT, LEVEL_KO, LOCKED_DOMAINS, PRESET_KO, difficultyLabel, hardCount } from './difficultyLabel';
 import { useGame } from '../store/game';
@@ -32,7 +32,7 @@ export function BusinessPlan({ onClose, onSandbox }: { onClose?: () => void; onS
 
   return (
     <Card title="사업 계획서 — 새 증류소" actions={onClose && <Button variant="ghost" small onClick={onClose}>닫기</Button>}>
-      <p className="mb-3 text-sm text-stone-600 dark:text-stone-300">{scenario.nameKo}. 15년 안에 12년 숙성 플래그십을 내고, 파산하지 않고, 순자산을 시작 자기자본의 {scenario.goal.netWorthMultiple}배로 키운다.</p>
+      <p className="mb-3 text-sm text-stone-600 dark:text-stone-300">{scenario.nameKo}. 자가 증류한 12년 숙성 싱글 몰트를 처음 유상 출하하면 캠페인 승리(기한 없음, 결정 #308·#309). 파산하지 않고 버티며, 순자산은 승리 조건이 아니라 등급을 가르는 성과 지표다(S 등급 기준 = 시작 자기자본 × {scenario.goal.netWorthMultiple} × {GRADE.sNetWorthRatio}). 15년은 측정 창이다.</p>
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <div className="space-y-4">
           <section>
@@ -145,7 +145,7 @@ export function BusinessPlan({ onClose, onSandbox }: { onClose?: () => void; onS
             <dt className="text-stone-600 dark:text-stone-300">예상 월 고정 지출</dt><dd className="text-right">{won(p.fixedMonthly)}</dd>
             <dt className="text-stone-600 dark:text-stone-300">대출 이자 (거치 중)</dt><dd className="text-right">{won(p.loanPaymentNow)}</dd>
             <dt className="text-stone-600 dark:text-stone-300">거치 기간 이후 월 상환액</dt><dd className={`text-right ${p.loanPaymentAfterGrace > 0 ? 'font-semibold text-rose-700 dark:text-rose-400' : ''}`}>{won(p.loanPaymentAfterGrace)}{graceEnd > 0 && <span className="ml-1 text-xs font-normal">({graceEnd}개월 차부터)</span>}</dd>
-            <dt className="text-stone-600 dark:text-stone-300">15년 순자산 목표</dt><dd className="text-right">{won(p.goalNetWorth)}</dd>
+            <dt className="text-stone-600 dark:text-stone-300">순자산 성과 기준(등급)</dt><dd className="text-right">{won(p.goalNetWorth)}<span className="ml-1 text-xs font-normal text-stone-500">· S 등급 {won(p.goalNetWorth * GRADE.sNetWorthRatio)}</span></dd>
           </dl>
           <div className={`mt-3 rounded-md p-2 ${p.runwayMonths < 24 ? 'bg-rose-50 text-rose-800 dark:bg-rose-950 dark:text-rose-200' : 'bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-100'}`}>
             <div className="text-xs">현재 런웨이</div>
@@ -154,6 +154,7 @@ export function BusinessPlan({ onClose, onSandbox }: { onClose?: () => void; onS
           </div>
           <div className="mt-2 flex flex-wrap gap-1 text-xs">
             <Badge tone="info">첫 위스키: 한국 법정 최소 숙성 12개월 뒤</Badge>
+            <Badge tone="good">승리: 12년 숙성 싱글 몰트 첫 유상 출하 — 기한 없음</Badge>
             <Badge>{tier.staff.length + 1}명 고정 인력</Badge>
           </div>
         </section>
