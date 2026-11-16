@@ -27,3 +27,20 @@ describe('unlockExports (F7-A 블록 C)', () => {
     expect(isLocked(a, 'system:exports')).toBe(true);
   });
 });
+
+describe('수출 열 f7ExportSnap · f7ExportReport (MKT 하네스가 부름)', () => {
+  it('판별로 쌓고 정책별 평균 표를 낸다 — 수출이 잠긴 판은 수출 0', async () => {
+    const { f7ExportSnap, f7ExportReport, f7ExportRow, f7ExportReset } = await import('./f7Exports');
+    f7ExportReset();
+    let s = v16();
+    for (let m = 0; m < 24; m++) { s = advanceMonth(s); f7ExportSnap(s, { name: 'T 시험' }, 3); }
+    const row = f7ExportRow({ name: 'T 시험' }, 3)!;
+    expect(row.exportRev).toBe(0);
+    expect(row.whiskySold12.length).toBe(12);
+    const table = f7ExportReport(['T 시험', 'Z 없음']);
+    expect(table).toContain('| T 시험 | 0.00억 |');
+    expect(table).toContain('| Z 없음 | — |');
+    f7ExportReset();
+    expect(f7ExportRow({ name: 'T 시험' }, 3)).toBeUndefined();
+  });
+});
