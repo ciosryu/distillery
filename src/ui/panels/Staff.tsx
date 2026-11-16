@@ -1,6 +1,7 @@
 import { ROLE_INFO } from '../../sim/content/catalog';
 import type { GameState, Staff as StaffT } from '../../sim';
-import { ageOf, AGING_TENURE_MONTHS, APPRENTICE_MONTHS, departureHouseStyle, HEADHUNT, headhuntCost, headhuntedThisMonth, marketSalary, masterDistiller, mentoringXp, MORALE, moraleOf, moraleOn, payShortfall, RETIRE_AGE, tenureOf, TRAINING, trainingCooldown, trainingCost, TRAIT_INFO } from '../../sim/hr';
+import { ageOf, AGING_TENURE_MONTHS, APPRENTICE_MONTHS, departureHouseStyle, HEADHUNT, headhuntCost, headhuntedThisMonth, marketSalary, masterDistiller, mentoringXp, MORALE, moraleOf, moraleOn, payShortfall, RETIRE_AGE, SPECIALIST_STAGE, specialistOffers, tenureOf, TRAINING, trainingCooldown, trainingCost, TRAIT_INFO, type SpecialistRole } from '../../sim/hr';
+import { rulesVersionOf } from '../../sim/rules';
 import { pendingStages } from '../../sim/scenario';
 import { useGame } from '../../store/game';
 import { won } from '../format';
@@ -131,13 +132,47 @@ function SalaryReviewCard() {
   );
 }
 
+/** 핵심 전문가 1인 (#316 — 새 캠페인 v16, 11년 차): 후보 3명 중 1명을 한 번 고른다 · 안 골라도 된다 · 효과는 기존 직군 그대로. 되돌릴 수 없어 확인을 받는다(#240) */
+const SPECIALIST_PITCH: Record<SpecialistRole, string> = {
+  warehouse: '몰트 보유형 — 적격 원액(12년)을 지킨다',
+  blender: '정보형 — 원액을 더 정확히 읽는다(샘플·블렌딩)',
+  sales: '국내 현금흐름형 — 수출이 없는 새 캠페인의 판로를 넓힌다',
+};
+function SpecialistCard() {
+  const s = useGame((g) => g.state);
+  const dispatch = useGame((g) => g.dispatch);
+  if (rulesVersionOf(s) !== 'v16') return null;
+  const chosen = s.hr.staff.find((x) => x.keySpecialist);
+  const offers = specialistOffers(s);
+  const stage = pendingStages(s).find((st) => st.id === SPECIALIST_STAGE);
+  const payroll = s.hr.staff.reduce((t, x) => t + x.salary, 0);
+  if (chosen) return <Card title="핵심 전문가"><p className="text-sm">{chosen.name}({ROLE_INFO[chosen.role].nameKo}) — {chosen.hiredMonth + 1}개월 차에 합류했다. 핵심 전문가는 한 사람만, 한 번만 고른다(바꾸거나 내보내기는 1.0의 상세 직원 관리에서).</p></Card>;
+  if (!offers) return stage ? <Card title="핵심 전문가 1인"><Empty>{Math.floor(stage.month / 12) + 1}년 차({stage.month + 1}개월 차)에 핵심 전문가 한 사람을 고를 수 있다 — {stage.month - s.month}개월 뒤. 숙성고 매니저 · 마스터 블렌더 · 영업 중 한 명</Empty></Card> : null;
+  return (
+    <Card title="핵심 전문가 1인 — 세 사람 중 한 명을 고른다(한 번만)">
+      <p className="mb-3 text-xs text-stone-500">고르면 바로 합류하고 월 급여가 더해진다. <b>고른 뒤에는 바꿀 수 없고</b> 나머지 두 사람은 떠난다. <b>고르지 않아도 된다</b>(급여를 아끼는 선택) — 이 카드는 고를 때까지 남는다. 효과는 그 직군 직원과 같다.</p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {offers.map((c) => {
+          const role = c.role as SpecialistRole;
+          return <Person key={c.id} x={c} month={s.month}
+            tag={<span className="text-xs text-stone-500">{SPECIALIST_PITCH[role]}</span>}
+            extra={<><div className="mt-2 text-xs text-stone-500">{ROLE_EFFECT[role]}</div><Impact lines={hireImpact(s, c)} /></>}
+            action={<ConfirmButton small variant="primary" armKey={`specialist-${role}@${s.month}`} armedLabel="한 번 더 누르면 합류(되돌릴 수 없다)"
+              preview={() => <>{c.name}({ROLE_INFO[role].nameKo})이(가) 핵심 전문가로 합류한다 — 월 급여 <b>{won(c.askSalary)}</b>, 전체 월 급여 {won(payroll)} → {won(payroll + c.askSalary)}. 고른 뒤 바꿀 수 없고 다른 두 후보는 떠난다.</>}
+              onConfirm={() => dispatch({ type: 'pickSpecialist', role })}>이 사람을 고른다</ConfirmButton>} />;
+        })}
+      </div>
+    </Card>
+  );
+}
+
 export function Staff() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
   // HR이 잠긴 시나리오(MVP)는 직원 관리 버튼을 숨기고 언제 열리는지 알린다 (#232 — 11년 차 단계)
   const hrOn = moraleOn(s);
   const opens = hrOn ? undefined : pendingStages(s).find((st) => st.unlock.includes('system:hr'));
-  const lockedNote = opens ? `직원 관리(채용·교육·헤드헌팅·해고)는 ${Math.floor(opens.month / 12) + 1}년 차에 열린다 — ${opens.month - s.month}개월 뒤` : '이 시나리오에서는 직원을 관리할 수 없다';
+  const lockedNote = opens ? `직원 관리(채용·교육·헤드헌팅·해고)는 ${Math.floor(opens.month / 12) + 1}년 차에 열린다 — ${opens.month - s.month}개월 뒤` : rulesVersionOf(s) === 'v16' ? '새 캠페인에서는 채용·교육·해고(상세 직원 관리)가 1.0으로 미뤄졌다 — 11년 차의 핵심 전문가 1인은 위 카드에서 고른다' : '이 시나리오에서는 직원을 관리할 수 없다';
   return (
     <div className="grid gap-4">
       <Card title={`직원 (${s.hr.staff.length}명 · 월 급여 ${won(s.hr.staff.reduce((t, x) => t + x.salary, 0))}) · 하우스 스타일 ${Math.round(s.hr.houseStyle)}`}>
@@ -148,6 +183,7 @@ export function Staff() {
               const mentor = mentoringXp(s, x);
               const tag = <>
                 {x.id === master?.id ? <Badge tone="good">마스터 디스틸러</Badge> : x.apprenticeOf ? <Badge tone="info">부사수 · 수련 {s.month - x.hiredMonth}/{APPRENTICE_MONTHS}개월</Badge> : null}
+                {x.keySpecialist && <Badge tone="good">핵심 전문가</Badge>}
                 {mentor > 0 && <span className="ml-1 text-xs text-emerald-700 dark:text-emerald-400" title="부사수이거나 같은 직군에 레벨 2 이상 높은 선배가 있으면 매달 XP를 더 얻는다">멘토링 XP +{mentor}/월</span>}
               </>;
               const wait = trainingCooldown(s, x.id);
@@ -161,6 +197,7 @@ export function Staff() {
           </div>
         )}
       </Card>
+      <SpecialistCard />
       {hrOn && <SalaryReviewCard />}
       {!hrOn ? <Card title="채용"><Empty>{lockedNote}</Empty></Card> : <Card title="채용 후보 (분기마다 갱신)">
         {/* 지금 막힌 곳 (#251) — 어느 직군을 뽑아야 결과가 바뀌는지 */}
