@@ -27,7 +27,7 @@
 | **macro** `[PM 가름 → macro]` | `korean_label_rule` · `blender_rush` · `jp_whisky_shortage` | regulation·b2b | 원액 현물 지수·국산 프리미엄(`bulk.ts`)을 움직여 거시 손잡이와 같은 값(MKT 제안, PM 확정) |
 | **taste** (MKT) | `highball_boom` · `peat_craze` · `sherry_trend` · `gin_fatigue` · `traditional_revival` · `tw_collector_boom` | market | MKT 표 그대로. #313 "취향 변화의 속도·폭·지속성" |
 | **taste** `[PM 가름 → taste]` | `shochu_boom`(JP) | market | 효과가 카테고리 수요 배수(`highball_boom`과 같은 꼴) — MKT 원안대로 taste |
-| **competition** (MKT) | `ad_regulation` | regulation | 경쟁 영역의 유일한 사건. [결정 대기 96]에서 경쟁 영역이 Normal 고정이면 이 태그는 자리만(×1) |
+| **competition** (MKT) | `ad_regulation` | regulation | 경쟁 영역의 유일한 사건. [결정 #329]에서 경쟁 영역이 Normal 고정이면 이 태그는 자리만(×1) |
 | **supply** (PROD) | `barley_failure` · `rice_spike` · `corn_spike` · `energy_spike` · `glass_shortage` · `barrel_shortage` · `gns_hike` | supply | PROD 표 그대로(호재 `rice_surplus`는 아래 영역 없음) |
 | **supply** `[PM 가름 → supply]` | `tariff_retaliation` · `spain_drought` | supply | 효과 대부분이 수입 맥아·배럴·셰리통 원가(PROD 원안, PM 확정). 수출 블렌더 수요·셰리 향 트렌드 부수 효과는 그대로 |
 | **incidents** (MGT·PROD) | `warehouse_fire` · `flood` · `snowstorm` · `typhoon` · `earthquake` · `heatwave` · `cold_wave` · `mold_outbreak` · `still_breakdown` · `ferment_infection` | disaster | PROD 표 그대로(MGT 동의). `heatwave`·`cold_wave`는 기상 입력이지만 발생은 사고 영역. `mold_outbreak`는 이벤트 확률만 — 이벤트 밖 월 오염 추첨(숙성 물리)은 난이도 밖 |
@@ -36,7 +36,7 @@
 | **영역 없음** — 수출(v16 잠김) | `export_inquiry` · `export_support` · `us_tariff_hike` · `us_tariff_relief` · `cn_tariff_retaliation` | opportunity·regulation | #311. 샌드박스에서만 뜸 |
 | **영역 없음** — 계약 기회 | `mega_contract` · `blender_default` | opportunity·b2b | MKT "계약 기회" — 플레이어 선택 사건 |
 | **영역 없음** — 호재 | `rice_surplus` | supply | PM 가름 ⑥ 정정(PROD 확인): 태그하면 `supply.eventChance`·`eventMagnitude`가 Hard에서 호재 확률·크기까지 키운다 → 무태그, 크기는 PROD `supply.windfallSize` |
-| **영역 없음** — 사람(v16 잠김) | `staff_poaching` · `salary_review` · `artisan_retire`(연쇄, chance 0) | people | `system:hr` 잠김 — 인건비 압력은 이벤트가 아니라 `finance.laborMul/wageDrift` 손잡이([결정 대기 94]) |
+| **영역 없음** — 사람(v16 잠김) | `staff_poaching` · `salary_review` · `artisan_retire`(연쇄, chance 0) | people | `system:hr` 잠김 — 인건비 압력은 이벤트가 아니라 `finance.laborMul/wageDrift` 손잡이([결정 #327]) |
 | **영역 없음** — 연쇄 | (`TRIGGERED_EVENTS` 나머지 — chance 0, 선행 사건·연구가 띄움) | — | 발생 확률이 없어 배수가 닿을 자리가 없다 |
 
 - **집계(태그 40):** macro 12 · taste 7 · competition 1 · supply 9 · incidents 10 · finance 1 · 영역 없음 19(`EVENTS` 18 + 연쇄 `artisan_retire`) — 연쇄 나머지는 chance 0.
