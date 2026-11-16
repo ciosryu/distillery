@@ -72,7 +72,7 @@ describe('F6b — 임시 Easy≠Hard 값으로 손잡이가 실제로 먹는다'
   });
 });
 
-describe('[결정 #330] 정기 임금 상승 — v16 캠페인 기본 연 1% × 손잡이 배수, 옛 판·샌드박스 0', () => {
+describe('[결정 #330] 정기 임금 상승 — v16 HR 잠긴 판 기본 연 1% × 손잡이 배수, 옛 판·HR 열린 판(샌드박스) 0', () => {
   const run13 = (g0: GameState) => { let g = g0; for (let m = 0; m < 13; m++) g = advanceMonth(g); return g; }; // 두 번째 해 1월(달 12) 틱까지
   const noted = (g: GameState) => g.history.reports.some((r) => r.notes.some((t) => t.startsWith('정기 임금 조정')));
   /** 같은 판을 임금 상승만 끈 판(Easy 칸, 배수 0 — 다른 손잡이는 모두 1)과 나란히 돌려 직원별로 비교한다. 승급·시세 같은 다른 급여 변화는 두 판에 똑같이 들어간다 */
@@ -99,6 +99,10 @@ describe('[결정 #330] 정기 임금 상승 — v16 캠페인 기본 연 1% × 
     expect(wageDrift(legacy)).toBe(1);
     expect(baseWageDrift(newGame({ seed: 5 }))).toBe(0);
     expect(wageDrift(newGame({ seed: 5 }))).toBe(1);
+    // 조건은 "HR 잠김"(ARCH): v16 캠페인이라도 system:hr가 풀리면 기본 0
+    const opened = game();
+    opened.scenario!.locked = opened.scenario!.locked.filter((k) => k !== 'system:hr');
+    expect(baseWageDrift(opened)).toBe(0);
   });
 
   it('Normal ×1: 12개월 차 1월에 전 직원 +1%(반올림) · 알림 — 임금 상승만 끈 판 대비', () => {
