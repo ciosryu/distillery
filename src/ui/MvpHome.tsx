@@ -14,7 +14,7 @@ import { vesselMaterial } from '../sim/maturation';
 import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
 import { equipmentCost } from '../sim/sites';
-import { campaignMinOakMonths, campaignWon, caskTagIds, HINT_HORIZON_MONTHS, rulesVersionOf, reserveCaskIds, isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
+import { GRADE, campaignMinOakMonths, campaignWon, caskTagIds, HINT_HORIZON_MONTHS, rulesVersionOf, reserveCaskIds, isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
 import { FixedCostLine } from './panels/FixedCost';
@@ -214,12 +214,13 @@ function Headline() {
   const flagMin = campaignMinOakMonths(s);
   const oldest = s.inventory.casks.filter((c) => c.contents && !c.owner && !c.contents.sourced && (c.contents.kind === 'malt' || c.contents.kind === 'grain'))
     .reduce((m, c) => Math.max(m, c.contents!.oakMonths), 0);
-  const left = sc ? sc.goal.months - s.month : null;
+  const legacyRules = rulesVersionOf(s) === 'legacy-v15';
+  // 옛 판만 180개월 기한이 있다 — 새 캠페인(v16)은 기한 없는 승리(#308)라 '목표까지 n개월'을 쓰지 않는다(플레이테스트 준비 점검 §7.12 #2)
+  const left = sc && legacyRules ? sc.goal.months - s.month : null;
   // 12년 플래그십 후보 통 (#240) — 판이 끝나기 전에 플래그십 숙성을 채울 수 있는 통. 목표까지 남은 달이 플래그십 숙성보다 짧아지면
   // 새로 넣는 통은 후보가 될 수 없다 → 그 뒤 후보 0이면 15년 목표(플래그십 판매)를 이룰 수 없다(5차 판, mvp.md §7.16)
   const cands = sc ? flagshipCandidates(s).length : 0;
   const flagDone = campaignWon(s);
-  const legacyRules = rulesVersionOf(s) === 'legacy-v15';
   const noMoreNew = legacyRules && left != null && left < flagMin; // 새 캠페인(v16)은 판 끝이 없어 새 통도 언젠가 후보가 된다
   const flagHint = !sc ? null : flagDone ? (legacyRules ? '플래그십 판매 완료' : `캠페인 승리(${s.progress.win ? winChannelLabel(s.progress.win) : '첫 출하'}) — 12년 싱글 몰트 첫 출하 완료`) : cands > 0 ? `후보 ${cands}통 · 예비 ${reserveCaskIds(s).size}통${noMoreNew ? ' — 새 통은 더 후보가 될 수 없다' : legacyRules ? '' : ' (후보 = 3년 안에 12년이 되는 통 · 예비 = 승리용으로 남겨 두는 통)'}` : legacyRules ? (noMoreNew ? '후보 0통 — 15년 안에 플래그십을 낼 수 없다' : `후보 0통 — ${Math.max(0, (sc.goal.months - flagMin) - s.month)}개월 안에 넣은 통이 후보가 된다`) : `후보 0통 — 목재 ${flagMin - HINT_HORIZON_MONTHS}개월을 넘긴 자가 몰트 통이 후보가 된다 · 예비 ${reserveCaskIds(s).size}통 보호 중`;
   return (
@@ -229,11 +230,11 @@ function Headline() {
           hint={run.months != null ? `이 속도면 약 ${run.months}개월 버팀` : run.avg != null ? '자체 현금 흐름 흑자' : '기록 없음'} />
         {/* 순자산·재고 평가액은 참 품질 합계라 100만 원 단위로만 보인다 ([결정 #310] 1단계 — architecture §11.4 안 A, I3). 현금·대출·목표는 그대로 */}
         <Stat label="순자산" value={wonCoarse(nw)} tone={target != null && nw >= target ? 'good' : undefined}
-          hint={target != null ? `목표 ${won(target)}의 ${pct(nw / target, 0)}` : '현금 − 대출 + 재고 평가액'} />
+          hint={target == null ? '현금 − 대출 + 재고 평가액' : legacyRules ? `목표 ${won(target)}의 ${pct(nw / target, 0)}` : `성과 지표(승리 조건 아님) · S 등급 기준 ${won(target * GRADE.sNetWorthRatio)}의 ${pct(nw / (target * GRADE.sNetWorthRatio), 0)}`} />
         <Stat label="재고 평가액" value={wonCoarse(inv)} hint="원액 현물가 + 제품 재고 원가 (소주 원액 0) · 100만 원 단위" />
         <Stat label="대출 잔액" value={won(loans)} hint={loans ? `${s.finance.loans.length}건` : '없음'} />
         <Stat label="가장 오래된 자체 원액" value={months(oldest)} tone={oldest >= flagMin ? 'good' : sc && !flagDone && noMoreNew && cands === 0 ? 'bad' : undefined}
-          hint={<>{left != null ? `플래그십 ${Math.floor(flagMin / 12)}년 · 목표까지 ${left}개월` : `플래그십 ${Math.floor(flagMin / 12)}년`}{flagHint && <div className={!flagDone && cands === 0 && noMoreNew ? 'font-medium text-rose-700 dark:text-rose-400' : ''}>{flagHint}</div>}</>} />
+          hint={<>{left != null ? `플래그십 ${Math.floor(flagMin / 12)}년 · 목표까지 ${left}개월` : flagDone ? `플래그십 ${Math.floor(flagMin / 12)}년 · 승리 완료` : `플래그십 ${Math.floor(flagMin / 12)}년 · 가장 오래된 통이 ${Math.max(0, flagMin - oldest)}개월 뒤 도달(기한 없음)`}{flagHint && <div className={!flagDone && cands === 0 && noMoreNew ? 'font-medium text-rose-700 dark:text-rose-400' : ''}>{flagHint}</div>}</>} />
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
         <span className="self-center text-stone-500">바로 가기:</span>
@@ -265,7 +266,7 @@ function CurveCard() {
             { label: '순자산', values: pts.map((p) => p.nw), stroke: 'stroke-amber-600', fill: 'fill-amber-600' },
             { label: '현금', values: pts.map((p) => p.cash), stroke: 'stroke-sky-600', fill: 'fill-sky-600' },
           ]}
-          refs={target != null ? [{ value: target, label: '순자산 목표' }] : []}
+          refs={target == null ? [] : rulesVersionOf(s) === 'legacy-v15' ? [{ value: target, label: '순자산 목표' }] : [{ value: target * GRADE.sNetWorthRatio, label: 'S 등급 순자산 기준' }]}
           fmtY={won}
           fmtX={(m) => (m % 12 === 0 ? `${m / 12}년` : `${Math.floor(m / 12)}년 ${m % 12}개월`)}
           fmtTip={(m) => `${monthLabel(s.startYear, m - 1)} 말 (${m}개월째)`}

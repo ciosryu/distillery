@@ -1,4 +1,4 @@
-import { GRADE, monthLabel, timelineOf, type GameState, type GoalCheck } from '../sim';
+import { GRADE, monthLabel, rulesVersionOf, timelineOf, type GameState, type GoalCheck } from '../sim';
 import { winLabel } from './winLabel'; // F5c-2 승리 채널 문구
 import { MILESTONES } from '../sim/content/milestones';
 import { useGame } from '../store/game';
@@ -11,9 +11,11 @@ import { Badge, Button, Card } from './kit';
 // 등급제 (#263 ①안): 버티고 순자산을 채우면 플래그십 없이도 "달성"(B) — 플래그십까지면 헤리티지(A·S)
 const TITLE = { heritage: '헤리티지 달성', achieved: '목표 달성 — 플래그십 없이', missed: '목표 일부 미달', failed: '실패' } as const;
 const CHECK_LABEL: Record<GoalCheck['id'], string> = { survive: '파산하지 않는다', flagship: '12년 숙성 플래그십을 병입해 판다', netWorth: '순자산 목표' };
+/** 새 캠페인(v16): 순자산은 승리 조건이 아니라 등급 기준(#308·#324) — 칸 머리글·줄 이름을 바꿔 승패처럼 읽히지 않게(플레이테스트 준비 점검 §7.12 #3) */
+const CHECK_LABEL_V16: Record<GoalCheck['id'], string> = { survive: '파산하지 않았다', flagship: '12년 싱글 몰트를 유상 출하했다(승리)', netWorth: '순자산 — 등급 기준(승리 조건 아님)' };
 
-function checkText(c: GoalCheck): string {
-  if (c.id === 'netWorth') return `${won(c.value ?? 0)} / 목표 ${won(c.target ?? 0)}`;
+function checkText(c: GoalCheck, legacy = true): string {
+  if (c.id === 'netWorth') return legacy ? `${won(c.value ?? 0)} / 목표 ${won(c.target ?? 0)}` : `${won(c.value ?? 0)} / 등급 기준 ${won(c.target ?? 0)} (S는 ×${GRADE.sNetWorthRatio})`;
   if (c.id === 'flagship') return c.ok ? `품질 ${c.value ?? '—'}` : '아직 없음';
   return c.ok ? '버텼다' : '게임이 끝났다';
 }
@@ -32,12 +34,12 @@ export function Verdict({ s, onNewGame }: { s: GameState; onNewGame: () => void 
           <div className="text-xs text-stone-500">{monthLabel(s.startYear, v.month - 1)} {s.progress.win ? winLabel(s.progress.win) : '판정'}</div>
         </div>
         <section>
-          <h3 className="mb-1 text-sm font-semibold">목표</h3>
+          <h3 className="mb-1 text-sm font-semibold">{rulesVersionOf(s) === 'legacy-v15' ? '목표' : '성과 (등급 기준)'}</h3>
           <ul className="space-y-1 text-sm">
             {v.checks.map((c) => (
               <li key={c.id} className="flex items-baseline justify-between gap-3">
-                <span><span aria-hidden>{c.ok ? '✅' : '❌'}</span> {CHECK_LABEL[c.id]}</span>
-                <span className="tabular-nums text-stone-600 dark:text-stone-300">{checkText(c)}</span>
+                <span><span aria-hidden>{c.ok ? '✅' : c.id === 'netWorth' && rulesVersionOf(s) !== 'legacy-v15' ? '◇' : '❌'}</span> {(rulesVersionOf(s) === 'legacy-v15' ? CHECK_LABEL : CHECK_LABEL_V16)[c.id]}</span>
+                <span className="tabular-nums text-stone-600 dark:text-stone-300">{checkText(c, rulesVersionOf(s) === 'legacy-v15')}</span>
               </li>
             ))}
           </ul>
