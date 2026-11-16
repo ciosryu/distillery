@@ -22,7 +22,7 @@ export const inventoryLtvMul = (s: S) => knob(s, 'finance.inventoryLtv');
 export const financeFeeMul = (s: S) => knob(s, 'finance.fees');
 /** 인건비 배수 — 지역 `laborCost`에 곱한다(새로 정하는 급여: 창업 멤버·채용·시세·핵심 전문가). 이미 정한 급여는 바꾸지 않는다 */
 export const laborMul = (s: S) => knob(s, 'finance.laborMul');
-/** 정기 임금 상승 — 매년 1월 전 직원 급여에 곱한다(1 = 오르지 않음). 선택 사건이 아니라 사기 없이도 비용 압력(P-MGT-51 · [결정 대기 94] — Normal은 1) */
+/** 정기 임금 상승 — 매년 1월 전 직원 급여에 곱한다(1 = 오르지 않음). 선택 사건이 아니라 사기 없이도 비용 압력(P-MGT-51 · [결정 #327] — Normal 값은 F7에서, 지금 1) */
 export const wageDrift = (s: S) => knob(s, 'finance.wageDrift');
 /** 사고·재난 피해 크기 — 재해 손실 원장 `damageMul`에 곱해 현금 피해(복구비)와 통·원액 소실 비율을 **한 값으로** 키운다(ARCH 규약 ②: PROD·MGT 같은 값) */
 export const lossSizeMul = (s: S) => knob(s, 'incidents.lossSize');

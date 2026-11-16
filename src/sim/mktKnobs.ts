@@ -1,7 +1,7 @@
 // 난이도 손잡이 — MKT 몫 (F6b, [결정 #313·#314] · P-MKT-37, architecture §10.10 F6b 규약 ①). 소비자 취향(taste)의 **속도·지속성·폭·향미 유행 세기**와
 // 거시(macro) 중 자리가 MKT 파일인 **원액 현물 지수 변동**을 시스템에 잇는 한 곳이다. 이벤트 발생 확률은 코어가 `EventDef.domain` × `<영역>.eventChance`로 곱한다.
 // 원칙: 값은 `rules.ts knob(s, id)`로만 읽는다 · 전역 상수를 덮어쓰지 않는다 · Normal·옛 판·샌드박스는 늘 ×1 — 이 파일의 함수는 **기준값과 같은 수**를 돌려준다(출력 불변) ·
-// 상태를 바꾸지 않는다. 화면(F6c)도 리터럴 대신 이 함수를 읽는다. 경쟁(competition) 영역은 손잡이를 두지 않는다([결정 대기 96])
+// 상태를 바꾸지 않는다. 화면(F6c)도 리터럴 대신 이 함수를 읽는다. 경쟁(competition) 영역은 손잡이를 두지 않는다([결정 #329])
 import { BULK_WALK, TREND_WALK } from './content/market';
 import { aroundOne, knob } from './rules';
 import type { GameState } from './types';
