@@ -14,6 +14,7 @@ import { ibAgedCaskCount } from '../sim/bulk';
 import { autoFillPreview } from '../sim/autoFill';
 import { autoRestockPlan, autoRestockSources, autoRestockSupported, guardedFlagshipCasks, productMonthlyPace } from '../sim/economics';
 import { reserveCaskIds } from '../sim/tags';
+import { cooperageLeadMonths } from '../sim/prodKnobs';
 import { AUTO_RESTOCK_EXPENSE, productionValue, whiskySupplyForecast } from '../sim/economics';
 
 // ───────────── ① 파산 카운트다운 ─────────────
@@ -213,7 +214,7 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['flagship-low', 'loan-jump', 'malt-stopped', 'visitor', 'stockout', 'cask-bid', 'export-starve', 'restock-short', 'handfill', 'fill', 'whisky', 'soju', 'sample'];
+export const TODO_ORDER = ['flagship-low', 'loan-jump', 'malt-stopped', 'visitor', 'stockout', 'batch-short', 'casks-low', 'cask-bid', 'export-starve', 'restock-short', 'handfill', 'fill', 'whisky', 'soju', 'sample'];
 // 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
 
@@ -298,6 +299,24 @@ export function monthTodos(s: GameState): Todo[] {
   // 대출 거치가 3개월 안에 끝나 납부가 뛴다
   const jump = paymentJump(loanSchedule(s, 4));
   if (jump) out.push({ id: 'loan-jump', level: 'warn', text: `${jump.month - s.month === 0 ? '이번 달' : `${jump.month - s.month}개월 뒤`} 대출 거치가 끝나 월 납부가 ${fmtWon(jump.from)} → ${fmtWon(jump.to)}로 뛴다`, action: '대출 보기', target: { tab: 'finance' } });
+  // A1(PROD 화면 메모, ARCH alerts): 지난달 지시한 배치를 다 못 만들었다 — 지금은 대시보드 결산 메모에만 있어 놓친다. 원인 문구는 생산 단계가 쓴 그대로(원재료·증류기·발효조·취수 허가)
+  const lastRep = s.history.reports.at(-1);
+  const shortNotes = (lastRep?.notes ?? []).filter((n) => /배치 생산 못 함|취수 허가량|증류기가 준비되지 않아/.test(n));
+  if (shortNotes.length) out.push({ id: 'batch-short', level: 'warn', text: `지난달 생산 지시를 다 못 만들었다 — ${shortNotes.slice(0, 2).join(' · ')}${shortNotes.length > 2 ? ` 외 ${shortNotes.length - 2}건` : ''}`, action: '생산 지시', target: { anchor: 'mvp-orders' } });
+  // A4(PROD 화면 메모): 빈 통이 곧 바닥난다 — 지난달 몰트·그레인 생산(LPA)을 63.5%·200L 통에 넣으면 달마다 필요한 통 수와, 빈 통 + 도착 예정 주문을 견준다.
+  // 쿠퍼리지 납기(`prodKnobs.cooperageLeadMonths`) 안에 바닥나면 지금 주문해야 늦지 않는다. 자동 통입이 켜져 있어도 통이 없으면 소용없으므로 같은 규칙
+  {
+    const recipeKind = new Map(s.production.recipes.map((r) => [r.id, r.kind]));
+    const maltLpa = (lastRep?.production ?? []).filter((x) => { const k = recipeKind.get(x.recipeId); return k === 'malt' || k === 'grain'; }).reduce((t, x) => t + x.lpa, 0);
+    const perMonth = maltLpa / (200 * 0.635);
+    if (perMonth >= 0.5) {
+      const emptiesNow = s.inventory.casks.filter((c) => !c.contents && !c.contaminationKnown).length;
+      const ordered = s.inventory.caskOrders.reduce((t, o) => t + o.qty, 0);
+      const monthsLeft = (emptiesNow + ordered) / perMonth;
+      const lead = cooperageLeadMonths(s);
+      if (monthsLeft < lead + 1) out.push({ id: 'casks-low', level: monthsLeft < 1 ? 'warn' : 'info', text: `빈 통이 약 ${Math.max(0, Math.floor(monthsLeft))}개월 뒤 바닥난다 — 몰트·그레인 생산에 달마다 약 ${Math.ceil(perMonth)}통이 드는데 빈 통 ${emptiesNow}개 + 주문 ${ordered}개. 쿠퍼리지 주문은 ${lead}개월 뒤 도착하니 지금 주문한다`, action: '통 사기', target: { anchor: 'mvp-space' } });
+    }
+  }
   // 탱크 몰트·그레인 통입 대기 — 통에 넣어야 숙성이 시작된다
   const tankMalt = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced).reduce((t, l) => t + l.volumeL, 0);
   // 자동 통입(#239)이 켜져 있으면 넣을 통이 있는 동안은 안내하지 않는다 — 빈 통이 모자랄 때만 "통을 사라"로 줄인다
@@ -311,9 +330,16 @@ export function monthTodos(s: GameState): Todo[] {
       : { id: 'fill', level: 'info', text: `탱크 몰트·그레인 ${Math.round(tankMalt).toLocaleString()}L 통입 대기 — 빈 통 ${empties}개 · 남은 자리 ${free}통 (통에 넣어야 숙성이 시작된다 · 자동 통입을 켜 둘 수 있다)`, action: '통입', target: { anchor: 'mvp-fill' } });
   }
   // 위스키 재고가 떨어져 가는데 숙성을 채운 통이 있다
-  const ready = s.inventory.casks.filter((c) => c.contents && !c.owner && (c.contents.kind === 'malt' || c.contents.kind === 'grain') && c.contents.oakMonths >= min).length;
+  // A7(PROD 화면 메모): 병입 권고는 플래그십 예비 통(#260)을 세지 않는다 — 예비 통을 권하면 "예비를 지켜라" 경고와 부딪친다. 남은 통이 예비뿐이면 그 사실과 대가를 한 줄로
+  const reserved = reserveCaskIds(s);
+  const ripe = s.inventory.casks.filter((c) => c.contents && !c.owner && (c.contents.kind === 'malt' || c.contents.kind === 'grain') && c.contents.oakMonths >= min);
+  const ready = ripe.filter((c) => !reserved.has(c.id)).length;
+  const readyReserved = ripe.length - ready;
   const wh = stockMonths(s, (c) => WHISKY_CATS.has(c));
-  if (ready > 0 && wh.months < RESTOCK_MONTHS) out.push({ id: 'whisky', level: 'info', text: `위스키 재고 ${wh.stock ? `${wh.months.toFixed(1)}개월 치` : '없음'} — 숙성 ${min}개월을 채운 통 ${ready}개를 병입할 수 있다`, action: '블렌딩·병입', target: { tab: 'bottling' } });
+  if (wh.months < RESTOCK_MONTHS) {
+    if (ready > 0) out.push({ id: 'whisky', level: 'info', text: `위스키 재고 ${wh.stock ? `${wh.months.toFixed(1)}개월 치` : '없음'} — 숙성 ${min}개월을 채운 통 ${ready}개를 병입할 수 있다${readyReserved ? ` (플래그십 예비 ${readyReserved}통은 빼고 셌다)` : ''}`, action: '블렌딩·병입', target: { tab: 'bottling' } });
+    else if (readyReserved > 0) out.push({ id: 'whisky', level: 'info', text: `위스키 재고 ${wh.stock ? `${wh.months.toFixed(1)}개월 치` : '없음'} — 숙성 ${min}개월을 채운 통은 플래그십 예비 ${readyReserved}통뿐이다. 예비 통을 병입하면 12년 목표가 늦어진다 — 다음 통이 ${min}개월을 채울 때까지 기다리거나, 꼭 필요하면 예비를 풀고 쓴다`, action: '블렌딩·병입', target: { tab: 'bottling' } });
+  }
   // 소주 재고가 떨어져 가는데 탱크에 소주가 있다
   const tankSoju = s.inventory.lots.filter((l) => l.kind === 'soju').reduce((t, l) => t + l.volumeL, 0);
   const so = stockMonths(s, (c) => c === SOJU);
