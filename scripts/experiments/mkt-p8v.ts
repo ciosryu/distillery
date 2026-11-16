@@ -11,11 +11,16 @@
 //   SET=A  MKT-A SKU: 계열당 3·2·1제품(자동 가격) — RHO=<ρ>로 SKU.rho를, MARKET=<배수>로 국내 점유 상한을 실험 안에서만 바꾼다. SNAP=<달>이면 그 달 SKU 분해 표, DIAG=1이면 위스키 진열 원인 나누기
 //   SET=R  F5a 대형 유통 납품(#319 `y7_retail`) 수락 정책 — mkt-stage-t §7.4 ①③: 없음 / 봇 규칙(X0) / 늘 받기 / 위스키만 / 작은 계약만 / 재고 3개월치↑일 때만, 4·6·8배치. v16 전용(옛 판은 제안이 없다). 끝에 납품 지표 표
 //          RETAIL=penaltyShare:1,priceFactor:0.7 처럼 납품 조건을 실험 안에서만 바꿔 민감도를 본다(ONLY=R1,R4,R1·6 으로 행을 줄인다)
+//   SET=F7A F7-A 하네스(#327 · mgt-stage-t `[제안 P-MGT-53]`): 납품 × 규모 × 위약금 · 전문가 × 전략군 · 같은 판본 수출 짝 46행 — 행 목록·나눠 돌리기·합치기는 mkt-f7a.ts.
+//          행 단위 납품 조건(`ext.retail`)은 판을 만들 때 `RETAIL_DEAL`에 넣고 다음 판에서 되돌린다. 판마다 `#F7A {…}` 한 줄(시드 짝 합치기용)
 //   SET=D  MKT-D 생존 대안: 비지터 센터·소주·뉴메이크·조기 위스키·원액 현물 제한 매각을 하나씩 빼거나 바꾼다
 //   TIER(기본 standard)·YEARLY·SPLIT 등 mvp-human.ts의 다른 환경 변수는 그대로
 import { SKU } from '../../src/sim/content/market';
 import { REGIONS } from '../../src/sim/content/regions';
+import { netWorth } from '../../src/sim/progress';
 import { RETAIL_DEAL } from '../../src/sim/deals';
+import { EXPORT_UNLOCK_MONTH, f7ExportReport, f7ExportRow, f7ExportSnap, unlockExports } from './f7Exports';
+import { F7_PREFIX, f7aRows, type F7Line } from './mkt-f7a';
 import * as mkt from './mktP8Hooks';
 import type { MktPolicy } from './mktP8Hooks';
 import { setP8Hooks } from './p8Hooks';
@@ -112,7 +117,8 @@ const SETS: Record<string, string> = {
   for (const [ck, c] of COND) if (!pickC || pickC.includes(ck)) for (const [pk, pv] of POL) if (!pickP || pickP.includes(pk)) rows.push(`P8('${ck}·${pk} ${c}${pv} })`);
   SETS.AP3 = `[\n    ${rows.join(',\n    ')},\n  ]`;
 }
-if (!SETS[SET]) throw new Error(`SET=${SET} 없음 — ${Object.keys(SETS).join('·')}`);
+const F7A = SET === 'F7A';
+if (!SETS[SET] && !F7A) throw new Error(`SET=${SET} 없음 — ${Object.keys(SETS).join('·')}·F7A`);
 if (process.env.RHO) SKU.rho = Number(process.env.RHO);
 // RETAIL=<키>:<값>,…: 대형 유통 납품 조건(`deals.ts RETAIL_DEAL` — priceFactor·penaltyShare·offerChance·maxActive·appealPremium·awarenessGain·termMonths·paymentDelay)을
 // **실험 안에서만** 바꾼다(SET=R과 같이 — F7 안건 P-MKT-40의 민감도). 게임 코드·기본 출력은 그대로다. 모르는 키면 멈춘다
@@ -123,16 +129,25 @@ if (process.env.RETAIL) {
     (RETAIL_DEAL as Record<string, number>)[k] = Number(v);
   }
 }
+// 행 단위 납품 조건(F7A `ext.retail`)의 기준값 — 위 RETAIL 실험값까지 반영한 값. 판을 만들 때마다 이 값으로 되돌린 뒤 그 행의 값을 얹는다
+const RETAIL_BASE = { ...RETAIL_DEAL };
 // MARKET=<배수>: 국내(한국) 주종별 점유 상한(shareCap)을 실험 안에서만 곱한다 — ρ를 올릴 때 줄어드는 총수요를 시장 크기로 되돌리는 안(P-MKT-25 (a))을 잰다
 if (process.env.MARKET) for (const m of Object.values(REGIONS.KR.market)) if (m) m.shareCap *= Number(process.env.MARKET);
 
 // ── P8에 끼우기: 이름 붙은 끼움 자리(`p8Hooks.ts`, MGT #569)에 건다 — P8 소스를 글자로 찾아 바꾸지 않는다(글자 패치는 P8 변경에 세 번 깨졌다).
 //    사본 파일도 만들지 않는다: 같은 프로세스에서 P8 원본을 그대로 불러온다(모듈 싱글턴이라 위에서 바꾼 콘텐츠 값·끼움 자리 등록이 그대로 보인다).
 interface WrapPolicy extends MktPolicy { pricePolicy?: unknown }
+const early: Record<string, Record<number, { dv: number; dvMonth: number; cash83: number; nw83: number }>> = {};
+/** atEnd가 읽는 P8 Row의 일부(mvp-human.ts `interface Row`) — 시드 순서는 1~N */
+interface P8Row { bankrupt3: number; minCash: number; minCashMonth: number; outcome: { survived: boolean; netWorth: number; netWorthLegacy: number }; cap: { minCash72: number }; win: { cls: string; winMonth?: number } }
 type Make = (name: string, o: Record<string, unknown>) => WrapPolicy;
 setP8Hooks<WrapPolicy>({
   // ③ P8 정책 목록을 MKT 변형 묶음으로 — 묶음은 `P8(이름, 덮어쓸 정책)` 식 문자열이라 P8 생성기(make)와 새 X0 묶음(base = X0F)을 넘겨 평가한다
-  policies: (_list, make, base) => new Function('P8', 'X0F', `return ${SETS[SET]};`)(make as Make, base) as WrapPolicy[],
+  //    F7A는 행 목록(mkt-f7a.ts)을 그대로 넘긴다
+  policies: (_list, make, base) => (F7A ? f7aRows().map((r) => (make as Make)(r.name, r.over(base as Record<string, unknown>))) : new Function('P8', 'X0F', `return ${SETS[SET]};`)(make as Make, base) as WrapPolicy[]),
+  // ④ 판 생성 직후: 행 단위 납품 조건(F7A `ext.retail` — 위약금 등). 제안이 만들어질 때 `RETAIL_DEAL`을 읽으므로(deals.ts makeRetailOffer) 판 시작에 넣으면 된다.
+  //    판은 한 프로세스에서 차례로 돌아, 값이 없는 행은 기준값으로 되돌아간다(다른 SET에서는 늘 기준값 = 아무 일도 없다)
+  afterCreate: (_s, p) => { Object.assign(RETAIL_DEAL, RETAIL_BASE, (p.ext?.retail as Partial<typeof RETAIL_DEAL> | undefined) ?? {}); },
   // ① 병입 직후: 자동 가격도 정책 그릇(pricePolicy)도 아닌 정책의 값 처리 — P8의 그 뒤 가격 처리(둘 다 해당 없음)를 건너뛴다
   priceAfterBottle: (s, p, opts) => (!p.pricePolicy && !p.autoPrice ? mkt.afterBottle(s, p, opts) : undefined),
   // ①' P8의 손 가격(manualPrice — MGT가 MKT-B의 'table'·'markup'을 옮겨 심음, ca1bb11)은 MKT 세트에서는 끈다 — 가격 모드(price)는 mktP8Hooks 한 곳이 맡는다.
@@ -140,12 +155,46 @@ setP8Hooks<WrapPolicy>({
   //    MKT 모드(suggest·heur·turnover·profit2·premium)는 P8이 권장가 ×1로 되돌린다. price가 없으면(B1 = X5) P8 그대로 — 보충 뒤 권장가로 맞추는 #289 수정을 살린다
   manualPrice: (s, p) => (p.price ? s : undefined),
   // ② 매달 병입 직전: 분기 가격·현물 매각·납품 수락(SET=R)
-  beforeBottle: (s, p, m) => mkt.monthly(s, p, m),
+  //    F7A 블록 C(`ext.exportUnlock`): 84개월에 수출 잠금만 실험으로 푼다(MGT `f7Exports.ts unlockExports` — 측정 전용, 게임 규칙 #311은 그대로).
+  //    P8 기본 정책이 `exportFrom: 84`라 봇은 풀린 다음 달부터 제안을 받는다(제안은 그달 결산에서 처음 생긴다). 그 전 달까지는 잠긴 짝과 상태가 같다
+  beforeBottle: (s, p, m) => mkt.monthly(F7A && p.ext?.exportUnlock && m === EXPORT_UNLOCK_MONTH ? unlockExports(s) : s, p, m),
   // ②' 병입·통입 뒤: SKU 분해·납품 지표 기록(병입 전에 찍으면 품절 제품이 빠진다)
   afterFill: (s, p, m) => { mkt.snap(s, p, m); },
+  // 결산 직후: F7A 수출 열(MGT `f7ExportSnap` — 수출 매출·병 · 못 판 국내 위스키 수요 · 끝 재고 개월). 다른 SET에서는 아무 일도 없다
+  //    + 합격 조건 4 확인용: 24~60개월 월말 현금 최저(Death Valley)와 83개월 결산 뒤 현금·순자산 — 납품(84)·수출 해제(84)·전문가(120)는 그 뒤 요소라 같은 전략군이면 같아야 한다
+  afterMonth: (s, p, m, seed) => {
+    if (!F7A) return;
+    f7ExportSnap(s, p, seed);
+    const e = ((early[p.name] ??= {})[seed] ??= { dv: Infinity, dvMonth: -1, cash83: NaN, nw83: NaN });
+    if (m >= 24 && m <= 60 && s.finance.cash < e.dv) { e.dv = s.finance.cash; e.dvMonth = m; }
+    if (m === EXPORT_UNLOCK_MONTH - 1) { e.cash83 = s.finance.cash; e.nw83 = netWorth(s); }
+  },
   // 끝: 요약 표
-  atEnd: () => mkt.report(),
+  atEnd: (all) => {
+    mkt.report();
+    // F7A: 판마다 한 줄(JSON) — mkt-f7a.ts merge가 묶음 여럿의 출력에서 모아 시드 짝을 낸다
+    if (F7A) {
+      const ran = f7aRows().filter((r) => (all as Map<string, P8Row[]>).has(r.name));
+      console.log(`\n### F7-A 수출 열 (MGT f7Exports — 판 평균. 수출이 잠긴 행은 수출 0)\n${f7ExportReport(ran.map((r) => r.name))}`);
+    }
+    if (F7A) for (const r of f7aRows()) {
+      const rows = (all as Map<string, P8Row[]>).get(r.name);
+      rows?.forEach((x, i) => {
+        const seed = i + 1, f = mkt.f7Seeds[r.name]?.[seed];
+        const line: F7Line = { id: r.id, tier: process.env.TIER!, months: MONTHS, seed, nw: x.outcome.netWorth, nwLegacy: x.outcome.netWorthLegacy, survived: x.outcome.survived, bankrupt: x.bankrupt3, win: x.win.cls, winMonth: x.win.winMonth,
+          minCash72: x.cap.minCash72, minCash: x.minCash, minCashMonth: x.minCashMonth, contracts: f?.contracts ?? 0, retailRev: f?.revenue ?? 0, penalty: f?.penalty ?? 0, shortBottles: f?.shortBottles ?? 0, shortMonths: f?.shortMonths ?? 0, broken: f?.broken ?? 0, domRev: f?.domRev ?? 0 };
+        // 수출 열(MGT) — 합치기 표 8이 `x_` 열을 그대로 평균 낸다
+        const y = early[r.name]?.[seed];
+        if (y) Object.assign(line, { dv: Number.isFinite(y.dv) ? y.dv : null, dvMonth: y.dvMonth, cash83: Number.isFinite(y.cash83) ? y.cash83 : null, nw83: Number.isFinite(y.nw83) ? y.nw83 : null });
+        const e = f7ExportRow(r, seed);
+        if (e) Object.assign(line, { x_exportRev: e.exportRev, x_exportBottles: e.exportBottles, x_unmetDomestic: e.unmetDomestic, x_stockEndMonths: Number.isFinite(e.stockEnd) ? e.stockEnd : null });
+        console.log(F7_PREFIX + JSON.stringify(line));
+      });
+    }
+  },
 });
+/** 측정 개월 — P8과 같은 자리 인수(시드, 개월) */
+const MONTHS = Number(process.argv[3] ?? 180);
 process.env.P8 = '1';
 process.env.TIER ??= 'standard';
 console.log(`[mkt-p8v] SET=${SET} · ρ = ${SKU.rho} · 국내 점유 상한 ×${process.env.MARKET ?? 1}${process.env.RETAIL ? ` · 납품 조건 실험값 ${process.env.RETAIL}` : ''} · P8 원본 mvp-human.ts + MKT 손잡이(mktP8Hooks.ts)`);
