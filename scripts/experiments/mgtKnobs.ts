@@ -12,9 +12,11 @@
 //   EVENTS_EARLY=1          랜덤 이벤트를 0개월부터 연다 (MVP는 60개월에 연다 — Death Valley 구간의 사건 위험을 보는 민감도)
 //   DIFF=easy|normal|hard|custom:<6자리>  난이도 시작 스냅샷(F6c, [결정 #313·#314] — architecture §10.10). custom 자리 순서 = macro·competition·taste·supply·incidents·finance, 값 1·2·3.
 //                           mvp-human.ts는 사업 계획서(`BusinessPlan.difficulty`)로, balance-sim.ts(샌드박스)는 새 판에 넣는다. 없으면 = 지금 기준선(Normal과 같은 출력)
+//   WAGE_DRIFT=<배수> · LABOR_MUL=<배수>  F7-0 임금 판(결정 #327): 실험 안에서만 KNOBS 'finance.wageDrift'·'finance.laborMul'의 Hard 값을 그 값으로 덮어쓰고
+//                           금융 영역만 어려움(3)인 난이도(`custom:222223`)로 돈다 — 다른 금융 손잡이는 모두 1이라 이 둘만 움직인다. DIFF를 함께 주면 그 금융 자리가 3이어야 한다
 // balance-sim.ts·mvp-survival.ts가 맨 앞에서 applyMgtKnobs()를 부르고, 매달 행동 끝에 mgtPolicy(s)를 부른다
 import { applyAction, isLocked, salaryFor, type Candidate, type GameState } from '../../src/sim';
-import { DIFFICULTY_DOMAINS, normalizeDifficulty } from '../../src/sim/content/difficulty';
+import { DIFFICULTY_DOMAINS, KNOBS, normalizeDifficulty } from '../../src/sim/content/difficulty';
 import { laborMul, staffLaborCost } from '../../src/sim/mgtKnobs';
 import type { DifficultyConfig, DifficultyDomain, DifficultyLevel } from '../../src/sim/types';
 import { HR_TUNING } from '../../src/sim/hr';
@@ -35,6 +37,7 @@ export function applyMgtKnobs(): string {
   if (MGT_KNOBS.salaryReview) on.push(`salaryReview=${MGT_KNOBS.salaryReview}`);
   for (const k of ['TIER_OVERHEAD', 'TIER_EQUITY', 'TIER_WAREHOUSE', 'GOAL_MULT', 'SALARY_SCALE', 'EVENTS_EARLY']) if (env[k] != null && env[k] !== '') on.push(`${k}=${env[k]}`);
   if (DIFF) on.push(`DIFF=${DIFF.preset}(${DIFFICULTY_DOMAINS.map((d) => DIFF!.levels[d]).join('')})`);
+  if (wageOn) on.push(`wageDrift=${WAGE_TEST.wageDrift ?? 1} laborMul=${WAGE_TEST.laborMul ?? 1}`);
   const label = on.join(' ');
   if (label) console.error(`MGT 손잡이: ${label}`);
   return label;
@@ -91,8 +94,18 @@ export function difficultyFromEnv(v: string | undefined = env.DIFF): DifficultyC
   const levels = Object.fromEntries(DIFFICULTY_DOMAINS.map((d, i) => [d, Number(m[1]![i]) as DifficultyLevel])) as Record<DifficultyDomain, DifficultyLevel>;
   return normalizeDifficulty({ preset: 'custom', levels });
 }
-/** 이 실행의 실험 난이도(없으면 undefined) */
-export const DIFF = difficultyFromEnv();
+/** F7-0(결정 #327): 임금 손잡이 후보 값 — 실험 안에서만 KNOBS Hard 값을 덮어쓴다 */
+const numEnv = (k: string) => (env[k] != null && env[k] !== '' ? Number(env[k]) : null);
+export const WAGE_TEST = { wageDrift: numEnv('WAGE_DRIFT'), laborMul: numEnv('LABOR_MUL') };
+if (WAGE_TEST.wageDrift != null || WAGE_TEST.laborMul != null) {
+  for (const v of [WAGE_TEST.wageDrift, WAGE_TEST.laborMul]) if (v != null && !(Number.isFinite(v) && v > 0)) throw new Error(`WAGE_DRIFT·LABOR_MUL은 양수 배수다(받은 값 ${v})`);
+  KNOBS['finance.wageDrift'] = { ...KNOBS['finance.wageDrift']!, hard: WAGE_TEST.wageDrift ?? 1 };
+  KNOBS['finance.laborMul'] = { ...KNOBS['finance.laborMul']!, hard: WAGE_TEST.laborMul ?? 1 };
+}
+const wageOn = WAGE_TEST.wageDrift != null || WAGE_TEST.laborMul != null;
+/** 이 실행의 실험 난이도(없으면 undefined). 임금 판이면 금융만 어려움(3) */
+export const DIFF = difficultyFromEnv() ?? (wageOn ? difficultyFromEnv('custom:222223') : undefined);
+if (wageOn && DIFF && DIFF.levels.finance !== 3) throw new Error('WAGE_DRIFT·LABOR_MUL은 금융 영역이 어려움(3)일 때만 먹는다 — DIFF의 마지막 자리를 3으로');
 
 /**
  * 샌드박스 판(`newGame` — 난이도 그릇이 없다, #314는 캠페인 설정)에 실험 난이도를 넣는다. 시작 직원 급여는 인건비 배수로 다시 정한다
