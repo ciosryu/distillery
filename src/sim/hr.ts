@@ -345,11 +345,11 @@ export function hrOpenedThisMonth(s: Pick<GameState, 'scenario' | 'month' | 'rul
 export function runStaffLifecycle(s: GameState, report: MonthReport, rng: Rng): void {
   // 단계가 HR을 연 달에는 분기 갱신을 기다리지 않고 채용 후보를 바로 채운다 — 독립 난수라 다른 결과는 그대로
   if (hrOpenedThisMonth(s) && !s.hr.candidates.length) refreshCandidates(s, rngFor(s.seed, s.month, 'candidates:stage'));
-  // 정기 임금 상승(F6b — 난이도 finance.wageDrift, 1이면 아무 일도 없다): 매년 1월(달 % 12 = 0, 첫 달 제외) 전 직원 급여 × 배수
+  // 정기 임금 상승([결정 #330] — v16 캠페인 기본 연 1% × 난이도 finance.wageDrift · 옛 판·샌드박스는 배수 1이라 아무 일도 없다): 매년 1월(달 % 12 = 0, 첫 달 제외) 전 직원 급여 × 배수
   const drift = wageDrift(s);
   if (drift !== 1 && s.month > 0 && s.month % 12 === 0 && s.hr.staff.length) {
     for (const x of s.hr.staff) x.salary = Math.round(x.salary * drift);
-    report.notes.push(`정기 임금 조정 — 전 직원 급여 ×${drift.toFixed(3)} (난이도)`);
+    report.notes.push(`정기 임금 조정 — 전 직원 급여 ${drift > 1 ? '+' : ''}${((drift - 1) * 100).toFixed(1)}% (매년 1월)`);
   }
   const master = masterDistiller(s);
   if (master) s.hr.houseStyle = clamp(s.hr.houseStyle + 0.4 * (master.stats.c / 60), 0, 100);

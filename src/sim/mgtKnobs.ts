@@ -1,9 +1,9 @@
-// MGT 난이도 손잡이 읽기 (F6b, [결정 #313·#314] — architecture §10.10 F6 규약 ①, MGT P-MGT-48·P-MGT-51).
+// MGT 난이도 손잡이 읽기 (F6b, [결정 #313·#314] · 임금 상승 [결정 #330] — architecture §10.10 F6 규약 ①, MGT P-MGT-48·P-MGT-51).
 // `rules.ts knob(s, id)`를 감싼 **이름 있는 함수만** 내보낸다. 상태를 바꾸지 않는다. Normal은 늘 1이고,
 // 아래 `mul`은 1이면 값을 그대로 돌려줘 Normal 출력이 바이트 동일하다(곱셈 반올림 차이 0).
 // 실험 손잡이(`scripts/experiments/mgtKnobs.ts`, 전역 값을 바꾸는 측정 도구)와는 이름만 같고 다른 파일이다.
 import { regionOf } from './content/regions';
-import { knob } from './rules';
+import { baseWageDrift, knob } from './rules';
 import type { GameState } from './types';
 
 type S = Pick<GameState, 'difficulty'>;
@@ -22,8 +22,16 @@ export const inventoryLtvMul = (s: S) => knob(s, 'finance.inventoryLtv');
 export const financeFeeMul = (s: S) => knob(s, 'finance.fees');
 /** 인건비 배수 — 지역 `laborCost`에 곱한다(새로 정하는 급여: 창업 멤버·채용·시세·핵심 전문가). 이미 정한 급여는 바꾸지 않는다 */
 export const laborMul = (s: S) => knob(s, 'finance.laborMul');
-/** 정기 임금 상승 — 매년 1월 전 직원 급여에 곱한다(1 = 오르지 않음). 선택 사건이 아니라 사기 없이도 비용 압력(P-MGT-51 · [결정 #327] — Normal 값은 F7에서, 지금 1) */
-export const wageDrift = (s: S) => knob(s, 'finance.wageDrift');
+/** 정기 임금 상승 손잡이 k — 기본 상승률(`baseWageDrift`)에 곱하는 배수(Normal 1 · Easy 0이면 오르지 않음) */
+export const wageDriftMul = (s: S) => knob(s, 'finance.wageDrift');
+/**
+ * 정기 임금 상승 배수 — 매년 1월 전 직원 급여에 곱한다. = 1 + 기본 상승률 × k ([결정 #330]: v16 캠페인 기본 0.01 · 옛 판·샌드박스 0 → 늘 1).
+ * 선택 사건이 아니라 사기 없이도 비용 압력(P-MGT-51). 1이면 hr.ts가 아무 일도 하지 않는다(옛 판 바이트 동일)
+ */
+export function wageDrift(s: Pick<GameState, 'difficulty' | 'rulesVersion' | 'scenario'>): number {
+  const base = baseWageDrift(s), k = wageDriftMul(s);
+  return base === 0 || k === 0 ? 1 : 1 + base * k;
+}
 /** 사고·재난 피해 크기 — 재해 손실 원장 `damageMul`에 곱해 현금 피해(복구비)와 통·원액 소실 비율을 **한 값으로** 키운다(ARCH 규약 ②: PROD·MGT 같은 값) */
 export const lossSizeMul = (s: S) => knob(s, 'incidents.lossSize');
 
