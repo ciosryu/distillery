@@ -7,14 +7,16 @@ import { regionOf } from './content/regions';
 import { newScenarioGame } from './newScenario';
 import { effectiveOffer, inventoryLtv } from './loans';
 import { factoringProceeds, insurancePremium, newLedger } from './insurance';
-import { staffLaborCost } from './mgtKnobs';
+import { staffLaborCost, wageDrift } from './mgtKnobs';
+import { BASE_WAGE_DRIFT_V16, baseWageDrift } from './rules';
+import { newGame } from './newGame';
 
 const game = (difficulty?: 'easy' | 'hard') => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5, ...(difficulty ? { difficulty } : {}) });
 const offer = (id: string) => LOAN_OFFERS.find((o) => o.id === id)!;
 const IDS = ['finance.loanRate', 'finance.loanLimit', 'finance.loanGrace', 'finance.inventoryLtv', 'finance.fees', 'finance.laborMul', 'finance.wageDrift', 'incidents.lossSize'] as const;
 const saved = Object.fromEntries(IDS.map((id) => [id, KNOBS[id]]));
-/** 시험용 값 — Easy 0.5 · Hard 2 (임금 상승만 Easy 1 · Hard 1.05). 끝나면 되돌린다 */
-const setTestValues = () => { for (const id of IDS) KNOBS[id] = id === 'finance.wageDrift' ? { easy: 1, hard: 1.05 } : { easy: 0.5, hard: 2 }; };
+/** 시험용 값 — Easy 0.5 · Hard 2 (임금 상승 배수만 Easy 0 · Hard 5 → 기본 1%에 곱해 0% · 5%). 끝나면 되돌린다 */
+const setTestValues = () => { for (const id of IDS) KNOBS[id] = id === 'finance.wageDrift' ? { easy: 0, hard: 5 } : { easy: 0.5, hard: 2 }; };
 afterEach(() => { for (const id of IDS) KNOBS[id] = saved[id]!; });
 
 describe('F6b — MGT 손잡이: 표에 자리가 있고 Normal은 그대로', () => {
@@ -61,26 +63,59 @@ describe('F6b — 임시 Easy≠Hard 값으로 손잡이가 실제로 먹는다'
     expect(newLedger(e, 'fire').damageMul).toBe(0.5);
   });
 
-  it('인건비 배수: 새로 정하는 급여(창업 멤버)에 곱한다 · 정기 임금 상승: Hard만 매년 1월 ×1.05, Normal은 그대로', () => {
+  it('인건비 배수: 새로 정하는 급여(창업 멤버)에 곱한다', () => {
     setTestValues();
     const n = game(), h = game('hard');
     expect(staffLaborCost(h)).toBeCloseTo(2 * regionOf(h).laborCost);
     const sn = n.hr.staff.reduce((t, x) => t + x.salary, 0), sh = h.hr.staff.reduce((t, x) => t + x.salary, 0);
     expect(sh / sn).toBeGreaterThan(1.9); // 급여 반올림이 있어 정확히 2는 아니다
-    // 정기 임금 상승: 두 번째 해 1월(달 12) 틱 뒤 Hard만 오른다 — 인건비 배수의 영향을 빼려고 같은 급여에서 시작
-    KNOBS['finance.laborMul'] = { easy: 1, hard: 1 };
-    let a: GameState = game(), b: GameState = game('hard');
-    const base = (g: GameState) => g.hr.staff.map((x) => x.salary);
-    expect(base(b)).toEqual(base(a));
-    for (let m = 0; m < 13; m++) { a = advanceMonth(a); b = advanceMonth(b); } // 12개월 차(1월)의 틱까지
-    const ids = a.hr.staff.map((x) => x.id);
-    for (const id of ids) {
-      const xa = a.hr.staff.find((x) => x.id === id)!, xb = b.hr.staff.find((x) => x.id === id);
-      if (!xb) continue;
-      expect(xb.salary).toBe(Math.round(xa.salary * 1.05));
+  });
+});
+
+describe('[결정 #330] 정기 임금 상승 — v16 캠페인 기본 연 1% × 손잡이 배수, 옛 판·샌드박스 0', () => {
+  const run13 = (g0: GameState) => { let g = g0; for (let m = 0; m < 13; m++) g = advanceMonth(g); return g; }; // 두 번째 해 1월(달 12) 틱까지
+  const noted = (g: GameState) => g.history.reports.some((r) => r.notes.some((t) => t.startsWith('정기 임금 조정')));
+  /** 같은 판을 임금 상승만 끈 판(Easy 칸, 배수 0 — 다른 손잡이는 모두 1)과 나란히 돌려 직원별로 비교한다. 승급·시세 같은 다른 급여 변화는 두 판에 똑같이 들어간다 */
+  const vsNoDrift = (difficulty: 'hard' | undefined, expected: number) => {
+    const a = run13(game(difficulty)), b = run13(game('easy'));
+    let n = 0;
+    for (const xb of b.hr.staff) {
+      const xa = a.hr.staff.find((x) => x.id === xb.id);
+      if (!xa) continue;
+      expect(xa.salary).toBe(Math.round(xb.salary * expected));
+      n++;
     }
-    expect(b.history.reports.some((r) => r.notes.some((t) => t.startsWith('정기 임금 조정')))).toBe(true);
-    expect(a.history.reports.some((r) => r.notes.some((t) => t.startsWith('정기 임금 조정')))).toBe(false);
+    expect(n).toBeGreaterThan(0);
+    expect(noted(a)).toBe(true);
+    expect(noted(b)).toBe(false);
+  };
+
+  it('기본 상승률: v16 캠페인 0.01 · 옛 판 0 · 샌드박스 0 → 실효 배수 1.01 · 1 · 1 (Normal)', () => {
+    expect(BASE_WAGE_DRIFT_V16).toBe(0.01);
+    expect(baseWageDrift(game())).toBe(0.01);
+    expect(wageDrift(game())).toBe(1.01);
+    const legacy = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5, rules: 'legacy-v15' });
+    expect(baseWageDrift(legacy)).toBe(0);
+    expect(wageDrift(legacy)).toBe(1);
+    expect(baseWageDrift(newGame({ seed: 5 }))).toBe(0);
+    expect(wageDrift(newGame({ seed: 5 }))).toBe(1);
+  });
+
+  it('Normal ×1: 12개월 차 1월에 전 직원 +1%(반올림) · 알림 — 임금 상승만 끈 판 대비', () => {
+    KNOBS['finance.wageDrift'] = { easy: 0, hard: 1 };
+    vsNoDrift(undefined, 1.01);
+  });
+
+  it('옛 판·샌드박스는 정기 임금 조정이 없다', () => {
+    expect(noted(run13(newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5, rules: 'legacy-v15' })))).toBe(false);
+    expect(noted(run13(newGame({ seed: 5 })))).toBe(false);
+  });
+
+  it('손잡이는 상승분의 배수: 시험값 Hard ×5 → +5% · Easy ×0 → 1', () => {
+    KNOBS['finance.wageDrift'] = { easy: 0, hard: 5 };
+    expect(wageDrift(game('hard'))).toBeCloseTo(1.05, 12);
+    expect(wageDrift(game('easy'))).toBe(1);
+    vsNoDrift('hard', 1.05);
   });
 });
 

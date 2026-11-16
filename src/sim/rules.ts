@@ -16,6 +16,14 @@ export const campaignMinOakMonths = (s: Pick<GameState, 'scenario'>): number => 
 /** 세이브가 따르는 규칙 묶음 — 없으면 옛 판 */
 export const rulesVersionOf = (s: Pick<GameState, 'rulesVersion'>) => s.rulesVersion ?? 'legacy-v15';
 
+/** 새 캠페인(v16)의 기본 정기 임금 상승률 — 연 1% ([결정 #330]). 난이도 손잡이 `finance.wageDrift`는 이 상승분에 곱하는 배수다(Normal ×1) */
+export const BASE_WAGE_DRIFT_V16 = 0.01;
+/**
+ * 판의 기본 정기 임금 상승률([결정 #330]) — **v16 캠페인(시나리오 판)만** 0.01, 옛 판(`legacy-v15`)·샌드박스는 0.
+ * 샌드박스(`newGame`, 시나리오 없음)를 빼는 이유: 상세 HR이 열려 있어 연봉 협상(`salary_review`)이 이미 임금을 올린다 — 겹치지 않게 #327·#330의 대상(v16 `system:hr` 잠김 캠페인)만
+ */
+export const baseWageDrift = (s: Pick<GameState, 'rulesVersion' | 'scenario'>): number => (rulesVersionOf(s) === 'v16' && s.scenario ? BASE_WAGE_DRIFT_V16 : 0);
+
 // ───────────── 난이도 읽기 (F6, [결정 #314] — architecture §10.10 [제안 P-ARCH-58]) ─────────────
 /** 판의 난이도 스냅샷 — 없으면(옛 판·샌드박스) Normal */
 export const difficultyOf = (s: Pick<GameState, 'difficulty'>): DifficultyConfig => s.difficulty ?? DIFFICULTY_NORMAL;
