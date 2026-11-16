@@ -12,12 +12,15 @@
 //   EVENTS_EARLY=1          랜덤 이벤트를 0개월부터 연다 (MVP는 60개월에 연다 — Death Valley 구간의 사건 위험을 보는 민감도)
 //   DIFF=easy|normal|hard|custom:<6자리>  난이도 시작 스냅샷(F6c, [결정 #313·#314] — architecture §10.10). custom 자리 순서 = macro·competition·taste·supply·incidents·finance, 값 1·2·3.
 //                           mvp-human.ts는 사업 계획서(`BusinessPlan.difficulty`)로, balance-sim.ts(샌드박스)는 새 판에 넣는다. 없으면 = 지금 기준선(Normal과 같은 출력)
-//   WAGE_DRIFT=<배수> · LABOR_MUL=<배수>  F7-0 임금 판(결정 #327): 실험 안에서만 KNOBS 'finance.wageDrift'·'finance.laborMul'의 Hard 값을 그 값으로 덮어쓰고
-//                           금융 영역만 어려움(3)인 난이도(`custom:222223`)로 돈다 — 다른 금융 손잡이는 모두 1이라 이 둘만 움직인다. DIFF를 함께 주면 그 금융 자리가 3이어야 한다
+//   WAGE_DRIFT=<연 배수> · LABOR_MUL=<배수>  F7-0 임금 판(결정 #327·#330): 실험 안에서만 KNOBS 'finance.wageDrift'·'finance.laborMul'의 Hard 값을 덮어쓰고
+//                           금융 영역만 어려움(3)인 난이도(`custom:222223`)로 돈다 — 다른 금융 손잡이는 모두 1이라 이 둘만 움직인다. DIFF를 함께 주면 그 금융 자리가 3이어야 한다.
+//                           WAGE_DRIFT는 **실효 연 배수**(1.02 = 매년 +2%)로 받는다 — #330 뒤 손잡이는 기본 상승률(v16 캠페인 0.01)의 배수라 k = (w − 1) / 0.01로 바꿔 넣는다.
+//                           그래서 #330 전에 잰 F7-0 원자료(docs/baseline/2026-11-16-f7-0)와 같은 env 값이 같은 판을 만든다(v16 캠페인 판 한정 — 옛 판·샌드박스는 기본 0이라 효과 없음)
 // balance-sim.ts·mvp-survival.ts가 맨 앞에서 applyMgtKnobs()를 부르고, 매달 행동 끝에 mgtPolicy(s)를 부른다
 import { applyAction, isLocked, salaryFor, type Candidate, type GameState } from '../../src/sim';
 import { DIFFICULTY_DOMAINS, KNOBS, normalizeDifficulty } from '../../src/sim/content/difficulty';
 import { laborMul, staffLaborCost } from '../../src/sim/mgtKnobs';
+import { BASE_WAGE_DRIFT_V16 } from '../../src/sim/rules';
 import type { DifficultyConfig, DifficultyDomain, DifficultyLevel } from '../../src/sim/types';
 import { HR_TUNING } from '../../src/sim/hr';
 import { BANK_SCREENING } from '../../src/sim/content/finance';
@@ -99,7 +102,8 @@ const numEnv = (k: string) => (env[k] != null && env[k] !== '' ? Number(env[k]) 
 export const WAGE_TEST = { wageDrift: numEnv('WAGE_DRIFT'), laborMul: numEnv('LABOR_MUL') };
 if (WAGE_TEST.wageDrift != null || WAGE_TEST.laborMul != null) {
   for (const v of [WAGE_TEST.wageDrift, WAGE_TEST.laborMul]) if (v != null && !(Number.isFinite(v) && v > 0)) throw new Error(`WAGE_DRIFT·LABOR_MUL은 양수 배수다(받은 값 ${v})`);
-  KNOBS['finance.wageDrift'] = { ...KNOBS['finance.wageDrift']!, hard: WAGE_TEST.wageDrift ?? 1 };
+  if (WAGE_TEST.wageDrift != null && WAGE_TEST.wageDrift < 1) throw new Error(`WAGE_DRIFT는 1 이상(실효 연 배수, 받은 값 ${WAGE_TEST.wageDrift})`);
+  KNOBS['finance.wageDrift'] = { ...KNOBS['finance.wageDrift']!, hard: WAGE_TEST.wageDrift == null ? 1 : Math.round(((WAGE_TEST.wageDrift - 1) / BASE_WAGE_DRIFT_V16) * 1e9) / 1e9 }; // [결정 #330] 실효 연 배수 → 기본 상승률의 배수
   KNOBS['finance.laborMul'] = { ...KNOBS['finance.laborMul']!, hard: WAGE_TEST.laborMul ?? 1 };
 }
 const wageOn = WAGE_TEST.wageDrift != null || WAGE_TEST.laborMul != null;
