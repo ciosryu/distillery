@@ -402,3 +402,42 @@ describe('12년 플래그십 후보 — 새 판(v16, 결정 #325 hint 36)', () =
     expect(flagshipCandidates(s).length).toBe(1); // 121 · 101(+36 = 137 < 144) · 61
   });
 });
+
+// PROD 화면 메모 A1·A4·A7 (첫 사람 플레이테스트 전, ARCH alerts) — mvp.md §7.12
+describe('할 일 A1·A4·A7', () => {
+  const malt = (s: GameState, id: string, oak: number) => {
+    const c = s.inventory.casks.find((x) => !x.contents)!;
+    c.id = id;
+    c.contents = { kind: 'malt', volumeL: 190, abv: 0.62, flavor: {}, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 5000 } as never;
+  };
+  it('A7: 숙성을 채운 통이 예비뿐이면 병입 권고 대신 "예비 통을 병입하면 12년 목표가 늦어진다" · 예비 아닌 통이 있으면 그 수만 센다', () => {
+    const s = mvp(); s.month = 20;
+    malt(s, 'R1', 15); malt(s, 'R2', 14); // v16 자동 예비(#260)는 가장 오래된 자가 몰트 4통 — 2통이면 둘 다 예비
+    const only = monthTodos(s).find((x) => x.id === 'whisky');
+    expect(only?.text).toMatch(/플래그십 예비 2통뿐.*12년 목표가 늦어진다/);
+    for (const id of ['R3', 'R4', 'N1', 'N2']) malt(s, id, 13); // 6통 중 예비 4통 → 예비 아닌 통 2개
+    const t = monthTodos(s).find((x) => x.id === 'whisky');
+    expect(t?.text).toMatch(/통 2개를 병입할 수 있다 \(플래그십 예비 4통은 빼고 셌다\)/);
+  });
+  it('A1: 지난달 결산에 "배치 생산 못 함"이 있으면 할 일 맨 위 쪽에 경고 · 생산 지시로 연결', () => {
+    let s: GameState = mvp(); s = advanceMonth(s);
+    s.history.reports.at(-1)!.notes.push('싱글 몰트 — 언피티드: 원재료가 부족해 로 2배치 생산 못 함');
+    const t = monthTodos(s).find((x) => x.id === 'batch-short');
+    expect(t?.level).toBe('warn');
+    expect(t?.target).toEqual({ anchor: 'mvp-orders' });
+    expect(TODO_ORDER.indexOf('batch-short')).toBeLessThan(TODO_ORDER.indexOf('fill')); // 결품(#204) 바로 아래 — 통입·병입보다 위
+  });
+  it('A4: 몰트 생산에 드는 통보다 빈 통 + 주문이 쿠퍼리지 납기 안에 바닥나면 알린다 · 넉넉하면 조용하다', () => {
+    let s: GameState = mvp(); s = advanceMonth(s);
+    const r = s.history.reports.at(-1)!;
+    const maltRecipe = s.production.recipes.find((x) => x.kind === 'malt')!;
+    r.production = [{ recipeId: maltRecipe.id, name: maltRecipe.name, batches: 4, lpa: 400, cost: 0 }]; // 달마다 약 3.1통
+    for (const c of s.inventory.casks) if (!c.contents) c.contents = { kind: 'malt', volumeL: 190, abv: 0.62, flavor: {}, createdMonth: 0, oakMonths: 1, sourced: false, costPerLPA: 5000 } as never;
+    s.inventory.caskOrders = [];
+    const low = monthTodos(s).find((x) => x.id === 'casks-low');
+    expect(low?.level).toBe('warn');
+    expect(low?.text).toMatch(/2개월 뒤 도착/);
+    s.inventory.caskOrders = [{ id: 'O1', typeId: 'ex_bourbon_barrel', qty: 30, arriveMonth: s.month + 2, source: 'cooperage' }] as never;
+    expect(monthTodos(s).some((x) => x.id === 'casks-low')).toBe(false);
+  });
+});
