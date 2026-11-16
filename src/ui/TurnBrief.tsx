@@ -11,8 +11,9 @@ import { PendingEventChoices } from './panels/Events';
 
 const SEEN_KEY = 'distillery-tycoon/brief-seen';
 const URGENT = new Set(['disaster', 'regulation']);
-const readSeen = () => { try { return Number(sessionStorage.getItem(SEEN_KEY) ?? NaN); } catch { return NaN; } };
-const writeSeen = (m: number) => { try { sessionStorage.setItem(SEEN_KEY, String(m)); } catch { /* 저장 막힘 — 이번 화면에서만 닫힌다 */ } };
+// 본 달은 판(시드)별로 localStorage에 — 새로 고침·새 탭에서도 같은 달의 소식이 다시 뜨지 않는다(PROD 화면 메모 C3 — sessionStorage는 탭을 바꾸거나 다시 열면 비어 있었다)
+const readSeen = (seed: number) => { try { const [k, m] = (localStorage.getItem(SEEN_KEY) ?? '').split(':'); return Number(k) === seed ? Number(m) : NaN; } catch { return NaN; } };
+const writeSeen = (seed: number, m: number) => { try { localStorage.setItem(SEEN_KEY, `${seed}:${m}`); } catch { /* 저장 막힘 — 이번 화면에서만 닫힌다 */ } };
 
 /** 지난 진행 동안의 소식 — 이벤트(긴급 먼저)·새로 열린 기능·목표·마일스톤 */
 export function turnNews(s: ReturnType<typeof useGame.getState>['state'], fromMonth: number) {
@@ -35,15 +36,15 @@ export function turnNews(s: ReturnType<typeof useGame.getState>['state'], fromMo
 export function TurnBrief() {
   const s = useGame((g) => g.state);
   const undoInfo = useGame((g) => g.undoInfo);
-  const [seen, setSeen] = useState<number>(() => readSeen());
-  useEffect(() => { setSeen(readSeen()); }, [s.month]);
+  const [seen, setSeen] = useState<number>(() => readSeen(s.seed));
+  useEffect(() => { setSeen(readSeen(s.seed)); }, [s.month, s.seed]);
   if (!s.scenario || s.status !== 'running') return null;
   // 이번 진행이 넘긴 달들(분기·1년 진행이면 여러 달) — 기록이 없으면 지난 한 달
   const from = undoInfo && undoInfo.month < s.month ? undoInfo.month : s.month - 1;
   const { events, notes } = turnNews(s, from);
   const pending = s.events.pending.length;
   if (seen === s.month || (!pending && !events.length && !notes.length)) return null;
-  const close = () => { writeSeen(s.month); setSeen(s.month); };
+  const close = () => { writeSeen(s.seed, s.month); setSeen(s.month); };
   const span = s.month - from > 1 ? `${monthLabel(s.startYear, from)} ~ ${monthLabel(s.startYear, s.month - 1)}` : monthLabel(s.startYear, s.month - 1);
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-16" role="dialog" aria-modal="true" aria-label="이번 달 소식">
