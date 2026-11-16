@@ -5,7 +5,7 @@
 //   ② estimatedValue 추정 시장가치 — q̂의 bulkValuePerLPA(전량 포화·매입 할인 없음) + 병 재고 × 세전 출고가. 화면 "추정 가치"·가격 추천
 //   ③ liquidationValue 처분 예상액 — q̂의 spotBidPerLPA(매입 할인·신뢰도·운송; **전량 매각 포화는 미적용** — lpa 0을 넘긴다. KR·JP는 그레인 현물 깊이가 없어 MVP 영향 0, 스코틀랜드 그레인만 과대 → F7, MKT 검토 2026-11-14)
 //      + 병 재고 원가(최근 12개월 **모든 유상 채널** 판매량 초과분은 처분 계수) − 남은 납품 의무(선급금). "지금 정리하면 받는 돈" = v16 netWorth
-//   범위 밖: 병입 제품 `Product.quality`의 공개(가격 책상·권장가·자동 가격·피드)는 이 파일이 다루지 않는다 — #310 "병입·판매 뒤 공개 예외 폐지"는 F5d(결정 대기 95, P-MKT-39)
+//   범위 밖: 병입 제품 `Product.quality`의 공개(가격 책상·권장가·자동 가격·피드)는 이 파일이 다루지 않는다 — #310 "병입·판매 뒤 공개 예외 폐지"는 F5d(결정 #328 — F5d는 첫 사람 플레이테스트 뒤, P-MKT-39)
 import { knownReads } from './blendTable';
 import { bulkValuePerLPA, isBulkKind, lotQuality, spotBidPerLPA } from './bulk';
 import { rulesVersionOf } from './rules';

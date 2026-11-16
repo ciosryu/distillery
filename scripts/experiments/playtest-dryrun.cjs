@@ -15,7 +15,9 @@ const URL = process.env.URL ?? 'http://localhost:4176/';
   p.on('pageerror', (e) => errs.push(String(e))); p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
   const note = (m, t) => { log.push(`[${m}] ${t}`); };
   const toast = async () => { const t = p.locator('[role=status]'); if (await t.count()) { const txt = await t.innerText(); const bad = /rose/.test(await t.getAttribute('class') ?? ''); return { txt, bad }; } return null; };
-  const click = async (loc, m, what) => { clicks++; await loc.click(); await p.waitForTimeout(120); const t = await toast(); if (t) note(m, `${what} → ${t.bad ? '✕ ' : ''}${t.txt}`); return t; };
+  // 소식 창(#253 '이번 달 소식' 모달)이 떠 있으면 먼저 닫는다 — 사람도 매달 닫고 다음 행동을 한다(닫은 수는 클릭에 센다)
+  const closeBrief = async () => { const d = p.getByRole('dialog', { name: '이번 달 소식' }); for (let i = 0; i < 4 && await d.count(); i++) { clicks++; await d.getByRole('button', { name: '확인' }).click().catch(() => {}); await p.waitForTimeout(150); } };
+  const click = async (loc, m, what) => { await closeBrief(); clicks++; await loc.click(); await p.waitForTimeout(120); const t = await toast(); if (t) note(m, `${what} → ${t.bad ? '✕ ' : ''}${t.txt}`); return t; };
   // 병입: 재고가 1년 치를 넘으면 버튼이 "한 번 더 누르면 병입"으로 바뀐다(#178 B) — 순진한 정책이라 확인까지 누르고 기록한다
   const bottleClick = async (m, what) => {
     const bt = p.getByRole('button', { name: /^병입하기/ });
@@ -25,7 +27,7 @@ const URL = process.env.URL ?? 'http://localhost:4176/';
     if (await again.count()) { note(m, `${what}: 재고 과다 확인 요청(#178) → 확인`); return click(again.first(), m, `${what} (확인)`); }
     return r;
   };
-  const tab = async (name) => { clicks++; await p.locator('nav[aria-label="메뉴"] button', { hasText: name }).first().click(); await p.waitForTimeout(150); };
+  const tab = async (name) => { await closeBrief(); clicks++; await p.locator('nav[aria-label="메뉴"] button', { hasText: name }).first().click(); await p.waitForTimeout(150); };
   const state = async () => { await p.waitForTimeout(550); return JSON.parse(await p.evaluate(() => localStorage.getItem('distillery-tycoon/save'))); };
   await p.goto(URL); await p.waitForSelector('text=사업 계획서');
   await p.screenshot({ path: `${OUT}/00-plan.png` });
@@ -74,7 +76,7 @@ const URL = process.env.URL ?? 'http://localhost:4176/';
     for (let i = 0; i < n; i++) { if (i >= await src.count()) break; const t = await src.nth(i).innerText({ timeout: 2000 }).catch(() => ''); if (/탱크/.test(t) && /소주/.test(t)) { clicks++; await src.nth(i).locator('input[type=checkbox]').check(); sojuPicked++; } }
     if (sojuPicked) {
       const nm = p.getByLabel('제품명'); clicks++; await nm.fill(`한빛 소주 ${st.month}`);
-      clicks++; await p.getByLabel('도수').selectOption('0.25'); clicks++; await p.getByLabel('병').selectOption('375');
+      clicks++; await p.getByLabel('도수').selectOption('0.25'); clicks++; await p.getByLabel('병', { exact: true }).selectOption('375');
       await bottleClick(st.month, `소주 병입 (${sojuPicked}줄)`);
     }
     st = await state();
@@ -85,7 +87,7 @@ const URL = process.env.URL ?? 'http://localhost:4176/';
       if (await allBtn.count()) { clicks++; await allBtn.first().click(); }
       for (const c of ripe.slice(0, 2)) { clicks++; await p.locator(`input[aria-label$="→ ${c.id} 선택"]`).check(); }
       const nm = p.getByLabel('제품명'); clicks++; await nm.fill('한빛 싱글 몰트 1호');
-      clicks++; await p.getByLabel('도수').selectOption('0.46'); clicks++; await p.getByLabel('병').selectOption('700');
+      clicks++; await p.getByLabel('도수').selectOption('0.46'); clicks++; await p.getByLabel('병', { exact: true }).selectOption('700');
       await p.screenshot({ path: `${OUT}/whisky-preview.png`, fullPage: true });
       const panel = await p.locator('section', { hasText: '병입' }).last().innerText();
       note(st.month, `위스키 병입 미리보기: ${panel.replace(/\s+/g, ' ').slice(0, 260)}`);

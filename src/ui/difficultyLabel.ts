@@ -3,7 +3,7 @@ import { DIFFICULTY_DOMAIN_KO, DIFFICULTY_DOMAINS } from '../sim/content/difficu
 import type { DifficultyConfig, DifficultyDomain, DifficultyLevel, DifficultyPreset } from '../sim';
 
 export const PRESET_KO: Record<DifficultyPreset, string> = { easy: '쉬움', normal: '보통', hard: '어려움', custom: '사용자 설정' };
-/** 화면에서 잠근 영역 — 경쟁은 경쟁 AI(1.0) 전까지 보통 고정([결정 대기 96] PM 권장안). 프리셋 값(어려움이면 3)은 저장되지만 화면 문구·세부 설정에서는 '준비 중'으로 보인다(값은 어차피 ×1). 결정이 바뀌면 이 집합만 비운다 */
+/** 화면에서 잠근 영역 — 경쟁은 경쟁 AI(1.0) 전까지 보통 고정([결정 #329] — 경쟁 AI가 들어오면 집합을 비운다). 프리셋 값(어려움이면 3)은 저장되지만 화면 문구·세부 설정에서는 '준비 중'으로 보인다(값은 어차피 ×1). 결정이 바뀌면 이 집합만 비운다 */
 export const LOCKED_DOMAINS: ReadonlySet<DifficultyDomain> = new Set<DifficultyDomain>(['competition']);
 export const LEVEL_KO: Record<DifficultyLevel, string> = { 1: '쉬움', 2: '보통', 3: '어려움' };
 
