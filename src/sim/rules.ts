@@ -19,10 +19,11 @@ export const rulesVersionOf = (s: Pick<GameState, 'rulesVersion'>) => s.rulesVer
 /** 새 캠페인(v16)의 기본 정기 임금 상승률 — 연 1% ([결정 #330]). 난이도 손잡이 `finance.wageDrift`는 이 상승분에 곱하는 배수다(Normal ×1) */
 export const BASE_WAGE_DRIFT_V16 = 0.01;
 /**
- * 판의 기본 정기 임금 상승률([결정 #330]) — **v16 캠페인(시나리오 판)만** 0.01, 옛 판(`legacy-v15`)·샌드박스는 0.
- * 샌드박스(`newGame`, 시나리오 없음)를 빼는 이유: 상세 HR이 열려 있어 연봉 협상(`salary_review`)이 이미 임금을 올린다 — 겹치지 않게 #327·#330의 대상(v16 `system:hr` 잠김 캠페인)만
+ * 판의 기본 정기 임금 상승률([결정 #330]) — **v16 판 중 상세 HR(`system:hr`)이 잠긴 판만** 0.01, 옛 판(`legacy-v15`)·HR이 열린 판(샌드박스 `newGame` 등)은 0.
+ * 근거를 조건 그대로 둔다(ARCH 제안): HR이 열려 있으면 연봉 협상(`salary_review`)이 이미 임금을 올리므로 겹치지 않는다. 나중에 v16 시나리오가 HR을 열면 그 달부터 자동으로 꺼진다.
+ * (`scenario.ts isLocked`와 같은 식 — 이 잎 모듈은 types·content만 보므로 직접 쓴다)
  */
-export const baseWageDrift = (s: Pick<GameState, 'rulesVersion' | 'scenario'>): number => (rulesVersionOf(s) === 'v16' && s.scenario ? BASE_WAGE_DRIFT_V16 : 0);
+export const baseWageDrift = (s: Pick<GameState, 'rulesVersion' | 'scenario'>): number => (rulesVersionOf(s) === 'v16' && s.scenario?.locked.includes('system:hr') ? BASE_WAGE_DRIFT_V16 : 0);
 
 // ───────────── 난이도 읽기 (F6, [결정 #314] — architecture §10.10 [제안 P-ARCH-58]) ─────────────
 /** 판의 난이도 스냅샷 — 없으면(옛 판·샌드박스) Normal */

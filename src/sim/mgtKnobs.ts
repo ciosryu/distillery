@@ -25,7 +25,7 @@ export const laborMul = (s: S) => knob(s, 'finance.laborMul');
 /** 정기 임금 상승 손잡이 k — 기본 상승률(`baseWageDrift`)에 곱하는 배수(Normal 1 · Easy 0이면 오르지 않음) */
 export const wageDriftMul = (s: S) => knob(s, 'finance.wageDrift');
 /**
- * 정기 임금 상승 배수 — 매년 1월 전 직원 급여에 곱한다. = 1 + 기본 상승률 × k ([결정 #330]: v16 캠페인 기본 0.01 · 옛 판·샌드박스 0 → 늘 1).
+ * 정기 임금 상승 배수 — 매년 1월 전 직원 급여에 곱한다. = 1 + 기본 상승률 × k ([결정 #330]: v16 HR 잠긴 판 기본 0.01 · 옛 판·HR 열린 판(샌드박스) 0 → 늘 1).
  * 선택 사건이 아니라 사기 없이도 비용 압력(P-MGT-51). 1이면 hr.ts가 아무 일도 하지 않는다(옛 판 바이트 동일)
  */
 export function wageDrift(s: Pick<GameState, 'difficulty' | 'rulesVersion' | 'scenario'>): number {
