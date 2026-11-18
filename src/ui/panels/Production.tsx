@@ -8,7 +8,7 @@ import type { PresetRecipe } from '../../sim/content/presets';
 import { productionValue, rampOutlook, RAMP_HOLD_MONTHS, recipeEconomics, whiskyExportPace, STANDARD_BOTTLE, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from '../../sim/economics';
 import { monthlyFixedCost } from '../../sim/loans';
 import { isLocked } from '../../sim/scenario';
-import { whiskySkipCheck } from '../../sim/production';
+import { orderPlan, whiskySkipCheck } from '../../sim/production';
 import { useGame } from '../../store/game';
 import { logisticsMultiplier, regionOf, REGIONS, siteOf } from '../../sim/content/regions';
 import { liters, num, pct, won } from '../format';
@@ -33,6 +33,9 @@ export function Production() {
 export function Orders() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
+  // 지시 대 실제 가능 배치 (A1) — 설비·인력이 모자라면 지시보다 덜 나온다. 그 사실을 지시를 바꾸는 자리에서 보인다
+  const plan = useMemo(() => orderPlan(s), [s]);
+  const short = plan.filter((x) => x.feasible < x.ordered);
   return (
     <Card title="월 생산 지시 (상시 — 바꿀 때까지 매달 반복)">
       <Table head={['레시피', '주종', '증류기', '배치당 산출', '배치당 원가', '원액 품질', '월 배치 수']}>
@@ -47,12 +50,21 @@ export function Orders() {
               <Td right>{p ? `${num(p.lpa, 1)} LPA · ${liters(p.volumeL)} @ ${pct(p.abv)}` : '—'}</Td>
               <Td right>{p ? won(p.cost) : '—'}</Td>
               <Td right>{p ? `${p.evaluation.quality}` : '—'}</Td>
-              <Td><NumberField value={order} min={0} max={60} width="w-16" onCommit={(v) => dispatch({ type: 'setOrder', recipeId: r.id, batchesPerMonth: v })} /></Td>
+              <Td>
+                <NumberField value={order} min={0} max={60} width="w-16" onCommit={(v) => dispatch({ type: 'setOrder', recipeId: r.id, batchesPerMonth: v })} />
+                {(() => { const x = short.find((y) => y.recipeId === r.id); return x ? <div className="mt-0.5 whitespace-nowrap text-[11px] font-medium text-rose-700 dark:text-rose-400">이번 달 {x.feasible}배치만 — {x.blocker}</div> : null; })()}
+              </Td>
             </tr>
           );
         })}
       </Table>
       {/* 생산 건너뛰기 (#249 ④) — 위스키 원액은 현금이 고정비 보름치 아래면 저절로 쉬고, 소주는 이 버튼으로 이번 달만 쉰다 */}
+      {short.length > 0 && (
+        <div className="mt-2 rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-100">
+          <b>⚠ 지시한 배치를 다 만들지 못한다</b> — {short.map((x) => `「${x.name}」 ${x.ordered}배치 중 ${x.feasible}배치(${x.blocker})`).join(' · ')}.
+          {' '}설비·인력은 위에서부터 차례로 쓴다(위 레시피가 먼저). {short.some((x) => x.blocker === '발효조 부족') ? '발효조를 늘리거나(아래 설비) ' : short.some((x) => x.blocker?.startsWith('디스틸러')) ? '디스틸러를 늘리거나(직원) ' : short.some((x) => x.blocker === '증류기 가동 한도') ? '증류기를 늘리거나(아래 설비) ' : ''}지시를 줄이세요. 아래 생산비·위스키 전망은 <b>실제 만들 수 있는 배치</b>로 셈한 값이다
+        </div>
+      )}
       <SkipLine />
       <ProductionValueLine />
       <WhiskySupply />
@@ -600,11 +612,14 @@ export function Equipment() {
               <tr key={d.id}>
                 <Td>{d.nameKo}</Td>
                 <Td className="text-xs text-stone-500">
-                  {d.kind === 'still' ? `월 ${d.runsPerMonth}회 · 환류 ${d.reflux}${d.vacuum ? ' · 감압' : ''}${d.ginBasket ? ' · 진 바스켓' : ''}` : d.kind === 'fermenter' ? `${d.capacityL.toLocaleString()}L` : d.kind === 'warehouse' ? `+${d.casks} 캐스크 · ${d.warehouseType === 'dunnage' ? '더니지' : '랙'} ${d.tiers}단` : d.kind === 'facility' ? d.note : `${d.note ?? `방문객 월 ${d.visitorsPerMonth}명 · 1인 ${won(d.spendPerVisitor)}`}${d.requires ? ` · ${EQUIPMENT[d.requires]?.nameKo} 필요` : ''}`}
+                  {d.kind === 'still' ? `월 ${d.runsPerMonth}회 · 환류 ${d.reflux}${d.vacuum ? ' · 감압' : ''}${d.ginBasket ? ' · 진 바스켓' : ''}` : d.kind === 'fermenter' ? `${d.capacityL.toLocaleString()}L` : d.kind === 'warehouse' ? `+${d.casks} 캐스크 · ${d.warehouseType === 'dunnage' ? '더니지' : '랙'} ${d.tiers}단` : d.kind === 'facility' ? `${d.note}${d.requires ? ` · ${EQUIPMENT[d.requires]?.nameKo ?? d.requires} 필요` : ''}` : `${d.note ?? `방문객 월 ${d.visitorsPerMonth}명 · 1인 ${won(d.spendPerVisitor)}`}${d.requires ? ` · ${EQUIPMENT[d.requires]?.nameKo} 필요` : ''}`}
                 </Td>
                 <Td right>{won(equipmentCost(s, d))}{equipmentCost(s, d) !== d.cost && <div className="text-xs text-stone-500">입지 반영 (기준 {won(d.cost)})</div>}</Td>
                 <Td right>{d.leadMonths}개월</Td>
-                <Td>{equipmentCost(s, d) >= BIG_PURCHASE
+                <Td>{(d.kind === 'visitor' || d.kind === 'facility') && d.requires && !s.production.equipment.some((e) => e.catalogId === d.requires)
+                  // 선행 설비가 없으면 발주는 거절된다(actions.prod) — 누르기 전에 알린다 (화면 진행 메모 A8)
+                  ? <span className="text-xs text-stone-500">{EQUIPMENT[d.requires]?.nameKo ?? d.requires}부터</span>
+                  : equipmentCost(s, d) >= BIG_PURCHASE
                   // 1억 이상 설비는 두 번 눌러 확인 (#240) — 발주하면 돈이 바로 나가고 취소할 수 없다
                   ? <ConfirmButton small disabled={s.finance.cash < equipmentCost(s, d)} armKey={`buy-${d.id}@${s.month}`} armedLabel="한 번 더 누르면 발주" onConfirm={() => dispatch({ type: 'buyEquipment', catalogId: d.id })}
                       preview={() => <>{d.nameKo}를 {won(equipmentCost(s, d))}에 발주한다 — 현금 {won(s.finance.cash)} → {won(s.finance.cash - equipmentCost(s, d))}, {d.leadMonths}개월 뒤 설치. 발주는 취소할 수 없다</>}>발주</ConfirmButton>

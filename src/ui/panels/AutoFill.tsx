@@ -1,6 +1,7 @@
 // 자동 통입 설정 (#239, 5차 MVP 플레이테스트 2026-11-10 — 파트 PROD) — 증류소 탭 "탱크 원액 → 빈 통에 통입" 칸과 숙성고 탭에 끼워 쓴다.
 // 자동 납품(#206)·자동 샘플(#207)과 같은 한 줄: 켬/끔, 간격, 대상 원액, 빈 통 순서, 통입 도수 + 지금 넣으면 몇 통인지 미리 보기
 import { AUTO_FILL, autoFillDue, autoFillPreview, type AutoFillSettings } from '../../sim';
+import { caskRunway } from '../../sim/economics';
 import { useGame } from '../../store/game';
 import { liters } from '../format';
 import { Button } from '../kit';
@@ -17,6 +18,8 @@ export function AutoFillRow() {
   const entry = cfg?.entryAbv ?? AUTO_FILL.defaultEntryAbv;
   const pv = autoFillPreview(s, cfg ?? {});
   const nextIn = on ? (every - (s.month % every)) % every : 0;
+  // 빈 통이 떨어지는 때 (A4) — 자동 통입을 켜도 통은 저절로 사지 않는다. 몇 달 치가 남았는지 설정 줄에서 늘 보인다
+  const rw = caskRunway(s);
   return (
     <div className="mb-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs dark:border-stone-700 dark:bg-stone-800/50">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -55,6 +58,13 @@ export function AutoFillRow() {
           : pv.tankL < 1 ? `탱크에 넣을 원액이 없다 — ${nextIn === 0 && autoFillDue(s, cfg!) ? '이번' : `${nextIn}개월 뒤`} 진행 때 다시 본다.`
             : <>{nextIn === 0 && autoFillDue(s, cfg!) ? '이번 진행 때' : `${nextIn}개월 뒤 진행 때`} 넣는다: 탱크 {liters(pv.tankL)} → 빈 통 <b>{pv.casks}통</b>{pv.leftL >= 1 ? <span className="text-amber-700 dark:text-amber-400"> · 빈 통이 모자라 {liters(pv.leftL)} 남는다 — 통을 사세요</span> : ''}</>}
       </div>
+      {rw && rw.casksPerMonth > 0 && (
+        <div className={`mt-1 ${rw.months <= rw.leadMonths + 1 ? 'font-medium text-rose-700 dark:text-rose-400' : 'text-stone-600 dark:text-stone-400'}`}>
+          빈 나무 통 {rw.empty}개{rw.onOrder ? ` + 도착 예정 ${rw.onOrder}개` : ''} · 지금 생산이면 매달 약 {rw.casksPerMonth.toFixed(1)}개가 든다 →{' '}
+          {rw.months === 0 ? '이미 모자란다' : Number.isFinite(rw.months) ? `약 ${rw.months}개월 뒤 떨어진다` : '모자라지 않는다'}
+          {rw.months <= rw.leadMonths + 1 && ` — 쿠퍼리지 주문은 ${rw.leadMonths}개월 뒤에 온다(통은 저절로 사지 않는다). 아래 숙성고 공간에서 주문하세요`}
+        </div>
+      )}
     </div>
   );
 }

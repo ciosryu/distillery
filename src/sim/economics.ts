@@ -8,7 +8,7 @@ import { regionOf, siteOf, traditionalTaxFactor } from './content/regions';
 import { defaultPolicyPrice } from './content/market'; // 기본 정책 가격 (B1-4, MKT)
 import { agedWhiteLabel, agedWhiteLabelMonths, executeBlend, isCaskStrength, isWhiskyCategory, previewBlend, suggestedPrice, whiskyMinMonths, type BlendComponent, type BottleOptions } from './blending';
 import { finishOf, matureCask, vesselMaterial } from './maturation';
-import { capacityReport, previewBatch } from './production';
+import { capacityReport, orderPlan, previewBatch } from './production';
 import { demandFor, distributionCostPerBottle, domesticDemands, priceOptions } from './market';
 import { outboundLogistics } from './sites';
 import { calendar, warehouseCapacity } from './util';
@@ -16,7 +16,8 @@ import { FLAGSHIP_RESERVE_TAG, preferredCaskIds, protectedCaskIds, reserveCaskId
 import { spotBidPerLPA } from './bulk';
 import { campaignMinOakMonths } from './rules';
 import { campaignWon } from './ledger';
-import type { Cask, GameState, MonthReport, Product, ProductCategory, Recipe, SpiritKind, SpiritLot } from './types';
+import { cooperageLeadMonths } from './prodKnobs';
+import type { Cask, CaskTypeId, GameState, MonthReport, Product, ProductCategory, Recipe, SpiritKind, SpiritLot } from './types';
 
 /** 표준 병 — 소주는 대중 규격, 몰트는 위스키 규격 (봇·사전 점검과 같은 값) */
 export const STANDARD_BOTTLE: Record<'soju' | 'whisky', { bottleMl: number; abv: number }> = {
@@ -181,13 +182,14 @@ export function whiskySupplyForecast(s: GameState, years = 5, minMonths = region
     add(wait - 1, l.volumeL * l.abv * keep(wait), 'fromCasks');
   }
   for (const l of s.inventory.lots) if ((l.kind === 'malt' || l.kind === 'grain') && !l.sourced) add(min - 1, l.volumeL * l.abv * keep(min), 'fromTank');
-  // 생산 지시: 이번 달부터 매달 만든 원액이 min개월 뒤 위스키가 된다
+  // 생산 지시: 이번 달부터 매달 만든 원액이 min개월 뒤 위스키가 된다 — 지시 수가 아니라 설비·인력으로 실제 만들 수 있는 배치 수로 센다(A2, orderPlan)
+  const feasible = new Map(orderPlan(s, { steady: true }).map((x) => [x.recipeId, x.feasible]));
   let perMonth = 0;
   for (const o of s.production.orders) {
     const r = s.production.recipes.find((x) => x.id === o.recipeId);
     if (!r || (r.kind !== 'malt' && r.kind !== 'grain') || o.batchesPerMonth <= 0) continue;
     const b = previewBatch(s, r);
-    if (b) perMonth += b.lpa * o.batchesPerMonth;
+    if (b) perMonth += b.lpa * (feasible.get(r.id) ?? o.batchesPerMonth);
   }
   for (let m = 0; m < years * 12; m++) add(m + min, perMonth * keep(min), 'fromOrders');
   for (const y of out) { y.fromCasks = Math.round(y.fromCasks); y.fromTank = Math.round(y.fromTank); y.fromOrders = Math.round(y.fromOrders); y.bottles = y.fromCasks + y.fromTank + y.fromOrders; }
@@ -241,24 +243,31 @@ export interface ProductionValue {
   perBatch: { recipeId: string; name: string; costPerMonth: number; whiskyBottlesPerYear: number }[];
   /** 법정 최소 숙성(개월) — 이만큼 뒤부터 위스키가 된다 */
   minMonths: number;
+  /** 설비·인력이 모자라 지시보다 덜 만드는 배치 수(월) — 위 값들은 실제 만들 수 있는 배치 기준이다 */
+  shortBatches: number;
 }
 
 export function productionValue(s: GameState, minMonths = regionOf(s).whisky.minMonths): ProductionValue {
   const min = Math.max(1, minMonths);
   const bottleLPA = (STANDARD_BOTTLE.whisky.bottleMl / 1000) * STANDARD_BOTTLE.whisky.abv;
   const keep = Math.pow(0.95, min / 12);
-  const yearly = (lpaPerMonth: number) => Math.round((lpaPerMonth * 12 * keep) / bottleLPA);
+  const yearly = (litersPerMonth: number) => Math.round((litersPerMonth * 12 * keep) / bottleLPA);
   let cost = 0;
   let whiskyCost = 0;
   let whiskyLpa = 0;
+  // 지시 수가 아니라 실제 만들 수 있는 배치 수로 센다(A2) — 발효조·증류기·디스틸러가 모자라면 지시보다 적게 나온다
+  const plan = orderPlan(s, { steady: true });
+  const feasible = new Map(plan.map((x) => [x.recipeId, x.feasible]));
   for (const o of s.production.orders) {
     const r = s.production.recipes.find((x) => x.id === o.recipeId);
     if (!r || o.batchesPerMonth <= 0) continue;
     const b = previewBatch(s, r);
     if (!b) continue;
-    cost += b.cost * o.batchesPerMonth;
-    if (r.kind === 'malt' || r.kind === 'grain') { whiskyCost += b.cost * o.batchesPerMonth; whiskyLpa += b.lpa * o.batchesPerMonth; }
+    const n = feasible.get(r.id) ?? o.batchesPerMonth;
+    cost += b.cost * n;
+    if (r.kind === 'malt' || r.kind === 'grain') { whiskyCost += b.cost * n; whiskyLpa += b.lpa * n; }
   }
+  const short = plan.filter((x) => x.feasible < x.ordered);
   const perBatch = s.production.recipes.filter((r) => r.kind === 'malt' || r.kind === 'grain').flatMap((r) => {
     const b = previewBatch(s, r);
     return b ? [{ recipeId: r.id, name: r.name, costPerMonth: Math.round(b.cost), whiskyBottlesPerYear: yearly(b.lpa) }] : [];
@@ -268,9 +277,55 @@ export function productionValue(s: GameState, minMonths = regionOf(s).whisky.min
   return {
     costPerMonth: Math.round(cost), whiskyCostPerMonth: Math.round(whiskyCost), whiskyBottlesPerYear: yearly(whiskyLpa),
     pricePerBottle: row?.price ?? null, marginPerBottle: row?.margin ?? null, perBatch, minMonths: min,
+    shortBatches: short.reduce((n, x) => n + x.ordered - x.feasible, 0),
   };
 }
 
+
+// ───────────── 빈 통이 떨어지는 때 (플레이테스트 준비 A4, 2026-11-16) ─────────────
+// 화면 진행 메모: 시작 빈 통 10개는 몰트 2~3배치로 두세 달이면 다 차는데, 미리 알려 주는 곳이 없어 자동 통입이 1년 동안 "빈 통이 없다"로 헛돌았다(탱크 3,329L).
+// 지금 탱크 원액 + 매달 실제 만드는 몰트·그레인(orderPlan)을 빈 나무 통(+ 도착 예정)에 넣는다고 볼 때 몇 달 뒤 모자라는지 센다. 상태를 바꾸지 않는다(화면 전용)
+
+export interface CaskRunway {
+  /** 지금 쓸 수 있는 빈 나무 통(아는 오염 통 제외) · 도착 예정 나무 통 */
+  empty: number;
+  onOrder: number;
+  /** 매달 새로 필요한 통 수(실제 생산 기준, 통입 도수로 물을 섞은 뒤) · 지금 탱크 원액에 필요한 통 수 */
+  casksPerMonth: number;
+  tankCasks: number;
+  /** 빈 통 + 도착 예정으로 버티는 개월(이번 달 포함, 탱크 원액부터 넣는다고 볼 때). 0 = 이미 모자람 */
+  months: number;
+  /** 쿠퍼리지 주문이 도착하기까지(개월) */
+  leadMonths: number;
+}
+
+/** 몰트·그레인을 만들고 있지 않으면 null */
+export function caskRunway(s: GameState): CaskRunway | null {
+  const entryCap = s.inventory.autoFill?.entryAbv ?? 0.635;
+  let litersPerMonth = 0;
+  for (const x of orderPlan(s, { steady: true })) {
+    if (x.kind !== 'malt' && x.kind !== 'grain') continue;
+    const r = s.production.recipes.find((y) => y.id === x.recipeId);
+    const b = r ? previewBatch(s, r) : null;
+    if (b) litersPerMonth += (b.lpa / Math.min(entryCap, b.abv)) * x.feasible; // 통입 도수로 맞춘 리터
+  }
+  const tankL = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced).reduce((t, l) => t + (l.volumeL * l.abv) / Math.min(entryCap, l.abv), 0);
+  if (litersPerMonth <= 0 && tankL < 50) return null;
+  const wood = (id: CaskTypeId) => CASKS[id].material !== 'onggi';
+  const empties = s.inventory.casks.filter((c) => !c.contents && !c.contaminationKnown && wood(c.typeId));
+  const orders = s.inventory.caskOrders.filter((o) => wood(o.typeId));
+  const onOrder = orders.reduce((n, o) => n + o.qty, 0);
+  const sizes = [...empties.map((c) => CASKS[c.typeId].sizeL), ...orders.flatMap((o) => Array<number>(o.qty).fill(CASKS[o.typeId].sizeL))];
+  const avg = sizes.length ? sizes.reduce((a, b) => a + b, 0) / sizes.length : 200;
+  // 자동 통입은 정한 달마다 탱크를 통째로 넣어 끝자리를 덜 찬 통 하나에 담는다(218L → 200L + 18L) — 그 몫까지 통을 쓴다.
+  // 손 통입은 플레이어가 모아서 넣을 수 있으니 리터 ÷ 통 크기 그대로 센다
+  const every = s.inventory.autoFill?.everyMonths ?? 1;
+  const casksPerMonth = s.inventory.autoFill && litersPerMonth > 0 ? Math.ceil((litersPerMonth * every) / avg) / every : litersPerMonth / avg;
+  const tankCasks = tankL / avg;
+  const have = empties.length + onOrder;
+  const months = have < tankCasks ? 0 : casksPerMonth > 0 ? Math.floor((have - tankCasks) / casksPerMonth) : Infinity;
+  return { empty: empties.length, onOrder, casksPerMonth, tankCasks, months, leadMonths: cooperageLeadMonths(s) };
+}
 
 // ───────────── 증산 전망 (#271 단계 T 진입 조건 · #272 형태, 2026-11-11 — 후반 확인 판 오너 답 "늘려봐야 기다리려면 한참 걸려 소용없다(오판)") ─────────────
 // P8 표준 규모 10시드: 120개월(판 끝 5년 전)에 몰트를 4 → 6배치로 늘려도 15년 순자산 +3.73억(현금 +2.47억), 처음부터면 +18.26억.
