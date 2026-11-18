@@ -215,7 +215,7 @@ function Headline() {
   const oldest = s.inventory.casks.filter((c) => c.contents && !c.owner && !c.contents.sourced && (c.contents.kind === 'malt' || c.contents.kind === 'grain'))
     .reduce((m, c) => Math.max(m, c.contents!.oakMonths), 0);
   const legacyRules = rulesVersionOf(s) === 'legacy-v15';
-  // 옛 판만 180개월 기한이 있다 — 새 캠페인(v16)은 기한 없는 승리(#308)라 '목표까지 n개월'을 쓰지 않는다(플레이테스트 준비 점검 §7.12 #2)
+  // 옛 판만 180개월 기한이 있다 — 새 캠페인(v16)은 기한 없는 승리(#308)라 '목표까지 n개월'을 쓰지 않는다(플레이테스트 준비 점검 §7.23 #2)
   const left = sc && legacyRules ? sc.goal.months - s.month : null;
   // 12년 플래그십 후보 통 (#240) — 판이 끝나기 전에 플래그십 숙성을 채울 수 있는 통. 목표까지 남은 달이 플래그십 숙성보다 짧아지면
   // 새로 넣는 통은 후보가 될 수 없다 → 그 뒤 후보 0이면 15년 목표(플래그십 판매)를 이룰 수 없다(5차 판, mvp.md §7.16)

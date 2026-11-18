@@ -11,7 +11,7 @@ import { Badge, Button, Card } from './kit';
 // 등급제 (#263 ①안): 버티고 순자산을 채우면 플래그십 없이도 "달성"(B) — 플래그십까지면 헤리티지(A·S)
 const TITLE = { heritage: '헤리티지 달성', achieved: '목표 달성 — 플래그십 없이', missed: '목표 일부 미달', failed: '실패' } as const;
 const CHECK_LABEL: Record<GoalCheck['id'], string> = { survive: '파산하지 않는다', flagship: '12년 숙성 플래그십을 병입해 판다', netWorth: '순자산 목표' };
-/** 새 캠페인(v16): 순자산은 승리 조건이 아니라 등급 기준(#308·#324) — 칸 머리글·줄 이름을 바꿔 승패처럼 읽히지 않게(플레이테스트 준비 점검 §7.12 #3) */
+/** 새 캠페인(v16): 순자산은 승리 조건이 아니라 등급 기준(#308·#324) — 칸 머리글·줄 이름을 바꿔 승패처럼 읽히지 않게(플레이테스트 준비 점검 §7.23 #3) */
 const CHECK_LABEL_V16: Record<GoalCheck['id'], string> = { survive: '파산하지 않았다', flagship: '12년 싱글 몰트를 유상 출하했다(승리)', netWorth: '순자산 — 등급 기준(승리 조건 아님)' };
 
 function checkText(c: GoalCheck, legacy = true): string {

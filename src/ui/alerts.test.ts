@@ -403,7 +403,7 @@ describe('12년 플래그십 후보 — 새 판(v16, 결정 #325 hint 36)', () =
   });
 });
 
-// PROD 화면 메모 A1·A4·A7 (첫 사람 플레이테스트 전, ARCH alerts) — mvp.md §7.12
+// PROD 화면 메모 A1·A4·A7 (첫 사람 플레이테스트 전, ARCH alerts) — mvp.md §7.23
 describe('할 일 A1·A4·A7', () => {
   const malt = (s: GameState, id: string, oak: number) => {
     const c = s.inventory.casks.find((x) => !x.contents)!;
