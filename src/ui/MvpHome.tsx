@@ -491,9 +491,12 @@ function FillCard() {
   };
   const emptyTypes = (Object.keys(CASKS) as CaskTypeId[]).filter((k) => empties.some((c) => c.typeId === k));
   const [lotId, setLotId] = useState('');
+  const [lotKind, setLotKind] = useState<SpiritLot['kind'] | ''>('');
   const [fillType, setFillType] = useState<CaskTypeId | ''>('');
   const [fillN, setFillN] = useState(4);
-  const lot = malts.find((l) => l.id === lotId) ?? malts[0];
+  // B1(PROD 화면 메모): 고른 원액이 통입으로 비면 목록 맨 앞(소주일 수 있다)으로 넘어가 버튼을 연달아 누르면 소주를 버번 통에 넣었다 →
+  // 고른 원액이 사라지면 **같은 주종의 다음 원액**으로, 같은 주종이 없으면 선택 없음(버튼 비활성 + "원액을 고르세요"). 아직 아무것도 안 골랐으면 맨 앞(몰트 먼저)
+  const lot = lotId ? (malts.find((l) => l.id === lotId) ?? (lotKind ? malts.find((l) => l.kind === lotKind) : undefined)) : malts[0];
   // 고르지 않았으면 원액에 맞는 통을 먼저: 소주 → 옹기, 몰트 → 나무
   const fits = (k: CaskTypeId) => (lot?.kind === 'soju') === (CASKS[k].material === 'onggi');
   const ft = fillType && emptyTypes.includes(fillType) ? fillType : emptyTypes.find(fits) ?? emptyTypes[0];
@@ -505,15 +508,15 @@ function FillCard() {
         <AutoFillRow />
         {!malts.length ? <Empty>탱크에 숙성할 원액(몰트·소주)이 없습니다 — 생산 지시를 내리고 한 달을 진행하세요</Empty> : (
           <>
-            <Select label="원액" value={lot!.id} options={malts.map((l) => ({ value: l.id, label: lotLabel(l) }))} onChange={(v) => { setLotId(v); setFillType(''); }} />
-            {!ft ? <span className="text-xs text-rose-700 dark:text-rose-400">빈 통이 없습니다 — 아래 숙성고 공간에서 사세요</span> : (
+            <Select label="원액" value={lot?.id ?? ''} options={[...(lot ? [] : [{ value: '', label: '원액을 고르세요' }]), ...malts.map((l) => ({ value: l.id, label: lotLabel(l) }))]} onChange={(v) => { setLotId(v); setLotKind(malts.find((l) => l.id === v)?.kind ?? ''); setFillType(''); }} />
+            {!lot ? <span className="text-xs text-stone-500">고른 원액을 다 통입했다 — 다음 원액을 고르세요</span> : !ft ? <span className="text-xs text-rose-700 dark:text-rose-400">빈 통이 없습니다 — 아래 숙성고 공간에서 사세요</span> : (
               <div className="flex flex-wrap items-end gap-2">
                 <Select label="빈 통" value={ft} options={emptyTypes.map((k) => ({ value: k, label: `${CASKS[k].nameKo} (${empties.filter((c) => c.typeId === k && !c.contaminationKnown).length})` }))} onChange={setFillType} />
                 <NumberField label="개수" value={fillN} min={1} max={200} width="w-16" onCommit={setFillN} />
                 <Button small variant="primary" disabled={!ofType.length} onClick={() => dispatch({ type: 'fillCasks', lotId: lot!.id, caskIds: ofType.slice(0, fillN).map((c) => c.id), entryAbv: 0.635 })}>통입 ({pct(Math.min(0.635, lot!.abv))})</Button>
               </div>
             )}
-            {ft && (() => {
+            {ft && lot && (() => {
               const entry = Math.min(0.635, lot!.abv);
               const onggi = CASKS[ft].material === 'onggi';
               return (
