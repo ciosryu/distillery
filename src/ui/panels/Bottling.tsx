@@ -8,7 +8,7 @@ import { AXIS } from '../../sim/content/axes';
 import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength } from '../../sim';
 import { agedWhitePerception } from '../../sim/content/market';
 import { regionOf } from '../../sim/content/regions';
-import { stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
+import { STANDARD_BOTTLE, stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
 import { protectedCaskIds, reserveCaskIds } from '../../sim/tags';
 import { CaskTagChips } from '../CaskTags';
 import { useGame } from '../../store/game';
@@ -42,6 +42,12 @@ const CASK_SHORT: Record<CaskTypeId, { name: string; cls: string }> = {
   onggi_jar: { name: '옹기', cls: 'bg-stone-200 text-stone-800 dark:bg-stone-700 dark:text-stone-100' },
 };
 export const caskShort = (t: CaskTypeId) => CASK_SHORT[t]?.name ?? CASKS[t]?.nameKo ?? t;
+/** 덜 채운 통 (화면 진행 메모 B2 — 218L를 통입하면 200L + 52L 두 통이 되는데 표시가 없었다) — 통 크기의 60% 미만이면 채운 비율(%), 아니면 null. 증발로 준 것과는 구별하지 않는다 */
+export function partialFill(c: Cask): number | null {
+  if (!c.contents) return null;
+  const share = c.contents.volumeL / CASKS[c.typeId].sizeL;
+  return share < 0.6 ? Math.round(share * 100) : null;
+}
 /** 통 표시: 종류 · 회차(1필 = 새 통, 숫자가 클수록 향이 약하다) · 피니시 */
 function CaskTag({ c }: { c: Cask }) {
   const f = c.contents ? finishOf(c.contents) : null;
@@ -49,6 +55,7 @@ function CaskTag({ c }: { c: Cask }) {
     <span className="inline-flex flex-wrap items-center gap-1">
       <span className={`rounded px-1 py-px text-[11px] font-medium ${CASK_SHORT[c.typeId]?.cls ?? ''}`}>{caskShort(c.typeId)}</span>
       <span className="text-stone-500">{c.fills}필{f ? ` · ${finishLabel(f.typeId)} ${months(f.months)}` : ''}</span>
+      {partialFill(c) != null && <span className="rounded bg-stone-100 px-1 py-px text-[11px] text-stone-700 dark:bg-stone-800 dark:text-stone-300" title="통 크기보다 원액이 많이 적다 — 통입할 때 원액이 모자라 덜 채운 통이다. 숙성·증발은 같은 규칙으로 돈다">{partialFill(c)}% 채움</span>}
     </span>
   );
 }
@@ -64,6 +71,8 @@ export function Bottling() {
   const [reveal, setReveal] = useState<HeritageRevealData | null>(null);
   const [picked, setPicked] = useState<Record<string, number>>({});
   const [opts, setOpts] = useState<BottleOptions>({ name: '', targetAbv: 0.4, bottleMl: 700, chillFilter: true, packagingId: 'standard' });
+  /** 플레이어가 병·도수를 손으로 바꿨는가 — 바꿨으면 표준 병으로 되돌리지 않는다(A5) */
+  const touched = useRef(false);
 
   // 캐스크를 먼저(오래 숙성한 순), 탱크 원액은 레시피별로 한 줄 — 생산 지시가 달마다 배치를 하나씩 쌓아 탱크 줄이 수십 개가 되던 것을 묶는다.
   // 묶음에 넣은 사용량은 배치별 액량에 비례해 나눠 쓴다 (화면만의 묶음 — 원액 자체는 그대로다)
@@ -154,6 +163,13 @@ export function Bottling() {
   const toggle = (key: string, vol: number) => {
     // 첫 원액을 고르면 그 분류만 보이게
     if (cat === '전체' && !Object.keys(picked).length) { const x = sources.find((y) => y.key === key); if (x) setCat(sourceCategory(x.lot, minMonths)); }
+    // 첫 원액을 고를 때 병·도수를 그 주종의 표준 병으로 (화면 진행 메모 A5 — 레시피 화면 "한 병에 얼마 남나"·봇과 같은 STANDARD_BOTTLE).
+    // 소주는 375ml·25%, 그 밖(위스키 등)은 700ml·40%. 손으로 바꾼 뒤(touched)나 재고 보충 중이면 건드리지 않는다
+    if (!Object.keys(picked).length && !opts.restockId && !touched.current) {
+      const x = sources.find((y) => y.key === key);
+      const std = x?.lot.kind === 'soju' ? STANDARD_BOTTLE.soju : STANDARD_BOTTLE.whisky;
+      if (x && (opts.bottleMl !== std.bottleMl || opts.targetAbv !== std.abv)) setOpts({ ...opts, bottleMl: std.bottleMl, targetAbv: std.abv });
+    }
     setPicked((p) => { const n = { ...p }; if (n[key] != null) delete n[key]; else n[key] = Math.floor(vol * 10) / 10; return n; });
   };
 
@@ -274,8 +290,8 @@ export function Bottling() {
             <>
           <TextField label="제품명" value={opts.name} onChange={(v) => setOpts({ ...opts, name: v })} width="w-full" />
           <div className="flex flex-wrap gap-2">
-            <Select label="도수" value={abvValue} options={ABV_PRESETS.map((v) => ({ value: v, label: v === 'cask' ? '캐스크 스트렝스' : `${Math.round(Number(v) * 100)}%` }))} onChange={(v) => setOpts({ ...opts, targetAbv: v === 'cask' ? 'cask' : Number(v) })} />
-            <Select label="병" value={String(opts.bottleMl)} options={BOTTLE_SIZES.map((v) => ({ value: String(v), label: `${v}ml` }))} onChange={(v) => setOpts({ ...opts, bottleMl: Number(v) })} />
+            <Select label="도수" value={abvValue} options={ABV_PRESETS.map((v) => ({ value: v, label: v === 'cask' ? '캐스크 스트렝스' : `${Math.round(Number(v) * 100)}%` }))} onChange={(v) => { touched.current = true; setOpts({ ...opts, targetAbv: v === 'cask' ? 'cask' : Number(v) }); }} />
+            <Select label="병" value={String(opts.bottleMl)} options={BOTTLE_SIZES.map((v) => ({ value: String(v), label: `${v}ml` }))} onChange={(v) => { touched.current = true; setOpts({ ...opts, bottleMl: Number(v) }); }} />
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <label className="inline-flex items-center gap-1 text-sm"><input type="checkbox" checked={opts.chillFilter} onChange={(e) => setOpts({ ...opts, chillFilter: e.target.checked })} className="accent-amber-700" /> 칠 필터링</label>
@@ -386,6 +402,28 @@ export function Bottling() {
                     : stock.months > STOCK_WARN_MONTHS ? ` — ${STOCK_WARN_MONTHS}개월 치를 넘으면 할인 이미지로 수요가 줄어듭니다` : ''}
                 </p>
               )}
+              {stock && stock.monthly > 0 && preview.bottles > 0 && !opts.restockId && (() => {
+                // n개월 치만 병입 (화면 진행 메모 A6) — 경고는 개월·병인데 입력은 L라 환산을 플레이어가 했다. 고른 원액의 사용량을 같은 비율로 줄여
+                // 병입 뒤 그 분류 재고가 n개월 치가 되게 맞춘다(병 수는 사용량에 비례 — 원액 보유량을 넘지 않는다)
+                const existing = Math.max(0, stock.months * stock.monthly - preview.bottles);
+                const fit = (n: number) => {
+                  const want = Math.max(0, n * stock.monthly - existing);
+                  const k = want / preview.bottles;
+                  setPicked((p) => Object.fromEntries(Object.entries(p).map(([key, l]) => {
+                    const src = sources.find((x) => x.key === key);
+                    return [key, Math.min(Math.floor(l * k * 10) / 10, src ? Math.floor(src.lot.volumeL * 10) / 10 : l)];
+                  })));
+                };
+                return (
+                  <p className="flex flex-wrap items-center gap-1 text-xs text-stone-600 dark:text-stone-400">
+                    병입 뒤 재고를
+                    {[3, 6].map((n) => (
+                      <Button key={n} small variant="ghost" disabled={existing >= n * stock.monthly} title={existing >= n * stock.monthly ? `이미 ${n}개월 치 넘게 재고가 있다` : `사용량을 줄이거나 늘려 병입 뒤 재고가 약 ${n}개월 치(월 ${num(stock.monthly)}병 기준)가 되게 맞춘다`} onClick={() => fit(n)}>{n}개월 치</Button>
+                    ))}
+                    로 맞추기 — 사용량(L)을 바꾼다
+                  </p>
+                );
+              })()}
               {(guardedPicked.reserve.length > 0 || guardedPicked.other.length > 0) && (
                 <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
                   ⚠ {guardedPicked.reserve.length ? `플래그십 예비 통 ${guardedPicked.reserve.length}개(${guardedPicked.reserve.join(', ')})` : ''}{guardedPicked.reserve.length && guardedPicked.other.length ? ' · ' : ''}{guardedPicked.other.length ? `「보호」 태그 통 ${guardedPicked.other.length}개(${guardedPicked.other.join(', ')})` : ''}를 쓴다
