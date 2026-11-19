@@ -1,15 +1,26 @@
 import { applyAction, type Action, type ActionResult } from './actions';
 import { advanceMonth } from './step';
 import type { GameState, MonthReport } from './types';
+import { campaignWon, caskEligibility } from './ledger';
+import { rulesVersionOf } from './rules';
 
 // 엔진 계약 (docs/design/architecture.md §3.2) — 명령이 들어가고 스냅샷이 나온다.
 // 지금은 같은 스레드 구현(createLocalEngine). 월 처리가 무거워지면 Web Worker 구현(단계 E),
 // Godot 이식(Phase G)에서는 C# 라이브러리가 같은 모양을 구현한다. 화면·store는 이 계약만 안다.
 
 /** 자동 진행이 멈추는 이유 (PRD §2.1 "다음 이벤트·알림까지 진행") */
-export type StopReason = 'pendingEvent' | 'cashWarning' | 'bankrupt' | 'gameOver' | 'verdict' | 'equipmentReady' | 'forecast' | 'commission' | 'maxMonths';
+export type StopReason = 'pendingEvent' | 'cashWarning' | 'bankrupt' | 'gameOver' | 'verdict' | 'equipmentReady' | 'forecast' | 'commission' | 'flagshipReady' | 'maxMonths';
 
-export const DEFAULT_STOPS: StopReason[] = ['pendingEvent', 'cashWarning', 'bankrupt', 'gameOver', 'verdict', 'equipmentReady', 'forecast', 'commission'];
+export const DEFAULT_STOPS: StopReason[] = ['pendingEvent', 'cashWarning', 'bankrupt', 'gameOver', 'verdict', 'equipmentReady', 'forecast', 'commission', 'flagshipReady'];
+
+/**
+ * 새 캠페인(v16) 승리 전 — 승리 적격 통(승리 판정과 같은 `caskEligibility`)이 하나라도 있는가.
+ * 자동 진행 멈춤 `flagshipReady`가 "없다 → 있다"로 바뀐 달만 본다(6차 판: 146개월에 적격이 됐는데 [1년 진행]이 지나쳐 158개월에 병입 — 결정 대기 100)
+ */
+export function hasWinReadyCask(s: GameState): boolean {
+  if (!s.scenario || rulesVersionOf(s) !== 'v16' || campaignWon(s)) return false;
+  return s.inventory.casks.some((c) => caskEligibility(s, c).eligible);
+}
 
 export interface AdvanceOptions {
   /** 최대 진행 개월 */
@@ -40,6 +51,8 @@ export function stopReasonOf(prev: GameState, next: GameState, stopOn: StopReaso
   if (on.has('forecast') && next.events.forecasts.some((f) => !prev.events.forecasts.some((g) => g.id === f.id))) return 'forecast';
   // 블렌딩 의뢰는 6개월 마감이라 놓치지 않게 (결정 #124)
   if (on.has('commission') && next.commerce.commissions.some((c) => !prev.commerce.commissions.some((d) => d.id === c.id))) return 'commission';
+  // 12년 적격 통이 처음 생긴 달 — 판에서 가장 큰 소식(승리 출고 재료). 상태는 읽기만 해 출력 불변
+  if (on.has('flagshipReady') && hasWinReadyCask(next) && !hasWinReadyCask(prev)) return 'flagshipReady';
   return null;
 }
 

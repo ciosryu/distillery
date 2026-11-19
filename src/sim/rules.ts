@@ -35,10 +35,14 @@ export const levelOf = (s: Pick<GameState, 'difficulty'>, domain: DifficultyDoma
  * Normal은 늘 1 · 표에 없는 id도 1(자리가 생기기 전까지 효과 0) · 영역은 id 앞부분. 승리 자격·순자산 정의·숙성 물리는 이 함수를 부르지 않는다(정적 테스트)
  */
 export function knob(s: Pick<GameState, 'difficulty'>, id: KnobId): number {
+  const lv = levelOf(s, id.slice(0, id.indexOf('.')) as DifficultyDomain);
+  if (lv === 2) return 1;
+  // 시작 때 고정한 값이 있으면 그것만(P-MGT-59 C안 — 값 표가 바뀐 빌드에서 이어 해도 같은 판). 없으면 표(메모리 안 실험·테스트)
+  const pinned = s.difficulty?.values;
+  if (pinned) return pinned[id] ?? 1;
   const def = KNOBS[id];
   if (!def) return 1;
-  const lv = levelOf(s, id.slice(0, id.indexOf('.')) as DifficultyDomain);
-  return lv === 1 ? def.easy : lv === 3 ? def.hard : 1;
+  return lv === 1 ? def.easy : def.hard;
 }
 /**
  * 난이도 손잡이 k로 배수의 **1에서의 거리**만 늘리고 줄인다(0.8 → k 2면 0.6 · 1.5 → k 0.5면 1.25). k = 1이면 값을 그대로 돌려준다 —

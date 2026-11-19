@@ -8,9 +8,10 @@ describe('F6c — 난이도 화면 문구', () => {
     expect(difficultyLabel(normalizeDifficulty('hard'))).toBe('어려움');
     expect(difficultyLabel(normalizeDifficulty({ preset: 'custom', levels: { ...PRESET_LEVELS.normal, macro: 3, finance: 1 } }))).toBe('사용자 설정(거시경제 어려움 · 금융 환경 쉬움)');
     expect(difficultyLabel(normalizeDifficulty({ preset: 'custom', levels: PRESET_LEVELS.normal }))).toBe('사용자 설정(모두 보통)');
-    expect(hardCount(normalizeDifficulty('hard'))).toBe(5); // 잠긴 경쟁 영역은 세지 않는다
+    expect(hardCount(normalizeDifficulty('hard'))).toBe(2); // 잠긴 경쟁·변덕만 조금인 거시·취향·원자재는 세지 않는다(P-ARCH-60)
     expect(difficultyLabel(normalizeDifficulty({ preset: 'custom', levels: { ...PRESET_LEVELS.normal, competition: 3 } }))).toBe('사용자 설정(모두 보통)'); // 잠긴 영역은 문구에 안 나온다
-    expect(hardCount(normalizeDifficulty({ preset: 'custom', levels: { ...PRESET_LEVELS.normal, macro: 3, supply: 3 } }))).toBe(2);
-    expect(HARD_STACK_WARN_AT).toBe(3);
+    expect(hardCount(normalizeDifficulty({ preset: 'custom', levels: { ...PRESET_LEVELS.normal, macro: 3, supply: 3 } }))).toBe(0);
+    expect(hardCount(normalizeDifficulty({ preset: 'custom', levels: { ...PRESET_LEVELS.normal, incidents: 3, finance: 3 } }))).toBe(2);
+    expect(HARD_STACK_WARN_AT).toBe(1); // 사고·금융 둘 중 하나라도 어려움이면 경고(PM 판단)
   });
 });
