@@ -20,6 +20,7 @@ const STOP_LABEL: Record<StopReason, string> = {
   equipmentReady: '설비 가동 시작',
   forecast: '새 예보',
   commission: '새 블렌딩 의뢰',
+  flagshipReady: '12년 적격 통이 생겼다 — 병입해 팔면 캠페인 승리',
   maxMonths: '',
 };
 
@@ -59,7 +60,8 @@ let undoState: GameState | null = null;
  * "분기 진행"·"1년 진행"도 이 조건에서는 멈춘다 — 현금이 바닥난 줄 모르고 1년을 넘겨 손쓸 틈 없이 파산하지 않게
  * (플레이테스트 사전 점검에서 발견: 현금이 음수가 된 달에도 계속 진행했다). 이벤트·예보 같은 알림은 "다음 알림까지"의 몫
  */
-const SAFETY_STOPS: StopReason[] = ['cashWarning', 'bankrupt', 'gameOver', 'verdict'];
+// 12년 적격 첫 달(`flagshipReady`)도 여러 달 진행을 멈춘다 — 6차 판: 146개월 적격을 [1년 진행]이 지나쳐 158개월에 병입(결정 대기 100, 판에 한 번)
+const SAFETY_STOPS: StopReason[] = ['cashWarning', 'bankrupt', 'gameOver', 'verdict', 'flagshipReady'];
 
 if (typeof window !== 'undefined') window.addEventListener('beforeunload', flushSave);
 
@@ -85,7 +87,7 @@ export const useGame = create<GameStore>((set) => {
       const before = engine.snapshot() as GameState;
       const res = engine.advance({ months, stopOn: months > 1 ? SAFETY_STOPS : [] });
       if (res.months > 0) { undoState = before; set({ undoInfo: { month: before.month, months: res.months } }); }
-      if (res.stoppedBy !== 'maxMonths' && res.months < months) toast(res.stoppedBy === 'verdict' ? 'ok' : 'error', `${res.months}개월 진행 후 멈춤 — ${STOP_LABEL[res.stoppedBy]}`);
+      if (res.stoppedBy !== 'maxMonths' && res.months < months) toast(res.stoppedBy === 'verdict' || res.stoppedBy === 'flagshipReady' ? 'ok' : 'error', `${res.months}개월 진행 후 멈춤 — ${STOP_LABEL[res.stoppedBy]}`);
     },
     advanceUntil: async (maxMonths, stopOn = DEFAULT_STOPS) => {
       const ui = useUi.getState();
