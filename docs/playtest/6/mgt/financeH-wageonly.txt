@@ -1,0 +1,80 @@
+MGT 손잡이: DIFF=custom(222223) KNOB_CAND=37행(mgt-wageonly.json,final-prod.json,final-mkt.json)
+표준 규모 사람형 판정용 봇(P8, #265) — 한국 경기, standard, 40시드 × 180개월, 이벤트 켬, 4차 재현(Q0) + 후반 확인 판 행동(수출 84개월·5곳·×1.25 · 기프트 샵·핸드필 · 3년 표기·어린 통부터·예비 2통 보호 · 계열당 3제품·자동 가격 · 마케팅 350 → 200만 · 현금 10억↑면 연봉 인상)
+| 정책 | 파산 (게임 규칙, 중앙 월) | 최저 현금 중앙값 (그 달) | 최대 대출 잔액 평균 | 첫 위스키 | 6~9년 차 위스키 판매(병, 평균) | 15년 순자산 평균(생존 판) | 순자산 목표 달성 |
+|---|---|---|---|---|---|---|---|
+| X0 표준 규모 사람형(후반 확인 판 재현) | 0/40 (—) | 0.48억 (41월) | 4.95억 | 14월 | 24,662 | 20.81억 | 5/40 |
+
+| 정책 | 후보 36개월 | 72개월 | 108개월 | 144개월 | 끝에 144개월 이상 통(평균) | 플래그십 가능 판 | 15년 순자산 평균 |
+|---|---|---|---|---|---|---|---|
+| X0 표준 규모 사람형(후반 확인 판 재현) | 0.0 | 0.0 | 0.0 | 3.4 | 0.0 | 0/40 | 20.81억 |
+
+| 정책 | 승리 (95% CI) | 승리 달 중앙 · P10 · P90 | 승리 거래 | 파산 | 기타 종료 | 관측 종료 · 적격 있음(출고 실패) | 관측 종료 · 적격 없음 | 누적 승리 144 · 150 · 156 · 168 · 180 · 240개월 | 출시 막힌 달(평균) | reserve_casks 달성 | 대형 유통 납품 매출(평균) | 핵심 전문가 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| X0 표준 규모 사람형(후반 확인 판 재현) | 40/40 (91%~100%) | 145 · 145 · 145개월 | domestic 40 | 0/40 | 0/40 | 0/40 | 0/40 | 0% · 100% · 100% · 100% · 100% · — | 0.0 | 39/40 | 13.09억 | sales 40 |
+
+| 정책 | ③ 처분 예상액 = 순자산 평균 · P10 | ② 추정 시장가치 평균 | ① 장부 원가 평균 | 옛 식 순자산 평균 · P10(F5b 전 비교) | 담보 가치 q̂ · 참 품질(평균) | 숨은 오염 통 통입(평균 통) | 파산 |
+|---|---|---|---|---|---|---|---|
+| X0 표준 규모 사람형(후반 확인 판 재현) | 20.81억 · 16.39억 | 20.88억 | 20.29억 | 20.85억 · 16.37억 | 1.09억 · 1.13억 | 0.0 | 0/40 |
+
+| 정책 | 생존 | 순자산 목표 달성 (95% CI) | 플래그십 판매 (품질 중앙) | 등급 S/A/B/C/F | B↑ · A↑ · S | 순자산 평균(전 판) · 중앙 · P10 · 하위 20% 평균 | 생존 판 평균 | 목표 | 인지도 중앙 |
+|---|---|---|---|---|---|---|---|---|---|
+| X0 표준 규모 사람형(후반 확인 판 재현) | 100% | 13% (5%~26%) | 100% (76) | 0/5/35/0/0 | 100% · 13% · 0% | 20.81억 · 20.66억 · 16.39억 · 17.14억 | 20.81억 | 24.00억 | 0.567 |
+
+| 정책 | 월 영업 현금흐름 최저(중앙) · 평균(평균) | 영업 흑자 전환 달(중앙) | 현금 < 0 최대 연속 개월(최대) | 12년↑ 통 144 · 168 · 180개월(평균) | 12년↑ 병입 · 판매 병(평균) |
+|---|---|---|---|---|---|
+| X0 표준 규모 사람형(후반 확인 판 재현) | -0.32억 · 0.08억 | 42월 | 0 | 0.0 · 0.0 · 0.0 | 357 · 357 |
+
+| 정책 | 최저 현금(중앙) · 위기 개월(평균, 현금 < 고정비 3개월) | 재고 개월 위스키 · 소주(중앙) | 못 판 수요 위스키 · 소주 | 위스키 국내 실현가(평균) · 월 가격 변동 | 국내 · 수출 매출(평균) | 제품 재고 장부가(평균) |
+|---|---|---|---|---|---|---|
+| X0 표준 규모 사람형(후반 확인 판 재현) | 0.48억 · 7.7 | 0.2 · 0.1 | 9% · 7% | 69,847원 · 18.5% | 69.59억 · 0.00억 | 0.03억 |
+
+| 정책 | 국내 매출 | 수출 매출 | 국내 병 | 수출 병 | 미충족 국내 수요(병) | 재고 개월(재고 있는 위스키) | 품절 제품·달 | 평균 배수(기준가 대비) | 월 가격 변동(평균 |Δ|) |
+|---|---|---|---|---|---|---|---|---|---|
+| X0 표준 규모 사람형(후반 확인 판 재현) | 69.59 | 0.00 | 322,138 | 0 | 25,546 | 1.1 | 701.8 | ×1.28 | 18.5% |
+
+| 정책 | X0 대비 순자산 차이(평균 · t · 이긴 시드) | 하위 20% 평균 차이 | 판단 |
+|---|---|---|---|
+
+| 정책 | 36개월 안 최저 현금(중앙) | 6년 안 최저 현금(중앙) | 6년 안 최저 런웨이(현금÷월 고정비, 중앙) | 현금 < 0 개월(평균) | 5년 원액 시가(평균) | 원액 시가 최고(평균, 그 달 중앙) | 72개월 원액 비중(유동 자산 중) | 이자 합계(평균) | 현금 96 · 180개월(평균) |
+|---|---|---|---|---|---|---|---|---|---|
+| X0 표준 규모 사람형(후반 확인 판 재현) | 0.72억 | 0.49억 | 1.4개월 | 0.0 | 1.57억 | 2.24억 (90월) | 37% | 0.50억 | 4.38억 · 19.47억 |
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":1,"nw":2463688123,"bankrupt":-1,"win":"win","winMonth":145,"dv":36876140,"negMonths":0,"minCash72":36876140,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":3,"goal":true}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":2,"nw":1470283199,"bankrupt":-1,"win":"win","winMonth":145,"dv":52281195,"negMonths":0,"minCash72":52281195,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":3,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":3,"nw":1634518531,"bankrupt":-1,"win":"win","winMonth":145,"dv":42874606,"negMonths":0,"minCash72":42874606,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":3,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":4,"nw":2368075751,"bankrupt":-1,"win":"win","winMonth":145,"dv":50743905,"negMonths":0,"minCash72":50743905,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":3,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":5,"nw":1815538535,"bankrupt":-1,"win":"win","winMonth":145,"dv":48350089,"negMonths":0,"minCash72":48350089,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":6,"nw":2065585655,"bankrupt":-1,"win":"win","winMonth":145,"dv":44321336,"negMonths":0,"minCash72":44321336,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":7,"nw":2555463480,"bankrupt":-1,"win":"win","winMonth":145,"dv":53621909,"negMonths":0,"minCash72":53621909,"ladder":3,"loanIds":["kr_regional","kr_startup","policy"],"loansMax":500000000,"interest":65153216,"emergency":false,"cands144":4,"goal":true}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":8,"nw":2227629332,"bankrupt":-1,"win":"win","winMonth":145,"dv":46803685,"negMonths":0,"minCash72":46803685,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":3,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":9,"nw":2626033905,"bankrupt":-1,"win":"win","winMonth":145,"dv":52521191,"negMonths":0,"minCash72":52521191,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":true}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":10,"nw":2003184462,"bankrupt":-1,"win":"win","winMonth":145,"dv":43883627,"negMonths":0,"minCash72":43883627,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":2,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":11,"nw":1838645324,"bankrupt":-1,"win":"win","winMonth":145,"dv":56977509,"negMonths":0,"minCash72":56977509,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":3,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":12,"nw":1852741456,"bankrupt":-1,"win":"win","winMonth":145,"dv":58475505,"negMonths":0,"minCash72":58475505,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":13,"nw":2206193892,"bankrupt":-1,"win":"win","winMonth":145,"dv":55446152,"negMonths":0,"minCash72":55446152,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":1,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":14,"nw":2087555239,"bankrupt":-1,"win":"win","winMonth":145,"dv":42672250,"negMonths":0,"minCash72":42672250,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":15,"nw":2100634587,"bankrupt":-1,"win":"win","winMonth":145,"dv":46973850,"negMonths":0,"minCash72":46973850,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":16,"nw":1847306784,"bankrupt":-1,"win":"win","winMonth":145,"dv":43568027,"negMonths":0,"minCash72":43568027,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":2,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":17,"nw":2208042603,"bankrupt":-1,"win":"win","winMonth":145,"dv":39031076,"negMonths":0,"minCash72":39031076,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":496074867,"interest":49778484,"emergency":false,"cands144":3,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":18,"nw":1914876951,"bankrupt":-1,"win":"win","winMonth":145,"dv":48297248,"negMonths":0,"minCash72":48297248,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":19,"nw":2211918801,"bankrupt":-1,"win":"win","winMonth":145,"dv":54207926,"negMonths":0,"minCash72":54207926,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":20,"nw":2100944352,"bankrupt":-1,"win":"win","winMonth":145,"dv":44912024,"negMonths":0,"minCash72":44912024,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":3,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":21,"nw":1866446316,"bankrupt":-1,"win":"win","winMonth":145,"dv":53252414,"negMonths":0,"minCash72":53252414,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":22,"nw":2186049104,"bankrupt":-1,"win":"win","winMonth":145,"dv":43230281,"negMonths":0,"minCash72":43230281,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":2,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":23,"nw":1618000743,"bankrupt":-1,"win":"win","winMonth":145,"dv":48966467,"negMonths":0,"minCash72":48966467,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":24,"nw":2221345626,"bankrupt":-1,"win":"win","winMonth":145,"dv":54000362,"negMonths":0,"minCash72":54000362,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":3,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":25,"nw":1957055762,"bankrupt":-1,"win":"win","winMonth":145,"dv":49826536,"negMonths":0,"minCash72":49826536,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":26,"nw":1956442090,"bankrupt":-1,"win":"win","winMonth":145,"dv":52231621,"negMonths":0,"minCash72":52231621,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":2,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":27,"nw":1638525836,"bankrupt":-1,"win":"win","winMonth":145,"dv":55111860,"negMonths":0,"minCash72":55111860,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":28,"nw":1928947876,"bankrupt":-1,"win":"win","winMonth":145,"dv":47857151,"negMonths":0,"minCash72":47857151,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":29,"nw":2026851343,"bankrupt":-1,"win":"win","winMonth":145,"dv":42901451,"negMonths":0,"minCash72":42901451,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":30,"nw":2167799300,"bankrupt":-1,"win":"win","winMonth":145,"dv":45857066,"negMonths":0,"minCash72":45857066,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":31,"nw":1906025036,"bankrupt":-1,"win":"win","winMonth":145,"dv":49078907,"negMonths":0,"minCash72":49078907,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":3,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":32,"nw":2268593911,"bankrupt":-1,"win":"win","winMonth":145,"dv":38802993,"negMonths":0,"minCash72":38802993,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":3,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":33,"nw":2398909051,"bankrupt":-1,"win":"win","winMonth":145,"dv":56152911,"negMonths":0,"minCash72":56152911,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":3,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":34,"nw":2266593403,"bankrupt":-1,"win":"win","winMonth":145,"dv":49171532,"negMonths":0,"minCash72":49171532,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":35,"nw":2505511717,"bankrupt":-1,"win":"win","winMonth":145,"dv":48482699,"negMonths":0,"minCash72":48482699,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":true}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":36,"nw":2037758487,"bankrupt":-1,"win":"win","winMonth":145,"dv":41802805,"negMonths":0,"minCash72":41802805,"ladder":1,"loanIds":["kr_regional"],"loansMax":300000000,"interest":30609545,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":37,"nw":2004206116,"bankrupt":-1,"win":"win","winMonth":145,"dv":54043741,"negMonths":0,"minCash72":54043741,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":3,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":38,"nw":2054635408,"bankrupt":-1,"win":"win","winMonth":145,"dv":42389340,"negMonths":0,"minCash72":42389340,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":false}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":39,"nw":2541298267,"bankrupt":-1,"win":"win","winMonth":145,"dv":61462381,"negMonths":0,"minCash72":61462381,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":4,"goal":true}
+#F7B {"cfg":"financeH-wageonly","strat":"X0","tier":"standard","months":180,"seed":40,"nw":2080441774,"bankrupt":-1,"win":"win","winMonth":145,"dv":59124040,"negMonths":0,"minCash72":59124040,"ladder":2,"loanIds":["kr_regional","kr_startup"],"loansMax":500000000,"interest":49778484,"emergency":false,"cands144":3,"goal":false}
