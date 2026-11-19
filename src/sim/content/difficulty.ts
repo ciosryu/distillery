@@ -108,6 +108,21 @@ export function normalizeDifficulty(input?: DifficultyConfig | DifficultyPreset 
   return { preset: input.preset === 'custom' ? 'custom' : p, levels };
 }
 
+/**
+ * 시작 스냅샷에 지금 표의 값을 고정한다(P-MGT-59 C안) — Normal 단계 영역은 늘 1이라 적지 않고, 1인 값도 적지 않는다. 적을 것이 없으면 `values`를 두지 않는다
+ * (Normal 세이브 바이트 동일). 새 판(`newScenario`)만 부른다 — 실험(`applyDifficulty`·`KNOB_CAND`)은 표를 그대로 읽는다
+ */
+export function pinDifficultyValues(d: DifficultyConfig): DifficultyConfig {
+  const values: Record<string, number> = {};
+  for (const [id, def] of Object.entries(KNOBS)) {
+    const lv = d.levels[id.slice(0, id.indexOf('.')) as DifficultyDomain];
+    const v = lv === 1 ? def.easy : lv === 3 ? def.hard : 1;
+    if (v !== 1) values[id] = v;
+  }
+  const { values: _old, ...rest } = d;
+  return Object.keys(values).length ? { ...rest, values } : rest;
+}
+
 /** 저장된 스냅샷이 올바른가 — 불변식 검사용 */
 export function difficultyError(d: DifficultyConfig): string | null {
   if (!d || typeof d !== 'object' || !d.levels) return '난이도 스냅샷 모양이 아니다';
@@ -117,5 +132,9 @@ export function difficultyError(d: DifficultyConfig): string | null {
   }
   const p = presetOf(d.levels);
   if (d.preset !== 'custom' && d.preset !== p) return `표시 ${d.preset} ≠ 값 ${p}`;
+  if (d.values !== undefined) {
+    if (!d.values || typeof d.values !== 'object') return '고정 값(values) 모양이 아니다';
+    for (const [id, v] of Object.entries(d.values)) if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return `고정 값 ${id} = ${String(v)} (0 이상 유한수)`;
+  }
   return null;
 }

@@ -177,6 +177,10 @@ export function migrateSaveReport(raw: unknown): { state: GameState; fixes: stri
     s = step(s);
     v = s.version;
   }
+  // 값 이전 빌드에서 시작한 Normal 아닌 판은 손잡이를 1로 고정한다(P-MGT-59 C안 — 버전 무관 정규화, #187). 값 빌드의 새 판은 `values`를 이미 갖거나(1이 아닌 값),
+  // 적을 값이 없어 생략됐다(= 모두 1이라 {}와 같다). Normal 판은 건드리지 않는다(바이트 동일). 멱등
+  const d = (s as GameState).difficulty;
+  if (d && d.values === undefined && Object.values(d.levels ?? {}).some((lv) => lv !== 2)) s = { ...s, difficulty: { ...d, values: {} } };
   // 버전과 무관한 수리 (#285) — NaN이 null로 저장된 값을 고친다. 고칠 것이 없으면 그대로(입력을 바꾸지 않는다)
   return repairSave(s as GameState);
 }
