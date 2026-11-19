@@ -5,7 +5,7 @@ import { applyAction, advanceMonth, type GameState } from './index';
 import { caskRunway, productionValue, whiskySupplyForecast } from './economics';
 import { autoFillPreview } from './autoFill';
 import { newScenarioGame } from './newScenario';
-import { orderPlan } from './production';
+import { orderPlan, previewBatch, steadyBatch } from './production';
 
 function game(tierId: 'micro' | 'standard' = 'standard'): GameState {
   return newScenarioGame({ scenarioId: 'mvp_kr', tierId, loanAmount: 0, seed: 1 });
@@ -115,5 +115,21 @@ describe('caskRunway — 빈 나무 통이 떨어지는 때', () => {
     let s = order(game(), [0, 4, 0]);
     for (let m = 0; m < 14; m++) s = advanceMonth(s); // 통입하지 않고 14달 — 탱크에 쌓인다
     expect(caskRunway(s)!.months).toBe(0);
+  });
+});
+
+describe('steadyBatch — 초류·후류 재투입이 쌓인 정상 상태 배치 (후보 ①)', () => {
+  it.each(['micro', 'standard'] as const)('같은 레시피만 돌리면 넷째 달 실제 배치당 LPA와 같다 (%s)', (tier) => {
+    const s0 = game(tier);
+    for (const r of s0.production.recipes) {
+      let s = applyAction(s0, { type: 'setOrder', recipeId: r.id, batchesPerMonth: 2 }).state;
+      const steady = steadyBatch(s, r)!;
+      const first = previewBatch(s, r)!;
+      expect(steady.lpa).toBeGreaterThan(first.lpa); // 첫 배치(재투입 없음)보다 많다
+      expect(steady.cost).toBe(first.cost); // 원가는 같다 — 원료·에너지는 그대로, 수율만 오른다
+      for (let m = 0; m < 4; m++) s = advanceMonth(s);
+      const rep = s.history.reports.at(-1)!.production.find((x) => x.recipeId === r.id)!;
+      expect(steady.lpa).toBeCloseTo(rep.lpa / rep.batches, 1);
+    }
   });
 });
