@@ -1072,6 +1072,12 @@ export type DifficultyPreset = 'easy' | 'normal' | 'hard' | 'custom';
 export interface DifficultyConfig {
   preset: DifficultyPreset;
   levels: Record<DifficultyDomain, DifficultyLevel>;
+  /**
+   * 판을 시작할 때 고정한 손잡이 값(1이 아닌 것만) — `[제안 P-MGT-59]` C안(결정 98과 같은 PR). 있으면 `knob()`은 표 대신 이것을 읽는다(`values[id] ?? 1`):
+   * 값 표가 바뀐 빌드에서 이어 해도 판 도중 규칙이 바뀌지 않는다. 없으면 표를 읽는다(메모리 안 실험·테스트). 저장할 값이 모두 1이면 두지 않는다.
+   * 값 이전 빌드에서 시작한 Normal 아닌 세이브는 불러올 때 `{}`(= 모두 1)로 고정된다(migrate — 버전 무관 정규화, #187)
+   */
+  values?: Record<string, number>;
 }
 
 export interface GameState {
