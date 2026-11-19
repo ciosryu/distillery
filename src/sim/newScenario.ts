@@ -1,5 +1,5 @@
 import { applyAction } from './actions';
-import { normalizeDifficulty } from './content/difficulty';
+import { normalizeDifficulty, pinDifficultyValues } from './content/difficulty';
 import { LOAN_OFFERS } from './content/catalog';
 import { scenarioLockedKeys, SCENARIOS, type ScenarioDef, type ScenarioTierDef } from './content/scenarios';
 import { salaryFor } from './hr';
@@ -68,7 +68,7 @@ export function newScenarioGame(plan: BusinessPlan): GameState {
   const rules = plan.rules ?? defaultRules;
   s.rulesVersion = rules;
   // F6: 난이도는 판 시작 스냅샷 — v16 새 판만. 옛 판(X0L)은 필드 자체를 두지 않아 바이트 동일(없음 = Normal)
-  if (rules !== 'legacy-v15') s.difficulty = normalizeDifficulty(plan.difficulty);
+  if (rules !== 'legacy-v15') s.difficulty = pinDifficultyValues(normalizeDifficulty(plan.difficulty)); // P-MGT-59: 시작 때 값 고정
   // F6b 인건비 배수(finance.laborMul): newGame이 먼저 정한 시작 직원 급여를 난이도 반영 값으로 다시 정한다 — Normal(1)은 건너뛰어 바이트 동일
   if (laborMul(s) !== 1) for (const x of s.hr.staff) x.salary = salaryFor(x.role, x.stats, x.level, staffLaborCost(s));
   const locked = scenarioLockedKeys(d, rules); // F5a: v16 새 판은 kindsV16·lockedV16 — 옛 판(X0L)은 옛 키 그대로. 규칙은 **생성 때** 정해진다
