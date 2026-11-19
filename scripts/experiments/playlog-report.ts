@@ -11,6 +11,9 @@ import { MORALE, moraleOf, TRAIT_INFO } from '../../src/sim/hr';
 import { difficultyOf, rulesVersionOf } from '../../src/sim/rules';
 import { reserveCaskIds } from '../../src/sim/tags';
 
+/** 이름을 바꾼 이벤트의 옛 제목 → id — 옛 기록(6차 판 등)의 선택을 표에서 찾는다 */
+const OLD_EVENT_TITLES: Record<string, string> = { 'K-주류 수출 지원 사업 공모': 'export_support' }; // [결정 #335]
+
 const path = process.argv[2];
 if (!path) { console.error('사용: npx tsx scripts/experiments/playlog-report.ts <기록 파일.json>'); process.exit(1); }
 const parsed = parsePlayFile(readFileSync(path, 'utf8'));
@@ -212,7 +215,7 @@ function v16Observe(): void {
   // 7 선택 이벤트 — 기본값과 같은 선택은 직접 골랐는지 알 수 없다
   const chosen = s.events.log.filter((e) => e.title.includes(' → ')).map((e) => {
     const [title, label] = e.title.split(' → ');
-    const def = Object.values(EVENT).find((d) => d.title === title);
+    const def = Object.values(EVENT).find((d) => d.title === title) ?? (title ? EVENT[OLD_EVENT_TITLES[title] ?? ''] : undefined);
     const isDefault = def?.choices?.[def.defaultChoice ?? 0]?.label === label;
     return { month: e.month, title: title!, label: label!, isDefault };
   });

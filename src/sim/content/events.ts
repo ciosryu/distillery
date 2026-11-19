@@ -136,7 +136,7 @@ export const EVENTS: EventDef[] = [
   { id: 'still_breakdown', domain: 'incidents', title: '증류기 고장', category: 'disaster', chance: 0.015, cooldown: 12, requires: ['still'], text: '증류기 하나가 고장 났습니다.',
     choices: [
       { label: '긴급 수리', detail: '3,000만 원 — 생산 중단 없음', effects: [{ type: 'cash', amount: -30_000_000 }] },
-      { label: '일반 수리', detail: '500만 원 — 해당 증류기 2개월 중단', effects: [{ type: 'cash', amount: -5_000_000 }, { type: 'stillDown', months: 2 }] },
+      { label: '일반 수리', detail: '500만 원 — 해당 증류기 수리 동안 중단', effects: [{ type: 'cash', amount: -5_000_000 }, { type: 'stillDown', months: 2 }] },
     ], defaultChoice: 1 },
   { id: 'ferment_infection', domain: 'incidents', title: '발효 오염', category: 'disaster', chance: 0.015, cooldown: 12, text: '발효조에 잡균이 번져 탱크 원액에 시큼한 이취가 생겼습니다.',
     effects: [{ type: 'lotSpoil', acetic: 8 }] },
@@ -149,7 +149,7 @@ export const EVENTS: EventDef[] = [
     effects: [m('awareness_gain', 0.6, [24, 36], '광고 규제')] },
   { id: 'korean_label_rule', domain: 'macro', title: '국산 위스키 표기 기준 강화', category: 'regulation', chance: 0.008, cooldown: 120, minMonth: 12, regions: ['KR'], text: '"국산 위스키" 표기 요건이 엄격해져 블렌더들이 국산 원액을 더 비싸게 찾습니다.',
     effects: [m('domestic_premium', 1.6, [36, 60], '국산 원액 수요 증가')] },
-  { id: 'export_support', title: 'K-주류 수출 지원 사업 공모', category: 'regulation', chance: 0.012, cooldown: 24, regions: ['KR'], text: '정부가 수출 지원금을 공모합니다.',
+  { id: 'export_support', title: '국산 증류주 육성 지원 사업 공모', category: 'regulation', chance: 0.012, cooldown: 24, regions: ['KR'], text: '정부가 국산 증류주 업체에 시설·마케팅 지원금을 공모합니다.', // [결정 #335] 이름·문구만(옛 제목 「K-주류 수출 지원 사업 공모」 — 효과는 수출과 무관한 현금 공모라 v16에서도 뜬다). id·효과·확률 그대로
     choices: [
       { label: '지원한다', detail: '서류 준비 500만 원 — 성공 확률 60%, 성공 시 8,000만 원', effects: [{ type: 'cash', amount: -5_000_000 }, { type: 'gamble', chance: 0.6, success: [{ type: 'cash', amount: 80_000_000 }], failure: [] }] },
       { label: '지원하지 않는다', detail: '비용 없음', effects: [] },
