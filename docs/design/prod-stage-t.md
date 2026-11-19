@@ -1457,8 +1457,8 @@ v16 새 게임을 화면으로 19개월 진행한 메모(PM STATUS 요약) 중 P
 | `supply.priceWalkSigma` | 0.5 | 1.5 | **1개월부터(유일)** | 시세 σ 0.02 → 0.01 / 0.03. 평균 회귀·범위는 그대로 → 평균 원가는 비슷, 흔들림만 — 효과 작음 예상 |
 | `supply.caskLead` | **1** | 1.5 | 1개월부터 | 납기 2 → 3개월(반올림). Easy <1은 0.75까지 반올림으로 효과 0 · 0.5면 1개월이 승리 달을 앞당긴다 → Easy 1 권장 |
 | `incidents.eventChance` | 0.5 | 1.5 | 60개월부터 | 증류기 고장 0.015/월 · 쿨다운 12 → Normal 120개월 기대 약 1.5회 |
-| `incidents.eventMagnitude` | 0.7 | 1.3 | 60개월부터 | 사고 modifier 거리. 소실은 `lossSize`, 중단 개월은 `stillDownMonths` — 겹치지 않음 |
-| `incidents.eventDuration` | 0.75 | 1.25 | 60개월부터 | 기상 충격 포함 |
+| `incidents.eventMagnitude` | ~~0.7~~ **1** | ~~1.3~~ **1** | **효과 없음** | 사고 이벤트 modifier는 전부 생산 중단(배수 0)이고 배수 0은 크기 손잡이를 받지 않는다 — 모든 지역에서 닿지 않는다(F7-B 단독 행 40시드 Normal과 같음, 2026-11-19 고침) |
+| `incidents.eventDuration` | ~~0.75~~ **1** | 1.25 | 60개월부터 · 폭염만 | 생산 중단 1개월은 반올림으로 그대로, 폭염 2 → 3개월(Hard)만. Easy 0.75는 반올림으로 효과 0 → 1(2026-11-19 고침) |
 | `incidents.lossSize` | (0.7) | (1.5) | 60개월부터 | MGT가 낸다(원장 damageMul) — PROD 동의 |
 | `incidents.stillDownMonths` | 0.5 | 1.5 | 60개월부터 | 수리 중단 2 → 1 / 3개월. 중단 달 몰트 0 → 12년 후보 공급에 그대로 빈다 |
 | `incidents.spoilSize` | 0.5 | 1.5 | 60개월부터 | 이취 +8 → +4 / +12. 그 달 배치만 — 효과 미미 |
@@ -1468,3 +1468,11 @@ v16 새 게임을 화면으로 19개월 진행한 메모(PM STATUS 요약) 중 P
 - **봇 측정으로 효과가 0인 손잡이:** `forecastMonths`·`forecastCertainty`(봇이 예보를 읽지 않는다). 측정 표에 "봇 미반영 — 사람 판에서만"으로 따로 적기를 [제안]. 억지로 키워 간격을 만들지 않는다
 - **쌓임 위험:** supply Hard는 확률 ×1.5 · 크기 ×1.3 · 기간 ×1.25가 함께 걸려 원가 악재의 기대 비용이 어림 2.4배(곱)다. incidents도 같은 구조 + `lossSize` ×1.5. 영역 단독 E/H 행(P-MGT-55 설계)으로 먼저 재고, 쌓임이 ±30%를 넘으면 크기·기간을 1.15 / 1.1로 줄인 2차 후보로 다시 잰다
 - **방향 확인:** 모든 손잡이가 Easy = 플레이어에게 유리, Hard = 불리 방향이다(`windfallSize`·`forecast*`는 값이 클수록 유리라 Easy >1)
+
+### F7-B 1·2차 뒤 PROD 의견 (2026-11-19, MGT 판독 #650 · 손잡이별 단독 행)
+
+- **손잡이별 기여(standard 40시드, Hard 단독, X0):** eventChance 1.5 −2.82억 · stillDownMonths 1.5 −1.95 · lossSize 1.5 −1.12 · eventDuration 1.25 −0.11 · eventMagnitude 1.3 **0.00** — 합 −6.0억 ≈ 사고 Hard 전체 −6.22억(거의 더해진다)
+- **효과 없음 확인:** `incidents.eventMagnitude`(위 표) — 값 1/1로 고쳤다. `incidents.eventDuration` Easy도 1
+- **최종 후보 [제안]:** Hard eventChance **1.25** · stillDownMonths 1.5 · lossSize(MGT) **1.25** / Easy 1차 값 그대로. B 판에서 X12F 파산이 2/40을 넘으면 eventChance 1.15, 0~1/40이면 lossSize 1.5로 되돌려 「드물지만 큰 사건」을 살린다 — MGT가 B 결과로 고른다
+- stillDownMonths 1.5: 승리 달(145개월)·144개월 후보 수에 영향 없음(MGT 확인) — 처음 걱정(몰트 공급이 끊겨 12년 후보가 준다)은 보이지 않았다
+
