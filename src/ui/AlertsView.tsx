@@ -153,7 +153,7 @@ export function MonthTodo() {
           <ul className="grid gap-1">
             {todos.map((t) => (
               <li key={t.id} className="flex flex-wrap items-center justify-between gap-2">
-                <span className={`min-w-0 text-xs ${tone[t.level]}`}>{t.level === 'warn' ? '⚠ ' : '• '}{t.text}</span>
+                <span className={`min-w-0 text-xs ${tone[t.level]}`}>{t.level === 'danger' ? '‼ ' : t.level === 'warn' ? '⚠ ' : '• '}{t.text}</span>
                 <Button small variant="ghost" onClick={() => go(t.target)}>{t.action} →</Button>
               </li>
             ))}

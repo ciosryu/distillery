@@ -150,7 +150,7 @@ describe('3차 MVP 플레이테스트 대응 (#203) — 멈춘 몰트 생산 · 
     expect(ids.indexOf('malt-stopped')).toBeLessThan(ids.indexOf('fill'));
     const ranks = ids.map((id) => (TODO_ORDER.includes(id) ? TODO_ORDER.indexOf(id) : 5.5));
     expect([...ranks].sort((a, b) => a - b)).toEqual(ranks);
-    expect(TODO_ORDER.slice(0, 4)).toEqual(['flagship-low', 'loan-jump', 'malt-stopped', 'visitor']); // 남은 플래그십 후보(#261)는 맨 위 — 되돌릴 수 없다
+    expect(TODO_ORDER.slice(0, 5)).toEqual(['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'visitor']); // 남은 플래그십 후보(#261)는 맨 위 — 되돌릴 수 없다
     expect(TODO_ORDER.at(-1)).toBe('sample');
     expect(TODO_ORDER.indexOf('stockout')).toBe(TODO_ORDER.indexOf('visitor') + 1);
   });

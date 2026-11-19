@@ -10,10 +10,13 @@ import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
 import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { exportShortfalls } from '../sim/market';
+import { retailBreakRemaining, retailCancellationCost } from '../sim/deals';
 import { ibAgedCaskCount } from '../sim/bulk';
 import { autoFillPreview } from '../sim/autoFill';
 import { autoRestockPlan, autoRestockSources, autoRestockSupported, guardedFlagshipCasks, productMonthlyPace } from '../sim/economics';
 import { reserveCaskIds } from '../sim/tags';
+import { caskEligibility } from '../sim/ledger';
+import { specialistOffers, SPECIALIST_STAGE } from '../sim/hr';
 import { AUTO_RESTOCK_EXPENSE, caskRunway, productionValue, whiskySupplyForecast } from '../sim/economics';
 
 // ───────────── ① 파산 카운트다운 ─────────────
@@ -174,6 +177,31 @@ export function spotSaleStake(s: GameState): { tank: SpiritStake | null; casks: 
 export const flagshipCandidates = (s: GameState) => s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c));
 /** 이 수 이하로 남으면 할 일 맨 위 (#261) `[튜닝]` */
 export const FLAGSHIP_LOW = 3;
+
+/** 핸드필 통이 빈 뒤 지난 개월과 비기 전 6개월 평균 핸드필 매출 — 결산 메모(`handfill.ts`)에서 읽는다. 빈 기록이 없으면(처음부터 미지정) null */
+export function handfillIdle(s: GameState): { months: number; monthly: number } | null {
+  const reps = s.history.reports;
+  let i = reps.length - 1;
+  while (i >= 0 && !reps[i]!.notes.some((n) => /^핸드필 .*비었다/.test(n))) i--;
+  if (i < 0) return null;
+  const won = (n: string) => Number(n.match(/^핸드필 \d[\d,]*병 \(([\d,]+)원\)/)?.[1]?.replace(/,/g, '') ?? 0);
+  const before = reps.slice(Math.max(0, i - 5), i + 1).map((r) => r.notes.reduce((t, n) => t + won(n), 0));
+  return { months: s.month - reps[i]!.month, monthly: before.length ? before.reduce((t, x) => t + x, 0) / before.length : 0 };
+}
+
+/**
+ * 12년 승리 준비 (6차 판 — 146개월에 적격이 됐는데 화면이 "0개월 뒤 도달"만 보여 12개월 늦게 병입, `docs/playtest/6/arch.md` ①).
+ * 새 캠페인(v16)·승리 전만. `casks` = 지금 승리 적격인 통(승리 판정과 같은 `caskEligibility` — 자가·같은 입지·몰트·목재 ≥ 기준, 고객 소유 아님),
+ * `bottled` = 이미 병입해 재고가 남은 적격 로트의 제품(다음 판매가 승리). 화면만 읽는다
+ */
+export function flagshipReady(s: GameState): { casks: { id: string; woodMonths: number }[]; reserved: number; bottled: { name: string; stock: number } | null } | null {
+  if (!s.scenario || rulesVersionOf(s) !== 'v16' || campaignWon(s)) return null;
+  const reserve = reserveCaskIds(s);
+  const casks = s.inventory.casks.flatMap((c) => { const e = caskEligibility(s, c); return e.eligible ? [{ id: c.id, woodMonths: e.woodMonths }] : []; });
+  const lotProducts = new Set((s.commerce.lots ?? []).filter((l) => l.eligibleAtBottling).map((l) => l.productId));
+  const p = s.commerce.products.find((x) => lotProducts.has(x.id) && x.stockBottles > 0);
+  return { casks, reserved: casks.filter((c) => reserve.has(c.id)).length, bottled: p ? { name: p.name, stock: p.stockBottles } : null };
+}
 /**
  * 이 제품의 다음 자동 납품이 쓸 통 중 플래그십 후보 수 (#261 — 자동 납품 설정 표의 "이 제품은 지금 후보 통을 쓴다" 표시용, 화면은 판매 탭 소유 파트).
  * 플래그십을 팔았으면 0
@@ -213,9 +241,11 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['flagship-low', 'loan-jump', 'malt-stopped', 'visitor', 'stockout', 'batch-short', 'casks-low', 'cask-bid', 'export-starve', 'restock-short', 'handfill', 'fill', 'whisky', 'soju', 'sample'];
+export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'visitor', 'stockout', 'retail-short', 'batch-short', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'handfill', 'fill', 'whisky', 'soju', 'sample'];
 // 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
+// danger 등급은 새 기능 바로 아래로 올린다(같은 danger끼리는 위 순서) — 6차 판: 오래 통입 대기(fill danger)가 할 일 3번째에 묻혔다
+const todoKey = (t: Todo) => (t.level === 'danger' && !t.id.startsWith('stage-') ? -1 + todoRank(t.id) / 100 : todoRank(t.id));
 
 /**
  * 이번 달 할 일 — 급한 순서. 시나리오 게임(MVP) 증류소 탭에 보인다. 규칙이 아니라 놓치기 쉬운 신호를 모은 안내다
@@ -238,6 +268,10 @@ export function monthTodos(s: GameState): Todo[] {
     const why = legacyRules ? '하나라도 남겨야 15년 안에 플래그십을 낸다' : '하나라도 남겨야 승리 출고(12년 싱글 몰트 첫 판매)를 할 수 있다';
     if (n > 0 && n <= FLAGSHIP_LOW) out.push({ id: 'flagship-low', level: 'danger', text: `남은 12년 플래그십 후보 ${n}통 — ${why}. 예비 ${reserveCaskIds(s).size}통 — 남길 통을 "플래그십 예비"로 묶으세요(자동 기능이 쓰지 않는다)`, action: '숙성고', target: { anchor: 'mvp-warehouse' } });
   }
+  // 12년 승리 준비 (6차 판 arch.md ① — `[제안 P-ARCH-61]` (b)): 적격 통이 생긴 뒤 승리 전까지 늘 남는다. 이미 병입했으면 "다음 판매가 승리"
+  const win12 = flagshipReady(s);
+  if (win12?.bottled) out.push({ id: 'flagship-ready', level: 'info', text: `12년 싱글 몰트 「${win12.bottled.name}」 ${win12.bottled.stock.toLocaleString()}병 병입 완료 — 한 병이라도 팔리면 캠페인 승리(가격·판매 채널을 확인)`, action: '판매', target: { tab: 'sales' } });
+  else if (win12 && win12.casks.length) out.push({ id: 'flagship-ready', level: 'warn', text: `12년 적격 통 ${win12.casks.length}개${win12.reserved ? `(플래그십 예비 ${win12.reserved}통 포함 — 예비는 이 병입을 위해 남긴 통이다)` : ''} — 이 통들로 싱글 몰트를 병입해 팔면 캠페인 승리(기한 없음 · 적격이 아닌 원액을 섞으면 적격이 깨진다)`, action: '블렌딩·병입', target: { tab: 'bottling' } });
   const min = whiskyMinMonths(regionOf(s).whisky); // 병입·표기와 같은 식 (blending.ts)
   // IB 캐스크 입찰 (10년 차 해금, #224) — 제안은 2개월 뒤 사라지고 원액 B2B 탭에만 보여서 할 일에 올린다
   if (s.scenario && s.b2b.caskBids.length) {
@@ -268,7 +302,14 @@ export function monthTodos(s: GameState): Todo[] {
   }
   // 핸드필 존 (#233) — 지었는데 지정한 통이 없다(처음, 또는 통이 비어 풀림). 숙성 중인 캐스크 칸이 접혀 있어 놓치기 쉽다
   if (s.scenario && hasHandfillZone(s) && !handfillCask(s) && s.production.equipment.some((e) => EQUIPMENT[e.catalogId]?.kind === 'visitor' && e.readyMonth <= s.month)) {
-    out.push({ id: 'handfill', level: 'warn', text: '핸드필 존에 통이 없다 — 숙성 중인 캐스크 칸에서 핸드필 전용 통을 고르면 방문객이 매달 500ml씩 담아 간다(병입 권장가의 약 2배)', action: '통 고르기', target: { anchor: 'mvp-warehouse' } });
+    // 6차 판(PROD prod.md ⑥): 142개월에 통이 빈 뒤 16개월 미지정 — 빈 지 몇 달째인지와 그 전 매출을 붙여 같은 warn 사이에서 덜 묻히게
+    const idle = handfillIdle(s);
+    out.push({ id: 'handfill', level: 'warn', text: `핸드필 존에 통이 없다${idle ? ` — 통이 빈 지 ${idle.months}개월째${idle.monthly ? `(비기 전 월 약 ${fmtWon(idle.monthly)} — 그만큼 놓치는 중)` : ''}` : ''} — 숙성 중인 캐스크 칸에서 핸드필 전용 통을 고르면 방문객이 매달 500ml씩 담아 간다(병입 권장가의 약 2배)`, action: '통 고르기', target: { anchor: 'mvp-warehouse' } });
+  }
+  // 핵심 전문가를 아직 고르지 않았다 (MGT #610 남은 점 — 할 일에서 직원 탭 카드로 잇는 안내). 해금 소식(stage 할 일)이 내려간 뒤 9개월만 — 안 고르는 것도 선택이라 계속 띄우지 않는다
+  {
+    const opened = stagesOf(s).find((x) => x.id === SPECIALIST_STAGE)?.month;
+    if (opened != null && s.month - opened >= 3 && s.month - opened < 12 && specialistOffers(s)) out.push({ id: 'specialist', level: 'info', text: '핵심 전문가를 아직 고르지 않았다 — 직원 탭 카드에서 숙성고 매니저 · 마스터 블렌더 · 영업 중 한 사람(한 번만 · 안 골라도 된다)', action: '직원', target: { tab: 'staff' } });
   }
   // 비지터 센터가 없다 — 3차 MVP 판은 설비가 접힌 칸 안에 있어 "못 찾았다"(오너). 첫해 가장 큰 수입원(월 약 700만, 사람형 봇 실험)이라 할 일에 올린다
   const visitor = EQUIPMENT.visitor_basic;
@@ -298,6 +339,16 @@ export function monthTodos(s: GameState): Todo[] {
   // 대출 거치가 3개월 안에 끝나 납부가 뛴다
   const jump = paymentJump(loanSchedule(s, 4));
   if (jump) out.push({ id: 'loan-jump', level: 'warn', text: `${jump.month - s.month === 0 ? '이번 달' : `${jump.month - s.month}개월 뒤`} 대출 거치가 끝나 월 납부가 ${fmtWon(jump.from)} → ${fmtWon(jump.to)}로 뛴다`, action: '대출 보기', target: { tab: 'finance' } });
+  // 대형 유통 납품 미달 (결정 대기 101 · MKT [제안 P-MKT-42] ⓑ-2 — 6차 판: "납품 부족 n병 — 위약금"이 118~129개월 결산 메모에만 쌓이다 3건 파기).
+  // 파기 기준은 MKT `retailBreakRemaining`(누적 미납이 두 달치) 한 함수. 한 달을 더 통째로 못 채우면 깨지는 계약이 있으면 danger
+  {
+    const short = s.commerce.retailContracts.filter((c) => c.shortfall > 0);
+    if (short.length) {
+      const lines = short.map((c) => `「${c.partner}」 누적 미납 ${c.shortfall.toLocaleString()}병 — ${retailBreakRemaining(c).toLocaleString()}병 더 못 채우면 파기(월 ${c.bottlesPerMonth.toLocaleString()}병 · 지금 해지하면 위약금 ${fmtWon(retailCancellationCost(c))})`);
+      const critical = short.some((c) => retailBreakRemaining(c) <= c.bottlesPerMonth);
+      out.push({ id: 'retail-short', level: critical ? 'danger' : 'warn', text: `납품 미달 — ${lines.join(' · ')}. 파기되면 신뢰가 크게 떨어진다 — 그 범주 재고(병입)를 늘리거나 계약을 해지한다`, action: '납품 계약', target: { tab: 'b2b' } });
+    }
+  }
   // A1(PROD 화면 메모, ARCH alerts): 지난달 지시한 배치를 다 못 만들었다 — 지금은 대시보드 결산 메모에만 있어 놓친다. 원인 문구는 생산 단계가 쓴 그대로(원재료·증류기·발효조·취수 허가)
   const lastRep = s.history.reports.at(-1);
   const shortNotes = (lastRep?.notes ?? []).filter((n) => /배치 생산 못 함|취수 허가량|증류기가 준비되지 않아/.test(n));
@@ -311,7 +362,13 @@ export function monthTodos(s: GameState): Todo[] {
     }
   }
   // 탱크 몰트·그레인 통입 대기 — 통에 넣어야 숙성이 시작된다
-  const tankMalt = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced).reduce((t, l) => t + l.volumeL, 0);
+  const tankLots = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced);
+  const tankMalt = tankLots.reduce((t, l) => t + l.volumeL, 0);
+  // 대기 개월 = 가장 오래된 탱크 로트의 생성 달부터(탱크 합치기 #166은 처음 배치 달을 유지). 6차 판(PROD prod.md ②): 5,071L가 최대 39개월 info로 묻혀 숙성 중 통 102 → 43.
+  // PROD 문턱: 3개월 이상 warn · 12개월 이상 danger(빈 통 유무와 무관) · 그 아래 info
+  const waitM = tankLots.length ? s.month - Math.min(...tankLots.map((l) => l.createdMonth)) : 0;
+  const fillLevel: Todo['level'] = waitM >= 12 ? 'danger' : waitM >= 3 ? 'warn' : 'info';
+  const waitText = fillLevel === 'info' ? '' : ` — ${waitM}개월째 통에 들어가지 않았다. 통에 넣어야 숙성이 시작된다 — 3년 위스키·12년 후보가 그만큼 늦어진다`;
   // 자동 통입(#239)이 켜져 있으면 넣을 통이 있는 동안은 안내하지 않는다 — 빈 통이 모자랄 때만 "통을 사라"로 줄인다
   const af = s.inventory.autoFill;
   const afLeft = af && tankMalt >= 50 ? autoFillPreview(s, af).leftL : 0;
@@ -319,8 +376,8 @@ export function monthTodos(s: GameState): Todo[] {
     const empties = s.inventory.casks.filter((c) => !c.contents && !c.contaminationKnown).length; // 아는 오염만(F5b I1 — 숨은 값 직접 읽기 없음)
     const free = Math.max(0, warehouseCapacity(s) - s.inventory.casks.length);
     out.push(af
-      ? { id: 'fill', level: 'info', text: `자동 통입이 켜져 있지만 빈 나무 통이 모자라 탱크 몰트·그레인 ${Math.round(afLeft).toLocaleString()}L가 남는다 — 빈 통 ${empties}개 · 남은 자리 ${free}통. 통을 사거나 숙성고를 늘리세요`, action: '통 사기', target: { anchor: 'mvp-space' } }
-      : { id: 'fill', level: 'info', text: `탱크 몰트·그레인 ${Math.round(tankMalt).toLocaleString()}L 통입 대기 — 빈 통 ${empties}개 · 남은 자리 ${free}통 (통에 넣어야 숙성이 시작된다 · 자동 통입을 켜 둘 수 있다)`, action: '통입', target: { anchor: 'mvp-fill' } });
+      ? { id: 'fill', level: fillLevel, text: `자동 통입이 켜져 있지만 빈 나무 통이 모자라 탱크 몰트·그레인 ${Math.round(afLeft).toLocaleString()}L가 남는다 — 빈 통 ${empties}개 · 남은 자리 ${free}통. 통을 사거나 숙성고를 늘리세요${waitText}`, action: '통 사기', target: { anchor: 'mvp-space' } }
+      : { id: 'fill', level: fillLevel, text: `탱크 몰트·그레인 ${Math.round(tankMalt).toLocaleString()}L 통입 대기 — 빈 통 ${empties}개 · 남은 자리 ${free}통 (통에 넣어야 숙성이 시작된다 · 자동 통입을 켜 둘 수 있다)${waitText}`, action: empties > 0 ? '통입' : '통 사기', target: { anchor: empties > 0 ? 'mvp-fill' : 'mvp-space' } });
   }
   // 위스키 재고가 떨어져 가는데 숙성을 채운 통이 있다
   // A7(PROD 화면 메모): 병입 권고는 플래그십 예비 통(#260)을 세지 않는다 — 예비 통을 권하면 "예비를 지켜라" 경고와 부딪친다. 남은 통이 예비뿐이면 그 사실과 대가를 한 줄로
@@ -343,7 +400,7 @@ export function monthTodos(s: GameState): Todo[] {
     if (stale > 0) out.push({ id: 'sample', level: 'info', text: `샘플 기록이 ${SAMPLE_STALE_MONTHS}개월 넘은(또는 없는) 통 ${stale}개 — 병입 전에 맛을 확인한다`, action: '숙성 중인 캐스크', target: { anchor: 'mvp-warehouse' } });
   }
   // 위에서부터 급한 순서 (항목이 늘었다 — 3차 대응). 같은 순위는 넣은 순서 그대로(안정 정렬)
-  return out.sort((a, b) => todoRank(a.id) - todoRank(b.id));
+  return out.sort((a, b) => todoKey(a) - todoKey(b));
 }
 
 // ───────────── ④ 지난달 현금 흐름 한 줄 ─────────────

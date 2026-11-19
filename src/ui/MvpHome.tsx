@@ -10,6 +10,7 @@ import { knownReads, lastSample, readSigma, sampleAxesOf, SAMPLING, samplingCapa
 import { AXIS } from '../sim/content/axes';
 import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
 import { cooperageLeadMonths } from '../sim/prodKnobs'; // F6c: 쿠퍼리지 납기 — 주문(actions.prod.ts)과 같은 값(Normal 2개월)
+import { fillShares, PARTIAL_FILL_HINT } from '../sim/autoFill'; // P-PROD-60: 손 통입 끝자리 안내 — 실제 통입과 같은 식
 import { vesselMaterial } from '../sim/maturation';
 import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
@@ -22,7 +23,7 @@ import { LineChart } from './charts';
 import { CashFlowLine, JourneyStrip, MonthTodo, OPEN_FOLD_EVENT } from './AlertsView';
 import { AutoSampleSettingsRow } from './panels/AutoSample';
 import { HandfillRow } from './panels/Handfill';
-import { cashAlert, flagshipCandidates, flagshipImpact, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
+import { cashAlert, flagshipCandidates, flagshipImpact, flagshipReady, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
 import { monthlyFixedBreakdown } from '../sim/loans';
 import { PriceDesk } from './panels/Sales';
 import { FeedCard } from './FeedCard'; // 커뮤니티 반응 요약 (#247, MKT — 오너 요청 2026-11-14)
@@ -221,6 +222,9 @@ function Headline() {
   // 새로 넣는 통은 후보가 될 수 없다 → 그 뒤 후보 0이면 15년 목표(플래그십 판매)를 이룰 수 없다(5차 판, mvp.md §7.16)
   const cands = sc ? flagshipCandidates(s).length : 0;
   const flagDone = campaignWon(s);
+  // 12년 적격 (6차 판 arch.md ① — 적격 달에 "0개월 뒤 도달"만 보여 12개월 늦게 병입): 승리 판정과 같은 적격(caskEligibility)으로 "지금 병입하면 승리"를 말한다
+  const win12 = flagshipReady(s);
+  const win12Hint = win12?.bottled ? `플래그십 12년 · 「${win12.bottled.name}」 병입 완료 — 팔리면 캠페인 승리` : win12?.casks.length ? `플래그십 12년 · 적격 ${win12.casks.length}통 — 지금 병입해 팔면 캠페인 승리` : null;
   const noMoreNew = legacyRules && left != null && left < flagMin; // 새 캠페인(v16)은 판 끝이 없어 새 통도 언젠가 후보가 된다
   const flagHint = !sc ? null : flagDone ? (legacyRules ? '플래그십 판매 완료' : `캠페인 승리(${s.progress.win ? winChannelLabel(s.progress.win) : '첫 출하'}) — 12년 싱글 몰트 첫 출하 완료`) : cands > 0 ? `후보 ${cands}통 · 예비 ${reserveCaskIds(s).size}통${noMoreNew ? ' — 새 통은 더 후보가 될 수 없다' : legacyRules ? '' : ' (후보 = 3년 안에 12년이 되는 통 · 예비 = 승리용으로 남겨 두는 통)'}` : legacyRules ? (noMoreNew ? '후보 0통 — 15년 안에 플래그십을 낼 수 없다' : `후보 0통 — ${Math.max(0, (sc.goal.months - flagMin) - s.month)}개월 안에 넣은 통이 후보가 된다`) : `후보 0통 — 목재 ${flagMin - HINT_HORIZON_MONTHS}개월을 넘긴 자가 몰트 통이 후보가 된다 · 예비 ${reserveCaskIds(s).size}통 보호 중`;
   return (
@@ -234,7 +238,7 @@ function Headline() {
         <Stat label="재고 평가액" value={wonCoarse(inv)} hint="원액 현물가 + 제품 재고 원가 (소주 원액 0) · 100만 원 단위" />
         <Stat label="대출 잔액" value={won(loans)} hint={loans ? `${s.finance.loans.length}건` : '없음'} />
         <Stat label="가장 오래된 자체 원액" value={months(oldest)} tone={oldest >= flagMin ? 'good' : sc && !flagDone && noMoreNew && cands === 0 ? 'bad' : undefined}
-          hint={<>{left != null ? `플래그십 ${Math.floor(flagMin / 12)}년 · 목표까지 ${left}개월` : flagDone ? `플래그십 ${Math.floor(flagMin / 12)}년 · 승리 완료` : `플래그십 ${Math.floor(flagMin / 12)}년 · 가장 오래된 통이 ${Math.max(0, flagMin - oldest)}개월 뒤 도달(기한 없음)`}{flagHint && <div className={!flagDone && cands === 0 && noMoreNew ? 'font-medium text-rose-700 dark:text-rose-400' : ''}>{flagHint}</div>}</>} />
+          hint={<>{left != null ? `플래그십 ${Math.floor(flagMin / 12)}년 · 목표까지 ${left}개월` : flagDone ? `플래그십 ${Math.floor(flagMin / 12)}년 · 승리 완료` : win12Hint ?? `플래그십 ${Math.floor(flagMin / 12)}년 · 가장 오래된 통이 ${Math.max(0, flagMin - oldest)}개월 뒤 도달(기한 없음)`}{flagHint && <div className={!flagDone && cands === 0 && noMoreNew ? 'font-medium text-rose-700 dark:text-rose-400' : ''}>{flagHint}</div>}</>} />
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
         <span className="self-center text-stone-500">바로 가기:</span>
@@ -522,6 +526,28 @@ function FillCard() {
               return (
                 <>
                   <p className="text-xs text-stone-500">{entry < lot!.abv ? `${pct(entry)}로 물을 섞으면` : '원액 도수 그대로'} 약 {liters((lot!.volumeL * lot!.abv) / entry)} — {CASKS[ft].sizeL}L 통 약 {num(Math.ceil((lot!.volumeL * lot!.abv) / entry / CASKS[ft].sizeL))}통 분량</p>
+                  {(() => {
+                    // 손 통입 끝자리 안내 (PROD [제안 P-PROD-60] — 6차 판 숙성 중 43통 중 18통이 처음부터 60% 미만, 자동 통입을 끈 시기에도 → 손 통입).
+                    // 실제 통입(fillCasks)과 같은 식(autoFill.ts fillShares)으로 미리 본다 — 막지 않는다(정보만, 출력 불변)
+                    const picked = ofType.slice(0, fillN);
+                    if (!picked.length) return null;
+                    const { shares } = fillShares(lot!.volumeL, lot!.abv, picked.map((c) => CASKS[c.typeId].sizeL), 0.635);
+                    const last = shares.at(-1);
+                    const idle = picked.length - shares.length;
+                    const short = last != null && last < PARTIAL_FILL_HINT;
+                    if (!short && !idle) return null;
+                    const backL = short ? (last! * CASKS[picked[shares.length - 1]!.typeId].sizeL * entry) / lot!.abv : 0;
+                    return (
+                      <p className="flex flex-wrap items-center gap-2 text-xs text-amber-800 dark:text-amber-300">
+                        <span>
+                          {short && `마지막 통은 ${Math.round(last! * 100)}%만 찬다 — 덜 찬 통도 자리·보관비는 같고, 개수를 하나 줄이면 약 ${liters(backL)}는 탱크에 남아 다음 통입 때 합칠 수 있다`}
+                          {idle > 0 && `${short ? ' ' : ''}(통 ${idle}개는 원액이 모자라 비어 남는다)`}
+                        </span>
+                        {short && shares.length > 1 && <Button small variant="ghost" onClick={() => setFillN(shares.length - 1)}>개수 {shares.length - 1}개로</Button>}
+                        {!short && idle > 0 && <Button small variant="ghost" onClick={() => setFillN(shares.length)}>개수 {shares.length}개로</Button>}
+                      </p>
+                    );
+                  })()}
                   {onggi && <p className="text-xs text-amber-800 dark:text-amber-300">옹기: 나무 향 없이 숨을 쉬며 거친 맛이 풀린다 — 탱크 보관보다 빠르고 증발은 나무 통의 절반. 소주 숙성용{lot!.kind !== 'soju' ? ' — 몰트는 옹기에서 보낸 기간이 위스키 숙성(오크)에 들어가지 않는다' : ''}.</p>}
                 </>
               );
