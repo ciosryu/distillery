@@ -339,7 +339,7 @@ export function monthTodos(s: GameState): Todo[] {
   // 대출 거치가 3개월 안에 끝나 납부가 뛴다
   const jump = paymentJump(loanSchedule(s, 4));
   if (jump) out.push({ id: 'loan-jump', level: 'warn', text: `${jump.month - s.month === 0 ? '이번 달' : `${jump.month - s.month}개월 뒤`} 대출 거치가 끝나 월 납부가 ${fmtWon(jump.from)} → ${fmtWon(jump.to)}로 뛴다`, action: '대출 보기', target: { tab: 'finance' } });
-  // 대형 유통 납품 미달 (결정 대기 101 · MKT [제안 P-MKT-42] ⓑ-2 — 6차 판: "납품 부족 n병 — 위약금"이 118~129개월 결산 메모에만 쌓이다 3건 파기).
+  // 대형 유통 납품 미달 ([결정 #334] · MKT [제안 P-MKT-42] ⓑ-2 — 6차 판: "납품 부족 n병 — 위약금"이 118~129개월 결산 메모에만 쌓이다 3건 파기).
   // 파기 기준은 MKT `retailBreakRemaining`(누적 미납이 두 달치) 한 함수. 한 달을 더 통째로 못 채우면 깨지는 계약이 있으면 danger
   {
     const short = s.commerce.retailContracts.filter((c) => c.shortfall > 0);
