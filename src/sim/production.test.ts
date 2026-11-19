@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mergeIntoTank, sameTank, HEX_AXES, basePresetOf, craftPresets, flavorProfile, leverEffects, leverSummary, newScenarioGame, presetAsRecipe, previewBatch, type GameState, type Recipe, advanceMonths, advanceMonth, applyAction, bulkValuePerLPA, categorize, evaporate, heartsFraction, matureCask, newGame, previewBlend, sizeFactor, simulateBatch, stillDefOf, volumeDiscounts, windowFraction, type Cask, type SpiritLot, appeal, type Product, caskStorageCost, fermentDaysAt, waterPermitCap } from './index';
+import { orderPlan } from './production';
 import { AGING_HORIZONS, recipeEconomics, STANDARD_BOTTLE, stockMonthsAfter, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast, productionValue } from './economics';
 import { slotClimate } from './warehouse';
 import { EQUIPMENT } from './content/catalog';
@@ -530,19 +531,20 @@ describe('소주·진 샘플 — 그 주종 레이더 축으로도 읽는다 (#1
 });
 
 describe('생산비 대 고정비 · 생산이 만드는 미래 위스키 (#185, 2차 플레이테스트)', () => {
-  it('월 생산비 = 배치 원가 × 월 배치 수, 해마다 위스키 병 수 = 공급 전망의 생산 지시 몫(정상 상태)과 같다', () => {
+  it('월 생산비 = 배치 원가 × 월 배치 수(설비 안에서 다 만들 때), 해마다 위스키 병 수 = 공급 전망의 생산 지시 몫(정상 상태)과 같다', () => {
     const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
     const soju = s.production.recipes.find((r) => r.kind === 'soju')!;
-    s.production.orders = [{ recipeId: malt.id, batchesPerMonth: 3 }, { recipeId: soju.id, batchesPerMonth: 2 }];
+    s.production.orders = [{ recipeId: malt.id, batchesPerMonth: 2 }, { recipeId: soju.id, batchesPerMonth: 1 }];
+    expect(orderPlan(s).every((x) => x.feasible === x.ordered)).toBe(true); // 설비 안에서 다 만들 수 있는 지시 — 모자랄 때는 실제 가능 배치로 센다(orderPlan.test.ts)
     const v = productionValue(s);
-    expect(v.costPerMonth).toBe(Math.round(previewBatch(s, malt)!.cost * 3 + previewBatch(s, soju)!.cost * 2));
-    expect(v.whiskyCostPerMonth).toBe(Math.round(previewBatch(s, malt)!.cost * 3));
+    expect(v.costPerMonth).toBe(Math.round(previewBatch(s, malt)!.cost * 2 + previewBatch(s, soju)!.cost * 1));
+    expect(v.whiskyCostPerMonth).toBe(Math.round(previewBatch(s, malt)!.cost * 2));
     const steady = whiskySupplyForecast(s, 3)[2]!.fromOrders; // 3년째 = 12개 월 생산분이 모두 위스키가 된 해
     expect(Math.abs(v.whiskyBottlesPerYear - steady)).toBeLessThanOrEqual(2);
     expect(v.pricePerBottle).toBeGreaterThan(0);
     const one = v.perBatch.find((x) => x.recipeId === malt.id)!;
-    expect(Math.abs(one.whiskyBottlesPerYear * 3 - v.whiskyBottlesPerYear)).toBeLessThanOrEqual(3);
+    expect(Math.abs(one.whiskyBottlesPerYear * 2 - v.whiskyBottlesPerYear)).toBeLessThanOrEqual(3);
     s.production.orders = [{ recipeId: soju.id, batchesPerMonth: 2 }];
     expect(productionValue(s).whiskyBottlesPerYear).toBe(0);
   });

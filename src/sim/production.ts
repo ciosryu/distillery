@@ -6,7 +6,7 @@ import type { Rng } from './rng';
 import type { Flavor, FermenterType, GameState, Recipe, RegionId, Staff } from './types';
 import { weatherOffset } from './weather';
 import type { MonthReport, SpiritLot } from './types';
-import { staffOf, bestBy, monthLabel, nid } from './util';
+import { staffOf, bestBy, calendar, monthLabel, nid } from './util';
 import { mod, effectivePriceIndex } from './modifiers';
 import { rngFor } from './rng';
 import { weightedAverage } from './flavor';
@@ -480,7 +480,7 @@ export function runProduction(s: GameState, report: MonthReport, ctx: TickContex
       });
       for (const w of res.warnings) if (!report.notes.includes(w)) report.notes.push(w);
     }
-    if (blocked) report.notes.push(`${recipe.name}: ${blocked}로 ${order.batchesPerMonth - parts.length}배치 생산 못 함`);
+    if (blocked) report.notes.push(`${recipe.name}: ${order.batchesPerMonth - parts.length}배치 생산 못 함 — ${blocked}`);
     if (!parts.length) continue;
     const lpa = parts.reduce((t, p) => t + p.lpa, 0);
     const volumeL = parts.reduce((t, p) => t + p.lot.volumeL, 0);
@@ -525,6 +525,96 @@ export interface CapacityReport {
   fermenterDaysCap: number;
   distillerRunsUsed: number;
   distillerRunsCap: number;
+}
+
+// ───────────── 생산 지시 대 실제 가능 배치 (플레이테스트 준비 A1·A2, 2026-11-16) ─────────────
+// 화면 진행 메모: 몰트 6배치를 지시했는데 발효조가 모자라 2배치만 나왔고, 그 사실은 대시보드 결산 메모에만 있었다. 생산 지시 칸의 전망은 지시 수(6배치)로 셈했다.
+// `orderPlan`은 runProduction과 **같은 순서·같은 한도**(위탁생산 먼저 → 생산 지시 순서대로 증류기·디스틸러·취수·발효조)로 이번 달 만들 수 있는 배치 수를 미리 센다.
+// 상태를 바꾸지 않는다(화면·전망 전용 — 틱은 읽지 않는다). runProduction의 한도 규칙을 바꾸면 여기도 맞춘다 — production.test.ts가 "계획 = 실제 배치"를 지킨다
+
+export interface OrderPlanRow {
+  recipeId: string;
+  name: string;
+  kind: SpiritKind;
+  /** 지시한 월 배치 수 */
+  ordered: number;
+  /** 이번 달 실제로 만들 수 있는 배치 수(≤ ordered) */
+  feasible: number;
+  /** 덜 만드는 까닭 — 다 만들면 null */
+  blocker: string | null;
+}
+
+/** 이번 달 진행 때 생산 지시별로 실제 만들 배치 수 — runProduction의 한도 배분을 그대로 미리 돈다(상태 불변).
+ *  `steady`: 이번 달만의 사정(현금 부족으로 위스키 쉼 · 소주 건너뛰기 · 생산 중단 이벤트)은 빼고 설비·인력 한도만 본다 — 여러 해 전망용 */
+export function orderPlan(s: GameState, opts: { steady?: boolean } = {}): OrderPlanRow[] {
+  const rows: OrderPlanRow[] = [];
+  const active = s.production.orders.flatMap((o) => {
+    const r = s.production.recipes.find((x) => x.id === o.recipeId);
+    return r && o.batchesPerMonth > 0 ? [{ o, r }] : [];
+  });
+  if (!opts.steady && mod(s, 'production') === 0) return active.map(({ o, r }) => ({ recipeId: r.id, name: r.name, kind: r.kind, ordered: o.batchesPerMonth, feasible: 0, blocker: '생산 중단(이벤트)' }));
+  const fermC = fermentationClimate(s, calendar(s).monthOfYear);
+  let distillerRuns = staffOf(s, 'distiller').reduce((t, d) => t + distillerRunCapacity(d.stats.b), 0);
+  const hasDistiller = staffOf(s, 'distiller').length > 0;
+  const stillRuns = new Map<string, number>();
+  const fermenters: FermenterSlot[] = [];
+  for (const e of s.production.equipment) {
+    if (e.readyMonth > s.month) continue;
+    const def = EQUIPMENT[e.catalogId];
+    if (def?.kind === 'still') stillRuns.set(e.id, def.runsPerMonth);
+    if (def?.kind === 'fermenter') fermenters.push({ id: e.id, type: def.fermenterType, capacityL: def.capacityL, daysLeft: 30 });
+  }
+  fermenters.sort((a, b) => (a.type === 'onggi' ? -1 : 0) - (b.type === 'onggi' ? -1 : 0));
+  let waterLeftL = waterPermitCap(s);
+  // 위탁생산이 먼저 설비를 쓴다
+  for (const c of s.b2b.oemContracts) {
+    if (s.month < c.startMonth) continue;
+    const stills = s.production.equipment
+      .filter((e) => e.readyMonth <= s.month && EQUIPMENT[e.catalogId]?.kind === 'still' && (EQUIPMENT[e.catalogId] as { stillType: string }).stillType !== 'column')
+      .sort((a, b) => (a.id === c.stillId ? -1 : 0) - (b.id === c.stillId ? -1 : 0));
+    for (let b = 0; b < c.batchesPerMonth; b++) {
+      const stillInst = stills.find((e) => (stillRuns.get(e.id) ?? 0) >= OEM.runs);
+      const still = stillInst ? stillDefOf(s, stillInst.id) : null;
+      if (!stillInst || !still || distillerRuns < OEM.runs || waterLeftL < still.chargeL) break;
+      const need = fermentDaysAt(OEM.fermentDays, fermC) + 2;
+      const ferm = fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need && f.type !== 'onggi');
+      if (!ferm) break;
+      ferm.daysLeft -= need;
+      waterLeftL -= still.chargeL;
+      stillRuns.set(stillInst.id, (stillRuns.get(stillInst.id) ?? 0) - OEM.runs);
+      distillerRuns -= OEM.runs;
+    }
+  }
+  const skipWhisky = !opts.steady && !!whiskySkipCheck(s);
+  const skipSoju = !opts.steady && s.production.skipSojuMonth === s.month;
+  for (const { o, r: recipe } of active) {
+    const row = (feasible: number, blocker: string | null): OrderPlanRow => ({ recipeId: recipe.id, name: recipe.name, kind: recipe.kind, ordered: o.batchesPerMonth, feasible, blocker });
+    if (skipWhisky && (recipe.kind === 'malt' || recipe.kind === 'grain')) { rows.push(row(0, '현금이 모자라 이번 달 위스키 원액을 쉰다')); continue; }
+    if (skipSoju && recipe.kind === 'soju') { rows.push(row(0, '이번 달 소주 건너뛰기')); continue; }
+    const still = stillDefOf(s, recipe.stillId);
+    const stillInst = s.production.equipment.find((e) => e.id === recipe.stillId);
+    if (!still || !stillInst || stillInst.readyMonth > s.month) { rows.push(row(0, '증류기가 준비되지 않음')); continue; }
+    let done = 0;
+    let blocked: string | null = null;
+    for (let b = 0; b < o.batchesPerMonth; b++) {
+      if ((stillRuns.get(stillInst.id) ?? 0) < recipe.runs) { blocked = '증류기 가동 한도'; break; }
+      if (distillerRuns < recipe.runs) { blocked = hasDistiller ? '디스틸러 운전 한도' : '디스틸러 없음'; break; }
+      if (recipe.kind !== 'gin' && waterLeftL < still.chargeL) { blocked = '취수 허가량'; break; }
+      if (recipe.kind !== 'gin') {
+        const need = fermentDaysAt(recipe.fermentDays, fermC) + 2;
+        const ferm = fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need && (recipe.kind === 'soju' || f.type !== 'onggi'))
+          ?? fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need);
+        if (!ferm) { blocked = '발효조 부족'; break; }
+        ferm.daysLeft -= need;
+        waterLeftL -= still.chargeL;
+      }
+      stillRuns.set(stillInst.id, (stillRuns.get(stillInst.id) ?? 0) - recipe.runs);
+      distillerRuns -= recipe.runs;
+      done++;
+    }
+    rows.push(row(done, blocked));
+  }
+  return rows;
 }
 
 /** 현재 생산 지시 기준의 설비·인력 가동 예상 (UI 미리보기용) */
