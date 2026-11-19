@@ -125,7 +125,7 @@ function phaseGrowth(s: GameState, report: MonthReport, runsUsed: number, sales:
   if (systemOn(s, 'contracts')) refreshContractOffers(s, rngFor(s.seed, s.month, 'contracts'));
   if (systemOn(s, 'caskBids')) refreshCaskBids(s, rngFor(s.seed, s.month, 'caskbids'), report); // 새 제안은 메모로 — 진행 뒤 소식 창(#253)
   updateBulkIndex(s, rngFor(s.seed, s.month, 'bulk'));
-  if (systemOn(s, 'siteDeals')) refreshDeals(s, rngFor(s.seed, s.month, 'deals'));
+  if (systemOn(s, 'siteDeals')) refreshDeals(s, rngFor(s.seed, s.month, 'deals'), report); // 받지 않고 만료된 납품 제안은 메모로(#334 7차 관찰 — 숫자 불변)
   if (systemOn(s, 'commissions')) refreshCommissions(s, rngFor(s.seed, s.month, 'commissions'), report);
   if (systemOn(s, 'exports')) refreshExportOffers(s); // 시장 단위 스트림 export-offer:<시장> (결정 #299 S7)
   // 그레인 현물 시장이 물량을 소화한다 (#81)
