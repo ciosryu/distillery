@@ -513,7 +513,7 @@ function FillCard() {
               <div className="flex flex-wrap items-end gap-2">
                 <Select label="빈 통" value={ft} options={emptyTypes.map((k) => ({ value: k, label: `${CASKS[k].nameKo} (${empties.filter((c) => c.typeId === k && !c.contaminationKnown).length})` }))} onChange={setFillType} />
                 <NumberField label="개수" value={fillN} min={1} max={200} width="w-16" onCommit={setFillN} />
-                <Button small variant="primary" disabled={!ofType.length} onClick={() => dispatch({ type: 'fillCasks', lotId: lot!.id, caskIds: ofType.slice(0, fillN).map((c) => c.id), entryAbv: 0.635 })}>통입 ({pct(Math.min(0.635, lot!.abv))})</Button>
+                <Button small variant="primary" disabled={!ofType.length} onClick={() => { setLotId(lot!.id); setLotKind(lot!.kind); dispatch({ type: 'fillCasks', lotId: lot!.id, caskIds: ofType.slice(0, fillN).map((c) => c.id), entryAbv: 0.635 }); }}>통입 ({pct(Math.min(0.635, lot!.abv))})</Button>
               </div>
             )}
             {ft && lot && (() => {
