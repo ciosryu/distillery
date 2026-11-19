@@ -9,6 +9,7 @@ import { usedCaskPrice } from '../../sim/casks';
 import { calendar } from '../../sim/util';
 import { regionOf } from '../../sim/content/regions';
 import { cooperageLeadMonths } from '../../sim/prodKnobs';
+import { fillShares, PARTIAL_FILL_HINT } from '../../sim/autoFill';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won } from '../format';
 import { Badge, Button, Card, ConfirmButton, Empty, NumberField, Select, Table, Td } from '../kit';
@@ -78,6 +79,22 @@ function Tanks() {
             if (dispatch({ type: 'fillCasks', lotId: fillFor, caskIds: emptyOfType.slice(0, count).map((c) => c.id), entryAbv: entry / 100 })) setFillFor(null);
           }}>통입</Button>
           <span className="text-xs text-stone-500">물을 섞어 통입 도수로 낮춥니다. 빈 통이 없으면 아래에서 구매하세요.</span>
+          {(() => {
+            // 끝자리 안내 (P-PROD-60) — 마지막 통이 절반도 안 차면 알리고 개수를 하나 줄이는 버튼을 준다(막지 않는다)
+            const lot = s.inventory.lots.find((l) => l.id === fillFor);
+            if (!lot) return null;
+            const picked = emptyOfType.slice(0, count);
+            const { shares, leftL } = fillShares(lot.volumeL, lot.abv, picked.map((c) => CASKS[c.typeId].sizeL), entry / 100);
+            const last = shares.at(-1);
+            if (last == null || shares.length < 1 || last >= PARTIAL_FILL_HINT) return null;
+            const spare = (CASKS[caskType].sizeL * last * Math.min(entry / 100, lot.abv)) / lot.abv;
+            return (
+              <span className="flex w-full flex-wrap items-center gap-2 text-xs text-amber-800 dark:text-amber-300">
+                마지막 통은 {Math.round(last * 100)}%만 찬다{shares.length < picked.length ? ` (통 ${picked.length - shares.length}개는 원액이 모자라 비어 남는다)` : ''} — 덜 찬 통도 자리·보관비는 같고, 개수를 하나 줄이면 약 {liters(spare + leftL)}는 탱크에 남아 다음 통입 때 합칠 수 있다
+                {shares.length > 1 && <Button small variant="ghost" onClick={() => setCount(shares.length - 1)}>개수 {shares.length - 1}개로</Button>}
+              </span>
+            );
+          })()}
           {CASKS[caskType].material === 'onggi' && <span className="w-full text-xs text-amber-800 dark:text-amber-300">옹기: 나무 향(바닐라·탄닌) 없이 숨을 쉬며 거친 맛이 풀리고 둥글어진다 — 탱크 보관보다 빠르고, 증발은 나무 캐스크의 절반. 소주·백주 숙성용이다. 옹기에서 보낸 기간은 위스키 숙성(오크) 개월에 들어가지 않는다.</span>}
         </div>
       )}
