@@ -1,2 +1,3 @@
 standard exit 0
 micro exit 0
+standard-240 exit 0
