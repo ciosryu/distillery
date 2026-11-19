@@ -8,6 +8,8 @@ import { activeMsAt, parsePlayFile, type Playlog } from '../../src/store/playlog
 import { EVENT } from '../../src/sim/content/events';
 import { stagesOf } from '../../src/sim/scenario';
 import { MORALE, moraleOf, TRAIT_INFO } from '../../src/sim/hr';
+import { difficultyOf, rulesVersionOf } from '../../src/sim/rules';
+import { reserveCaskIds } from '../../src/sim/tags';
 
 const path = process.argv[2];
 if (!path) { console.error('사용: npx tsx scripts/experiments/playlog-report.ts <기록 파일.json>'); process.exit(1); }
@@ -58,6 +60,7 @@ console.log(`- 옹기: ${s.inventory.casks.filter((c) => c.typeId === 'onggi_jar
 
 bankScreeningCheck();
 hrCheck();
+v16Observe();
 
 /**
  * 은행 심사(#65, 닫힘) 다시 열 조건 — 결정 #192 PR(#125) 본문의 ①②③. 게임은 바꾸지 않고 기록만 센다
@@ -168,3 +171,57 @@ function slowTurns(l: Playlog): void {
 }
 
 
+
+/**
+ * 6차(첫 v16 판) 관찰 질문 9개의 근거를 기록 파일에서 뽑는다 (mvp.md §7.24 ② — 오너의 한 줄 답과 나란히 본다). 게임 변경 없음.
+ * 플레이 기록은 행동 종류를 남기지 않는다 → 세이브 상태·결산 메모·판매 사건·이벤트 기록으로 센다. 결산 상세는 최근 120개월만 남는다(앞은 연 요약)
+ */
+function v16Observe(): void {
+  if (rulesVersionOf(s) !== 'v16' || !s.scenario) return;
+  console.log('\n## 6차 관찰 질문 근거 (mvp.md §7.24 ② — v16 판, 게임 변경 없음)');
+  const span = reports.length ? `${reports[0]!.month}~${reports.at(-1)!.month}개월 결산` : '결산 없음';
+  console.log(`- 범위: ${span}${reports.length && reports[0]!.month > 0 ? ' (앞은 연 요약만 — 그 기간 메모는 셀 수 없다)' : ''}`);
+  const notes = reports.flatMap((r) => r.notes.map((n) => ({ month: r.month, n })));
+  const man = (v: number) => `${Math.round(v / 10_000).toLocaleString()}만`;
+  // 1 인건비 (#327·#330)
+  const wage = notes.filter((x) => x.n.startsWith('정기 임금 조정'));
+  const pay0 = reports[0]?.expenses.salaries, pay1 = reports.at(-1)?.expenses.salaries;
+  console.log(`- ① 인건비: 정기 임금 조정 ${wage.length}회${wage.length ? `(${wage.map((x) => x.month).join('·')}개월)` : ''} · 월 급여 ${pay0 != null ? man(pay0) : '—'} → ${pay1 != null ? man(pay1) : '—'} · 직원 ${s.hr.staff.length}명`);
+  // 2 소량 병입 (#328)
+  const small = [...s.commerce.products, ...(s.commerce.productArchive ?? [])].filter((p) => {
+    const made = ('stockBottles' in p ? (p as { stockBottles: number }).stockBottles : 0) + (p.totalSold ?? 0);
+    return made > 0 && made <= 60 && !(p as { dutyFreeOnly?: boolean }).dutyFreeOnly;
+  });
+  console.log(`- ② 소량 병입(제품 하나에 60병 이하): ${small.length}개${small.length ? ` — ${small.slice(0, 6).map((p) => `「${p.name}」(${p.createdMonth}개월)`).join(' · ')}` : ''} · 샘플 뜬 통 ${s.inventory.casks.filter((c) => c.sampleLog?.length).length}/${s.inventory.casks.filter((c) => c.contents).length}`);
+  // 3 대형 유통 납품
+  const retailRev = reports.reduce((t, r) => t + (r.retailDealRevenue ?? 0), 0);
+  const retailMonths = reports.filter((r) => (r.retailDealRevenue ?? 0) > 0).map((r) => r.month);
+  const retailNotes = notes.filter((x) => /납품 계약|납품 위약|납품 해지|납품 만료/.test(x.n));
+  console.log(`- ③ 대형 유통 납품: 지금 계약 ${s.commerce.retailContracts.length}건 · 납품 대금이 들어온 달 ${retailMonths.length}개월${retailMonths.length ? `(${retailMonths[0]}~${retailMonths.at(-1)})` : ''} · 합계 ${(retailRev / 1e8).toFixed(2)}억 · 관련 메모 ${retailNotes.length}건${retailNotes.length ? ` — ${retailNotes.slice(0, 3).map((x) => `${x.month}: ${x.n.slice(0, 40)}`).join(' / ')}` : ''}`);
+  // 4 핵심 전문가 (#316)
+  const ks = s.hr.staff.find((x) => x.keySpecialist);
+  const stage = stagesOf(s).find((st) => st.unlock.includes('action:pickSpecialist'));
+  console.log(`- ④ 핵심 전문가: ${ks ? `${ks.role}(${ks.hiredMonth}개월에 합류)` : stage && s.month > stage.month ? '고르지 않았다' : '아직 열리지 않았다'}`);
+  // 5 예비 통·후보
+  const cands = reports.map((r) => ({ m: r.month, n: r.flagshipCandidates })).filter((x) => x.n != null);
+  const drops = cands.filter((x, i) => i && x.n! < cands[i - 1]!.n!).map((x) => x.m);
+  console.log(`- ⑤ 예비·후보: 지금 예비 ${reserveCaskIds(s).size}통 · 후보 수가 줄어든 달 ${drops.length}회${drops.length ? `(${drops.slice(0, 8).join('·')})` : ''} — 줄어든 까닭(병입·판매·사고)은 그 달 메모로`);
+  // 6 승리·계속 운영
+  const win = s.progress.win;
+  console.log(`- ⑥ 승리: ${win ? `${win.month}개월 ${win.kind}${win.channel ? `/${win.channel}` : ''} · 그 뒤 ${s.month - win.month}개월 더 함 · 결과 화면 확인 ${s.progress.verdict?.acknowledged ? '함(계속 운영)' : '안 함'}` : '아직 없음'}${s.status !== 'running' ? ` · 끝남(${s.status})` : ''}`);
+  // 7 선택 이벤트 — 기본값과 같은 선택은 직접 골랐는지 알 수 없다
+  const chosen = s.events.log.filter((e) => e.title.includes(' → ')).map((e) => {
+    const [title, label] = e.title.split(' → ');
+    const def = Object.values(EVENT).find((d) => d.title === title);
+    const isDefault = def?.choices?.[def.defaultChoice ?? 0]?.label === label;
+    return { month: e.month, title: title!, label: label!, isDefault };
+  });
+  console.log(`- ⑦ 선택 이벤트: ${chosen.length}건 · 기본값과 다른 선택(직접 고름이 확실) ${chosen.filter((x) => !x.isDefault).length}건${chosen.length ? ` — ${chosen.slice(-5).map((x) => `${x.month}: ${x.title}→${x.label}${x.isDefault ? '(기본)' : ''}`).join(' / ')}` : ''} (이벤트 기록은 최근 60건)`);
+  // 8 블렌딩 의뢰
+  const comm = s.commerce.commissions ?? [];
+  const mg = s.progress.midGoals?.find((g) => g.id === 'commission_done');
+  console.log(`- ⑧ 블렌딩 의뢰: 성사 ${comm.filter((c) => c.fulfilledBy).length}건 · 남은 의뢰 ${comm.filter((c) => !c.fulfilledBy).length}건 · 중반 목표 ${mg ? `${mg.result}(${mg.month}개월)` : '판정 전'}`);
+  // 9 난이도
+  const d = difficultyOf(s);
+  console.log(`- ⑨ 난이도: ${d.preset} · ${Object.entries(d.levels).map(([k, v]) => `${k} ${v}`).join(' · ')}${s.difficulty ? '' : ' (스냅샷 없음 = 보통)'}`);
+}
