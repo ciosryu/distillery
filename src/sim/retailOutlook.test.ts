@@ -34,3 +34,22 @@ describe('retailBreakRemaining — 파기까지 남은 미납', () => {
     expect(retailBreakRemaining({ bottlesPerMonth: 300, shortfall: 900 })).toBe(0);
   });
 });
+
+describe('refreshDeals — 받지 않고 만료된 납품 제안을 메모로 (#334 7차 관찰)', () => {
+  it('만료되는 달에 메모 한 줄 · 아직 남은 제안은 메모 없음 · report가 없으면 메모 없이 지운다', async () => {
+    const { newScenarioGame } = await import('./newScenario');
+    const { refreshDeals } = await import('./deals');
+    const { rngFor } = await import('./rng');
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const offer = (id: string, expiresMonth: number) => ({ id, partner: '가온마트', category: 'soju_distilled' as const, bottlesPerMonth: 1000, priceFactor: 0.8, termMonths: 12, paymentDelay: 2, penaltyPerBottle: 780, expiresMonth });
+    s.commerce.retailOffers = [offer('U1', s.month), offer('U2', s.month + 2)];
+    const report = { notes: [] as string[] } as unknown as Parameters<typeof refreshDeals>[2] & { notes: string[] };
+    refreshDeals(s, rngFor(s.seed, s.month, 'deals'), report);
+    expect(report.notes).toEqual(['가온마트 납품 제안 만료 — 증류식 소주 1,000병/월 (받지 않음)']);
+    expect(s.commerce.retailOffers.map((o) => o.id)).toContain('U2');
+    expect(s.commerce.retailOffers.map((o) => o.id)).not.toContain('U1');
+    s.commerce.retailOffers = [offer('U3', s.month)];
+    refreshDeals(s, rngFor(s.seed, s.month, 'deals'));
+    expect(s.commerce.retailOffers.map((o) => o.id)).not.toContain('U3');
+  });
+});

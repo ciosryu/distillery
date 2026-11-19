@@ -66,20 +66,26 @@ const stillMaking = (s: GameState, kind: string) =>
 export function autoFillPlan(s: GameState, cfg: AutoFillSettings): { lot: SpiritLot; caskIds: string[]; heldL: number; leftL: number }[] {
   const entryCap = cfg.entryAbv ?? AUTO_FILL.defaultEntryAbv;
   const casks = autoFillCasks(s, cfg);
-  let i = 0;
+  const used = new Set<string>();
   return autoFillLots(s, cfg).map((l) => {
     const entry = Math.min(entryCap, l.abv);
     const hold = stillMaking(s, l.kind);
     const ids: string[] = [];
     let lotL = l.volumeL;
     let heldL = 0;
-    while (lotL >= 1 && i < casks.length) {
-      const needL = (casks[i]!.sizeL * entry) / l.abv;
-      if (lotL < needL && hold && lotL / needL < AUTO_FILL.minLastFill) { heldL = lotL; lotL = 0; break; }
-      ids.push(casks[i]!.id);
+    // 빈 통을 설정 순서대로 본다. 생산 중(hold)이면 꽉 차지 않을 통은 **건너뛰고** 더 작은 통을 찾는다 — 섞인 크기(셰리 벗 500L가 앞에 오면
+    // 남은 277L가 버번 200L 한 통을 꽉 채울 수 있는데도 통째로 멈추던 것, 7차 판 전 화면 점검 2026-11-19)
+    for (const c of casks) {
+      if (lotL < 1) break;
+      if (used.has(c.id)) continue;
+      const needL = (c.sizeL * entry) / l.abv;
+      if (lotL < needL && hold && lotL / needL < AUTO_FILL.minLastFill) continue;
+      ids.push(c.id);
+      used.add(c.id);
       lotL -= Math.min(lotL, needL);
-      i++;
     }
+    // 남은 몫 — 생산 중이고 아직 안 쓴 빈 통이 있으면 "꽉 차지 않아 둔 몫"(다음 통입 때 합친다), 아니면 빈 통이 모자란 몫
+    if (lotL >= 1 && hold && casks.some((c) => !used.has(c.id))) { heldL = lotL; lotL = 0; }
     return { lot: l, caskIds: ids, heldL, leftL: lotL };
   });
 }
