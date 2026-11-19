@@ -10,6 +10,7 @@ import { knownReads, lastSample, readSigma, sampleAxesOf, SAMPLING, samplingCapa
 import { AXIS } from '../sim/content/axes';
 import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
 import { cooperageLeadMonths } from '../sim/prodKnobs'; // F6c: 쿠퍼리지 납기 — 주문(actions.prod.ts)과 같은 값(Normal 2개월)
+import { fillShares, PARTIAL_FILL_HINT } from '../sim/autoFill'; // P-PROD-60: 손 통입 끝자리 안내 — 실제 통입과 같은 식
 import { vesselMaterial } from '../sim/maturation';
 import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
@@ -525,6 +526,28 @@ function FillCard() {
               return (
                 <>
                   <p className="text-xs text-stone-500">{entry < lot!.abv ? `${pct(entry)}로 물을 섞으면` : '원액 도수 그대로'} 약 {liters((lot!.volumeL * lot!.abv) / entry)} — {CASKS[ft].sizeL}L 통 약 {num(Math.ceil((lot!.volumeL * lot!.abv) / entry / CASKS[ft].sizeL))}통 분량</p>
+                  {(() => {
+                    // 손 통입 끝자리 안내 (PROD [제안 P-PROD-60] — 6차 판 숙성 중 43통 중 18통이 처음부터 60% 미만, 자동 통입을 끈 시기에도 → 손 통입).
+                    // 실제 통입(fillCasks)과 같은 식(autoFill.ts fillShares)으로 미리 본다 — 막지 않는다(정보만, 출력 불변)
+                    const picked = ofType.slice(0, fillN);
+                    if (!picked.length) return null;
+                    const { shares } = fillShares(lot!.volumeL, lot!.abv, picked.map((c) => CASKS[c.typeId].sizeL), 0.635);
+                    const last = shares.at(-1);
+                    const idle = picked.length - shares.length;
+                    const short = last != null && last < PARTIAL_FILL_HINT;
+                    if (!short && !idle) return null;
+                    const backL = short ? (last! * CASKS[picked[shares.length - 1]!.typeId].sizeL * entry) / lot!.abv : 0;
+                    return (
+                      <p className="flex flex-wrap items-center gap-2 text-xs text-amber-800 dark:text-amber-300">
+                        <span>
+                          {short && `마지막 통은 ${Math.round(last! * 100)}%만 찬다 — 덜 찬 통도 자리·보관비는 같고, 개수를 하나 줄이면 약 ${liters(backL)}는 탱크에 남아 다음 통입 때 합칠 수 있다`}
+                          {idle > 0 && `${short ? ' ' : ''}(통 ${idle}개는 원액이 모자라 비어 남는다)`}
+                        </span>
+                        {short && shares.length > 1 && <Button small variant="ghost" onClick={() => setFillN(shares.length - 1)}>개수 {shares.length - 1}개로</Button>}
+                        {!short && idle > 0 && <Button small variant="ghost" onClick={() => setFillN(shares.length)}>개수 {shares.length}개로</Button>}
+                      </p>
+                    );
+                  })()}
                   {onggi && <p className="text-xs text-amber-800 dark:text-amber-300">옹기: 나무 향 없이 숨을 쉬며 거친 맛이 풀린다 — 탱크 보관보다 빠르고 증발은 나무 통의 절반. 소주 숙성용{lot!.kind !== 'soju' ? ' — 몰트는 옹기에서 보낸 기간이 위스키 숙성(오크)에 들어가지 않는다' : ''}.</p>}
                 </>
               );
