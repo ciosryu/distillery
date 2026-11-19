@@ -27,7 +27,7 @@ import { monthlyFixedBreakdown } from '../sim/loans';
 import { PriceDesk } from './panels/Sales';
 import { FeedCard } from './FeedCard'; // 커뮤니티 반응 요약 (#247, MKT — 오너 요청 2026-11-14)
 import { Equipment, Orders, RecipeEditor } from './panels/Production';
-import { CATEGORY_ORDER, sourceCategory } from './panels/Bottling';
+import { CATEGORY_ORDER, sourceCategory, partialFill } from './panels/Bottling';
 import { liters, months, num, pct, won, wonCoarse } from './format';
 import { Badge, Button, Card, ConfirmButton, Empty, Meter, NumberField, Select, Stat, Table, Td } from './kit';
 
@@ -437,7 +437,7 @@ function WarehouseCard() {
                 <Td className="text-xs">{c.id} · {CASKS[c.typeId].nameKo}{c.fills > 1 && vesselMaterial(c) === 'wood' ? ` (${c.fills}필)` : ''}<CaskTagChips s={s} c={c} reserve={reserve} /></Td>
                 <Td className="max-w-48 truncate text-xs">{lot.name}{lot.sourced && <> <Badge tone="info">매입</Badge></>}{c.owner && <> <Badge tone="info">고객 소유</Badge></>}{c.rareKnown && <> <Badge tone="good">레어</Badge></>}{c.contaminationKnown && <> <Badge tone="bad">오염</Badge></>}</Td>
                 <Td right>{vesselMaterial(c) === 'wood' ? months(lot.oakMonths) : <>옹기 {months(lot.restMonths ?? 0)}{lot.oakMonths > 0 && <div className="text-xs text-stone-500">오크 {months(lot.oakMonths)}</div>}</>}</Td>
-                <Td right>{liters(lot.volumeL)}</Td>
+                <Td right>{liters(lot.volumeL)}{partialFill(c) != null && <div className="text-[11px] text-stone-500" title="통 크기보다 원액이 많이 적다 — 공기에 닿는 면이 넓어 증발·나무 추출이 빠를 수 있다(병입 화면과 같은 기준: 60% 미만)">덜 찬 통 {partialFill(c)}%</div>}</Td>
                 <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>{vesselMaterial(c) === 'onggi' ? '옹기 ' : ''}숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : vesselMaterial(c) !== 'wood' && lot.oakMonths < minM ? <Badge tone="warn">옹기 — 위스키 숙성에 안 들어감</Badge> : lot.oakMonths >= minM ? <Badge tone="good">위스키{lot.oakMonths < 36 ? ' (어림)' : ''}</Badge> : <Badge tone="warn">{minM - lot.oakMonths}개월 남음</Badge>}</Td>
                 <Td><SampleCell s={s} c={c} known={known.get(c.id)} /></Td>
                 <Td className="whitespace-nowrap">
@@ -491,9 +491,12 @@ function FillCard() {
   };
   const emptyTypes = (Object.keys(CASKS) as CaskTypeId[]).filter((k) => empties.some((c) => c.typeId === k));
   const [lotId, setLotId] = useState('');
+  const [lotKind, setLotKind] = useState<SpiritLot['kind'] | ''>('');
   const [fillType, setFillType] = useState<CaskTypeId | ''>('');
   const [fillN, setFillN] = useState(4);
-  const lot = malts.find((l) => l.id === lotId) ?? malts[0];
+  // B1(PROD 화면 메모): 고른 원액이 통입으로 비면 목록 맨 앞(소주일 수 있다)으로 넘어가 버튼을 연달아 누르면 소주를 버번 통에 넣었다 →
+  // 고른 원액이 사라지면 **같은 주종의 다음 원액**으로, 같은 주종이 없으면 선택 없음(버튼 비활성 + "원액을 고르세요"). 아직 아무것도 안 골랐으면 맨 앞(몰트 먼저)
+  const lot = lotId ? (malts.find((l) => l.id === lotId) ?? (lotKind ? malts.find((l) => l.kind === lotKind) : undefined)) : malts[0];
   // 고르지 않았으면 원액에 맞는 통을 먼저: 소주 → 옹기, 몰트 → 나무
   const fits = (k: CaskTypeId) => (lot?.kind === 'soju') === (CASKS[k].material === 'onggi');
   const ft = fillType && emptyTypes.includes(fillType) ? fillType : emptyTypes.find(fits) ?? emptyTypes[0];
@@ -505,15 +508,15 @@ function FillCard() {
         <AutoFillRow />
         {!malts.length ? <Empty>탱크에 숙성할 원액(몰트·소주)이 없습니다 — 생산 지시를 내리고 한 달을 진행하세요</Empty> : (
           <>
-            <Select label="원액" value={lot!.id} options={malts.map((l) => ({ value: l.id, label: lotLabel(l) }))} onChange={(v) => { setLotId(v); setFillType(''); }} />
-            {!ft ? <span className="text-xs text-rose-700 dark:text-rose-400">빈 통이 없습니다 — 아래 숙성고 공간에서 사세요</span> : (
+            <Select label="원액" value={lot?.id ?? ''} options={[...(lot ? [] : [{ value: '', label: '원액을 고르세요' }]), ...malts.map((l) => ({ value: l.id, label: lotLabel(l) }))]} onChange={(v) => { setLotId(v); setLotKind(malts.find((l) => l.id === v)?.kind ?? ''); setFillType(''); }} />
+            {!lot ? <span className="text-xs text-stone-500">고른 원액을 다 통입했다 — 다음 원액을 고르세요</span> : !ft ? <span className="text-xs text-rose-700 dark:text-rose-400">빈 통이 없습니다 — 아래 숙성고 공간에서 사세요</span> : (
               <div className="flex flex-wrap items-end gap-2">
                 <Select label="빈 통" value={ft} options={emptyTypes.map((k) => ({ value: k, label: `${CASKS[k].nameKo} (${empties.filter((c) => c.typeId === k && !c.contaminationKnown).length})` }))} onChange={setFillType} />
                 <NumberField label="개수" value={fillN} min={1} max={200} width="w-16" onCommit={setFillN} />
-                <Button small variant="primary" disabled={!ofType.length} onClick={() => dispatch({ type: 'fillCasks', lotId: lot!.id, caskIds: ofType.slice(0, fillN).map((c) => c.id), entryAbv: 0.635 })}>통입 ({pct(Math.min(0.635, lot!.abv))})</Button>
+                <Button small variant="primary" disabled={!ofType.length} onClick={() => { setLotId(lot!.id); setLotKind(lot!.kind); dispatch({ type: 'fillCasks', lotId: lot!.id, caskIds: ofType.slice(0, fillN).map((c) => c.id), entryAbv: 0.635 }); }}>통입 ({pct(Math.min(0.635, lot!.abv))})</Button>
               </div>
             )}
-            {ft && (() => {
+            {ft && lot && (() => {
               const entry = Math.min(0.635, lot!.abv);
               const onggi = CASKS[ft].material === 'onggi';
               return (
