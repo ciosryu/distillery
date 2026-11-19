@@ -1444,7 +1444,7 @@ v16 새 게임을 화면으로 19개월 진행한 메모(PM STATUS 요약) 중 P
 
 ## F7-B 난이도 후보 값 — PROD 몫 `[제안 P-PROD-59]` (PM 배정 2026-11-19, MGT `[제안 P-MGT-55]` #643 입력, 기준 `main` `636f348`)
 
-> **측정 입력이다. 판정이 아니다.** `content/difficulty.ts` KNOBS는 지금 모두 `easy: 1, hard: 1`이고 이 PR도 바꾸지 않는다. 값 파일: [`f7b/prod-candidates.json`](f7b/prod-candidates.json)(MGT 하네스 `KNOB_CAND`가 읽는 형식이 정해지면 맞춘다).
+> **측정 입력이다. 판정이 아니다.** `content/difficulty.ts` KNOBS는 지금 모두 `easy: 1, hard: 1`이고 이 PR도 바꾸지 않는다. 값 파일: [`../baseline/f7b/candidates-prod.json`](../baseline/f7b/candidates-prod.json)(MGT 형식 — easy·hard·why·felt, `incidents.lossSize`는 MGT 파일).
 
 | 손잡이 | Easy | Hard | v16 한국에서 닿는 때 | 근거 · 예상 |
 |---|---|---|---|---|
@@ -1459,10 +1459,11 @@ v16 새 게임을 화면으로 19개월 진행한 메모(PM STATUS 요약) 중 P
 | `incidents.eventChance` | 0.5 | 1.5 | 60개월부터 | 증류기 고장 0.015/월 · 쿨다운 12 → Normal 120개월 기대 약 1.5회 |
 | `incidents.eventMagnitude` | 0.7 | 1.3 | 60개월부터 | 사고 modifier 거리. 소실은 `lossSize`, 중단 개월은 `stillDownMonths` — 겹치지 않음 |
 | `incidents.eventDuration` | 0.75 | 1.25 | 60개월부터 | 기상 충격 포함 |
-| `incidents.lossSize` | 0.7 | 1.5 | 60개월부터 | MGT 후보 그대로 — PROD 동의 |
+| `incidents.lossSize` | (0.7) | (1.5) | 60개월부터 | MGT가 낸다(원장 damageMul) — PROD 동의 |
 | `incidents.stillDownMonths` | 0.5 | 1.5 | 60개월부터 | 수리 중단 2 → 1 / 3개월. 중단 달 몰트 0 → 12년 후보 공급에 그대로 빈다 |
 | `incidents.spoilSize` | 0.5 | 1.5 | 60개월부터 | 이취 +8 → +4 / +12. 그 달 배치만 — 효과 미미 |
 
+- **MGT 추론 확인:** `windfallSize`·`forecast*`·`stillDownMonths`·`spoilSize`는 모두 이벤트 효과·예보 안에서만 곱해진다(`prodKnobs.ts tuneEventEffects`·`tuneForecast`) → 이벤트가 열리는 60개월 뒤에만 닿는다 `[사실 — 코드]`
 - **v16 한국 처음 60개월에 닿는 PROD 손잡이는 둘뿐이다** — `priceWalkSigma`(흔들림)·`caskLead`(Hard 납기). 나머지 12개는 6년 차부터. 화면이 "어려움 = 원자재·사고가 거세다"를 처음부터 약속하면 정직성 문제다(MGT P-MGT-55 ⑤와 같은 지적) — 사업 계획서의 "6년 차부터 열린다" 문구(이미 있음)를 난이도 세부 설정 줄에도 붙이기를 [제안]
 - **봇 측정으로 효과가 0인 손잡이:** `forecastMonths`·`forecastCertainty`(봇이 예보를 읽지 않는다). 측정 표에 "봇 미반영 — 사람 판에서만"으로 따로 적기를 [제안]. 억지로 키워 간격을 만들지 않는다
 - **쌓임 위험:** supply Hard는 확률 ×1.5 · 크기 ×1.3 · 기간 ×1.25가 함께 걸려 원가 악재의 기대 비용이 어림 2.4배(곱)다. incidents도 같은 구조 + `lossSize` ×1.5. 영역 단독 E/H 행(P-MGT-55 설계)으로 먼저 재고, 쌓임이 ±30%를 넘으면 크기·기간을 1.15 / 1.1로 줄인 2차 후보로 다시 잰다
