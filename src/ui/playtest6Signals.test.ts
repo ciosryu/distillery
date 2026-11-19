@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { newScenarioGame, type GameState, type SpiritLot } from '../sim';
 import { parsePlayFile } from '../store/playlog';
 import { emptyCaskOf } from '../sim/newGame';
-import { flagshipReady, handfillIdle, monthTodos } from './alerts';
+import { flagshipReady, handfillIdle, monthTodos, TODO_ORDER } from './alerts';
 import { sGradeRows } from './Verdict';
 import { turnNews } from './TurnBrief';
 
@@ -113,5 +113,27 @@ describe('결과 화면 — 등급 S 조건 세 줄 (6차 판 완료 세이브: 
     const rows = sGradeRows(v);
     expect(rows.map((x) => [x.id, x.ok])).toEqual([['s-networth', false], ['s-quality', false], ['s-awareness', true]]);
     expect(rows[0]!.text).toBe('18.48억 / S 조건 36.00억');
+  });
+});
+
+describe('납품 미달 할 일 (결정 대기 101 · MKT P-MKT-42 ⓑ-2)', () => {
+  const withContract = (shortfall: number) => {
+    const s = mvp();
+    s.commerce.retailContracts = [{ id: 'RC1', partner: '가온마트', category: 'soju_distilled', bottlesPerMonth: 600, priceFactor: 0.8, penaltyPerBottle: 2000, termMonths: 24, startMonth: 0, monthsDone: 6, delivered: 3000, shortfall } as never];
+    return s;
+  };
+  it('미납 없으면 없음 · 여유 있으면 warn · 한 달 더 못 채우면 깨지면 danger(맨 위) — 파기까지 남은 병 = retailBreakRemaining', () => {
+    expect(todo(withContract(0), 'retail-short')).toBeUndefined();
+    const w = todo(withContract(190), 'retail-short')!;
+    expect(w.level).toBe('warn');
+    expect(w.text).toMatch(/「가온마트」 누적 미납 190병 — 1,010병 더 못 채우면 파기/);
+    expect(w.target).toEqual({ tab: 'b2b' });
+    const d = todo(withContract(900), 'retail-short')!;
+    expect(d.level).toBe('danger');
+    expect(d.text).toMatch(/300병 더 못 채우면 파기/);
+    expect(monthTodos(withContract(900)).filter((t) => !t.id.startsWith('stage-'))[0]!.id).toBe('retail-short');
+  });
+  it('순서: 결품 바로 다음', () => {
+    expect(TODO_ORDER.indexOf('retail-short')).toBe(TODO_ORDER.indexOf('stockout') + 1);
   });
 });
