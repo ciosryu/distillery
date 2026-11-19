@@ -107,7 +107,7 @@ export default function App() {
             <Button disabled={!running || !!advancing} onClick={() => advance(12)}>1년 진행</Button>
             {advancing
               ? <Button variant="ghost" onClick={cancelAdvance}>자동 진행 중 {advancing.done}/{advancing.total} — 멈춤</Button>
-              : <Button disabled={!running} onClick={() => void advanceUntil(24)} title="선택 이벤트·예보·현금 경고·설비 가동 시작·블렌딩 의뢰 중 하나가 생기면 멈춘다 (최대 24개월)">다음 알림까지</Button>}
+              : <Button disabled={!running} onClick={() => void advanceUntil(24)} title="선택 이벤트·예보·현금 경고·설비 가동 시작·블렌딩 의뢰·12년 적격 통 중 하나가 생기면 멈춘다 (최대 24개월)">다음 알림까지</Button>}
             {/* 한 턴 되돌리기 (3차 MVP 플레이테스트 오너 요청 — 실수로 분기 진행을 누를 때) */}
             <Button variant="ghost" disabled={!undoInfo || !!advancing} onClick={undo} title={undoInfo ? `${monthLabel(s.startYear, undoInfo.month)}로 되돌린다 — 직전 진행 ${undoInfo.months}개월과 그 뒤에 한 행동이 사라진다(한 번만)` : '되돌릴 진행이 없다'}>↶ 되돌리기{undoInfo && undoInfo.months > 1 ? ` (${undoInfo.months}개월)` : ''}</Button>
             <Button variant="ghost" onClick={() => { setPlanOpen((v) => !v); setNewGameOpen(false); }}>새 게임</Button>

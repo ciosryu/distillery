@@ -1,6 +1,6 @@
 // 난이도 콘텐츠 표 (F6, [결정 #313·#314] — architecture §10.10 [제안 P-ARCH-58]). 코어 그릇 — **행은 각 파트가 자기 PR로 채운다**.
-// 원칙: Normal = 지금 값(늘 ×1, 표에 적지 않는다). Easy·Hard 크기는 F7 측정 뒤 오너가 정한다 — 그때까지 모든 값은 1(자리만)이라
-// 이 표가 있어도 출력은 바뀌지 않는다. 읽기는 `rules.ts knob(s, id)` 하나로. 이 파일은 types만 본다(잎 모듈 — 어디서든 안전).
+// 원칙: Normal = 지금 값(늘 ×1, 표에 적지 않는다). Easy·Hard 크기 = F7-B 최종 후보 `[제안 P-MGT-58]`(`docs/baseline/2026-11-19-f7b-r2/cand/final-*.json`, 37행 —
+// 결정 대기 98, 오너 "권장안대로" 2026-11-19). Normal 판은 이 표를 읽어도 ×1이라 출력 불변. 읽기는 `rules.ts knob(s, id)` 하나로. 이 파일은 types만 본다(잎 모듈 — 어디서든 안전).
 import type { DifficultyConfig, DifficultyDomain, DifficultyLevel, DifficultyPreset } from '../types';
 
 export const DIFFICULTY_DOMAINS: readonly DifficultyDomain[] = ['macro', 'competition', 'taste', 'supply', 'incidents', 'finance'];
@@ -22,57 +22,57 @@ export interface KnobDef {
 }
 
 /**
- * 손잡이 표 `[튜닝 — 자리값: 모두 1]`. 영역 배수 `<영역>.eventChance`는 코어가 `events.ts rollChance`에서 읽는다(이벤트 `EventDef.domain` 태그 × 이 값).
+ * 손잡이 표 `[튜닝 — F7-B 최종 후보 P-MGT-58 · 결정 대기 98]` — 경쟁 3행은 [결정 #329]로 1 고정. 영역 배수 `<영역>.eventChance`는 코어가 `events.ts rollChance`에서 읽는다(이벤트 `EventDef.domain` 태그 × 이 값).
  * 나머지 행(금리·한도·시세 σ·탄력성·원가 이벤트 크기…)은 MGT·MKT·PROD가 자기 시스템에 `× knob(s, id)`를 붙이는 PR에서 더한다 — Normal 바이트 동일이 머지 조건.
  * `competition.eventChance`는 태그(`ad_regulation`)가 있어 행을 두되 값은 1 — [결정 #329] 경쟁 AI 전까지 Normal 고정, 세부 설정 화면이 잠근다
  */
 export const KNOBS: Record<string, KnobDef> = {
-  'macro.eventChance': { easy: 1, hard: 1, note: '거시 이벤트(불황·호황·과잉·증세…) 월 발생 확률 배수' },
-  'taste.eventChance': { easy: 1, hard: 1, note: '취향·유행 이벤트(피트 유행·셰리 트렌드·하이볼 붐…) 월 발생 확률 배수' },
-  'supply.eventChance': { easy: 1, hard: 1, note: '원가 악재 이벤트(흉작·에너지·배럴 파동…) 월 발생 확률 배수 — v16은 60개월부터 이벤트가 열린다' },
-  'incidents.eventChance': { easy: 1, hard: 1, note: '재난·사고 이벤트(화재·침수·고장·오염…) 월 발생 확률 배수 — v16은 60개월부터' },
-  'finance.eventChance': { easy: 1, hard: 1, note: '금융 이벤트(세무조사) 월 발생 확률 배수 — 금리·한도·LTV·수수료 손잡이는 MGT F6b 행' },
+  'macro.eventChance': { easy: 0.7, hard: 1.4, note: '거시 이벤트(불황·호황·과잉·증세…) 월 발생 확률 배수' },
+  'taste.eventChance': { easy: 0.8, hard: 1.3, note: '취향·유행 이벤트(피트 유행·셰리 트렌드·하이볼 붐…) 월 발생 확률 배수' },
+  'supply.eventChance': { easy: 0.5, hard: 1.5, note: '원가 악재 이벤트(흉작·에너지·배럴 파동…) 월 발생 확률 배수 — v16은 60개월부터 이벤트가 열린다' },
+  'incidents.eventChance': { easy: 0.5, hard: 1.25, note: '재난·사고 이벤트(화재·침수·고장·오염…) 월 발생 확률 배수 — v16은 60개월부터' },
+  'finance.eventChance': { easy: 0.5, hard: 1.5, note: '금융 이벤트(세무조사) 월 발생 확률 배수 — 금리·한도·LTV·수수료 손잡이는 MGT F6b 행' },
   'competition.eventChance': { easy: 1, hard: 1, note: '경쟁 이벤트(광고 규제) 월 발생 확률 배수 — [결정 #329] 경쟁 영역 Normal 고정 — 자리만(×1)' },
   // MGT F6b(P-MGT-48·51) — 읽기는 `mgtKnobs.ts` 이름 함수. 방향: Easy ↓·Hard ↑(LTV·한도·거치는 반대) — 크기는 F7 뒤 [튜닝]
-  'finance.loanRate': { easy: 1, hard: 1, note: '대출 연 금리 배수(급전은 법정 최고 20% 상한) — loans.ts effectiveOffer' },
-  'finance.loanLimit': { easy: 1, hard: 1, note: '대출 상품 최대액 배수 — loans.ts effectiveOffer' },
-  'finance.loanGrace': { easy: 1, hard: 1, note: '거치 개월 배수(기간 − 1 이하) — loans.ts effectiveOffer' },
+  'finance.loanRate': { easy: 0.8, hard: 1.25, note: '대출 연 금리 배수(급전은 법정 최고 20% 상한) — loans.ts effectiveOffer' },
+  'finance.loanLimit': { easy: 1.25, hard: 0.85, note: '대출 상품 최대액 배수 — loans.ts effectiveOffer' },
+  'finance.loanGrace': { easy: 1.5, hard: 0.5, note: '거치 개월 배수(기간 − 1 이하) — loans.ts effectiveOffer' },
   'finance.inventoryLtv': { easy: 1, hard: 1, note: '재고 담보 인정 비율(입지 inventoryLtv) 배수 — v16 담보는 이미 관측 q̂라 보수적' },
   'finance.fees': { easy: 1, hard: 1, note: '보험료·팩토링 할인율 배수 — insurance.ts' },
-  'finance.laborMul': { easy: 1, hard: 1, note: '인건비 배수 — 새로 정하는 급여(창업 멤버·채용·시세·전문가)에 지역 laborCost와 함께 곱한다' },
-  'finance.wageDrift': { easy: 1, hard: 1, note: '정기 임금 상승 — 기본 상승률(v16 HR 잠긴 판 연 1%, 옛 판·HR 열린 판(샌드박스) 0 — rules.ts baseWageDrift)에 곱하는 배수. 실효 = 1 + 기본 × 값(0 = 오르지 않음). [결정 #330] Normal ×1 · Easy·Hard 값은 F7([참고] 잠정 Easy 0 · Hard 2)' },
-  'incidents.lossSize': { easy: 1, hard: 1, note: '재해 피해 크기 — 손실 원장 damageMul(연구 riskMul × 값, insurance.ts newLedger 한 자리 — ARCH 가름): 현금 피해(복구비)·통 소실·원액 손실·오염 비율(mold_outbreak)을 한 값으로, 비율은 1 상한. 한계: 원장은 disaster 범주의 즉시 효과에만 닿는다 — 선택 이벤트(resolvePending)·gamble 안쪽 효과에는 미적용' },
+  'finance.laborMul': { easy: 0.9, hard: 1.1, note: '인건비 배수 — 새로 정하는 급여(창업 멤버·채용·시세·전문가)에 지역 laborCost와 함께 곱한다' },
+  'finance.wageDrift': { easy: 0, hard: 2, note: '정기 임금 상승 — 기본 상승률(v16 HR 잠긴 판 연 1%, 옛 판·HR 열린 판(샌드박스) 0 — rules.ts baseWageDrift)에 곱하는 배수. 실효 = 1 + 기본 × 값(0 = 오르지 않음). [결정 #330] Normal ×1 · Easy·Hard 값은 F7([참고] 잠정 Easy 0 · Hard 2)' },
+  'incidents.lossSize': { easy: 0.7, hard: 1.25, note: '재해 피해 크기 — 손실 원장 damageMul(연구 riskMul × 값, insurance.ts newLedger 한 자리 — ARCH 가름): 현금 피해(복구비)·통 소실·원액 손실·오염 비율(mold_outbreak)을 한 값으로, 비율은 1 상한. 한계: 원장은 disaster 범주의 즉시 효과에만 닿는다 — 선택 이벤트(resolvePending)·gamble 안쪽 효과에는 미적용' },
   // ── MKT F6b (P-MKT-37, [결정 #313] 취향 변화의 속도·지속성·폭) — 읽는 자리 `mktKnobs.ts trendWalkOf`·`flavorTrendFactorOf` ──
-  'taste.trendSigma': { easy: 1, hard: 1, note: '카테고리 트렌드 랜덤 워크의 월 σ(0.015) 배수 — 속도. Easy ↓ · Hard ↑' },
-  'taste.trendReversion': { easy: 1, hard: 1, note: '같은 워크의 평균 회귀(0.05) 배수 — 지속성. Easy ↑(빨리 1로) · Hard ↓(추세가 오래 간다)' },
-  'taste.trendRange': { easy: 1, hard: 1, note: '같은 워크의 범위(0.6~1.5)가 1에서 떨어진 거리의 배수 — 폭. Easy 좁게 · Hard 넓게(아래 0.2 가드)' },
-  'taste.flavorTrendStrength': { easy: 1, hard: 1, note: '향미 유행(피트 열풍·셰리 인기 — trendFactor) 매력 배수가 1에서 떨어진 거리의 배수 — 세기. Easy ↓ · Hard ↑' },
+  'taste.trendSigma': { easy: 0.7, hard: 1.4, note: '카테고리 트렌드 랜덤 워크의 월 σ(0.015) 배수 — 속도. Easy ↓ · Hard ↑' },
+  'taste.trendReversion': { easy: 1.4, hard: 0.7, note: '같은 워크의 평균 회귀(0.05) 배수 — 지속성. Easy ↑(빨리 1로) · Hard ↓(추세가 오래 간다)' },
+  'taste.trendRange': { easy: 0.7, hard: 1.3, note: '같은 워크의 범위(0.6~1.5)가 1에서 떨어진 거리의 배수 — 폭. Easy 좁게 · Hard 넓게(아래 0.2 가드)' },
+  'taste.flavorTrendStrength': { easy: 0.7, hard: 1.4, note: '향미 유행(피트 열풍·셰리 인기 — trendFactor) 매력 배수가 1에서 떨어진 거리의 배수 — 세기. Easy ↓ · Hard ↑' },
   // ── MKT F6b (P-MGT-48 거시 표 "원액 현물 지수 변동" — 자리가 MKT 소유 `bulk.ts`, 읽기 `mktKnobs.ts bulkWalkOf`) ──
-  'macro.bulkSigma': { easy: 1, hard: 1, note: '원액 현물 지수 랜덤 워크의 월 σ(0.03) 배수. Easy ↓ · Hard ↑' },
-  'macro.bulkReversion': { easy: 1, hard: 1, note: '같은 워크의 평균 회귀(0.08) 배수. Easy ↑' },
-  'macro.bulkRange': { easy: 1, hard: 1, note: '같은 워크의 범위(0.6~1.5)가 1에서 떨어진 거리의 배수. Hard 넓게(하한 ↓)' },
+  'macro.bulkSigma': { easy: 0.7, hard: 1.4, note: '원액 현물 지수 랜덤 워크의 월 σ(0.03) 배수. Easy ↓ · Hard ↑' },
+  'macro.bulkReversion': { easy: 1.4, hard: 0.7, note: '같은 워크의 평균 회귀(0.08) 배수. Easy ↑' },
+  'macro.bulkRange': { easy: 0.7, hard: 1.3, note: '같은 워크의 범위(0.6~1.5)가 1에서 떨어진 거리의 배수. Hard 넓게(하한 ↓)' },
   // ── 코어 F6 — 이벤트 효과 크기·기간(MKT #566 제안 ②): `events.ts applyEffects`가 `EventDef.domain`으로 읽는다. 크기 = modifier 배수의 1에서의 거리 × k · 기간 = 개월 × k(반올림) ──
-  'macro.eventMagnitude': { easy: 1, hard: 1, note: '거시 이벤트 효과 배수(수요·현물 지수·세율)의 1에서의 거리 배수' },
-  'macro.eventDuration': { easy: 1, hard: 1, note: '거시 이벤트 효과 기간 배수' },
-  'taste.eventMagnitude': { easy: 1, hard: 1, note: '취향 이벤트(하이볼 열풍 등) 수요 배수 폭 — 향미 유행 세기는 taste.flavorTrendStrength(MKT)' },
-  'taste.eventDuration': { easy: 1, hard: 1, note: '취향 이벤트 수요 보정·향미 유행 기간 배수' },
-  'supply.eventMagnitude': { easy: 1, hard: 1, note: '원가 이벤트(흉작 ×1.5 등) 배수의 1에서의 거리 배수 — PROD P-PROD-56 "원가 이벤트 크기"(= 옛 costSize)' },
-  'supply.eventDuration': { easy: 1, hard: 1, note: '원가 이벤트 기간 배수 — PROD "원가 이벤트 기간"(= 옛 costMonths)' },
+  'macro.eventMagnitude': { easy: 0.7, hard: 1.3, note: '거시 이벤트 효과 배수(수요·현물 지수·세율)의 1에서의 거리 배수' },
+  'macro.eventDuration': { easy: 0.8, hard: 1.25, note: '거시 이벤트 효과 기간 배수' },
+  'taste.eventMagnitude': { easy: 0.7, hard: 1.3, note: '취향 이벤트(하이볼 열풍 등) 수요 배수 폭 — 향미 유행 세기는 taste.flavorTrendStrength(MKT)' },
+  'taste.eventDuration': { easy: 1.3, hard: 0.7, note: '취향 이벤트 수요 보정·향미 유행 기간 배수' },
+  'supply.eventMagnitude': { easy: 0.7, hard: 1.3, note: '원가 이벤트(흉작 ×1.5 등) 배수의 1에서의 거리 배수 — PROD P-PROD-56 "원가 이벤트 크기"(= 옛 costSize)' },
+  'supply.eventDuration': { easy: 0.75, hard: 1.25, note: '원가 이벤트 기간 배수 — PROD "원가 이벤트 기간"(= 옛 costMonths)' },
   'incidents.eventMagnitude': { easy: 1, hard: 1, note: '사고 이벤트의 modifier 효과(생산 중단 등) 배수 거리 — 통·원액 소실 비율은 incidents.lossSize(PROD)' },
-  'incidents.eventDuration': { easy: 1, hard: 1, note: '사고 이벤트 기간 배수(기상 충격 포함) — 증류기 수리 중단 개월은 incidents.stillDownMonths(PROD)' },
+  'incidents.eventDuration': { easy: 1, hard: 1.25, note: '사고 이벤트 기간 배수(기상 충격 포함) — 증류기 수리 중단 개월은 incidents.stillDownMonths(PROD)' },
   'finance.eventMagnitude': { easy: 1, hard: 1, note: '금융 이벤트(세무조사) 효과 배수 거리' },
   'finance.eventDuration': { easy: 1, hard: 1, note: '금융 이벤트 기간 배수' },
   'competition.eventMagnitude': { easy: 1, hard: 1, note: '경쟁 이벤트(광고 규제) 효과 배수 거리 — [결정 #329]' },
   'competition.eventDuration': { easy: 1, hard: 1, note: '경쟁 이벤트 기간 배수 — [결정 #329]' },
   // ── PROD (F6b, P-PROD-56 v16 갱신) — 읽는 곳은 `prodKnobs.ts` 한 파일. 방향: Easy는 악재를 줄이고 호재를 키운다, Hard는 반대. 크기는 F7 뒤.
   //    원가 악재의 크기·기간은 위 `supply.eventMagnitude`·`supply.eventDuration`(코어 한 자리)이 맡는다 — PROD는 곱하지 않는다
-  'supply.windfallSize': { easy: 1, hard: 1, note: '원가 호재(영역 태그 없는 rice_surplus의 원재료 값 ×0.6)의 할인 폭 × 이 값 (Easy >1 · Hard <1 — 악재와 반대 방향)' },
-  'supply.forecastMonths': { easy: 1, hard: 1, note: '원가 이벤트 예보가 미리 알려 주는 개월 × 이 값 (Easy >1 · Hard <1)' },
-  'supply.forecastCertainty': { easy: 1, hard: 1, note: '원가 이벤트 예보가 맞을 확률 × 이 값, 0.05~0.95 (Easy >1 · Hard <1)' },
-  'supply.priceWalkSigma': { easy: 1, hard: 1, note: '원재료·에너지 기본 시세의 월 변동폭 σ 0.02 × 이 값 (Easy <1 · Hard >1) — 이벤트가 열리기 전(60개월 전)에도 닿는 유일한 공급 손잡이' },
-  'supply.caskLead': { easy: 1, hard: 1, note: '쿠퍼리지 통 납기 2개월 × 이 값, 반올림 (Hard >1 — 승리 달에 1:1로 닿으니 작게. Easy는 1 그대로 권장)' },
-  'incidents.stillDownMonths': { easy: 1, hard: 1, note: '사고로 증류기가 서는 개월 × 이 값, 반올림·최소 1 (Hard >1)' },
-  'incidents.spoilSize': { easy: 1, hard: 1, note: '발효 오염 이벤트의 이취(acetic +8) × 이 값 (Easy <1 · Hard >1)' },
+  'supply.windfallSize': { easy: 1.25, hard: 0.5, note: '원가 호재(영역 태그 없는 rice_surplus의 원재료 값 ×0.6)의 할인 폭 × 이 값 (Easy >1 · Hard <1 — 악재와 반대 방향)' },
+  'supply.forecastMonths': { easy: 1.5, hard: 0.5, note: '원가 이벤트 예보가 미리 알려 주는 개월 × 이 값 (Easy >1 · Hard <1)' },
+  'supply.forecastCertainty': { easy: 1.2, hard: 0.8, note: '원가 이벤트 예보가 맞을 확률 × 이 값, 0.05~0.95 (Easy >1 · Hard <1)' },
+  'supply.priceWalkSigma': { easy: 0.5, hard: 1.5, note: '원재료·에너지 기본 시세의 월 변동폭 σ 0.02 × 이 값 (Easy <1 · Hard >1) — 이벤트가 열리기 전(60개월 전)에도 닿는 유일한 공급 손잡이' },
+  'supply.caskLead': { easy: 1, hard: 1.5, note: '쿠퍼리지 통 납기 2개월 × 이 값, 반올림 (Hard >1 — 승리 달에 1:1로 닿으니 작게. Easy는 1 그대로 권장)' },
+  'incidents.stillDownMonths': { easy: 0.5, hard: 1.5, note: '사고로 증류기가 서는 개월 × 이 값, 반올림·최소 1 (Hard >1)' },
+  'incidents.spoilSize': { easy: 0.5, hard: 1.5, note: '발효 오염 이벤트의 이취(acetic +8) × 이 값 (Easy <1 · Hard >1)' },
 };
 
 /** 세 프리셋 = 6값의 묶음 (easy 전부 1 · normal 2 · hard 3). Custom은 값을 개별 선택 */
@@ -108,6 +108,21 @@ export function normalizeDifficulty(input?: DifficultyConfig | DifficultyPreset 
   return { preset: input.preset === 'custom' ? 'custom' : p, levels };
 }
 
+/**
+ * 시작 스냅샷에 지금 표의 값을 고정한다(P-MGT-59 C안) — Normal 단계 영역은 늘 1이라 적지 않고, 1인 값도 적지 않는다. 적을 것이 없으면 `values`를 두지 않는다
+ * (Normal 세이브 바이트 동일). 새 판(`newScenario`)만 부른다 — 실험(`applyDifficulty`·`KNOB_CAND`)은 표를 그대로 읽는다
+ */
+export function pinDifficultyValues(d: DifficultyConfig): DifficultyConfig {
+  const values: Record<string, number> = {};
+  for (const [id, def] of Object.entries(KNOBS)) {
+    const lv = d.levels[id.slice(0, id.indexOf('.')) as DifficultyDomain];
+    const v = lv === 1 ? def.easy : lv === 3 ? def.hard : 1;
+    if (v !== 1) values[id] = v;
+  }
+  const { values: _old, ...rest } = d;
+  return Object.keys(values).length ? { ...rest, values } : rest;
+}
+
 /** 저장된 스냅샷이 올바른가 — 불변식 검사용 */
 export function difficultyError(d: DifficultyConfig): string | null {
   if (!d || typeof d !== 'object' || !d.levels) return '난이도 스냅샷 모양이 아니다';
@@ -117,5 +132,9 @@ export function difficultyError(d: DifficultyConfig): string | null {
   }
   const p = presetOf(d.levels);
   if (d.preset !== 'custom' && d.preset !== p) return `표시 ${d.preset} ≠ 값 ${p}`;
+  if (d.values !== undefined) {
+    if (!d.values || typeof d.values !== 'object') return '고정 값(values) 모양이 아니다';
+    for (const [id, v] of Object.entries(d.values)) if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return `고정 값 ${id} = ${String(v)} (0 이상 유한수)`;
+  }
   return null;
 }

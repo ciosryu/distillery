@@ -46,12 +46,14 @@ describe('KNOB_CAND — 실험 안에서만 KNOBS 후보 값 덮어쓰기', () =
   const fresh = () => structuredClone(KNOBS);
   it('파일의 easy·hard를 넣고, Normal 칸은 없다(늘 1) · 여러 파일 합치기', () => {
     const k = fresh();
-    const files: Record<string, string> = { a: JSON.stringify({ 'finance.loanRate': { easy: 0.8, hard: 1.25, why: 'x' } }), b: JSON.stringify({ 'taste.trendSigma': { easy: 0.7, hard: 1.4 } }) };
+    const before = { ...KNOBS['finance.loanRate']! };
+    // 실제 표(결정 대기 98)와 다른 시험값 — 원본이 그대로인지 보려고
+    const files: Record<string, string> = { a: JSON.stringify({ 'finance.loanRate': { easy: 0.6, hard: 1.6, why: 'x' } }), b: JSON.stringify({ 'taste.trendSigma': { easy: 0.5, hard: 1.9 } }) };
     const r = loadKnobCandidates('a,b', k, (f) => files[f]!);
     expect(r).toEqual({ rows: 2, files: ['a', 'b'] });
-    expect(k['finance.loanRate']).toMatchObject({ easy: 0.8, hard: 1.25 });
-    expect(k['taste.trendSigma']).toMatchObject({ easy: 0.7, hard: 1.4 });
-    expect(KNOBS['finance.loanRate']).toMatchObject({ easy: 1, hard: 1 }); // 원본은 그대로(주입한 표만 바뀐다)
+    expect(k['finance.loanRate']).toMatchObject({ easy: 0.6, hard: 1.6 });
+    expect(k['taste.trendSigma']).toMatchObject({ easy: 0.5, hard: 1.9 });
+    expect(KNOBS['finance.loanRate']).toEqual(before); // 원본은 그대로(주입한 표만 바뀐다)
   });
   it('없는 id · 음수 · 두 파일 중복은 예외 · 빈 값이면 null', () => {
     const k = fresh();
