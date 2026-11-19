@@ -1,6 +1,6 @@
 // F7-B 래퍼 (P-MGT-55) — P8(mvp-human.ts) 위에 X0B 행(X0 + 대출 banner)을 더하고, 판마다 `#F7B {…}` 한 줄을 낸다. f7b.ts가 설정마다 이 파일을 돌린다.
 // 끼움 자리(p8Hooks)만 쓴다 — P8 소스는 그대로. 난이도는 DIFF=, 후보 값은 KNOB_CAND=(mgtKnobs.ts)로 받는다.
-import { F7B_PREFIX, X0B_NAME, type F7bLine } from './f7b';
+import { F7B_PREFIX, X0B_NAME, X12FB_NAME, type F7bLine } from './f7b';
 import { setP8Hooks } from './p8Hooks';
 
 /** P8 Row 중 이 래퍼가 읽는 몫 */
@@ -10,7 +10,8 @@ const track = new Map<string, Map<number, { dv: number; loans: Set<string> }>>()
 
 setP8Hooks({
   // X0 다음에 X0B를 더한다 — 첫 항목은 X0 그대로(비교 표 기준, p8Hooks 규칙)
-  policies: (list, make, base) => [...list, make(X0B_NAME, { ...(base as object), loans: 'banner' })],
+  // X12FB(2차 판, 증산 꼬리 확인): X12F(6배치)에 대출 banner — 증산 판 파산이 「싼 정책자금만」 정책 탓인지 가른다
+  policies: (list, make, base) => [...list, make(X0B_NAME, { ...(base as object), loans: 'banner' }), make(X12FB_NAME, { ...(base as object), maltB: 6, loans: 'banner' })],
   afterMonth: (s, p, m, seed) => {
     const byName = track.get(p.name) ?? new Map();
     track.set(p.name, byName);
