@@ -45,6 +45,27 @@ export function makeRetailOffer(s: GameState, rng: Rng): RetailOffer {
 
 /** 전용 증류기 설비 패키지 설치비 (입지 건설비 반영) */
 /** 납품 계약을 우리가 해지할 때 내는 비용 — 남은 개월 × 월 물량 × 병당 위약금의 절반. 해지 명령과 확인 미리보기(#240)가 같이 쓴다 */
+/** 미납이 이만큼 쌓이면 계약이 깨진다 — 월 물량 × 이 값(`fulfillRetail`). 화면의 "파기까지 n병"과 같은 기준 */
+export const RETAIL_BREAK_MONTHS = 2;
+
+/** 계약이 깨지기까지 남은 미납 병 수 — 이번 달 이만큼 더 못 채우면 파기 ([제안 P-MKT-42] ⓑ · 화면 계산만) */
+export const retailBreakRemaining = (c: Pick<RetailContract, 'bottlesPerMonth' | 'shortfall'>): number => Math.max(0, RETAIL_BREAK_MONTHS * c.bottlesPerMonth - c.shortfall);
+
+/**
+ * 납품 제안을 받기 전에 보는 전망 ([제안 P-MKT-42] ⓐ — 6차 판: 두 번째 소주 계약을 원액 탱크가 빈 채로 받았다). 화면 계산만, 규칙 불변.
+ * - stock: 그 범주 병 재고(면세 한정판 제외) — 납품은 이 재고에서 먼저 나간다
+ * - recentSales: 최근 3개월 그 범주 국내 판매 월평균(병) — 리포트가 없으면 0
+ * - coverMonths: 지금 재고로 이 계약을 몇 달 채우나(국내 판매는 빼지 않은 낙관값)
+ * - penaltyPerMonth: 한 달을 통째로 못 채우면 무는 위약금
+ */
+export function retailOfferOutlook(s: Pick<GameState, 'commerce' | 'history'>, o: Pick<RetailOffer, 'category' | 'bottlesPerMonth' | 'penaltyPerBottle'>) {
+  const ids = new Set(s.commerce.products.filter((p) => p.category === o.category && !p.dutyFreeOnly).map((p) => p.id));
+  const stock = s.commerce.products.filter((p) => ids.has(p.id)).reduce((t, p) => t + p.stockBottles, 0);
+  const recent = s.history.reports.slice(-3);
+  const recentSales = recent.length ? recent.reduce((t, r) => t + r.sales.filter((x) => ids.has(x.productId)).reduce((u, x) => u + x.bottles, 0), 0) / recent.length : 0;
+  return { stock, recentSales, coverMonths: o.bottlesPerMonth > 0 ? stock / o.bottlesPerMonth : Infinity, penaltyPerMonth: o.bottlesPerMonth * o.penaltyPerBottle };
+}
+
 export const retailCancellationCost = (c: Pick<RetailContract, 'termMonths' | 'monthsDone' | 'bottlesPerMonth' | 'penaltyPerBottle'>) =>
   Math.round((c.termMonths - c.monthsDone) * c.bottlesPerMonth * c.penaltyPerBottle * 0.5);
 
@@ -155,7 +176,7 @@ export function fulfillRetail(s: GameState, report: MonthReport): void {
     c.delivered += delivered;
     c.shortfall += need;
     c.monthsDone += 1;
-    if (c.shortfall >= 2 * c.bottlesPerMonth) { report.notes.push(`${c.partner} 납품 계약 파기 — 누적 미납 과다`); done.push(c.id); }
+    if (c.shortfall >= RETAIL_BREAK_MONTHS * c.bottlesPerMonth) { report.notes.push(`${c.partner} 납품 계약 파기 — 누적 미납 과다`); done.push(c.id); }
     else if (c.monthsDone >= c.termMonths) { report.notes.push(`${c.partner} 납품 계약 만료 — 총 ${c.delivered.toLocaleString()}병 (${CATEGORY[c.category].nameKo})`); done.push(c.id); }
   }
   s.commerce.retailContracts = s.commerce.retailContracts.filter((c) => !done.includes(c.id));

@@ -28,6 +28,11 @@ export function HandfillRow() {
   // 보호 태그 통(#260 — 플래그십 예비 포함)은 고를 수는 있지만 표시한다: 핸드필은 지정한 통에서 매달 저절로 덜어 간다
   const prot = protectedCaskIds(s);
   const label = (c: Cask & { contents: SpiritLot }) => `${c.id} · ${months(c.contents.oakMonths)} · ${Math.round(c.contents.volumeL)}L · 품질 ${q(c) == null ? '모름(샘플 필요)' : Math.round(q(c)!)}${prot.has(c.id) ? ' · ◆ 보호 태그' : ''}`;
+  // 다음 통 추천 (6차 판 — 핸드필 통이 빈 뒤 16개월 다시 지정하지 않아 어림 0.4~0.6억을 놓쳤다, docs/playtest/6/prod.md ⑥).
+  // 보호 태그 통·12년 후보(승리 전)는 빼고, 아는 품질이 높고 양이 넉넉한 통 — 한 번 눌러 지정한다. 고르는 것은 여전히 플레이어 몫(정보·바로가기)
+  const won12 = rulesVersionOf(s) === 'legacy-v15' || campaignWon(s);
+  const pick = !cur ? [...options].filter((c) => !prot.has(c.id) && (won12 || !isFlagshipCandidate(s, c, 'hint')))
+    .sort((a, b) => (q(b) ?? -1) - (q(a) ?? -1) || b.contents.volumeL - a.contents.volumeL)[0] : undefined;
   const cq = cur ? q(cur) : null;
   const bottles = cur ? handfillBottles(visitors, cur.contents) : 0;
   const price = cur && cq != null ? handfillPrice(s, cur.contents, cq) : null;
@@ -42,6 +47,11 @@ export function HandfillRow() {
           {options.map((c) => <option key={c.id} value={c.id}>{label(c)}</option>)}
         </select>
         {!options.length && !cur && <span className="text-stone-500">위스키 숙성 기간을 채운 자사 나무 통이 아직 없다</span>}
+        {pick && hasVisitor && (
+          <button type="button" className="rounded border border-amber-400 bg-white px-1.5 py-0.5 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-stone-800 dark:text-amber-200" title="보호 태그 통·12년 후보는 뺀 추천 — 다른 통은 왼쪽 목록에서 고른다" onClick={() => dispatch({ type: 'setHandfillCask', caskId: pick.id })}>
+            추천 통 지정: {label(pick)}
+          </button>
+        )}
         {cur && prot.has(cur.id) && <span className="text-amber-800 dark:text-amber-300">⚠ 보호 태그 통이다(플래그십 예비 등) — 핸드필이 매달 덜어 간다. 남기려면 다른 통을 고르세요</span>}
         {/* F5c(MKT 검토 A): 승리 구절은 보호 태그가 아니라 후보 여부(자가 몰트·안내 지평)에 묶고, 승리 뒤에는 띄우지 않는다 */}
         {cur && rulesVersionOf(s) !== 'legacy-v15' && !campaignWon(s) && isFlagshipCandidate(s, cur, 'hint') && <span className="text-amber-800 dark:text-amber-300">이 통이 12년(목재 {campaignMinOakMonths(s)}개월)을 넘기면 핸드필 판매가 캠페인 승리로 기록된다(결정 #318 — 등급 최대 A)</span>}
