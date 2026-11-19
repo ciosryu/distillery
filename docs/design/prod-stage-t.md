@@ -1477,3 +1477,10 @@ v16 새 게임을 화면으로 19개월 진행한 메모(PM STATUS 요약) 중 P
 - **최종 후보 [제안]:** Hard eventChance **1.25** · stillDownMonths 1.5 · lossSize(MGT) **1.25** / Easy 1차 값 그대로. B 판에서 X12F 파산이 2/40을 넘으면 eventChance 1.15, 0~1/40이면 lossSize 1.5로 되돌려 「드물지만 큰 사건」을 살린다 — MGT가 B 결과로 고른다
 - stillDownMonths 1.5: 승리 달(145개월)·144개월 후보 수에 영향 없음(MGT 확인) — 처음 걱정(몰트 공급이 끊겨 12년 후보가 준다)은 보이지 않았다
 
+### [제안 P-PROD-60] 손 통입 끝자리 안내 — 정보만 (2026-11-19, 6차 판 근거, PM: 결정 불요)
+
+- 6차 판 끝에 숙성 중이던 43통 중 18통이 처음부터 통 크기의 60% 미만으로 찼고, 자동 통입을 끈 시기에도 생겼다 → 손 통입에서도 생긴다(`docs/playtest/6/prod.md` ②)
+- `autoFill.ts fillShares(lotL, lotAbv, caskSizesL, entryAbv)` — 통마다 몇 %가 차는지(`fillCasks`와 같은 식, 상태 불변) · 문턱 `PARTIAL_FILL_HINT = 0.5` `[튜닝]`
+- 숙성고 탭 통입 줄(`Warehouse.tsx`, PROD): 마지막 통이 절반도 안 차면 "마지막 통은 n%만 찬다 — 덜 찬 통도 자리·보관비는 같고, 개수를 하나 줄이면 약 m L는 탱크에 남아 다음 통입 때 합칠 수 있다" + [개수 k개로]. **막지 않는다**
+- 증류소 화면 통입 카드(`MvpHome.tsx FillCard`, ARCH)는 같은 함수·문구로 ARCH가 붙인다
+
