@@ -2268,31 +2268,38 @@ main의 게임 코드 머지마다 X0(standard, 10시드 × 180)를 다시 쟀�
 | incidents | `eventChance` · `eventMagnitude` · `eventDuration` · `lossSize`(MGT 원장) · `stillDownMonths` · `spoilSize` (6) | PROD · MGT(`lossSize`) |
 | competition | 3행 | **재지 않는다** — [결정 #329] Normal 고정, 화면 잠금 |
 
-### 2. v16 한국 캠페인에서 효과가 없는 손잡이 `[사실 — 코드]` (값을 정해도 판이 바뀌지 않는다)
-- `finance.inventoryLtv`: 한국 입지는 재고 담보 인정 비율이 0이다(담보대출은 홋카이도만).
-- `finance.fees`의 보험료 몫: `action:buyInsurance`가 잠겨 있다.
-  - 팩토링 몫이 열려 있는지는 `[확인 필요]`다. 열려 있으면 납품·수출 매출채권을 할인할 때만 닿는다.
-- `competition.*`: #329로 고정돼 있다.
-- **모든 `*.eventChance·eventMagnitude·eventDuration`은 60개월(`y5_market`)부터만 닿는다.** v16 이벤트가 그때 열린다(PROD #550). 초반 5년 난이도는 시세 변동(`supply.priceWalkSigma`)·통 납기(`supply.caskLead`)·금융·인건비만 움직인다.
-- **함의:** 효과 없는 손잡이도 화면 문구가 "어려움"을 약속하면 정직성 문제다. 측정 뒤 이 행들은 ① 값 1로 두고 화면에서 그 영역 설명을 빼거나 ② 다른 손잡이로 그 영역의 체감을 채운다 `[제안]`.
+### 2. v16 한국 캠페인에서 효과가 없는(또는 늦게 닿는) 손잡이 — 확정 표 `[사실 — 코드]`
+| 손잡이 | 효과 | 이유(코드) |
+|---|---|---|
+| `finance.inventoryLtv` | **없음(전 기간)** | 한국 입지의 재고 담보 인정 비율이 0이다. 담보대출은 홋카이도만(`loans.ts inventoryLtv`) |
+| `finance.fees` | **없음(전 기간)** | 보험료 몫: `action:buyInsurance`가 잠겨 있다(`scenarios.ts mvp_kr.locked`). 팩토링 몫: `factorReceivables`가 연구 `contract:factoring`(BIZ-2b)를 요구하는데, v16은 `system:research`·`action:startResearch`가 잠겨 있다(`actions.mgt.ts`) → **팩토링도 못 쓴다**(앞 판의 `[확인 필요]` 해소) |
+| `competition.*`(3) | **없음(고정)** | [결정 #329] Normal 고정, 화면 잠금 |
+| 모든 `*.eventChance` · `*.eventMagnitude` · `*.eventDuration`(12, competition 제외) | **60개월 전 없음** | v16은 `system:events`가 잠겨 있다가 60개월(`y5_market`)에 열린다(PROD #550) |
+| `supply.windfallSize` · `forecastMonths` · `forecastCertainty` · `incidents.stillDownMonths` · `spoilSize` | **60개월 전 없음** `[추론 — PROD 확인 요청]` | 이벤트에 딸린 손잡이다(원가 호재·예보·증류기 고장·발효 오염) |
+| 그 밖: `finance.loanRate` · `loanLimit` · `loanGrace` · `laborMul` · `wageDrift` · `supply.priceWalkSigma` · `caskLead` · `taste.trend*` · `flavorTrendStrength` · `macro.bulk*` · `incidents.lossSize` | **있음**(0개월부터, `lossSize`는 사고가 난 뒤) | 초반 5년 난이도는 이 행들만 움직인다 |
+
+- **함의:** 효과가 없는 손잡이에 값을 넣어도 판은 같다. 그런데 화면 문구가 그 영역의 "어려움"을 약속하면 정직성 문제다. 측정 뒤 처리는 둘 중 하나다 `[제안]`.
+  - ① 값은 1로 두고 화면 설명에서 그 손잡이를 뺀다.
+  - ② 같은 영역의 효과 있는 손잡이로 체감을 채운다.
 
 ### 3. MGT 후보 값 (finance · macro 이벤트 · `incidents.lossSize`) — 첫 판은 "방향 + 중간 크기"
-| 손잡이 | Easy | Hard | 근거 |
-|---|---|---|---|
-| `wageDrift`(기본 1%의 배수, #330) | **0**(오르지 않음) | **2**(연 2%) | F7-0·#616: X0 std 180 간격 ±4.8억(Easy 30.83 · Normal 26.03 · Hard 21.23, `laborMul`과 함께) |
-| `laborMul` | **0.9** | **1.1** | 같은 판. Hard 1.1은 micro 최저 현금 0.61 → 0.33억(Death Valley를 가장 얇게 만드는 손잡이) |
-| `loanRate` | 0.8 | 1.25 | 운전자금 7.5% → 6.0 / 9.4%. 급전은 20% 상한 그대로 |
-| `loanLimit` | 1.25 | 0.75 | **봇의 「5억 한도」는 게임 한도가 아니라 봇 대출 사다리**(지자체 3억 + 창업 2억, `mvp-human.ts finance`)다. Hard 0.75면 2.25 + 1.5억으로 잘리고(`takeLoan`은 상품 최대액으로 자른다), 다음 단(운전자금·시설자금 — 더 비싸다)으로 내려간다 → 「사다리 깊이」 열로 잰다 |
-| `loanGrace` | 1.5(기간 − 1 상한) | 0.5 | 지자체 24 → 12개월, 창업 18 → 9개월: 첫 위스키 전(13~14개월) 상환 시작 |
-| `finance.eventChance` | 0.5 | 1.5 | 세무조사 1종. 효과가 작을 것 `[추론]` |
-| `finance.eventMagnitude·Duration` | 1 | 1 | 세무조사는 일회성 비용이라 기간이 없다. 크기는 `eventChance`로 충분 → 1로 둔다 |
-| `macro.eventChance` | 0.7 | 1.4 | 불황·과잉·증세. 60개월 뒤 |
-| `macro.eventMagnitude` | 0.7 | 1.3 | 1에서의 거리 배수(`aroundOne`) |
-| `macro.eventDuration` | 0.8 | 1.25 | |
-| `incidents.lossSize` | 0.7 | 1.5 | 원장 `damageMul` — 비율은 1 상한(#573). 승리 재료(144개월 통)를 직접 깎는다 → 「사고로 적격 통 0이 된 판」 열 필수(PM, F7 필수 행) |
-| `inventoryLtv` · `fees` | 1 | 1 | 위 2절 — v16 한국에서 효과가 없다. 홋카이도 시나리오가 생기면 그때 잰다 |
+| 손잡이 | Easy | Hard | 근거 | 플레이어가 느끼는 차이(비개발자용) |
+|---|---|---|---|---|
+| `wageDrift`(기본 1%의 배수, #330) | **0**(오르지 않음) | **2**(연 2%) | F7-0·#616: X0 std 180 간격 ±4.8억(Easy 30.83 · Normal 26.03 · Hard 21.23, `laborMul`과 함께) | Easy: 급여가 오르지 않는다 / Hard: 매년 1월 급여가 2%씩 올라 15년 뒤 약 1.3배가 된다 |
+| `laborMul` | **0.9** | **1.1** | 같은 판. Hard 1.1은 micro 최저 현금 0.61 → 0.33억(Death Valley를 가장 얇게 만드는 손잡이) | Easy: 직원 급여가 10% 싸다 / Hard: 10% 비싸서 첫 위스키를 팔 때까지 현금이 가장 빠듯하다 |
+| `loanRate` | 0.8 | 1.25 | 운전자금 7.5% → 6.0 / 9.4%. 급전은 20% 상한 그대로 | Easy: 대출 이자가 20% 싸다 / Hard: 25% 비싸다 |
+| `loanLimit` | 1.25 | 0.75 | **봇의 「5억 한도」는 게임 한도가 아니라 봇 대출 사다리**(지자체 3억 + 창업 2억, `mvp-human.ts finance`)다. Hard 0.75면 2.25 + 1.5억으로 잘리고(`takeLoan`은 상품 최대액으로 자른다), 다음 단(운전자금·시설자금 — 더 비싸다)으로 내려간다 → 「사다리 깊이」 열로 잰다 | Easy: 대출 상품마다 25% 더 빌릴 수 있다 / Hard: 25% 덜 빌려서 비싼 대출까지 써야 한다 |
+| `loanGrace` | 1.5(기간 − 1 상한) | 0.5 | 지자체 24 → 12개월, 창업 18 → 9개월: 첫 위스키 전(13~14개월) 상환 시작 | Easy: 원금 상환이 더 늦게 시작된다 / Hard: 첫 위스키를 팔기 전에 원금을 갚기 시작한다 |
+| `finance.eventChance` | 0.5 | 1.5 | 세무조사 1종. 효과가 작을 것 `[추론]` | Easy: 세무조사가 드물다 / Hard: 잦다(6년 차부터) |
+| `finance.eventMagnitude·Duration` | 1 | 1 | 세무조사는 일회성 비용이라 기간이 없다. 크기는 `eventChance`로 충분 → 1로 둔다 | 차이 없음 |
+| `macro.eventChance` | 0.7 | 1.4 | 불황·과잉·증세. 60개월 뒤 | Easy: 불황·공급 과잉·증세가 덜 온다 / Hard: 더 자주 온다(6년 차부터) |
+| `macro.eventMagnitude` | 0.7 | 1.3 | 1에서의 거리 배수(`aroundOne`) | Easy: 불황의 충격이 작다 / Hard: 크다 |
+| `macro.eventDuration` | 0.8 | 1.25 | | Easy: 불황이 짧다 / Hard: 길다 |
+| `incidents.lossSize` | 0.7 | 1.5 | 원장 `damageMul` — 비율은 1 상한(#573). 승리 재료(144개월 통)를 직접 깎는다 → 「사고로 적격 통 0이 된 판」 열 필수(PM, F7 필수 행) | Easy: 화재·침수 때 잃는 통과 복구비가 적다 / Hard: 50% 더 잃는다(12년 통을 잃을 수 있다) |
+| `inventoryLtv` · `fees` | 1 | 1 | 위 2절 — v16 한국에서 효과가 없다. 홋카이도 시나리오가 생기면 그때 잰다 | 차이 없음(한국 캠페인에서 쓰지 않는 기능) |
 
-- 다른 파트는 같은 형식(손잡이 · Easy · Hard · 근거)으로 낸다. 파일: `docs/baseline/f7b/candidates-<파트>.json`(`{ "<id>": { "easy": x, "hard": y } }`)과 근거 표.
+- MGT 값은 [`docs/baseline/f7b/candidates-mgt.json`](../baseline/f7b/candidates-mgt.json)에 있다(14행).
+- 다른 파트도 같은 형식으로 낸다: `docs/baseline/f7b/candidates-<파트>.json` = `{ "<id>": { "easy": x, "hard": y, "why": "근거 한 줄", "felt": "플레이어가 느끼는 차이 한 줄" } }`. PROD·MKT에는 MGT가 직접 알렸다(2026-11-19).
 
 ### 4. 행 설계
 - **난이도 설정 13개:**
@@ -2319,6 +2326,9 @@ main의 게임 코드 머지마다 X0(standard, 10시드 × 180)를 다시 쟀�
 - 영역 단독 행은 **Normal 대비 시드 짝 차이**(평균 · t · 이긴 시드 · Wilson)
 
 ### 6. 합격 조건 후보 `[제안 — BAL·오너가 정함]`
+> ⚠ **읽는 법 — 모든 조건은 「봇 기준 하한」이다.** 봇은 난이도에 맞춰 대출·가격·생산을 바꾸지 않는다. 그래서 봇이 겪는 Hard는 사람이 겪는 Hard보다 어렵다 `[추론]`.
+> 「봇이 Hard에서 n/40 파산」은 「사람은 그보다 적게 파산한다」로 읽는다. 체감 판정은 게이트 L(사람)이 한다.
+
 1. **Hard 생존:** Hard 프리셋에서 X0 파산 ≤ **2/40**(5%), X0B 파산 ≤ **6/40**(15%). standard·micro 각각.
    - Normal은 지금 0/40이다. Hard가 「잘하면 산다」여야 한다.
 2. **Hard 승리 가능:** Hard 프리셋 X0 승리(적격 로트 최초 유상 출하) ≥ **80%**. 승리 달이 늘어나는 것은 허용한다(기록).
