@@ -156,3 +156,31 @@ describe('fillShares — 손 통입 끝자리 미리 보기 (P-PROD-60)', () => 
     got.forEach((g, i) => expect(g).toBeCloseTo(pv.shares[i]!, 6));
   });
 });
+
+describe('자동 통입 — 섞인 통 크기 (결정 #332 후속, 7차 판 전 점검)', () => {
+  it('앞의 큰 통을 꽉 못 채우면 건너뛰고 뒤의 작은 통을 꽉 채운다 — 통째로 멈추지 않는다', async () => {
+    const { autoFillPlan } = await import('./autoFill');
+    const { emptyCaskOf } = await import('./index');
+    let s = order(game(), [0, 2, 0]);
+    s.inventory.casks = [];
+    for (const [id, t] of [['B1', 'oloroso_butt'], ['E1', 'ex_bourbon_barrel'], ['E2', 'ex_bourbon_barrel']] as const) { const c = emptyCaskOf(s, t); c.id = id; c.fills = 0; c.activity = id === 'B1' ? 2 : 1; s.inventory.casks.push(c); }
+    s.inventory.lots = [{ id: 'T', name: '몰트', kind: 'malt', volumeL: 277, abv: 0.735, flavor: {}, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 10_000, batchId: 'BT', recipeId: s.production.recipes.find((r) => r.kind === 'malt')!.id }];
+    s = applyAction(s, { type: 'setAutoFill', settings: {} }).state;
+    const [p] = autoFillPlan(s, s.inventory.autoFill!);
+    expect(p!.caskIds).toEqual(['E1']); // 500L 벗(432L 필요)은 건너뛰고 버번 200L(172.8L) 한 통
+    expect(p!.heldL).toBeCloseTo(277 - (200 * 0.635) / 0.735, 6); // 끝자리는 탱크에 — 빈 통(B1·E2)이 남아 있으니 "모자람"이 아니다
+    expect(p!.leftL).toBe(0);
+  });
+  it('생산이 꺼져 있으면 예전처럼 차례로 넣는다(마지막 통이 덜 차도)', async () => {
+    const { autoFillPlan } = await import('./autoFill');
+    const { emptyCaskOf } = await import('./index');
+    let s = order(game(), [0, 0, 0]);
+    s.inventory.casks = [];
+    for (const [id, t] of [['B1', 'oloroso_butt'], ['E1', 'ex_bourbon_barrel']] as const) { const c = emptyCaskOf(s, t); c.id = id; c.fills = 0; c.activity = id === 'B1' ? 2 : 1; s.inventory.casks.push(c); }
+    s.inventory.lots = [{ id: 'T', name: '몰트', kind: 'malt', volumeL: 277, abv: 0.735, flavor: {}, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 10_000, batchId: 'BT' }];
+    s = applyAction(s, { type: 'setAutoFill', settings: {} }).state;
+    const [p] = autoFillPlan(s, s.inventory.autoFill!);
+    expect(p!.caskIds).toEqual(['B1']);
+    expect(p!.heldL).toBe(0);
+  });
+});
