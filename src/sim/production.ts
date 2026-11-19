@@ -662,6 +662,27 @@ export function previewBatch(s: GameState, r: Recipe): PreviewResult | null {
   return { ...b, evaluation: evaluate(b.flavor, newmakeCategory(r.kind)) };
 }
 
+/**
+ * 정상 상태 배치 미리 보기 (플레이테스트 뒤 후보 ①, 2026-11-19) — `previewBatch`는 증류기에 재투입할 초류·후류(feints)가 없는 **첫 배치**를 보인다.
+ * 실제로는 매 배치의 초류·후류가 다음 배치에 들어가(같은 증류기, 달을 넘어 이어진다) 둘째 달부터 산출이 오른다(언피티드 몰트 56.0 → 70.9 LPA).
+ * 같은 레시피만 이 증류기에서 계속 돈다고 보고 feints 들어옴 = 나감이 될 때까지 되풀이한다(몇 번이면 수렴 — 재투입 몫이 배치마다 줄어든다).
+ * 화면·전망 전용이다(상태 불변). 틱은 실제 `stillInst.feintsLPA`를 쓰고, 첫 배치 기준이 필요한 곳(선도 계약 등)은 `previewBatch`를 그대로 쓴다
+ */
+export function steadyBatch(s: GameState, r: Recipe): PreviewResult | null {
+  const still = stillDefOf(s, r.stillId);
+  if (!still) return null;
+  const fermTypes = s.production.equipment.map((e) => EQUIPMENT[e.catalogId]).filter((d) => d?.kind === 'fermenter').map((d) => (d as { fermenterType: FermenterType }).fermenterType);
+  const ferm: FermenterType | null = r.kind === 'gin' ? null : r.kind === 'soju' && fermTypes.includes('onggi') ? 'onggi' : fermTypes[0] ?? 'stainless';
+  const lead = bestBy(staffOf(s, 'distiller'), 'b');
+  let feints = 0;
+  let b = simulateBatch(r, still, ferm, lead, s.world.priceIndex, feints);
+  for (let i = 0; i < 20 && Math.abs(b.feintsOutLPA - feints) > 1e-6; i++) {
+    feints = b.feintsOutLPA;
+    b = simulateBatch(r, still, ferm, lead, s.world.priceIndex, feints);
+  }
+  return { ...b, evaluation: evaluate(b.flavor, newmakeCategory(r.kind)) };
+}
+
 /** 향미 프로필의 한 축 (화면 레이더용, 0~100으로 자르지 않은 값) */
 export interface ProfileAxis { id: string; label: string; value: number }
 

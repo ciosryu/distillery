@@ -8,7 +8,7 @@ import { regionOf, siteOf, traditionalTaxFactor } from './content/regions';
 import { defaultPolicyPrice } from './content/market'; // 기본 정책 가격 (B1-4, MKT)
 import { agedWhiteLabel, agedWhiteLabelMonths, executeBlend, isCaskStrength, isWhiskyCategory, previewBlend, suggestedPrice, whiskyMinMonths, type BlendComponent, type BottleOptions } from './blending';
 import { finishOf, matureCask, vesselMaterial } from './maturation';
-import { capacityReport, orderPlan, previewBatch } from './production';
+import { capacityReport, orderPlan, steadyBatch } from './production';
 import { demandFor, distributionCostPerBottle, domesticDemands, priceOptions } from './market';
 import { outboundLogistics } from './sites';
 import { calendar, warehouseCapacity } from './util';
@@ -68,7 +68,7 @@ function ageStandard(s: GameState, lot: SpiritLot, months: number): { lot: Spiri
  * 증류기가 없거나 레시피가 틀리면 빈 배열
  */
 export function recipeEconomics(s: GameState, recipe: Recipe): EconomicsRow[] {
-  const b = previewBatch(s, recipe);
+  const b = steadyBatch(s, recipe);
   if (!b || b.lpa <= 0) return [];
   const aged = recipe.kind === 'malt' || recipe.kind === 'grain';
   const fmt = aged ? STANDARD_BOTTLE.whisky : STANDARD_BOTTLE.soju;
@@ -188,7 +188,7 @@ export function whiskySupplyForecast(s: GameState, years = 5, minMonths = region
   for (const o of s.production.orders) {
     const r = s.production.recipes.find((x) => x.id === o.recipeId);
     if (!r || (r.kind !== 'malt' && r.kind !== 'grain') || o.batchesPerMonth <= 0) continue;
-    const b = previewBatch(s, r);
+    const b = steadyBatch(s, r);
     if (b) perMonth += b.lpa * (feasible.get(r.id) ?? o.batchesPerMonth);
   }
   for (let m = 0; m < years * 12; m++) add(m + min, perMonth * keep(min), 'fromOrders');
@@ -261,7 +261,7 @@ export function productionValue(s: GameState, minMonths = regionOf(s).whisky.min
   for (const o of s.production.orders) {
     const r = s.production.recipes.find((x) => x.id === o.recipeId);
     if (!r || o.batchesPerMonth <= 0) continue;
-    const b = previewBatch(s, r);
+    const b = steadyBatch(s, r);
     if (!b) continue;
     const n = feasible.get(r.id) ?? o.batchesPerMonth;
     cost += b.cost * n;
@@ -269,7 +269,7 @@ export function productionValue(s: GameState, minMonths = regionOf(s).whisky.min
   }
   const short = plan.filter((x) => x.feasible < x.ordered);
   const perBatch = s.production.recipes.filter((r) => r.kind === 'malt' || r.kind === 'grain').flatMap((r) => {
-    const b = previewBatch(s, r);
+    const b = steadyBatch(s, r);
     return b ? [{ recipeId: r.id, name: r.name, costPerMonth: Math.round(b.cost), whiskyBottlesPerYear: yearly(b.lpa) }] : [];
   });
   const malt = s.production.recipes.find((x) => x.kind === 'malt');
@@ -306,7 +306,7 @@ export function caskRunway(s: GameState): CaskRunway | null {
   for (const x of orderPlan(s, { steady: true })) {
     if (x.kind !== 'malt' && x.kind !== 'grain') continue;
     const r = s.production.recipes.find((y) => y.id === x.recipeId);
-    const b = r ? previewBatch(s, r) : null;
+    const b = r ? steadyBatch(s, r) : null;
     if (b) litersPerMonth += (b.lpa / Math.min(entryCap, b.abv)) * x.feasible; // 통입 도수로 맞춘 리터
   }
   const tankL = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced).reduce((t, l) => t + (l.volumeL * l.abv) / Math.min(entryCap, l.abv), 0);
@@ -380,7 +380,7 @@ export function rampOutlook(s: GameState): RampOutlook | null {
   const malts = s.production.recipes.filter((r) => r.kind === 'malt');
   const r = malts.find((x) => s.production.orders.some((o) => o.recipeId === x.id && o.batchesPerMonth > 0)) ?? malts[0];
   if (!r) return null;
-  const b = previewBatch(s, r);
+  const b = steadyBatch(s, r);
   if (!b || b.lpa <= 0) return null;
   const sizeL = CASKS.ex_bourbon_barrel.sizeL;
   const casksPerBatch = b.lpa / ENTRY_ABV / sizeL;
@@ -389,7 +389,7 @@ export function rampOutlook(s: GameState): RampOutlook | null {
   for (const o of s.production.orders) {
     const x = s.production.recipes.find((y) => y.id === o.recipeId);
     if (!x || (x.kind !== 'malt' && x.kind !== 'grain') || o.batchesPerMonth <= 0) continue;
-    const pb = previewBatch(s, x);
+    const pb = steadyBatch(s, x);
     if (pb) whiskyBatches += (o.batchesPerMonth * pb.lpa) / ENTRY_ABV / sizeL;
   }
   const capacity = warehouseCapacity(s);
