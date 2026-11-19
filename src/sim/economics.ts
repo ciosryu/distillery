@@ -317,10 +317,8 @@ export function caskRunway(s: GameState): CaskRunway | null {
   const onOrder = orders.reduce((n, o) => n + o.qty, 0);
   const sizes = [...empties.map((c) => CASKS[c.typeId].sizeL), ...orders.flatMap((o) => Array<number>(o.qty).fill(CASKS[o.typeId].sizeL))];
   const avg = sizes.length ? sizes.reduce((a, b) => a + b, 0) / sizes.length : 200;
-  // 자동 통입은 정한 달마다 탱크를 통째로 넣어 끝자리를 덜 찬 통 하나에 담는다(218L → 200L + 18L) — 그 몫까지 통을 쓴다.
-  // 손 통입은 플레이어가 모아서 넣을 수 있으니 리터 ÷ 통 크기 그대로 센다
-  const every = s.inventory.autoFill?.everyMonths ?? 1;
-  const casksPerMonth = s.inventory.autoFill && litersPerMonth > 0 ? Math.ceil((litersPerMonth * every) / avg) / every : litersPerMonth / avg;
+  // 자동 통입은 덜 찰 끝자리를 탱크에 두고 다음 통입 때 합친다(AUTO_FILL.minLastFill) — 손 통입처럼 리터 ÷ 통 크기로 센다
+  const casksPerMonth = litersPerMonth / avg;
   const tankCasks = tankL / avg;
   const have = empties.length + onOrder;
   const months = have < tankCasks ? 0 : casksPerMonth > 0 ? Math.floor((have - tankCasks) / casksPerMonth) : Infinity;
