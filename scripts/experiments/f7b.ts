@@ -54,6 +54,8 @@ export interface F7bLine {
 // ───────────── 통계 ─────────────
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN);
 const median = (a: number[]) => { if (!a.length) return NaN; const b = [...a].sort((x, y) => x - y); const m = b.length >> 1; return b.length % 2 ? b[m]! : (b[m - 1]! + b[m]!) / 2; };
+/** 시드 간 표준편차 — MKT 요청: 현물 지수(bulk) 손잡이는 「어렵다」보다 「점수 잡음 ↑」로 나올 수 있다 */
+const sdOf = (a: number[]) => { const m = mean(a); return a.length > 1 ? Math.sqrt(a.reduce((t, x) => t + (x - m) ** 2, 0) / (a.length - 1)) : NaN; };
 const pct = (a: number[], q: number) => { if (!a.length) return NaN; const b = [...a].sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(q * b.length))]!; };
 /** 같은 시드 짝 차이 — 평균 · t · 이긴 시드 수 · 짝 수 */
 export function paired(a: Map<number, number>, b: Map<number, number>): { mean: number; t: number; wins: number; n: number } {
@@ -84,12 +86,12 @@ export function f7bReport(lines: F7bLine[]): string {
     out.push(`\n## F7-B · ${fr} — ${L.length}판`);
     // 1. 행 요약
     out.push('\n### 1. 행 요약 (순자산 = 게임 netWorth 처분 예상액, 억 · 파산 판은 파산한 달의 값)');
-    out.push('| 설정 | 전략 | 판 | 순자산 평균 · P10 | 파산 | 승리 · 승리 달 중앙 | 목표 달성 | 24~60개월 최저 현금 중앙 | 현금<0 개월 평균 | 대출 상품 수 · 최대 잔액 · 이자 | 급전 쓴 판 | 144개월 후보 0 판 |');
+    out.push('| 설정 | 전략 | 판 | 순자산 평균 · P10 · 시드 표준편차 | 파산 | 승리 · 승리 달 중앙 | 목표 달성 | 24~60개월 최저 현금 중앙 | 현금<0 개월 평균 | 대출 상품 수 · 최대 잔액 · 이자 | 급전 쓴 판 | 144개월 후보 0 판 |');
     out.push('|---|---|---|---|---|---|---|---|---|---|---|---|');
     for (const c of cfgs) for (const st of F7B_STRATS) {
       const r = by(c.id, st.id); if (!r.length) continue;
       const nws = r.map((x) => x.nw), wins = r.filter((x) => x.win === 'win');
-      out.push(`| ${c.id} ${c.ko} | ${st.id} | ${r.length} | ${eok(mean(nws))} · ${eok(pct(nws, 0.1))} | ${r.filter((x) => x.bankrupt >= 0).length}/${r.length} | ${wins.length}/${r.length} · ${wins.length ? median(wins.map((x) => x.winMonth ?? NaN)) : '—'} | ${r.filter((x) => x.goal).length}/${r.length} | ${eok(median(r.map((x) => x.dv ?? NaN)))} | ${mean(r.map((x) => x.negMonths)).toFixed(1)} | ${mean(r.map((x) => x.ladder)).toFixed(1)} · ${eok(mean(r.map((x) => x.loansMax)))} · ${eok(mean(r.map((x) => x.interest)))} | ${r.filter((x) => x.emergency).length}/${r.length} | ${r.filter((x) => x.cands144 === 0).length}/${r.length} |`);
+      out.push(`| ${c.id} ${c.ko} | ${st.id} | ${r.length} | ${eok(mean(nws))} · ${eok(pct(nws, 0.1))} · ${eok(sdOf(nws))} | ${r.filter((x) => x.bankrupt >= 0).length}/${r.length} | ${wins.length}/${r.length} · ${wins.length ? median(wins.map((x) => x.winMonth ?? NaN)) : '—'} | ${r.filter((x) => x.goal).length}/${r.length} | ${eok(median(r.map((x) => x.dv ?? NaN)))} | ${mean(r.map((x) => x.negMonths)).toFixed(1)} | ${mean(r.map((x) => x.ladder)).toFixed(1)} · ${eok(mean(r.map((x) => x.loansMax)))} · ${eok(mean(r.map((x) => x.interest)))} | ${r.filter((x) => x.emergency).length}/${r.length} | ${r.filter((x) => x.cands144 === 0).length}/${r.length} |`);
     }
     // 2. Normal 대비 시드 짝 차이(영역 단독 · 프리셋)
     out.push('\n### 2. Normal 대비 같은 시드 짝 차이 (억 · t · 이긴 시드/짝) — 조건 4 방향 보존 · 조건 5 효과 미미');
