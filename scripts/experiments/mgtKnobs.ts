@@ -16,6 +16,9 @@
 //                           금융 영역만 어려움(3)인 난이도(`custom:222223`)로 돈다 — 다른 금융 손잡이는 모두 1이라 이 둘만 움직인다. DIFF를 함께 주면 그 금융 자리가 3이어야 한다.
 //                           WAGE_DRIFT는 **실효 연 배수**(1.02 = 매년 +2%)로 받는다 — #330 뒤 손잡이는 기본 상승률(v16 캠페인 0.01)의 배수라 k = (w − 1) / 0.01로 바꿔 넣는다.
 //                           그래서 #330 전에 잰 F7-0 원자료(docs/baseline/2026-11-16-f7-0)와 같은 env 값이 같은 판을 만든다(v16 캠페인 판 한정 — 옛 판·샌드박스는 기본 0이라 효과 없음)
+//   KNOB_CAND=<json 파일,…>  F7-B(P-MGT-55): 실험 안에서만 KNOBS[id].easy·hard를 후보 값으로 덮어쓴다. 파일 형식 = { "<손잡이 id>": { "easy": x, "hard": y, "why"?: …, "felt"?: … } }
+//                           (각 파트의 docs/baseline/f7b/candidates-<파트>.json). Normal은 늘 1(F6a)이라 DIFF로 Easy·Hard 칸을 골라야 판이 바뀐다. 없는 id·음수·비숫자는 예외.
+//                           finance.wageDrift는 #330 뜻(기본 상승률 1%의 배수 k) 그대로 받는다. WAGE_DRIFT·LABOR_MUL과 함께 쓰면 예외(같은 칸을 두 번 덮지 않게)
 // balance-sim.ts·mvp-survival.ts가 맨 앞에서 applyMgtKnobs()를 부르고, 매달 행동 끝에 mgtPolicy(s)를 부른다
 import { applyAction, isLocked, salaryFor, type Candidate, type GameState } from '../../src/sim';
 import { DIFFICULTY_DOMAINS, KNOBS, normalizeDifficulty } from '../../src/sim/content/difficulty';
@@ -24,6 +27,7 @@ import { BASE_WAGE_DRIFT_V16 } from '../../src/sim/rules';
 import type { DifficultyConfig, DifficultyDomain, DifficultyLevel } from '../../src/sim/types';
 import { HR_TUNING } from '../../src/sim/hr';
 import { BANK_SCREENING } from '../../src/sim/content/finance';
+import { readFileSync } from 'node:fs';
 
 const env = process.env;
 export const MGT_KNOBS = {
@@ -41,6 +45,7 @@ export function applyMgtKnobs(): string {
   for (const k of ['TIER_OVERHEAD', 'TIER_EQUITY', 'TIER_WAREHOUSE', 'GOAL_MULT', 'SALARY_SCALE', 'EVENTS_EARLY']) if (env[k] != null && env[k] !== '') on.push(`${k}=${env[k]}`);
   if (DIFF) on.push(`DIFF=${DIFF.preset}(${DIFFICULTY_DOMAINS.map((d) => DIFF!.levels[d]).join('')})`);
   if (wageOn) on.push(`wageDrift=${WAGE_TEST.wageDrift ?? 1} laborMul=${WAGE_TEST.laborMul ?? 1}`);
+  if (KNOB_CAND) on.push(`KNOB_CAND=${KNOB_CAND.rows}행(${KNOB_CAND.files.map((f) => f.split('/').at(-1)).join(',')})`);
   const label = on.join(' ');
   if (label) console.error(`MGT 손잡이: ${label}`);
   return label;
@@ -107,6 +112,25 @@ if (WAGE_TEST.wageDrift != null || WAGE_TEST.laborMul != null) {
   KNOBS['finance.laborMul'] = { ...KNOBS['finance.laborMul']!, hard: WAGE_TEST.laborMul ?? 1 };
 }
 const wageOn = WAGE_TEST.wageDrift != null || WAGE_TEST.laborMul != null;
+/** F7-B(P-MGT-55): 후보 값 파일들을 읽어 KNOBS를 덮어쓴 행 수 · 파일 목록 — 없으면 null */
+export const KNOB_CAND = loadKnobCandidates(env.KNOB_CAND);
+export function loadKnobCandidates(list: string | undefined, knobs: typeof KNOBS = KNOBS, read: (f: string) => string = (f) => readFileSync(f, 'utf8')): { rows: number; files: string[] } | null {
+  if (list == null || list === '') return null;
+  if (wageOn && knobs === KNOBS) throw new Error('KNOB_CAND와 WAGE_DRIFT·LABOR_MUL은 함께 쓰지 않는다 — 임금 후보는 KNOB_CAND 파일에 넣는다');
+  const files = list.split(',').map((f) => f.trim()).filter(Boolean);
+  const seen = new Map<string, string>();
+  for (const f of files) {
+    const j = JSON.parse(read(f)) as Record<string, { easy?: unknown; hard?: unknown }>;
+    for (const [id, v] of Object.entries(j)) {
+      if (!(id in knobs)) throw new Error(`KNOB_CAND ${f}: 손잡이 ${id}가 KNOBS에 없다`);
+      if (seen.has(id)) throw new Error(`KNOB_CAND: ${id}가 ${seen.get(id)}와 ${f}에 두 번 있다`);
+      for (const k of ['easy', 'hard'] as const) if (typeof v[k] !== 'number' || !Number.isFinite(v[k] as number) || (v[k] as number) < 0) throw new Error(`KNOB_CAND ${f}: ${id}.${k}는 0 이상의 수(받은 값 ${String(v[k])})`);
+      knobs[id] = { ...knobs[id]!, easy: v.easy as number, hard: v.hard as number };
+      seen.set(id, f);
+    }
+  }
+  return { rows: seen.size, files };
+}
 /** 이 실행의 실험 난이도(없으면 undefined). 임금 판이면 금융만 어려움(3) */
 export const DIFF = difficultyFromEnv() ?? (wageOn ? difficultyFromEnv('custom:222223') : undefined);
 if (wageOn && DIFF && DIFF.levels.finance !== 3) throw new Error('WAGE_DRIFT·LABOR_MUL은 금융 영역이 어려움(3)일 때만 먹는다 — DIFF의 마지막 자리를 3으로');

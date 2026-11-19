@@ -1441,3 +1441,30 @@ v16 새 게임을 화면으로 19개월 진행한 메모(PM STATUS 요약) 중 P
 - **수요가 크게 바뀌는 것:** 진행 개월 — 1 → 13개월에 약 5.4배(54 → 290병). 인지도·유통·계절이 오른 몫이다. 플레이어는 "1개월째 수요"로 첫 병입량을 정하므로 A6("3개월 치")이 첫 병입을 적게 잡는 쪽으로 기운다 — 재고 경고가 판매 기록이 생기면 실제 판매로 바뀌므로 위험은 작다(관찰, 판정 아님)
 - **재현:** 상태 사본에서 `recipeEconomics(s, 소주 레시피)[0].demandPerMonth`와 `demandFor(s, 병입 미리 보기 제품, 같은 범주 수, 이번 달).demandBottles`를 1·6·13개월에 견준다(스크립트는 커밋하지 않음 — 위 표가 결과)
 
+
+## F7-B 난이도 후보 값 — PROD 몫 `[제안 P-PROD-59]` (PM 배정 2026-11-19, MGT `[제안 P-MGT-55]` #643 입력, 기준 `main` `636f348`)
+
+> **측정 입력이다. 판정이 아니다.** `content/difficulty.ts` KNOBS는 지금 모두 `easy: 1, hard: 1`이고 이 PR도 바꾸지 않는다. 값 파일: [`../baseline/f7b/candidates-prod.json`](../baseline/f7b/candidates-prod.json)(MGT 형식 — easy·hard·why·felt, `incidents.lossSize`는 MGT 파일).
+
+| 손잡이 | Easy | Hard | v16 한국에서 닿는 때 | 근거 · 예상 |
+|---|---|---|---|---|
+| `supply.eventChance` | 0.5 | 1.5 | 60개월부터 | 원가 악재 9종 확률. 기대 발생 수 반 / 1.5배 |
+| `supply.eventMagnitude` | 0.7 | 1.3 | 60개월부터 | 보리 흉작 ×1.5 → ×1.35 / ×1.65 |
+| `supply.eventDuration` | 0.75 | 1.25 | 60개월부터 | 보리 흉작 9~15개월 → 7~11 / 11~19 |
+| `supply.windfallSize` | 1.25 | 0.5 | 60개월부터 · 소주 원가만 | 쌀 ×0.6 → ×0.5 / ×0.8. **위스키 경로에 안 닿는다 — 효과 미미** |
+| `supply.forecastMonths` | 1.5 | 0.5 | 60개월부터 | 선행 2~6개월 → 3~9 / 1~3. **봇은 예보를 읽지 않는다 — 봇 측정 효과 0** |
+| `supply.forecastCertainty` | 1.2 | 0.8 | 60개월부터 | 적중 0.6~0.75 → 0.72~0.9 / 0.48~0.6. 위와 같이 봇 효과 0 |
+| `supply.priceWalkSigma` | 0.5 | 1.5 | **1개월부터(유일)** | 시세 σ 0.02 → 0.01 / 0.03. 평균 회귀·범위는 그대로 → 평균 원가는 비슷, 흔들림만 — 효과 작음 예상 |
+| `supply.caskLead` | **1** | 1.5 | 1개월부터 | 납기 2 → 3개월(반올림). Easy <1은 0.75까지 반올림으로 효과 0 · 0.5면 1개월이 승리 달을 앞당긴다 → Easy 1 권장 |
+| `incidents.eventChance` | 0.5 | 1.5 | 60개월부터 | 증류기 고장 0.015/월 · 쿨다운 12 → Normal 120개월 기대 약 1.5회 |
+| `incidents.eventMagnitude` | 0.7 | 1.3 | 60개월부터 | 사고 modifier 거리. 소실은 `lossSize`, 중단 개월은 `stillDownMonths` — 겹치지 않음 |
+| `incidents.eventDuration` | 0.75 | 1.25 | 60개월부터 | 기상 충격 포함 |
+| `incidents.lossSize` | (0.7) | (1.5) | 60개월부터 | MGT가 낸다(원장 damageMul) — PROD 동의 |
+| `incidents.stillDownMonths` | 0.5 | 1.5 | 60개월부터 | 수리 중단 2 → 1 / 3개월. 중단 달 몰트 0 → 12년 후보 공급에 그대로 빈다 |
+| `incidents.spoilSize` | 0.5 | 1.5 | 60개월부터 | 이취 +8 → +4 / +12. 그 달 배치만 — 효과 미미 |
+
+- **MGT 추론 확인:** `windfallSize`·`forecast*`·`stillDownMonths`·`spoilSize`는 모두 이벤트 효과·예보 안에서만 곱해진다(`prodKnobs.ts tuneEventEffects`·`tuneForecast`) → 이벤트가 열리는 60개월 뒤에만 닿는다 `[사실 — 코드]`
+- **v16 한국 처음 60개월에 닿는 PROD 손잡이는 둘뿐이다** — `priceWalkSigma`(흔들림)·`caskLead`(Hard 납기). 나머지 12개는 6년 차부터. 화면이 "어려움 = 원자재·사고가 거세다"를 처음부터 약속하면 정직성 문제다(MGT P-MGT-55 ⑤와 같은 지적) — 사업 계획서의 "6년 차부터 열린다" 문구(이미 있음)를 난이도 세부 설정 줄에도 붙이기를 [제안]
+- **봇 측정으로 효과가 0인 손잡이:** `forecastMonths`·`forecastCertainty`(봇이 예보를 읽지 않는다). 측정 표에 "봇 미반영 — 사람 판에서만"으로 따로 적기를 [제안]. 억지로 키워 간격을 만들지 않는다
+- **쌓임 위험:** supply Hard는 확률 ×1.5 · 크기 ×1.3 · 기간 ×1.25가 함께 걸려 원가 악재의 기대 비용이 어림 2.4배(곱)다. incidents도 같은 구조 + `lossSize` ×1.5. 영역 단독 E/H 행(P-MGT-55 설계)으로 먼저 재고, 쌓임이 ±30%를 넘으면 크기·기간을 1.15 / 1.1로 줄인 2차 후보로 다시 잰다
+- **방향 확인:** 모든 손잡이가 Easy = 플레이어에게 유리, Hard = 불리 방향이다(`windfallSize`·`forecast*`는 값이 클수록 유리라 Easy >1)
