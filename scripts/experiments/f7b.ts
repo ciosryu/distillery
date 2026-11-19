@@ -19,8 +19,10 @@ export const F7B_STRATS = [
   { id: 'X0', ko: 'X0 (4배치 · 싼 정책자금만)' },
   { id: 'X12F', ko: 'X12F (6배치 증산)' },
   { id: 'X0B', ko: 'X0B (X0 + 비싼 대출·급전까지)' },
+  { id: 'X12FB', ko: 'X12FB (X12F + 비싼 대출·급전까지)' },
 ] as const;
 export const X0B_NAME = 'X0B X0 + 대출 banner(경고 뒤 싼 것부터 시설·운전자금·급전까지)';
+export const X12FB_NAME = 'X12FB X12F + 대출 banner(경고 뒤 싼 것부터 시설·운전자금·급전까지)';
 
 /** 난이도 설정 — 자리 순서 = DIFFICULTY_DOMAINS(macro·competition·taste·supply·incidents·finance). competition은 #329 고정이라 늘 2(E·H 프리셋은 프리셋 그대로) */
 export interface F7bCfg { id: string; code: string; ko: string; domain?: 'macro' | 'taste' | 'supply' | 'incidents' | 'finance'; level?: 1 | 3 }
