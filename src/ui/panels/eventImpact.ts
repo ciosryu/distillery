@@ -1,5 +1,5 @@
 // 선택 대기 이벤트 카드의 「고르면 무엇이 멈추나」 줄 — 화면 계산만 한다(상태를 바꾸지 않는다 · 규칙 함수를 그대로 읽는다).
-// 6차 플레이테스트: 증류기가 1대뿐인 판에서 「일반 수리 · 해당 증류기 2개월 중단」이 사실상 모든 증류를 멈춘다는 것이 카드에 없었다.
+// 6차 플레이테스트: 증류기가 1대뿐인 판에서 「일반 수리 · 해당 증류기 2개월 중단」(당시 문구)이 사실상 모든 증류를 멈춘다는 것이 카드에 없었다.
 import type { GameState, PendingEvent } from '../../sim';
 import { EVENT } from '../../sim/content/events';
 import { tuneEventEffects } from '../../sim/prodKnobs';

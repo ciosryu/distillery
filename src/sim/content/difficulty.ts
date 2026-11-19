@@ -1,6 +1,6 @@
 // 난이도 콘텐츠 표 (F6, [결정 #313·#314] — architecture §10.10 [제안 P-ARCH-58]). 코어 그릇 — **행은 각 파트가 자기 PR로 채운다**.
 // 원칙: Normal = 지금 값(늘 ×1, 표에 적지 않는다). Easy·Hard 크기 = F7-B 최종 후보 `[제안 P-MGT-58]`(`docs/baseline/2026-11-19-f7b-r2/cand/final-*.json`, 37행 —
-// 결정 대기 98, 오너 "권장안대로" 2026-11-19). Normal 판은 이 표를 읽어도 ×1이라 출력 불변. 읽기는 `rules.ts knob(s, id)` 하나로. 이 파일은 types만 본다(잎 모듈 — 어디서든 안전).
+// [결정 #331], 오너 2026-11-19). Normal 판은 이 표를 읽어도 ×1이라 출력 불변. 읽기는 `rules.ts knob(s, id)` 하나로. 이 파일은 types만 본다(잎 모듈 — 어디서든 안전).
 import type { DifficultyConfig, DifficultyDomain, DifficultyLevel, DifficultyPreset } from '../types';
 
 export const DIFFICULTY_DOMAINS: readonly DifficultyDomain[] = ['macro', 'competition', 'taste', 'supply', 'incidents', 'finance'];
@@ -22,7 +22,7 @@ export interface KnobDef {
 }
 
 /**
- * 손잡이 표 `[튜닝 — F7-B 최종 후보 P-MGT-58 · 결정 대기 98]` — 경쟁 3행은 [결정 #329]로 1 고정. 영역 배수 `<영역>.eventChance`는 코어가 `events.ts rollChance`에서 읽는다(이벤트 `EventDef.domain` 태그 × 이 값).
+ * 손잡이 표 `[튜닝 — F7-B 최종 후보 P-MGT-58 · 결정 #331]` — 경쟁 3행은 [결정 #329]로 1 고정. 영역 배수 `<영역>.eventChance`는 코어가 `events.ts rollChance`에서 읽는다(이벤트 `EventDef.domain` 태그 × 이 값).
  * 나머지 행(금리·한도·시세 σ·탄력성·원가 이벤트 크기…)은 MGT·MKT·PROD가 자기 시스템에 `× knob(s, id)`를 붙이는 PR에서 더한다 — Normal 바이트 동일이 머지 조건.
  * `competition.eventChance`는 태그(`ad_regulation`)가 있어 행을 두되 값은 1 — [결정 #329] 경쟁 AI 전까지 Normal 고정, 세부 설정 화면이 잠근다
  */

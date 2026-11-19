@@ -1,4 +1,4 @@
-// 자동 진행 멈춤 `flagshipReady` — 12년 적격 통이 처음 생긴 달 (결정 대기 100 · 6차 판 docs/playtest/6/arch.md ①). 상태는 읽기만(출력 불변)
+// 자동 진행 멈춤 `flagshipReady` — 12년 적격 통이 처음 생긴 달 ([결정 #333] · 6차 판 docs/playtest/6/arch.md ①). 상태는 읽기만(출력 불변)
 import { describe, expect, it } from 'vitest';
 import { advanceMonth, advanceUntil, DEFAULT_STOPS, hasWinReadyCask, newScenarioGame, type GameState, type SpiritLot } from '.';
 import { emptyCaskOf } from './newGame';
