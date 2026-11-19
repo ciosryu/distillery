@@ -42,7 +42,7 @@ const URL = process.env.URL ?? 'http://localhost:4176/';
   }
   // 설비: 비지터 센터 베이직 투어
   await click(p.getByRole('button', { name: /크래프팅 레버/ }), 0, '설비 펼치기');
-  const visitorRow = p.locator('tr', { hasText: /비지터 센터.*베이직|베이직 투어/ }).last();
+  const visitorRow = p.locator('tr', { has: p.getByRole('button', { name: '발주' }) }).filter({ hasText: /^비지터 센터 — 베이직 투어/ }).first(); // 같은 문구가 핸드필·기프트 샵 행의 '선행 조건'에도 있어 발주 버튼 있는 행만
   if (await visitorRow.count()) await click(visitorRow.getByRole('button').last(), 0, '비지터 센터 베이직 투어 구매'); else note(0, '✕ 비지터 센터 베이직 행을 못 찾음');
   await click(p.getByRole('button', { name: /크래프팅 레버/ }), 0, '설비 접기');
   await p.screenshot({ path: `${OUT}/01-start.png`, fullPage: true });

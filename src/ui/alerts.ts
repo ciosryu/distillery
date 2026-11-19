@@ -14,8 +14,7 @@ import { ibAgedCaskCount } from '../sim/bulk';
 import { autoFillPreview } from '../sim/autoFill';
 import { autoRestockPlan, autoRestockSources, autoRestockSupported, guardedFlagshipCasks, productMonthlyPace } from '../sim/economics';
 import { reserveCaskIds } from '../sim/tags';
-import { cooperageLeadMonths } from '../sim/prodKnobs';
-import { AUTO_RESTOCK_EXPENSE, productionValue, whiskySupplyForecast } from '../sim/economics';
+import { AUTO_RESTOCK_EXPENSE, caskRunway, productionValue, whiskySupplyForecast } from '../sim/economics';
 
 // ───────────── ① 파산 카운트다운 ─────────────
 
@@ -303,18 +302,12 @@ export function monthTodos(s: GameState): Todo[] {
   const lastRep = s.history.reports.at(-1);
   const shortNotes = (lastRep?.notes ?? []).filter((n) => /배치 생산 못 함|취수 허가량|증류기가 준비되지 않아/.test(n));
   if (shortNotes.length) out.push({ id: 'batch-short', level: 'warn', text: `지난달 생산 지시를 다 못 만들었다 — ${shortNotes.slice(0, 2).join(' · ')}${shortNotes.length > 2 ? ` 외 ${shortNotes.length - 2}건` : ''}`, action: '생산 지시', target: { anchor: 'mvp-orders' } });
-  // A4(PROD 화면 메모): 빈 통이 곧 바닥난다 — 지난달 몰트·그레인 생산(LPA)을 63.5%·200L 통에 넣으면 달마다 필요한 통 수와, 빈 통 + 도착 예정 주문을 견준다.
-  // 쿠퍼리지 납기(`prodKnobs.cooperageLeadMonths`) 안에 바닥나면 지금 주문해야 늦지 않는다. 자동 통입이 켜져 있어도 통이 없으면 소용없으므로 같은 규칙
+  // A4(PROD 화면 메모): 빈 통이 곧 바닥난다 — 계산은 PROD `economics.ts caskRunway`(이번 달 가능 배치 · 탱크 적체 먼저 · 자동 통입 올림 반영)를 그대로 쓴다.
+  // 자동 통입 줄(AutoFill)과 숫자가 같다. 쿠퍼리지 납기 + 1개월 안에 바닥나면 지금 주문해야 늦지 않는다 · 이미 모자라면(0개월) warn
   {
-    const recipeKind = new Map(s.production.recipes.map((r) => [r.id, r.kind]));
-    const maltLpa = (lastRep?.production ?? []).filter((x) => { const k = recipeKind.get(x.recipeId); return k === 'malt' || k === 'grain'; }).reduce((t, x) => t + x.lpa, 0);
-    const perMonth = maltLpa / (200 * 0.635);
-    if (perMonth >= 0.5) {
-      const emptiesNow = s.inventory.casks.filter((c) => !c.contents && !c.contaminationKnown).length;
-      const ordered = s.inventory.caskOrders.reduce((t, o) => t + o.qty, 0);
-      const monthsLeft = (emptiesNow + ordered) / perMonth;
-      const lead = cooperageLeadMonths(s);
-      if (monthsLeft < lead + 1) out.push({ id: 'casks-low', level: monthsLeft < 1 ? 'warn' : 'info', text: `빈 통이 약 ${Math.max(0, Math.floor(monthsLeft))}개월 뒤 바닥난다 — 몰트·그레인 생산에 달마다 약 ${Math.ceil(perMonth)}통이 드는데 빈 통 ${emptiesNow}개 + 주문 ${ordered}개. 쿠퍼리지 주문은 ${lead}개월 뒤 도착하니 지금 주문한다`, action: '통 사기', target: { anchor: 'mvp-space' } });
+    const rw = caskRunway(s);
+    if (rw && rw.casksPerMonth > 0 && rw.months < rw.leadMonths + 1) {
+      out.push({ id: 'casks-low', level: rw.months < 1 ? 'warn' : 'info', text: `${rw.months < 1 ? '빈 통이 모자란다' : `빈 통이 약 ${rw.months}개월 뒤 바닥난다`} — 몰트·그레인에 달마다 약 ${Math.ceil(rw.casksPerMonth)}통이 드는데 빈 통 ${rw.empty}개 + 주문 ${rw.onOrder}개${rw.tankCasks >= 1 ? `(탱크 적체 몫 약 ${Math.ceil(rw.tankCasks)}통 먼저)` : ''}. 쿠퍼리지 주문은 ${rw.leadMonths}개월 뒤 도착하니 지금 주문한다`, action: '통 사기', target: { anchor: 'mvp-space' } });
     }
   }
   // 탱크 몰트·그레인 통입 대기 — 통에 넣어야 숙성이 시작된다

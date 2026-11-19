@@ -427,17 +427,16 @@ describe('할 일 A1·A4·A7', () => {
     expect(t?.target).toEqual({ anchor: 'mvp-orders' });
     expect(TODO_ORDER.indexOf('batch-short')).toBeLessThan(TODO_ORDER.indexOf('fill')); // 결품(#204) 바로 아래 — 통입·병입보다 위
   });
-  it('A4: 몰트 생산에 드는 통보다 빈 통 + 주문이 쿠퍼리지 납기 안에 바닥나면 알린다 · 넉넉하면 조용하다', () => {
-    let s: GameState = mvp(); s = advanceMonth(s);
-    const r = s.history.reports.at(-1)!;
+  it('A4: 생산에 드는 통보다 빈 통 + 주문이 쿠퍼리지 납기 + 1개월 안에 바닥나면 알린다(caskRunway — 자동 통입 줄과 같은 수) · 넉넉하면 조용하다', () => {
+    const s = mvp();
     const maltRecipe = s.production.recipes.find((x) => x.kind === 'malt')!;
-    r.production = [{ recipeId: maltRecipe.id, name: maltRecipe.name, batches: 4, lpa: 400, cost: 0 }]; // 달마다 약 3.1통
+    s.production.orders = [{ recipeId: maltRecipe.id, batchesPerMonth: 2 }];
     for (const c of s.inventory.casks) if (!c.contents) c.contents = { kind: 'malt', volumeL: 190, abv: 0.62, flavor: {}, createdMonth: 0, oakMonths: 1, sourced: false, costPerLPA: 5000 } as never;
     s.inventory.caskOrders = [];
     const low = monthTodos(s).find((x) => x.id === 'casks-low');
     expect(low?.level).toBe('warn');
-    expect(low?.text).toMatch(/2개월 뒤 도착/);
-    s.inventory.caskOrders = [{ id: 'O1', typeId: 'ex_bourbon_barrel', qty: 30, arriveMonth: s.month + 2, source: 'cooperage' }] as never;
+    expect(low?.text).toMatch(/빈 통이 모자란다.*2개월 뒤 도착/);
+    s.inventory.caskOrders = [{ id: 'O1', typeId: 'ex_bourbon_barrel', qty: 40, arriveMonth: s.month + 2, source: 'cooperage' }] as never;
     expect(monthTodos(s).some((x) => x.id === 'casks-low')).toBe(false);
   });
 });
