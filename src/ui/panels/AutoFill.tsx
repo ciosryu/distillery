@@ -56,7 +56,7 @@ export function AutoFillRow() {
       <div className="mt-1 text-stone-600 dark:text-stone-400">
         {!on ? '꺼져 있다 — 아래에서 직접 통입한다. 켜면 진행할 때 탱크 몰트·그레인을 빈 통에 자동으로 넣는다.'
           : pv.tankL < 1 ? `탱크에 넣을 원액이 없다 — ${nextIn === 0 && autoFillDue(s, cfg!) ? '이번' : `${nextIn}개월 뒤`} 진행 때 다시 본다.`
-            : <>{nextIn === 0 && autoFillDue(s, cfg!) ? '이번 진행 때' : `${nextIn}개월 뒤 진행 때`} 넣는다: 탱크 {liters(pv.tankL)} → 빈 통 <b>{pv.casks}통</b>{pv.leftL >= 1 ? <span className="text-amber-700 dark:text-amber-400"> · 빈 통이 모자라 {liters(pv.leftL)} 남는다 — 통을 사세요</span> : ''}</>}
+            : <>{nextIn === 0 && autoFillDue(s, cfg!) ? '이번 진행 때' : `${nextIn}개월 뒤 진행 때`} 넣는다: 탱크 {liters(pv.tankL)} → 빈 통 <b>{pv.casks}통</b>{pv.heldL >= 1 ? <span className="text-stone-500"> · {liters(pv.heldL)}는 통을 반도 못 채워 탱크에 두고 다음 통입 때 합친다</span> : null}{pv.leftL >= 1 ? <span className="text-amber-700 dark:text-amber-400"> · 빈 통이 모자라 {liters(pv.leftL)} 남는다 — 통을 사세요</span> : ''}</>}
       </div>
       {rw && rw.casksPerMonth > 0 && (
         <div className={`mt-1 ${rw.months <= rw.leadMonths + 1 ? 'font-medium text-rose-700 dark:text-rose-400' : 'text-stone-600 dark:text-stone-400'}`}>
