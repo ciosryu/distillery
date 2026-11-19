@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { rulesVersionOf, RETAIL_DEAL } from '../../sim';
 import { BOTANICALS, EQUIPMENT, INGREDIENTS, YEASTS } from '../../sim/content/catalog';
 import {
-  basePresetOf, craftPresets, equipmentCost, flavorProfile, leverEffects, leverSummary, describeLeverEffect, monthLabel, presetAsRecipe, previewBatch, stillDefOf, validateRecipe,
+  basePresetOf, craftPresets, equipmentCost, flavorProfile, leverEffects, leverSummary, describeLeverEffect, monthLabel, presetAsRecipe, steadyBatch, stillDefOf, validateRecipe,
   type GameState, type ProfileAxis, type Recipe, type SpiritKind, type YeastId, } from '../../sim';
 import type { PresetRecipe } from '../../sim/content/presets';
 import { productionValue, rampOutlook, RAMP_HOLD_MONTHS, recipeEconomics, whiskyExportPace, STANDARD_BOTTLE, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from '../../sim/economics';
@@ -40,7 +40,7 @@ export function Orders() {
     <Card title="월 생산 지시 (상시 — 바꿀 때까지 매달 반복)">
       <Table head={['레시피', '주종', '증류기', '배치당 산출', '배치당 원가', '원액 품질', '월 배치 수']}>
         {s.production.recipes.map((r) => {
-          const p = previewBatch(s, r);
+          const p = steadyBatch(s, r);
           const order = s.production.orders.find((o) => o.recipeId === r.id)?.batchesPerMonth ?? 0;
           return (
             <tr key={r.id}>
@@ -320,10 +320,10 @@ export function RecipeEditor() {
   const result = useMemo(() => {
     if (errs.length) return null;
     const r = { ...draft, id: 'preview' } as Recipe;
-    const v = previewBatch(s, r);
+    const v = steadyBatch(s, r);
     if (!v) return null;
     const base = basePreset ? presetAsRecipe(s, basePreset, r) : null;
-    const b = base && !validateRecipe(s, base).length ? previewBatch(s, base) : null;
+    const b = base && !validateRecipe(s, base).length ? steadyBatch(s, base) : null;
     const effects = base && b ? leverEffects(s, base, r) : [];
     return { v, b, effects, profile: flavorProfile(r.kind, v.flavor), baseProfile: b ? flavorProfile(r.kind, b.flavor) : undefined };
   }, [s, draft, errs.length, basePreset]);
@@ -379,7 +379,7 @@ export function RecipeEditor() {
         </div>
 
         <div className="w-full lg:w-72">
-          <div className="text-xs font-semibold text-stone-500">배치 1회 예상 (뉴메이크){result?.baseProfile ? ' — 점선 = 기준 프리셋' : ''}</div>
+          <div className="text-xs font-semibold text-stone-500">배치 1회 예상 (뉴메이크 · 초류·후류를 다시 넣는 둘째 달부터의 값 — 첫 배치는 조금 적다){result?.baseProfile ? ' — 점선 = 기준 프리셋' : ''}</div>
           {result ? (
             <>
               <ProfileRadar base={result.baseProfile} draft={result.profile} />
