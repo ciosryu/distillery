@@ -13,7 +13,17 @@ export interface PlayTurn {
   activeMs: number;
   /** 그때까지 누적 행동 수(성공한 dispatch) */
   actions: number;
+  /**
+   * 이 달로 넘어오기 전(지난 턴) 한 행동의 종류별 횟수 — 행동 타입(`fillCasks`·`setPrice`…). 여러 달을 한 번에 넘기면 첫 달에만 붙는다.
+   * 6차 판 분석(docs/playtest/6/arch.md ③): 행동 수만 있어 오래 걸린 턴에서 무엇을 했는지 정황으로만 볼 수 있었다. 옛 기록에는 없다
+   */
+  kinds?: Record<string, number>;
+  /** 어떤 진행으로 넘어왔나 — 1개월 · 분기 · 1년 · 다음 알림까지(6차 판은 같은 시간 도장으로 추정했다). 옛 기록에는 없다 */
+  advance?: AdvanceKind;
 }
+
+export type AdvanceKind = 'month' | 'quarter' | 'year' | 'until' | 'other';
+export const advanceKindOf = (months: number): AdvanceKind => (months === 1 ? 'month' : months === 3 ? 'quarter' : months === 12 ? 'year' : 'other');
 
 export interface Playlog {
   v: 1;
@@ -27,6 +37,8 @@ export interface Playlog {
   builds?: { build: string; month: number; at: number }[];
   /** 오너가 "이 빌드로 계속"을 누른 빌드 (#241) — 머리글 경고는 이 빌드(없으면 판 시작 빌드)와 지금 빌드가 다를 때만 뜬다 */
   buildAck?: string;
+  /** 다음 턴 기록에 붙일, 이번 턴에 한 행동 종류별 횟수(기록하면 비운다) */
+  pendingKinds?: Record<string, number>;
 }
 
 /** 기록 내보내기 파일 */
@@ -48,11 +60,21 @@ const TICK_MS = 5_000;
 export const freshPlaylog = (now = Date.now()): Playlog => ({ v: 1, startedAt: now, activeMs: 0, actions: 0, turns: [] });
 
 /** 진행으로 넘어온 달들을 기록한다 (순수 함수). 여러 달을 한 번에 넘기면 같은 시간·행동 수로 한 달씩 남긴다 */
-export function withTurns(log: Playlog, fromMonth: number, toMonth: number): Playlog {
+export function withTurns(log: Playlog, fromMonth: number, toMonth: number, advance?: AdvanceKind): Playlog {
   if (toMonth <= fromMonth) return log;
   const add: PlayTurn[] = [];
-  for (let m = fromMonth + 1; m <= toMonth; m++) add.push({ month: m, activeMs: log.activeMs, actions: log.actions });
-  return { ...log, turns: [...log.turns, ...add] };
+  const kinds = log.pendingKinds && Object.keys(log.pendingKinds).length ? log.pendingKinds : undefined;
+  for (let m = fromMonth + 1; m <= toMonth; m++) {
+    add.push({ month: m, activeMs: log.activeMs, actions: log.actions, ...(m === fromMonth + 1 && kinds ? { kinds } : {}), ...(advance ? { advance } : {}) });
+  }
+  const { pendingKinds: _done, ...rest } = log;
+  return { ...rest, turns: [...log.turns, ...add] };
+}
+
+/** 성공한 행동 하나 (순수 함수) — 누적 수와, 다음 턴 기록에 붙일 종류별 횟수 */
+export function withAction(log: Playlog, type?: string): Playlog {
+  if (!type) return { ...log, actions: log.actions + 1 };
+  return { ...log, actions: log.actions + 1, pendingKinds: { ...log.pendingKinds, [type]: (log.pendingKinds?.[type] ?? 0) + 1 } };
 }
 
 /** 빌드가 바뀌었으면 기록한다 (순수 함수) — 마지막으로 남긴 빌드와 같으면 그대로 */
@@ -97,8 +119,11 @@ export function resetPlaylog(): void { log = freshPlaylog(); store(); }
 export function replacePlaylog(l: Playlog | null): void { log = l?.v === 1 ? l : freshPlaylog(); store(); }
 /** 머리글 경고에서 "이 빌드로 계속" (#241) — 기록(builds)은 그대로 남는다 */
 export function ackBuild(build: string): void { log = { ...log, buildAck: build }; store(); }
-export function recordAction(): void { log = { ...log, actions: log.actions + 1 }; store(); }
-export function recordTurns(fromMonth: number, toMonth: number): void { log = withBuild(withTurns(log, fromMonth, toMonth), BUILD_ID, fromMonth); store(); }
+export function recordAction(type?: string): void { log = withAction(log, type); store(); }
+/** 다음 진행의 종류 — store가 엔진을 부르기 직전에 정하고, 달이 넘어간 기록에 붙인 뒤 비운다 */
+let nextAdvance: AdvanceKind | undefined;
+export function setNextAdvance(k: AdvanceKind | undefined): void { nextAdvance = k; }
+export function recordTurns(fromMonth: number, toMonth: number): void { log = withBuild(withTurns(log, fromMonth, toMonth, nextAdvance), BUILD_ID, fromMonth); store(); }
 /** 화면을 연 빌드를 남긴다 — 페이지를 다시 열어 빌드가 바뀌었으면 그 달로 (App 시작 때 한 번) */
 export function recordBuild(month: number): void { const next = withBuild(log, BUILD_ID, month); if (next !== log) { log = next; store(); } }
 /** 한 턴 되돌리기 — 되돌린 달 뒤의 턴 기록을 지우고 횟수를 센다. 플레이 시간은 그대로(실제로 쓴 시간이다) */

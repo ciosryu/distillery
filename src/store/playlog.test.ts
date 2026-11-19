@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonths, newScenarioGame, SAVE_VERSION } from '../sim';
-import { activeMsAt, buildDrift, freshPlaylog, parsePlayFile, withBuild, withTurns, type PlayFile } from './playlog';
+import { activeMsAt, advanceKindOf, buildDrift, freshPlaylog, parsePlayFile, withAction, withBuild, withTurns, type PlayFile } from './playlog';
 
 // 플레이 기록 (mvp.md §7.2) — 순수한 부분만. 시계(입력·화면 보임)는 브라우저에서만 돈다
 
@@ -51,5 +51,18 @@ describe('플레이 기록', () => {
     expect(buildDrift({ ...log, buildAck: 'bbb' }, 'aaa', 'bbb')).toBeNull(); // "이 빌드로 계속"을 눌렀다
     expect(buildDrift({ ...log, buildAck: 'bbb' }, 'aaa', 'ccc')).toEqual({ from: 'bbb', to: 'ccc', sinceMonth: null }); // 또 바뀌면 다시
     expect(buildDrift({}, undefined, 'x')).toBeNull(); // 기준을 모른다
+  });
+  it('행동 종류·진행 방식 (6차 판 분석 — 오래 걸린 턴에서 무엇을 했나) · 옛 모양은 그대로', () => {
+    let l = freshPlaylog(1);
+    l = withAction(withAction(withAction(l, 'fillCasks'), 'setPrice'), 'fillCasks');
+    expect(l.actions).toBe(3);
+    expect(l.pendingKinds).toEqual({ fillCasks: 2, setPrice: 1 });
+    l = withTurns(l, 0, 3, 'quarter');
+    expect(l.turns.map((x) => [x.month, x.kinds, x.advance])).toEqual([[1, { fillCasks: 2, setPrice: 1 }, 'quarter'], [2, undefined, 'quarter'], [3, undefined, 'quarter']]);
+    expect(l.pendingKinds).toBeUndefined();
+    l = withTurns(l, 3, 4); // 행동 없이 · 진행 방식 모름 → 옛 모양
+    expect(l.turns.at(-1)).toEqual({ month: 4, activeMs: 0, actions: 3 });
+    expect(withAction(freshPlaylog(1)).pendingKinds).toBeUndefined(); // 종류 없이 부르면 수만
+    expect([1, 3, 12, 24].map(advanceKindOf)).toEqual(['month', 'quarter', 'year', 'other']);
   });
 });

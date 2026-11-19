@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { createLocalEngine, DEFAULT_STOPS, newGame, setInvariantMode, newScenarioGame, type Action, type BusinessPlan, type GameState, type RegionId, type StopReason } from '../sim';
 import { flushSave, loadGame, queueSave, saveNow } from './persist';
 import { useUi } from './ui';
-import { parsePlayFile, recordAction, recordBuild, recordTurns, recordUndo, replacePlaylog, resetPlaylog } from './playlog';
+import { advanceKindOf, parsePlayFile, recordAction, recordBuild, recordTurns, recordUndo, replacePlaylog, resetPlaylog, setNextAdvance } from './playlog';
 import { BUILD_ID } from '../build';
 
 // 불변식 매달 검사 (INV-ARCH-1, architecture §9.5) — 개발 빌드(vite dev)만 콘솔에 적는다. 배포 빌드는 불러올 때만(persist.ts)
@@ -78,12 +78,14 @@ export const useGame = create<GameStore>((set) => {
       const res = engine.dispatch(a);
       if (res.error) { toast('error', res.error); return false; }
       if (res.message) toast('ok', res.message);
-      recordAction();
+      recordAction(a.type); // 행동 종류도 남긴다(6차 판 분석 — 오래 걸린 턴에서 무엇을 했나)
       return true;
     },
     advance: (months) => {
       const before = engine.snapshot() as GameState;
+      setNextAdvance(advanceKindOf(months));
       const res = engine.advance({ months, stopOn: months > 1 ? SAFETY_STOPS : [] });
+      setNextAdvance(undefined);
       if (res.months > 0) { undoState = before; set({ undoInfo: { month: before.month, months: res.months } }); }
       if (res.stoppedBy !== 'maxMonths' && res.months < months) toast(res.stoppedBy === 'verdict' ? 'ok' : 'error', `${res.months}개월 진행 후 멈춤 — ${STOP_LABEL[res.stoppedBy]}`);
     },
@@ -96,7 +98,9 @@ export const useGame = create<GameStore>((set) => {
       let stopped: StopReason = 'maxMonths';
       for (let i = 0; i < maxMonths; i++) {
         if (cancelRequested) break;
+        setNextAdvance('until');
         const res = engine.advance({ months: 1, stopOn });
+        setNextAdvance(undefined);
         useUi.getState().setAdvancing({ done: i + 1, total: maxMonths });
         if (res.stoppedBy !== 'maxMonths') { stopped = res.stoppedBy; break; }
         await new Promise((r) => setTimeout(r, 0)); // 화면이 그려질 틈
