@@ -16,6 +16,28 @@ export const autoFillOn = (s: GameState): AutoFillSettings | null => s.inventory
 /** 이번 달이 자동 통입하는 달인가 (매달·3·6개월마다 — 달 번호로 맞춘다) */
 export const autoFillDue = (s: GameState, cfg: AutoFillSettings) => s.month % Math.max(1, cfg.everyMonths ?? 1) === 0;
 
+/**
+ * 손 통입 미리 보기 ([제안 P-PROD-60], 6차 판 — 숙성 중 43통 중 18통이 처음부터 60% 미만으로 찼고 손 통입에서도 생겼다).
+ * 원액(L·도수)을 고른 통들에 차례로 넣을 때 통마다 몇 %가 차는지 — `fillCasks`와 같은 식(통 크기 × 통입 도수 ÷ 원액 도수). 상태를 바꾸지 않는다(화면 전용).
+ * 정보만 준다 — 손 통입을 막거나 개수를 바꾸지 않는다
+ */
+export function fillShares(lotL: number, lotAbv: number, caskSizesL: number[], entryAbv: number): { shares: number[]; leftL: number } {
+  const entry = Math.min(entryAbv, lotAbv);
+  let left = lotL;
+  const shares: number[] = [];
+  for (const size of caskSizesL) {
+    if (left < 1) break;
+    const needL = (size * entry) / lotAbv;
+    const use = Math.min(needL, left);
+    shares.push(use / needL);
+    left -= use;
+  }
+  return { shares, leftL: Math.max(0, left) };
+}
+
+/** 손 통입 끝자리 안내 문턱 — 마지막 통이 이 비율보다 덜 차면 "n%만 찬다"를 보인다 `[튜닝]` */
+export const PARTIAL_FILL_HINT = 0.5;
+
 /** 자동 통입이 쓸 빈 통 — 나무 통·오염 아님, 설정 순서(새 통 먼저 / 재사용 먼저), 같은 순서 안에서는 활성도 높은 통 먼저 */
 export function autoFillCasks(s: GameState, cfg: AutoFillSettings): Cask[] {
   const usedFirst = cfg.prefer === 'used';
