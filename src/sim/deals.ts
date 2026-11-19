@@ -103,9 +103,10 @@ export function makeOemOffer(s: GameState, rng: Rng): OemOffer | null {
   return { id: nid(s, 'W'), buyerName, batchesPerMonth, feePerBatch: fee, termMonths: rng.pick([12, 24]), penaltyPerBatch: Math.round(fee * OEM.penaltyShare), expiresMonth: s.month + 3 };
 }
 
-/** 월말: 입지 대표 거래 제안 갱신 */
-export function refreshDeals(s: GameState, rng: Rng): void {
+/** 월말: 입지 대표 거래 제안 갱신. report가 있으면 받지 않고 만료된 대형 유통 제안을 메모로 남긴다 — 거절도 기록으로 읽게(7차 판 관찰, 결정 #334 · 메모만, 숫자 불변) */
+export function refreshDeals(s: GameState, rng: Rng, report?: MonthReport): void {
   const deals = siteOf(s).deals ?? [];
+  for (const o of s.commerce.retailOffers) if (o.expiresMonth <= s.month) report?.notes.push(`${o.partner} 납품 제안 만료 — ${CATEGORY[o.category].nameKo} ${o.bottlesPerMonth.toLocaleString()}병/월 (받지 않음)`);
   s.commerce.retailOffers = s.commerce.retailOffers.filter((o) => o.expiresMonth > s.month);
   s.b2b.oemOffers = s.b2b.oemOffers.filter((o) => o.expiresMonth > s.month);
   if (deals.includes('retail') && !s.commerce.retailOffers.length && s.commerce.retailContracts.length < RETAIL_DEAL.maxActive && rng.chance(RETAIL_DEAL.offerChance)) s.commerce.retailOffers.push(makeRetailOffer(s, rng));
