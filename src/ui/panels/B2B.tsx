@@ -1,11 +1,11 @@
 import { BULK, CASKS } from '../../sim/content/catalog';
 import { regionOf, siteOf } from '../../sim/content/regions';
 import { CATEGORY } from '../../sim/content/categories';
-import { oemPackageCost, retailCancellationCost, cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, knownReads, lotQuality, monthLabel, QUALITY_SIGMA_PER_HEX, spotBidPerLPA, spotQuote, spotQuoteEstimate, spotSaturation, type Cask, type ContractAgingImpact, type GameState, type KnownRead, campaignMinOakMonths, HINT_HORIZON_MONTHS, rulesVersionOf, campaignWon } from '../../sim';
+import { oemPackageCost, retailCancellationCost, retailBreakRemaining, retailOfferOutlook, RETAIL_BREAK_MONTHS, cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, knownReads, lotQuality, monthLabel, QUALITY_SIGMA_PER_HEX, spotBidPerLPA, spotQuote, spotQuoteEstimate, spotSaturation, type Cask, type ContractAgingImpact, type GameState, type KnownRead, campaignMinOakMonths, HINT_HORIZON_MONTHS, rulesVersionOf, campaignWon } from '../../sim';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won, wonFull } from '../format';
 import { Badge, Button, Card, ConfirmButton, Empty, Stat, Table, Td } from '../kit';
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { isFlagshipCandidate } from '../../sim/delegateCheck';
 import { ibAgedCaskCount } from '../../sim/bulk';
 import { caskTagIds, isProtected, reserveCaskIds, tagDef } from '../../sim/tags';
@@ -245,19 +245,31 @@ function SiteDeals() {
       {deals.includes('retail') && (
         <Card title="대형 유통 납품 — 큰 물량·출고가의 80%·대금 2개월 뒤, 계약 중 숙성 위스키 매력도 ×0.9·인지도 상승 ×1.2">
           <Table head={['유통사', '카테고리', '월 납품', '단가', '기간', '병당 위약금', '상태', '']}>
-            {s.commerce.retailOffers.map((o) => (
-              <tr key={o.id}>
-                <Td className="font-medium">{o.partner}</Td><Td>{CATEGORY[o.category].nameKo}</Td><Td right>{num(o.bottlesPerMonth)}병</Td>
-                <Td right>출고가 × {pct(o.priceFactor, 0)}</Td><Td right>{o.termMonths}개월</Td><Td right>{won(o.penaltyPerBottle)}</Td>
-                <Td><Badge tone="info">제안 · {o.expiresMonth - s.month}개월 후 만료</Badge></Td>
-                <Td><Button small variant="primary" onClick={() => dispatch({ type: 'acceptRetail', offerId: o.id })}>체결</Button></Td>
-              </tr>
-            ))}
+            {s.commerce.retailOffers.map((o) => {
+              // [제안 P-MKT-42] ⓐ 받기 전에 "채울 수 있나"를 본다 — 6차 판: 두 번째 소주 계약을 원액 탱크가 빈 채로 받았다(화면 계산만)
+              const ol = retailOfferOutlook(s, o);
+              const thin = ol.coverMonths < RETAIL_BREAK_MONTHS;
+              return (
+                <Fragment key={o.id}>
+                  <tr>
+                    <Td className="font-medium">{o.partner}</Td><Td>{CATEGORY[o.category].nameKo}</Td><Td right>{num(o.bottlesPerMonth)}병</Td>
+                    <Td right>출고가 × {pct(o.priceFactor, 0)}</Td><Td right>{o.termMonths}개월</Td><Td right>{won(o.penaltyPerBottle)}</Td>
+                    <Td><Badge tone="info">제안 · {o.expiresMonth - s.month}개월 후 만료</Badge></Td>
+                    <Td><Button small variant="primary" onClick={() => dispatch({ type: 'acceptRetail', offerId: o.id })}>체결</Button></Td>
+                  </tr>
+                  <tr>
+                    <td colSpan={8} className={`px-2 pb-2 text-xs ${thin ? 'text-amber-800 dark:text-amber-300' : 'text-stone-600 dark:text-stone-300'}`}>
+                      지금 {CATEGORY[o.category].nameKo} 재고 {num(ol.stock)}병 → 이 계약 {ol.coverMonths >= 99 ? '99개월↑' : `${ol.coverMonths.toFixed(1)}개월`}치 · 최근 3개월 국내 판매 월 {num(Math.round(ol.recentSales))}병(납품이 국내 판매보다 먼저 가져간다) · 한 달 다 못 채우면 위약금 {won(ol.penaltyPerMonth)}, 미납이 월 물량의 {RETAIL_BREAK_MONTHS}배({num(RETAIL_BREAK_MONTHS * o.bottlesPerMonth)}병) 쌓이면 파기
+                    </td>
+                  </tr>
+                </Fragment>
+              );
+            })}
             {s.commerce.retailContracts.map((c) => (
               <tr key={c.id}>
                 <Td className="font-medium">{c.partner}</Td><Td>{CATEGORY[c.category].nameKo}</Td><Td right>{num(c.bottlesPerMonth)}병</Td>
                 <Td right>출고가 × {pct(c.priceFactor, 0)}</Td><Td right>{c.monthsDone}/{c.termMonths}개월</Td><Td right>{won(c.penaltyPerBottle)}</Td>
-                <Td><Badge tone={c.shortfall ? 'warn' : 'good'}>진행 중 · 누적 미납 {num(c.shortfall)}병</Badge></Td>
+                <Td><Badge tone={c.shortfall ? 'warn' : 'good'}>진행 중 · 누적 미납 {num(c.shortfall)}병{c.shortfall > 0 && ` · 파기까지 ${num(retailBreakRemaining(c))}병`}</Badge></Td>
                 <Td><ConfirmButton small variant="danger" armKey={`cancelretail-${c.id}@${s.month}`} armedLabel="한 번 더 누르면 해지" onConfirm={() => dispatch({ type: 'cancelRetail', contractId: c.id })}
                   preview={() => { const cost = retailCancellationCost(c); return <>{c.partner} 납품 계약을 해지한다 — 해지 비용 {won(cost)}(남은 {c.termMonths - c.monthsDone}개월 × 월 {num(c.bottlesPerMonth)}병 × 병당 위약금의 절반) · 현금 {won(s.finance.cash)} → {won(s.finance.cash - cost)}</>; }}>해지</ConfirmButton></Td>
               </tr>
