@@ -3,6 +3,7 @@ import { useGame } from '../../store/game';
 import { macroDetect, macroForecast } from '../../sim/earlyWarning';
 import { pct } from '../format';
 import { Badge, Button, Card, Empty } from '../kit';
+import { stillDownHint, stillDownLine } from './eventImpact';
 
 /** 시장 상황: 선택 대기 이벤트 · 예보 · 활성 보정치 · 최근 이벤트 */
 export function EventsCard() {
@@ -98,8 +99,18 @@ export function PendingEventChoices() {
             ))}
           </div>
           <ul className="mt-1 text-xs text-stone-500">{p.choices.map((c, i) => <li key={i}>{c.label}: {c.detail}{i === p.defaultChoice ? ' (고르지 않으면 다음 달 자동 선택)' : ''}</li>)}</ul>
+          <StillDownNote p={p} />
         </div>
       ))}
     </div>
   );
+}
+
+/** 증류기 고장 카드: 일반 수리가 멈추는 범위(1대뿐이면 모든 증류)와 덜 만드는 양 — 6차 플레이테스트 */
+function StillDownNote({ p }: { p: { defId: string; choices: { label: string }[] } }) {
+  const s = useGame((g) => g.state);
+  const h = stillDownHint(s, p);
+  const line = h && stillDownLine(h, p.choices[h.choice]?.label ?? '일반 수리');
+  if (!h || !line) return null;
+  return <p className={`mt-1 text-xs ${h.stills === 1 ? 'font-semibold text-amber-800 dark:text-amber-300' : 'text-stone-500'}`}>{line}</p>;
 }

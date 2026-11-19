@@ -133,3 +133,26 @@ describe('steadyBatch — 초류·후류 재투입이 쌓인 정상 상태 배�
     }
   });
 });
+
+describe('fillShares — 손 통입 끝자리 미리 보기 (P-PROD-60)', () => {
+  it('fillCasks와 같은 식 — 218L @ 73.5%를 200L 통에 63.5%로 넣으면 1통 꽉 + 1통 26%', async () => {
+    const { fillShares } = await import('./autoFill');
+    const r = fillShares(218, 0.735, [200, 200, 200], 0.635);
+    expect(r.shares.length).toBe(2);
+    expect(r.shares[0]).toBeCloseTo(1, 9);
+    expect(r.shares[1]).toBeCloseTo((218 - (200 * 0.635) / 0.735) / ((200 * 0.635) / 0.735), 9);
+    expect(r.leftL).toBe(0);
+  });
+  it('실제 통입 결과와 같다', async () => {
+    const { fillShares } = await import('./autoFill');
+    let s = order(game(), [0, 2, 0]);
+    s = advanceMonth(s);
+    const lot = s.inventory.lots.find((l) => l.kind === 'malt')!;
+    const empties = s.inventory.casks.filter((c) => !c.contents).slice(0, 3);
+    const pv = fillShares(lot.volumeL, lot.abv, empties.map(() => 200), 0.635);
+    const next = applyAction(s, { type: 'fillCasks', lotId: lot.id, caskIds: empties.map((c) => c.id), entryAbv: 0.635 }).state;
+    const got = empties.map((c) => next.inventory.casks.find((x) => x.id === c.id)!.contents?.volumeL ?? 0).filter((v) => v > 0).map((v) => v / 200);
+    expect(got.length).toBe(pv.shares.length);
+    got.forEach((g, i) => expect(g).toBeCloseTo(pv.shares[i]!, 6));
+  });
+});
