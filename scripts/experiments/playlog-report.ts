@@ -166,9 +166,16 @@ function hrCheck(): void {
 
 /** 가장 오래 걸린 턴 5개 — 사람이 어디서 머뭇거렸나 */
 function slowTurns(l: Playlog): void {
-  const d = l.turns.map((t, i) => ({ month: t.month, ms: t.activeMs - (i ? l.turns[i - 1]!.activeMs : 0), actions: t.actions - (i ? l.turns[i - 1]!.actions : 0) }));
+  const d = l.turns.map((t, i) => ({ month: t.month, ms: t.activeMs - (i ? l.turns[i - 1]!.activeMs : 0), actions: t.actions - (i ? l.turns[i - 1]!.actions : 0), kinds: t.kinds }));
   const top = [...d].sort((a, b) => b.ms - a.ms).slice(0, 5);
-  console.log(`- 오래 걸린 턴: ${top.map((x) => `${x.month - 1}→${x.month}월 ${min(x.ms)}(행동 ${x.actions})`).join(' · ')}`);
+  // 행동 종류(옛 기록에는 없다) — 많은 순 4개
+  const kindText = (k?: Record<string, number>) => (k ? ` [${Object.entries(k).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([t, n]) => `${t}×${n}`).join(' ')}]` : '');
+  console.log(`- 오래 걸린 턴: ${top.map((x) => `${x.month - 1}→${x.month}월 ${min(x.ms)}(행동 ${x.actions})${kindText(x.kinds)}`).join(' · ')}`);
+  // 진행 방식(옛 기록에는 없다) — 버튼별로 넘긴 달 수
+  const adv = l.turns.filter((t) => t.advance).reduce<Record<string, number>>((m, t) => ({ ...m, [t.advance!]: (m[t.advance!] ?? 0) + 1 }), {});
+  if (Object.keys(adv).length) console.log(`- 진행 방식(넘긴 달 수): ${Object.entries(adv).map(([k, n]) => `${({ month: '1개월', quarter: '분기', year: '1년', until: '다음 알림까지', other: '기타' } as Record<string, string>)[k] ?? k} ${n}`).join(' · ')}`);
+  const total = l.turns.reduce<Record<string, number>>((m, t) => { for (const [k, n] of Object.entries(t.kinds ?? {})) m[k] = (m[k] ?? 0) + n; return m; }, {});
+  if (Object.keys(total).length) console.log(`- 행동 종류(판 전체, 많은 순 8개): ${Object.entries(total).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n]) => `${k} ${n}`).join(' · ')}`);
   const first24 = d.filter((x) => x.month <= 24);
   if (first24.length) console.log(`- 첫 24턴 평균: 턴당 ${(first24.reduce((t, x) => t + x.ms, 0) / first24.length / 60_000).toFixed(1)}분 · 행동 ${(first24.reduce((t, x) => t + x.actions, 0) / first24.length).toFixed(1)}번`);
 }
