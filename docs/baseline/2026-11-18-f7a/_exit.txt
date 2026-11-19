@@ -1,1 +1,2 @@
 standard exit 0
+micro exit 0
