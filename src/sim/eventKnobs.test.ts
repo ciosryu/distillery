@@ -1,6 +1,9 @@
 // F6 코어 — 이벤트 효과 크기·기간 손잡이(`<영역>.eventMagnitude`·`eventDuration`, MKT #566 제안 ②): applyEffects가 EventDef.domain으로 읽는다
 import { afterEach, describe, expect, it } from 'vitest';
 import { KNOBS } from './content/difficulty';
+import { useKnobsAtOne } from './knobsAtOne.testutil';
+// 결정 대기 98로 실제 값이 들어갔다 — 이 파일의 장치 검사는 자리값(모두 1) 세계에서 돈다(실제 값은 difficultyValues.test.ts)
+useKnobsAtOne();
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { applyEffects } from './events';

@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction, advanceMonth, type GameState } from './index';
 import { caskRunway, productionValue, whiskySupplyForecast } from './economics';
+import { autoFillPreview } from './autoFill';
 import { newScenarioGame } from './newScenario';
 import { orderPlan, previewBatch, steadyBatch } from './production';
 
@@ -80,13 +81,35 @@ describe('caskRunway — 빈 나무 통이 떨어지는 때', () => {
     expect(r2.onOrder).toBe(20);
     expect(r2.months).toBeGreaterThan(r.months);
   });
-  it('자동 통입을 켜면 매달 끝자리를 덜 찬 통에 담는 몫까지 센다 — 간격마다 올림', () => {
-    const s0 = order(game(), [2, 2, 0]);
-    const manual = caskRunway(s0)!.casksPerMonth;
-    for (const every of [1, 3]) {
-      const s = applyAction(s0, { type: 'setAutoFill', settings: { everyMonths: every } }).state;
-      expect(caskRunway(s)!.casksPerMonth).toBeCloseTo(Math.ceil(manual * every) / every, 9);
-    }
+  it('자동 통입을 켜도 리터 ÷ 통 크기 그대로 — 덜 찰 끝자리는 탱크에 두고 합친다(후보 ②)', () => {
+    let s = order(game(), [2, 2, 0]);
+    const manual = caskRunway(s)!.casksPerMonth;
+    s = applyAction(s, { type: 'setAutoFill', settings: {} }).state;
+    expect(caskRunway(s)!.casksPerMonth).toBeCloseTo(manual, 9);
+    const buy = applyAction(s, { type: 'buySpotCasks', caskType: 'ex_bourbon_barrel', qty: 20 }); // 12달 동안 통이 떨어지지 않게
+    if (buy.error) throw new Error(buy.error);
+    s = buy.state;
+    const empty0 = s.inventory.casks.filter((c) => !c.contents).length;
+    for (let m = 0; m < 13; m++) s = advanceMonth(s); // 12번 통입
+    const used = empty0 - s.inventory.casks.filter((c) => !c.contents).length;
+    // 실제로 만든 몰트를 63.5%·200L로 나눈 통 수와 거의 같다 — 끝자리마다 통 하나씩 더 쓰지 않는다(전에는 매달 +1)
+    const maltLpa = s.history.reports.slice(0, 12).reduce((t, r) => t + r.production.filter((p) => s.production.recipes.find((x) => x.id === p.recipeId)?.kind === 'malt').reduce((u, p) => u + p.lpa, 0), 0);
+    expect(used).toBeLessThanOrEqual(maltLpa / 0.635 / 200);
+    expect(used).toBeGreaterThanOrEqual(maltLpa / 0.635 / 200 - 1); // 탱크에 둔 끝자리는 통 하나 미만
+    expect(s.inventory.casks.filter((c) => c.contents && c.contents.volumeL < 180).length).toBe(0); // 생산이 이어지는 동안은 꽉 차는 통만(증발로 조금 준 것 제외)
+  });
+  it('생산 지시를 끄면 남은 끝자리도 그 달에 넣는다 — 탱크에 영영 남지 않는다', () => {
+    let s = order(game(), [0, 2, 0]);
+    s = advanceMonth(s); // 탱크에 몰트 한 달 치
+    s = applyAction(s, { type: 'setAutoFill', settings: {} }).state;
+    const tank = () => s.inventory.lots.filter((l) => l.kind === 'malt').reduce((t, l) => t + l.volumeL, 0);
+    const pv = autoFillPreview(s, s.inventory.autoFill!);
+    expect(pv.heldL).toBeGreaterThan(0); // 만드는 중 — 끝자리를 둔다
+    expect(pv.leftL).toBe(0); // 빈 통이 모자란 것이 아니다
+    s = order(s, [0, 0, 0]);
+    expect(autoFillPreview(s, s.inventory.autoFill!).heldL).toBe(0);
+    s = advanceMonth(s);
+    expect(tank()).toBeLessThan(1);
   });
   it('탱크에 이미 쌓인 원액이 빈 통보다 많으면 0개월(이미 모자람)', () => {
     let s = order(game(), [0, 4, 0]);

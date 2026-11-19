@@ -2,6 +2,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { advanceMonth, applyAction, type GameState } from './index';
 import { KNOBS } from './content/difficulty';
+import { useKnobsAtOne } from './knobsAtOne.testutil';
+// 결정 대기 98로 실제 값이 들어갔다 — 이 파일의 장치 검사는 자리값(모두 1) 세계에서 돈다(실제 값은 difficultyValues.test.ts)
+useKnobsAtOne();
 import { LOAN_OFFERS } from './content/catalog';
 import { regionOf } from './content/regions';
 import { newScenarioGame } from './newScenario';
