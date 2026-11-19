@@ -9,7 +9,7 @@ export const LEVEL_KO: Record<DifficultyLevel, string> = { 1: '쉬움', 2: '보�
 
 /**
  * 판을 크게 바꾸지 않는 영역 — F7-B(봇 3,120판 + 2차): 영역 단독 Hard에서 거시·취향·원자재는 |t| < 2(사고 −6.2억 · 금융 −4.7억과 대비).
- * `[제안 P-ARCH-60]` (A) — 결정 대기 98과 같은 날. 값이 커져 영향이 생기면 이 집합을 비운다(경쟁의 `LOCKED_DOMAINS`와 같은 꼴)
+ * `[제안 P-ARCH-60]` (A) — [결정 #331]과 같은 날. 값이 커져 영향이 생기면 이 집합을 비운다(경쟁의 `LOCKED_DOMAINS`와 같은 꼴)
  */
 export const MINOR_DOMAINS: ReadonlySet<DifficultyDomain> = new Set<DifficultyDomain>(['macro', 'taste', 'supply']);
 /** 영역 영향 표시 — 세부 설정 줄 옆 */

@@ -1,4 +1,4 @@
-// 난이도 Easy·Hard 값 = F7-B 최종 후보 `[제안 P-MGT-58]` (결정 대기 98) — 표와 측정 파일이 어긋나지 않게 묶는다
+// 난이도 Easy·Hard 값 = F7-B 최종 후보 `[제안 P-MGT-58]` ([결정 #331]) — 표와 측정 파일이 어긋나지 않게 묶는다
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { KNOBS } from './content/difficulty';

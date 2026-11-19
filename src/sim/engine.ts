@@ -15,7 +15,7 @@ export const DEFAULT_STOPS: StopReason[] = ['pendingEvent', 'cashWarning', 'bank
 
 /**
  * 새 캠페인(v16) 승리 전 — 승리 적격 통(승리 판정과 같은 `caskEligibility`)이 하나라도 있는가.
- * 자동 진행 멈춤 `flagshipReady`가 "없다 → 있다"로 바뀐 달만 본다(6차 판: 146개월에 적격이 됐는데 [1년 진행]이 지나쳐 158개월에 병입 — 결정 대기 100)
+ * 자동 진행 멈춤 `flagshipReady`가 "없다 → 있다"로 바뀐 달만 본다(6차 판: 146개월에 적격이 됐는데 [1년 진행]이 지나쳐 158개월에 병입 — [결정 #333])
  */
 export function hasWinReadyCask(s: GameState): boolean {
   if (!s.scenario || rulesVersionOf(s) !== 'v16' || campaignWon(s)) return false;

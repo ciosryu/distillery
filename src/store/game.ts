@@ -60,7 +60,7 @@ let undoState: GameState | null = null;
  * "분기 진행"·"1년 진행"도 이 조건에서는 멈춘다 — 현금이 바닥난 줄 모르고 1년을 넘겨 손쓸 틈 없이 파산하지 않게
  * (플레이테스트 사전 점검에서 발견: 현금이 음수가 된 달에도 계속 진행했다). 이벤트·예보 같은 알림은 "다음 알림까지"의 몫
  */
-// 12년 적격 첫 달(`flagshipReady`)도 여러 달 진행을 멈춘다 — 6차 판: 146개월 적격을 [1년 진행]이 지나쳐 158개월에 병입(결정 대기 100, 판에 한 번)
+// 12년 적격 첫 달(`flagshipReady`)도 여러 달 진행을 멈춘다 — 6차 판: 146개월 적격을 [1년 진행]이 지나쳐 158개월에 병입([결정 #333], 판에 한 번)
 const SAFETY_STOPS: StopReason[] = ['cashWarning', 'bankrupt', 'gameOver', 'verdict', 'flagshipReady'];
 
 if (typeof window !== 'undefined') window.addEventListener('beforeunload', flushSave);
