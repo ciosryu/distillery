@@ -116,7 +116,7 @@ describe('결과 화면 — 등급 S 조건 세 줄 (6차 판 완료 세이브: 
   });
 });
 
-describe('납품 미달 할 일 (결정 대기 101 · MKT P-MKT-42 ⓑ-2)', () => {
+describe('납품 미달 할 일 ([결정 #334] · MKT P-MKT-42 ⓑ-2)', () => {
   const withContract = (shortfall: number) => {
     const s = mvp();
     s.commerce.retailContracts = [{ id: 'RC1', partner: '가온마트', category: 'soju_distilled', bottlesPerMonth: 600, priceFactor: 0.8, penaltyPerBottle: 2000, termMonths: 24, startMonth: 0, monthsDone: 6, delivered: 3000, shortfall } as never];
