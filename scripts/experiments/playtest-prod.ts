@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { calendar, isWhiskyCategory, previewBatch, priceOptions, type GameState, type MonthReport, type Product } from '../../src/sim';
 import { bestAutoPrice, currentSuggested, AUTO_PRICE_FACTORS } from '../../src/sim/economics';
 import { warehouseCapacity } from '../../src/sim/util';
-import { PACKAGING } from '../../src/sim/content/catalog';
+import { CASKS, PACKAGING } from '../../src/sim/content/catalog';
 import { BOTTLING_LABOR_PER_BOTTLE } from '../../src/sim/content/market';
 import { SAMPLING } from '../../src/sim/blendTable';
 import { parsePlayFile } from '../../src/store/playlog';
@@ -166,6 +166,43 @@ console.log(`- 자동 가격을 켠 제품(끝): ${s.commerce.products.filter((p
 console.log(`- 탱크에 남은 숙성 원액(통에서 뺀 흔적): ${s.inventory.lots.filter((l) => l.oakMonths > 0 || (l.restMonths ?? 0) > 0).map((l) => `${l.id} ${l.kind} 오크 ${l.oakMonths}·옹기 ${l.restMonths ?? 0}개월`).join(', ') || '없음'}`);
 console.log(`- 재고 0인데 목록에 남은 제품: ${s.commerce.products.filter((p) => p.stockBottles <= 0).map((p) => `「${p.name}」(출시 ${p.createdMonth}, 지난달 판매 ${p.lastMonthSold})`).join(', ') || '없음'} · 보관된 제품 ${s.commerce.productArchive.length}개`);
 if (playlog) console.log(`- 플레이 기록: 시작 ${new Date(playlog.startedAt).toISOString()} · 활동 ${Math.round(playlog.activeMs / 60000)}분 · 행동 ${playlog.actions} · 되돌리기 ${playlog.undos ?? '기록 없음'}`);
+
+// ── 8. 6차 판 뒤 볼 것 (docs/playtest/6/prod.md — 통입 중단·덜 찬 통·핸드필 공백·12년 지연·생산 0인 달) ──
+{
+  console.log('\n## 8. 6차 판 뒤 볼 것');
+  const reps = s.history.reports;
+  const notesOf = (re: RegExp) => reps.flatMap((r) => (r.notes ?? []).filter((n) => re.test(n)).map((n) => ({ month: r.month, n })));
+  // 탱크 대기 — 자사 몰트·그레인 탱크(가장 오래된 배치 달부터) · 소주 탱크
+  const tankMalt = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced);
+  const tankL = tankMalt.reduce((t2, l) => t2 + l.volumeL, 0);
+  const waitM = tankMalt.length ? s.month - Math.min(...tankMalt.map((l) => l.createdMonth)) : 0;
+  const sojuL = s.inventory.lots.filter((l) => l.kind === 'soju').reduce((t2, l) => t2 + l.volumeL, 0);
+  console.log(`- 탱크 몰트·그레인 ${n0(tankL)}L(가장 오래된 배치 ${waitM}개월째) · 탱크 소주 ${n0(sojuL)}L · 자동 통입 ${s.inventory.autoFill ? '켬' : '끔'}`);
+  const af = notesOf(/자동 통입 \d+통/);
+  console.log(`- 자동 통입이 돈 달 ${af.length}개${af.length ? `(${af[0]!.month}~${af.at(-1)!.month}개월)` : ''} · 빈 통 부족 메모 ${notesOf(/자동 통입 못 함/).length}건`);
+  // 덜 찬 통 — 숙성 중 통의 처음 채움 비율(증발 연 5%로 되돌린 어림)
+  const filled = s.inventory.casks.filter((c) => c.contents);
+  const part = filled.filter((c) => { const l = c.contents!; const keep = Math.pow(0.95, (l.oakMonths + (l.restMonths ?? 0)) / 12); return l.volumeL / keep / CASKS[c.typeId].sizeL < 0.6; });
+  console.log(`- 덜 찬 통(처음 채움 60% 미만 어림): ${part.length} / ${filled.length}통${part.length ? ` — ${part.slice(0, 8).map((c) => `${c.id}(${c.typeId.split('_')[0]})`).join(', ')}${part.length > 8 ? ' …' : ''}` : ''}`);
+  // 핸드필 — 통이 빈 달과 다음 핸드필까지의 공백
+  const hf = reps.filter((r) => (r.notes ?? []).some((n) => /^핸드필 \d+병/.test(n))).map((r) => r.month);
+  const empty = notesOf(/핸드필.*비었다/).map((x) => x.month);
+  const gaps = empty.map((m) => { const next = hf.find((x) => x > m); return `${m}개월에 빔 → ${next != null ? `${next - m - 1}개월 공백` : '끝까지 미지정'}`; });
+  console.log(`- 핸드필: 판 달 ${hf.length}개 · ${gaps.join(' · ') || '통이 빈 적 없음'}`);
+  // 12년 — 목재 144개월에 처음 닿은 달(남은 통 + 병입 로트 구성) · 병입 · 승리
+  const A = 144;
+  const woods = [...filled.filter((c) => !c.owner && c.contents!.kind === 'malt' && !c.contents!.sourced).map((c) => s.month - c.contents!.oakMonths + A),
+    ...(s.commerce.lots ?? []).flatMap((l) => (l.components ?? []).filter((e) => e.origin === 'self').map((e) => l.bottledMonth - e.woodMonths + A))];
+  const first = woods.length ? Math.min(...woods) : null;
+  const ms = (id: string) => s.progress.milestones.find((m) => m.id === id)?.month;
+  console.log(`- 12년: 목재 ${A}개월 첫 도달 ≈ ${first ?? '—'}개월째(남은 통·병입 로트 구성 기준) · 플래그십 병입 ${ms('flagship_bottled') ?? '—'} · 승리 ${s.progress.win ? `${s.progress.win.month}개월(${s.progress.win.bottles}병 × ${n0(s.progress.win.unitPrice)}원)` : '아직'}`);
+  // 생산 0인 달과 까닭(결산 메모)
+  const zero = reps.filter((r) => s.production.orders.some((o) => o.batchesPerMonth > 0) && !(r.production ?? []).length).map((r) => {
+    const why = (r.notes ?? []).find((n) => /증류기가 준비되지 않아|생산 중단|건너뛰었다/.test(n));
+    return `${r.month}${why ? `(${why.includes('증류기') ? '증류기' : why.includes('건너뛰') ? '건너뜀' : '재해'})` : ''}`;
+  });
+  console.log(`- 생산 0인 달: ${zero.join(', ') || '없음'} · 지시보다 덜 만든 달: ${notesOf(/배치 생산 못 함/).map((x) => x.month).join(', ') || '없음'}`);
+}
 
 // ── 7. 다른 판과 비교 ──
 if (other) {
