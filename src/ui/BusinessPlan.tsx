@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { GRADE, MVP_KR, previewPlan, type DifficultyConfig, type DifficultyDomain, type DifficultyLevel, type DifficultyPreset, type ScenarioTierDef } from '../sim';
 import { DIFFICULTY_DOMAINS, DIFFICULTY_DOMAIN_KO, normalizeDifficulty } from '../sim/content/difficulty';
-import { DOMAIN_WHAT, HARD_STACK_WARN_AT, LEVEL_KO, LOCKED_DOMAINS, MINOR_DOMAINS, PRESET_KO, PRESET_WHAT, difficultyLabel, domainImpactLabel, hardCount } from './difficultyLabel';
+import { DOMAIN_WHAT, HARD_STACK_WARN_AT, hardMajorDomains, LEVEL_KO, LOCKED_DOMAINS, MINOR_DOMAINS, PRESET_KO, PRESET_WHAT, difficultyLabel, domainImpactLabel, hardCount } from './difficultyLabel';
 import { useGame } from '../store/game';
 import { months, pct, won } from './format';
 import { Badge, Button, Card, TextField } from './kit';
@@ -128,7 +128,7 @@ export function BusinessPlan({ onClose, onSandbox }: { onClose?: () => void; onS
               <li>난이도는 판을 시작할 때 정해지고 플레이 중 바꿀 수 없다. 모든 난이도가 같은 규칙으로 돈다 — 숙성·숨은 품질·승리 조건은 난이도로 바뀌지 않는다.</li>
               <li>원자재·공급망과 사고·재난 이벤트는 6년 차부터 열린다 — 그 전에는 금융 환경(대출 조건·인건비)이 체감 난이도를 맡는다.</li>
               <li>판을 크게 바꾸는 것은 사고·재난과 금융 환경이다. 거시경제·소비자 취향·원자재는 변덕의 폭만 조금 바꾼다(봇 판 측정 기준 — 사람의 체감은 다를 수 있다).</li>
-              {hards >= HARD_STACK_WARN_AT && <li className="text-rose-700 dark:text-rose-400">⚠ 영향 큰 두 영역(사고·재난 · 금융 환경)을 모두 어려움으로 골랐다 — 6년 차부터 사고 뒤 현금이 바닥나기 쉽다. 비싼 대출까지 쓸 한도를 남겨 두라(한 달 새 이벤트 상한은 그대로).</li>}
+              {hards >= HARD_STACK_WARN_AT && <li className="text-rose-700 dark:text-rose-400">⚠ 영향 큰 영역을 어려움으로 골랐다({hardMajorDomains(difficulty).map((d) => DIFFICULTY_DOMAIN_KO[d]).join(' · ')}){hards >= 2 ? ' — 둘이 겹치면 사고 손실과 비싼 대출이 한꺼번에 온다' : ''}. 6년 차부터 사고 뒤 현금이 바닥나기 쉽다 — 비싼 대출까지 쓸 한도를 남겨 두라(한 달 새 이벤트 상한은 그대로).</li>}
               {difficulty.preset === 'custom' && <li>사용자 설정 판은 공식 기록(프리셋)과 따로 센다.</li>}
             </ul>
           </section>

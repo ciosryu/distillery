@@ -42,4 +42,7 @@ export function difficultyLabel(cfg: DifficultyConfig): string {
 
 /** 영향 큰 영역 중 어려움으로 고른 수 — Hard 중첩 경고([#314] 엣지 "시작 전 경고"). 잠긴 영역·변덕만 조금인 영역은 세지 않는다(P-ARCH-60 — 어려움 5칸 = 실질 2칸이었다) */
 export const hardCount = (cfg: DifficultyConfig): number => DIFFICULTY_DOMAINS.filter((d) => cfg.levels[d] === 3 && !LOCKED_DOMAINS.has(d) && !MINOR_DOMAINS.has(d)).length;
-export const HARD_STACK_WARN_AT = 2;
+/** 경고 문턱 — 영향 큰 영역 하나라도 어려움이면(PM 판단 2026-11-19: F7-B 단독 Hard만으로 사고 −6.2억 · 금융 −4.7억, MGT 의견과 같음) */
+export const HARD_STACK_WARN_AT = 1;
+/** 어려움으로 고른 영향 큰 영역 — 경고 문구용 */
+export const hardMajorDomains = (cfg: DifficultyConfig): DifficultyDomain[] => DIFFICULTY_DOMAINS.filter((d) => cfg.levels[d] === 3 && !LOCKED_DOMAINS.has(d) && !MINOR_DOMAINS.has(d));

@@ -12,6 +12,6 @@ describe('F6c — 난이도 화면 문구', () => {
     expect(difficultyLabel(normalizeDifficulty({ preset: 'custom', levels: { ...PRESET_LEVELS.normal, competition: 3 } }))).toBe('사용자 설정(모두 보통)'); // 잠긴 영역은 문구에 안 나온다
     expect(hardCount(normalizeDifficulty({ preset: 'custom', levels: { ...PRESET_LEVELS.normal, macro: 3, supply: 3 } }))).toBe(0);
     expect(hardCount(normalizeDifficulty({ preset: 'custom', levels: { ...PRESET_LEVELS.normal, incidents: 3, finance: 3 } }))).toBe(2);
-    expect(HARD_STACK_WARN_AT).toBe(2);
+    expect(HARD_STACK_WARN_AT).toBe(1); // 사고·금융 둘 중 하나라도 어려움이면 경고(PM 판단)
   });
 });
