@@ -137,3 +137,12 @@ describe('납품 미달 할 일 (결정 대기 101 · MKT P-MKT-42 ⓑ-2)', () =
     expect(TODO_ORDER.indexOf('retail-short')).toBe(TODO_ORDER.indexOf('stockout') + 1);
   });
 });
+
+describe('소식 창 — 받지 않고 만료된 납품 제안 (MKT #685 메모)', () => {
+  it('결산 메모 "○○ 납품 제안 만료 …"를 소식 창에 올린다', () => {
+    const s = mvp();
+    s.month = 10;
+    s.history.reports = [{ ...(s.history.reports.at(-1) ?? {}), month: 9, notes: ['가온마트 납품 제안 만료 — 증류식 소주 1,000병/월 (받지 않음)'], events: [] } as never];
+    expect(turnNews(s, 9).notes.map((n) => n.text)).toContain('가온마트 납품 제안 만료 — 증류식 소주 1,000병/월 (받지 않음)');
+  });
+});
