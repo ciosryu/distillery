@@ -8,6 +8,8 @@ import { EVENTS } from '../sim/content/events';
 import { useGame } from '../store/game';
 import { Badge, Button } from './kit';
 import { PendingEventChoices } from './panels/Events';
+import { flagshipReady } from './alerts';
+import { campaignMinOakMonths } from '../sim';
 
 const SEEN_KEY = 'distillery-tycoon/brief-seen';
 const URGENT = new Set(['disaster', 'regulation']);
@@ -17,18 +19,30 @@ const writeSeen = (seed: number, m: number) => { try { localStorage.setItem(SEEN
 
 /** 지난 진행 동안의 소식 — 이벤트(긴급 먼저)·새로 열린 기능·목표·마일스톤 */
 export function turnNews(s: ReturnType<typeof useGame.getState>['state'], fromMonth: number) {
+  const span = s.history.reports.filter((r) => r.month >= fromMonth && r.month < s.month);
+  // 고르지 않아 기본값으로 처리된 선택(6차 판 arch.md — `[제안 P-ARCH-63]`): 월 틱이 처리한 선택만 그달 결산 사건에 남는다(턴 사이에 직접 고르면 결산이 없다 — events.ts resolvePending)
+  const tickResolved = new Set(span.flatMap((r) => r.events.filter((t) => t.includes(' → '))));
   const events = s.events.log.filter((e) => e.month >= fromMonth && e.month < s.month && !e.title.startsWith('예보 빗나감')).map((e) => { // 빗나간 예보는 창을 띄울 만큼 중요하지 않다
     const def = EVENTS.find((d) => d.title === e.title);
-    return { ...e, urgent: !!def && URGENT.has(def.category) };
+    return { ...e, urgent: !!def && URGENT.has(def.category), defaulted: tickResolved.has(e.title) };
   }).sort((a, b) => Number(b.urgent) - Number(a.urgent) || a.month - b.month);
-  const span = s.history.reports.filter((r) => r.month >= fromMonth && r.month < s.month);
   const notes = span
-    .flatMap((r) => r.notes.filter((n) => /^(새 기능 열림|중반 목표|마일스톤|핸드필 .*비었다|자동 통입 못 함|IB 입찰 제안|위스키 원액 생산을 건너뛰었다|플래그십 후보 \d+통에서|세이브 복구|정기 임금 조정)/.test(n)).map((n) => ({ month: r.month, text: n })));
+    .flatMap((r) => r.notes.filter((n) => /^(새 기능 열림|중반 목표|마일스톤|핸드필 .*비었다|자동 통입 못 함|IB 입찰 제안|위스키 원액 생산을 건너뛰었다|플래그십 후보 \d+통에서|세이브 복구|정기 임금 조정)/.test(n)).map((n) => ({ month: r.month, text: n })))
+    // 여러 달 진행(분기·1년) 안에 온 IB 입찰은 답할 틈 없이 사라졌을 수 있다 — 지금 열린 입찰에 없으면 그렇다고 붙인다(P-ARCH-63)
+    .map((n) => { const id = n.text.match(/^IB 입찰 제안 — .*?통 (K\d+)/)?.[1]; return id && s.month - fromMonth > 1 && !s.b2b.caskBids.some((b) => b.caskId === id) ? { ...n, text: `${n.text} → 진행 중에 답하지 않아 이미 사라졌다` } : n; });
   // 플래그십 후보가 줄었다 (#261) — 이번 진행 직전 결산과 마지막 결산의 후보 수. 자동 납품 몫은 위 메모가, 나머지는 손 병입·맡기기·판매·빼기 등
   const before = s.history.reports.filter((r) => r.month < fromMonth).at(-1)?.flagshipCandidates;
   const after = span.at(-1)?.flagshipCandidates;
   if (before != null && after != null && after < before) {
     notes.unshift({ month: span.at(-1)!.month, text: `플래그십 후보 ${before} → ${after}통${after === 0 ? ' — 남은 후보가 없다' : ''}. 남길 통은 숙성고 카드에서 "플래그십 예비"로 묶는다(자동 기능이 쓰지 않는다)` });
+  }
+  // 12년 적격 첫 도달 (6차 판 arch.md ① — `[제안 P-ARCH-61]` (c)): 이번 진행이 넘긴 달 안에 가장 오래된 적격 통이 기준을 넘었으면 한 줄.
+  // 결산 메모를 새로 쓰지 않고(출력 불변) 지금 적격 통의 목재 개월에서 넘긴 달 수를 빼 본다 — 진행 전에는 적격 통이 없었다는 뜻
+  const win12 = flagshipReady(s);
+  if (win12?.casks.length && !win12.bottled) {
+    const A = campaignMinOakMonths(s);
+    const oldest = Math.max(...win12.casks.map((c) => c.woodMonths));
+    if (oldest - (s.month - fromMonth) < A) notes.unshift({ month: s.month - 1, text: `12년 병입 가능 — 자가 몰트 통 ${win12.casks.length}개가 목재 ${A}개월을 넘었다. 이 통들로 싱글 몰트를 병입해 팔면 캠페인 승리(블렌딩·병입 탭)` });
   }
   return { events, notes };
 }
@@ -58,7 +72,7 @@ export function TurnBrief() {
           <ul className="mb-3 grid gap-1.5 text-sm">
             {events.map((e, i) => (
               <li key={i} className={`rounded-md border px-2 py-1.5 ${e.urgent ? 'border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/40' : 'border-stone-200 dark:border-stone-700'}`}>
-                <div className="font-medium">{e.urgent && <Badge tone="bad">긴급</Badge>} {e.title} <span className="text-xs font-normal text-stone-500">{monthLabel(s.startYear, e.month)}</span></div>
+                <div className="font-medium">{e.urgent && <Badge tone="bad">긴급</Badge>} {e.title} {e.defaulted && <Badge tone="warn">고르지 않아 기본값</Badge>} <span className="text-xs font-normal text-stone-500">{monthLabel(s.startYear, e.month)}</span></div>
                 <div className="text-xs text-stone-600 dark:text-stone-300">{e.text}</div>
               </li>
             ))}
