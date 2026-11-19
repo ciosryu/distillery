@@ -186,16 +186,25 @@ export function refreshCandidates(s: GameState, rng: Rng): void {
  */
 export const HR_TUNING = { levelRaise: 0.05 };
 
+/** 입사 뒤 정기 임금 상승(매년 1월 틱, [결정 #330])을 몇 번 받았나 — 상승은 상태 달 t(t > 0, t % 12 = 0)의 틱에서, 입사 달의 틱부터 적용된다 */
+export const annualRaisesSince = (hiredMonth: number, month: number): number => (month <= 0 ? 0 : Math.max(0, Math.floor((month - 1) / 12) - Math.floor((Math.max(hiredMonth, 1) - 1) / 12)));
+
 /**
- * 직원 급여가 시작보다 얼마나 올랐나 (#197, mvp.md §7.8) — HR이 잠긴 시나리오(MVP)에서만 계산한다.
- * 거기서는 직원이 모두 레벨 1로 시작해 고용·해고가 없으므로, 레벨이 오른 만큼(×1.05씩)이 곧 인상분이다(반올림 오차 만 원 단위).
- * HR이 열린 판은 입사 레벨을 알 수 없어 null. 상태를 바꾸지 않는다
+ * 직원 급여가 시작보다 얼마나 올랐나 (#197, mvp.md §7.8) — HR이 잠긴 시나리오(MVP·새 캠페인)에서만 계산한다.
+ * 거기서는 직원이 레벨 1로 시작해 고용·해고가 없으므로, 레벨이 오른 만큼(×1.05씩)과 매년 1월 정기 임금 상승(#330, v16 연 1% × 난이도)이 곧 인상분이다(반올림 오차 만 원 단위).
+ * `annual` = 그중 정기 임금 상승 몫(없는 판은 0). HR이 열린 판은 입사 레벨을 알 수 없어 null. 상태를 바꾸지 않는다(화면 읽기 전용)
  */
-export function salaryRaiseSinceStart(s: Pick<GameState, 'hr' | 'scenario'>): { now: number; start: number } | null {
+export function salaryRaiseSinceStart(s: Pick<GameState, 'hr' | 'scenario' | 'month' | 'rulesVersion' | 'difficulty'>): { now: number; start: number; annual: number } | null {
   if (!s.scenario?.locked.includes('system:hr')) return null;
-  const now = s.hr.staff.reduce((t, x) => t + x.salary, 0);
-  const start = s.hr.staff.reduce((t, x) => t + Math.round(x.salary / (1 + HR_TUNING.levelRaise) ** (x.level - 1) / 10_000) * 10_000, 0);
-  return { now, start };
+  const drift = wageDrift(s);
+  let now = 0, start = 0, annual = 0;
+  for (const x of s.hr.staff) {
+    const yearly = drift === 1 ? 1 : drift ** annualRaisesSince(x.hiredMonth, s.month);
+    now += x.salary;
+    start += Math.round(x.salary / yearly / (1 + HR_TUNING.levelRaise) ** (x.level - 1) / 10_000) * 10_000;
+    annual += x.salary - x.salary / yearly;
+  }
+  return { now, start, annual: Math.round(annual) };
 }
 
 // ───────────── 성장: 교육·멘토링·헤드헌팅 (PRD §7.3, #222) — 수치 [튜닝] ─────────────
