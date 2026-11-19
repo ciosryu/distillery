@@ -2,6 +2,7 @@ import { ROLE_INFO } from '../../sim/content/catalog';
 import type { GameState, Staff as StaffT } from '../../sim';
 import { ageOf, AGING_TENURE_MONTHS, APPRENTICE_MONTHS, departureHouseStyle, HEADHUNT, headhuntCost, headhuntedThisMonth, marketSalary, masterDistiller, mentoringXp, MORALE, moraleOf, moraleOn, payShortfall, RETIRE_AGE, SPECIALIST_STAGE, specialistOffers, tenureOf, TRAINING, trainingCooldown, trainingCost, TRAIT_INFO, type SpecialistRole } from '../../sim/hr';
 import { rulesVersionOf } from '../../sim/rules';
+import { wageDrift } from '../../sim/mgtKnobs';
 import { pendingStages } from '../../sim/scenario';
 import { useGame } from '../../store/game';
 import { won } from '../format';
@@ -172,7 +173,7 @@ export function Staff() {
   // HR이 잠긴 시나리오(MVP)는 직원 관리 버튼을 숨기고 언제 열리는지 알린다 (#232 — 11년 차 단계)
   const hrOn = moraleOn(s);
   const opens = hrOn ? undefined : pendingStages(s).find((st) => st.unlock.includes('system:hr'));
-  const lockedNote = opens ? `직원 관리(채용·교육·헤드헌팅·해고)는 ${Math.floor(opens.month / 12) + 1}년 차에 열린다 — ${opens.month - s.month}개월 뒤` : rulesVersionOf(s) === 'v16' ? '새 캠페인에서는 채용·교육·해고(상세 직원 관리)가 1.0으로 미뤄졌다 — 11년 차의 핵심 전문가 1인은 위 카드에서 고른다' : '이 시나리오에서는 직원을 관리할 수 없다';
+  const lockedNote = opens ? `직원 관리(채용·교육·헤드헌팅·해고)는 ${Math.floor(opens.month / 12) + 1}년 차에 열린다 — ${opens.month - s.month}개월 뒤` : rulesVersionOf(s) === 'v16' ? `새 캠페인에서는 채용·교육·해고(상세 직원 관리)가 1.0으로 미뤄졌다 — 11년 차의 핵심 전문가 1인은 위 카드에서 고른다.${wageDrift(s) > 1 ? ` 급여는 매년 1월 전 직원 ${Math.round((wageDrift(s) - 1) * 1000) / 10}% 오른다(정기 임금 상승)` : ''}` : '이 시나리오에서는 직원을 관리할 수 없다';
   return (
     <div className="grid gap-4">
       <Card title={`직원 (${s.hr.staff.length}명 · 월 급여 ${won(s.hr.staff.reduce((t, x) => t + x.salary, 0))}) · 하우스 스타일 ${Math.round(s.hr.houseStyle)}`}>

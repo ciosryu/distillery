@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { EQUIPMENT } from './content/catalog';
-import { applyAction, heatingCost, monthlyFixedCost, newGame, newScenarioGame } from './index';
+import { advanceMonth, applyAction, heatingCost, monthlyFixedCost, newGame, newScenarioGame } from './index';
 import { forfeitedLoanRoom, marketingOutlook, monthlyFixedBreakdown, recentHouseRevenue } from './loans';
-import { gainXp, salaryRaiseSinceStart } from './hr';
+import { annualRaisesSince, gainXp, salaryRaiseSinceStart } from './hr';
 import { rngFor } from './rng';
 import { AWARENESS } from './market';
 
@@ -99,5 +99,27 @@ describe('월 고정비 내역 (#181)', () => {
     expect(r.now).toBeGreaterThan(start);
     expect(Math.abs(r.start - start)).toBeLessThanOrEqual(10_000 * s.hr.staff.length * 2); // 만 원 반올림이 레벨마다 쌓인 오차
     expect(salaryRaiseSinceStart(newGame({ seed: 1 }))).toBeNull();
+  });
+
+  // #330 — v16 캠페인은 매년 1월 정기 임금 상승(연 1%): 그 몫을 "시작 급여"로 잘못 넣지 않는다(화면 고정비 줄이 1월 인상을 보이도록)
+  it('정기 임금 상승 몫: 입사 뒤 받은 1월 횟수 · 13개월 뒤 시작 급여는 그대로, 인상분에 1%가 들어간다 · 옛 판은 0', () => {
+    expect(annualRaisesSince(0, 0)).toBe(0);
+    expect(annualRaisesSince(0, 12)).toBe(0); // 달 12의 틱은 아직
+    expect(annualRaisesSince(0, 13)).toBe(1);
+    expect(annualRaisesSince(0, 25)).toBe(2);
+    expect(annualRaisesSince(120, 120)).toBe(0); // 120개월에 고르면 그 달 틱에서 첫 상승
+    expect(annualRaisesSince(120, 121)).toBe(1);
+    expect(annualRaisesSince(121, 132)).toBe(0);
+    const g0 = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const start0 = salaryRaiseSinceStart(g0)!.now;
+    let g = g0;
+    for (let m = 0; m < 13; m++) g = advanceMonth(g);
+    const r = salaryRaiseSinceStart(g)!;
+    expect(r.annual).toBeGreaterThan(0);
+    expect(Math.abs(r.annual - (r.now - r.now / 1.01))).toBeLessThanOrEqual(g.hr.staff.length);
+    expect(Math.abs(r.start - start0)).toBeLessThanOrEqual(10_000 * g.hr.staff.length * 2);
+    let l = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'legacy-v15' });
+    for (let m = 0; m < 13; m++) l = advanceMonth(l);
+    expect(salaryRaiseSinceStart(l)!.annual).toBe(0);
   });
 });
