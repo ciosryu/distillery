@@ -1,4 +1,5 @@
 import { salaryRaiseSinceStart } from '../../sim/hr';
+import { wageDrift } from '../../sim/mgtKnobs';
 import { marketingOutlook, monthlyFixedBreakdown, recentHouseRevenue } from '../../sim/loans';
 import type { GameState } from '../../sim';
 import { useGame } from '../../store/game';
@@ -17,13 +18,16 @@ export function FixedCostLine() {
   // #197 — HR이 잠긴 판(MVP)에서 급여가 저절로 오른 몫 (mvp.md §7.8: 3차 판 6년간 +19%)
   const raise = salaryRaiseSinceStart(s);
   const raised = raise && raise.now - raise.start >= 10_000 ? raise.now - raise.start : 0;
+  // #330 — v16 캠페인은 매년 1월 정기 임금 상승(연 1% × 난이도). 1월에 급여가 오른 이유를 같은 줄에서 보인다
+  const drift = wageDrift(s), yearly = drift > 1;
+  const yearlyPct = `${Math.round((drift - 1) * 1000) / 10}%`;
   return (
     <div className="mt-3 rounded-md border border-stone-200 px-3 py-2 text-sm dark:border-stone-800">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="font-medium">매달 나가는 돈 {won(total)}</span>
         {parts.map((p) => (
-          <span key={p.id} className="text-stone-600 dark:text-stone-400" title={p.id === 'salaries' && raised ? '직원 레벨이 오를 때마다 급여가 5%씩 오른다. MVP에서는 직원을 바꿀 수 없어 조절할 수 없다' : undefined}>
-            {p.label} {won(p.amount)}{p.id === 'salaries' && raised > 0 && <span className="text-amber-800 dark:text-amber-300"> (시작보다 +{won(raised)} — 레벨이 오를 때마다 5%)</span>}
+          <span key={p.id} className="text-stone-600 dark:text-stone-400" title={p.id === 'salaries' && (raised || yearly) ? `${yearly ? `매년 1월 전 직원 급여가 ${yearlyPct} 오른다(정기 임금 상승). ` : ''}직원 레벨이 오를 때마다 급여가 5%씩 오른다. 이 캠페인에서는 직원을 바꿀 수 없어 조절할 수 없다` : undefined}>
+            {p.label} {won(p.amount)}{p.id === 'salaries' && raised > 0 && <span className="text-amber-800 dark:text-amber-300"> (시작보다 +{won(raised)} — {yearly ? `매년 1월 ${yearlyPct} · ` : ''}레벨이 오를 때마다 5%)</span>}
           </span>
         ))}
       </div>
