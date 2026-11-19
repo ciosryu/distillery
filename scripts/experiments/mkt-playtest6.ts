@@ -108,10 +108,14 @@ if (process.env.BOT === '1') {
   const flag = save.commerce.products.find((p) => (p.ageYears ?? 0) >= 12);
   if (flag) {
     console.log(`\n## 승리 뒤 굴림 — 「${flag.name}」 ${flag.price.toLocaleString()}원 · 재고 ${flag.stockBottles}병 · 판매 화면 「권장」 ${defaultPolicyPrice(currentSuggested(save, flag)).toLocaleString()}원 (플레이어 행동 없이 ${N}개월)`);
-    console.log('| 굴림 시드 | 승리 달 | 첫 6개월 판매(병) | 다 팔린 달 | 월 수요(첫 3개월 평균) | 12년 매출 | 끝 현금 |\n|---|---|---|---|---|---|---|');
-    for (const k of [1, 2, 3]) {
+    // FLAGP=1,1.2,1.5,2 — 12년 값을 오너 값의 배수로 바꿔 굴린다(값이 적정했나). 굴림 시드 0 = 세이브 시드 그대로(오너의 다음 달과 같은 난수)
+    const factors = (process.env.FLAGP ?? '1').split(',').map(Number);
+    console.log('| 12년 값 | 굴림 시드 | 승리 달 | 첫 달 판매(병) | 첫 6개월 판매(병) | 다 팔린 달 | 첫 달 수요 | 12년 매출 | 끝 현금 |\n|---|---|---|---|---|---|---|---|---|');
+    for (const f of factors) for (const k of [0, 1, 2, 3]) {
       let s: GameState = structuredClone(save);
       s.seed = save.seed + k * 7919;
+      const fp = s.commerce.products.find((y) => y.id === flag.id)!;
+      fp.price = Math.round((flag.price * f) / 100) * 100;
       const sold: number[] = [], dem: number[] = [];
       let rev = 0, winM = -1, outM = -1;
       for (let m = 0; m < N && s.status === 'running'; m++) {
@@ -122,7 +126,7 @@ if (process.env.BOT === '1') {
         if (winM < 0 && s.progress.win) winM = r.month;
         if (outM < 0 && (s.commerce.products.find((y) => y.id === flag.id)?.stockBottles ?? 0) <= 0) outM = r.month;
       }
-      console.log(`| ${k} | ${winM >= 0 ? `${winM}개월` : '없음'} | ${sold.slice(0, 6).reduce((a, b) => a + b, 0)} | ${outM >= 0 ? `${outM}개월` : `${N}개월 안 안 팔림`} | ${Math.round(dem.slice(0, 3).reduce((a, b) => a + b, 0) / 3)} | ${eok(rev)} | ${eok(s.finance.cash)} |`);
+      console.log(`| ${fp.price.toLocaleString()}원(×${f}) | ${k} | ${winM >= 0 ? `${winM}개월` : '없음'} | ${sold[0] ?? 0} | ${sold.slice(0, 6).reduce((a, b) => a + b, 0)} | ${outM >= 0 ? `${outM}개월` : `${N}개월 안 다 안 팔림`} | ${dem[0] ?? 0} | ${eok(rev)} | ${eok(s.finance.cash)} |`);
     }
   }
 }
