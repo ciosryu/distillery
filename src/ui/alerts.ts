@@ -18,7 +18,8 @@ import { autoRestockPlan, autoRestockSources, autoRestockSupported, guardedFlags
 import { reserveCaskIds } from '../sim/tags';
 import { caskEligibility } from '../sim/ledger';
 import { specialistOffers, SPECIALIST_STAGE } from '../sim/hr';
-import { AUTO_RESTOCK_EXPENSE, caskRunway, productionValue, tankLotWaitMonths, whiskySupplyForecast } from '../sim/economics';
+import { AUTO_RESTOCK_EXPENSE, caskRunway, CUTBACK_HINT, productionCutback, productionValue, sojuSupply, SOJU_STOCK_WARN_MONTHS, tankLotWaitMonths, whiskySupplyForecast } from '../sim/economics';
+import { monthlyFixedCost } from '../sim/loans';
 import { vesselMaterial } from '../sim/maturation';
 
 // ───────────── ① 파산 카운트다운 ─────────────
@@ -37,6 +38,8 @@ export interface CashAlert {
 }
 
 /** 런웨이 경고 기준(개월) — 이 속도로 이 안에 현금이 바닥나면 미리 경고한다 (화면 안내 기준, 게임 규칙 아님) */
+/** 자동 통입 줄 앵커 — PROD `panels/AutoFill.tsx` `AUTOFILL_ANCHOR`와 같은 값(테스트가 묶는다). 그 파일을 import하면 store·React가 딸려 와 봇(mvp-human — cashAlert만 씀)이 node에서 깨진다 */
+export const AUTOFILL_ROW_ANCHOR = 'autofill-row';
 export const RUNWAY_WARN_MONTHS = 3;
 
 /**
@@ -260,7 +263,7 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'visitor', 'stockout', 'retail-short', 'batch-short', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'handfill', 'fill', 'defense', 'whisky', 'soju', 'sample'];
+export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'handfill', 'fill', 'defense', 'whisky', 'soju', 'soju-glut', 'sample'];
 // 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
 // danger 등급은 새 기능 바로 아래로 올린다(같은 danger끼리는 위 순서) — 6차 판: 오래 통입 대기(fill danger)가 할 일 3번째에 묻혔다
@@ -390,6 +393,15 @@ export function monthTodos(s: GameState): Todo[] {
       out.push({ id: 'retail-short', level: critical ? 'danger' : 'warn', text: `납품 미달 — ${lines.join(' · ')}. 파기되면 계약이 끝나 남은 달의 납품 매출을 잃는다(이미 낸 위약금은 그대로) — 그 범주 재고(병입)를 늘리고, 늘릴 수 없다면 해지와 파기 중 더 싼 쪽을 고른다`, action: '납품 계약', target: { tab: 'b2b' } });
     }
   }
+  // 줄인 생산 되돌리기 (PROD #725 productionCutback · P-PROD-61 — 7차 판 오너 "재고 쌓여서 생산 줄이고 그대로 깜빡했다": 62개월에 절반으로 줄인 채 155개월까지,
+  // 현금 13억 · 위스키 전 품절). 조건은 PROD CUTBACK_HINT(줄인 지 3개월↑ · 현금 고정비 6개월 치↑ · 되돌리면 위스키가 는다), 재고 바닥이면 danger. 생산 탭 CutbackLine과 같은 값
+  if (s.scenario) {
+    const c = productionCutback(s, monthlyFixedCost(s));
+    if (c && c.monthsSince >= CUTBACK_HINT.monthsSince && c.cashMonths != null && c.cashMonths >= CUTBACK_HINT.cashMonths && c.extraWhiskyBottlesPerYear > 0) {
+      const stock = c.whiskyStock <= 0 ? '위스키 재고 0병' : c.whiskyMonths == null ? `위스키 재고 ${c.whiskyStock.toLocaleString()}병` : `위스키 재고 ${c.whiskyMonths.toFixed(1)}개월 치`;
+      out.push({ id: 'cutback', level: c.stockLow ? 'danger' : 'warn', text: `몰트·그레인을 줄인 지 ${c.monthsSince}개월 — 지금 월 ${c.current}배치(줄이기 전 ${c.before}배치) · 현금은 고정비 ${Math.floor(c.cashMonths)}개월 치 · ${stock}${c.soldOut ? ` · 품절 ${c.soldOut}종` : ''}. 되돌리면 생산비 +${fmtWon(c.extraCostPerMonth)}/월 → 해마다 위스키 약 +${c.extraWhiskyBottlesPerYear.toLocaleString()}병`, action: '생산 지시', target: { anchor: 'mvp-orders' } });
+    }
+  }
   // A1(PROD 화면 메모, ARCH alerts): 지난달 지시한 배치를 다 못 만들었다 — 지금은 대시보드 결산 메모에만 있어 놓친다. 원인 문구는 생산 단계가 쓴 그대로(원재료·증류기·발효조·취수 허가)
   const lastRep = s.history.reports.at(-1);
   const shortNotes = (lastRep?.notes ?? []).filter((n) => /배치 생산 못 함|취수 허가량|증류기가 준비되지 않아/.test(n));
@@ -426,7 +438,8 @@ export function monthTodos(s: GameState): Todo[] {
       : { id: 'fill', level: fillLevel, text: `탱크 몰트·그레인 ${Math.round(tankMalt).toLocaleString()}L 통입 대기 — 빈 나무 통 ${empties}개 · 남은 자리 ${free}통 (통에 넣어야 숙성이 시작된다 · 자동 통입을 켜 둘 수 있다)${waitText}`, action: empties > 0 ? '통입' : '통 사기', target: { anchor: empties > 0 ? 'mvp-fill' : 'mvp-space' } });
   }
   // [제안 P-ARCH-65] 확장 — 7차 판 오너 답 "자동 통입이 어딨는지 못찾았다"(155개월 · 손 통입 405번): 통입 대기 줄에서 **바로 켠다**. 끄기는 통입 카드에서(되돌릴 수 있는 설정)
-  if (!af) { const fill = out.find((t) => t.id === 'fill'); if (fill) fill.quick = { label: '자동 통입 켜기', action: { type: 'setAutoFill', settings: {} }, done: '자동 통입을 켰다 — 진행할 때마다 꽉 차는 통에 넣는다(통입 카드에서 끌 수 있다)' }; }
+  // PROD #729: 이동 버튼도 자동 통입 줄(AUTOFILL_ANCHOR)로 — 오너 "어딨는지 못찾았다". 손 통입은 그 줄 바로 아래 통입 카드라 같은 자리다
+  if (!af) { const fill = out.find((t) => t.id === 'fill'); if (fill) fill.target = { anchor: AUTOFILL_ROW_ANCHOR }; if (fill) fill.quick = { label: '자동 통입 켜기', action: { type: 'setAutoFill', settings: {} }, done: '자동 통입을 켰다 — 진행할 때마다 꽉 차는 통에 넣는다(통입 카드에서 끌 수 있다)' }; }
   // 위스키 재고가 떨어져 가는데 숙성을 채운 통이 있다
   // A7(PROD 화면 메모): 병입 권고는 플래그십 예비 통(#260)을 세지 않는다 — 예비 통을 권하면 "예비를 지켜라" 경고와 부딪친다. 남은 통이 예비뿐이면 그 사실과 대가를 한 줄로
   const { ready, readyReserved } = bottleableNow(s);
@@ -444,6 +457,12 @@ export function monthTodos(s: GameState): Todo[] {
   const tankSoju = bottleableNow(s).tankSojuL;
   const so = stockMonths(s, (c) => c === SOJU);
   if (tankSoju >= 50 && so.months < RESTOCK_MONTHS) out.push({ id: 'soju', level: 'info', text: `소주 재고 ${so.stock ? `${so.months.toFixed(1)}개월 치` : '없음'} — 탱크 소주 ${Math.round(tankSoju).toLocaleString()}L 병입 가능 (팔 만큼만)`, action: '블렌딩·병입', target: { tab: 'bottling' } });
+  // 소주 과잉 (PROD #728 sojuSupply · P-PROD-62 — 7차 판: 탱크 소주까지 세면 62개월 25.6 · 155개월 43.9개월 치인데 할 일은 1.7 · 2.6개월 치로 보였다).
+  // 'soju'(제품 재고가 떨어져 간다 → 병입)와 하라는 일이 반대라 줄을 나눈다(PROD 권장) — 이쪽은 생산을 줄이라는 신호
+  {
+    const ss = sojuSupply(s);
+    if (ss.months != null && ss.months >= SOJU_STOCK_WARN_MONTHS && ss.tankBottles > 0) out.push({ id: 'soju-glut', level: 'warn', text: `병입하지 않은 소주까지 ${Math.round(ss.months)}개월 치 — 탱크 ${Math.round(ss.tankL).toLocaleString()}L + 제품 ${ss.productBottles.toLocaleString()}병 · 지금 지시는 매달 약 ${Math.round(ss.madeBottlesPerMonth).toLocaleString()}병을 더 만든다(원료·에너지 월 ${fmtWon(ss.costPerMonth)})${ss.costPerBatch ? ` — 소주 지시를 1 줄이면 월 ${fmtWon(ss.costPerBatch)} 아낀다` : ''}`, action: '생산 지시', target: { anchor: 'mvp-orders' } });
+  }
   // 샘플 시기 — 기록이 없거나 오래된 통 (시나리오 게임만: 샌드박스는 참값을 본다)
   if (s.scenario) {
     const stale = staleSampleCasks(s).length;
