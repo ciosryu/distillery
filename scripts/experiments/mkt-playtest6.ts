@@ -9,6 +9,7 @@ import { advanceMonth, applyAction, type GameState, type MonthReport } from '../
 import { houseBrand } from '../../src/sim/brands';
 import { defaultPolicyPrice } from '../../src/sim/content/market';
 import { currentSuggested } from '../../src/sim/economics';
+import { priceModeOf } from '../../src/sim/priceEngine';
 import { eok, loadSave } from './mkt-lib';
 import { setP8Hooks } from './p8Hooks';
 
@@ -138,7 +139,9 @@ if (process.env.AUTOP === '1') {
     const sug = currentSuggested(save, p);
     const rows = last12.map((r) => r.sales.find((x) => x.productId === p.id)).filter(Boolean) as MonthReport['sales'];
     const sold = rows.reduce((t, x) => t + x.bottles, 0), short = rows.filter((x) => x.demandBottles > x.bottles).length;
-    const mode = p.pricePolicy ? `정책 ${p.pricePolicy.mode}` : p.autoPrice ? '자동' : '손';
+    // 자동 가격은 autoPrice가 켜져 있을 때만 돈다 — pricePolicy는 끈 뒤에도 남는다(다시 켤 때 쓰는 기억). 판정은 엔진과 같은 priceModeOf로(7차 중간: 정책만 남은 손 가격 4종을 "정책"으로 잘못 찍었다)
+    const pm = priceModeOf(p);
+    const mode = pm ? `자동 ${pm}` : p.pricePolicy ? `손(정책 ${p.pricePolicy.mode} 기억만 남음)` : '손';
     console.log(`| ${p.name} | ${p.category} | ${p.price.toLocaleString()} | ${Math.round(sug).toLocaleString()} | ${defaultPolicyPrice(sug).toLocaleString()} | ×${(p.price / defaultPolicyPrice(sug)).toFixed(2)} | ${mode} | ${p.stockBottles.toLocaleString()} | ${p.totalSold.toLocaleString()} | ${sold.toLocaleString()} | ${short}/12 |`);
   }
 
