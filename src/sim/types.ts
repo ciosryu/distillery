@@ -65,6 +65,11 @@ export interface EquipmentInstance {
   readyMonth: number;
   /** 증류기: 재사용 페인츠(LPA) */
   feintsLPA?: number;
+  /**
+   * 고장 수리로 멈춘 증류기가 다시 도는 달 — `stillDown`이 `readyMonth`와 같이 쓴다. 그 달 결산 메모를 "가동 시작"(새 설비) 대신 "수리 끝"으로 구분하고 지운다.
+   * 7차 판(MGT 넘김): 142개월 수리 끝이 「단식 증류기 가동 시작」으로 떠 새 설비를 산 것처럼 읽혔다. 선택 필드(#187) — 상태 수치·난수에 닿지 않는다
+   */
+  repairUntil?: number;
 }
 
 export interface SpiritLot {

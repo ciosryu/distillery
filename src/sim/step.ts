@@ -84,7 +84,13 @@ function phasePrepare(s: GameState, report: MonthReport): void {
 /** 1 이벤트: 예보 → 발생 → 보정치 등록 (이번 달부터 적용), 설비 가동 시작 알림 */
 function phaseEvents(s: GameState, report: MonthReport): void {
   if (systemOn(s, 'events')) runEvents(s, report, calendar(s).monthOfYear);
-  for (const e of s.production.equipment) if (e.readyMonth === s.month && s.month > 0) report.notes.push(`${EQUIPMENT[e.catalogId]?.nameKo ?? e.catalogId} 가동 시작`);
+  for (const e of s.production.equipment) {
+    if (e.readyMonth !== s.month || s.month <= 0) continue;
+    const name = EQUIPMENT[e.catalogId]?.nameKo ?? e.catalogId;
+    // 고장 수리 끝(stillDown)은 새 설비 완공과 같은 달 비교로 잡히므로 구분한다(7차 판 — "가동 시작"이 새로 산 것처럼 읽혔다). 메모 글자만 다르고 수치는 그대로
+    if (e.repairUntil === s.month) { report.notes.push(`${name} ${e.id} 수리 끝 — 다시 가동`); delete e.repairUntil; }
+    else report.notes.push(`${name} 가동 시작`);
+  }
 }
 
 /** 4 계약 납품: 원액 B2B 계약, 대형 유통 납품 */

@@ -142,7 +142,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
       }
       case 'stillDown': {
         const stills = s.production.equipment.filter((x) => x.readyMonth <= s.month && x.feintsLPA != null);
-        if (stills.length) { const st = rng.pick(stills); st.readyMonth = s.month + e.months; notes.push(`증류기 ${st.id} ${e.months}개월 가동 중단`); if (ledger) ledger.stopMonths += e.months / stills.length; }
+        if (stills.length) { const st = rng.pick(stills); st.readyMonth = s.month + e.months; st.repairUntil = st.readyMonth; notes.push(`증류기 ${st.id} ${e.months}개월 가동 중단`); if (ledger) ledger.stopMonths += e.months / stills.length; }
         break;
       }
       case 'lotSpoil': {
