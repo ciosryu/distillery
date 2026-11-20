@@ -8,6 +8,7 @@ import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDe
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
+import { undefendedDisasters } from '../sim/events';
 import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { exportShortfalls } from '../sim/market';
 import { retailBreakRemaining, retailCancellationCost } from '../sim/deals';
@@ -18,7 +19,6 @@ import { reserveCaskIds } from '../sim/tags';
 import { caskEligibility } from '../sim/ledger';
 import { specialistOffers, SPECIALIST_STAGE } from '../sim/hr';
 import { AUTO_RESTOCK_EXPENSE, caskRunway, productionValue, whiskySupplyForecast } from '../sim/economics';
-import { undefendedDisasters } from '../sim/events';
 
 // ───────────── ① 파산 카운트다운 ─────────────
 
