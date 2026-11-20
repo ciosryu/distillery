@@ -58,16 +58,15 @@ export const retailBreakRemaining = (c: Pick<RetailContract, 'bottlesPerMonth' |
 /**
  * 납품 제안을 받기 전에 보는 전망 ([제안 P-MKT-42] ⓐ — 6차 판: 두 번째 소주 계약을 원액 탱크가 빈 채로 받았다). 화면 계산만, 규칙 불변.
  * - stock: 그 범주 병 재고(면세 한정판 제외) — 납품은 이 재고에서 먼저 나간다
- * - recentSales: 최근 3개월 그 범주 국내 판매 월평균(병) — 리포트가 없으면 0
+ * - 최근 판매 속도는 여기서 세지 않는다 — 화면이 PROD `categoryMonthlySales`(품절 달 제외, `SALES_LOOKBACK`)를 그대로 쓴다.
+ *   병입 · 공급 전망과 같은 숫자를 보이려는 것(PM 2026-11-20). deals → economics → production → deals 순환을 피해 화면에서 부른다
  * - coverMonths: 지금 재고로 이 계약을 몇 달 채우나(국내 판매는 빼지 않은 낙관값)
  * - penaltyPerMonth: 한 달을 통째로 못 채우면 무는 위약금
  */
-export function retailOfferOutlook(s: Pick<GameState, 'commerce' | 'history'>, o: Pick<RetailOffer, 'category' | 'bottlesPerMonth' | 'penaltyPerBottle'>) {
+export function retailOfferOutlook(s: Pick<GameState, 'commerce'>, o: Pick<RetailOffer, 'category' | 'bottlesPerMonth' | 'penaltyPerBottle'>) {
   const ids = new Set(s.commerce.products.filter((p) => p.category === o.category && !p.dutyFreeOnly).map((p) => p.id));
   const stock = s.commerce.products.filter((p) => ids.has(p.id)).reduce((t, p) => t + p.stockBottles, 0);
-  const recent = s.history.reports.slice(-3);
-  const recentSales = recent.length ? recent.reduce((t, r) => t + r.sales.filter((x) => ids.has(x.productId)).reduce((u, x) => u + x.bottles, 0), 0) / recent.length : 0;
-  return { stock, recentSales, coverMonths: o.bottlesPerMonth > 0 ? stock / o.bottlesPerMonth : Infinity, penaltyPerMonth: o.bottlesPerMonth * o.penaltyPerBottle };
+  return { stock, coverMonths: o.bottlesPerMonth > 0 ? stock / o.bottlesPerMonth : Infinity, penaltyPerMonth: o.bottlesPerMonth * o.penaltyPerBottle };
 }
 
 export const retailCancellationCost = (c: Pick<RetailContract, 'termMonths' | 'monthsDone' | 'bottlesPerMonth' | 'penaltyPerBottle'>) =>

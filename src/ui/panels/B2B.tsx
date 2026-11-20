@@ -1,6 +1,7 @@
 import { BULK, CASKS } from '../../sim/content/catalog';
 import { regionOf, siteOf } from '../../sim/content/regions';
 import { CATEGORY } from '../../sim/content/categories';
+import { categoryMonthlySales } from '../../sim/economics';
 import { oemPackageCost, retailCancellationCost, retailBreakRemaining, retailDrawOrder, retailOfferOutlook, RETAIL_BREAK_MONTHS, cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, knownReads, lotQuality, monthLabel, QUALITY_SIGMA_PER_HEX, spotBidPerLPA, spotQuote, spotQuoteEstimate, spotSaturation, type Cask, type ContractAgingImpact, type GameState, type KnownRead, campaignMinOakMonths, HINT_HORIZON_MONTHS, rulesVersionOf, campaignWon } from '../../sim';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won, wonFull } from '../format';
@@ -248,6 +249,9 @@ function SiteDeals() {
             {s.commerce.retailOffers.map((o) => {
               // [제안 P-MKT-42] ⓐ 받기 전에 "채울 수 있나"를 본다 — 6차 판: 두 번째 소주 계약을 원액 탱크가 빈 채로 받았다(화면 계산만)
               const ol = retailOfferOutlook(s, o);
+              // 판매 속도는 병입 · 공급 전망과 같은 셈(PROD SALES_LOOKBACK — 품절 달을 뺀 최근 판매 3개월 평균). 판매 기록이 없으면 null
+              const sold = categoryMonthlySales(s, o.category);
+              const soldText = sold == null ? '국내 판매 기록 없음' : `품절 달을 뺀 최근 국내 판매 월 ${num(Math.round(sold))}병`;
               const thin = ol.coverMonths < RETAIL_BREAK_MONTHS;
               return (
                 <Fragment key={o.id}>
@@ -261,7 +265,7 @@ function SiteDeals() {
                         ? <ConfirmButton small variant="primary" armKey={`acceptretail-${o.id}@${s.month}`} armedLabel="한 번 더 누르면 체결" onConfirm={() => dispatch({ type: 'acceptRetail', offerId: o.id })}
                             preview={() => {
                               const draw = retailDrawOrder(s, o.category);
-                              return <>지금 {CATEGORY[o.category].nameKo} 재고 {num(ol.stock)}병은 이 계약 한 달치({num(o.bottlesPerMonth)}병)도 안 된다. 납품은 국내 판매보다 먼저 재고를 가져가 <b>국내 {CATEGORY[o.category].nameKo} 판매가 멈출 수 있다</b>(최근 국내 월 {num(Math.round(ol.recentSales))}병).
+                              return <>지금 {CATEGORY[o.category].nameKo} 재고 {num(ol.stock)}병은 이 계약 한 달치({num(o.bottlesPerMonth)}병)도 안 된다. 납품은 국내 판매보다 먼저 재고를 가져가 <b>국내 {CATEGORY[o.category].nameKo} 판매가 멈출 수 있다</b>({soldText}).
                                 {draw.length > 0 && <> 출고가의 {pct(o.priceFactor, 0)}로 나갈 제품(오래된 것부터): {draw.map((p) => `${p.name} ${num(p.stockBottles)}병`).join(' · ')}.</>}
                                 {' '}다 못 채운 달은 위약금(최대 {won(ol.penaltyPerMonth)}/월), 미납이 {num(RETAIL_BREAK_MONTHS * o.bottlesPerMonth)}병 쌓이면 파기.</>;
                             }}>체결</ConfirmButton>
@@ -270,7 +274,7 @@ function SiteDeals() {
                   </tr>
                   <tr>
                     <td colSpan={8} className={`px-2 pb-2 text-xs ${thin ? 'text-amber-800 dark:text-amber-300' : 'text-stone-600 dark:text-stone-300'}`}>
-                      지금 {CATEGORY[o.category].nameKo} 재고 {num(ol.stock)}병 → 이 계약 {ol.coverMonths >= 99 ? '99개월↑' : `${ol.coverMonths.toFixed(1)}개월`}치 · 최근 3개월 국내 판매 월 {num(Math.round(ol.recentSales))}병(납품이 국내 판매보다 먼저 가져간다) · 한 달 다 못 채우면 위약금 {won(ol.penaltyPerMonth)}, 미납이 월 물량의 {RETAIL_BREAK_MONTHS}배({num(RETAIL_BREAK_MONTHS * o.bottlesPerMonth)}병) 쌓이면 파기
+                      지금 {CATEGORY[o.category].nameKo} 재고 {num(ol.stock)}병 → 이 계약 {ol.coverMonths >= 99 ? '99개월↑' : `${ol.coverMonths.toFixed(1)}개월`}치 · {soldText}(납품이 국내 판매보다 먼저 가져간다) · 한 달 다 못 채우면 위약금 {won(ol.penaltyPerMonth)}, 미납이 월 물량의 {RETAIL_BREAK_MONTHS}배({num(RETAIL_BREAK_MONTHS * o.bottlesPerMonth)}병) 쌓이면 파기
                     </td>
                   </tr>
                 </Fragment>
