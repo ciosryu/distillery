@@ -146,3 +146,14 @@ describe('소식 창 — 받지 않고 만료된 납품 제안 (MKT #685 메모)
     expect(turnNews(s, 9).notes.map((n) => n.text)).toContain('가온마트 납품 제안 만료 — 증류식 소주 1,000병/월 (받지 않음)');
   });
 });
+
+describe('통입 대기 줄에서 자동 통입 바로 켜기 (7차 오너 답 "어딨는지 못찾았다" — P-ARCH-65 확장)', () => {
+  it('자동 통입이 꺼져 있으면 fill 할 일에 [자동 통입 켜기](setAutoFill) · 켜져 있으면 없음', () => {
+    const r = parsePlayFile(readFileSync('docs/playtest/7/distillery-mvp-standard-y6m3-202611200601.json', 'utf8'));
+    if ('error' in r) throw new Error(r.error);
+    const t = todo(r.save, 'fill')!;
+    expect(t.quick).toMatchObject({ label: '자동 통입 켜기', action: { type: 'setAutoFill', settings: {} } });
+    const on = { ...r.save, inventory: { ...r.save.inventory, autoFill: {} } } as GameState;
+    expect(todo(on, 'fill')?.quick).toBeUndefined();
+  });
+});

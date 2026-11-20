@@ -4,7 +4,7 @@
 
 import { isFlagshipCandidate } from '../sim/delegateCheck';
 import { regionOf } from '../sim/content/regions';
-import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type CashFlowKey, type GameState, type MonthReport, type Product, stagesOf } from '../sim';
+import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type Action, type CashFlowKey, type GameState, type MonthReport, type Product, stagesOf } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
@@ -103,7 +103,9 @@ export function paymentJump(sched: LoanMonth[]): { month: number; from: number; 
 // ───────────── ③ 이번 달 할 일 ─────────────
 
 export type TodoTarget = { tab: string } | { anchor: string };
-export interface Todo { id: string; level: 'danger' | 'warn' | 'info'; text: string; action: string; target: TodoTarget }
+/** 할 일 줄에서 바로 실행하는 버튼(이동 대신) — 되돌릴 수 있는 설정만(#240 되돌릴 수 없는 버튼 원칙) */
+export interface TodoQuick { label: string; action: Action; done: string }
+export interface Todo { id: string; level: 'danger' | 'warn' | 'info'; text: string; action: string; target: TodoTarget; quick?: TodoQuick }
 
 const SOJU = 'soju_distilled';
 const WHISKY_CATS = new Set(['whisky', 'grain_whisky', 'blended_whisky']);
@@ -379,6 +381,8 @@ export function monthTodos(s: GameState): Todo[] {
       ? { id: 'fill', level: fillLevel, text: `자동 통입이 켜져 있지만 빈 나무 통이 모자라 탱크 몰트·그레인 ${Math.round(afLeft).toLocaleString()}L가 남는다 — 빈 통 ${empties}개 · 남은 자리 ${free}통. 통을 사거나 숙성고를 늘리세요${waitText}`, action: '통 사기', target: { anchor: 'mvp-space' } }
       : { id: 'fill', level: fillLevel, text: `탱크 몰트·그레인 ${Math.round(tankMalt).toLocaleString()}L 통입 대기 — 빈 통 ${empties}개 · 남은 자리 ${free}통 (통에 넣어야 숙성이 시작된다 · 자동 통입을 켜 둘 수 있다)${waitText}`, action: empties > 0 ? '통입' : '통 사기', target: { anchor: empties > 0 ? 'mvp-fill' : 'mvp-space' } });
   }
+  // [제안 P-ARCH-65] 확장 — 7차 판 오너 답 "자동 통입이 어딨는지 못찾았다"(155개월 · 손 통입 405번): 통입 대기 줄에서 **바로 켠다**. 끄기는 통입 카드에서(되돌릴 수 있는 설정)
+  if (!af) { const fill = out.find((t) => t.id === 'fill'); if (fill) fill.quick = { label: '자동 통입 켜기', action: { type: 'setAutoFill', settings: {} }, done: '자동 통입을 켰다 — 진행할 때마다 꽉 차는 통에 넣는다(통입 카드에서 끌 수 있다)' }; }
   // 위스키 재고가 떨어져 가는데 숙성을 채운 통이 있다
   // A7(PROD 화면 메모): 병입 권고는 플래그십 예비 통(#260)을 세지 않는다 — 예비 통을 권하면 "예비를 지켜라" 경고와 부딪친다. 남은 통이 예비뿐이면 그 사실과 대가를 한 줄로
   const reserved = reserveCaskIds(s);
