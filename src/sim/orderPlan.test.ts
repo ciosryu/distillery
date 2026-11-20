@@ -217,3 +217,24 @@ describe('productionCutback — 줄인 생산 되돌리기 안내 (7차 판 완�
     expect(productionCutback(s, 0)?.cashMonths).toBeNull();
   });
 });
+
+describe('tankWaitMonths — 남은 원액이 만들어진 달(FIFO 어림)', () => {
+  it('매달 통입하며 끝자리만 남기면 첫 배치 달이 오래돼도 대기는 짧다', async () => {
+    const { tankWaitMonths, tankLotWaitMonths } = await import('./economics');
+    let s = order(game(), [0, 2, 0]);
+    s = applyAction(s, { type: 'buySpotCasks', caskType: 'ex_bourbon_barrel', qty: 30 }).state;
+    s = applyAction(s, { type: 'setAutoFill', settings: {} }).state; // 꽉 차는 통만 넣고 끝자리는 탱크에 — 로트가 계속 남는다
+    for (let m = 0; m < 14; m++) s = advanceMonth(s);
+    const lot = s.inventory.lots.find((l) => l.kind === 'malt')!;
+    expect(s.month - lot.createdMonth).toBeGreaterThanOrEqual(12); // 첫 배치 달은 판 처음
+    expect(tankLotWaitMonths(s, lot)).toBeLessThanOrEqual(2); // 남은 것은 최근 생산분
+    expect(tankWaitMonths(s)).toBe(tankLotWaitMonths(s, lot));
+  });
+  it('통입하지 않으면 첫 배치 달과 같다', async () => {
+    const { tankWaitMonths } = await import('./economics');
+    let s = order(game(), [0, 2, 0]);
+    for (let m = 0; m < 6; m++) s = advanceMonth(s);
+    const lot = s.inventory.lots.find((l) => l.kind === 'malt')!;
+    expect(tankWaitMonths(s)).toBe(s.month - lot.createdMonth);
+  });
+});

@@ -385,6 +385,32 @@ export function productionCutback(s: GameState, fixedMonthly: number): Productio
   };
 }
 
+// ───────────── 탱크 대기 개월 — 남은 원액이 만들어진 달 (7차 판 중간 기록, 2026-11-20) ─────────────
+// 탱크 합치기(#166)는 첫 배치 달(createdMonth)을 계속 들고 있어, 매달 통입해도 끝자리가 남으면 대기 개월이 판 처음부터 늘어난다
+// (7차 판: 그레인 527L가 "20개월째"였지만 실제로는 최근 4개월 치 → 할 일이 danger로 과장됐다).
+// 통입이 오래된 원액부터(FIFO) 쓴다고 보고, 남은 LPA를 그 레시피의 최근 생산(월 결산)으로 거슬러 채워 "가장 오래된 원액이 만들어진 달"을 어림한다.
+// 결산 기록 밖(120개월 전)이거나 레시피를 모르면 createdMonth를 쓴다. 상태를 바꾸지 않는다(화면 전용)
+
+/** 자사 몰트·그레인 탱크 로트 하나의 대기 개월(FIFO 어림) */
+export function tankLotWaitMonths(s: GameState, l: SpiritLot): number {
+  if (!l.recipeId) return s.month - l.createdMonth;
+  let need = l.volumeL * l.abv;
+  let oldest = s.month;
+  for (let i = s.history.reports.length - 1; i >= 0 && need > 1e-6; i--) {
+    const r = s.history.reports[i]!;
+    if (r.month < l.createdMonth) break;
+    need -= (r.production ?? []).filter((x) => x.recipeId === l.recipeId).reduce((t, x) => t + x.lpa, 0);
+    oldest = r.month;
+  }
+  if (need > 1e-6) oldest = l.createdMonth; // 기록으로 다 못 채웠다 — 첫 배치 달까지 거슬러 간 것으로 본다
+  return s.month - Math.max(oldest, l.createdMonth);
+}
+
+/** 자사 몰트·그레인 탱크 중 가장 오래 기다린 원액의 대기 개월(FIFO 어림) — 탱크가 비었으면 0 */
+export function tankWaitMonths(s: GameState): number {
+  const lots = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced);
+  return lots.length ? Math.max(...lots.map((l) => tankLotWaitMonths(s, l))) : 0;
+}
 
 // ───────────── 증산 전망 (#271 단계 T 진입 조건 · #272 형태, 2026-11-11 — 후반 확인 판 오너 답 "늘려봐야 기다리려면 한참 걸려 소용없다(오판)") ─────────────
 // P8 표준 규모 10시드: 120개월(판 끝 5년 전)에 몰트를 4 → 6배치로 늘려도 15년 순자산 +3.73억(현금 +2.47억), 처음부터면 +18.26억.

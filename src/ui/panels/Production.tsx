@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { rulesVersionOf, RETAIL_DEAL } from '../../sim';
 import { BOTANICALS, EQUIPMENT, INGREDIENTS, YEASTS } from '../../sim/content/catalog';
 import {
@@ -10,6 +10,7 @@ import { monthlyFixedCost } from '../../sim/loans';
 import { isLocked } from '../../sim/scenario';
 import { orderPlan, whiskySkipCheck } from '../../sim/production';
 import { useGame } from '../../store/game';
+import { OPEN_FOLD_EVENT } from '../AlertsView';
 import { logisticsMultiplier, regionOf, REGIONS, siteOf } from '../../sim/content/regions';
 import { liters, num, pct, won } from '../format';
 import { Badge, Button, Card, ConfirmButton, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
@@ -18,6 +19,17 @@ const KIND_LABEL: Record<SpiritKind, string> = { soju: '증류식 소주·쇼추
 
 /** 두 번 눌러 확인할 설비 발주 금액 (#240 — "1억 이상 설비") */
 const BIG_PURCHASE = 100_000_000;
+
+// 생산 지시 줄의 [수정] → 레시피 편집기로 (오너 요청 2026-11-20: "이미 만든 레시피를 생산·증류소 화면에서 고치거나 지우는 기능").
+// 편집기는 증류소 화면에서 접힌 블록 안에 있어 열릴 때 처음 그려진다 → 고를 레시피를 모듈 변수에 두고(열리며 읽음), 이미 열려 있으면 이벤트로 바꾼다
+const EDIT_RECIPE_EVENT = 'edit-recipe';
+let pendingRecipeEdit: string | null = null;
+function editRecipe(id: string) {
+  pendingRecipeEdit = id;
+  window.dispatchEvent(new CustomEvent(EDIT_RECIPE_EVENT, { detail: id }));
+  window.dispatchEvent(new CustomEvent(OPEN_FOLD_EVENT, { detail: 'mvp-craft' })); // 증류소 화면: 접힌 크래프팅 블록을 연다(생산 탭에서는 아무 일 없음)
+  requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById('recipe-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' })));
+}
 
 export function Production() {
   return (
@@ -38,7 +50,7 @@ export function Orders() {
   const short = plan.filter((x) => x.feasible < x.ordered);
   return (
     <Card title="월 생산 지시 (상시 — 바꿀 때까지 매달 반복)">
-      <Table head={['레시피', '주종', '증류기', '배치당 산출', '배치당 원가', '원액 품질', '월 배치 수']}>
+      <Table head={['레시피', '주종', '증류기', '배치당 산출', '배치당 원가', '원액 품질', '월 배치 수', '']}>
         {s.production.recipes.map((r) => {
           const p = steadyBatch(s, r);
           const order = s.production.orders.find((o) => o.recipeId === r.id)?.batchesPerMonth ?? 0;
@@ -53,6 +65,16 @@ export function Orders() {
               <Td>
                 <NumberField value={order} min={0} max={60} width="w-16" onCommit={(v) => dispatch({ type: 'setOrder', recipeId: r.id, batchesPerMonth: v })} />
                 {(() => { const x = short.find((y) => y.recipeId === r.id); return x ? <div className="mt-0.5 whitespace-nowrap text-[11px] font-medium text-rose-700 dark:text-rose-400">이번 달 {x.feasible}배치만 — {x.blocker}</div> : null; })()}
+              </Td>
+              <Td>
+                <div className="flex flex-wrap gap-1">
+                  <Button small variant="ghost" title="레시피 편집기(레버)에서 이 레시피를 연다 — 저장하면 다음 달 배치부터 바뀐다. 이미 만든 원액은 그대로" onClick={() => editRecipe(r.id)}>수정</Button>
+                  {/* 레시피 삭제는 되돌릴 수 없다 (#240) — 편집기의 삭제와 같은 처리 */}
+                  <ConfirmButton small variant="danger" armKey={`delrecipe-row-${r.id}@${s.month}`} armedLabel="한 번 더 누르면 삭제" disabled={s.production.recipes.length <= 1}
+                    title={s.production.recipes.length <= 1 ? '레시피가 하나뿐이면 지울 수 없다' : undefined}
+                    onConfirm={() => dispatch({ type: 'deleteRecipe', recipeId: r.id })}
+                    preview={() => <>레시피 「{r.name}」를 지운다 — 이미 만든 원액은 그대로지만, 이 레시피의 생산 지시{order > 0 ? `(월 ${order}배치)` : ''}와 설정은 사라진다</>}>삭제</ConfirmButton>
+                </div>
               </Td>
             </tr>
           );
@@ -336,7 +358,17 @@ const delta = (v: number, digits = 1) => (Math.abs(v) < 0.05 ? '' : ` (${v > 0 ?
 export function RecipeEditor() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
-  const [draft, setDraft] = useState<Draft>(() => ({ ...s.production.recipes[0]! }));
+  const [draft, setDraft] = useState<Draft>(() => {
+    const pick = s.production.recipes.find((r) => r.id === pendingRecipeEdit) ?? s.production.recipes[0]!;
+    pendingRecipeEdit = null;
+    return { ...pick };
+  });
+  // 생산 지시 줄의 [수정] (editRecipe) — 이미 열려 있으면 고른 레시피로 바꾼다
+  useEffect(() => {
+    const on = (e: Event) => { const r = s.production.recipes.find((x) => x.id === (e as CustomEvent).detail); if (r) { setDraft({ ...r }); pendingRecipeEdit = null; } };
+    window.addEventListener(EDIT_RECIPE_EVENT, on);
+    return () => window.removeEventListener(EDIT_RECIPE_EVENT, on);
+  }, [s.production.recipes]);
   // 시나리오(MVP) 증류소 탭은 이 카드를 이미 접어 둔다 → 펼쳤으면 레버를 바로 보여 준다(두 번 접으면 못 찾는다 — 플레이테스트 2026-11-07)
   const [advanced, setAdvanced] = useState(() => !!s.scenario);
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
@@ -356,6 +388,7 @@ export function RecipeEditor() {
   const lever = draft.kind === 'malt' || draft.kind === 'soju';
 
   return (
+    <div id="recipe-editor" className="scroll-mt-4">
     <Card
       title="레시피 · 크래프팅"
       actions={
@@ -434,6 +467,7 @@ export function RecipeEditor() {
       )}
       {!errs.length && <UnitEconomics s={s} recipe={{ ...draft, id: draft.id ?? 'preview' } as Recipe} />}
     </Card>
+    </div>
   );
 }
 
