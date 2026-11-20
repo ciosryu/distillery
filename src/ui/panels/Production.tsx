@@ -5,7 +5,7 @@ import {
   basePresetOf, craftPresets, equipmentCost, flavorProfile, leverEffects, leverSummary, describeLeverEffect, monthLabel, presetAsRecipe, steadyBatch, stillDefOf, validateRecipe,
   type GameState, type ProfileAxis, type Recipe, type SpiritKind, type YeastId, } from '../../sim';
 import type { PresetRecipe } from '../../sim/content/presets';
-import { productionValue, rampOutlook, RAMP_HOLD_MONTHS, recipeEconomics, whiskyExportPace, STANDARD_BOTTLE, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from '../../sim/economics';
+import { CUTBACK_HINT, productionCutback, productionValue, rampOutlook, RAMP_HOLD_MONTHS, recipeEconomics, whiskyExportPace, STANDARD_BOTTLE, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from '../../sim/economics';
 import { monthlyFixedCost } from '../../sim/loans';
 import { isLocked } from '../../sim/scenario';
 import { orderPlan, whiskySkipCheck } from '../../sim/production';
@@ -159,7 +159,33 @@ function ProductionValueLine() {
       {exp && exp.demand > exp.bottles * 1.2 && (
         <div className="mt-0.5 text-emerald-800 dark:text-emerald-300">수출 수요가 판매보다 연 약 {num(exp.demand - exp.bottles)}병 많다 — 원액이 모자라 못 판 몫이다. 증산하면 이만큼은 바로 팔 곳이 있다</div>
       )}
+      <CutbackLine fixed={fixed} minMonths={v.minMonths} />
       <RampLine fallback={<>몰트 1배치/월 더(「{one.name}」): 생산비 +{won(one.costPerMonth)}/월 → {v.minMonths}개월 뒤부터 해마다 위스키 +{num(one.whiskyBottlesPerYear)}병 {money(one.whiskyBottlesPerYear)}</>} />
+    </div>
+  );
+}
+
+/**
+ * 줄인 생산 되돌리기 안내 (7차 판 완료 기록, P-PROD-61 후보) — 7차 판은 62개월에 몰트·그레인을 절반으로 줄이고 현금이 고정비 11개월 치(80개월)를 넘은 뒤에도
+ * 판 끝까지(155개월) 그대로 갔다. 아래 「증산 여유」는 늘 떠 있어 눈에 띄지 않았다 → "줄인 지 n개월 · 현금 m개월 치"를 지시를 바꾸는 자리에 따로 띄운다.
+ * 막지 않는다 — 판매가 줄어 일부러 줄였을 수도 있다
+ */
+function CutbackLine({ fixed, minMonths }: { fixed: number; minMonths: number }) {
+  const s = useGame((g) => g.state);
+  const c = useMemo(() => productionCutback(s, fixed), [s, fixed]);
+  if (!c || c.cashMonths == null || c.monthsSince < CUTBACK_HINT.monthsSince || c.cashMonths < CUTBACK_HINT.cashMonths || c.extraWhiskyBottlesPerYear <= 0) return null;
+  const tone = c.stockLow
+    ? 'border-rose-300 bg-rose-50 text-rose-950 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-100'
+    : 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100';
+  const stock = c.whiskyMonths == null ? (c.whiskyStock > 0 ? `위스키 재고 ${num(c.whiskyStock)}병` : null) : c.whiskyStock <= 0 ? '위스키 재고 0병' : `위스키 재고 ${c.whiskyMonths.toFixed(1)}개월 치`;
+  return (
+    <div className={`mt-1.5 rounded border px-2 py-1.5 ${tone}`}>
+      <b>{c.stockLow ? '‼' : '⚠'} 몰트·그레인을 줄인 지 {c.monthsSince}개월</b> — 지금 월 {c.current}배치({monthLabel(s.startYear, c.lastHigherMonth)}에는 {c.before}배치) · 현금은 고정비 <b>{Math.floor(c.cashMonths)}개월 치</b>
+      {stock && <> · {c.stockLow ? <b>{stock}{c.soldOut > 0 ? ` · 품절 ${c.soldOut}개` : ''}</b> : stock}</>}
+      <div className="mt-0.5">
+        그때만큼 되돌리면 생산비 +{won(c.extraCostPerMonth)}/월 → {minMonths}개월 뒤부터 해마다 위스키 약 <b>+{num(c.extraWhiskyBottlesPerYear)}병</b>
+        <span className="text-stone-600 dark:text-stone-400"> · 줄인 기간만큼 {minMonths}개월 뒤 팔 위스키와 12년 후보 통이 빈다. {c.stockLow ? '위스키가 바닥인데 생산은 줄인 그대로다 — 재고가 쌓여 줄였다면 그 재고가 다 팔렸다' : '판매가 줄어 일부러 줄였다면 그대로 두어도 된다'}</span>
+      </div>
     </div>
   );
 }

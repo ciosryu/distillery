@@ -325,6 +325,66 @@ export function caskRunway(s: GameState): CaskRunway | null {
   return { empty: empties.length, onOrder, casksPerMonth, tankCasks, months, leadMonths: cooperageLeadMonths(s) };
 }
 
+/**
+ * 위기 뒤 줄인 생산 (7차 판 완료 기록 P-PROD-61 후보, 2026-11-20) — 62개월에 몰트·그레인을 절반으로 줄인 뒤 현금이 고정비 11개월 치(80개월)·37개월 치(155개월)로
+ * 회복해도 79개월 동안 되돌리라는 신호가 없었다. 지난 결산들(history.reports, 최대 120개월)에서 몰트·그레인을 지금 지시보다 많이 만든 마지막 달을 찾아
+ * "줄인 지 n개월 · 현금 m개월 치 · 되돌리면 +x원/월 → 위스키 +y병/년"을 낸다. 그런 달이 없으면(늘린 적 없음·줄이지 않음) null.
+ * 고정비는 `monthlyFixedCost(s)`를 부르는 쪽이 넘긴다(loans.ts와 순환 import를 피한다). 되돌리기 값은 그 달의 레시피별 배치를 지금 지시에 겹쳐(큰 쪽) productionValue로 다시 센다
+ */
+export interface ProductionCutback {
+  /** 지금 몰트·그레인 지시 합(배치/월) */
+  current: number;
+  /** 줄이기 전 마지막 달에 만든 몰트·그레인 배치 */
+  before: number;
+  /** 지금보다 많이 만든 마지막 결산 달과, 그 뒤 줄인 채 결산한 달 수 */
+  lastHigherMonth: number;
+  monthsSince: number;
+  /** 현금 ÷ 월 고정비 (고정비 0이면 null) */
+  cashMonths: number | null;
+  /** 줄이기 전으로 되돌릴 때 월 생산비 증가 · 3년 위스키 병/년 증가 */
+  extraCostPerMonth: number;
+  extraWhiskyBottlesPerYear: number;
+  /** 그 제품군(국내 위스키·그레인·블렌디드, 면세 전용 제외) 재고 병 · 최근 3개월 평균 판매로 몇 개월 치(판매 0이면 null) · 최근 3개월에 팔렸는데 지금 재고 0인 제품 수 */
+  whiskyStock: number;
+  whiskyMonths: number | null;
+  soldOut: number;
+  /** 재고가 바닥 — 품절이 있거나 lowStockMonths개월 치 미만. 7차 판은 2033년부터 위스키 제품이 늘 품절이었다(오너 답: "재고 쌓여서 줄이고 그대로 깜빡했다") */
+  stockLow: boolean;
+}
+/** 화면이 "되돌려도 된다"를 띄우는 기준 — 현금이 고정비 이만큼 · 줄인 지 이만큼 지났을 때. 재고가 lowStockMonths개월 치 미만이면 더 세게 (단계 T에서 튜닝) */
+export const CUTBACK_HINT = { cashMonths: 6, monthsSince: 3, lowStockMonths: 3 } as const;
+
+export function productionCutback(s: GameState, fixedMonthly: number): ProductionCutback | null {
+  const kindOf = new Map(s.production.recipes.map((r) => [r.id, r.kind] as const));
+  const isWhisky = (id: string) => { const k = kindOf.get(id); return k === 'malt' || k === 'grain'; };
+  const current = s.production.orders.filter((o) => isWhisky(o.recipeId)).reduce((t, o) => t + Math.max(0, o.batchesPerMonth), 0);
+  const made = (r: MonthReport) => (r.production ?? []).filter((x) => isWhisky(x.recipeId)).reduce((t, x) => t + x.batches, 0);
+  const last = [...s.history.reports].reverse().find((r) => made(r) > current);
+  if (!last) return null;
+  // 줄이기 전 배치: 그 달 레시피별 배치를 지금 지시와 겹친다(큰 쪽) — 지운 레시피는 isWhisky에서 빠지고, 지시가 없는 레시피는 더한다
+  const prev = new Map((last.production ?? []).filter((x) => isWhisky(x.recipeId)).map((x) => [x.recipeId, x.batches] as const));
+  const orders = s.production.orders.map((o) => ({ ...o, batchesPerMonth: Math.max(o.batchesPerMonth, prev.get(o.recipeId) ?? 0) }));
+  for (const [recipeId, batches] of prev) if (!orders.some((o) => o.recipeId === recipeId)) orders.push({ recipeId, batchesPerMonth: batches });
+  const now = productionValue(s);
+  const back = productionValue({ ...s, production: { ...s.production, orders } });
+  // 그 제품군 재고 — alerts.ts stockMonths와 같은 셈(최근 3개월 평균 판매)
+  const whiskyProducts = s.commerce.products.filter((p) => isWhiskyCategory(p.category) && !p.dutyFreeOnly);
+  const recent = s.history.reports.slice(-3);
+  const soldOf = (id: string) => recent.reduce((t, r) => t + (r.sales.find((x) => x.productId === id)?.bottles ?? 0), 0);
+  const whiskyStock = whiskyProducts.reduce((t, p) => t + p.stockBottles, 0);
+  const perMonth = recent.length ? whiskyProducts.reduce((t, p) => t + soldOf(p.id), 0) / recent.length : 0;
+  const whiskyMonths = perMonth > 0 ? whiskyStock / perMonth : null;
+  const soldOut = whiskyProducts.filter((p) => p.stockBottles <= 0 && soldOf(p.id) > 0).length;
+  return {
+    current, before: made(last), lastHigherMonth: last.month, monthsSince: s.month - last.month - 1, // 결산 달은 진행 전 달 번호 — 줄인 채 결산한 달 수
+    cashMonths: fixedMonthly > 0 ? s.finance.cash / fixedMonthly : null,
+    extraCostPerMonth: Math.max(0, back.costPerMonth - now.costPerMonth),
+    extraWhiskyBottlesPerYear: Math.max(0, back.whiskyBottlesPerYear - now.whiskyBottlesPerYear),
+    whiskyStock, whiskyMonths, soldOut,
+    stockLow: soldOut > 0 || (whiskyMonths != null && whiskyMonths < CUTBACK_HINT.lowStockMonths),
+  };
+}
+
 // ───────────── 탱크 대기 개월 — 남은 원액이 만들어진 달 (7차 판 중간 기록, 2026-11-20) ─────────────
 // 탱크 합치기(#166)는 첫 배치 달(createdMonth)을 계속 들고 있어, 매달 통입해도 끝자리가 남으면 대기 개월이 판 처음부터 늘어난다
 // (7차 판: 그레인 527L가 "20개월째"였지만 실제로는 최근 4개월 치 → 할 일이 danger로 과장됐다).
