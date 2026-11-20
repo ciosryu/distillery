@@ -55,8 +55,9 @@ describe('12년 적격 신호 (6차 판 ① · [제안 P-ARCH-61] (a)~(c))', () 
 describe('탱크 몰트 통입 대기 등급 (PROD 문턱 — prod.md ②)', () => {
   it('6차 판 158개월 세이브 — 5,071L 대기(남은 원액 기준 25개월, PROD #704)는 danger로 맨 위 · 로트별 개월 · 나무 통만 셈', () => {
     const list = monthTodos(p6());
-    expect(list[0]).toMatchObject({ id: 'fill', level: 'danger' });
-    expect(list[0]!.text).toMatch(/5,071L 통입 대기 — 빈 나무 통 81개.*싱글 몰트 — 언피티드 2,599L 25개월째 · 싱글 몰트 — 피티드 2,472L 15개월째/);
+    expect(list.slice(0, 2).map((t) => [t.id, t.level])).toEqual([['cutback', 'danger'], ['fill', 'danger']]); // danger 둘 — 생산 되돌리기(PROD #725, 순서상 위) 다음 통입 대기
+    const fillTodo = list.find((t) => t.id === 'fill')!;
+    expect(fillTodo.text).toMatch(/5,071L 통입 대기 — 빈 나무 통 81개.*싱글 몰트 — 언피티드 2,599L 25개월째 · 싱글 몰트 — 피티드 2,472L 15개월째/);
   });
   const withTank = (waitMonths: number) => { const s = mvp(); s.month = 40; s.inventory.autoFill = undefined; s.inventory.lots.push(lot({ id: 'T1', volumeL: 500, createdMonth: 40 - waitMonths })); return s; };
   it('2개월 info · 3개월 warn · 12개월 danger', () => {
