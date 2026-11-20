@@ -28,7 +28,7 @@ describe('방재 할 일 (P-MGT-61)', () => {
   });
 
   it('순서: 통입 대기 다음 · 위스키 병입 권고 위', () => {
-    expect(TODO_ORDER.indexOf('defense')).toBe(TODO_ORDER.indexOf('fill') + 1);
+    expect(TODO_ORDER.indexOf('defense')).toBeGreaterThan(TODO_ORDER.indexOf('fill')); // 사이에 warn 소주 과잉(soju-glut)이 들어갔다 — info 꼬리 앞(PM 대조)
     expect(TODO_ORDER.indexOf('whisky')).toBe(TODO_ORDER.indexOf('defense') + 1);
   });
 });
