@@ -252,6 +252,19 @@ const todoKey = (t: Todo) => (t.level === 'danger' && !t.id.startsWith('stage-')
  * 이번 달 할 일 — 급한 순서. 시나리오 게임(MVP) 증류소 탭에 보인다. 규칙이 아니라 놓치기 쉬운 신호를 모은 안내다
  * (현금 위기는 화면 맨 위 경고가 따로 맡는다 — 여기서는 대출 거치 종료만)
  */
+/**
+ * 지금 병입할 수 있는 원액 — 할 일 '위스키 재고'(A7)와 '품절'(P-ARCH-66)이 **같은 셈**을 쓴다(PROD 요청 — 두 줄의 통 수가 달라 보이면 안 된다).
+ * 위스키: 숙성 기준(지역 최소 개월)을 채운 자사·고객 소유 아닌 몰트·그레인 통, 플래그십 예비는 따로 센다 · 소주: 탱크 소주 L
+ */
+export function bottleableNow(s: GameState): { ready: number; readyReserved: number; tankSojuL: number } {
+  const min = whiskyMinMonths(regionOf(s).whisky);
+  const reserved = reserveCaskIds(s);
+  const ripe = s.inventory.casks.filter((c) => c.contents && !c.owner && (c.contents.kind === 'malt' || c.contents.kind === 'grain') && c.contents.oakMonths >= min);
+  const ready = ripe.filter((c) => !reserved.has(c.id)).length;
+  const tankSojuL = s.inventory.lots.filter((l) => l.kind === 'soju').reduce((t, l) => t + l.volumeL, 0);
+  return { ready, readyReserved: ripe.length - ready, tankSojuL };
+}
+
 export function monthTodos(s: GameState): Todo[] {
   const out: Todo[] = [];
   // 새로 열린 기능 (#215) — 연 뒤 3개월 동안 할 일 맨 위에 둔다
@@ -335,7 +348,12 @@ export function monthTodos(s: GameState): Todo[] {
       sOut.soon.length ? `다음 달 결품 예상 ${names(sOut.soon)}(재고 ${sOut.soon[0]!.stock.toLocaleString()}병 < 수요 약 ${sOut.soon[0]!.demand.toLocaleString()}병${sOut.soon.length > 1 ? ' 등' : ''})` : '',
       sOut.empty.length ? `품절 ${names(sOut.empty)}` : '',
     ].filter(Boolean);
-    out.push({ id: 'stockout', level: sOut.soon.length ? 'warn' : 'info', text: `${parts.join(' · ')} — 병입하거나 [기존 제품 재고 보충]으로 채운다`, action: '블렌딩·병입', target: { tab: 'bottling' } });
+    // [제안 P-ARCH-66] 이미 품절인데 병입할 원액이 있으면 warn — 7차 끝: 전 제품 품절이 info(회색)로 가장 약하게 보였고 병입할 통 33개 · 탱크 소주 5,423L가 있었다.
+    // "곧 품절"(soon)이 없으면 등급이 내려가던 규칙의 빈틈. 탱크 소주는 '병입 가능'으로만 짧게(생산을 줄이라는 소주 과잉 줄은 PROD 식 — 따로)
+    const b = bottleableNow(s);
+    const canFill = sOut.empty.length > 0 && (b.ready > 0 || b.tankSojuL >= 50);
+    const fillParts = [b.ready ? `병입할 통 ${b.ready}개` : '', b.tankSojuL >= 50 ? `탱크 소주 ${Math.round(b.tankSojuL).toLocaleString()}L 병입 가능` : ''].filter(Boolean).join(' · ');
+    out.push({ id: 'stockout', level: sOut.soon.length || canFill ? 'warn' : 'info', text: `${parts.join(' · ')}${canFill ? ` — ${fillParts}` : ''} — 병입하거나 [기존 제품 재고 보충]으로 채운다`, action: '블렌딩·병입', target: { tab: 'bottling' } });
   }
   // 대출 거치가 3개월 안에 끝나 납부가 뛴다
   const jump = paymentJump(loanSchedule(s, 4));
@@ -387,17 +405,14 @@ export function monthTodos(s: GameState): Todo[] {
   }
   // 위스키 재고가 떨어져 가는데 숙성을 채운 통이 있다
   // A7(PROD 화면 메모): 병입 권고는 플래그십 예비 통(#260)을 세지 않는다 — 예비 통을 권하면 "예비를 지켜라" 경고와 부딪친다. 남은 통이 예비뿐이면 그 사실과 대가를 한 줄로
-  const reserved = reserveCaskIds(s);
-  const ripe = s.inventory.casks.filter((c) => c.contents && !c.owner && (c.contents.kind === 'malt' || c.contents.kind === 'grain') && c.contents.oakMonths >= min);
-  const ready = ripe.filter((c) => !reserved.has(c.id)).length;
-  const readyReserved = ripe.length - ready;
+  const { ready, readyReserved } = bottleableNow(s);
   const wh = stockMonths(s, (c) => WHISKY_CATS.has(c));
   if (wh.months < RESTOCK_MONTHS) {
     if (ready > 0) out.push({ id: 'whisky', level: 'info', text: `위스키 재고 ${wh.stock ? `${wh.months.toFixed(1)}개월 치` : '없음'} — 숙성 ${min}개월을 채운 통 ${ready}개를 병입할 수 있다${readyReserved ? ` (플래그십 예비 ${readyReserved}통은 빼고 셌다)` : ''}`, action: '블렌딩·병입', target: { tab: 'bottling' } });
     else if (readyReserved > 0) out.push({ id: 'whisky', level: 'info', text: `위스키 재고 ${wh.stock ? `${wh.months.toFixed(1)}개월 치` : '없음'} — 숙성 ${min}개월을 채운 통은 플래그십 예비 ${readyReserved}통뿐이다. 예비 통을 병입하면 12년 목표가 늦어진다 — 다음 통이 ${min}개월을 채울 때까지 기다리거나, 꼭 필요하면 예비를 풀고 쓴다`, action: '블렌딩·병입', target: { tab: 'bottling' } });
   }
   // 소주 재고가 떨어져 가는데 탱크에 소주가 있다
-  const tankSoju = s.inventory.lots.filter((l) => l.kind === 'soju').reduce((t, l) => t + l.volumeL, 0);
+  const tankSoju = bottleableNow(s).tankSojuL;
   const so = stockMonths(s, (c) => c === SOJU);
   if (tankSoju >= 50 && so.months < RESTOCK_MONTHS) out.push({ id: 'soju', level: 'info', text: `소주 재고 ${so.stock ? `${so.months.toFixed(1)}개월 치` : '없음'} — 탱크 소주 ${Math.round(tankSoju).toLocaleString()}L 병입 가능 (팔 만큼만)`, action: '블렌딩·병입', target: { tab: 'bottling' } });
   // 샘플 시기 — 기록이 없거나 오래된 통 (시나리오 게임만: 샌드박스는 참값을 본다)
