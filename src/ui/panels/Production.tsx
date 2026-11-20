@@ -6,13 +6,13 @@ import {
   type GameState, type ProfileAxis, type Recipe, type SpiritKind, type YeastId, } from '../../sim';
 import type { PresetRecipe } from '../../sim/content/presets';
 import { productionValue, rampOutlook, RAMP_HOLD_MONTHS, recipeEconomics, whiskyExportPace, STANDARD_BOTTLE, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from '../../sim/economics';
-import { sojuSupply, SOJU_STOCK_WARN_MONTHS } from '../../sim/economics';
 import { monthlyFixedCost } from '../../sim/loans';
 import { isLocked } from '../../sim/scenario';
 import { orderPlan, whiskySkipCheck } from '../../sim/production';
 import { useGame } from '../../store/game';
 import { logisticsMultiplier, regionOf, REGIONS, siteOf } from '../../sim/content/regions';
 import { liters, num, pct, won } from '../format';
+import { sojuSupply, SOJU_STOCK_WARN_MONTHS } from '../../sim/economics';
 import { Badge, Button, Card, ConfirmButton, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
 
 const KIND_LABEL: Record<SpiritKind, string> = { soju: '증류식 소주·쇼추', gin: '진', malt: '몰트', grain: '그레인', baijiu: '백주(고량주)' };
