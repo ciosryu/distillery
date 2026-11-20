@@ -74,11 +74,11 @@ describe('탱크 몰트 통입 대기 등급 (PROD 문턱 — prod.md ②)', () 
 
 describe('핵심 전문가 안내 (MGT #610 남은 점)', () => {
   const opened = (month: number) => { const s = mvp(); s.month = month; s.scenario!.stagesDone = [...(s.scenario!.stagesDone ?? []), 'y11_specialist']; return s; };
-  it('해금 소식이 내려간 뒤(3개월) 9개월 동안 직원 탭으로 잇는다 · 고르면 사라진다', () => {
+  it('해금 소식이 내려간 뒤(3개월) 직원 탭으로 잇는다 · 고르면 사라진다 (기간은 7차 판 뒤 SPECIALIST_TODO_MONTHS — playtest7Signals)', () => {
     expect(todo(opened(121), 'specialist')).toBeUndefined(); // 해금 소식(stage 할 일)이 맡는 동안
     const t = todo(opened(124), 'specialist')!;
     expect(t.target).toEqual({ tab: 'staff' });
-    expect(todo(opened(132), 'specialist')).toBeUndefined(); // 1년 뒤에는 그만 — 안 고르는 것도 선택
+    expect(todo(opened(150), 'specialist')).toBeUndefined(); // 오래 지나면 그만 — 안 고르는 것도 선택
     const s = opened(124);
     s.hr.staff.push({ ...s.hr.staff[0]!, id: 'S-x', keySpecialist: true });
     expect(todo(s, 'specialist')).toBeUndefined();
