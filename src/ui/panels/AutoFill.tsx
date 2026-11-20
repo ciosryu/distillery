@@ -6,6 +6,9 @@ import { useGame } from '../../store/game';
 import { liters } from '../format';
 import { Button } from '../kit';
 
+/** 자동 통입 줄의 화면 앵커 — 할 일 "통입 대기"가 이 줄로 바로 데려올 때 쓴다(ARCH alerts.ts target.anchor). 증류소 탭·숙성고 탭은 동시에 그려지지 않는다 */
+export const AUTOFILL_ANCHOR = 'autofill-row';
+
 export function AutoFillRow() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
@@ -20,11 +23,16 @@ export function AutoFillRow() {
   const nextIn = on ? (every - (s.month % every)) % every : 0;
   // 빈 통이 떨어지는 때 (A4) — 자동 통입을 켜도 통은 저절로 사지 않는다. 몇 달 치가 남았는지 설정 줄에서 늘 보인다
   const rw = caskRunway(s);
+  // 7차 판 오너 답(2026-11-20): 자동 통입을 "어딨는지 못찾았다" — 스위치가 회색 작은 [끔] 버튼이라 상태 표시로 읽혔다.
+  // 꺼져 있고 탱크 몰트·그레인이 기다리면 줄을 노랗게 하고, 버튼은 할 일(켜기/끄기)을 말한다
+  const waitingL = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced).reduce((t, l) => t + l.volumeL, 0);
+  const nudge = !on && waitingL >= 50;
   return (
-    <div className="mb-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs dark:border-stone-700 dark:bg-stone-800/50">
+    <div id={AUTOFILL_ANCHOR} className={`mb-2 scroll-mt-28 rounded-md border px-3 py-2 text-xs ${nudge ? 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40' : 'border-stone-200 bg-stone-50 dark:border-stone-700 dark:bg-stone-800/50'}`}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <span className="font-medium text-stone-700 dark:text-stone-200">자동 통입</span>
-        <Button small variant={on ? 'primary' : 'secondary'} onClick={() => dispatch({ type: 'setAutoFill', settings: on ? null : {} })} title="켜 두면 정한 달마다, 진행을 누를 때 탱크의 자사 몰트·그레인을 빈 나무 통에 넣는다(수동 통입과 같은 처리, 현금은 들지 않는다)">{on ? '켬' : '끔'}</Button>
+        <span className={on ? 'font-medium text-emerald-700 dark:text-emerald-400' : 'text-stone-500'}>{on ? '켜짐' : '꺼짐'}</span>
+        <Button small variant={on ? 'secondary' : 'primary'} onClick={() => dispatch({ type: 'setAutoFill', settings: on ? null : {} })} title="켜 두면 정한 달마다, 진행을 누를 때 탱크의 자사 몰트·그레인을 빈 나무 통에 넣는다(수동 통입과 같은 처리, 현금은 들지 않는다)">{on ? '끄기' : '자동 통입 켜기'}</Button>
         {on && (
           <>
             <label className="inline-flex items-center gap-1">간격
@@ -54,7 +62,7 @@ export function AutoFillRow() {
         )}
       </div>
       <div className="mt-1 text-stone-600 dark:text-stone-400">
-        {!on ? '꺼져 있다 — 아래에서 직접 통입한다. 켜면 진행할 때 탱크 몰트·그레인을 빈 통에 자동으로 넣는다.'
+        {!on ? (nudge ? <>탱크 몰트·그레인 <b>{liters(waitingL)}</b>가 통입을 기다린다 — [자동 통입 켜기]를 누르면 진행할 때 꽉 차는 통만큼 알아서 넣는다(끝자리는 탱크에 두고 다음 통입 때 합친다). 아래에서 직접 넣어도 된다.</> : '꺼져 있다 — 아래에서 직접 통입한다. 켜면 진행할 때 탱크 몰트·그레인을 빈 통에 자동으로 넣는다.')
           : pv.tankL < 1 ? `탱크에 넣을 원액이 없다 — ${nextIn === 0 && autoFillDue(s, cfg!) ? '이번' : `${nextIn}개월 뒤`} 진행 때 다시 본다.`
             : <>{nextIn === 0 && autoFillDue(s, cfg!) ? '이번 진행 때' : `${nextIn}개월 뒤 진행 때`} 넣는다: 탱크 {liters(pv.tankL)} → 빈 통 <b>{pv.casks}통</b>{pv.heldL >= 1 ? <span className="text-stone-500"> · 꽉 차지 않는 끝자리 {liters(pv.heldL)}는 탱크에 두고 다음 통입 때 합친다</span> : null}{pv.leftL >= 1 ? <span className="text-amber-700 dark:text-amber-400"> · 빈 통이 모자라 {liters(pv.leftL)} 남는다 — 통을 사세요</span> : ''}</>}
       </div>
