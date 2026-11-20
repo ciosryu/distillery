@@ -346,9 +346,11 @@ export function monthTodos(s: GameState): Todo[] {
   {
     const short = s.commerce.retailContracts.filter((c) => c.shortfall > 0);
     if (short.length) {
-      const lines = short.map((c) => `「${c.partner}」 누적 미납 ${c.shortfall.toLocaleString()}병 — ${retailBreakRemaining(c).toLocaleString()}병 더 못 채우면 파기(월 ${c.bottlesPerMonth.toLocaleString()}병 · 미납 1병마다 위약금 ${fmtWon(c.penaltyPerBottle)} · 남은 ${Math.max(0, c.termMonths - c.monthsDone)}개월 · 지금 해지하면 위약금 ${fmtWon(retailCancellationCost(c))})`);
+      // MKT 확인(#719 a): 못 채울 계약은 해지가 파기보다 비쌀 수 있다(7차: 가온마트 해지 3,840만 대 파기까지 2,130만) → 두 값을 나란히, 더 싼 쪽을 고르게.
+      // 파기까지 위약금 ≈ 남은 미납(파기까지 병) × 병당 — 파기 달에는 그 달 미납 전부를 물어 실제는 조금 더 클 수 있다 [추정]
+      const lines = short.map((c) => `「${c.partner}」 누적 미납 ${c.shortfall.toLocaleString()}병 — ${retailBreakRemaining(c).toLocaleString()}병 더 못 채우면 파기(월 ${c.bottlesPerMonth.toLocaleString()}병 · 남은 ${Math.max(0, c.termMonths - c.monthsDone)}개월 · 파기까지 위약금 약 ${fmtWon(retailBreakRemaining(c) * c.penaltyPerBottle)} · 지금 해지하면 ${fmtWon(retailCancellationCost(c))})`);
       const critical = short.some((c) => retailBreakRemaining(c) <= c.bottlesPerMonth);
-      out.push({ id: 'retail-short', level: critical ? 'danger' : 'warn', text: `납품 미달 — ${lines.join(' · ')}. 파기되면 계약이 끝나 남은 달의 납품 매출을 잃는다(이미 낸 위약금은 그대로) — 그 범주 재고(병입)를 늘리거나 계약을 해지한다`, action: '납품 계약', target: { tab: 'b2b' } });
+      out.push({ id: 'retail-short', level: critical ? 'danger' : 'warn', text: `납품 미달 — ${lines.join(' · ')}. 파기되면 계약이 끝나 남은 달의 납품 매출을 잃는다(이미 낸 위약금은 그대로) — 그 범주 재고(병입)를 늘리고, 늘릴 수 없다면 해지와 파기 중 더 싼 쪽을 고른다`, action: '납품 계약', target: { tab: 'b2b' } });
     }
   }
   // A1(PROD 화면 메모, ARCH alerts): 지난달 지시한 배치를 다 못 만들었다 — 지금은 대시보드 결산 메모에만 있어 놓친다. 원인 문구는 생산 단계가 쓴 그대로(원재료·증류기·발효조·취수 허가)

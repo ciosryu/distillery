@@ -119,7 +119,7 @@ describe('결과 화면 — 등급 S 조건 세 줄 (6차 판 완료 세이브: 
 describe('납품 미달 할 일 ([결정 #334] · MKT P-MKT-42 ⓑ-2)', () => {
   const withContract = (shortfall: number) => {
     const s = mvp();
-    s.commerce.retailContracts = [{ id: 'RC1', partner: '가온마트', category: 'soju_distilled', bottlesPerMonth: 600, priceFactor: 0.8, penaltyPerBottle: 2000, termMonths: 24, startMonth: 0, monthsDone: 6, delivered: 3000, shortfall } as never];
+    s.commerce.retailContracts = [{ id: 'RC1', partner: '가온마트', category: 'soju_distilled', bottlesPerMonth: 600, priceFactor: 0.8, penaltyPerBottle: 2000, termMonths: 12, startMonth: 0, monthsDone: 1, delivered: 3000, shortfall } as never];
     return s;
   };
   it('미납 없으면 없음 · 여유 있으면 warn · 한 달 더 못 채우면 깨지면 danger(맨 위) — 파기까지 남은 병 = retailBreakRemaining', () => {
@@ -127,7 +127,8 @@ describe('납품 미달 할 일 ([결정 #334] · MKT P-MKT-42 ⓑ-2)', () => {
     const w = todo(withContract(190), 'retail-short')!;
     expect(w.level).toBe('warn');
     expect(w.text).toMatch(/「가온마트」 누적 미납 190병 — 1,010병 더 못 채우면 파기/);
-    expect(w.text).toMatch(/미납 1병마다 위약금 2,000원 · 남은 18개월/); // 파기 불이익은 계약 끝 — 신뢰 하락 같은 효과는 없다(MKT #719)
+    expect(w.text).toMatch(/남은 11개월 · 파기까지 위약금 약 202만 · 지금 해지하면 660만/); // 대형 유통은 늘 12개월(MKT) · 두 값을 나란히(해지가 더 비쌀 수 있다)
+    expect(w.text).toMatch(/늘릴 수 없다면 해지와 파기 중 더 싼 쪽을 고른다/);
     expect(w.text).toMatch(/파기되면 계약이 끝나 남은 달의 납품 매출을 잃는다/);
     expect(w.text).not.toMatch(/신뢰/);
     expect(w.target).toEqual({ tab: 'b2b' });
