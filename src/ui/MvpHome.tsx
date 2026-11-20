@@ -4,6 +4,7 @@ import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { CaskTagBar, CaskTagChips } from './CaskTags';
 import { TurnBrief } from './TurnBrief';
 import { AutoFillRow } from './panels/AutoFill';
+import { getPlaylog, recentActionCount } from '../store/playlog';
 import { PendingEventChoices } from './panels/Events';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
 import { knownReads, lastSample, readSigma, sampleAxesOf, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
@@ -477,6 +478,9 @@ function WarehouseCard() {
 }
 
 /** 탱크 원액 → 빈 통에 통입 — 매달 하는 결정이라 생산 지시 바로 아래 ([#182], 전에는 숙성고 공간 카드 안 맨 아래) */
+/** 자동 통입 권유를 띄우는 최근 12개월 손 통입 횟수 `[튜닝]` — 7차 판 평균 월 2.6번(405 ÷ 155) */
+export const HAND_FILL_HINT_AT = 12;
+
 function FillCard() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
@@ -510,6 +514,8 @@ function FillCard() {
     <div className="grid min-w-0 content-start gap-2">
         {/* 자동 통입 (#239) — 켜 두면 진행할 때 넣는다 */}
         <AutoFillRow />
+        {/* [제안 P-ARCH-65] 손 통입이 잦은데 자동 통입이 꺼져 있으면 한 줄 — 7차 판: 손 통입 405번(행동의 42% · 어림 50분) · 자동 통입 0회 · 통입 간격 최장 11개월. 막지 않는다(안내만) */}
+        {!s.inventory.autoFill && (() => { const n = recentActionCount(getPlaylog(), 'fillCasks', s.month - 12); return n >= HAND_FILL_HINT_AT ? <p className="text-xs text-amber-800 dark:text-amber-300">최근 12개월 손 통입 {n}번 — 위 자동 통입을 켜면 진행할 때마다 탱크 몰트·그레인을 꽉 차는 통에 알아서 넣는다(끝자리는 탱크에 두고 다음에 합친다 · 손 통입도 그대로 쓸 수 있다)</p> : null; })()}
         {!malts.length ? <Empty>탱크에 숙성할 원액(몰트·소주)이 없습니다 — 생산 지시를 내리고 한 달을 진행하세요</Empty> : (
           <>
             <Select label="원액" value={lot?.id ?? ''} options={[...(lot ? [] : [{ value: '', label: '원액을 고르세요' }]), ...malts.map((l) => ({ value: l.id, label: lotLabel(l) }))]} onChange={(v) => { setLotId(v); setLotKind(malts.find((l) => l.id === v)?.kind ?? ''); setFillType(''); }} />

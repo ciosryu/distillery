@@ -140,6 +140,7 @@ function ProductionTruth({ s }: { s: Parameters<typeof productionValue>[0] }) {
 /** ③ 이번 달 할 일 — 증류소 탭 맨 위. 놓치기 쉬운 신호(통입 대기·병입 시기·샘플 시기·대출 거치 종료)를 급한 순서로 */
 export function MonthTodo() {
   const s = useGame((g) => g.state);
+  const dispatch = useGame((g) => g.dispatch);
   const go = useGo();
   if (s.status !== 'running') return null;
   const todos = monthTodos(s);
@@ -154,7 +155,10 @@ export function MonthTodo() {
             {todos.map((t) => (
               <li key={t.id} className="flex flex-wrap items-center justify-between gap-2">
                 <span className={`min-w-0 text-xs ${tone[t.level]}`}>{t.level === 'danger' ? '‼ ' : t.level === 'warn' ? '⚠ ' : '• '}{t.text}</span>
-                <Button small variant="ghost" onClick={() => go(t.target)}>{t.action} →</Button>
+                <span className="flex gap-1">
+                  {t.quick && <Button small variant="primary" onClick={() => dispatch(t.quick!.action)} title={t.quick.done}>{t.quick.label}</Button>}
+                  <Button small variant="ghost" onClick={() => go(t.target)}>{t.action} →</Button>
+                </span>
               </li>
             ))}
           </ul>
