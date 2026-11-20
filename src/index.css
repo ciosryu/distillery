@@ -15,3 +15,12 @@ body {
 input[type='number']::-webkit-inner-spin-button {
   opacity: 0.5;
 }
+
+/*
+ * 그리드 자식의 최소 폭을 0으로 — CSS grid 자식의 기본 최소 폭은 "내용 폭"이라, 긴 줄·넓은 표가 있으면 열이 커져 화면 전체가 창보다 넓어진다
+ * (7차 판: 홈 1,506px · 블렌딩 테이블 · 원액 B2B 탭 — 할 일 버튼 등이 화면 밖). 긴 글은 줄바꿈되고 넓은 표는 Table의 overflow-x-auto 안에서 스크롤한다.
+ * base 층이라 min-w-* 같은 유틸리티가 이긴다(필요한 곳은 그대로 넓힐 수 있다)
+ */
+@layer base {
+  .grid > * { min-width: 0; }
+}
