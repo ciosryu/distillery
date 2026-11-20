@@ -1,7 +1,7 @@
 import { BULK, CASKS } from '../../sim/content/catalog';
 import { regionOf, siteOf } from '../../sim/content/regions';
 import { CATEGORY } from '../../sim/content/categories';
-import { oemPackageCost, retailCancellationCost, retailBreakRemaining, retailOfferOutlook, RETAIL_BREAK_MONTHS, cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, knownReads, lotQuality, monthLabel, QUALITY_SIGMA_PER_HEX, spotBidPerLPA, spotQuote, spotQuoteEstimate, spotSaturation, type Cask, type ContractAgingImpact, type GameState, type KnownRead, campaignMinOakMonths, HINT_HORIZON_MONTHS, rulesVersionOf, campaignWon } from '../../sim';
+import { oemPackageCost, retailCancellationCost, retailBreakRemaining, retailDrawOrder, retailOfferOutlook, RETAIL_BREAK_MONTHS, cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, knownReads, lotQuality, monthLabel, QUALITY_SIGMA_PER_HEX, spotBidPerLPA, spotQuote, spotQuoteEstimate, spotSaturation, type Cask, type ContractAgingImpact, type GameState, type KnownRead, campaignMinOakMonths, HINT_HORIZON_MONTHS, rulesVersionOf, campaignWon } from '../../sim';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won, wonFull } from '../format';
 import { Badge, Button, Card, ConfirmButton, Empty, Stat, Table, Td } from '../kit';
@@ -255,7 +255,18 @@ function SiteDeals() {
                     <Td className="font-medium">{o.partner}</Td><Td>{CATEGORY[o.category].nameKo}</Td><Td right>{num(o.bottlesPerMonth)}병</Td>
                     <Td right>출고가 × {pct(o.priceFactor, 0)}</Td><Td right>{o.termMonths}개월</Td><Td right>{won(o.penaltyPerBottle)}</Td>
                     <Td><Badge tone="info">제안 · {o.expiresMonth - s.month}개월 후 만료</Badge></Td>
-                    <Td><Button small variant="primary" onClick={() => dispatch({ type: 'acceptRetail', offerId: o.id })}>체결</Button></Td>
+                    <Td>
+                      {ol.coverMonths < 1
+                        // 7차 판: 「0.8개월치」 경고색을 보고도 위스키 1,000병/월 계약 2건을 받아 둘 다 3개월 만에 깨졌다 — 한 달치도 안 되면 한 번 더 묻고, 무엇이 일어나는지 보인다(화면만)
+                        ? <ConfirmButton small variant="primary" armKey={`acceptretail-${o.id}@${s.month}`} armedLabel="한 번 더 누르면 체결" onConfirm={() => dispatch({ type: 'acceptRetail', offerId: o.id })}
+                            preview={() => {
+                              const draw = retailDrawOrder(s, o.category);
+                              return <>지금 {CATEGORY[o.category].nameKo} 재고 {num(ol.stock)}병은 이 계약 한 달치({num(o.bottlesPerMonth)}병)도 안 된다. 납품은 국내 판매보다 먼저 재고를 가져가 <b>국내 {CATEGORY[o.category].nameKo} 판매가 멈출 수 있다</b>(최근 국내 월 {num(Math.round(ol.recentSales))}병).
+                                {draw.length > 0 && <> 출고가의 {pct(o.priceFactor, 0)}로 나갈 제품(오래된 것부터): {draw.map((p) => `${p.name} ${num(p.stockBottles)}병`).join(' · ')}.</>}
+                                {' '}다 못 채운 달은 위약금(최대 {won(ol.penaltyPerMonth)}/월), 미납이 {num(RETAIL_BREAK_MONTHS * o.bottlesPerMonth)}병 쌓이면 파기.</>;
+                            }}>체결</ConfirmButton>
+                        : <Button small variant="primary" onClick={() => dispatch({ type: 'acceptRetail', offerId: o.id })}>체결</Button>}
+                    </Td>
                   </tr>
                   <tr>
                     <td colSpan={8} className={`px-2 pb-2 text-xs ${thin ? 'text-amber-800 dark:text-amber-300' : 'text-stone-600 dark:text-stone-300'}`}>
