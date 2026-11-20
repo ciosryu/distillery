@@ -341,13 +341,14 @@ export function monthTodos(s: GameState): Todo[] {
   const jump = paymentJump(loanSchedule(s, 4));
   if (jump) out.push({ id: 'loan-jump', level: 'warn', text: `${jump.month - s.month === 0 ? '이번 달' : `${jump.month - s.month}개월 뒤`} 대출 거치가 끝나 월 납부가 ${fmtWon(jump.from)} → ${fmtWon(jump.to)}로 뛴다`, action: '대출 보기', target: { tab: 'finance' } });
   // 대형 유통 납품 미달 ([결정 #334] · MKT [제안 P-MKT-42] ⓑ-2 — 6차 판: "납품 부족 n병 — 위약금"이 118~129개월 결산 메모에만 쌓이다 3건 파기).
-  // 파기 기준은 MKT `retailBreakRemaining`(누적 미납이 두 달치) 한 함수. 한 달을 더 통째로 못 채우면 깨지는 계약이 있으면 danger
+  // 파기 기준은 MKT `retailBreakRemaining`(누적 미납이 두 달치) 한 함수. 한 달을 더 통째로 못 채우면 깨지는 계약이 있으면 danger.
+  // 파기 불이익은 "계약이 끝남"뿐이다(신뢰 하락 같은 추가 효과 없음 — MKT #719 지적, 파기 불이익 규칙 P-MKT-43 ③은 오너 결정 전) → 문구를 사실대로
   {
     const short = s.commerce.retailContracts.filter((c) => c.shortfall > 0);
     if (short.length) {
-      const lines = short.map((c) => `「${c.partner}」 누적 미납 ${c.shortfall.toLocaleString()}병 — ${retailBreakRemaining(c).toLocaleString()}병 더 못 채우면 파기(월 ${c.bottlesPerMonth.toLocaleString()}병 · 지금 해지하면 위약금 ${fmtWon(retailCancellationCost(c))})`);
+      const lines = short.map((c) => `「${c.partner}」 누적 미납 ${c.shortfall.toLocaleString()}병 — ${retailBreakRemaining(c).toLocaleString()}병 더 못 채우면 파기(월 ${c.bottlesPerMonth.toLocaleString()}병 · 미납 1병마다 위약금 ${fmtWon(c.penaltyPerBottle)} · 남은 ${Math.max(0, c.termMonths - c.monthsDone)}개월 · 지금 해지하면 위약금 ${fmtWon(retailCancellationCost(c))})`);
       const critical = short.some((c) => retailBreakRemaining(c) <= c.bottlesPerMonth);
-      out.push({ id: 'retail-short', level: critical ? 'danger' : 'warn', text: `납품 미달 — ${lines.join(' · ')}. 파기되면 신뢰가 크게 떨어진다 — 그 범주 재고(병입)를 늘리거나 계약을 해지한다`, action: '납품 계약', target: { tab: 'b2b' } });
+      out.push({ id: 'retail-short', level: critical ? 'danger' : 'warn', text: `납품 미달 — ${lines.join(' · ')}. 파기되면 계약이 끝나 남은 달의 납품 매출을 잃는다(이미 낸 위약금은 그대로) — 그 범주 재고(병입)를 늘리거나 계약을 해지한다`, action: '납품 계약', target: { tab: 'b2b' } });
     }
   }
   // A1(PROD 화면 메모, ARCH alerts): 지난달 지시한 배치를 다 못 만들었다 — 지금은 대시보드 결산 메모에만 있어 놓친다. 원인 문구는 생산 단계가 쓴 그대로(원재료·증류기·발효조·취수 허가)

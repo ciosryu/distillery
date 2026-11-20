@@ -127,6 +127,9 @@ describe('납품 미달 할 일 ([결정 #334] · MKT P-MKT-42 ⓑ-2)', () => {
     const w = todo(withContract(190), 'retail-short')!;
     expect(w.level).toBe('warn');
     expect(w.text).toMatch(/「가온마트」 누적 미납 190병 — 1,010병 더 못 채우면 파기/);
+    expect(w.text).toMatch(/미납 1병마다 위약금 2,000원 · 남은 18개월/); // 파기 불이익은 계약 끝 — 신뢰 하락 같은 효과는 없다(MKT #719)
+    expect(w.text).toMatch(/파기되면 계약이 끝나 남은 달의 납품 매출을 잃는다/);
+    expect(w.text).not.toMatch(/신뢰/);
     expect(w.target).toEqual({ tab: 'b2b' });
     const d = todo(withContract(900), 'retail-short')!;
     expect(d.level).toBe('danger');
