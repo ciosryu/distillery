@@ -176,8 +176,16 @@ if (playlog) console.log(`- 플레이 기록: 시작 ${new Date(playlog.startedA
   const tankMalt = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced);
   const tankL = tankMalt.reduce((t2, l) => t2 + l.volumeL, 0);
   const waitM = tankMalt.length ? s.month - Math.min(...tankMalt.map((l) => l.createdMonth)) : 0;
+  // 탱크 합치기(#166)는 첫 배치 달(createdMonth)을 계속 들고 있어, 매달 통입해도 끝자리가 남으면 대기 개월이 판 처음부터 늘어난다(7차 판 중간: 그레인 527L가 "20개월째"였지만 실제로는 4개월 치).
+  // 통입이 오래된 원액부터(FIFO) 쓴다고 보고, 남은 LPA를 그 레시피의 최근 생산으로 거슬러 채워 "가장 오래된 원액이 만들어진 달"을 어림한다
+  const fifoWait = (l: (typeof tankMalt)[number]) => {
+    let need = l.volumeL * l.abv; let m = s.month;
+    for (const r of [...reps].reverse()) { if (r.month < l.createdMonth) break; need -= (r.production ?? []).filter((x) => x.recipeId === l.recipeId).reduce((t2, x) => t2 + x.lpa, 0); m = r.month; if (need <= 0) break; }
+    return s.month - Math.max(m, l.createdMonth);
+  };
+  const fifoM = tankMalt.length ? Math.max(...tankMalt.map(fifoWait)) : 0;
   const sojuL = s.inventory.lots.filter((l) => l.kind === 'soju').reduce((t2, l) => t2 + l.volumeL, 0);
-  console.log(`- 탱크 몰트·그레인 ${n0(tankL)}L(가장 오래된 배치 ${waitM}개월째) · 탱크 소주 ${n0(sojuL)}L · 자동 통입 ${s.inventory.autoFill ? '켬' : '끔'}`);
+  console.log(`- 탱크 몰트·그레인 ${n0(tankL)}L(탱크 첫 배치 ${waitM}개월째 · 오래된 원액부터 통입했다면 남은 원액은 약 ${fifoM}개월 치) · 탱크 소주 ${n0(sojuL)}L · 자동 통입 ${s.inventory.autoFill ? '켬' : '끔'}`);
   const af = notesOf(/자동 통입 \d+통/);
   console.log(`- 자동 통입이 돈 달 ${af.length}개${af.length ? `(${af[0]!.month}~${af.at(-1)!.month}개월)` : ''} · 빈 통 부족 메모 ${notesOf(/자동 통입 못 함/).length}건`);
   // 덜 찬 통 — 숙성 중 통의 처음 채움 비율(증발 연 5%로 되돌린 어림)
@@ -195,7 +203,7 @@ if (playlog) console.log(`- 플레이 기록: 시작 ${new Date(playlog.startedA
     ...(s.commerce.lots ?? []).flatMap((l) => (l.components ?? []).filter((e) => e.origin === 'self').map((e) => l.bottledMonth - e.woodMonths + A))];
   const first = woods.length ? Math.min(...woods) : null;
   const ms = (id: string) => s.progress.milestones.find((m) => m.id === id)?.month;
-  console.log(`- 12년: 목재 ${A}개월 첫 도달 ≈ ${first ?? '—'}개월째(남은 통·병입 로트 구성 기준) · 플래그십 병입 ${ms('flagship_bottled') ?? '—'} · 승리 ${s.progress.win ? `${s.progress.win.month}개월(${s.progress.win.bottles}병 × ${n0(s.progress.win.unitPrice)}원)` : '아직'}`);
+  console.log(`- 12년: 목재 ${A}개월 첫 도달 ≈ ${first ?? '—'}개월째${first != null && first > s.month ? '(예정)' : ''}(남은 통·병입 로트 구성 기준) · 플래그십 병입 ${ms('flagship_bottled') ?? '—'} · 승리 ${s.progress.win ? `${s.progress.win.month}개월(${s.progress.win.bottles}병 × ${n0(s.progress.win.unitPrice)}원)` : '아직'}`);
   // 생산 0인 달과 까닭(결산 메모)
   const zero = reps.filter((r) => s.production.orders.some((o) => o.batchesPerMonth > 0) && !(r.production ?? []).length).map((r) => {
     const why = (r.notes ?? []).find((n) => /증류기가 준비되지 않아|생산 중단|건너뛰었다/.test(n));
