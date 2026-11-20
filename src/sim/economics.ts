@@ -344,9 +344,15 @@ export interface ProductionCutback {
   /** 줄이기 전으로 되돌릴 때 월 생산비 증가 · 3년 위스키 병/년 증가 */
   extraCostPerMonth: number;
   extraWhiskyBottlesPerYear: number;
+  /** 그 제품군(국내 위스키·그레인·블렌디드, 면세 전용 제외) 재고 병 · 최근 3개월 평균 판매로 몇 개월 치(판매 0이면 null) · 최근 3개월에 팔렸는데 지금 재고 0인 제품 수 */
+  whiskyStock: number;
+  whiskyMonths: number | null;
+  soldOut: number;
+  /** 재고가 바닥 — 품절이 있거나 lowStockMonths개월 치 미만. 7차 판은 2033년부터 위스키 제품이 늘 품절이었다(오너 답: "재고 쌓여서 줄이고 그대로 깜빡했다") */
+  stockLow: boolean;
 }
-/** 화면이 "되돌려도 된다"를 띄우는 기준 — 현금이 고정비 이만큼 · 줄인 지 이만큼 지났을 때 (단계 T에서 튜닝) */
-export const CUTBACK_HINT = { cashMonths: 6, monthsSince: 3 } as const;
+/** 화면이 "되돌려도 된다"를 띄우는 기준 — 현금이 고정비 이만큼 · 줄인 지 이만큼 지났을 때. 재고가 lowStockMonths개월 치 미만이면 더 세게 (단계 T에서 튜닝) */
+export const CUTBACK_HINT = { cashMonths: 6, monthsSince: 3, lowStockMonths: 3 } as const;
 
 export function productionCutback(s: GameState, fixedMonthly: number): ProductionCutback | null {
   const kindOf = new Map(s.production.recipes.map((r) => [r.id, r.kind] as const));
@@ -361,11 +367,21 @@ export function productionCutback(s: GameState, fixedMonthly: number): Productio
   for (const [recipeId, batches] of prev) if (!orders.some((o) => o.recipeId === recipeId)) orders.push({ recipeId, batchesPerMonth: batches });
   const now = productionValue(s);
   const back = productionValue({ ...s, production: { ...s.production, orders } });
+  // 그 제품군 재고 — alerts.ts stockMonths와 같은 셈(최근 3개월 평균 판매)
+  const whiskyProducts = s.commerce.products.filter((p) => isWhiskyCategory(p.category) && !p.dutyFreeOnly);
+  const recent = s.history.reports.slice(-3);
+  const soldOf = (id: string) => recent.reduce((t, r) => t + (r.sales.find((x) => x.productId === id)?.bottles ?? 0), 0);
+  const whiskyStock = whiskyProducts.reduce((t, p) => t + p.stockBottles, 0);
+  const perMonth = recent.length ? whiskyProducts.reduce((t, p) => t + soldOf(p.id), 0) / recent.length : 0;
+  const whiskyMonths = perMonth > 0 ? whiskyStock / perMonth : null;
+  const soldOut = whiskyProducts.filter((p) => p.stockBottles <= 0 && soldOf(p.id) > 0).length;
   return {
     current, before: made(last), lastHigherMonth: last.month, monthsSince: s.month - last.month - 1, // 결산 달은 진행 전 달 번호 — 줄인 채 결산한 달 수
     cashMonths: fixedMonthly > 0 ? s.finance.cash / fixedMonthly : null,
     extraCostPerMonth: Math.max(0, back.costPerMonth - now.costPerMonth),
     extraWhiskyBottlesPerYear: Math.max(0, back.whiskyBottlesPerYear - now.whiskyBottlesPerYear),
+    whiskyStock, whiskyMonths, soldOut,
+    stockLow: soldOut > 0 || (whiskyMonths != null && whiskyMonths < CUTBACK_HINT.lowStockMonths),
   };
 }
 

@@ -152,12 +152,17 @@ function CutbackLine({ fixed, minMonths }: { fixed: number; minMonths: number })
   const s = useGame((g) => g.state);
   const c = useMemo(() => productionCutback(s, fixed), [s, fixed]);
   if (!c || c.cashMonths == null || c.monthsSince < CUTBACK_HINT.monthsSince || c.cashMonths < CUTBACK_HINT.cashMonths || c.extraWhiskyBottlesPerYear <= 0) return null;
+  const tone = c.stockLow
+    ? 'border-rose-300 bg-rose-50 text-rose-950 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-100'
+    : 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100';
+  const stock = c.whiskyMonths == null ? (c.whiskyStock > 0 ? `위스키 재고 ${num(c.whiskyStock)}병` : null) : `위스키 재고 ${c.whiskyMonths.toFixed(1)}개월 치`;
   return (
-    <div className="mt-1.5 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
-      <b>⚠ 몰트·그레인을 줄인 지 {c.monthsSince}개월</b> — 지금 월 {c.current}배치({monthLabel(s.startYear, c.lastHigherMonth)}에는 {c.before}배치) · 현금은 고정비 <b>{Math.floor(c.cashMonths)}개월 치</b>
+    <div className={`mt-1.5 rounded border px-2 py-1.5 ${tone}`}>
+      <b>{c.stockLow ? '‼' : '⚠'} 몰트·그레인을 줄인 지 {c.monthsSince}개월</b> — 지금 월 {c.current}배치({monthLabel(s.startYear, c.lastHigherMonth)}에는 {c.before}배치) · 현금은 고정비 <b>{Math.floor(c.cashMonths)}개월 치</b>
+      {stock && <> · {c.stockLow ? <b>{stock}{c.soldOut > 0 ? ` · 품절 ${c.soldOut}개` : ''}</b> : stock}</>}
       <div className="mt-0.5">
         그때만큼 되돌리면 생산비 +{won(c.extraCostPerMonth)}/월 → {minMonths}개월 뒤부터 해마다 위스키 약 <b>+{num(c.extraWhiskyBottlesPerYear)}병</b>
-        <span className="text-stone-600 dark:text-stone-400"> · 줄인 기간만큼 {minMonths}개월 뒤 팔 위스키와 12년 후보 통이 빈다. 판매가 줄어 일부러 줄였다면 그대로 두어도 된다</span>
+        <span className="text-stone-600 dark:text-stone-400"> · 줄인 기간만큼 {minMonths}개월 뒤 팔 위스키와 12년 후보 통이 빈다. {c.stockLow ? '위스키가 바닥인데 생산은 줄인 그대로다 — 재고가 쌓여 줄였다면 그 재고가 다 팔렸다' : '판매가 줄어 일부러 줄였다면 그대로 두어도 된다'}</span>
       </div>
     </div>
   );
