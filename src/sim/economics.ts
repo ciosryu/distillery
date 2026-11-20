@@ -348,7 +348,7 @@ export interface ProductionCutback {
   /** 줄이기 전으로 되돌릴 때 월 생산비 증가 · 3년 위스키 병/년 증가 */
   extraCostPerMonth: number;
   extraWhiskyBottlesPerYear: number;
-  /** 그 제품군(국내 위스키·그레인·블렌디드, 면세 전용 제외) 재고 병 · 최근 3개월 평균 판매로 몇 개월 치(판매 0이면 null) · 최근 3개월에 팔렸는데 지금 재고 0인 제품 수 */
+  /** 그 제품군(국내 위스키·그레인·블렌디드, 면세 전용 제외) 재고 병 · 판매 속도(categoryMonthlySales 합 — 품절 달 제외)로 몇 개월 치(판매 기록 없으면 null) · 최근 12개월에 팔렸는데 지금 재고 0인 제품 수 */
   whiskyStock: number;
   whiskyMonths: number | null;
   soldOut: number;
@@ -371,12 +371,13 @@ export function productionCutback(s: GameState, fixedMonthly: number): Productio
   for (const [recipeId, batches] of prev) if (!orders.some((o) => o.recipeId === recipeId)) orders.push({ recipeId, batchesPerMonth: batches });
   const now = productionValue(s);
   const back = productionValue({ ...s, production: { ...s.production, orders } });
-  // 그 제품군 재고 — alerts.ts stockMonths와 같은 셈(최근 3개월 평균 판매)
+  // 그 제품군 재고 — 판매 속도는 공급 전망과 같은 셈(categoryMonthlySales: 최근 12개월 중 판매가 있었던 달 3개 평균, 품절 달 제외 — #740 P-PROD-64).
+  // 예전에는 최근 3개월 단순 평균이라 품절 달(판매 0)이 속도를 깎아 재고 개월이 부풀었다. 품절 제품 = 최근 12개월 안에 팔렸는데 지금 0병
   const whiskyProducts = s.commerce.products.filter((p) => isWhiskyCategory(p.category) && !p.dutyFreeOnly);
-  const recent = s.history.reports.slice(-3);
+  const recent = s.history.reports.slice(-SALES_LOOKBACK.months);
   const soldOf = (id: string) => recent.reduce((t, r) => t + (r.sales.find((x) => x.productId === id)?.bottles ?? 0), 0);
   const whiskyStock = whiskyProducts.reduce((t, p) => t + p.stockBottles, 0);
-  const perMonth = recent.length ? whiskyProducts.reduce((t, p) => t + soldOf(p.id), 0) / recent.length : 0;
+  const perMonth = WHISKY_CATEGORIES.reduce((t, c) => t + (categoryMonthlySales(s, c) ?? 0), 0);
   const whiskyMonths = perMonth > 0 ? whiskyStock / perMonth : null;
   const soldOut = whiskyProducts.filter((p) => p.stockBottles <= 0 && soldOf(p.id) > 0).length;
   return {
