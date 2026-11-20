@@ -429,6 +429,58 @@ export function rampOutlook(s: GameState): RampOutlook | null {
   };
 }
 
+/**
+ * 탱크 소주까지 센 소주 재고 (7차 판 P-PROD-62 후보, 2026-11-20) — 할 일의 "소주 재고 n개월 치"는 제품 재고만 센다. 7차 판은 탱크에 소주 7,194L(62개월)·5,423L(155개월)
+ * = 지금 판매로 약 22·36개월 치가 병입되지 않은 채 있었는데 1.7·2.6개월 치로 보였다. 탱크 소주를 표준 병(375ml·25%)으로 환산해 더한다.
+ * 판매 = 최근 3개월 평균(국내 증류식 소주 제품, 면세 전용 제외 — alerts.ts stockMonths와 같은 셈). 상태 불변
+ */
+export interface SojuSupply {
+  productBottles: number;
+  tankL: number;
+  /** 탱크 소주를 표준 병(STANDARD_BOTTLE.soju)으로 환산 */
+  tankBottles: number;
+  /** 최근 3개월 평균 판매 병/월 */
+  perMonth: number;
+  /** (제품 + 탱크) ÷ 월 판매 — 판매가 0이면 null */
+  months: number | null;
+  /** 지금 소주 지시로 매달 새로 생기는 병(정상 배치·표준 병 환산)과 그 원료·에너지 */
+  madeBottlesPerMonth: number;
+  costPerMonth: number;
+  /** 소주 1배치 원료·에너지 — 지시를 1 줄일 때 아끼는 돈 */
+  costPerBatch: number | null;
+}
+/** 화면이 경고하는 문턱 — 병입하지 않은 소주까지 이만큼 개월 치를 넘으면 (단계 T에서 튜닝) */
+export const SOJU_STOCK_WARN_MONTHS = 12;
+
+export function sojuSupply(s: GameState): SojuSupply {
+  const bottleLPA = (STANDARD_BOTTLE.soju.bottleMl / 1000) * STANDARD_BOTTLE.soju.abv;
+  const products = s.commerce.products.filter((p) => p.category === 'soju_distilled' && !p.dutyFreeOnly);
+  const ids = new Set(products.map((p) => p.id));
+  const productBottles = products.reduce((t, p) => t + p.stockBottles, 0);
+  const lots = s.inventory.lots.filter((l) => l.kind === 'soju');
+  const tankL = lots.reduce((t, l) => t + l.volumeL, 0);
+  const tankBottles = Math.floor(lots.reduce((t, l) => t + l.volumeL * l.abv, 0) / bottleLPA);
+  const recent = s.history.reports.slice(-3);
+  const perMonth = recent.length ? recent.reduce((t, r) => t + r.sales.filter((x) => ids.has(x.productId)).reduce((u, x) => u + x.bottles, 0), 0) / recent.length : 0;
+  let made = 0;
+  let cost = 0;
+  let costPerBatch: number | null = null;
+  for (const x of orderPlan(s, { steady: true })) {
+    if (x.kind !== 'soju') continue;
+    const r = s.production.recipes.find((y) => y.id === x.recipeId);
+    const b = r ? steadyBatch(s, r) : null;
+    if (!b) continue;
+    made += (x.feasible * b.lpa) / bottleLPA;
+    cost += x.feasible * b.cost;
+    costPerBatch ??= Math.round(b.cost);
+  }
+  return {
+    productBottles, tankL, tankBottles, perMonth,
+    months: perMonth > 0 ? (productBottles + tankBottles) / perMonth : null,
+    madeBottlesPerMonth: Math.round(made), costPerMonth: Math.round(cost), costPerBatch,
+  };
+}
+
 /** 1배치를 표준 조건(새 ex-버번 배럴·입지 연평균 기후)에서 0…n−1개월 숙성했을 때의 현물 평가액 — [k] = k개월 숙성. 상태를 바꾸지 않는다 */
 function agedBatchValues(s: GameState, r: Recipe, b: { lpa: number; volumeL: number; abv: number; cost: number; flavor: SpiritLot['flavor'] }, n: number): number[] {
   const site = siteOf(s);
