@@ -53,3 +53,12 @@ describe('refreshDeals — 받지 않고 만료된 납품 제안을 메모로 (#
     expect(s.commerce.retailOffers.map((o) => o.id)).not.toContain('U3');
   });
 });
+
+describe('retailDrawOrder — 납품이 재고를 가져가는 순서 (화면 확인 문구와 fulfillRetail이 같이 씀)', () => {
+  it('같은 범주 · 재고 있음 · 면세 한정판 아님, 만든 달 순', async () => {
+    const { retailDrawOrder } = await import('./deals');
+    const mk = (id: string, category: string, stockBottles: number, createdMonth: number, dutyFreeOnly = false) => ({ id, category, stockBottles, createdMonth, dutyFreeOnly });
+    const s = { commerce: { products: [mk('B', 'whisky', 273, 141), mk('A', 'whisky', 553, 83), mk('Z', 'whisky', 0, 10), mk('D', 'whisky', 90, 5, true), mk('S', 'soju_distilled', 999, 1)] } } as unknown as Parameters<typeof retailDrawOrder>[0];
+    expect(retailDrawOrder(s, 'whisky').map((p) => p.id)).toEqual(['A', 'B']);
+  });
+});

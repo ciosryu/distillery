@@ -45,6 +45,10 @@ export function makeRetailOffer(s: GameState, rng: Rng): RetailOffer {
 
 /** 전용 증류기 설비 패키지 설치비 (입지 건설비 반영) */
 /** 납품 계약을 우리가 해지할 때 내는 비용 — 남은 개월 × 월 물량 × 병당 위약금의 절반. 해지 명령과 확인 미리보기(#240)가 같이 쓴다 */
+/** 납품이 재고를 가져가는 순서 — 그 범주의 재고 있는 제품(면세 한정판 제외)을 만든 순서대로. `fulfillRetail`과 화면(체결 확인의 "80%로 나갈 제품")이 같이 쓴다 */
+export const retailDrawOrder = (s: Pick<GameState, 'commerce'>, category: ProductCategory) =>
+  s.commerce.products.filter((x) => x.category === category && x.stockBottles > 0 && !x.dutyFreeOnly).sort((a, b) => a.createdMonth - b.createdMonth);
+
 /** 미납이 이만큼 쌓이면 계약이 깨진다 — 월 물량 × 이 값(`fulfillRetail`). 화면의 "파기까지 n병"과 같은 기준 */
 export const RETAIL_BREAK_MONTHS = 2;
 
@@ -152,7 +156,7 @@ export function fulfillRetail(s: GameState, report: MonthReport): void {
     let need = c.bottlesPerMonth;
     let amount = 0;
     let logistics = 0;
-    for (const p of s.commerce.products.filter((x) => x.category === c.category && x.stockBottles > 0 && !x.dutyFreeOnly).sort((a, b) => a.createdMonth - b.createdMonth)) {
+    for (const p of retailDrawOrder(s, c.category)) {
       if (need <= 0) break;
       const take = Math.min(need, p.stockBottles);
       p.stockBottles -= take;
