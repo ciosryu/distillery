@@ -8,6 +8,7 @@ import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDe
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
+import { undefendedDisasters } from '../sim/events';
 import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { exportShortfalls } from '../sim/market';
 import { retailBreakRemaining, retailCancellationCost } from '../sim/deals';
@@ -148,6 +149,8 @@ export const staleSampleCasks = (s: GameState) =>
 
 /** 재고가 이보다 적으면 "병입할 때" — 화면 안내 기준 */
 export const RESTOCK_MONTHS = 2;
+/** 핵심 전문가 할 일을 해금 소식 뒤 몇 개월 띄우나 (화면 안내 기준) — 7차 판 뒤 9 → 21개월(판정 무렵인 144개월까지) */
+export const SPECIALIST_TODO_MONTHS = 21;
 
 /**
  * 원액 현물 판매가 파는 것 (#203, 3차 MVP 플레이테스트 — "파산 경고를 보고 패닉에 몰트 원액을 8번(1.58억) 팔았다", mvp.md §7.9).
@@ -244,7 +247,7 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'visitor', 'stockout', 'retail-short', 'batch-short', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'handfill', 'fill', 'whisky', 'soju', 'sample'];
+export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'visitor', 'stockout', 'retail-short', 'batch-short', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'handfill', 'fill', 'defense', 'whisky', 'soju', 'sample'];
 // 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
 // danger 등급은 새 기능 바로 아래로 올린다(같은 danger끼리는 위 순서) — 6차 판: 오래 통입 대기(fill danger)가 할 일 3번째에 묻혔다
@@ -309,10 +312,11 @@ export function monthTodos(s: GameState): Todo[] {
     const idle = handfillIdle(s);
     out.push({ id: 'handfill', level: 'warn', text: `핸드필 존에 통이 없다${idle ? ` — 통이 빈 지 ${idle.months}개월째${idle.monthly ? `(비기 전 월 약 ${fmtWon(idle.monthly)} — 그만큼 놓치는 중)` : ''}` : ''} — 숙성 중인 캐스크 칸에서 핸드필 전용 통을 고르면 방문객이 매달 500ml씩 담아 간다(병입 권장가의 약 2배)`, action: '통 고르기', target: { anchor: 'mvp-warehouse' } });
   }
-  // 핵심 전문가를 아직 고르지 않았다 (MGT #610 남은 점 — 할 일에서 직원 탭 카드로 잇는 안내). 해금 소식(stage 할 일)이 내려간 뒤 9개월만 — 안 고르는 것도 선택이라 계속 띄우지 않는다
+  // 핵심 전문가를 아직 고르지 않았다 (MGT #610 남은 점 — 할 일에서 직원 탭 카드로 잇는 안내). 해금 소식(stage 할 일)이 내려간 뒤 SPECIALIST_TODO_MONTHS개월 — 안 고르는 것도 선택이라 끝없이 띄우지는 않는다.
+  // 7차 판(오너 "못봤다"): 해금 소식 3턴을 0·0·10초에 넘겼고, 그 뒤 9개월 info는 다른 할 일 아래에 묻혔다 → warn으로 올리고 기간을 늘린다(화면만)
   {
     const opened = stagesOf(s).find((x) => x.id === SPECIALIST_STAGE)?.month;
-    if (opened != null && s.month - opened >= 3 && s.month - opened < 12 && specialistOffers(s)) out.push({ id: 'specialist', level: 'info', text: '핵심 전문가를 아직 고르지 않았다 — 직원 탭 카드에서 숙성고 매니저 · 마스터 블렌더 · 영업 중 한 사람(한 번만 · 안 골라도 된다)', action: '직원', target: { tab: 'staff' } });
+    if (opened != null && s.month - opened >= 3 && s.month - opened < 3 + SPECIALIST_TODO_MONTHS && specialistOffers(s)) out.push({ id: 'specialist', level: 'warn', text: '핵심 전문가를 아직 고르지 않았다 — 직원 탭 카드에서 숙성고 매니저 · 마스터 블렌더 · 영업 중 한 사람(한 번만 · 안 골라도 된다)', action: '직원', target: { tab: 'staff' } });
   }
   // 비지터 센터가 없다 — 3차 MVP 판은 설비가 접힌 칸 안에 있어 "못 찾았다"(오너). 첫해 가장 큰 수입원(월 약 700만, 사람형 봇 실험)이라 할 일에 올린다
   const visitor = EQUIPMENT.visitor_basic;
@@ -399,6 +403,11 @@ export function monthTodos(s: GameState): Todo[] {
   if (wh.months < RESTOCK_MONTHS) {
     if (ready > 0) out.push({ id: 'whisky', level: 'info', text: `위스키 재고 ${wh.stock ? `${wh.months.toFixed(1)}개월 치` : '없음'} — 숙성 ${min}개월을 채운 통 ${ready}개를 병입할 수 있다${readyReserved ? ` (플래그십 예비 ${readyReserved}통은 빼고 셌다)` : ''}`, action: '블렌딩·병입', target: { tab: 'bottling' } });
     else if (readyReserved > 0) out.push({ id: 'whisky', level: 'info', text: `위스키 재고 ${wh.stock ? `${wh.months.toFixed(1)}개월 치` : '없음'} — 숙성 ${min}개월을 채운 통은 플래그십 예비 ${readyReserved}통뿐이다. 예비 통을 병입하면 12년 목표가 늦어진다 — 다음 통이 ${min}개월을 채울 때까지 기다리거나, 꼭 필요하면 예비를 풀고 쓴다`, action: '블렌딩·병입', target: { tab: 'bottling' } });
+  }
+  // 방재 설비가 있었으면 막았을 재해를 최근 2년에 겪었다 ([제안 P-MGT-61] — 7차 판: 폭설 3회·한파 1회로 생산 4개월 정지, 제설·난방을 짓지 않았다). 설비 값을 낼 현금이 있을 때만
+  if (s.scenario) {
+    const miss = undefendedDisasters(s, 24).filter((d) => s.finance.cash >= d.cost);
+    if (miss.length) out.push({ id: 'defense', level: 'info', text: `최근 2년 ${miss.map((d) => `${d.title} ${d.count}회`).join(' · ')}를 방재 설비 없이 겪었다 — ${miss.map((d) => `「${d.facility}」 ${fmtWon(d.cost)}`).join(' · ')}이면 막는다`, action: '설비에서 짓기', target: { anchor: 'mvp-equipment' } });
   }
   // 소주 재고가 떨어져 가는데 탱크에 소주가 있다
   const tankSoju = s.inventory.lots.filter((l) => l.kind === 'soju').reduce((t, l) => t + l.volumeL, 0);

@@ -352,6 +352,22 @@ export function resolvePending(s: GameState, pendingId: string, choiceIndex: num
 }
 
 /**
+ * 최근 겪은 재해 중 방재 설비가 있었으면 막았을 것 ([제안 P-MGT-61] ⓑ, 7차 판 — 폭설 3회·한파 1회로 생산 4개월이 멈췄는데 제설·난방을 짓지 않았다).
+ * 결산 이벤트 제목(`MonthReport.events`)으로 센다 — 지금 그 설비가 있거나 잠겨 있으면 뺀다. 화면 안내용, 상태를 바꾸지 않는다
+ */
+export function undefendedDisasters(s: GameState, months = 24): { defId: string; title: string; count: number; facility: string; cost: number }[] {
+  const recent = s.history.reports.filter((r) => r.month > s.month - 1 - months);
+  const out: { defId: string; title: string; count: number; facility: string; cost: number }[] = [];
+  for (const def of EVENTS) {
+    if (!def.defense || ownsFacility(s, def.defense) || isLocked(s, `facility:${def.defense}`)) continue;
+    const count = recent.reduce((t, r) => t + r.events.filter((x) => x === def.title).length, 0);
+    const fac = EQUIPMENT[def.defense];
+    if (count > 0 && fac) out.push({ defId: def.id, title: def.title, count, facility: fac.nameKo, cost: fac.cost });
+  }
+  return out;
+}
+
+/**
  * 이벤트의 월 발생 판정 확률 — 지역 분류 가중 × 입지 가중 × 전체 배수 × **난이도 영역 배수**(F6 [결정 #314]: `EventDef.domain` × `knob('<영역>.eventChance')`,
  * 태그 없음·Normal·옛 판은 ×1 — 지금 값 그대로). runEvents와 조기 경보가 같은 값을 쓴다. `EVENT_RATE`(전체 배수)는 난이도 손잡이가 아니다(영역 분리)
  */
