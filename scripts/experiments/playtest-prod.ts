@@ -110,7 +110,9 @@ for (const p of s.commerce.products) {
   // 출시 달 이후만 평균한다 — 출시 전 달(0병)을 넣으면 새 제품의 재고 개월이 부풀려진다(7차 중간: 61개월 출시 제품이 24.1개월 치 → 실제 약 4개월 치, MKT 지적)
   const live = s.history.reports.slice(-6).filter((r) => r.month >= p.createdMonth);
   const recent = live.length ? live.reduce((t, r) => t + (r.sales.find((x) => x.productId === p.id)?.bottles ?? 0), 0) / live.length : 0;
-  console.log(`- 끝 재고 「${p.name}」 ${n0(p.stockBottles)}병 = 최근 6개월 평균 판매(${n0(recent)}병/월)의 ${recent > 0 ? (p.stockBottles / recent).toFixed(1) : '∞'}개월 치`);
+  // 판매도 재고도 없으면(보관·단종) "∞개월 치"가 아니라 셀 것이 없다 — 재고만 있고 판매가 0이면 개월 수를 셀 수 없다고 적는다(7차 완료)
+  const cover = recent > 0 ? `최근 6개월 평균 판매(${n0(recent)}병/월)의 ${(p.stockBottles / recent).toFixed(1)}개월 치` : p.stockBottles > 0 ? '최근 6개월 판매 0 — 개월 수를 셀 수 없음' : '최근 6개월 판매·재고 없음';
+  console.log(`- 끝 재고 「${p.name}」 ${n0(p.stockBottles)}병 = ${cover}`);
 }
 
 // ── 4. 숙성·샘플 ──
@@ -206,9 +208,16 @@ if (playlog) console.log(`- 플레이 기록: 시작 ${new Date(playlog.startedA
   const A = 144;
   const woods = [...filled.filter((c) => !c.owner && c.contents!.kind === 'malt' && !c.contents!.sourced).map((c) => s.month - c.contents!.oakMonths + A),
     ...(s.commerce.lots ?? []).flatMap((l) => (l.components ?? []).filter((e) => e.origin === 'self').map((e) => l.bottledMonth - e.woodMonths + A))];
-  const first = woods.length ? Math.min(...woods) : null;
   const ms = (id: string) => s.progress.milestones.find((m) => m.id === id)?.month;
-  console.log(`- 12년: 목재 ${A}개월 첫 도달 ≈ ${first ?? '—'}개월째${first != null && first > s.month ? '(예정)' : ''}(남은 통·병입 로트 구성 기준) · 플래그십 병입 ${ms('flagship_bottled') ?? '—'} · 승리 ${s.progress.win ? `${s.progress.win.month}개월(${s.progress.win.bottles}병 × ${n0(s.progress.win.unitPrice)}원)` : '아직'}`);
+  // 12년 로트가 다 팔려 commerce.lots에서 빠지면 남은 통만으로는 첫 도달이 뒤로 밀린다(7차 완료: 147개월 병입인데 "245개월째(예정)").
+  // 플래그십 병입·승리 달이 그보다 앞이면 그 달을 상한으로 쓴다
+  const seen = [ms('flagship_bottled'), s.progress.win?.month].filter((m): m is number => m != null);
+  const bound = seen.length ? Math.min(...seen) : null;
+  const firstWood = woods.length ? Math.min(...woods) : null;
+  const dropped = bound != null && (firstWood == null || firstWood > bound);
+  const first = dropped ? bound : firstWood;
+  const firstLabel = first == null ? '—' : dropped ? `${first}개월째 또는 그 전(구성 로트가 다 팔려 기록에 없음 — 플래그십 병입·승리 달로 대신)` : `${first}개월째${first > s.month ? '(예정)' : ''}(남은 통·병입 로트 구성 기준)`;
+  console.log(`- 12년: 목재 ${A}개월 첫 도달 ≈ ${firstLabel} · 플래그십 병입 ${ms('flagship_bottled') ?? '—'} · 승리 ${s.progress.win ? `${s.progress.win.month}개월(${s.progress.win.bottles}병 × ${n0(s.progress.win.unitPrice)}원)` : '아직'}`);
   // 생산 0인 달과 까닭(결산 메모)
   const zero = reps.filter((r) => s.production.orders.some((o) => o.batchesPerMonth > 0) && !(r.production ?? []).length).map((r) => {
     const why = (r.notes ?? []).find((n) => /증류기가 준비되지 않아|생산 중단|건너뛰었다/.test(n));
