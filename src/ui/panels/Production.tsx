@@ -155,7 +155,7 @@ function CutbackLine({ fixed, minMonths }: { fixed: number; minMonths: number })
   const tone = c.stockLow
     ? 'border-rose-300 bg-rose-50 text-rose-950 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-100'
     : 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100';
-  const stock = c.whiskyMonths == null ? (c.whiskyStock > 0 ? `위스키 재고 ${num(c.whiskyStock)}병` : null) : `위스키 재고 ${c.whiskyMonths.toFixed(1)}개월 치`;
+  const stock = c.whiskyMonths == null ? (c.whiskyStock > 0 ? `위스키 재고 ${num(c.whiskyStock)}병` : null) : c.whiskyStock <= 0 ? '위스키 재고 0병' : `위스키 재고 ${c.whiskyMonths.toFixed(1)}개월 치`;
   return (
     <div className={`mt-1.5 rounded border px-2 py-1.5 ${tone}`}>
       <b>{c.stockLow ? '‼' : '⚠'} 몰트·그레인을 줄인 지 {c.monthsSince}개월</b> — 지금 월 {c.current}배치({monthLabel(s.startYear, c.lastHigherMonth)}에는 {c.before}배치) · 현금은 고정비 <b>{Math.floor(c.cashMonths)}개월 치</b>
