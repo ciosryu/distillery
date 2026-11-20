@@ -494,6 +494,16 @@ describe('위스키 공급 전망·병입 재고 경고 (#178, 1차 MVP 플레�
     s.history.reports.push(rep);
     expect(whiskyAnnualPace(s)).toEqual({ bottles: 480, basis: 'sales' });
   });
+
+  it('판매 속도는 품절 달(판매 0)을 빼고 판매가 있었던 최근 3개월을 평균한다 — 7차 판 끝 위스키 품절로 1,560병/년이 된 일 (MKT #733 (가))', () => {
+    const s = mvp();
+    s.commerce.products.push({ id: 'W1', category: 'whisky', stockBottles: 0 } as Product);
+    const rep = (n: number) => ({ sales: n ? [{ productId: 'W1', name: 'w', bottles: n, revenue: 0, demandBottles: n }] : [] }) as unknown as GameState['history']['reports'][number];
+    s.history.reports.push(rep(100), rep(200), rep(300), rep(400), rep(0), rep(0));
+    expect(whiskyAnnualPace(s)).toEqual({ bottles: 300 * 12, basis: 'sales' }); // 200·300·400 — 품절 두 달은 뺀다
+    for (let i = 0; i < 12; i++) s.history.reports.push(rep(0));
+    expect(whiskyAnnualPace(s)?.basis).toBe('demand'); // 12개월 내내 품절이면 판매 기록 없음 → 수요 근사
+  });
 });
 
 describe('소주·진 샘플 — 그 주종 레이더 축으로도 읽는다 (#183, 2차 플레이테스트)', () => {

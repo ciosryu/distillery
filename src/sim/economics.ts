@@ -122,14 +122,18 @@ export function recipeEconomics(s: GameState, recipe: Recipe): EconomicsRow[] {
 // 1차 플레이테스트: 소주 1제품을 15,271병(판매 186개월 치) 병입해 현금이 묶였고, 2~5년 차 생산을 줄여 7~8년 차 위스키가 끊겼다.
 // 병입 전에 "이만큼이면 몇 개월 치인가", 생산 지시 옆에 "몇 년 뒤 위스키가 얼마나 나오나"를 보인다. 게임 상태를 바꾸지 않는다.
 
-/** 이 범주의 최근 3개월 평균 판매(병/월) — 판매 기록이 없으면 null */
+/** 이 범주의 판매 속도(병/월) — 최근 12개월 안에서 판매가 있었던 달 3개의 평균(품절 달 제외). 판매 기록이 없으면 null */
 export function categoryMonthlySales(s: GameState, category: ProductCategory): number | null {
   const ids = new Set([...s.commerce.products, ...(s.commerce.productArchive ?? [])].filter((p) => p.category === category).map((p) => p.id));
-  const recent = s.history.reports.slice(-3);
+  const recent = s.history.reports.slice(-SALES_LOOKBACK.months);
   if (!recent.length) return null;
-  const sold = recent.reduce((t, r) => t + r.sales.filter((x) => ids.has(x.productId)).reduce((u, x) => u + x.bottles, 0), 0);
-  return sold > 0 ? sold / recent.length : null;
+  // 품절 달은 판매도 수요도 기록되지 않는다(domesticDemands·runSales가 재고 0을 건너뜀, MKT #733) → 0인 달을 평균에 넣으면 품절일수록 속도가 낮아 보인다.
+  // 7차 판 끝: 위스키가 다 품절이라 연 1,560병 → 공급 전망이 "남아 쌓임", 생산 되돌리기 안내(#725)와 엇갈렸다. 판매가 있었던 달만 최근 n개를 평균한다
+  const per = recent.map((r) => r.sales.filter((x) => ids.has(x.productId)).reduce((u, x) => u + x.bottles, 0)).filter((n) => n > 0).slice(-SALES_LOOKBACK.soldMonths);
+  return per.length ? per.reduce((a, n) => a + n, 0) / per.length : null;
 }
+/** 범주 판매 속도 — 최근 months개월 안에서 판매가 있었던 달 soldMonths개의 평균 (품절 달 제외, PROD 2026-11-20 · MKT #733 (가)) */
+export const SALES_LOOKBACK = { months: 12, soldMonths: 3 } as const;
 
 /** 이 범주의 지금 재고(병, 국내 매대) */
 export const categoryStock = (s: GameState, category: ProductCategory): number =>
@@ -210,7 +214,7 @@ export function whiskyAnnualDemand(s: GameState): number | null {
 /** 위스키 범주 — 몰트 위스키·그레인 위스키·블렌디드 (공급 전망의 몰트·그레인 통이 들어가는 곳) */
 const WHISKY_CATEGORIES: ProductCategory[] = ['whisky', 'grain_whisky', 'blended_whisky'];
 
-/** 위스키 연 판매 속도(병) — 위스키 범주들의 최근 3개월 판매가 있으면 그 속도 × 12, 없으면 수요 근사(whiskyAnnualDemand). 1차 플레이테스트에서 수요 근사(2,088)가 실제 판매(342/월 ≈ 4,100/년)와 달라 판매 기록을 먼저 쓴다 */
+/** 위스키 연 판매 속도(병) — 위스키 범주들의 판매 속도(categoryMonthlySales — 품절 달을 뺀 최근 판매 3개월 평균)가 있으면 그 합 × 12, 없으면 수요 근사(whiskyAnnualDemand). 1차 플레이테스트에서 수요 근사(2,088)가 실제 판매(342/월 ≈ 4,100/년)와 달라 판매 기록을 먼저 쓴다 */
 export function whiskyAnnualPace(s: GameState): { bottles: number; basis: 'sales' | 'demand' } | null {
   const per = WHISKY_CATEGORIES.map((c) => categoryMonthlySales(s, c)).filter((x): x is number => x != null);
   if (per.length) return { bottles: Math.round(per.reduce((a, b) => a + b, 0) * 12), basis: 'sales' };
