@@ -2,9 +2,11 @@
 // 같은 세이브를 N개월 더 굴려 12년 싱글 몰트의 승리 뒤 판매를 보고, 봇 X0와 매출 구조를 견준다 (측정 스크립트만 — 게임 코드 0)
 // 실행:
 //   npx tsx scripts/experiments/mkt-playtest6.ts <기록.json> [굴릴 개월=24]        사람 판 분석 + 승리 뒤 굴림(시드 3)
+//   AUTOP=1 npx tsx scripts/experiments/mkt-playtest6.ts <기록.json> [개월=12]   지금 손 가격 그대로 대 모든 제품 자동 가격 켬 — 같은 세이브 · 굴림 시드 4(플레이어 행동 없음)
 //   BOT=1 npx tsx scripts/experiments/mkt-playtest6.ts <기록.json> [시드=10]      봇 X0(P8 v16 standard)를 같은 창(38~157개월)으로 — 매출 구조 비교
 // 굴림은 플레이어 행동을 넣지 않는다(세이브에 켜 둔 자동 납품 · 자동 가격 · 생산 주문만 돈다) — 절대값이 아니라 "지금 설정 그대로라면"으로 읽는다
-import { advanceMonth, type GameState, type MonthReport } from '../../src/sim';
+import { advanceMonth, applyAction, type GameState, type MonthReport } from '../../src/sim';
+import { houseBrand } from '../../src/sim/brands';
 import { defaultPolicyPrice } from '../../src/sim/content/market';
 import { currentSuggested } from '../../src/sim/economics';
 import { eok, loadSave } from './mkt-lib';
@@ -34,7 +36,31 @@ const mixRow = (name: string, m: Mix) => {
 const MIX_HEAD = '| 판 | 국내 소매 | 넘친 판매 | 대형 유통 납품 | 관광(비지터 · 기프트 샵 · 핸드필) | 원액 |\n|---|---|---|---|---|---|';
 
 const BOT_SEEDS = Number(process.argv[3] ?? 10);
-if (process.env.BOT === '1') {
+if (process.env.AUTOP === '1') {
+  // ── 손 가격 그대로 대 자동 가격 켬 (7차 중간 기록 — PM 질문 1) ──
+  // 같은 세이브에서 N개월을 굴려 판매 매출 · 현금 · 순자산 · 인지도 · 병 수를 견준다. 플레이어 행동(통입 · 생산 주문 바꾸기)은 없어 두 갈래가 똑같이 멈춘다 — 차이만 읽는다
+  const N = Number(process.argv[3] ?? 12);
+  const run = (auto: boolean, k: number) => {
+    let s: GameState = structuredClone(save);
+    s.seed = save.seed + k * 7919;
+    if (auto) for (const p of [...s.commerce.products]) if (p.stockBottles > 0 && !p.autoPrice && !p.dutyFreeOnly) { const r = applyAction(s, { type: 'setAutoPrice', productId: p.id, on: true }); if (!r.error) s = r.state; }
+    let rev = 0, bottles = 0;
+    for (let m = 0; m < N && s.status === 'running'; m++) { s = advanceMonth(s); const r = s.history.reports.at(-1)!; rev += r.revenue; bottles += r.sales.reduce((t, x) => t + x.bottles, 0); }
+    return { rev, bottles, cash: s.finance.cash, nw: s.history.reports.at(-1)!.netWorth ?? NaN, aw: houseBrand(s).awareness, stock: Object.fromEntries(s.commerce.products.map((p) => [p.name, p.stockBottles])) };
+  };
+  console.log(`## 손 가격 그대로 대 자동 가격 켬 — ${save.month}개월 세이브에서 ${N}개월 (굴림 시드 0~3, 플레이어 행동 없음)`);
+  console.log('| 갈래 | 굴림 시드 | 판매 매출(누계) | 판 병 | 끝 현금 | 끝 순자산 | 끝 인지도 |\n|---|---|---|---|---|---|---|');
+  const d = { rev: [] as number[], cash: [] as number[], nw: [] as number[], aw: [] as number[] };
+  for (const k of [0, 1, 2, 3]) {
+    const a = run(false, k), b = run(true, k);
+    console.log(`| 손 가격 | ${k} | ${eok(a.rev)} | ${a.bottles.toLocaleString()} | ${eok(a.cash)} | ${eok(a.nw)} | ${(a.aw * 100).toFixed(1)}% |`);
+    console.log(`| 자동 가격 | ${k} | ${eok(b.rev)} | ${b.bottles.toLocaleString()} | ${eok(b.cash)} | ${eok(b.nw)} | ${(b.aw * 100).toFixed(1)}% |`);
+    d.rev.push(b.rev - a.rev); d.cash.push(b.cash - a.cash); d.nw.push(b.nw - a.nw); d.aw.push(b.aw - a.aw);
+    if (k === 0) console.log(`\n(시드 0 끝 재고 — 손: ${Object.entries(a.stock).filter(([, v]) => v > 0).map(([n, v]) => `${n} ${v}`).join(' · ')} / 자동: ${Object.entries(b.stock).filter(([, v]) => v > 0).map(([n, v]) => `${n} ${v}`).join(' · ')})\n`);
+  }
+  const mean = (v: number[]) => v.reduce((x, y) => x + y, 0) / v.length;
+  console.log(`\n- 자동 − 손 (4시드 평균): 판매 매출 ${eok(mean(d.rev))} · 끝 현금 ${eok(mean(d.cash))} · 끝 순자산 ${eok(mean(d.nw))} · 인지도 ${(mean(d.aw) * 100).toFixed(1)}%p · 자동이 순자산에서 이긴 시드 ${d.nw.filter((x) => x > 0).length}/4`);
+} else if (process.env.BOT === '1') {
   // ── 봇 X0: 같은 창(FROM~TO개월)의 판로별 매출 — P8 끼움 자리 afterMonth에서 모은다 ──
   const mix = mixZero();
   const years: Record<number, Mix> = {};
