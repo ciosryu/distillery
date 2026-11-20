@@ -111,6 +111,18 @@ export function forfeitedLoanRoom(s: GameState, offerId: string, amount: number)
 /** 지금 바로 더 빌릴 수 있는 돈의 합 (조건이 모자란 상품은 뺀다) */
 export const loanRoomTotal = (s: GameState) => availableLoans(s).reduce((t, x) => t + (x.blocked ? 0 : x.max), 0);
 
+/**
+ * 지금 받을 수 있는 가장 싼 대출 한 건 ([제안 P-MGT-60], 7차 판 — 6·7차 모두 같은 지자체 육성자금을 현금 바닥 직전에 받았다).
+ * 런웨이 배너가 「무엇을, 얼마에」를 한 줄로 보이려고 쓴다. 조건이 모자란 상품·한도 0·은행 심사 거절(기본 꺼짐)은 뺀다.
+ * 금리(난이도 반영 `effectiveOffer`)가 가장 낮은 것, 같으면 한도가 큰 것. 이자는 `loanTerms`의 지금 낼 돈(거치 중 이자만)과 같다. 상태를 바꾸지 않는다
+ */
+export function cheapestLoan(s: GameState): { offer: LoanOfferDef; max: number; paymentNow: number } | null {
+  const ok = availableLoans(s).filter((x) => !x.blocked && x.max > 0 && bankScreening(s, x.offer).ok);
+  if (!ok.length) return null;
+  const best = ok.reduce((a, b) => (b.offer.annualRate < a.offer.annualRate || (b.offer.annualRate === a.offer.annualRate && b.max > a.max) ? b : a));
+  return { offer: best.offer, max: best.max, paymentNow: loanTerms(best.offer, best.max, s.month).paymentNow };
+}
+
 
 /** 매달 나가는 고정 지출 예상 — 대시보드 "월 고정비"·증류소 탭 "매달 나가는 돈"·사업 계획서 미리보기·이사회 현금 기준·영업중단 보험금.
  *  다음 결산(7 재무 단계 + 판매 단계의 마케팅비)이 실제로 낼 돈과 맞춘다: 세컨드 브랜드 유지비·마케팅비(#155), 다음 달 난방비(겨울만), 완공된 설비의 유지비만 */

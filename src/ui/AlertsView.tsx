@@ -4,7 +4,7 @@ import { BANKRUPT_AFTER_MONTHS, midGoalProgress, midGoalsOf, monthLabel, whiskyS
 import { DIFFICULTY_DOMAINS } from '../sim/content/difficulty';
 import { LOCKED_DOMAINS, difficultyLabel, domainLevelLabel } from './difficultyLabel';
 import { productionValue } from '../sim/economics';
-import { loanRoomTotal, monthlyFixedCost } from '../sim/loans';
+import { cheapestLoan, loanRoomTotal, monthlyFixedCost } from '../sim/loans';
 import { won } from './format';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
@@ -88,11 +88,27 @@ export function CashBanner() {
         {s.scenario && <Button small variant="ghost" onClick={() => go({ anchor: 'mvp-fixed' })}>매달 나가는 돈 줄이기</Button>}
         <Button small variant="ghost" onClick={() => go({ tab: 'dashboard' })}>월 결산표</Button>
       </div>
+      <CheapestLoanLine s={s} />
       <SpotSaleTruth s={s} />
       <ProductionTruth s={s} />
       {/* 자동 가격 정책 — 정보만, 자동 전환 없음 (#291 ⑥, MKT 대행) */}
       <PolicySwitchHint s={s} />
     </div>
+  );
+}
+
+/**
+ * 가장 싼 대출 한 줄 ([제안 P-MGT-60], 7차 판 — 노랑 배너가 7턴 떴지만 연 2% 지자체 자금을 현금이 마이너스가 된 다음 달에야 받았다. 6차도 같은 상품을 바닥 직전에).
+ * 「무엇을 · 얼마에」를 보여 미리 받는 대가(거치 중 이자)가 작다는 것을 숫자로 보인다. 계산은 MGT `loans.ts cheapestLoan`(대출 탭과 같은 조건·같은 식)
+ */
+function CheapestLoanLine({ s }: { s: Parameters<typeof cheapestLoan>[0] }) {
+  const c = cheapestLoan(s);
+  if (!c) return null;
+  const rate = `연 ${(c.offer.annualRate * 100).toFixed(c.offer.annualRate * 100 % 1 ? 1 : 0)}%`;
+  return (
+    <p className="mt-2 text-xs">
+      가장 싼 대출: 「{c.offer.nameKo}」 최대 <b>{fmtWon(c.max)}</b> · {rate}{c.offer.graceMonths > 0 ? ` · 거치 ${c.offer.graceMonths}개월` : ''} — 지금 받으면 {c.offer.graceMonths > 0 ? '거치 동안 ' : ''}월 <b>{fmtWon(c.paymentNow)}</b>{c.offer.graceMonths > 0 ? '(이자만)' : ''}
+    </p>
   );
 }
 
