@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonths, newScenarioGame, SAVE_VERSION } from '../sim';
-import { activeMsAt, advanceKindOf, buildDrift, freshPlaylog, parsePlayFile, withAction, withBuild, withTurns, type PlayFile } from './playlog';
+import { activeMsAt, advanceKindOf, buildDrift, freshPlaylog, parsePlayFile, recentActionCount, withAction, withBuild, withTurns, type PlayFile } from './playlog';
 
 // 플레이 기록 (mvp.md §7.2) — 순수한 부분만. 시계(입력·화면 보임)는 브라우저에서만 돈다
 
@@ -64,5 +64,14 @@ describe('플레이 기록', () => {
     expect(l.turns.at(-1)).toEqual({ month: 4, activeMs: 0, actions: 3 });
     expect(withAction(freshPlaylog(1)).pendingKinds).toBeUndefined(); // 종류 없이 부르면 수만
     expect([1, 3, 12, 24].map(advanceKindOf)).toEqual(['month', 'quarter', 'year', 'other']);
+  });
+  it('최근 행동 횟수 — 기준 달 뒤의 턴 기록 + 이번 달 (P-ARCH-65 자동 통입 권유)', () => {
+    let l = freshPlaylog(1);
+    l = withTurns(withAction(withAction(l, 'fillCasks'), 'fillCasks'), 0, 1); // 1월에 넘어온 턴 — 0월에 2번
+    l = withTurns(withAction(l, 'setPrice'), 1, 13); // 13월까지 — 손 통입 없음
+    l = withAction(withAction(l, 'fillCasks'), 'fillCasks'); // 이번 달(13) 2번 — 아직 턴 기록 전
+    expect(recentActionCount(l, 'fillCasks', 13 - 12)).toBe(2); // 1월 턴(month 1)은 기준(1) 이하라 빠진다
+    expect(recentActionCount(l, 'fillCasks', 0)).toBe(4);
+    expect(recentActionCount({ turns: [{ month: 5, activeMs: 0, actions: 0 }] }, 'fillCasks', 0)).toBe(0); // 옛 기록(종류 없음)
   });
 });

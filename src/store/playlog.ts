@@ -71,6 +71,14 @@ export function withTurns(log: Playlog, fromMonth: number, toMonth: number, adva
   return { ...rest, turns: [...log.turns, ...add] };
 }
 
+/**
+ * 최근 행동 횟수 (순수 함수) — `sinceMonth` 뒤로 넘어온 턴들의 행동 종류 기록(`kinds`) + 아직 턴으로 넘기지 않은 이번 달(`pendingKinds`).
+ * 옛 기록(행동 종류가 없는 판)은 0. 화면 안내용(P-ARCH-65 — 손 통입이 잦으면 자동 통입 권유)
+ */
+export function recentActionCount(log: Pick<Playlog, 'turns' | 'pendingKinds'>, type: string, sinceMonth: number): number {
+  return log.turns.filter((t) => t.month > sinceMonth).reduce((n, t) => n + (t.kinds?.[type] ?? 0), 0) + (log.pendingKinds?.[type] ?? 0);
+}
+
 /** 성공한 행동 하나 (순수 함수) — 누적 수와, 다음 턴 기록에 붙일 종류별 횟수 */
 export function withAction(log: Playlog, type?: string): Playlog {
   if (!type) return { ...log, actions: log.actions + 1 };
