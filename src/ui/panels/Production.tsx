@@ -281,7 +281,7 @@ function WhiskySupply() {
       <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
         <span className="text-sm font-medium">위스키 공급 전망 — 해마다 새로 팔 수 있게 되는 병 수 (700ml·40%)</span>
         <span className="text-xs text-stone-600">
-          {pace ? <>연 판매 속도 ≈ <b>{num(pace.bottles)}병</b> ({pace.basis === 'sales' ? '최근 3개월 실제 판매 × 12' : '수요 추정 — 아직 판매 기록 없음'})</> : '몰트 레시피가 없어 수요를 계산할 수 없습니다'}
+          {pace ? <>연 판매 속도 ≈ <b>{num(pace.bottles)}병</b> ({pace.basis === 'sales' ? '품절 달을 뺀 최근 판매 3개월 평균 × 12' : '수요 추정 — 아직 판매 기록 없음'})</> : '몰트 레시피가 없어 수요를 계산할 수 없습니다'}
         </span>
       </div>
       <div className="grid grid-cols-5 gap-2 text-center">
