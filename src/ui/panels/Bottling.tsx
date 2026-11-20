@@ -10,6 +10,7 @@ import { agedWhitePerception } from '../../sim/content/market';
 import { regionOf } from '../../sim/content/regions';
 import { STANDARD_BOTTLE, stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
 import { protectedCaskIds, reserveCaskIds } from '../../sim/tags';
+import { campaignMinOakMonths, campaignWon, isFlagshipCandidate, rulesVersionOf } from '../../sim';
 import { CaskTagChips } from '../CaskTags';
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
@@ -119,7 +120,13 @@ export function Bottling() {
   const guardedPicked = useMemo(() => {
     const prot = protectedCaskIds(s);
     const ids = components.filter((c) => c.source === 'cask').map((c) => c.id);
-    return { reserve: ids.filter((id) => reserve.has(id)), other: ids.filter((id) => prot.has(id) && !reserve.has(id)) };
+    // 승리 전 12년 후보(예비가 아닌 것) — 7차 판: 139·141개월 10·11년 제품에 후보 5통(목재 126~133개월)을 경고 없이 썼다(후보 12 → 7). 막지 않고 알린다 (P-PROD-65)
+    const hintOn = rulesVersionOf(s) !== 'legacy-v15' && !campaignWon(s);
+    const isCand = (c: Cask) => hintOn && isFlagshipCandidate(s, c, 'hint');
+    const picked = new Set(ids);
+    const candidate = hintOn ? ids.flatMap((id) => { const c = s.inventory.casks.find((x) => x.id === id); return c && !reserve.has(id) && !prot.has(id) && isCand(c) ? [{ id, oak: c.contents!.oakMonths }] : []; }) : [];
+    const candidatesLeft = hintOn ? s.inventory.casks.filter((c) => !picked.has(c.id) && isCand(c)).length : 0;
+    return { reserve: ids.filter((id) => reserve.has(id)), other: ids.filter((id) => prot.has(id) && !reserve.has(id)), candidate, candidatesLeft };
   }, [s, reserve, components]);
   // 시나리오 게임(MVP)은 캐스크의 참 향미·품질을 숨긴다 (#136·#159) — 샘플 기록으로 추정한 값만 보여 주고, 병입하면 공개된다. 샌드박스는 개발용으로 참값을 보여 준다
   const hide = !!s.scenario;
@@ -396,7 +403,7 @@ export function Bottling() {
               {stock && (
                 <p className={`text-xs ${stock.months > STOCK_STRONG_WARN_MONTHS ? 'font-medium text-rose-700 dark:text-rose-400' : stock.months > STOCK_WARN_MONTHS ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`}>
                   {stock.months > STOCK_WARN_MONTHS ? '⚠ ' : ''}병입 뒤 {CATEGORY[preview.category!].nameKo} 재고 ≈ <b>{Number.isFinite(stock.months) ? `${num(stock.months, 1)}개월 치` : '팔리지 않음'}</b>
-                  {' '}({stock.basis === 'sales' ? `최근 3개월 판매 월 ${num(stock.monthly)}병 기준` : `아직 판매 기록 없음 — 이번 달 수요 근사 월 ${num(stock.monthly)}병 기준`})
+                  {' '}({stock.basis === 'sales' ? `품절 달을 뺀 최근 판매 월 ${num(stock.monthly)}병 기준` : `아직 판매 기록 없음 — 이번 달 수요 근사 월 ${num(stock.monthly)}병 기준`})
                   {stock.months > STOCK_STRONG_WARN_MONTHS
                     ? ` — 1년 넘게 팔아야 하는 양입니다. 병값·병입 인건비가 지금 나가고 재고 ${STOCK_WARN_MONTHS}개월 치를 넘으면 할인 이미지로 수요가 줄어듭니다. 사용량을 줄여 나눠 병입하세요`
                     : stock.months > STOCK_WARN_MONTHS ? ` — ${STOCK_WARN_MONTHS}개월 치를 넘으면 할인 이미지로 수요가 줄어듭니다` : ''}
@@ -421,6 +428,17 @@ export function Bottling() {
                       <Button key={n} small variant="ghost" disabled={existing >= n * stock.monthly} title={existing >= n * stock.monthly ? `이미 ${n}개월 치 넘게 재고가 있다` : `사용량을 줄이거나 늘려 병입 뒤 재고가 약 ${n}개월 치(월 ${num(stock.monthly)}병 기준)가 되게 맞춘다`} onClick={() => fit(n)}>{n}개월 치</Button>
                     ))}
                     로 맞추기 — 사용량(L)을 바꾼다
+                  </p>
+                );
+              })()}
+              {/* 이 병입 자체가 12년(가장 어린 원액도 목재 A 이상)이면 후보를 제대로 쓰는 것이라 알리지 않는다 */}
+              {guardedPicked.candidate.length > 0 && !(preview && preview.minOakMonths >= campaignMinOakMonths(s)) && (() => {
+                const need = campaignMinOakMonths(s);
+                const list = guardedPicked.candidate.map((c) => `${c.id}(${c.oak >= need ? '이미 12년' : `${need - c.oak}개월 뒤 12년`})`);
+                return (
+                  <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                    ⚠ 12년 후보 통 {guardedPicked.candidate.length}개를 쓴다 — {list.slice(0, 4).join(', ')}{list.length > 4 ? ` 외 ${list.length - 4}개` : ''}.
+                    아직 승리(12년 싱글 몰트 첫 판매) 전이다 — 지금 쓰면 12년으로 병입할 수 있는 통이 그만큼 준다(이 병입 뒤 남는 후보 {guardedPicked.candidatesLeft}통). 막지는 않는다
                   </p>
                 );
               })()}
