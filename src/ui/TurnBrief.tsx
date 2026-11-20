@@ -8,8 +8,9 @@ import { EVENTS } from '../sim/content/events';
 import { useGame } from '../store/game';
 import { Badge, Button } from './kit';
 import { PendingEventChoices } from './panels/Events';
-import { flagshipReady } from './alerts';
-import { campaignMinOakMonths } from '../sim';
+import { flagshipReady, stageTarget } from './alerts';
+import { useUi } from '../store/ui';
+import { campaignMinOakMonths, stagesOf } from '../sim';
 
 const SEEN_KEY = 'distillery-tycoon/brief-seen';
 const URGENT = new Set(['disaster', 'regulation']);
@@ -44,20 +45,27 @@ export function turnNews(s: ReturnType<typeof useGame.getState>['state'], fromMo
     const oldest = Math.max(...win12.casks.map((c) => c.woodMonths));
     if (oldest - (s.month - fromMonth) < A) notes.unshift({ month: s.month - 1, text: `12년 병입 가능 — 자가 몰트 통 ${win12.casks.length}개가 목재 ${A}개월을 넘었다. 이 통들로 싱글 몰트를 병입해 팔면 캠페인 승리(블렌딩·병입 탭)` });
   }
-  return { events, notes };
+  // 새 기능 열림 — 그 탭으로 바로 가는 버튼을 붙여 크게 보인다(7차 판: 11년 차 핵심 전문가 해금을 0초에 넘겨 "못 봤다" — MGT 넘김)
+  const unlocks = notes.flatMap((n) => {
+    if (!n.text.startsWith('새 기능 열림')) return [];
+    const st = stagesOf(s).find((x) => n.text.includes(x.title));
+    return st ? [{ ...n, ...stageTarget(st) }] : [];
+  });
+  return { events, notes: notes.filter((n) => !unlocks.some((u) => u.text === n.text)), unlocks };
 }
 
 export function TurnBrief() {
   const s = useGame((g) => g.state);
   const undoInfo = useGame((g) => g.undoInfo);
+  const setTab = useUi((u) => u.setTab);
   const [seen, setSeen] = useState<number>(() => readSeen(s.seed));
   useEffect(() => { setSeen(readSeen(s.seed)); }, [s.month, s.seed]);
   if (!s.scenario || s.status !== 'running') return null;
   // 이번 진행이 넘긴 달들(분기·1년 진행이면 여러 달) — 기록이 없으면 지난 한 달
   const from = undoInfo && undoInfo.month < s.month ? undoInfo.month : s.month - 1;
-  const { events, notes } = turnNews(s, from);
+  const { events, notes, unlocks } = turnNews(s, from);
   const pending = s.events.pending.length;
-  if (seen === s.month || (!pending && !events.length && !notes.length)) return null;
+  if (seen === s.month || (!pending && !events.length && !notes.length && !unlocks.length)) return null;
   const close = () => { writeSeen(s.seed, s.month); setSeen(s.month); };
   const span = s.month - from > 1 ? `${monthLabel(s.startYear, from)} ~ ${monthLabel(s.startYear, s.month - 1)}` : monthLabel(s.startYear, s.month - 1);
   return (
@@ -68,6 +76,16 @@ export function TurnBrief() {
           {pending > 0 && <Badge tone="warn">고를 것 {pending}개</Badge>}
         </div>
         {pending > 0 && <div className="mb-3"><PendingEventChoices /><p className="mt-1 text-xs text-stone-500">고르지 않으면 다음 달 기본값(파란 버튼)으로 처리된다. 창을 닫아도 증류소 탭 맨 위에 남는다.</p></div>}
+        {unlocks.length > 0 && (
+          <ul className="mb-3 grid gap-1.5">
+            {unlocks.map((u, i) => (
+              <li key={i} className="flex flex-wrap items-center justify-between gap-2 rounded-md border-2 border-amber-400 bg-amber-50 px-2 py-2 text-sm dark:border-amber-600 dark:bg-amber-950/40">
+                <span className="min-w-0"><Badge tone="warn">새로 열림</Badge> {u.text.replace(/^새 기능 열림 — /, '')}</span>
+                <Button small variant="primary" onClick={() => { close(); setTab(u.tab); }}>{u.label} 탭 열기</Button>
+              </li>
+            ))}
+          </ul>
+        )}
         {events.length > 0 && (
           <ul className="mb-3 grid gap-1.5 text-sm">
             {events.map((e, i) => (

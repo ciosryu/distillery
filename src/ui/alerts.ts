@@ -176,6 +176,19 @@ export function spotSaleStake(s: GameState): { tank: SpiritStake | null; casks: 
  */
 export const flagshipCandidates = (s: GameState) => s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c));
 /** 이 수 이하로 남으면 할 일 맨 위 (#261) `[튜닝]` */
+/**
+ * 새로 열린 단계가 가리키는 탭 — 할 일 "새로 열림"과 소식 창이 같은 것을 쓴다.
+ * 7차 판: 11년 차 핵심 전문가(`action:pickSpecialist`만 연다)가 이 표에 없어 [판매] 탭으로 보냈다(오너 "못봤다") → 직원 탭
+ */
+export function stageTarget(st: { unlock: readonly string[] }): { tab: string; label: string } {
+  const u = (k: string) => st.unlock.includes(k);
+  if (u('system:commissions')) return { tab: 'blendlab', label: '블렌딩 테이블' };
+  if (u('system:exports')) return { tab: 'exports', label: '수출' };
+  if (u('system:caskBids') || u('system:siteDeals')) return { tab: 'b2b', label: '원액 B2B' };
+  if (u('system:hr') || u('action:pickSpecialist')) return { tab: 'staff', label: '직원' };
+  return { tab: 'sales', label: '판매' };
+}
+
 export const FLAGSHIP_LOW = 3;
 
 /** 핸드필 통이 빈 뒤 지난 개월과 비기 전 6개월 평균 핸드필 매출 — 결산 메모(`handfill.ts`)에서 읽는다. 빈 기록이 없으면(처음부터 미지정) null */
@@ -256,10 +269,10 @@ export function monthTodos(s: GameState): Todo[] {
   // 새로 열린 기능 (#215) — 연 뒤 3개월 동안 할 일 맨 위에 둔다
   for (const st of stagesOf(s)) { // F5a: 규칙 묶음별 단계
     if (!s.scenario?.stagesDone?.includes(st.id) || s.month - st.month >= 3) continue;
-    const tab = st.unlock.includes('system:commissions') ? 'blendlab' : st.unlock.includes('system:exports') ? 'exports' : st.unlock.includes('system:caskBids') || st.unlock.includes('system:siteDeals') ? 'b2b' : st.unlock.includes('system:hr') ? 'staff' : 'sales';
+    const { tab, label } = stageTarget(st);
     // #259: IB 입찰 해금 안내에 나이 조건(3년↑)을 채운 통 수 — 0이면 제안이 오지 않는다(후반 확인 판)
     const ibNote = st.unlock.includes('system:caskBids') ? (() => { const n = ibAgedCaskCount(s); return n ? ` 지금 3년 이상 통 ${n}개.` : ' 지금 3년 이상 통이 없어 제안이 오지 않는다 — 통 일부를 남겨 두라.'; })() : '';
-    out.push({ id: `stage-${st.id}`, level: 'warn', text: `새로 열림 — ${st.title}. ${st.text}${ibNote}`, action: tab === 'blendlab' ? '블렌딩 테이블' : tab === 'exports' ? '수출' : tab === 'b2b' ? '원액 B2B' : tab === 'staff' ? '직원' : '판매', target: { tab } });
+    out.push({ id: `stage-${st.id}`, level: 'warn', text: `새로 열림 — ${st.title}. ${st.text}${ibNote}`, action: label, target: { tab } });
   }
   // 남은 플래그십 후보가 적다 (#261) — 옛 판: 후보 집합이 닫힌 뒤(목표까지 남은 달 < 플래그십 숙성)에만. 새 캠페인(v16, F4): 판 끝이 없으니 후보(목재 108개월↑, 안내 지평) 수만 본다. 0통은 증류소 탭 KPI가 빨갛게 말한다
   const legacyRules = rulesVersionOf(s) === 'legacy-v15';
