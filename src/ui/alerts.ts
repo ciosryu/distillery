@@ -8,6 +8,7 @@ import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDe
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
+import { undefendedDisasters } from '../sim/events';
 import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { exportShortfalls } from '../sim/market';
 import { retailBreakRemaining, retailCancellationCost } from '../sim/deals';
@@ -148,6 +149,8 @@ export const staleSampleCasks = (s: GameState) =>
 
 /** 재고가 이보다 적으면 "병입할 때" — 화면 안내 기준 */
 export const RESTOCK_MONTHS = 2;
+/** 핵심 전문가 할 일을 해금 소식 뒤 몇 개월 띄우나 (화면 안내 기준) — 7차 판 뒤 9 → 21개월(판정 무렵인 144개월까지) */
+export const SPECIALIST_TODO_MONTHS = 21;
 
 /**
  * 원액 현물 판매가 파는 것 (#203, 3차 MVP 플레이테스트 — "파산 경고를 보고 패닉에 몰트 원액을 8번(1.58억) 팔았다", mvp.md §7.9).
@@ -179,6 +182,19 @@ export function spotSaleStake(s: GameState): { tank: SpiritStake | null; casks: 
  */
 export const flagshipCandidates = (s: GameState) => s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c));
 /** 이 수 이하로 남으면 할 일 맨 위 (#261) `[튜닝]` */
+/**
+ * 새로 열린 단계가 가리키는 탭 — 할 일 "새로 열림"과 소식 창이 같은 것을 쓴다.
+ * 7차 판: 11년 차 핵심 전문가(`action:pickSpecialist`만 연다)가 이 표에 없어 [판매] 탭으로 보냈다(오너 "못봤다") → 직원 탭
+ */
+export function stageTarget(st: { unlock: readonly string[] }): { tab: string; label: string } {
+  const u = (k: string) => st.unlock.includes(k);
+  if (u('system:commissions')) return { tab: 'blendlab', label: '블렌딩 테이블' };
+  if (u('system:exports')) return { tab: 'exports', label: '수출' };
+  if (u('system:caskBids') || u('system:siteDeals')) return { tab: 'b2b', label: '원액 B2B' };
+  if (u('system:hr') || u('action:pickSpecialist')) return { tab: 'staff', label: '직원' };
+  return { tab: 'sales', label: '판매' };
+}
+
 export const FLAGSHIP_LOW = 3;
 
 /** 핸드필 통이 빈 뒤 지난 개월과 비기 전 6개월 평균 핸드필 매출 — 결산 메모(`handfill.ts`)에서 읽는다. 빈 기록이 없으면(처음부터 미지정) null */
@@ -244,7 +260,7 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'visitor', 'stockout', 'retail-short', 'batch-short', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'handfill', 'fill', 'whisky', 'soju', 'sample'];
+export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'visitor', 'stockout', 'retail-short', 'batch-short', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'handfill', 'fill', 'defense', 'whisky', 'soju', 'sample'];
 // 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
 // danger 등급은 새 기능 바로 아래로 올린다(같은 danger끼리는 위 순서) — 6차 판: 오래 통입 대기(fill danger)가 할 일 3번째에 묻혔다
@@ -254,15 +270,28 @@ const todoKey = (t: Todo) => (t.level === 'danger' && !t.id.startsWith('stage-')
  * 이번 달 할 일 — 급한 순서. 시나리오 게임(MVP) 증류소 탭에 보인다. 규칙이 아니라 놓치기 쉬운 신호를 모은 안내다
  * (현금 위기는 화면 맨 위 경고가 따로 맡는다 — 여기서는 대출 거치 종료만)
  */
+/**
+ * 지금 병입할 수 있는 원액 — 할 일 '위스키 재고'(A7)와 '품절'(P-ARCH-66)이 **같은 셈**을 쓴다(PROD 요청 — 두 줄의 통 수가 달라 보이면 안 된다).
+ * 위스키: 숙성 기준(지역 최소 개월)을 채운 자사·고객 소유 아닌 몰트·그레인 통, 플래그십 예비는 따로 센다 · 소주: 탱크 소주 L
+ */
+export function bottleableNow(s: GameState): { ready: number; readyReserved: number; tankSojuL: number } {
+  const min = whiskyMinMonths(regionOf(s).whisky);
+  const reserved = reserveCaskIds(s);
+  const ripe = s.inventory.casks.filter((c) => c.contents && !c.owner && (c.contents.kind === 'malt' || c.contents.kind === 'grain') && c.contents.oakMonths >= min);
+  const ready = ripe.filter((c) => !reserved.has(c.id)).length;
+  const tankSojuL = s.inventory.lots.filter((l) => l.kind === 'soju').reduce((t, l) => t + l.volumeL, 0);
+  return { ready, readyReserved: ripe.length - ready, tankSojuL };
+}
+
 export function monthTodos(s: GameState): Todo[] {
   const out: Todo[] = [];
   // 새로 열린 기능 (#215) — 연 뒤 3개월 동안 할 일 맨 위에 둔다
   for (const st of stagesOf(s)) { // F5a: 규칙 묶음별 단계
     if (!s.scenario?.stagesDone?.includes(st.id) || s.month - st.month >= 3) continue;
-    const tab = st.unlock.includes('system:commissions') ? 'blendlab' : st.unlock.includes('system:exports') ? 'exports' : st.unlock.includes('system:caskBids') || st.unlock.includes('system:siteDeals') ? 'b2b' : st.unlock.includes('system:hr') ? 'staff' : 'sales';
+    const { tab, label } = stageTarget(st);
     // #259: IB 입찰 해금 안내에 나이 조건(3년↑)을 채운 통 수 — 0이면 제안이 오지 않는다(후반 확인 판)
     const ibNote = st.unlock.includes('system:caskBids') ? (() => { const n = ibAgedCaskCount(s); return n ? ` 지금 3년 이상 통 ${n}개.` : ' 지금 3년 이상 통이 없어 제안이 오지 않는다 — 통 일부를 남겨 두라.'; })() : '';
-    out.push({ id: `stage-${st.id}`, level: 'warn', text: `새로 열림 — ${st.title}. ${st.text}${ibNote}`, action: tab === 'blendlab' ? '블렌딩 테이블' : tab === 'exports' ? '수출' : tab === 'b2b' ? '원액 B2B' : tab === 'staff' ? '직원' : '판매', target: { tab } });
+    out.push({ id: `stage-${st.id}`, level: 'warn', text: `새로 열림 — ${st.title}. ${st.text}${ibNote}`, action: label, target: { tab } });
   }
   // 남은 플래그십 후보가 적다 (#261) — 옛 판: 후보 집합이 닫힌 뒤(목표까지 남은 달 < 플래그십 숙성)에만. 새 캠페인(v16, F4): 판 끝이 없으니 후보(목재 108개월↑, 안내 지평) 수만 본다. 0통은 증류소 탭 KPI가 빨갛게 말한다
   const legacyRules = rulesVersionOf(s) === 'legacy-v15';
@@ -309,10 +338,11 @@ export function monthTodos(s: GameState): Todo[] {
     const idle = handfillIdle(s);
     out.push({ id: 'handfill', level: 'warn', text: `핸드필 존에 통이 없다${idle ? ` — 통이 빈 지 ${idle.months}개월째${idle.monthly ? `(비기 전 월 약 ${fmtWon(idle.monthly)} — 그만큼 놓치는 중)` : ''}` : ''} — 숙성 중인 캐스크 칸에서 핸드필 전용 통을 고르면 방문객이 매달 500ml씩 담아 간다(병입 권장가의 약 2배)`, action: '통 고르기', target: { anchor: 'mvp-warehouse' } });
   }
-  // 핵심 전문가를 아직 고르지 않았다 (MGT #610 남은 점 — 할 일에서 직원 탭 카드로 잇는 안내). 해금 소식(stage 할 일)이 내려간 뒤 9개월만 — 안 고르는 것도 선택이라 계속 띄우지 않는다
+  // 핵심 전문가를 아직 고르지 않았다 (MGT #610 남은 점 — 할 일에서 직원 탭 카드로 잇는 안내). 해금 소식(stage 할 일)이 내려간 뒤 SPECIALIST_TODO_MONTHS개월 — 안 고르는 것도 선택이라 끝없이 띄우지는 않는다.
+  // 7차 판(오너 "못봤다"): 해금 소식 3턴을 0·0·10초에 넘겼고, 그 뒤 9개월 info는 다른 할 일 아래에 묻혔다 → warn으로 올리고 기간을 늘린다(화면만)
   {
     const opened = stagesOf(s).find((x) => x.id === SPECIALIST_STAGE)?.month;
-    if (opened != null && s.month - opened >= 3 && s.month - opened < 12 && specialistOffers(s)) out.push({ id: 'specialist', level: 'info', text: '핵심 전문가를 아직 고르지 않았다 — 직원 탭 카드에서 숙성고 매니저 · 마스터 블렌더 · 영업 중 한 사람(한 번만 · 안 골라도 된다)', action: '직원', target: { tab: 'staff' } });
+    if (opened != null && s.month - opened >= 3 && s.month - opened < 3 + SPECIALIST_TODO_MONTHS && specialistOffers(s)) out.push({ id: 'specialist', level: 'warn', text: '핵심 전문가를 아직 고르지 않았다 — 직원 탭 카드에서 숙성고 매니저 · 마스터 블렌더 · 영업 중 한 사람(한 번만 · 안 골라도 된다)', action: '직원', target: { tab: 'staff' } });
   }
   // 비지터 센터가 없다 — 3차 MVP 판은 설비가 접힌 칸 안에 있어 "못 찾았다"(오너). 첫해 가장 큰 수입원(월 약 700만, 사람형 봇 실험)이라 할 일에 올린다
   const visitor = EQUIPMENT.visitor_basic;
@@ -337,19 +367,27 @@ export function monthTodos(s: GameState): Todo[] {
       sOut.soon.length ? `다음 달 결품 예상 ${names(sOut.soon)}(재고 ${sOut.soon[0]!.stock.toLocaleString()}병 < 수요 약 ${sOut.soon[0]!.demand.toLocaleString()}병${sOut.soon.length > 1 ? ' 등' : ''})` : '',
       sOut.empty.length ? `품절 ${names(sOut.empty)}` : '',
     ].filter(Boolean);
-    out.push({ id: 'stockout', level: sOut.soon.length ? 'warn' : 'info', text: `${parts.join(' · ')} — 병입하거나 [기존 제품 재고 보충]으로 채운다`, action: '블렌딩·병입', target: { tab: 'bottling' } });
+    // [제안 P-ARCH-66] 이미 품절인데 병입할 원액이 있으면 warn — 7차 끝: 전 제품 품절이 info(회색)로 가장 약하게 보였고 병입할 통 33개 · 탱크 소주 5,423L가 있었다.
+    // "곧 품절"(soon)이 없으면 등급이 내려가던 규칙의 빈틈. 탱크 소주는 '병입 가능'으로만 짧게(생산을 줄이라는 소주 과잉 줄은 PROD 식 — 따로)
+    const b = bottleableNow(s);
+    const canFill = sOut.empty.length > 0 && (b.ready > 0 || b.tankSojuL >= 50);
+    const fillParts = [b.ready ? `병입할 통 ${b.ready}개` : '', b.tankSojuL >= 50 ? `탱크 소주 ${Math.round(b.tankSojuL).toLocaleString()}L 병입 가능` : ''].filter(Boolean).join(' · ');
+    out.push({ id: 'stockout', level: sOut.soon.length || canFill ? 'warn' : 'info', text: `${parts.join(' · ')}${canFill ? ` — ${fillParts}` : ''} — 병입하거나 [기존 제품 재고 보충]으로 채운다`, action: '블렌딩·병입', target: { tab: 'bottling' } });
   }
   // 대출 거치가 3개월 안에 끝나 납부가 뛴다
   const jump = paymentJump(loanSchedule(s, 4));
   if (jump) out.push({ id: 'loan-jump', level: 'warn', text: `${jump.month - s.month === 0 ? '이번 달' : `${jump.month - s.month}개월 뒤`} 대출 거치가 끝나 월 납부가 ${fmtWon(jump.from)} → ${fmtWon(jump.to)}로 뛴다`, action: '대출 보기', target: { tab: 'finance' } });
   // 대형 유통 납품 미달 ([결정 #334] · MKT [제안 P-MKT-42] ⓑ-2 — 6차 판: "납품 부족 n병 — 위약금"이 118~129개월 결산 메모에만 쌓이다 3건 파기).
-  // 파기 기준은 MKT `retailBreakRemaining`(누적 미납이 두 달치) 한 함수. 한 달을 더 통째로 못 채우면 깨지는 계약이 있으면 danger
+  // 파기 기준은 MKT `retailBreakRemaining`(누적 미납이 두 달치) 한 함수. 한 달을 더 통째로 못 채우면 깨지는 계약이 있으면 danger.
+  // 파기 불이익은 "계약이 끝남"뿐이다(신뢰 하락 같은 추가 효과 없음 — MKT #719 지적, 파기 불이익 규칙 P-MKT-43 ③은 오너 결정 전) → 문구를 사실대로
   {
     const short = s.commerce.retailContracts.filter((c) => c.shortfall > 0);
     if (short.length) {
-      const lines = short.map((c) => `「${c.partner}」 누적 미납 ${c.shortfall.toLocaleString()}병 — ${retailBreakRemaining(c).toLocaleString()}병 더 못 채우면 파기(월 ${c.bottlesPerMonth.toLocaleString()}병 · 지금 해지하면 위약금 ${fmtWon(retailCancellationCost(c))})`);
+      // MKT 확인(#719 a): 못 채울 계약은 해지가 파기보다 비쌀 수 있다(7차: 가온마트 해지 3,840만 대 파기까지 2,130만) → 두 값을 나란히, 더 싼 쪽을 고르게.
+      // 파기까지 위약금 ≈ 남은 미납(파기까지 병) × 병당 — 파기 달에는 그 달 미납 전부를 물어 실제는 조금 더 클 수 있다 [추정]
+      const lines = short.map((c) => `「${c.partner}」 누적 미납 ${c.shortfall.toLocaleString()}병 — ${retailBreakRemaining(c).toLocaleString()}병 더 못 채우면 파기(월 ${c.bottlesPerMonth.toLocaleString()}병 · 남은 ${Math.max(0, c.termMonths - c.monthsDone)}개월 · 파기까지 위약금 약 ${fmtWon(retailBreakRemaining(c) * c.penaltyPerBottle)} · 지금 해지하면 ${fmtWon(retailCancellationCost(c))})`);
       const critical = short.some((c) => retailBreakRemaining(c) <= c.bottlesPerMonth);
-      out.push({ id: 'retail-short', level: critical ? 'danger' : 'warn', text: `납품 미달 — ${lines.join(' · ')}. 파기되면 신뢰가 크게 떨어진다 — 그 범주 재고(병입)를 늘리거나 계약을 해지한다`, action: '납품 계약', target: { tab: 'b2b' } });
+      out.push({ id: 'retail-short', level: critical ? 'danger' : 'warn', text: `납품 미달 — ${lines.join(' · ')}. 파기되면 계약이 끝나 남은 달의 납품 매출을 잃는다(이미 낸 위약금은 그대로) — 그 범주 재고(병입)를 늘리고, 늘릴 수 없다면 해지와 파기 중 더 싼 쪽을 고른다`, action: '납품 계약', target: { tab: 'b2b' } });
     }
   }
   // A1(PROD 화면 메모, ARCH alerts): 지난달 지시한 배치를 다 못 만들었다 — 지금은 대시보드 결산 메모에만 있어 놓친다. 원인 문구는 생산 단계가 쓴 그대로(원재료·증류기·발효조·취수 허가)
@@ -391,17 +429,19 @@ export function monthTodos(s: GameState): Todo[] {
   if (!af) { const fill = out.find((t) => t.id === 'fill'); if (fill) fill.quick = { label: '자동 통입 켜기', action: { type: 'setAutoFill', settings: {} }, done: '자동 통입을 켰다 — 진행할 때마다 꽉 차는 통에 넣는다(통입 카드에서 끌 수 있다)' }; }
   // 위스키 재고가 떨어져 가는데 숙성을 채운 통이 있다
   // A7(PROD 화면 메모): 병입 권고는 플래그십 예비 통(#260)을 세지 않는다 — 예비 통을 권하면 "예비를 지켜라" 경고와 부딪친다. 남은 통이 예비뿐이면 그 사실과 대가를 한 줄로
-  const reserved = reserveCaskIds(s);
-  const ripe = s.inventory.casks.filter((c) => c.contents && !c.owner && (c.contents.kind === 'malt' || c.contents.kind === 'grain') && c.contents.oakMonths >= min);
-  const ready = ripe.filter((c) => !reserved.has(c.id)).length;
-  const readyReserved = ripe.length - ready;
+  const { ready, readyReserved } = bottleableNow(s);
   const wh = stockMonths(s, (c) => WHISKY_CATS.has(c));
   if (wh.months < RESTOCK_MONTHS) {
     if (ready > 0) out.push({ id: 'whisky', level: 'info', text: `위스키 재고 ${wh.stock ? `${wh.months.toFixed(1)}개월 치` : '없음'} — 숙성 ${min}개월을 채운 통 ${ready}개를 병입할 수 있다${readyReserved ? ` (플래그십 예비 ${readyReserved}통은 빼고 셌다)` : ''}`, action: '블렌딩·병입', target: { tab: 'bottling' } });
     else if (readyReserved > 0) out.push({ id: 'whisky', level: 'info', text: `위스키 재고 ${wh.stock ? `${wh.months.toFixed(1)}개월 치` : '없음'} — 숙성 ${min}개월을 채운 통은 플래그십 예비 ${readyReserved}통뿐이다. 예비 통을 병입하면 12년 목표가 늦어진다 — 다음 통이 ${min}개월을 채울 때까지 기다리거나, 꼭 필요하면 예비를 풀고 쓴다`, action: '블렌딩·병입', target: { tab: 'bottling' } });
   }
+  // 방재 설비가 있었으면 막았을 재해를 최근 2년에 겪었다 ([제안 P-MGT-61] — 7차 판: 폭설 3회·한파 1회로 생산 4개월 정지, 제설·난방을 짓지 않았다). 설비 값을 낼 현금이 있을 때만
+  if (s.scenario) {
+    const miss = undefendedDisasters(s, 24).filter((d) => s.finance.cash >= d.cost);
+    if (miss.length) out.push({ id: 'defense', level: 'info', text: `최근 2년 ${miss.map((d) => `${d.title} ${d.count}회`).join(' · ')}를 방재 설비 없이 겪었다 — ${miss.map((d) => `「${d.facility}」 ${fmtWon(d.cost)}`).join(' · ')}이면 막는다`, action: '설비에서 짓기', target: { anchor: 'mvp-equipment' } });
+  }
   // 소주 재고가 떨어져 가는데 탱크에 소주가 있다
-  const tankSoju = s.inventory.lots.filter((l) => l.kind === 'soju').reduce((t, l) => t + l.volumeL, 0);
+  const tankSoju = bottleableNow(s).tankSojuL;
   const so = stockMonths(s, (c) => c === SOJU);
   if (tankSoju >= 50 && so.months < RESTOCK_MONTHS) out.push({ id: 'soju', level: 'info', text: `소주 재고 ${so.stock ? `${so.months.toFixed(1)}개월 치` : '없음'} — 탱크 소주 ${Math.round(tankSoju).toLocaleString()}L 병입 가능 (팔 만큼만)`, action: '블렌딩·병입', target: { tab: 'bottling' } });
   // 샘플 시기 — 기록이 없거나 오래된 통 (시나리오 게임만: 샌드박스는 참값을 본다)

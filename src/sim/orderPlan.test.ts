@@ -2,7 +2,7 @@
 // orderPlan은 runProduction의 한도 배분을 따로 미리 돈다 → 둘이 어긋나면 화면이 거짓말을 한다. "계획 = 다음 달 실제 배치"를 여기서 지킨다
 import { describe, expect, it } from 'vitest';
 import { applyAction, advanceMonth, type GameState } from './index';
-import { caskRunway, productionValue, whiskySupplyForecast } from './economics';
+import { caskRunway, productionCutback, productionValue, whiskySupplyForecast } from './economics';
 import { autoFillPreview } from './autoFill';
 import { newScenarioGame } from './newScenario';
 import { orderPlan, previewBatch, steadyBatch } from './production';
@@ -182,6 +182,39 @@ describe('자동 통입 — 섞인 통 크기 (결정 #332 후속, 7차 판 전 
     const [p] = autoFillPlan(s, s.inventory.autoFill!);
     expect(p!.caskIds).toEqual(['B1']);
     expect(p!.heldL).toBe(0);
+  });
+});
+
+describe('productionCutback — 줄인 생산 되돌리기 안내 (7차 판 완료 기록)', () => {
+  it('몰트를 줄인 뒤: 줄이기 전 배치·지난 개월·되돌릴 때 생산비와 위스키가 늘어난다', () => {
+    let s = order(game(), [1, 2, 2]);
+    for (let m = 0; m < 2; m++) s = advanceMonth(s);
+    s = order(s, [1, 1, 1]);
+    for (let m = 0; m < 4; m++) s = advanceMonth(s);
+    const c = productionCutback(s, 10_000_000)!;
+    expect(c).not.toBeNull();
+    expect(c.current).toBe(2);
+    expect(c.before).toBe(4);
+    expect(c.monthsSince).toBe(4);
+    expect(c.cashMonths).toBeCloseTo(s.finance.cash / 10_000_000);
+    expect(c.extraCostPerMonth).toBeGreaterThan(0);
+    expect(c.extraWhiskyBottlesPerYear).toBeGreaterThan(0);
+    // 위스키 제품이 아직 없다 → 재고 0 · 판매 없음 · 품절 0 → 바닥 아님
+    expect([c.whiskyStock, c.whiskyMonths, c.soldOut, c.stockLow]).toEqual([0, null, 0, false]);
+    // 최근 3개월에 팔린 위스키 제품이 지금 0병이면 품절 → 바닥
+    const p = { id: 'WX', category: 'whisky', stockBottles: 0 } as unknown as GameState['commerce']['products'][number];
+    const sold: GameState = { ...s, commerce: { ...s.commerce, products: [...s.commerce.products, p] },
+      history: { ...s.history, reports: s.history.reports.map((r, i, a) => (i === a.length - 1 ? { ...r, sales: [...r.sales, { productId: 'WX', bottles: 30 } as (typeof r.sales)[number]] } : r)) } };
+    expect(productionCutback(sold, 10_000_000)).toMatchObject({ whiskyStock: 0, whiskyMonths: 0, soldOut: 1, stockLow: true });
+  });
+  it('줄인 적이 없으면 null · 고정비 0이면 현금 개월은 null', () => {
+    let s = order(game(), [1, 1, 1]);
+    for (let m = 0; m < 3; m++) s = advanceMonth(s);
+    expect(productionCutback(s, 10_000_000)).toBeNull();
+    s = order(s, [1, 2, 2]);
+    expect(productionCutback(s, 10_000_000)).toBeNull(); // 늘린 것은 줄인 것이 아니다
+    s = order(s, [1, 0, 0]);
+    expect(productionCutback(s, 0)?.cashMonths).toBeNull();
   });
 });
 

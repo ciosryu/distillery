@@ -325,6 +325,66 @@ export function caskRunway(s: GameState): CaskRunway | null {
   return { empty: empties.length, onOrder, casksPerMonth, tankCasks, months, leadMonths: cooperageLeadMonths(s) };
 }
 
+/**
+ * 위기 뒤 줄인 생산 (7차 판 완료 기록 P-PROD-61 후보, 2026-11-20) — 62개월에 몰트·그레인을 절반으로 줄인 뒤 현금이 고정비 11개월 치(80개월)·37개월 치(155개월)로
+ * 회복해도 79개월 동안 되돌리라는 신호가 없었다. 지난 결산들(history.reports, 최대 120개월)에서 몰트·그레인을 지금 지시보다 많이 만든 마지막 달을 찾아
+ * "줄인 지 n개월 · 현금 m개월 치 · 되돌리면 +x원/월 → 위스키 +y병/년"을 낸다. 그런 달이 없으면(늘린 적 없음·줄이지 않음) null.
+ * 고정비는 `monthlyFixedCost(s)`를 부르는 쪽이 넘긴다(loans.ts와 순환 import를 피한다). 되돌리기 값은 그 달의 레시피별 배치를 지금 지시에 겹쳐(큰 쪽) productionValue로 다시 센다
+ */
+export interface ProductionCutback {
+  /** 지금 몰트·그레인 지시 합(배치/월) */
+  current: number;
+  /** 줄이기 전 마지막 달에 만든 몰트·그레인 배치 */
+  before: number;
+  /** 지금보다 많이 만든 마지막 결산 달과, 그 뒤 줄인 채 결산한 달 수 */
+  lastHigherMonth: number;
+  monthsSince: number;
+  /** 현금 ÷ 월 고정비 (고정비 0이면 null) */
+  cashMonths: number | null;
+  /** 줄이기 전으로 되돌릴 때 월 생산비 증가 · 3년 위스키 병/년 증가 */
+  extraCostPerMonth: number;
+  extraWhiskyBottlesPerYear: number;
+  /** 그 제품군(국내 위스키·그레인·블렌디드, 면세 전용 제외) 재고 병 · 최근 3개월 평균 판매로 몇 개월 치(판매 0이면 null) · 최근 3개월에 팔렸는데 지금 재고 0인 제품 수 */
+  whiskyStock: number;
+  whiskyMonths: number | null;
+  soldOut: number;
+  /** 재고가 바닥 — 품절이 있거나 lowStockMonths개월 치 미만. 7차 판은 2033년부터 위스키 제품이 늘 품절이었다(오너 답: "재고 쌓여서 줄이고 그대로 깜빡했다") */
+  stockLow: boolean;
+}
+/** 화면이 "되돌려도 된다"를 띄우는 기준 — 현금이 고정비 이만큼 · 줄인 지 이만큼 지났을 때. 재고가 lowStockMonths개월 치 미만이면 더 세게 (단계 T에서 튜닝) */
+export const CUTBACK_HINT = { cashMonths: 6, monthsSince: 3, lowStockMonths: 3 } as const;
+
+export function productionCutback(s: GameState, fixedMonthly: number): ProductionCutback | null {
+  const kindOf = new Map(s.production.recipes.map((r) => [r.id, r.kind] as const));
+  const isWhisky = (id: string) => { const k = kindOf.get(id); return k === 'malt' || k === 'grain'; };
+  const current = s.production.orders.filter((o) => isWhisky(o.recipeId)).reduce((t, o) => t + Math.max(0, o.batchesPerMonth), 0);
+  const made = (r: MonthReport) => (r.production ?? []).filter((x) => isWhisky(x.recipeId)).reduce((t, x) => t + x.batches, 0);
+  const last = [...s.history.reports].reverse().find((r) => made(r) > current);
+  if (!last) return null;
+  // 줄이기 전 배치: 그 달 레시피별 배치를 지금 지시와 겹친다(큰 쪽) — 지운 레시피는 isWhisky에서 빠지고, 지시가 없는 레시피는 더한다
+  const prev = new Map((last.production ?? []).filter((x) => isWhisky(x.recipeId)).map((x) => [x.recipeId, x.batches] as const));
+  const orders = s.production.orders.map((o) => ({ ...o, batchesPerMonth: Math.max(o.batchesPerMonth, prev.get(o.recipeId) ?? 0) }));
+  for (const [recipeId, batches] of prev) if (!orders.some((o) => o.recipeId === recipeId)) orders.push({ recipeId, batchesPerMonth: batches });
+  const now = productionValue(s);
+  const back = productionValue({ ...s, production: { ...s.production, orders } });
+  // 그 제품군 재고 — alerts.ts stockMonths와 같은 셈(최근 3개월 평균 판매)
+  const whiskyProducts = s.commerce.products.filter((p) => isWhiskyCategory(p.category) && !p.dutyFreeOnly);
+  const recent = s.history.reports.slice(-3);
+  const soldOf = (id: string) => recent.reduce((t, r) => t + (r.sales.find((x) => x.productId === id)?.bottles ?? 0), 0);
+  const whiskyStock = whiskyProducts.reduce((t, p) => t + p.stockBottles, 0);
+  const perMonth = recent.length ? whiskyProducts.reduce((t, p) => t + soldOf(p.id), 0) / recent.length : 0;
+  const whiskyMonths = perMonth > 0 ? whiskyStock / perMonth : null;
+  const soldOut = whiskyProducts.filter((p) => p.stockBottles <= 0 && soldOf(p.id) > 0).length;
+  return {
+    current, before: made(last), lastHigherMonth: last.month, monthsSince: s.month - last.month - 1, // 결산 달은 진행 전 달 번호 — 줄인 채 결산한 달 수
+    cashMonths: fixedMonthly > 0 ? s.finance.cash / fixedMonthly : null,
+    extraCostPerMonth: Math.max(0, back.costPerMonth - now.costPerMonth),
+    extraWhiskyBottlesPerYear: Math.max(0, back.whiskyBottlesPerYear - now.whiskyBottlesPerYear),
+    whiskyStock, whiskyMonths, soldOut,
+    stockLow: soldOut > 0 || (whiskyMonths != null && whiskyMonths < CUTBACK_HINT.lowStockMonths),
+  };
+}
+
 // ───────────── 탱크 대기 개월 — 남은 원액이 만들어진 달 (7차 판 중간 기록, 2026-11-20) ─────────────
 // 탱크 합치기(#166)는 첫 배치 달(createdMonth)을 계속 들고 있어, 매달 통입해도 끝자리가 남으면 대기 개월이 판 처음부터 늘어난다
 // (7차 판: 그레인 527L가 "20개월째"였지만 실제로는 최근 4개월 치 → 할 일이 danger로 과장됐다).
@@ -453,6 +513,58 @@ export function rampOutlook(s: GameState): RampOutlook | null {
     recipeId: r.id, name: r.name, costPerBatch: Math.round(b.cost), casksPerBatch, warehouseBatches, equipmentBatches: eq, headroomBatches: Math.min(warehouseBatches, eq),
     freeSlots: Math.max(0, capacity - s.inventory.casks.length), emptyCasks: s.inventory.casks.filter((c) => !c.contents).length,
     monthsLeft, costToEnd: monthsLeft != null ? Math.round(monthsLeft * b.cost) : null, casksToEnd: monthsLeft != null ? Math.ceil(monthsLeft * casksPerBatch) : null, horizons,
+  };
+}
+
+/**
+ * 탱크 소주까지 센 소주 재고 (7차 판 P-PROD-62 후보, 2026-11-20) — 할 일의 "소주 재고 n개월 치"는 제품 재고만 센다. 7차 판은 탱크에 소주 7,194L(62개월)·5,423L(155개월)
+ * = 지금 판매로 약 22·36개월 치가 병입되지 않은 채 있었는데 1.7·2.6개월 치로 보였다. 탱크 소주를 표준 병(375ml·25%)으로 환산해 더한다.
+ * 판매 = 최근 3개월 평균(국내 증류식 소주 제품, 면세 전용 제외 — alerts.ts stockMonths와 같은 셈). 상태 불변
+ */
+export interface SojuSupply {
+  productBottles: number;
+  tankL: number;
+  /** 탱크 소주를 표준 병(STANDARD_BOTTLE.soju)으로 환산 */
+  tankBottles: number;
+  /** 최근 3개월 평균 판매 병/월 */
+  perMonth: number;
+  /** (제품 + 탱크) ÷ 월 판매 — 판매가 0이면 null */
+  months: number | null;
+  /** 지금 소주 지시로 매달 새로 생기는 병(정상 배치·표준 병 환산)과 그 원료·에너지 */
+  madeBottlesPerMonth: number;
+  costPerMonth: number;
+  /** 소주 1배치 원료·에너지 — 지시를 1 줄일 때 아끼는 돈 */
+  costPerBatch: number | null;
+}
+/** 화면이 경고하는 문턱 — 병입하지 않은 소주까지 이만큼 개월 치를 넘으면 (단계 T에서 튜닝) */
+export const SOJU_STOCK_WARN_MONTHS = 12;
+
+export function sojuSupply(s: GameState): SojuSupply {
+  const bottleLPA = (STANDARD_BOTTLE.soju.bottleMl / 1000) * STANDARD_BOTTLE.soju.abv;
+  const products = s.commerce.products.filter((p) => p.category === 'soju_distilled' && !p.dutyFreeOnly);
+  const ids = new Set(products.map((p) => p.id));
+  const productBottles = products.reduce((t, p) => t + p.stockBottles, 0);
+  const lots = s.inventory.lots.filter((l) => l.kind === 'soju');
+  const tankL = lots.reduce((t, l) => t + l.volumeL, 0);
+  const tankBottles = Math.floor(lots.reduce((t, l) => t + l.volumeL * l.abv, 0) / bottleLPA);
+  const recent = s.history.reports.slice(-3);
+  const perMonth = recent.length ? recent.reduce((t, r) => t + r.sales.filter((x) => ids.has(x.productId)).reduce((u, x) => u + x.bottles, 0), 0) / recent.length : 0;
+  let made = 0;
+  let cost = 0;
+  let costPerBatch: number | null = null;
+  for (const x of orderPlan(s, { steady: true })) {
+    if (x.kind !== 'soju') continue;
+    const r = s.production.recipes.find((y) => y.id === x.recipeId);
+    const b = r ? steadyBatch(s, r) : null;
+    if (!b) continue;
+    made += (x.feasible * b.lpa) / bottleLPA;
+    cost += x.feasible * b.cost;
+    costPerBatch ??= Math.round(b.cost);
+  }
+  return {
+    productBottles, tankL, tankBottles, perMonth,
+    months: perMonth > 0 ? (productBottles + tankBottles) / perMonth : null,
+    madeBottlesPerMonth: Math.round(made), costPerMonth: Math.round(cost), costPerBatch,
   };
 }
 

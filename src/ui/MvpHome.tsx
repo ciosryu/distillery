@@ -74,7 +74,8 @@ export function overstock(s: GameState): { category: string; stock: number; perM
 
 export function MvpHome() {
   return (
-    <div className="grid gap-4">
+    // grid-cols-1 = minmax(0, 1fr) — 열이 가장 긴 할 일 줄 폭만큼 커져 홈 전체가 창보다 넓어지던 것(7차 판 고정 빌드: 1280px 창에서 문서 폭 1,506px, 할 일 버튼이 화면 밖)을 막는다
+    <div className="grid grid-cols-1 gap-4 [&>*]:min-w-0">
       {/* 이번 달 소식 창 — 진행 뒤 고를 것·이벤트·새 기능이 있으면 (5차 오너 요청) */}
       <TurnBrief />
       {/* 선택 대기 이벤트 — 고르지 않으면 다음 달 기본값 (5차 MVP 플레이테스트: 대시보드에만 있어 못 찾았다) */}

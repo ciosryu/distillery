@@ -5,7 +5,7 @@ import {
   basePresetOf, craftPresets, equipmentCost, flavorProfile, leverEffects, leverSummary, describeLeverEffect, monthLabel, presetAsRecipe, steadyBatch, stillDefOf, validateRecipe,
   type GameState, type ProfileAxis, type Recipe, type SpiritKind, type YeastId, } from '../../sim';
 import type { PresetRecipe } from '../../sim/content/presets';
-import { productionValue, rampOutlook, RAMP_HOLD_MONTHS, recipeEconomics, whiskyExportPace, STANDARD_BOTTLE, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from '../../sim/economics';
+import { CUTBACK_HINT, productionCutback, productionValue, rampOutlook, RAMP_HOLD_MONTHS, recipeEconomics, whiskyExportPace, STANDARD_BOTTLE, tankFillNeed, whiskyAnnualPace, whiskySupplyForecast } from '../../sim/economics';
 import { monthlyFixedCost } from '../../sim/loans';
 import { isLocked } from '../../sim/scenario';
 import { orderPlan, whiskySkipCheck } from '../../sim/production';
@@ -13,6 +13,7 @@ import { useGame } from '../../store/game';
 import { OPEN_FOLD_EVENT } from '../AlertsView';
 import { logisticsMultiplier, regionOf, REGIONS, siteOf } from '../../sim/content/regions';
 import { liters, num, pct, won } from '../format';
+import { sojuSupply, SOJU_STOCK_WARN_MONTHS } from '../../sim/economics';
 import { Badge, Button, Card, ConfirmButton, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
 
 const KIND_LABEL: Record<SpiritKind, string> = { soju: '증류식 소주·쇼추', gin: '진', malt: '몰트', grain: '그레인', baijiu: '백주(고량주)' };
@@ -33,7 +34,7 @@ function editRecipe(id: string) {
 
 export function Production() {
   return (
-    <div className="grid gap-4">
+    <div className="grid min-w-0 gap-4 [&>*]:min-w-0">
       <Orders />
       <RecipeEditor />
       <Equipment />
@@ -89,6 +90,7 @@ export function Orders() {
       )}
       <SkipLine />
       <ProductionValueLine />
+      <SojuStockLine />
       <WhiskySupply />
       <p className="mt-2 text-xs text-stone-500">원액은 매달 말 탱크에 쌓입니다. 비숙성 주종(소주·진·고량주 등)은 바로 병입할 수 있고, 몰트는 {(() => { const w = regionOf(s).whisky; return w.minMonths > 0 ? `캐스크에 통입해 ${w.minMonths}개월 이상 숙성해야 "위스키"로 판매할 수 있습니다` : w.requiresOak ? '캐스크에 넣기만 하면 바로 "위스키"로 팔 수 있지만(법정 최소 숙성 없음) 3년 미만은 어린 위스키라 값을 덜 받습니다' : '숙성 없이도 "위스키"로 팔 수 있지만(법정 최소 숙성 없음) 3년 미만은 어린 위스키라 값을 덜 받습니다'; })()} 설비·인력 한도는 대시보드의 가동 계획에서 확인하세요.</p>
     </Card>
@@ -159,7 +161,33 @@ function ProductionValueLine() {
       {exp && exp.demand > exp.bottles * 1.2 && (
         <div className="mt-0.5 text-emerald-800 dark:text-emerald-300">수출 수요가 판매보다 연 약 {num(exp.demand - exp.bottles)}병 많다 — 원액이 모자라 못 판 몫이다. 증산하면 이만큼은 바로 팔 곳이 있다</div>
       )}
+      <CutbackLine fixed={fixed} minMonths={v.minMonths} />
       <RampLine fallback={<>몰트 1배치/월 더(「{one.name}」): 생산비 +{won(one.costPerMonth)}/월 → {v.minMonths}개월 뒤부터 해마다 위스키 +{num(one.whiskyBottlesPerYear)}병 {money(one.whiskyBottlesPerYear)}</>} />
+    </div>
+  );
+}
+
+/**
+ * 줄인 생산 되돌리기 안내 (7차 판 완료 기록, P-PROD-61 후보) — 7차 판은 62개월에 몰트·그레인을 절반으로 줄이고 현금이 고정비 11개월 치(80개월)를 넘은 뒤에도
+ * 판 끝까지(155개월) 그대로 갔다. 아래 「증산 여유」는 늘 떠 있어 눈에 띄지 않았다 → "줄인 지 n개월 · 현금 m개월 치"를 지시를 바꾸는 자리에 따로 띄운다.
+ * 막지 않는다 — 판매가 줄어 일부러 줄였을 수도 있다
+ */
+function CutbackLine({ fixed, minMonths }: { fixed: number; minMonths: number }) {
+  const s = useGame((g) => g.state);
+  const c = useMemo(() => productionCutback(s, fixed), [s, fixed]);
+  if (!c || c.cashMonths == null || c.monthsSince < CUTBACK_HINT.monthsSince || c.cashMonths < CUTBACK_HINT.cashMonths || c.extraWhiskyBottlesPerYear <= 0) return null;
+  const tone = c.stockLow
+    ? 'border-rose-300 bg-rose-50 text-rose-950 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-100'
+    : 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100';
+  const stock = c.whiskyMonths == null ? (c.whiskyStock > 0 ? `위스키 재고 ${num(c.whiskyStock)}병` : null) : c.whiskyStock <= 0 ? '위스키 재고 0병' : `위스키 재고 ${c.whiskyMonths.toFixed(1)}개월 치`;
+  return (
+    <div className={`mt-1.5 rounded border px-2 py-1.5 ${tone}`}>
+      <b>{c.stockLow ? '‼' : '⚠'} 몰트·그레인을 줄인 지 {c.monthsSince}개월</b> — 지금 월 {c.current}배치({monthLabel(s.startYear, c.lastHigherMonth)}에는 {c.before}배치) · 현금은 고정비 <b>{Math.floor(c.cashMonths)}개월 치</b>
+      {stock && <> · {c.stockLow ? <b>{stock}{c.soldOut > 0 ? ` · 품절 ${c.soldOut}개` : ''}</b> : stock}</>}
+      <div className="mt-0.5">
+        그때만큼 되돌리면 생산비 +{won(c.extraCostPerMonth)}/월 → {minMonths}개월 뒤부터 해마다 위스키 약 <b>+{num(c.extraWhiskyBottlesPerYear)}병</b>
+        <span className="text-stone-600 dark:text-stone-400"> · 줄인 기간만큼 {minMonths}개월 뒤 팔 위스키와 12년 후보 통이 빈다. {c.stockLow ? '위스키가 바닥인데 생산은 줄인 그대로다 — 재고가 쌓여 줄였다면 그 재고가 다 팔렸다' : '판매가 줄어 일부러 줄였다면 그대로 두어도 된다'}</span>
+      </div>
     </div>
   );
 }
@@ -209,6 +237,27 @@ function RampLine({ fallback }: { fallback: ReactNode }) {
         ))}
       </div>
       <div className="mt-0.5 text-[11px] text-stone-500">만든 만큼 판다고 본 어림이다(권장 출고가 기준) — 위 판매 속도를 넘는 몫은 수출·숙성 연장으로 받는다. {left != null ? '회수 기한은 판 끝에 숙성 중인 통의 평가액을 0으로 보수적으로 셈했다(실제 순자산에는 현물가로 들어간다)' : '회수 기간은 아직 숙성 중인 통의 평가액을 0으로 보수적으로 셈했다'}</div>
+    </div>
+  );
+}
+
+/**
+ * 탱크 소주까지 센 소주 재고 (7차 판, P-PROD-62 후보) — 7차 판은 탱크에 판매 22~36개월 치 소주가 병입되지 않은 채 있었는데 할 일은 제품 재고만 세 "1.7개월 치"로 보였다.
+ * 병입하지 않은 소주까지 SOJU_STOCK_WARN_MONTHS개월 치를 넘으면 소주 지시 바로 아래에 띄운다. 막지 않는다
+ */
+function SojuStockLine() {
+  const s = useGame((g) => g.state);
+  const v = useMemo(() => sojuSupply(s), [s]);
+  if (v.months == null || v.months < SOJU_STOCK_WARN_MONTHS || v.tankBottles <= 0) return null;
+  return (
+    <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+      <b>⚠ 소주가 판매 약 {Math.floor(v.months)}개월 치 있다</b> — 탱크 {liters(v.tankL)}(≈ {num(v.tankBottles)}병) + 제품 재고 {num(v.productBottles)}병 · 최근 3개월 판매 월 약 {num(v.perMonth)}병
+      <div className="mt-0.5">
+        {v.madeBottlesPerMonth > 0
+          ? <>지금 소주 지시는 매달 약 {num(v.madeBottlesPerMonth)}병을 더 만든다(생산비 {won(v.costPerMonth)}/월){v.costPerBatch != null && <> — 1배치 줄이면 월 {won(v.costPerBatch)}을 아낀다</>}</>
+          : <>지금 소주 지시는 없다 — 탱크 소주를 팔 만큼 병입하면 된다</>}
+        <span className="text-stone-600 dark:text-stone-400"> · 탱크 소주는 375ml·25% 병으로 어림했다. 숙성용(옹기·오크)으로 남긴 몫이면 그대로 두어도 된다</span>
+      </div>
     </div>
   );
 }
@@ -381,8 +430,8 @@ export function RecipeEditor() {
         {!s.scenario && regionOf(s).allowedKinds.map((k) => <Button key={k} small variant="ghost" onClick={() => { setDraft(blankDraft(s, k)); setAdvanced(true); }}>+ 빈 {KIND_LABEL[k]}</Button>)}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-        <div className="grid content-start gap-3">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] [&>*]:min-w-0">
+        <div className="grid min-w-0 content-start gap-3 [&>*]:min-w-0">
           <div className="flex flex-wrap items-end gap-3">
             <TextField label="이름" value={draft.name} onChange={(v) => set({ name: v })} width="w-56" />
             <Badge tone="info">{KIND_LABEL[draft.kind]}</Badge>
@@ -623,7 +672,7 @@ export function Equipment() {
   const dispatch = useGame((g) => g.dispatch);
   return (
     <Card title="설비">
-      <div className="grid gap-4">
+      <div className="grid gap-4 [&>*]:min-w-0">
         <div>
           <h3 className="mb-1 text-xs font-semibold text-stone-500">보유 설비</h3>
           <Table head={['설비', '상태', '월 유지비']}>

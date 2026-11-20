@@ -142,7 +142,7 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
       }
       case 'stillDown': {
         const stills = s.production.equipment.filter((x) => x.readyMonth <= s.month && x.feintsLPA != null);
-        if (stills.length) { const st = rng.pick(stills); st.readyMonth = s.month + e.months; notes.push(`증류기 ${st.id} ${e.months}개월 가동 중단`); if (ledger) ledger.stopMonths += e.months / stills.length; }
+        if (stills.length) { const st = rng.pick(stills); st.readyMonth = s.month + e.months; st.repairUntil = st.readyMonth; notes.push(`증류기 ${st.id} ${e.months}개월 가동 중단`); if (ledger) ledger.stopMonths += e.months / stills.length; }
         break;
       }
       case 'lotSpoil': {
@@ -349,6 +349,22 @@ export function resolvePending(s: GameState, pendingId: string, choiceIndex: num
   const text = `${def.title}: "${choice.label}" — ${notes.join(' ') || '처리 완료'}`;
   log(s, report, `${def.title} → ${choice.label}`, text);
   return text;
+}
+
+/**
+ * 최근 겪은 재해 중 방재 설비가 있었으면 막았을 것 ([제안 P-MGT-61] ⓑ, 7차 판 — 폭설 3회·한파 1회로 생산 4개월이 멈췄는데 제설·난방을 짓지 않았다).
+ * 결산 이벤트 제목(`MonthReport.events`)으로 센다 — 지금 그 설비가 있거나 잠겨 있으면 뺀다. 화면 안내용, 상태를 바꾸지 않는다
+ */
+export function undefendedDisasters(s: GameState, months = 24): { defId: string; title: string; count: number; facility: string; cost: number }[] {
+  const recent = s.history.reports.filter((r) => r.month > s.month - 1 - months);
+  const out: { defId: string; title: string; count: number; facility: string; cost: number }[] = [];
+  for (const def of EVENTS) {
+    if (!def.defense || ownsFacility(s, def.defense) || isLocked(s, `facility:${def.defense}`)) continue;
+    const count = recent.reduce((t, r) => t + r.events.filter((x) => x === def.title).length, 0);
+    const fac = EQUIPMENT[def.defense];
+    if (count > 0 && fac) out.push({ defId: def.id, title: def.title, count, facility: fac.nameKo, cost: fac.cost });
+  }
+  return out;
 }
 
 /**

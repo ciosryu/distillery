@@ -312,7 +312,8 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
     : active.flatMap(rowsFor);
 
   return (
-    <div className="grid gap-4">
+    // 넓은 표가 홈 전체를 창보다 넓히지 않게 — 자식 최소 폭 0(표는 안에서 가로 스크롤, 7차 판 홈 넘침)
+    <div className="grid grid-cols-1 gap-4 [&>*]:min-w-0">
       <Card title="가격과 수요" actions={<span className="flex flex-wrap items-center gap-2 text-xs text-stone-500">한 달 판매 = min(재고, 수요 한도 ±10%, 소매 처리 역량)
         {/* 모든 제품을 한 정책으로 (#291 ①) — 면세 한정판 제외 */}
         <PricePolicyAll s={s} />
