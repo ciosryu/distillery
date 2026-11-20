@@ -100,11 +100,24 @@ if (process.env.AUTOP === '1') {
   console.log('\n## 대형 유통 납품 — 달마다\n| 달 | 납품(제품 병 × 단가) | 납품 매출 | 미납 · 위약금 | 메모 |\n|---|---|---|---|---|');
   for (const r of R) {
     const ev = (r.saleEvents ?? []).filter((e) => e.channel === 'retail_deal');
-    const notes = r.notes.filter((n) => /납품 부족|납품 계약/.test(n));
+    const notes = r.notes.filter((n) => /납품 부족|납품 계약|납품 제안 만료/.test(n)); // 「납품 제안 만료 … (받지 않음)」 = 거절(#685, 7차 판부터)
     if (!ev.length && !notes.length && !r.retailDealRevenue) continue;
     const agg = new Map<string, number>();
     for (const e of ev) agg.set(`${name(e.productId)} @${Math.round(e.unitPrice).toLocaleString()}`, (agg.get(`${name(e.productId)} @${Math.round(e.unitPrice).toLocaleString()}`) ?? 0) + e.bottles);
     console.log(`| ${r.month} | ${[...agg].map(([k, v]) => `${k} × ${v}`).join(' · ') || '—'} | ${eok(r.retailDealRevenue ?? 0)} | ${(r.expenses.penalty ?? 0).toLocaleString()}원 | ${notes.join(' / ')} |`);
+  }
+
+  // ②' 요약 — 7차 판 관찰(#334 · mkt-stage-t 「7차 판」 ①): 받은 계약 · 거절(만료 메모, #685 뒤 판만) · 미납 달 · 미납 병 · 파기 · 미납 뒤 대응은 위 표에서 읽는다
+  {
+    const all = R.flatMap((r) => r.notes);
+    const contracts = new Set(R.flatMap((r) => (r.saleEvents ?? []).filter((e) => e.channel === 'retail_deal').map(() => r.month))).size;
+    const shortNotes = all.filter((n) => n.includes('납품 부족'));
+    const shortBottles = shortNotes.reduce((t, n) => t + Number(n.match(/납품 부족 ([\d,]+)병/)?.[1]?.replace(/,/g, '') ?? 0), 0);
+    const declined = all.filter((n) => n.includes('납품 제안 만료')).length;
+    const broken = all.filter((n) => n.includes('납품 계약 파기')).length;
+    const expired = all.filter((n) => /납품 계약 만료/.test(n)).length;
+    const pen = R.reduce((t, r) => t + (r.expenses.penalty ?? 0), 0), rev = R.reduce((t, r) => t + (r.retailDealRevenue ?? 0), 0);
+    console.log(`\n- 납품 요약: 납품한 달 ${contracts} · 거절(만료 메모) ${declined}건${declined ? '' : '(#685 전 판이면 기록 없음)'} · 미납 난 달 ${new Set(R.filter((r) => r.notes.some((n) => n.includes('납품 부족'))).map((r) => r.month)).size} · 미납 ${shortBottles.toLocaleString()}병 · 파기 ${broken}건 · 기간 채운 만료 ${expired}건 · 납품 매출 ${eok(rev)} · 위약금 ${pen.toLocaleString()}원`);
   }
 
   // ③ 소주 공급 — 납품 전후(110~135개월): 소주 생산 배치 · 국내 소주 판매 · 수요 · 못 판 수요 · 자동 납품 메모
