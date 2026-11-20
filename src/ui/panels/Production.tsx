@@ -33,7 +33,7 @@ function editRecipe(id: string) {
 
 export function Production() {
   return (
-    <div className="grid gap-4">
+    <div className="grid min-w-0 gap-4 [&>*]:min-w-0">
       <Orders />
       <RecipeEditor />
       <Equipment />
@@ -381,8 +381,8 @@ export function RecipeEditor() {
         {!s.scenario && regionOf(s).allowedKinds.map((k) => <Button key={k} small variant="ghost" onClick={() => { setDraft(blankDraft(s, k)); setAdvanced(true); }}>+ 빈 {KIND_LABEL[k]}</Button>)}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-        <div className="grid content-start gap-3">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] [&>*]:min-w-0">
+        <div className="grid min-w-0 content-start gap-3 [&>*]:min-w-0">
           <div className="flex flex-wrap items-end gap-3">
             <TextField label="이름" value={draft.name} onChange={(v) => set({ name: v })} width="w-56" />
             <Badge tone="info">{KIND_LABEL[draft.kind]}</Badge>
@@ -623,7 +623,7 @@ export function Equipment() {
   const dispatch = useGame((g) => g.dispatch);
   return (
     <Card title="설비">
-      <div className="grid gap-4">
+      <div className="grid gap-4 [&>*]:min-w-0">
         <div>
           <h3 className="mb-1 text-xs font-semibold text-stone-500">보유 설비</h3>
           <Table head={['설비', '상태', '월 유지비']}>
