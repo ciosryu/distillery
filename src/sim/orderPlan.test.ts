@@ -206,6 +206,11 @@ describe('productionCutback — 줄인 생산 되돌리기 안내 (7차 판 완�
     const sold: GameState = { ...s, commerce: { ...s.commerce, products: [...s.commerce.products, p] },
       history: { ...s.history, reports: s.history.reports.map((r, i, a) => (i === a.length - 1 ? { ...r, sales: [...r.sales, { productId: 'WX', bottles: 30 } as (typeof r.sales)[number]] } : r)) } };
     expect(productionCutback(sold, 10_000_000)).toMatchObject({ whiskyStock: 0, whiskyMonths: 0, soldOut: 1, stockLow: true });
+    // 재고 개월은 공급 전망과 같은 판매 속도(categoryMonthlySales — 품절 달 제외, #740): 60병씩 팔다 세 달 품절이어도 속도 60 → 120병 = 2개월 치
+    const p2 = { id: 'WY', category: 'whisky', stockBottles: 120 } as unknown as GameState['commerce']['products'][number];
+    const rep = (n: number) => ({ ...s.history.reports.at(-1)!, sales: n ? [{ productId: 'WY', bottles: n } as GameState['history']['reports'][number]['sales'][number]] : [] });
+    const gap: GameState = { ...s, commerce: { ...s.commerce, products: [...s.commerce.products, p2] }, history: { ...s.history, reports: [...s.history.reports, rep(60), rep(60), rep(60), rep(0), rep(0), rep(0)] } };
+    expect(productionCutback(gap, 10_000_000)).toMatchObject({ whiskyStock: 120, whiskyMonths: 2, stockLow: true });
   });
   it('줄인 적이 없으면 null · 고정비 0이면 현금 개월은 null', () => {
     let s = order(game(), [1, 1, 1]);
