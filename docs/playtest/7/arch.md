@@ -90,12 +90,12 @@
 
 | 구간 | 시간 | 행동 | 손 통입 | 손 통입 어림 시간 | 많은 행동 |
 |---|---|---|---|---|---|
-| 1~24개월 | 30분 | 158 | 69 | 10.6분 | fillCasks · setPricePolicy · bottle · setOrder |
+| 1~24개월 | 38분 | 190 | 69 | 10.6분 | fillCasks · setPricePolicy · bottle · setOrder(첫 턴 7.6분 · 32번 포함) |
 | 25~62개월 | 52분 | 285 | 87 | 11.9분 | fillCasks · setPrice · bottle · setPricePolicy |
 | 63~120개월 | 73분 | 383 | **204** | **21.7분** | fillCasks · setPrice · bottle · sampleCask |
 | 121~147개월 | 29분 | 100 | 45 | 6.2분 | fillCasks · bottle · setPrice · setHandfillCask |
 | 148~155개월(승리 뒤) | 2분 | 7 | 0 | 0 | setPrice · bottle |
-| **합계** | **186분**(턴 기록 합) | 933 | **405** | **≈ 50분(26%)** | |
+| **합계** | **194분** | 965 | **405** | **≈ 50분(26%)** | |
 
 - 연간 시간: 1~7년 차 13~20분 → 8년 차 10분 → 9년 차 19분 → 10년 차 11분 → **11년 차 8분** → 12년 차 21분(10·11·12년 병입 · 납품) → 13년 차 3분. 6차(11년 차 14분 → 12년 차 7분 → 13~14년 차 0분)보다 늦게 줄었고, 12년 차에 한 번 되살아났다 — 12년 승리 준비가 후반 동기가 됐다 `[추정]`.
 - 오래 걸린 턴: **135→136월 6.0분 [fillCasks×33** bottle×3 setPrice×2] — 판 마지막 손 통입(그 뒤 탱크 대기 20개월) · 139→140월 5.7분 [bottle×4 setPrice×2] — 10년 셰리·블렌디드 10년 출시 · 141→142월 4분 [resolveEvent · bottle×2 · sampleCask · setHandfillCask].
