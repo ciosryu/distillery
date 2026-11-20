@@ -13,6 +13,7 @@ import { useGame } from '../../store/game';
 import { OPEN_FOLD_EVENT } from '../AlertsView';
 import { logisticsMultiplier, regionOf, REGIONS, siteOf } from '../../sim/content/regions';
 import { liters, num, pct, won } from '../format';
+import { sojuSupply, SOJU_STOCK_WARN_MONTHS } from '../../sim/economics';
 import { Badge, Button, Card, ConfirmButton, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
 
 const KIND_LABEL: Record<SpiritKind, string> = { soju: '증류식 소주·쇼추', gin: '진', malt: '몰트', grain: '그레인', baijiu: '백주(고량주)' };
@@ -89,6 +90,7 @@ export function Orders() {
       )}
       <SkipLine />
       <ProductionValueLine />
+      <SojuStockLine />
       <WhiskySupply />
       <p className="mt-2 text-xs text-stone-500">원액은 매달 말 탱크에 쌓입니다. 비숙성 주종(소주·진·고량주 등)은 바로 병입할 수 있고, 몰트는 {(() => { const w = regionOf(s).whisky; return w.minMonths > 0 ? `캐스크에 통입해 ${w.minMonths}개월 이상 숙성해야 "위스키"로 판매할 수 있습니다` : w.requiresOak ? '캐스크에 넣기만 하면 바로 "위스키"로 팔 수 있지만(법정 최소 숙성 없음) 3년 미만은 어린 위스키라 값을 덜 받습니다' : '숙성 없이도 "위스키"로 팔 수 있지만(법정 최소 숙성 없음) 3년 미만은 어린 위스키라 값을 덜 받습니다'; })()} 설비·인력 한도는 대시보드의 가동 계획에서 확인하세요.</p>
     </Card>
@@ -235,6 +237,27 @@ function RampLine({ fallback }: { fallback: ReactNode }) {
         ))}
       </div>
       <div className="mt-0.5 text-[11px] text-stone-500">만든 만큼 판다고 본 어림이다(권장 출고가 기준) — 위 판매 속도를 넘는 몫은 수출·숙성 연장으로 받는다. {left != null ? '회수 기한은 판 끝에 숙성 중인 통의 평가액을 0으로 보수적으로 셈했다(실제 순자산에는 현물가로 들어간다)' : '회수 기간은 아직 숙성 중인 통의 평가액을 0으로 보수적으로 셈했다'}</div>
+    </div>
+  );
+}
+
+/**
+ * 탱크 소주까지 센 소주 재고 (7차 판, P-PROD-62 후보) — 7차 판은 탱크에 판매 22~36개월 치 소주가 병입되지 않은 채 있었는데 할 일은 제품 재고만 세 "1.7개월 치"로 보였다.
+ * 병입하지 않은 소주까지 SOJU_STOCK_WARN_MONTHS개월 치를 넘으면 소주 지시 바로 아래에 띄운다. 막지 않는다
+ */
+function SojuStockLine() {
+  const s = useGame((g) => g.state);
+  const v = useMemo(() => sojuSupply(s), [s]);
+  if (v.months == null || v.months < SOJU_STOCK_WARN_MONTHS || v.tankBottles <= 0) return null;
+  return (
+    <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+      <b>⚠ 소주가 판매 약 {Math.floor(v.months)}개월 치 있다</b> — 탱크 {liters(v.tankL)}(≈ {num(v.tankBottles)}병) + 제품 재고 {num(v.productBottles)}병 · 최근 3개월 판매 월 약 {num(v.perMonth)}병
+      <div className="mt-0.5">
+        {v.madeBottlesPerMonth > 0
+          ? <>지금 소주 지시는 매달 약 {num(v.madeBottlesPerMonth)}병을 더 만든다(생산비 {won(v.costPerMonth)}/월){v.costPerBatch != null && <> — 1배치 줄이면 월 {won(v.costPerBatch)}을 아낀다</>}</>
+          : <>지금 소주 지시는 없다 — 탱크 소주를 팔 만큼 병입하면 된다</>}
+        <span className="text-stone-600 dark:text-stone-400"> · 탱크 소주는 375ml·25% 병으로 어림했다. 숙성용(옹기·오크)으로 남긴 몫이면 그대로 두어도 된다</span>
+      </div>
     </div>
   );
 }
