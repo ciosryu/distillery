@@ -150,7 +150,7 @@ describe('3차 MVP 플레이테스트 대응 (#203) — 멈춘 몰트 생산 · 
     expect(ids.indexOf('malt-stopped')).toBeLessThan(ids.indexOf('fill'));
     const ranks = ids.map((id) => (TODO_ORDER.includes(id) ? TODO_ORDER.indexOf(id) : 5.5));
     expect([...ranks].sort((a, b) => a - b)).toEqual(ranks);
-    expect(TODO_ORDER.slice(0, 5)).toEqual(['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'visitor']); // 남은 플래그십 후보(#261)는 맨 위 — 되돌릴 수 없다
+    expect(TODO_ORDER.slice(0, 6)).toEqual(['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor']); // 생산 되돌리기(PROD #725)는 멈춘 몰트 다음 // 남은 플래그십 후보(#261)는 맨 위 — 되돌릴 수 없다
     expect(TODO_ORDER.at(-1)).toBe('sample');
     expect(TODO_ORDER.indexOf('stockout')).toBe(TODO_ORDER.indexOf('visitor') + 1);
   });
@@ -263,7 +263,7 @@ describe('자동 통입과 통입 대기 안내 (#239)', () => {
   it('자동 통입이 켜져 있고 빈 통이 넉넉하면 안내하지 않고, 모자라면 "통을 사라"로 바꾼다', () => {
     const s = mvp();
     s.inventory.lots.push({ id: 'TX', name: '몰트', kind: 'malt', volumeL: 400, abv: 0.68, flavor: {}, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 1, batchId: 'BX' });
-    expect(monthTodos(s).find((t) => t.id === 'fill')?.target).toEqual({ anchor: 'mvp-fill' });
+    expect(monthTodos(s).find((t) => t.id === 'fill')?.target).toEqual({ anchor: 'autofill-row' }); // 자동 통입이 꺼져 있으면 자동 통입 줄로(PROD #729 · 7차 "어딨는지 못찾았다")
     s.inventory.autoFill = {};
     const empties = s.inventory.casks.filter((c) => !c.contents).length;
     const t = monthTodos(s).find((x) => x.id === 'fill');
