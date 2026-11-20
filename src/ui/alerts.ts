@@ -17,7 +17,8 @@ import { autoRestockPlan, autoRestockSources, autoRestockSupported, guardedFlags
 import { reserveCaskIds } from '../sim/tags';
 import { caskEligibility } from '../sim/ledger';
 import { specialistOffers, SPECIALIST_STAGE } from '../sim/hr';
-import { AUTO_RESTOCK_EXPENSE, caskRunway, productionValue, whiskySupplyForecast } from '../sim/economics';
+import { AUTO_RESTOCK_EXPENSE, caskRunway, productionValue, tankLotWaitMonths, whiskySupplyForecast } from '../sim/economics';
+import { vesselMaterial } from '../sim/maturation';
 
 // ───────────── ① 파산 카운트다운 ─────────────
 
@@ -364,20 +365,25 @@ export function monthTodos(s: GameState): Todo[] {
   // 탱크 몰트·그레인 통입 대기 — 통에 넣어야 숙성이 시작된다
   const tankLots = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced);
   const tankMalt = tankLots.reduce((t, l) => t + l.volumeL, 0);
-  // 대기 개월 = 가장 오래된 탱크 로트의 생성 달부터(탱크 합치기 #166은 처음 배치 달을 유지). 6차 판(PROD prod.md ②): 5,071L가 최대 39개월 info로 묻혀 숙성 중 통 102 → 43.
+  // 대기 개월 = 남은 원액이 만들어진 달(PROD `tankLotWaitMonths` — FIFO 어림, #704). 첫 배치 달(createdMonth)은 탱크 합치기(#166)가 계속 들고 있어
+  // 매달 통입해도 끝자리가 남으면 판 처음부터 늘어났다(7차 판 중간: 그레인 527L "20개월째" → 실제 약 6개월). 6차 판(PROD prod.md ②): 5,071L가 info로 묻혀 숙성 중 통 102 → 43.
   // PROD 문턱: 3개월 이상 warn · 12개월 이상 danger(빈 통 유무와 무관) · 그 아래 info
-  const waitM = tankLots.length ? s.month - Math.min(...tankLots.map((l) => l.createdMonth)) : 0;
+  const waits = tankLots.map((l) => ({ l, m: tankLotWaitMonths(s, l) }));
+  const waitM = waits.length ? Math.max(...waits.map((x) => x.m)) : 0;
   const fillLevel: Todo['level'] = waitM >= 12 ? 'danger' : waitM >= 3 ? 'warn' : 'info';
-  const waitText = fillLevel === 'info' ? '' : ` — ${waitM}개월째 통에 들어가지 않았다. 통에 넣어야 숙성이 시작된다 — 3년 위스키·12년 후보가 그만큼 늦어진다`;
+  // [제안 P-ARCH-64]: 합계와 가장 긴 개월을 한 문장에 섞지 않고 로트별로 — 오래 기다린 순
+  const lotText = waits.filter((x) => x.m >= 3).sort((a, b) => b.m - a.m).map((x) => `${x.l.name.split(' · ')[0]} ${Math.round(x.l.volumeL).toLocaleString()}L ${x.m}개월째`).join(' · ');
+  const waitText = fillLevel === 'info' ? '' : ` — 통에 들어가지 않은 원액: ${lotText}. 통에 넣어야 숙성이 시작된다 — 3년 위스키·12년 후보가 그만큼 늦어진다`;
   // 자동 통입(#239)이 켜져 있으면 넣을 통이 있는 동안은 안내하지 않는다 — 빈 통이 모자랄 때만 "통을 사라"로 줄인다
   const af = s.inventory.autoFill;
   const afLeft = af && tankMalt >= 50 ? autoFillPreview(s, af).leftL : 0;
   if (tankMalt >= 50 && (!af || afLeft >= 50)) {
-    const empties = s.inventory.casks.filter((c) => !c.contents && !c.contaminationKnown).length; // 아는 오염만(F5b I1 — 숨은 값 직접 읽기 없음)
+    // 몰트·그레인을 넣을 **나무** 통만 센다(P-ARCH-64 — 7차 판: 빈 통 26개 중 6개가 소주용 옹기). 아는 오염만 뺀다(F5b I1 — 숨은 값 직접 읽기 없음)
+    const empties = s.inventory.casks.filter((c) => !c.contents && !c.contaminationKnown && vesselMaterial(c) === 'wood').length;
     const free = Math.max(0, warehouseCapacity(s) - s.inventory.casks.length);
     out.push(af
-      ? { id: 'fill', level: fillLevel, text: `자동 통입이 켜져 있지만 빈 나무 통이 모자라 탱크 몰트·그레인 ${Math.round(afLeft).toLocaleString()}L가 남는다 — 빈 통 ${empties}개 · 남은 자리 ${free}통. 통을 사거나 숙성고를 늘리세요${waitText}`, action: '통 사기', target: { anchor: 'mvp-space' } }
-      : { id: 'fill', level: fillLevel, text: `탱크 몰트·그레인 ${Math.round(tankMalt).toLocaleString()}L 통입 대기 — 빈 통 ${empties}개 · 남은 자리 ${free}통 (통에 넣어야 숙성이 시작된다 · 자동 통입을 켜 둘 수 있다)${waitText}`, action: empties > 0 ? '통입' : '통 사기', target: { anchor: empties > 0 ? 'mvp-fill' : 'mvp-space' } });
+      ? { id: 'fill', level: fillLevel, text: `자동 통입이 켜져 있지만 빈 나무 통이 모자라 탱크 몰트·그레인 ${Math.round(afLeft).toLocaleString()}L가 남는다 — 빈 나무 통 ${empties}개 · 남은 자리 ${free}통. 통을 사거나 숙성고를 늘리세요${waitText}`, action: '통 사기', target: { anchor: 'mvp-space' } }
+      : { id: 'fill', level: fillLevel, text: `탱크 몰트·그레인 ${Math.round(tankMalt).toLocaleString()}L 통입 대기 — 빈 나무 통 ${empties}개 · 남은 자리 ${free}통 (통에 넣어야 숙성이 시작된다 · 자동 통입을 켜 둘 수 있다)${waitText}`, action: empties > 0 ? '통입' : '통 사기', target: { anchor: empties > 0 ? 'mvp-fill' : 'mvp-space' } });
   }
   // 위스키 재고가 떨어져 가는데 숙성을 채운 통이 있다
   // A7(PROD 화면 메모): 병입 권고는 플래그십 예비 통(#260)을 세지 않는다 — 예비 통을 권하면 "예비를 지켜라" 경고와 부딪친다. 남은 통이 예비뿐이면 그 사실과 대가를 한 줄로

@@ -53,17 +53,17 @@ describe('12년 적격 신호 (6차 판 ① · [제안 P-ARCH-61] (a)~(c))', () 
 });
 
 describe('탱크 몰트 통입 대기 등급 (PROD 문턱 — prod.md ②)', () => {
-  it('6차 판 158개월 세이브 — 39개월 대기 5,071L는 danger로 맨 위', () => {
+  it('6차 판 158개월 세이브 — 5,071L 대기(남은 원액 기준 25개월, PROD #704)는 danger로 맨 위 · 로트별 개월 · 나무 통만 셈', () => {
     const list = monthTodos(p6());
     expect(list[0]).toMatchObject({ id: 'fill', level: 'danger' });
-    expect(list[0]!.text).toMatch(/5,071L.*39개월째 통에 들어가지 않았다/);
+    expect(list[0]!.text).toMatch(/5,071L 통입 대기 — 빈 나무 통 81개.*싱글 몰트 — 언피티드 2,599L 25개월째 · 싱글 몰트 — 피티드 2,472L 15개월째/);
   });
   const withTank = (waitMonths: number) => { const s = mvp(); s.month = 40; s.inventory.autoFill = undefined; s.inventory.lots.push(lot({ id: 'T1', volumeL: 500, createdMonth: 40 - waitMonths })); return s; };
   it('2개월 info · 3개월 warn · 12개월 danger', () => {
     expect(todo(withTank(2), 'fill')!.level).toBe('info');
-    expect(todo(withTank(2), 'fill')!.text).not.toMatch(/개월째 통에 들어가지 않았다/);
+    expect(todo(withTank(2), 'fill')!.text).not.toMatch(/통에 들어가지 않은 원액/);
     expect(todo(withTank(3), 'fill')!.level).toBe('warn');
-    expect(todo(withTank(3), 'fill')!.text).toMatch(/3개월째 통에 들어가지 않았다/);
+    expect(todo(withTank(3), 'fill')!.text).toMatch(/통에 들어가지 않은 원액: l 500L 3개월째/); // 레시피 없는 로트는 첫 배치 달(PROD 어림의 기본)
     expect(todo(withTank(12), 'fill')!.level).toBe('danger');
   });
   it('danger는 할 일 목록 위로 올라온다(새 기능 소식 아래)', () => {
@@ -144,5 +144,17 @@ describe('소식 창 — 받지 않고 만료된 납품 제안 (MKT #685 메모)
     s.month = 10;
     s.history.reports = [{ ...(s.history.reports.at(-1) ?? {}), month: 9, notes: ['가온마트 납품 제안 만료 — 증류식 소주 1,000병/월 (받지 않음)'], events: [] } as never];
     expect(turnNews(s, 9).notes.map((n) => n.text)).toContain('가온마트 납품 제안 만료 — 증류식 소주 1,000병/월 (받지 않음)');
+  });
+});
+
+describe('통입 대기 — 남은 원액 기준 개월 · 로트별 문구 · 나무 통만 (7차 판 중간, PROD #704 · [제안 P-ARCH-64])', () => {
+  it('7차 판 62개월 세이브: 화면 "20개월째 danger" → 남은 원액 기준 6개월 warn · 로트별 · 빈 나무 통 20개(옹기 6 제외)', () => {
+    const r = parsePlayFile(readFileSync('docs/playtest/7/distillery-mvp-standard-y6m3-202611200601.json', 'utf8'));
+    if ('error' in r) throw new Error(r.error);
+    const t = todo(r.save, 'fill')!;
+    expect(t.level).toBe('warn');
+    expect(t.text).toMatch(/빈 나무 통 20개/);
+    expect(t.text).toMatch(/언피티드 847L 6개월째 · 싱글 몰트 — 피티드 784L 6개월째 · 그레인 — 옥수수 527L 4개월째/);
+    expect(t.text).not.toMatch(/20개월째/);
   });
 });
