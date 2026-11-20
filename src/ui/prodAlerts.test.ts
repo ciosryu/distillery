@@ -22,7 +22,20 @@ describe('PROD 연동 할 일 — 7차 완료 세이브', () => {
     const t = todo(s, 'soju-glut')!;
     expect(t.level).toBe('warn');
     expect(t.text).toMatch(/^병입하지 않은 소주까지 4\d개월 치 — 탱크 5,423L/);
-    expect(TODO_ORDER.indexOf('soju-glut')).toBe(TODO_ORDER.indexOf('soju') + 1);
+    expect(TODO_ORDER.indexOf('soju-glut')).toBe(TODO_ORDER.indexOf('defense') - 1);
+    // 화면 순서: warn 소주 과잉이 info 줄(방재·위스키 재고·샘플)보다 위 — PM 대조에서 info 두 줄 뒤에 놓였다
+    const ids = monthTodos(s).map((x) => x.id);
+    for (const info of ['defense', 'whisky', 'soju', 'sample']) if (ids.includes(info)) expect(ids.indexOf('soju-glut')).toBeLessThan(ids.indexOf(info));
+  });
+  it('TODO_ORDER 꼬리는 info만 내는 id — warn·danger가 info 뒤에 묻히지 않는다', () => {
+    expect(TODO_ORDER.slice(-4)).toEqual(['defense', 'whisky', 'soju', 'sample']);
+  });
+  it('7차 완료 세이브: warn·danger 줄이 info 꼬리(방재·위스키·소주·샘플)보다 모두 위', () => {
+    const tail = new Set(['defense', 'whisky', 'soju', 'sample']);
+    const rows = monthTodos(load(P7END));
+    const firstTail = rows.findIndex((r) => tail.has(r.id));
+    expect(firstTail).toBeGreaterThan(-1);
+    expect(rows.slice(firstTail).every((r) => r.level === 'info')).toBe(true);
   });
   it('통입 대기 할 일은 자동 통입 줄로 이동(+ 바로 켜기 버튼) · 앵커는 PROD AutoFill과 같은 값', () => {
     const t = todo(load(P7END), 'fill')!;

@@ -9,20 +9,20 @@ const state = (products: ReturnType<typeof prod>[], reports: ReturnType<typeof r
   ({ commerce: { products }, history: { reports } }) as unknown as Pick<GameState, 'commerce' | 'history'>;
 
 describe('retailOfferOutlook — 받기 전에 "채울 수 있나"', () => {
-  it('그 범주 재고(면세 한정판 제외) · 최근 3개월 국내 판매 평균 · 재고 개월치 · 한 달 미납 위약금', () => {
+  it('그 범주 재고(면세 한정판 제외) · 재고 개월치 · 한 달 미납 위약금 — 판매 속도는 화면이 categoryMonthlySales로 따로 본다', () => {
     const s = state(
       [prod('P1', 'soju_distilled', 900), prod('P2', 'soju_distilled', 300), prod('P3', 'soju_distilled', 5000, true), prod('W', 'whisky', 400)],
       [rep([['P1', 9999]]), rep([['P1', 1000], ['W', 50]]), rep([['P1', 1200], ['P2', 300]]), rep([['P2', 500], ['W', 70]])],
     );
     const o = retailOfferOutlook(s, { category: 'soju_distilled', bottlesPerMonth: 600, penaltyPerBottle: 780 });
     expect(o.stock).toBe(1200); // P3(면세 한정판)은 납품에 쓰이지 않는다
-    expect(o.recentSales).toBe((1000 + 1500 + 500) / 3); // 마지막 3개 리포트만
+    expect('recentSales' in o).toBe(false); // 판매 속도를 두 곳에서 세지 않는다(PROD SALES_LOOKBACK 하나)
     expect(o.coverMonths).toBe(2);
     expect(o.penaltyPerMonth).toBe(468_000);
   });
-  it('리포트가 없으면 판매 0, 재고가 없으면 0개월치', () => {
+  it('재고가 없으면 0개월치', () => {
     const o = retailOfferOutlook(state([], []), { category: 'whisky', bottlesPerMonth: 300, penaltyPerBottle: 7680 });
-    expect(o).toEqual({ stock: 0, recentSales: 0, coverMonths: 0, penaltyPerMonth: 2_304_000 });
+    expect(o).toEqual({ stock: 0, coverMonths: 0, penaltyPerMonth: 2_304_000 });
   });
 });
 
