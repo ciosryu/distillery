@@ -1,8 +1,9 @@
 // F5d-1 코어 (#338) — 병입 제품의 아는 품질: 병입 때 추정 · 보충 혼합 · 읽기 한 함수(공개 · 면세 짝) · 보관 사본. 출력은 바뀌지 않는다(아무도 아직 읽지 않음)
 import { describe, expect, it } from 'vitest';
-import { applyAction, restockMix, knownProductQuality, newGame, bottledQualityKnown, mergeQualityKnown, dutyFreePair, UNKNOWN_QUALITY_SIGMA, QHAT_PRIOR, type Flavor, type GameState, type Product } from '.';
+import { applyAction, previewBlend, priceAtQuality, restockMix, knownProductQuality, newGame, bottledQualityKnown, mergeQualityKnown, dutyFreePair, UNKNOWN_QUALITY_SIGMA, QHAT_PRIOR, type Flavor, type GameState, type Product } from '.';
 import { emptyCaskOf } from './newGame';
 import { toArchiveEntry } from './lifecycle';
+import { defaultPolicyPrice } from './content/market';
 
 const BOURBON: Flavor = { fresh_fruit: 35, vanilla_caramel: 40, floral: 25, cereal: 15, sweetness: 10, integration: 40 };
 const opts = { name: 't', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' };
@@ -58,8 +59,12 @@ describe('병입 행동 — v16은 아는 품질을 쓰고, 옛 판은 쓰지 �
     expect(pl.qualityKnown).toBeUndefined();
     expect(knownProductQuality({ ...lg, rulesVersion: 'legacy-v15' }, pl)).toMatchObject({ q: pl.quality, public: true });
     expect(pv.quality).toBe(pl.quality);
-    expect(pv.price).toBe(pl.price);
     expect(pv.stockBottles).toBe(pl.stockBottles);
+    // 첫 출고가: 옛 판은 참 품질 권장가, v16은 아는 품질 권장가(PROD F5d — 첫 값에서 참값이 새지 않게, 기준가 currentSuggested와 같은 기준)
+    const pre = previewBlend(v16, ids(v16).slice(0, 2).map((id) => ({ source: 'cask' as const, id, liters: 150 })), opts);
+    expect(pl.price).toBe(defaultPolicyPrice(pre.suggestedPrice)); // bottle 행동은 첫 값 × 기본 정책 n(B1-4)
+    expect(pv.price).toBe(defaultPolicyPrice(priceAtQuality(v16, pre, opts, pv.qualityKnown!.est)!));
+    expect(pv.price).not.toBe(pl.price); // 샘플 없는 통 → 사전값 추정이라 참 품질 권장가와 다르다
   });
 });
 

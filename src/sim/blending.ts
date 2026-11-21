@@ -477,6 +477,9 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   // estimateBlend의 원액별 품질 가중 평균을 쓰면 병입 보정만큼(약 3점) 늘 낮고 오차 0이라 리뷰가 고치지 못했다(MKT F5d-2 진단 — 소주). 통이 섞이면 샘플 추정
   const estB = hidesProductQuality(s) ? estimateBlend(s, components) : null;
   const knownBatch = !estB ? undefined : !estB.fromCasks ? { est: Math.round(p.evaluation.quality * 10) / 10, sigma: 0, reviews: 0, month: s.month, hex: hexOf(p.flavor) } : bottledQualityKnown(estB, p.kind ?? 'malt', s.month);
+  // F5d(PROD): 첫 출고가도 아는 품질로 — 참 품질 권장가(p.suggestedPrice)로 정하면 첫 값에서 참값이 샌다(기준가 currentSuggested와도 어긋난다).
+  // 면세 한정판은 따로 셈(priceAtQuality null) → 지금 값 그대로
+  const firstBase = knownBatch ? priceAtQuality(s, p, opts, knownBatch.est) ?? p.suggestedPrice : p.suggestedPrice;
   // 블렌딩 테이블 (결정 #124): 원액을 빼기 전에 블렌더가 아는 값으로 예상 육각형을 만든다 (공개 연출용).
   // 캐스크는 샘플 기록(#157) — 기록이 없는 캐스크는 예상에서 빠진다. 탱크 원액은 우리가 막 만든 것이라 참값으로 안다(#162의 estimateBlend와 같은 규칙)
   const known = knownReads(s);
@@ -551,7 +554,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     premiumLabel: p.premiumLabel,
     ...(p.traditional ? { traditional: true } : {}),
     stockBottles: p.bottles,
-    price: p.dfEdition || !opts.firstPriceFactor ? p.suggestedPrice : defaultPolicyPrice(p.suggestedPrice, opts.firstPriceFactor), // B1-4 — 미리보기와 같은 함수
+    price: p.dfEdition || !opts.firstPriceFactor ? firstBase : defaultPolicyPrice(firstBase, opts.firstPriceFactor), // B1-4 — 미리보기와 같은 함수
     unitCost: p.unitCost,
     createdMonth: s.month,
     lastMonthSold: 0,
