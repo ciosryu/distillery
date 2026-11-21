@@ -55,4 +55,5 @@ export * from './invariants';
 export * from './priceEngine';
 export * from './rules';
 export * from './valuation';
+export * from './productView'; // F5d 아는 품질 (#338)
 export * from './ledger';

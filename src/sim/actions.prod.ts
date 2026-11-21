@@ -1,3 +1,4 @@
+import { toArchiveEntry } from './lifecycle';
 import { isWhiskyCategory, whiskyMinMonths } from './blending';
 import { DEFAULT_POLICY_N } from './content/market';
 import { resetFirstPriceOnAuto } from './pricePolicy'; // 기본 정책 배수 n (B1-4)
@@ -131,7 +132,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const p = s.commerce.products[i];
     if (!p) return fail(prev, '제품이 없습니다');
     if (p.stockBottles > 0) return fail(prev, `재고가 ${p.stockBottles.toLocaleString()}병 남아 있어 지울 수 없습니다 — 다 판 뒤에 지운다`);
-    s.commerce.productArchive.push({ id: p.id, name: p.name, category: p.category, createdMonth: p.createdMonth, lastMonthSold: p.lastMonthSold, totalSold: p.totalSold, quality: p.quality, price: p.price });
+    s.commerce.productArchive.push(toArchiveEntry(p)); // F5d: 아는 품질 사본까지 — 보관 항목은 lifecycle 한 함수로
     s.commerce.products.splice(i, 1);
     dropLots(s, p.id); // F3 — 없는 제품의 병입 로트는 불변식 오류(재고 0이라 보통 비어 있다)
     return { state: s, message: `판매 목록에서 지움 — 「${p.name}」 (판매 기록은 남는다)` };
