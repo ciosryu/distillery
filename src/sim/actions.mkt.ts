@@ -26,8 +26,8 @@ export type MktAction =
   | { type: 'setPrice'; productId: string; price: number }
   /** 제품별 수출 안 함 (#266) — 수출이 국내를 굶길 때(#257) 플레이어가 고른다. 다음 달 판매부터 */
   | { type: 'setProductExport'; productId: string; noExport: boolean }
-  /** 제품별 대형 유통 납품 넣기 · 빼기 ([결정 #337] ② (가)) — mode 없음 = 기본 규칙으로 되돌림(v16 캠페인: 10년↑ 제외). 다음 달 납품부터 */
-  | { type: 'setProductRetail'; productId: string; mode?: 'exclude' | 'include' }
+  /** 제품별 대형 유통 납품 넣기 · 빼기 ([결정 #337] ② (가)) — include 없음 = 기본 규칙으로 되돌림(v16 캠페인: 10년↑ 제외). 다음 달 납품부터 */
+  | { type: 'setProductRetail'; productId: string; include?: boolean }
   /** 월 마케팅 예산 — brandId가 없거나 하우스면 하우스(commerce.marketingBudget), 세컨드 브랜드면 그 브랜드 */
   | { type: 'setMarketing'; amount: number; brandId?: string }
   | { type: 'buyBrokerCask'; offerId: string }
@@ -115,9 +115,9 @@ export const MKT_HANDLERS: Handlers<MktAction> = {
   setProductRetail: (s, prev, a) => {
     const p = s.commerce.products.find((x) => x.id === a.productId);
     if (!p) return fail(prev, '제품이 없습니다');
-    if (a.mode) p.retailDraw = a.mode;
+    if (a.include != null) p.retailDraw = a.include;
     else delete p.retailDraw;
-    return { state: s, message: a.mode === 'exclude' ? `「${p.name}」 납품에서 뺀다 — 다음 달부터 대형 유통 계약이 가져가지 않는다(모자라면 그만큼 미납)` : a.mode === 'include' ? `「${p.name}」 납품에 넣는다 — 다음 달부터 출고가의 ${Math.round(RETAIL_DEAL.priceFactor * 100)}%로 나갈 수 있다` : `「${p.name}」 납품 여부를 기본 규칙으로` };
+    return { state: s, message: a.include === false ? `「${p.name}」 납품에서 뺀다 — 다음 달부터 대형 유통 계약이 가져가지 않는다(모자라면 그만큼 미납)` : a.include === true ? `「${p.name}」 납품에 넣는다 — 다음 달부터 출고가의 ${Math.round(RETAIL_DEAL.priceFactor * 100)}%로 나갈 수 있다` : `「${p.name}」 납품 여부를 기본 규칙으로` };
   },
   setMarketing: (s, prev, a) => {
     const amount = Math.max(0, Math.round(a.amount / 100_000) * 100_000);

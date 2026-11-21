@@ -93,11 +93,11 @@ describe('[결정 #337] ① 제안 물량 ≤ 판매 속도 · ② 10년↑ 기�
     expect(RETAIL_PREMIUM_OAK_MONTHS).toBe(120);
     expect(retailDrawEligible(c, { oakMonths: 119 })).toBe(true);
     expect(retailDrawEligible(c, { oakMonths: 120 })).toBe(false);
-    expect(retailDrawEligible(c, { oakMonths: 150, retailDraw: 'include' })).toBe(true);
-    expect(retailDrawEligible(c, { oakMonths: 36, retailDraw: 'exclude' })).toBe(false);
-    expect(retailDrawEligible(c, { oakMonths: 36, dutyFreeOnly: true, retailDraw: 'include' })).toBe(false);
+    expect(retailDrawEligible(c, { oakMonths: 150, retailDraw: true })).toBe(true);
+    expect(retailDrawEligible(c, { oakMonths: 36, retailDraw: false })).toBe(false);
+    expect(retailDrawEligible(c, { oakMonths: 36, dutyFreeOnly: true, retailDraw: true })).toBe(false);
     expect(retailDrawEligible(legacy, { oakMonths: 150 })).toBe(true); // 옛 판은 다 낸다(바이트 동일)
-    expect(retailDrawEligible(legacy, { oakMonths: 36, retailDraw: 'exclude' })).toBe(false); // 직접 고른 것은 어느 판이든 따른다
+    expect(retailDrawEligible(legacy, { oakMonths: 36, retailDraw: false })).toBe(false); // 직접 고른 것은 어느 판이든 따른다
   });
 
   it('makeRetailOffer: v16 캠페인은 맞는 물량이 있는 범주만, 없으면 null · 10년↑만 있는 범주도 후보가 아니다', async () => {
@@ -124,15 +124,15 @@ describe('[결정 #337] ① 제안 물량 ≤ 판매 속도 · ② 10년↑ 기�
 });
 
 describe('setProductRetail — 제품별 납품 넣기 · 빼기 (#337 ② (가))', () => {
-  it('exclude · include는 필드로, mode 없음은 지운다(기본 규칙)', async () => {
+  it('include true · false는 필드로, 없으면 지운다(기본 규칙)', async () => {
     const { applyAction } = await import('./index');
     const { newScenarioGame } = await import('./newScenario');
     const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
     s.commerce.products = [{ id: 'P', name: '김포 11년', category: 'whisky', oakMonths: 132, stockBottles: 273, createdMonth: 1 } as unknown as GameState['commerce']['products'][number]];
-    const a = applyAction(s, { type: 'setProductRetail', productId: 'P', mode: 'include' });
-    expect(a.state.commerce.products[0]!.retailDraw).toBe('include');
+    const a = applyAction(s, { type: 'setProductRetail', productId: 'P', include: true });
+    expect(a.state.commerce.products[0]!.retailDraw).toBe(true);
     const b = applyAction(a.state, { type: 'setProductRetail', productId: 'P' });
     expect('retailDraw' in b.state.commerce.products[0]!).toBe(false);
-    expect(applyAction(s, { type: 'setProductRetail', productId: 'X', mode: 'exclude' }).error).toBeTruthy();
+    expect(applyAction(s, { type: 'setProductRetail', productId: 'X', include: false }).error).toBeTruthy();
   });
 });

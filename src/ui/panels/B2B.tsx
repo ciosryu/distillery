@@ -306,12 +306,12 @@ function SiteDeals() {
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
                   {rows.map((p) => {
                     const on = retailDrawEligible(s, p);
-                    const why = p.retailDraw ? '직접 고름' : on ? '' : `${RETAIL_PREMIUM_OAK_MONTHS / 12}년↑ 기본 제외`;
+                    const why = p.retailDraw != null ? '직접 고름' : on ? '' : `${RETAIL_PREMIUM_OAK_MONTHS / 12}년↑ 기본 제외`;
                     return (
                       <span key={p.id} className="inline-flex items-center gap-1">
                         <span className={on ? '' : 'text-stone-500 line-through'}>{p.name} {num(p.stockBottles)}병</span>
                         {why && <span className="text-stone-500">({why})</span>}
-                        <Button small onClick={() => dispatch({ type: 'setProductRetail', productId: p.id, mode: on ? 'exclude' : 'include' })}>{on ? '빼기' : '넣기'}</Button>
+                        <Button small onClick={() => dispatch({ type: 'setProductRetail', productId: p.id, include: !on })}>{on ? '빼기' : '넣기'}</Button>
                       </span>
                     );
                   })}

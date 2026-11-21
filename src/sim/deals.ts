@@ -86,7 +86,7 @@ export const RETAIL_PREMIUM_OAK_MONTHS = 120;
  */
 export function retailDrawEligible(s: Pick<GameState, 'rulesVersion' | 'scenario'>, p: Pick<Product, 'dutyFreeOnly' | 'retailDraw' | 'oakMonths'>): boolean {
   if (p.dutyFreeOnly) return false;
-  if (p.retailDraw) return p.retailDraw === 'include';
+  if (p.retailDraw != null) return p.retailDraw;
   return !(retailRules337(s) && (p.oakMonths ?? 0) >= RETAIL_PREMIUM_OAK_MONTHS);
 }
 
