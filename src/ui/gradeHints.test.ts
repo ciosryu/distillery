@@ -15,7 +15,8 @@ describe('판 초반 통 활성도 힌트 (P-PROD-66 e)', () => {
     const t = flagshipCaskHint(fresh())!;
     expect(t).toMatch(/^12년 플래그십 품질은 통의 활성도\(나무가 맛을 내는 세기\)가 가른다/);
     expect(t).toContain(`12년 품질 ${GRADE.sFlagshipQuality}은 등급 S 조건`);
-    expect(t).not.toMatch(/채웠다|예상 품질/);
+    expect(t).not.toMatch(/채웠다|비웠다 다시|예상 품질/); // PROD: "한 번 비웠다 다시 쓰는 통"은 요령으로 읽힌다 → "재사용 통"(자동 통입 옵션과 같은 말)
+    expect(t).toContain('재사용 통(비울 때마다 활성도 ×0.6)');
   });
   it(`${EARLY_CASK_HINT_MONTHS}개월부터는 사라진다 · 상태를 바꾸지 않는다`, () => {
     const s = fresh(); s.month = EARLY_CASK_HINT_MONTHS - 1;

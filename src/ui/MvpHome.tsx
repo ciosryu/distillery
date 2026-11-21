@@ -12,7 +12,8 @@ import { AXIS } from '../sim/content/axes';
 import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
 import { cooperageLeadMonths } from '../sim/prodKnobs'; // F6c: 쿠퍼리지 납기 — 주문(actions.prod.ts)과 같은 값(Normal 2개월)
 import { fillShares, PARTIAL_FILL_HINT } from '../sim/autoFill'; // P-PROD-60: 손 통입 끝자리 안내 — 실제 통입과 같은 식
-import { vesselMaterial } from '../sim/maturation';
+import { EMPTY_ACTIVITY_FACTOR, vesselMaterial } from '../sim/maturation';
+import { tanninOutlook } from '../sim/warehouse'; // P-PROD-66 a·b (PROD 계산)
 import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
 import { equipmentCost } from '../sim/sites';
@@ -366,6 +367,26 @@ function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead |
   );
 }
 
+/**
+ * [제안 P-PROD-66] a·b (결정 #339 — 화면만) — 숙성 중 나무 통의 활성도와 12년 예상 탄닌 감점. 계산은 PROD `tanninOutlook`(원액 맛·레어를 읽지 않는 식 — 숨김 정보 아님).
+ * 활성도를 아직 모르는 스팟 통(6개월 전)은 "?". 기상 이상치·재해는 빼서 실제보다 1~3 낮을 수 있다(어림). "채웠다 비우기" 요령은 말하지 않는다(#339)
+ */
+/** 이보다 활성도가 낮으면 "나무 향 약함"을 붙인다 `[튜닝 — PROD 확인]` — 나무 추출(바닐라·스파이스·탄닌 모두)이 활성도에 비례해(maturation.ts) 감점 0이 "많이 쓴 통일수록 좋다"로 읽히지 않게(PM 대조: 5~7차 채움 0.05~0.13).
+ * 스팟 골빈 통(0.15~0.35)은 PROD 계산에서 12년 품질이 높아 걸리지 않게 그 아래로 둔다 */
+export const LOW_ACTIVITY_NOTE = 0.15;
+
+function TanninLine({ s, c }: { s: GameState; c: Cask }) {
+  const o = tanninOutlook(s, c);
+  if (!o) return <div className="text-[11px] text-stone-500" title="스팟 통의 활성도는 6개월 숙성 뒤에 드러난다">활성도 ?</div>;
+  const yrs = Math.floor(o.atMonths / 12);
+  const weak = o.activity < LOW_ACTIVITY_NOTE;
+  return (
+    <div className={`text-[11px] ${o.penalty >= 5 ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`${yrs}년(${o.atMonths}개월) 무렵 오크·탄닌 약 ${Math.round(o.tannin)}(위스키 상한 ${o.cap}) → 품질 감점 약 ${Math.round(o.penalty)} · 지금까지 약 ${Math.round(o.now)} — 비울 때마다 활성도 ×${EMPTY_ACTIVITY_FACTOR}${weak ? ' · 활성도가 아주 낮으면 탄닌 감점은 없지만 바닐라·스파이스 같은 나무 향도 그만큼 적게 밴다' : ''}. 어림(기상 이상치·재해 제외)`}>
+      활성도 {o.activity.toFixed(2)} · {yrs}년 {o.penalty >= 0.5 ? `감점 약 ${Math.round(o.penalty)}` : '감점 없음'}{weak && ' · 나무 향 약함'}
+    </div>
+  );
+}
+
 function WarehouseCard() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
@@ -443,7 +464,7 @@ function WarehouseCard() {
                 <Td><input type="checkbox" aria-label={`${c.id} 선택`} title={can ? undefined : '샘플은 못 뜨지만(횟수 다 씀·고객 소유) 태그는 붙일 수 있다'} disabled={!!c.owner} checked={picked.includes(c.id)} onChange={() => toggle(c.id)} /></Td>
                 <Td className="text-xs">{c.id} · {CASKS[c.typeId].nameKo}{c.fills > 1 && vesselMaterial(c) === 'wood' ? ` (${c.fills}필)` : ''}<CaskTagChips s={s} c={c} reserve={reserve} /></Td>
                 <Td className="max-w-48 truncate text-xs">{lot.name}{lot.sourced && <> <Badge tone="info">매입</Badge></>}{c.owner && <> <Badge tone="info">고객 소유</Badge></>}{c.rareKnown && <> <Badge tone="good">레어</Badge></>}{c.contaminationKnown && <> <Badge tone="bad">오염</Badge></>}</Td>
-                <Td right>{vesselMaterial(c) === 'wood' ? months(lot.oakMonths) : <>옹기 {months(lot.restMonths ?? 0)}{lot.oakMonths > 0 && <div className="text-xs text-stone-500">오크 {months(lot.oakMonths)}</div>}</>}</Td>
+                <Td right>{vesselMaterial(c) === 'wood' ? <>{months(lot.oakMonths)}{(lot.kind === 'malt' || lot.kind === 'grain') && <TanninLine s={s} c={c} />}</> : <>옹기 {months(lot.restMonths ?? 0)}{lot.oakMonths > 0 && <div className="text-xs text-stone-500">오크 {months(lot.oakMonths)}</div>}</>}</Td>
                 <Td right>{liters(lot.volumeL)}{partialFill(c) != null && <div className="text-[11px] text-stone-500" title="통 크기보다 원액이 많이 적다 — 공기에 닿는 면이 넓어 증발·나무 추출이 빠를 수 있다(병입 화면과 같은 기준: 60% 미만)">덜 찬 통 {partialFill(c)}%</div>}</Td>
                 <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>{vesselMaterial(c) === 'onggi' ? '옹기 ' : ''}숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : vesselMaterial(c) !== 'wood' && lot.oakMonths < minM ? <Badge tone="warn">옹기 — 위스키 숙성에 안 들어감</Badge> : lot.oakMonths >= minM ? <Badge tone="good">위스키{lot.oakMonths < 36 ? ' (어림)' : ''}</Badge> : <Badge tone="warn">{minM - lot.oakMonths}개월 남음</Badge>}</Td>
                 <Td><SampleCell s={s} c={c} known={known.get(c.id)} /></Td>
