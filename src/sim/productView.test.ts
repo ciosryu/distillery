@@ -63,6 +63,19 @@ describe('병입 행동 — v16은 아는 품질을 쓰고, 옛 판은 쓰지 �
   });
 });
 
+describe('탱크 원액만 병입 — 숨길 것이 없으니 병입 평가 그대로(MKT 진단: 원액별 평균은 약 3점 낮고 σ 0이라 리뷰가 못 고쳤다)', () => {
+  it('아는 품질 = 참 품질 · 오차 0 · 육각형 있음', () => {
+    const s = newGame({ seed: 3, startingCash: 50_000_000_000 });
+    s.inventory.lots.push({ id: 'T1', name: '소주', kind: 'soju', volumeL: 400, abv: 0.45, flavor: { cereal: 30, sweetness: 20, fresh_fruit: 15, integration: 30 }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 9000 });
+    const r = applyAction(s, { type: 'bottle', components: [{ source: 'lot', id: 'T1', liters: 300 }], options: { ...opts, targetAbv: 0.25, bottleMl: 375 } });
+    const p = r.state.commerce.products.at(-1);
+    expect(r.message).not.toMatch(/할 수 없|부족/);
+    expect(p!.qualityKnown!.est).toBe(Math.round(p!.quality * 10) / 10);
+    expect(p!.qualityKnown!.sigma).toBe(0);
+    expect(p!.qualityKnown!.hex).toBeDefined();
+  });
+});
+
 describe('보충 — 남은 재고와 새 배치를 병 수로 합친다', () => {
   it('F5d 전 공개 제품(아는 품질 없음)에 보충하면 그 몫은 참값을 오차 0으로 안다', () => {
     const old = { quality: 60, stockBottles: 300, hex: undefined } as Pick<Product, 'quality' | 'qualityKnown' | 'stockBottles' | 'hex'>;
