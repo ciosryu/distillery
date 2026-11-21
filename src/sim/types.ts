@@ -349,6 +349,11 @@ export interface Product {
   autoRestockMinMonths?: number;
   /** 수출 안 함 (#266) — 켜면 이 제품은 수출 시장(공항 면세점 포함)에 내지 않는다. 국내·지정면세점(제주) 판매는 그대로. 옛 세이브에는 없다 = 수출에 낸다 */
   noExport?: boolean;
+  /**
+   * 대형 유통 납품에 낼지 ([제안 P-MKT-43] ② (가), MKT `deals.ts retailDrawEligible`) — 없으면 기본 규칙(v16 판: 목재 숙성 10년↑ 제품은 납품에서 뺀다).
+   * 'exclude' = 늘 뺀다 · 'include' = 10년↑이어도 낸다. 선택 필드라 스키마는 v16 그대로(`noExport` #266과 같은 방식). 옛 세이브에는 없다
+   */
+  retailDraw?: 'exclude' | 'include';
   /** 병당 생산 원가 = 원액 + 포장 + 병입 인건비 (유통비 제외) */
   unitCost: number;
   createdMonth: number;
