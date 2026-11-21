@@ -6,6 +6,7 @@ import { productLuxury } from './brands';
 import { topNotes } from './flavor';
 import { expectedPricePerL, productConsumerPrice } from './market';
 import { rngFor, type Rng } from './rng';
+import { hidesProductQuality } from './productView'; // F5d (#338)
 import type { AxisId, GameState, MonthReport, Product } from './types';
 
 // 가상 주류 커뮤니티 피드 ([결정 #247] → v2 [결정 #254], 오너 2026-11-10) — 파트 MKT. **순수 연출: 판매·인지도에 영향 없음.**
@@ -163,7 +164,8 @@ function featuresOf(p: Product): FeedFeature[] {
   return out;
 }
 
-function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style: FeedStyle, month: number, i: number): FeedPost {
+/** forcedScore — F5d(v16): 틱에서 그린 위스키베이스 점수(`MonthReport.reviews`). 있으면 그 점수와 그 점수가 말하는 품질로 쓴다(참 품질을 글에 새지 않게) */
+function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style: FeedStyle, month: number, i: number, forcedScore?: number): FeedPost {
   const notes = topNotes(p.flavor, 3).map((n) => n.nameKo);
   const off = offNote(p);
   const years = Math.floor((p.oakMonths ?? (p.ageYears ?? 0) * 12) / 12);
@@ -179,8 +181,10 @@ function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style
   const base = { id: `${month}:${p.id}:${i}`, month, style, community, author, productId: p.id, productName: p.name, tone, ...(x === 'raise' ? { signal: 'raise_price' as const } : {}) };
   const feats = featuresOf(p);
   if (style === 'whiskybase') {
-    const score = clamp(Math.round(60 + p.quality * 0.38 + rng.int(-3, 3)), 50, 98);
-    const finish = rng.pick(WB_FINISH[p.quality >= 75 ? 'long' : p.quality >= 60 ? 'mid' : 'short']);
+    const drawn = clamp(Math.round(60 + p.quality * 0.38 + rng.int(-3, 3)), 50, 98);
+    const score = forcedScore ?? drawn;
+    const q = forcedScore != null ? (forcedScore - 60) / 0.38 : p.quality; // 여운 문구도 점수가 말하는 품질로(reviews.ts reviewReading과 같은 식)
+    const finish = rng.pick(WB_FINISH[q >= 75 ? 'long' : q >= 60 ? 'mid' : 'short']);
     const palate = `${vars.n3}${off ? `, 옅은 ${off}` : ''}`;
     const verdict = fill(rng.pick(WB_VERDICT[x]), vars);
     const tasting = ['stockout', 'priceUp', 'priceDown', 'forgotten'].includes(x) ? '' : `Nose: ${rng.pick(WB_NOSE_ADJ)} ${vars.n1}, ${vars.n2}. Palate: ${palate}. Finish: ${finish}. `;
@@ -231,6 +235,9 @@ export function postCount(rng: Rng, p: Product, g: FeedSignals, month: number): 
 export function feedFor(s: GameState, months = 3, maxPosts = 14): FeedPost[] {
   const reports = s.history.reports.slice(-months);
   const all: FeedPost[] = [];
+  // F5d(#338 ⑥): 품질을 가리는 판(v16)은 위스키베이스 글을 틱에서 그린 리뷰(`MonthReport.reviews`)로만 보인다 — 추정 갱신(reviews.ts)과 같은 점수.
+  // 다른 커뮤니티 글은 그대로 이 함수가 그린다. 옛 판은 지금 그대로(바이트 동일)
+  const hidden = hidesProductQuality(s);
   for (let k = reports.length - 1; k >= 0; k--) {
     const r = reports[k]!;
     const prevR = s.history.reports[s.history.reports.indexOf(r) - 1];
@@ -257,9 +264,11 @@ export function feedFor(s: GameState, months = 3, maxPosts = 14): FeedPost[] {
         let post = writePost(rng, p, g, sit, pickStyle(rng, w), r.month, i);
         for (let k = 0; k < 4 && used.has(post.text); k++) post = writePost(rng, p, g, sit, pickStyle(rng, w), r.month, i); // 같은 달 같은 문장 피하기
         if (used.has(post.text)) continue;
+        if (hidden && post.style === 'whiskybase') continue; // 아래에서 틱의 리뷰로 다시 쓴다
         used.add(post.text);
         all.push(post);
       }
+      if (hidden) (r.reviews?.find((v) => v.productId === p.id)?.scores ?? []).forEach((sc, j) => all.push(writePost(rng, p, g, x, 'whiskybase', r.month, 10 + j, sc)));
     }
     // 비교 글: 같은 주종 둘 이상
     const rng = rngFor(s.seed, r.month, 'feed:compare');
@@ -287,7 +296,7 @@ export function feedFor(s: GameState, months = 3, maxPosts = 14): FeedPost[] {
       if (p.dutyFreeOnly || p.totalSold <= 0 || recent.length < 3 || soldRecently(p.id) || rng.next() > 0.5) continue;
       const g = feedSignals(s, p, undefined, undefined, last.month);
       const style = pickStyle(rng, styleWeights(p, g));
-      all.push(writePost(rng, p, g, 'forgotten', style, last.month, 9));
+      all.push(writePost(rng, p, g, 'forgotten', hidden && style === 'whiskybase' ? 'cafe' : style, last.month, 9)); // 가리는 판: 팔리지 않은 달에는 리뷰 점수가 없다
     }
   }
   // 새 달이 위. 같은 달 안에서는 가격 신호 먼저, 그다음 제품별 첫 글 → 둘째 글 순(한 제품이 목록을 차지하지 않게)

@@ -25,6 +25,7 @@ import { runProduction } from './production';
 import { runFinance } from './loans';
 import { settleSales } from './sales';
 import { runSales, updateTrends } from './market';
+import { updateProductKnowledge } from './reviews'; // F5d-2 리뷰 → 아는 품질 (MKT, 코어 대행)
 import { refreshExportOffers } from './exportDeals';
 import { collectReceivables, fulfillRetail, refreshDeals } from './deals';
 import { resolveDutyFreeEditions } from './dutyFree';
@@ -189,6 +190,8 @@ export function advanceMonth(prev: GameState): GameState {
   runMaturation(s, report, ctx);                             // 3 엔젤스 셰어·도수·향미
   phaseContracts(s, report);                                 // 4
   const sales = phaseSales(s, report, ctx);                  // 5
+  const reviews = updateProductKnowledge(s, report, s.history.reports.at(-1)); // 5′ F5d 리뷰 → 아는 품질 (#338, MKT reviews.ts — 옛 판은 hidesProductQuality로 아무것도 안 함. 지난달 결산 = 가격 변동 신호)
+  if (reviews.length) report.reviews = reviews;              //   피드(feedFor)가 같은 점수를 다시 보여 준다
   phaseOperations(s, report, ctx, mashKg);                   // 6
   runFinance(s, report, ctx.monthOfYear);                    // 7
   phaseGrowth(s, report, runsUsed, sales);                   // 8

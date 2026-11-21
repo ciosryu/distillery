@@ -115,3 +115,18 @@ describe('priceOptions — 계획은 아는 품질로 (F5d ④ · ⑤)', () => {
     expect(priceOptions(s, known, 6, [1])[0]!.demandBottles).toBeCloseTo(dPub, 6);
   });
 });
+
+describe('feedFor — 가리는 판의 위스키베이스 글 = 틱의 리뷰 점수 (F5d ⑥)', () => {
+  it('v16: 위스키베이스 글은 MonthReport.reviews의 점수 그대로(개수 · 값), 없으면 위스키베이스 글 없음', async () => {
+    const { feedFor } = await import('./feed');
+    const s = v16(); s.month = 61;
+    const p = product({ quality: 74, oakMonths: 130, abv: 0.58, qualityKnown: { est: 60, sigma: 6, reviews: 2, month: 60 } });
+    s.commerce.products = [p];
+    const rep = (month: number, reviews?: MonthReport['reviews']) => ({ month, sales: [sale('P', 2000)], ...(reviews ? { reviews } : {}) }) as unknown as MonthReport;
+    s.history.reports = [rep(59), rep(60, [{ productId: 'P', scores: [83, 77] }])];
+    const wb = feedFor(s, 1, 40).filter((x) => x.style === 'whiskybase');
+    expect(wb.map((x) => x.score).sort()).toEqual([77, 83]);
+    s.history.reports = [rep(59), rep(60)];
+    expect(feedFor(s, 1, 40).some((x) => x.style === 'whiskybase')).toBe(false);
+  });
+});
