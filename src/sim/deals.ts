@@ -1,13 +1,14 @@
 import { EQUIPMENT, logisticsCost } from './content/catalog';
 import { CATEGORY } from './content/categories';
 import { displayName, RETAILERS } from './content/names';
-import { regionOf, siteOf } from './content/regions';
+import { regionOf, siteOf, traditionalTaxFactor } from './content/regions';
 import { buyersFor } from './bulk';
-import { suggestedPrice } from './blending';
+import { isWhiskyCategory, suggestedPrice } from './blending';
+import { rulesVersionOf } from './rules';
 import { addModifier } from './modifiers';
 import { equipmentCost, outboundLogistics } from './sites';
 import type { Rng } from './rng';
-import type { GameState, MonthReport, OemContract, OemOffer, ProductCategory, RetailContract, RetailOffer } from './types';
+import type { GameState, MonthReport, OemContract, OemOffer, Product, ProductCategory, RetailContract, RetailOffer } from './types';
 import { nid } from './util';
 import { sellFromLots } from './lots';
 
@@ -48,6 +49,23 @@ export function makeRetailOffer(s: GameState, rng: Rng): RetailOffer {
 /** 납품이 재고를 가져가는 순서 — 그 범주의 재고 있는 제품(면세 한정판 제외)을 만든 순서대로. `fulfillRetail`과 화면(체결 확인의 "80%로 나갈 제품")이 같이 쓴다 */
 export const retailDrawOrder = (s: Pick<GameState, 'commerce'>, category: ProductCategory) =>
   s.commerce.products.filter((x) => x.category === category && x.stockBottles > 0 && !x.dutyFreeOnly).sort((a, b) => a.createdMonth - b.createdMonth);
+
+/**
+ * 납품 단가의 판매가 상한 — 제품 자기 기준가(판매 화면 기준가와 같은 식, 품질 · 숙성 · 주세 경감)의 이 배수 ([제안 P-MKT-46] 최소 수리, 값 [튜닝]).
+ * 납품 단가 = 그달 판매가 × 0.8이라, 계약 중 값을 올리면 납품 대금이 상한 없이 올랐다(값 하나로 한 달 80억 — mkt-stage-t 「납품 단가 구멍」).
+ * 4배: 7차 판 오너가 매긴 가장 높은 값이 기준가의 3.19배(김포 블렌디드 3년), 봇 자동 가격의 위 끝이 2배 — 정상 플레이는 걸리지 않는다
+ */
+export const RETAIL_PRICE_CAP_MULT = 4;
+
+/** 납품 단가를 매기는 판매가 — v16 캠페인은 min(판매가, 기준가 × 4). 옛 판 · 샌드박스는 판매가 그대로(바이트 동일, #337과 같은 범위 원칙) */
+export function retailPriceBasis(s: Pick<GameState, 'rulesVersion' | 'scenario' | 'commerce'> & Parameters<typeof regionOf>[0], p: Product): { price: number; capped: boolean; cap: number } {
+  if (!(rulesVersionOf(s) === 'v16' && !!s.scenario)) return { price: p.price, capped: false, cap: Infinity };
+  const region = regionOf(s);
+  const oak = isWhiskyCategory(p.category) ? p.oakMonths ?? (p.ageYears ?? 0) * 12 : null;
+  const base = suggestedPrice(region, p.category, p.bottleMl, p.quality, oak, p.abv, traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL), { oakMonths: p.oakMonths, restMonths: p.restMonths });
+  const cap = Math.round(base * RETAIL_PRICE_CAP_MULT);
+  return p.price > cap ? { price: cap, capped: true, cap } : { price: p.price, capped: false, cap };
+}
 
 /** 미납이 이만큼 쌓이면 계약이 깨진다 — 월 물량 × 이 값(`fulfillRetail`). 화면의 "파기까지 n병"과 같은 기준 */
 export const RETAIL_BREAK_MONTHS = 2;
@@ -160,8 +178,9 @@ export function fulfillRetail(s: GameState, report: MonthReport): void {
       const take = Math.min(need, p.stockBottles);
       p.stockBottles -= take;
       p.totalSold += take;
-      sellFromLots(s, report, p.id, take, { kind: 'domestic', settlement: 'receivable', unitPrice: p.price * c.priceFactor, channel: 'retail_deal' }); // F3 판매 사건 4(MKT): 대형 유통 납품(대금 paymentDelay개월 뒤)
-      amount += take * p.price * c.priceFactor;
+      const unit = retailPriceBasis(s, p).price * c.priceFactor; // [제안 P-MKT-46] v16 캠페인: 판매가가 기준가 × 4를 넘으면 그 값까지만
+      sellFromLots(s, report, p.id, take, { kind: 'domestic', settlement: 'receivable', unitPrice: unit, channel: 'retail_deal' }); // F3 판매 사건 4(MKT): 대형 유통 납품(대금 paymentDelay개월 뒤)
+      amount += take * unit;
       logistics += take * logisticsCost(p.bottleMl) * outbound;
       need -= take;
     }
