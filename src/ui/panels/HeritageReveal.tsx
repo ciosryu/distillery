@@ -1,7 +1,7 @@
 // 헤리티지 병입 연출 (#244, 2026-11-10 오너 요청 — "12년 동안 데스밸리를 견디며 묵혀 둔 캐스크를 병입하는 과정이 버튼 한 번으로 싱겁게 끝난다")
 // 10년 이상 통 · 플래그십이 되는 병입 직후 화면 가운데에 그 통의 연표(증류 → 통입 → 견딘 재해·통의 사고 → 샘플 → 이정표)와 새 제품을 보인다.
 // 연표는 병입 전 상태로 계산해 넘겨받는다(병입하면 통이 빈다). 화면만 — 규칙은 그대로
-import { campaignMinOakMonths, caskStory, heritageCasks, monthLabel, type BlendComponent, type BottleOptions, type CaskStory, type GameState, type Product } from '../../sim';
+import { campaignMinOakMonths, caskStory, heritageCasks, knownProductQuality, monthLabel, type BlendComponent, type BottleOptions, type CaskStory, type GameState, type Product } from '../../sim';
 import { useGame } from '../../store/game';
 import { months, num, pct, won } from '../format';
 import { Button } from '../kit';
@@ -43,7 +43,7 @@ export function HeritageReveal({ data, onClose }: { data: HeritageRevealData; on
           <div className="rounded-lg bg-stone-800/70 p-2"><div className="text-xs text-stone-400">숙성</div><div className="font-semibold">{months(main.oakMonths)}</div></div>
           <div className="rounded-lg bg-stone-800/70 p-2" title="처음 담은 양 기록이 없어 통 크기 대비 남은 양으로 어림"><div className="text-xs text-stone-400">엔젤스 셰어(어림)</div><div className="font-semibold">{pct(main.angelsShare, 0)}</div></div>
           <div className="rounded-lg bg-stone-800/70 p-2"><div className="text-xs text-stone-400">견딘 시련</div><div className="font-semibold">{trials}번</div></div>
-          <div className="rounded-lg bg-stone-800/70 p-2"><div className="text-xs text-stone-400">품질 · 출고가</div><div className="font-semibold">{data.product.quality} · {won(data.product.price)}</div></div>
+          <div className="rounded-lg bg-stone-800/70 p-2"><div className="text-xs text-stone-400">품질 · 출고가</div><div className="font-semibold">{(() => { const k = knownProductQuality(s, data.product); return k.public ? data.product.quality : `추정 ${num(k.q, 1)}${k.sigma >= 0.5 ? ` ±${num(k.sigma, 1)}` : ''}`; })()} · {won(data.product.price)}</div></div>
         </div>
         <p className="mt-3 text-center text-xs text-stone-500">월 결산 메모는 최근 120개월만 남아, 그보다 오래된 통의 사고는 연표에서 빠질 수 있다.</p>
         <div className="mt-4 flex justify-center"><Button variant="primary" onClick={onClose}>판매 목록으로</Button></div>
