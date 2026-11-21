@@ -371,9 +371,10 @@ function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead |
  * [제안 P-PROD-66] a·b (결정 #339 — 화면만) — 숙성 중 나무 통의 활성도와 12년 예상 탄닌 감점. 계산은 PROD `tanninOutlook`(원액 맛·레어를 읽지 않는 식 — 숨김 정보 아님).
  * 활성도를 아직 모르는 스팟 통(6개월 전)은 "?". 기상 이상치·재해는 빼서 실제보다 1~3 낮을 수 있다(어림). "채웠다 비우기" 요령은 말하지 않는다(#339)
  */
-/** 이보다 활성도가 낮으면 "나무 향 약함"을 붙인다 `[튜닝 — PROD 확인]` — 나무 추출(바닐라·스파이스·탄닌 모두)이 활성도에 비례해(maturation.ts) 감점 0이 "많이 쓴 통일수록 좋다"로 읽히지 않게(PM 대조: 5~7차 채움 0.05~0.13).
- * 스팟 골빈 통(0.15~0.35)은 PROD 계산에서 12년 품질이 높아 걸리지 않게 그 아래로 둔다 */
-export const LOW_ACTIVITY_NOTE = 0.15;
+/** 이보다 활성도가 낮으면(≈ 6차 채움 이상) 경고 — 탄닌 감점은 0이어도 나무 향(바닐라)이 약해져 12년 품질이 다시 내려간다 `[튜닝 — 단계 T]`.
+ * PROD 계산(7차 레시피 · 김포 랙 맨 아래, 버번 n차 채움): 12년 품질 1차 70.5 · 2차 84.3 · 3차 87.2 · 4차 86.5 · 5차 86.2 · 6차(0.08) 84.2 · 7차 81.6 · 8차 77.7.
+ * PM 대조: 감점 0만 보이면 "많이 쓴 통일수록 좋다"로 읽힌다. 원액 맛은 읽지 않는다(활성도만) */
+export const LOW_ACTIVITY_NOTE = 0.1;
 
 function TanninLine({ s, c }: { s: GameState; c: Cask }) {
   const o = tanninOutlook(s, c);
@@ -381,8 +382,8 @@ function TanninLine({ s, c }: { s: GameState; c: Cask }) {
   const yrs = Math.floor(o.atMonths / 12);
   const weak = o.activity < LOW_ACTIVITY_NOTE;
   return (
-    <div className={`text-[11px] ${o.penalty >= 5 ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`${yrs}년(${o.atMonths}개월) 무렵 오크·탄닌 약 ${Math.round(o.tannin)}(위스키 상한 ${o.cap}) → 품질 감점 약 ${Math.round(o.penalty)} · 지금까지 약 ${Math.round(o.now)} — 비울 때마다 활성도 ×${EMPTY_ACTIVITY_FACTOR}${weak ? ' · 활성도가 아주 낮으면 탄닌 감점은 없지만 바닐라·스파이스 같은 나무 향도 그만큼 적게 밴다' : ''}. 어림(기상 이상치·재해 제외)`}>
-      활성도 {o.activity.toFixed(2)} · {yrs}년 {o.penalty >= 0.5 ? `감점 약 ${Math.round(o.penalty)}` : '감점 없음'}{weak && ' · 나무 향 약함'}
+    <div className={`text-[11px] ${o.penalty >= 5 || weak ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`${yrs}년(${o.atMonths}개월) 무렵 오크·탄닌 약 ${Math.round(o.tannin)}(위스키 상한 ${o.cap}) → 품질 감점 약 ${Math.round(o.penalty)} · 지금까지 약 ${Math.round(o.now)} — 비울 때마다 활성도 ×${EMPTY_ACTIVITY_FACTOR} · 3년 위스키는 활성도 높은 통(새 통)이 빨리 익는다. 12년은 2~5번 쓴 통(활성도 0.6~0.13)이 가장 낫고, 0.1 아래는 나무 향이 모자라 12년 품질도 다시 내려간다. 어림(기상 이상치·재해 제외)`}>
+      활성도 {o.activity.toFixed(2)} · {yrs}년 {o.penalty >= 0.5 ? `감점 약 ${Math.round(o.penalty)}` : '감점 없음'}{weak && <div>나무 향이 약해진 통 — 12년 품질이 다시 내려간다</div>}
     </div>
   );
 }
