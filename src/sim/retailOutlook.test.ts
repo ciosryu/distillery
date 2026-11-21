@@ -62,3 +62,77 @@ describe('retailDrawOrder — 납품이 재고를 가져가는 순서 (화면 �
     expect(retailDrawOrder(s, 'whisky').map((p) => p.id)).toEqual(['A', 'B']);
   });
 });
+
+describe('[결정 #337] ① 제안 물량 ≤ 판매 속도 · ② 10년↑ 기본 납품 제외 — v16 캠페인만', () => {
+  const rep2 = (sales: [string, number][]) => ({ sales: sales.map(([productId, bottles]) => ({ productId, bottles })) });
+  const camp = (products: object[], reports: object[], over: object = {}) =>
+    ({ rulesVersion: 'v16', scenario: {}, commerce: { products, productArchive: [] }, history: { reports }, ...over }) as unknown as GameState;
+
+  it('retailRules337: v16 캠페인만 켜진다 — 옛 판 · 샌드박스(v16이지만 시나리오 없음)는 꺼짐', async () => {
+    const { retailRules337 } = await import('./deals');
+    expect(retailRules337({ rulesVersion: 'v16', scenario: {} } as unknown as GameState)).toBe(true);
+    expect(retailRules337({ rulesVersion: 'v16' } as unknown as GameState)).toBe(false);
+    expect(retailRules337({ scenario: {} } as unknown as GameState)).toBe(false); // rulesVersion 없음 = legacy-v15
+  });
+
+  it('retailVolumesFor: 판매 속도(품절 달 제외) 이하 물량만 · 판매 기록 없으면 없음 · 옛 판은 셋 다', async () => {
+    const { retailVolumesFor, RETAIL_VOLUMES } = await import('./deals');
+    const w = { id: 'W', category: 'whisky' };
+    // 7차 판처럼 위스키 월 265병 → 300도 못 받는다
+    expect(retailVolumesFor(camp([w], [rep2([['W', 265]]), rep2([['W', 265]]), rep2([['W', 265]])]), 'whisky')).toEqual([]);
+    // 품절 달(0)은 빼고 평균: 700 · 0 · 700 → 700 → 300 · 600
+    expect(retailVolumesFor(camp([w], [rep2([['W', 700]]), rep2([]), rep2([['W', 700]])]), 'whisky')).toEqual([300, 600]);
+    expect(retailVolumesFor(camp([w], [rep2([['W', 1000]])]), 'whisky')).toEqual([300, 600, 1000]);
+    expect(retailVolumesFor(camp([w], []), 'whisky')).toEqual([]);
+    expect(retailVolumesFor(camp([w], [], { rulesVersion: undefined }), 'whisky')).toEqual([...RETAIL_VOLUMES]);
+  });
+
+  it('retailDrawEligible: 면세 한정판은 늘 아니다 · 「납품 제외/넣기」가 먼저 · 안 골랐으면 v16 캠페인은 10년(120개월)↑ 제외', async () => {
+    const { retailDrawEligible, RETAIL_PREMIUM_OAK_MONTHS } = await import('./deals');
+    const c = camp([], []); const legacy = camp([], [], { rulesVersion: undefined });
+    expect(RETAIL_PREMIUM_OAK_MONTHS).toBe(120);
+    expect(retailDrawEligible(c, { oakMonths: 119 })).toBe(true);
+    expect(retailDrawEligible(c, { oakMonths: 120 })).toBe(false);
+    expect(retailDrawEligible(c, { oakMonths: 150, retailDraw: true })).toBe(true);
+    expect(retailDrawEligible(c, { oakMonths: 36, retailDraw: false })).toBe(false);
+    expect(retailDrawEligible(c, { oakMonths: 36, dutyFreeOnly: true, retailDraw: true })).toBe(false);
+    expect(retailDrawEligible(legacy, { oakMonths: 150 })).toBe(true); // 옛 판은 다 낸다(바이트 동일)
+    expect(retailDrawEligible(legacy, { oakMonths: 36, retailDraw: false })).toBe(false); // 직접 고른 것은 어느 판이든 따른다
+  });
+
+  it('makeRetailOffer: v16 캠페인은 맞는 물량이 있는 범주만, 없으면 null · 10년↑만 있는 범주도 후보가 아니다', async () => {
+    const { makeRetailOffer } = await import('./deals');
+    const { mulberry32 } = await import('./rng');
+    const { newScenarioGame } = await import('./newScenario');
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    const prod = (id: string, category: string, oakMonths: number | undefined, stockBottles = 2000) => ({ id, name: id, category, oakMonths, stockBottles, createdMonth: 1 }) as unknown as GameState['commerce']['products'][number];
+    s.commerce.products = [prod('W', 'whisky', 150), prod('S', 'soju_distilled', undefined)];
+    s.history.reports = [rep2([['W', 2000], ['S', 400]])] as unknown as GameState['history']['reports'];
+    for (let i = 0; i < 20; i++) {
+      const o = makeRetailOffer(s, mulberry32(i))!;
+      expect(o.category).toBe('soju_distilled'); // 12년 위스키는 납품에 못 나가므로 후보가 아니다
+      expect(o.bottlesPerMonth).toBe(300); // 소주 판매 400 → 300만
+    }
+    s.history.reports = [rep2([['W', 2000], ['S', 200]])] as unknown as GameState['history']['reports'];
+    expect(makeRetailOffer(s, mulberry32(1))).toBeNull();
+  });
+
+  it('retailOfferOutlook 재고는 납품이 실제로 가져갈 수 있는 것만(10년↑ 기본 제외)', async () => {
+    const c = camp([{ id: 'A', category: 'whisky', stockBottles: 500, oakMonths: 40, createdMonth: 1 }, { id: 'B', category: 'whisky', stockBottles: 273, oakMonths: 132, createdMonth: 2 }], []);
+    expect(retailOfferOutlook(c, { category: 'whisky', bottlesPerMonth: 1000, penaltyPerBottle: 7680 }).stock).toBe(500);
+  });
+});
+
+describe('setProductRetail — 제품별 납품 넣기 · 빼기 (#337 ② (가))', () => {
+  it('include true · false는 필드로, 없으면 지운다(기본 규칙)', async () => {
+    const { applyAction } = await import('./index');
+    const { newScenarioGame } = await import('./newScenario');
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
+    s.commerce.products = [{ id: 'P', name: '김포 11년', category: 'whisky', oakMonths: 132, stockBottles: 273, createdMonth: 1 } as unknown as GameState['commerce']['products'][number]];
+    const a = applyAction(s, { type: 'setProductRetail', productId: 'P', include: true });
+    expect(a.state.commerce.products[0]!.retailDraw).toBe(true);
+    const b = applyAction(a.state, { type: 'setProductRetail', productId: 'P' });
+    expect('retailDraw' in b.state.commerce.products[0]!).toBe(false);
+    expect(applyAction(s, { type: 'setProductRetail', productId: 'X', include: false }).error).toBeTruthy();
+  });
+});

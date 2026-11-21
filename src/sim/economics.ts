@@ -14,6 +14,7 @@ import { outboundLogistics } from './sites';
 import { calendar, warehouseCapacity } from './util';
 import { FLAGSHIP_RESERVE_TAG, preferredCaskIds, protectedCaskIds, reserveCaskIds, tagDef } from './tags';
 import { spotBidPerLPA } from './bulk';
+import { categoryMonthlySales, SALES_LOOKBACK } from './salesPace';
 import { campaignMinOakMonths } from './rules';
 import { campaignWon } from './ledger';
 import { cooperageLeadMonths } from './prodKnobs';
@@ -122,18 +123,8 @@ export function recipeEconomics(s: GameState, recipe: Recipe): EconomicsRow[] {
 // 1차 플레이테스트: 소주 1제품을 15,271병(판매 186개월 치) 병입해 현금이 묶였고, 2~5년 차 생산을 줄여 7~8년 차 위스키가 끊겼다.
 // 병입 전에 "이만큼이면 몇 개월 치인가", 생산 지시 옆에 "몇 년 뒤 위스키가 얼마나 나오나"를 보인다. 게임 상태를 바꾸지 않는다.
 
-/** 이 범주의 판매 속도(병/월) — 최근 12개월 안에서 판매가 있었던 달 3개의 평균(품절 달 제외). 판매 기록이 없으면 null */
-export function categoryMonthlySales(s: GameState, category: ProductCategory): number | null {
-  const ids = new Set([...s.commerce.products, ...(s.commerce.productArchive ?? [])].filter((p) => p.category === category).map((p) => p.id));
-  const recent = s.history.reports.slice(-SALES_LOOKBACK.months);
-  if (!recent.length) return null;
-  // 품절 달은 판매도 수요도 기록되지 않는다(domesticDemands·runSales가 재고 0을 건너뜀, MKT #733) → 0인 달을 평균에 넣으면 품절일수록 속도가 낮아 보인다.
-  // 7차 판 끝: 위스키가 다 품절이라 연 1,560병 → 공급 전망이 "남아 쌓임", 생산 되돌리기 안내(#725)와 엇갈렸다. 판매가 있었던 달만 최근 n개를 평균한다
-  const per = recent.map((r) => r.sales.filter((x) => ids.has(x.productId)).reduce((u, x) => u + x.bottles, 0)).filter((n) => n > 0).slice(-SALES_LOOKBACK.soldMonths);
-  return per.length ? per.reduce((a, n) => a + n, 0) / per.length : null;
-}
-/** 범주 판매 속도 — 최근 months개월 안에서 판매가 있었던 달 soldMonths개의 평균 (품절 달 제외, PROD 2026-11-20 · MKT #733 (가)) */
-export const SALES_LOOKBACK = { months: 12, soldMonths: 3 } as const;
+// 판매 속도(categoryMonthlySales · SALES_LOOKBACK)는 잎 모듈 salesPace.ts로 옮겼다 — deals.ts가 쓰면 deals → economics → production → deals 순환이 생겨서(#337 ①). 여기서 다시 내보낸다
+export { categoryMonthlySales, SALES_LOOKBACK } from './salesPace';
 
 /** 이 범주의 지금 재고(병, 국내 매대) */
 export const categoryStock = (s: GameState, category: ProductCategory): number =>

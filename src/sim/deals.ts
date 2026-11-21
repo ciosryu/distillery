@@ -7,9 +7,11 @@ import { suggestedPrice } from './blending';
 import { addModifier } from './modifiers';
 import { equipmentCost, outboundLogistics } from './sites';
 import type { Rng } from './rng';
-import type { GameState, MonthReport, OemContract, OemOffer, ProductCategory, RetailContract, RetailOffer } from './types';
+import type { GameState, MonthReport, OemContract, OemOffer, Product, ProductCategory, RetailContract, RetailOffer } from './types';
 import { nid } from './util';
 import { sellFromLots } from './lots';
+import { rulesVersionOf } from './rules';
+import { categoryMonthlySales } from './salesPace';
 
 // 입지 대표 거래 (결정 #88·#89, docs/design/regions.md §6.2) — 경기: 대형 유통 납품 / 간토: 위탁생산(OEM). 수치 [튜닝]
 
@@ -31,13 +33,39 @@ const RETAIL_SPEC: Partial<Record<ProductCategory, { ml: number; abv: number; oa
   whisky: { ml: 700, abv: 0.46, oakMonths: 36 },
 };
 
-export function makeRetailOffer(s: GameState, rng: Rng): RetailOffer {
-  const owned = [...new Set(s.commerce.products.filter((p) => p.stockBottles > 0 && !p.dutyFreeOnly && RETAIL_SPEC[p.category]).map((p) => p.category))];
-  const category = owned.length ? rng.pick(owned) : 'soju_distilled';
+/**
+ * 납품 규칙 묶음 #337(① 물량 맞춤 · ② 10년↑ 기본 제외)이 켜진 판인가 — **v16 캠페인(시나리오가 있는 판)만**.
+ * 옛 판(`legacy-v15`, X0L)과 샌드박스(`newGame` — v16이지만 시나리오 없음, `balance-sim`)는 지금 규칙 그대로(바이트 동일).
+ * 조건을 판 성격으로 두는 것은 `rules.ts baseWageDrift`(#330)와 같은 방식
+ */
+export const retailRules337 = (s: Pick<GameState, 'rulesVersion' | 'scenario'>): boolean => rulesVersionOf(s) === 'v16' && !!s.scenario;
+
+/** 대형 유통 제안의 월 물량 후보 — 지금 값 [튜닝] */
+export const RETAIL_VOLUMES = [300, 600, 1000] as const;
+
+/**
+ * 이 범주에 올 수 있는 월 물량 ([결정 #337] ① — 7차 판: 판매 월 265 · 296병인 몰트 위스키에 1,000병 계약 2건이 와서 둘 다 깨졌다).
+ * v16 캠페인: 그 범주 판매 속도(`categoryMonthlySales` — 품절 달 제외, 화면 납품 줄과 같은 수) 이하인 물량만. 판매 기록이 없으면 없음.
+ * 옛 판(`legacy-v15`)·샌드박스: 지금처럼 셋 다(바이트 동일, `retailRules337`)
+ */
+export function retailVolumesFor(s: Pick<GameState, 'commerce' | 'history' | 'rulesVersion' | 'scenario'>, category: ProductCategory): number[] {
+  if (!retailRules337(s)) return [...RETAIL_VOLUMES];
+  const pace = categoryMonthlySales(s, category);
+  return pace == null ? [] : RETAIL_VOLUMES.filter((v) => v <= pace);
+}
+
+/** 제안이 없으면 null — v16 캠페인에서 판매 속도에 맞는 물량이 있는 범주가 하나도 없을 때(#337 ①) */
+export function makeRetailOffer(s: GameState, rng: Rng): RetailOffer | null {
+  const owned = [...new Set(s.commerce.products.filter((p) => p.stockBottles > 0 && RETAIL_SPEC[p.category] && retailDrawEligible(s, p)).map((p) => p.category))];
+  const v16 = retailRules337(s);
+  // 난수 순서는 그대로: 범주 → 상대 → 물량. v16은 맞는 물량이 있는 범주만 후보로 둔다
+  const cands = v16 ? owned.filter((c) => retailVolumesFor(s, c).length > 0) : owned;
+  if (v16 && !cands.length) return null;
+  const category = cands.length ? rng.pick(cands) : 'soju_distilled';
   const spec = RETAIL_SPEC[category]!;
   const ref = suggestedPrice(regionOf(s), category, spec.ml, 60, spec.oakMonths, spec.abv);
   return {
-    id: nid(s, 'U'), partner: displayName(rng.pick(RETAILERS)), category, bottlesPerMonth: rng.pick([300, 600, 1000]),
+    id: nid(s, 'U'), partner: displayName(rng.pick(RETAILERS)), category, bottlesPerMonth: rng.pick(retailVolumesFor(s, category)),
     priceFactor: RETAIL_DEAL.priceFactor, termMonths: RETAIL_DEAL.termMonths, paymentDelay: RETAIL_DEAL.paymentDelay,
     penaltyPerBottle: Math.round((ref * RETAIL_DEAL.penaltyShare) / 10) * 10, expiresMonth: s.month + 3,
   };
@@ -46,8 +74,21 @@ export function makeRetailOffer(s: GameState, rng: Rng): RetailOffer {
 /** 전용 증류기 설비 패키지 설치비 (입지 건설비 반영) */
 /** 납품 계약을 우리가 해지할 때 내는 비용 — 남은 개월 × 월 물량 × 병당 위약금의 절반. 해지 명령과 확인 미리보기(#240)가 같이 쓴다 */
 /** 납품이 재고를 가져가는 순서 — 그 범주의 재고 있는 제품(면세 한정판 제외)을 만든 순서대로. `fulfillRetail`과 화면(체결 확인의 "80%로 나갈 제품")이 같이 쓴다 */
-export const retailDrawOrder = (s: Pick<GameState, 'commerce'>, category: ProductCategory) =>
-  s.commerce.products.filter((x) => x.category === category && x.stockBottles > 0 && !x.dutyFreeOnly).sort((a, b) => a.createdMonth - b.createdMonth);
+export const retailDrawOrder = (s: Pick<GameState, 'commerce' | 'rulesVersion' | 'scenario'>, category: ProductCategory) =>
+  s.commerce.products.filter((x) => x.category === category && x.stockBottles > 0 && retailDrawEligible(s, x)).sort((a, b) => a.createdMonth - b.createdMonth);
+
+/** 이 숙성(목재 개월) 이상 제품은 v16 캠페인에서 기본으로 납품에 내지 않는다 ([결정 #337] ② (가) — 7차 판: 김포 11년 273병이 출고가 80%에 나갔다). 값 [튜닝] */
+export const RETAIL_PREMIUM_OAK_MONTHS = 120;
+
+/**
+ * 이 제품을 대형 유통 납품에 낼 수 있나 — 면세 한정판은 늘 아니다. 「납품 제외」(`retailDraw`)를 고르면 그대로,
+ * 안 골랐으면 v16 캠페인은 10년↑을 뺀다(옛 판 · 샌드박스는 다 낸다 — 바이트 동일)
+ */
+export function retailDrawEligible(s: Pick<GameState, 'rulesVersion' | 'scenario'>, p: Pick<Product, 'dutyFreeOnly' | 'retailDraw' | 'oakMonths'>): boolean {
+  if (p.dutyFreeOnly) return false;
+  if (p.retailDraw != null) return p.retailDraw;
+  return !(retailRules337(s) && (p.oakMonths ?? 0) >= RETAIL_PREMIUM_OAK_MONTHS);
+}
 
 /** 미납이 이만큼 쌓이면 계약이 깨진다 — 월 물량 × 이 값(`fulfillRetail`). 화면의 "파기까지 n병"과 같은 기준 */
 export const RETAIL_BREAK_MONTHS = 2;
@@ -57,15 +98,14 @@ export const retailBreakRemaining = (c: Pick<RetailContract, 'bottlesPerMonth' |
 
 /**
  * 납품 제안을 받기 전에 보는 전망 ([제안 P-MKT-42] ⓐ — 6차 판: 두 번째 소주 계약을 원액 탱크가 빈 채로 받았다). 화면 계산만, 규칙 불변.
- * - stock: 그 범주 병 재고(면세 한정판 제외) — 납품은 이 재고에서 먼저 나간다
+ * - stock: 그 범주에서 납품이 가져갈 수 있는 병 재고(면세 한정판 · 「납품 제외」 빼고) — 납품은 이 재고에서 먼저 나간다
  * - 최근 판매 속도는 여기서 세지 않는다 — 화면이 PROD `categoryMonthlySales`(품절 달 제외, `SALES_LOOKBACK`)를 그대로 쓴다.
  *   병입 · 공급 전망과 같은 숫자를 보이려는 것(PM 2026-11-20). deals → economics → production → deals 순환을 피해 화면에서 부른다
  * - coverMonths: 지금 재고로 이 계약을 몇 달 채우나(국내 판매는 빼지 않은 낙관값)
  * - penaltyPerMonth: 한 달을 통째로 못 채우면 무는 위약금
  */
-export function retailOfferOutlook(s: Pick<GameState, 'commerce'>, o: Pick<RetailOffer, 'category' | 'bottlesPerMonth' | 'penaltyPerBottle'>) {
-  const ids = new Set(s.commerce.products.filter((p) => p.category === o.category && !p.dutyFreeOnly).map((p) => p.id));
-  const stock = s.commerce.products.filter((p) => ids.has(p.id)).reduce((t, p) => t + p.stockBottles, 0);
+export function retailOfferOutlook(s: Pick<GameState, 'commerce' | 'rulesVersion' | 'scenario'>, o: Pick<RetailOffer, 'category' | 'bottlesPerMonth' | 'penaltyPerBottle'>) {
+  const stock = retailDrawOrder(s, o.category).reduce((t, p) => t + p.stockBottles, 0); // 납품이 실제로 가져갈 수 있는 재고(「납품 제외」 · 면세 한정판 빼고)
   return { stock, coverMonths: o.bottlesPerMonth > 0 ? stock / o.bottlesPerMonth : Infinity, penaltyPerMonth: o.bottlesPerMonth * o.penaltyPerBottle };
 }
 
@@ -112,7 +152,10 @@ export function refreshDeals(s: GameState, rng: Rng, report?: MonthReport): void
   for (const o of s.commerce.retailOffers) if (o.expiresMonth <= s.month) report?.notes.push(`${o.partner} 납품 제안 만료 — ${CATEGORY[o.category].nameKo} ${o.bottlesPerMonth.toLocaleString()}병/월 (받지 않음)`);
   s.commerce.retailOffers = s.commerce.retailOffers.filter((o) => o.expiresMonth > s.month);
   s.b2b.oemOffers = s.b2b.oemOffers.filter((o) => o.expiresMonth > s.month);
-  if (deals.includes('retail') && !s.commerce.retailOffers.length && s.commerce.retailContracts.length < RETAIL_DEAL.maxActive && rng.chance(RETAIL_DEAL.offerChance)) s.commerce.retailOffers.push(makeRetailOffer(s, rng));
+  if (deals.includes('retail') && !s.commerce.retailOffers.length && s.commerce.retailContracts.length < RETAIL_DEAL.maxActive && rng.chance(RETAIL_DEAL.offerChance)) {
+    const o = makeRetailOffer(s, rng);
+    if (o) s.commerce.retailOffers.push(o);
+  }
   if (deals.includes('oem') && !s.b2b.oemOffers.length && s.b2b.oemContracts.length < OEM.maxActive && rng.chance(oemSpareBatches(s) >= 2 ? OEM.offerChanceSpare : OEM.offerChance)) {
     const o = makeOemOffer(s, rng);
     if (o) s.b2b.oemOffers.push(o);
