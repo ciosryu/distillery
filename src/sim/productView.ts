@@ -70,6 +70,17 @@ export function mergeQualityKnown(old: Pick<Product, 'quality' | 'qualityKnown' 
   };
 }
 
+/**
+ * 보충 뒤 품질 미리보기 (PROD 요청 — `Bottling.tsx` 보충 줄의 혼합 식을 코어로) — 남은 재고의 품질(화면이 아는 값)과 새 배치(병입 때 추정 또는 참값)를
+ * 병 수로 가중한다. 병입 행동의 실제 합치기(`mergeQualityKnown` · `restockedProduct`)와 같은 가중이라 미리보기와 결과가 어긋나지 않는다
+ */
+export function restockMix(before: { q: number; sigma: number }, beforeBottles: number, batch: { q: number; sigma: number }, batchBottles: number): { stock: number; w: number; q: number; sigma: number } {
+  const a = Math.max(0, beforeBottles);
+  const b = Math.max(0, batchBottles);
+  const w = a + b > 0 ? b / (a + b) : 1;
+  return { stock: a + b, w, q: before.q + (batch.q - before.q) * w, sigma: Math.sqrt(((1 - w) * before.sigma) ** 2 + (w * batch.sigma) ** 2) };
+}
+
 const sameList = (a?: readonly string[], b?: readonly string[]) => (a ?? []).join('|') === (b ?? []).join('|');
 
 /**
