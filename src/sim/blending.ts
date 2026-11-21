@@ -473,7 +473,10 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   const p = previewBlend(s, components, opts);
   if (!p.ok || !p.category || !p.evaluation) return { error: p.errors.join(' / ') || '병입할 수 없습니다' };
   // F5d(#338, ARCH 코어 대행): 병입 때 아는 품질 — 원액을 빼기 **전에** 추정한다(estimateBlend는 남은 원액을 읽는다). 옛 판은 쓰지 않는다(출력 불변)
-  const knownBatch = hidesProductQuality(s) ? bottledQualityKnown(estimateBlend(s, components), p.kind ?? 'malt', s.month) : undefined;
+  // 통 원액이 없으면(탱크만 — 막 만든 원액이라 향미를 다 안다) 숨길 것이 없다 → 병입 평가 그대로(도수·여과 등 병입 단계 보정 포함, 오차 0).
+  // estimateBlend의 원액별 품질 가중 평균을 쓰면 병입 보정만큼(약 3점) 늘 낮고 오차 0이라 리뷰가 고치지 못했다(MKT F5d-2 진단 — 소주). 통이 섞이면 샘플 추정
+  const estB = hidesProductQuality(s) ? estimateBlend(s, components) : null;
+  const knownBatch = !estB ? undefined : !estB.fromCasks ? { est: Math.round(p.evaluation.quality * 10) / 10, sigma: 0, reviews: 0, month: s.month, hex: hexOf(p.flavor) } : bottledQualityKnown(estB, p.kind ?? 'malt', s.month);
   // 블렌딩 테이블 (결정 #124): 원액을 빼기 전에 블렌더가 아는 값으로 예상 육각형을 만든다 (공개 연출용).
   // 캐스크는 샘플 기록(#157) — 기록이 없는 캐스크는 예상에서 빠진다. 탱크 원액은 우리가 막 만든 것이라 참값으로 안다(#162의 estimateBlend와 같은 규칙)
   const known = knownReads(s);
