@@ -251,12 +251,16 @@ export function knownView(s: GameState, p: Product): Product {
   return { ...p, quality: knownProductQuality(s, p).q };
 }
 
+/** F5d — 진열 전체를 아는 품질로 바꾼 상태 사본(계획 · 화면용). 옛 판은 같은 객체 */
+export function knownState(s: GameState): GameState {
+  return hidesProductQuality(s) ? { ...s, commerce: { ...s.commerce, products: s.commerce.products.map((x) => knownView(s, x)) } } : s;
+}
+
 export function priceOptions(s: GameState, p0: Product, monthOfYear: number, factors: readonly number[] = [0.8, 0.9, 1, 1.1, 1.25, 1.5]): PriceOption[] {
   const logistics = outboundLogistics(s);
   // F5d: 이 제품과 형제 모두 아는 품질로(형제의 참값이 진열 나눔으로 새지 않게). 옛 판은 같은 배열 — 바이트 동일
-  const known = hidesProductQuality(s) ? { ...s, commerce: { ...s.commerce, products: s.commerce.products.map((x) => knownView(s, x)) } } : s;
   const p = knownView(s, p0);
-  s = known;
+  s = knownState(s);
   return factors.map((f) => {
     const q: Product = { ...p, price: Math.max(100, Math.round((p.price * f) / 100) * 100) };
     // 값이 바뀌면 같은 카테고리 안의 몫도 바뀐다 — 이 제품만 바꾼 진열로 다시 나눈다 (재고가 없으면 혼자일 때)
