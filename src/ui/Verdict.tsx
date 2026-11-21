@@ -1,4 +1,5 @@
 import { GRADE, monthLabel, rulesVersionOf, timelineOf, type GameState, type GoalCheck } from '../sim';
+import { GRADE_NOTE } from './gradeHints'; // 결정 #339 결과 화면 문구(MGT)
 import { winLabel } from './winLabel'; // F5c-2 승리 채널 문구
 import { MILESTONES } from '../sim/content/milestones';
 import { useGame } from '../store/game';
@@ -63,6 +64,7 @@ export function Verdict({ s, onNewGame }: { s: GameState; onNewGame: () => void 
             <>
               {/* 6차 판 뒤(PM 배정): 순자산 칸을 "등급 S 조건"으로 — 세 조건을 모두 채우면 S, 하나라도 모자라면 A(승리 조건은 위 한 줄뿐) */}
               <h3 className="mb-1 mt-3 text-sm font-semibold">등급 S 조건 <span className="font-normal text-stone-500">— 셋 다 채우면 S, 아니면 A</span></h3>
+              <p className="mb-1 text-xs text-stone-500">{GRADE_NOTE.meaning}</p>
               <ul className="space-y-1 text-sm">
                 {sGradeRows(v).map((r) => (
                   <li key={r.id} className="flex items-baseline justify-between gap-3">
@@ -71,10 +73,12 @@ export function Verdict({ s, onNewGame }: { s: GameState; onNewGame: () => void 
                   </li>
                 ))}
               </ul>
+              {/* 결정 #339 — 등급은 승리 순간의 성적표 · 성과 기준은 15년 기준이라는 맥락(값·판정식은 단계 T) — 순자산 미달일 때만 */}
+              {!sGradeRows(v).find((r) => r.id === 's-networth')!.ok && <p className="mt-1 text-xs text-stone-500">{GRADE_NOTE.netWorthShort}</p>}
             </>
           )}
           <p className="mt-2 text-xs text-stone-500">
-            순자산 = 지금 정리하면 받는 돈(현금 − 대출 + 매출채권 + 원액 현물가 + 재고 원가).{legacy && <> 브랜드 인지도 {(v.awareness * 100).toFixed(1)}%.
+            순자산 = 지금 정리하면 받는 돈(현금 − 대출 + 매출채권 + 원액 현물가 + 재고 원가).{!legacy && <> {GRADE_NOTE.once}</>}{legacy && <> 브랜드 인지도 {(v.awareness * 100).toFixed(1)}%.
             S등급: 목표 달성 + 순자산 목표의 {GRADE.sNetWorthRatio}배 + 플래그십 품질 {GRADE.sFlagshipQuality}↑ + 인지도 {GRADE.sAwareness * 100}%↑</>}
           </p>
           {v.result === 'achieved' && <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">순자산 목표를 채웠다. 12년 플래그십까지 냈다면 헤리티지(A·S) — 다음 판에는 가장 오래된 통을 "플래그십 예비"로 남겨 두라.</p>}
