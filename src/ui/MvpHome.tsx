@@ -371,13 +371,18 @@ function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead |
  * [제안 P-PROD-66] a·b (결정 #339 — 화면만) — 숙성 중 나무 통의 활성도와 12년 예상 탄닌 감점. 계산은 PROD `tanninOutlook`(원액 맛·레어를 읽지 않는 식 — 숨김 정보 아님).
  * 활성도를 아직 모르는 스팟 통(6개월 전)은 "?". 기상 이상치·재해는 빼서 실제보다 1~3 낮을 수 있다(어림). "채웠다 비우기" 요령은 말하지 않는다(#339)
  */
+/** 이보다 활성도가 낮으면 "나무 향 약함"을 붙인다 `[튜닝 — PROD 확인]` — 나무 추출(바닐라·스파이스·탄닌 모두)이 활성도에 비례해(maturation.ts) 감점 0이 "많이 쓴 통일수록 좋다"로 읽히지 않게(PM 대조: 5~7차 채움 0.05~0.13).
+ * 스팟 골빈 통(0.15~0.35)은 PROD 계산에서 12년 품질이 높아 걸리지 않게 그 아래로 둔다 */
+export const LOW_ACTIVITY_NOTE = 0.15;
+
 function TanninLine({ s, c }: { s: GameState; c: Cask }) {
   const o = tanninOutlook(s, c);
   if (!o) return <div className="text-[11px] text-stone-500" title="스팟 통의 활성도는 6개월 숙성 뒤에 드러난다">활성도 ?</div>;
   const yrs = Math.floor(o.atMonths / 12);
+  const weak = o.activity < LOW_ACTIVITY_NOTE;
   return (
-    <div className={`text-[11px] ${o.penalty >= 5 ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`${yrs}년(${o.atMonths}개월) 무렵 오크·탄닌 약 ${Math.round(o.tannin)}(위스키 상한 ${o.cap}) → 품질 감점 약 ${Math.round(o.penalty)} · 지금까지 약 ${Math.round(o.now)} — 비울 때마다 활성도 ×${EMPTY_ACTIVITY_FACTOR}. 어림(기상 이상치·재해 제외)`}>
-      활성도 {o.activity.toFixed(2)} · {yrs}년 {o.penalty >= 0.5 ? `감점 약 ${Math.round(o.penalty)}` : '감점 없음'}
+    <div className={`text-[11px] ${o.penalty >= 5 ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`${yrs}년(${o.atMonths}개월) 무렵 오크·탄닌 약 ${Math.round(o.tannin)}(위스키 상한 ${o.cap}) → 품질 감점 약 ${Math.round(o.penalty)} · 지금까지 약 ${Math.round(o.now)} — 비울 때마다 활성도 ×${EMPTY_ACTIVITY_FACTOR}${weak ? ' · 활성도가 아주 낮으면 탄닌 감점은 없지만 바닐라·스파이스 같은 나무 향도 그만큼 적게 밴다' : ''}. 어림(기상 이상치·재해 제외)`}>
+      활성도 {o.activity.toFixed(2)} · {yrs}년 {o.penalty >= 0.5 ? `감점 약 ${Math.round(o.penalty)}` : '감점 없음'}{weak && ' · 나무 향 약함'}
     </div>
   );
 }
