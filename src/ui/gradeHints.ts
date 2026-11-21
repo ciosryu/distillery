@@ -1,6 +1,7 @@
 // 등급 화면 힌트 (결정 #339 — 등급은 "승리 순간의 성적표" · 지금 만드는 것은 화면만, 값·규칙·판정식은 단계 T).
 // 순수 함수만 둔다(스토어를 읽지 않아 Node 테스트·봇에서 불러도 된다). 숨김 정보(원액 맛에서 셈한 12년 예상 품질)는 쓰지 않는다
 import { GRADE, rulesVersionOf, type GameState } from '../sim';
+import { EMPTY_ACTIVITY_FACTOR } from '../sim/maturation';
 
 /** 판 초반 힌트를 보이는 기간(개월) — 12년 승리 통은 대개 첫 1~2년에 채운 통이다([제안 P-PROD-66] e, PROD `prod-flagship-quality80.md`) */
 export const EARLY_CASK_HINT_MONTHS = 24;
@@ -12,7 +13,7 @@ export const EARLY_CASK_HINT_MONTHS = 24;
  */
 export function flagshipCaskHint(s: GameState): string | null {
   if (rulesVersionOf(s) === 'legacy-v15' || s.month >= EARLY_CASK_HINT_MONTHS) return null;
-  return `12년 플래그십 품질은 통의 활성도(나무가 맛을 내는 세기)가 가른다 — 새 통(활성도 1.0)은 12년이면 오크·탄닌이 위스키 상한을 넘어 감점된다. 한 번 비웠다 다시 쓰는 통이나 스팟 매입의 골빈 통처럼 활성도가 낮은 통이 12년용으로 낫다. 12년 품질 ${GRADE.sFlagshipQuality}은 등급 S 조건이다`;
+  return `12년 플래그십 품질은 통의 활성도(나무가 맛을 내는 세기)가 가른다 — 새 통(활성도 1.0)은 12년이면 오크·탄닌이 위스키 상한을 넘어 감점된다. 이미 한 번 이상 쓴 재사용 통(비울 때마다 활성도 ×${EMPTY_ACTIVITY_FACTOR})이나 스팟 매입의 골빈 통처럼 활성도가 낮은 통이 12년용으로 낫다(숙성 중 통 표의 「활성도 · 12년 감점」). 12년 품질 ${GRADE.sFlagshipQuality}은 등급 S 조건이다`;
 }
 
 /**
