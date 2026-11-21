@@ -232,12 +232,13 @@ export function Bottling() {
   const pickRestock = (p: Product) => setOpts({ ...opts, packaging: p.packaging, restockId: p.id, name: '', bottleMl: p.bottleMl, targetAbv: isCaskStrength(p) ? 'cask' : p.abv, chillFilter: p.chillFiltered, packagingId: p.packagingId, dutyFreeOnly: false, targetId: undefined, line: undefined });
   // 보충 뒤 품질 예상 — 남은 재고와 새 병의 가중 평균(코어 `restockMix` — 병입 행동의 합치기와 같은 가중, F5d PROD 요청). 시나리오 게임은 새 원액을 병입 때 추정
   // (`bottledQualityKnown` — 기록 없는 몫은 사전값)으로, 남은 재고는 화면이 아는 품질(`knownProductQuality` — F5d 전 제품은 참값)로 섞는다
-  const restockBefore = restockTarget ? (masked ? knownProductQuality(s, restockTarget) : { q: restockTarget.quality, sigma: 0 }) : null;
+  // 남은 재고를 숨길지는 판(시나리오 = hide)으로 가른다 — masked는 "이번 원액이 통 샘플 추정인가"라 탱크 원액 보충 때 참값이 샜다(PROD 검토)
+  const restockBefore = restockTarget ? (hide ? knownProductQuality(s, restockTarget) : { q: restockTarget.quality, sigma: 0 }) : null;
   const restockAfter = (() => {
     if (!restockTarget || !restockBefore || !preview?.ok || !preview.evaluation) return null;
     const batch = masked ? (est?.quality == null ? null : (({ est: q, sigma }) => ({ q, sigma }))(bottledQualityKnown(est, preview.kind ?? 'malt', s.month))) : { q: preview.evaluation.quality, sigma: 0 };
     const m = restockMix(restockBefore, restockTarget.stockBottles, batch ?? { q: 0, sigma: 0 }, preview.bottles);
-    return { stock: m.stock, w: m.w, quality: batch ? m.q : null, sigma: masked ? m.sigma : 0 };
+    return { stock: m.stock, w: m.w, quality: batch ? m.q : null, sigma: hide ? m.sigma : 0 };
   })();
 
   return (
