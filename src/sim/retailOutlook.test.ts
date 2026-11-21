@@ -63,16 +63,16 @@ describe('retailDrawOrder — 납품이 재고를 가져가는 순서 (화면 �
   });
 });
 
-describe('[제안 P-MKT-43] ① 제안 물량 ≤ 판매 속도 · ② 10년↑ 기본 납품 제외 — v16 캠페인만', () => {
+describe('[결정 #337] ① 제안 물량 ≤ 판매 속도 · ② 10년↑ 기본 납품 제외 — v16 캠페인만', () => {
   const rep2 = (sales: [string, number][]) => ({ sales: sales.map(([productId, bottles]) => ({ productId, bottles })) });
   const camp = (products: object[], reports: object[], over: object = {}) =>
     ({ rulesVersion: 'v16', scenario: {}, commerce: { products, productArchive: [] }, history: { reports }, ...over }) as unknown as GameState;
 
-  it('retailRulesP43: v16 캠페인만 켜진다 — 옛 판 · 샌드박스(v16이지만 시나리오 없음)는 꺼짐', async () => {
-    const { retailRulesP43 } = await import('./deals');
-    expect(retailRulesP43({ rulesVersion: 'v16', scenario: {} } as unknown as GameState)).toBe(true);
-    expect(retailRulesP43({ rulesVersion: 'v16' } as unknown as GameState)).toBe(false);
-    expect(retailRulesP43({ scenario: {} } as unknown as GameState)).toBe(false); // rulesVersion 없음 = legacy-v15
+  it('retailRules337: v16 캠페인만 켜진다 — 옛 판 · 샌드박스(v16이지만 시나리오 없음)는 꺼짐', async () => {
+    const { retailRules337 } = await import('./deals');
+    expect(retailRules337({ rulesVersion: 'v16', scenario: {} } as unknown as GameState)).toBe(true);
+    expect(retailRules337({ rulesVersion: 'v16' } as unknown as GameState)).toBe(false);
+    expect(retailRules337({ scenario: {} } as unknown as GameState)).toBe(false); // rulesVersion 없음 = legacy-v15
   });
 
   it('retailVolumesFor: 판매 속도(품절 달 제외) 이하 물량만 · 판매 기록 없으면 없음 · 옛 판은 셋 다', async () => {
@@ -123,7 +123,7 @@ describe('[제안 P-MKT-43] ① 제안 물량 ≤ 판매 속도 · ② 10년↑ 
   });
 });
 
-describe('setProductRetail — 제품별 납품 넣기 · 빼기 (P-MKT-43 ② (가))', () => {
+describe('setProductRetail — 제품별 납품 넣기 · 빼기 (#337 ② (가))', () => {
   it('exclude · include는 필드로, mode 없음은 지운다(기본 규칙)', async () => {
     const { applyAction } = await import('./index');
     const { newScenarioGame } = await import('./newScenario');

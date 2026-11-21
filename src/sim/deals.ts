@@ -34,30 +34,30 @@ const RETAIL_SPEC: Partial<Record<ProductCategory, { ml: number; abv: number; oa
 };
 
 /**
- * 납품 규칙 묶음 P-MKT-43(① 물량 맞춤 · ② 10년↑ 기본 제외)이 켜진 판인가 — **v16 캠페인(시나리오가 있는 판)만**.
+ * 납품 규칙 묶음 #337(① 물량 맞춤 · ② 10년↑ 기본 제외)이 켜진 판인가 — **v16 캠페인(시나리오가 있는 판)만**.
  * 옛 판(`legacy-v15`, X0L)과 샌드박스(`newGame` — v16이지만 시나리오 없음, `balance-sim`)는 지금 규칙 그대로(바이트 동일).
  * 조건을 판 성격으로 두는 것은 `rules.ts baseWageDrift`(#330)와 같은 방식
  */
-export const retailRulesP43 = (s: Pick<GameState, 'rulesVersion' | 'scenario'>): boolean => rulesVersionOf(s) === 'v16' && !!s.scenario;
+export const retailRules337 = (s: Pick<GameState, 'rulesVersion' | 'scenario'>): boolean => rulesVersionOf(s) === 'v16' && !!s.scenario;
 
 /** 대형 유통 제안의 월 물량 후보 — 지금 값 [튜닝] */
 export const RETAIL_VOLUMES = [300, 600, 1000] as const;
 
 /**
- * 이 범주에 올 수 있는 월 물량 ([제안 P-MKT-43] ① — 7차 판: 판매 월 265 · 296병인 몰트 위스키에 1,000병 계약 2건이 와서 둘 다 깨졌다).
+ * 이 범주에 올 수 있는 월 물량 ([결정 #337] ① — 7차 판: 판매 월 265 · 296병인 몰트 위스키에 1,000병 계약 2건이 와서 둘 다 깨졌다).
  * v16 캠페인: 그 범주 판매 속도(`categoryMonthlySales` — 품절 달 제외, 화면 납품 줄과 같은 수) 이하인 물량만. 판매 기록이 없으면 없음.
- * 옛 판(`legacy-v15`)·샌드박스: 지금처럼 셋 다(바이트 동일, `retailRulesP43`)
+ * 옛 판(`legacy-v15`)·샌드박스: 지금처럼 셋 다(바이트 동일, `retailRules337`)
  */
 export function retailVolumesFor(s: Pick<GameState, 'commerce' | 'history' | 'rulesVersion' | 'scenario'>, category: ProductCategory): number[] {
-  if (!retailRulesP43(s)) return [...RETAIL_VOLUMES];
+  if (!retailRules337(s)) return [...RETAIL_VOLUMES];
   const pace = categoryMonthlySales(s, category);
   return pace == null ? [] : RETAIL_VOLUMES.filter((v) => v <= pace);
 }
 
-/** 제안이 없으면 null — v16 캠페인에서 판매 속도에 맞는 물량이 있는 범주가 하나도 없을 때(P-MKT-43 ①) */
+/** 제안이 없으면 null — v16 캠페인에서 판매 속도에 맞는 물량이 있는 범주가 하나도 없을 때(#337 ①) */
 export function makeRetailOffer(s: GameState, rng: Rng): RetailOffer | null {
   const owned = [...new Set(s.commerce.products.filter((p) => p.stockBottles > 0 && RETAIL_SPEC[p.category] && retailDrawEligible(s, p)).map((p) => p.category))];
-  const v16 = retailRulesP43(s);
+  const v16 = retailRules337(s);
   // 난수 순서는 그대로: 범주 → 상대 → 물량. v16은 맞는 물량이 있는 범주만 후보로 둔다
   const cands = v16 ? owned.filter((c) => retailVolumesFor(s, c).length > 0) : owned;
   if (v16 && !cands.length) return null;
@@ -77,7 +77,7 @@ export function makeRetailOffer(s: GameState, rng: Rng): RetailOffer | null {
 export const retailDrawOrder = (s: Pick<GameState, 'commerce' | 'rulesVersion' | 'scenario'>, category: ProductCategory) =>
   s.commerce.products.filter((x) => x.category === category && x.stockBottles > 0 && retailDrawEligible(s, x)).sort((a, b) => a.createdMonth - b.createdMonth);
 
-/** 이 숙성(목재 개월) 이상 제품은 v16 캠페인에서 기본으로 납품에 내지 않는다 ([제안 P-MKT-43] ② (가) — 7차 판: 김포 11년 273병이 출고가 80%에 나갔다). 값 [튜닝] */
+/** 이 숙성(목재 개월) 이상 제품은 v16 캠페인에서 기본으로 납품에 내지 않는다 ([결정 #337] ② (가) — 7차 판: 김포 11년 273병이 출고가 80%에 나갔다). 값 [튜닝] */
 export const RETAIL_PREMIUM_OAK_MONTHS = 120;
 
 /**
@@ -87,7 +87,7 @@ export const RETAIL_PREMIUM_OAK_MONTHS = 120;
 export function retailDrawEligible(s: Pick<GameState, 'rulesVersion' | 'scenario'>, p: Pick<Product, 'dutyFreeOnly' | 'retailDraw' | 'oakMonths'>): boolean {
   if (p.dutyFreeOnly) return false;
   if (p.retailDraw) return p.retailDraw === 'include';
-  return !(retailRulesP43(s) && (p.oakMonths ?? 0) >= RETAIL_PREMIUM_OAK_MONTHS);
+  return !(retailRules337(s) && (p.oakMonths ?? 0) >= RETAIL_PREMIUM_OAK_MONTHS);
 }
 
 /** 미납이 이만큼 쌓이면 계약이 깨진다 — 월 물량 × 이 값(`fulfillRetail`). 화면의 "파기까지 n병"과 같은 기준 */

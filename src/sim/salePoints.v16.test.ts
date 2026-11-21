@@ -24,7 +24,7 @@ const report = (s: GameState, visitors = 0): MonthReport => ({ month: s.month, r
 describe('v16: 판매 지점 → progress.win', () => {
   it('국내 판매 지점(runSales)을 거친 적격 로트의 첫 출고가 승리가 된다 — 어린 로트가 먼저 빠지므로 승리 달은 어린 재고 소진 뒤', () => {
     const s = v16(); s.month = 150; houseBrand(s).awareness = 0.6;
-    s.commerce.products.push(product({ stockBottles: 60, retailDraw: 'include' })); // 12년은 v16 캠페인에서 기본 납품 제외(P-MKT-43 ②) — 플레이어가 「납품에 넣기」를 고른 경우
+    s.commerce.products.push(product({ stockBottles: 60, retailDraw: 'include' })); // 12년은 v16 캠페인에서 기본 납품 제외(#337 ②) — 플레이어가 「납품에 넣기」를 고른 경우
     addLot(s, 'P', 40, { month: 120, components: self(s, 100) }); // 어린 로트(100개월) 40병이 먼저
     addLot(s, 'P', 20, { month: 150, components: self(s, 150) }); // 적격 20병
     expect(lotsOf(s).map((l) => l.eligibleAtBottling)).toEqual([false, true]);
@@ -77,7 +77,7 @@ describe('v16: 대형 유통 납품(retail_deal) → progress.win (#319 y7_retai
 
   it('납품이 어린 로트를 다 가져간 뒤 적격 로트에 닿으면 그 달 승리 — 외상(receivable)·출고가 80%도 정상 유상 출하다', () => {
     const s = v16(); s.month = 150; houseBrand(s).awareness = 0.6;
-    s.commerce.products.push(product({ stockBottles: 60, retailDraw: 'include' })); // 12년은 v16 캠페인에서 기본 납품 제외(P-MKT-43 ②) — 플레이어가 「납품에 넣기」를 고른 경우
+    s.commerce.products.push(product({ stockBottles: 60, retailDraw: 'include' })); // 12년은 v16 캠페인에서 기본 납품 제외(#337 ②) — 플레이어가 「납품에 넣기」를 고른 경우
     addLot(s, 'P', 40, { month: 120, components: self(s, 100) }); // 어린 로트 40병
     addLot(s, 'P', 20, { month: 150, components: self(s, 150) }); // 적격 20병
     s.commerce.retailContracts = [contract(50)]; // 50병 = 어린 40 + 적격 10 → 소매보다 먼저(틱 4단계)
@@ -104,7 +104,7 @@ describe('v16: 대형 유통 납품(retail_deal) → progress.win (#319 y7_retai
     expect(ev.some((e) => e.eligibleAtSale)).toBe(false);
     expect(next.progress.win).toBeUndefined();
   });
-  it('「납품에 넣기」를 안 고르면 12년(10년↑)은 납품이 가져가지 않는다 — 미납으로 남고 승리 로트는 그대로 (P-MKT-43 ②)', () => {
+  it('「납품에 넣기」를 안 고르면 12년(10년↑)은 납품이 가져가지 않는다 — 미납으로 남고 승리 로트는 그대로 (#337 ②)', () => {
     const s = v16(); s.month = 150; houseBrand(s).awareness = 0;
     s.commerce.products.push(product({ stockBottles: 320, price: 100_000_000 }));
     addLot(s, 'P', 300, { month: 120, components: self(s, 100) });

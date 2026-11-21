@@ -2,7 +2,7 @@ import { BULK, CASKS } from '../../sim/content/catalog';
 import { regionOf, siteOf } from '../../sim/content/regions';
 import { CATEGORY } from '../../sim/content/categories';
 import { categoryMonthlySales } from '../../sim/economics';
-import { oemPackageCost, retailCancellationCost, retailBreakRemaining, retailDrawEligible, retailDrawOrder, retailRulesP43, RETAIL_PREMIUM_OAK_MONTHS, retailOfferOutlook, RETAIL_BREAK_MONTHS, cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, knownReads, lotQuality, monthLabel, QUALITY_SIGMA_PER_HEX, spotBidPerLPA, spotQuote, spotQuoteEstimate, spotSaturation, type Cask, type ContractAgingImpact, type GameState, type KnownRead, campaignMinOakMonths, HINT_HORIZON_MONTHS, rulesVersionOf, campaignWon } from '../../sim';
+import { oemPackageCost, retailCancellationCost, retailBreakRemaining, retailDrawEligible, retailDrawOrder, retailRules337, RETAIL_PREMIUM_OAK_MONTHS, retailOfferOutlook, RETAIL_BREAK_MONTHS, cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, knownReads, lotQuality, monthLabel, QUALITY_SIGMA_PER_HEX, spotBidPerLPA, spotQuote, spotQuoteEstimate, spotSaturation, type Cask, type ContractAgingImpact, type GameState, type KnownRead, campaignMinOakMonths, HINT_HORIZON_MONTHS, rulesVersionOf, campaignWon } from '../../sim';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won, wonFull } from '../format';
 import { Badge, Button, Card, ConfirmButton, Empty, Stat, Table, Td } from '../kit';
@@ -291,18 +291,18 @@ function SiteDeals() {
             ))}
           </Table>
           {!s.commerce.retailOffers.length && !s.commerce.retailContracts.length && <Empty>제안이 없습니다 (가끔 들어옵니다)</Empty>}
-          {retailRulesP43(s) && (
-            // [제안 P-MKT-43] ① — 제안 물량이 왜 이만한지(7차 판: 판매 월 265병인 위스키에 1,000병 제안이 와서 깨졌다)
+          {retailRules337(s) && (
+            // [결정 #337] ① — 제안 물량이 왜 이만한지(7차 판: 판매 월 265병인 위스키에 1,000병 제안이 와서 깨졌다)
             <div className="mt-2 text-xs text-stone-600 dark:text-stone-300">제안 물량(월 300 · 600 · 1,000병)은 그 범주의 품절 달을 뺀 최근 판매 이하로만 온다 — 판매가 월 300병 밑인 범주에는 제안이 오지 않는다</div>
           )}
           {(() => {
-            // [제안 P-MKT-43] ② (가) 제품별 「납품 제외」 — 7차 판: 김포 11년 273병이 출고가 80%로 나갔다. 제안 · 계약이 있는 범주의 재고 제품만 보인다
+            // [결정 #337] ② (가) 제품별 「납품 제외」 — 7차 판: 김포 11년 273병이 출고가 80%로 나갔다. 제안 · 계약이 있는 범주의 재고 제품만 보인다
             const cats = new Set([...s.commerce.retailOffers, ...s.commerce.retailContracts].map((x) => x.category));
             const rows = s.commerce.products.filter((p) => cats.has(p.category) && p.stockBottles > 0 && !p.dutyFreeOnly).sort((a, b) => a.createdMonth - b.createdMonth);
             if (!rows.length) return null;
             return (
               <div className="mt-2 text-xs">
-                <div className="text-stone-600 dark:text-stone-300">납품이 가져갈 제품(만든 순서대로 먼저){retailRulesP43(s) && ` · 숙성 ${RETAIL_PREMIUM_OAK_MONTHS / 12}년↑은 기본으로 뺀다`} — 빼면 그만큼 미납이 될 수 있다</div>
+                <div className="text-stone-600 dark:text-stone-300">납품이 가져갈 제품(만든 순서대로 먼저){retailRules337(s) && ` · 숙성 ${RETAIL_PREMIUM_OAK_MONTHS / 12}년↑은 기본으로 뺀다`} — 빼면 그만큼 미납이 될 수 있다</div>
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
                   {rows.map((p) => {
                     const on = retailDrawEligible(s, p);

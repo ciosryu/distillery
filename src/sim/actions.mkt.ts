@@ -26,7 +26,7 @@ export type MktAction =
   | { type: 'setPrice'; productId: string; price: number }
   /** 제품별 수출 안 함 (#266) — 수출이 국내를 굶길 때(#257) 플레이어가 고른다. 다음 달 판매부터 */
   | { type: 'setProductExport'; productId: string; noExport: boolean }
-  /** 제품별 대형 유통 납품 넣기 · 빼기 ([제안 P-MKT-43] ② (가)) — mode 없음 = 기본 규칙으로 되돌림(v16 캠페인: 10년↑ 제외). 다음 달 납품부터 */
+  /** 제품별 대형 유통 납품 넣기 · 빼기 ([결정 #337] ② (가)) — mode 없음 = 기본 규칙으로 되돌림(v16 캠페인: 10년↑ 제외). 다음 달 납품부터 */
   | { type: 'setProductRetail'; productId: string; mode?: 'exclude' | 'include' }
   /** 월 마케팅 예산 — brandId가 없거나 하우스면 하우스(commerce.marketingBudget), 세컨드 브랜드면 그 브랜드 */
   | { type: 'setMarketing'; amount: number; brandId?: string }
