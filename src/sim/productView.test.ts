@@ -1,6 +1,6 @@
 // F5d-1 코어 (#338) — 병입 제품의 아는 품질: 병입 때 추정 · 보충 혼합 · 읽기 한 함수(공개 · 면세 짝) · 보관 사본. 출력은 바뀌지 않는다(아무도 아직 읽지 않음)
 import { describe, expect, it } from 'vitest';
-import { applyAction, knownProductQuality, newGame, bottledQualityKnown, mergeQualityKnown, dutyFreePair, UNKNOWN_QUALITY_SIGMA, QHAT_PRIOR, type Flavor, type GameState, type Product } from '.';
+import { applyAction, restockMix, knownProductQuality, newGame, bottledQualityKnown, mergeQualityKnown, dutyFreePair, UNKNOWN_QUALITY_SIGMA, QHAT_PRIOR, type Flavor, type GameState, type Product } from '.';
 import { emptyCaskOf } from './newGame';
 import { toArchiveEntry } from './lifecycle';
 
@@ -85,6 +85,17 @@ describe('보충 — 남은 재고와 새 배치를 병 수로 합친다', () =>
     s = bottle(s, [b!, c!], { restockId: p0.id }).state;
     const p1 = s.commerce.products.find((x) => x.id === p0.id)!;
     expect(p1.qualityKnown!.sigma).toBeLessThan(p0.qualityKnown!.sigma);
+  });
+});
+
+describe('보충 미리보기(restockMix) — 화면 식을 코어로, 행동의 합치기와 같은 가중', () => {
+  it('미리보기 = mergeQualityKnown 결과(추정·오차) · 남은 재고 0이면 새 배치 그대로', () => {
+    const m = restockMix({ q: 60, sigma: 0 }, 300, { q: 45, sigma: 15 }, 100);
+    const k = mergeQualityKnown({ quality: 60, stockBottles: 300 }, { est: 45, sigma: 15, reviews: 0, month: 1 }, 100, 1);
+    expect(m.stock).toBe(400);
+    expect(Math.round(m.q * 10) / 10).toBe(k.est);
+    expect(Math.round(m.sigma * 10) / 10).toBe(k.sigma);
+    expect(restockMix({ q: 70, sigma: 2 }, 0, { q: 50, sigma: 4 }, 10)).toEqual({ stock: 10, w: 1, q: 50, sigma: 4 });
   });
 });
 

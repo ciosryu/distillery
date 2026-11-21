@@ -543,6 +543,11 @@ export interface MonthReport {
   lossEvents?: { kind: LossKind; lpa: number; costKRW: number }[];
   /** 유상 출하 사건(F3 [결정 #308]) — 출고가 일어난 자리에서 쌓고 9단계 판정이 읽는다. 없으면 이달 유상 출하가 없다. 기록만 */
   saleEvents?: SaleEvent[];
+  /**
+   * F5d(#338) — 그달 커뮤니티 리뷰(위스키베이스 점수) 읽기. 틱이 남기고(MKT `updateProductKnowledge`, 틱 5 판매 뒤) 피드 화면은 이것을 읽는다 —
+   * 화면이 그릴 때 다시 뽑으면 보충으로 참 품질이 바뀐 뒤 지난달 점수가 어긋난다(MKT 제안). 선택 필드라 스키마 v16 그대로 · 없으면 그달 리뷰 없음
+   */
+  reviews?: { productId: string; scores: number[] }[];
   angelsShareL: number;
   liquorTaxRemitted: number;
   /** 이번 달 발생한 이벤트 제목 */
