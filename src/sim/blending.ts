@@ -1,4 +1,5 @@
 import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/catalog';
+import { bottledQualityKnown, hidesProductQuality, mergeQualityKnown } from './productView'; // F5d 아는 품질(코어)
 import type { PackagingChoice } from './content/packaging';
 import { fixPackaging, nearestPresetId, packagingError, packagingPartsCost, presetChoice, productPackaging, sameChoice } from './packaging';
 import { brandOf } from './brands';
@@ -471,6 +472,11 @@ export function restockedProduct(old: Product, batch: Product): Product {
 export function executeBlend(s: GameState, components: BlendComponent[], opts: BottleOptions): { error?: string; product?: Product; reveal?: BlendReveal } {
   const p = previewBlend(s, components, opts);
   if (!p.ok || !p.category || !p.evaluation) return { error: p.errors.join(' / ') || '병입할 수 없습니다' };
+  // F5d(#338, ARCH 코어 대행): 병입 때 아는 품질 — 원액을 빼기 **전에** 추정한다(estimateBlend는 남은 원액을 읽는다). 옛 판은 쓰지 않는다(출력 불변)
+  // 통 원액이 없으면(탱크만 — 막 만든 원액이라 향미를 다 안다) 숨길 것이 없다 → 병입 평가 그대로(도수·여과 등 병입 단계 보정 포함, 오차 0).
+  // estimateBlend의 원액별 품질 가중 평균을 쓰면 병입 보정만큼(약 3점) 늘 낮고 오차 0이라 리뷰가 고치지 못했다(MKT F5d-2 진단 — 소주). 통이 섞이면 샘플 추정
+  const estB = hidesProductQuality(s) ? estimateBlend(s, components) : null;
+  const knownBatch = !estB ? undefined : !estB.fromCasks ? { est: Math.round(p.evaluation.quality * 10) / 10, sigma: 0, reviews: 0, month: s.month, hex: hexOf(p.flavor) } : bottledQualityKnown(estB, p.kind ?? 'malt', s.month);
   // 블렌딩 테이블 (결정 #124): 원액을 빼기 전에 블렌더가 아는 값으로 예상 육각형을 만든다 (공개 연출용).
   // 캐스크는 샘플 기록(#157) — 기록이 없는 캐스크는 예상에서 빠진다. 탱크 원액은 우리가 막 만든 것이라 참값으로 안다(#162의 estimateBlend와 같은 규칙)
   const known = knownReads(s);
@@ -557,11 +563,15 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     ...(p.peatShare > 0 ? { peatShare: p.peatShare } : {}),
     ...(recipeIds.length ? { recipeIds } : {}),
     ...(opts.dutyFreeOnly && p.dfEdition ? { dutyFreeOnly: true, dfEdition: { ...p.dfEdition } } : {}),
+    ...(knownBatch ? { qualityKnown: knownBatch } : {}),
   };
   // 기존 제품에 재고 보충 (#186) — 새 제품을 만들지 않고 가중 평균으로 합친다. 출시 효과·면세 판·블렌딩 목표 채점은 새 제품에만
   if (opts.restockId) {
     const idx = s.commerce.products.findIndex((x) => x.id === opts.restockId);
-    const merged = restockedProduct(s.commerce.products[idx]!, product);
+    const old = s.commerce.products[idx]!;
+    const merged = restockedProduct(old, product);
+    // F5d: 보충 — 남은 재고와 새 배치의 아는 품질을 병 수로 합친다(남은 재고가 F5d 전 공개 제품이면 그 몫은 참값을 안다)
+    if (knownBatch) merged.qualityKnown = mergeQualityKnown(old, knownBatch, p.bottles, s.month);
     s.commerce.products[idx] = merged;
     // F3 로트 생성(보충 18 — 수동·자동 납품 공통): 보충마다 **새 병입 로트** — 제품 칸만 가중 평균으로 합치고 로트는 섞지 않는다(FIFO, "어린 제품 판매 + 적격 보충"으로 승리 0)
     addLot(s, merged.id, p.bottles, { components: coalesce(bottledLedger) });
