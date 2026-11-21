@@ -2,7 +2,7 @@ import { BULK, CASKS } from '../../sim/content/catalog';
 import { regionOf, siteOf } from '../../sim/content/regions';
 import { CATEGORY } from '../../sim/content/categories';
 import { categoryMonthlySales } from '../../sim/economics';
-import { oemPackageCost, retailCancellationCost, retailBreakRemaining, retailDrawEligible, retailDrawOrder, retailRules337, RETAIL_PREMIUM_OAK_MONTHS, retailOfferOutlook, RETAIL_BREAK_MONTHS, cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, knownReads, lotQuality, monthLabel, QUALITY_SIGMA_PER_HEX, spotBidPerLPA, spotQuote, spotQuoteEstimate, spotSaturation, type Cask, type ContractAgingImpact, type GameState, type KnownRead, campaignMinOakMonths, HINT_HORIZON_MONTHS, rulesVersionOf, campaignWon } from '../../sim';
+import { oemPackageCost, retailCancellationCost, retailBreakRemaining, retailDrawEligible, retailDrawOrder, retailPriceBasis, RETAIL_PRICE_CAP_MULT, retailRules337, RETAIL_PREMIUM_OAK_MONTHS, retailOfferOutlook, RETAIL_BREAK_MONTHS, cancellationCost, capacityLPA, contractAgingImpact, contractTotalValue, domesticPremium, isNewMake, knownReads, lotQuality, monthLabel, QUALITY_SIGMA_PER_HEX, spotBidPerLPA, spotQuote, spotQuoteEstimate, spotSaturation, type Cask, type ContractAgingImpact, type GameState, type KnownRead, campaignMinOakMonths, HINT_HORIZON_MONTHS, rulesVersionOf, campaignWon } from '../../sim';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won, wonFull } from '../format';
 import { Badge, Button, Card, ConfirmButton, Empty, Stat, Table, Td } from '../kit';
@@ -280,15 +280,26 @@ function SiteDeals() {
                 </Fragment>
               );
             })}
-            {s.commerce.retailContracts.map((c) => (
-              <tr key={c.id}>
+            {s.commerce.retailContracts.map((c) => {
+              // [결정 #341] 판매가가 기준가 × 4를 넘는 제품은 납품 단가가 그 값까지만 — 계약 줄 아래 한 줄로 알린다
+              const capped = retailDrawOrder(s, c.category).map((p) => ({ p, b: retailPriceBasis(s, p) })).filter((x) => x.b.capped);
+              return (
+              <Fragment key={c.id}>
+              <tr>
                 <Td className="font-medium">{c.partner}</Td><Td>{CATEGORY[c.category].nameKo}</Td><Td right>{num(c.bottlesPerMonth)}병</Td>
                 <Td right>출고가 × {pct(c.priceFactor, 0)}</Td><Td right>{c.monthsDone}/{c.termMonths}개월</Td><Td right>{won(c.penaltyPerBottle)}</Td>
                 <Td><Badge tone={c.shortfall ? 'warn' : 'good'}>진행 중 · 누적 미납 {num(c.shortfall)}병{c.shortfall > 0 && ` · 파기까지 ${num(retailBreakRemaining(c))}병`}</Badge></Td>
                 <Td><ConfirmButton small variant="danger" armKey={`cancelretail-${c.id}@${s.month}`} armedLabel="한 번 더 누르면 해지" onConfirm={() => dispatch({ type: 'cancelRetail', contractId: c.id })}
                   preview={() => { const cost = retailCancellationCost(c); return <>{c.partner} 납품 계약을 해지한다 — 해지 비용 {won(cost)}(남은 {c.termMonths - c.monthsDone}개월 × 월 {num(c.bottlesPerMonth)}병 × 병당 위약금의 절반) · 현금 {won(s.finance.cash)} → {won(s.finance.cash - cost)}</>; }}>해지</ConfirmButton></Td>
               </tr>
-            ))}
+              {capped.length > 0 && (
+                <tr><td colSpan={8} className="px-2 pb-2 text-xs text-stone-600 dark:text-stone-300">
+                  단가 상한 적용 — 판매가가 기준가의 {RETAIL_PRICE_CAP_MULT}배를 넘어 납품 단가는 그 값까지만 쳐 준다: {capped.map(({ p, b }) => `${p.name} 판매가 ${won(p.price)} → 납품 단가 ${won(b.cap * c.priceFactor)}`).join(' · ')}
+                </td></tr>
+              )}
+              </Fragment>
+              );
+            })}
           </Table>
           {!s.commerce.retailOffers.length && !s.commerce.retailContracts.length && <Empty>제안이 없습니다 (가끔 들어옵니다)</Empty>}
           {retailRules337(s) && (

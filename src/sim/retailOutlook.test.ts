@@ -136,3 +136,34 @@ describe('setProductRetail — 제품별 납품 넣기 · 빼기 (#337 ② (가)
     expect(applyAction(s, { type: 'setProductRetail', productId: 'X', include: false }).error).toBeTruthy();
   });
 });
+
+describe('[결정 #341] 납품 단가의 판매가 상한 — 기준가 × 4 (v16 캠페인)', () => {
+  const whisky = (price: number) => ({ id: 'P', name: '시험 몰트', category: 'whisky', ageYears: 5, oakMonths: 60, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 70, style: null, sourcedShare: 0, stockBottles: 3000, price, unitCost: 20000, createdMonth: 90, lastMonthSold: 0, totalSold: 0 }) as unknown as GameState['commerce']['products'][number];
+  const contract = { id: 'U1', partner: '가온마트', category: 'whisky' as const, bottlesPerMonth: 1000, priceFactor: 0.8, termMonths: 12, paymentDelay: 2, penaltyPerBottle: 7680, startMonth: 99, monthsDone: 1, delivered: 1000, shortfall: 0 };
+  const run = async (price: number, legacy = false) => {
+    const { newScenarioGame } = await import('./newScenario');
+    const { advanceMonth } = await import('./step');
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'standard', loanAmount: 0, seed: 5 });
+    if (legacy) s.rulesVersion = 'legacy-v15';
+    s.month = 100; s.commerce.products = [whisky(price)]; s.commerce.retailContracts = [{ ...contract }];
+    return advanceMonth(s).history.reports.at(-1)!.retailDealRevenue ?? 0;
+  };
+  it('정상 값(기준가 × 3 이하)은 그대로 판매가 × 0.8 — 7차 판 오너 최고 배수 3.19', async () => {
+    const { retailPriceBasis } = await import('./deals');
+    const { newScenarioGame } = await import('./newScenario');
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'standard', loanAmount: 0, seed: 5 });
+    const b = retailPriceBasis(s, whisky(1));
+    expect(b.cap).toBeGreaterThan(100_000); // 5년 · 품질 70 위스키 기준가의 4배
+    expect(retailPriceBasis(s, whisky(Math.floor(b.cap * 0.75))).capped).toBe(false);
+    expect(await run(60_000)).toBe(48_000_000);
+  });
+  it('값을 터무니없이 올려도 납품 단가는 기준가 × 4 × 0.8까지 — 1,000만 원이면 80억이 아니라 상한', async () => {
+    const { retailPriceBasis } = await import('./deals');
+    const { newScenarioGame } = await import('./newScenario');
+    const cap = retailPriceBasis(newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'standard', loanAmount: 0, seed: 5 }), whisky(1)).cap;
+    expect(await run(10_000_000)).toBe(Math.round(1000 * cap * 0.8));
+  });
+  it('옛 판은 그대로(판매가 × 0.8, 상한 없음 — 바이트 동일 원칙)', async () => {
+    expect(await run(10_000_000, true)).toBe(8_000_000_000);
+  });
+});

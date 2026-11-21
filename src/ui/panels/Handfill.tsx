@@ -6,6 +6,7 @@ import { isFlagshipCandidate } from '../../sim/delegateCheck';
 import { EQUIPMENT } from '../../sim/content/catalog';
 import { protectedCaskIds } from '../../sim/tags';
 import { useGame } from '../../store/game';
+import { rankHandfill } from './handfillPick';
 import { months, won } from '../format';
 
 export function HandfillRow() {
@@ -31,8 +32,12 @@ export function HandfillRow() {
   // 다음 통 추천 (6차 판 — 핸드필 통이 빈 뒤 16개월 다시 지정하지 않아 어림 0.4~0.6억을 놓쳤다, docs/playtest/6/prod.md ⑥).
   // 보호 태그 통·12년 후보(승리 전)는 빼고, 아는 품질이 높고 양이 넉넉한 통 — 한 번 눌러 지정한다. 고르는 것은 여전히 플레이어 몫(정보·바로가기)
   const won12 = rulesVersionOf(s) === 'legacy-v15' || campaignWon(s);
-  const pick = !cur ? [...options].filter((c) => !prot.has(c.id) && (won12 || !isFlagshipCandidate(s, c, 'hint')))
-    .sort((a, b) => (q(b) ?? -1) - (q(a) ?? -1) || b.contents.volumeL - a.contents.volumeL)[0] : undefined;
+  // P-PROD-68(8차 판 전 점검): 추정 최고값이 아니라 같은 나이대 평균 쪽으로 오차만큼 당긴 값으로 순서를 매긴다 — 자동 샘플 오차(±20)에 휘둘리지 않게 (handfillPick.ts)
+  const sd = (c: Cask & { contents: SpiritLot }) => (hide ? known.get(c.id)?.sigma ?? 0 : 0);
+  const pickable = !cur ? options.filter((c) => !prot.has(c.id) && (won12 || !isFlagshipCandidate(s, c, 'hint'))) : [];
+  const pickId = rankHandfill(pickable.map((c) => ({ id: c.id, oakMonths: c.contents.oakMonths, volumeL: c.contents.volumeL, est: q(c), sigma: sd(c) })))[0]?.id;
+  const pick = pickId ? pickable.find((c) => c.id === pickId) : undefined;
+  const pickLabel = (c: Cask & { contents: SpiritLot }) => `${c.id} · ${months(c.contents.oakMonths)} · ${Math.round(c.contents.volumeL)}L · 품질 ${q(c) == null ? '모름(샘플 필요)' : `약 ${Math.round(q(c)!)}${sd(c) >= 1 ? ` (±${Math.round(sd(c))})` : ''}`}`;
   const cq = cur ? q(cur) : null;
   const bottles = cur ? handfillBottles(visitors, cur.contents) : 0;
   const price = cur && cq != null ? handfillPrice(s, cur.contents, cq) : null;
@@ -48,8 +53,8 @@ export function HandfillRow() {
         </select>
         {!options.length && !cur && <span className="text-stone-500">위스키 숙성 기간을 채운 자사 나무 통이 아직 없다</span>}
         {pick && hasVisitor && (
-          <button type="button" className="rounded border border-amber-400 bg-white px-1.5 py-0.5 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-stone-800 dark:text-amber-200" title="보호 태그 통·12년 후보는 뺀 추천 — 다른 통은 왼쪽 목록에서 고른다" onClick={() => dispatch({ type: 'setHandfillCask', caskId: pick.id })}>
-            추천 통 지정: {label(pick)}
+          <button type="button" className="rounded border border-amber-400 bg-white px-1.5 py-0.5 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-stone-800 dark:text-amber-200" title="보호 태그 통·12년 후보는 뺀 추천 — 다른 통은 왼쪽 목록에서 고른다. 샘플 추정은 오차가 커서(자동 샘플만 뜬 통은 ±20) 가장 높게 읽힌 통이 실제로 가장 좋은 통이 아닐 때가 많다 — 같은 나이대(2년) 통들의 추정 평균 쪽으로 오차만큼 당겨 순서를 매겼다. 통에서 직접 샘플을 여러 번 뜨면 오차가 줄어 그 통의 추정이 더 믿을 만해진다" onClick={() => dispatch({ type: 'setHandfillCask', caskId: pick.id })}>
+            추천 통 지정: {pickLabel(pick)}
           </button>
         )}
         {cur && prot.has(cur.id) && <span className="text-amber-800 dark:text-amber-300">⚠ 보호 태그 통이다(플래그십 예비 등) — 핸드필이 매달 덜어 간다. 남기려면 다른 통을 고르세요</span>}

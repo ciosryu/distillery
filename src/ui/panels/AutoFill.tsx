@@ -1,6 +1,6 @@
 // 자동 통입 설정 (#239, 5차 MVP 플레이테스트 2026-11-10 — 파트 PROD) — 증류소 탭 "탱크 원액 → 빈 통에 통입" 칸과 숙성고 탭에 끼워 쓴다.
 // 자동 납품(#206)·자동 샘플(#207)과 같은 한 줄: 켬/끔, 간격, 대상 원액, 빈 통 순서, 통입 도수 + 지금 넣으면 몇 통인지 미리 보기
-import { AUTO_FILL, autoFillDue, autoFillPreview, type AutoFillSettings } from '../../sim';
+import { AUTO_FILL, autoFillDue, autoFillPreview, EMPTY_ACTIVITY_FACTOR, type AutoFillSettings } from '../../sim';
 import { caskRunway } from '../../sim/economics';
 import { useGame } from '../../store/game';
 import { liters } from '../format';
@@ -47,10 +47,10 @@ export function AutoFillRow() {
                 <option value="grain">그레인만</option>
               </select>
             </label>
-            <label className="inline-flex items-center gap-1" title="빈 나무 통 중 어느 쪽부터 쓸지 — 새 통은 추출이 강하고, 재사용 통은 순하다(같은 순서 안에서는 활성도 높은 통부터)">빈 통
+            <label className="inline-flex items-center gap-1" title={`빈 나무 통 중 어느 쪽부터 쓸지 — 새 통은 추출이 강하고, 재사용 통은 순하다(같은 순서 안에서는 활성도 높은 통부터). 통은 비울 때마다 활성도가 ×${EMPTY_ACTIVITY_FACTOR}이 된다 — 3년 위스키는 새 통이 빨리 익고, 12년처럼 오래 둘 원액은 재사용 통이 오크·탄닌을 위스키 상한(45) 근처로 둔다(12년 품질 감점이 훨씬 작다)`}>빈 통
               <select className={sel} aria-label="자동 통입 빈 통 순서" value={cfg?.prefer ?? 'new'} onChange={(e) => set({ prefer: e.target.value as 'new' | 'used' })}>
                 <option value="new">새 통 먼저</option>
-                <option value="used">재사용 통 먼저</option>
+                <option value="used">재사용 통 먼저 (오래 숙성용)</option>
               </select>
             </label>
             <label className="inline-flex items-center gap-1" title="원액 도수가 이보다 낮으면 원액 그대로 넣는다">통입 도수
