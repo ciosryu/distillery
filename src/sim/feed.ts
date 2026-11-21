@@ -109,7 +109,7 @@ const POSITIVE: readonly FeedSituation[] = ['raise', 'great', 'good', 'stockout'
 const NEGATIVE: readonly FeedSituation[] = ['cheapLow', 'pricey', 'ripoff', 'bad', 'priceUp'];
 const toneOf = (x: FeedSituation): FeedPost['tone'] => (POSITIVE.includes(x) ? 'pos' : NEGATIVE.includes(x) ? 'neg' : 'neu');
 
-function pickStyle(rng: Rng, w: Record<FeedStyle, number>): FeedStyle {
+export function pickStyle(rng: Rng, w: Record<FeedStyle, number>): FeedStyle {
   let r = rng.next();
   for (const k of ['whiskybase', 'cafe', 'dc_whisky'] as const) { if (r < w[k]) return k; r -= w[k]; }
   return 'dc_jugal';
