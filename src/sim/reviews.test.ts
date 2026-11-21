@@ -99,3 +99,19 @@ describe('updateProductKnowledge — 틱 5 뒤', () => {
     expect(p.qualityKnown!.reviews).toBeGreaterThan(0);
   });
 });
+
+describe('priceOptions — 계획은 아는 품질로 (F5d ④ · ⑤)', () => {
+  it('v16: 추정이 참값보다 낮으면 가격 비교의 수요도 낮다 · 옛 판 · 공개 제품은 참값', async () => {
+    const { priceOptions } = await import('./market');
+    const s = v16(); s.month = 60;
+    const known = product({ quality: 80, qualityKnown: { est: 40, sigma: 15, reviews: 0, month: 50 } });
+    const pub = product({ quality: 80 });
+    s.commerce.products = [known];
+    const dKnown = priceOptions(s, known, 6, [1])[0]!.demandBottles;
+    s.commerce.products = [pub];
+    const dPub = priceOptions(s, pub, 6, [1])[0]!.demandBottles;
+    expect(dKnown).toBeLessThan(dPub);
+    s.rulesVersion = 'legacy-v15'; s.commerce.products = [known];
+    expect(priceOptions(s, known, 6, [1])[0]!.demandBottles).toBeCloseTo(dPub, 6);
+  });
+});
