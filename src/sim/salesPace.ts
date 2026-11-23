@@ -1,4 +1,4 @@
-// 범주 판매 속도 — 의존 없는 잎 모듈 (파트 PROD, #740 P-PROD-64 · MKT 대행으로 옮김 #337 ①).
+// 범주 판매 속도 — 의존 없는 잎 모듈 (파트 PROD, #740 P-PROD-64 · MKT 대행으로 옮김 P-MKT-43 ①).
 // 왜 따로: deals.ts(납품 제안 물량)가 economics.ts에서 가져오면 deals → economics → production → deals 순환이 생긴다.
 // `rules.ts`와 같은 까닭(초기화 순서 오류 예방). types만 본다 — 어디서든 안전하게 부를 수 있다. economics.ts가 다시 내보낸다
 import type { GameState, ProductCategory } from './types';

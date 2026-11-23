@@ -123,7 +123,7 @@ export function recipeEconomics(s: GameState, recipe: Recipe): EconomicsRow[] {
 // 1차 플레이테스트: 소주 1제품을 15,271병(판매 186개월 치) 병입해 현금이 묶였고, 2~5년 차 생산을 줄여 7~8년 차 위스키가 끊겼다.
 // 병입 전에 "이만큼이면 몇 개월 치인가", 생산 지시 옆에 "몇 년 뒤 위스키가 얼마나 나오나"를 보인다. 게임 상태를 바꾸지 않는다.
 
-// 판매 속도(categoryMonthlySales · SALES_LOOKBACK)는 잎 모듈 salesPace.ts로 옮겼다 — deals.ts가 쓰면 deals → economics → production → deals 순환이 생겨서(#337 ①). 여기서 다시 내보낸다
+// 판매 속도(categoryMonthlySales · SALES_LOOKBACK)는 잎 모듈 salesPace.ts로 옮겼다 — deals.ts가 쓰면 deals → economics → production → deals 순환이 생겨서(P-MKT-43 ①). 여기서 다시 내보낸다
 export { categoryMonthlySales, SALES_LOOKBACK } from './salesPace';
 
 /** 이 범주의 지금 재고(병, 국내 매대) */
