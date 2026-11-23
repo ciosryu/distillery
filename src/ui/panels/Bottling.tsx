@@ -5,7 +5,7 @@ import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './H
 import { BOTTLE_SIZES, CASKS, PACKAGING } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
-import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, bottledQualityKnown, restockMix, restockPrior, recipeIdsOf } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, restockMix, restockPrior, recipeIdsOf, batchQualityKnown } from '../../sim';
 import { agedWhitePerception } from '../../sim/content/market';
 import { regionOf } from '../../sim/content/regions';
 import { STANDARD_BOTTLE, stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
@@ -135,9 +135,11 @@ export function Bottling() {
   const masked = !!est?.fromCasks;
   // 병입하면 제품에 남는 아는 품질(F5d — 모르는 몫은 사전값·큰 오차로 섞음). 첫 출고가·기준가 미리 보기가 병입 행동(executeBlend)과 같은 값을 쓰게 한다
   const restockTarget = opts.restockId ? s.commerce.products.find((p) => p.id === opts.restockId) : undefined;
-  // [결정 #346] 같은 레시피 보충이면 모르는 몫을 그 제품의 지금 추정으로 잇는다 — executeBlend와 같은 carried를 첫 값·보충 미리 보기에 함께 쓴다
+  // [결정 #346] 같은 레시피 보충이면 이 제품의 추정을 잇는다 — 이을 추정(carried)이 있으면 샘플이 없어도 보충 줄이 "모른다" 대신 값을 보인다
   const carried = hide && restockTarget ? restockPrior(s, restockTarget, recipeIdsOf(s, components)) : undefined;
-  const knownEst = masked && est && (est.quality != null || carried) && preview?.ok ? bottledQualityKnown(est, preview.kind ?? 'malt', s.month, carried).est : null;
+  // 이번 배치의 아는 품질 — 병입 행동(executeBlend)과 같은 한 함수(샘플 추정 + 병입 보정량 · #346 잇기). 첫 출고가 · 보충 줄이 함께 쓴다
+  const knownBatch = masked && preview?.ok ? batchQualityKnown(s, components, preview, restockTarget?.id) : undefined;
+  const knownEst = knownBatch?.est ?? null;
   // 면세 한정판 예상 판매 (결정 #87) — 이번 달 면세 수요(권장 출고가)로 완판 기한 안에 몇 병 팔릴지
   const dfForecast = (() => {
     if (masked || !preview?.ok || !preview.dfEdition || !preview.category || !preview.evaluation) return null;
@@ -240,7 +242,8 @@ export function Bottling() {
   const restockBefore = restockTarget ? (hide ? knownProductQuality(s, restockTarget) : { q: restockTarget.quality, sigma: 0 }) : null;
   const restockAfter = (() => {
     if (!restockTarget || !restockBefore || !preview?.ok || !preview.evaluation) return null;
-    const batch = masked ? (est?.quality == null && !carried ? null : (({ est: q, sigma }) => ({ q, sigma }))(bottledQualityKnown(est!, preview.kind ?? 'malt', s.month, carried))) : { q: preview.evaluation.quality, sigma: 0 };
+    // 병입 행동과 같은 한 함수(batchQualityKnown — 샘플 추정 + 병입 보정량 · #346 잇기). 샘플도 이을 추정도 없으면 "모른다"
+    const batch = masked ? (knownBatch && !(est?.quality == null && !carried) ? { q: knownBatch.est, sigma: knownBatch.sigma } : null) : { q: preview.evaluation.quality, sigma: 0 };
     const m = restockMix(restockBefore, restockTarget.stockBottles, batch ?? { q: 0, sigma: 0 }, preview.bottles);
     return { stock: m.stock, w: m.w, quality: batch ? m.q : null, sigma: hide ? m.sigma : 0 };
   })();

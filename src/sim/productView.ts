@@ -39,14 +39,19 @@ export function bottledQualityKnown(
   month: number,
   /** [결정 #346] 같은 레시피 보충이면 그 제품의 지금 아는 품질(`restockPrior`) — 모르는 몫을 전역 사전값 대신 이것으로 채운다 */
   carried?: { est: number; sigma: number },
+  /**
+   * 병입 단계 보정(희석 · 여과 · 섞을 때의 향미 상호작용)만큼의 차 — 샘플 · 사전값은 통 원액 하나의 품질이라, 병입 평가와 늘 어긋난다(통 블렌드 약 −3점,
+   * MKT F5d 전후 표: 샘플을 켠 판이 끈 판보다 나빠짐). `bottlingOffset`(blending.ts)이 센다. 이어받은 추정(carried)은 이미 제품 품질이라 더하지 않는다
+   */
+  offset = 0,
 ): QualityKnown {
-  const prior = carried ? carried.est : QHAT_PRIOR[kind] ?? 45;
+  const prior = carried ? carried.est : (QHAT_PRIOR[kind] ?? 45) + offset;
   const priorSd = carried ? Math.max(carried.sigma, RESTOCK_PRIOR_SIGMA_FLOOR) : UNKNOWN_QUALITY_SIGMA;
   if (est.quality == null) return { est: round1(prior), sigma: round1(priorSd), reviews: 0, month };
   const u = Math.min(1, Math.max(0, est.unknownShare));
   const k = 1 - u;
   return {
-    est: round1(k * est.quality + u * prior),
+    est: round1(k * (est.quality + offset) + u * prior),
     sigma: round1(Math.sqrt((k * est.sigma) ** 2 + (u * priorSd) ** 2)),
     reviews: 0,
     month,
