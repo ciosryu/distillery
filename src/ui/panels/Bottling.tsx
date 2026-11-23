@@ -5,7 +5,7 @@ import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './H
 import { BOTTLE_SIZES, CASKS, PACKAGING } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
-import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, bottledQualityKnown, restockMix } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, bottledQualityKnown, restockMix, restockPrior, recipeIdsOf } from '../../sim';
 import { agedWhitePerception } from '../../sim/content/market';
 import { regionOf } from '../../sim/content/regions';
 import { STANDARD_BOTTLE, stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
@@ -134,7 +134,10 @@ export function Bottling() {
   const est = hide && preview ? estimateBlend(s, components) : null;
   const masked = !!est?.fromCasks;
   // 병입하면 제품에 남는 아는 품질(F5d — 모르는 몫은 사전값·큰 오차로 섞음). 첫 출고가·기준가 미리 보기가 병입 행동(executeBlend)과 같은 값을 쓰게 한다
-  const knownEst = masked && est?.quality != null && preview?.ok ? bottledQualityKnown(est, preview.kind ?? 'malt', s.month).est : null;
+  const restockTarget = opts.restockId ? s.commerce.products.find((p) => p.id === opts.restockId) : undefined;
+  // [결정 #346] 같은 레시피 보충이면 모르는 몫을 그 제품의 지금 추정으로 잇는다 — executeBlend와 같은 carried를 첫 값·보충 미리 보기에 함께 쓴다
+  const carried = hide && restockTarget ? restockPrior(s, restockTarget, recipeIdsOf(s, components)) : undefined;
+  const knownEst = masked && est && (est.quality != null || carried) && preview?.ok ? bottledQualityKnown(est, preview.kind ?? 'malt', s.month, carried).est : null;
   // 면세 한정판 예상 판매 (결정 #87) — 이번 달 면세 수요(권장 출고가)로 완판 기한 안에 몇 병 팔릴지
   const dfForecast = (() => {
     if (masked || !preview?.ok || !preview.dfEdition || !preview.category || !preview.evaluation) return null;
@@ -226,7 +229,6 @@ export function Bottling() {
     : [];
   const abvValue = opts.targetAbv === 'cask' ? 'cask' : String(opts.targetAbv);
   // 재고 보충 대상 (#186) — 고른 원액과 같은 범주 제품을 앞에
-  const restockTarget = opts.restockId ? s.commerce.products.find((p) => p.id === opts.restockId) : undefined;
   // 보충 대상이 판매 목록에서 빠졌으면(보관 처리) 새 제품으로 돌아간다
   useEffect(() => { if (opts.restockId && !restockTarget) setOpts((o) => ({ ...o, restockId: undefined })); }, [opts.restockId, restockTarget]);
   const restockChoices = restockable(s).filter((p) => !preview?.category || p.category === preview.category);
@@ -238,7 +240,7 @@ export function Bottling() {
   const restockBefore = restockTarget ? (hide ? knownProductQuality(s, restockTarget) : { q: restockTarget.quality, sigma: 0 }) : null;
   const restockAfter = (() => {
     if (!restockTarget || !restockBefore || !preview?.ok || !preview.evaluation) return null;
-    const batch = masked ? (est?.quality == null ? null : (({ est: q, sigma }) => ({ q, sigma }))(bottledQualityKnown(est, preview.kind ?? 'malt', s.month))) : { q: preview.evaluation.quality, sigma: 0 };
+    const batch = masked ? (est?.quality == null && !carried ? null : (({ est: q, sigma }) => ({ q, sigma }))(bottledQualityKnown(est!, preview.kind ?? 'malt', s.month, carried))) : { q: preview.evaluation.quality, sigma: 0 };
     const m = restockMix(restockBefore, restockTarget.stockBottles, batch ?? { q: 0, sigma: 0 }, preview.bottles);
     return { stock: m.stock, w: m.w, quality: batch ? m.q : null, sigma: hide ? m.sigma : 0 };
   })();
@@ -408,7 +410,7 @@ export function Bottling() {
               {stock && (
                 <p className={`text-xs ${stock.months > STOCK_STRONG_WARN_MONTHS ? 'font-medium text-rose-700 dark:text-rose-400' : stock.months > STOCK_WARN_MONTHS ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`}>
                   {stock.months > STOCK_WARN_MONTHS ? '⚠ ' : ''}병입 뒤 {CATEGORY[preview.category!].nameKo} 재고 ≈ <b>{Number.isFinite(stock.months) ? `${num(stock.months, 1)}개월 치` : '팔리지 않음'}</b>
-                  {' '}({stock.basis === 'sales' ? `품절 달을 뺀 최근 판매 월 ${num(stock.monthly)}병 기준` : `아직 판매 기록 없음 — 이번 달 수요 근사 월 ${num(stock.monthly)}병 기준`})
+                  {' '}({stock.basis === 'sales' ? `최근 수요 월 ${num(stock.monthly)}병 기준(재고가 있던 달 — 못 판 몫 포함)` : `아직 판매 기록 없음 — 이번 달 수요 근사 월 ${num(stock.monthly)}병 기준`})
                   {stock.months > STOCK_STRONG_WARN_MONTHS
                     ? ` — 1년 넘게 팔아야 하는 양입니다. 병값·병입 인건비가 지금 나가고 재고 ${STOCK_WARN_MONTHS}개월 치를 넘으면 할인 이미지로 수요가 줄어듭니다. 사용량을 줄여 나눠 병입하세요`
                     : stock.months > STOCK_WARN_MONTHS ? ` — ${STOCK_WARN_MONTHS}개월 치를 넘으면 할인 이미지로 수요가 줄어듭니다` : ''}

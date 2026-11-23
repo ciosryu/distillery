@@ -4,6 +4,7 @@ import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { CaskTagBar, CaskTagChips } from './CaskTags';
 import { TurnBrief } from './TurnBrief';
 import { AutoFillRow } from './panels/AutoFill';
+import { CaskCareRow } from './panels/CaskCare'; // #345 GAP-PROD-7 (PROD)
 import { getPlaylog, recentActionCount } from '../store/playlog';
 import { PendingEventChoices } from './panels/Events';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
@@ -605,6 +606,8 @@ function SpaceCard() {
   const price = regionalCaskPrice(s, buyType);
   return (
     <Card title={`숙성고 공간 — ${casks.length} / ${cap}통 (빈 통 ${empties.length})`}>
+      {/* [결정 #345] GAP-PROD-7 — 빈 통 관리(재탄화 · 중고 매각 · 시즈닝 통 주문)를 홈으로. 컴포넌트 · 문구는 PROD(CaskCare.tsx), 숙성고 탭은 열지 않는다(#136) */}
+      <CaskCareRow />
       <div className="grid gap-4 md:grid-cols-2">
         <div className="grid min-w-0 content-start gap-2">
           <Meter label="자리 사용 (빈 통·주문 중 포함)" value={casks.length + pendingOrders} max={cap} />
