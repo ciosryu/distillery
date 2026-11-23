@@ -1,0 +1,92 @@
+// 빈 통 관리 (결정 #345 GAP-PROD-7, 2026-11-23 — 파트 PROD, 화면만·규칙 0) — 숙성고 탭(샌드박스 전용, #136 참값 화면)에만 있던
+// 재탄화 · 시즈닝 통 주문 · 중고 통 매각을 홈(ARCH가 끼움)에서 쓰게 한다. 행동은 캠페인에서 처음부터 열려 있었다(잠금 키 없음) — 버튼만 없었다.
+// 숨김 정보: 활성도는 빈 통 표가 원래 보이던 값이고(스팟 통은 6개월 숙성 전 "?"), 12년 감점 전망은 활성도만으로 센다(warehouse.ts tanninOutlook — 원액 맛을 읽지 않는다).
+// 안내 (#339 · #745): 재탄화는 활성도를 0.7까지 올린다 → 3년용 통에는 좋고, 12년용으로 아껴 둔 재사용 통(활성도 0.6~0.13)에는 탄닌이 다시 늘어 손해다
+import { useState } from 'react';
+import { CASK_MARKET, CASKS, RECHAR_COST } from '../../sim/content/catalog';
+import { MAX_RECHAR, regionalCaskPrice, tanninOutlook, vesselMaterial, type Cask } from '../../sim';
+import { usedCaskPrice } from '../../sim/casks';
+import { useGame } from '../../store/game';
+import { won } from '../format';
+import { Button, ConfirmButton, NumberField } from '../kit';
+
+/** 활성도가 이보다 낮으면 나무 향이 모자라 12년 품질도 다시 내려간다(#745 표 — 6번째 채움부터). 홈 숙성 칸 표시(ARCH #781)와 같은 문턱 */
+const WOOD_WEAK = 0.1;
+/** 시즈닝 계약을 할 수 있는 통 — 시즈닝이 있는 종류만(#158) */
+const SEASONABLE = ['ex_bourbon_barrel', 'oloroso_butt'] as const;
+type Seasonable = (typeof SEASONABLE)[number];
+
+interface Group { key: string; casks: Cask[]; head: Cask }
+
+export function CaskCareRow() {
+  const s = useGame((g) => g.state);
+  const dispatch = useGame((g) => g.dispatch);
+  const [seasonType, setSeasonType] = useState<Seasonable>('oloroso_butt');
+  const [seasonQty, setSeasonQty] = useState(2);
+  // 다 쓴(1번 이상 채운) 빈 나무 통 — 재탄화·중고 매각은 이 통들만 된다. 같은 종류·횟수·활성도·상태끼리 묶어 한 줄로
+  const used = s.inventory.casks.filter((c) => !c.contents && vesselMaterial(c) === 'wood' && c.fills > 0);
+  const groups: Group[] = [];
+  for (const c of used) {
+    const key = `${c.typeId}|${c.fills}|${c.recharCount}|${c.activityKnown === false ? '?' : c.activity.toFixed(2)}|${c.contaminationKnown ? 'x' : ''}`;
+    const g = groups.find((x) => x.key === key);
+    if (g) g.casks.push(c); else groups.push({ key, casks: [c], head: c });
+  }
+  groups.sort((a, b) => a.head.typeId.localeCompare(b.head.typeId) || a.head.fills - b.head.fills);
+  const unit = Math.round(regionalCaskPrice(s, seasonType) * CASK_MARKET.seasoningCostFactor);
+  const box = 'mb-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-xs dark:border-stone-700 dark:bg-stone-800/50';
+  return (
+    <div className={box}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="font-medium text-stone-700 dark:text-stone-200">빈 통 관리</span>
+        <span className="text-stone-500">재탄화는 <b>3년용 통</b>에 — 활성도가 0.7로 올라 빨리 익는다. 12년용은 2~5번 쓴 통(활성도 0.6~0.13)을 그대로 둔다(재탄화하면 12년 탄닌이 다시 는다) · 오염 통은 재탄화해야 다시 쓸 수 있다</span>
+      </div>
+      {!groups.length ? (
+        <div className="mt-1 text-stone-500">다 쓴 빈 나무 통이 없다 — 병입·핸드필로 통이 비면 여기서 재탄화하거나 판다.</div>
+      ) : (
+        <div className="mt-1 grid gap-1">
+          {groups.map(({ key, casks, head }) => {
+            const known = head.activityKnown !== false;
+            // 오염 통은 재탄화해야만 다시 쓰고, 재탄화하면 활성도가 0.7이 된다 → 지금 활성도로 센 12년 전망은 맞지 않아 보이지 않는다
+            const o = known && !head.contaminationKnown ? tanninOutlook(s, head) : null;
+            const canRechar = head.recharCount < MAX_RECHAR;
+            return (
+              <div key={key} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="min-w-0">
+                  <b>{CASKS[head.typeId].nameKo}</b> · {head.fills}번 쓴 통 ×{casks.length}
+                  {' '}· 활성도 {known ? head.activity.toFixed(2) : '? (스팟 매입)'}
+                  {head.recharCount > 0 && ` · 재탄화 ${head.recharCount}/${MAX_RECHAR}`}
+                  {head.contaminationKnown && <span className="font-medium text-rose-700 dark:text-rose-400"> · 오염 — 재탄화해야 다시 쓸 수 있다(재탄화하면 활성도 {Math.max(head.activity, 0.7).toFixed(2)})</span>}
+                  {o && <span className={o.penalty >= 5 || o.activity < WOOD_WEAK ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}>
+                    {' '}· 다음에 채우면 12년 {o.activity < WOOD_WEAK ? '나무 향 약함(품질 다시 내려감)' : o.penalty >= 0.5 ? `감점 약 ${Math.round(o.penalty)}` : '감점 없음'}
+                  </span>}
+                </span>
+                <span className="flex flex-wrap gap-1">
+                  <Button small disabled={!canRechar} onClick={() => dispatch({ type: 'rechar', caskId: head.id })}
+                    title={canRechar ? `활성도를 0.7까지 되살린다(시즈닝 향은 돌아오지 않는다) · 오염 통은 재탄화로 깨끗해진다 — 최대 ${MAX_RECHAR}회` : `재탄화는 통마다 ${MAX_RECHAR}회까지`}>
+                    재탄화 1통 {won(RECHAR_COST)}
+                  </Button>
+                  <ConfirmButton small variant="ghost" armKey={`care-sell-${head.id}@${s.month}`} armedLabel="한 번 더 누르면 매각" onConfirm={() => dispatch({ type: 'sellUsedCask', caskId: head.id })}
+                    preview={() => <>{head.id}({CASKS[head.typeId].nameKo}, {head.fills}번 사용)를 {won(usedCaskPrice(head))}에 판다 — 통이 숙성고에서 사라진다</>}>
+                    중고 매각 1통 {won(usedCaskPrice(head))}
+                  </ConfirmButton>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div className="mt-1.5 flex flex-wrap items-center gap-2 border-t border-stone-200 pt-1.5 dark:border-stone-700">
+        <span className="text-stone-600 dark:text-stone-400">시즈닝 통 주문</span>
+        <select className="rounded border border-stone-300 bg-white px-1 py-0.5 text-xs dark:border-stone-700 dark:bg-stone-800" aria-label="시즈닝 통 종류" value={seasonType} onChange={(e) => setSeasonType(e.target.value as Seasonable)}>
+          {SEASONABLE.map((k) => <option key={k} value={k}>{CASKS[k].nameKo}</option>)}
+        </select>
+        <NumberField label="개수" value={seasonQty} min={1} max={50} width="w-14" onCommit={setSeasonQty} />
+        <Button small onClick={() => dispatch({ type: 'orderSeasoning', caskType: seasonType, qty: seasonQty })}
+          title={`새 통을 ${seasonType === 'oloroso_butt' ? '셰리 보데가' : '버번 증류소'}에 맡겨 ${CASK_MARKET.seasoningMonths}개월 길들인다 — 시즈닝 향이 진하고 활성도도 조금 오른다(12년 탄닌↑). 숙성고 자리는 지금부터 잡는다`}>
+          {CASK_MARKET.seasoningMonths}개월 뒤 받기 · {won(unit * seasonQty)}
+        </Button>
+        <span className="text-stone-500">시즈닝한 통은 활성도도 조금 오른다(×1.1) — 12년용으로는 탄닌이 는다</span>
+      </div>
+    </div>
+  );
+}
