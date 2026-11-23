@@ -1,0 +1,23 @@
+표준 규모 사람형 판정용 봇(P8, #265) — 한국 경기, standard, 10시드 × 180개월, 이벤트 켬, 4차 재현(Q0) + 후반 확인 판 행동(수출 84개월·5곳·×1.25 · 기프트 샵·핸드필 · 3년 표기·어린 통부터·예비 2통 보호 · 계열당 3제품·자동 가격 · 마케팅 350 → 200만 · 현금 10억↑면 연봉 인상)
+| 정책 | 파산 (게임 규칙, 중앙 월) | 최저 현금 중앙값 (그 달) | 최대 대출 잔액 평균 | 첫 위스키 | 6~9년 차 위스키 판매(병, 평균) | 15년 순자산 평균(생존 판) | 순자산 목표 달성 |
+|---|---|---|---|---|---|---|---|
+| X0 표준 규모 사람형(후반 확인 판 재현) | 0/10 (—) | 0.64억 (22월) | 3.08억 | 14월 | 25,135 | 26.72억 | 8/10 |
+
+| 정책 | 후보 36개월 | 72개월 | 108개월 | 144개월 | 끝에 144개월 이상 통(평균) | 플래그십 가능 판 | 15년 순자산 평균 |
+|---|---|---|---|---|---|---|---|
+| X0 표준 규모 사람형(후반 확인 판 재현) | 0.0 | 0.0 | 0.0 | 3.4 | 0.0 | 0/10 | 26.72억 |
+#G {"mode":"base","tier":"standard","pol":"X0","seed":1,"target":2400000000,"retail":1054696160,"nwEnd":2820054832,"months":180,"v":{"month":146,"nw":2163419377,"q":75.8,"aw":0.5417175456303028,"grade":"A"},"retailAtVerdict":804562880}
+#G {"mode":"base","tier":"standard","pol":"X0","seed":2,"target":2400000000,"retail":964895040,"nwEnd":2191077151,"months":180,"v":{"month":146,"nw":1741854642,"q":71.4,"aw":0.550952796963143,"grade":"A"},"retailAtVerdict":525434880}
+#G {"mode":"base","tier":"standard","pol":"X0","seed":3,"target":2400000000,"retail":1564103360,"nwEnd":2851281781,"months":180,"v":{"month":146,"nw":2028299950,"q":76.1,"aw":0.5822104142870491,"grade":"A"},"retailAtVerdict":989524400}
+#G {"mode":"base","tier":"standard","pol":"X0","seed":4,"target":2400000000,"retail":1589534640,"nwEnd":2904782292,"months":180,"v":{"month":146,"nw":2332907569,"q":76.2,"aw":0.5672580622568104,"grade":"A"},"retailAtVerdict":1177491280}
+#G {"mode":"base","tier":"standard","pol":"X0","seed":5,"target":2400000000,"retail":781380320,"nwEnd":2371576975,"months":180,"v":{"month":146,"nw":1958641111,"q":75.3,"aw":0.5833066559670422,"grade":"A"},"retailAtVerdict":513764800}
+#G {"mode":"base","tier":"standard","pol":"X0","seed":6,"target":2400000000,"retail":294373600,"nwEnd":2672036776,"months":180,"v":{"month":146,"nw":1910991022,"q":72.8,"aw":0.633610478264173,"grade":"A"},"retailAtVerdict":294373600}
+#G {"mode":"base","tier":"standard","pol":"X0","seed":7,"target":2400000000,"retail":1234880880,"nwEnd":2687401480,"months":180,"v":{"month":146,"nw":1812274367,"q":75.7,"aw":0.6445621101149908,"grade":"A"},"retailAtVerdict":710166480}
+#G {"mode":"base","tier":"standard","pol":"X0","seed":8,"target":2400000000,"retail":1463817200,"nwEnd":2789820352,"months":180,"v":{"month":146,"nw":2094361569,"q":75.4,"aw":0.583999617701767,"grade":"A"},"retailAtVerdict":884265440}
+#G {"mode":"base","tier":"standard","pol":"X0","seed":9,"target":2400000000,"retail":1860718000,"nwEnd":2999751934,"months":180,"v":{"month":146,"nw":2115430092,"q":75.6,"aw":0.6288929483223674,"grade":"A"},"retailAtVerdict":800896400}
+#G {"mode":"base","tier":"standard","pol":"X0","seed":10,"target":2400000000,"retail":860463520,"nwEnd":2434055097,"months":180,"v":{"month":146,"nw":1790704093,"q":75.3,"aw":0.6088222338529384,"grade":"A"},"retailAtVerdict":382967840}
+
+## 등급 분포 — GRADE_MODE=base · TIER=standard (판정 달 순자산·납품은 억, 성과 기준 = 자본금 × 배수)
+| 정책 | n | wins | verdictMonth | nwMean | nwP10 | nwP50 | nwP90 | geTarget | geS | qP50 | qMax | q80 | gradeS | retailAtVerdict | retailEnd | nwEnd | endGeTarget |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| X0 | 10 | 10 | 146 | 19.95 | 17.91 | 20.28 | 21.63 | 0 | 0 | 75.6 | 76.2 | 0 | 0 | 7.08 | 11.67 | 26.72 | 8 |
