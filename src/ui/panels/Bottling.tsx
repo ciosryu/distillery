@@ -133,6 +133,8 @@ export function Bottling() {
   const known = useMemo(() => (hide ? knownReads(s) : null), [hide, s]);
   const est = hide && preview ? estimateBlend(s, components) : null;
   const masked = !!est?.fromCasks;
+  // 병입하면 제품에 남는 아는 품질(F5d — 모르는 몫은 사전값·큰 오차로 섞음). 첫 출고가·기준가 미리 보기가 병입 행동(executeBlend)과 같은 값을 쓰게 한다
+  const knownEst = masked && est?.quality != null && preview?.ok ? bottledQualityKnown(est, preview.kind ?? 'malt', s.month).est : null;
   // 면세 한정판 예상 판매 (결정 #87) — 이번 달 면세 수요(권장 출고가)로 완판 기한 안에 몇 병 팔릴지
   const dfForecast = (() => {
     if (masked || !preview?.ok || !preview.dfEdition || !preview.category || !preview.evaluation) return null;
@@ -152,7 +154,7 @@ export function Bottling() {
     if (!preview?.ok || !preview.category || preview.dfEdition) return null;
     const quality = masked ? (est?.quality ?? 50) : (preview.evaluation?.quality ?? 50);
     // 새 제품 첫 값 = 기준가 × 기본 정책 배수 n (B1-4) — 병입하면 이 값으로 나온다
-    const price = defaultPolicyPrice(masked ? (priceAtQuality(s, preview, opts, quality) ?? preview.suggestedPrice) : preview.suggestedPrice);
+    const price = defaultPolicyPrice(masked ? (priceAtQuality(s, preview, opts, knownEst ?? quality) ?? preview.suggestedPrice) : preview.suggestedPrice);
     const p: Product = {
       id: 'preview', name: '', category: preview.category, ageYears: preview.ageYears, oakMonths: preview.minOakMonths, restMonths: preview.minRestMonths, abv: preview.finalAbv, bottleMl: opts.bottleMl, chillFiltered: opts.chillFilter, packagingId: opts.packagingId,
       flavor: preview.flavor, quality, typicity: preview.evaluation?.typicity ?? 50, style: preview.evaluation?.style ?? null, sourcedShare: preview.sourcedShare,
@@ -395,7 +397,7 @@ export function Bottling() {
                   보충 뒤 「{restockTarget.name}」: 재고 {num(restockTarget.stockBottles)} → <b>{num(restockAfter.stock)}병</b> · 품질 {num(restockBefore!.q, 1)}{restockBefore!.sigma >= 0.5 ? ` ±${num(restockBefore!.sigma, 1)}` : ''} → <b>{restockAfter.quality == null ? '모른다(샘플 필요)' : `${num(restockAfter.quality, 1)}${restockAfter.sigma >= 0.5 ? ` ±${num(restockAfter.sigma, 1)}` : ''}`}</b> (새 병 비중 {pct(restockAfter.w, 0)}) · 출고가 {won(restockTarget.price)} 그대로
                   {(() => {
                     // 출고가는 자동으로 안 바뀐다 — 새 배치가 더 비싸게 팔릴 술이면 알려 준다 (숙성 연수·품질이 오르면 권장가가 오른다)
-                    const base = masked ? (est?.quality != null ? priceAtQuality(s, preview, opts, est.quality) : null) : preview.suggestedPrice;
+                    const base = masked ? (knownEst != null ? priceAtQuality(s, preview, opts, knownEst) : null) : preview.suggestedPrice;
                     const sug = base != null ? defaultPolicyPrice(base) : null; // 기본 정책 가격(B1-4)과 비교
                     return sug != null && sug > restockTarget.price * 1.1
                       ? <span className="block font-medium">새 배치 {masked ? '예상' : '권장'} 출고가 ≈ {won(sug)} — 지금 출고가보다 높다. 보충 뒤 판매 화면에서 값을 올리세요{preview.ageYears != null && restockTarget.ageYears != null && preview.ageYears > restockTarget.ageYears ? ` (숙성 ${restockTarget.ageYears}년 → ${preview.ageYears}년)` : ''}</span>
