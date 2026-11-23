@@ -17,6 +17,7 @@ import { spotBidPerLPA } from './bulk';
 import { campaignMinOakMonths } from './rules';
 import { campaignWon } from './ledger';
 import { cooperageLeadMonths } from './prodKnobs';
+import { hidesProductQuality, knownProductQuality } from './productView';
 import type { Cask, CaskTypeId, GameState, MonthReport, Product, ProductCategory, Recipe, SpiritKind, SpiritLot } from './types';
 
 /** 표준 병 — 소주는 대중 규격, 몰트는 위스키 규격 (봇·사전 점검과 같은 값) */
@@ -609,11 +610,20 @@ export function whiskyExportPace(s: GameState): { bottles: number; demand: numbe
 // 토글을 켠 제품은 매달 판매 직전에 값을 정한다 — 판매 화면의 가격 비교(priceOptions)와 같은 식으로, 이번 달 **국내 진열 전체**의 공헌이익
 // (각 제품 팔 수 있는 양 × 병당 공헌이익의 합, #220)이 가장 큰 값. 재고가 적으면 올리고 많으면 내린다. 병당 손해 나는 값은 고르지 않는다. 3차 판은 입력 실수로 위스키를 권장가의 1/3에 10개월 팔았다
 
-/** 지금 권장 출고가 — 품질·숙성·주세 경감으로 정해진다(판매 화면의 "권장"과 같은 값) */
+/**
+ * 제품 품질을 "아는 품질"로 바꾼 상태 사본 (F5d ①·④, 결정 #328·#338 — PROD 몫). 고르는 쪽(권장가·자동 가격·가격표)은 이 사본으로 수요를 셈하고,
+ * 실제 판매(market.ts 틱)는 참 상태 그대로 — 추정과 실적이 어긋나면 리뷰 갱신(MKT F5d-2)이 좁힌다. 옛 판·F5d 전 제품은 참값 그대로라 출력이 같다
+ */
+export function withKnownQuality<T extends GameState>(s: T): T {
+  if (!hidesProductQuality(s) || !s.commerce.products.some((p) => p.qualityKnown)) return s;
+  return { ...s, commerce: { ...s.commerce, products: s.commerce.products.map((p) => (p.qualityKnown ? { ...p, quality: knownProductQuality(s, p).q } : p)) } };
+}
+
+/** 지금 권장 출고가 — 품질·숙성·주세 경감으로 정해진다(판매 화면의 "권장"과 같은 값). 품질은 아는 품질(F5d ① — 옛 판·F5d 전 제품은 참값) */
 export function currentSuggested(s: GameState, p: Product): number {
   const region = regionOf(s);
   const oak = isWhiskyCategory(p.category) ? p.oakMonths ?? (p.ageYears ?? 0) * 12 : null;
-  return suggestedPrice(region, p.category, p.bottleMl, p.quality, oak, p.abv, traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL), { oakMonths: p.oakMonths, restMonths: p.restMonths });
+  return suggestedPrice(region, p.category, p.bottleMl, knownProductQuality(s, p).q, oak, p.abv, traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL), { oakMonths: p.oakMonths, restMonths: p.restMonths });
 }
 
 /** 자동 가격 후보 — 권장 출고가의 0.6~2배 + 지금 값 */
@@ -624,7 +634,10 @@ export function bestAutoPrice(s: GameState, p: Product, monthOfYear = calendar(s
   if (p.dutyFreeOnly || p.stockBottles <= 0 || p.price <= 0) return null;
   const base = currentSuggested(s, p);
   const prices = [...new Set([p.price, ...AUTO_PRICE_FACTORS.map((f) => Math.max(100, Math.round((base * f) / 100) * 100))])];
-  const opts = priceOptions(s, p, monthOfYear, prices.map((x) => x / p.price));
+  // F5d ④: 고를 때는 아는 품질로 투영한 상태(형제 제품 포함 — 같은 범주 수요 나눔도 아는 품질로)
+  const ks = withKnownQuality(s);
+  const kp = ks.commerce.products.find((x) => x.id === p.id) ?? p;
+  const opts = priceOptions(ks, kp, monthOfYear, prices.map((x) => x / p.price));
   // 국내 진열 전체 공헌이 가장 큰 값 (#212 · #220, 4차 플레이테스트 MKT 분석): 같은 범주 제품끼리 손님을 나누므로
   // 한 제품 값을 내려 늘어난 판매의 상당 부분은 형제 제품에서 온다 — 제품 혼자의 공헌으로 고르면 값을 너무 내린다.
   // 이 제품 자신의 공헌이 0 이하인 값(병당 손해 · 하나도 안 팔림)은 고르지 않는다 — 형제를 위해 한 제품을 사실상 내리는 일을 막는다
