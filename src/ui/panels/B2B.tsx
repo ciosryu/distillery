@@ -249,7 +249,7 @@ function SiteDeals() {
             {s.commerce.retailOffers.map((o) => {
               // [제안 P-MKT-42] ⓐ 받기 전에 "채울 수 있나"를 본다 — 6차 판: 두 번째 소주 계약을 원액 탱크가 빈 채로 받았다(화면 계산만)
               const ol = retailOfferOutlook(s, o);
-              // 판매 속도는 병입 · 공급 전망과 같은 셈(PROD SALES_LOOKBACK — 품절 달을 뺀 최근 판매 3개월 평균). 판매 기록이 없으면 null
+              // 판매 속도(PROD salesPace categoryMonthlySales — 품절 달을 뺀 최근 판매 3개월 평균, #337 ① 제안 상한과 같은 수). 생산 탭 공급 전망은 수요 속도(categoryMonthlyDemand, PROD #805). 판매 기록이 없으면 null
               const sold = categoryMonthlySales(s, o.category);
               const soldText = sold == null ? '국내 판매 기록 없음' : `품절 달을 뺀 최근 국내 판매 월 ${num(Math.round(sold))}병`;
               const thin = ol.coverMonths < RETAIL_BREAK_MONTHS;
