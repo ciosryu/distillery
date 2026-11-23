@@ -403,7 +403,7 @@ export function Bottling() {
               {stock && (
                 <p className={`text-xs ${stock.months > STOCK_STRONG_WARN_MONTHS ? 'font-medium text-rose-700 dark:text-rose-400' : stock.months > STOCK_WARN_MONTHS ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`}>
                   {stock.months > STOCK_WARN_MONTHS ? '⚠ ' : ''}병입 뒤 {CATEGORY[preview.category!].nameKo} 재고 ≈ <b>{Number.isFinite(stock.months) ? `${num(stock.months, 1)}개월 치` : '팔리지 않음'}</b>
-                  {' '}({stock.basis === 'sales' ? `품절 달을 뺀 최근 판매 월 ${num(stock.monthly)}병 기준` : `아직 판매 기록 없음 — 이번 달 수요 근사 월 ${num(stock.monthly)}병 기준`})
+                  {' '}({stock.basis === 'sales' ? `최근 수요 월 ${num(stock.monthly)}병 기준(재고가 있던 달 — 못 판 몫 포함)` : `아직 판매 기록 없음 — 이번 달 수요 근사 월 ${num(stock.monthly)}병 기준`})
                   {stock.months > STOCK_STRONG_WARN_MONTHS
                     ? ` — 1년 넘게 팔아야 하는 양입니다. 병값·병입 인건비가 지금 나가고 재고 ${STOCK_WARN_MONTHS}개월 치를 넘으면 할인 이미지로 수요가 줄어듭니다. 사용량을 줄여 나눠 병입하세요`
                     : stock.months > STOCK_WARN_MONTHS ? ` — ${STOCK_WARN_MONTHS}개월 치를 넘으면 할인 이미지로 수요가 줄어듭니다` : ''}
