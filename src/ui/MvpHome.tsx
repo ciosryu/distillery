@@ -9,10 +9,11 @@ import { PendingEventChoices } from './panels/Events';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
 import { knownReads, lastSample, readSigma, sampleAxesOf, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
 import { AXIS } from '../sim/content/axes';
-import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
+import { CASK_MARKET, CASKS, EQUIPMENT, RECHAR_COST } from '../sim/content/catalog';
+import { usedCaskPrice } from '../sim/casks'; // #345 중고 매각가
 import { cooperageLeadMonths } from '../sim/prodKnobs'; // F6c: 쿠퍼리지 납기 — 주문(actions.prod.ts)과 같은 값(Normal 2개월)
 import { fillShares, PARTIAL_FILL_HINT } from '../sim/autoFill'; // P-PROD-60: 손 통입 끝자리 안내 — 실제 통입과 같은 식
-import { EMPTY_ACTIVITY_FACTOR, vesselMaterial } from '../sim/maturation';
+import { EMPTY_ACTIVITY_FACTOR, MAX_RECHAR, vesselMaterial } from '../sim/maturation';
 import { tanninOutlook } from '../sim/warehouse'; // P-PROD-66 a·b (PROD 계산)
 import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
@@ -101,6 +102,8 @@ export function MvpHome() {
       {/* ── 상태 ── 숙성 중인 캐스크: 한 줄 요약, "샘플 시기" 할 일에서 열린다 + 숙성고 공간(증설·빈 통) */}
       <div id="mvp-warehouse" className="scroll-mt-28"><WarehouseFold /></div>
       <div id="mvp-space" className="scroll-mt-28"><SpaceCard /></div>
+      {/* [결정 #345] GAP-PROD-7 — 샌드박스 숙성고 탭에만 있던 빈 통 행동(재탄화 · 중고 매각)을 홈으로. 숙성고 탭은 열지 않는다(참값이 샘 — #136) */}
+      <div id="mvp-empties" className="scroll-mt-28"><EmptyCaskFold /></div>
       {/* ── 참고 ── */}
       <CraftingFold />
     </div>
@@ -376,14 +379,14 @@ function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead |
  * PM 대조: 감점 0만 보이면 "많이 쓴 통일수록 좋다"로 읽힌다. 원액 맛은 읽지 않는다(활성도만) */
 export const LOW_ACTIVITY_NOTE = 0.1;
 
-function TanninLine({ s, c }: { s: GameState; c: Cask }) {
+function TanninLine({ s, c, empty = false }: { s: GameState; c: Cask; empty?: boolean }) {
   const o = tanninOutlook(s, c);
   if (!o) return <div className="text-[11px] text-stone-500" title="스팟 통의 활성도는 6개월 숙성 뒤에 드러난다">활성도 ?</div>;
   const yrs = Math.floor(o.atMonths / 12);
   const weak = o.activity < LOW_ACTIVITY_NOTE;
   return (
     <div className={`text-[11px] ${o.penalty >= 5 || weak ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`${yrs}년(${o.atMonths}개월) 무렵 오크·탄닌 약 ${Math.round(o.tannin)}(위스키 상한 ${o.cap}) → 품질 감점 약 ${Math.round(o.penalty)} · 지금까지 약 ${Math.round(o.now)} — 비울 때마다 활성도 ×${EMPTY_ACTIVITY_FACTOR} · 3년 위스키는 활성도 높은 통(새 통)이 빨리 익는다. 12년은 2~5번 쓴 통(활성도 0.6~0.13)이 가장 낫고, 0.1 아래는 나무 향이 모자라 12년 품질도 다시 내려간다. 어림(기상 이상치·재해 제외)`}>
-      활성도 {o.activity.toFixed(2)} · {yrs}년 {o.penalty >= 0.5 ? `감점 약 ${Math.round(o.penalty)}` : '감점 없음'}{weak && <div>나무 향이 약해진 통 — 12년 품질이 다시 내려간다</div>}
+      활성도 {o.activity.toFixed(2)} · {empty ? '지금 채우면 ' : ''}{yrs}년 {o.penalty >= 0.5 ? `감점 약 ${Math.round(o.penalty)}` : '감점 없음'}{weak && <div>나무 향이 약해진 통 — 12년 품질이 다시 내려간다</div>}
     </div>
   );
 }
@@ -591,6 +594,50 @@ function FillCard() {
   );
 }
 
+/**
+ * 빈 나무 통 — 재탄화 · 중고 매각 ([결정 #345] GAP-PROD-7). 행동 규칙은 PROD(`actions.prod.ts rechar · sellUsedCask`) 그대로 — 화면만 홈으로 옮긴다.
+ * 활성도 · "지금 채우면 12년 감점"은 #781 줄과 같은 함수(`tanninOutlook`, 원액 맛을 읽지 않는 어림). 문구는 PROD
+ */
+export const RECHAR_NOTE = '재탄화하면 활성도가 0.7까지 돌아온다 — 3년 위스키는 빨리 익지만 12년용으로는 탄닌이 늘어 손해다. 3년용 통에만 쓴다';
+function EmptyCaskFold() {
+  const s = useGame((g) => g.state);
+  const dispatch = useGame((g) => g.dispatch);
+  const wood = s.inventory.casks.filter((c) => !c.contents && vesselMaterial(c) === 'wood').sort((a, b) => b.activity - a.activity || a.id.localeCompare(b.id));
+  const [open, toggle] = useFold('mvp-empties', false);
+  const used = wood.filter((c) => c.fills > 0).length;
+  if (!wood.length) return null;
+  return (
+    <div className="grid gap-4">
+      <Card>
+        <FoldBar open={open} onToggle={toggle} title={`빈 나무 통 ${wood.length}통`} hint="펼치기 — 재탄화 · 중고 매각">
+          <span className="text-stone-600 dark:text-stone-300">한 번 이상 쓴 통 {used}</span>
+          {wood.some((c) => c.contaminationKnown) && <Badge tone="bad">오염 통 — 재탄화 필요</Badge>}
+        </FoldBar>
+      </Card>
+      {open && (
+        <Card title="빈 나무 통 — 재탄화 · 중고 매각">
+          <p className="mb-2 text-xs text-stone-500">{RECHAR_NOTE}. 중고 매각은 럼 · 테킬라 · 수제 맥주 양조장에 판다 — 통이 숙성고에서 사라지고 자리가 빈다.</p>
+          <Table head={['캐스크', '활성도 · 지금 채우면', '']}>
+            {wood.map((c) => (
+              <tr key={c.id}>
+                <Td className="text-xs">{c.id} · {CASKS[c.typeId].nameKo}{c.fills > 0 ? ` (${c.fills}필)` : ' (새 통)'}{c.recharCount > 0 && ` · 재탄화 ${c.recharCount}회`}{c.contaminationKnown && <> <Badge tone="bad">오염</Badge></>}</Td>
+                <Td><TanninLine s={s} c={c} empty /></Td>
+                <Td className="whitespace-nowrap">
+                  <span className="flex flex-wrap justify-end gap-1">
+                    <Button small disabled={c.recharCount >= MAX_RECHAR || c.fills === 0} onClick={() => dispatch({ type: 'rechar', caskId: c.id })} title={c.fills === 0 ? '새 통은 재탄화할 필요가 없다' : c.recharCount >= MAX_RECHAR ? `재탄화는 최대 ${MAX_RECHAR}회` : RECHAR_NOTE}>재탄화 {won(RECHAR_COST)}</Button>
+                    <ConfirmButton small variant="ghost" disabled={c.fills === 0} armKey={`sellused-${c.id}@${s.month}`} armedLabel="한 번 더 누르면 매각" onConfirm={() => dispatch({ type: 'sellUsedCask', caskId: c.id })} title={c.fills === 0 ? '한 번도 쓰지 않은 통은 중고로 팔 수 없다' : '럼 · 테킬라 · 수제 맥주 양조장에 매각'}
+                      preview={() => <>{c.id}({CASKS[c.typeId].nameKo}, {c.fills}회 사용)를 {won(usedCaskPrice(c))}에 판다 — 통이 숙성고에서 사라진다</>}>중고 매각 {won(usedCaskPrice(c))}</ConfirmButton>
+                  </span>
+                </Td>
+              </tr>
+            ))}
+          </Table>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function SpaceCard() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
@@ -630,7 +677,15 @@ function SpaceCard() {
             <Button small disabled={buyN > free} onClick={() => dispatch({ type: 'buyCasks', caskType: buyType, qty: buyN })} title={`${cooperageLeadMonths(s)}개월 뒤 도착`}>주문 {won(price * buyN)}</Button>
             <Button small disabled={buyN > free} onClick={() => dispatch({ type: 'buySpotCasks', caskType: buyType, qty: buyN })} title={`즉시 입고 · ×${CASK_MARKET.spotPremium} 웃돈 · ${Math.round(CASK_MARKET.spotDudChance * 100)}% 확률로 골빈 통(추출이 약해 3년 위스키엔 손해 · 12년 탄닌은 적다 — [제안 P-PROD-66] c, #339)`}>즉시 {won(price * buyN * CASK_MARKET.spotPremium)}</Button>
           </div>
-          <p className="text-xs text-stone-500">쿠퍼리지 주문은 {cooperageLeadMonths(s)}개월 뒤 도착(자리는 지금 잡힌다). 즉시 구매는 웃돈이 붙고 가끔 활성이 약한 통이 섞인다.</p>
+          {/* [결정 #345] GAP-PROD-7 — 시즈닝 계약(샌드박스 숙성고 탭에만 있던 행동). 버번 · 셰리 통만 */}
+          {(buyType === 'oloroso_butt' || buyType === 'ex_bourbon_barrel') && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button small variant="ghost" disabled={buyN > free} onClick={() => dispatch({ type: 'orderSeasoning', caskType: buyType, qty: buyN })} title={`${CASK_MARKET.seasoningMonths}개월 시즈닝 뒤 최상급 통으로 도착 — 값은 계약 때 카탈로그가의 ${Math.round(CASK_MARKET.seasoningCostFactor * 100)}%로 고정(통 값이 뛰어도 그대로)`}>
+                시즈닝 계약 {won(Math.round(price * CASK_MARKET.seasoningCostFactor) * buyN)} · {CASK_MARKET.seasoningMonths}개월 뒤
+              </Button>
+            </div>
+          )}
+          <p className="text-xs text-stone-500">쿠퍼리지 주문은 {cooperageLeadMonths(s)}개월 뒤 도착(자리는 지금 잡힌다). 즉시 구매는 웃돈이 붙고 가끔 활성이 약한 통이 섞인다.{(buyType === 'oloroso_butt' || buyType === 'ex_bourbon_barrel') && ` 시즈닝 계약은 ${CASK_MARKET.seasoningMonths}개월을 기다리는 대신 싸고 시즈닝(향)이 짙은 통이 온다.`}</p>
         </div>
       </div>
     </Card>
