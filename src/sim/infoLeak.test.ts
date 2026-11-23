@@ -31,6 +31,25 @@ describe('I1 — 화면(src/ui)은 숨은 값을 직접 읽지 않는다', () =>
   });
 });
 
+describe('I1 — 화면은 병입 제품의 참 품질(`.quality`)을 직접 읽지 않는다 (F5d #338 · architecture §10.10)', () => {
+  it('`.quality` 읽기는 아는 품질 분기 · 미리보기 · 샘플 기록 · 판정 공개 자리만 — 그 밖은 knownProductQuality로', () => {
+    // 허용(파일 단위): Warehouse.tsx(샌드박스 전용 개발자 숙성고 #136 — 캠페인에 안 보인다) · HeritageReveal.tsx(승리 달 판정 공개 1회)
+    const ALLOW_FILES = new Set(['ui/panels/Warehouse.tsx', 'ui/panels/HeritageReveal.tsx']);
+    // 허용(줄 단위 — 그 줄에 이 글자가 있으면): 공개 분기(F5d 전 제품 · 옛 판) · 샌드박스 분기 · 병입 전 미리보기 · 샘플 기록 차 · 레시피 예상(탱크 원액 N) · 아는 품질 투영을 받는 권장가
+    const ALLOW_LINE = [
+      'k.public ? p.quality', 'if (k.public) return `품질 ${p.quality}`', // 공개 제품만 참값
+      'hide ? knownProductQuality(s, restockTarget) : { q: restockTarget.quality', // 샌드박스 분기
+      'preview.evaluation', 'restockAfter.quality', 'evaluation.quality', 'est?.quality', 'est.quality', // 병입 전 미리보기(시나리오 판은 masked)
+      'delta.quality', // 샘플 기록 두 번의 차(아는 값)
+      '<Td right>{r.quality}</Td>', // 생산 화면 레시피 예상(탱크 원액 — 참값을 안다)
+      'suggestedPrice(region, p.category, p.bottleMl, p.quality', // currentSuggestedPrice — 부르는 곳이 knownView 투영을 넘긴다
+    ];
+    const bad = UI.flatMap((p) => ALLOW_FILES.has(rel(p)) ? [] : readFileSync(p, 'utf8').split('\n').flatMap((line, i) =>
+      /\.quality\b(?!Known)/.test(line) && !ALLOW_LINE.some((a) => line.includes(a)) ? [`${rel(p)}:${i + 1}`] : []));
+    expect(bad).toEqual([]);
+  });
+});
+
 describe('I1 — 자동화(autoFill)는 숨은 오염을 읽지 않는다 (v16 경로)', () => {
   it('autoFill.ts의 오염 읽기는 usesObservedValuation 분기 안에만 있다', () => {
     const src = readFileSync(join(ROOT, 'sim/autoFill.ts'), 'utf8');
