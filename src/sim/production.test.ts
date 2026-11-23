@@ -504,6 +504,17 @@ describe('위스키 공급 전망·병입 재고 경고 (#178, 1차 MVP 플레�
     for (let i = 0; i < 12; i++) s.history.reports.push(rep(0));
     expect(whiskyAnnualPace(s)?.basis).toBe('demand'); // 12개월 내내 품절이면 판매 기록 없음 → 수요 근사
   });
+
+  it('공급 전망은 수요 속도(재고가 바닥난 달은 기록된 수요로), 납품 상한용 판매 속도는 판매 그대로 (P-PROD-67 · MKT 의견)', async () => {
+    const { categoryMonthlySales, categoryMonthlyDemand } = await import('./economics');
+    const s = mvp();
+    s.commerce.products.push({ id: 'W1', category: 'whisky', stockBottles: 0 } as Product);
+    const rep = (sold: number, demand: number) => ({ sales: [{ productId: 'W1', name: 'w', bottles: sold, revenue: 0, demandBottles: demand }] }) as unknown as GameState['history']['reports'][number];
+    s.history.reports.push(rep(50, 120), rep(60, 130), rep(40, 110)); // 매달 한 달 안에 바닥 — 일부만 팔았다
+    expect(categoryMonthlySales(s, 'whisky')).toBe(50);
+    expect(categoryMonthlyDemand(s, 'whisky')).toBe(120);
+    expect(whiskyAnnualPace(s)).toEqual({ bottles: 120 * 12, basis: 'sales' });
+  });
 });
 
 describe('소주·진 샘플 — 그 주종 레이더 축으로도 읽는다 (#183, 2차 플레이테스트)', () => {

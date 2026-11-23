@@ -11,6 +11,8 @@ import type { GameState, Hex, Product, QualityKnown, SpiritKind } from './types'
 
 /** 샘플 기록이 없는 몫의 품질 오차(1σ) `[튜닝]` — "모르고 병입했다"를 숫자로(명세 `[튜닝 15]`). 값은 단계 T */
 export const UNKNOWN_QUALITY_SIGMA = 15;
+/** [결정 #346] 같은 레시피 보충에서 이어받는 추정의 오차 하한 `[튜닝]` — 보충 원액이 이전과 조금 달라도 이 안(PROD 측정: 같은 제품 보충의 참 품질 변화 평균 3.0 · 중앙 2.4점) */
+export const RESTOCK_PRIOR_SIGMA_FLOOR = 4;
 
 /** 화면·추천·자동 가격이 읽는 품질 — `public`이면 참값(옛 판·F5d 전 제품), 아니면 추정 */
 export interface KnownQuality {
@@ -35,14 +37,17 @@ export function bottledQualityKnown(
   est: { quality: number | null; sigma: number; hex: Hex | null; unknownShare: number },
   kind: SpiritKind,
   month: number,
+  /** [결정 #346] 같은 레시피 보충이면 그 제품의 지금 아는 품질(`restockPrior`) — 모르는 몫을 전역 사전값 대신 이것으로 채운다 */
+  carried?: { est: number; sigma: number },
 ): QualityKnown {
-  const prior = QHAT_PRIOR[kind] ?? 45;
-  if (est.quality == null) return { est: prior, sigma: UNKNOWN_QUALITY_SIGMA, reviews: 0, month };
+  const prior = carried ? carried.est : QHAT_PRIOR[kind] ?? 45;
+  const priorSd = carried ? Math.max(carried.sigma, RESTOCK_PRIOR_SIGMA_FLOOR) : UNKNOWN_QUALITY_SIGMA;
+  if (est.quality == null) return { est: round1(prior), sigma: round1(priorSd), reviews: 0, month };
   const u = Math.min(1, Math.max(0, est.unknownShare));
   const k = 1 - u;
   return {
     est: round1(k * est.quality + u * prior),
-    sigma: round1(Math.sqrt((k * est.sigma) ** 2 + (u * UNKNOWN_QUALITY_SIGMA) ** 2)),
+    sigma: round1(Math.sqrt((k * est.sigma) ** 2 + (u * priorSd) ** 2)),
     reviews: 0,
     month,
     ...(est.hex ? { hex: est.hex } : {}),
@@ -54,17 +59,19 @@ export function bottledQualityKnown(
  * 남은 재고가 F5d 전 제품(아는 품질 없음 = 공개)이면 그 몫은 참값을 오차 0으로 안다. 오차는 두 몫이 독립이라고 보고 합친다.
  * 리뷰 수는 남은 재고 몫만큼 이어 간다(새 배치는 리뷰 0) — 리뷰 갱신(MKT F5d-2)이 이 값을 다시 좁힌다
  */
-export function mergeQualityKnown(old: Pick<Product, 'quality' | 'qualityKnown' | 'stockBottles' | 'hex'>, batch: QualityKnown, batchBottles: number, month: number): QualityKnown {
+export function mergeQualityKnown(old: Pick<Product, 'quality' | 'qualityKnown' | 'stockBottles' | 'hex'>, batch: QualityKnown, batchBottles: number, month: number, sameRecipe = false): QualityKnown {
   const a = Math.max(0, old.stockBottles);
   const b = Math.max(0, batchBottles);
   const w = a + b > 0 ? b / (a + b) : 1;
-  if (w >= 1) return { ...batch, month };
+  // [결정 #346] 같은 레시피 보충이면 리뷰 수는 "이 제품에 쌓인 리뷰"로 잇는다(재고가 바닥이어도) — 아니면 남은 재고 몫만큼
+  const carriedReviews = sameRecipe ? (old.qualityKnown?.reviews ?? 0) : 0;
+  if (w >= 1) return { ...batch, reviews: batch.reviews + carriedReviews, month };
   const o: QualityKnown = old.qualityKnown ?? { est: old.quality, sigma: 0, reviews: 0, month, ...(old.hex ? { hex: old.hex } : {}) };
   const hex = o.hex && batch.hex ? mixHex([{ hex: o.hex, share: 1 - w }, { hex: batch.hex, share: w }]) : undefined;
   return {
     est: round1((1 - w) * o.est + w * batch.est),
     sigma: round1(Math.sqrt(((1 - w) * o.sigma) ** 2 + (w * batch.sigma) ** 2)),
-    reviews: Math.round(o.reviews * (1 - w)),
+    reviews: sameRecipe ? o.reviews + batch.reviews : Math.round(o.reviews * (1 - w)),
     month,
     ...(hex ? { hex } : {}),
   };
@@ -82,6 +89,16 @@ export function restockMix(before: { q: number; sigma: number }, beforeBottles: 
 }
 
 const sameList = (a?: readonly string[], b?: readonly string[]) => (a ?? []).join('|') === (b ?? []).join('|');
+
+/**
+ * [결정 #346] 같은 레시피 보충 — 보충할 제품과 이번 원액의 레시피 집합이 같으면(비어 있지 않게) 그 제품의 지금 아는 품질을 돌려준다.
+ * `bottledQualityKnown`의 모르는 몫 사전값 · `mergeQualityKnown`의 리뷰 잇기에 쓴다. 다르면 undefined(전역 사전값 — 통 구성이 다른 술)
+ */
+export function restockPrior(s: Pick<GameState, 'rulesVersion' | 'commerce'>, target: Product, recipeIds: readonly string[]): { est: number; sigma: number } | undefined {
+  if (!recipeIds.length || !sameList(target.recipeIds, recipeIds)) return undefined;
+  const k = knownProductQuality(s, target);
+  return { est: k.q, sigma: k.sigma };
+}
 
 /**
  * 면세 전용 제품의 짝 (#338 ③(가)) — 같은 달에 같은 범주·같은 레시피 원액으로 병입한 **일반 제품**(면세 전용 아님) 중 아는 품질이 있는 것.

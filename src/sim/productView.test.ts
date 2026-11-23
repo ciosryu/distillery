@@ -1,6 +1,6 @@
 // F5d-1 코어 (#338) — 병입 제품의 아는 품질: 병입 때 추정 · 보충 혼합 · 읽기 한 함수(공개 · 면세 짝) · 보관 사본. 출력은 바뀌지 않는다(아무도 아직 읽지 않음)
 import { describe, expect, it } from 'vitest';
-import { applyAction, restockMix, knownProductQuality, newGame, bottledQualityKnown, mergeQualityKnown, dutyFreePair, UNKNOWN_QUALITY_SIGMA, QHAT_PRIOR, type Flavor, type GameState, type Product } from '.';
+import { applyAction, restockMix, restockPrior, RESTOCK_PRIOR_SIGMA_FLOOR, knownProductQuality, newGame, bottledQualityKnown, mergeQualityKnown, dutyFreePair, UNKNOWN_QUALITY_SIGMA, QHAT_PRIOR, type Flavor, type GameState, type Product } from '.';
 import { emptyCaskOf } from './newGame';
 import { toArchiveEntry } from './lifecycle';
 
@@ -98,6 +98,40 @@ describe('보충 — 남은 재고와 새 배치를 병 수로 합친다', () =>
     s = bottle(s, [b!, c!], { restockId: p0.id }).state;
     const p1 = s.commerce.products.find((x) => x.id === p0.id)!;
     expect(p1.qualityKnown!.sigma).toBeLessThan(p0.qualityKnown!.sigma);
+  });
+});
+
+describe('[결정 #346] 같은 레시피 보충 — 그 제품의 추정 · 리뷰 수를 잇는다', () => {
+  const recipeCasks = (recipeId: string) => { const s = withCasks(); for (const c of s.inventory.casks) if (c.contents?.batchId === 'B') c.contents.recipeId = recipeId; return s; };
+  it('모르는 몫 사전값 = 그 제품의 지금 추정 · σ는 하한 4', () => {
+    expect(bottledQualityKnown({ quality: null, sigma: 0, hex: null, unknownShare: 1 }, 'malt', 9, { est: 70, sigma: 1.5 })).toEqual({ est: 70, sigma: RESTOCK_PRIOR_SIGMA_FLOOR, reviews: 0, month: 9 });
+    expect(bottledQualityKnown({ quality: null, sigma: 0, hex: null, unknownShare: 1 }, 'malt', 9, { est: 70, sigma: 6 }).sigma).toBe(6);
+  });
+  it('재고 0에서 같은 레시피 · 샘플 없는 통으로 보충 → 추정 70 ±4 · 리뷰 8건 그대로(전역 사전값 45 ±15로 돌아가지 않음)', () => {
+    let s = recipeCasks('R1');
+    const [a, b] = ids(s);
+    s = bottle(s, [a!]).state;
+    const pid = s.commerce.products.at(-1)!.id;
+    const p0 = s.commerce.products.find((x) => x.id === pid)!;
+    expect(p0.recipeIds).toEqual(['R1']);
+    p0.qualityKnown = { est: 70, sigma: 2, reviews: 8, month: s.month };
+    p0.stockBottles = 0;
+    s = bottle(s, [b!], { restockId: pid }).state;
+    const k = s.commerce.products.find((x) => x.id === pid)!.qualityKnown!;
+    expect(k).toMatchObject({ est: 70, sigma: RESTOCK_PRIOR_SIGMA_FLOOR, reviews: 8 });
+  });
+  it('레시피가 다르면 잇지 않는다 — 전역 사전값 · 리뷰는 남은 재고 몫만큼', () => {
+    let s = recipeCasks('R1');
+    const [a, b] = ids(s);
+    s = bottle(s, [a!]).state;
+    const pid = s.commerce.products.at(-1)!.id;
+    const p0 = s.commerce.products.find((x) => x.id === pid)!;
+    p0.qualityKnown = { est: 70, sigma: 2, reviews: 8, month: s.month };
+    p0.stockBottles = 0;
+    s.inventory.casks.find((c) => c.id === b)!.contents!.recipeId = 'R2';
+    expect(restockPrior(s, p0, ['R2'])).toBeUndefined();
+    s = bottle(s, [b!], { restockId: pid }).state;
+    expect(s.commerce.products.find((x) => x.id === pid)!.qualityKnown).toMatchObject({ est: QHAT_PRIOR.malt, sigma: UNKNOWN_QUALITY_SIGMA, reviews: 0 });
   });
 });
 
