@@ -454,13 +454,17 @@ const subj = (w: string): string => {
   return c >= 0 && c <= 11171 && c % 28 !== 0 ? `${w}이` : `${w}가`;
 };
 
-/** 예상과 실제의 차이 중 큰 축 두 개를 문장으로 (위스키 계열 육각형 — 소주·진 병입에는 쓰지 않는다) */
-export function revealNotes(predicted: Hex, actual: Hex): string[] {
+/**
+ * 예상과 실제의 차이 중 큰 축 두 개를 문장으로 (위스키 계열 육각형 — 소주·진 병입에는 쓰지 않는다).
+ * `numbers: false`(결정 #344 — 병입 제품 품질을 가리는 판)면 방향만 알린다("예상보다 약했다") — 축 값의 정확한 차이는 리뷰로 좁혀진다
+ */
+export function revealNotes(predicted: Hex, actual: Hex, opts: { numbers?: boolean } = {}): string[] {
+  const numbers = opts.numbers ?? true;
   return HEX_AXES.map((a) => ({ a, d: actual[a] - predicted[a] }))
     .filter((x) => Math.abs(x.d) >= 3)
     .sort((p, q) => Math.abs(q.d) - Math.abs(p.d))
     .slice(0, 2)
-    .map((x) => `${subj(HEX_LABEL[x.a])} 예상보다 ${x.d > 0 ? '강했다' : '약했다'} (${x.d > 0 ? '+' : ''}${x.d.toFixed(0)})`);
+    .map((x) => `${subj(HEX_LABEL[x.a])} 예상보다 ${x.d > 0 ? '강했다' : '약했다'}${numbers ? ` (${x.d > 0 ? '+' : ''}${x.d.toFixed(0)})` : ''}`);
 }
 
 export { hexDistance, matchScore };
