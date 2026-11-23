@@ -9,7 +9,7 @@
 
 ## 명령
 - 4파일 `v16-<standard|micro>-<180|240>.txt`: `P8=1 METRICS=1 TIER=<standard|micro> ONLY=X0,X12F npx tsx scripts/experiments/mvp-human.ts 10 <180|240>` (main `e91c507`)
-- 2파일 `grade-<standard|micro>-180.txt`: `ONLY=X0 TIER=<standard|micro> GRADE_MODE=base npx tsx scripts/experiments/grade-dist.ts 10 180` — 판정 달(146개월) 순자산 · 납품 매출(MGT 측정 래퍼). 40시드 정본은 MGT #806
+- 2파일 `grade-<standard|micro>-180.txt`: `ONLY=X0 TIER=<standard|micro> GRADE_MODE=base npx tsx scripts/experiments/grade-dist.ts 10 180` — 판정 달(146개월) 순자산 · 납품 매출(MGT 측정 래퍼). 40시드 정본은 MGT #806. 이 두 파일은 P-MKT-44 실험 폴더(main `e91c507` + 실험 스위치 `P44`, 꺼진 상태 = main과 같은 경로)에서 돌렸다
 
 ## 바뀌지 않은 것 (바이트 동일 — MKT · PM 검사, PR #764)
 - `RULES=legacy` X0 standard 10 × 180(X0L) · 지역 스모크 8(`balance-sim 2 120 all`) · 래퍼 4개(mkt-p8v B · prod-style · prod-hold · prod-sample)
