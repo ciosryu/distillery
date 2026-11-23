@@ -5,7 +5,7 @@ import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './H
 import { BOTTLE_SIZES, CASKS, PACKAGING } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
-import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, bottledQualityKnown, restockMix } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, bottledQualityKnown, restockMix, restockPrior, recipeIdsOf } from '../../sim';
 import { agedWhitePerception } from '../../sim/content/market';
 import { regionOf } from '../../sim/content/regions';
 import { STANDARD_BOTTLE, stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
@@ -236,7 +236,8 @@ export function Bottling() {
   const restockBefore = restockTarget ? (hide ? knownProductQuality(s, restockTarget) : { q: restockTarget.quality, sigma: 0 }) : null;
   const restockAfter = (() => {
     if (!restockTarget || !restockBefore || !preview?.ok || !preview.evaluation) return null;
-    const batch = masked ? (est?.quality == null ? null : (({ est: q, sigma }) => ({ q, sigma }))(bottledQualityKnown(est, preview.kind ?? 'malt', s.month))) : { q: preview.evaluation.quality, sigma: 0 };
+    const carried = hide ? restockPrior(s, restockTarget, recipeIdsOf(s, components)) : undefined; // #346 같은 레시피면 이 제품의 추정을 잇는다 — 병입 결과와 같은 식
+    const batch = masked ? (est?.quality == null && !carried ? null : (({ est: q, sigma }) => ({ q, sigma }))(bottledQualityKnown(est!, preview.kind ?? 'malt', s.month, carried))) : { q: preview.evaluation.quality, sigma: 0 };
     const m = restockMix(restockBefore, restockTarget.stockBottles, batch ?? { q: 0, sigma: 0 }, preview.bottles);
     return { stock: m.stock, w: m.w, quality: batch ? m.q : null, sigma: hide ? m.sigma : 0 };
   })();
