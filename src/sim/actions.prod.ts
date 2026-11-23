@@ -12,6 +12,7 @@ import { rngFor } from './rng';
 import { lotQuality } from './bulk';
 import { mod } from './modifiers';
 import { executeBlend, type BlendComponent, type BlendReveal, type BottleOptions } from './blending';
+import { knownProductQuality } from './productView';
 import { blenderOf, delegatePlan, findTarget, LAB, RARE, recordSample, SAMPLING, samplingCapacity, takeSample } from './blendTable';
 import { canFinishInto, emptyCask, FINISH, finishCount, finishLabel, historyAfterTransfer, MAX_RECHAR, recharCask, vesselMaterial } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
@@ -19,7 +20,7 @@ import { validateRecipe } from './production';
 import { equipmentCost } from './sites';
 import { applyWaterPermit } from './waterPermit';
 import { HANDFILL, handfillBlocker } from './handfill';
-import type { AutoFillSettings, AutoSampleSettings, Cask, CaskTypeId, Product, Recipe } from './types';
+import type { AutoFillSettings, AutoSampleSettings, Cask, CaskTypeId, GameState, Product, Recipe } from './types';
 import { nid, staffOf, warehouseCapacity } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
 import { addCost, scaleLedger, splitLedger } from './ledger';
@@ -110,6 +111,12 @@ export const PROD_CASH_KEY: CashKeys<ProdAction> = {
   // 피니싱 (S-10 자리)
   transferCask: null,
 };
+
+/** 보충 알림의 품질 — 가리는 판(F5d)이면 아는 품질(추정 ±오차), 아니면 참값 (ARCH infoLeak 점검: 참 품질이 알림으로 샜다) */
+function qText(s: GameState, p: Product): string {
+  const k = knownProductQuality(s, p);
+  return k.public ? String(p.quality) : `추정 ${Math.round(k.q * 10) / 10}${k.sigma >= 0.5 ? ` ±${Math.round(k.sigma * 10) / 10}` : ''}`;
+}
 
 /** 병입 결과 문구 — 블렌딩 테이블 결과 공개(결정 #124 P6) 포함 */
 function bottleMessage(p: Product, r?: BlendReveal): string {
@@ -420,7 +427,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (a.options.restockId) {
       const before = prev.commerce.products.find((x) => x.id === a.options.restockId)!;
       const added = res.product!.stockBottles - before.stockBottles;
-      return { state: s, message: [`${res.product!.name} 재고 보충 +${added.toLocaleString()}병 (재고 ${res.product!.stockBottles.toLocaleString()}병) · 품질 ${before.quality} → ${res.product!.quality} (재고 가중 평균)`, ...(res.reveal?.notes ?? [])].join(' · ') };
+      return { state: s, message: [`${res.product!.name} 재고 보충 +${added.toLocaleString()}병 (재고 ${res.product!.stockBottles.toLocaleString()}병) · 품질 ${qText(prev, before)} → ${qText(s, res.product!)} (재고 가중 평균)`, ...(res.reveal?.notes ?? [])].join(' · ') };
     }
     return { state: s, message: bottleMessage(res.product!, res.reveal) };
   },

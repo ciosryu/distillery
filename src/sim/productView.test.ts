@@ -68,6 +68,25 @@ describe('병입 행동 — v16은 아는 품질을 쓰고, 옛 판은 쓰지 �
   });
 });
 
+describe('보충 알림 — 가리는 판은 아는 품질만 (ARCH infoLeak 점검)', () => {
+  it('v16: 보충 메시지에 참 품질 숫자 대신 "추정 n ±σ" · 옛 판은 참값', () => {
+    for (const legacy of [false, true]) {
+      const s0 = withCasks(legacy);
+      const [a, b, c] = ids(s0);
+      const first = bottle(s0, [a!, b!]).state;
+      const p = first.commerce.products.at(-1)!;
+      const r = bottle(first, [c!], { restockId: p.id });
+      expect(r.error).toBeUndefined();
+      const after = r.state.commerce.products.find((x) => x.id === p.id)!;
+      if (legacy) expect(r.message).toContain(`품질 ${p.quality} → ${after.quality}`);
+      else {
+        expect(r.message).toMatch(/품질 추정 [0-9.]+( ±[0-9.]+)? → 추정 [0-9.]+/);
+        expect(r.message).not.toContain(`→ ${after.quality} (재고 가중 평균)`);
+      }
+    }
+  });
+});
+
 describe('탱크 원액만 병입 — 숨길 것이 없으니 병입 평가 그대로(MKT 진단: 원액별 평균은 약 3점 낮고 σ 0이라 리뷰가 못 고쳤다)', () => {
   it('아는 품질 = 참 품질 · 오차 0 · 육각형 있음', () => {
     const s = newGame({ seed: 3, startingCash: 50_000_000_000 });
