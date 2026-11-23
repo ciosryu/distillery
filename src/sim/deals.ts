@@ -34,7 +34,7 @@ const RETAIL_SPEC: Partial<Record<ProductCategory, { ml: number; abv: number; oa
 };
 
 /**
- * 납품 규칙 묶음 #337(① 물량 맞춤 · ② 10년↑ 기본 제외)이 켜진 판인가 — **v16 캠페인(시나리오가 있는 판)만**.
+ * 납품 규칙 묶음 #337(① 물량 맞춤 · ② 10년↑ 기본 제외) · #341(단가 상한)이 켜진 판인가 — **v16 캠페인(시나리오가 있는 판)만** ([결정 #343]).
  * 옛 판(`legacy-v15`, X0L)과 샌드박스(`newGame` — v16이지만 시나리오 없음, `balance-sim`)는 지금 규칙 그대로(바이트 동일).
  * 조건을 판 성격으로 두는 것은 `rules.ts baseWageDrift`(#330)와 같은 방식
  */
