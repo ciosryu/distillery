@@ -37,7 +37,7 @@ export function bottledQualityKnown(
   est: { quality: number | null; sigma: number; hex: Hex | null; unknownShare: number },
   kind: SpiritKind,
   month: number,
-  /** [결정 #346] 같은 레시피 보충이면 그 제품의 지금 아는 품질(`restockPrior`) — 모르는 몫을 전역 사전값 대신 이것으로 채운다 */
+  /** [결정 #346] 같은 레시피 보충이면 그 제품의 지금 아는 품질(`restockPrior`) — 모르는 몫은 이것으로 채우고, 아는 몫은 이것과 정밀도 가중으로 결합한다 */
   carried?: { est: number; sigma: number },
   /**
    * 병입 단계 보정(희석 · 여과 · 섞을 때의 향미 상호작용)만큼의 차 — 샘플 · 사전값은 통 원액 하나의 품질이라, 병입 평가와 늘 어긋난다(통 블렌드 약 −3점,
@@ -50,9 +50,19 @@ export function bottledQualityKnown(
   if (est.quality == null) return { est: round1(prior), sigma: round1(priorSd), reviews: 0, month };
   const u = Math.min(1, Math.max(0, est.unknownShare));
   const k = 1 - u;
+  // 아는 몫(샘플 추정 + 병입 보정량). [결정 #346 보완 — PM 2026-11-23] 같은 레시피 보충이면 샘플 있는 몫도 바꿔치기하지 않고
+  // 이어 온 제품 추정과 정밀도(1/σ²) 가중으로 결합한다 — 샘플을 뜰수록 정보가 늘기만 하게(MKT 10시드: 덮어쓰면 샘플 켠 판이 끈 판보다 흔들렸다)
+  let known = est.quality + offset;
+  let knownSd = est.sigma;
+  if (carried && knownSd > 0) {
+    const wK = 1 / knownSd ** 2;
+    const wC = 1 / priorSd ** 2;
+    known = (known * wK + prior * wC) / (wK + wC);
+    knownSd = Math.sqrt(1 / (wK + wC));
+  }
   return {
-    est: round1(k * (est.quality + offset) + u * prior),
-    sigma: round1(Math.sqrt((k * est.sigma) ** 2 + (u * priorSd) ** 2)),
+    est: round1(k * known + u * prior),
+    sigma: round1(Math.sqrt((k * knownSd) ** 2 + (u * priorSd) ** 2)),
     reviews: 0,
     month,
     ...(est.hex ? { hex: est.hex } : {}),

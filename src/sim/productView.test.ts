@@ -1,6 +1,6 @@
 // F5d-1 코어 (#338) — 병입 제품의 아는 품질: 병입 때 추정 · 보충 혼합 · 읽기 한 함수(공개 · 면세 짝) · 보관 사본. 출력은 바뀌지 않는다(아무도 아직 읽지 않음)
 import { describe, expect, it } from 'vitest';
-import { applyAction, bottlingOffset, batchQualityKnown, estimateBlend, previewBlend, priceAtQuality, restockMix, restockPrior, RESTOCK_PRIOR_SIGMA_FLOOR, knownProductQuality, newGame, bottledQualityKnown, mergeQualityKnown, dutyFreePair, UNKNOWN_QUALITY_SIGMA, QHAT_PRIOR, type Flavor, type GameState, type Product } from '.';
+import { applyAction, mulberry32, bottlingOffset, batchQualityKnown, estimateBlend, previewBlend, priceAtQuality, restockMix, restockPrior, RESTOCK_PRIOR_SIGMA_FLOOR, knownProductQuality, newGame, bottledQualityKnown, mergeQualityKnown, dutyFreePair, UNKNOWN_QUALITY_SIGMA, QHAT_PRIOR, type Flavor, type GameState, type Product } from '.';
 import { emptyCaskOf } from './newGame';
 import { toArchiveEntry } from './lifecycle';
 import { defaultPolicyPrice } from './content/market';
@@ -187,6 +187,33 @@ describe('[결정 #346] 같은 레시피 보충 — 그 제품의 추정 · 리�
     const prior = Math.round((QHAT_PRIOR.malt! + bottlingOffset(s, comps, previewBlend(s, comps, opts).evaluation!.quality)) * 10) / 10;
     s = bottle(s, [b!], { restockId: pid }).state;
     expect(s.commerce.products.find((x) => x.id === pid)!.qualityKnown).toMatchObject({ est: prior, sigma: UNKNOWN_QUALITY_SIGMA, reviews: 0 });
+  });
+});
+
+describe('[#346 보완] 같은 레시피 보충 + 샘플 있음 — 이어 온 추정과 결합(바꿔치기 금지)', () => {
+  it('결합 뒤 σ는 두 쪽(배치 샘플 · 이어 온 추정) 어느 것보다 크지 않다 · 추정은 둘 사이', () => {
+    const carried = { est: 70, sigma: 2 };
+    const k = bottledQualityKnown({ quality: 62, sigma: 5, hex: null, unknownShare: 0 }, 'malt', 9, carried, 0);
+    expect(k.sigma).toBeLessThanOrEqual(5);
+    expect(k.sigma).toBeLessThanOrEqual(RESTOCK_PRIOR_SIGMA_FLOOR); // 이어 온 쪽 σ는 하한 4
+    expect(k.est).toBeGreaterThan(62);
+    expect(k.est).toBeLessThan(70);
+    // 이어 올 것이 없으면(새 제품 · 다른 레시피) 지금처럼 샘플 추정 그대로
+    expect(bottledQualityKnown({ quality: 62, sigma: 5, hex: null, unknownShare: 0 }, 'malt', 9, undefined, 0)).toMatchObject({ est: 62, sigma: 5 });
+  });
+  it('정보가 많은 쪽(샘플 켬 = 결합)이 추정 오차 기대값에서 불리하지 않다 — 같은 참값을 두 번 잰 몬테카를로 2,000회', () => {
+    const rng = mulberry32(346);
+    const normal = () => rng.normal(0, 1);
+    let seOn = 0; let seOff = 0;
+    for (let i = 0; i < 2000; i++) {
+      const truth = rng.range(60, 80);
+      const sC = RESTOCK_PRIOR_SIGMA_FLOOR; const sK = rng.range(3, 5);
+      const carried = { est: truth + sC * normal(), sigma: sC };
+      const on = bottledQualityKnown({ quality: truth + sK * normal(), sigma: sK, hex: null, unknownShare: 0 }, 'malt', 1, carried, 0).est;
+      const off = bottledQualityKnown({ quality: null, sigma: 0, hex: null, unknownShare: 1 }, 'malt', 1, carried, 0).est; // 샘플 없음 = 이어 온 추정 그대로
+      seOn += (on - truth) ** 2; seOff += (off - truth) ** 2;
+    }
+    expect(seOn).toBeLessThanOrEqual(seOff);
   });
 });
 
