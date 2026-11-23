@@ -183,7 +183,7 @@ function CutbackLine({ fixed, minMonths }: { fixed: number; minMonths: number })
   return (
     <div className={`mt-1.5 rounded border px-2 py-1.5 ${tone}`}>
       <b>{c.stockLow ? '‼' : '⚠'} 몰트·그레인을 줄인 지 {c.monthsSince}개월</b> — 지금 월 {c.current}배치({monthLabel(s.startYear, c.lastHigherMonth)}에는 {c.before}배치) · 현금은 고정비 <b>{Math.floor(c.cashMonths)}개월 치</b>
-      {stock && <> · {c.stockLow ? <b>{stock}{c.soldOut > 0 ? ` · 품절 ${c.soldOut}개` : ''}</b> : stock}</>}
+      {stock && <> · {c.stockLow ? <b>{stock}{c.soldOut > 0 ? ` · 품절 ${c.soldOut}종` : ''}</b> : stock}</>}
       <div className="mt-0.5">
         그때만큼 되돌리면 생산비 +{won(c.extraCostPerMonth)}/월 → {minMonths}개월 뒤부터 해마다 위스키 약 <b>+{num(c.extraWhiskyBottlesPerYear)}병</b>
         <span className="text-stone-600 dark:text-stone-400"> · 줄인 기간만큼 {minMonths}개월 뒤 팔 위스키와 12년 후보 통이 빈다. {c.stockLow ? '위스키가 바닥인데 생산은 줄인 그대로다 — 재고가 쌓여 줄였다면 그 재고가 다 팔렸다' : '판매가 줄어 일부러 줄였다면 그대로 두어도 된다'}</span>
@@ -207,7 +207,7 @@ function RampLine({ fallback }: { fallback: ReactNode }) {
   return (
     <div className="mt-1.5 rounded border border-emerald-200 bg-emerald-50/60 px-2 py-1.5 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">
       <div>
-        <b>증산 여유:</b> 숙성고 빈 자리 <b>{num(o.freeSlots)}</b>{o.emptyCasks > 0 ? ` · 빈 통 ${num(o.emptyCasks)}개` : ''} — 몰트(「{o.name}」)를 월 약 <b>{o.headroomBatches}배치</b> 더 돌려도 자리가 있다
+        <b>증산 여유:</b> 숙성고 빈 자리 <b>{num(o.freeSlots)}</b>{o.emptyCasks > 0 ? ` · 빈 나무 통 ${num(o.emptyCasks)}개` : ''} — {o.headroomBatches > 0 ? <>몰트(「{o.name}」)를 월 약 <b>{o.headroomBatches}배치</b> 더 돌려도 자리가 있다</> : <>몰트(「{o.name}」)를 <b>더 돌릴 자리가 없다</b></>}
         <span className="text-stone-600 dark:text-stone-400"> (막는 것은 {limit}: 숙성고 기준 +{o.warehouseBatches} · 설비 기준 +{o.equipmentBatches}. 지금 생산 지시를 빼고, 통 하나가 {RAMP_HOLD_MONTHS / 12}년 자리를 차지한다고 볼 때 · 1배치 ≈ 200L 통 {num(o.casksPerBatch, 2)}개)</span>
       </div>
       {left != null ? (
@@ -251,7 +251,7 @@ function SojuStockLine() {
   if (v.months == null || v.months < SOJU_STOCK_WARN_MONTHS || v.tankBottles <= 0) return null;
   return (
     <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
-      <b>⚠ 소주가 판매 약 {Math.floor(v.months)}개월 치 있다</b> — 탱크 {liters(v.tankL)}(≈ {num(v.tankBottles)}병) + 제품 재고 {num(v.productBottles)}병 · 최근 3개월 판매 월 약 {num(v.perMonth)}병
+      <b>⚠ 소주가 판매 약 {Math.round(v.months)}개월 치 있다</b> — 탱크 {liters(v.tankL)}(≈ {num(v.tankBottles)}병) + 제품 재고 {num(v.productBottles)}병 · 최근 3개월 판매 월 약 {num(v.perMonth)}병
       <div className="mt-0.5">
         {v.madeBottlesPerMonth > 0
           ? <>지금 소주 지시는 매달 약 {num(v.madeBottlesPerMonth)}병을 더 만든다(생산비 {won(v.costPerMonth)}/월){v.costPerBatch != null && <> — 1배치 줄이면 월 {won(v.costPerBatch)}을 아낀다</>}</>

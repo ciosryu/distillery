@@ -168,9 +168,12 @@ export function restLot(lot: SpiritLot): SpiritLot {
 }
 
 /** 캐스크를 비울 때: 재사용 시 활성도·시즈닝 감소 */
+/** 통을 비울 때 활성도·시즈닝에 곱하는 값 — 다시 채운 통은 추출이 약해진다(1.0 → 0.6 → 0.36 …). 12년 탄닌 전망(warehouse.ts tanninOutlook)·화면 설명이 함께 쓴다 (P-PROD-66, 결정 #339) */
+export const EMPTY_ACTIVITY_FACTOR = 0.6;
+export const EMPTY_SEASONING_FACTOR = 0.35;
 export function emptyCask(cask: Cask): Cask {
   // 오염 통은 비우면서 오염이 드러난다(재탄화로 제거). 숙성고 자리도 비운다
-  return { ...cask, contents: undefined, filledMonth: undefined, slot: undefined, samples: undefined, sampleLog: undefined, labAnalyzed: undefined, rare: undefined, rareKnown: undefined, handfill: undefined, activity: cask.activity * 0.6, seasoning: cask.seasoning * 0.35, ...(cask.contamination ? { contaminationKnown: true } : {}) };
+  return { ...cask, contents: undefined, filledMonth: undefined, slot: undefined, samples: undefined, sampleLog: undefined, labAnalyzed: undefined, rare: undefined, rareKnown: undefined, handfill: undefined, activity: cask.activity * EMPTY_ACTIVITY_FACTOR, seasoning: cask.seasoning * EMPTY_SEASONING_FACTOR, ...(cask.contamination ? { contaminationKnown: true } : {}) };
 }
 
 /** 재탄화: 활성도 0.7까지 회복 (시즈닝은 회복 안 됨). 최대 2회 */
