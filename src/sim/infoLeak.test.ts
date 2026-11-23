@@ -53,7 +53,7 @@ describe('I1 — 화면은 병입 제품의 참 품질(`.quality`)을 직접 읽
 describe('I1 — 화면은 병입 제품의 참 향미 육각형(`Product.hex`)을 직접 읽지 않는다 (F5d #338 ② · [결정 #344])', () => {
   it('제품 변수의 `.hex` 읽기 0 — 그리는 값은 knownProductQuality(s, p).hex(병입 때 추정, 공개 제품은 참값)', () => {
     // 제품을 담는 변수 이름(화면 관례) — 샘플 기록(`k.hex` · `r.hex` · `est.hex`)이나 목표(`target.hex`)는 아는 값이라 대상이 아니다
-    const PRODUCT_HEX = /\b(p|p0|x|product|prod|lastBlend|cmp|selected|batch)\.hex\b/;
+    const PRODUCT_HEX = /\b(p|p0|x|product|prod|lastBlend|cmp|selected|batch)!?\??\.hex\b/; // `p?.hex` · `p!.hex`도
     const ALLOW_LINE = ['find((p) => p.hex && p.createdMonth === s.month)']; // BlendLab — 이번 달 병입 제품 찾기(있는지만 본다, 그리는 값은 knownProductQuality)
     const bad = UI.flatMap((p) => readFileSync(p, 'utf8').split('\n').flatMap((line, i) =>
       PRODUCT_HEX.test(line) && !ALLOW_LINE.some((a) => line.includes(a)) ? [`${rel(p)}:${i + 1}`] : []));
