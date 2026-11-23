@@ -153,7 +153,7 @@ function ProductionValueLine() {
       {/* 수요 한도 — 만든 만큼 다 팔리지는 않는다 (매출 추정이 과장되지 않게) */}
       {pace && totalPace > 0 && v.whiskyBottlesPerYear > totalPace * 1.2 && (
         <div className="mt-0.5 text-amber-800 dark:text-amber-300">
-          단, 지금 위스키 판매 속도는 국내 연 약 {num(pace.bottles)}병({pace.basis === 'sales' ? '최근 판매' : '수요 추정'})
+          단, 지금 위스키 수요 속도는 국내 연 약 {num(pace.bottles)}병({pace.basis === 'sales' ? '최근 수요 — 재고가 있던 달' : '수요 추정'})
           {exp ? <> + 수출 수요 연 약 {num(exp.demand)}병(그중 판매 {num(exp.bottles)}병)</> : ''}이다 — 그 이상은 바로 팔리지 않는다. 인지도·유통이 오르면 는다
           {exportsLater ? (rulesVersionOf(s) === 'legacy-v15' ? ' — 수출 시장이 열리면 크게 는다(후반 확인 판: 8년 차 뒤 수출이 국내만큼 팔았다)' : ` — 이 캠페인에는 수출이 없다(1.0에서 연다, 결정 #311). 국내 판로는 8년 차 대형 유통 납품(출고가의 ${Math.round(RETAIL_DEAL.priceFactor * 100)}%)으로 넓어진다`) : ''}. 남는 원액은 통에서 더 숙성해 비싸게 팔거나 현물로 판다
         </div>
@@ -236,7 +236,7 @@ function RampLine({ fallback }: { fallback: ReactNode }) {
             : <div key={h.months}>{yrs(h.months)}: 늘린 뒤 약 <b>{fmtMonths(h.recoverMonths!)}</b>이면 누적 이익이 원가를 넘는다</div>
         ))}
       </div>
-      <div className="mt-0.5 text-[11px] text-stone-500">만든 만큼 판다고 본 어림이다(권장 출고가 기준) — 위 판매 속도를 넘는 몫은 수출·숙성 연장으로 받는다. {left != null ? '회수 기한은 판 끝에 숙성 중인 통의 평가액을 0으로 보수적으로 셈했다(실제 순자산에는 현물가로 들어간다)' : '회수 기간은 아직 숙성 중인 통의 평가액을 0으로 보수적으로 셈했다'}</div>
+      <div className="mt-0.5 text-[11px] text-stone-500">만든 만큼 판다고 본 어림이다(권장 출고가 기준) — 위 수요 속도를 넘는 몫은 수출·숙성 연장으로 받는다. {left != null ? '회수 기한은 판 끝에 숙성 중인 통의 평가액을 0으로 보수적으로 셈했다(실제 순자산에는 현물가로 들어간다)' : '회수 기간은 아직 숙성 중인 통의 평가액을 0으로 보수적으로 셈했다'}</div>
     </div>
   );
 }
@@ -281,7 +281,7 @@ function WhiskySupply() {
       <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
         <span className="text-sm font-medium">위스키 공급 전망 — 해마다 새로 팔 수 있게 되는 병 수 (700ml·40%)</span>
         <span className="text-xs text-stone-600">
-          {pace ? <>연 판매 속도 ≈ <b>{num(pace.bottles)}병</b> ({pace.basis === 'sales' ? '품절 달을 뺀 최근 판매 3개월 평균 × 12' : '수요 추정 — 아직 판매 기록 없음'})</> : '몰트 레시피가 없어 수요를 계산할 수 없습니다'}
+          {pace ? <>연 수요 속도 ≈ <b>{num(pace.bottles)}병</b> ({pace.basis === 'sales' ? '재고가 있던 달의 수요(판매 + 재고가 모자라 못 판 몫) 최근 3개월 평균 × 12' : '수요 추정 — 아직 판매 기록 없음'})</> : '몰트 레시피가 없어 수요를 계산할 수 없습니다'}
         </span>
       </div>
       <div className="grid grid-cols-5 gap-2 text-center">
@@ -296,7 +296,7 @@ function WhiskySupply() {
         ))}
       </div>
       <p className="mt-1.5 text-[11px] text-stone-500">
-        숙성 {min}개월을 채워 "위스키"가 되는 때로 셉니다(증발 연 5% 근사). <span className="text-red-700">빨강</span> = 판매 속도의 80% 미만(그해 팔 위스키가 모자람),{' '}
+        숙성 {min}개월을 채워 "위스키"가 되는 때로 셉니다(증발 연 5% 근사). <span className="text-red-700">빨강</span> = 수요 속도의 80% 미만(그해 팔 위스키가 모자람),{' '}
         <span className="text-emerald-700">초록</span> = 적정, <span className="text-amber-700">노랑</span> = 2배 넘음(재고가 쌓임). 지금 생산을 줄이면 {Math.ceil(min / 12)}년 뒤 칸부터 줄어듭니다.
         {tank.liters > 0 && (
           <> 탱크 몰트 {liters(tank.liters)}는 지금 통입한다고 본 값입니다 — 200L 통 약 {num(tank.casks200)}개가 필요하고 숙성고 남은 자리는 {num(tank.freeSlots)}개{tank.casks200 > tank.freeSlots ? <b className="text-red-700"> (자리 부족 — 숙성고를 늘리지 않으면 그만큼 늦어집니다)</b> : ''}.</>
