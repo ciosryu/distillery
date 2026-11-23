@@ -860,6 +860,26 @@ interface GameState {
 
 **크기 합계 `[추정]`:** 권장안(①가 · ②가 · ③가)이면 명세 #590의 F5d-1 코어 1일에 **+반나절**(hex 저장·면세 짝 찾기). (나)·(다)를 고르면 ① 마이그레이션 +반나절 · ③(나) MKT 피드 +1일
 
+**F5d 구현 기록 — [결정 #338](2026-11-21, 오너 "모두 권장안대로" — ①②③ 모두 (가)) · [결정 #340](머지는 8차 판 뒤) `[사실 — PR]`**
+> 위 명세와 달라진 곳 · 정한 곳만 적는다. 머지 전(draft) — 8차 판 동안 `src/`는 머지하지 않는다(#231).
+
+| 묶음 | PR | 소유 | 상태 |
+|---|---|---|---|
+| F5d-1 코어 — 그릇 · 병입 때 추정 · 읽기 한 함수 · 보충 미리보기 | #767 (`arch/f5d-1-core`) | ARCH(코어 대행: `blending.ts executeBlend` · `Bottling.tsx` 보충 줄 — PROD 확인) | draft · 출력 불변(X0L · v16 X0 · golden v16-w101 4파일 main 대비 바이트 동일) |
+| F5d-2 리뷰 갱신 · 틱 연결 · 가격 투영 · 피드 | #771 (`arch/f5d-1-core` 위) | MKT(`reviews.ts` · `market.ts priceOptions` · `feed.ts` · step.ts 5′ 코어 대행 — ARCH 검토) | draft · 출력 바뀜(v16) |
+| 읽는 곳 ①②③⑤ | PROD draft | `Sales.tsx`는 MKT(#173 임시 소유 종료 — skeleton §3.2), `economics.ts` · `Bottling.tsx` · `HeritageReveal.tsx`는 PROD | 진행 중 |
+| 전후 표 | MGT | 행 4개: 기준 · F5d · F5d+자동 샘플 끔 · F5d+오라클(`qualityKnown` 지움 — `p8Hooks.beforeAdvance`) | F5d-1 + 2 합친 뒤 → 8차 뒤 머지 전 오너 보고 |
+
+- **그릇:** `Product.qualityKnown?: QualityKnown { est, sigma, reviews, month, hex? }` · `ProductArchiveEntry.qualityKnown?` · `MonthReport.reviews?: { productId, scores[] }[]`(MKT 제안 — 틱이 남긴 점수를 피드가 그대로 읽는다. 화면이 다시 뽑으면 보충 뒤 지난달 점수가 어긋난다). 모두 선택 필드 — 스키마 v16 그대로.
+- **읽기 한 함수:** `productView.ts knownProductQuality(s, p) → { q, sigma, reviews, public, hex }` — 옛 판 · `qualityKnown` 없음 = 공개(①(가)) · 면세 전용은 같은 달 · 범주 · 레시피의 일반 제품 리뷰가 더 많으면 그 추정(③(가), `dutyFreePair` — 근사, 통 단위 짝은 로트 원장이 필요) · 육각형은 병입 때 추정(②(가), 없으면 "모름").
+- **병입 때 추정(명세와 다른 곳 2):**
+  1. **탱크 원액만 병입(통 없음) → 병입 평가 그대로 · σ 0.** 숨길 정보가 없다. 원액별 품질 평균(`estimateBlend`)은 병입 보정(도수 · 여과)이 빠져 소주가 늘 약 3점 낮고 σ 0이라 리뷰가 못 고쳤다(MKT · PROD 진단, #767 858acce).
+  2. **통이 섞이면 모르는 몫(샘플 기록 없는 통)은 사전값 `QHAT_PRIOR` · σ `UNKNOWN_QUALITY_SIGMA = 15` `[튜닝]`으로 섞는다**(명세는 "기록이 하나도 없으면"만). 아는 통 몫은 `estimateBlend` 그대로 — 병입 보정만큼의 치우침이 남지만 σ > 0이라 리뷰가 좁힌다(남은 리스크 — 측정에서 크면 "아는 향미로 같은 평가 경로" 반나절 `[추정]`).
+- **보충:** `mergeQualityKnown` — 병 수 가중(참 품질 평균과 같은 가중), F5d 전 공개 몫은 참값 σ 0, 리뷰 수는 남은 재고 몫만큼 `round(reviews × (1 − w))`. 화면 미리보기는 코어 `restockMix`(같은 가중) — 남은 재고는 판(시나리오)이면 아는 품질(PROD 검토로 고침 — 이번 원액이 통 추정인지와 다른 축).
+- **리뷰 한 건의 읽기 오차 σᵣ ≈ 5.3**(정정 — 명세 4.6은 연속 균등으로 본 값. `feed.ts` 잡음은 정수 7값 `rng.int(−3, 3)` + 반올림 → 분산 ≈ 4.08, √4.08 / 0.38). "7~9건이면 ±2 안쪽"은 ±2 안팎으로 조금 넓어진다.
+- **열린 것(PM 안건 후보 — 8차 뒤 머지 전):** 자동 가격이 σ를 어떻게 쓸지(MKT `[제안]` — `q − kσ` 보수 투영 또는 σ가 크면 기준가에서 덜 움직이기). 중간 측정에서 σ 큰 위스키(참 68.7 · 아는 88 ±14)가 기준가 2배로 매겨져 66병만 팔렸다. 봇은 샘플을 거의 안 떠 위스키 추정이 사전값에 머문다 → MGT 전후 표 3 · 4행으로 가른다.
+- **남은 ARCH 일:** `infoLeak` I1 "UI `.quality` 직접 읽기 0"(F5d-2 · PROD 읽는 곳 뒤 — 지금 넣으면 기존 화면이 모두 걸린다).
+
 **F6 코어 계약 — DifficultyConfig([결정 #313·#314], 명세 초안 `[제안 P-ARCH-58]`, 2026-11-14 · 입력: MGT P-MGT-48·P-MGT-51(v16 갱신, 결정 #327) · MKT P-MKT-37 · PROD P-PROD-56 · core-integration §3 DifficultyConfig 행 · REQ-CORE-6)**
 > 뜻: **같은 엔진, 설정 묶음 하나.** 네 모드(Easy/Normal/Hard/Custom)는 코드 분기가 아니라 6영역 × 3단계 값의 스냅샷이다. **Normal = 지금 값**이므로 F6 코어 PR은 **출력 불변**(모든 배수 1)이어야 하고, Easy·Hard의 크기는 F7 `[튜닝]`·오너 몫이다. 옛 판(`legacy-v15`)·옛 세이브는 스냅샷이 없고 **없음 = Normal**로 읽는다(증거 창작 금지 — 마이그레이션이 채우지 않는다).
 

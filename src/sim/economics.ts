@@ -455,7 +455,7 @@ export interface RampOutlook {
   equipmentBatches: number;
   /** 둘 중 작은 쪽 */
   headroomBatches: number;
-  /** 지금 숙성고 빈 자리(통이 없는 자리)와 빈 통 수 — 빈 통도 자리를 차지하지만 새 원액을 담을 수 있다 */
+  /** 지금 숙성고 빈 자리(통이 없는 자리)와 빈 나무 통 수(옹기·아는 오염 통 제외 — 할 일 "통입 대기"의 "빈 나무 통"과 같은 셈, 8차 판 전 점검) — 빈 통도 자리를 차지하지만 새 원액을 담을 수 있다 */
   freeSlots: number;
   emptyCasks: number;
   /** 판 끝까지 남은 개월(시나리오만) */
@@ -517,7 +517,7 @@ export function rampOutlook(s: GameState): RampOutlook | null {
   const eq = Number.isFinite(equipmentBatches) ? equipmentBatches : 0;
   return {
     recipeId: r.id, name: r.name, costPerBatch: Math.round(b.cost), casksPerBatch, warehouseBatches, equipmentBatches: eq, headroomBatches: Math.min(warehouseBatches, eq),
-    freeSlots: Math.max(0, capacity - s.inventory.casks.length), emptyCasks: s.inventory.casks.filter((c) => !c.contents).length,
+    freeSlots: Math.max(0, capacity - s.inventory.casks.length), emptyCasks: s.inventory.casks.filter((c) => !c.contents && vesselMaterial(c) === 'wood' && !c.contaminationKnown).length,
     monthsLeft, costToEnd: monthsLeft != null ? Math.round(monthsLeft * b.cost) : null, casksToEnd: monthsLeft != null ? Math.ceil(monthsLeft * casksPerBatch) : null, horizons,
   };
 }
