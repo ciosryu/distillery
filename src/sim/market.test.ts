@@ -451,7 +451,7 @@ describe('경기 대형 유통 납품 (결정 #88)', () => {
   it('계약: 매달 출고가 80%로 가져가고 대금은 2개월 뒤, 숙성 위스키 매력도 ×0.9', () => {
     let g = newGame({ seed: 1, region: 'KR' });
     g.commerce.products = [product({ id: 'P1', category: 'soju_distilled', ageYears: null, abv: 0.25, bottleMl: 375, price: 8_000, stockBottles: 2000 })];
-    const offer = { ...makeRetailOffer(g, mulberry32(2)), bottlesPerMonth: 300 };
+    const offer = { ...makeRetailOffer(g, mulberry32(2))!, bottlesPerMonth: 300 };
     expect(offer.category).toBe('soju_distilled');
     const w = appeal(product(), g);
     g.commerce.retailContracts.push(startRetail(g, offer));
