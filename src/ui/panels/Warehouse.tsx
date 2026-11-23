@@ -151,7 +151,7 @@ function Casks() {
           <Select value={buyType} options={(Object.keys(CASKS) as CaskTypeId[]).map((k) => ({ value: k, label: `${CASKS[k].nameKo} — ${won(regionalCaskPrice(s, k))}` }))} onChange={setBuyType} />
           <NumberField value={qty} min={1} max={100} width="w-16" onCommit={setQty} />
           <Button small onClick={() => dispatch({ type: 'buyCasks', caskType: buyType, qty })} title={`카탈로그가, ${cooperageLeadMonths(s)}개월 뒤 도착`}>쿠퍼리지 주문 ({won(regionalCaskPrice(s, buyType) * qty)})</Button>
-          <Button small onClick={() => dispatch({ type: 'buySpotCasks', caskType: buyType, qty })} title={`즉시 입고, ×${CASK_MARKET.spotPremium} 웃돈, ${Math.round(CASK_MARKET.spotDudChance * 100)}% 확률로 골빈 통`}>스팟 즉시 ({won(regionalCaskPrice(s, buyType) * qty * CASK_MARKET.spotPremium)})</Button>
+          <Button small onClick={() => dispatch({ type: 'buySpotCasks', caskType: buyType, qty })} title={`즉시 입고, ×${CASK_MARKET.spotPremium} 웃돈, ${Math.round(CASK_MARKET.spotDudChance * 100)}% 확률로 골빈 통(추출이 약해 3년 위스키엔 손해 · 12년 탄닌은 적다)`}>스팟 즉시 ({won(regionalCaskPrice(s, buyType) * qty * CASK_MARKET.spotPremium)})</Button>
           {(buyType === 'oloroso_butt' || buyType === 'ex_bourbon_barrel') && <Button small onClick={() => dispatch({ type: 'orderSeasoning', caskType: buyType, qty })} title={`${CASK_MARKET.seasoningMonths}개월 시즈닝 후 최상급 통 도착`}>시즈닝 계약 ({won(regionalCaskPrice(s, buyType) * qty * CASK_MARKET.seasoningCostFactor)})</Button>}
         </div>
       }
