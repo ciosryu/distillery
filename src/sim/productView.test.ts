@@ -1,6 +1,6 @@
 // F5d-1 코어 (#338) — 병입 제품의 아는 품질: 병입 때 추정 · 보충 혼합 · 읽기 한 함수(공개 · 면세 짝) · 보관 사본. 출력은 바뀌지 않는다(아무도 아직 읽지 않음)
 import { describe, expect, it } from 'vitest';
-import { applyAction, restockMix, restockPrior, RESTOCK_PRIOR_SIGMA_FLOOR, knownProductQuality, newGame, bottledQualityKnown, mergeQualityKnown, dutyFreePair, UNKNOWN_QUALITY_SIGMA, QHAT_PRIOR, type Flavor, type GameState, type Product } from '.';
+import { applyAction, bottlingOffset, batchQualityKnown, estimateBlend, previewBlend, restockMix, restockPrior, RESTOCK_PRIOR_SIGMA_FLOOR, knownProductQuality, newGame, bottledQualityKnown, mergeQualityKnown, dutyFreePair, UNKNOWN_QUALITY_SIGMA, QHAT_PRIOR, type Flavor, type GameState, type Product } from '.';
 import { emptyCaskOf } from './newGame';
 import { toArchiveEntry } from './lifecycle';
 
@@ -34,11 +34,14 @@ describe('병입 때 추정 (bottledQualityKnown)', () => {
 
 describe('병입 행동 — v16은 아는 품질을 쓰고, 옛 판은 쓰지 않는다 · 참 품질은 같다', () => {
   it('샘플 없이 병입 → 사전값 ±15 · 육각형 없음("모름") · 화면 읽기는 추정(공개 아님)', () => {
+    const s0 = withCasks();
+    const comps = ids(s0).slice(0, 2).map((id) => ({ source: 'cask' as const, id, liters: 150 }));
+    const prior = Math.round((QHAT_PRIOR.malt! + bottlingOffset(s0, comps, previewBlend(s0, comps, opts).evaluation!.quality)) * 10) / 10; // 사전값(원액 P25) + 병입 보정량
     const r = bottle(withCasks(), ids(withCasks()).slice(0, 2));
     const p = r.state.commerce.products.at(-1)!;
-    expect(p.qualityKnown).toEqual({ est: QHAT_PRIOR.malt, sigma: UNKNOWN_QUALITY_SIGMA, reviews: 0, month: r.state.month });
+    expect(p.qualityKnown).toEqual({ est: prior, sigma: UNKNOWN_QUALITY_SIGMA, reviews: 0, month: r.state.month });
     const k = knownProductQuality(r.state, p);
-    expect(k).toMatchObject({ q: QHAT_PRIOR.malt, sigma: UNKNOWN_QUALITY_SIGMA, public: false, hex: null });
+    expect(k).toMatchObject({ q: prior, sigma: UNKNOWN_QUALITY_SIGMA, public: false, hex: null });
     expect(k.q).not.toBe(p.quality);
   });
   it('샘플을 뜨고 병입 → 추정이 좁아지고 육각형이 생긴다', () => {
@@ -101,6 +104,29 @@ describe('보충 — 남은 재고와 새 배치를 병 수로 합친다', () =>
   });
 });
 
+describe('병입 보정량 — 샘플 추정에 병입 공정(희석 · 여과 · 섞임)의 몫을 더한다 (MKT F5d 전후 표: 통 블렌드 추정이 늘 약 −3점)', () => {
+  it('통 블렌드: 아는 품질 = 샘플 추정 평균 + (병입 평가 − 원액 품질 평균) — 오차는 샘플 오차만 남는다', () => {
+    let s = withCasks();
+    const [a, b] = ids(s);
+    s = applyAction(s, { type: 'sampleCask', caskIds: [a!, b!] }).state;
+    const comps = [a!, b!].map((id) => ({ source: 'cask' as const, id, liters: 150 }));
+    const pv = previewBlend(s, comps, opts);
+    const off = bottlingOffset(s, comps, pv.evaluation!.quality);
+    const k = batchQualityKnown(s, comps, pv)!;
+    expect(k.est).toBeCloseTo(Math.round((estimateBlend(s, comps).quality! + off) * 10) / 10, 1);
+    const p = bottle(s, [a!, b!]).state.commerce.products.at(-1)!;
+    expect(p.qualityKnown!.est).toBe(k.est); // 미리보기 = 병입 결과
+  });
+  it('통 원액을 참값으로 안다고 치면(샘플 오차 0) 추정 = 병입 참 품질 — 보정량이 병입 공정 몫을 다 메운다', () => {
+    const s = withCasks();
+    const comps = ids(s).slice(0, 3).map((id) => ({ source: 'cask' as const, id, liters: 120 }));
+    const pv = previewBlend(s, comps, opts);
+    const avgTrue = pv.evaluation!.quality - bottlingOffset(s, comps, pv.evaluation!.quality);
+    expect(avgTrue + bottlingOffset(s, comps, pv.evaluation!.quality)).toBeCloseTo(pv.evaluation!.quality, 6);
+    expect(Math.abs(bottlingOffset(s, comps, pv.evaluation!.quality))).toBeGreaterThan(0); // 46% 희석 — 공정 몫이 실제로 있다
+  });
+});
+
 describe('[결정 #346] 같은 레시피 보충 — 그 제품의 추정 · 리뷰 수를 잇는다', () => {
   const recipeCasks = (recipeId: string) => { const s = withCasks(); for (const c of s.inventory.casks) if (c.contents?.batchId === 'B') c.contents.recipeId = recipeId; return s; };
   it('모르는 몫 사전값 = 그 제품의 지금 추정 · σ는 하한 4', () => {
@@ -130,8 +156,10 @@ describe('[결정 #346] 같은 레시피 보충 — 그 제품의 추정 · 리�
     p0.stockBottles = 0;
     s.inventory.casks.find((c) => c.id === b)!.contents!.recipeId = 'R2';
     expect(restockPrior(s, p0, ['R2'])).toBeUndefined();
+    const comps = [{ source: 'cask' as const, id: b!, liters: 150 }];
+    const prior = Math.round((QHAT_PRIOR.malt! + bottlingOffset(s, comps, previewBlend(s, comps, opts).evaluation!.quality)) * 10) / 10;
     s = bottle(s, [b!], { restockId: pid }).state;
-    expect(s.commerce.products.find((x) => x.id === pid)!.qualityKnown).toMatchObject({ est: QHAT_PRIOR.malt, sigma: UNKNOWN_QUALITY_SIGMA, reviews: 0 });
+    expect(s.commerce.products.find((x) => x.id === pid)!.qualityKnown).toMatchObject({ est: prior, sigma: UNKNOWN_QUALITY_SIGMA, reviews: 0 });
   });
 });
 
