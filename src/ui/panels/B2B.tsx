@@ -294,7 +294,7 @@ function SiteDeals() {
               </tr>
               {capped.length > 0 && (
                 <tr><td colSpan={8} className="px-2 pb-2 text-xs text-stone-600 dark:text-stone-300">
-                  단가 상한 적용 — 판매가가 기준가의 {RETAIL_PRICE_CAP_MULT}배를 넘어 납품 단가는 그 값까지만 쳐 준다: {capped.map(({ p, b }) => `${p.name} 판매가 ${won(p.price)} → 납품 단가 ${won(b.cap * c.priceFactor)}`).join(' · ')}
+                  단가 상한 적용 — 판매가가 기준가의 {RETAIL_PRICE_CAP_MULT}배를 넘어 납품 단가는 그 값까지만 쳐 준다: {capped.map(({ p, b }) => `${p.name} 판매가 ${wonFull(p.price)} → 납품 단가 ${wonFull(Math.round(b.cap * c.priceFactor))}`).join(' · ')}
                 </td></tr>
               )}
               </Fragment>

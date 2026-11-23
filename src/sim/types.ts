@@ -369,6 +369,12 @@ export interface Product {
   autoRestockMinMonths?: number;
   /** 수출 안 함 (#266) — 켜면 이 제품은 수출 시장(공항 면세점 포함)에 내지 않는다. 국내·지정면세점(제주) 판매는 그대로. 옛 세이브에는 없다 = 수출에 낸다 */
   noExport?: boolean;
+  /**
+   * 대형 유통 납품에 이 제품을 쓸지 ([결정 #337] ② — 납품은 고급 제품을 건드리지 않는다). true = 씀 · false = 제외.
+   * 없으면 기본 규칙: 새 캠페인(v16 시나리오)은 **목재 숙성 120개월↑ 제품 제외**(12년 승리 적격 제품이 여기 든다 — MKT `deals.ts retailDrawEligible`),
+   * 그 밖의 판은 씀. 직접 고른 true·false는 어느 판이든 따른다. 선택 필드라 스키마 v16 그대로(마이그레이션 없음 — `noExport` #266과 같은 방식)
+   */
+  retailDraw?: boolean;
   /** 병당 생산 원가 = 원액 + 포장 + 병입 인건비 (유통비 제외) */
   unitCost: number;
   createdMonth: number;
