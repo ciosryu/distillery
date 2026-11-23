@@ -38,7 +38,7 @@ export function CaskCareRow() {
     <div className={box}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="font-medium text-stone-700 dark:text-stone-200">빈 통 관리</span>
-        <span className="text-stone-500">재탄화는 <b>3년용 통</b>에 — 활성도가 0.7로 올라 빨리 익는다. 12년용은 2~5번 쓴 재사용 통(활성도 0.6~0.13)이 낫다(재탄화하면 12년 탄닌이 다시 는다)</span>
+        <span className="text-stone-500">재탄화는 <b>3년용 통</b>에 — 활성도가 0.7로 올라 빨리 익는다. 12년용은 2~5번 쓴 통(활성도 0.6~0.13)을 그대로 둔다(재탄화하면 12년 탄닌이 다시 는다) · 오염 통은 재탄화해야 다시 쓸 수 있다</span>
       </div>
       {!groups.length ? (
         <div className="mt-1 text-stone-500">다 쓴 빈 나무 통이 없다 — 병입·핸드필로 통이 비면 여기서 재탄화하거나 판다.</div>
@@ -85,6 +85,7 @@ export function CaskCareRow() {
           title={`새 통을 ${seasonType === 'oloroso_butt' ? '셰리 보데가' : '버번 증류소'}에 맡겨 ${CASK_MARKET.seasoningMonths}개월 길들인다 — 시즈닝 향이 진하고 활성도도 조금 오른다(12년 탄닌↑). 숙성고 자리는 지금부터 잡는다`}>
           {CASK_MARKET.seasoningMonths}개월 뒤 받기 · {won(unit * seasonQty)}
         </Button>
+        <span className="text-stone-500">시즈닝한 통은 활성도도 조금 오른다(×1.1) — 12년용으로는 탄닌이 는다</span>
       </div>
     </div>
   );
