@@ -1,7 +1,9 @@
-import { CASKS, EQUIPMENT, type WarehouseType } from './content/catalog';
+import { CASKS, EQUIPMENT, WOOD_EXTRACT, type WarehouseType } from './content/catalog';
+import { CATEGORY } from './content/categories';
+import { campaignMinOakMonths } from './rules';
 import { siteOf } from './content/regions';
 import { clamp } from './flavor';
-import { type Climate, emptyCask, matureVessel, MIN_CASK_VOLUME_L, recordLoss, restLot, vesselMaterial } from './maturation';
+import { type Climate, emptyCask, matureVessel, MIN_CASK_VOLUME_L, recordLoss, restLot, sizeFactor, tempFactor, vesselMaterial } from './maturation';
 import { advanceWood, lpaOf, scaleLedger } from './ledger';
 import { rngFor } from './rng';
 import type { Cask, GameState, MonthReport } from './types';
@@ -83,6 +85,11 @@ function climateIn(s: GameState, w: WarehouseView, tier: number, monthOfYear: nu
   if (w.type === 'dunnage') return { tempC: tm + 0.6 * (to - tm) + 0.3 * tierFrac, humidity: Math.min(95, ho + 6) };
   const strat = 2 + 0.25 * Math.max(0, to - 10);
   return { tempC: tm + 0.95 * (to - tm) + 0.8 + (tierFrac - 0.3) * strat, humidity: clamp(ho + 4 - 14 * tierFrac, 30, 95) };
+}
+
+/** 칸의 평년 기후(이번 달 기상 이상치 없음) — 12년 탄닌 전망(tanninOutlook)과 그 테스트가 쓴다 */
+export function slotClimateNormal(s: GameState, w: WarehouseView, tier: number, monthOfYear: number): Climate {
+  return climateIn(s, w, tier, monthOfYear, { tempC: 0, humidity: 0 });
 }
 
 /** 칸의 연평균 온도 — 입지 평년값만(이번 달 기상 이상치 없음). "서늘한 칸" 순위는 이 값 하나로 정해 달마다 뒤집히지 않는다 (#290 B1-3) */
@@ -236,3 +243,62 @@ export function runMaturation(s: GameState, report: MonthReport, ctx: TickContex
   runContamination(s, report, ctx.monthOfYear, ctx.climateOf);
   report.angelsShareL = lost;
 }
+
+// ───────────── 12년 탄닌 전망 (P-PROD-66 a·b, 결정 #339 — 화면 힌트, 값·판정 불변) ─────────────
+// 12년 품질을 가르는 것은 통의 활성도다: 새 통(1.0)은 12년이면 오크·탄닌이 위스키 상한(45)을 넘어 감점(초과 × 0.8)되고, 비웠다 다시 쓴 통(0.6)은 상한 근처에 머문다
+// (docs/design/prod-flagship-quality80.md). 원액 맛(숨김 값)을 읽지 않는다 — 탄닌은 통입 때 0이고, 월 증가 = 목재 추출 × 활성도 × 크기 계수 × 칸 온도 계수 × (1 − 지금/100)
+// 뿐이라(maturation.ts matureCask ②와 같은 식) 아는 값(통 종류·활성도·칸)만으로 셀 수 있다. 레어 캐스크 배수(숨김)·기상 이상치·칸 옮김은 넣지 않는다 → 어림
+
+export interface TanninOutlook {
+  /** 화면에 보이는 활성도(소수 둘째 자리) */
+  activity: number;
+  /** 전망 기준 목재 개월(기본 캠페인 A = 144) */
+  atMonths: number;
+  /** 그때의 오크·탄닌 어림 */
+  tannin: number;
+  /** 위스키 상한(CATEGORY.whisky.caps.oak_tannin) */
+  cap: number;
+  /** 상한 초과 감점 어림 — flavor.ts evaluate의 capPenalty와 같은 계수(초과 × 0.8) */
+  penalty: number;
+  /** 지금까지(현재 목재 개월) 쌓였을 탄닌 어림 — 빈 통이면 0 */
+  now: number;
+  /** 칸 — 숙성 중이면 지금 칸, 빈 통이면 첫 숙성고 맨 아래 칸으로 본다 */
+  slot: { w: string; tier: number };
+}
+
+/** 위스키 품질식의 탄닌 상한 초과 감점 계수 (flavor.ts evaluate capPenalty와 같은 값) */
+export const CAP_PENALTY_PER_POINT = 0.8;
+
+/**
+ * 통 하나의 12년 탄닌 전망. 숙성 중이면 통입한 달부터, 빈 통이면 "지금 채우면"으로 센다.
+ * 나무 통이 아니거나, 활성도를 아직 모르면(스팟 매입 6개월 전, activityKnown === false) null
+ */
+export function tanninOutlook(s: GameState, cask: Cask, atMonths = campaignMinOakMonths(s)): TanninOutlook | null {
+  if (vesselMaterial(cask) !== 'wood' || cask.activityKnown === false) return null;
+  const extract = WOOD_EXTRACT[cask.wood]?.oak_tannin ?? 0;
+  if (!(extract > 0)) return null;
+  const views = warehousesOf(s);
+  const view = views.find((x) => x.id === cask.slot?.w) ?? views[0];
+  if (!view) return null;
+  const tier = cask.slot && view.id === cask.slot.w ? cask.slot.tier : 0;
+  const elapsed = cask.contents?.oakMonths ?? 0;
+  const start = cask.contents ? (cask.filledMonth ?? s.month - elapsed) : s.month;
+  const sf = sizeFactor(cask.sizeL);
+  // 이미 기준을 넘긴 통(목재 > A)도 지금 값을 셀 수 있게 둘 중 긴 쪽까지 돈다
+  let t = 0;
+  let now = 0;
+  let at = 0;
+  for (let k = 0; k < Math.max(atMonths, elapsed); k++) {
+    const moy = ((start + k) % 12 + 12) % 12 + 1;
+    t += extract * cask.activity * sf * tempFactor(slotClimateNormal(s, view, tier, moy).tempC) * Math.max(0, 1 - t / 100);
+    if (k + 1 === elapsed) now = t;
+    if (k + 1 === atMonths) at = t;
+  }
+  t = at;
+  const cap = CATEGORY.whisky.caps.oak_tannin ?? 45;
+  return {
+    activity: Math.round(cask.activity * 100) / 100, atMonths, tannin: Math.round(t * 10) / 10, cap,
+    penalty: Math.round(Math.max(0, t - cap) * CAP_PENALTY_PER_POINT * 10) / 10, now: Math.round(now * 10) / 10, slot: { w: view.id, tier },
+  };
+}
+

@@ -12,7 +12,8 @@ import { AXIS } from '../sim/content/axes';
 import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
 import { cooperageLeadMonths } from '../sim/prodKnobs'; // F6c: 쿠퍼리지 납기 — 주문(actions.prod.ts)과 같은 값(Normal 2개월)
 import { fillShares, PARTIAL_FILL_HINT } from '../sim/autoFill'; // P-PROD-60: 손 통입 끝자리 안내 — 실제 통입과 같은 식
-import { vesselMaterial } from '../sim/maturation';
+import { EMPTY_ACTIVITY_FACTOR, vesselMaterial } from '../sim/maturation';
+import { tanninOutlook } from '../sim/warehouse'; // P-PROD-66 a·b (PROD 계산)
 import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
 import { equipmentCost } from '../sim/sites';
@@ -24,6 +25,7 @@ import { LineChart } from './charts';
 import { CashFlowLine, JourneyStrip, MonthTodo, OPEN_FOLD_EVENT } from './AlertsView';
 import { AutoSampleSettingsRow } from './panels/AutoSample';
 import { HandfillRow } from './panels/Handfill';
+import { flagshipCaskHint } from './gradeHints'; // 결정 #339 등급 화면 힌트
 import { cashAlert, flagshipCandidates, flagshipImpact, flagshipReady, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
 import { monthlyFixedBreakdown } from '../sim/loans';
 import { PriceDesk } from './panels/Sales';
@@ -365,6 +367,27 @@ function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead |
   );
 }
 
+/**
+ * [제안 P-PROD-66] a·b (결정 #339 — 화면만) — 숙성 중 나무 통의 활성도와 12년 예상 탄닌 감점. 계산은 PROD `tanninOutlook`(원액 맛·레어를 읽지 않는 식 — 숨김 정보 아님).
+ * 활성도를 아직 모르는 스팟 통(6개월 전)은 "?". 기상 이상치·재해는 빼서 실제보다 1~3 낮을 수 있다(어림). "채웠다 비우기" 요령은 말하지 않는다(#339)
+ */
+/** 이보다 활성도가 낮으면(≈ 6차 채움 이상) 경고 — 탄닌 감점은 0이어도 나무 향(바닐라)이 약해져 12년 품질이 다시 내려간다 `[튜닝 — 단계 T]`.
+ * PROD 계산(7차 레시피 · 김포 랙 맨 아래, 버번 n차 채움): 12년 품질 1차 70.5 · 2차 84.3 · 3차 87.2 · 4차 86.5 · 5차 86.2 · 6차(0.08) 84.2 · 7차 81.6 · 8차 77.7.
+ * PM 대조: 감점 0만 보이면 "많이 쓴 통일수록 좋다"로 읽힌다. 원액 맛은 읽지 않는다(활성도만) */
+export const LOW_ACTIVITY_NOTE = 0.1;
+
+function TanninLine({ s, c }: { s: GameState; c: Cask }) {
+  const o = tanninOutlook(s, c);
+  if (!o) return <div className="text-[11px] text-stone-500" title="스팟 통의 활성도는 6개월 숙성 뒤에 드러난다">활성도 ?</div>;
+  const yrs = Math.floor(o.atMonths / 12);
+  const weak = o.activity < LOW_ACTIVITY_NOTE;
+  return (
+    <div className={`text-[11px] ${o.penalty >= 5 || weak ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`${yrs}년(${o.atMonths}개월) 무렵 오크·탄닌 약 ${Math.round(o.tannin)}(위스키 상한 ${o.cap}) → 품질 감점 약 ${Math.round(o.penalty)} · 지금까지 약 ${Math.round(o.now)} — 비울 때마다 활성도 ×${EMPTY_ACTIVITY_FACTOR} · 3년 위스키는 활성도 높은 통(새 통)이 빨리 익는다. 12년은 2~5번 쓴 통(활성도 0.6~0.13)이 가장 낫고, 0.1 아래는 나무 향이 모자라 12년 품질도 다시 내려간다. 어림(기상 이상치·재해 제외)`}>
+      활성도 {o.activity.toFixed(2)} · {yrs}년 {o.penalty >= 0.5 ? `감점 약 ${Math.round(o.penalty)}` : '감점 없음'}{weak && <div>나무 향이 약해진 통 — 12년 품질이 다시 내려간다</div>}
+    </div>
+  );
+}
+
 function WarehouseCard() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
@@ -442,7 +465,7 @@ function WarehouseCard() {
                 <Td><input type="checkbox" aria-label={`${c.id} 선택`} title={can ? undefined : '샘플은 못 뜨지만(횟수 다 씀·고객 소유) 태그는 붙일 수 있다'} disabled={!!c.owner} checked={picked.includes(c.id)} onChange={() => toggle(c.id)} /></Td>
                 <Td className="text-xs">{c.id} · {CASKS[c.typeId].nameKo}{c.fills > 1 && vesselMaterial(c) === 'wood' ? ` (${c.fills}필)` : ''}<CaskTagChips s={s} c={c} reserve={reserve} /></Td>
                 <Td className="max-w-48 truncate text-xs">{lot.name}{lot.sourced && <> <Badge tone="info">매입</Badge></>}{c.owner && <> <Badge tone="info">고객 소유</Badge></>}{c.rareKnown && <> <Badge tone="good">레어</Badge></>}{c.contaminationKnown && <> <Badge tone="bad">오염</Badge></>}</Td>
-                <Td right>{vesselMaterial(c) === 'wood' ? months(lot.oakMonths) : <>옹기 {months(lot.restMonths ?? 0)}{lot.oakMonths > 0 && <div className="text-xs text-stone-500">오크 {months(lot.oakMonths)}</div>}</>}</Td>
+                <Td right>{vesselMaterial(c) === 'wood' ? <>{months(lot.oakMonths)}{(lot.kind === 'malt' || lot.kind === 'grain') && <TanninLine s={s} c={c} />}</> : <>옹기 {months(lot.restMonths ?? 0)}{lot.oakMonths > 0 && <div className="text-xs text-stone-500">오크 {months(lot.oakMonths)}</div>}</>}</Td>
                 <Td right>{liters(lot.volumeL)}{partialFill(c) != null && <div className="text-[11px] text-stone-500" title="통 크기보다 원액이 많이 적다 — 공기에 닿는 면이 넓어 증발·나무 추출이 빠를 수 있다(병입 화면과 같은 기준: 60% 미만)">덜 찬 통 {partialFill(c)}%</div>}</Td>
                 <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>{vesselMaterial(c) === 'onggi' ? '옹기 ' : ''}숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : vesselMaterial(c) !== 'wood' && lot.oakMonths < minM ? <Badge tone="warn">옹기 — 위스키 숙성에 안 들어감</Badge> : lot.oakMonths >= minM ? <Badge tone="good">위스키{lot.oakMonths < 36 ? ' (어림)' : ''}</Badge> : <Badge tone="warn">{minM - lot.oakMonths}개월 남음</Badge>}</Td>
                 <Td><SampleCell s={s} c={c} known={known.get(c.id)} /></Td>
@@ -555,6 +578,8 @@ function FillCard() {
                       </p>
                     );
                   })()}
+                  {/* [제안 P-PROD-66] e · 결정 #339 — 판 초반(첫 2년) 나무 통에 몰트·그레인을 넣을 때 한 줄: 12년 품질은 통 활성도가 가른다(정보만) */}
+                  {!onggi && lot!.kind !== 'soju' && flagshipCaskHint(s) && <p className="text-xs text-sky-800 dark:text-sky-300">{flagshipCaskHint(s)}</p>}
                   {onggi && <p className="text-xs text-amber-800 dark:text-amber-300">옹기: 나무 향 없이 숨을 쉬며 거친 맛이 풀린다 — 탱크 보관보다 빠르고 증발은 나무 통의 절반. 소주 숙성용{lot!.kind !== 'soju' ? ' — 몰트는 옹기에서 보낸 기간이 위스키 숙성(오크)에 들어가지 않는다' : ''}.</p>}
                 </>
               );
@@ -603,7 +628,7 @@ function SpaceCard() {
           <div className="flex flex-wrap items-end gap-2">
             <NumberField label="개수" value={buyN} min={1} max={100} width="w-16" onCommit={setBuyN} />
             <Button small disabled={buyN > free} onClick={() => dispatch({ type: 'buyCasks', caskType: buyType, qty: buyN })} title={`${cooperageLeadMonths(s)}개월 뒤 도착`}>주문 {won(price * buyN)}</Button>
-            <Button small disabled={buyN > free} onClick={() => dispatch({ type: 'buySpotCasks', caskType: buyType, qty: buyN })} title={`즉시 입고 · ×${CASK_MARKET.spotPremium} 웃돈 · ${Math.round(CASK_MARKET.spotDudChance * 100)}% 확률로 골빈 통`}>즉시 {won(price * buyN * CASK_MARKET.spotPremium)}</Button>
+            <Button small disabled={buyN > free} onClick={() => dispatch({ type: 'buySpotCasks', caskType: buyType, qty: buyN })} title={`즉시 입고 · ×${CASK_MARKET.spotPremium} 웃돈 · ${Math.round(CASK_MARKET.spotDudChance * 100)}% 확률로 골빈 통(추출이 약해 3년 위스키엔 손해 · 12년 탄닌은 적다 — [제안 P-PROD-66] c, #339)`}>즉시 {won(price * buyN * CASK_MARKET.spotPremium)}</Button>
           </div>
           <p className="text-xs text-stone-500">쿠퍼리지 주문은 {cooperageLeadMonths(s)}개월 뒤 도착(자리는 지금 잡힌다). 즉시 구매는 웃돈이 붙고 가끔 활성이 약한 통이 섞인다.</p>
         </div>
