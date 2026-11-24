@@ -282,10 +282,13 @@ if (playlog) console.log(`- 플레이 기록: 시작 ${new Date(playlog.startedA
       const C = reps[ci]!.month;
       const R = reps.find((r) => r.month >= C + 3 && r.cashEnd >= 6 * fixedOf(r))?.month;
       const B = R != null ? reps.find((r) => r.month > R && wb(r) >= 0.8 * pre)?.month : undefined;
+      // C → 첫 복구(R과 무관 — 9차 64개월 기록: 현금 회복 전에 스스로 되돌린 판은 B − R가 1개월로 나와 모습을 담지 못했다, PM 2026-11-24 동의)
+      const F = reps.find((r) => r.month > C && wb(r) >= 0.8 * pre)?.month;
       const lost = R != null ? reps.filter((r) => r.month >= R && (r.lostSalesBottles ?? 0) > 0).length : 0;
       const end = reps.at(-1)!.month;
       const n2 = R == null ? '회복 없음' : B != null ? `${B - R}개월` : `≥ ${end - R}개월(판 끝까지 안 되돌림)`;
-      console.log(`- 9d 생산 복구(N2): 줄인 달 C ${C}(줄이기 전 월 ${pre}배치) · 회복 달 R ${R ?? '—'}(C → R ${R != null ? R - C : '—'}개월) · 복구 달 B ${B ?? '—'} → **N2 = ${n2}** · R 뒤 판매 손실 달 ${lost}개`);
+      const cf = F != null ? `${F - C}개월(첫 복구 ${F}${R != null && F < R ? ' — 현금 회복 전' : ''})` : `≥ ${end - C}개월(판 끝까지 안 되돌림)`;
+      console.log(`- 9d 생산 복구(N2): 줄인 달 C ${C}(줄이기 전 월 ${pre}배치) · 회복 달 R ${R ?? '—'}(C → R ${R != null ? R - C : '—'}개월) · 복구 달 B ${B ?? '—'} → **N2 = ${n2}** · **C → 첫 복구 = ${cf}** · R 뒤 판매 손실 달 ${lost}개`);
     }
   }
   console.log(`- 9e 핸드필 통 지정 ${sumKinds('setHandfillCask')}번 · 판매 ${n0(cd.reduce((a, e) => a + e.bottles, 0))}병 · 매출 ${man(cd.reduce((a, e) => a + e.bottles * e.unitPrice, 0))} · 병·라벨 ${man(hfCost)} (월 결산 ${reps.length}개월)`);
