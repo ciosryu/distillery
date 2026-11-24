@@ -638,7 +638,7 @@ function SpaceCard() {
           <div className="flex flex-wrap gap-2">
             {WAREHOUSE_EXPANSIONS.filter((d) => !isLocked(s, `facility:${d.id}`)).map((d) => (
               <Button key={d.id} small disabled={s.finance.cash < equipmentCost(s, d)} onClick={() => dispatch({ type: 'buyEquipment', catalogId: d.id })} title={`${d.leadMonths}개월 뒤 완공 · 월 유지비 ${won(d.maintenance ?? 0)}`}>
-                증설 +{(d as { casks: number }).casks}통 ({won(equipmentCost(s, d))})
+                증설 +{(d as { casks: number }).casks}{byCell ? '칸' : '통'} ({won(equipmentCost(s, d))})
               </Button>
             ))}
           </div>
