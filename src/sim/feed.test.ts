@@ -170,3 +170,41 @@ describe('외부 검토 I2 누수 L3 — 커뮤니티 글은 공개 정보만으
     expect(communityQuality({ ...a.s, rulesVersion: 'legacy-v15' }, a.p, 40)).toBe(80);
   });
 });
+
+describe('[결정 #366] I2 L7 (라) — 가리는 판의 잡내 문구는 커뮤니티 품질로만, 향 이름은 공개', () => {
+  const mk = async (flavor: Record<string, number>, est = 60, rules: 'v16' | 'legacy-v15' = 'v16') => {
+    const { newScenarioGame } = await import('./newScenario');
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5, rules });
+    s.month = 40;
+    const p = {
+      id: 'P1', name: '싱글 몰트 1', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard',
+      flavor, quality: 60, typicity: 70, style: null, sourcedShare: 0, stockBottles: 400, price: 60_000, unitCost: 20_000,
+      createdMonth: 30, lastMonthSold: 30, totalSold: 300, qualityKnown: { est, sigma: 8, reviews: 3, month: 39 },
+    } as Product;
+    s.commerce.products.push(p);
+    const scores = est >= 55 ? [83, 84] : [79, 80];
+    s.history.reports.push({ month: 39, sales: [{ productId: 'P1', name: p.name, bottles: 30, revenue: 1_800_000, demandBottles: 40 }], notes: [], expenses: {}, reviews: [{ productId: 'P1', scores }] } as never);
+    return { s, p };
+  };
+  const sale = { productId: 'P1', name: '싱글 몰트 1', bottles: 30, revenue: 1_800_000, demandBottles: 40 };
+  it('가리는 판: 참 잡내 축이 달라도 잡내 문구 · 글이 같다(커뮤니티 품질 ≥ 문턱이면 잡내 없음)', async () => {
+    const { feedFor, feedSignals } = await import('./feed');
+    const clean = await mk({ fresh_fruit: 30 }), dirty = await mk({ fresh_fruit: 30, feinty: 20, harshness: 60 });
+    expect(feedSignals(dirty.s, dirty.p, sale, undefined, 40).off).toBeNull();
+    expect(feedFor(dirty.s, 3, 40).map((x) => x.text)).toEqual(feedFor(clean.s, 3, 40).map((x) => x.text));
+  });
+  it('가리는 판: 커뮤니티 품질이 문턱 미만이면 일반 낱말 「잡내」(참 잡내 이름이 아니다)', async () => {
+    const { feedSignals } = await import('./feed');
+    const { FEED_GENERIC_OFF } = await import('./content/feed');
+    const low = await mk({ fresh_fruit: 30, feinty: 20 }, 48);
+    const g = feedSignals(low.s, low.p, sale, undefined, 40);
+    expect(g.quality).toBeLessThan(FEED_GENERIC_OFF.below);
+    expect(g.off).toBe(FEED_GENERIC_OFF.word);
+  });
+  it('공개 판(옛 판)은 지금처럼 참 잡내 이름', async () => {
+    const { feedSignals } = await import('./feed');
+    const old = await mk({ fresh_fruit: 30, feinty: 20 }, 60, 'legacy-v15');
+    expect(feedSignals(old.s, old.p, sale, undefined, 40).off).not.toBe('잡내');
+    expect(feedSignals(old.s, old.p, sale, undefined, 40).off).not.toBeNull();
+  });
+});
