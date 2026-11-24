@@ -8,6 +8,11 @@ export function nid(s: GameState, prefix: string): string {
   return id;
 }
 
+/** 턴 사이 행동이 다음 결산 메모로 남길 한 줄 — 다음 틱이 그달 `MonthReport.notes` 맨 앞에 옮긴다 (`HistorySlice.pendingNotes`) */
+export function queueReportNote(s: GameState, note: string): void {
+  (s.history.pendingNotes ??= []).push(note);
+}
+
 export function clone<T>(v: T): T {
   return structuredClone(v);
 }

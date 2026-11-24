@@ -1,5 +1,5 @@
 import { EVENT, EVENTS, type Effect, type EventDef, type Requirement } from './content/events';
-import { aroundOne, domainEventMul, eventDurationMul, eventMagnitudeMul } from './rules'; // F6 난이도 영역 배수·효과 크기·기간(잎 모듈)
+import { aroundOne, domainEventMul, eventDurationMul, eventMagnitudeMul, rulesVersionOf } from './rules'; // F6 난이도 영역 배수·효과 크기·기간(잎 모듈)
 import { tuneEventEffects, tuneForecast } from './prodKnobs';
 import { houseBrand } from './brands';
 import { regionOf, siteOf } from './content/regions';
@@ -23,6 +23,8 @@ import { isUnlocked, riskMul } from './research';
 import { sellFromLots } from './lots';
 import { lpaOf, scaleLedger } from './ledger';
 import { recordLoss } from './maturation';
+import { communityQuality } from './feed'; // [결정 #376] 품평회 수상 조건 — 가리는 판은 커뮤니티 품질(MKT feed.ts, L3 · L7과 같은 값)
+import { hidesProductQuality } from './productView'; // [결정 #375] 평론 판정 문구 — 가리는 판은 숫자를 뺀다
 
 // 이벤트 엔진: 예보 → 발생 → (선택지) → 효과. 결정론적 난수 스트림 사용.
 
@@ -30,6 +32,17 @@ const MAX_NEW_EVENTS_PER_MONTH = 2;
 /** 전체 이벤트 발생률 배수 [튜닝] — 연 5~6건 목표 */
 export const EVENT_RATE = 1.8;
 const LOG_KEPT = 60;
+
+/**
+ * 「품평회 수상」(`highQualityProduct`)의 품질 문턱 `[튜닝]` ([결정 #376] · `mgt-stage-t.md` [제안 P-MGT-62] (다)).
+ * 가리는 판(F5d)은 참 품질 대신 **커뮤니티 품질**(`feed.ts communityQuality` — 지난 12개월 리뷰 읽기 평균, 리뷰가 없으면 아는 품질)을 이 값과 견준다.
+ * 72를 그대로 둔 근거: 리뷰 읽기는 참 품질을 중심으로 흩어지므로(리뷰 1건 σ 약 5.3) 평균은 참값 근처에 모인다 — 같은 문턱이면 「72 이상 술에 메달」의 뜻이 유지되고,
+ * 새로 드러나는 정보는 없다(이미 화면 · 추정에 들어간 리뷰만 쓴다). 리뷰가 적은 제품은 평균이 흔들려 경계(72 ± 5) 근처에서 뜨고 안 뜨고가 갈린다 — 값 손질은 단계 T
+ */
+export const MEDAL_QUALITY = 72;
+
+/** 이벤트 요구 조건 하나 (테스트용으로 내보냄) */
+export function meetsRequirement(s: GameState, r: Requirement): boolean { return meets(s, r); }
 
 function meets(s: GameState, r: Requirement): boolean {
   switch (r) {
@@ -39,7 +52,8 @@ function meets(s: GameState, r: Requirement): boolean {
     case 'twoStaff': return s.hr.staff.length >= 2;
     case 'still': return s.production.equipment.some((e) => e.readyMonth <= s.month && e.feintsLPA != null);
     case 'products': return s.commerce.products.some((p) => p.stockBottles > 0);
-    case 'highQualityProduct': return s.commerce.products.some((p) => p.stockBottles > 0 && p.quality >= 72);
+    // [결정 #376] 가리는 판은 커뮤니티 품질로(communityQuality는 공개 판 · 공개 제품이면 참 품질을 그대로 돌려준다 — 옛 판 · X0L 바이트 동일)
+    case 'highQualityProduct': return s.commerce.products.some((p) => p.stockBottles > 0 && communityQuality(s, p, s.month) >= MEDAL_QUALITY);
     case 'exportUS': return (s.commerce.exports ?? []).some((e) => e.marketId === 'US');
     case 'exportCN': return (s.commerce.exports ?? []).some((e) => e.marketId === 'CN');
     case 'agedWhisky': return s.commerce.products.some((p) => p.stockBottles > 0 && p.category === 'whisky' && (p.oakMonths ?? 0) >= 36);
@@ -209,7 +223,9 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
       case 'criticVerdict': {
         const best = Math.max(0, ...s.commerce.products.filter((p) => p.stockBottles > 0).map((p) => p.quality));
         const verdict = best >= e.rave ? 'rave' : best < e.pan ? 'pan' : 'mild';
-        notes.push(verdict === 'rave' ? `극찬 — 품질 ${best} (수요 폭증, 가격 저항 감소)` : verdict === 'pan' ? `혹평 — 품질 ${best} (수요 급감, 재고 적체 주의)` : `무난한 평가 — 품질 ${best}`);
+        // [결정 #375] 가리는 판(F5d)은 품질 숫자를 문구에 쓰지 않는다 — 평가 말만(판정 문턱 자체는 참 품질 그대로). 옛 판은 숫자 그대로(바이트 동일)
+        const q = hidesProductQuality(s) ? '' : ` — 품질 ${best}`;
+        notes.push(verdict === 'rave' ? `극찬${q} (수요 폭증, 가격 저항 감소)` : verdict === 'pan' ? `혹평${q} (수요 급감, 재고 적체 주의)` : `무난한 평가${q}`);
         notes.push(...applyEffects(s, verdict === 'rave' ? e.raveEffects : verdict === 'pan' ? e.panEffects : e.mildEffects, rng, label, undefined, report, domain));
         break;
       }
@@ -272,12 +288,16 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
 }
 
 /** 이벤트 문구의 {competition} {critic} 자리에 실명(또는 가상명)을 넣는다 */
-function fill(text: string, rng: Rng): string {
-  return text.replace('{competition}', displayName(rng.pick(COMPETITIONS))).replace('{critic}', displayName(rng.pick(CRITICS)));
-}
+const fillWith = (text: string, n: { competition: string; critic: string }): string => text.replace('{competition}', n.competition).replace('{critic}', n.critic);
+/** 대회 · 평론가 이름 한 벌 — 뽑는 순서는 대회 → 평론가(옛 `fill`과 같다) */
+const pickNames = (rng: Rng) => { const competition = displayName(rng.pick(COMPETITIONS)); return { competition, critic: displayName(rng.pick(CRITICS)) }; };
 
 function fire(s: GameState, base: EventDef, rng: Rng, report: MonthReport): void {
-  const def = { ...base, title: fill(base.title, rng), text: fill(base.text, rng) };
+  // 제목과 본문이 **같은 이름**을 쓴다 — 예전에는 제목 · 본문을 따로 뽑아 「도쿄 … 수상」 제목에 「샌프란시스코 … 메달」 본문이 붙었다(9차 판 96개월째, MKT 발견).
+  // 난수는 예전과 똑같이 두 벌(제목 몫 · 본문 몫)을 뽑아 흐름을 지킨다 → 이벤트 결과 · 수치는 모든 판에서 그대로. 옛 판(legacy-v15)은 본문도 예전 두 번째 벌 그대로(문구까지 바이트 동일)
+  const forTitle = pickNames(rng);
+  const second = pickNames(rng);
+  const def = { ...base, title: fillWith(base.title, forTitle), text: fillWith(base.text, rulesVersionOf(s) === 'legacy-v15' ? second : forTitle) };
   if (def.choices?.length) {
     s.events.pending.push({
       id: nid(s, 'V'), defId: def.id, title: def.title, text: def.text, month: s.month,
