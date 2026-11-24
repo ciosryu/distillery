@@ -9,6 +9,7 @@ import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskT
 import { agedWhitePerception } from '../../sim/content/market';
 import { regionOf } from '../../sim/content/regions';
 import { STANDARD_BOTTLE, stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
+import { overhangFactor } from '../../sim/retail'; // 제품 재고 적체 → 수요 배수(시장이 쓰는 그 함수 — 9차 중간 기록: 오크소주 31.8개월 ×0.60이 어느 화면에도 없었다)
 import { protectedCaskIds, reserveCaskIds } from '../../sim/tags';
 import { campaignMinOakMonths, campaignWon, isFlagshipCandidate, rulesVersionOf } from '../../sim';
 import { CaskTagChips } from '../CaskTags';
@@ -179,7 +180,15 @@ export function Bottling() {
     const guess = demandFor(s, p, same, calendar(s).monthOfYear).demandBottles;
     return stockMonthsAfter(s, preview.category, preview.bottles, guess);
   })();
-  const strongStock = !!stock && stock.months > STOCK_STRONG_WARN_MONTHS;
+  // 보충할 제품의 재고 적체 (9차 64개월 중간 기록 — PM 2026-11-24): 분류 재고 줄은 오크소주 3,767병 보충을 "증류식 소주 4.7개월 치"로만 보였다.
+  // 시장은 제품마다 재고 ÷ 판매 속도(salesEma)가 6개월을 넘으면 수요를 줄인다(overhangFactor, 하한 ×0.6) → 같은 함수로 지금 · 보충 뒤 배수를 보인다(판매 셈과 같은 값)
+  const restockStock = (() => {
+    if (!restockTarget || !preview?.ok || !(restockTarget.salesEma && restockTarget.salesEma > 0)) return null;
+    const rate = restockTarget.salesEma;
+    const after = { ...restockTarget, stockBottles: restockTarget.stockBottles + preview.bottles };
+    return { rate, before: restockTarget.stockBottles / rate, after: after.stockBottles / rate, fNow: overhangFactor(restockTarget, s.month), fAfter: overhangFactor(after, s.month) };
+  })();
+  const strongStock = (!!stock && stock.months > STOCK_STRONG_WARN_MONTHS) || (!!restockStock && restockStock.after > STOCK_STRONG_WARN_MONTHS);
   // 두 번 눌러 확인 — 고른 원액·옵션이 바뀌면 다시 묻는다
   const blendKey = JSON.stringify([components, opts]);
   const [armed, setArmed] = useState<string | null>(null);
@@ -422,6 +431,36 @@ export function Bottling() {
                     return sug != null && sug > restockTarget.price * 1.1
                       ? <span className="block font-medium">새 배치 {masked ? '예상' : '권장'} 출고가 ≈ {won(sug)} — 지금 출고가보다 높다. 보충 뒤 판매 화면에서 값을 올리세요{preview.ageYears != null && restockTarget.ageYears != null && preview.ageYears > restockTarget.ageYears ? ` (숙성 ${restockTarget.ageYears}년 → ${preview.ageYears}년)` : ''}</span>
                       : null;
+                  })()}
+                  {/* [제안 P-ARCH-84] #346 잇기는 같은 레시피 목록일 때만 — 다르면 리뷰로 좁힌 추정을 잇지 않는다는 것을 미리 알린다(9차: 「블랜디드 퍼스트 배치」가 보충 뒤 리뷰 0 · ±12.4). 조건(sameList) 자체는 판 뒤 오너 안건 */}
+                  {hideBottled && masked && !carried && restockBefore && (() => {
+                    const rv = knownProductQuality(s, restockTarget).reviews;
+                    return rv > 0 ? <span className="block text-amber-800 dark:text-amber-300">이 제품과 원액 구성(레시피)이 달라 리뷰 {rv}건으로 좁힌 추정을 잇지 않는다 — 보충 뒤 새 병 몫은 「병입 때」 추정{knownBatch ? `(±${num(knownBatch.sigma, 1)})` : ""}으로 다시 시작</span> : null;
+                  })()}
+                  {restockStock && (
+                    <span title="판매 평균의 6개월 치를 넘게 쌓이면 할인 이미지로 수요가 줄어든다(최저 ×0.6). 재고를 줄이면 돌아온다 — 판매 화면 「재고 n개월 치 · 수요 ×f」와 같은 셈(MKT)" className={`block ${restockStock.after > STOCK_STRONG_WARN_MONTHS ? 'font-medium text-rose-700 dark:text-rose-400' : restockStock.after > STOCK_WARN_MONTHS ? 'text-amber-800 dark:text-amber-300' : ''}`}>
+                      {restockStock.after > STOCK_WARN_MONTHS ? '⚠ ' : ''}이 제품 재고 {num(restockStock.before, 1)}개월 치 → 보충 뒤 <b>{num(restockStock.after, 1)}개월 치</b>(이 제품 판매 속도 월 {num(restockStock.rate)}병)
+                      {restockStock.fAfter < 1 || restockStock.fNow < 1
+                        ? <> · {STOCK_WARN_MONTHS}개월 치를 넘게 쌓이면 이 제품 수요가 줄어든다 — 지금 ×{restockStock.fNow.toFixed(2)} → 보충 뒤 <b>×{restockStock.fAfter.toFixed(2)}</b></>
+                        : <> · {STOCK_WARN_MONTHS}개월 치를 넘게 쌓이면 이 제품 수요가 줄어든다</>}
+                    </span>
+                  )}
+                  {restockStock && restockStock.after > STOCK_WARN_MONTHS && preview.bottles > 0 && (() => {
+                    // 보충도 "n개월 치만" — 분류가 아니라 이 제품 판매 속도로 맞춘다(분류 맞추기 줄은 보충일 때 숨는다). 고른 원액의 사용량을 같은 비율로 줄인다
+                    const fit = (n: number) => {
+                      const k = Math.max(0, n * restockStock.rate - restockTarget.stockBottles) / preview.bottles;
+                      setPicked((p) => Object.fromEntries(Object.entries(p).map(([key, l]) => [key, Math.floor(l * k * 10) / 10])));
+                    };
+                    return (
+                      <span className="mt-0.5 flex flex-wrap items-center gap-1">
+                        보충 뒤 이 제품 재고를
+                        {[3, 6].map((n) => {
+                          const full = restockTarget.stockBottles >= n * restockStock.rate;
+                          return <Button key={n} small variant="ghost" disabled={full} title={full ? `이미 ${n}개월 치 넘게 재고가 있다 — 지금은 보충하지 않아도 된다` : `사용량을 줄여 보충 뒤 이 제품 재고가 ${n}개월 치가 되게`} onClick={() => fit(n)}>{n}개월 치</Button>;
+                        })}
+                        로 맞추기
+                      </span>
+                    );
                   })()}
                 </p>
               )}
