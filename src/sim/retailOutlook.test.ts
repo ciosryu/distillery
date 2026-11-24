@@ -241,6 +241,9 @@ describe('소매 처리 역량 전망 · 재고 적체 개월 (9차 판 64개월
     const p = { stockBottles: 2400, salesEma: 100, createdMonth: 0 };
     expect(overhangMonths(p, 12)).toBe(24);
     expect(overhangFactor(p, 12)).toBeCloseTo(Math.max(0.6, Math.sqrt(6 / 24)), 9);
+    const { OVERHANG } = await import('./retail');
+    expect(OVERHANG).toEqual({ months: 6, floor: 0.6, graceMonths: 6 }); // 값은 그대로 — 이름만(화면 셋이 같은 문턱을 읽게)
+    expect(overhangFactor({ stockBottles: 600, salesEma: 100, createdMonth: 0 }, 12)).toBe(1); // 문턱(6개월) 그대로면 1
     expect(overhangMonths({ ...p, createdMonth: 8 }, 12)).toBeNull();
     expect(overhangMonths({ stockBottles: 10, createdMonth: 0 }, 12)).toBeNull();
   });
