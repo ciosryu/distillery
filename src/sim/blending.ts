@@ -1,5 +1,6 @@
 import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/catalog';
-import { bottledQualityKnown, hidesProductQuality, mergeQualityKnown, restockPrior } from './productView'; // F5d 아는 품질(코어)
+import { rulesVersionOf } from './rules'; // #362 finishMonths는 v16만
+import { bottledQualityKnown, hidesProductQuality, mergeQualityKnown, restockPrior, type RecipeShare } from './productView'; // F5d 아는 품질(코어)
 import { lotQuality } from './bulk'; // F5d 병입 보정량 — 샘플 기록과 같은 원액 품질 식
 import type { PackagingChoice } from './content/packaging';
 import { fixPackaging, nearestPresetId, packagingError, packagingPartsCost, presetChoice, productPackaging, sameChoice } from './packaging';
@@ -81,6 +82,8 @@ export interface BlendPreview {
   dfEdition: { vol: number; streak: number } | null;
   /** 라벨 "○○ 캐스크 피니시" — 모든 원액이 같은 종류 캐스크로 피니싱됐을 때만 (#158) */
   finish: CaskTypeId | null;
+  /** 피니시 통에서 보낸 개월 — 섞은 원액 중 가장 짧은 것(숙성 연수 표기와 같은 규칙). 피니시가 없으면 null ([결정 #362] → `Product.finishMonths`) */
+  finishMonths: number | null;
   /** 피티드 맥아 비중 0~1 — 원재료 배합의 `malt_peated`를 LPA 가중(#290 B1-9 f2, 병입 때 `Product.peatShare`로 남긴다). 배합 기록이 없는 원액은 0으로 센다 */
   peatShare: number;
 }
@@ -184,7 +187,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     if (c.liters > lot.volumeL + 1e-6) errors.push(`${lot.name}: 보유량(${lot.volumeL.toFixed(1)}L)보다 많이 선택했습니다`);
     items.push({ lot, liters: Math.min(c.liters, lot.volumeL) });
   }
-  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, minRestMonths: 0, agedLabel: null, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, sourcedPrestige: 1, specialty: null, premiumLabel: false, traditional: false, suggestedPrice: 0, localIngredient: false, dfEdition: null, finish: null, peatShare: 0 };
+  const empty: BlendPreview = { ok: false, errors, warnings, kind: null, category: null, volumeL: 0, lpa: 0, mixAbv: 0, finalAbv: 0, bottles: 0, minOakMonths: 0, minRestMonths: 0, agedLabel: null, ageYears: null, flavor: {}, evaluation: null, unitCost: 0, sourcedShare: 0, sourcedPrestige: 1, specialty: null, premiumLabel: false, traditional: false, suggestedPrice: 0, localIngredient: false, dfEdition: null, finish: null, finishMonths: null, peatShare: 0 };
   const region = regionOf(s);
   const rules = region.whisky;
   if (!items.length) { errors.push('블렌딩할 원액을 선택하세요'); return empty; }
@@ -205,6 +208,8 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   // 피니시 라벨: 섞은 원액이 모두 같은 종류 캐스크로 피니싱됐을 때만 붙인다 — 피니싱 안 한 원액이 섞이면 라벨 없음 (#158)
   const finishes = items.map((i) => finishOf(i.lot)?.typeId ?? null);
   const finish = finishes.every((f) => f && f === finishes[0]) ? finishes[0]! : null;
+  // #362 피니시 개월 — 섞은 원액의 마지막 통 구간 중 가장 짧은 값(코어 `Product.finishMonths` 정의 987a94b — 숙성 연수 표기와 같은 규칙)
+  const finishMonths = finish ? Math.min(...items.map((i) => finishOf(i.lot)!.months)) : null;
   const sourcedLPA = items.reduce((t, i) => t + (i.lot.sourced ? i.liters * i.lot.abv : 0), 0);
   const sourcedShare = sourcedLPA / lpa;
   // 매입 원액 브랜드 가치 = 매입 원액들의 LPA당 매입가로 정한 값의 LPA 가중 평균
@@ -280,6 +285,7 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
     localIngredient,
     dfEdition: dutyFree && hasDutyFree(s) ? nextDutyFreeEdition(s) : null,
     finish,
+    finishMonths,
     peatShare: Math.round((mash.malt_peated ?? 0) * 1000) / 1000,
   };
 }
@@ -457,6 +463,9 @@ export function restockedProduct(old: Product, batch: Product): Product {
   // 매대 재고가 0이고 새 배치가 레어 단독이면 그 배치 그대로(2026-11-12 수정: 레어 통 하나로 처음 병입한 제품을 평범한 통으로 계속 보충해도 ×1.3이 남았다)
   if (keep(old.rareSingleCask, batch.rareSingleCask, false)) merged.rareSingleCask = true; else delete merged.rareSingleCask;
   if (caskMix) merged.caskMix = caskMix; else delete merged.caskMix;
+  // 피니시 개월(#362) — 보충은 같은 피니시끼리만 된다(restockChecks). 매대에 섞이는 병 중 짧은 쪽(코어 정의 987a94b), 재고 0이면 새 배치 그대로
+  const fm = fresh ? batch.finishMonths : old.finishMonths != null && batch.finishMonths != null ? Math.min(old.finishMonths, batch.finishMonths) : undefined;
+  if (merged.finish && fm != null) merged.finishMonths = fm; else delete merged.finishMonths;
   // 개월 가중 통 구성 — 어느 쪽이든 기록이 있으면 병 수 가중 평균(기록 없는 쪽은 caskMix로 읽는다). 둘 다 없으면 두지 않는다(= caskMix)
   const monthsMix = old.caskMonthsMix || batch.caskMonthsMix ? mergeCaskMix(old.caskMonthsMix ?? old.caskMix, a, batch.caskMonthsMix ?? batch.caskMix, b) : undefined;
   if (monthsMix) merged.caskMonthsMix = monthsMix; else delete merged.caskMonthsMix;
@@ -497,11 +506,25 @@ export function batchQualityKnown(s: GameState, components: BlendComponent[], p:
   const estB = estimateBlend(s, components);
   if (!estB.fromCasks) return { est: Math.round(p.evaluation.quality * 10) / 10, sigma: 0, reviews: 0, month: s.month, hex: hexOf(p.flavor) };
   const target = restockId ? s.commerce.products.find((x) => x.id === restockId) : undefined;
-  const carried = target ? restockPrior(s, target, recipeIdsOf(s, components)) : undefined;
+  const carried = target ? restockPrior(s, target, recipeSharesOf(s, components)) : undefined;
   return bottledQualityKnown(estB, p.kind ?? 'malt', s.month, carried, bottlingOffset(s, components, p.evaluation.quality));
 }
 
-/** 섞는 원액의 레시피 집합(#243) — 원액을 빼기 **전에** 읽는다. 병입 · 보충 미리보기(#346 같은 레시피 판정)가 같이 쓴다 */
+/**
+ * [결정 #377] 섞는 원액의 레시피별 알코올(LPA) — 보충 잇기(`restockPrior`)가 "목록에 없던 레시피 몫"을 센다. 원액을 빼기 **전에** 읽는다.
+ * 레시피 기록이 없는 원액(매입 등)은 '' — 어느 제품 목록에도 없는 몫. 병입 · 보충 미리보기(Bottling 보충 줄)가 같은 값을 쓴다
+ */
+export function recipeSharesOf(s: GameState, components: BlendComponent[]): RecipeShare[] {
+  const m = new Map<string, number>();
+  for (const c of components) {
+    if (c.liters <= 0) continue;
+    const lot = lotOf(s, c);
+    if (lot) m.set(lot.recipeId ?? '', (m.get(lot.recipeId ?? '') ?? 0) + c.liters * lot.abv);
+  }
+  return [...m.entries()].map(([recipeId, lpa]) => ({ recipeId, lpa })).sort((a, b) => a.recipeId.localeCompare(b.recipeId));
+}
+
+/** 섞는 원액의 레시피 집합(#243) — 원액을 빼기 **전에** 읽는다. 제품 레시피 기록(`recipeIds`)에 쓴다 */
 export function recipeIdsOf(s: GameState, components: BlendComponent[]): string[] {
   return [...new Set(components.filter((c) => c.liters > 0).map((c) => lotOf(s, c)?.recipeId).filter((x): x is string => !!x))].sort();
 }
@@ -514,7 +537,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   // estimateBlend의 원액별 품질 가중 평균을 쓰면 병입 보정만큼(약 3점) 늘 낮고 오차 0이라 리뷰가 고치지 못했다(MKT F5d-2 진단 — 소주). 통이 섞이면 샘플 추정
   // 탱크만이면 병입 평가 그대로 · 통이 섞이면 샘플 추정 + 병입 보정량 · 같은 레시피 보충이면 #346 잇기 — 화면 미리보기와 같은 한 함수
   const knownBatch = batchQualityKnown(s, components, p, opts.restockId);
-  const carried = knownBatch && opts.restockId ? (() => { const t = s.commerce.products.find((x) => x.id === opts.restockId); return t ? restockPrior(s, t, recipeIdsOf(s, components)) : undefined; })() : undefined;
+  const carried = knownBatch && opts.restockId ? (() => { const t = s.commerce.products.find((x) => x.id === opts.restockId); return t ? restockPrior(s, t, recipeSharesOf(s, components)) : undefined; })() : undefined;
   // F5d(PROD): 첫 출고가도 아는 품질로 — 참 품질 권장가(p.suggestedPrice)로 정하면 첫 값에서 참값이 샌다(기준가 currentSuggested와도 어긋난다).
   // 면세 한정판은 따로 셈(priceAtQuality null) → 지금 값 그대로
   const firstBase = knownBatch ? priceAtQuality(s, p, opts, knownBatch.est) ?? p.suggestedPrice : p.suggestedPrice;
@@ -598,7 +621,8 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     lastMonthSold: 0,
     totalSold: 0,
     ...(p.localIngredient ? { localIngredient: true } : {}),
-    ...(p.finish ? { finish: p.finish } : {}),
+    // [결정 #362] 피니시 개월은 v16 판에서만 남긴다 — MKT 표기 효과가 필드 유무로 "v16만"을 건다(ARCH 2026-11-24). 옛 판은 바이트 동일
+    ...(p.finish ? { finish: p.finish, ...(p.finishMonths != null && rulesVersionOf(s) !== 'legacy-v15' ? { finishMonths: p.finishMonths } : {}) } : {}),
     ...(caskMix.length ? { caskMix } : {}),
     ...(caskMonthsMix?.length ? { caskMonthsMix } : {}),
     ...(p.peatShare > 0 ? { peatShare: p.peatShare } : {}),
