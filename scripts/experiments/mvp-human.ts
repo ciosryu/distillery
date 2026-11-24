@@ -47,7 +47,7 @@
 //   SPLIT=1 이면 15년 순자산 분해 표를 더 낸다(현금·대출·원액 현물가·제품, 위스키 매출 시기, 원액 평가액 증가 대 생산비 — #191 정정, mvp.md §7.6)
 //   bigMalt 몰트 5배치 + 스테인리스 발효조 2기(끄면 몰트 3배치) · farm 농업경영체 등록(전통주 주세 경감) — 둘 다 켜면 mvp-survival '균형'(FARM=1)과 같은 규모
 // 파산 규칙: 지금(월말 마이너스 3개월 연속, step.ts) + 결정 대기 16의 "6개월로 완화"를 같은 판에서 따로 센다(시뮬레이션 상태의 연속 개월을 스크립트가 덮어 써서 3개월 파산을 막고, 6개월은 스크립트가 센다).
-import { advanceMonth, applyAction, isWhiskyCategory, newScenarioGame as newScenarioGameCore, previewBlend, warehouseCapacity, type Action, type BusinessPlan, type GameState, type ProductCategory } from '../../src/sim';
+import { slotsUsed, advanceMonth, applyAction, isWhiskyCategory, newScenarioGame as newScenarioGameCore, previewBlend, warehouseCapacity, type Action, type BusinessPlan, type GameState, type ProductCategory } from '../../src/sim';
 import { setDefaultRulesVersion } from '../../src/sim/newScenario';
 import { p8Hooks, type P8Api } from './p8Hooks';
 import { specialistOffers, type SpecialistRole } from '../../src/sim/hr';
@@ -357,7 +357,7 @@ function fill(s: GameState, p?: Policy, cnt: { contamFills: number } | null = FI
       if (h) { if (cnt && before) cnt.contamFills += h.inventory.casks.filter((c) => before.has(c.id) && c.contents).length; s = h; continue; }
     }
     const need = Math.ceil((lot.volumeL * lot.abv) / (200 * 0.635));
-    const room = cap - s.inventory.casks.length;
+    const room = cap - slotsUsed(s); // [결정 #360] 칸(봇은 버번 200L만 써서 지금은 통 개수와 같다)
     // F5b [결정 #310 2단계]: 새 판 봇은 **아는** 오염만 피한다(사람과 같은 정보) — 옛 판은 숨은 값 그대로(X0L 바이트 동일)
     const usable = (c: Cask) => !c.contents && !(usesObservedValuation(s) ? c.contaminationKnown : c.contamination);
     const empty = s.inventory.casks.filter(usable).length;

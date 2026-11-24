@@ -242,6 +242,16 @@ describe('읽기 한 함수 — 면세 전용 제품은 짝 일반 제품의 리
     expect(knownProductQuality(s, df)).toMatchObject({ q: 60, sigma: 6, public: false });
     expect(dutyFreePair(s, pair)).toBeNull(); // 일반 제품은 짝을 찾지 않는다
   });
+  it('피니시 표기가 다르면 짝이 아니다 — 같은 원액 · 같은 달이라도 한쪽만 피니싱했으면 다른 술(통 추가 첫 묶음)', () => {
+    const s = newGame({ seed: 1 });
+    const df = base({ id: 'DF', dutyFreeOnly: true, finish: 'oloroso_butt', qualityKnown: { est: 60, sigma: 6, reviews: 0, month: 40 } });
+    const plain = base({ id: 'P', qualityKnown: { est: 71, sigma: 2, reviews: 8, month: 50 } });
+    s.commerce.products = [df, plain];
+    expect(dutyFreePair(s, df)).toBeNull();
+    const same = base({ id: 'F', finish: 'oloroso_butt', finishMonths: 2, qualityKnown: { est: 75, sigma: 2, reviews: 5, month: 50 } });
+    s.commerce.products = [df, plain, same];
+    expect(dutyFreePair(s, df)!.id).toBe('F'); // 개월은 보지 않는다
+  });
   it('F5d 전 제품(아는 품질 없음)은 v16에서도 공개 — 참 품질 · 참 육각형(#338 ①(가))', () => {
     const s = newGame({ seed: 1 });
     const p = base({ id: 'OLD', hex: { b: 2 } as never });
