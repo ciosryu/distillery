@@ -4,7 +4,7 @@
 // 안내 (#339 · #745): 재탄화는 활성도를 0.7까지 올린다 → 3년용 통에는 좋고, 12년용으로 아껴 둔 재사용 통(활성도 0.6~0.13)에는 탄닌이 다시 늘어 손해다
 import { useState } from 'react';
 import { CASK_MARKET, CASKS, RECHAR_COST } from '../../sim/content/catalog';
-import { MAX_RECHAR, regionalCaskPrice, tanninOutlook, vesselMaterial, type Cask } from '../../sim';
+import { EMPTY_ACTIVITY_FACTOR, MAX_RECHAR, regionalCaskPrice, tanninOutlook, vesselMaterial, type Cask, type CaskTypeId } from '../../sim';
 import { usedCaskPrice } from '../../sim/casks';
 import { useGame } from '../../store/game';
 import { won } from '../format';
@@ -13,7 +13,7 @@ import { Button, ConfirmButton, NumberField } from '../kit';
 /** 활성도가 이보다 낮으면 나무 향이 모자라 12년 품질도 다시 내려간다(#745 표 — 6번째 채움부터). 홈 숙성 칸 표시(ARCH #781)와 같은 문턱 */
 const WOOD_WEAK = 0.1;
 /** 시즈닝 계약을 할 수 있는 통 — 시즈닝이 있는 종류만(#158) */
-const SEASONABLE = ['ex_bourbon_barrel', 'oloroso_butt'] as const;
+const SEASONABLE = ['ex_bourbon_barrel', 'oloroso_butt', 'sherry_hogshead'] as const; // #355: 계약은 버번 · 셰리 계열만(SEASONING_CONTRACT)
 type Seasonable = (typeof SEASONABLE)[number];
 
 interface Group { key: string; casks: Cask[]; head: Cask }
@@ -82,11 +82,33 @@ export function CaskCareRow() {
         </select>
         <NumberField label="개수" value={seasonQty} min={1} max={50} width="w-14" onCommit={setSeasonQty} />
         <Button small onClick={() => dispatch({ type: 'orderSeasoning', caskType: seasonType, qty: seasonQty })}
-          title={`새 통을 ${seasonType === 'oloroso_butt' ? '셰리 보데가' : '버번 증류소'}에 맡겨 ${CASK_MARKET.seasoningMonths}개월 길들인다 — 시즈닝 향이 진하고 활성도도 조금 오른다(12년 탄닌↑). 숙성고 자리는 지금부터 잡는다`}>
+          title={`새 통을 ${CASKS[seasonType].seasoningType === 'sherry' ? '셰리 보데가' : '버번 증류소'}에 맡겨 ${CASK_MARKET.seasoningMonths}개월 길들인다 — 시즈닝 향이 진하고 활성도도 조금 오른다(12년 탄닌↑). 숙성고 자리는 지금부터 잡는다`}>
           {CASK_MARKET.seasoningMonths}개월 뒤 받기 · {won(unit * seasonQty)}
         </Button>
         <span className="text-stone-500">시즈닝한 통은 활성도도 조금 오른다(×1.1) — 12년용으로는 탄닌이 는다</span>
       </div>
     </div>
+  );
+}
+
+/**
+ * 통 사기 화면의 탄닌 전망 한 줄 ([결정 #355] PM 지시 — ARCH가 통 사기 칸에 끼운다). 새 통으로 지금 채우면 3년 · 12년에 탄닌이 어디쯤인지 —
+ * 버진 오크(활성도 1.4)는 "3년용"이고 european 시즈닝 통은 "피니싱용"이라는 성격을 숫자로 보인다. 활성도만으로 센 어림(tanninOutlook, 원액 맛을 읽지 않는다)
+ */
+export function NewCaskOutlook({ typeId }: { typeId: CaskTypeId }) {
+  const s = useGame((g) => g.state);
+  const d = CASKS[typeId];
+  if (!d || vesselMaterial({ typeId }) !== 'wood') return null;
+  const fresh = { id: '__new', typeId, sizeL: d.sizeL, wood: d.wood, activity: d.activity, seasoning: d.seasoning, fills: 0, recharCount: 0, char: d.char } as Cask;
+  const y3 = tanninOutlook(s, fresh, 36);
+  const y12 = tanninOutlook(s, fresh);
+  // 비웠다 다시 쓴 통(활성도 × EMPTY_ACTIVITY_FACTOR) — 12년은 재사용 통이 맞다는 #339 힌트와 같은 셈. 재사용해도 감점이 크면 본숙성보다 3년 · 피니싱용
+  const refill = tanninOutlook(s, { ...fresh, activity: d.activity * EMPTY_ACTIVITY_FACTOR });
+  if (!y3 || !y12 || !refill) return null;
+  const shortUse = refill.penalty >= 10;
+  return (
+    <span className={shortUse ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'} title="새 통으로 지금 채우면 — 활성도만으로 센 탄닌 어림(평년 칸 기후). 시즈닝 향은 탄닌을 더하지 않는다. 비웠다 다시 쓰면 활성도가 ×0.6이 되어 탄닌이 덜 는다">
+      탄닌 어림 3년 {Math.round(y3.tannin)} · {Math.round(y12.atMonths / 12)}년 {Math.round(y12.tannin)}(상한 {y12.cap}{y12.penalty >= 0.5 ? `, 감점 약 ${Math.round(y12.penalty)}` : ''}) · 다시 쓰면 {Math.round(y12.atMonths / 12)}년 감점 {refill.penalty >= 0.5 ? `약 ${Math.round(refill.penalty)}` : '없음'}{shortUse ? ' — 12년 본숙성보다 3년 · 피니싱용' : ''}
+    </span>
   );
 }

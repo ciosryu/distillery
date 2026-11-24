@@ -34,7 +34,9 @@ export type CondenserType = 'copper_shell' | 'worm_tub';
 /** 숙성 용기 재질 (S-10, #143) — 나무 캐스크 외에 옹기·스테인리스 휴지. 재질은 콘텐츠(CaskDef.material)에 있고 캐스크 인스턴스는 typeId로 찾는다 */
 export type VesselMaterial = 'wood' | 'onggi' | 'steel';
 /** 숙성 용기 종류 — 나무 캐스크 + 비목재 용기(옹기, #161). 재질은 CaskDef.material */
-export type CaskTypeId = 'ex_bourbon_barrel' | 'oloroso_butt' | 'korean_oak_quarter' | 'mizunara_hogshead' | 'onggi_jar';
+export type CaskTypeId = 'ex_bourbon_barrel' | 'oloroso_butt' | 'korean_oak_quarter' | 'mizunara_hogshead' | 'onggi_jar'
+  // [결정 #355] 일반 4종 (2026-11-24 오너) — 값은 PROD 초안 [튜닝]
+  | 'sherry_hogshead' | 'wine_barrique' | 'port_pipe' | 'virgin_oak_barrel';
 /** 'none' = 나무가 아닌 용기(옹기 등) — 목재 추출이 없다. 용기 재질 판정은 CaskDef.material이 한다 */
 export type WoodId = 'american_oak' | 'european_oak' | 'korean_oak' | 'mizunara' | 'none';
 export type StaffRole = 'distiller' | 'warehouse' | 'sales' | 'office' | 'blender';
@@ -336,6 +338,8 @@ export interface Product {
   traditional?: boolean;
   /** 피니싱 캐스크 종류 — 라벨 "○○ 캐스크 피니시" (PRD §5.2). 없으면 피니싱 안 함. 병입 규칙은 PROD, 라벨의 판매 효과(럭셔리 라벨 항·매니아 선호, §11.2)는 MKT (v14) */
   finish?: CaskTypeId;
+  /** 피니시 통에서 보낸 개월(병입 때, 섞은 원액 중 가장 짧은 것 — 숙성 연수 표기와 같은 규칙). 피니시가 있을 때만. [결정 #362] 표기 효과(MKT)가 읽는다 */
+  finishMonths?: number;
   /** 섞은 원액의 통 구성 — 마지막에 담겨 있던 통 종류별 알코올(LPA) 비중, 큰 순. 탱크 원액은 빠진다. 없으면 기록 전 제품(v15 이전)이거나 캐스크 원액이 없다. 표시용(동작 없음, #176) */
   caskMix?: { typeId: CaskTypeId; share: number }[];
   /**
