@@ -4,7 +4,7 @@
 
 import { isFlagshipCandidate } from '../sim/delegateCheck';
 import { regionOf } from '../sim/content/regions';
-import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, slotsDifferFromCasks, slotsUsed, spotQuote, warehouseCapacity, whiskyMinMonths, type Action, type CashFlowKey, type GameState, type MonthReport, type Product, stagesOf } from '../sim';
+import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, knownState, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, slotsDifferFromCasks, slotsUsed, spotQuote, warehouseCapacity, whiskyMinMonths, type Action, type Cask, type CashFlowKey, type GameState, type MonthReport, type Product, stagesOf } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
@@ -12,11 +12,12 @@ import { undefendedDisasters } from '../sim/events';
 import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { exportShortfalls } from '../sim/market';
 import { retailBreakRemaining, retailCancellationCost } from '../sim/deals';
+import { overhangFactor } from '../sim/retail';
 import { ibAgedCaskCount } from '../sim/bulk';
 import { autoFillPreview } from '../sim/autoFill';
 import { autoRestockPlan, autoRestockSources, autoRestockSupported, guardedFlagshipCasks, productMonthlyPace } from '../sim/economics';
 import { reserveCaskIds } from '../sim/tags';
-import { caskEligibility } from '../sim/ledger';
+import { candidateHorizon, caskEligibility, isCampaignCandidate } from '../sim/ledger';
 import { specialistOffers, SPECIALIST_STAGE } from '../sim/hr';
 import { AUTO_RESTOCK_EXPENSE, caskRunway, CUTBACK_HINT, productionCutback, productionValue, sojuSupply, SOJU_STOCK_WARN_MONTHS, tankLotWaitMonths, whiskySupplyForecast } from '../sim/economics';
 import { monthlyFixedCost } from '../sim/loans';
@@ -142,7 +143,8 @@ export function recentlySoldIds(s: Pick<GameState, 'history' | 'month'>, months:
 }
 
 export function stockoutSoon(s: GameState): { soon: { id: string; name: string; stock: number; demand: number }[]; empty: { id: string; name: string }[] } {
-  const d = domesticDemands(s, calendar(s).monthOfYear);
+  // F5d(#338) · 외부 검토 D1 누수 L2: 판매 화면처럼 아는 품질로 센 수요(`knownState`) — 참 품질 수요로 세면 결품 판정이 참 품질을 드러낸다
+  const d = domesticDemands(knownState(s), calendar(s).monthOfYear);
   const soon: { id: string; name: string; stock: number; demand: number }[] = [];
   const empty: { id: string; name: string }[] = [];
   // [결정 #381] 「품절」은 최근 STOCKOUT_RECENT_MONTHS 안에 판(또는 그 안에 만든) 제품만 — 9차 판: 33 ~ 35개월 전에 끊긴 뉴본 3종이 매달 목록을 채웠다
@@ -196,6 +198,10 @@ export function spotSaleStake(s: GameState): { tank: SpiritStake | null; casks: 
  * 시나리오에서 이 수가 0이 되면 15년 목표(플래그십 판매)를 이룰 수 없다 — 5차 판이 70개월째 맡기기로 그렇게 됐다(mvp.md §7.16)
  */
 export const flagshipCandidates = (s: GameState) => s.inventory.casks.filter((c) => !c.owner && isFlagshipCandidate(s, c));
+/** [결정 #365 고침] 중반 목표 「12년 후보」 통(`progress.ts reserveCandidateCount`와 같은 식) — 판정은 아는 오염 통도 센다. 화면은 빼지 않고 "그중 n통 오염"을 함께 보인다 */
+export const reserveCandidateCasks = (s: GameState) => s.inventory.casks.filter((c) => isCampaignCandidate(s, c, candidateHorizon(s, 'hint')));
+/** 후보 통 중 **아는** 오염 통 수 (#365 — 모르는 오염은 숨은 값이라 세지 않는다, #310) */
+export const knownContaminated = (casks: readonly Cask[]) => casks.filter((c) => c.contaminationKnown).length;
 /** 이 수 이하로 남으면 할 일 맨 위 (#261) `[튜닝]` */
 /**
  * 새로 열린 단계가 가리키는 탭 — 할 일 "새로 열림"과 소식 창이 같은 것을 쓴다.
@@ -216,11 +222,13 @@ export const FLAGSHIP_LOW = 3;
 /** [결정 #385] 현금이 고정비 이만큼을 넘으면 「놀고 있는 현금」 줄 `[튜닝]` */
 export const IDLE_CASH_MONTHS = 24;
 
-/** 핸드필 통이 빈 뒤 지난 개월과 비기 전 6개월 평균 핸드필 매출 — 결산 메모(`handfill.ts`)에서 읽는다. 빈 기록이 없으면(처음부터 미지정) null */
+/** 마지막 핸드필 판매 뒤 지난 개월과 그때까지 6개월 평균 핸드필 매출 — 결산 메모(`handfill.ts`)에서 읽는다. 판매 기록이 없으면(처음부터 미지정) null */
 export function handfillIdle(s: GameState): { months: number; monthly: number } | null {
   const reps = s.history.reports;
   let i = reps.length - 1;
-  while (i >= 0 && !reps[i]!.notes.some((n) => /^핸드필 .*비었다/.test(n))) i--;
+  // 마지막 핸드필 **판매** 달부터 센다 — "비었다" 메모만 찾으면 지정 통이 메모 없이 풀린 경우(병입 · 원액 판매로 비워져 지정이 풀림)를 놓친다
+  // (9차 판 64개월: K306이 155L 남은 채 병입 달에 비어 "비었다" 메모가 없었다 → 화면 「20개월째」 · 기록 16개월, docs/playtest/9/arch.md ②)
+  while (i >= 0 && !reps[i]!.notes.some((n) => /^핸드필 \d/.test(n))) i--;
   if (i < 0) return null;
   const won = (n: string) => Number(n.match(/^핸드필 \d[\d,]*병 \(([\d,]+)원\)/)?.[1]?.replace(/,/g, '') ?? 0);
   const before = reps.slice(Math.max(0, i - 5), i + 1).map((r) => r.notes.reduce((t, n) => t + won(n), 0));
@@ -279,7 +287,7 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'idle-cash', 'sample'];
+export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'overhang', 'contam-cand', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'idle-cash', 'sample'];
 // 꼬리 5개(defense·whisky·soju·idle-cash·sample)는 info만 낸다 — warn·danger를 낼 수 있는 새 id는 그 앞에 둔다(warn이 info 뒤에 묻히지 않게, PM 대조 7차 완료: soju-glut)
 // 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
@@ -374,7 +382,7 @@ export function monthTodos(s: GameState): Todo[] {
   if (s.scenario && hasHandfillZone(s) && !handfillCask(s) && s.production.equipment.some((e) => EQUIPMENT[e.catalogId]?.kind === 'visitor' && e.readyMonth <= s.month)) {
     // 6차 판(PROD prod.md ⑥): 142개월에 통이 빈 뒤 16개월 미지정 — 빈 지 몇 달째인지와 그 전 매출을 붙여 같은 warn 사이에서 덜 묻히게
     const idle = handfillIdle(s);
-    out.push({ id: 'handfill', level: 'warn', text: `핸드필 존에 통이 없다${idle ? ` — 통이 빈 지 ${idle.months}개월째${idle.monthly ? `(비기 전 월 약 ${fmtWon(idle.monthly)} — 그만큼 놓치는 중)` : ''}` : ''} — 숙성 중인 캐스크 칸에서 핸드필 전용 통을 고르면 방문객이 매달 500ml씩 담아 간다(병입 권장가의 약 2배)`, action: '통 고르기', target: { anchor: 'mvp-warehouse' } });
+    out.push({ id: 'handfill', level: 'warn', text: `핸드필 존에 통이 없다${idle ? ` — 핸드필 판매가 멈춘 지 ${idle.months}개월째${idle.monthly ? `(그 전 월 약 ${fmtWon(idle.monthly)} — 그만큼 놓치는 중)` : ''}` : ''} — 숙성 중인 캐스크 칸에서 핸드필 전용 통을 고르면 방문객이 매달 500ml씩 담아 간다(병입 권장가의 약 2배)`, action: '통 고르기', target: { anchor: 'mvp-warehouse' } });
   }
   // 핵심 전문가를 아직 고르지 않았다 (MGT #610 남은 점 — 할 일에서 직원 탭 카드로 잇는 안내). 해금 소식(stage 할 일)이 내려간 뒤 SPECIALIST_TODO_MONTHS개월 — 안 고르는 것도 선택이라 끝없이 띄우지는 않는다.
   // 7차 판(오너 "못봤다"): 해금 소식 3턴을 0·0·10초에 넘겼고, 그 뒤 9개월 info는 다른 할 일 아래에 묻혔다 → warn으로 올리고 기간을 늘린다(화면만)
@@ -457,6 +465,21 @@ export function monthTodos(s: GameState): Todo[] {
       const emptyOnggi = s.inventory.casks.filter((c) => !c.contents && vesselMaterial(c) === 'onggi').length;
       if (emptyOnggi >= 3) where.push(`빈 옹기 ${emptyOnggi}개(옹기소주)`);
       if (where.length) out.push({ id: 'idle-cash', level: 'info', text: `현금 ${fmtWon(s.finance.cash)} — 고정비 ${Math.floor(s.finance.cash / fixed)}개월 치가 놀고 있다. 쓸 수 있는 곳: ${where.join(' · ')}`, action: '설비', target: { anchor: 'mvp-equipment' } });
+    }
+  }
+  // [결정 #365 고침] 아는 오염 통이 12년 후보에 섞였다 — 판정은 그대로 세지만(막지 않음) 병입하면 결점 향이 섞인다. 「경고를 꽤 잘 보이게」(오너) → 할 일 warn
+  {
+    const bad = flagshipCandidates(s).filter((c) => c.contaminationKnown && !campaignWon(s));
+    if (bad.length) out.push({ id: 'contam-cand', level: 'warn', text: `12년 후보 통 가운데 ${bad.length}통(${bad.slice(0, 3).map((c) => c.id).join(' · ')}${bad.length > 3 ? ' …' : ''})이 아는 오염 통이다 — 후보로는 세지만, 병입하면 결점 향(곰팡내 등)이 섞여 품질이 깎인다`, action: '숙성 중인 캐스크', target: { anchor: 'mvp-warehouse' } });
+  }
+  // 재고 적체(9차 판 64개월 — 오크소주 · 뉴본 피티드가 20개월 치 넘게 쌓였는데 할 일에 신호가 없었다, PROD 제안 2026-11-24): 팔 재고가 판매의 6개월 치를 넘으면
+  // 국내 수요가 깎인다(`retail.ts overhangFactor`, 하한 ×0.6 — 판매 셈과 같은 함수). 홈 「돈 흐름」의 재고 과잉(overstock)은 주종 묶음 금액이라 "수요가 준다"는 보이지 않는다.
+  // 가장 많이 깎인 제품 하나 + "외 n개" 한 줄. 값은 재고 · 판매 추세(공개 정보)라 I2 누수가 아니다
+  {
+    const hit = s.commerce.products.filter((p) => !p.dutyFreeOnly && p.stockBottles > 0).map((p) => ({ p, f: overhangFactor(p, s.month), m: p.stockBottles / Math.max(1, p.salesEma ?? 0) })).filter((x) => x.f < 1).sort((a, b) => a.f - b.f || b.m - a.m || a.p.id.localeCompare(b.p.id)); // 하한(×0.6)에 여럿이면 더 많이 쌓인 제품
+    if (hit.length) {
+      const { p, f, m } = hit[0]!;
+      out.push({ id: 'overhang', level: 'warn', text: `「${p.name}」 재고 ${m.toFixed(1)}개월 치 — 수요 ×${f.toFixed(2)}(팔 재고가 6개월 치를 넘게 쌓이면 줄어든다)${hit.length > 1 ? ` 외 ${hit.length - 1}개 제품` : ''} · 값을 내리거나 보충 · 병입을 멈춘다`, action: '판매', target: { tab: 'sales' } });
     }
   }
   // A4(PROD 화면 메모): 빈 통이 곧 바닥난다 — 계산은 PROD `economics.ts caskRunway`(이번 달 가능 배치 · 탱크 적체 먼저 · 자동 통입 올림 반영)를 그대로 쓴다.
@@ -578,4 +601,15 @@ export function fmtWon(v: number): string {
   if (a >= 100_000_000) return `${sign}${(a / 100_000_000).toFixed(a >= 1_000_000_000 ? 1 : 2)}억`;
   if (a >= 10_000) return `${sign}${Math.round(a / 10_000).toLocaleString()}만`;
   return `${sign}${Math.round(a).toLocaleString()}원`;
+}
+
+/**
+ * [결정 #373] 소식 창의 「새 할 일」 — 지난번 소식 창을 닫을 때 본 warn · danger id(`seen`)에 없던 것만 새로 보이고, 계속 떠 있는 것은 개수만.
+ * info는 넣지 않는다(놓쳐도 되는 안내). `seen`이 없으면(처음 · 저장 막힘) 지금 warn · danger 전부가 새것
+ */
+export function briefTodos(todos: readonly Todo[], seen: readonly string[] | null): { fresh: Todo[]; continuing: number } {
+  const loud = todos.filter((t) => t.level !== 'info');
+  const old = new Set(seen ?? []);
+  const fresh = loud.filter((t) => !old.has(t.id));
+  return { fresh, continuing: loud.length - fresh.length };
 }
