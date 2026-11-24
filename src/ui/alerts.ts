@@ -4,7 +4,7 @@
 
 import { isFlagshipCandidate } from '../sim/delegateCheck';
 import { regionOf } from '../sim/content/regions';
-import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, slotsDifferFromCasks, slotsUsed, spotQuote, warehouseCapacity, whiskyMinMonths, type Action, type CashFlowKey, type GameState, type MonthReport, type Product, stagesOf } from '../sim';
+import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, knownState, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, slotsDifferFromCasks, slotsUsed, spotQuote, warehouseCapacity, whiskyMinMonths, type Action, type CashFlowKey, type GameState, type MonthReport, type Product, stagesOf } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
@@ -132,7 +132,8 @@ function stockMonths(s: GameState, inCat: (c: string) => boolean): { stock: numb
  * 판매 화면과 같은 수요 계산(domesticDemands)이다. 실제 판매는 ±10%·소매 역량에 따라 조금 다르다
  */
 export function stockoutSoon(s: GameState): { soon: { id: string; name: string; stock: number; demand: number }[]; empty: { id: string; name: string }[] } {
-  const d = domesticDemands(s, calendar(s).monthOfYear);
+  // F5d(#338) · 외부 검토 D1 누수 L2: 판매 화면처럼 아는 품질로 센 수요(`knownState`) — 참 품질 수요로 세면 결품 판정이 참 품질을 드러낸다
+  const d = domesticDemands(knownState(s), calendar(s).monthOfYear);
   const soon: { id: string; name: string; stock: number; demand: number }[] = [];
   const empty: { id: string; name: string }[] = [];
   for (const p of s.commerce.products) {
