@@ -302,6 +302,12 @@ function f5dFinishObserve(): void {
     const tank = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced && l.volumeL >= 1);
     const tankTxt = tank.length ? tank.map((l) => `${l.name.split(' · ')[0]} ${Math.round(l.volumeL)}L ${tankLotWaitMonths(s, l)}개월째`).join(' · ') : '비었음';
     console.log(`- N1 탱크 대기 — 통입한 턴 ${fillMonths.length}개 · 사이 간격 평균 ${gaps.length ? (gaps.reduce((a, b) => a + b, 0) / gaps.length).toFixed(1) : '—'}개월 · 최장 ${gaps.length ? Math.max(...gaps) : '—'}개월 (${gapHist}) · 지금 탱크(FIFO 어림): ${tankTxt}`);
+    // P-ARCH-88: 턴 기록의 손 통입 합계(fill — 이 기능 뒤 기록에만 있다). 없으면 "기록 없음"
+    const fillOf = (t: unknown) => (t as { fill?: { casks: number; partial: number } }).fill;
+    const tallied = T.map(fillOf).filter((f): f is { casks: number; partial: number } => !!f);
+    const fc = tallied.reduce((n, f) => n + f.casks, 0);
+    const fp = tallied.reduce((n, f) => n + f.partial, 0);
+    console.log(`- N1 손 통입으로 찬 통 — ${tallied.length ? `${fc}통 · 그중 덜 찬 통(95% 미만) ${fp}통(${fc ? Math.round((fp / fc) * 100) : 0}%) · 기록된 턴 ${tallied.length}개` : '기록 없음(P-ARCH-88 전 기록)'}`);
     console.log(`- N1 손 통입 ${fills}회(월당 ${(fills / Math.max(1, T.length)).toFixed(1)}회 · 기록된 턴 ${T.length}개) · 자동 통입 설정을 처음 바꾼 달 ${firstAuto ? `${firstAuto.month - 1}개월` : '없음'} · 결산에 "자동 통입 n통"이 처음 남은 달 ${autoNote ? `${autoNote.month}개월` : '없음(최근 120개월 결산 안)'} — 7차: 손 통입 405회 · 자동 통입 0회`);
   }
   const care = playlog?.turns.reduce<Record<string, number>>((m, t) => { for (const k of ['rechar', 'sellUsedCask', 'orderSeasoning']) m[k] = (m[k] ?? 0) + (t.kinds?.[k] ?? 0); return m; }, {});
