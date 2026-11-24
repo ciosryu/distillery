@@ -4,6 +4,7 @@ import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { CaskTagBar, CaskTagChips } from './CaskTags';
 import { TurnBrief } from './TurnBrief';
 import { AutoFillRow } from './panels/AutoFill';
+import { AGE_BANDS, bandCounts, thinBands, THIN_BAND_CASKS } from '../sim/ageBand'; // #380 연령 띠 정의(PROD)
 import { CaskCareRow } from './panels/CaskCare'; // #345 GAP-PROD-7 (PROD)
 import { FinishRow } from './panels/FinishRow'; // #345 GAP-PROD-4 피니싱 (PROD 부품 · ARCH 끼움)
 import { getPlaylog, recentActionCount } from '../store/playlog';
@@ -202,6 +203,7 @@ function WarehouseFold() {
           {hasHandfillZone(s) && !handfillCask(s) && <Badge tone="warn">핸드필 통 없음 — 펼쳐서 고르기</Badge>}
           {/* [결정 #360] v16 캠페인은 칸으로(400L↑ 통은 2칸) — 옛 판 · 샌드박스는 통 = 칸 */}
           <span className={slotsUsed(s) > warehouseCapacity(s) ? 'font-medium text-rose-700 dark:text-rose-400' : 'text-stone-600 dark:text-stone-300'}>자리 {slotsUsed(s)}/{warehouseCapacity(s)}{slotsDifferFromCasks(s) ? '칸' : ''}</span>
+          <AgeBandStrip s={s} />
         </FoldBar>
       </Card>
       {open && <WarehouseCard />}
@@ -378,6 +380,27 @@ function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead |
  * PROD 계산(7차 레시피 · 김포 랙 맨 아래, 버번 n차 채움): 12년 품질 1차 70.5 · 2차 84.3 · 3차 87.2 · 4차 86.5 · 5차 86.2 · 6차(0.08) 84.2 · 7차 81.6 · 8차 77.7.
  * PM 대조: 감점 0만 보이면 "많이 쓴 통일수록 좋다"로 읽힌다. 원액 맛은 읽지 않는다(활성도만) */
 export const LOW_ACTIVITY_NOTE = 0.1;
+
+/**
+ * [결정 #380] 숙성 연령 띠 — 숙성고 카드 머리(접혀 있어도 보인다)에 「연령 0 ~ 2년 n · 3 ~ 4년 n · 5 ~ 9년 n · 10년 이상 n」.
+ * 정의 · 얇은 띠 판정은 PROD `ageBand.ts`(병입 「숙성 사다리」 · #386 자동 채우기와 같은 정의). 얇은 띠는 호박색 — 12년 출하 뒤 이을 원액이 모자란다는 뜻
+ * (9차 판: 찬 통 54개 중 60 ~ 119개월 3통인데 이를 보이는 화면이 없었다). 공개 정보(목재 개월 · 통 수 · L)만
+ */
+function AgeBandStrip({ s }: { s: GameState }) {
+  const counts = bandCounts(s);
+  if (!AGE_BANDS.some((b) => counts[b.id].casks > 0)) return null;
+  const thin = new Set(thinBands(counts));
+  return (
+    <span className="text-stone-600 dark:text-stone-300" title={`몰트 · 그레인 나무 통의 목재 숙성 연령별 통 수(L) — 더 오래된 띠가 있는데 ${THIN_BAND_CASKS}통 미만인 띠는 호박색: 그 나이대 원액이 얇아 위 띠를 다 쓴 뒤 이을 통이 모자란다`}>
+      연령{' '}
+      {AGE_BANDS.map((b, i) => (
+        <span key={b.id} className={thin.has(b.id) ? 'font-medium text-amber-700 dark:text-amber-300' : undefined}>
+          {i ? ' · ' : ''}{b.label.replace(' ~ ', '–').replace('10년 이상', '10년+')} {counts[b.id].casks}{thin.has(b.id) ? ' ⚠' : ''}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 function TanninLine({ s, c }: { s: GameState; c: Cask }) {
   const o = tanninOutlook(s, c);
