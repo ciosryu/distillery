@@ -1,6 +1,6 @@
 import { CATEGORY } from './content/categories';
 import { regionOf } from './content/regions';
-import { CAFE_CLOSE, CAFE_LINES, CAFE_OPEN, COMPARE_LINES, COMPARE_REASON, DCJ_CLOSE, DCJ_LINES, DCJ_OFFTOPIC, DCJ_OPEN, DCW_CLOSE, DCW_FEATURE, DCW_LINES, DCW_OPEN, FEED_AUTHORS, FEED_BENCHMARKS, FEED_COMMUNITIES, REPLIES, WB_FINISH, WB_NOSE_ADJ, WB_VERDICT, type FeedFeature, type FeedSituation, type FeedStyle, type Harsh } from './content/feed';
+import { FEED_GENERIC_OFF, CAFE_CLOSE, CAFE_LINES, CAFE_OPEN, COMPARE_LINES, COMPARE_REASON, DCJ_CLOSE, DCJ_LINES, DCJ_OFFTOPIC, DCJ_OPEN, DCW_CLOSE, DCW_FEATURE, DCW_LINES, DCW_OPEN, FEED_AUTHORS, FEED_BENCHMARKS, FEED_COMMUNITIES, REPLIES, WB_FINISH, WB_NOSE_ADJ, WB_VERDICT, type FeedFeature, type FeedSituation, type FeedStyle, type Harsh } from './content/feed';
 import { AXIS } from './content/axes';
 import { productLuxury } from './brands';
 import { topNotes } from './flavor';
@@ -48,6 +48,10 @@ export interface FeedSignals {
   priceChange: number;
   /** 감정 −1~1 = 0.6 × 품질 + 0.4 × 가성비 */
   sentiment: number;
+  /** 글에 나오는 잡내 이름(없으면 null) — 공개 판은 참 잡내 축(`offNote`), 가리는 판은 커뮤니티 품질로만([결정 #366]) */
+  off: string | null;
+  /** 「bad」 글의 {off} 자리(잡내 이름이 없을 때 채우는 말) */
+  offWord: string;
   mania: number;
   mass: number;
   extreme: number;
@@ -75,6 +79,9 @@ export function feedSignals(s: GameState, p: Product, sale: MonthReport['sales']
   const price = sale && sale.bottles > 0 ? Math.round(sale.revenue / sale.bottles) : p.price;
   const consumer = productConsumerPrice(s, { ...p, price }, region);
   const quality = communityQuality(s, p, month); // I2 L3 — 가리는 판은 참 품질이 아니라 커뮤니티가 본 점수로(가성비의 기대 가격도 같은 값)
+  // [결정 #366] I2 L7 (라): 잡내 · 자극 문구는 품질 신호라, 가리는 판에서는 참 잡내 축 대신 커뮤니티 품질로만 낸다(향 이름 · 방향은 공개 그대로)
+  const hidden = hidesProductQuality(s) && !!p.qualityKnown;
+  const off = hidden ? (quality < FEED_GENERIC_OFF.below ? FEED_GENERIC_OFF.word : null) : offNote(p);
   const seen = quality === p.quality ? p : { ...p, quality };
   const expected = expectedPricePerL(region, seen) * (p.bottleMl / 1000);
   const qpr = expected > 0 ? consumer / expected : 1;
@@ -88,7 +95,7 @@ export function feedSignals(s: GameState, p: Product, sale: MonthReport['sales']
   const mass = clamp((WHITE.includes(p.category) ? 0.5 : 0) + (qpr < 0.9 ? 0.2 : 0) + (bottles >= 500 ? 0.3 : 0), 0, 1);
   const extreme = qpr < 0.67 ? clamp((0.67 - qpr) / 0.3, 0, 1) : qpr > 1.5 ? clamp((qpr - 1.5) / 0.5, 0, 1) : 0;
   return {
-    quality, qpr, consumer, bottles,
+    quality, qpr, consumer, bottles, off, offWord: off ?? (hidden ? FEED_GENERIC_OFF.word : '알코올 자극'),
     stockout: !!sale && sale.bottles > 0 && sale.demandBottles > sale.bottles * 1.05,
     launch: (!!p.launchBoost && month < p.launchBoost.untilMonth) || month - p.createdMonth <= 1,
     priceChange: prevPrice > 0 ? price / prevPrice - 1 : 0,
@@ -181,11 +188,11 @@ function featuresOf(p: Product): FeedFeature[] {
 /** forcedScore — F5d(v16): 틱에서 그린 위스키베이스 점수(`MonthReport.reviews`). 있으면 그 점수와 그 점수가 말하는 품질로 쓴다(참 품질을 글에 새지 않게) */
 function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style: FeedStyle, month: number, i: number, forcedScore?: number): FeedPost {
   const notes = topNotes(p.flavor, 3).map((n) => n.nameKo);
-  const off = offNote(p);
+  const off = g.off;
   const years = Math.floor((p.oakMonths ?? (p.ageYears ?? 0) * 12) / 12);
   const vars: Record<string, string> = {
     name: p.name, n1: notes[0] ?? '은은한 곡물', n2: notes[1] ?? notes[0] ?? '단맛', n3: notes[2] ?? notes[1] ?? '여운',
-    off: off ?? '알코올 자극', price: fmtPrice(g.consumer), bench: benchmarkFor(p, g.consumer), cat: CATEGORY[p.category].nameKo,
+    off: g.offWord, price: fmtPrice(g.consumer), bench: benchmarkFor(p, g.consumer), cat: CATEGORY[p.category].nameKo,
     abv: `${Math.round(p.abv * 100)}%`, age: years > 0 ? `${years}년` : '어린',
   };
   const white = WHITE.includes(p.category);
