@@ -72,6 +72,11 @@ export interface EquipmentInstance {
    * 7차 판(MGT 넘김): 142개월 수리 끝이 「단식 증류기 가동 시작」으로 떠 새 설비를 산 것처럼 읽혔다. 선택 필드(#187) — 상태 수치·난수에 닿지 않는다
    */
   repairUntil?: number;
+  /**
+   * [#388 ① G4] 산 달(경과 개월) — 설비 처분가의 감가 나이. `readyMonth`는 고장 수리(`events.ts` 증류기 중단) 때 덮어쓰여 산 달로 쓸 수 없다
+   * (9차 133 세이브의 시작 증류기 readyMonth 124 — MGT). 선택 필드(#187): 시작 설비 0 · 사기 · OEM 전용 설비가 적는다. 옛 세이브는 `boughtMonthOf`가 어림한다
+   */
+  boughtMonth?: number;
 }
 
 export interface SpiritLot {
@@ -213,6 +218,12 @@ export interface CaskStint {
   fromMonth: number;
   /** 이 용기에서 보낸 개월 (옮길 때 확정) */
   months: number;
+  /**
+   * [결정 #391] 이 구간의 통 id — 옮긴 원액이 어느 통에서 왔는지(9차: K11 → K675) · 구간별 통 활성도로 12년 탄닌 감점을 정확히 세는 데 쓴다.
+   * 선택 필드(#187 — 스키마 버전 그대로). 없으면 "모름"(옛 세이브 · 이 필드 전 옮김). 적는 곳은 피니싱 옮기기(PROD `historyAfterTransfer`) — 읽는 곳(탄닌 줄 · 감점 풀이)은 그 뒤 PR.
+   * 통이 나중에 비워지거나 팔려도 id만 남는다(그때의 통 상태는 담지 않는다) — 읽는 쪽은 `inventory.casks`에서 못 찾을 수 있다
+   */
+  caskId?: string;
 }
 
 /** 샘플 한 번으로 알게 된 것 (#136, S-10) — 참값이 아니라 그때 읽은 추정치를 **그대로 남긴다**. 다음 샘플 전까지 갱신되지 않는다 */

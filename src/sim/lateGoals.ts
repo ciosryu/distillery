@@ -1,5 +1,7 @@
 import { SCENARIOS, type LateGoalDef } from './content/scenarios';
-import { campaignWon } from './ledger';
+import { campaignWon, ledgerEligibility } from './ledger';
+import { bandCounts, THIN_BAND_CASKS } from './ageBand';
+import { campaignMinOakMonths } from './rules';
 import { rulesVersionOf } from './rules';
 import type { GameState, MonthReport } from './types';
 
@@ -22,18 +24,59 @@ export function lateGoalOpen(s: Pick<GameState, 'month' | 'progress' | 'rulesVer
   return recordOf(s, g.opens.after)?.result === 'done';
 }
 
+// ───────────── 판정 (MGT ①-c, mgt-endgame.md §4.1) — 문턱은 모두 `[튜닝 — 단계 T]` ─────────────
+
+/** `lounge_3` — 최근 12개월 관광 매출 문턱(원) */
+export const LOUNGE_TOURISM_GOAL = 300_000_000;
+/** `flagship_300` — 12년 이상 자가 싱글 몰트 누적 출하 병 수 */
+export const FLAGSHIP_BOTTLES_GOAL = 300;
+/** 15 · 18년 목표의 목재 개월 */
+export const AGED_GOAL_MONTHS = { aged15_sold: 180, aged18_sold: 216 } as const;
+
+/** 승리와 같은 셈의 출하 — 적격 로트 · 유상 · 납품(b2b) 아님 (`saleEvents.ts firstEligibleSale`과 같은 거르기) */
+const paidEligible = (e: NonNullable<MonthReport['saleEvents']>[number]) => e.eligibleAtSale && e.kind !== 'b2b' && e.bottles > 0 && e.unitPrice > 0;
+
+/** VIP 라운지가 가동 중인가(공사 끝) */
+const loungeReady = (s: GameState) => s.production.equipment.some((e) => e.catalogId === 'visitor_vip' && e.readyMonth <= s.month);
+/** 최근 12개월 관광 매출(원) */
+const tourism12 = (s: GameState) => s.history.reports.slice(-12).reduce((t, r) => t + (r.tourismRevenue ?? 0), 0);
+/** 승리 적격 출하 누적 병(결산 기록에 남은 만큼 — 기록 창보다 오래된 판매는 세지 않는다) */
+const flagshipBottles = (s: GameState) => s.history.reports.reduce((t, r) => t + (r.saleEvents ?? []).filter(paidEligible).reduce((u, e) => u + e.bottles, 0), 0);
+
 /**
- * 이 후반 목표를 이뤘는가 — **판정은 MGT 몫(①-c)**. 그릇 PR(①-b)에서는 모두 false(기록 · 화면 자리만 시험한다)
- * `[TODO MGT ①-c]` ladder_mid(ageBand bandCounts 5 ~ 9년 ≥ THIN_BAND_CASKS) · lounge_3(visitor_vip 가동 ∧ 12개월 tourismRevenue) ·
- * flagship_300(saleEvents · caskEligibility) · aged15_sold / aged18_sold(`caskEligibility(s, cask, 180 | 216)` — 연수 인자는 코어에 있다)
+ * 지난달 출하 가운데 목재 `months` 이상인 승리 적격 출하가 있었나.
+ * 로트가 남아 있으면 그 원장(`components`)의 가장 어린 원액으로, 다 팔려 지워졌으면 제품의 표기 목재 개월(`oakMonths`)로 본다
  */
-export function lateGoalMet(_s: GameState, _id: LateGoalDef['id']): boolean {
-  return false;
+function agedSold(s: GameState, months: number): boolean {
+  const events = (s.history.reports.at(-1)?.saleEvents ?? []).filter(paidEligible);
+  return events.some((e) => {
+    const lot = (s.commerce.lots ?? []).find((l) => l.id === e.lotId);
+    if (lot?.components?.length) return ledgerEligibility(s, lot.components, 0, months).eligible;
+    const p = s.commerce.products.find((x) => x.id === e.productId); // 보관 제품(productArchive)에는 목재 개월이 없다 — 그달 판 로트는 보통 남아 있다
+    return (p?.oakMonths ?? 0) >= Math.max(months, campaignMinOakMonths(s));
+  });
 }
 
-/** 진척 수치(화면 「n/m」) — 수치로 보일 수 있는 목표만. 그릇 PR에서는 모두 null(MGT ①-c가 채운다) */
-export function lateGoalProgress(_s: GameState, _id: LateGoalDef['id']): { have: number; need: number } | null {
-  return null;
+/** 이 후반 목표를 이뤘는가 (MGT ①-c) — 보상은 없다(기록만, 그래서 봇 출력이 같다) */
+export function lateGoalMet(s: GameState, id: LateGoalDef['id']): boolean {
+  switch (id) {
+    case 'ladder_mid': return bandCounts(s)['5-9'].casks >= THIN_BAND_CASKS; // #380 띠와 한 정의(5 ~ 9년 = 목재 60 ~ 119개월, 몰트 · 그레인)
+    case 'lounge_3': return loungeReady(s) && tourism12(s) >= LOUNGE_TOURISM_GOAL;
+    case 'flagship_300': return flagshipBottles(s) >= FLAGSHIP_BOTTLES_GOAL;
+    case 'aged15_sold': return agedSold(s, AGED_GOAL_MONTHS.aged15_sold);
+    case 'aged18_sold': return agedSold(s, AGED_GOAL_MONTHS.aged18_sold);
+    default: return false;
+  }
+}
+
+/** 진척 수치(화면 「n/m」) — 수치로 보일 수 있는 목표만. 라운지는 억 단위(소수 한 자리) */
+export function lateGoalProgress(s: GameState, id: LateGoalDef['id']): { have: number; need: number } | null {
+  switch (id) {
+    case 'ladder_mid': return { have: bandCounts(s)['5-9'].casks, need: THIN_BAND_CASKS };
+    case 'lounge_3': return { have: Math.floor(tourism12(s) / 1e7) / 10, need: LOUNGE_TOURISM_GOAL / 1e8 };
+    case 'flagship_300': return { have: Math.min(flagshipBottles(s), FLAGSHIP_BOTTLES_GOAL), need: FLAGSHIP_BOTTLES_GOAL };
+    default: return null;
+  }
 }
 
 /** 화면에 보일 목표 — 열렸고 아직 결과가 없거나, 결과가 있는 것(달성 ✓ · 놓침 ✗). 늦게 본 목표(기록 없이 기한이 지남)는 보이지 않는다 */

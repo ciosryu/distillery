@@ -9,7 +9,21 @@
 import { knownReads } from './blendTable';
 import { bulkValuePerLPA, isBulkKind, lotQuality, spotBidPerLPA } from './bulk';
 import { rulesVersionOf } from './rules';
-import type { Cask, GameState, SpiritLot } from './types';
+import type { Cask, EquipmentInstance, GameState, SpiritLot } from './types';
+import { EQUIPMENT } from './content/catalog';
+
+/**
+ * [#388 ① G4] 설비를 산 달 — 처분가 감가 나이의 입구(G4 `equipmentSalvage`가 읽는다 · MGT 값 표). 새 세이브는 `boughtMonth`.
+ * 옛 세이브(필드 없음): `readyMonth` 0(시작 설비)은 0, 그 밖은 `readyMonth − leadMonths`(0 아래면 0).
+ * **다만 증류기는 0으로 본다** — 고장 수리(`events.ts` 증류기 중단)가 `readyMonth`를 덮어쓰고, 수리가 끝나면 `repairUntil`도 지워져 덮인 값인지 가릴 수 없다
+ * (9차 133 세이브의 시작 증류기 readyMonth 124 — PROD 리뷰). 0으로 보면 감가가 커져 처분가가 낮게(보수적으로) 나온다 `[한계 — 옛 세이브에서 나중에 산 증류기는 실제보다 늙게]`
+ */
+export function boughtMonthOf(e: Pick<EquipmentInstance, 'boughtMonth' | 'readyMonth' | 'catalogId'>): number {
+  if (e.boughtMonth != null) return e.boughtMonth;
+  const def = EQUIPMENT[e.catalogId];
+  if (e.readyMonth <= 0 || def?.kind === 'still') return 0;
+  return Math.max(0, e.readyMonth - (def?.leadMonths ?? 0));
+}
 
 /**
  * 관측이 없는 통의 사전 품질 `[튜닝]` — P25(결정 93 답, PM 2026-11-14 "P25를 초기값으로"). 평균으로 두면 "맛을 안 보는 쪽이 평가가 높은" 판이 생겨 샘플의 정보 가치가 음수가 된다.
