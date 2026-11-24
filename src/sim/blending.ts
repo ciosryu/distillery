@@ -1,5 +1,5 @@
 import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/catalog';
-import { bottledQualityKnown, hidesProductQuality, mergeQualityKnown, restockPrior } from './productView'; // F5d 아는 품질(코어)
+import { bottledQualityKnown, hidesProductQuality, mergeQualityKnown, restockPrior, type RecipeShare } from './productView'; // F5d 아는 품질(코어)
 import { lotQuality } from './bulk'; // F5d 병입 보정량 — 샘플 기록과 같은 원액 품질 식
 import type { PackagingChoice } from './content/packaging';
 import { fixPackaging, nearestPresetId, packagingError, packagingPartsCost, presetChoice, productPackaging, sameChoice } from './packaging';
@@ -497,11 +497,25 @@ export function batchQualityKnown(s: GameState, components: BlendComponent[], p:
   const estB = estimateBlend(s, components);
   if (!estB.fromCasks) return { est: Math.round(p.evaluation.quality * 10) / 10, sigma: 0, reviews: 0, month: s.month, hex: hexOf(p.flavor) };
   const target = restockId ? s.commerce.products.find((x) => x.id === restockId) : undefined;
-  const carried = target ? restockPrior(s, target, recipeIdsOf(s, components)) : undefined;
+  const carried = target ? restockPrior(s, target, recipeSharesOf(s, components)) : undefined;
   return bottledQualityKnown(estB, p.kind ?? 'malt', s.month, carried, bottlingOffset(s, components, p.evaluation.quality));
 }
 
-/** 섞는 원액의 레시피 집합(#243) — 원액을 빼기 **전에** 읽는다. 병입 · 보충 미리보기(#346 같은 레시피 판정)가 같이 쓴다 */
+/**
+ * [결정 #377] 섞는 원액의 레시피별 알코올(LPA) — 보충 잇기(`restockPrior`)가 "목록에 없던 레시피 몫"을 센다. 원액을 빼기 **전에** 읽는다.
+ * 레시피 기록이 없는 원액(매입 등)은 '' — 어느 제품 목록에도 없는 몫. 병입 · 보충 미리보기(Bottling 보충 줄)가 같은 값을 쓴다
+ */
+export function recipeSharesOf(s: GameState, components: BlendComponent[]): RecipeShare[] {
+  const m = new Map<string, number>();
+  for (const c of components) {
+    if (c.liters <= 0) continue;
+    const lot = lotOf(s, c);
+    if (lot) m.set(lot.recipeId ?? '', (m.get(lot.recipeId ?? '') ?? 0) + c.liters * lot.abv);
+  }
+  return [...m.entries()].map(([recipeId, lpa]) => ({ recipeId, lpa })).sort((a, b) => a.recipeId.localeCompare(b.recipeId));
+}
+
+/** 섞는 원액의 레시피 집합(#243) — 원액을 빼기 **전에** 읽는다. 제품 레시피 기록(`recipeIds`)에 쓴다 */
 export function recipeIdsOf(s: GameState, components: BlendComponent[]): string[] {
   return [...new Set(components.filter((c) => c.liters > 0).map((c) => lotOf(s, c)?.recipeId).filter((x): x is string => !!x))].sort();
 }
@@ -514,7 +528,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   // estimateBlend의 원액별 품질 가중 평균을 쓰면 병입 보정만큼(약 3점) 늘 낮고 오차 0이라 리뷰가 고치지 못했다(MKT F5d-2 진단 — 소주). 통이 섞이면 샘플 추정
   // 탱크만이면 병입 평가 그대로 · 통이 섞이면 샘플 추정 + 병입 보정량 · 같은 레시피 보충이면 #346 잇기 — 화면 미리보기와 같은 한 함수
   const knownBatch = batchQualityKnown(s, components, p, opts.restockId);
-  const carried = knownBatch && opts.restockId ? (() => { const t = s.commerce.products.find((x) => x.id === opts.restockId); return t ? restockPrior(s, t, recipeIdsOf(s, components)) : undefined; })() : undefined;
+  const carried = knownBatch && opts.restockId ? (() => { const t = s.commerce.products.find((x) => x.id === opts.restockId); return t ? restockPrior(s, t, recipeSharesOf(s, components)) : undefined; })() : undefined;
   // F5d(PROD): 첫 출고가도 아는 품질로 — 참 품질 권장가(p.suggestedPrice)로 정하면 첫 값에서 참값이 샌다(기준가 currentSuggested와도 어긋난다).
   // 면세 한정판은 따로 셈(priceAtQuality null) → 지금 값 그대로
   const firstBase = knownBatch ? priceAtQuality(s, p, opts, knownBatch.est) ?? p.suggestedPrice : p.suggestedPrice;
