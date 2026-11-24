@@ -3,15 +3,9 @@ import { FINISH_LABEL } from './content/market';
 import type { Product } from './types';
 
 /**
- * 피니시 통에 머문 개월(근사) — `caskMonthsMix`(개월 가중 통 구성)의 피니시 통 몫 ÷ 통 몫 합 × 최저 오크 개월. 한 통 원액이면 정확하고,
- * 나이가 다른 원액을 섞으면 알코올 가중 평균에 가깝다 `[근사]`. 기록이 없는 피니시 제품(옛 세이브 — 마지막 통만 안다)은 0 → 표기 효과 중립
- * (`styleFit`이 그 제품의 피니시 몫을 ×1로 두는 것과 같은 규칙)
+ * 피니시 표기 효과가 켜지는가 ([결정 #362] · ARCH 검토 2026-11-24) — 표기(`finish`)가 있고 피니시 통에 FINISH_LABEL.minMonths 이상.
+ * 개월은 병입 때 PROD가 남기는 `Product.finishMonths`(#878 — 섞으면 짧은 쪽, 표기와 같은 보수 규칙)만 읽는다. `caskMonthsMix`는 지역 통 선호(`styleFit`, #361) 전용.
+ * `finishMonths`는 v16 판 병입에서만 쓰이므로 옛 판(legacy-v15) · 옛 제품은 저절로 중립이다 — 판을 받지 않는다(PM 범위 판단 #308 · #343과 같은 결과)
  */
-export function finishMonthsOf(p: Pick<Product, 'finish' | 'caskMonthsMix' | 'oakMonths' | 'ageYears'>): number {
-  if (!p.finish || !p.caskMonthsMix?.length) return 0;
-  const total = p.caskMonthsMix.reduce((t, c) => t + c.share, 0);
-  const fin = p.caskMonthsMix.filter((c) => c.typeId === p.finish).reduce((t, c) => t + c.share, 0);
-  return total > 0 ? (fin / total) * (p.oakMonths ?? (p.ageYears ?? 0) * 12) : 0;
-}
-/** 피니시 표기 효과가 켜지는가 ([결정 #362]) — 표기가 있고 피니시 통에 FINISH_LABEL.minMonths 이상 */
-export const finishLabelOn = (p: Pick<Product, 'finish' | 'caskMonthsMix' | 'oakMonths' | 'ageYears'>): boolean => !!p.finish && finishMonthsOf(p) >= FINISH_LABEL.minMonths - 1e-9;
+export const finishLabelOn = (p: Partial<Pick<Product, 'finish'>> & { finishMonths?: number }): boolean =>
+  !!p.finish && (p.finishMonths ?? 0) >= FINISH_LABEL.minMonths;
