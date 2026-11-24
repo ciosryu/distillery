@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { monthLabel, type MonthReport } from '../../src/sim';
 import { LOAN_OFFERS } from '../../src/sim/content/catalog';
-import { activeMsAt, parsePlayFile, type Playlog } from '../../src/store/playlog';
+import { activeMsAt, opsAdvanceSummary, parsePlayFile, type Playlog } from '../../src/store/playlog';
 import { EVENT } from '../../src/sim/content/events';
 import { stagesOf } from '../../src/sim/scenario';
 import { MORALE, moraleOf, TRAIT_INFO } from '../../src/sim/hr';
@@ -312,4 +312,19 @@ function f5dFinishObserve(): void {
   }
   const care = playlog?.turns.reduce<Record<string, number>>((m, t) => { for (const k of ['rechar', 'sellUsedCask', 'orderSeasoning']) m[k] = (m[k] ?? 0) + (t.kinds?.[k] ?? 0); return m; }, {});
   if (care) console.log(`  - 빈 통 관리(#345 ①): 재탄화 ${care.rechar} · 중고 통 매각 ${care.sellUsedCask} · 시즈닝 통 주문 ${care.orderSeasoning}`);
+}
+
+// [#388 ① A1] 운영 모드 · 분기 진행 (PM 요청 2026-11-24 — IB 입찰 멈춤을 둘지 정하는 근거): 끝까지 간 분기 진행 수 · 중간 멈춤 사유별
+{
+  console.log('\n## 운영 모드 · 분기 진행 (#388 ① A1)');
+  const adv = playlog?.advances;
+  if (!adv) console.log('- 기록 없음(이 기능 전의 판 — 여러 달 진행 기록 `advances`가 없다)');
+  else {
+    const sum = opsAdvanceSummary(adv);
+    console.log(`- 운영 모드로 진행한 횟수 ${sum.opsRuns}번${sum.opsFirstMonth != null ? ` · 처음 ${sum.opsFirstMonth}개월째(${monthLabel(s.startYear, sum.opsFirstMonth)})` : ' — 운영 모드를 켜고 진행한 적이 없다'}`);
+    for (const q of sum.quarter) {
+      const stops = Object.entries(q.stops).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(' · ');
+      console.log(`- 분기 진행(${q.ops ? '운영 모드' : '운영 모드 밖'}) 시도 ${q.tried}번 · 끝까지 ${q.full}번${q.tried ? `(${Math.round((q.full / q.tried) * 100)}%)` : ''}${stops ? ` · 중간 멈춤: ${stops}` : ''}`);
+    }
+  }
 }

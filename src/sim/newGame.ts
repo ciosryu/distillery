@@ -74,8 +74,8 @@ export function newGame(opts: NewGameOptions = {}): GameState {
   // 하우스 브랜드 = 회사명 (S-2)
   s.commerce.brands[0]!.name = s.distilleryName;
   // 초기 설비: 단식 증류기 1기 + 스테인리스 발효조 2기
-  const still = { id: nid(s, 'E'), catalogId: 'pot_onion_1000', readyMonth: 0, feintsLPA: 0 };
-  s.production.equipment.push(still, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0 }, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0 });
+  const still = { id: nid(s, 'E'), catalogId: 'pot_onion_1000', readyMonth: 0, feintsLPA: 0, boughtMonth: 0 };
+  s.production.equipment.push(still, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0, boughtMonth: 0 }, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0, boughtMonth: 0 });
   for (const r of presetRecipes(still.id, s.regionId, s.siteId)) s.production.recipes.push({ ...r, id: nid(s, 'R') });
   for (const t of regionOf(s).starter.casks) s.inventory.casks.push(emptyCaskOf(s, t));
   // 창업 멤버: 디스틸러 1명
