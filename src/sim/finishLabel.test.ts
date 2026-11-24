@@ -8,7 +8,7 @@ import { regionOf } from './content/regions';
 import { newScenarioGame } from './newScenario';
 import type { Product } from './types';
 
-type P = Product & { finishMonths?: number };
+type P = Product;
 const base = { id: 'P', name: '시험 몰트', category: 'whisky', ageYears: 6, oakMonths: 72, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 75, typicity: 70, style: null, sourcedShare: 0, stockBottles: 300, price: 100_000, unitCost: 20_000, createdMonth: 90, lastMonthSold: 0, totalSold: 0 } as unknown as P;
 /** 72개월 중 마지막 m개월을 피니시 통에서 보낸 제품 — 통 구성 기록(caskMonthsMix)도 함께 둔다(효과 판정은 이것을 읽지 않는다) */
 const finished = (m: number, typeId: 'oloroso_butt' | 'ex_bourbon_barrel' = 'oloroso_butt', withMonths = true): P => ({
