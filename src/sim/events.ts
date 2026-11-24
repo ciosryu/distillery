@@ -1,5 +1,5 @@
 import { EVENT, EVENTS, type Effect, type EventDef, type Requirement } from './content/events';
-import { aroundOne, domainEventMul, eventDurationMul, eventMagnitudeMul } from './rules'; // F6 난이도 영역 배수·효과 크기·기간(잎 모듈)
+import { aroundOne, domainEventMul, eventDurationMul, eventMagnitudeMul, rulesVersionOf } from './rules'; // F6 난이도 영역 배수·효과 크기·기간(잎 모듈)
 import { tuneEventEffects, tuneForecast } from './prodKnobs';
 import { houseBrand } from './brands';
 import { regionOf, siteOf } from './content/regions';
@@ -272,12 +272,16 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
 }
 
 /** 이벤트 문구의 {competition} {critic} 자리에 실명(또는 가상명)을 넣는다 */
-function fill(text: string, rng: Rng): string {
-  return text.replace('{competition}', displayName(rng.pick(COMPETITIONS))).replace('{critic}', displayName(rng.pick(CRITICS)));
-}
+const fillWith = (text: string, n: { competition: string; critic: string }): string => text.replace('{competition}', n.competition).replace('{critic}', n.critic);
+/** 대회 · 평론가 이름 한 벌 — 뽑는 순서는 대회 → 평론가(옛 `fill`과 같다) */
+const pickNames = (rng: Rng) => { const competition = displayName(rng.pick(COMPETITIONS)); return { competition, critic: displayName(rng.pick(CRITICS)) }; };
 
 function fire(s: GameState, base: EventDef, rng: Rng, report: MonthReport): void {
-  const def = { ...base, title: fill(base.title, rng), text: fill(base.text, rng) };
+  // 제목과 본문이 **같은 이름**을 쓴다 — 예전에는 제목 · 본문을 따로 뽑아 「도쿄 … 수상」 제목에 「샌프란시스코 … 메달」 본문이 붙었다(9차 판 96개월째, MKT 발견).
+  // 난수는 예전과 똑같이 두 벌(제목 몫 · 본문 몫)을 뽑아 흐름을 지킨다 → 이벤트 결과 · 수치는 모든 판에서 그대로. 옛 판(legacy-v15)은 본문도 예전 두 번째 벌 그대로(문구까지 바이트 동일)
+  const forTitle = pickNames(rng);
+  const second = pickNames(rng);
+  const def = { ...base, title: fillWith(base.title, forTitle), text: fillWith(base.text, rulesVersionOf(s) === 'legacy-v15' ? second : forTitle) };
   if (def.choices?.length) {
     s.events.pending.push({
       id: nid(s, 'V'), defId: def.id, title: def.title, text: def.text, month: s.month,
