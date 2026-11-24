@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { createLocalEngine, DEFAULT_STOPS, OPS_STOPS, newGame, setInvariantMode, newScenarioGame, type Action, type BusinessPlan, type GameState, type RegionId, type StopReason } from '../sim';
 import { flushSave, loadGame, queueSave, saveNow } from './persist';
 import { useUi } from './ui';
-import { advanceKindOf, fillTally, parsePlayFile, recordAction, recordFill, recordBuild, recordTurns, recordUndo, replacePlaylog, resetPlaylog, setNextAdvance } from './playlog';
+import { advanceKindOf, fillTally, recordAdvance, parsePlayFile, recordAction, recordFill, recordBuild, recordTurns, recordUndo, replacePlaylog, resetPlaylog, setNextAdvance } from './playlog';
 import { BUILD_ID } from '../build';
 
 // 불변식 매달 검사 (INV-ARCH-1, architecture §9.5) — 개발 빌드(vite dev)만 콘솔에 적는다. 배포 빌드는 불러올 때만(persist.ts)
@@ -93,6 +93,7 @@ export const useGame = create<GameStore>((set) => {
       setNextAdvance(advanceKindOf(months));
       const res = engine.advance({ months, stopOn: months > 1 ? (ops ? OPS_STOPS : SAFETY_STOPS) : [] });
       setNextAdvance(undefined);
+      recordAdvance({ month: before.month, kind: advanceKindOf(months), ops, asked: months, went: res.months, ...(res.stoppedBy !== 'maxMonths' && res.months < months ? { stop: res.stoppedBy } : {}) }); // #388 ① A1 — 분기 진행이 끝까지 갔나
       if (res.months > 0) { undoState = before; set({ undoInfo: { month: before.month, months: res.months } }); }
       if (res.stoppedBy !== 'maxMonths' && res.months < months) toast(res.stoppedBy === 'verdict' || res.stoppedBy === 'flagshipReady' || res.stoppedBy === 'goalDone' || res.stoppedBy === 'caskBid' || res.stoppedBy === 'commission' || res.stoppedBy === 'pendingEvent' ? 'ok' : 'error', `${res.months}개월 진행 후 멈춤 — ${STOP_LABEL[res.stoppedBy]}`);
     },
