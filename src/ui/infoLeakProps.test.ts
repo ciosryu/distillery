@@ -65,7 +65,7 @@ describe('I2 — 같은 공개 정보 · 다른 참 품질이면 화면 읽기 �
     const base = { fresh_fruit: 30 };
     expect(feedFor(mk({ ...base, feinty: 20, harshness: 60 }), 3, 40).map((x) => x.text)).toEqual(feedFor(mk(base), 3, 40).map((x) => x.text));
   });
-  it.fails('[누수 L6 — #376] 품평회 수상 이벤트 조건 `highQualityProduct`가 참 품질 72↑를 본다(events.ts 42) — 이벤트가 뜨는 것 자체가 참 품질 신호. #376(커뮤니티 품질로) MGT 수리 뒤 it', () => {
+  it('[누수 L6 — 고침 #376 · MGT #926] 품평회 수상 이벤트 조건 `highQualityProduct` — 가리는 판은 커뮤니티 품질(`communityQuality`)로 72를 본다(참 품질 72↑가 아니다)', () => {
     // 아는 품질 60 ±8은 같고 참 품질만 60 대 80 — 60 ~ 359개월째 300달을 같은 시드로 돌려 「수상」 기록이 뜬 달의 목록이 같아야 한다
     const medals = (q: number) => {
       const out: number[] = [];
@@ -81,7 +81,7 @@ describe('I2 — 같은 공개 정보 · 다른 참 품질이면 화면 읽기 �
     };
     expect(medals(80)).toEqual(medals(60));
   });
-  it.fails('[누수 L6′ — MGT P-MGT-62 2026-11-24] 평론가 판정 문구에 최고 참 품질 숫자 — `criticVerdict`가 「무난한 평가 — 품질 ${best}」(참 p.quality)를 이벤트 기록(이벤트 탭 · 소식 창)에 쓴다(events.ts 209)', () => {
+  it('[누수 L6′ — 고침 #375 · MGT #926] 평론가 판정 문구 — 가리는 판은 `criticVerdict` 문구에 품질 숫자를 쓰지 않는다(판정 말만)', () => {
     // 판정(극찬 · 무난 · 혹평)은 문턱 신호라 빼고 **숫자만** 본다 — 두 품질 모두 「무난」 구간(murray_visit 문턱 rave 80 · pan 62)
     const effect = { type: 'criticVerdict', rave: 80, pan: 62, raveEffects: [], panEffects: [], mildEffects: [] } as const;
     const say = (q: number) => { const { s } = withProduct(q); return applyEffects(s, [effect as never], rngFor(s.seed, s.month, 'event:test'), '평론가').join(' '); };
