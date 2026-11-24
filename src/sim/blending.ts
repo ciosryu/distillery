@@ -515,6 +515,9 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   // 탱크만이면 병입 평가 그대로 · 통이 섞이면 샘플 추정 + 병입 보정량 · 같은 레시피 보충이면 #346 잇기 — 화면 미리보기와 같은 한 함수
   const knownBatch = batchQualityKnown(s, components, p, opts.restockId);
   const carried = knownBatch && opts.restockId ? (() => { const t = s.commerce.products.find((x) => x.id === opts.restockId); return t ? restockPrior(s, t, recipeIdsOf(s, components)) : undefined; })() : undefined;
+  // F5d(PROD): 첫 출고가도 아는 품질로 — 참 품질 권장가(p.suggestedPrice)로 정하면 첫 값에서 참값이 샌다(기준가 currentSuggested와도 어긋난다).
+  // 면세 한정판은 따로 셈(priceAtQuality null) → 지금 값 그대로
+  const firstBase = knownBatch ? priceAtQuality(s, p, opts, knownBatch.est) ?? p.suggestedPrice : p.suggestedPrice;
   // 블렌딩 테이블 (결정 #124): 원액을 빼기 전에 블렌더가 아는 값으로 예상 육각형을 만든다 (공개 연출용).
   // 캐스크는 샘플 기록(#157) — 기록이 없는 캐스크는 예상에서 빠진다. 탱크 원액은 우리가 막 만든 것이라 참값으로 안다(#162의 estimateBlend와 같은 규칙)
   const known = knownReads(s);
@@ -589,7 +592,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     premiumLabel: p.premiumLabel,
     ...(p.traditional ? { traditional: true } : {}),
     stockBottles: p.bottles,
-    price: p.dfEdition || !opts.firstPriceFactor ? p.suggestedPrice : defaultPolicyPrice(p.suggestedPrice, opts.firstPriceFactor), // B1-4 — 미리보기와 같은 함수
+    price: p.dfEdition || !opts.firstPriceFactor ? firstBase : defaultPolicyPrice(firstBase, opts.firstPriceFactor), // B1-4 — 미리보기와 같은 함수
     unitCost: p.unitCost,
     createdMonth: s.month,
     lastMonthSold: 0,
@@ -615,7 +618,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     addLot(s, merged.id, p.bottles, { components: coalesce(bottledLedger) });
     s.finance.cash -= Math.round((packagingUnitCost(s, opts) + BOTTLING_LABOR_PER_BOTTLE) * p.bottles);
     const actualBatch = hexOf(product.flavor);
-    return { product: merged, reveal: { targetLabel: null, score: null, predicted, actual: actualBatch, notes: p.kind !== 'malt' && p.kind !== 'grain' ? [] : predicted ? [...revealNotes(predicted, actualBatch), ...(unknownShare >= 0.05 ? [`샘플 기록 없는 원액 ${Math.round(unknownShare * 100)}%는 예상 밖이었다`] : [])] : ['샘플 기록 없이 병입 — 예상 없이 섞었다'] } };
+    return { product: merged, reveal: { targetLabel: null, score: null, predicted, actual: actualBatch, notes: p.kind !== 'malt' && p.kind !== 'grain' ? [] : predicted ? [...revealNotes(predicted, actualBatch, { numbers: !knownBatch }), ...(unknownShare >= 0.05 ? [`샘플 기록 없는 원액 ${Math.round(unknownShare * 100)}%는 예상 밖이었다`] : [])] : ['샘플 기록 없이 병입 — 예상 없이 섞었다'] } };
   }
   if (p.dfEdition && opts.dutyFreeOnly) s.site.dfSeries = { vol: p.dfEdition.vol, streak: p.dfEdition.streak };
   // 첫 위스키 출시: 비지터 센터 입소문이 높으면 오픈런 (3개월간 수요 × (1 + 2 × 입소문))
@@ -660,5 +663,5 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     product.line = opts.line;
     rewardNote = [rewardNote, `코어 레인지 「${opts.line}」 기준 배치로 등록 — 다음 배치부터 이 육각형과 비교한다`].filter(Boolean).join(' · ');
   }
-  return { product, reveal: { targetLabel: target?.label ?? null, score, predicted, actual, notes: p.kind !== 'malt' && p.kind !== 'grain' ? [] : predicted ? [...revealNotes(predicted, actual), ...(unknownShare >= 0.05 ? [`샘플 기록 없는 원액 ${Math.round(unknownShare * 100)}%는 예상 밖이었다`] : [])] : ['샘플 기록 없이 병입 — 예상 없이 섞었다'], ...(rewardNote ? { rewardNote } : {}) } };
+  return { product, reveal: { targetLabel: target?.label ?? null, score, predicted, actual, notes: p.kind !== 'malt' && p.kind !== 'grain' ? [] : predicted ? [...revealNotes(predicted, actual, { numbers: !knownBatch }), ...(unknownShare >= 0.05 ? [`샘플 기록 없는 원액 ${Math.round(unknownShare * 100)}%는 예상 밖이었다`] : [])] : ['샘플 기록 없이 병입 — 예상 없이 섞었다'], ...(rewardNote ? { rewardNote } : {}) } };
 }
