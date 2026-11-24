@@ -252,24 +252,30 @@ PM이 PROD · MKT · MGT에 영역별 후보 3 ~ 5개를 요청했다(각 후보
 - v16에는 판 끝(180개월)이 없다(#308 · #324). 승리 뒤 「계속 운영(목표 없이)」(`acknowledgeVerdict`)뿐이다.
 - 중반 목표의 보상은 인지도 +3%p다(`updateMidGoals`). 그래서 봇이 이루면 판매가 바뀐다(v16 X0 바이트가 움직인다).
 
-**최소 범위 `[제안]` — 후반 목표 4개, 두 무리**
+**목록 `[제안 — ARCH · MGT 맞춤 2026-11-24, PM 요청]` — 후반 목표 5개.** ARCH 첫 안(넷)과 MGT `mgt-endgame.md` §4(여섯)를 하나로 맞췄다. MGT가 §4를 이 표에 맞춰 고친다.
 
-| id(가칭) | 열림 | 목표 | 짝이 되는 행동(⑦) | 판정 재료 |
+| id | 보이는 때 · 기한 | 목표 | 짝이 되는 행동(⑦) | 판정 재료 |
 |---|---|---|---|---|
-| `ladder_mid` | 120개월 ~ 기한 156 | 숙성고 5 ~ 9년 띠 6통 이상 유지(12년 뒤를 이을 원액) | 통입 · 통 사기 — 12년만 보고 비우지 않기 | PROD `ageBand.ts bandCounts` · `THIN_BAND_CASKS`(#380과 같은 정의) |
+| `ladder_mid` | **72개월 ~ 기한 144** | 숙성고 5 ~ 9년 띠 6통 이상(12년 뒤를 이을 원액) | 통입 · 통 사기 — 12년만 보고 비우지 않기 | PROD `ageBand.ts bandCounts` · `THIN_BAND_CASKS`(#380과 같은 정의) |
+| `lounge_3` | 108개월 ~ 기한 168 | VIP 라운지를 열고 최근 12개월 관광 매출 3억↑ `[튜닝]` | **VIP 라운지 2억 · 월 400만 — 지금 v16에서 열린 큰 지출** | 설비 `visitor_vip` 가동 중 ∧ 결산 `tourismRevenue` 12개월 합 |
 | `flagship_300` | 승리 뒤 · 기한 없음 | 12년 이상 자가 싱글 몰트 누적 300병 출하 | 12년 후보 지키기 · 자동 채우기 연수 보호(#386) | 판매 사건 `saleEvents` · 승리 적격(`caskEligibility`) |
 | `aged15_sold` | 승리 뒤 · 기한 없음 | 15년 자가 싱글 몰트 첫 출하(#389) | 「장기 보호」 통 묶기 · 15년 탄닌 관리 | 승리 판정과 같은 식에 목재 180개월 |
-| `aged18_sold` | 15년 뒤 · 기한 없음 | 18년 자가 싱글 몰트 첫 출하(#389) | 같음 | 목재 216개월 |
+| `aged18_sold` | `aged15_sold`를 이룬 뒤 · 기한 없음 | 18년 자가 싱글 몰트 첫 출하(#389) | 같음 | 목재 216개월 |
 
+- **맞추며 바꾼 것:**
+  - `ladder_mid`를 120 → **72개월**로 당겼다(MGT · PM). 120개월에 열면 그때 통입한 원액은 156개월에 목재 36이라 5 ~ 9년 띠에 못 든다. 그러면 있는 통 수만 알려 줄 뿐 행동을 바꿀 길이 없다. 72에 열면 84개월까지 넣은 통이 144에 목재 60에 닿는다 `[계산 — MGT]`. 9차 133개월에 이 띠는 1통이었다. **오너 안건 ⓐ.**
+  - `lounge_3`을 더했다(MGT). PM 조건 「돈 쓰는 행동과 짝」을 채운다. ARCH 첫 안 넷의 짝은 모두 "안 쓰는 쪽"(통 지키기 · 장기 보호)이었다. 9차는 관광 2.09억에 라운지가 없었고, 108개월에 샀다면 약 3.0억이 됐다 `[추정 — MGT]`. A3 새 시설 알림과 맞물린다.
+  - MGT 안 `revenue_12`는 뺐다. 짝이 「생산 늘리기」라 오너가 지루하다고 한 「더 만들어 더 판다」(⑦)이기 때문이다.
+- **한 번에 보이는 것은 2 ~ 3개다(PM 원칙):** 승리 전에는 2개(띠 · 라운지). 승리 뒤에는 최대 3개(라운지가 남았으면 그것 + 300병 · 15년)다. 18년은 15년을 이룬 뒤에만 보인다.
 - **보상은 없다(기록 · 결과 화면만).** 그래서 봇이 목표를 이루어도 sim 수치가 같아 v16 X0 바이트가 동일하다. 보상(인지도 · 명성)은 단계 T에서 #390 명성의 길과 함께 정한다.
   - 반론: 보상 없는 목표는 약하다. → ①의 질문은 "겨눌 것이 보였나"라 보상 없이도 잴 수 있다. 사람 판 뒤에 보상을 넣으면 그 PR만 v16 X0를 다시 잰다.
 - **그릇(ARCH 코어 — PR ①-b):**
-  - `content/scenarios.ts`에 `lateGoalsV16?: LateGoalDef[]`를 둔다(`{ id, title, opens: { month } | 'win' | { after: id }, byMonth? }`). 중반 목표와 섞지 않는다 — 기한이 없는 목표가 있어서다.
+  - `content/scenarios.ts`에 `lateGoalsV16?: LateGoalDef[]`를 둔다(`{ id, title, opens: { month } | 'win' | { after: id }, byMonth? }`). 중반 목표(`midGoalsV16`)와 섞지 않는다. 기한이 없는 목표가 있고, 중반 목표는 보상(인지도)이 있어 봇 바이트가 움직이기 때문이다(MGT 첫 제안 G3-a는 `midGoalsV16` + `showFrom?`였고, 이 그릇으로 맞췄다).
   - `types.ts`에 `progress.lateGoals?: { id; month; result: 'done' | 'missed' }[]` 선택 필드를 둔다.
   - `progress.ts`에서는 `updateMidGoals` 옆에 `updateLateGoals`를 부르는 한 줄만 고친다. **승리 뒤에도 돈다**(`status === 'running'`이면 — v16은 승리가 멈춤 사유가 아니다).
   - 판정 함수 `lateGoalMet(s, id)`의 자리만 만들고(전부 false), 화면 자리(아래)와 시험을 넣는다.
 - **판정(MGT — PR ①-c, ①-b 위에 쌓음):**
-  - `lateGoalMet`의 네 판정을 채운다.
+  - `lateGoalMet`의 다섯 판정을 채운다.
   - 15 · 18년 적격은 `caskEligibility`에 연수 인자를 받게 한다. `ledger.ts`는 코어라 그 한 줄은 ARCH가 ①-b에 미리 넣는다 — 기본값 = 지금 연수, 동작 같음.
   - 봇 40시드로 각 목표를 이루는 달을 잰다(측정만, 튜닝 없음).
 - **화면 자리(ARCH — ①-b에 포함):**
@@ -277,9 +283,13 @@ PM이 PROD · MKT · MGT에 영역별 후보 3 ~ 5개를 요청했다(각 후보
   - **결과 화면(`Verdict`) 「계속 운영」 버튼에 다음 목표를 붙인다**(「계속 운영 — 다음 목표: 12년 300병 · 15년 첫 출하」). #389 "12년은 장의 끝"을 화면에서 말하는 자리다.
   - `Verdict.tsx`는 META(MGT) 화면이다. 버튼 문구 한 줄만 고치는 것이라 MGT 확인을 받고 ①-b에 넣는다. MGT가 원하면 ①-c로 옮긴다.
 - **측정:** ①-b · ①-c 모두 X0L · v16 X0 · `balance` 바이트 동일(보상 없음). ①-c는 봇 40시드의 목표 달성 달 표를 함께 낸다.
-- **세이브:** 9차 134 세이브는 다음 달부터 `ladder_mid`가 열린 채로 보인다(기한 156). 승리 뒤 목표는 승리 달에 열린다.
+- **세이브(진행 중 판):** 콘텐츠를 매달 읽으므로 9차 134 세이브도 다음 달부터 새 목표를 본다.
+  - **처음 보는 달에 이미 기한이 지난 목표는 'missed'로 적지 않고 조용히 건너뛴다**(MGT 지적). 기록이 없는 채로 두고, 화면에도 보이지 않는다. 그 판에서 놓친 것이 아니라 그 목표가 없던 판이기 때문이다.
+  - 판정: `progress.lateGoals`에 그 id가 없고 `s.month > byMonth`이면 건너뛴다. 시험은 9차 133 · 134 세이브로 한다.
+  - 9차 134는 `ladder_mid`(기한 144)가 10개월 남은 채로 보이고, `lounge_3`(기한 168)이 보인다. 승리 뒤 목표는 승리 달에 열린다.
 - **리스크:**
-  - 목표만 늘면 체크리스트가 된다(§3 (다)). ①에서는 4개로 묶고, 사람 판 질문에 "목표가 할 일을 바꿨나"를 넣는다.
+  - 목표만 늘면 체크리스트가 된다(§3 (다)). ①에서는 5개(보이는 것 2 ~ 3)로 묶고, 사람 판 질문에 "목표가 할 일을 바꿨나"를 넣는다.
+  - 9차 이어 하기에서는 `ladder_mid`가 10개월 남은 채 1통에서 시작한다. 이룰 수 없는 목표로 보일 수 있다 `[추정]`. 그 판의 관찰은 "목표가 보였나"까지만 본다.
   - `ladder_mid`는 #380 띠 정의(PROD)를 읽는다. 띠 정의가 바뀌면 목표 판정도 함께 바뀐다(한 정의 원칙이라 의도된 동작).
 
 ### 7.3 G4 설비 장부가 — 코어(ARCH) + #378 등급(MGT), 한 번에 (PR ①-d)
@@ -287,8 +297,16 @@ PM이 PROD · MKT · MGT에 영역별 후보 3 ~ 5개를 요청했다(각 후보
 **지금 `[사실]`:** v16 순자산은 처분 예상액(`valuation.ts liquidationValue`)이고 설비를 0으로 센다. 그래서 종반에 2억 VIP를 사면 판정 순자산이 2억 내려간다 — **투자가 늘 손해로 보인다**(MGT 사실 ②).
 
 **최소 범위 `[제안]`:**
-- **ARCH(코어 · `valuation.ts`):** `equipmentSalvage(s)`를 둔다 = Σ 설비 값 × 처분율 × 남은 내용 연수 몫(정액). 설비 값은 `content/catalog` 값, 산 달은 `EquipmentInstance.readyMonth`에서 읽는다(새 필드 없음).
-  - `liquidationValue`에 더하되 **v16에서만** 더한다(`usesObservedValuation`). 그래서 옛 판 · X0L은 그대로다.
+- **ARCH(코어 · `valuation.ts`):** `equipmentSalvage(s)`를 둔다 = Σ 회수율 r × 원가 × max(잔존 바닥, 1 − 나이 ÷ 수명) `[튜닝]`(MGT 식). 원가는 `content/catalog` 값이다. 면허(`kr_farm_registration`)는 뺀다.
+  - **나이는 새 선택 필드 `EquipmentInstance.boughtMonth?`로 센다(MGT 요청 — ARCH가 첫 안을 고침).** `readyMonth`는 고장 수리(`events.ts` 증류기 중단 — `st.readyMonth = s.month + e.months`) 때 덮어쓰여 산 달로 쓸 수 없다. 9차 133 세이브의 시작 증류기는 `readyMonth` 124이고, 봇 10시드에서 180개월 장부가(3.24억)가 146개월(3.05억)보다 크게 나왔다 `[사실 — MGT]`.
+  - 채우는 곳: 시작 설비 `newGame.ts`(코어 — 0) · 사기 `actions.prod.ts buyEquipment`(PROD) · `deals.ts` 설비 지급(MKT)이다. 코어 PR(ARCH)이 셋을 한 번에 넣고, 두 파트에는 한 줄씩 확인을 받는다.
+  - 옛 세이브(필드 없음)는 `readyMonth − leadMonths`로 채워 읽고(시작 설비 id는 0), 읽기 도우미 `boughtMonthOf(e)` 하나에 둔다. 수리된 증류기는 이 값이 실제보다 늦어 장부가가 조금 높게 나온다 `[한계]`.
+  - 선택 필드라 세이브 버전은 그대로다. sim 수치는 같고, 세이브 JSON에 필드만 붙는다.
+  - **`liquidationValue`에 넣을지, 등급용 값만 따로 둘지는 오너 안건 ⓓ다.** v16에서만 더한다(`usesObservedValuation`) — 옛 판 · X0L은 그대로다.
+  - **`netWorth`(= v16 `liquidationValue`)를 읽는 곳 `[사실 — main 8c45384 grep]`:** 결산 `report.netWorth`(`step.ts` 164) → 홈 현금 · 순자산 곡선(`MvpHome` 56) · 연말 요약(`lifecycle.ts` 49), 홈 순자산 칸과 「재고 평가액 = 순자산 − 나머지 항」(`MvpHome` 217 · 219), 등급 판정(`progress.ts` 77 · 147), 결과 화면(`Verdict` 27).
+    - **파산 판정 · 대출 한도 · 현금 배너는 읽지 않는다**(`loans.ts` · `cashAlert`는 현금 · 상환표만 쓴다). 그래서 넣어도 게임 흐름(파산 · 대출)은 바뀌지 않는다.
+    - 넣으면 홈 「재고 평가액」 뺄셈에 설비 처분가 항을 함께 빼야 한다(ARCH 화면 한 줄).
+    - ARCH 의견은 **`liquidationValue`에 넣는 쪽**이다. 화면 · 곡선 · 등급이 같은 한 값을 보고, "산 설비가 순자산에 보인다"가 오너 문제(투자가 손해로 보임)의 답이기 때문이다. 반론: 등급용만 두면 봇 결산 출력(`report.netWorth`)이 덜 흔들린다. 다만 등급 숫자는 어느 쪽이든 바뀐다.
   - 처분율 · 내용 연수는 knob(`rules.ts knob`, Normal = 지금 정할 기본값)으로 둔다. 기본값은 MGT가 #378과 함께 정한다 `[튜닝]`.
   - 장부가(`bookValue`)와 추정가(`estimatedValue`)에도 같은 함수를 쓸지는 MGT와 정한다 — 화면 세 값의 뜻이 갈린다.
 - **MGT(#378 (다) 등급):** S 기준 · 여러 축 성과(재무 · 품질 · 명성 · 규모)를 이 순자산 위에서 다시 정한다. **같은 PR에 묶거나, ARCH 코어를 draft로 두고 MGT PR에 쌓아 함께 머지한다.** 그래서 등급 기준이 두 번 흔들리지 않는다(§6 반론).
@@ -317,12 +335,14 @@ PM이 PROD · MKT · MGT에 영역별 후보 3 ~ 5개를 요청했다(각 후보
 | 순서 | PR | 주인 | 파일(대략) | 바이트 | 사람 판에서 볼 것 |
 |---|---|---|---|---|---|
 | ①-a | A3 새 시설 알림 | ARCH | `App.tsx`(nav 점) · `MvpHome`(접힌 머리) · `alerts.ts` · PROD `Equipment` 줄 띠(협의) | X0L · v16 X0 · balance 동일 | VIP · 새 시설을 알아챘나 |
-| ①-b | G3 그릇 + 화면 자리 · `caskEligibility` 연수 인자 | ARCH | `content/scenarios.ts` · `types.ts` · `progress.ts`(호출 한 줄) · `ledger.ts`(인자) · `AlertsView` · `Verdict`(MGT 확인) | 동일 | 승리 뒤 겨눌 것이 보였나 |
-| ①-c | G3 판정 4종 + 봇 달성 달 표 | MGT | `progress.ts lateGoalMet` | 동일(보상 없음) | — |
+| ①-b | G3 그릇(후반 목표 5 · 늦게 본 목표 건너뛰기) + 화면 자리 · `caskEligibility` 연수 인자 | ARCH | `content/scenarios.ts` · `types.ts` · `progress.ts`(호출 한 줄) · `ledger.ts`(인자) · `AlertsView` · `Verdict`(MGT 확인) | 동일 | 승리 뒤 겨눌 것이 보였나 |
+| ①-c | G3 판정 5종 + 봇 달성 달 표 | MGT | `progress.ts lateGoalMet` | 동일(보상 없음) | — |
+| ①-d′ | `EquipmentInstance.boughtMonth?` + `boughtMonthOf` | ARCH 코어(PROD · MKT 한 줄 확인) | `types.ts` · `newGame.ts` · `actions.prod.ts` · `deals.ts` | 동일(세이브 JSON에 필드만) | — |
 | ①-d | G4 설비 처분가 + #378 등급 | ARCH 코어 + MGT | `valuation.ts` · `rules.ts` knob · `progress.ts judgeWin`(MGT) · 결과 화면 | **X0L 동일 · v16 X0 바뀜(재기준)** | 종반 투자가 손해로 보였나 |
 | ①-e | A1 운영 모드 | ARCH | `engine.ts`(StopReason) · `store/game.ts` · `MvpHome` · `TurnBrief` | 동일 | 분기 진행을 썼나 · 분기 요약을 읽었나 |
 
-- **ARCH 순서 `[제안]`:** ①-a → ①-b → ①-e. ①-d는 MGT #378 일정에 맞춘다. 화면 · 코어가 작은 것부터 둔다.
+- **ARCH 순서 `[제안]`:** ①-a(#1005 ready) → ①-b → ①-d′ → ①-e. ①-d는 MGT #378 (다) 격자 실험과 한 번에 낸다(MGT는 판정 달 설비 목록만 기록하면 회수율 r을 사후에 계산할 수 있어 다시 돌리지 않는다). 화면 · 코어가 작은 것부터 둔다.
+- **오너 안건(PM이 올림):** ⓐ 띠 목표를 72개월로 당길지 · ⓑ 후반 목표 보상(지금 안: 없음, 기록만) · ⓒ #390을 ③으로 미룰지(ARCH 권장) · ⓓ G4를 `liquidationValue`에 넣을지 등급용만 둘지 · ⓔ #386 A ~ D.
 - 사람 판 질문 묶음(§7.27 식)은 ①이 다 들어간 뒤 PM이 정한다. ARCH는 위 표 끝 열을 후보로 낸다.
 
 ### 7.6 #390 명성의 길 — ①에 최소형(목표 선택 화면만)을 넣을까 `[ARCH 의견]`
