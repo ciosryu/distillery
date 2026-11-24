@@ -20,12 +20,15 @@ describe('#388 ① G4 boughtMonth', () => {
     e.readyMonth = 90; // 수리(events.ts stillDown이 하는 것)
     expect(boughtMonthOf(e)).toBe(30);
   });
-  it('옛 세이브(필드 없음): readyMonth − leadMonths · readyMonth 0이면 0', () => {
+  it('옛 세이브(필드 없음): readyMonth − leadMonths · readyMonth 0이면 0 · 증류기는 0(수리로 readyMonth가 덮여 가릴 수 없다 — 보수적)', () => {
     const s: GameState = migrateSave(JSON.parse(readFileSync('docs/playtest/9/distillery-mvp-standard-y12m2-202611241000.json', 'utf8')).save)!;
     expect(s.production.equipment.some((e) => e.boughtMonth != null)).toBe(false);
     for (const e of s.production.equipment) {
-      const lead = EQUIPMENT[e.catalogId]?.leadMonths ?? 0;
-      expect(boughtMonthOf(e)).toBe(e.readyMonth <= 0 ? 0 : Math.max(0, e.readyMonth - lead));
+      const def = EQUIPMENT[e.catalogId];
+      expect(boughtMonthOf(e)).toBe(e.readyMonth <= 0 || def?.kind === 'still' ? 0 : Math.max(0, e.readyMonth - (def?.leadMonths ?? 0)));
     }
+    const still = s.production.equipment.find((e) => EQUIPMENT[e.catalogId]?.kind === 'still')!;
+    expect(still.readyMonth).toBeGreaterThan(0); // 9차 133 — 수리로 덮인 시작 증류기
+    expect(boughtMonthOf(still)).toBe(0);
   });
 });

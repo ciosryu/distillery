@@ -14,13 +14,15 @@ import { EQUIPMENT } from './content/catalog';
 
 /**
  * [#388 ① G4] 설비를 산 달 — 처분가 감가 나이의 입구(G4 `equipmentSalvage`가 읽는다 · MGT 값 표). 새 세이브는 `boughtMonth`.
- * 옛 세이브(필드 없음)는 `readyMonth − leadMonths`(0 아래면 0)로 어림한다 — 고장 수리로 `readyMonth`가 덮어쓰인 증류기는 실제보다 늦게(젊게) 나온다 `[한계]`.
- * `readyMonth` 0(시작 설비 · 수리 전)은 0
+ * 옛 세이브(필드 없음): `readyMonth` 0(시작 설비)은 0, 그 밖은 `readyMonth − leadMonths`(0 아래면 0).
+ * **다만 증류기는 0으로 본다** — 고장 수리(`events.ts` 증류기 중단)가 `readyMonth`를 덮어쓰고, 수리가 끝나면 `repairUntil`도 지워져 덮인 값인지 가릴 수 없다
+ * (9차 133 세이브의 시작 증류기 readyMonth 124 — PROD 리뷰). 0으로 보면 감가가 커져 처분가가 낮게(보수적으로) 나온다 `[한계 — 옛 세이브에서 나중에 산 증류기는 실제보다 늙게]`
  */
 export function boughtMonthOf(e: Pick<EquipmentInstance, 'boughtMonth' | 'readyMonth' | 'catalogId'>): number {
   if (e.boughtMonth != null) return e.boughtMonth;
-  if (e.readyMonth <= 0) return 0;
-  return Math.max(0, e.readyMonth - (EQUIPMENT[e.catalogId]?.leadMonths ?? 0));
+  const def = EQUIPMENT[e.catalogId];
+  if (e.readyMonth <= 0 || def?.kind === 'still') return 0;
+  return Math.max(0, e.readyMonth - (def?.leadMonths ?? 0));
 }
 
 /**
