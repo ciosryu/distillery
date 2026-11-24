@@ -15,6 +15,7 @@ import { logisticsMultiplier, regionOf, REGIONS, siteOf } from '../../sim/conten
 import { liters, num, pct, won } from '../format';
 import { sojuSupply, SOJU_STOCK_WARN_MONTHS } from '../../sim/economics';
 import { Badge, Button, Card, ConfirmButton, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
+import { newFacilities } from '../alerts'; // #388 ① A3 새로 열린 시설 띠(ARCH · PROD 동의)
 
 const KIND_LABEL: Record<SpiritKind, string> = { soju: '증류식 소주·쇼추', gin: '진', malt: '몰트', grain: '그레인', baijiu: '백주(고량주)' };
 
@@ -670,6 +671,7 @@ function FreeControls({ s, draft, set }: { s: GameState; draft: Draft; set: SetD
 export function Equipment() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
+  const fresh = new Map(newFacilities(s).map((f) => [f.id, f.openedMonth])); // [#388 ① A3] 단계로 열렸고 아직 사지 않은 시설 — 사기 전까지 띠가 남는다
   return (
     <Card title="설비">
       <div className="grid gap-4 [&>*]:min-w-0">
@@ -693,7 +695,7 @@ export function Equipment() {
           <Table head={['설비', '사양', '가격', '설치 기간', '']}>
             {Object.values(EQUIPMENT).filter((d) => !(d.kind === 'facility' && d.regions && !d.regions.includes(s.regionId)) && !isLocked(s, `facility:${d.id}`)).map((d) => (
               <tr key={d.id}>
-                <Td>{d.nameKo}</Td>
+                <Td>{d.nameKo}{fresh.has(d.id) && <> <Badge tone="warn">새로 열림 · {Math.max(0, s.month - fresh.get(d.id)!) ? `${s.month - fresh.get(d.id)!}개월 전` : '이번 달'}</Badge></>}</Td>
                 <Td className="text-xs text-stone-500">
                   {d.kind === 'still' ? `월 ${d.runsPerMonth}회 · 환류 ${d.reflux}${d.vacuum ? ' · 감압' : ''}${d.ginBasket ? ' · 진 바스켓' : ''}` : d.kind === 'fermenter' ? `${d.capacityL.toLocaleString()}L` : d.kind === 'warehouse' ? `+${d.casks} 캐스크 · ${d.warehouseType === 'dunnage' ? '더니지' : '랙'} ${d.tiers}단` : d.kind === 'facility' ? `${d.note}${d.requires ? ` · ${EQUIPMENT[d.requires]?.nameKo ?? d.requires} 필요` : ''}` : `${d.note ?? `방문객 월 ${d.visitorsPerMonth}명 · 1인 ${won(d.spendPerVisitor)}`}${d.requires ? ` · ${EQUIPMENT[d.requires]?.nameKo} 필요` : ''}`}
                 </Td>

@@ -7,6 +7,7 @@ import { PRICE_MODE_LABEL, priceModeOf } from '../../sim/priceEngine';
 import { PRODUCT_NAME_MAX } from '../../sim/actions.prod';
 import { CATEGORY } from '../../sim/content/categories';
 import { AUTO_RESTOCK_LONG_FLOOR, autoRestockContest, autoRestockFloor, AUTO_RESTOCK_MONTHS, autoRestockSupported } from '../../sim/economics';
+import { autoRestockSourceLine, autoRestockSourceOptions, autoRestockTitle, sourceKey } from '../autoRestockLine';
 import { whiskyMinMonths } from '../../sim/blending';
 import { AXIS } from '../../sim/content/axes';
 import { ProfileRadar } from './Production';
@@ -213,8 +214,8 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
             ? <div className="text-sm tabular-nums" title="매달 판매 직전에 고른 정책대로 값이 바뀐다">{wonFull(p.price)} <Badge tone="good">자동 {(PRICE_MODE_LABEL[priceModeOf(p) ?? 'turnover']).split(' ')[0]}</Badge></div>
             : <PriceInput s={s} p={p} value={p.price} suggested={suggested} onSet={(v) => dispatch({ type: 'setPrice', productId: p.id, price: v })} />}
           {/* 자동 납품 (#206) — 매달 판매 전에 재고를 n개월분으로 채운다 */}
-          {autoRestockSupported(p) && (
-            <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400" title={isWhiskyCategory(p.category) ? `매달 판매 직전에 재고가 모자라면 ${p.ageYears ? `${p.ageYears}년 이상` : '법정 숙성 이상'} 숙성된 통(같은 피니시) 중 표기에 가장 가까운 통부터 골라 이 제품에 보충한다 — 숙성 표기 유지. 「보호」 태그가 붙은 통은 쓰지 않고(플래그십 예비 포함 — 플래그십 표기 제품만 예비 통을 쓴다), 「먼저 쓰기」 태그 통을 먼저 쓴다. 태그는 숙성고 카드에서 붙이고 뗀다` : agedWhiteLabel(p.category, p.oakMonths, p.restMonths) ? `매달 판매 직전에 재고가 모자라면 「${agedWhiteLabel(p.category, p.oakMonths, p.restMonths)}」 표기를 채운 같은 용기의 통 중 어린 통부터 골라 이 제품에 보충한다 — 숙성 표기 유지(탱크 원액은 쓰지 않는다). 「보호」 태그 통은 쓰지 않고 「먼저 쓰기」 태그 통을 먼저 쓴다` : '매달 판매 직전에 재고가 모자라면 탱크 원액(먼저 만든 것부터)으로 이 제품에 보충한다'}>
+          {autoRestockSupported(p, s) && (
+            <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400" title={autoRestockTitle(s, ks, p)}>
               자동 납품
               <select className="rounded border border-stone-300 bg-white px-1 py-0 text-[11px] dark:border-stone-700 dark:bg-stone-800" value={p.autoRestock ?? 0} onChange={(e) => dispatch({ type: 'setAutoRestock', productId: p.id, months: Number(e.target.value) || null })} aria-label={`${p.name} 자동 납품`}>
                 <option value={0}>끔</option>
@@ -222,6 +223,21 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
               </select>
             </label>
           )}
+          {/* [결정 #392] 채울 원액 — 소주 · 진 · 고량주(v16), 자동 납품을 켰을 때만. 선택지 · 통 수는 PROD autoRestockSourceChoices */}
+          {p.autoRestock && (() => {
+            const opts = autoRestockSourceOptions(s, p);
+            if (!opts.length) return null;
+            const cur = sourceKey(p.autoRestockSource);
+            return (
+              <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400" title="자동 납품이 채울 원액. 「지금 규칙」은 제품의 숙성 표기 · 쉰 용기를 따른다(보충으로 바뀔 수 있다). 옹기 · 오크를 고르면 그 용기에서 n개월 이상 쉰 같은 레시피 통만 쓰고, 모자라면 탱크로 대신하지 않는다">채울 원액
+                <select className="rounded border border-stone-300 bg-white px-1 py-0 text-[11px] dark:border-stone-700 dark:bg-stone-800" value={cur} onChange={(e) => { const o = opts.find((x) => x.key === e.target.value); if (o) dispatch({ type: 'setAutoRestock', productId: p.id, months: p.autoRestock!, source: o.source }); }} aria-label={`${p.name} 채울 원액`}>
+                  {opts.map((o) => <option key={o.key} value={o.key}>{o.text}</option>)}
+                </select>
+              </label>
+            );
+          })()}
+          {/* 자동 납품이 무엇으로 채우는지 (#369 옹기 · 오크에서 쉰 소주 · #370 뉴본 탱크) — 켰을 때만 */}
+          {p.autoRestock && !isWhiskyCategory(p.category) && autoRestockSupported(p, s) && <AutoRestockSourceLine s={s} ks={ks} p={p} />}
           {/* 자동 납품이 쓸 통의 최소 숙성 (#267) — 기본은 제품 표기. 표기가 길면(5년+) 가장 오래된 통만 가져간다는 경고 */}
           {p.autoRestock && isWhiskyCategory(p.category) && (() => {
             const legal = whiskyMinMonths(region.whisky);
@@ -620,4 +636,10 @@ function RetailOutlookLine({ s }: { s: GameState }) {
   return over.length
     ? <div className="mt-1 text-xs text-amber-700 dark:text-amber-400" title="지금 값 · 재고 · 진열 그대로의 기댓값이다(계절만 바꿈). 넘친 몫은 역량만큼 수수료 30% 채널로 팔고, 그 너머는 못 판다">앞으로 12개월: {over.map((x) => `${x.monthOfYear}월`).join(' · ')} 약 {num(peak.cases)}케이스 — 역량({num(peak.capacity)}케이스)을 넘을 수 있다</div>
     : <div className="mt-1 text-xs text-stone-500" title="지금 값 · 재고 · 진열 그대로의 기댓값이다(계절만 바꿈)">앞으로 12개월 가장 붐비는 달 {peak.monthOfYear}월 약 {num(peak.cases)}케이스(역량 안)</div>;
+}
+
+/** 자동 납품이 무엇으로 채우는지 한 줄 (#369 · #370) — 문구 셈은 `autoRestockLine.ts` */
+function AutoRestockSourceLine({ s, ks, p }: { s: GameState; ks: GameState; p: Product }) {
+  const line = autoRestockSourceLine(s, ks, p);
+  return <div className={`mt-0.5 text-[11px] ${line.warn ? 'text-amber-700 dark:text-amber-400' : 'text-stone-600 dark:text-stone-400'}`}>{line.warn ? '⚠ ' : ''}{line.text}</div>;
 }

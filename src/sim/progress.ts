@@ -6,6 +6,7 @@ import { liquidationValue, usesObservedValuation } from './valuation';
 import { isBulkKind, spotBidPerLPA } from './bulk';
 import { MILESTONES } from './content/milestones';
 import { firstEligibleSale } from './saleEvents';
+import { updateLateGoals } from './lateGoals';
 import { DEFAULT_FLAGSHIP_MONTHS, campaignMinOakMonths, rulesVersionOf } from './rules';
 import type { GameEnding, GameState, GoalCheck, GoalVerdict, MilestoneId, MonthReport, Product } from './types';
 
@@ -112,6 +113,7 @@ export function updateProgress(s: GameState, report: MonthReport): void {
     report.notes.push(`마일스톤: ${MILESTONES[f.id].nameKo}`);
   }
   updateMidGoals(s, report);
+  updateLateGoals(s, report); // [#388 ① G3] 후반 목표 — 승리 뒤에도 돈다(보상 없음)
   if (!s.scenario) return;
   const ended = s.status !== 'running';
   if (rulesVersionOf(s) === 'legacy-v15' || !s.scenario.campaignGoal) {

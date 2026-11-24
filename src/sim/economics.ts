@@ -792,8 +792,11 @@ const recipeFilter = (p: Pick<Product, 'recipeIds'>): ((l: Pick<SpiritLot, 'reci
  * 용기에서 쉰 소주류 제품의 자동 납품이 요구하는 통 — 어느 용기(옹기/오크)에서 몇 개월 이상 쉰 통인가. 탱크 원액을 쓰는 제품 · 위스키면 null.
  * #221 숙성 표기 제품(표기 개월) + [결정 #369] v16 용기에서 쉰 제품(제품 개월). `autoRestockSources`와 화면(MKT 판매 줄)이 같이 읽는 한 곳
  */
-export function autoRestockVesselNeed(s: Pick<GameState, 'rulesVersion'>, p: Pick<Product, 'category' | 'oakMonths' | 'restMonths'>): { vessel: 'onggi' | 'oak'; months: number } | null {
+export function autoRestockVesselNeed(s: Pick<GameState, 'rulesVersion'>, p: Pick<Product, 'category' | 'oakMonths' | 'restMonths' | 'autoRestockSource'>): { vessel: 'onggi' | 'oak'; months: number } | null {
   if (!RESTOCK_KIND[p.category] || isWhiskyCategory(p.category)) return null;
+  // [결정 #392] 플레이어가 고른 채울 원액이 먼저 — 탱크를 고르면 null(탱크 원액), 옹기 · 오크면 그 용기에서 n개월 이상 쉰 통. 옛 판은 고를 수 없다(무시)
+  const src = rulesVersionOf(s) !== 'legacy-v15' ? p.autoRestockSource : undefined;
+  if (src) return src.vessel === 'tank' ? null : { vessel: src.vessel, months: src.months };
   const rested = Math.max(p.restMonths ?? 0, p.oakMonths ?? 0);
   const labeled = !!agedWhiteLabel(p.category, p.oakMonths, p.restMonths);
   // [결정 #369] v16: 표기(6개월↑)가 없어도 용기에서 쉰 원액으로 만든 제품(옹기 · 오크 개월 > 0)은 같은 용기에서 제품 개월 이상 쉰 통으로 채운다 —
@@ -801,6 +804,27 @@ export function autoRestockVesselNeed(s: Pick<GameState, 'rulesVersion'>, p: Pic
   const vesselMade = rulesVersionOf(s) !== 'legacy-v15' && rested > 0;
   if (!labeled && !vesselMade) return null;
   return { vessel: (p.restMonths ?? 0) >= (p.oakMonths ?? 0) ? 'onggi' : 'oak', months: labeled ? agedWhiteLabelMonths(rested) : rested };
+}
+
+/** [결정 #392] 「채울 원액」 고르기에 쓸 개월 — 옹기 · 오크 n개월↑ */
+export const AUTO_RESTOCK_SOURCE_MONTHS = [1, 2, 3, 6, 12, 24] as const;
+/** 이 제품이 「채울 원액」을 고를 수 있나 — v16 · 자동 납품 지원 · 소주 · 진 · 고량주(위스키 · 뉴본 아님) */
+export const autoRestockSourceSelectable = (s: Pick<GameState, 'rulesVersion'>, p: Product): boolean =>
+  rulesVersionOf(s) !== 'legacy-v15' && !p.dutyFreeOnly && !!RESTOCK_KIND[p.category] && !isWhiskyCategory(p.category);
+/**
+ * 화면 고르기 줄(MKT 판매 줄)의 선택지 — 「지금 규칙(제품 값)」 · 탱크 · 옹기 n개월↑ · 오크 n개월↑와, 지금 그 조건으로 쓸 수 있는 통 수(탱크는 탱크 로트 수).
+ * 고른 값을 바꾸지 않고 센다(상태 불변)
+ */
+export function autoRestockSourceChoices(s: GameState, p: Product): { source: Product['autoRestockSource'] | null; label: string; available: number }[] {
+  if (!autoRestockSourceSelectable(s, p)) return [];
+  const count = (src: Product['autoRestockSource'] | null) => autoRestockSources(s, { ...p, ...(src ? { autoRestockSource: src } : { autoRestockSource: undefined }) }).length;
+  const auto = autoRestockVesselNeed(s, { ...p, autoRestockSource: undefined });
+  const out: { source: Product['autoRestockSource'] | null; label: string; available: number }[] = [
+    { source: null, label: `지금 규칙(${auto ? `${auto.vessel === 'onggi' ? '옹기' : '오크'} ${auto.months}개월↑` : '탱크'})`, available: count(null) },
+    { source: { vessel: 'tank', months: 0 }, label: '탱크', available: count({ vessel: 'tank', months: 0 }) },
+  ];
+  for (const vessel of ['onggi', 'oak'] as const) for (const months of AUTO_RESTOCK_SOURCE_MONTHS) out.push({ source: { vessel, months }, label: `${vessel === 'onggi' ? '옹기' : '오크'} ${months}개월↑`, available: count({ vessel, months }) });
+  return out;
 }
 
 /** 자동 납품 원액 후보 — 쓸 순서대로. 위스키는 숙성 표기를 채우고 피니시가 같고 도수가 충분한 나무 통, **같은 레시피**(#293), 보호 태그 통 빼고, "먼저 쓰기" 태그 통 먼저, 그다음 어린 통부터 */
