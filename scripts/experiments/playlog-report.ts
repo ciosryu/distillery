@@ -286,6 +286,14 @@ function f5dFinishObserve(): void {
   const finProducts = s.commerce.products.filter((p) => p.finish);
   const transfers = playlog?.turns.reduce((n, t) => n + (t.kinds?.transferCask ?? 0), 0);
   console.log(`- ⑪ 피니싱: ${opened ? '열림(60개월 y5_finish)' : s.month >= 60 ? '아직 안 열림 — 이 빌드 전 세이브면 다음 달 틱에 열린다(#354)' : '아직 안 열림(60개월)'} · 옮기기 ${transfers ?? '—'}회 · 지금 피니싱 중인 통 ${fin.length}개${fin.length ? ` — ${fin.slice(0, 5).map((f) => `${f.id} ${f.label} ${f.months}개월`).join(' · ')}` : ''} · 24개월 넘김 ${fin.filter((f) => f.months > 24).length}개 · 피니시 표기 제품 ${finProducts.length}개${finProducts.length ? ` — ${finProducts.slice(0, 4).map((p) => `「${p.name}」 판매 ${(p.totalSold ?? 0).toLocaleString()}병`).join(' · ')}` : ''}`);
+  // N1 (외부 검토 2026-11-24 — 7차: 손 통입 405회 · 자동 통입 0회): 월당 손 통입 · 자동 통입을 처음 켠 달(행동 기록) · 결산 메모 "자동 통입 n통" 첫 달(대조)
+  if (playlog?.turns.length) {
+    const T = playlog.turns;
+    const fills = T.reduce((n, t) => n + (t.kinds?.fillCasks ?? 0), 0);
+    const firstAuto = T.find((t) => (t.kinds?.setAutoFill ?? 0) > 0);
+    const autoNote = reports.find((r) => r.notes.some((n) => /^자동 통입 \d+통/.test(n)));
+    console.log(`- N1 손 통입 ${fills}회(월당 ${(fills / Math.max(1, T.length)).toFixed(1)}회 · 기록된 턴 ${T.length}개) · 자동 통입 설정을 처음 바꾼 달 ${firstAuto ? `${firstAuto.month - 1}개월` : '없음'} · 결산에 "자동 통입 n통"이 처음 남은 달 ${autoNote ? `${autoNote.month}개월` : '없음(최근 120개월 결산 안)'} — 7차: 손 통입 405회 · 자동 통입 0회`);
+  }
   const care = playlog?.turns.reduce<Record<string, number>>((m, t) => { for (const k of ['rechar', 'sellUsedCask', 'orderSeasoning']) m[k] = (m[k] ?? 0) + (t.kinds?.[k] ?? 0); return m; }, {});
   if (care) console.log(`  - 빈 통 관리(#345 ①): 재탄화 ${care.rechar} · 중고 통 매각 ${care.sellUsedCask} · 시즈닝 통 주문 ${care.orderSeasoning}`);
 }
