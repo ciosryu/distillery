@@ -196,7 +196,7 @@ export const MVP_KR: ScenarioDef = {
   // [#388 ① G3] 후반 목표 사다리 — ARCH · MGT 맞춤 목록(endgame.md §7.2, 2026-11-24). 문턱 [튜닝 — 단계 T]. 판정 MGT(lateGoals.ts lateGoalMet)
   lateGoalsV16: [
     { id: 'ladder_mid', opens: { month: LADDER_MID_WINDOW.opens }, byMonth: LADDER_MID_WINDOW.byMonth, title: '숙성고 5 ~ 9년 띠 6통 — 12년 뒤를 이을 원액', hint: '12년만 보고 통을 비우지 말고 지금 넣은 통을 남겨 둔다(통입 · 통 사기)' },
-    { id: 'lounge_3', opens: { month: 108 }, byMonth: 168, title: 'VIP 라운지 — 최근 12개월 관광 매출 3억', hint: 'VIP 테이스팅 라운지(설비)를 짓는다 — 비지터 센터 베이직 투어가 먼저 있어야 한다(베이직 투어부터)' },
+    { id: 'lounge_3', opens: { month: 108 }, byMonth: 168, title: 'VIP 라운지 — 최근 12개월 관광 매출 3억', hint: 'VIP 테이스팅 라운지(설비)를 짓는다' },
     { id: 'flagship_300', opens: 'win', title: '12년 싱글 몰트 누적 300병 출하', hint: '12년 후보 통을 지키고 자동 채우기 연수 보호를 쓴다' },
     { id: 'aged15_sold', opens: 'win', title: '15년 싱글 몰트 첫 출하', hint: '15년까지 묵힐 통을 보호 태그로 묶는다' },
     { id: 'aged18_sold', opens: { after: 'aged15_sold' }, title: '18년 싱글 몰트 첫 출하', hint: '18년까지 묵힐 통을 남긴다' },
