@@ -382,6 +382,11 @@ export interface Product {
   autoRestock?: number;
   /** 자동 납품이 쓸 통의 최소 숙성(개월, #267) — 없으면 제품 표기 연수. 표기보다 낮추면 보충할 때 표기도 그만큼 내려갈 수 있다 */
   autoRestockMinMonths?: number;
+  /**
+   * [결정 #392] 자동 납품이 채울 원액(소주 · 진 · 고량주 — 위스키 아님) — 플레이어가 고른 「탱크 / 옹기 n개월↑ / 오크 n개월↑」. 보충으로 제품 `restMonths` · `oakMonths`가
+   * 바뀌어도 이 값을 따른다(9차: 「옹기소주」가 탱크 소주 보충으로 restMonths 0이 되어 #369가 닿지 않았다). 없으면 지금 규칙(제품 값 — #221 · #369). v16 판만
+   */
+  autoRestockSource?: { vessel: 'tank' | 'onggi' | 'oak'; months: number };
   /** 수출 안 함 (#266) — 켜면 이 제품은 수출 시장(공항 면세점 포함)에 내지 않는다. 국내·지정면세점(제주) 판매는 그대로. 옛 세이브에는 없다 = 수출에 낸다 */
   noExport?: boolean;
   /**
