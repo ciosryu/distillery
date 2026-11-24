@@ -5,11 +5,13 @@
 //   AUTOP=1 npx tsx scripts/experiments/mkt-playtest6.ts <기록.json> [개월=12]   지금 손 가격 그대로 대 모든 제품 자동 가격 켬 — 같은 세이브 · 굴림 시드 4(플레이어 행동 없음)
 //   BOT=1 npx tsx scripts/experiments/mkt-playtest6.ts <기록.json> [시드=10]      봇 X0(P8 v16 standard)를 같은 창(38~157개월)으로 — 매출 구조 비교
 // 굴림은 플레이어 행동을 넣지 않는다(세이브에 켜 둔 자동 납품 · 자동 가격 · 생산 주문만 돈다) — 절대값이 아니라 "지금 설정 그대로라면"으로 읽는다
+//   F5D_ALL=1 (기본 분석에) — F5d 절의 "값 바꾼 달" 요약 대신 달마다 표(자동 가격이 거의 매달 바꾸므로 길다)
 import { advanceMonth, applyAction, type GameState, type MonthReport } from '../../src/sim';
 import { houseBrand } from '../../src/sim/brands';
 import { defaultPolicyPrice } from '../../src/sim/content/market';
 import { currentSuggested } from '../../src/sim/economics';
 import { priceModeOf } from '../../src/sim/priceEngine';
+import { reviewReading } from '../../src/sim/reviews';
 import { eok, loadSave } from './mkt-lib';
 import { setP8Hooks } from './p8Hooks';
 
@@ -143,6 +145,68 @@ if (process.env.AUTOP === '1') {
     const pm = priceModeOf(p);
     const mode = pm ? `자동 ${pm}` : p.pricePolicy ? `손(정책 ${p.pricePolicy.mode} 기억만 남음)` : '손';
     console.log(`| ${p.name} | ${p.category} | ${p.price.toLocaleString()} | ${Math.round(sug).toLocaleString()} | ${defaultPolicyPrice(sug).toLocaleString()} | ×${(p.price / defaultPolicyPrice(sug)).toFixed(2)} | ${mode} | ${p.stockBottles.toLocaleString()} | ${p.totalSold.toLocaleString()} | ${sold.toLocaleString()} | ${short}/12 |`);
+  }
+
+  // ⑥ F5d 아는 품질 — 참값 대 추정 · 리뷰 · 값 바꾼 달 (플레이테스트 전 점검, 2026-11-24)
+  //   세이브에 남는 것: 제품의 지금 `qualityKnown`(추정 · σ · 리뷰 수) · 리포트(최근 REPORTS_KEPT개월)의 `reviews` 점수 · `priceLog`(자동 가격이 바꾼 값) ·
+  //   `saleEvents` 단가 · 살아 있는 로트의 병입 달. 남지 않는 것: 달마다의 추정 · σ(보충이 섞어 거꾸로 다시 셀 수 없다) · 손으로 값을 바꾼 행동
+  //   (playlog는 턴마다 행동 종류 수만) → 손 변경은 "국내 소매 단가가 바뀐 달 중 priceLog가 없는 달"로 읽는다(추정). 추정의 흐름은 리뷰 누적 수로 대신한다
+  {
+    const known = save.commerce.products.filter((p) => p.qualityKnown);
+    if (!known.length) console.log('\n## F5d 아는 품질\n- 아는 품질이 붙은 제품이 없다 — 옛 판이거나 F5d 전에 병입한 제품뿐이다(모두 공개 품질)');
+    else {
+      const f1 = (x: number) => (Number.isFinite(x) ? x.toFixed(1) : '—');
+      const revOf = (r: MonthReport, id: string) => (r.reviews ?? []).find((x) => x.productId === id)?.scores ?? [];
+      console.log(`\n## F5d 아는 품질 — 지금 추정 대 참값 (창 ${FROM}~${TO}개월)\n| 제품 | 참 품질 | 추정 | σ | 추정 − 참 | ÷ σ | 리뷰(누적) | 창 안 리뷰 · 평균 읽기 | 마지막 갱신 | 살아 있는 로트 병입 달 | 가격 방식 |\n|---|---|---|---|---|---|---|---|---|---|---|`);
+      for (const p of known) {
+        const k = p.qualityKnown!;
+        const sc = R.flatMap((r) => revOf(r, p.id));
+        const lots = (save.commerce.lots ?? []).filter((l) => l.productId === p.id).map((l) => l.bottledMonth);
+        const gap = k.est - p.quality;
+        const pm = priceModeOf(p);
+        console.log(`| ${p.name} | ${f1(p.quality)} | ${f1(k.est)} | ${f1(k.sigma)} | ${gap >= 0 ? '+' : ''}${f1(gap)} | ${k.sigma > 0 ? f1(Math.abs(gap) / k.sigma) : '—'} | ${k.reviews} | ${sc.length} · ${sc.length ? f1(sc.reduce((t, x) => t + reviewReading(x), 0) / sc.length) : '—'} | ${k.month}개월 | ${[...new Set(lots)].sort((a, b) => a - b).join(' · ') || '—'} | ${pm ? `자동 ${pm}` : '손'} |`);
+      }
+      console.log('- 참 품질은 지금 재고 전체의 값(보충하면 섞인다) · 리뷰 읽기는 그달 참값을 본 것이라 보충 전 달의 읽기는 지금 참값과 다를 수 있다. ÷ σ가 2를 넘으면 화면 σ가 실제 오차보다 작다');
+
+      // 제품마다 값이 바뀐 달 — 그때 쌓여 있던 리뷰(창 안 누적 · 직전 6개월) · 품절. 자동 가격은 거의 매달 바꾸므로 요약 한 줄(F5D_ALL=1이면 달마다 표)
+      type Move = { month: number; unit: number; pct: number; auto: string | null; cum: number; recent: number; short: boolean };
+      const movesOf = (p: (typeof known)[number]): Move[] => {
+        const out: Move[] = [];
+        let last = NaN, cum = 0;
+        R.forEach((r, i) => {
+          const ev = (r.saleEvents ?? []).filter((e) => e.productId === p.id && e.kind === 'domestic' && (e.channel ?? 'retail') === 'retail').sort((a, b) => b.bottles - a.bottles)[0];
+          const log = (r.priceLog ?? []).filter((x) => x.productId === p.id);
+          cum += revOf(r, p.id).length;
+          const unit = ev?.unitPrice ?? NaN;
+          const moved = Number.isFinite(unit) && Number.isFinite(last) && Math.abs(unit / last - 1) > 0.005;
+          if (moved || log.length) {
+            const sale = r.sales.find((x) => x.productId === p.id);
+            out.push({
+              month: r.month, unit, pct: moved ? unit / last - 1 : NaN, cum,
+              auto: log.length ? log.map((x) => `${x.mode} ${x.from.toLocaleString()}→${x.to.toLocaleString()} (${x.why})`).join(' / ') : null,
+              recent: R.slice(Math.max(0, i - 6), i).reduce((t, x) => t + revOf(x, p.id).length, 0),
+              short: !!sale && sale.demandBottles > sale.bottles,
+            });
+          }
+          if (Number.isFinite(unit)) last = unit;
+        });
+        return out;
+      };
+      const pctT = (x: number) => (Number.isFinite(x) ? `${x > 0 ? '+' : ''}${(x * 100).toFixed(0)}%` : '—');
+      console.log('\n## F5d — 값 바꾼 달 대 리뷰 (국내 소매 단가 기준, 제품마다 요약)\n| 제품 | 자동 변경 | 손 변경(추정) — 달 · 단가 · 폭 · 그때 창 안 리뷰 누적 | 품절 달(창 안) |\n|---|---|---|---|');
+      for (const p of known) {
+        const mv = movesOf(p);
+        const auto = mv.filter((m) => m.auto);
+        const hand = mv.filter((m) => !m.auto);
+        const shorts = R.filter((r) => { const x = r.sales.find((y) => y.productId === p.id); return !!x && x.demandBottles > x.bottles; }).map((r) => r.month);
+        console.log(`| ${p.name} | ${auto.length ? `${auto.length}번 · 처음 ${auto[0]!.month} · 마지막 ${auto.at(-1)!.month}개월` : '없음'} | ${hand.map((m) => `${m.month}개월 ${m.unit.toLocaleString()} ${pctT(m.pct)} 리뷰 ${m.cum}`).join(' / ') || '없음'} | ${shorts.length ? `${shorts.length}달 (${shorts.slice(0, 8).join(' · ')}${shorts.length > 8 ? ' …' : ''})` : '없음'} |`);
+      }
+      console.log('- 손 변경(추정) = 단가가 0.5% 넘게 바뀌었는데 그달 priceLog가 없다. 납품 · 면세 · 수출 단가는 빼고 국내 소매 사건 중 가장 많이 나간 것만 본다');
+      if (process.env.F5D_ALL === '1') {
+        console.log('\n| 제품 | 달 | 단가 | 바뀐 폭 | 누가 | 창 안 리뷰 누적 | 직전 6개월 리뷰 | 그달 품절 |\n|---|---|---|---|---|---|---|---|');
+        for (const p of known) for (const m of movesOf(p)) console.log(`| ${p.name} | ${m.month} | ${Number.isFinite(m.unit) ? m.unit.toLocaleString() : '—'} | ${pctT(m.pct)} | ${m.auto ? `자동 ${m.auto}` : '손(추정)'} | ${m.cum} | ${m.recent} | ${m.short ? '품절' : ''} |`);
+      }
+    }
   }
 
   // ⑤ 승리 뒤 굴림 — 플레이어 행동 없이 N개월, 시드 3. 12년 제품 판매 · 승리 달 · 현금
