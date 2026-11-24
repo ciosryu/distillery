@@ -13,6 +13,7 @@ import { overhangFactor } from '../../sim/retail'; // 제품 재고 적체 → �
 import { protectedCaskIds, reserveCaskIds } from '../../sim/tags';
 import { campaignMinOakMonths, campaignWon, isFlagshipCandidate, rulesVersionOf } from '../../sim';
 import { CaskTagChips } from '../CaskTags';
+import { AGE_BANDS, bandCask, bandCounts, LADDER_SLACK_MONTHS, thinBands } from '../../sim/ageBand'; // [결정 #380] 숙성 연령 띠 (PROD 잎)
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
 import { ProfileRadar } from './Production';
@@ -506,6 +507,25 @@ export function Bottling() {
                 );
               })()}
               {/* 이 병입 자체가 12년(가장 어린 원액도 목재 A 이상)이면 후보를 제대로 쓰는 것이라 알리지 않는다 */}
+              {/* [결정 #380] 숙성 사다리 — 표기보다 한참 묵은 통을 쓰면 그 띠가 얼마나 비는지 보인다(9차: 3년 미만 통 39개 중 36개를 1 ~ 3년 표기 제품에 써 5 ~ 9년 띠가 3통이 됐다). 공개 값(목재 개월 · 통 수)만 · 막지 않는다 */}
+              {preview.ok && (() => {
+                const caskComps = components.filter((c) => c.source === 'cask' && c.liters > 0);
+                const labelM = Math.floor(preview.minOakMonths / 12) * 12;
+                const old = caskComps.map((c) => s.inventory.casks.find((k) => k.id === c.id)).filter((k): k is Cask & { contents: SpiritLot } => !!k && bandCask(k) && k.contents.oakMonths > labelM + LADDER_SLACK_MONTHS);
+                if (!old.length) return null;
+                const before = bandCounts(s);
+                const after = bandCounts(s, new Map(caskComps.map((c) => [c.id, c.liters])));
+                const changed = AGE_BANDS.filter((b) => after[b.id].casks < before[b.id].casks);
+                const thin = new Set(thinBands(after));
+                const oldest = Math.max(...old.map((k) => k.contents.oakMonths));
+                return (
+                  <p className={`text-xs ${changed.some((b) => thin.has(b.id)) ? 'font-medium text-amber-800 dark:text-amber-300' : 'text-stone-600 dark:text-stone-400'}`} title="숙성 연령 띠(목재 개월): 0 ~ 2 · 3 ~ 4 · 5 ~ 9 · 10년 이상 — 어린 표기 제품에 오래된 통을 쓰면 값은 오르지만, 그 띠가 비면 몇 년 뒤 이을 원액이 없다. 막지는 않는다">
+                    숙성 사다리 — 표기 {labelM >= 12 ? `${labelM / 12}년` : '1년 미만'} 제품에 그보다 2년 넘게 묵은 통 {old.length}개(가장 오래된 {months(oldest)})를 쓴다
+                    {changed.length ? <> · 병입 뒤 {changed.map((b) => `${b.label} ${before[b.id].casks} → ${after[b.id].casks}통`).join(' · ')}</> : <> · 띠 통 수는 그대로(통이 다 비지 않는다)</>}
+                    {changed.some((b) => thin.has(b.id)) && ' — 이 띠가 얇아진다(뒤를 이을 원액)'}
+                  </p>
+                );
+              })()}
               {(() => {
                 // 핸드필 지정 통을 병입에 쓰면 핸드필이 빈다 — 다음 통을 지정해야 다시 판다(9차 중간 기록 · PM 2026-11-24)
                 const hf = sources.filter((x) => picked[x.key] != null && (picked[x.key] ?? 0) > 0 && x.cask?.handfill);
