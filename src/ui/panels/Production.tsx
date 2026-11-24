@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { rulesVersionOf, RETAIL_DEAL } from '../../sim';
+import { rulesVersionOf, RETAIL_DEAL, slotsDifferFromCasks } from '../../sim';
 import { BOTANICALS, EQUIPMENT, INGREDIENTS, YEASTS } from '../../sim/content/catalog';
 import {
   basePresetOf, craftPresets, equipmentCost, flavorProfile, leverEffects, leverSummary, describeLeverEffect, monthLabel, presetAsRecipe, steadyBatch, stillDefOf, validateRecipe,
@@ -299,7 +299,7 @@ function WhiskySupply() {
         숙성 {min}개월을 채워 "위스키"가 되는 때로 셉니다(증발 연 5% 근사). <span className="text-red-700">빨강</span> = 수요 속도의 80% 미만(그해 팔 위스키가 모자람),{' '}
         <span className="text-emerald-700">초록</span> = 적정, <span className="text-amber-700">노랑</span> = 2배 넘음(재고가 쌓임). 지금 생산을 줄이면 {Math.ceil(min / 12)}년 뒤 칸부터 줄어듭니다.
         {tank.liters > 0 && (
-          <> 탱크 몰트 {liters(tank.liters)}는 지금 통입한다고 본 값입니다 — 200L 통 약 {num(tank.casks200)}개가 필요하고 숙성고 남은 자리는 {num(tank.freeSlots)}개{tank.casks200 > tank.freeSlots ? <b className="text-red-700"> (자리 부족 — 숙성고를 늘리지 않으면 그만큼 늦어집니다)</b> : ''}.</>
+          <> 탱크 몰트 {liters(tank.liters)}는 지금 통입한다고 본 값입니다 — 200L 통 약 {num(tank.casks200)}개{slotsDifferFromCasks(s) ? `(${num(tank.casks200)}칸)` : ''}가 필요하고 숙성고 남은 자리는 {num(tank.freeSlots)}{slotsDifferFromCasks(s) ? '칸' : '개'}{/* #360 — 자리는 칸으로 센다(tankFillNeed.freeSlots = 정원 − slotsUsed) · 200L 통은 1칸 (PM 2026-11-24) */}{tank.casks200 > tank.freeSlots ? <b className="text-red-700"> (자리 부족 — 숙성고를 늘리지 않으면 그만큼 늦어집니다)</b> : ''}.</>
         )}
       </p>
     </div>
