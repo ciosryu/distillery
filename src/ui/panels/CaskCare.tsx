@@ -4,7 +4,7 @@
 // 안내 (#339 · #745): 재탄화는 활성도를 0.7까지 올린다 → 3년용 통에는 좋고, 12년용으로 아껴 둔 재사용 통(활성도 0.6~0.13)에는 탄닌이 다시 늘어 손해다
 import { useState } from 'react';
 import { CASK_MARKET, CASKS, RECHAR_COST } from '../../sim/content/catalog';
-import { EMPTY_ACTIVITY_FACTOR, MAX_RECHAR, regionalCaskPrice, tanninOutlook, vesselMaterial, type Cask, type CaskTypeId } from '../../sim';
+import { caskSlots, EMPTY_ACTIVITY_FACTOR, MAX_RECHAR, regionalCaskPrice, tanninOutlook, vesselMaterial, type Cask, type CaskTypeId } from '../../sim';
 import { usedCaskPrice } from '../../sim/casks';
 import { useGame } from '../../store/game';
 import { won } from '../format';
@@ -49,10 +49,12 @@ export function CaskCareRow() {
             // 오염 통은 재탄화해야만 다시 쓰고, 재탄화하면 활성도가 0.7이 된다 → 지금 활성도로 센 12년 전망은 맞지 않아 보이지 않는다
             const o = known && !head.contaminationKnown ? tanninOutlook(s, head) : null;
             const canRechar = head.recharCount < MAX_RECHAR;
+            // #360 · #363: v16 캠페인에서 400L 이상 통은 숙성고 2칸 — 코어 caskSlots가 2일 때만 표시(옛 판 · 샌드박스는 저절로 빠짐)
+            const slots = caskSlots(s, head.sizeL);
             return (
               <div key={key} className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="min-w-0">
-                  <b>{CASKS[head.typeId].nameKo}</b> · {head.fills}번 쓴 통 ×{casks.length}
+                  <b>{CASKS[head.typeId].nameKo}</b> · {head.fills}번 쓴 통 ×{casks.length}{slots > 1 && <span className="text-stone-500"> · 숙성고 {slots}칸씩</span>}
                   {' '}· 활성도 {known ? head.activity.toFixed(2) : '? (스팟 매입)'}
                   {head.recharCount > 0 && ` · 재탄화 ${head.recharCount}/${MAX_RECHAR}`}
                   {head.contaminationKnown && <span className="font-medium text-rose-700 dark:text-rose-400"> · 오염 — 재탄화해야 다시 쓸 수 있다(재탄화하면 활성도 {Math.max(head.activity, 0.7).toFixed(2)})</span>}
@@ -66,7 +68,7 @@ export function CaskCareRow() {
                     재탄화 1통 {won(RECHAR_COST)}
                   </Button>
                   <ConfirmButton small variant="ghost" armKey={`care-sell-${head.id}@${s.month}`} armedLabel="한 번 더 누르면 매각" onConfirm={() => dispatch({ type: 'sellUsedCask', caskId: head.id })}
-                    preview={() => <>{head.id}({CASKS[head.typeId].nameKo}, {head.fills}번 사용)를 {won(usedCaskPrice(head))}에 판다 — 통이 숙성고에서 사라진다</>}>
+                    preview={() => <>{head.id}({CASKS[head.typeId].nameKo}, {head.fills}번 사용)를 {won(usedCaskPrice(head))}에 판다 — 통이 숙성고에서 사라진다{slots > 1 ? ` · 숙성고 ${slots}칸이 빈다` : ''}</>}>
                     중고 매각 1통 {won(usedCaskPrice(head))}
                   </ConfirmButton>
                 </span>
