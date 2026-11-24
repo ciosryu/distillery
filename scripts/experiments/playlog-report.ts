@@ -10,6 +10,8 @@ import { stagesOf } from '../../src/sim/scenario';
 import { MORALE, moraleOf, TRAIT_INFO } from '../../src/sim/hr';
 import { difficultyOf, rulesVersionOf } from '../../src/sim/rules';
 import { reserveCaskIds } from '../../src/sim/tags';
+import { finishLabel, finishOf } from '../../src/sim/maturation';
+import { stalestCasks } from '../../src/sim/blendTable';
 
 /** 이름을 바꾼 이벤트의 옛 제목 → id — 옛 기록(6차 판 등)의 선택을 표에서 찾는다 */
 const OLD_EVENT_TITLES: Record<string, string> = { 'K-주류 수출 지원 사업 공모': 'export_support' }; // [결정 #335]
@@ -64,6 +66,7 @@ console.log(`- 옹기: ${s.inventory.casks.filter((c) => c.typeId === 'onggi_jar
 bankScreeningCheck();
 hrCheck();
 v16Observe();
+f5dFinishObserve();
 
 /**
  * 은행 심사(#65, 닫힘) 다시 열 조건 — 결정 #192 PR(#125) 본문의 ①②③. 게임은 바꾸지 않고 기록만 센다
@@ -234,4 +237,55 @@ function v16Observe(): void {
   // 9 난이도
   const d = difficultyOf(s);
   console.log(`- ⑨ 난이도: ${d.preset} · ${Object.entries(d.levels).map(([k, v]) => `${k} ${v}`).join(' · ')}${s.difficulty ? '' : ' (스냅샷 없음 = 보통)'}`);
+}
+
+/**
+ * 다음 사람 판(§7.27 개정안 7 ~ 11 · 12번) 근거 — F5d(병입 제품 품질 가리기 #338 · #348) · #351 · 피니싱(#345 ② · #354). 게임 변경 없음.
+ * 행동 종류는 턴 기록(`kinds` — 그 달에 한 행동이 다음 턴 번호에 붙는다: 턴 m의 kinds = m−1개월에 한 행동)에서, 품질은 세이브의 제품에서 읽는다
+ */
+function f5dFinishObserve(): void {
+  if (rulesVersionOf(s) !== 'v16' || !s.scenario) return;
+  console.log('\n## F5d · 피니싱 근거 (mvp.md §7.27 개정안 7 ~ 11번 — v16 판, 게임 변경 없음)');
+    const hidden = s.commerce.products.filter((p) => p.qualityKnown && !p.dutyFreeOnly);
+  const shown = s.commerce.products.filter((p) => !p.qualityKnown && !p.dutyFreeOnly);
+  // 7 · 10 아는 품질 대 참 품질 (지금 판매 중인 제품)
+  console.log(`- ⑦ 아는 품질(가린 제품) ${hidden.length}개 · 공개 제품(F5d 전에 병입) ${shown.length}개`);
+  if (hidden.length) {
+    const rows = hidden.map((p) => { const k = p.qualityKnown!; const err = k.est - p.quality; return { p, k, err, z: k.sigma > 0 ? err / k.sigma : 0 }; });
+    const mean = rows.reduce((t, r) => t + r.err, 0) / rows.length;
+    const out2 = rows.filter((r) => r.k.sigma > 0 && Math.abs(r.z) > 2).length;
+    console.log(`  - 추정 − 참: 평균 ${mean >= 0 ? '+' : ''}${mean.toFixed(1)} · |z| > 2 ${out2}개 · 리뷰 0인 제품 ${rows.filter((r) => r.k.reviews === 0).length}개`);
+    for (const r of rows.sort((a, b) => Math.abs(b.err) - Math.abs(a.err)).slice(0, 8)) console.log(`  - 「${r.p.name}」 추정 ${r.k.est} ±${r.k.sigma} · 참 ${r.p.quality.toFixed(1)} · 리뷰 ${r.k.reviews} · 출고가 ${r.p.price.toLocaleString()}원${r.p.autoPrice ? ' (자동 가격)' : ''}`);
+  }
+  // 10 승리 제품의 12년 품질 — 결과 화면 값과 판 중 추정
+  const v = s.progress.verdict;
+  if (v?.flagshipQuality != null) {
+    const winP = s.progress.win ? s.commerce.products.find((p) => p.id === s.progress.win!.productId) : undefined;
+    console.log(`- ⑩ 결과 화면 12년 품질 ${v.flagshipQuality}${winP?.qualityKnown ? ` · 승리 제품 「${winP.name}」의 지금 추정 ${winP.qualityKnown.est} ±${winP.qualityKnown.sigma}(리뷰 ${winP.qualityKnown.reviews}) — 승리 달의 추정은 기록되지 않는다` : winP ? ` · 승리 제품 「${winP.name}」은 공개 제품(F5d 전 병입)` : ' · 승리 제품이 판매 목록에 없다(정리됨)'}`);
+  }
+  // 8 리뷰 — 결산에 남은 리뷰 점수(최근 120개월)
+  const revMonths = reports.filter((r) => r.reviews?.length).length;
+  const revCount = reports.reduce((t, r) => t + (r.reviews ?? []).reduce((u, x) => u + x.scores.length, 0), 0);
+  console.log(`- ⑧ 리뷰: 결산에 남은 위스키베이스 점수 ${revCount}건(${revMonths}개월) — 피드 열람은 기록되지 않는다(질문만)`);
+  // 9 병입 전 직접 샘플 — 병입한 턴마다 그 턴 포함 앞 3턴에 sampleCask가 있었나
+  if (playlog?.turns.length) {
+    const T = playlog.turns;
+    const at = (m: number, k: string) => T.filter((t) => t.month === m).reduce((n, t) => n + (t.kinds?.[k] ?? 0), 0);
+    const bottleTurns = T.filter((t) => (t.kinds?.bottle ?? 0) > 0).map((t) => t.month);
+    const pre = bottleTurns.filter((m) => [0, 1, 2, 3].some((d) => at(m - d, 'sampleCask') > 0));
+    const sum = (k: string) => T.reduce((n, t) => n + (t.kinds?.[k] ?? 0), 0);
+    console.log(`- ⑨ 병입한 달 ${bottleTurns.length}번 중 그 달 포함 3개월 안에 직접 샘플을 뜬 달 ${pre.length}번 · 직접 샘플 ${sum('sampleCask')}회 · 실험실 분석 ${sum('labAnalyze')}회 · 자동 샘플 설정 바꿈 ${sum('setAutoSample')}회`);
+    const prices = T.filter((t) => (t.kinds?.setPrice ?? 0) + (t.kinds?.setPricePolicy ?? 0) + (t.kinds?.setAutoPrice ?? 0) > 0).map((t) => t.month - 1);
+    console.log(`  - ⑦ 값을 바꾼 달(직접 · 정책 · 자동 가격 토글) ${prices.length}번${prices.length ? ` — ${prices.slice(0, 12).join('·')}${prices.length > 12 ? ' …' : ''}` : ''}`);
+  } else console.log('- ⑨ 플레이 기록 없음(세이브만) — 병입 전 샘플 · 값 바꾼 달은 셀 수 없다');
+  const autoSampleMonths = reports.filter((r) => (r.expenses['자동 샘플'] ?? 0) > 0).length;
+  console.log(`  - 자동 샘플이 뜬 달 ${autoSampleMonths}/${reports.length}개월 (설정 ${s.inventory.autoSample?.off ? '끔' : '켬'}) · 지금 아무 기록 없는 통 ${stalestCasks(s, Infinity).filter((c) => !c.sampleLog?.length).length}개`);
+  // 11 피니싱 (#354 — 60개월 y5_finish)
+  const opened = s.scenario.stagesDone?.includes('y5_finish');
+  const fin = s.inventory.casks.flatMap((c) => { const f = c.contents ? finishOf(c.contents) : null; return f ? [{ id: c.id, label: finishLabel(f.typeId), months: f.months }] : []; });
+  const finProducts = s.commerce.products.filter((p) => p.finish);
+  const transfers = playlog?.turns.reduce((n, t) => n + (t.kinds?.transferCask ?? 0), 0);
+  console.log(`- ⑪ 피니싱: ${opened ? '열림(60개월 y5_finish)' : s.month >= 60 ? '아직 안 열림 — 이 빌드 전 세이브면 다음 달 틱에 열린다(#354)' : '아직 안 열림(60개월)'} · 옮기기 ${transfers ?? '—'}회 · 지금 피니싱 중인 통 ${fin.length}개${fin.length ? ` — ${fin.slice(0, 5).map((f) => `${f.id} ${f.label} ${f.months}개월`).join(' · ')}` : ''} · 24개월 넘김 ${fin.filter((f) => f.months > 24).length}개 · 피니시 표기 제품 ${finProducts.length}개${finProducts.length ? ` — ${finProducts.slice(0, 4).map((p) => `「${p.name}」 판매 ${(p.totalSold ?? 0).toLocaleString()}병`).join(' · ')}` : ''}`);
+  const care = playlog?.turns.reduce<Record<string, number>>((m, t) => { for (const k of ['rechar', 'sellUsedCask', 'orderSeasoning']) m[k] = (m[k] ?? 0) + (t.kinds?.[k] ?? 0); return m; }, {});
+  if (care) console.log(`  - 빈 통 관리(#345 ①): 재탄화 ${care.rechar} · 중고 통 매각 ${care.sellUsedCask} · 시즈닝 통 주문 ${care.orderSeasoning}`);
 }
