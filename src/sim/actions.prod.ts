@@ -481,7 +481,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
       ...to, fills: to.fills + 1, filledMonth: s.month, slot: from.slot, rare: undefined, rareKnown: undefined, samples: undefined, sampleLog: undefined, labAnalyzed: undefined,
       // F2 원장 지점 12: 피니싱 옮기기 — 이동 손실은 원가를 남기고(보존) 새 통값 배분을 더한다. 목재 개월은 그대로 이어서 센다(#308 목재 구간의 실제 합)
       // [결정 #382] 아는 오염 원액은 옮겨도 꼬리표가 따라간다(9차: K11 → K675에서 「오염」 표시가 사라졌다)
-      contents: { ...lot, ...taintField(extractTaint(s, from)), name: `${lot.name} → ${to.id}`, volumeL, costPerLPA: lot.costPerLPA / keep + caskShare / lpa, caskHistory: historyAfterTransfer(lot, from.typeId, to.typeId, s.month), ...(lot.components?.length ? { components: addCost(scaleLedger(lot.components, keep, 'preserve'), caskShare) } : {}) },
+      contents: { ...lot, ...taintField(extractTaint(s, from)), name: `${lot.name} → ${to.id}`, volumeL, costPerLPA: lot.costPerLPA / keep + caskShare / lpa, caskHistory: historyAfterTransfer(lot, from.typeId, to.typeId, s.month, from.id, to.id), ...(lot.components?.length ? { components: addCost(scaleLedger(lot.components, keep, 'preserve'), caskShare) } : {}) },
     };
     s.inventory.casks[fi] = emptyCask(from);
     return { state: s, message: `${from.id} → ${to.id} ${finishLabel(to.typeId)} 시작 (손실 ${(lot.volumeL - volumeL).toFixed(1)}L) — 권장 ${FINISH.recommendedMonths[0]}~${FINISH.recommendedMonths[1]}개월` };
