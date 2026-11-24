@@ -671,7 +671,9 @@ function FreeControls({ s, draft, set }: { s: GameState; draft: Draft; set: SetD
 export function Equipment() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
-  const fresh = new Map(newFacilities(s).map((f) => [f.id, f.openedMonth])); // [#388 ① A3] 단계로 열렸고 아직 사지 않은 시설 — 사기 전까지 띠가 남는다
+  const fresh = new Map(newFacilities(s).map((f) => [f.id, f.openedMonth]));
+  // 선행 설비 — 이미 있으면 「… 있음」(9차 134: 베이직 투어를 4개월째부터 가졌는데 「베이직 투어 필요」로 떠 없는 것처럼 읽혔다 — PM 확인 2026-11-24)
+  const reqText = (req?: string) => (req ? ` · ${EQUIPMENT[req]?.nameKo ?? req} ${s.production.equipment.some((e) => e.catalogId === req) ? '있음 ✓' : '필요'}` : ''); // [#388 ① A3] 단계로 열렸고 아직 사지 않은 시설 — 사기 전까지 띠가 남는다
   return (
     <Card title="설비">
       <div className="grid gap-4 [&>*]:min-w-0">
@@ -697,7 +699,7 @@ export function Equipment() {
               <tr key={d.id}>
                 <Td>{d.nameKo}{fresh.has(d.id) && <> <Badge tone="warn">새로 열림 · {Math.max(0, s.month - fresh.get(d.id)!) ? `${s.month - fresh.get(d.id)!}개월 전` : '이번 달'}</Badge></>}</Td>
                 <Td className="text-xs text-stone-500">
-                  {d.kind === 'still' ? `월 ${d.runsPerMonth}회 · 환류 ${d.reflux}${d.vacuum ? ' · 감압' : ''}${d.ginBasket ? ' · 진 바스켓' : ''}` : d.kind === 'fermenter' ? `${d.capacityL.toLocaleString()}L` : d.kind === 'warehouse' ? `+${d.casks} 캐스크 · ${d.warehouseType === 'dunnage' ? '더니지' : '랙'} ${d.tiers}단` : d.kind === 'facility' ? `${d.note}${d.requires ? ` · ${EQUIPMENT[d.requires]?.nameKo ?? d.requires} 필요` : ''}` : `${d.note ?? `방문객 월 ${d.visitorsPerMonth}명 · 1인 ${won(d.spendPerVisitor)}`}${d.requires ? ` · ${EQUIPMENT[d.requires]?.nameKo} 필요` : ''}`}
+                  {d.kind === 'still' ? `월 ${d.runsPerMonth}회 · 환류 ${d.reflux}${d.vacuum ? ' · 감압' : ''}${d.ginBasket ? ' · 진 바스켓' : ''}` : d.kind === 'fermenter' ? `${d.capacityL.toLocaleString()}L` : d.kind === 'warehouse' ? `+${d.casks} 캐스크 · ${d.warehouseType === 'dunnage' ? '더니지' : '랙'} ${d.tiers}단` : d.kind === 'facility' ? `${d.note}${reqText(d.requires)}` : `${d.note ?? `방문객 월 ${d.visitorsPerMonth}명 · 1인 ${won(d.spendPerVisitor)}`}${reqText(d.requires)}`}
                 </Td>
                 <Td right>{won(equipmentCost(s, d))}{equipmentCost(s, d) !== d.cost && <div className="text-xs text-stone-500">입지 반영 (기준 {won(d.cost)})</div>}</Td>
                 <Td right>{d.leadMonths}개월</Td>
