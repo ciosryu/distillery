@@ -460,6 +460,10 @@ function WarehouseCard() {
           <div className="text-[11px] text-stone-500">자동 샘플은 통당 횟수({SAMPLING.maxSamples}회)를 쓰지 않지만 오차도 줄이지 않는다 — 오차를 줄이려면 직접 고른다.</div>
         </div>
       )}
+      {/* [결정 #374] 「12년 감점」 풀이 한 줄 — 9차 판 오너 "의미를 몰랐다"(뜻은 마우스를 올려야 보이는 title에만 있었다). 요령(빼서 재사용 통에)은 알리지 않는다(#367) */}
+      {filled.some((c) => c.contents && (c.contents.kind === 'malt' || c.contents.kind === 'grain') && vesselMaterial(c) === 'wood') && (
+        <p className="mb-1 text-xs text-stone-600 dark:text-stone-400"><b>12년 감점</b> — 지금 통 그대로 12년(144개월)까지 두면 나무 맛(탄닌)이 위스키 상한을 넘어 품질에서 깎일 것으로 보이는 점수(활성도로 센 어림). 활성도가 높은 새 통일수록 크다.</p>
+      )}
       {!filled.length ? <Empty>숙성 중인 캐스크가 없습니다. 아래에서 탱크의 몰트(또는 소주) 원액을 빈 통에 통입하세요.</Empty> : (
         <Table head={['', '캐스크', '원액', '숙성', '남은 양', '표기', '마지막 샘플 (추정 품질 ±오차 · 강한 향 · 변화)', '']}>
           {(all ? shownCasks : shownCasks.slice(0, LIST_FIRST)).map((c) => {
