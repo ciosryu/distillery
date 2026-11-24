@@ -12,6 +12,7 @@
 //   t=A      +병 수 × (권장 출고가 − 병·포장·병입 − 유통비)   ← 통 전체를 그 달 권장가에 판다고 본다(수요 제약 없음)
 // 할인율 r(연)은 MGT-C가 정할 값이다 — 아직 없으므로 0 · 2.5%(정책자금) · 7.5%(운전자금) · 20%(고금리 급전)로 민감도만 본다
 import { readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { CASK_STORAGE, CASKS } from '../../src/sim/content/catalog';
 import { regionOf, siteOf } from '../../src/sim/content/regions';
 import { demandFor, distributionCostPerBottle } from '../../src/sim/market';
@@ -107,7 +108,8 @@ const eok = (v: number) => `${(v / 1e4).toFixed(0)}만`;
 const pct = (v: number) => (Number.isFinite(v) ? `${(v * 100).toFixed(0)}%` : '—');
 const rate = (v: number) => `${+(v * 100).toFixed(1)}%`;
 
-if (import.meta.url === `file://${process.argv[1]}`) for (const cm of CLIMATES) {
+// 직접 실행일 때만 — `file://${argv[1]}` 문자열 비교는 Windows 경로 · 한글 · 공백(퍼센트 인코딩)에서 늘 거짓이 되어 아무것도 안 돌았다(검토 D2와 같은 원인)
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) for (const cm of CLIMATES) {
   const cases: AgingCase[] = [];
   const saved = env.SAVE ? migrateSave(JSON.parse(readFileSync(env.SAVE, 'utf8'))) : null;
   for (const region of saved ? [saved.regionId] : REGION_IDS) {

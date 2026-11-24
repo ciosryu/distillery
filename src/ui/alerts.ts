@@ -4,7 +4,7 @@
 
 import { isFlagshipCandidate } from '../sim/delegateCheck';
 import { regionOf } from '../sim/content/regions';
-import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type Action, type Cask, type CashFlowKey, type GameState, type MonthReport, type Product, stagesOf } from '../sim';
+import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, knownState, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, slotsDifferFromCasks, slotsUsed, spotQuote, warehouseCapacity, whiskyMinMonths, type Action, type Cask, type CashFlowKey, type GameState, type MonthReport, type Product, stagesOf } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
@@ -12,6 +12,7 @@ import { undefendedDisasters } from '../sim/events';
 import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { exportShortfalls } from '../sim/market';
 import { retailBreakRemaining, retailCancellationCost } from '../sim/deals';
+import { overhangFactor } from '../sim/retail';
 import { ibAgedCaskCount } from '../sim/bulk';
 import { autoFillPreview } from '../sim/autoFill';
 import { autoRestockPlan, autoRestockSources, autoRestockSupported, guardedFlagshipCasks, productMonthlyPace } from '../sim/economics';
@@ -132,7 +133,8 @@ function stockMonths(s: GameState, inCat: (c: string) => boolean): { stock: numb
  * 판매 화면과 같은 수요 계산(domesticDemands)이다. 실제 판매는 ±10%·소매 역량에 따라 조금 다르다
  */
 export function stockoutSoon(s: GameState): { soon: { id: string; name: string; stock: number; demand: number }[]; empty: { id: string; name: string }[] } {
-  const d = domesticDemands(s, calendar(s).monthOfYear);
+  // F5d(#338) · 외부 검토 D1 누수 L2: 판매 화면처럼 아는 품질로 센 수요(`knownState`) — 참 품질 수요로 세면 결품 판정이 참 품질을 드러낸다
+  const d = domesticDemands(knownState(s), calendar(s).monthOfYear);
   const soon: { id: string; name: string; stock: number; demand: number }[] = [];
   const empty: { id: string; name: string }[] = [];
   for (const p of s.commerce.products) {
@@ -206,11 +208,13 @@ export function stageTarget(st: { unlock: readonly string[] }): { tab: string; l
 
 export const FLAGSHIP_LOW = 3;
 
-/** 핸드필 통이 빈 뒤 지난 개월과 비기 전 6개월 평균 핸드필 매출 — 결산 메모(`handfill.ts`)에서 읽는다. 빈 기록이 없으면(처음부터 미지정) null */
+/** 마지막 핸드필 판매 뒤 지난 개월과 그때까지 6개월 평균 핸드필 매출 — 결산 메모(`handfill.ts`)에서 읽는다. 판매 기록이 없으면(처음부터 미지정) null */
 export function handfillIdle(s: GameState): { months: number; monthly: number } | null {
   const reps = s.history.reports;
   let i = reps.length - 1;
-  while (i >= 0 && !reps[i]!.notes.some((n) => /^핸드필 .*비었다/.test(n))) i--;
+  // 마지막 핸드필 **판매** 달부터 센다 — "비었다" 메모만 찾으면 지정 통이 메모 없이 풀린 경우(병입 · 원액 판매로 비워져 지정이 풀림)를 놓친다
+  // (9차 판 64개월: K306이 155L 남은 채 병입 달에 비어 "비었다" 메모가 없었다 → 화면 「20개월째」 · 기록 16개월, docs/playtest/9/arch.md ②)
+  while (i >= 0 && !reps[i]!.notes.some((n) => /^핸드필 \d/.test(n))) i--;
   if (i < 0) return null;
   const won = (n: string) => Number(n.match(/^핸드필 \d[\d,]*병 \(([\d,]+)원\)/)?.[1]?.replace(/,/g, '') ?? 0);
   const before = reps.slice(Math.max(0, i - 5), i + 1).map((r) => r.notes.reduce((t, n) => t + won(n), 0));
@@ -269,7 +273,7 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'contam-cand', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'sample'];
+export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'overhang', 'contam-cand', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'sample'];
 // 꼬리 4개(defense·whisky·soju·sample)는 info만 낸다 — warn·danger를 낼 수 있는 새 id는 그 앞에 둔다(warn이 info 뒤에 묻히지 않게, PM 대조 7차 완료: soju-glut)
 // 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
@@ -364,7 +368,7 @@ export function monthTodos(s: GameState): Todo[] {
   if (s.scenario && hasHandfillZone(s) && !handfillCask(s) && s.production.equipment.some((e) => EQUIPMENT[e.catalogId]?.kind === 'visitor' && e.readyMonth <= s.month)) {
     // 6차 판(PROD prod.md ⑥): 142개월에 통이 빈 뒤 16개월 미지정 — 빈 지 몇 달째인지와 그 전 매출을 붙여 같은 warn 사이에서 덜 묻히게
     const idle = handfillIdle(s);
-    out.push({ id: 'handfill', level: 'warn', text: `핸드필 존에 통이 없다${idle ? ` — 통이 빈 지 ${idle.months}개월째${idle.monthly ? `(비기 전 월 약 ${fmtWon(idle.monthly)} — 그만큼 놓치는 중)` : ''}` : ''} — 숙성 중인 캐스크 칸에서 핸드필 전용 통을 고르면 방문객이 매달 500ml씩 담아 간다(병입 권장가의 약 2배)`, action: '통 고르기', target: { anchor: 'mvp-warehouse' } });
+    out.push({ id: 'handfill', level: 'warn', text: `핸드필 존에 통이 없다${idle ? ` — 핸드필 판매가 멈춘 지 ${idle.months}개월째${idle.monthly ? `(그 전 월 약 ${fmtWon(idle.monthly)} — 그만큼 놓치는 중)` : ''}` : ''} — 숙성 중인 캐스크 칸에서 핸드필 전용 통을 고르면 방문객이 매달 500ml씩 담아 간다(병입 권장가의 약 2배)`, action: '통 고르기', target: { anchor: 'mvp-warehouse' } });
   }
   // 핵심 전문가를 아직 고르지 않았다 (MGT #610 남은 점 — 할 일에서 직원 탭 카드로 잇는 안내). 해금 소식(stage 할 일)이 내려간 뒤 SPECIALIST_TODO_MONTHS개월 — 안 고르는 것도 선택이라 끝없이 띄우지는 않는다.
   // 7차 판(오너 "못봤다"): 해금 소식 3턴을 0·0·10초에 넘겼고, 그 뒤 9개월 info는 다른 할 일 아래에 묻혔다 → warn으로 올리고 기간을 늘린다(화면만)
@@ -436,6 +440,16 @@ export function monthTodos(s: GameState): Todo[] {
     const bad = flagshipCandidates(s).filter((c) => c.contaminationKnown && !campaignWon(s));
     if (bad.length) out.push({ id: 'contam-cand', level: 'warn', text: `12년 후보 통 가운데 ${bad.length}통(${bad.slice(0, 3).map((c) => c.id).join(' · ')}${bad.length > 3 ? ' …' : ''})이 아는 오염 통이다 — 후보로는 세지만, 병입하면 결점 향(곰팡내 등)이 섞여 품질이 깎인다`, action: '숙성 중인 캐스크', target: { anchor: 'mvp-warehouse' } });
   }
+  // 재고 적체(9차 판 64개월 — 오크소주 · 뉴본 피티드가 20개월 치 넘게 쌓였는데 할 일에 신호가 없었다, PROD 제안 2026-11-24): 팔 재고가 판매의 6개월 치를 넘으면
+  // 국내 수요가 깎인다(`retail.ts overhangFactor`, 하한 ×0.6 — 판매 셈과 같은 함수). 홈 「돈 흐름」의 재고 과잉(overstock)은 주종 묶음 금액이라 "수요가 준다"는 보이지 않는다.
+  // 가장 많이 깎인 제품 하나 + "외 n개" 한 줄. 값은 재고 · 판매 추세(공개 정보)라 I2 누수가 아니다
+  {
+    const hit = s.commerce.products.filter((p) => !p.dutyFreeOnly && p.stockBottles > 0).map((p) => ({ p, f: overhangFactor(p, s.month), m: p.stockBottles / Math.max(1, p.salesEma ?? 0) })).filter((x) => x.f < 1).sort((a, b) => a.f - b.f || b.m - a.m || a.p.id.localeCompare(b.p.id)); // 하한(×0.6)에 여럿이면 더 많이 쌓인 제품
+    if (hit.length) {
+      const { p, f, m } = hit[0]!;
+      out.push({ id: 'overhang', level: 'warn', text: `「${p.name}」 재고 ${m.toFixed(1)}개월 치 — 수요 ×${f.toFixed(2)}(팔 재고가 6개월 치를 넘게 쌓이면 줄어든다)${hit.length > 1 ? ` 외 ${hit.length - 1}개 제품` : ''} · 값을 내리거나 보충 · 병입을 멈춘다`, action: '판매', target: { tab: 'sales' } });
+    }
+  }
   // A4(PROD 화면 메모): 빈 통이 곧 바닥난다 — 계산은 PROD `economics.ts caskRunway`(이번 달 가능 배치 · 탱크 적체 먼저 · 자동 통입 올림 반영)를 그대로 쓴다.
   // 자동 통입 줄(AutoFill)과 숫자가 같다. 쿠퍼리지 납기 + 1개월 안에 바닥나면 지금 주문해야 늦지 않는다 · 이미 모자라면(0개월) warn
   {
@@ -456,16 +470,20 @@ export function monthTodos(s: GameState): Todo[] {
   // [제안 P-ARCH-64]: 합계와 가장 긴 개월을 한 문장에 섞지 않고 로트별로 — 오래 기다린 순
   const lotText = waits.filter((x) => x.m >= 3).sort((a, b) => b.m - a.m).map((x) => `${x.l.name.split(' · ')[0]} ${Math.round(x.l.volumeL).toLocaleString()}L ${x.m}개월째`).join(' · ');
   const waitText = fillLevel === 'info' ? '' : ` — 통에 들어가지 않은 원액: ${lotText}. 통에 넣어야 숙성이 시작된다 — 3년 위스키·12년 후보가 그만큼 늦어진다`;
+  // [결정 #360] 숙성고 칸 넘침 — v16 캠페인에서 400L↑ 통이 2칸이 되어 진행 중인 판이 정원을 넘을 수 있다. 통은 그대로 두고 새 통만 막힌다(cask-types.md §9.1 (가))
+  const overSlots = slotsUsed(s) - warehouseCapacity(s);
+  // [결정 #363] 넘친 판은 통을 그대로 두고 새 통만 막는다 — 진행 중 세이브를 불러온 사람에게 규칙이 바뀐 것을 이 한 줄로 알린다(v16 캠페인 · 넘친 판에서만 뜬다)
+  if (overSlots > 0) out.push({ id: 'slots-over', level: 'warn', text: `숙성고 ${overSlots}칸 넘침(${slotsUsed(s)}/${warehouseCapacity(s)}칸) — 이 빌드부터 400L 이상 통은 2칸을 쓴다. 들어 있는 통은 그대로이고 새 통만 사거나 주문할 수 없다. 한 번 이상 쓴 빈 큰 통을 팔거나(중고 매각) 숙성고를 증축하라`, action: '숙성고 공간', target: { anchor: 'mvp-space' } });
   // 자동 통입(#239)이 켜져 있으면 넣을 통이 있는 동안은 안내하지 않는다 — 빈 통이 모자랄 때만 "통을 사라"로 줄인다
   const af = s.inventory.autoFill;
   const afLeft = af && tankMalt >= 50 ? autoFillPreview(s, af).leftL : 0;
   if (tankMalt >= 50 && (!af || afLeft >= 50)) {
     // 몰트·그레인을 넣을 **나무** 통만 센다(P-ARCH-64 — 7차 판: 빈 통 26개 중 6개가 소주용 옹기). 아는 오염만 뺀다(F5b I1 — 숨은 값 직접 읽기 없음)
     const empties = s.inventory.casks.filter((c) => !c.contents && !c.contaminationKnown && vesselMaterial(c) === 'wood').length;
-    const free = Math.max(0, warehouseCapacity(s) - s.inventory.casks.length);
+    const free = Math.max(0, warehouseCapacity(s) - slotsUsed(s)); // #360 칸
     out.push(af
-      ? { id: 'fill', level: fillLevel, text: `자동 통입이 켜져 있지만 빈 나무 통이 모자라 탱크 몰트·그레인 ${Math.round(afLeft).toLocaleString()}L가 남는다 — 빈 나무 통 ${empties}개 · 남은 자리 ${free}통. 통을 사거나 숙성고를 늘리세요${waitText}`, action: '통 사기', target: { anchor: 'mvp-space' } }
-      : { id: 'fill', level: fillLevel, text: `탱크 몰트·그레인 ${Math.round(tankMalt).toLocaleString()}L 통입 대기 — 빈 나무 통 ${empties}개 · 남은 자리 ${free}통 (통에 넣어야 숙성이 시작된다 · 자동 통입을 켜 둘 수 있다)${waitText}`, action: empties > 0 ? '통입' : '통 사기', target: { anchor: empties > 0 ? 'mvp-fill' : 'mvp-space' } });
+      ? { id: 'fill', level: fillLevel, text: `자동 통입이 켜져 있지만 빈 나무 통이 모자라 탱크 몰트·그레인 ${Math.round(afLeft).toLocaleString()}L가 남는다 — 빈 나무 통 ${empties}개 · 남은 자리 ${free}${slotsDifferFromCasks(s) ? '칸' : '통'}. 통을 사거나 숙성고를 늘리세요${waitText}`, action: '통 사기', target: { anchor: 'mvp-space' } }
+      : { id: 'fill', level: fillLevel, text: `탱크 몰트·그레인 ${Math.round(tankMalt).toLocaleString()}L 통입 대기 — 빈 나무 통 ${empties}개 · 남은 자리 ${free}${slotsDifferFromCasks(s) ? '칸' : '통'} (통에 넣어야 숙성이 시작된다 · 자동 통입을 켜 둘 수 있다)${waitText}`, action: empties > 0 ? '통입' : '통 사기', target: { anchor: empties > 0 ? 'mvp-fill' : 'mvp-space' } });
   }
   // [제안 P-ARCH-65] 확장 — 7차 판 오너 답 "자동 통입이 어딨는지 못찾았다"(155개월 · 손 통입 405번): 통입 대기 줄에서 **바로 켠다**. 끄기는 통입 카드에서(되돌릴 수 있는 설정)
   // PROD #729: 이동 버튼도 자동 통입 줄(AUTOFILL_ANCHOR)로 — 오너 "어딨는지 못찾았다". 손 통입은 그 줄 바로 아래 통입 카드라 같은 자리다
