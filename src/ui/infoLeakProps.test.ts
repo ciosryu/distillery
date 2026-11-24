@@ -47,7 +47,7 @@ describe('I2 — 같은 공개 정보 · 다른 참 품질이면 화면 읽기 �
     expect(knownView(high.s, high.p).quality).toBe(knownView(low.s, low.p).quality);
   });
   // ── 지금 새는 길(목록) — 고치는 PR이 it.fails → it ──
-  it.fails('[누수 L1 · D1] 대형 유통 납품 단가 `retailPriceBasis`(원액 B2B 화면 · 정산 같은 함수) — 상한을 참 품질 기준가로 센다', () => {
+  it('[누수 L1 · D1 — 고침 #364 · MKT #935] 대형 유통 납품 단가 `retailPriceBasis`(원액 B2B 화면 · 정산 같은 함수) — 상한을 참 품질 기준가로 센다', () => {
     expect(retailPriceBasis(high.s, high.p)).toEqual(retailPriceBasis(low.s, low.p));
   });
   it('[누수 L2 — 고침] 할 일 「결품」 `stockoutSoon` — 판매 화면처럼 `domesticDemands(knownState(s))`로 센다', () => {
@@ -55,10 +55,10 @@ describe('I2 — 같은 공개 정보 · 다른 참 품질이면 화면 읽기 �
     high.p.stockBottles = low.p.stockBottles = 5;
     expect(stockoutSoon(high.s)).toEqual(stockoutSoon(low.s));
   });
-  it.fails('[누수 L3] 커뮤니티 피드 `feedFor` — 위스키베이스 점수 밖의 글 분위기 · 비교 글이 참 품질을 읽는다(feed.ts 68 · 283)', () => {
+  it('[누수 L3 — 고침 MKT #935 · 커뮤니티 품질] 커뮤니티 피드 `feedFor` — 위스키베이스 점수 밖의 글 분위기 · 비교 글이 참 품질을 읽는다(feed.ts 68 · 283)', () => {
     expect(feedFor(high.s, 3, 40).map((x) => x.text)).toEqual(feedFor(low.s, 3, 40).map((x) => x.text));
   });
-  it.fails('[누수 L7 — #366] 피드 잡내 문구 — 위스키베이스 시음 글의 「옅은 {잡내}」가 참 잡내 축(퓨젤 · 자극 등)을 읽는다(feed.ts offNote). #366 수리(MKT #862) 뒤 it', () => {
+  it('[누수 L7 — 고침 #366 · MKT #935] 피드 잡내 문구 — 위스키베이스 시음 글의 「옅은 {잡내}」가 참 잡내 축(퓨젤 · 자극 등)을 읽는다(feed.ts offNote). #366 수리(MKT #862) 뒤 it', () => {
     // 품질 · 아는 품질 · 향 이름이 같고 잡내 축만 다르다. 가리는 판의 시음 글은 틱이 남긴 리뷰 점수로만 써지므로 지난달 결산에 리뷰를 둔다(MKT 재현 2026-11-24 —
     // 깨끗 「Palate: 여운.」 대 잡내 「Palate: 여운, 옅은 퓨젤(후류취).」). 향 이름 차이는 #366에서 의도된 공개 신호(위 주석)라 시험하지 않는다
     const mk = (flavor: Product['flavor']) => { const { s } = withProduct(60, flavor); (s.history.reports.at(-1) as { reviews?: unknown }).reviews = [{ productId: 'P1', scores: [83, 84] }]; return s; };

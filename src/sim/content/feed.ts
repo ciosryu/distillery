@@ -25,6 +25,12 @@ export const FEED_COMMUNITIES: Record<FeedStyle, { whisky: string; white: string
   dc_jugal: { whisky: '디시 · 주류 갤러리', white: '디시 · 주류 갤러리' },
 };
 
+/**
+ * [결정 #366] 가리는 판(F5d)의 잡내 문구 — 향 이름 · 방향(상위 향)은 참 향 그대로 두고, 품질을 깎는 결함 신호("옅은 {잡내}")는 참 잡내 축 대신
+ * 커뮤니티 품질(`communityQuality` — 지난 리뷰 읽기 평균)이 below 미만일 때만 일반 낱말 word로 낸다(I2 L7 · P-MKT-49 (라)). 값 `[튜닝]`
+ */
+export const FEED_GENERIC_OFF = { below: 55, word: '잡내' } as const;
+
 export const FEED_AUTHORS: Record<FeedStyle, Pool> = {
   whiskybase: ['MaltManiac_88', 'peatfreak', 'DramDiary', 'Sherrybomb_KR', 'caskhunter', 'NoseFirst', 'Glencairn_Joe', 'SeoulSipper', 'AngelsShare_7', 'IslayOrBust', 'BlindTaster', 'MashTun'],
   cafe: ['피트러버', '셰리몽', '주말한잔', '보틀헌터', '니트파', '하이볼장인', '위린이', '숙성덕후', '글렌케런', '오크향기', '한잔의여유', '퇴근후한잔'],
