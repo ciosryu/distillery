@@ -5,7 +5,7 @@
 ## 0. 무엇이 깨졌었나 `[사실]`
 
 - `src/sim/infoLeak.test.ts` · `src/sim/valuation.test.ts`가 소스 폴더를 `new URL(…, import.meta.url).pathname`으로 찾았다. `URL.pathname`은 **한글 · 공백을 퍼센트 인코딩**(`한글 경로` → `%ED%95%9C…%20…`)하고 **Windows에서는 `/C:/…`**가 되어 `readdirSync`가 `ENOENT`로 실패했다(리눅스에서 한글 · 공백 경로로 재현 · 2026-11-24).
-- 고침: `fileURLToPath(new URL(…, import.meta.url))` · 상대 경로를 비교할 때 구분자를 `/`로(`relative(ROOT, p).split(sep).join('/')`). 확인: 리눅스 `…/한글 경로 테스트/after`에서 `npm test` 89파일 · 983개 통과 · `npm run typecheck` 통과. **Windows 실기기 확인은 못 했다**(클라우드 세션 한계 — 이 문서 절차대로 한 번 돌려 결과를 PM에 알려 주십시오).
+- 고침: `fileURLToPath(new URL(…, import.meta.url))` · 상대 경로를 비교할 때 구분자를 `/`로(`relative(ROOT, p).split(sep).join('/')`). 확인: 리눅스 `…/한글 경로 테스트/after`에서 `npm test` 89파일 · 983개 통과 · `npm run typecheck` 통과. **Windows 실기기 확인(오너 · PowerShell · `C:\tycoon\distillery` · 2026-11-24, PM PR #890):** 수리 전 코드(7차 빌드 · 시험 72파일)는 `infoLeak` · `valuation`이 `ENOENT … scandir 'C:\C:\tycoon\distillery\src\ui'`(드라이브 글자가 두 번 붙음)로 실패 → 최신 main(`npm.cmd ci`)은 **89파일 · 983개 통과**(9.56초 · vitest 5.1.0). **아직 확인 못 한 것:** 한글 · 공백이 든 **Windows** 경로 · Windows에서 `ui:reach`.
 - 같은 패턴을 저장소 전체에서 훑었다(`import.meta.url` · `__dirname` · `.pathname`):
 
 | 자리 | 상태 |
@@ -70,5 +70,7 @@ npm run ui:reach -- http://localhost:4317/ "docs\playtest\7\distillery-mvp-stand
 
 ## 3. 알려진 한계
 
+- **무시해도 되는 경고:** `ExperimentalWarning: localStorage is not available because --localstorage-file was not provided`가 `npm test` 중 여러 번 뜬다(Node 22+ 경고 — 시험은 통과 · 오너 Windows 실기기 2026-11-24). 시험 결과와 무관하다.
+- PowerShell에서 `npm`이 실행 정책에 막히면 `npm.cmd`로 부른다(예: `npm.cmd ci` · `npm.cmd test`).
 - Windows 줄바꿈(CRLF)으로 받으면 소스 문자열 검사 시험(`infoLeak` 등)이 줄 끝 `\r` 때문에 다르게 볼 수 있다 `[추정 — 확인 못 함]`. 문제가 생기면 `git config core.autocrlf false`로 다시 받는다.
 - 대소문자만 다른 파일 이름은 `src/fileNames.test.ts`가 막는다(Windows · Mac 파일 시스템).
