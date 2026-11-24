@@ -1,5 +1,8 @@
 // [결정 #370] 뉴본(몰트 스피릿 · oak 0개월) 제품을 같은 레시피 탱크 원액으로 자동 납품한다 (v16만)
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { migrateSave } from './migrate';
+import { advanceMonth } from './step';
 import { applyAction, newScenarioGame } from './index';
 import { emptyCaskOf } from './newGame';
 import { autoRestockSources, autoRestockSupported, newmakeTankUseL } from './economics';
@@ -51,3 +54,45 @@ describe('#370 뉴본 자동 납품', () => {
     if (soju) expect(newmakeTankUseL(s, soju)).toBeNull();
   });
 });
+
+// PM 요청(2026-11-24): 봇이 이 기능을 쓰지 않으므로 기능을 실제로 켠 시나리오로 확인한다 — 9차 세이브 뉴본 3종(R8 · R9 · R94)
+describe('#370 시나리오 — 9차 세이브에서 뉴본 자동 납품을 켜고 진행', () => {
+  const load = (): GameState => migrateSave(JSON.parse(readFileSync('docs/playtest/9/distillery-mvp-standard-y6m5-202611240759.json', 'utf8')).save)!;
+  const tankL = (s: GameState, recipeId: string) => s.inventory.lots.filter((l) => l.recipeId === recipeId && l.oakMonths === 0 && !l.sourced).reduce((t, l) => t + l.volumeL, 0);
+  it('켠 뒤 3개월: 「뉴본 언피티드」가 매달 같은 레시피 탱크(R8)에서 채워진다 — 다른 레시피 탱크는 이 제품이 쓰지 않는다', () => {
+    let s = load();
+    const p = s.commerce.products.find((x) => x.name === '김포 뉴본 언피티드')!;
+    expect(p.recipeIds).toEqual(['R8']);
+    p.stockBottles = 0;
+    s = applyAction(s, { type: 'setAutoRestock', productId: p.id, months: 2 }).state;
+    let filled = 0;
+    for (let m = 0; m < 3; m++) {
+      s = advanceMonth(s);
+      const note = s.history.reports.at(-1)!.notes.find((n) => n.includes('「김포 뉴본 언피티드」'));
+      if (note && /\+[\d,]+병/.test(note)) { filled++; expect(note).toContain('원액 탱크'); }
+    }
+    expect(filled).toBeGreaterThanOrEqual(1);
+    expect(s.commerce.products.find((x) => x.id === p.id)!.stockBottles).toBeGreaterThan(0);
+  });
+  it('모자랄 때: 같은 레시피 탱크가 비면 다른 레시피 탱크로 대신하지 않고 「탱크 원액 필요」를 알린다', () => {
+    let s = load();
+    const p = s.commerce.products.find((x) => x.name === '김포 뉴본 그레인')!;
+    p.stockBottles = 0;
+    s = applyAction(s, { type: 'setAutoRestock', productId: p.id, months: 2 }).state;
+    s.inventory.lots = s.inventory.lots.filter((l) => l.recipeId !== 'R94');
+    s.production.orders = s.production.orders.filter((o) => o.recipeId !== 'R94'); // 이번 달 R94 생산도 없게
+    s = advanceMonth(s);
+    const note = s.history.reports.at(-1)!.notes.find((n) => n.includes('「김포 뉴본 그레인」'))!;
+    expect(note).toContain('쓸 원액이 없어 못 채웠다');
+    expect(s.commerce.products.find((x) => x.id === p.id)!.stockBottles).toBe(0); // R8 등 다른 레시피 탱크로 채우지 않았다
+    expect(tankL(s, 'R94')).toBe(0);
+  });
+  it('경계값: 통에서 1개월이라도 쉰 몰트 스피릿(oak 1)은 켤 수 없다 · oak 0은 켤 수 있다', () => {
+    const s = load();
+    const p = s.commerce.products.find((x) => x.name === '김포 뉴본 피티드')!;
+    expect(applyAction(s, { type: 'setAutoRestock', productId: p.id, months: 1 }).error).toBeUndefined();
+    p.oakMonths = 1;
+    expect(applyAction(s, { type: 'setAutoRestock', productId: p.id, months: 1 }).error).toBeDefined();
+  });
+});
+
