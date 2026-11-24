@@ -1,7 +1,7 @@
 // [결정 #362] 피니시 표기의 판매 효과(#270 A · B) — 표기 + `finishMonths`(PROD #878, 병입 때 · v16 판만) 3개월↑일 때만, 통 종류와 무관 (ARCH 검토 2026-11-24)
 import { describe, expect, it } from 'vitest';
 import { FINISH_LABEL } from './content/market';
-import { finishLabelOn } from './finishLabel';
+import { FINISH_EFFECT_MIN_MONTHS, finishLabelOn } from './finishLabel';
 import { productLuxury } from './brands';
 import { appeal, expectedPricePerL } from './market';
 import { regionOf } from './content/regions';
@@ -17,6 +17,11 @@ const finished = (m: number, typeId: 'oloroso_butt' | 'ex_bourbon_barrel' = 'olo
 });
 
 describe('finishLabelOn — finishMonths만 읽는다', () => {
+  it('문턱 상수(PROD 보충 경고가 읽는 값)는 판매 효과 문턱과 같다', () => {
+    expect(FINISH_EFFECT_MIN_MONTHS).toBe(FINISH_LABEL.minMonths);
+    expect(finishLabelOn(finished(FINISH_EFFECT_MIN_MONTHS))).toBe(true);
+    expect(finishLabelOn(finished(FINISH_EFFECT_MIN_MONTHS - 1))).toBe(false);
+  });
   it(`${FINISH_LABEL.minMonths}개월부터 켜진다`, () => {
     expect(finishLabelOn(finished(2))).toBe(false);
     expect(finishLabelOn(finished(3))).toBe(true);
