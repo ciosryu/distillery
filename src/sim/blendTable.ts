@@ -8,7 +8,7 @@ import { CATEGORY } from './content/categories';
 import { regionOf } from './content/regions';
 import type { BlendComponent, BottleOptions } from './blending';
 import { nid, staffOf } from './util';
-import { sampleNoiseId } from './rules'; // [결정 #351] v16 캠페인은 채움마다 읽기 잡음을 새로
+import { rulesVersionOf, sampleNoiseId } from './rules'; // [결정 #351] v16 캠페인은 채움마다 읽기 잡음을 새로
 
 // 블렌딩 테이블 (결정 #124, docs/design/blending-minigame.md) — 1차 범위:
 //   P1 정보 구매(샘플링·실험실 분석) · P2 도달 가능 영역 · P5 목표 3종(트렌드·의뢰·코어 레인지) · P6 결과 공개 · P7 위임 · P8 레어 캐스크
@@ -259,8 +259,11 @@ export function autoSamplePicks(s: GameState, known: Map<string, KnownRead> = kn
   if (s.inventory.casks.some((c) => c.contents && c.sampleLog?.at(-1)?.month === s.month)) return [];
   // 매 턴 여력만큼 오래 안 뜬 통부터 (#201) — 통당 횟수 제한 없음. 설정(#207)으로 묶음·최소 숙성·다시 뜨는 간격·월 최대 통 수를 좁힌다
   const groups = cfg.groups?.length ? new Set(cfg.groups) : null;
+  // [결정 #383] v16: 아는 오염 통은 건너뛴다 — 9차 판: 오염이 드러난 뒤에도 K11 · K388에 자동 샘플이 떠 샘플비만 썼다. 손 샘플 · 옛 판은 그대로
+  const skipTainted = rulesVersionOf(s) !== 'legacy-v15';
   const ok = (c: Cask): boolean => {
     if (!autoSampleable(c)) return false;
+    if (skipTainted && c.contaminationKnown) return false;
     if (groups) { const g = autoSampleGroupOf(s, c); if (!g || !groups.has(g)) return false; }
     if (cfg.minAgeMonths && caskAge(c) < cfg.minAgeMonths) return false;
     if (cfg.minGapMonths) { const own = c.sampleLog?.at(-1); if (own && s.month - own.month < cfg.minGapMonths) return false; }
