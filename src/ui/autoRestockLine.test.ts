@@ -30,8 +30,18 @@ describe('#369 옹기 · 오크에서 쉰 소주 — 같은 용기 · 제품 개
     expect(l.text).toBe('옹기에서 2개월 이상 쉰 같은 레시피 통이 없어 보충하지 않는다 — 탱크 원액으로 대신하지 않는다');
     expect(autoRestockTitle(s, knownState(s), p)).toContain('탱크 원액으로 대신하지 않는다');
   });
-  it('133개월 「옹기소주」는 쉰 개월이 0(탱크 원액이 섞임)이라 탱크 줄 — 이름과 다르게 채우는 것을 화면이 알린다', () => {
-    expect(line(m133(), '김포 옹기소주').text).toBe('같은 레시피의 탱크 원액으로 채운다');
+  it('133개월 「옹기소주」 · 「오크소주」는 쉰 개월이 0(탱크 원액이 섞임)이라 탱크로 채운다 — warn으로 까닭을 알린다(PM 2026-11-24)', () => {
+    const s = m133();
+    const l = line(s, '김포 옹기소주');
+    expect(l.warn).toBe(true);
+    expect(l.text).toBe('이 제품은 탱크 원액으로 채운다 — 병입 · 보충 때 탱크 원액이 섞여 쉰 개월이 0이 됐다. 옹기에서 쉰 원액으로만 병입한 제품이어야 옹기에서 채운다');
+    expect(line(s, '김포 오크소주').text).toContain('오크 통에서 쉰 원액으로만 병입한 제품이어야 오크 통에서 채운다');
+    expect(autoRestockTitle(s, knownState(s), byName(s, '김포 옹기소주'))).toContain('옹기에서 채우지 않는다');
+  });
+  it('통 구성 기록이 없는 탱크 소주(「김포 소주」)는 까닭 없이 탱크 줄', () => {
+    const l = line(m133(), '김포 소주');
+    expect(l.warn).toBe(false);
+    expect(l.text).toBe('같은 레시피의 탱크 원액으로 채운다');
   });
   it('옛 판(legacy-v15)은 표기 없는 옹기 제품을 지금대로 탱크로', () => {
     const s = m64();
