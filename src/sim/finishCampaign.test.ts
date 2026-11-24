@@ -8,7 +8,7 @@ import { knownReads } from './blendTable';
 // #345 ② 피니싱(GAP-PROD-4)을 v16 캠페인에서 열기 전 확인 (PM 2026-11-24 조건 (b) · (c))
 // (b) 12년 승리 적격(목재 숙성 개월)이 피니싱 뒤에도 이어지는가 · (c) 피니싱 뒤 첫 샘플 잡음이 새로 뽑히는가(#351)
 
-/** 목재 150개월 자가 몰트가 든 버번 통 하나 + 빈 올로로소 셰리 벗 하나 — 피니싱 잠금은 시험에서만 푼다(단계 코드는 P-ARCH-73 결정 뒤) */
+/** 목재 150개월 자가 몰트가 든 버번 통 하나 + 빈 올로로소 셰리 벗 하나 — 피니싱 잠금은 시험에서만 푼다(실제 판은 60개월 y5_finish — 결정 #354) */
 function setup(): { s: GameState; fromId: string; toId: string } {
   let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 11, rules: 'v16' });
   const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
