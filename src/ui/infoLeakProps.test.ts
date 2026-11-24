@@ -45,7 +45,7 @@ describe('I2 — 같은 공개 정보 · 다른 참 품질이면 화면 읽기 �
   it.fails('[누수 L1 · D1] 대형 유통 납품 단가 `retailPriceBasis`(원액 B2B 화면 · 정산 같은 함수) — 상한을 참 품질 기준가로 센다', () => {
     expect(retailPriceBasis(high.s, high.p)).toEqual(retailPriceBasis(low.s, low.p));
   });
-  it.fails('[누수 L2] 할 일 「결품」 `stockoutSoon` — 수요를 `domesticDemands(s)`(참 품질)로 센다(판매 화면은 knownState)', () => {
+  it('[누수 L2 — 고침] 할 일 「결품」 `stockoutSoon` — 판매 화면처럼 `domesticDemands(knownState(s))`로 센다', () => {
     // 참 수요는 품질 40이면 약 3병 · 80이면 약 10병(소규모 · 인지도 낮음) — 재고 5병이면 결품 판정이 참 품질로 갈린다
     high.p.stockBottles = low.p.stockBottles = 5;
     expect(stockoutSoon(high.s)).toEqual(stockoutSoon(low.s));
