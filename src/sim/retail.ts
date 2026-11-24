@@ -30,6 +30,15 @@ export function retailCapacityCases(s: GameState): number {
   return Math.round(base * (hasPremiumChannel(s) ? 1 + RETAIL.premiumBonus : 1));
 }
 
+/**
+ * 재고 적체 판정의 재고 개월 — 재고 ÷ 최근 판매 평균(`salesEma`). `overhangFactor`와 같은 셈이다. 화면(판매 제품 줄 · PROD 병입 보충 줄)이 배수와 함께 보인다.
+ * 출시 6개월 전이거나 판매 평균이 없으면 null(적체 판정을 하지 않는다)
+ */
+export function overhangMonths(p: { stockBottles: number; salesEma?: number; createdMonth: number }, month: number): number | null {
+  if (month - p.createdMonth < 6 || p.salesEma == null) return null;
+  return p.stockBottles / Math.max(1, p.salesEma);
+}
+
 /** 재고 적체: 6개월 넘게 팔 재고가 쌓이면 할인 이미지로 매력도가 떨어진다 (출시 6개월 후부터) */
 export function overhangFactor(p: { stockBottles: number; salesEma?: number; createdMonth: number }, month: number): number {
   if (month - p.createdMonth < 6 || p.salesEma == null) return 1;
