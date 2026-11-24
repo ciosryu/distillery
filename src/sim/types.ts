@@ -34,7 +34,9 @@ export type CondenserType = 'copper_shell' | 'worm_tub';
 /** 숙성 용기 재질 (S-10, #143) — 나무 캐스크 외에 옹기·스테인리스 휴지. 재질은 콘텐츠(CaskDef.material)에 있고 캐스크 인스턴스는 typeId로 찾는다 */
 export type VesselMaterial = 'wood' | 'onggi' | 'steel';
 /** 숙성 용기 종류 — 나무 캐스크 + 비목재 용기(옹기, #161). 재질은 CaskDef.material */
-export type CaskTypeId = 'ex_bourbon_barrel' | 'oloroso_butt' | 'korean_oak_quarter' | 'mizunara_hogshead' | 'onggi_jar';
+export type CaskTypeId = 'ex_bourbon_barrel' | 'oloroso_butt' | 'korean_oak_quarter' | 'mizunara_hogshead' | 'onggi_jar'
+  // [결정 #355] 일반 4종 (2026-11-24 오너) — 값은 PROD 초안 [튜닝]
+  | 'sherry_hogshead' | 'wine_barrique' | 'port_pipe' | 'virgin_oak_barrel';
 /** 'none' = 나무가 아닌 용기(옹기 등) — 목재 추출이 없다. 용기 재질 판정은 CaskDef.material이 한다 */
 export type WoodId = 'american_oak' | 'european_oak' | 'korean_oak' | 'mizunara' | 'none';
 export type StaffRole = 'distiller' | 'warehouse' | 'sales' | 'office' | 'blender';
@@ -86,6 +88,12 @@ export interface SpiritLot {
   restMonths?: number;
   /** 거쳐 온 숙성 용기 (피니싱 이력, S-10). 없으면 지금 캐스크 하나뿐 */
   caskHistory?: CaskStint[];
+  /**
+   * [결정 #382] 아는 오염 원액 꼬리표 — 아는 오염 통(`Cask.contaminationKnown`)에서 꺼낸 원액에 붙고(피니싱 · 원액 빼기), 섞이면 LPA 몫(`share` 0 ~ 1)으로 묽어진다.
+   * **옮길 때 이미 알던 오염만** 붙인다(모르는 오염은 따라가지 않는다 — #310 · I1 / I2). 표시 문턱은 `taint.ts TAINT_SHOW_SHARE`. 판정(12년 적격 · 후보 · 병입)은 그대로(#365 · #382 — 경고만).
+   * 선택 필드 — 없으면 꼬리표 없음(버전 올림 없음 #187)
+   */
+  knownTaint?: { kind: 'tca' | 'mold'; share: number };
   sourced: boolean;
   /** 누적 원가(원/LPA) — 원재료·에너지·매입가 */
   costPerLPA: number;
@@ -336,6 +344,13 @@ export interface Product {
   traditional?: boolean;
   /** 피니싱 캐스크 종류 — 라벨 "○○ 캐스크 피니시" (PRD §5.2). 없으면 피니싱 안 함. 병입 규칙은 PROD, 라벨의 판매 효과(럭셔리 라벨 항·매니아 선호, §11.2)는 MKT (v14) */
   finish?: CaskTypeId;
+  /**
+   * [결정 #362] 피니시 구간의 개월 — 병입 때 섞은 원액들의 마지막 통 구간 가운데 **가장 짧은 값**(보충하면 기존 값과 보충분 중 짧은 쪽). 가중 평균이 아니다:
+   * 표기 `finish`가 "섞은 원액이 모두 같은 종류로 피니싱됐을 때만" 남는 것과 같은 보수 규칙이라, 3개월 미만 원액이 섞이면 표기 효과(#270 A: 3개월↑이면 매력도 · 기대가 ×1.08)를 받지 않는다.
+   * v16 규칙 묶음 판의 병입만 쓴다(옛 판 · 옛 제품은 필드가 없어 효과 없음 — #362 "v16만").
+   * 쓰는 쪽은 PROD 병입(blending.ts) · 읽는 쪽은 MKT. 선택 필드 — 없으면 피니시 효과 없음(옛 제품 · F5d 전 제품 그대로, 버전 올림 없음 #187)
+   */
+  finishMonths?: number;
   /** 섞은 원액의 통 구성 — 마지막에 담겨 있던 통 종류별 알코올(LPA) 비중, 큰 순. 탱크 원액은 빠진다. 없으면 기록 전 제품(v15 이전)이거나 캐스크 원액이 없다. 표시용(동작 없음, #176) */
   caskMix?: { typeId: CaskTypeId; share: number }[];
   /**
@@ -1015,6 +1030,11 @@ export interface HistorySlice {
   reports: MonthReport[];
   /** 연 요약 (오래된 기간의 장기 차트용) */
   years: YearSummary[];
+  /**
+   * 턴 사이 행동이 다음 결산에 남길 메모 (9차 판 — 손 병입으로 핸드필 통이 비어도 결산 메모가 없어 소식 창이 몰랐다). 행동은 `queueReportNote`로 넣고,
+   * 다음 틱이 그달 결산 `notes` 맨 앞으로 옮기고 지운다(현금의 `finance.pendingCash`와 같은 길). 선택 필드 — 없으면 빈 것(버전 올림 없음 #187)
+   */
+  pendingNotes?: string[];
 }
 /** 진출한 수출 시장 (#95) */
 /** 수출 시장 (#95, 확장 #100) */

@@ -141,7 +141,7 @@ export function hexDistance(a: Hex, b: Hex, weights: Partial<Record<HexAxis, num
 }
 
 /** 일치 점수 0~100 = 100·exp(−½(d/허용)²) */
-export function matchScore(hex: Hex, target: BlendTarget): number {
+export function matchScore(hex: Hex, target: Pick<BlendTarget, 'hex' | 'weights' | 'tolerance'> & Partial<BlendTarget>): number {
   const d = hexDistance(hex, target.hex, target.weights);
   return Math.round(100 * Math.exp(-0.5 * (d / target.tolerance) ** 2) * 10) / 10;
 }

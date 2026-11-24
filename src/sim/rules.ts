@@ -34,6 +34,17 @@ export const baseWageDrift = (s: Pick<GameState, 'rulesVersion' | 'scenario'>): 
 export const sampleNoiseId = (s: Pick<GameState, 'rulesVersion' | 'scenario'>, cask: { id: string; fills: number }): string =>
   rulesVersionOf(s) === 'v16' && !!s.scenario ? `${cask.id}#f${cask.fills}` : cask.id;
 
+/** [결정 #360] 숙성고에서 이 용량 이상인 통은 2칸 — 올로로소 셰리 벗 500L · 포트 파이프 650L(코냑 펀천 350L은 1칸) */
+export const BIG_CASK_LITERS = 400;
+/**
+ * 통 하나가 차지하는 숙성고 칸 ([결정 #360]) — **v16 캠페인(시나리오가 있는 v16 판)이고 용량 ≥ 400L면 2칸**, 그 밖(옛 판 `legacy-v15` · 샌드박스)은 1칸 그대로.
+ * 칸 셈은 모두 이 함수와 `util.ts slotsUsed`를 쓴다(빈 통 포함 — 지금처럼 숙성고에 놓인 통은 비어도 자리를 차지한다). 넘침 처리 `[결정 #363]` · cask-types.md §9.1
+ */
+export const caskSlots = (s: Pick<GameState, 'rulesVersion' | 'scenario'>, sizeL: number): number =>
+  rulesVersionOf(s) === 'v16' && !!s.scenario && sizeL >= BIG_CASK_LITERS ? 2 : 1;
+/** 이 판이 칸을 통과 다르게 세는가(v16 캠페인) — 화면 문구가 "통" 대신 "칸"을 쓸 때 */
+export const slotsDifferFromCasks = (s: Pick<GameState, 'rulesVersion' | 'scenario'>): boolean => rulesVersionOf(s) === 'v16' && !!s.scenario;
+
 // ───────────── 난이도 읽기 (F6, [결정 #314] — architecture §10.10 [제안 P-ARCH-58]) ─────────────
 /** 판의 난이도 스냅샷 — 없으면(옛 판·샌드박스) Normal */
 export const difficultyOf = (s: Pick<GameState, 'difficulty'>): DifficultyConfig => s.difficulty ?? DIFFICULTY_NORMAL;

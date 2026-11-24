@@ -42,7 +42,7 @@ export function delegateDefaultIds(s: GameState, caskIds: string[]): { ids: stri
   return { ids: caskIds.filter((id) => !prot.has(id)), excluded: caskIds.filter((id) => prot.has(id)) };
 }
 
-export function delegateCheck(s: GameState, target: BlendTarget, caskIds: string[], bottles: number, opts: BottleOptions): DelegateCheck | { error: string } {
+export function delegateCheck(s: GameState, target: Pick<BlendTarget, 'id' | 'hex' | 'weights'>, caskIds: string[], bottles: number, opts: BottleOptions): DelegateCheck | { error: string } {
   const plan = delegatePlan(s, target, caskIds, bottles, opts);
   if ('error' in plan) return plan;
   const p = previewBlend(s, plan.components, opts);
