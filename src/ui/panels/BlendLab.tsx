@@ -4,6 +4,7 @@ import { knownProductQuality,
   blendTargets, blenderOf, previewBlend, HEX_AXES, HEX_LABEL, knownReads, LAB, matchScore, mixHex, optimizeShares, reachableEnvelope, SAMPLING, samplingCapacity,
   type BlendComponent, type BlendTarget, type Cask, type Hex,
 } from '../../sim';
+import { CASKS } from '../../sim/content/catalog';
 import { useGame } from '../../store/game';
 import { delegateCheck, delegateDefaultIds } from '../../sim/delegateCheck';
 import { flagshipImpact } from '../alerts';
@@ -44,7 +45,7 @@ function cohortsOf(s: ReturnType<typeof useGame.getState>['state']): Cohort[] {
       rareKnown: key.startsWith('rare:'),
       samples: Math.min(...casks.map((c) => c.samples ?? 0)),
       lab: casks.every((c) => c.labAnalyzed),
-      label: `${first.contents!.name.split(' → ')[0]} · ${first.typeId}${casks.length > 1 ? ` × ${casks.length}` : ` (${first.id})`}`,
+      label: `${first.contents!.name.split(' → ')[0]} · ${CASKS[first.typeId]?.nameKo ?? first.typeId}${casks.length > 1 ? ` × ${casks.length}` : ` (${first.id})`}`, // 통 이름은 한국어(영문 id가 보이던 것 고침)
     };
   }).sort((a, b) => b.oakMonths - a.oakMonths);
 }
@@ -208,11 +209,11 @@ export function BlendLab() {
 
       <Card title={`숙성 원액 코호트 — 샘플링 여력 ${Math.max(0, capLeft)}/${samplingCapacity(s)}회 (회당 ${won(SAMPLING.cost)}·${SAMPLING.lossL}L) · 실험실 분석 ${won(LAB.cost)}/캐스크`}>
         {!cohorts.length ? <Empty>몰트·그레인 원액이 든 캐스크가 없습니다</Empty> : (
-          <Table head={['코호트', '숙성', 'LPA', '샘플 기록 육각형 (피트·과일·플로럴·스파이시·우디·스위트)', '오차', '정보', '비율(%)', '']}>
+          <Table head={['코호트', '숙성', 'LPA', <>샘플 기록 육각형<div className="text-[10px] font-normal">피트·과일·플로럴·스파이시·우디·스위트</div></>, '오차', '정보', '비율(%)', '']}>
             {cohorts.map((c) => (
               <tr key={c.key}>
                 <Td className="text-xs">{c.label} {c.rareKnown && <Badge tone="good">레어</Badge>}</Td>
-                <Td right>{months(c.oakMonths)}</Td>
+                <Td right className="whitespace-nowrap">{months(c.oakMonths)}</Td>
                 <Td right>{num(c.lpa)}</Td>
                 <Td className="text-xs tabular-nums">{c.read ? hexRow(c.read) : <span className="text-stone-500">샘플 없음 — 모른다</span>}</Td>
                 <Td right>{c.read ? `±${num(c.sigma, 1)}` : '—'}</Td>
