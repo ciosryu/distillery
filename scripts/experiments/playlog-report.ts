@@ -12,6 +12,7 @@ import { difficultyOf, rulesVersionOf } from '../../src/sim/rules';
 import { reserveCaskIds } from '../../src/sim/tags';
 import { finishLabel, finishOf } from '../../src/sim/maturation';
 import { stalestCasks } from '../../src/sim/blendTable';
+import { tankLotWaitMonths } from '../../src/sim/economics';
 
 /** 이름을 바꾼 이벤트의 옛 제목 → id — 옛 기록(6차 판 등)의 선택을 표에서 찾는다 */
 const OLD_EVENT_TITLES: Record<string, string> = { 'K-주류 수출 지원 사업 공모': 'export_support' }; // [결정 #335]
@@ -292,6 +293,15 @@ function f5dFinishObserve(): void {
     const fills = T.reduce((n, t) => n + (t.kinds?.fillCasks ?? 0), 0);
     const firstAuto = T.find((t) => (t.kinds?.setAutoFill ?? 0) > 0);
     const autoNote = reports.find((r) => r.notes.some((n) => /^자동 통입 \d+통/.test(n)));
+    // N1 탱크 대기 (PM 2026-11-24 · 9차 arch.md ① [제안 P-ARCH-82] (다)): 통입 횟수 대신 "원액이 탱크에서 기다린 개월".
+    // 탱크 원액은 달마다 한 로트에 섞여 쌓여(createdMonth = 탱크 시작 달) 판 전체의 배치별 대기는 기록에 없다 → 두 값으로 어림한다:
+    // (가) 통입한 턴 사이 간격(행동 기록 — 몰아서 통입하면 길다) · (나) 지금 탱크의 FIFO 대기(`tankLotWaitMonths` — 할 일 「통입 대기 n개월째」와 같은 셈)
+    const fillMonths = T.filter((t) => (t.kinds?.fillCasks ?? 0) > 0).map((t) => t.month);
+    const gaps = fillMonths.slice(1).map((m, i) => m - fillMonths[i]!);
+    const gapHist = ([[1, 1], [2, 2], [3, 3], [4, 5], [6, Infinity]] as const).map(([a, b]) => `${b === Infinity ? `${a}개월+` : a === b ? `${a}개월` : `${a}~${b}개월`} ${gaps.filter((x) => x >= a && x <= b).length}`).join(' · ');
+    const tank = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced && l.volumeL >= 1);
+    const tankTxt = tank.length ? tank.map((l) => `${l.name.split(' · ')[0]} ${Math.round(l.volumeL)}L ${tankLotWaitMonths(s, l)}개월째`).join(' · ') : '비었음';
+    console.log(`- N1 탱크 대기 — 통입한 턴 ${fillMonths.length}개 · 사이 간격 평균 ${gaps.length ? (gaps.reduce((a, b) => a + b, 0) / gaps.length).toFixed(1) : '—'}개월 · 최장 ${gaps.length ? Math.max(...gaps) : '—'}개월 (${gapHist}) · 지금 탱크(FIFO 어림): ${tankTxt}`);
     console.log(`- N1 손 통입 ${fills}회(월당 ${(fills / Math.max(1, T.length)).toFixed(1)}회 · 기록된 턴 ${T.length}개) · 자동 통입 설정을 처음 바꾼 달 ${firstAuto ? `${firstAuto.month - 1}개월` : '없음'} · 결산에 "자동 통입 n통"이 처음 남은 달 ${autoNote ? `${autoNote.month}개월` : '없음(최근 120개월 결산 안)'} — 7차: 손 통입 405회 · 자동 통입 0회`);
   }
   const care = playlog?.turns.reduce<Record<string, number>>((m, t) => { for (const k of ['rechar', 'sellUsedCask', 'orderSeasoning']) m[k] = (m[k] ?? 0) + (t.kinds?.[k] ?? 0); return m; }, {});
