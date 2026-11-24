@@ -10,6 +10,9 @@
 // L6 [결정 #376]: 품평회 수상 이벤트 조건이 참 품질 72↑ — 수상 자체가 참 품질 신호(앞서 "의도된 공개 신호"로 제안했으나 #376이 커뮤니티 품질로 바꾸기로 정함). 300달 같은 시드로 「수상」 달 목록을 비교한다
 // L6′(MGT P-MGT-62 2026-11-24): 평론가 판정 문구의 품질 숫자(참값) — 판정 구간은 문턱 신호라 빼고 숫자만 시험한다. 오너 답(최소안 = 숫자만 뺌) 뒤 MGT 수리와 함께 it으로
 // L7 [결정 #366]: 피드 글의 상위 향 이름 · 방향은 **의도된 공개 신호**(참 향 그대로 — 시트러스 대 열대처럼 향 이름이 다른 두 판은 글이 달라도 된다 · 2026-11-24 MKT 재현). 결함 신호인 잡내 문구만 추정 경로(커뮤니티 품질)를 거친다 → 시험은 잡내 축만 다른 두 판
+// L8a · L8b (MKT 2026-11-24 · #388 — 수출 M1은 안 1 뒤 후보라 v16에서 잠겨 있다. 열 때 빠뜨리지 않게 목록에 둔다): 수입사 제안의 매입가 비율 `priceFactor`가 수출 가능 제품의
+// 참 품질 최댓값으로 정해지고(exportDeals.ts makeExportOffer — 제안 카드에 비율이 보인다), 참 품질 70↑ 제품이 있으면 제안 확률이 ×1.5다(refreshExportOffers — 제안 빈도가 문턱 신호).
+// 고치는 쪽은 MKT(수출을 여는 PR에서 `knownProductQuality(s, p).q`로). 잠금과 무관하게 함수를 직접 부른다
 // 지금 새는 길은 `it.fails`로 적어 둔다 — 고치면 이 시험이 "통과해 버려서" 실패하므로, 고친 PR이 `it.fails`를 `it`으로 바꾼다(목록이 줄어들기만 한다)
 import { describe, expect, it } from 'vitest';
 import { calendar, domesticDemands, knownState, knownView, newScenarioGame, priceOptions, type GameState, type Product } from '../sim';
@@ -18,6 +21,9 @@ import { retailPriceBasis } from '../sim/deals';
 import { stockoutSoon } from './alerts';
 import { applyEffects, runEvents } from '../sim/events';
 import { rngFor } from '../sim/rng';
+import { makeExportOffer, refreshExportOffers } from '../sim/exportDeals';
+import { EXPORT_MARKETS } from '../sim/content/exports';
+import { exportEligible } from '../sim/market';
 
 /** 위스키 제품 하나(아는 품질 60 ±8 · 리뷰 3)를 진열한 v16 캠페인 판 — 참 품질만 인자로 */
 function withProduct(trueQuality: number, flavor: Product['flavor'] = {}): { s: GameState; p: Product } {
@@ -88,5 +94,29 @@ describe('I2 — 같은 공개 정보 · 다른 참 품질이면 화면 읽기 �
     expect(say(65)).toContain('무난한 평가');
     expect(say(75)).toContain('무난한 평가');
     expect(say(75)).toEqual(say(65));
+  });
+  // L8: 두 판의 시장 · 수출 자격(숙성 규정)은 같다 — 참 품질만 다르다
+  const JP = EXPORT_MARKETS.JP;
+  it('L8 전제: 시험 제품은 일본 시장 수출 자격이 있다(자격이 없으면 아래 두 시험이 헛돈다)', () => {
+    expect(exportEligible(low.p, JP)).toBe(true);
+  });
+  it.fails('[누수 L8a — MKT 수출 열 때] 수입사 제안 매입가 비율 `makeExportOffer(...).priceFactor` — 참 품질 최댓값으로 정한다(exportDeals.ts 31)', () => {
+    const a = withProduct(55), b = withProduct(85);
+    const offer = (s: GameState) => makeExportOffer(s, 'JP', rngFor(s.seed, s.month, 'l8a')).priceFactor;
+    expect(offer(b.s)).toBe(offer(a.s));
+  });
+  it.fails('[누수 L8b — MKT 수출 열 때] 수입사 제안이 오는 달 `refreshExportOffers` — 참 품질 70↑ 제품이 있으면 확률 ×1.5(exportDeals.ts 56)', () => {
+    const months = (q: number) => {
+      const { s } = withProduct(q);
+      const out: number[] = [];
+      for (let m = 40; m < 340; m++) {
+        s.month = m;
+        s.commerce.exportOffers = [];
+        refreshExportOffers(s);
+        if (s.commerce.exportOffers.some((o) => o.marketId === 'JP')) out.push(m);
+      }
+      return out;
+    };
+    expect(months(75)).toEqual(months(65));
   });
 });

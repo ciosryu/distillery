@@ -151,8 +151,9 @@ const worstOrigin = (entries: readonly LedgerEntry[]): SpiritOrigin => entries.r
  * 구성 원액 원장의 적격 — 핸드필(#318, 병입 로트를 거치지 않음)·병입 로트(F3)·통(아래)이 모두 이 한 함수를 쓴다.
  * `minWood`는 지금 개월에 더해 본다(후보 판정의 지평 — 0이면 지금 적격)
  */
-export function ledgerEligibility(s: Pick<GameState, 'scenario' | 'siteId'>, entries: readonly LedgerEntry[], horizonMonths = 0): Omit<CaskEligibility, 'eligible'> & { eligible: boolean } {
-  const A = campaignMinOakMonths(s);
+export function ledgerEligibility(s: Pick<GameState, 'scenario' | 'siteId'>, entries: readonly LedgerEntry[], horizonMonths = 0, minWoodMonths?: number): Omit<CaskEligibility, 'eligible'> & { eligible: boolean } {
+  // [#388 ① G3] minWoodMonths — 15 · 18년 후반 목표(`lateGoals.ts`)가 같은 적격을 다른 연수로 본다. 없으면 캠페인 연수(지금 동작 그대로)
+  const A = minWoodMonths ?? campaignMinOakMonths(s);
   const reasons: string[] = [];
   if (!entries.length) return { eligible: false, woodMonths: 0, origin: 'unknown', reasons: ['원액 없음'] };
   const woodMonths = Math.min(...entries.map((e) => e.woodMonths));
@@ -166,9 +167,9 @@ export function ledgerEligibility(s: Pick<GameState, 'scenario' | 'siteId'>, ent
 }
 
 /** 통 하나의 승리 적격 — 지금 기준 (MGT·화면·판정 공용, #320) */
-export function caskEligibility(s: Pick<GameState, 'scenario' | 'siteId' | 'rulesVersion'>, cask: Cask): CaskEligibility {
+export function caskEligibility(s: Pick<GameState, 'scenario' | 'siteId' | 'rulesVersion'>, cask: Cask, minWoodMonths?: number): CaskEligibility {
   if (!cask.contents) return { eligible: false, woodMonths: 0, origin: 'unknown', reasons: ['빈 통'] };
-  const r = ledgerEligibility(s, ledgerOf(s, cask.contents));
+  const r = ledgerEligibility(s, ledgerOf(s, cask.contents), 0, minWoodMonths);
   if (cask.owner) { r.reasons.push('고객 소유 통(캐스크 오너십)'); r.eligible = false; }
   return r;
 }
