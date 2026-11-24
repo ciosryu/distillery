@@ -25,7 +25,7 @@ describe('F5a — 단계·중반 목표는 규칙 묶음별 (콘텐츠를 매달
 
   it('새 판(v16): y7_retail(대형 유통) · y11_specialist(핵심 전문가) · reserve_casks · 그레인 열림 · export_inquiry 잠김', () => {
     const s = v16();
-    expect(stagesOf(s).map((x) => x.id)).toEqual(['y5_market', 'y7_retail', 'y9_casks', 'y11_specialist']);
+    expect(stagesOf(s).map((x) => x.id)).toEqual(['y5_market', 'y5_finish', 'y7_retail', 'y9_casks', 'y11_specialist']);
     expect(midGoalsOf(s).map((g) => g.id)).toEqual(['aged3_sold', 'commission_done', 'reserve_casks', 'revenue_8']);
     expect(isLocked(s, 'kind:grain')).toBe(false);
     expect(isLocked(s, 'kind:gin')).toBe(true);
@@ -37,7 +37,7 @@ describe('F5a — 단계·중반 목표는 규칙 묶음별 (콘텐츠를 매달
   it('v16 84개월: 대형 유통(system:siteDeals·acceptRetail)이 열리고 수출은 끝까지 잠김 · 120개월: pickSpecialist만 열리고 hire·system:hr은 잠김', () => {
     let s = v16();
     s = jump(s, 84);
-    expect(s.scenario!.stagesDone).toEqual(['y5_market', 'y7_retail']);
+    expect(s.scenario!.stagesDone).toEqual(['y5_market', 'y5_finish', 'y7_retail']);
     expect(isLocked(s, 'system:siteDeals')).toBe(false);
     expect(isLocked(s, 'action:acceptRetail')).toBe(false);
     expect(isLocked(s, 'action:acceptOem')).toBe(true);
@@ -45,7 +45,7 @@ describe('F5a — 단계·중반 목표는 규칙 묶음별 (콘텐츠를 매달
     expect(isLocked(s, 'action:acceptExportOffer')).toBe(true);
     expect(s.history.reports.at(-1)!.notes.some((n) => n.includes('8년 차 — 대형 유통'))).toBe(true);
     s = jump(s, 120);
-    expect(s.scenario!.stagesDone).toEqual(['y5_market', 'y7_retail', 'y9_casks', 'y11_specialist']);
+    expect(s.scenario!.stagesDone).toEqual(['y5_market', 'y5_finish', 'y7_retail', 'y9_casks', 'y11_specialist']);
     expect(isLocked(s, 'action:pickSpecialist')).toBe(false);
     expect(isLocked(s, 'action:hire')).toBe(true);
     expect(isLocked(s, 'system:hr')).toBe(true);
@@ -118,5 +118,29 @@ describe('F5a — 입지는 고정(사실): 사업 계획서에 입지 선택이
       expect(s.siteId).toBeUndefined();
       expect(siteOf(s).basis).toBe('지역 기본 입지');
     }
+  });
+});
+
+describe('피니싱 단계 y5_finish ([결정 #345 ②] · P-ARCH-73)', () => {
+  it('진행 중인 v16 세이브(60개월이 이미 지나 y5_market이 끝난 판)도 다음 달 틱에 피니싱이 열린다 — 마이그레이션 없음', () => {
+    let s = v16();
+    s = jump(s, 60);
+    // 이 단계가 없던 빌드에서 만든 세이브처럼 — 잠금은 그대로, stagesDone에 y5_finish가 없다
+    s.scenario!.stagesDone = (s.scenario!.stagesDone ?? []).filter((x) => x !== 'y5_finish');
+    s.scenario!.locked = [...s.scenario!.locked, 'action:transferCask'];
+    expect(isLocked(s, 'action:transferCask')).toBe(true);
+    s = advanceMonth(s);
+    expect(isLocked(s, 'action:transferCask')).toBe(false);
+    expect(s.scenario!.stagesDone).toContain('y5_finish');
+    expect(s.history.reports.at(-1)!.notes.some((n) => n.includes('피니싱'))).toBe(true);
+  });
+  it('59개월까지는 잠겨 있다 · 옛 판(legacy-v15)은 끝까지 잠긴 채(단계 없음)', () => {
+    let s = v16();
+    s = jump(s, 59);
+    expect(isLocked(s, 'action:transferCask')).toBe(true);
+    let l = legacy();
+    l = jump(l, 61);
+    expect(stagesOf(l).some((x) => x.id === 'y5_finish')).toBe(false);
+    expect(isLocked(l, 'action:transferCask')).toBe(true);
   });
 });
