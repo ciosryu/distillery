@@ -12,6 +12,7 @@ import { undefendedDisasters } from '../sim/events';
 import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { exportShortfalls } from '../sim/market';
 import { retailBreakRemaining, retailCancellationCost } from '../sim/deals';
+import { overhangFactor } from '../sim/retail';
 import { ibAgedCaskCount } from '../sim/bulk';
 import { autoFillPreview } from '../sim/autoFill';
 import { autoRestockPlan, autoRestockSources, autoRestockSupported, guardedFlagshipCasks, productMonthlyPace } from '../sim/economics';
@@ -268,7 +269,7 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'sample'];
+export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'overhang', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'sample'];
 // 꼬리 4개(defense·whisky·soju·sample)는 info만 낸다 — warn·danger를 낼 수 있는 새 id는 그 앞에 둔다(warn이 info 뒤에 묻히지 않게, PM 대조 7차 완료: soju-glut)
 // 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
@@ -430,6 +431,16 @@ export function monthTodos(s: GameState): Todo[] {
   const lastRep = s.history.reports.at(-1);
   const shortNotes = (lastRep?.notes ?? []).filter((n) => /배치 생산 못 함|취수 허가량|증류기가 준비되지 않아/.test(n));
   if (shortNotes.length) out.push({ id: 'batch-short', level: 'warn', text: `지난달 생산 지시를 다 못 만들었다 — ${shortNotes.slice(0, 2).join(' · ')}${shortNotes.length > 2 ? ` 외 ${shortNotes.length - 2}건` : ''}`, action: '생산 지시', target: { anchor: 'mvp-orders' } });
+  // 재고 적체(9차 판 64개월 — 오크소주 · 뉴본 피티드가 20개월 치 넘게 쌓였는데 할 일에 신호가 없었다, PROD 제안 2026-11-24): 팔 재고가 판매의 6개월 치를 넘으면
+  // 국내 수요가 깎인다(`retail.ts overhangFactor`, 하한 ×0.6 — 판매 셈과 같은 함수). 홈 「돈 흐름」의 재고 과잉(overstock)은 주종 묶음 금액이라 "수요가 준다"는 보이지 않는다.
+  // 가장 많이 깎인 제품 하나 + "외 n개" 한 줄. 값은 재고 · 판매 추세(공개 정보)라 I2 누수가 아니다
+  {
+    const hit = s.commerce.products.filter((p) => !p.dutyFreeOnly && p.stockBottles > 0).map((p) => ({ p, f: overhangFactor(p, s.month), m: p.stockBottles / Math.max(1, p.salesEma ?? 0) })).filter((x) => x.f < 1).sort((a, b) => a.f - b.f || b.m - a.m || a.p.id.localeCompare(b.p.id)); // 하한(×0.6)에 여럿이면 더 많이 쌓인 제품
+    if (hit.length) {
+      const { p, f, m } = hit[0]!;
+      out.push({ id: 'overhang', level: 'warn', text: `「${p.name}」 재고 ${m.toFixed(1)}개월 치 — 수요 ×${f.toFixed(2)}(팔 재고가 6개월 치를 넘게 쌓이면 줄어든다)${hit.length > 1 ? ` 외 ${hit.length - 1}개 제품` : ''} · 값을 내리거나 보충 · 병입을 멈춘다`, action: '판매', target: { tab: 'sales' } });
+    }
+  }
   // A4(PROD 화면 메모): 빈 통이 곧 바닥난다 — 계산은 PROD `economics.ts caskRunway`(이번 달 가능 배치 · 탱크 적체 먼저 · 자동 통입 올림 반영)를 그대로 쓴다.
   // 자동 통입 줄(AutoFill)과 숫자가 같다. 쿠퍼리지 납기 + 1개월 안에 바닥나면 지금 주문해야 늦지 않는다 · 이미 모자라면(0개월) warn
   {
