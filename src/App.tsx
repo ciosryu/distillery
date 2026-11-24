@@ -10,6 +10,7 @@ import { BusinessPlan } from './ui/BusinessPlan';
 import { ackBuild, buildDrift, exportPlayFile, getPlaylog, recordBuild, startPlayClock } from './store/playlog';
 import { BUILD_ID } from './build';
 import { MvpHome } from './ui/MvpHome';
+import { useUnseenFacilities } from './ui/seenFacilities';
 import { CashBanner, SkipBanner } from './ui/AlertsView';
 import { Verdict } from './ui/Verdict';
 import { useUi } from './store/ui';
@@ -72,6 +73,7 @@ export default function App() {
   const rawTab = useUi((u) => u.tab);
   const setTab = useUi((u) => u.setTab);
   const tabs = visibleTabs(s);
+  const unseenFacilities = useUnseenFacilities(s); // #388 ① A3 — 증류소 탭 점
   const tab = tabs.some((x) => x.id === rawTab) ? rawTab : tabs[0]!.id;
   const [planOpen, setPlanOpen] = useState(startedFresh);
   const [newGameOpen, setNewGameOpen] = useState(false);
@@ -165,6 +167,7 @@ export default function App() {
           {tabs.map((t) => (
             <button key={t.id} onClick={() => setTab(t.id)} className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm ${tab === t.id ? 'border-amber-700 font-semibold text-amber-800 dark:border-amber-400 dark:text-amber-300' : 'border-transparent text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100'}`}>
               {t.label}
+              {t.id === 'home' && unseenFacilities.length > 0 && <span className="ml-1 inline-block h-2 w-2 rounded-full bg-amber-500 align-middle" title={`새로 열린 시설 ${unseenFacilities.length} — 증류소 탭 「설비」 묶음`} aria-label={`새로 열린 시설 ${unseenFacilities.length}`} />}
             </button>
           ))}
         </nav>
