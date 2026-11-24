@@ -27,6 +27,7 @@ import { addCost, scaleLedger, splitLedger } from './ledger';
 import { dropLots } from './lots';
 import { cooperageLeadMonths } from './prodKnobs';
 import { usesObservedValuation } from './valuation';
+import { rulesVersionOf } from './rules';
 
 // 플레이어 행동 — 생산·숙성·블렌딩 (PROD) (결정 #144 — 파일 쪼개기로 actions.ts에서 옮겨 왔다. 규칙 불변)
 // 행동을 더할 때: 아래 타입·처리기·현금 분류 세 곳만 고친다. 코어(actions.ts)는 이 파일의 타입을 통째로 합친다
@@ -220,7 +221,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const p = s.commerce.products.find((x) => x.id === a.productId);
     if (!p) return fail(prev, '제품이 없습니다');
     if (a.months == null) { delete p.autoRestock; return { state: s, message: `${p.name} 자동 납품 끔` }; }
-    if (!autoRestockSupported(p)) return fail(prev, '이 제품은 자동 납품을 쓸 수 없습니다 (소주·진·고량주·싱글 몰트·그레인 위스키만, 면세 한정판 제외)');
+    if (!autoRestockSupported(p, s)) return fail(prev, `이 제품은 자동 납품을 쓸 수 없습니다 (소주·진·고량주·싱글 몰트·그레인 위스키${rulesVersionOf(s) !== 'legacy-v15' ? '·뉴본(통에서 쉬지 않은 몰트 스피릿)' : ''}만, 면세 한정판 제외)`);
     if (!(AUTO_RESTOCK_MONTHS as readonly number[]).includes(a.months)) return fail(prev, '유지 개월분은 1·2·3·6 중에서 고른다');
     p.autoRestock = a.months;
     // 쓸 통의 최소 숙성 (#267) — 위스키만, 법정 숙성 이상. 표기보다 높게도 된다(#297 ②). null/표기와 같으면 기본(표기)
