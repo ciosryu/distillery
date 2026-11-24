@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { parsePlayFile } from '../store/playlog';
-import { autoRestockSourceLine, autoRestockTitle } from './autoRestockLine';
+import { autoRestockSourceLine, autoRestockSourceOptions, autoRestockTitle, sourceKey } from './autoRestockLine';
+import { applyAction } from '../sim';
 import { autoRestockSupported, newmakeTankUseL } from '../sim/economics';
 import { knownState, knownView, type GameState } from '../sim';
 
@@ -34,8 +35,8 @@ describe('#369 옹기 · 오크에서 쉰 소주 — 같은 용기 · 제품 개
     const s = m133();
     const l = line(s, '김포 옹기소주');
     expect(l.warn).toBe(true);
-    expect(l.text).toBe('이 제품은 탱크 원액으로 채운다 — 병입 · 보충 때 탱크 원액이 섞여 쉰 개월이 0이 됐다. 옹기에서 쉰 원액으로만 병입한 제품이어야 옹기에서 채운다');
-    expect(line(s, '김포 오크소주').text).toContain('오크 통에서 쉰 원액으로만 병입한 제품이어야 오크 통에서 채운다');
+    expect(l.text).toBe('이 제품은 지금 규칙으로 탱크 원액으로 채운다 — 병입 · 보충 때 탱크 원액이 섞여 쉰 개월이 0이 됐다. 옹기로 채우려면 「채울 원액」에서 옹기를 고른다');
+    expect(line(s, '김포 오크소주').text).toContain('오크 통으로 채우려면 「채울 원액」에서 오크 통을 고른다');
     expect(autoRestockTitle(s, knownState(s), byName(s, '김포 옹기소주'))).toContain('옹기에서 채우지 않는다');
   });
   it('통 구성 기록이 없는 탱크 소주(「김포 소주」)는 까닭 없이 탱크 줄', () => {
@@ -78,5 +79,46 @@ describe('#370 뉴본 — 같은 레시피 탱크 원액 · 한 달에 쓰는 �
     const s = m64();
     s.rulesVersion = 'legacy-v15';
     expect(autoRestockSupported(byName(s, '김포 뉴본 피티드'), s)).toBe(false);
+  });
+});
+
+describe('[결정 #392] 채울 원액 고르기 — 선택지와 안내 줄', () => {
+  const pick = (s: GameState, name: string, source: { vessel: 'tank' | 'onggi' | 'oak'; months: number } | null) => {
+    const p = byName(s, name);
+    const r = applyAction(s, { type: 'setAutoRestock', productId: p.id, months: 3, source });
+    return r.state;
+  };
+  it('133개월 「옹기소주」 선택지: 지금 규칙(탱크) · 탱크 · 옹기 n개월↑(통 수) — PROD 선택지 그대로에 원액 수', () => {
+    const s = m133();
+    const o = autoRestockSourceOptions(s, byName(s, '김포 옹기소주'));
+    expect(o[0]!.key).toBe('auto');
+    expect(o[0]!.text).toMatch(/^지금 규칙\(탱크\) — 탱크 원액 \d+개$/);
+    expect(o.map((x) => x.key)).toContain('onggi:2');
+    expect(o.find((x) => x.key === 'onggi:2')!.text).toBe('옹기 2개월↑ — 통 없음'); // 옹기 12개가 모두 비었다(PROD #994 사실)
+  });
+  it('「옹기 2개월↑」을 고르면 안내 줄이 그 값을 따른다 — 통이 없으면 warn · 탱크로 대신하지 않는다', () => {
+    const s = pick(m133(), '김포 옹기소주', { vessel: 'onggi', months: 2 });
+    const l = line(s, '김포 옹기소주');
+    expect(l.warn).toBe(true);
+    expect(l.text).toBe('옹기에서 2개월 이상 쉰 같은 레시피 통이 없어 보충하지 않는다 — 탱크 원액으로 대신하지 않는다');
+    expect(sourceKey(byName(s, '김포 옹기소주').autoRestockSource)).toBe('onggi:2');
+  });
+  it('「탱크」를 직접 고르면 까닭 warn을 띄우지 않는다(플레이어가 고른 값)', () => {
+    const s = pick(m133(), '김포 옹기소주', { vessel: 'tank', months: 0 });
+    const l = line(s, '김포 옹기소주');
+    expect(l.warn).toBe(false);
+    expect(l.text).toBe('같은 레시피의 탱크 원액으로 채운다');
+  });
+  it('64개월 「옹기소주」에 「옹기 2개월↑」: 맞는 통이 있으면 통 수 · 병 수', () => {
+    const s = pick(m64(), '김포 옹기소주', { vessel: 'onggi', months: 2 });
+    expect(line(s, '김포 옹기소주').text).toMatch(/^옹기에서 2개월 이상 쉰 같은 레시피 통으로 채운다 — 맞는 통 \d+개 · 약 [\d,]+병$/);
+  });
+  it('위스키 · 뉴본 · 옛 판은 고르기가 없다', () => {
+    const s = m64();
+    expect(autoRestockSourceOptions(s, byName(s, '김포 뉴본 피티드'))).toEqual([]);
+    const w = s.commerce.products.find((p) => p.category === 'whisky');
+    if (w) expect(autoRestockSourceOptions(s, w)).toEqual([]);
+    s.rulesVersion = 'legacy-v15';
+    expect(autoRestockSourceOptions(s, byName(s, '김포 옹기소주'))).toEqual([]);
   });
 });
