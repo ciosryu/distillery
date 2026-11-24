@@ -28,10 +28,10 @@ describe('PROD 연동 할 일 — 7차 완료 세이브', () => {
     for (const info of ['defense', 'whisky', 'soju', 'sample']) if (ids.includes(info)) expect(ids.indexOf('soju-glut')).toBeLessThan(ids.indexOf(info));
   });
   it('TODO_ORDER 꼬리는 info만 내는 id — warn·danger가 info 뒤에 묻히지 않는다', () => {
-    expect(TODO_ORDER.slice(-4)).toEqual(['defense', 'whisky', 'soju', 'sample']);
+    expect(TODO_ORDER.slice(-5)).toEqual(['defense', 'whisky', 'soju', 'idle-cash', 'sample']); // #385 idle-cash도 info만
   });
   it('7차 완료 세이브: warn·danger 줄이 info 꼬리(방재·위스키·소주·샘플)보다 모두 위', () => {
-    const tail = new Set(['defense', 'whisky', 'soju', 'sample']);
+    const tail = new Set(['defense', 'whisky', 'soju', 'idle-cash', 'sample']);
     const rows = monthTodos(load(P7END));
     const firstTail = rows.findIndex((r) => tail.has(r.id));
     expect(firstTail).toBeGreaterThan(-1);
