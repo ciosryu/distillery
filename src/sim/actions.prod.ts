@@ -27,6 +27,7 @@ import { addCost, scaleLedger, splitLedger } from './ledger';
 import { dropLots } from './lots';
 import { cooperageLeadMonths } from './prodKnobs';
 import { usesObservedValuation } from './valuation';
+import { rulesVersionOf } from './rules';
 import { taintOnExtract } from './taint'; // [결정 #382] 꼬리표 잇기(PROD) — 정의는 코어 taint.ts
 import { taintField } from './production';
 /** [결정 #382] 꺼낼 때 꼬리표 — 판 가드는 코어 `taintOnExtract(s, cask)`가 한다(옛 판은 새 꼬리표를 만들지 않음) */
@@ -225,7 +226,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const p = s.commerce.products.find((x) => x.id === a.productId);
     if (!p) return fail(prev, '제품이 없습니다');
     if (a.months == null) { delete p.autoRestock; return { state: s, message: `${p.name} 자동 납품 끔` }; }
-    if (!autoRestockSupported(p)) return fail(prev, '이 제품은 자동 납품을 쓸 수 없습니다 (소주·진·고량주·싱글 몰트·그레인 위스키만, 면세 한정판 제외)');
+    if (!autoRestockSupported(p, s)) return fail(prev, `이 제품은 자동 납품을 쓸 수 없습니다 (소주·진·고량주·싱글 몰트·그레인 위스키${rulesVersionOf(s) !== 'legacy-v15' ? '·뉴본(통에서 쉬지 않은 몰트 스피릿)' : ''}만, 면세 한정판 제외)`);
     if (!(AUTO_RESTOCK_MONTHS as readonly number[]).includes(a.months)) return fail(prev, '유지 개월분은 1·2·3·6 중에서 고른다');
     p.autoRestock = a.months;
     // 쓸 통의 최소 숙성 (#267) — 위스키만, 법정 숙성 이상. 표기보다 높게도 된다(#297 ②). null/표기와 같으면 기본(표기)
