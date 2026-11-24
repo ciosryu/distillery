@@ -1,4 +1,5 @@
 import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/catalog';
+import { rulesVersionOf } from './rules'; // #362 finishMonths는 v16만
 import { bottledQualityKnown, hidesProductQuality, mergeQualityKnown, restockPrior } from './productView'; // F5d 아는 품질(코어)
 import { lotQuality } from './bulk'; // F5d 병입 보정량 — 샘플 기록과 같은 원액 품질 식
 import type { PackagingChoice } from './content/packaging';
@@ -605,7 +606,8 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     lastMonthSold: 0,
     totalSold: 0,
     ...(p.localIngredient ? { localIngredient: true } : {}),
-    ...(p.finish ? { finish: p.finish, ...(p.finishMonths != null ? { finishMonths: p.finishMonths } : {}) } : {}),
+    // [결정 #362] 피니시 개월은 v16 판에서만 남긴다 — MKT 표기 효과가 필드 유무로 "v16만"을 건다(ARCH 2026-11-24). 옛 판은 바이트 동일
+    ...(p.finish ? { finish: p.finish, ...(p.finishMonths != null && rulesVersionOf(s) !== 'legacy-v15' ? { finishMonths: p.finishMonths } : {}) } : {}),
     ...(caskMix.length ? { caskMix } : {}),
     ...(caskMonthsMix?.length ? { caskMonthsMix } : {}),
     ...(p.peatShare > 0 ? { peatShare: p.peatShare } : {}),

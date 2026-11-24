@@ -58,6 +58,14 @@ describe('병입 때 피니시 개월 (#362)', () => {
     expect(p.finish).toBe('wine_barrique');
     expect(p.finishMonths).toBe(6);
   });
+  it('옛 판(legacy-v15)은 피니시 개월을 남기지 않는다 — #362 표기 효과는 v16만(필드 유무로 건다)', () => {
+    const s = newGame({ seed: 3, startingCash: 50_000_000_000 });
+    s.rulesVersion = 'legacy-v15';
+    const a = finished(s, 6);
+    const p = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id: a.id, liters: 150 }], options: opts }).state.commerce.products.at(-1)!;
+    expect(p.finish).toBe('wine_barrique');
+    expect(p.finishMonths).toBeUndefined();
+  });
   it('피니시가 없으면 개월도 없다', () => {
     const s = newGame({ seed: 3, startingCash: 50_000_000_000 });
     const c = emptyCaskOf(s, 'ex_bourbon_barrel');
