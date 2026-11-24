@@ -1,4 +1,5 @@
-import type { Cask, SpiritLot } from './types';
+import type { Cask, GameState, SpiritLot } from './types';
+import { usesObservedValuation } from './valuation';
 
 // ───────────── [결정 #382] 아는 오염 원액 꼬리표 (코어 잎 — 쓰는 곳: PROD 꺼냄 · 합치기, 읽는 곳: 화면) ─────────────
 // 아는 오염은 통에만 붙어(`contaminationKnown`) 원액을 옮기면 사라졌다(9차 K11 → K675). 꼬리표는 원액을 따라가며 섞이면 묽어진다.
@@ -14,9 +15,11 @@ export const taintShown = (lot: Pick<SpiritLot, 'knownTaint'> | null | undefined
 
 /**
  * 통에서 원액을 꺼낼 때(피니싱 `transferCask` · 원액 빼기 `unfillCask`) 원액이 가질 꼬리표 — 통이 **아는** 오염이면 그 종류로 몫 1(통 안 원액 전부),
- * 아니면 원액이 이미 가진 꼬리표 그대로(모르는 오염은 따라가지 않는다)
+ * 아니면 원액이 이미 가진 꼬리표 그대로(모르는 오염은 따라가지 않는다).
+ * **v16 판만**(#382 "옛 판 그대로" — `usesObservedValuation`): 옛 판(legacy-v15)은 새 꼬리표를 만들지 않는다. 판 가드를 여기 하나에 둬 부르는 곳이 늘어도 같은 규칙이다
  */
-export function taintOnExtract(cask: Pick<Cask, 'contamination' | 'contaminationKnown' | 'contents'>): SpiritLot['knownTaint'] {
+export function taintOnExtract(s: Pick<GameState, 'rulesVersion'>, cask: Pick<Cask, 'contamination' | 'contaminationKnown' | 'contents'>): SpiritLot['knownTaint'] {
+  if (!usesObservedValuation(s)) return cask.contents?.knownTaint;
   if (cask.contaminationKnown && cask.contamination) return { kind: cask.contamination, share: 1 };
   return cask.contents?.knownTaint;
 }
