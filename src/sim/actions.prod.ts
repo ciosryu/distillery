@@ -21,7 +21,7 @@ import { equipmentCost } from './sites';
 import { applyWaterPermit } from './waterPermit';
 import { HANDFILL, handfillBlocker } from './handfill';
 import type { AutoFillSettings, AutoSampleSettings, Cask, CaskTypeId, GameState, Product, Recipe } from './types';
-import { nid, staffOf, warehouseCapacity } from './util';
+import { nid, pendingOrderSlots, slotsFor, slotsUsed, staffOf, warehouseCapacity } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
 import { addCost, scaleLedger, splitLedger } from './ledger';
 import { dropLots } from './lots';
@@ -292,8 +292,9 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const def = CASKS[a.caskType];
     const qty = Math.max(1, Math.floor(a.qty));
     if (!def) return fail(prev, '알 수 없는 캐스크');
-    const pending = s.inventory.caskOrders.reduce((t, o) => t + o.qty, 0);
-    if (s.inventory.casks.length + pending + qty > warehouseCapacity(s)) return fail(prev, `숙성고 용량 부족 (${s.inventory.casks.length}+주문 ${pending}/${warehouseCapacity(s)})`);
+    // [결정 #360] 칸으로 센다(v16 캠페인 400L↑ 2칸 · 옛 판 · 샌드박스는 통 = 칸이라 그대로)
+    const pending = pendingOrderSlots(s);
+    if (slotsUsed(s) + pending + slotsFor(s, a.caskType, qty) > warehouseCapacity(s)) return fail(prev, `숙성고 용량 부족 (${slotsUsed(s)}+주문 ${pending}/${warehouseCapacity(s)})`);
     const unit = Math.round(regionalCaskPrice(s, def.id) * mod(s, `cask:${def.id}`));
     if (s.finance.cash < unit * qty) return fail(prev, '현금이 부족합니다');
     s.finance.cash -= unit * qty;
@@ -305,7 +306,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const def = CASKS[a.caskType];
     const qty = Math.max(1, Math.floor(a.qty));
     if (!def) return fail(prev, '알 수 없는 캐스크');
-    if (s.inventory.casks.length + qty > warehouseCapacity(s)) return fail(prev, `숙성고 용량 부족 (${s.inventory.casks.length}/${warehouseCapacity(s)})`);
+    if (slotsUsed(s) + slotsFor(s, a.caskType, qty) > warehouseCapacity(s)) return fail(prev, `숙성고 용량 부족 (${slotsUsed(s)}/${warehouseCapacity(s)})`); // #360 칸
     const unit = Math.round(regionalCaskPrice(s, def.id) * mod(s, `cask:${def.id}`) * CASK_MARKET.spotPremium);
     if (s.finance.cash < unit * qty) return fail(prev, '현금이 부족합니다');
     s.finance.cash -= unit * qty;
@@ -333,8 +334,8 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (!def) return fail(prev, '알 수 없는 캐스크');
     // #355: 계약은 버번 · 셰리 계열만(배럴 · 벗 · 혹스헤드) — 와인 · 포트는 그 업계에서 쓰던 통을 사 오는 것이라 계약이 없다
     if (!SEASONING_CONTRACT.includes(def.seasoningType)) return fail(prev, '시즈닝 계약은 버번·셰리 캐스크만 할 수 있습니다');
-    const pending = s.inventory.caskOrders.reduce((t, o) => t + o.qty, 0);
-    if (s.inventory.casks.length + pending + qty > warehouseCapacity(s)) return fail(prev, '숙성고 용량 부족');
+    const pending = pendingOrderSlots(s); // #360 칸
+    if (slotsUsed(s) + pending + slotsFor(s, a.caskType, qty) > warehouseCapacity(s)) return fail(prev, '숙성고 용량 부족');
     // 시즈닝 계약가는 시장가와 무관하게 계약 시점의 카탈로그가 기준 → 셰리통 파동 헤지
     const unit = Math.round(regionalCaskPrice(s, def.id) * CASK_MARKET.seasoningCostFactor);
     if (s.finance.cash < unit * qty) return fail(prev, '현금이 부족합니다');

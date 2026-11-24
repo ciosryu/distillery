@@ -1,15 +1,18 @@
 // 정보 비대칭 정적 불변식 I1 (architecture §11.2, [결정 #310 2단계] — F5b 1단계): 화면·자동화 코드가 숨은 값(H 등급)을 직접 읽지 않는다.
 // 소스 문자열 검사다(fileNames.test.ts처럼). 허용 목록 밖에서 숨은 값을 읽으면 실패한다 — 새 화면을 만들 때 이 테스트가 먼저 묻는다
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const ROOT = new URL('..', import.meta.url).pathname;
+// `URL.pathname`은 한글 · 공백을 퍼센트 인코딩하고 Windows에서는 `/C:/…`가 된다 → fileURLToPath (외부 검토 D2, 2026-11-24)
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
 function files(dir: string, out: string[] = []): string[] {
   for (const n of readdirSync(dir)) { const p = join(dir, n); if (statSync(p).isDirectory()) files(p, out); else if (/\.(ts|tsx)$/.test(n) && !/\.test\.tsx?$/.test(n)) out.push(p); }
   return out;
 }
-const rel = (p: string) => p.slice(ROOT.length);
+/** src 기준 상대 경로 — 구분자는 늘 `/`(허용 목록이 `ui/panels/…` 꼴이라 Windows의 `\\`를 맞춘다) */
+const rel = (p: string) => relative(ROOT, p).split(sep).join('/');
 const UI = files(join(ROOT, 'ui'));
 
 describe('I1 — 화면(src/ui)은 숨은 값을 직접 읽지 않는다', () => {

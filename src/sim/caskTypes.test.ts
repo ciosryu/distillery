@@ -46,17 +46,17 @@ describe('병입 때 피니시 개월 (#362)', () => {
     return c;
   };
   const opts = { name: 't', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' };
-  it('미리보기 · 제품에 피니시 종류와 개월이 남는다 — 섞은 원액 중 짧은 쪽', () => {
+  it('미리보기 · 제품에 피니시 종류와 개월이 남는다 — 원액 LPA 가중(코어 정의)', () => {
     const s = newGame({ seed: 3, startingCash: 50_000_000_000 });
     const a = finished(s, 6);
     const b = finished(s, 10);
     const comps = [a, b].map((c) => ({ source: 'cask' as const, id: c.id, liters: 150 }));
     const pre = previewBlend(s, comps, opts);
     expect(pre.finish).toBe('wine_barrique');
-    expect(pre.finishMonths).toBe(6);
+    expect(pre.finishMonths).toBe(8); // 같은 L · 도수의 6개월 · 10개월 → 8
     const p = applyAction(s, { type: 'bottle', components: comps, options: opts }).state.commerce.products.at(-1)!;
     expect(p.finish).toBe('wine_barrique');
-    expect(p.finishMonths).toBe(6);
+    expect(p.finishMonths).toBe(8);
   });
   it('옛 판(legacy-v15)은 피니시 개월을 남기지 않는다 — #362 표기 효과는 v16만(필드 유무로 건다)', () => {
     const s = newGame({ seed: 3, startingCash: 50_000_000_000 });
