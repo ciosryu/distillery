@@ -17,11 +17,12 @@ function withHandfill(volumeL: number) {
 }
 
 describe('핸드필 통을 병입에 쓰면', () => {
-  it('다 써서 비우면 "핸드필 통 …을 병입에 써서 비웠다" 메시지', () => {
+  it('다 써서 비우면 "핸드필 통 …이 병입으로 비었다" 메시지 — 소식 창 패턴(^핸드필 .*비었다)에 맞는 문구', () => {
     const { s, id } = withHandfill(150);
     const r = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id, liters: 150 }], options: opts });
     expect(r.error).toBeUndefined();
-    expect(r.message).toContain(`핸드필 통 ${id}을 병입에 써서 비웠다`);
+    expect(r.message).toContain(`핸드필 통 ${id}이 병입으로 비었다`);
+    expect(r.message!.split(' · ').some((m) => /^핸드필 .*비었다/.test(m))).toBe(true);
   });
   it('일부만 쓰면 메시지 없음(통에 원액이 남아 핸드필이 이어진다)', () => {
     const { s, id } = withHandfill(150);

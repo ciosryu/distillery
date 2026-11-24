@@ -425,7 +425,8 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (res.error) return fail(prev, res.error);
     // 핸드필 지정 통을 병입으로 비웠다 — emptyCask가 핸드필 표시를 조용히 지운다(9차 중간 기록: 지정 통 K306이 메모 없이 끝남, PM 2026-11-24) → 결과 메시지에 남긴다
     const hfEmptied = prev.inventory.casks.filter((c) => c.handfill && c.contents && !s.inventory.casks.find((x) => x.id === c.id)?.contents).map((c) => c.id);
-    const hfNote = hfEmptied.length ? `핸드필 통 ${hfEmptied.join(' · ')}을 병입에 써서 비웠다 — 핸드필 존에 다음 통을 지정하세요` : '';
+    // 문구는 "핸드필 "으로 시작하고 "비었다"를 포함한다 — 소식 창(TurnBrief `^핸드필 .*비었다`)이 결산 메모로 옮겨지면 그달에 줍는다(ARCH P-ARCH-83)
+    const hfNote = hfEmptied.length ? `핸드필 통 ${hfEmptied.join(' · ')}이 병입으로 비었다 — 다음 핸드필 통을 지정하세요` : '';
     // 기존 제품 재고 보충 (#186) — 몇 병을 더했고 품질이 어떻게 됐는지
     if (a.options.restockId) {
       const before = prev.commerce.products.find((x) => x.id === a.options.restockId)!;
