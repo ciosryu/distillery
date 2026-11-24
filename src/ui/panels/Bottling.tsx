@@ -5,7 +5,7 @@ import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './H
 import { BOTTLE_SIZES, CASKS, PACKAGING } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
-import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, restockMix, restockPrior, recipeIdsOf, batchQualityKnown } from '../../sim';
 import { agedWhitePerception } from '../../sim/content/market';
 import { regionOf } from '../../sim/content/regions';
 import { STANDARD_BOTTLE, stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
@@ -133,6 +133,13 @@ export function Bottling() {
   const known = useMemo(() => (hide ? knownReads(s) : null), [hide, s]);
   const est = hide && preview ? estimateBlend(s, components) : null;
   const masked = !!est?.fromCasks;
+  // 병입하면 제품에 남는 아는 품질(F5d — 모르는 몫은 사전값·큰 오차로 섞음). 첫 출고가·기준가 미리 보기가 병입 행동(executeBlend)과 같은 값을 쓰게 한다
+  const restockTarget = opts.restockId ? s.commerce.products.find((p) => p.id === opts.restockId) : undefined;
+  // [결정 #346] 같은 레시피 보충이면 이 제품의 추정을 잇는다 — 이을 추정(carried)이 있으면 샘플이 없어도 보충 줄이 "모른다" 대신 값을 보인다
+  const carried = hide && restockTarget ? restockPrior(s, restockTarget, recipeIdsOf(s, components)) : undefined;
+  // 이번 배치의 아는 품질 — 병입 행동(executeBlend)과 같은 한 함수(샘플 추정 + 병입 보정량 · #346 잇기). 첫 출고가 · 보충 줄이 함께 쓴다
+  const knownBatch = masked && preview?.ok ? batchQualityKnown(s, components, preview, restockTarget?.id) : undefined;
+  const knownEst = knownBatch?.est ?? null;
   // 면세 한정판 예상 판매 (결정 #87) — 이번 달 면세 수요(권장 출고가)로 완판 기한 안에 몇 병 팔릴지
   const dfForecast = (() => {
     if (masked || !preview?.ok || !preview.dfEdition || !preview.category || !preview.evaluation) return null;
@@ -152,7 +159,7 @@ export function Bottling() {
     if (!preview?.ok || !preview.category || preview.dfEdition) return null;
     const quality = masked ? (est?.quality ?? 50) : (preview.evaluation?.quality ?? 50);
     // 새 제품 첫 값 = 기준가 × 기본 정책 배수 n (B1-4) — 병입하면 이 값으로 나온다
-    const price = defaultPolicyPrice(masked ? (priceAtQuality(s, preview, opts, quality) ?? preview.suggestedPrice) : preview.suggestedPrice);
+    const price = defaultPolicyPrice(masked ? (priceAtQuality(s, preview, opts, knownEst ?? quality) ?? preview.suggestedPrice) : preview.suggestedPrice);
     const p: Product = {
       id: 'preview', name: '', category: preview.category, ageYears: preview.ageYears, oakMonths: preview.minOakMonths, restMonths: preview.minRestMonths, abv: preview.finalAbv, bottleMl: opts.bottleMl, chillFiltered: opts.chillFilter, packagingId: opts.packagingId,
       flavor: preview.flavor, quality, typicity: preview.evaluation?.typicity ?? 50, style: preview.evaluation?.style ?? null, sourcedShare: preview.sourcedShare,
@@ -224,18 +231,21 @@ export function Bottling() {
     : [];
   const abvValue = opts.targetAbv === 'cask' ? 'cask' : String(opts.targetAbv);
   // 재고 보충 대상 (#186) — 고른 원액과 같은 범주 제품을 앞에
-  const restockTarget = opts.restockId ? s.commerce.products.find((p) => p.id === opts.restockId) : undefined;
   // 보충 대상이 판매 목록에서 빠졌으면(보관 처리) 새 제품으로 돌아간다
   useEffect(() => { if (opts.restockId && !restockTarget) setOpts((o) => ({ ...o, restockId: undefined })); }, [opts.restockId, restockTarget]);
   const restockChoices = restockable(s).filter((p) => !preview?.category || p.category === preview.category);
   // 캐스크 스트렝스 제품은 도수를 맞추지 않고 "캐스크 스트렝스"로 병입한다 (통마다 도수가 다르다)
   const pickRestock = (p: Product) => setOpts({ ...opts, packaging: p.packaging, restockId: p.id, name: '', bottleMl: p.bottleMl, targetAbv: isCaskStrength(p) ? 'cask' : p.abv, chillFilter: p.chillFiltered, packagingId: p.packagingId, dutyFreeOnly: false, targetId: undefined, line: undefined });
-  // 보충 뒤 품질 예상 — 남은 재고(병입한 제품이라 품질을 안다)와 새 병의 가중 평균. 시나리오 게임은 새 원액의 추정 품질(±오차)로
+  // 보충 뒤 품질 예상 — 남은 재고와 새 병의 가중 평균(코어 `restockMix` — 병입 행동의 합치기와 같은 가중, F5d PROD 요청). 시나리오 게임은 새 원액을 병입 때 추정
+  // (`bottledQualityKnown` — 기록 없는 몫은 사전값)으로, 남은 재고는 화면이 아는 품질(`knownProductQuality` — F5d 전 제품은 참값)로 섞는다
+  // 남은 재고를 숨길지는 판(시나리오 = hide)으로 가른다 — masked는 "이번 원액이 통 샘플 추정인가"라 탱크 원액 보충 때 참값이 샜다(PROD 검토)
+  const restockBefore = restockTarget ? (hide ? knownProductQuality(s, restockTarget) : { q: restockTarget.quality, sigma: 0 }) : null;
   const restockAfter = (() => {
-    if (!restockTarget || !preview?.ok || !preview.evaluation) return null;
-    const a = Math.max(0, restockTarget.stockBottles); const b = preview.bottles; const w = a + b > 0 ? b / (a + b) : 1;
-    const q = masked ? est?.quality ?? null : preview.evaluation.quality;
-    return { stock: a + b, w, quality: q == null ? null : restockTarget.quality + (q - restockTarget.quality) * w, sigma: masked ? (est?.sigma ?? 0) * w : 0 };
+    if (!restockTarget || !restockBefore || !preview?.ok || !preview.evaluation) return null;
+    // 병입 행동과 같은 한 함수(batchQualityKnown — 샘플 추정 + 병입 보정량 · #346 잇기). 샘플도 이을 추정도 없으면 "모른다"
+    const batch = masked ? (knownBatch && !(est?.quality == null && !carried) ? { q: knownBatch.est, sigma: knownBatch.sigma } : null) : { q: preview.evaluation.quality, sigma: 0 };
+    const m = restockMix(restockBefore, restockTarget.stockBottles, batch ?? { q: 0, sigma: 0 }, preview.bottles);
+    return { stock: m.stock, w: m.w, quality: batch ? m.q : null, sigma: hide ? m.sigma : 0 };
   })();
 
   return (
@@ -290,7 +300,7 @@ export function Bottling() {
           </div>
           {restockTarget ? (
             <div className="grid gap-1">
-              <Select label="보충할 제품" value={restockTarget.id} options={(restockChoices.some((p) => p.id === restockTarget.id) ? restockChoices : [restockTarget, ...restockChoices]).map((p) => ({ value: p.id, label: `${p.name} · ${p.bottleMl}ml ${Math.round(p.abv * 1000) / 10}% · 재고 ${num(p.stockBottles)}병 · 품질 ${p.quality} · ${monthLabel(s.startYear, p.createdMonth)} 출시` }))} onChange={(id) => { const t1 = s.commerce.products.find((p) => p.id === id); if (t1) pickRestock(t1); }} />
+              <Select label="보충할 제품" value={restockTarget.id} options={(restockChoices.some((p) => p.id === restockTarget.id) ? restockChoices : [restockTarget, ...restockChoices]).map((p) => ({ value: p.id, label: `${p.name} · ${p.bottleMl}ml ${Math.round(p.abv * 1000) / 10}% · 재고 ${num(p.stockBottles)}병 · 품질 ${(() => { const k = knownProductQuality(s, p); return k.public ? p.quality : `추정 ${num(k.q, 1)}${k.sigma >= 0.5 ? ` ±${num(k.sigma, 1)}` : ''}`; })()} · ${monthLabel(s.startYear, p.createdMonth)} 출시` }))} onChange={(id) => { const t1 = s.commerce.products.find((p) => p.id === id); if (t1) pickRestock(t1); }} />
               <p className="text-xs text-stone-500">병·도수·포장은 「{restockTarget.name}」과 같게 맞춘다: {restockTarget.bottleMl}ml · {isCaskStrength(restockTarget) ? `캐스크 스트렝스(지금 ${Math.round(restockTarget.abv * 1000) / 10}% — 통마다 달라 병 수로 평균)` : `${Math.round(restockTarget.abv * 1000) / 10}%`} · {restockTarget.chillFiltered ? '칠 필터링' : '논칠필터'} · {PACKAGING[restockTarget.packagingId]?.nameKo ?? restockTarget.packagingId}. 이름·출고가({won(restockTarget.price)})·판매 기록은 그대로, 품질·향·원가는 남은 재고와 새 병 수로 평균 낸다.</p>
             </div>
           ) : (
@@ -389,10 +399,10 @@ export function Bottling() {
               })()}
               {restockTarget && restockAfter && (
                 <p className="rounded-md bg-sky-50 px-2 py-1 text-xs text-sky-900 dark:bg-sky-950 dark:text-sky-100">
-                  보충 뒤 「{restockTarget.name}」: 재고 {num(restockTarget.stockBottles)} → <b>{num(restockAfter.stock)}병</b> · 품질 {restockTarget.quality} → <b>{restockAfter.quality == null ? '모른다(샘플 필요)' : `${num(restockAfter.quality, 1)}${restockAfter.sigma >= 0.5 ? ` ±${num(restockAfter.sigma, 1)}` : ''}`}</b> (새 병 비중 {pct(restockAfter.w, 0)}) · 출고가 {won(restockTarget.price)} 그대로
+                  보충 뒤 「{restockTarget.name}」: 재고 {num(restockTarget.stockBottles)} → <b>{num(restockAfter.stock)}병</b> · 품질 {num(restockBefore!.q, 1)}{restockBefore!.sigma >= 0.5 ? ` ±${num(restockBefore!.sigma, 1)}` : ''} → <b>{restockAfter.quality == null ? '모른다(샘플 필요)' : `${num(restockAfter.quality, 1)}${restockAfter.sigma >= 0.5 ? ` ±${num(restockAfter.sigma, 1)}` : ''}`}</b> (새 병 비중 {pct(restockAfter.w, 0)}) · 출고가 {won(restockTarget.price)} 그대로
                   {(() => {
                     // 출고가는 자동으로 안 바뀐다 — 새 배치가 더 비싸게 팔릴 술이면 알려 준다 (숙성 연수·품질이 오르면 권장가가 오른다)
-                    const base = masked ? (est?.quality != null ? priceAtQuality(s, preview, opts, est.quality) : null) : preview.suggestedPrice;
+                    const base = masked ? (knownEst != null ? priceAtQuality(s, preview, opts, knownEst) : null) : preview.suggestedPrice;
                     const sug = base != null ? defaultPolicyPrice(base) : null; // 기본 정책 가격(B1-4)과 비교
                     return sug != null && sug > restockTarget.price * 1.1
                       ? <span className="block font-medium">새 배치 {masked ? '예상' : '권장'} 출고가 ≈ {won(sug)} — 지금 출고가보다 높다. 보충 뒤 판매 화면에서 값을 올리세요{preview.ageYears != null && restockTarget.ageYears != null && preview.ageYears > restockTarget.ageYears ? ` (숙성 ${restockTarget.ageYears}년 → ${preview.ageYears}년)` : ''}</span>

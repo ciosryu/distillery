@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './HeritageReveal';
-import {
+import { knownProductQuality,
   blendTargets, blenderOf, previewBlend, HEX_AXES, HEX_LABEL, knownReads, LAB, matchScore, mixHex, optimizeShares, reachableEnvelope, SAMPLING, samplingCapacity,
   type BlendComponent, type BlendTarget, type Cask, type Hex,
 } from '../../sim';
@@ -109,6 +109,9 @@ export function BlendLab() {
   }, [cohorts, target]);
   const unknownCount = cohorts.length - knownCohorts.length;
   const lastBlend = [...s.commerce.products].reverse().find((p) => p.hex && p.createdMonth === s.month);
+  // 결정 #344: 품질을 가리는 판(F5d)에서는 이번 달 병입 결과도 병입 때 추정한 그림(qualityKnown.hex) — 참 육각형은 리뷰로 좁혀진다. 옛 판·F5d 전 제품은 참값(공개)
+  const lastKnown = lastBlend ? knownProductQuality(s, lastBlend) : null;
+  const lastHex = lastKnown ? lastKnown.hex ?? undefined : undefined;
 
   // 비율(알코올 기준) → 캐스크별 사용량(L). 코호트 안에서는 원액 양에 비례해 나눈다
   const components: BlendComponent[] = (() => {
@@ -140,7 +143,7 @@ export function BlendLab() {
       {reveal && <HeritageReveal data={reveal} onClose={() => setReveal(null)} />}
       <Card title="블렌딩 테이블 — The Art of Blending" actions={<span className="text-xs text-stone-500">{blender ? `마스터 블렌더 ${blender.name} · Lv.${blender.level} · 읽기 ${num(blender.nose)} · 감정력 ${blender.appraisal}` : '마스터 블렌더 없음 — 대표가 직접 읽는다(오차 큼). 직원 탭에서 채용'}</span>}>
         <div className="flex flex-wrap items-start gap-4">
-          <HexRadar target={target.hex} predicted={predicted} band={band} envelope={envelope} actual={lastBlend?.hex} />
+          <HexRadar target={target.hex} predicted={predicted} band={band} envelope={envelope} actual={lastHex} />
           <div className="grid min-w-64 flex-1 gap-2 text-sm">
             <div className="flex flex-wrap gap-1">
               {targets.map((t) => (
@@ -155,7 +158,7 @@ export function BlendLab() {
               <div>예상 일치 <b className="tabular-nums">{predicted ? `${matchScore(predicted, target)}점` : '—'}</b> {band != null && <span className="text-xs text-stone-500">(예상 오차 ±{num(band, 1)})</span>}</div>
               <div>이 재고의 최고 점수(블렌더 추정) <b className="tabular-nums">{best ? `${best.score}점` : '—'}</b></div>
             </div>
-            <p className="text-xs text-stone-500">빨간 점선 = 목표 · 주황 = 예상(띠 = 오차) · 파란 점선 = 샘플 기록으로 닿는 축별 최대 · 초록 = 이번 달 병입 결과(공개). 실제 결과는 결정론이고, 틀리는 건 블렌더가 읽은 값과 <b>샘플 뒤에 숙성이 바꾼 만큼</b>이다 — 오래된 샘플은 다시 떠야 한다.</p>
+            <p className="text-xs text-stone-500">빨간 점선 = 목표 · 주황 = 예상(띠 = 오차) · 파란 점선 = 샘플 기록으로 닿는 축별 최대 · 초록 = 이번 달 병입 결과{lastKnown && !lastKnown.public ? '(병입 때 추정 — 팔린 뒤 리뷰로 좁혀진다)' : '(공개)'}. 실제 결과는 결정론이고, 틀리는 건 블렌더가 읽은 값과 <b>샘플 뒤에 숙성이 바꾼 만큼</b>이다 — 오래된 샘플은 다시 떠야 한다.</p>
             {unknownCount > 0 && <p className="text-xs text-amber-700 dark:text-amber-400">샘플 기록이 없는 코호트 {unknownCount}개는 비율을 줄 수 없고 위임에서도 빠진다 — 아래에서 샘플을 뜨세요.</p>}
             <div className="flex flex-wrap items-end gap-2">
               <NumberField label="병 수" value={bottles} min={50} max={50_000} step={50} onCommit={setBottles} />

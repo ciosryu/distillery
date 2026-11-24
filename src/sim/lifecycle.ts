@@ -10,7 +10,7 @@ export const ARCHIVE_AFTER_MONTHS = 3;
 
 /** 제품 한 개를 아카이브 이력으로 옮긴다 (향미 객체 없이 이력만) */
 export function toArchiveEntry(p: Product): ProductArchiveEntry {
-  return { id: p.id, name: p.name, category: p.category, createdMonth: p.createdMonth, lastMonthSold: p.lastMonthSold, totalSold: p.totalSold, quality: p.quality, price: p.price };
+  return { id: p.id, name: p.name, category: p.category, createdMonth: p.createdMonth, lastMonthSold: p.lastMonthSold, totalSold: p.totalSold, quality: p.quality, ...(p.qualityKnown ? { qualityKnown: p.qualityKnown } : {}), price: p.price };
 }
 
 /**

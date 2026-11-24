@@ -2,7 +2,7 @@
 // 자동 샘플(#201)은 그 달에 직접 뜬 통이 없으면 오래 안 뜬 통부터 여력만큼 뜬다. 여기서 고를 원액 묶음·최소 숙성·다시 뜨는 간격·월 최대 통 수를 좁힌다.
 // 자주 쓰는 조합은 프리셋 버튼 한 번으로. 아래에 이번 턴에 자동으로 뜰 통과 비용을 바로 보인다
 import { AUTO_SAMPLE_GROUP_LABEL, AUTO_SAMPLE_GROUPS, autoSamplePicks, knownReads, SAMPLING, samplingCapacity } from '../../sim/blendTable';
-import type { AutoSampleGroup, AutoSampleSettings } from '../../sim';
+import { hidesProductQuality, type AutoSampleGroup, type AutoSampleSettings } from '../../sim';
 import { useGame } from '../../store/game';
 import { won } from '../format';
 import { Button } from '../kit';
@@ -79,7 +79,10 @@ export function AutoSampleSettingsRow() {
       </div>
       <div className="mt-1 text-stone-600 dark:text-stone-400">
         {cfg.off
-          ? '자동 샘플을 끔 — 직접 고른 통만 뜬다.'
+          ? (hidesProductQuality(s)
+            // F5d(#338) 전후 표(MKT, 10시드): 자동 샘플을 끄면 표준 규모 판정 달 순자산 17.7억 → 8.3억 — 병입할 때 품질을 몰라 권장가·자동 가격이 사전값으로 떨어진다
+            ? <span className="font-medium text-amber-800 dark:text-amber-300">⚠ 자동 샘플을 끔 — 직접 고른 통만 뜬다. 샘플이 없는 통으로 병입하면 그 제품의 품질을 모르게 되어(사전값 ±15) 권장가·자동 가격이 크게 어긋날 수 있다. 끈다면 병입할 통은 직접 떠 두자</span>
+            : '자동 샘플을 끔 — 직접 고른 통만 뜬다.')
           : picks.length
             ? <>이번 턴에 직접 뜨지 않으면 자동으로: <b>{picks.map((c) => c.id).join(', ')}</b> ({picks.length}통 · {won(picks.length * SAMPLING.cost)})</>
             : '이번 턴 자동으로 뜰 통이 없다 — 조건에 맞는 통이 없거나(간격·숙성), 이번 달에 직접 떴거나, 현금이 모자라다.'}

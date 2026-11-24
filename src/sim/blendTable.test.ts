@@ -310,6 +310,9 @@ describe('병입 결과 공개 문구 (플레이 점검에서 발견)', () => {
   it('조사: 받침이 있으면 "이", 없으면 "가"', () => {
     const zero = { peat: 0, fruit: 0, floral: 0, spicy: 0, woody: 0, sweet: 0 };
     expect(revealNotes(zero, { ...zero, fruit: 20 })[0]).toMatch(/^과일이 예상보다 강했다/);
+    // 결정 #344: 품질을 가리는 판은 숫자 없이 방향만
+    expect(revealNotes(zero, { ...zero, fruit: 20 }, { numbers: false })[0]).toBe('과일이 예상보다 강했다');
+    expect(revealNotes(zero, { ...zero, fruit: 20 })[0]).toBe('과일이 예상보다 강했다 (+20)');
     expect(revealNotes(zero, { ...zero, floral: 20 })[0]).toMatch(/^플로럴이/);
     expect(revealNotes(zero, { ...zero, peat: 20 })[0]).toMatch(/^피트가/);
   });
