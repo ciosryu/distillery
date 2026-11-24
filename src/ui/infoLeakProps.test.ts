@@ -7,6 +7,7 @@
 // `highQualityProduct`(참 품질 72↑ 제품이 있을 때만 「품평회 수상」 `competition_medal`) — 이벤트가 뜨는 것 자체가 신호다. **[제안] 의도된 공개 신호로 본다**(수상은 바깥 평가가
 // 품질을 드러내는 일 — 리뷰와 같은 결) — MGT 확인 · 그 밖의 이벤트 효과(events.ts 210 · 225 — 가장 좋은 제품 품질로 효과 크기)는 MGT가 화면 문구에 값이 드러나는지 본다 ·
 // 결과 화면 연표의 플래그십 품질은 승리 뒤 공개(#344 HeritageReveal과 같은 자리)라 누수로 보지 않는다.
+// L6 [결정 #376]: 품평회 수상 이벤트 조건이 참 품질 72↑ — 수상 자체가 참 품질 신호(앞서 "의도된 공개 신호"로 제안했으나 #376이 커뮤니티 품질로 바꾸기로 정함). 300달 같은 시드로 「수상」 달 목록을 비교한다
 // L6′(MGT P-MGT-62 2026-11-24): 평론가 판정 문구의 품질 숫자(참값) — 판정 구간은 문턱 신호라 빼고 숫자만 시험한다. 오너 답(최소안 = 숫자만 뺌) 뒤 MGT 수리와 함께 it으로
 // L7 [결정 #366]: 피드 글의 상위 향 이름 · 방향은 **의도된 공개 신호**(참 향 그대로 — 시트러스 대 열대처럼 향 이름이 다른 두 판은 글이 달라도 된다 · 2026-11-24 MKT 재현). 결함 신호인 잡내 문구만 추정 경로(커뮤니티 품질)를 거친다 → 시험은 잡내 축만 다른 두 판
 // 지금 새는 길은 `it.fails`로 적어 둔다 — 고치면 이 시험이 "통과해 버려서" 실패하므로, 고친 PR이 `it.fails`를 `it`으로 바꾼다(목록이 줄어들기만 한다)
@@ -15,7 +16,7 @@ import { calendar, domesticDemands, knownState, knownView, newScenarioGame, pric
 import { feedFor } from '../sim/feed';
 import { retailPriceBasis } from '../sim/deals';
 import { stockoutSoon } from './alerts';
-import { applyEffects } from '../sim/events';
+import { applyEffects, runEvents } from '../sim/events';
 import { rngFor } from '../sim/rng';
 
 /** 위스키 제품 하나(아는 품질 60 ±8 · 리뷰 3)를 진열한 v16 캠페인 판 — 참 품질만 인자로 */
@@ -63,6 +64,22 @@ describe('I2 — 같은 공개 정보 · 다른 참 품질이면 화면 읽기 �
     const mk = (flavor: Product['flavor']) => { const { s } = withProduct(60, flavor); (s.history.reports.at(-1) as { reviews?: unknown }).reviews = [{ productId: 'P1', scores: [83, 84] }]; return s; };
     const base = { fresh_fruit: 30 };
     expect(feedFor(mk({ ...base, feinty: 20, harshness: 60 }), 3, 40).map((x) => x.text)).toEqual(feedFor(mk(base), 3, 40).map((x) => x.text));
+  });
+  it.fails('[누수 L6 — #376] 품평회 수상 이벤트 조건 `highQualityProduct`가 참 품질 72↑를 본다(events.ts 42) — 이벤트가 뜨는 것 자체가 참 품질 신호. #376(커뮤니티 품질로) MGT 수리 뒤 it', () => {
+    // 아는 품질 60 ±8은 같고 참 품질만 60 대 80 — 60 ~ 359개월째 300달을 같은 시드로 돌려 「수상」 기록이 뜬 달의 목록이 같아야 한다
+    const medals = (q: number) => {
+      const out: number[] = [];
+      for (let m = 60; m < 360; m++) {
+        const { s } = withProduct(q);
+        s.month = m;
+        const report = { month: m, events: [], notes: [], sales: [], expenses: {} } as never;
+        const before = s.events.log.length;
+        runEvents(s, report, calendar(s).monthOfYear);
+        if (s.events.log.slice(before).some((e) => e.title.includes('수상'))) out.push(m);
+      }
+      return out;
+    };
+    expect(medals(80)).toEqual(medals(60));
   });
   it.fails('[누수 L6′ — MGT P-MGT-62 2026-11-24] 평론가 판정 문구에 최고 참 품질 숫자 — `criticVerdict`가 「무난한 평가 — 품질 ${best}」(참 p.quality)를 이벤트 기록(이벤트 탭 · 소식 창)에 쓴다(events.ts 209)', () => {
     // 판정(극찬 · 무난 · 혹평)은 문턱 신호라 빼고 **숫자만** 본다 — 두 품질 모두 「무난」 구간(murray_visit 문턱 rave 80 · pan 62)
