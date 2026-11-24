@@ -96,7 +96,7 @@ export function styleFit(p: Pick<Product, 'category' | 'peatShare' | 'caskMix' |
 }
 
 /** 매력도. styleKey = 향미 방향 항 f2의 시장(기본 = 국내 지역 s.regionId, 수출은 그 시장 id) */
-export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId' | 'difficulty' | 'rulesVersion'>, styleKey: string | undefined = s?.regionId): number {
+export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regionId' | 'difficulty'>, styleKey: string | undefined = s?.regionId): number {
   const aged = p.category === 'whisky' || p.category === 'blended_whisky' || p.category === 'grain_whisky';
   const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths); // 숙성 소주 표기 #217
   const lux = packagingAppealFactor(p); // 패키징 매력 배수 — 조합 점수(#248) 0~30 → 1.0~1.15, 프리셋은 옛 PACKAGING[id].luxury와 같다
@@ -127,7 +127,7 @@ export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regi
   const edition = dutyFreeEditionAppeal(p);
   // 브랜드 방패 ([결정 #235] A): 브랜드 럭셔리 B_b와 제품 L_p의 차이 — 세컨드 브랜드가 열리는 모드에서만
   const shield = brandLuxuryFactor(s as Partial<GameState> | undefined, p);
-  const finish = finishLabelOn(p, s) ? FINISH_LABEL.appeal : 1; // [결정 #362] 피니시 표기 — 매력도 배수(#270 A, 통 종류와 무관)
+  const finish = finishLabelOn(p) ? FINISH_LABEL.appeal : 1; // [결정 #362] 피니시 표기 — 매력도 배수(#270 A, 통 종류와 무관)
   return finish * Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * brand * label * specialty * trend * premium * incense * edition * blendBonus * rare * shield * style;
 }
 
@@ -181,11 +181,11 @@ function splitByCategory(items: readonly { p: Product; standaloneBottles: number
 //   ln 수요 = −ε·ln(E/기준가) − ε·((소비자가/E)^K − 1)/K          K → 0이면 옛 공식
 
 /** 이 제품을 사는 사람이 기대하는 소비자가(원/L) — 권장 출고가(blending.ts suggestedPrice)가 맞추는 값과 같다 */
-export function expectedPricePerL(region: RegionDef, p: Pick<Product, 'category' | 'abv' | 'quality' | 'oakMonths' | 'ageYears' | 'restMonths'> & Partial<Pick<Product, 'finish' | 'caskMonthsMix'>>, s?: Pick<GameState, 'rulesVersion'>): number {
+export function expectedPricePerL(region: RegionDef, p: Pick<Product, 'category' | 'abv' | 'quality' | 'oakMonths' | 'ageYears' | 'restMonths'> & Partial<Pick<Product, 'finish'>> & { finishMonths?: number }): number {
   const aged = isWhiskyCategory(p.category);
   // 위스키는 숙성 인식, 숙성 소주·고량주는 숙성 표기(#217) — 매력도(appeal)와 같은 배수
   const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths);
-  const finish = finishLabelOn(p, s) ? FINISH_LABEL.expectedPrice : 1; // [결정 #362] 피니시 표기 — 기대 가격 배수(#270 A)
+  const finish = finishLabelOn(p) ? FINISH_LABEL.expectedPrice : 1; // [결정 #362] 피니시 표기 — 기대 가격 배수(#270 A)
   return refPricePerL(region, p.category, p.abv) * Math.sqrt(Math.max(p.quality, 20) / 60) * ageBonus * finish;
 }
 
@@ -233,7 +233,7 @@ function demandWithSplit(s: GameState, p: Product, split: number, monthOfYear: n
   const charm = Math.max(0, ...staffOf(s, 'sales').map((x) => x.stats.a));
   const elasticity = m.elasticity * (1 - 0.15 * (charm / 100)) * sourcedElasticityFactor(p);
   const ref = refPricePerL(region, p.category, p.abv);
-  const priceFactor = m.baseCases > 0 ? priceResponse(consumerPricePerL, ref, expectedPricePerL(region, p, s), elasticity) : 0;
+  const priceFactor = m.baseCases > 0 ? priceResponse(consumerPricePerL, ref, expectedPricePerL(region, p), elasticity) : 0;
   // 재고 적체(할인 이미지)·첫 출시 오픈런·캐스크 오너십 과다 판매(매니아 신뢰↓)
   const launch = p.launchBoost && s.month < p.launchBoost.untilMonth ? p.launchBoost.factor : 1;
   const oversold = ownershipOversold(s) ? OWNERSHIP.oversellAppeal : 1;
