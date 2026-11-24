@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "balance": "tsx scripts/balance-sim.ts",
+    "ui:reach": "node scripts/ui-reach.cjs",
     "data:demand": "node scripts/build-demand-data.mjs",
     "bench": "tsx scripts/bench-tick.ts",
     "content:export": "tsx scripts/export-content.ts"
