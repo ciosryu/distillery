@@ -423,13 +423,16 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     // 새 제품 첫 값 = 기준가 × 기본 정책 배수 n ([결정 #290] B1-4, MKT 대행) — 옵션이 정했으면 그 값
     const res = executeBlend(s, a.components, { firstPriceFactor: DEFAULT_POLICY_N, ...a.options });
     if (res.error) return fail(prev, res.error);
+    // 핸드필 지정 통을 병입으로 비웠다 — emptyCask가 핸드필 표시를 조용히 지운다(9차 중간 기록: 지정 통 K306이 메모 없이 끝남, PM 2026-11-24) → 결과 메시지에 남긴다
+    const hfEmptied = prev.inventory.casks.filter((c) => c.handfill && c.contents && !s.inventory.casks.find((x) => x.id === c.id)?.contents).map((c) => c.id);
+    const hfNote = hfEmptied.length ? `핸드필 통 ${hfEmptied.join(' · ')}을 병입에 써서 비웠다 — 핸드필 존에 다음 통을 지정하세요` : '';
     // 기존 제품 재고 보충 (#186) — 몇 병을 더했고 품질이 어떻게 됐는지
     if (a.options.restockId) {
       const before = prev.commerce.products.find((x) => x.id === a.options.restockId)!;
       const added = res.product!.stockBottles - before.stockBottles;
-      return { state: s, message: [`${res.product!.name} 재고 보충 +${added.toLocaleString()}병 (재고 ${res.product!.stockBottles.toLocaleString()}병) · 품질 ${qText(prev, before)} → ${qText(s, res.product!)} (재고 가중 평균)`, ...(res.reveal?.notes ?? [])].join(' · ') };
+      return { state: s, message: [`${res.product!.name} 재고 보충 +${added.toLocaleString()}병 (재고 ${res.product!.stockBottles.toLocaleString()}병) · 품질 ${qText(prev, before)} → ${qText(s, res.product!)} (재고 가중 평균)`, ...(res.reveal?.notes ?? []), ...(hfNote ? [hfNote] : [])].join(' · ') };
     }
-    return { state: s, message: bottleMessage(res.product!, res.reveal) };
+    return { state: s, message: [bottleMessage(res.product!, res.reveal), ...(hfNote ? [hfNote] : [])].join(' · ') };
   },
   sampleCask: (s, prev, a) => {
     const cap = samplingCapacity(s) - s.inventory.samplesThisMonth;
