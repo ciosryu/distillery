@@ -68,14 +68,19 @@ export function FinishRow({ cask, onClose }: { cask: Cask; onClose?: () => void 
                 preview={() => <>
                   {cask.id}의 원액 {num(lot.volumeL, 0)}L를 {best?.id ?? '빈 통'}({CASKS[k].nameKo})로 옮긴다 — 손실 {num(lot.volumeL * FINISH.lossShare, 1)}L, 피니싱은 한 번만 할 수 있다.
                   {' '}<b>옮긴 통은 샘플 기록이 비워진다 — 병입 전에 다시 떠야 품질을 안다(자동 샘플이 다음 달 먼저 뜬다)</b>
-                  {o && <>{' '}· 탄닌 어림 {num(o.now, 0)} → {SHOW_MONTHS[1]}개월 {num(o.after, 0)}(상한 {o.cap}){o.at ? `, ${Math.round(minOak / 12)}년까지 이 통이면 감점 약 ${Math.round(o.at.penalty)}` : ''} — 시즈닝 향은 탄닌을 더하지 않고, 통 활성도가 높을수록 탄닌이 빨리 는다</>}
+                  {o && (o.moved
+                    ? <>{' '}· 이 통으로 옮기면 {SHOW_MONTHS[1]}개월에 탄닌 +{num(o.after - o.now, 0)}{o.at ? `, ${Math.round(minOak / 12)}년까지 +${num(o.at.tannin - o.now, 0)}` : ''} — 이미 옮겨 온 원액이라 앞 통에서 쌓인 탄닌을 몰라 12년 감점은 셀 수 없다(#374)</>
+                    : <>{' '}· 탄닌 어림 {num(o.now, 0)} → {SHOW_MONTHS[1]}개월 {num(o.after, 0)}(상한 {o.cap}){o.at ? `, ${Math.round(minOak / 12)}년까지 이 통이면 감점 약 ${Math.round(o.at.penalty)}` : ''} — 시즈닝 향은 탄닌을 더하지 않고, 통 활성도가 높을수록 탄닌이 빨리 는다</>)}
                 </>}>
                 {finishLabel(k)}
               </ConfirmButton>
               <span className="min-w-0 text-stone-600 dark:text-stone-400">
                 {CASKS[k].nameKo} 빈 통 {count}{best ? ` · 활성도 ${best.activityKnown === false ? '?' : best.activity.toFixed(2)} · 시즈닝 ${best.seasoning.toFixed(2)}` : ''}
                 {why && <span className="text-stone-500"> — {why}</span>}
-                {!why && short && o && <span title={`활성도만으로 센 어림(원액 맛은 읽지 않는다) — 시즈닝 향은 탄닌을 더하지 않고, 옮긴 통의 활성도가 높을수록 탄닌이 빨리 는다${o.at ? `. ${Math.round(minOak / 12)}년 감점은 남은 숙성을 이 통에서 다 할 때` : ''}`} className={o.at && o.at.penalty >= 5 ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}>
+                {!why && short && o && o.moved && <span className="text-stone-500" title="이미 한 번 옮겨 온 원액 — 앞 통의 활성도가 기록에 없어 지금 탄닌과 12년 감점의 절대값은 셀 수 없다. 이 통에서 늘어나는 양만 어림한다(활성도만으로 — 원액 맛은 읽지 않는다)">
+                  {' '}· 이 통에서 탄닌 +{num(short.after - short.now, 0)}({SHOW_MONTHS[0]}개월) · +{num(o.after - o.now, 0)}({SHOW_MONTHS[1]}개월){o.at ? ` · ${Math.round(minOak / 12)}년까지 +${num(o.at.tannin - o.now, 0)}` : ''} — 옮겨 온 원액이라 감점은 셀 수 없다
+                </span>}
+                {!why && short && o && !o.moved && <span title={`활성도만으로 센 어림(원액 맛은 읽지 않는다) — 시즈닝 향은 탄닌을 더하지 않고, 옮긴 통의 활성도가 높을수록 탄닌이 빨리 는다${o.at ? `. ${Math.round(minOak / 12)}년 감점은 남은 숙성을 이 통에서 다 할 때` : ''}`} className={o.at && o.at.penalty >= 5 ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}>
                   {' '}· 탄닌 어림 {num(o.now, 0)} → {SHOW_MONTHS[0]}개월 {num(short.after, 0)} · {SHOW_MONTHS[1]}개월 {num(o.after, 0)} (상한 {o.cap})
                   {o.at && ` · ${Math.round(minOak / 12)}년에 감점 약 ${Math.round(o.at.penalty)}`}
                 </span>}
