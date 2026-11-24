@@ -210,7 +210,32 @@ describe('검토 D1 — 납품 단가 상한은 공개 정보로만 센다 (F5d 
   });
 });
 
-describe('재고 적체 개월 (9차 판 64개월째 MKT 분석 · 화면만)', () => {
+describe('소매 처리 역량 전망 · 재고 적체 개월 (9차 판 64개월째 MKT 분석 · 화면만)', () => {
+  const withProduct = async (trueQuality: number) => {
+    const { newScenarioGame } = await import('./newScenario');
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5, rules: 'v16' });
+    s.month = 40;
+    s.commerce.products.push({
+      id: 'P1', name: '싱글 몰트 1', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard',
+      flavor: {}, quality: trueQuality, typicity: 70, style: null, sourcedShare: 0, stockBottles: 4000, price: 60_000, unitCost: 20_000,
+      createdMonth: 30, lastMonthSold: 30, totalSold: 300, qualityKnown: { est: 60, sigma: 8, reviews: 3, month: 39 },
+    } as GameState['commerce']['products'][number]);
+    return s;
+  };
+  it('12달 · 첫 칸은 다음 결산 달 · 역량은 retailCapacityCases', async () => {
+    const { retailCapacityOutlook } = await import('./market');
+    const { retailCapacityCases } = await import('./retail');
+    const { calendar } = await import('./util');
+    const s = await withProduct(60);
+    const o = retailCapacityOutlook(s, 12);
+    expect(o).toHaveLength(12);
+    expect(o[0]!.monthOfYear).toBe(calendar(s).monthOfYear);
+    expect(o.every((x) => x.capacity === retailCapacityCases(s))).toBe(true);
+  });
+  it('공개 정보가 같고 참 품질만 다르면 같다(I2 — 아는 정보로만 센다)', async () => {
+    const { retailCapacityOutlook } = await import('./market');
+    expect(retailCapacityOutlook(await withProduct(80))).toEqual(retailCapacityOutlook(await withProduct(40)));
+  });
   it('overhangMonths — overhangFactor와 같은 셈(재고 ÷ 판매 평균), 출시 6개월 전 · 평균 없으면 null', async () => {
     const { overhangFactor, overhangMonths } = await import('./retail');
     const p = { stockBottles: 2400, salesEma: 100, createdMonth: 0 };
