@@ -23,6 +23,8 @@ import { isUnlocked, riskMul } from './research';
 import { sellFromLots } from './lots';
 import { lpaOf, scaleLedger } from './ledger';
 import { recordLoss } from './maturation';
+import { communityQuality } from './feed'; // [결정 #376] 품평회 수상 조건 — 가리는 판은 커뮤니티 품질(MKT feed.ts, L3 · L7과 같은 값)
+import { hidesProductQuality } from './productView'; // [결정 #375] 평론 판정 문구 — 가리는 판은 숫자를 뺀다
 
 // 이벤트 엔진: 예보 → 발생 → (선택지) → 효과. 결정론적 난수 스트림 사용.
 
@@ -30,6 +32,17 @@ const MAX_NEW_EVENTS_PER_MONTH = 2;
 /** 전체 이벤트 발생률 배수 [튜닝] — 연 5~6건 목표 */
 export const EVENT_RATE = 1.8;
 const LOG_KEPT = 60;
+
+/**
+ * 「품평회 수상」(`highQualityProduct`)의 품질 문턱 `[튜닝]` ([결정 #376] · `mgt-stage-t.md` [제안 P-MGT-62] (다)).
+ * 가리는 판(F5d)은 참 품질 대신 **커뮤니티 품질**(`feed.ts communityQuality` — 지난 12개월 리뷰 읽기 평균, 리뷰가 없으면 아는 품질)을 이 값과 견준다.
+ * 72를 그대로 둔 근거: 리뷰 읽기는 참 품질을 중심으로 흩어지므로(리뷰 1건 σ 약 5.3) 평균은 참값 근처에 모인다 — 같은 문턱이면 「72 이상 술에 메달」의 뜻이 유지되고,
+ * 새로 드러나는 정보는 없다(이미 화면 · 추정에 들어간 리뷰만 쓴다). 리뷰가 적은 제품은 평균이 흔들려 경계(72 ± 5) 근처에서 뜨고 안 뜨고가 갈린다 — 값 손질은 단계 T
+ */
+export const MEDAL_QUALITY = 72;
+
+/** 이벤트 요구 조건 하나 (테스트용으로 내보냄) */
+export function meetsRequirement(s: GameState, r: Requirement): boolean { return meets(s, r); }
 
 function meets(s: GameState, r: Requirement): boolean {
   switch (r) {
@@ -39,7 +52,8 @@ function meets(s: GameState, r: Requirement): boolean {
     case 'twoStaff': return s.hr.staff.length >= 2;
     case 'still': return s.production.equipment.some((e) => e.readyMonth <= s.month && e.feintsLPA != null);
     case 'products': return s.commerce.products.some((p) => p.stockBottles > 0);
-    case 'highQualityProduct': return s.commerce.products.some((p) => p.stockBottles > 0 && p.quality >= 72);
+    // [결정 #376] 가리는 판은 커뮤니티 품질로(communityQuality는 공개 판 · 공개 제품이면 참 품질을 그대로 돌려준다 — 옛 판 · X0L 바이트 동일)
+    case 'highQualityProduct': return s.commerce.products.some((p) => p.stockBottles > 0 && communityQuality(s, p, s.month) >= MEDAL_QUALITY);
     case 'exportUS': return (s.commerce.exports ?? []).some((e) => e.marketId === 'US');
     case 'exportCN': return (s.commerce.exports ?? []).some((e) => e.marketId === 'CN');
     case 'agedWhisky': return s.commerce.products.some((p) => p.stockBottles > 0 && p.category === 'whisky' && (p.oakMonths ?? 0) >= 36);
@@ -209,7 +223,9 @@ export function applyEffects(s: GameState, effects: Effect[], rng: Rng, label: s
       case 'criticVerdict': {
         const best = Math.max(0, ...s.commerce.products.filter((p) => p.stockBottles > 0).map((p) => p.quality));
         const verdict = best >= e.rave ? 'rave' : best < e.pan ? 'pan' : 'mild';
-        notes.push(verdict === 'rave' ? `극찬 — 품질 ${best} (수요 폭증, 가격 저항 감소)` : verdict === 'pan' ? `혹평 — 품질 ${best} (수요 급감, 재고 적체 주의)` : `무난한 평가 — 품질 ${best}`);
+        // [결정 #375] 가리는 판(F5d)은 품질 숫자를 문구에 쓰지 않는다 — 평가 말만(판정 문턱 자체는 참 품질 그대로). 옛 판은 숫자 그대로(바이트 동일)
+        const q = hidesProductQuality(s) ? '' : ` — 품질 ${best}`;
+        notes.push(verdict === 'rave' ? `극찬${q} (수요 폭증, 가격 저항 감소)` : verdict === 'pan' ? `혹평${q} (수요 급감, 재고 적체 주의)` : `무난한 평가${q}`);
         notes.push(...applyEffects(s, verdict === 'rave' ? e.raveEffects : verdict === 'pan' ? e.panEffects : e.mildEffects, rng, label, undefined, report, domain));
         break;
       }
