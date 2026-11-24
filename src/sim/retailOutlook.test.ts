@@ -209,3 +209,14 @@ describe('검토 D1 — 납품 단가 상한은 공개 정보로만 센다 (F5d 
     expect(retailPriceBasis(s, pub).cap).toBe(retailPriceBasis(s, est70).cap);
   });
 });
+
+describe('재고 적체 개월 (9차 판 64개월째 MKT 분석 · 화면만)', () => {
+  it('overhangMonths — overhangFactor와 같은 셈(재고 ÷ 판매 평균), 출시 6개월 전 · 평균 없으면 null', async () => {
+    const { overhangFactor, overhangMonths } = await import('./retail');
+    const p = { stockBottles: 2400, salesEma: 100, createdMonth: 0 };
+    expect(overhangMonths(p, 12)).toBe(24);
+    expect(overhangFactor(p, 12)).toBeCloseTo(Math.max(0.6, Math.sqrt(6 / 24)), 9);
+    expect(overhangMonths({ ...p, createdMonth: 8 }, 12)).toBeNull();
+    expect(overhangMonths({ stockBottles: 10, createdMonth: 0 }, 12)).toBeNull();
+  });
+});
