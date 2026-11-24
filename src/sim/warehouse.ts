@@ -302,3 +302,53 @@ export function tanninOutlook(s: GameState, cask: Cask, atMonths = campaignMinOa
   };
 }
 
+
+// ───────────── 피니싱 탄닌 전망 (GAP-PROD-4, 결정 #345 — 화면 힌트, 값·판정 불변) ─────────────
+// 시즈닝 향(SEASONING_EXTRACT)은 탄닌을 더하지 않는다 → 피니싱 뒤 탄닌은 옮겨 간 통의 목재 추출 × 활성도로만 는다(matureCask ②).
+// 지금 탄닌은 원래 통의 활성도로 통입 달부터 센 어림(tanninOutlook과 같은 식)이고, 원액 맛(숨김 값)은 읽지 않는다. 칸은 옮겨도 그대로(transferCask가 slot을 넘긴다)
+
+export interface FinishTanninOutlook {
+  /** 옮겨 갈 통의 활성도(소수 둘째 자리) */
+  activity: number;
+  /** 지금(원래 통에서 현재 목재 개월까지) 탄닌 어림 */
+  now: number;
+  /** 옮기고 `months`개월 뒤 탄닌 어림 */
+  after: number;
+  months: number;
+  /** 캠페인 기준 목재 개월(A = 144)에 닿기 전에 옮기면 그때 탄닌 · 감점 어림(이미 넘었으면 null) */
+  at: { atMonths: number; tannin: number; penalty: number } | null;
+  cap: number;
+}
+
+/** 숙성 중인 통 `from`을 빈 통 `to`로 피니싱할 때의 탄닌 어림. 나무 통이 아니거나 활성도를 모르면(스팟 매입 6개월 전) null */
+export function finishTanninOutlook(s: GameState, from: Cask, to: Cask, months: number, atMonths = campaignMinOakMonths(s)): FinishTanninOutlook | null {
+  if (!from.contents || vesselMaterial(from) !== 'wood' || vesselMaterial(to) !== 'wood' || from.activityKnown === false || to.activityKnown === false) return null;
+  const views = warehousesOf(s);
+  const view = views.find((x) => x.id === from.slot?.w) ?? views[0];
+  if (!view) return null;
+  const tier = from.slot && view.id === from.slot.w ? from.slot.tier : 0;
+  const elapsed = from.contents.oakMonths;
+  const start = from.filledMonth ?? s.month - elapsed;
+  const leg = (c: Cask) => ({ extract: WOOD_EXTRACT[c.wood]?.oak_tannin ?? 0, act: c.activity, sf: sizeFactor(c.sizeL) });
+  const a = leg(from);
+  const b = leg(to);
+  let t = 0;
+  let now = 0;
+  let after = 0;
+  let at: number | null = null;
+  const end = Math.max(elapsed + months, atMonths);
+  for (let k = 0; k < end; k++) {
+    const moy = ((start + k) % 12 + 12) % 12 + 1;
+    const g = k < elapsed ? a : b;
+    t += g.extract * g.act * g.sf * tempFactor(slotClimateNormal(s, view, tier, moy).tempC) * Math.max(0, 1 - t / 100);
+    if (k + 1 === elapsed) now = t;
+    if (k + 1 === elapsed + months) after = t;
+    if (k + 1 === atMonths && atMonths > elapsed) at = t;
+  }
+  const cap = CATEGORY.whisky.caps.oak_tannin ?? 45;
+  const r = (x: number) => Math.round(x * 10) / 10;
+  return {
+    activity: Math.round(to.activity * 100) / 100, now: r(now), after: r(after), months,
+    at: at == null ? null : { atMonths, tannin: r(at), penalty: r(Math.max(0, at - cap) * CAP_PENALTY_PER_POINT) }, cap,
+  };
+}
