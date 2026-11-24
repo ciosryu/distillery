@@ -12,7 +12,7 @@ import { AXIS } from '../../sim/content/axes';
 import { ProfileRadar } from './Production';
 import { caskShort } from './Bottling';
 import { categoryName, consumerPrice, regionOf, traditionalTaxFactor } from '../../sim/content/regions';
-import { agedWhiteLabel, finishLabel, hexOf, HEX_AXES, HEX_LABEL, topNotes, knownState, knownView, knownProductQuality, hidesProductQuality, type ProductCategory, type ProfileAxis, bottleMargin, calendar, coverage, demandFor, domesticDemands, DUTY_FREE, dutyFreeDemands, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, expectedPricePerL, priceOptions, productConsumerPrice, retailCapacityCases, suggestedPrice, type GameState, type Product } from '../../sim';
+import { agedWhiteLabel, finishLabel, hexOf, HEX_AXES, HEX_LABEL, topNotes, knownState, knownView, knownProductQuality, hidesProductQuality, type ProductCategory, type ProfileAxis, bottleMargin, calendar, coverage, demandFor, domesticDemands, DUTY_FREE, dutyFreeDemands, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, expectedPricePerL, priceOptions, productConsumerPrice, retailCapacityCases, suggestedPrice, type GameState, type Product, restockedDemand } from '../../sim';
 import { awarenessOf, brandMarketing, brandOf, rebrandCost, secondBrands } from '../../sim/brands';
 import { BRANDS, DEFAULT_POLICY_N, defaultPolicyPrice } from '../../sim/content/market';
 import { isLocked } from '../../sim/scenario';
@@ -149,7 +149,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
 
   /** 제품 한 줄의 숫자 — 표 줄과 묶음 줄이 같이 쓴다 */
   const metrics = (p: Product) => {
-    const d = domestic.get(p.id) ?? demandFor(ks, knownView(s, p), 1, monthOfYear);
+    const d = domestic.get(p.id) ?? restockedDemand(ks, knownView(s, p), monthOfYear); // 품절 제품: 다시 채웠을 때 같은 범주 제품과 나눈 뒤 수요(배지)
     // 면세 채널(제주, 결정 #87): 면세 전용 한정판은 국내 매대에 없다 → 면세가·면세 기준가로 보여 준다
     const df = dutyFree.get(p.id) ?? 0;
     const dfOnly = !!p.dutyFreeOnly;
