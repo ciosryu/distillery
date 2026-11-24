@@ -5,7 +5,7 @@ import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './H
 import { BOTTLE_SIZES, CASKS, PACKAGING } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
-import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, restockMix, restockPrior, recipeIdsOf, batchQualityKnown, hidesProductQuality } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, restockMix, restockPrior, recipeSharesOf, RESTOCK_PRIOR_SIGMA_FLOOR, batchQualityKnown, hidesProductQuality } from '../../sim';
 import { agedWhitePerception } from '../../sim/content/market';
 import { regionOf } from '../../sim/content/regions';
 import { STANDARD_BOTTLE, stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
@@ -143,8 +143,8 @@ export function Bottling() {
   const masked = !!est?.fromCasks;
   // 병입하면 제품에 남는 아는 품질(F5d — 모르는 몫은 사전값·큰 오차로 섞음). 첫 출고가·기준가 미리 보기가 병입 행동(executeBlend)과 같은 값을 쓰게 한다
   const restockTarget = opts.restockId ? s.commerce.products.find((p) => p.id === opts.restockId) : undefined;
-  // [결정 #346] 같은 레시피 보충이면 이 제품의 추정을 잇는다 — 이을 추정(carried)이 있으면 샘플이 없어도 보충 줄이 "모른다" 대신 값을 보인다
-  const carried = hide && restockTarget ? restockPrior(s, restockTarget, recipeIdsOf(s, components)) : undefined;
+  // [결정 #346 → #377] 레시피가 겹치는 보충이면 이 제품의 추정을 잇는다(목록에 없던 원액이 섞이면 오차를 넓혀) — 이을 추정(carried)이 있으면 샘플이 없어도 보충 줄이 "모른다" 대신 값을 보인다
+  const carried = hide && restockTarget ? restockPrior(s, restockTarget, recipeSharesOf(s, components)) : undefined;
   // 이번 배치의 아는 품질 — 병입 행동(executeBlend)과 같은 한 함수(샘플 추정 + 병입 보정량 · #346 잇기). 첫 출고가 · 보충 줄이 함께 쓴다
   const knownBatch = masked && preview?.ok ? batchQualityKnown(s, components, preview, restockTarget?.id) : undefined;
   const knownEst = knownBatch?.est ?? null;
@@ -432,10 +432,14 @@ export function Bottling() {
                       ? <span className="block font-medium">새 배치 {masked ? '예상' : '권장'} 출고가 ≈ {won(sug)} — 지금 출고가보다 높다. 보충 뒤 판매 화면에서 값을 올리세요{preview.ageYears != null && restockTarget.ageYears != null && preview.ageYears > restockTarget.ageYears ? ` (숙성 ${restockTarget.ageYears}년 → ${preview.ageYears}년)` : ''}</span>
                       : null;
                   })()}
-                  {/* [제안 P-ARCH-84] #346 잇기는 같은 레시피 목록일 때만 — 다르면 리뷰로 좁힌 추정을 잇지 않는다는 것을 미리 알린다(9차: 「블랜디드 퍼스트 배치」가 보충 뒤 리뷰 0 · ±12.4). 조건(sameList) 자체는 판 뒤 오너 안건 */}
-                  {hideBottled && masked && !carried && restockBefore && (() => {
-                    const rv = knownProductQuality(s, restockTarget).reviews;
-                    return rv > 0 ? <span className="block text-amber-800 dark:text-amber-300">이 제품과 원액 구성(레시피)이 달라 리뷰 {rv}건으로 좁힌 추정을 잇지 않는다 — 보충 뒤 새 병 몫은 「병입 때」 추정{knownBatch ? `(±${num(knownBatch.sigma, 1)})` : ""}으로 다시 시작</span> : null;
+                  {/* [P-ARCH-84 → 결정 #377] 보충 잇기 — 겹치는 레시피가 없으면 리뷰로 좁힌 추정을 잇지 않고, 목록에 없던 원액이 섞이면 잇되 오차를 넓힌다는 것을 미리 알린다
+                      (9차: 「블랜디드 퍼스트 배치」가 레시피 일부만 같은 보충 뒤 리뷰 0 · ±12.4 — #377로 부분집합은 잇는다) */}
+                  {hideBottled && masked && restockBefore && (() => {
+                    const k = knownProductQuality(s, restockTarget);
+                    if (k.reviews <= 0) return null;
+                    if (!carried) return <span className="block text-amber-800 dark:text-amber-300">이 제품과 겹치는 원액 레시피가 없어 리뷰 {k.reviews}건으로 좁힌 추정을 잇지 않는다 — 보충 뒤 새 병 몫은 「병입 때」 추정{knownBatch ? `(±${num(knownBatch.sigma, 1)})` : ''}으로 다시 시작</span>;
+                    if (carried.newShare <= 0) return null;
+                    return <span className="block text-stone-600 dark:text-stone-400" title="새 몫은 샘플 없는 원액과 같은 오차로 본다 — 추정값은 그대로, 리뷰 수도 잇는다. 리뷰가 쌓이면 다시 좁혀진다">이 제품 목록에 없던 원액 레시피가 {num(carried.newShare * 100, 0)}% 섞인다 — 리뷰 {k.reviews}건 추정을 잇되 오차를 넓힌다(±{num(Math.max(k.sigma, RESTOCK_PRIOR_SIGMA_FLOOR), 1)} → ±{num(carried.sigma, 1)})</span>;
                   })()}
                   {restockStock && (
                     <span title="판매 평균의 6개월 치를 넘게 쌓이면 할인 이미지로 수요가 줄어든다(최저 ×0.6). 재고를 줄이면 돌아온다 — 판매 화면 「재고 n개월 치 · 수요 ×f」와 같은 셈(MKT)" className={`block ${restockStock.after > STOCK_STRONG_WARN_MONTHS ? 'font-medium text-rose-700 dark:text-rose-400' : restockStock.after > STOCK_WARN_MONTHS ? 'text-amber-800 dark:text-amber-300' : ''}`}>
