@@ -227,13 +227,20 @@ function Headline() {
   const left = sc && legacyRules ? sc.goal.months - s.month : null;
   // 12년 플래그십 후보 통 (#240) — 판이 끝나기 전에 플래그십 숙성을 채울 수 있는 통. 목표까지 남은 달이 플래그십 숙성보다 짧아지면
   // 새로 넣는 통은 후보가 될 수 없다 → 그 뒤 후보 0이면 15년 목표(플래그십 판매)를 이룰 수 없다(5차 판, mvp.md §7.16)
-  const cands = sc ? flagshipCandidates(s).length : 0;
+  const candList = sc ? flagshipCandidates(s) : [];
+  const cands = candList.length;
+  // [결정 #379] 후보 원액 양 — 「후보 n통 · 약 x L(약 y병 · 덜 찬 통 k)」(9차 판: 후보 5통 ≈ 741L인데 통 수만 보였다). 부피 · 도수는 공개 정보.
+  // 병 수는 46% · 700ml로 센 어림(병입 도수 · 손실에 따라 다르다), 덜 찬 통 = 원액이 통 크기의 절반 미만
+  const candL = candList.reduce((t, c) => t + (c.contents?.volumeL ?? 0), 0);
+  const candBottles = candList.reduce((t, c) => t + (c.contents ? (c.contents.volumeL * c.contents.abv) / (0.46 * 0.7) : 0), 0);
+  const candThin = candList.filter((c) => (c.contents?.volumeL ?? 0) < c.sizeL * 0.5).length;
+  const candAmount = cands > 0 ? ` · 약 ${Math.round(candL).toLocaleString()}L(약 ${(Math.round(candBottles / 10) * 10).toLocaleString()}병${candThin ? ` · 덜 찬 통 ${candThin}` : ''})` : '';
   const flagDone = campaignWon(s);
   // 12년 적격 (6차 판 arch.md ① — 적격 달에 "0개월 뒤 도달"만 보여 12개월 늦게 병입): 승리 판정과 같은 적격(caskEligibility)으로 "지금 병입하면 승리"를 말한다
   const win12 = flagshipReady(s);
   const win12Hint = win12?.bottled ? `플래그십 12년 · 「${win12.bottled.name}」 병입 완료 — 팔리면 캠페인 승리` : win12?.casks.length ? `플래그십 12년 · 적격 ${win12.casks.length}통 — 지금 병입해 팔면 캠페인 승리` : null;
   const noMoreNew = legacyRules && left != null && left < flagMin; // 새 캠페인(v16)은 판 끝이 없어 새 통도 언젠가 후보가 된다
-  const flagHint = !sc ? null : flagDone ? (legacyRules ? '플래그십 판매 완료' : `캠페인 승리(${s.progress.win ? winChannelLabel(s.progress.win) : '첫 출하'}) — 12년 싱글 몰트 첫 출하 완료`) : cands > 0 ? `후보 ${cands}통 · 예비 ${reserveCaskIds(s).size}통${noMoreNew ? ' — 새 통은 더 후보가 될 수 없다' : legacyRules ? '' : ' (후보 = 3년 안에 12년이 되는 통 · 예비 = 승리용으로 남겨 두는 통)'}` : legacyRules ? (noMoreNew ? '후보 0통 — 15년 안에 플래그십을 낼 수 없다' : `후보 0통 — ${Math.max(0, (sc.goal.months - flagMin) - s.month)}개월 안에 넣은 통이 후보가 된다`) : `후보 0통 — 목재 ${flagMin - HINT_HORIZON_MONTHS}개월을 넘긴 자가 몰트 통이 후보가 된다 · 예비 ${reserveCaskIds(s).size}통 보호 중`;
+  const flagHint = !sc ? null : flagDone ? (legacyRules ? '플래그십 판매 완료' : `캠페인 승리(${s.progress.win ? winChannelLabel(s.progress.win) : '첫 출하'}) — 12년 싱글 몰트 첫 출하 완료`) : cands > 0 ? `후보 ${cands}통${candAmount} · 예비 ${reserveCaskIds(s).size}통${noMoreNew ? ' — 새 통은 더 후보가 될 수 없다' : legacyRules ? '' : ' (후보 = 3년 안에 12년이 되는 통 · 예비 = 승리용으로 남겨 두는 통)'}` : legacyRules ? (noMoreNew ? '후보 0통 — 15년 안에 플래그십을 낼 수 없다' : `후보 0통 — ${Math.max(0, (sc.goal.months - flagMin) - s.month)}개월 안에 넣은 통이 후보가 된다`) : `후보 0통 — 목재 ${flagMin - HINT_HORIZON_MONTHS}개월을 넘긴 자가 몰트 통이 후보가 된다 · 예비 ${reserveCaskIds(s).size}통 보호 중`;
   return (
     <Card title="현금과 순자산 — 지금 정리하면 받을 수 있는 돈">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">

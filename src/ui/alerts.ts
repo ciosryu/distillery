@@ -20,6 +20,7 @@ import { caskEligibility } from '../sim/ledger';
 import { specialistOffers, SPECIALIST_STAGE } from '../sim/hr';
 import { AUTO_RESTOCK_EXPENSE, caskRunway, CUTBACK_HINT, productionCutback, productionValue, sojuSupply, SOJU_STOCK_WARN_MONTHS, tankLotWaitMonths, whiskySupplyForecast } from '../sim/economics';
 import { monthlyFixedCost } from '../sim/loans';
+import { capacityReport } from '../sim/production';
 import { FINISH, finishLabel, finishOf, vesselMaterial } from '../sim/maturation';
 
 // ───────────── ① 파산 카운트다운 ─────────────
@@ -131,13 +132,24 @@ function stockMonths(s: GameState, inCat: (c: string) => boolean): { stock: numb
  * 결품 — 재고가 있지만 이번 달 수요(같은 범주 나눔 반영)보다 적어 다음 턴에 바닥날 제품, 이미 품절인 제품(면세 한정판 제외).
  * 판매 화면과 같은 수요 계산(domesticDemands)이다. 실제 판매는 ±10%·소매 역량에 따라 조금 다르다
  */
+/** [결정 #381] 품절 목록에 남기는 기간 — 이 개월 안에 한 병이라도 판 제품만 `[튜닝]` */
+export const STOCKOUT_RECENT_MONTHS = 12;
+/** 최근 n개월 결산에서 한 병 이상 팔린 제품 id (결산 기록 — 공개 정보) */
+export function recentlySoldIds(s: Pick<GameState, 'history' | 'month'>, months: number): Set<string> {
+  const ids = new Set<string>();
+  for (const r of s.history.reports) if (r.month >= s.month - months) for (const x of r.sales) if (x.bottles > 0) ids.add(x.productId);
+  return ids;
+}
+
 export function stockoutSoon(s: GameState): { soon: { id: string; name: string; stock: number; demand: number }[]; empty: { id: string; name: string }[] } {
   const d = domesticDemands(s, calendar(s).monthOfYear);
   const soon: { id: string; name: string; stock: number; demand: number }[] = [];
   const empty: { id: string; name: string }[] = [];
+  // [결정 #381] 「품절」은 최근 STOCKOUT_RECENT_MONTHS 안에 판(또는 그 안에 만든) 제품만 — 9차 판: 33 ~ 35개월 전에 끊긴 뉴본 3종이 매달 목록을 채웠다
+  const recent = recentlySoldIds(s, STOCKOUT_RECENT_MONTHS);
   for (const p of s.commerce.products) {
     if (p.dutyFreeOnly) continue;
-    if (p.stockBottles <= 0) { empty.push({ id: p.id, name: p.name }); continue; }
+    if (p.stockBottles <= 0) { if (recent.has(p.id) || p.createdMonth >= s.month - STOCKOUT_RECENT_MONTHS) empty.push({ id: p.id, name: p.name }); continue; }
     const dem = Math.round(d.get(p.id)?.demandBottles ?? 0);
     if (dem > 0 && p.stockBottles < dem) soon.push({ id: p.id, name: p.name, stock: p.stockBottles, demand: dem });
   }
@@ -201,6 +213,8 @@ export function stageTarget(st: { unlock: readonly string[] }): { tab: string; l
 }
 
 export const FLAGSHIP_LOW = 3;
+/** [결정 #385] 현금이 고정비 이만큼을 넘으면 「놀고 있는 현금」 줄 `[튜닝]` */
+export const IDLE_CASH_MONTHS = 24;
 
 /** 핸드필 통이 빈 뒤 지난 개월과 비기 전 6개월 평균 핸드필 매출 — 결산 메모(`handfill.ts`)에서 읽는다. 빈 기록이 없으면(처음부터 미지정) null */
 export function handfillIdle(s: GameState): { months: number; monthly: number } | null {
@@ -265,8 +279,8 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'sample'];
-// 꼬리 4개(defense·whisky·soju·sample)는 info만 낸다 — warn·danger를 낼 수 있는 새 id는 그 앞에 둔다(warn이 info 뒤에 묻히지 않게, PM 대조 7차 완료: soju-glut)
+export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'idle-cash', 'sample'];
+// 꼬리 5개(defense·whisky·soju·idle-cash·sample)는 info만 낸다 — warn·danger를 낼 수 있는 새 id는 그 앞에 둔다(warn이 info 뒤에 묻히지 않게, PM 대조 7차 완료: soju-glut)
 // 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
 // danger 등급은 새 기능 바로 아래로 올린다(같은 danger끼리는 위 순서) — 6차 판: 오래 통입 대기(fill danger)가 할 일 3번째에 묻혔다
@@ -427,6 +441,24 @@ export function monthTodos(s: GameState): Todo[] {
   const lastRep = s.history.reports.at(-1);
   const shortNotes = (lastRep?.notes ?? []).filter((n) => /배치 생산 못 함|취수 허가량|증류기가 준비되지 않아/.test(n));
   if (shortNotes.length) out.push({ id: 'batch-short', level: 'warn', text: `지난달 생산 지시를 다 못 만들었다 — ${shortNotes.slice(0, 2).join(' · ')}${shortNotes.length > 2 ? ` 외 ${shortNotes.length - 2}건` : ''}`, action: '생산 지시', target: { anchor: 'mvp-orders' } });
+  // [결정 #385] 놀고 있는 현금 · 설비 — 9차 판: 8년 차 뒤 설비 · 통 구매 0, 현금 10.7 → 20.3억, VIP 라운지를 "존재를 인지하지도 못했다".
+  // 현금이 고정비 IDLE_CASH_MONTHS개월 치를 넘고 현금 경고가 없을 때, 지금 쓸 수 있는 곳을 계산값과 함께 한 줄(info — 권하는 것이지 급한 일이 아니다)
+  if (s.scenario && !cashAlert(s)) {
+    const fixed = monthlyFixedCost(s);
+    if (fixed > 0 && s.finance.cash >= fixed * IDLE_CASH_MONTHS) {
+      const where: string[] = [];
+      const cap = capacityReport(s);
+      const runs = cap.stills.reduce((t, x) => ({ used: t.used + x.used, cap: t.cap + x.cap }), { used: 0, cap: 0 });
+      if (runs.cap - runs.used >= 3) where.push(`증류기 ${runs.used}/${runs.cap}회 — 생산 지시를 늘릴 자리(늘린 원액은 3년 뒤부터 판다)`);
+      const vip = EQUIPMENT.visitor_vip;
+      if (vip && !isLocked(s, `facility:${vip.id}`) && !s.production.equipment.some((e) => e.catalogId === vip.id)) where.push(`${vip.nameKo.replace(/^비지터 센터 — /, '')}(${fmtWon(vip.cost)} · 월 유지 ${fmtWon(vip.maintenance ?? 0)} — 방문객 매출 · 평판)`);
+      const free = warehouseCapacity(s) - slotsUsed(s);
+      if (free < 20) where.push(`숙성고 증설(남은 자리 ${free})`);
+      const emptyOnggi = s.inventory.casks.filter((c) => !c.contents && vesselMaterial(c) === 'onggi').length;
+      if (emptyOnggi >= 3) where.push(`빈 옹기 ${emptyOnggi}개(옹기소주)`);
+      if (where.length) out.push({ id: 'idle-cash', level: 'info', text: `현금 ${fmtWon(s.finance.cash)} — 고정비 ${Math.floor(s.finance.cash / fixed)}개월 치가 놀고 있다. 쓸 수 있는 곳: ${where.join(' · ')}`, action: '설비', target: { anchor: 'mvp-equipment' } });
+    }
+  }
   // A4(PROD 화면 메모): 빈 통이 곧 바닥난다 — 계산은 PROD `economics.ts caskRunway`(이번 달 가능 배치 · 탱크 적체 먼저 · 자동 통입 올림 반영)를 그대로 쓴다.
   // 자동 통입 줄(AutoFill)과 숫자가 같다. 쿠퍼리지 납기 + 1개월 안에 바닥나면 지금 주문해야 늦지 않는다 · 이미 모자라면(0개월) warn
   {
