@@ -112,6 +112,17 @@ describe('F5a — 이벤트 잠금 키 event:<id> (#321 대안 ⓐ)', () => {
   });
 });
 
+describe('P-MGT-63 (b) — 받을 수 없는 계약 제안 잠금', () => {
+  it('「대형 블렌더 장기 계약 제안」은 v16에서 일어나지 않는다(계약 받기가 판 내내 잠김) — 옛 판은 그대로', () => {
+    expect(EVENTS.find((e) => e.id === 'mega_contract')).toBeDefined();
+    const s = jump(v16(), 60);
+    expect(isLocked(s, 'action:acceptContract')).toBe(true); // 받을 수 없으니 제안도 없어야 한다
+    expect(isLocked(s, 'event:mega_contract')).toBe(true);
+    expect(isLocked(jump(v16(), 179), 'action:acceptContract')).toBe(true); // 어느 단계도 계약 받기를 열지 않는다
+    expect(isLocked(legacy(), 'event:mega_contract')).toBe(false);
+  });
+});
+
 describe('F5a — 입지는 고정(사실): 사업 계획서에 입지 선택이 없고 MVP_KR.site가 비어 지역 기본 입지(경기)다', () => {
   it('새 판·옛 판 모두 siteId 없음 · siteOf = 지역 기본 입지 · 원장 siteId 문자열 default', () => {
     for (const s of [v16(), legacy()]) {
