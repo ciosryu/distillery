@@ -7,7 +7,7 @@ import { PRICE_MODE_LABEL, priceModeOf } from '../../sim/priceEngine';
 import { PRODUCT_NAME_MAX } from '../../sim/actions.prod';
 import { CATEGORY } from '../../sim/content/categories';
 import { AUTO_RESTOCK_LONG_FLOOR, autoRestockContest, autoRestockFloor, AUTO_RESTOCK_MONTHS, autoRestockSupported } from '../../sim/economics';
-import { autoRestockSourceLine, autoRestockTitle } from '../autoRestockLine';
+import { autoRestockSourceLine, autoRestockSourceOptions, autoRestockTitle, sourceKey } from '../autoRestockLine';
 import { whiskyMinMonths } from '../../sim/blending';
 import { AXIS } from '../../sim/content/axes';
 import { ProfileRadar } from './Production';
@@ -223,6 +223,19 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
               </select>
             </label>
           )}
+          {/* [결정 #392] 채울 원액 — 소주 · 진 · 고량주(v16), 자동 납품을 켰을 때만. 선택지 · 통 수는 PROD autoRestockSourceChoices */}
+          {p.autoRestock && (() => {
+            const opts = autoRestockSourceOptions(s, p);
+            if (!opts.length) return null;
+            const cur = sourceKey(p.autoRestockSource);
+            return (
+              <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400" title="자동 납품이 채울 원액. 「지금 규칙」은 제품의 숙성 표기 · 쉰 용기를 따른다(보충으로 바뀔 수 있다). 옹기 · 오크를 고르면 그 용기에서 n개월 이상 쉰 같은 레시피 통만 쓰고, 모자라면 탱크로 대신하지 않는다">채울 원액
+                <select className="rounded border border-stone-300 bg-white px-1 py-0 text-[11px] dark:border-stone-700 dark:bg-stone-800" value={cur} onChange={(e) => { const o = opts.find((x) => x.key === e.target.value); if (o) dispatch({ type: 'setAutoRestock', productId: p.id, months: p.autoRestock!, source: o.source }); }} aria-label={`${p.name} 채울 원액`}>
+                  {opts.map((o) => <option key={o.key} value={o.key}>{o.text}</option>)}
+                </select>
+              </label>
+            );
+          })()}
           {/* 자동 납품이 무엇으로 채우는지 (#369 옹기 · 오크에서 쉰 소주 · #370 뉴본 탱크) — 켰을 때만 */}
           {p.autoRestock && !isWhiskyCategory(p.category) && autoRestockSupported(p, s) && <AutoRestockSourceLine s={s} ks={ks} p={p} />}
           {/* 자동 납품이 쓸 통의 최소 숙성 (#267) — 기본은 제품 표기. 표기가 길면(5년+) 가장 오래된 통만 가져간다는 경고 */}
