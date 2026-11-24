@@ -8,7 +8,8 @@ import { EVENTS } from '../sim/content/events';
 import { useGame } from '../store/game';
 import { Badge, Button } from './kit';
 import { PendingEventChoices } from './panels/Events';
-import { flagshipReady, stageTarget } from './alerts';
+import { briefTodos, flagshipReady, monthTodos, stageTarget } from './alerts';
+import { TodoText, useGo } from './AlertsView';
 import { useUi } from '../store/ui';
 import { campaignMinOakMonths, stagesOf } from '../sim';
 
@@ -17,6 +18,10 @@ const URGENT = new Set(['disaster', 'regulation']);
 // 본 달은 판(시드)별로 localStorage에 — 새로 고침·새 탭에서도 같은 달의 소식이 다시 뜨지 않는다(PROD 화면 메모 C3 — sessionStorage는 탭을 바꾸거나 다시 열면 비어 있었다)
 const readSeen = (seed: number) => { try { const [k, m] = (localStorage.getItem(SEEN_KEY) ?? '').split(':'); return Number(k) === seed ? Number(m) : NaN; } catch { return NaN; } };
 const writeSeen = (seed: number, m: number) => { try { localStorage.setItem(SEEN_KEY, `${seed}:${m}`); } catch { /* 저장 막힘 — 이번 화면에서만 닫힌다 */ } };
+// [결정 #373] 지난번 소식 창을 닫을 때 떠 있던 warn · danger 할 일 id — 판(시드)별. 없으면 null(지금 것이 모두 새것)
+const TODO_SEEN_KEY = 'distillery-tycoon/brief-todos';
+const readSeenTodos = (seed: number): string[] | null => { try { const v = JSON.parse(localStorage.getItem(TODO_SEEN_KEY) ?? 'null') as { seed: number; ids: string[] } | null; return v && v.seed === seed ? v.ids : null; } catch { return null; } };
+const writeSeenTodos = (seed: number, ids: string[]) => { try { localStorage.setItem(TODO_SEEN_KEY, JSON.stringify({ seed, ids })); } catch { /* 저장 막힘 */ } };
 
 /** 지난 진행 동안의 소식 — 이벤트(긴급 먼저)·새로 열린 기능·목표·마일스톤 */
 export function turnNews(s: ReturnType<typeof useGame.getState>['state'], fromMonth: number) {
@@ -58,6 +63,7 @@ export function TurnBrief() {
   const s = useGame((g) => g.state);
   const undoInfo = useGame((g) => g.undoInfo);
   const setTab = useUi((u) => u.setTab);
+  const go = useGo();
   const [seen, setSeen] = useState<number>(() => readSeen(s.seed));
   useEffect(() => { setSeen(readSeen(s.seed)); }, [s.month, s.seed]);
   if (!s.scenario || s.status !== 'running') return null;
@@ -65,8 +71,10 @@ export function TurnBrief() {
   const from = undoInfo && undoInfo.month < s.month ? undoInfo.month : s.month - 1;
   const { events, notes, unlocks } = turnNews(s, from);
   const pending = s.events.pending.length;
-  if (seen === s.month || (!pending && !events.length && !notes.length && !unlocks.length)) return null;
-  const close = () => { writeSeen(s.seed, s.month); setSeen(s.month); };
+  const todos = monthTodos(s);
+  const { fresh, continuing } = briefTodos(todos, readSeenTodos(s.seed));
+  if (seen === s.month || (!pending && !events.length && !notes.length && !unlocks.length && !fresh.length)) return null;
+  const close = () => { writeSeen(s.seed, s.month); writeSeenTodos(s.seed, todos.filter((t) => t.level !== 'info').map((t) => t.id)); setSeen(s.month); };
   const span = s.month - from > 1 ? `${monthLabel(s.startYear, from)} ~ ${monthLabel(s.startYear, s.month - 1)}` : monthLabel(s.startYear, s.month - 1);
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-16" role="dialog" aria-modal="true" aria-label="이번 달 소식">
@@ -97,6 +105,21 @@ export function TurnBrief() {
           </ul>
         )}
         {notes.length > 0 && <ul className="mb-3 grid gap-1 text-xs text-stone-700 dark:text-stone-300">{notes.map((n, i) => <li key={i}>• {n.text}</li>)}</ul>}
+        {/* [결정 #373] 새로 생긴 warn · danger 할 일 — 계속 떠 있는 것은 개수만(매달 같은 줄이 반복되면 무시하게 된다) */}
+        {(fresh.length > 0 || continuing > 0) && (
+          <div className="mb-3">
+            {fresh.length > 0 && <div className="mb-1 text-sm font-semibold">새 할 일</div>}
+            <ul className="grid gap-1.5">
+              {fresh.map((t) => (
+                <li key={t.id} className={`flex flex-wrap items-center justify-between gap-2 rounded-md border-l-4 px-2 py-1.5 ${t.level === 'danger' ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/40' : 'border-amber-500 bg-amber-50 dark:bg-amber-950/40'}`}>
+                  <TodoText level={t.level as 'warn' | 'danger'} text={t.text} tone={t.level === 'danger' ? 'text-rose-700 dark:text-rose-400' : 'text-amber-800 dark:text-amber-300'} />
+                  <Button small variant="ghost" onClick={() => { close(); go(t.target); }}>{t.action} →</Button>
+                </li>
+              ))}
+            </ul>
+            {continuing > 0 && <p className="mt-1 text-xs text-stone-500">할 일 {continuing}개 계속 — 증류소 탭 맨 위 「이번 달 할 일」</p>}
+          </div>
+        )}
         <div className="flex justify-end gap-2"><Button variant="primary" onClick={close}>확인</Button></div>
       </div>
     </div>

@@ -182,6 +182,8 @@ export function advanceMonth(prev: GameState): GameState {
   const offTurn: CashFlows = { ...(s.finance.pendingCash ?? {}) };
   s.finance.pendingCash = {};
   const report = newReport(s, offTurn);
+  // 턴 사이 행동이 남긴 메모 — 그달 결산 맨 앞으로 옮기고 비운다 (pendingCash와 같은 길 · 없으면 손대지 않아 출력 그대로)
+  if (s.history.pendingNotes?.length) { report.notes.push(...s.history.pendingNotes); delete s.history.pendingNotes; }
   phasePrepare(s, report);                                   // 0
   phaseEvents(s, report);                                    // 1
   const ctx = buildTickContext(s);                           //   이번 달 조건 확정
