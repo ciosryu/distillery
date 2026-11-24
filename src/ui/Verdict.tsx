@@ -1,4 +1,4 @@
-import { GRADE, monthLabel, rulesVersionOf, timelineOf, type GameState, type GoalCheck } from '../sim';
+import { GRADE, lateGoalsOf, monthLabel, rulesVersionOf, timelineOf, type GameState, type GoalCheck } from '../sim';
 import { GRADE_NOTE } from './gradeHints'; // 결정 #339 결과 화면 문구(MGT)
 import { winLabel } from './winLabel'; // F5c-2 승리 채널 문구
 import { MILESTONES } from '../sim/content/milestones';
@@ -42,6 +42,9 @@ export function Verdict({ s, onNewGame }: { s: GameState; onNewGame: () => void 
   if (!v) return null;
   const ending = s.progress.ending;
   const legacy = rulesVersionOf(s) === 'legacy-v15';
+  // 다음 목표 — 아직 결과가 없고, 앞 목표를 기다리지 않으며(18년은 15년 뒤), 기한이 남은 후반 목표 두 개까지(제목 앞부분)
+  const doneIds = new Set((s.progress.lateGoals ?? []).map((g) => g.id));
+  const nextGoals = lateGoalsOf(s).filter((g) => !doneIds.has(g.id) && (g.opens === 'win' || 'month' in g.opens) && (g.byMonth == null || s.month + 1 <= g.byMonth)).slice(0, 2).map((g) => g.title.split(' — ')[0]!);
   return (
     <Card title={`${s.distilleryName} — ${TITLE[v.result]}`}>
       <div className="grid gap-4 md:grid-cols-[auto_1fr_1fr]">
@@ -98,7 +101,8 @@ export function Verdict({ s, onNewGame }: { s: GameState; onNewGame: () => void 
         </section>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {s.status === 'running' && <Button variant="primary" onClick={() => dispatch({ type: 'acknowledgeVerdict' })}>계속 운영 (목표 없이)</Button>}
+        {/* [#388 ① G3 · #389] 12년 출하는 "장의 끝" — 후반 목표가 있으면 다음 목표를 버튼에 잇는다(MGT 확인). 없으면(옛 판) 그대로 */}
+        {s.status === 'running' && <Button variant="primary" onClick={() => dispatch({ type: 'acknowledgeVerdict' })}>{nextGoals.length ? `계속 운영 — 다음 목표: ${nextGoals.join(' · ')}` : '계속 운영 (목표 없이)'}</Button>}
         <Button onClick={onNewGame}>새 게임</Button>
         {v.result === 'heritage' && <Badge tone="good">내가 이 위스키를 키웠다</Badge>}
       </div>

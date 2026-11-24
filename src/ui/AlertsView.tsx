@@ -1,6 +1,6 @@
 // 위기 경고·이번 달 할 일·지난달 현금 흐름·대출 상환 예정 — 화면 (코어 UI, 1차 MVP 플레이테스트 대응 ①~④, 계산은 alerts.ts)
 // 파일 이름이 alerts.ts와 대소문자만 다르면 대소문자를 가리지 않는 파일 시스템(macOS·Windows 기본)에서 './Alerts'가 alerts.ts로 풀릴 수 있어 AlertsView로 둔다
-import { BANKRUPT_AFTER_MONTHS, midGoalProgress, midGoalsOf, monthLabel, whiskySkipCheck, stagesOf, difficultyOf, rulesVersionOf } from '../sim';
+import { BANKRUPT_AFTER_MONTHS, lateGoalProgress, visibleLateGoals, midGoalProgress, midGoalsOf, monthLabel, whiskySkipCheck, stagesOf, difficultyOf, rulesVersionOf } from '../sim';
 import { DIFFICULTY_DOMAINS } from '../sim/content/difficulty';
 import { LOCKED_DOMAINS, difficultyLabel, domainLevelLabel } from './difficultyLabel';
 import { productionValue } from '../sim/economics';
@@ -264,6 +264,20 @@ export function JourneyStrip() {
           );
         })}
       </div>
+      {/* [#388 ① G3] 후반 목표 — 열린 것만(승리 전 2 · 승리 뒤 최대 3). 보상 없음(기록만) — 짝 행동 한 줄을 마우스 풀이로 */}
+      {visibleLateGoals(s).length > 0 && (
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="font-medium text-stone-700 dark:text-stone-200">후반 목표</span>
+          {visibleLateGoals(s).map(({ def: g, result: r }) => {
+            const prog = r ? null : lateGoalProgress(s, g.id);
+            return (
+              <span key={g.id} title={`할 수 있는 것: ${g.hint} · 보상 없음(기록 · 결과 화면)`} className={r?.result === 'done' ? 'text-emerald-700 dark:text-emerald-400' : r?.result === 'missed' ? 'text-stone-400 line-through' : 'text-amber-800 dark:text-amber-300'}>
+                {r?.result === 'done' ? '✓' : r?.result === 'missed' ? '✗' : '◎'} {g.title} <span className="opacity-70 no-underline">({r?.result === 'done' ? `${monthLabel(s.startYear, r.month)} 달성` : r?.result === 'missed' ? '놓침' : `${prog ? `${prog.have}/${prog.need} · ` : ''}${g.byMonth == null ? '기한 없음' : g.byMonth - s.month > 0 ? `${ym(g.byMonth - 1)}까지 · ${g.byMonth - s.month}개월 남음` : '이번 턴에 판정'}`})</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
