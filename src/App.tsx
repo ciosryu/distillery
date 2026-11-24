@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { BANKRUPT_AFTER_MONTHS, isLocked, monthLabel, type GameState, type RegionId, rulesVersionOf } from './sim';
+import { BANKRUPT_AFTER_MONTHS, campaignWon, isLocked, monthLabel, type GameState, type RegionId, rulesVersionOf } from './sim';
+
+/** [#388 ① A1] 운영 모드를 켤 수 있는 달(경과 개월) — 승리 뒤에는 언제나 `[튜닝]` */
+const OPS_MODE_FROM = 120;
 import { REGIONS, siteOf } from './sim/content/regions';
 import { SCENARIOS } from './sim/content/scenarios';
 
@@ -73,6 +76,11 @@ export default function App() {
   const rawTab = useUi((u) => u.tab);
   const setTab = useUi((u) => u.setTab);
   const tabs = visibleTabs(s);
+  const opsMode = useUi((u) => u.opsMode);
+  const setOpsMode = useUi((u) => u.setOpsMode);
+  // [#388 ① A1] 운영 모드는 시나리오 판의 종반(120개월 또는 승리 뒤)에만 — 켜 둔 채 새 판을 열면 초반에는 꺼진 것으로 본다
+  const opsOffered = !!s.scenario && (s.month >= OPS_MODE_FROM || campaignWon(s));
+  const opsOn = opsOffered && opsMode;
   const unseenFacilities = useUnseenFacilities(s); // #388 ① A3 — 증류소 탭 점
   const tab = tabs.some((x) => x.id === rawTab) ? rawTab : tabs[0]!.id;
   const [planOpen, setPlanOpen] = useState(startedFresh);
@@ -116,9 +124,15 @@ export default function App() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="primary" disabled={!running || !!advancing} onClick={() => advance(1)}>1개월 진행</Button>
-            <Button disabled={!running || !!advancing} onClick={() => advance(3)}>분기 진행</Button>
-            <Button disabled={!running || !!advancing} onClick={() => advance(12)}>1년 진행</Button>
+            {/* [#388 ① A1] 종반 운영 모드 — 120개월 또는 승리 뒤에 켤 수 있다. 켜면 기본 버튼이 「분기 진행」이고, 분기 · 1년 진행이 선택 이벤트 · 의뢰 · IB 입찰 · 목표 달성에서도 멈춘다(OPS_STOPS) */}
+            {opsOffered && (
+              <label className="flex items-center gap-1 text-xs text-stone-600 dark:text-stone-300" title="종반 운영 모드 — 분기 단위로 굴린다. 분기 · 1년 진행이 현금 경고 · 판정 · 12년 적격에 더해 선택 이벤트 · 블렌딩 의뢰 · IB 입찰 제안 · 목표 달성에서 멈춘다. 자동 채우기 · 자동 통입은 따로 켠다(설정은 이 브라우저에만 남는다)">
+                <input type="checkbox" checked={opsMode} onChange={(e) => setOpsMode(e.target.checked)} className="accent-amber-700" /> 운영 모드
+              </label>
+            )}
+            <Button variant={opsOn ? undefined : 'primary'} disabled={!running || !!advancing} onClick={() => advance(1)}>1개월 진행</Button>
+            <Button variant={opsOn ? 'primary' : undefined} disabled={!running || !!advancing} onClick={() => advance(3, opsOn)}>분기 진행</Button>
+            <Button disabled={!running || !!advancing} onClick={() => advance(12, opsOn)}>1년 진행</Button>
             {advancing
               ? <Button variant="ghost" onClick={cancelAdvance}>자동 진행 중 {advancing.done}/{advancing.total} — 멈춤</Button>
               : <Button disabled={!running} onClick={() => void advanceUntil(24)} title="선택 이벤트·예보·현금 경고·설비 가동 시작·블렌딩 의뢰·12년 적격 통 중 하나가 생기면 멈춘다 (최대 24개월)">다음 알림까지</Button>}
