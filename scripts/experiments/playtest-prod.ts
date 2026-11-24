@@ -266,10 +266,29 @@ if (playlog) console.log(`- 플레이 기록: 시작 ${new Date(playlog.startedA
     console.log(`  - 승리 앞 12개월 적격 후보 수: ${cand.join(' ') || '—'}`);
     console.log('  - 통별 활성도는 기록에 없다 — 12년 적격 통이 처음 생겨 자동 진행이 멈춘 달(#333)의 기록 내보내기가 있으면 그 세이브로 tanninOutlook을 다시 센다');
   } else console.log('- 9c 승리 없음');
-  // 9d 핸드필 — 지정 · 판매 사건(cellar_door, 월 결산 기간) · 병·라벨 비용
+  // 9e 핸드필 — 지정 · 판매 사건(cellar_door, 월 결산 기간) · 병·라벨 비용
   const cd = reps.flatMap((r) => (r.saleEvents ?? []).filter((e) => e.kind === 'cellar_door'));
   const hfCost = reps.reduce((a, r) => a + ((r.expenses as Record<string, number>)['핸드필 병·라벨'] ?? 0), 0);
-  console.log(`- 9d 핸드필 통 지정 ${sumKinds('setHandfillCask')}번 · 판매 ${n0(cd.reduce((a, e) => a + e.bottles, 0))}병 · 매출 ${man(cd.reduce((a, e) => a + e.bottles * e.unitPrice, 0))} · 병·라벨 ${man(hfCost)} (월 결산 ${reps.length}개월)`);
+  // 9d 생산 복구(N2 — prod-stage-t.md 「N2 생산 복구」 정의, ARCH 채택 2026-11-24): 줄인 달 C · 회복 달 R(현금 ≥ 고정비 × 6) · 복구 달 B(줄이기 전의 80%) · N2 = B − R
+  {
+    const kindOf = new Map(s.production.recipes.map((r) => [r.id, r.kind] as const));
+    const wb = (r: MonthReport) => (r.production ?? []).filter((x) => { const k = kindOf.get(x.recipeId); return k === 'malt' || k === 'grain'; }).reduce((a, x) => a + x.batches, 0);
+    const fixedOf = (r: MonthReport) => ['overhead', 'salaries', 'maintenance', 'storage', 'interest'].reduce((a, k) => a + ((r.expenses as Record<string, number>)[k] ?? 0), 0);
+    const bs = reps.map(wb);
+    let ci = -1; let pre = 0;
+    for (let i = 6; i + 3 < reps.length; i++) { const p = Math.max(...bs.slice(i - 6, i)); if (p > 0 && bs.slice(i, i + 4).every((x) => x <= 0.6 * p)) { ci = i; pre = p; break; } }
+    if (ci < 0) console.log(`- 9d 생산 복구(N2): 줄인 달 없음(월 결산 ${reps[0]?.month ?? '—'}개월부터)`);
+    else {
+      const C = reps[ci]!.month;
+      const R = reps.find((r) => r.month >= C + 3 && r.cashEnd >= 6 * fixedOf(r))?.month;
+      const B = R != null ? reps.find((r) => r.month > R && wb(r) >= 0.8 * pre)?.month : undefined;
+      const lost = R != null ? reps.filter((r) => r.month >= R && (r.lostSalesBottles ?? 0) > 0).length : 0;
+      const end = reps.at(-1)!.month;
+      const n2 = R == null ? '회복 없음' : B != null ? `${B - R}개월` : `≥ ${end - R}개월(판 끝까지 안 되돌림)`;
+      console.log(`- 9d 생산 복구(N2): 줄인 달 C ${C}(줄이기 전 월 ${pre}배치) · 회복 달 R ${R ?? '—'}(C → R ${R != null ? R - C : '—'}개월) · 복구 달 B ${B ?? '—'} → **N2 = ${n2}** · R 뒤 판매 손실 달 ${lost}개`);
+    }
+  }
+  console.log(`- 9e 핸드필 통 지정 ${sumKinds('setHandfillCask')}번 · 판매 ${n0(cd.reduce((a, e) => a + e.bottles, 0))}병 · 매출 ${man(cd.reduce((a, e) => a + e.bottles * e.unitPrice, 0))} · 병·라벨 ${man(hfCost)} (월 결산 ${reps.length}개월)`);
 }
 
 // ── 7. 다른 판과 비교 ──
