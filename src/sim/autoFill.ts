@@ -1,6 +1,7 @@
 import { PROD_HANDLERS } from './actions.prod';
 import { usesObservedValuation } from './valuation';
 import { vesselMaterial } from './maturation';
+import { rulesVersionOf } from './rules';
 import type { AutoFillSettings, Cask, GameState, MonthReport, SpiritLot } from './types';
 
 // ───────────── 자동 통입 (#239, 5차 MVP 플레이테스트 2026-11-10) ─────────────
@@ -69,7 +70,9 @@ export function autoFillPlan(s: GameState, cfg: AutoFillSettings): { lot: Spirit
   const used = new Set<string>();
   return autoFillLots(s, cfg).map((l) => {
     const entry = Math.min(entryCap, l.abv);
-    const hold = stillMaking(s, l.kind);
+    // [결정 #372] v16: 생산 지시가 꺼져도 덜 찰 통에는 넣지 않는다(끝자리는 탱크에 두고 원액이 더 생기면 합친다) — 9차 판 사실 확인(PROD 2026-11-24):
+    // 지시를 끈 달에는 마지막 통에 남은 몫을 다 넣어 덜 찬 통이 생겼다. 옛 판은 지시가 켜져 있을 때만(지금대로)
+    const hold = rulesVersionOf(s) !== 'legacy-v15' || stillMaking(s, l.kind);
     const ids: string[] = [];
     let lotL = l.volumeL;
     let heldL = 0;
