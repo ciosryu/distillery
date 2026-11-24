@@ -9,7 +9,19 @@
 import { knownReads } from './blendTable';
 import { bulkValuePerLPA, isBulkKind, lotQuality, spotBidPerLPA } from './bulk';
 import { rulesVersionOf } from './rules';
-import type { Cask, GameState, SpiritLot } from './types';
+import type { Cask, EquipmentInstance, GameState, SpiritLot } from './types';
+import { EQUIPMENT } from './content/catalog';
+
+/**
+ * [#388 ① G4] 설비를 산 달 — 처분가 감가 나이의 입구(G4 `equipmentSalvage`가 읽는다 · MGT 값 표). 새 세이브는 `boughtMonth`.
+ * 옛 세이브(필드 없음)는 `readyMonth − leadMonths`(0 아래면 0)로 어림한다 — 고장 수리로 `readyMonth`가 덮어쓰인 증류기는 실제보다 늦게(젊게) 나온다 `[한계]`.
+ * `readyMonth` 0(시작 설비 · 수리 전)은 0
+ */
+export function boughtMonthOf(e: Pick<EquipmentInstance, 'boughtMonth' | 'readyMonth' | 'catalogId'>): number {
+  if (e.boughtMonth != null) return e.boughtMonth;
+  if (e.readyMonth <= 0) return 0;
+  return Math.max(0, e.readyMonth - (EQUIPMENT[e.catalogId]?.leadMonths ?? 0));
+}
 
 /**
  * 관측이 없는 통의 사전 품질 `[튜닝]` — P25(결정 93 답, PM 2026-11-14 "P25를 초기값으로"). 평균으로 두면 "맛을 안 보는 쪽이 평가가 높은" 판이 생겨 샘플의 정보 가치가 음수가 된다.

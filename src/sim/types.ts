@@ -72,6 +72,11 @@ export interface EquipmentInstance {
    * 7차 판(MGT 넘김): 142개월 수리 끝이 「단식 증류기 가동 시작」으로 떠 새 설비를 산 것처럼 읽혔다. 선택 필드(#187) — 상태 수치·난수에 닿지 않는다
    */
   repairUntil?: number;
+  /**
+   * [#388 ① G4] 산 달(경과 개월) — 설비 처분가의 감가 나이. `readyMonth`는 고장 수리(`events.ts` 증류기 중단) 때 덮어쓰여 산 달로 쓸 수 없다
+   * (9차 133 세이브의 시작 증류기 readyMonth 124 — MGT). 선택 필드(#187): 시작 설비 0 · 사기 · OEM 전용 설비가 적는다. 옛 세이브는 `boughtMonthOf`가 어림한다
+   */
+  boughtMonth?: number;
 }
 
 export interface SpiritLot {
