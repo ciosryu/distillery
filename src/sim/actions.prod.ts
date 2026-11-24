@@ -29,8 +29,8 @@ import { cooperageLeadMonths } from './prodKnobs';
 import { usesObservedValuation } from './valuation';
 import { taintOnExtract } from './taint'; // [결정 #382] 꼬리표 잇기(PROD) — 정의는 코어 taint.ts
 import { taintField } from './production';
-/** [결정 #382] 꺼낼 때 꼬리표 — 품질을 가리는 판(v16)만. 옛 판은 꼬리표를 만들지 않는다(지금 그대로) */
-const extractTaint = (s: GameState, cask: Cask) => (usesObservedValuation(s) ? taintOnExtract(cask) : cask.contents?.knownTaint);
+/** [결정 #382] 꺼낼 때 꼬리표 — 판 가드는 코어 `taintOnExtract(s, cask)`가 한다(옛 판은 새 꼬리표를 만들지 않음) */
+const extractTaint = (s: GameState, cask: Cask) => taintOnExtract(s, cask);
 
 // 플레이어 행동 — 생산·숙성·블렌딩 (PROD) (결정 #144 — 파일 쪼개기로 actions.ts에서 옮겨 왔다. 규칙 불변)
 // 행동을 더할 때: 아래 타입·처리기·현금 분류 세 곳만 고친다. 코어(actions.ts)는 이 파일의 타입을 통째로 합친다
