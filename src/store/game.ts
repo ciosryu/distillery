@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { createLocalEngine, DEFAULT_STOPS, newGame, setInvariantMode, newScenarioGame, type Action, type BusinessPlan, type GameState, type RegionId, type StopReason } from '../sim';
 import { flushSave, loadGame, queueSave, saveNow } from './persist';
 import { useUi } from './ui';
-import { advanceKindOf, parsePlayFile, recordAction, recordBuild, recordTurns, recordUndo, replacePlaylog, resetPlaylog, setNextAdvance } from './playlog';
+import { advanceKindOf, fillTally, parsePlayFile, recordAction, recordFill, recordBuild, recordTurns, recordUndo, replacePlaylog, resetPlaylog, setNextAdvance } from './playlog';
 import { BUILD_ID } from '../build';
 
 // 불변식 매달 검사 (INV-ARCH-1, architecture §9.5) — 개발 빌드(vite dev)만 콘솔에 적는다. 배포 빌드는 불러올 때만(persist.ts)
@@ -77,10 +77,12 @@ export const useGame = create<GameStore>((set) => {
   return {
     state: engine.snapshot(),
     dispatch: (a) => {
+      const before = a.type === 'fillCasks' ? engine.snapshot() : null;
       const res = engine.dispatch(a);
       if (res.error) { toast('error', res.error); return false; }
       if (res.message) toast('ok', res.message);
       recordAction(a.type); // 행동 종류도 남긴다(6차 판 분석 — 오래 걸린 턴에서 무엇을 했나)
+      if (before && a.type === 'fillCasks') recordFill(fillTally(before, engine.snapshot(), a.caskIds)); // 손 통입 통 수 · 덜 찬 통 수 (P-ARCH-88)
       return true;
     },
     advance: (months) => {

@@ -4,7 +4,7 @@ import { DEFAULT_POLICY_N } from './content/market';
 import { resetFirstPriceOnAuto } from './pricePolicy'; // 기본 정책 배수 n (B1-4)
 import { regionOf } from './content/regions';
 import { AUTO_RESTOCK_MONTHS, autoRestockSupported, bestAutoPrice, currentSuggested } from './economics';
-import { CASK_COST_SHARE_PER_FILL, CASK_MARKET, CASKS, EQUIPMENT, RECHAR_COST } from './content/catalog';
+import { CASK_COST_SHARE_PER_FILL, CASK_MARKET, CASKS, EQUIPMENT, RECHAR_COST, SEASONING_CONTRACT } from './content/catalog';
 import { assignSlot, rotateWarehouse, SlotIndex } from './warehouse';
 import { usedCaskPrice } from './casks';
 import { isLocked, LOCKED_MESSAGE } from './scenario';
@@ -21,7 +21,7 @@ import { equipmentCost } from './sites';
 import { applyWaterPermit } from './waterPermit';
 import { HANDFILL, handfillBlocker } from './handfill';
 import type { AutoFillSettings, AutoSampleSettings, Cask, CaskTypeId, GameState, Product, Recipe } from './types';
-import { nid, staffOf, warehouseCapacity } from './util';
+import { nid, pendingOrderSlots, queueReportNote, slotsFor, slotsUsed, staffOf, warehouseCapacity } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
 import { addCost, scaleLedger, splitLedger } from './ledger';
 import { dropLots } from './lots';
@@ -43,7 +43,7 @@ export type ProdAction =
   /** 스팟 마켓: 즉시 입고·웃돈·골빈 통 위험 */
   | { type: 'buySpotCasks'; caskType: CaskTypeId; qty: number }
   /** 시즈닝 계약: 새 통을 셰리 보데가(올로로소 벗)나 버번 증류소(배럴)에 보내 24개월 시즈닝 */
-  | { type: 'orderSeasoning'; caskType: 'oloroso_butt' | 'ex_bourbon_barrel'; qty: number }
+  | { type: 'orderSeasoning'; caskType: CaskTypeId; qty: number }
   | { type: 'sellUsedCask'; caskId: string }
   | { type: 'rotateWarehouse'; warehouseId: string }
   /** 오염 캐스크 원액 폐기 */
@@ -292,8 +292,9 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const def = CASKS[a.caskType];
     const qty = Math.max(1, Math.floor(a.qty));
     if (!def) return fail(prev, '알 수 없는 캐스크');
-    const pending = s.inventory.caskOrders.reduce((t, o) => t + o.qty, 0);
-    if (s.inventory.casks.length + pending + qty > warehouseCapacity(s)) return fail(prev, `숙성고 용량 부족 (${s.inventory.casks.length}+주문 ${pending}/${warehouseCapacity(s)})`);
+    // [결정 #360] 칸으로 센다(v16 캠페인 400L↑ 2칸 · 옛 판 · 샌드박스는 통 = 칸이라 그대로)
+    const pending = pendingOrderSlots(s);
+    if (slotsUsed(s) + pending + slotsFor(s, a.caskType, qty) > warehouseCapacity(s)) return fail(prev, `숙성고 용량 부족 (${slotsUsed(s)}+주문 ${pending}/${warehouseCapacity(s)})`);
     const unit = Math.round(regionalCaskPrice(s, def.id) * mod(s, `cask:${def.id}`));
     if (s.finance.cash < unit * qty) return fail(prev, '현금이 부족합니다');
     s.finance.cash -= unit * qty;
@@ -305,7 +306,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const def = CASKS[a.caskType];
     const qty = Math.max(1, Math.floor(a.qty));
     if (!def) return fail(prev, '알 수 없는 캐스크');
-    if (s.inventory.casks.length + qty > warehouseCapacity(s)) return fail(prev, `숙성고 용량 부족 (${s.inventory.casks.length}/${warehouseCapacity(s)})`);
+    if (slotsUsed(s) + slotsFor(s, a.caskType, qty) > warehouseCapacity(s)) return fail(prev, `숙성고 용량 부족 (${slotsUsed(s)}/${warehouseCapacity(s)})`); // #360 칸
     const unit = Math.round(regionalCaskPrice(s, def.id) * mod(s, `cask:${def.id}`) * CASK_MARKET.spotPremium);
     if (s.finance.cash < unit * qty) return fail(prev, '현금이 부족합니다');
     s.finance.cash -= unit * qty;
@@ -331,15 +332,16 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const def = CASKS[a.caskType];
     const qty = Math.max(1, Math.floor(a.qty));
     if (!def) return fail(prev, '알 수 없는 캐스크');
-    if (def.seasoningType === 'none') return fail(prev, '시즈닝 계약은 버번·셰리 캐스크만 할 수 있습니다');
-    const pending = s.inventory.caskOrders.reduce((t, o) => t + o.qty, 0);
-    if (s.inventory.casks.length + pending + qty > warehouseCapacity(s)) return fail(prev, '숙성고 용량 부족');
+    // #355: 계약은 버번 · 셰리 계열만(배럴 · 벗 · 혹스헤드) — 와인 · 포트는 그 업계에서 쓰던 통을 사 오는 것이라 계약이 없다
+    if (!SEASONING_CONTRACT.includes(def.seasoningType)) return fail(prev, '시즈닝 계약은 버번·셰리 캐스크만 할 수 있습니다');
+    const pending = pendingOrderSlots(s); // #360 칸
+    if (slotsUsed(s) + pending + slotsFor(s, a.caskType, qty) > warehouseCapacity(s)) return fail(prev, '숙성고 용량 부족');
     // 시즈닝 계약가는 시장가와 무관하게 계약 시점의 카탈로그가 기준 → 셰리통 파동 헤지
     const unit = Math.round(regionalCaskPrice(s, def.id) * CASK_MARKET.seasoningCostFactor);
     if (s.finance.cash < unit * qty) return fail(prev, '현금이 부족합니다');
     s.finance.cash -= unit * qty;
     s.inventory.caskOrders.push({ id: nid(s, 'O'), typeId: a.caskType, qty, arriveMonth: s.month + CASK_MARKET.seasoningMonths, source: 'seasoning' });
-    return { state: s, message: `${a.caskType === 'oloroso_butt' ? '셰리 보데가' : '버번 증류소'}와 시즈닝 계약 ${qty}통 — ${CASK_MARKET.seasoningMonths}개월 뒤 최상급 캐스크로 도착 (개당 ${unit.toLocaleString()}원)` };
+    return { state: s, message: `${def.seasoningType === 'sherry' ? '셰리 보데가' : '버번 증류소'}와 시즈닝 계약 ${qty}통 — ${CASK_MARKET.seasoningMonths}개월 뒤 최상급 캐스크로 도착 (개당 ${unit.toLocaleString()}원)` };
   },
   sellUsedCask: (s, prev, a) => {
     const ci = s.inventory.casks.findIndex((c) => c.id === a.caskId);
@@ -423,13 +425,19 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     // 새 제품 첫 값 = 기준가 × 기본 정책 배수 n ([결정 #290] B1-4, MKT 대행) — 옵션이 정했으면 그 값
     const res = executeBlend(s, a.components, { firstPriceFactor: DEFAULT_POLICY_N, ...a.options });
     if (res.error) return fail(prev, res.error);
+    // 핸드필 지정 통을 병입으로 비웠다 — emptyCask가 핸드필 표시를 조용히 지운다(9차 중간 기록: 지정 통 K306이 메모 없이 끝남, PM 2026-11-24) → 결과 메시지에 남긴다
+    const hfEmptied = prev.inventory.casks.filter((c) => c.handfill && c.contents && !s.inventory.casks.find((x) => x.id === c.id)?.contents).map((c) => c.id);
+    // 문구는 "핸드필 "으로 시작하고 "비었다"를 포함한다 — 소식 창(TurnBrief `^핸드필 .*비었다`)이 결산 메모로 옮겨지면 그달에 줍는다(ARCH P-ARCH-83)
+    const hfNote = hfEmptied.length ? `핸드필 통 ${hfEmptied.join(' · ')}이 병입으로 비었다 — 다음 핸드필 통을 지정하세요` : '';
+    // 다음 결산 메모에도 남긴다(코어 #916 queueReportNote) — 그달 소식 창(TurnBrief `^핸드필 .*비었다`)과 결산 기록에 남는다
+    if (hfNote) queueReportNote(s, hfNote);
     // 기존 제품 재고 보충 (#186) — 몇 병을 더했고 품질이 어떻게 됐는지
     if (a.options.restockId) {
       const before = prev.commerce.products.find((x) => x.id === a.options.restockId)!;
       const added = res.product!.stockBottles - before.stockBottles;
-      return { state: s, message: [`${res.product!.name} 재고 보충 +${added.toLocaleString()}병 (재고 ${res.product!.stockBottles.toLocaleString()}병) · 품질 ${qText(prev, before)} → ${qText(s, res.product!)} (재고 가중 평균)`, ...(res.reveal?.notes ?? [])].join(' · ') };
+      return { state: s, message: [`${res.product!.name} 재고 보충 +${added.toLocaleString()}병 (재고 ${res.product!.stockBottles.toLocaleString()}병) · 품질 ${qText(prev, before)} → ${qText(s, res.product!)} (재고 가중 평균)`, ...(res.reveal?.notes ?? []), ...(hfNote ? [hfNote] : [])].join(' · ') };
     }
-    return { state: s, message: bottleMessage(res.product!, res.reveal) };
+    return { state: s, message: [bottleMessage(res.product!, res.reveal), ...(hfNote ? [hfNote] : [])].join(' · ') };
   },
   sampleCask: (s, prev, a) => {
     const cap = samplingCapacity(s) - s.inventory.samplesThisMonth;
