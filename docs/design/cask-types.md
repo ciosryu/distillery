@@ -231,7 +231,7 @@
 
 | 순서 | PR | 몫 | 내용 | 크기 | 출력 |
 |---|---|---|---|---|---|
-| 1 | 코어 | ARCH | `CaskTypeId` +4(`sherry_hogshead` · `wine_barrique` · `port_pipe` · `virgin_oak_barrel`) · `seasoningType`에 wine · port · `Product.finishMonths?`(#362 — 병입 때 피니시 개월, 선택 필드 · 버전 올림 없음 #187) · #360 `slotsOf` · `slotsUsed`와 sim · 화면 · 알림 · 봇 스크립트 교체 · 넘침 처리(9.1 (가)) · 자리 표시 · 시험(옛 판 1칸 · v16 벗 2칸 · 넘침 때 통입 막힘 · 버리지 않음) | 1일 | X0L · 샌드박스 · v16 X0 동일 기대 |
+| 1 | 코어 | ARCH | `CaskTypeId` +4(`sherry_hogshead` · `wine_barrique` · `port_pipe` · `virgin_oak_barrel`) · `seasoningType`에 wine · port · `Product.finishMonths?`(#362 — 병입 때 피니시 개월 = 섞은 원액의 마지막 통 구간 중 **가장 짧은 값**(보충도 짧은 쪽 · 표기 `finish`와 같은 보수 규칙) · v16 판 병입만 씀, 선택 필드 · 버전 올림 없음 #187) · #360 `slotsOf` · `slotsUsed`와 sim · 화면 · 알림 · 봇 스크립트 교체 · 넘침 처리(9.1 (가)) · 자리 표시 · 시험(옛 판 1칸 · v16 벗 2칸 · 넘침 때 통입 막힘 · 버리지 않음) | 1일 | X0L · 샌드박스 · v16 X0 동일 기대 |
 | 2 | 콘텐츠 | PROD | `CASKS` 4행 · `SEASONING_EXTRACT` wine · port · `finishLabel` 종류별 표 · 시즈닝 계약 "버번 · 셰리 계열만"(혹스헤드 추가) · `CaskCare` 시즈닝 목록 · `CASK_SHORT` 계열 색 · 병입 때 `finishMonths` 쓰기 · FinishRow "빈 통 없음 n종" 접기 · PRD §5.1 · §5.2 · 12년 탄닌 · 활성도 줄 확인 | 1일 | 동일 기대(봇은 새 통 안 삼) |
 | 3 | 판매 | MKT | #361 `STYLE_WEIGHTS` 계열 키(`caskFamily` — 셰리 계열은 지금 올로로소 값 그대로) · 9 × 9 가중 · #362 A(매력도 · 기대가 ×1.08 — 3개월↑ 피니시) · B(럭셔리 +10) — `finishMonths`를 읽는다 · 피드 계열 꼬리표 · 품귀 · 셰리통 파동 · 관세 이벤트에 해당 통 더함 | 0.5 ~ 1일 | 동일 기대(봇은 피니싱 안 함 · 셰리 계열 값이 같다) — 피니싱 · 새 통을 쓰는 사람 판만 바뀜 |
 | (함께) | 코어 | ARCH | F5d 면세 짝 `dutyFreePair`에 "finish 같음" 한 줄(§1 구멍) | 반나절 미만 | 면세 피니시 제품이 있을 때만 |
