@@ -234,6 +234,29 @@ export function stageTarget(st: { unlock: readonly string[] }): { tab: string; l
 }
 
 export const FLAGSHIP_LOW = 3;
+/**
+ * [#388 ① A3] 단계로 열린 시설 가운데 아직 사지 않은 것 — 열린 달(단계 정의의 month) 순.
+ * 9차 판: 108개월에 열린 VIP 라운지를 오너가 "존재를 인지하지도 못했다" — 설비 목록은 홈의 기본 접힘 묶음 「레시피·크래프팅 레버 · 설비」 안에 있고,
+ * 알림은 열린 달 소식 창 · 할 일 몇 달뿐이었다. 공개 정보(단계 · 잠금 · 보유 설비)만 읽는다. "본 적 있음"은 화면 쪽(`seenFacilities.ts`, 세이브 밖)
+ */
+export function newFacilities(s: GameState): { id: string; name: string; openedMonth: number }[] {
+  if (!s.scenario) return [];
+  const done = new Set(s.scenario.stagesDone ?? []);
+  const owned = new Set(s.production.equipment.map((e) => e.catalogId));
+  const out: { id: string; name: string; openedMonth: number }[] = [];
+  for (const st of stagesOf(s)) {
+    if (!done.has(st.id)) continue;
+    for (const k of st.unlock) {
+      if (!k.startsWith('facility:')) continue;
+      const id = k.slice('facility:'.length);
+      const def = EQUIPMENT[id];
+      if (!def || owned.has(id) || isLocked(s, k) || out.some((x) => x.id === id)) continue;
+      out.push({ id, name: def.nameKo, openedMonth: st.month });
+    }
+  }
+  return out.sort((a, b) => a.openedMonth - b.openedMonth || a.id.localeCompare(b.id));
+}
+
 /** [결정 #385] 현금이 고정비 이만큼을 넘으면 「놀고 있는 현금」 줄 `[튜닝]` */
 export const IDLE_CASH_MONTHS = 24;
 
