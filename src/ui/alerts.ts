@@ -202,11 +202,13 @@ export function stageTarget(st: { unlock: readonly string[] }): { tab: string; l
 
 export const FLAGSHIP_LOW = 3;
 
-/** 핸드필 통이 빈 뒤 지난 개월과 비기 전 6개월 평균 핸드필 매출 — 결산 메모(`handfill.ts`)에서 읽는다. 빈 기록이 없으면(처음부터 미지정) null */
+/** 마지막 핸드필 판매 뒤 지난 개월과 그때까지 6개월 평균 핸드필 매출 — 결산 메모(`handfill.ts`)에서 읽는다. 판매 기록이 없으면(처음부터 미지정) null */
 export function handfillIdle(s: GameState): { months: number; monthly: number } | null {
   const reps = s.history.reports;
   let i = reps.length - 1;
-  while (i >= 0 && !reps[i]!.notes.some((n) => /^핸드필 .*비었다/.test(n))) i--;
+  // 마지막 핸드필 **판매** 달부터 센다 — "비었다" 메모만 찾으면 지정 통이 메모 없이 풀린 경우(병입 · 원액 판매로 비워져 지정이 풀림)를 놓친다
+  // (9차 판 64개월: K306이 155L 남은 채 병입 달에 비어 "비었다" 메모가 없었다 → 화면 「20개월째」 · 기록 16개월, docs/playtest/9/arch.md ②)
+  while (i >= 0 && !reps[i]!.notes.some((n) => /^핸드필 \d/.test(n))) i--;
   if (i < 0) return null;
   const won = (n: string) => Number(n.match(/^핸드필 \d[\d,]*병 \(([\d,]+)원\)/)?.[1]?.replace(/,/g, '') ?? 0);
   const before = reps.slice(Math.max(0, i - 5), i + 1).map((r) => r.notes.reduce((t, n) => t + won(n), 0));
@@ -360,7 +362,7 @@ export function monthTodos(s: GameState): Todo[] {
   if (s.scenario && hasHandfillZone(s) && !handfillCask(s) && s.production.equipment.some((e) => EQUIPMENT[e.catalogId]?.kind === 'visitor' && e.readyMonth <= s.month)) {
     // 6차 판(PROD prod.md ⑥): 142개월에 통이 빈 뒤 16개월 미지정 — 빈 지 몇 달째인지와 그 전 매출을 붙여 같은 warn 사이에서 덜 묻히게
     const idle = handfillIdle(s);
-    out.push({ id: 'handfill', level: 'warn', text: `핸드필 존에 통이 없다${idle ? ` — 통이 빈 지 ${idle.months}개월째${idle.monthly ? `(비기 전 월 약 ${fmtWon(idle.monthly)} — 그만큼 놓치는 중)` : ''}` : ''} — 숙성 중인 캐스크 칸에서 핸드필 전용 통을 고르면 방문객이 매달 500ml씩 담아 간다(병입 권장가의 약 2배)`, action: '통 고르기', target: { anchor: 'mvp-warehouse' } });
+    out.push({ id: 'handfill', level: 'warn', text: `핸드필 존에 통이 없다${idle ? ` — 핸드필 판매가 멈춘 지 ${idle.months}개월째${idle.monthly ? `(그 전 월 약 ${fmtWon(idle.monthly)} — 그만큼 놓치는 중)` : ''}` : ''} — 숙성 중인 캐스크 칸에서 핸드필 전용 통을 고르면 방문객이 매달 500ml씩 담아 간다(병입 권장가의 약 2배)`, action: '통 고르기', target: { anchor: 'mvp-warehouse' } });
   }
   // 핵심 전문가를 아직 고르지 않았다 (MGT #610 남은 점 — 할 일에서 직원 탭 카드로 잇는 안내). 해금 소식(stage 할 일)이 내려간 뒤 SPECIALIST_TODO_MONTHS개월 — 안 고르는 것도 선택이라 끝없이 띄우지는 않는다.
   // 7차 판(오너 "못봤다"): 해금 소식 3턴을 0·0·10초에 넘겼고, 그 뒤 9개월 info는 다른 할 일 아래에 묻혔다 → warn으로 올리고 기간을 늘린다(화면만)
