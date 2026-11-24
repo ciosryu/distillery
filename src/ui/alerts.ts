@@ -449,7 +449,8 @@ export function monthTodos(s: GameState): Todo[] {
   const waitText = fillLevel === 'info' ? '' : ` — 통에 들어가지 않은 원액: ${lotText}. 통에 넣어야 숙성이 시작된다 — 3년 위스키·12년 후보가 그만큼 늦어진다`;
   // [결정 #360] 숙성고 칸 넘침 — v16 캠페인에서 400L↑ 통이 2칸이 되어 진행 중인 판이 정원을 넘을 수 있다. 통은 그대로 두고 새 통만 막힌다(cask-types.md §9.1 (가))
   const overSlots = slotsUsed(s) - warehouseCapacity(s);
-  if (overSlots > 0) out.push({ id: 'slots-over', level: 'warn', text: `숙성고 ${overSlots}칸 넘침(${slotsUsed(s)}/${warehouseCapacity(s)}칸 — 400L 넘는 큰 통은 2칸) — 들어 있는 통은 그대로지만 새 통을 사거나 주문할 수 없다. 한 번 이상 쓴 빈 큰 통을 팔거나(중고 매각) 숙성고를 증축하라`, action: '숙성고 공간', target: { anchor: 'mvp-space' } });
+  // [결정 #363] 넘친 판은 통을 그대로 두고 새 통만 막는다 — 진행 중 세이브를 불러온 사람에게 규칙이 바뀐 것을 이 한 줄로 알린다(v16 캠페인 · 넘친 판에서만 뜬다)
+  if (overSlots > 0) out.push({ id: 'slots-over', level: 'warn', text: `숙성고 ${overSlots}칸 넘침(${slotsUsed(s)}/${warehouseCapacity(s)}칸) — 이 빌드부터 400L 이상 통은 2칸을 쓴다. 들어 있는 통은 그대로이고 새 통만 사거나 주문할 수 없다. 한 번 이상 쓴 빈 큰 통을 팔거나(중고 매각) 숙성고를 증축하라`, action: '숙성고 공간', target: { anchor: 'mvp-space' } });
   // 자동 통입(#239)이 켜져 있으면 넣을 통이 있는 동안은 안내하지 않는다 — 빈 통이 모자랄 때만 "통을 사라"로 줄인다
   const af = s.inventory.autoFill;
   const afLeft = af && tankMalt >= 50 ? autoFillPreview(s, af).leftL : 0;

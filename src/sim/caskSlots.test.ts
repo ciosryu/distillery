@@ -3,7 +3,7 @@ import { applyAction, caskSlots, newGame, newScenarioGame, slotsUsed, warehouseC
 import { emptyCaskOf } from './newGame';
 import { monthTodos } from '../ui/alerts';
 
-// [결정 #360] 숙성고에서 400L 이상 통은 2칸 — v16 캠페인만, 옛 판 · 샌드박스는 1칸 그대로 (cask-types.md §9.1 · [제안 P-ARCH-80] (가))
+// [결정 #360] 숙성고에서 400L 이상 통은 2칸 — v16 캠페인만, 옛 판 · 샌드박스는 1칸 그대로 (cask-types.md §9.1 · [결정 #363] 넘침 처리)
 
 const campaign = (): GameState => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 3, rules: 'v16' });
 const legacy = (): GameState => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 3, rules: 'legacy-v15' });
@@ -40,7 +40,7 @@ describe('숙성고 칸 — 400L 이상 통은 2칸 ([결정 #360])', () => {
     expect(slotsUsed(s)).toBe(warehouseCapacity(s));
   });
 
-  it('진행 중인 판이 칸을 넘으면(벗이 2칸이 되어) 통은 그대로 두고 새 통만 막는다 · 할 일 warn「숙성고 n칸 넘침」', () => {
+  it('진행 중인 판이 칸을 넘으면(벗이 2칸이 되어) 통은 그대로 두고 새 통만 막는다 · 할 일 warn「숙성고 n칸 넘침」 ([결정 #363])', () => {
     const s = campaign();
     s.finance.cash = 1e10;
     // 옛 규칙으로는 꽉 차지 않은 판 — 통 개수는 정원 안이지만 벗 때문에 칸이 넘친다
@@ -54,6 +54,7 @@ describe('숙성고 칸 — 400L 이상 통은 2칸 ([결정 #360])', () => {
     const t = monthTodos(s).find((x) => x.id === 'slots-over');
     expect(t?.level).toBe('warn');
     expect(t?.text).toContain('2칸 넘침');
+    expect(t?.text).toContain('이 빌드부터 400L 이상 통은 2칸'); // 진행 중 세이브 안내 (#363)
     // 한 번 쓴 빈 벗 하나를 팔면 2칸이 풀린다
     const butt = s.inventory.casks.find((c) => c.typeId === 'oloroso_butt')!;
     const sold = applyAction(s, { type: 'sellUsedCask', caskId: butt.id });
