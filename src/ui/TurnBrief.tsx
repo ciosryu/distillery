@@ -12,7 +12,7 @@ import { PendingEventChoices } from './panels/Events';
 import { briefTodos, flagshipReady, monthTodos, stageTarget } from './alerts';
 import { TodoText, useGo } from './AlertsView';
 import { useUi } from '../store/ui';
-import { campaignMinOakMonths, stagesOf, visibleLateGoals, type GameState } from '../sim';
+import { campaignMinOakMonths, lateGoalProgress, stagesOf, visibleLateGoals, type GameState } from '../sim';
 import { AGE_BANDS, bandCounts, thinBands } from '../sim/ageBand'; // #380 연령 띠(PROD) — 분기 요약 한 줄
 
 const SEEN_KEY = 'distillery-tycoon/brief-seen';
@@ -70,7 +70,7 @@ export function periodSummary(s: GameState, fromMonth: number): { months: number
   if (s.month - fromMonth < 2 || !span.length) return null;
   const before = s.history.reports.filter((r) => r.month < fromMonth).at(-1)?.cashEnd;
   const cashDelta = span.at(-1)!.cashEnd - (before ?? span[0]!.cashEnd);
-  const open = visibleLateGoals(s).filter((g) => !g.result).map((g) => g.def.title.split(' — ')[0]!);
+  const open = visibleLateGoals(s).filter((g) => !g.result).map((g) => { const p = lateGoalProgress(s, g.def.id); return `${g.def.title.split(' — ')[0]!}${p ? ` ${p.have}/${p.need}` : ''}`; }); // 진척 수치는 MGT 판정(#1018)
   const done = (s.progress.lateGoals ?? []).filter((g) => g.result === 'done' && g.month >= fromMonth).length + (s.progress.midGoals ?? []).filter((g) => g.result === 'done' && g.month >= fromMonth).length;
   const counts = bandCounts(s);
   const thin = new Set(thinBands(counts));
