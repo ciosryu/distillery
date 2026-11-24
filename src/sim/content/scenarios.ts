@@ -57,6 +57,8 @@ export interface ScenarioDef {
    */
   stagesV16?: ScenarioStage[];
   midGoalsV16?: MidGoalDef[];
+  /** [#388 ① G3] 후반 목표 사다리(v16 새 캠페인만 — 옛 판은 읽지 않는다). 보상 없음(기록 · 화면만) — 그래서 봇 출력이 같다. 판정 `lateGoals.ts` */
+  lateGoalsV16?: LateGoalDef[];
   /** v16 새 판에만 더 잠그는 키 (예: `event:export_inquiry` — #321). 옛 판·X0L은 받지 않는다 */
   lockedV16?: string[];
   /** v16 새 판의 주종 — 없으면 `kinds` (#311·#322: 그레인·기본 블렌드 MVP 포함) */
@@ -76,6 +78,26 @@ export interface ScenarioStage {
 }
 
 /** 중반 목표 — 판정은 progress.ts의 midGoalMet(id)가 한다 */
+/**
+ * [#388 ① G3 · endgame.md §7.2] 후반 목표 — 중반 목표와 달리 **보상이 없고**(기록 · 결과 화면만, 보상은 #390 때), 기한이 없는 목표가 있으며 승리 뒤에도 판정한다.
+ * `opens`: 그 달(경과 개월)부터 · 'win' 캠페인 승리 뒤 · { after } 그 후반 목표를 이룬 뒤
+ */
+export interface LateGoalDef {
+  id: 'ladder_mid' | 'lounge_3' | 'flagship_300' | 'aged15_sold' | 'aged18_sold';
+  title: string;
+  opens: { month: number } | 'win' | { after: LateGoalDef['id'] };
+  /** 이 달(경과 개월) 말까지 — 없으면 기한 없음 */
+  byMonth?: number;
+  /** 할 일 · 결과 화면에 붙이는 짝 행동 한 줄(⑦ — 돈으로 하는 다른 종류의 일) */
+  hint: string;
+}
+
+/**
+ * [#388 ① G3] 띠 목표 `ladder_mid`가 보이는 창 — **이 상수 하나**가 시작 달 · 기한을 정한다.
+ * 지금 값은 ARCH 첫 안(120 ~ 156). MGT · PM 안은 72 ~ 144(120에 통입한 원액은 156에 목재 36이라 5 ~ 9년 띠에 못 든다) — **오너 안건 ⓐ 답 뒤 이 값만 바꾼다** `[결정 대기]`
+ */
+export const LADDER_MID_WINDOW = { opens: 120, byMonth: 156 } as const;
+
 export interface MidGoalDef {
   id: 'aged3_sold' | 'commission_done' | 'export_open' | 'revenue_8' | 'reserve_casks';
   /** 이 달(경과 개월) 말까지 */
@@ -170,6 +192,14 @@ export const MVP_KR: ScenarioDef = {
     // #319 치환: 옛 export_open 자리 — 12년 후보 통 3개(자가 몰트, 목재 108개월↑ = 안내 지평 36). 판정 progress.ts midGoalMet('reserve_casks')
     { id: 'reserve_casks', byMonth: 132, title: '12년 후보 통 3개 확보 — 자가 몰트, 목재 숙성 9년 넘게', rewardAwareness: 0.03 },
     { id: 'revenue_8', byMonth: 156, title: '연 매출 8억(최근 12개월)', rewardAwareness: 0.03 },
+  ],
+  // [#388 ① G3] 후반 목표 사다리 — ARCH · MGT 맞춤 목록(endgame.md §7.2, 2026-11-24). 문턱 [튜닝 — 단계 T]. 판정 MGT(lateGoals.ts lateGoalMet)
+  lateGoalsV16: [
+    { id: 'ladder_mid', opens: { month: LADDER_MID_WINDOW.opens }, byMonth: LADDER_MID_WINDOW.byMonth, title: '숙성고 5 ~ 9년 띠 6통 — 12년 뒤를 이을 원액', hint: '12년만 보고 통을 비우지 말고 지금 넣은 통을 남겨 둔다(통입 · 통 사기)' },
+    { id: 'lounge_3', opens: { month: 108 }, byMonth: 168, title: 'VIP 라운지 — 최근 12개월 관광 매출 3억', hint: 'VIP 테이스팅 라운지(설비)를 짓는다' },
+    { id: 'flagship_300', opens: 'win', title: '12년 싱글 몰트 누적 300병 출하', hint: '12년 후보 통을 지키고 자동 채우기 연수 보호를 쓴다' },
+    { id: 'aged15_sold', opens: 'win', title: '15년 싱글 몰트 첫 출하', hint: '15년까지 묵힐 통을 보호 태그로 묶는다' },
+    { id: 'aged18_sold', opens: { after: 'aged15_sold' }, title: '18년 싱글 몰트 첫 출하', hint: '18년까지 묵힐 통을 남긴다' },
   ],
   // #321 대안 ⓐ: 「해외 바이어 문의」(수출 주문 300병)는 새 캠페인에서 잠근다 — events.ts eligibleAt가 `event:<id>` 키를 본다. 옛 판·샌드박스는 키가 없어 불변
   // P-MGT-63 (b): 「대형 블렌더 장기 계약 제안」도 잠근다 — 계약 받기(`action:acceptContract` · `system:contracts`)가 v16 내내 잠겨 있어 [계약] 버튼이 늘 실패했다(9차 81 · 110개월째). 이벤트별 난수 스트림이라 다른 이벤트의 확률은 그대로 — 다만 월 상한 안의 빈 자리를 다른 이벤트가 받고 nid가 당겨져 결과는 달라진다

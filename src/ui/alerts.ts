@@ -23,6 +23,7 @@ import { AUTO_RESTOCK_EXPENSE, caskRunway, CUTBACK_HINT, productionCutback, prod
 import { monthlyFixedCost } from '../sim/loans';
 import { capacityReport } from '../sim/production';
 import { FINISH, finishLabel, finishOf, vesselMaterial } from '../sim/maturation';
+import { taintShown } from '../sim/taint'; // [결정 #382] 오염 원액 꼬리표(코어)
 
 // ───────────── ① 파산 카운트다운 ─────────────
 
@@ -202,6 +203,20 @@ export const flagshipCandidates = (s: GameState) => s.inventory.casks.filter((c)
 export const reserveCandidateCasks = (s: GameState) => s.inventory.casks.filter((c) => isCampaignCandidate(s, c, candidateHorizon(s, 'hint')));
 /** 후보 통 중 **아는** 오염 통 수 (#365 — 모르는 오염은 숨은 값이라 세지 않는다, #310) */
 export const knownContaminated = (casks: readonly Cask[]) => casks.filter((c) => c.contaminationKnown).length;
+/** [결정 #382] 아는 오염 통은 아닌데, 아는 오염 통에서 꺼낸 원액이 `TAINT_SHOW_SHARE`(5%) 이상 섞인 원액이 든 통 — 9차: K11(아는 곰팡이)의 원액을 K675로 옮기자 「오염」 표시가 사라졌다.
+ * 꼬리표는 **아는** 오염에서만 생긴다(`taint.ts` — I1 / I2) */
+export const taintedSpirit = (c: Pick<Cask, 'contaminationKnown' | 'contents'>) => !c.contaminationKnown && taintShown(c.contents);
+/** 결점 향이 섞였다고 아는 통 — 아는 오염 통(#365) 또는 오염 원액이 든 통(#382). 빼지 않고 경고만 한다 */
+export const knownTainted = (c: Pick<Cask, 'contaminationKnown' | 'contents'>) => !!c.contaminationKnown || taintedSpirit(c);
+/** 후보 묶음 경고 꼬리 「 — ⚠ 그중 a통은 아는 오염 · b통은 오염 원액이 섞인 통(결점 향이 섞인다)」 — 둘 다 0이면 ''. 오염 원액이 없으면 #365 문구 그대로 */
+export function contamNote(casks: readonly Cask[]): string {
+  const a = knownContaminated(casks);
+  const b = casks.filter(taintedSpirit).length;
+  if (!a && !b) return '';
+  return ` — ⚠ 그중 ${[a ? `${a}통은 아는 오염` : '', b ? `${b}통은 오염 원액이 섞인 통` : ''].filter(Boolean).join(' · ')}(결점 향이 섞인다)`;
+}
+/** 화면 줄 풀이 — 오염 원액이 든 통(#382). 옮긴 통에서는 결점 향이 더 늘지 않는다(늘어나는 것은 오염된 통 안에서만 — `warehouse.ts`) */
+export const TAINT_SPIRIT_NOTE = '아는 오염 통에서 꺼낸 원액이 섞였다 — 이미 밴 결점 향(곰팡내)은 남아 병입하면 제품에 섞인다(이 통에서 더 늘지는 않는다)';
 /** 이 수 이하로 남으면 할 일 맨 위 (#261) `[튜닝]` */
 /**
  * 새로 열린 단계가 가리키는 탭 — 할 일 "새로 열림"과 소식 창이 같은 것을 쓴다.
@@ -219,6 +234,29 @@ export function stageTarget(st: { unlock: readonly string[] }): { tab: string; l
 }
 
 export const FLAGSHIP_LOW = 3;
+/**
+ * [#388 ① A3] 단계로 열린 시설 가운데 아직 사지 않은 것 — 열린 달(단계 정의의 month) 순.
+ * 9차 판: 108개월에 열린 VIP 라운지를 오너가 "존재를 인지하지도 못했다" — 설비 목록은 홈의 기본 접힘 묶음 「레시피·크래프팅 레버 · 설비」 안에 있고,
+ * 알림은 열린 달 소식 창 · 할 일 몇 달뿐이었다. 공개 정보(단계 · 잠금 · 보유 설비)만 읽는다. "본 적 있음"은 화면 쪽(`seenFacilities.ts`, 세이브 밖)
+ */
+export function newFacilities(s: GameState): { id: string; name: string; openedMonth: number }[] {
+  if (!s.scenario) return [];
+  const done = new Set(s.scenario.stagesDone ?? []);
+  const owned = new Set(s.production.equipment.map((e) => e.catalogId));
+  const out: { id: string; name: string; openedMonth: number }[] = [];
+  for (const st of stagesOf(s)) {
+    if (!done.has(st.id)) continue;
+    for (const k of st.unlock) {
+      if (!k.startsWith('facility:')) continue;
+      const id = k.slice('facility:'.length);
+      const def = EQUIPMENT[id];
+      if (!def || owned.has(id) || isLocked(s, k) || out.some((x) => x.id === id)) continue;
+      out.push({ id, name: def.nameKo, openedMonth: st.month });
+    }
+  }
+  return out.sort((a, b) => a.openedMonth - b.openedMonth || a.id.localeCompare(b.id));
+}
+
 /** [결정 #385] 현금이 고정비 이만큼을 넘으면 「놀고 있는 현금」 줄 `[튜닝]` */
 export const IDLE_CASH_MONTHS = 24;
 
@@ -469,8 +507,10 @@ export function monthTodos(s: GameState): Todo[] {
   }
   // [결정 #365 고침] 아는 오염 통이 12년 후보에 섞였다 — 판정은 그대로 세지만(막지 않음) 병입하면 결점 향이 섞인다. 「경고를 꽤 잘 보이게」(오너) → 할 일 warn
   {
-    const bad = flagshipCandidates(s).filter((c) => c.contaminationKnown && !campaignWon(s));
-    if (bad.length) out.push({ id: 'contam-cand', level: 'warn', text: `12년 후보 통 가운데 ${bad.length}통(${bad.slice(0, 3).map((c) => c.id).join(' · ')}${bad.length > 3 ? ' …' : ''})이 아는 오염 통이다 — 후보로는 세지만, 병입하면 결점 향(곰팡내 등)이 섞여 품질이 깎인다`, action: '숙성 중인 캐스크', target: { anchor: 'mvp-warehouse' } });
+    // [결정 #382] 오염 원액이 섞인 통(아는 오염 통에서 옮긴 원액)도 같은 줄에 — 없으면 #365 문구 그대로
+    const bad = flagshipCandidates(s).filter((c) => knownTainted(c) && !campaignWon(s));
+    const spirit = bad.some(taintedSpirit);
+    if (bad.length) out.push({ id: 'contam-cand', level: 'warn', text: `12년 후보 통 가운데 ${bad.length}통(${bad.slice(0, 3).map((c) => c.id).join(' · ')}${bad.length > 3 ? ' …' : ''})이 아는 오염 통${spirit ? '이거나 아는 오염 원액이 섞인 통' : ''}이다 — 후보로는 세지만, 병입하면 결점 향(곰팡내 등)이 섞여 품질이 깎인다`, action: '숙성 중인 캐스크', target: { anchor: 'mvp-warehouse' } });
   }
   // 재고 적체(9차 판 64개월 — 오크소주 · 뉴본 피티드가 20개월 치 넘게 쌓였는데 할 일에 신호가 없었다, PROD 제안 2026-11-24): 팔 재고가 판매의 `OVERHANG.months` 개월 치를 넘으면
   // 국내 수요가 깎인다(`retail.ts overhangFactor` · `overhangMonths`, 하한 `OVERHANG.floor` — 판매 셈과 같은 함수). 홈 「돈 흐름」의 재고 과잉(overstock)은 주종 묶음 금액이라 "수요가 준다"는 보이지 않는다.
