@@ -11,7 +11,7 @@ import { finishOf, matureCask, vesselMaterial } from './maturation';
 import { capacityReport, orderPlan, steadyBatch } from './production';
 import { demandFor, distributionCostPerBottle, domesticDemands, priceOptions } from './market';
 import { outboundLogistics } from './sites';
-import { calendar, warehouseCapacity } from './util';
+import { calendar, slotsUsed, warehouseCapacity } from './util';
 import { FLAGSHIP_RESERVE_TAG, preferredCaskIds, protectedCaskIds, reserveCaskIds, tagDef } from './tags';
 import { spotBidPerLPA } from './bulk';
 import { categoryMonthlyDemand, SALES_LOOKBACK } from './salesPace';
@@ -217,7 +217,7 @@ export function whiskyAnnualPace(s: GameState): { bottles: number; basis: 'sales
 /** 탱크의 몰트·그레인(직접 만든 것)을 통입하는 데 드는 200L 통 수와 숙성고 남은 자리 — 공급 전망은 "지금 통입한다"고 보므로 자리가 모자라면 그만큼 늦어진다 */
 export function tankFillNeed(s: GameState): { liters: number; casks200: number; freeSlots: number } {
   const liters = s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && !l.sourced).reduce((t, l) => t + l.volumeL, 0);
-  return { liters: Math.round(liters), casks200: Math.ceil(liters / 200), freeSlots: Math.max(0, warehouseCapacity(s) - s.inventory.casks.length) };
+  return { liters: Math.round(liters), casks200: Math.ceil(liters / 200), freeSlots: Math.max(0, warehouseCapacity(s) - slotsUsed(s)) }; // #360 칸
 }
 
 // ───────────── 생산비 대 고정비 · 생산이 만드는 미래 위스키 (#185, 2차 MVP 플레이테스트 2026-11-08) ─────────────
@@ -508,7 +508,7 @@ export function rampOutlook(s: GameState): RampOutlook | null {
   const eq = Number.isFinite(equipmentBatches) ? equipmentBatches : 0;
   return {
     recipeId: r.id, name: r.name, costPerBatch: Math.round(b.cost), casksPerBatch, warehouseBatches, equipmentBatches: eq, headroomBatches: Math.min(warehouseBatches, eq),
-    freeSlots: Math.max(0, capacity - s.inventory.casks.length), emptyCasks: s.inventory.casks.filter((c) => !c.contents && vesselMaterial(c) === 'wood' && !c.contaminationKnown).length,
+    freeSlots: Math.max(0, capacity - slotsUsed(s)) /* #360 칸 */, emptyCasks: s.inventory.casks.filter((c) => !c.contents && vesselMaterial(c) === 'wood' && !c.contaminationKnown).length,
     monthsLeft, costToEnd: monthsLeft != null ? Math.round(monthsLeft * b.cost) : null, casksToEnd: monthsLeft != null ? Math.ceil(monthsLeft * casksPerBatch) : null, horizons,
   };
 }
