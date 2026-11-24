@@ -682,6 +682,17 @@ const RESTOCK_KIND: Partial<Record<ProductCategory, SpiritKind>> = { soju_distil
 export const newmakeRestock = (p: Pick<Product, 'category' | 'oakMonths' | 'recipeIds'>, s?: Pick<GameState, 'rulesVersion'>): boolean =>
   p.category === 'malt_spirit' && (p.oakMonths ?? 0) === 0 && !!p.recipeIds?.length && (!s || rulesVersionOf(s) !== 'legacy-v15');
 export const autoRestockSupported = (p: Product, s?: Pick<GameState, 'rulesVersion'>): boolean => !p.dutyFreeOnly && (!!RESTOCK_KIND[p.category] || newmakeRestock(p, s));
+/**
+ * [결정 #370] 뉴본 자동 납품이 한 달에 쓰는 탱크 원액(L) 어림 — 화면 "탱크 몰트를 월 약 n L 쓴다 — 그만큼 통입할 원액이 준다"(MKT 판매 줄).
+ * 판매 기대(`productMonthlyPace`) × 병당 알코올 ÷ 쓸 탱크 원액의 평균 도수(없으면 통입 도수 기준 63.5%). 뉴본이 아니면 null. 상태를 바꾸지 않는다
+ */
+export function newmakeTankUseL(s: GameState, p: Product, monthOfYear = calendar(s).monthOfYear): number | null {
+  if (!newmakeRestock(p, s)) return null;
+  const lots = autoRestockSources(s, p).map((x) => x.lot);
+  const vol = lots.reduce((t, l) => t + l.volumeL, 0);
+  const abv = vol > 0 ? lots.reduce((t, l) => t + l.volumeL * l.abv, 0) / vol : 0.635;
+  return (productMonthlyPace(s, p, monthOfYear) * (p.bottleMl / 1000) * p.abv) / abv;
+}
 
 /** 이 제품의 한 달 판매 기대 — 이번 달 수요(같은 범주 나눔 반영, 품절이면 혼자일 때)와 최근 3개월 판매 중 큰 값 */
 export function productMonthlyPace(s: GameState, p: Product, monthOfYear = calendar(s).monthOfYear): number {

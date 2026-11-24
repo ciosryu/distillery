@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction, newScenarioGame } from './index';
 import { emptyCaskOf } from './newGame';
-import { autoRestockSources, autoRestockSupported } from './economics';
+import { autoRestockSources, autoRestockSupported, newmakeTankUseL } from './economics';
 import type { GameState, Product, SpiritLot } from './types';
 
 const lot = (id: string, extra: Partial<SpiritLot> = {}): SpiritLot => ({ id, name: id, kind: 'malt', volumeL: 300, abv: 0.65, flavor: { toasted_grain: 20 }, createdMonth: 5, oakMonths: 0, sourced: false, costPerLPA: 8000, recipeId: 'RM', ...extra });
@@ -43,5 +43,11 @@ describe('#370 뉴본 자동 납품', () => {
     const { s, p } = setup('v16', { recipeIds: undefined });
     expect(autoRestockSupported(p, s)).toBe(false);
     expect(autoRestockSources(s, p)).toEqual([]);
+  });
+  it('newmakeTankUseL — 뉴본만 숫자, 옛 판 · 다른 제품은 null', () => {
+    expect(newmakeTankUseL(setup('legacy-v15').s, setup('legacy-v15').p)).toBeNull();
+    const { s } = setup('v16');
+    const soju = s.commerce.products.find((x) => x.category === 'soju_distilled');
+    if (soju) expect(newmakeTankUseL(s, soju)).toBeNull();
   });
 });
