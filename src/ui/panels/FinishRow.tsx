@@ -53,10 +53,11 @@ export function FinishRow({ cask, onClose }: { cask: Cask; onClose?: () => void 
         </span>
         {onClose && <Button small variant="ghost" onClick={onClose}>닫기</Button>}
       </div>
-      <p className="mt-1 text-stone-500">다 익은 원액을 셰리·버번 시즈닝 통으로 옮겨 {lo}~{hi}개월 더 익혀 「셰리(버번) 캐스크 피니시」로 낸다. 숙성 연수는 처음 통입한 달부터 그대로 센다. 손실 {num(FINISH.lossShare * 100, 2)}% · 한 번만</p>
+      <p className="mt-1 text-stone-500">다 익은 원액을 시즈닝 통(셰리 · 버번 · 와인 · 포트)으로 옮겨 {lo}~{hi}개월 더 익혀 「○○ 캐스크 피니시」로 낸다. 숙성 연수는 처음 통입한 달부터 그대로 센다. 손실 {num(FINISH.lossShare * 100, 2)}% · 한 번만</p>
       {flagship && <p className="mt-1 text-amber-800 dark:text-amber-300">이 통은 12년 승리 후보다 — 옮겨도 목재 개월은 이어서 세어 12년 적격은 그대로다. 다만 남은 숙성을 활성도 높은 통에서 하면 12년 탄닌이 늘어 감점될 수 있다(아래 전망)</p>}
       <div className="mt-1.5 grid gap-1">
-        {options.map(({ k, best, count, fits }) => {
+        {/* #355: 종류가 늘어 줄이 길어진다 — 빈 통이 있는 종류만 줄로 보이고, 나머지는 아래 한 줄로 묶는다 */}
+        {options.filter((x) => x.count > 0).map(({ k, best, count, fits }) => {
           const o = best ? finishTanninOutlook(s, cask, best, SHOW_MONTHS[1]) : null;
           const short = best ? finishTanninOutlook(s, cask, best, SHOW_MONTHS[0]) : null;
           const disabled = !best || !fits;
@@ -88,6 +89,10 @@ export function FinishRow({ cask, onClose }: { cask: Cask; onClose?: () => void 
             </div>
           );
         })}
+        {(() => {
+          const none = options.filter((x) => x.count === 0);
+          return none.length ? <div className="text-stone-500">빈 통 없음: {none.map((x) => CASKS[x.k].nameKo).join(' · ')} — 「빈 통 사기」에서 사거나 「빈 통 관리」에서 시즈닝 통을 주문한다</div> : null;
+        })()}
       </div>
     </div>
   );
