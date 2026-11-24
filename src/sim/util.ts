@@ -1,4 +1,5 @@
-import { EQUIPMENT } from './content/catalog';
+import { CASKS, EQUIPMENT } from './content/catalog';
+import { caskSlots } from './rules';
 import type { GameState, Staff, StaffRole } from './types';
 
 export function nid(s: GameState, prefix: string): string {
@@ -30,6 +31,17 @@ export function warehouseCapacity(s: GameState): number {
     return sum + (def?.kind === 'warehouse' && e.readyMonth <= s.month ? def.casks : 0);
   }, 0);
 }
+
+/** [결정 #360] 숙성고에서 쓰는 칸 — 통마다 `caskSlots`(v16 캠페인 400L↑ 2칸, 그 밖 1칸)의 합. 빈 통도 센다. 옛 판 · 샌드박스는 통 개수와 같다 */
+export function slotsUsed(s: GameState): number {
+  return s.inventory.casks.reduce((t, c) => t + caskSlots(s, c.sizeL), 0);
+}
+/** 주문 중인 통(쿠퍼리지 · 시즈닝)이 들어오면 차지할 칸 */
+export function pendingOrderSlots(s: GameState): number {
+  return s.inventory.caskOrders.reduce((t, o) => t + o.qty * caskSlots(s, CASKS[o.typeId].sizeL), 0);
+}
+/** 이 종류 통 qty개가 차지할 칸 */
+export const slotsFor = (s: GameState, typeId: keyof typeof CASKS, qty: number): number => qty * caskSlots(s, CASKS[typeId].sizeL);
 
 export function staffOf(s: GameState, role: StaffRole): Staff[] {
   return s.hr.staff.filter((x) => x.role === role);
