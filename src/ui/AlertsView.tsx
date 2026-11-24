@@ -8,7 +8,7 @@ import { loanRoomTotal, monthlyFixedCost } from '../sim/loans';
 import { won } from './format';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
-import { cashAlert, fmtWon, knownContaminated, lastMonthFlow, loanSchedule, monthTodos, paymentJump, reserveCandidateCasks, spotSaleStake, type TodoTarget } from './alerts';
+import { cashAlert, contamNote, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, reserveCandidateCasks, spotSaleStake, type TodoTarget } from './alerts';
 import { Button } from './kit';
 import { PolicySwitchHint } from './PricePolicyPicker'; // 자동 가격 정책 정보 한 줄 (#291 ⑥, MKT)
 
@@ -259,7 +259,7 @@ export function JourneyStrip() {
           const prog = r ? null : midGoalProgress(s, g.id); // F5c-2: 아직 판정 전인 수치 목표는 "후보 n/3"
           return (
             <span key={g.id} title={`보상: 인지도 +${Math.round(g.rewardAwareness * 100)}%p`} className={r?.result === 'done' ? 'text-emerald-700 dark:text-emerald-400' : r?.result === 'missed' ? 'text-stone-400 line-through' : 'text-amber-800 dark:text-amber-300'}>
-              {r?.result === 'done' ? '✓' : r?.result === 'missed' ? '✗' : '◎'} {g.title} <span className="opacity-70 no-underline">({r?.result === 'done' ? `${monthLabel(s.startYear, r.month)} 달성` : r?.result === 'missed' ? '놓침' : `${prog ? `후보 ${prog.have}/${prog.need}${g.id === 'reserve_casks' && knownContaminated(reserveCandidateCasks(s)) ? ` — ⚠ 그중 ${knownContaminated(reserveCandidateCasks(s))}통은 아는 오염(결점 향이 섞인다)` : ''} · ` : ''}${g.byMonth - s.month > 0 ? `${ym(g.byMonth - 1)}까지 · ${g.byMonth - s.month}개월 남음` : '이번 턴에 판정'}`})</span>
+              {r?.result === 'done' ? '✓' : r?.result === 'missed' ? '✗' : '◎'} {g.title} <span className="opacity-70 no-underline">({r?.result === 'done' ? `${monthLabel(s.startYear, r.month)} 달성` : r?.result === 'missed' ? '놓침' : `${prog ? `후보 ${prog.have}/${prog.need}${g.id === 'reserve_casks' ? contamNote(reserveCandidateCasks(s)) : ''} · ` : ''}${g.byMonth - s.month > 0 ? `${ym(g.byMonth - 1)}까지 · ${g.byMonth - s.month}개월 남음` : '이번 턴에 판정'}`})</span>
             </span>
           );
         })}
