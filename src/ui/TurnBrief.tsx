@@ -7,11 +7,13 @@ import { monthLabel } from '../sim';
 import { EVENTS } from '../sim/content/events';
 import { useGame } from '../store/game';
 import { Badge, Button } from './kit';
+import { won } from './format';
 import { PendingEventChoices } from './panels/Events';
 import { briefTodos, flagshipReady, monthTodos, stageTarget } from './alerts';
 import { TodoText, useGo } from './AlertsView';
 import { useUi } from '../store/ui';
-import { campaignMinOakMonths, stagesOf } from '../sim';
+import { campaignMinOakMonths, stagesOf, visibleLateGoals, type GameState } from '../sim';
+import { AGE_BANDS, bandCounts, thinBands } from '../sim/ageBand'; // #380 연령 띠(PROD) — 분기 요약 한 줄
 
 const SEEN_KEY = 'distillery-tycoon/brief-seen';
 const URGENT = new Set(['disaster', 'regulation']);
@@ -33,7 +35,7 @@ export function turnNews(s: ReturnType<typeof useGame.getState>['state'], fromMo
     return { ...e, urgent: !!def && URGENT.has(def.category), defaulted: tickResolved.has(e.title) };
   }).sort((a, b) => Number(b.urgent) - Number(a.urgent) || a.month - b.month);
   const notes = span
-    .flatMap((r) => r.notes.filter((n) => /^(새 기능 열림|중반 목표|마일스톤|핸드필 .*비었다|자동 통입 못 함|IB 입찰 제안|위스키 원액 생산을 건너뛰었다|플래그십 후보 \d+통에서|세이브 복구|정기 임금 조정|.+ 납품 제안 만료)/.test(n)).map((n) => ({ month: r.month, text: n })))
+    .flatMap((r) => r.notes.filter((n) => /^(새 기능 열림|중반 목표|후반 목표|마일스톤|핸드필 .*비었다|자동 통입 못 함|IB 입찰 제안|위스키 원액 생산을 건너뛰었다|플래그십 후보 \d+통에서|세이브 복구|정기 임금 조정|.+ 납품 제안 만료)/.test(n)).map((n) => ({ month: r.month, text: n })))
     // 여러 달 진행(분기·1년) 안에 온 IB 입찰은 답할 틈 없이 사라졌을 수 있다 — 지금 열린 입찰에 없으면 그렇다고 붙인다(P-ARCH-63)
     .map((n) => { const id = n.text.match(/^IB 입찰 제안 — .*?통 (K\d+)/)?.[1]; return id && s.month - fromMonth > 1 && !s.b2b.caskBids.some((b) => b.caskId === id) ? { ...n, text: `${n.text} → 진행 중에 답하지 않아 이미 사라졌다` } : n; });
   // 플래그십 후보가 줄었다 (#261) — 이번 진행 직전 결산과 마지막 결산의 후보 수. 자동 납품 몫은 위 메모가, 나머지는 손 병입·맡기기·판매·빼기 등
@@ -59,6 +61,30 @@ export function turnNews(s: ReturnType<typeof useGame.getState>['state'], fromMo
   return { events, notes: notes.filter((n) => !unlocks.some((u) => u.text === n.text)), unlocks };
 }
 
+/**
+ * [#388 ① A1 · ①-e2] 여러 달 진행(분기 · 1년)의 요약 — 넘긴 달들의 매출 합 · 현금 변화 · 위스키 병 판매 · 목표 진척 · 숙성 연령 띠.
+ * 결산(`history.reports`)과 공개 상태만 읽는다(I1 · I2 — 품질 참값 없음). 한 달 진행이면 null
+ */
+export function periodSummary(s: GameState, fromMonth: number): { months: number; revenue: number; cashDelta: number; bottles: number; goals: string; bands: string } | null {
+  const span = s.history.reports.filter((r) => r.month >= fromMonth && r.month < s.month);
+  if (s.month - fromMonth < 2 || !span.length) return null;
+  const before = s.history.reports.filter((r) => r.month < fromMonth).at(-1)?.cashEnd;
+  const cashDelta = span.at(-1)!.cashEnd - (before ?? span[0]!.cashEnd);
+  const open = visibleLateGoals(s).filter((g) => !g.result).map((g) => g.def.title.split(' — ')[0]!);
+  const done = (s.progress.lateGoals ?? []).filter((g) => g.result === 'done' && g.month >= fromMonth).length + (s.progress.midGoals ?? []).filter((g) => g.result === 'done' && g.month >= fromMonth).length;
+  const counts = bandCounts(s);
+  const thin = new Set(thinBands(counts));
+  const bands = AGE_BANDS.map((b) => `${b.label.replace(' ~ ', '–').replace('10년 이상', '10년+')} ${counts[b.id].casks}${thin.has(b.id) ? '⚠' : ''}`).join(' · ');
+  return {
+    months: s.month - fromMonth,
+    revenue: span.reduce((t, r) => t + r.revenue, 0),
+    cashDelta,
+    bottles: span.reduce((t, r) => t + r.sales.reduce((n, x) => n + x.bottles, 0), 0),
+    goals: `${done ? `달성 ${done} · ` : ''}${open.length ? `진행 중 ${open.join(' · ')}` : '열린 후반 목표 없음'}`,
+    bands,
+  };
+}
+
 export function TurnBrief() {
   const s = useGame((g) => g.state);
   const undoInfo = useGame((g) => g.undoInfo);
@@ -73,16 +99,24 @@ export function TurnBrief() {
   const pending = s.events.pending.length;
   const todos = monthTodos(s);
   const { fresh, continuing } = briefTodos(todos, readSeenTodos(s.seed));
-  if (seen === s.month || (!pending && !events.length && !notes.length && !unlocks.length && !fresh.length)) return null;
+  const sum = periodSummary(s, from); // 여러 달 진행이면 요약이 있으니 소식이 없어도 창을 띄운다(운영 모드 · 분기 진행)
+  if (seen === s.month || (!pending && !events.length && !notes.length && !unlocks.length && !fresh.length && !sum)) return null;
   const close = () => { writeSeen(s.seed, s.month); writeSeenTodos(s.seed, todos.filter((t) => t.level !== 'info').map((t) => t.id)); setSeen(s.month); };
   const span = s.month - from > 1 ? `${monthLabel(s.startYear, from)} ~ ${monthLabel(s.startYear, s.month - 1)}` : monthLabel(s.startYear, s.month - 1);
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-16" role="dialog" aria-modal="true" aria-label="이번 달 소식">
       <div className="w-full max-w-2xl rounded-xl border border-stone-200 bg-white p-4 shadow-xl dark:border-stone-700 dark:bg-stone-900">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="text-base font-semibold">이번 달 소식 <span className="text-sm font-normal text-stone-500">· {span}</span></h2>
+          <h2 className="text-base font-semibold">{sum ? (sum.months === 3 ? '이번 분기 소식' : `지난 ${sum.months}개월 소식`) : '이번 달 소식'} <span className="text-sm font-normal text-stone-500">· {span}</span></h2>
           {pending > 0 && <Badge tone="warn">고를 것 {pending}개</Badge>}
         </div>
+        {sum && (
+          <div className="mb-3 grid gap-0.5 rounded-md bg-stone-50 px-2 py-1.5 text-xs text-stone-700 dark:bg-stone-800/60 dark:text-stone-300">
+            <div>매출 <b className="tabular-nums">{won(sum.revenue)}</b> · 현금 <b className={`tabular-nums ${sum.cashDelta < 0 ? 'text-rose-700 dark:text-rose-400' : ''}`}>{sum.cashDelta >= 0 ? '+' : ''}{won(sum.cashDelta)}</b> · 판매 <span className="tabular-nums">{sum.bottles.toLocaleString()}병</span></div>
+            <div>목표 — {sum.goals}</div>
+            <div title="몰트 · 그레인 나무 통의 목재 숙성 연령별 통 수 — ⚠ 얇은 띠(위 띠를 다 쓴 뒤 이을 원액이 모자란다)">숙성 연령 — {sum.bands}</div>
+          </div>
+        )}
         {pending > 0 && <div className="mb-3"><PendingEventChoices /><p className="mt-1 text-xs text-stone-500">고르지 않으면 다음 달 기본값(파란 버튼)으로 처리된다. 창을 닫아도 증류소 탭 맨 위에 남는다.</p></div>}
         {unlocks.length > 0 && (
           <ul className="mb-3 grid gap-1.5">
