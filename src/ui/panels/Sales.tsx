@@ -17,7 +17,7 @@ import { awarenessOf, brandMarketing, brandOf, rebrandCost, secondBrands } from 
 import { BRANDS, DEFAULT_POLICY_N, defaultPolicyPrice } from '../../sim/content/market';
 import { isLocked } from '../../sim/scenario';
 import { retailCapacityOutlook } from '../../sim/market';
-import { overhangFactor, overhangMonths } from '../../sim/retail';
+import { OVERHANG, overhangFactor, overhangMonths } from '../../sim/retail';
 import { useGame } from '../../store/game';
 import { num, pct, won, wonFull } from '../format';
 import { Badge, Button, Card, ConfirmButton, Empty, Meter, NumberField, Select, Stat, Table, Td, TextField } from '../kit';
@@ -207,7 +207,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
         </Td>
         <Td right>{num(p.stockBottles)}{p.stockBottles > 0 && sell > 0 && <div className="text-xs text-stone-500">{p.stockBottles / sell > 60 ? '5년 치 넘게' : `약 ${Math.max(1, Math.round(p.stockBottles / sell))}개월 치`}</div>}
           {/* 재고 적체(overhangFactor) — 9차 판 64개월째: 오크소주 · 뉴본 피티드가 수요 ×0.60인데 화면에 없었다(PM 2026-11-24). 문구는 PROD 병입 보충 줄과 같다 */}
-          {overhangFactor(p, s.month) < 1 && <div className="text-xs text-amber-700 dark:text-amber-400" title="판매 평균의 6개월 치를 넘게 쌓이면 할인 이미지로 수요가 줄어든다(최저 ×0.6). 재고를 줄이면 돌아온다">재고 {Math.round(overhangMonths(p, s.month) ?? 0)}개월 치 · 수요 ×{overhangFactor(p, s.month).toFixed(2)}</div>}</Td>
+          {overhangFactor(p, s.month) < 1 && <div className={`text-xs ${overhangFactor(p, s.month) <= OVERHANG.floor ? 'text-red-700 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'}`} title={`판매 평균의 ${OVERHANG.months}개월 치를 넘게 쌓이면 할인 이미지로 수요가 줄어든다(최저 ×${OVERHANG.floor}). 값을 내리거나 보충을 멈춰 재고를 줄이면 돌아온다`}>재고 {(overhangMonths(p, s.month) ?? 0).toFixed(1)}개월 치 · {OVERHANG.months}개월 넘게 쌓여 수요 ×{overhangFactor(p, s.month).toFixed(2)}</div>}</Td>
         <Td>
           {p.autoPrice
             ? <div className="text-sm tabular-nums" title="매달 판매 직전에 고른 정책대로 값이 바뀐다">{wonFull(p.price)} <Badge tone="good">자동 {(PRICE_MODE_LABEL[priceModeOf(p) ?? 'turnover']).split(' ')[0]}</Badge></div>
