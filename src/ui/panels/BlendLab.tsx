@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './HeritageReveal';
 import { knownProductQuality,
   blendTargets, blenderOf, previewBlend, HEX_AXES, HEX_LABEL, knownReads, LAB, matchScore, mixHex, optimizeShares, reachableEnvelope, SAMPLING, samplingCapacity,
-  type BlendComponent, type BlendTarget, type Cask, type Hex,
+  casksInAgeRange, delegatePlan, estimateBlend, inAgeRange, PLAYER_FOCI, playerFocusLabel, playerTargetFor,
+  type AgeRange, type BlendComponent, type BlendTarget, type Cask, type Hex, type PlayerFocus,
 } from '../../sim';
 import { CASKS } from '../../sim/content/catalog';
 import { useGame } from '../../store/game';
@@ -94,20 +95,20 @@ export function BlendLab() {
   // 첫 누름은 쓸 통·병 수·남는 위스키 통을 보이고, 두 번째에 맡긴다. 이번 달 같은 목표로 이미 맡겼으면 한 번 더 묻는다(세 번째)
   const blender = blenderOf(s);
   const target = targets.find((t) => t.id === targetId) ?? targets[0]!;
+  // [결정 #371] 「내 조건」 — 숙성 범위(년) · 향미 목표(위주/밸런스). 샘플 기록만 읽는다(playerTargetFor). 블렌딩 목표 채점은 없다
+  const isPlayer = targetId === 'player';
+  const [focus, setFocus] = useState<PlayerFocus>('balance');
+  const [minY, setMinY] = useState(0);
+  const [maxY, setMaxY] = useState(30);
+  const range: AgeRange | undefined = isPlayer ? { minMonths: Math.round(minY * 12), maxMonths: Math.round(maxY * 12) } : undefined;
 
   // 비율은 기록이 있는 코호트에만 줄 수 있다 — 맛보지 않은 원액은 예상을 만들 수 없다 (#157)
-  const knownCohorts = cohorts.filter(isKnown);
+  const knownCohorts = cohorts.filter(isKnown).filter((c) => inAgeRange(c.oakMonths, range));
   const picked = knownCohorts.filter((c) => (shares[c.key] ?? 0) > 0);
   const total = picked.reduce((t, c) => t + shares[c.key]!, 0);
   const predicted = picked.length ? mixHex(picked.map((c) => ({ hex: c.read, share: shares[c.key]! }))) : undefined;
   const band = picked.length ? Math.sqrt(picked.reduce((t, c) => t + ((shares[c.key]! / total) * c.sigma) ** 2, 0)) : undefined;
   const envelope = reachableEnvelope(knownCohorts.map((c) => c.read));
-  const best = useMemo(() => {
-    const ks = cohorts.filter(isKnown);
-    if (!ks.length) return null;
-    const x = optimizeShares(ks.map((c) => c.read), target);
-    return { score: matchScore(mixHex(ks.map((c, i) => ({ hex: c.read, share: x[i]! }))), target), shares: Object.fromEntries(ks.map((c, i) => [c.key, Math.round(x[i]! * 100)]).filter(([, v]) => (v as number) > 0)) };
-  }, [cohorts, target]);
   const unknownCount = cohorts.length - knownCohorts.length;
   const lastBlend = [...s.commerce.products].reverse().find((p) => p.hex && p.createdMonth === s.month);
   // 결정 #344: 품질을 가리는 판(F5d)에서는 이번 달 병입 결과도 병입 때 추정한 그림(qualityKnown.hex) — 참 육각형은 리뷰로 좁혀진다. 옛 판·F5d 전 제품은 참값(공개)
@@ -128,35 +129,84 @@ export function BlendLab() {
     }
     return out;
   })();
-  const options = { name, targetAbv: abv / 100, bottleMl: 700, chillFilter: false, packagingId: 'standard', targetId: target.source === 'core' ? undefined : target.id, line: target.source === 'core' ? target.id.slice(5) : line || undefined };
+  const options = isPlayer
+    ? { name, targetAbv: abv / 100, bottleMl: 700, chillFilter: false, packagingId: 'standard', targetId: undefined, line: line || undefined }
+    : { name, targetAbv: abv / 100, bottleMl: 700, chillFilter: false, packagingId: 'standard', targetId: target.source === 'core' ? undefined : target.id, line: target.source === 'core' ? target.id.slice(5) : line || undefined };
   const capLeft = samplingCapacity(s) - s.inventory.samplesThisMonth;
   // 맡길 통 — 고른 묶음(손 선택, 보호 통도 그대로 — 확인 단계에서 경고) 또는 기본 후보(샘플 기록이 있는 전부에서 보호 태그 통을 뺀다, #260)
   const defaultDelegate = useMemo(() => delegateDefaultIds(s, knownCohorts.flatMap((c) => c.casks.map((k) => k.id))), [s, knownCohorts]);
-  const delegateIds = picked.length ? picked.flatMap((c) => c.casks.map((k) => k.id)) : defaultDelegate.ids;
-  const delegateKey = JSON.stringify([s.month, target.id, delegateIds, bottles, options]);
+  const pickedIds = picked.length ? picked.flatMap((c) => c.casks.map((k) => k.id)) : defaultDelegate.ids;
+  const delegateIds = isPlayer ? casksInAgeRange(s, pickedIds, range) : pickedIds;
+  // 「내 조건」 목표 — 맡길 통(숙성 범위 안)의 샘플 기록으로. 행동(delegateBlend player)과 같은 함수라 미리보기와 결과 목표가 같다
+  const pt = isPlayer ? playerTargetFor(s, delegateIds, focus) : null;
+  const goal: Pick<BlendTarget, 'id' | 'label' | 'hex' | 'weights' | 'tolerance'> = pt ?? target;
+  const optKey = JSON.stringify([bottles, abv]);
+  // 고르는 줄의 예상 품질(#371 — 한 축 위주는 복합성이 내려가 품질이 낮아질 수 있다) — 향미 목표마다 블렌더가 짤 비율의 샘플 기록 추정 품질(참값을 읽지 않는다)
+  const focusQuality = useMemo(() => {
+    if (!isPlayer || !delegateIds.length) return null;
+    const opts = { name: '', targetAbv: abv / 100, bottleMl: 700, chillFilter: false, packagingId: 'standard' };
+    return Object.fromEntries(PLAYER_FOCI.map((f) => {
+      const t = playerTargetFor(s, delegateIds, f);
+      const plan = t ? delegatePlan(s, t, delegateIds, bottles, opts) : null;
+      const est = plan && !('error' in plan) ? estimateBlend(s, plan.components) : null; // 샘플 기록 추정(아는 값)
+      return [f, est?.quality != null ? { q: est.quality, sigma: est.sigma } : null];
+    })) as Record<PlayerFocus, { q: number; sigma: number } | null>;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s, isPlayer, JSON.stringify(delegateIds), optKey]);
+  const best = useMemo(() => {
+    const ks = knownCohorts;
+    if (!ks.length) return null;
+    const x = optimizeShares(ks.map((c) => c.read), goal);
+    return { score: matchScore(mixHex(ks.map((c, i) => ({ hex: c.read, share: x[i]! }))), goal), shares: Object.fromEntries(ks.map((c, i) => [c.key, Math.round(x[i]! * 100)]).filter(([, v]) => (v as number) > 0)) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cohorts, JSON.stringify(goal), JSON.stringify(range)]);
+  const delegateKey = JSON.stringify([s.month, goal.id, delegateIds, bottles, options]);
   // 되돌릴 수 없는 행동 확인 — 코어 공통 훅(#240). 조건(delegateKey)이 바뀌면 처음부터 다시 묻는다
   const confirm = useConfirm(delegateKey);
   const delegateStep = confirm.step;
-  const check = delegateStep > 0 && delegateIds.length ? delegateCheck(s, target, delegateIds, bottles, options) : null;
+  const check = delegateStep > 0 && delegateIds.length ? delegateCheck(s, goal, delegateIds, bottles, options) : null;
+  const player = isPlayer ? { focus, ...range } : undefined;
 
   return (
     <div className="grid gap-4">
       {reveal && <HeritageReveal data={reveal} onClose={() => setReveal(null)} />}
       <Card title="블렌딩 테이블 — The Art of Blending" actions={<span className="text-xs text-stone-500">{blender ? `마스터 블렌더 ${blender.name} · Lv.${blender.level} · 읽기 ${num(blender.nose)} · 감정력 ${blender.appraisal}` : '마스터 블렌더 없음 — 대표가 직접 읽는다(오차 큼). 직원 탭에서 채용'}</span>}>
         <div className="flex flex-wrap items-start gap-4">
-          <HexRadar target={target.hex} predicted={predicted} band={band} envelope={envelope} actual={lastHex} />
+          <HexRadar target={pt || !isPlayer ? goal.hex : undefined} predicted={predicted} band={band} envelope={envelope} actual={lastHex} />
           <div className="grid min-w-64 flex-1 gap-2 text-sm">
             <div className="flex flex-wrap gap-1">
               {targets.map((t) => (
-                <Button key={t.id} small variant={t.id === target.id ? 'primary' : 'secondary'} onClick={() => setTargetId(t.id)}>
+                <Button key={t.id} small variant={!isPlayer && t.id === target.id ? 'primary' : 'secondary'} onClick={() => setTargetId(t.id)}>
                   {SOURCE_LABEL[t.source]}{t.expiresMonth != null ? ` · ${months(t.expiresMonth - s.month)} 남음` : ''}
                 </Button>
               ))}
+              <Button small variant={isPlayer ? 'primary' : 'secondary'} title="숙성 범위와 향미 목표(○○ 위주 · 밸런스)를 직접 정한다 — 시장 · 의뢰 목표가 아니라 블렌딩 목표 점수는 없다" onClick={() => setTargetId('player')}>내 조건</Button>
             </div>
-            <div className="font-medium">{target.label}</div>
-            <div className="text-xs text-stone-500">목표 {hexRow(target.hex)} · 허용 {target.tolerance}{target.weights ? ` · 중점 ${Object.keys(target.weights).map((a) => HEX_LABEL[a as keyof typeof HEX_LABEL]).join('·')}` : ''}</div>
+            {isPlayer && (
+              <div className="grid gap-1.5 rounded-md border border-stone-200 p-2 text-xs dark:border-stone-700">
+                <div className="flex flex-wrap items-end gap-2">
+                  <NumberField label="숙성 최소(년)" value={minY} min={0} max={30} step={0.5} width="w-20" onCommit={setMinY} />
+                  <NumberField label="최대(년)" value={maxY} min={0} max={30} step={0.5} width="w-20" onCommit={setMaxY} />
+                  <span className="text-stone-500">목재 개월(통 표의 숙성)로 맡길 통을 거른다 — 범위 안 샘플 기록 통 {delegateIds.length}개{minY > maxY ? ' · 최소가 최대보다 크다' : ''}</span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {PLAYER_FOCI.map((f) => {
+                    const fq = focusQuality?.[f];
+                    return (
+                      <Button key={f} small variant={focus === f ? 'primary' : 'secondary'} onClick={() => setFocus(f)}
+                        title="예상 품질은 블렌더가 이 목표로 짤 비율의 샘플 기록 추정(±오차) — 한 축 위주는 복합성이 내려가 품질이 낮아질 수 있다">
+                        {playerFocusLabel(f)}<span className="ml-1 font-normal opacity-80">{fq ? `≈${num(fq.q, 0)}±${num(fq.sigma, 0)}` : '—'}</span>
+                      </Button>
+                    );
+                  })}
+                </div>
+                <p className="text-stone-500">버튼 옆 숫자 = 그 목표로 맡길 때 예상 품질(샘플 기록 추정 ± 오차). 「내 조건」 제품은 시장 · 의뢰 목표 점수가 없다 — 트렌드 · 의뢰 보너스를 노리면 위 목표를 고른다</p>
+              </div>
+            )}
+            <div className="font-medium">{isPlayer && !pt ? '내 조건 — 숙성 범위 안에 샘플 기록이 있는 통이 없다' : goal.label}</div>
+            {(pt || !isPlayer) && <div className="text-xs text-stone-500">목표 {hexRow(goal.hex)} · 허용 {goal.tolerance}{goal.weights ? ` · 중점 ${Object.keys(goal.weights).map((a) => HEX_LABEL[a as keyof typeof HEX_LABEL]).join('·')}` : ''}</div>}
             <div className="grid grid-cols-2 gap-2">
-              <div>예상 일치 <b className="tabular-nums">{predicted ? `${matchScore(predicted, target)}점` : '—'}</b> {band != null && <span className="text-xs text-stone-500">(예상 오차 ±{num(band, 1)})</span>}</div>
+              <div>예상 일치 <b className="tabular-nums">{predicted ? `${matchScore(predicted, goal)}점` : '—'}</b> {band != null && <span className="text-xs text-stone-500">(예상 오차 ±{num(band, 1)})</span>}</div>
               <div>이 재고의 최고 점수(블렌더 추정) <b className="tabular-nums">{best ? `${best.score}점` : '—'}</b></div>
             </div>
             <p className="text-xs text-stone-500">빨간 점선 = 목표 · 주황 = 예상(띠 = 오차) · 파란 점선 = 샘플 기록으로 닿는 축별 최대 · 초록 = 이번 달 병입 결과{lastKnown && !lastKnown.public ? '(병입 때 추정 — 팔린 뒤 리뷰로 좁혀진다)' : '(공개)'}. 실제 결과는 결정론이고, 틀리는 건 블렌더가 읽은 값과 <b>샘플 뒤에 숙성이 바꾼 만큼</b>이다 — 오래된 샘플은 다시 떠야 한다.</p>
@@ -165,7 +215,7 @@ export function BlendLab() {
               <NumberField label="병 수" value={bottles} min={50} max={50_000} step={50} onCommit={setBottles} />
               <NumberField label="도수" value={abv} min={40} max={65} step={0.5} suffix="%" onCommit={setAbv} />
               <TextField label="제품명" value={name} onChange={setName} width="w-36" />
-              {target.source !== 'core' && <TextField label="코어 레인지(선택)" value={line} onChange={setLine} width="w-32" />}
+              {(isPlayer || target.source !== 'core') && <TextField label="코어 레인지(선택)" value={line} onChange={setLine} width="w-32" />}
             </div>
             <div className="flex flex-wrap gap-2">
               {/* 배팅 확정·병입 확인 (#269, #240 되돌릴 수 없는 버튼 — STATUS 1d의 PROD 몫 마지막) — 첫 누름에 병 수·쓸 통·비는 통·남는 위스키 통·플래그십 후보를 보이고 두 번째에 병입 */}
@@ -179,12 +229,12 @@ export function BlendLab() {
                   const f = flagshipImpact(s, used.map((k) => k.id));
                   return <>{pv.ok ? <>약 <b>{num(pv.bottles)}병</b> 병입</> : <span className="text-rose-700">{pv.errors.join(' / ')}</span>} · 쓸 통 {used.length}개(비워짐 {emptied}) · 남는 숙성 통 {whiskyNow} → {whiskyNow - emptied}개{f.using ? <b className="block">⚠ 12년 플래그십 후보 통 {f.using}개를 쓴다 — 남은 후보 {f.before} → {f.left}통</b> : null}</>;
                 }}>배팅 확정·병입</ConfirmButton>
-              <Button variant={delegateStep > 0 ? 'danger' : 'secondary'} disabled={!delegateIds.length} title="선택한 코호트(없으면 샘플 기록이 있는 전체 — 보호 태그 통은 뺀다) 안에서 블렌더가 기록을 보고 비율을 정한다 — 서툴거나 샘플이 오래되면 빗나간다. 누르면 먼저 쓸 통을 보여 주고, 한 번 더 누르면 맡긴다"
+              <Button variant={delegateStep > 0 ? 'danger' : 'secondary'} disabled={!delegateIds.length || (isPlayer && !pt)} title="선택한 코호트(없으면 샘플 기록이 있는 전체 — 보호 태그 통은 뺀다) 안에서 블렌더가 기록을 보고 비율을 정한다 — 서툴거나 샘플이 오래되면 빗나간다. 누르면 먼저 쓸 통을 보여 주고, 한 번 더 누르면 맡긴다"
                 onClick={() => {
-                  const c = check ?? delegateCheck(s, target, delegateIds, bottles, options); // 첫 누름에는 아직 계산 전 — 여기서 잰다
-                  if ('error' in c) { dispatch({ type: 'delegateBlend', targetId: target.id, caskIds: delegateIds, bottles, options }); return; } // 맡길 수 없는 경우 — 오류 문구는 행동이 낸다(아무것도 바뀌지 않는다)
+                  const c = check ?? delegateCheck(s, goal, delegateIds, bottles, options); // 첫 누름에는 아직 계산 전 — 여기서 잰다
+                  if ('error' in c) { dispatch({ type: 'delegateBlend', targetId: goal.id, caskIds: delegateIds, bottles, options, player }); return; } // 맡길 수 없는 경우 — 오류 문구는 행동이 낸다(아무것도 바뀌지 않는다)
                   const need = c.alreadyThisMonth.length ? 2 : 1;
-                  confirm.press(need, () => dispatch({ type: 'delegateBlend', targetId: target.id, caskIds: delegateIds, bottles, options }));
+                  confirm.press(need, () => dispatch({ type: 'delegateBlend', targetId: goal.id, caskIds: delegateIds, bottles, options, player }));
                 }}>{delegateStep === 0 ? '블렌더에게 맡기기 (바로 병입)' : check && !('error' in check) && check.alreadyThisMonth.length && delegateStep === 1 ? '이번 달 이미 맡겼다 — 한 번 더 누르면 계속' : `한 번 더 누르면 맡긴다 — 통 ${check && !('error' in check) ? check.casks.length : '?'}개 사용`}</Button>
               {delegateStep > 0 && <Button variant="ghost" onClick={confirm.cancel}>취소</Button>}
               {best && <Button variant="ghost" onClick={() => setShares(best.shares)}>블렌더 추천 비율 불러오기</Button>}

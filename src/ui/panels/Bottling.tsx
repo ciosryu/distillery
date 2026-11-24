@@ -5,13 +5,15 @@ import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './H
 import { BOTTLE_SIZES, CASKS, PACKAGING } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
-import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, restockMix, restockPrior, recipeIdsOf, batchQualityKnown, hidesProductQuality } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, restockMix, restockPrior, recipeSharesOf, RESTOCK_PRIOR_SIGMA_FLOOR, batchQualityKnown, hidesProductQuality } from '../../sim';
 import { agedWhitePerception } from '../../sim/content/market';
 import { regionOf } from '../../sim/content/regions';
 import { STANDARD_BOTTLE, stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
+import { overhangFactor } from '../../sim/retail'; // 제품 재고 적체 → 수요 배수(시장이 쓰는 그 함수 — 9차 중간 기록: 오크소주 31.8개월 ×0.60이 어느 화면에도 없었다)
 import { protectedCaskIds, reserveCaskIds } from '../../sim/tags';
 import { campaignMinOakMonths, campaignWon, isFlagshipCandidate, rulesVersionOf } from '../../sim';
 import { CaskTagChips } from '../CaskTags';
+import { AGE_BANDS, bandCask, bandCounts, LADDER_SLACK_MONTHS, thinBands } from '../../sim/ageBand'; // [결정 #380] 숙성 연령 띠 (PROD 잎)
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
 import { ProfileRadar } from './Production';
@@ -61,6 +63,8 @@ function CaskTag({ c }: { c: Cask }) {
     <span className="inline-flex flex-wrap items-center gap-1">
       <span className={`rounded px-1 py-px text-[11px] font-medium ${CASK_SHORT[c.typeId]?.cls ?? ''}`}>{caskShort(c.typeId)}</span>
       <span className="text-stone-500">{c.fills}필{f ? ` · ${finishLabel(f.typeId)} ${months(f.months)}` : ''}</span>
+      {/* [결정 #365] 아는 오염만(F5b — 모르는 오염은 QC 전까지 보이지 않는다). 종류(곰팡이 · TCA)와 양은 참값이라 보이지 않는다 */}
+      {c.contaminationKnown && <span className="rounded bg-rose-600 px-1 py-px text-[11px] font-semibold text-white dark:bg-rose-500" title="오염된 통 — 섞으면 결점 향(곰팡내)이 제품에 섞여 품질이 내려간다. 통에 둔 동안 결점 향이 매달 더 밴다">오염</span>}
       {/* 핸드필 지정 통 (9차 중간 기록: 지정 통 K306을 병입에 써서 핸드필이 메모 없이 끝났다 — 표에 표시가 없었다) */}
       {c.handfill && <span className="rounded bg-amber-100 px-1 py-px text-[11px] font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-200" title="핸드필 존에 내놓은 통 — 방문객이 이 통에서 직접 담아 간다">핸드필</span>}
       {partialFill(c) != null && <span className="rounded bg-stone-100 px-1 py-px text-[11px] text-stone-700 dark:bg-stone-800 dark:text-stone-300" title="통 크기보다 원액이 많이 적다 — 통입할 때 원액이 모자라 덜 채운 통이다. 숙성·증발은 같은 규칙으로 돈다">{partialFill(c)}% 채움</span>}
@@ -133,7 +137,9 @@ export function Bottling() {
     const picked = new Set(ids);
     const candidate = hintOn ? ids.flatMap((id) => { const c = s.inventory.casks.find((x) => x.id === id); return c && !reserve.has(id) && !prot.has(id) && isCand(c) ? [{ id, oak: c.contents!.oakMonths }] : []; }) : [];
     const candidatesLeft = hintOn ? s.inventory.casks.filter((c) => !picked.has(c.id) && isCand(c)).length : 0;
-    return { reserve: ids.filter((id) => reserve.has(id)), other: ids.filter((id) => prot.has(id) && !reserve.has(id)), candidate, candidatesLeft };
+    // [결정 #365] 아는 오염 통 — 손 병입은 막지 않고 눈에 띄게 알리며 두 번 눌러야 병입된다(자동 납품 · 블렌더 위임은 이미 뺀다)
+    const contaminated = ids.filter((id) => s.inventory.casks.find((x) => x.id === id)?.contaminationKnown);
+    return { reserve: ids.filter((id) => reserve.has(id)), other: ids.filter((id) => prot.has(id) && !reserve.has(id)), candidate, candidatesLeft, contaminated };
   }, [s, reserve, components]);
   // 시나리오 게임(MVP)은 캐스크의 참 향미·품질을 숨긴다 (#136·#159) — 샘플 기록으로 추정한 값만 보여 주고, 병입하면 공개된다. 샌드박스는 개발용으로 참값을 보여 준다
   const hide = !!s.scenario;
@@ -142,8 +148,8 @@ export function Bottling() {
   const masked = !!est?.fromCasks;
   // 병입하면 제품에 남는 아는 품질(F5d — 모르는 몫은 사전값·큰 오차로 섞음). 첫 출고가·기준가 미리 보기가 병입 행동(executeBlend)과 같은 값을 쓰게 한다
   const restockTarget = opts.restockId ? s.commerce.products.find((p) => p.id === opts.restockId) : undefined;
-  // [결정 #346] 같은 레시피 보충이면 이 제품의 추정을 잇는다 — 이을 추정(carried)이 있으면 샘플이 없어도 보충 줄이 "모른다" 대신 값을 보인다
-  const carried = hide && restockTarget ? restockPrior(s, restockTarget, recipeIdsOf(s, components)) : undefined;
+  // [결정 #346 → #377] 레시피가 겹치는 보충이면 이 제품의 추정을 잇는다(목록에 없던 원액이 섞이면 오차를 넓혀) — 이을 추정(carried)이 있으면 샘플이 없어도 보충 줄이 "모른다" 대신 값을 보인다
+  const carried = hide && restockTarget ? restockPrior(s, restockTarget, recipeSharesOf(s, components)) : undefined;
   // 이번 배치의 아는 품질 — 병입 행동(executeBlend)과 같은 한 함수(샘플 추정 + 병입 보정량 · #346 잇기). 첫 출고가 · 보충 줄이 함께 쓴다
   const knownBatch = masked && preview?.ok ? batchQualityKnown(s, components, preview, restockTarget?.id) : undefined;
   const knownEst = knownBatch?.est ?? null;
@@ -179,7 +185,17 @@ export function Bottling() {
     const guess = demandFor(s, p, same, calendar(s).monthOfYear).demandBottles;
     return stockMonthsAfter(s, preview.category, preview.bottles, guess);
   })();
-  const strongStock = !!stock && stock.months > STOCK_STRONG_WARN_MONTHS;
+  // 보충할 제품의 재고 적체 (9차 64개월 중간 기록 — PM 2026-11-24): 분류 재고 줄은 오크소주 3,767병 보충을 "증류식 소주 4.7개월 치"로만 보였다.
+  // 시장은 제품마다 재고 ÷ 판매 속도(salesEma)가 6개월을 넘으면 수요를 줄인다(overhangFactor, 하한 ×0.6) → 같은 함수로 지금 · 보충 뒤 배수를 보인다(판매 셈과 같은 값)
+  const restockStock = (() => {
+    if (!restockTarget || !preview?.ok || !(restockTarget.salesEma && restockTarget.salesEma > 0)) return null;
+    const rate = restockTarget.salesEma;
+    const after = { ...restockTarget, stockBottles: restockTarget.stockBottles + preview.bottles };
+    return { rate, before: restockTarget.stockBottles / rate, after: after.stockBottles / rate, fNow: overhangFactor(restockTarget, s.month), fAfter: overhangFactor(after, s.month) };
+  })();
+  const strongStock = (!!stock && stock.months > STOCK_STRONG_WARN_MONTHS) || (!!restockStock && restockStock.after > STOCK_STRONG_WARN_MONTHS);
+  /** 두 번 눌러야 병입하는가 — 재고 과다 또는 아는 오염 통(#365) */
+  const confirmNeeded = strongStock || guardedPicked.contaminated.length > 0;
   // 두 번 눌러 확인 — 고른 원액·옵션이 바뀌면 다시 묻는다
   const blendKey = JSON.stringify([components, opts]);
   const [armed, setArmed] = useState<string | null>(null);
@@ -281,7 +297,7 @@ export function Bottling() {
         {!sources.length ? <Empty>병입할 원액이 없습니다</Empty> : (
           <Table head={['', '원액 · 위치', '주종', '보유', '도수', '숙성', '주요 향', '사용량(L)']}>
             {shown.map((x) => (
-              <tr key={x.key} className={picked[x.key] != null ? 'bg-amber-50 dark:bg-amber-950/30' : ''}>
+              <tr key={x.key} className={x.cask?.contaminationKnown ? (picked[x.key] != null ? 'bg-rose-100 dark:bg-rose-950/50' : 'bg-rose-50 dark:bg-rose-950/20') : picked[x.key] != null ? 'bg-amber-50 dark:bg-amber-950/30' : ''}>
                 <Td><input type="checkbox" checked={picked[x.key] != null} onChange={() => toggle(x.key, x.lot.volumeL)} aria-label={`${x.lot.name} 선택`} className="accent-amber-700" /></Td>
                 <Td className="text-xs font-medium"><div className="w-44 truncate" title={x.lot.name}>{x.lot.name.split(' → ')[0]}</div><div className="w-44 whitespace-normal font-normal text-stone-500">{x.cask ? <span className="inline-flex flex-wrap items-center gap-1">{x.where} <CaskTag c={x.cask} /><CaskTagChips s={s} c={x.cask} reserve={reserve} /></span> : x.where}</div></Td>
                 <Td><Badge>{sourceCategory(x.lot, minMonths)}</Badge></Td>
@@ -423,6 +439,40 @@ export function Bottling() {
                       ? <span className="block font-medium">새 배치 {masked ? '예상' : '권장'} 출고가 ≈ {won(sug)} — 지금 출고가보다 높다. 보충 뒤 판매 화면에서 값을 올리세요{preview.ageYears != null && restockTarget.ageYears != null && preview.ageYears > restockTarget.ageYears ? ` (숙성 ${restockTarget.ageYears}년 → ${preview.ageYears}년)` : ''}</span>
                       : null;
                   })()}
+                  {/* [P-ARCH-84 → 결정 #377] 보충 잇기 — 겹치는 레시피가 없으면 리뷰로 좁힌 추정을 잇지 않고, 목록에 없던 원액이 섞이면 잇되 오차를 넓힌다는 것을 미리 알린다
+                      (9차: 「블랜디드 퍼스트 배치」가 레시피 일부만 같은 보충 뒤 리뷰 0 · ±12.4 — #377로 부분집합은 잇는다) */}
+                  {hideBottled && masked && restockBefore && (() => {
+                    const k = knownProductQuality(s, restockTarget);
+                    if (k.reviews <= 0) return null;
+                    if (!carried) return <span className="block text-amber-800 dark:text-amber-300">이 제품과 겹치는 원액 레시피가 없어 리뷰 {k.reviews}건으로 좁힌 추정을 잇지 않는다 — 보충 뒤 새 병 몫은 「병입 때」 추정{knownBatch ? `(±${num(knownBatch.sigma, 1)})` : ''}으로 다시 시작</span>;
+                    if (carried.newShare <= 0) return null;
+                    return <span className="block text-stone-600 dark:text-stone-400" title="새 몫은 샘플 없는 원액과 같은 오차로 본다 — 추정값은 그대로, 리뷰 수도 잇는다. 리뷰가 쌓이면 다시 좁혀진다">이 제품 목록에 없던 원액 레시피가 {num(carried.newShare * 100, 0)}% 섞인다 — 리뷰 {k.reviews}건 추정을 잇되 오차를 넓힌다(±{num(Math.max(k.sigma, RESTOCK_PRIOR_SIGMA_FLOOR), 1)} → ±{num(carried.sigma, 1)})</span>;
+                  })()}
+                  {restockStock && (
+                    <span title="판매 평균의 6개월 치를 넘게 쌓이면 할인 이미지로 수요가 줄어든다(최저 ×0.6). 재고를 줄이면 돌아온다 — 판매 화면 「재고 n개월 치 · 수요 ×f」와 같은 셈(MKT)" className={`block ${restockStock.after > STOCK_STRONG_WARN_MONTHS ? 'font-medium text-rose-700 dark:text-rose-400' : restockStock.after > STOCK_WARN_MONTHS ? 'text-amber-800 dark:text-amber-300' : ''}`}>
+                      {restockStock.after > STOCK_WARN_MONTHS ? '⚠ ' : ''}이 제품 재고 {num(restockStock.before, 1)}개월 치 → 보충 뒤 <b>{num(restockStock.after, 1)}개월 치</b>(이 제품 판매 속도 월 {num(restockStock.rate)}병)
+                      {restockStock.fAfter < 1 || restockStock.fNow < 1
+                        ? <> · {STOCK_WARN_MONTHS}개월 치를 넘게 쌓이면 이 제품 수요가 줄어든다 — 지금 ×{restockStock.fNow.toFixed(2)} → 보충 뒤 <b>×{restockStock.fAfter.toFixed(2)}</b></>
+                        : <> · {STOCK_WARN_MONTHS}개월 치를 넘게 쌓이면 이 제품 수요가 줄어든다</>}
+                    </span>
+                  )}
+                  {restockStock && restockStock.after > STOCK_WARN_MONTHS && preview.bottles > 0 && (() => {
+                    // 보충도 "n개월 치만" — 분류가 아니라 이 제품 판매 속도로 맞춘다(분류 맞추기 줄은 보충일 때 숨는다). 고른 원액의 사용량을 같은 비율로 줄인다
+                    const fit = (n: number) => {
+                      const k = Math.max(0, n * restockStock.rate - restockTarget.stockBottles) / preview.bottles;
+                      setPicked((p) => Object.fromEntries(Object.entries(p).map(([key, l]) => [key, Math.floor(l * k * 10) / 10])));
+                    };
+                    return (
+                      <span className="mt-0.5 flex flex-wrap items-center gap-1">
+                        보충 뒤 이 제품 재고를
+                        {[3, 6].map((n) => {
+                          const full = restockTarget.stockBottles >= n * restockStock.rate;
+                          return <Button key={n} small variant="ghost" disabled={full} title={full ? `이미 ${n}개월 치 넘게 재고가 있다 — 지금은 보충하지 않아도 된다` : `사용량을 줄여 보충 뒤 이 제품 재고가 ${n}개월 치가 되게`} onClick={() => fit(n)}>{n}개월 치</Button>;
+                        })}
+                        로 맞추기
+                      </span>
+                    );
+                  })()}
                 </p>
               )}
               {stock && (
@@ -457,6 +507,25 @@ export function Bottling() {
                 );
               })()}
               {/* 이 병입 자체가 12년(가장 어린 원액도 목재 A 이상)이면 후보를 제대로 쓰는 것이라 알리지 않는다 */}
+              {/* [결정 #380] 숙성 사다리 — 표기보다 한참 묵은 통을 쓰면 그 띠가 얼마나 비는지 보인다(9차: 3년 미만 통 39개 중 36개를 1 ~ 3년 표기 제품에 써 5 ~ 9년 띠가 3통이 됐다). 공개 값(목재 개월 · 통 수)만 · 막지 않는다 */}
+              {preview.ok && (() => {
+                const caskComps = components.filter((c) => c.source === 'cask' && c.liters > 0);
+                const labelM = Math.floor(preview.minOakMonths / 12) * 12;
+                const old = caskComps.map((c) => s.inventory.casks.find((k) => k.id === c.id)).filter((k): k is Cask & { contents: SpiritLot } => !!k && bandCask(k) && k.contents.oakMonths > labelM + LADDER_SLACK_MONTHS);
+                if (!old.length) return null;
+                const before = bandCounts(s);
+                const after = bandCounts(s, new Map(caskComps.map((c) => [c.id, c.liters])));
+                const changed = AGE_BANDS.filter((b) => after[b.id].casks < before[b.id].casks);
+                const thin = new Set(thinBands(after));
+                const oldest = Math.max(...old.map((k) => k.contents.oakMonths));
+                return (
+                  <p className={`text-xs ${changed.some((b) => thin.has(b.id)) ? 'font-medium text-amber-800 dark:text-amber-300' : 'text-stone-600 dark:text-stone-400'}`} title="숙성 연령 띠(목재 개월): 0 ~ 2 · 3 ~ 4 · 5 ~ 9 · 10년 이상 — 어린 표기 제품에 오래된 통을 쓰면 값은 오르지만, 그 띠가 비면 몇 년 뒤 이을 원액이 없다. 막지는 않는다">
+                    숙성 사다리 — 표기 {labelM >= 12 ? `${labelM / 12}년` : '1년 미만'} 제품에 그보다 2년 넘게 묵은 통 {old.length}개(가장 오래된 {months(oldest)})를 쓴다
+                    {changed.length ? <> · 병입 뒤 {changed.map((b) => `${b.label} ${before[b.id].casks} → ${after[b.id].casks}통`).join(' · ')}</> : <> · 띠 통 수는 그대로(통이 다 비지 않는다)</>}
+                    {changed.some((b) => thin.has(b.id)) && ' — 이 띠가 얇아진다(뒤를 이을 원액)'}
+                  </p>
+                );
+              })()}
               {(() => {
                 // 핸드필 지정 통을 병입에 쓰면 핸드필이 빈다 — 다음 통을 지정해야 다시 판다(9차 중간 기록 · PM 2026-11-24)
                 const hf = sources.filter((x) => picked[x.key] != null && (picked[x.key] ?? 0) > 0 && x.cask?.handfill);
@@ -484,12 +553,17 @@ export function Bottling() {
                   — 손으로 병입하는 것은 막지 않는다(자동 납품은 이 통을 쓰지 않는다).{guardedPicked.reserve.length ? ' 예비 통이 비면 다음으로 오래된 12년 후보가 예비가 된다' : ''}
                 </p>
               )}
+              {guardedPicked.contaminated.length > 0 && (
+                <p role="alert" className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200">
+                  ⚠ 오염된 통 {guardedPicked.contaminated.join(', ')}을 섞는다 — 결점 향(곰팡내)이 제품에 섞여 품질이 내려간다. 막지는 않는다(한 번 더 눌러야 병입된다)
+                </p>
+              )}
               <Button variant="primary" disabled={!preview.ok} onClick={() => {
-                if (strongStock && !isArmed) { setArmed(blendKey); return; }
+                if (confirmNeeded && !isArmed) { setArmed(blendKey); return; }
                 setArmed(null);
                 const r = bottleWithHeritage(s, dispatch, components, opts); // 10년 이상·플래그십이면 연표 창 (#244)
                 if (r !== false) { setPicked({}); setOpts({ ...opts, name: '' }); if (r) setReveal(r); }
-              }}>{strongStock ? (isArmed ? `정말 ${num(preview.bottles)}병 병입 — 한 번 더 누르면 병입합니다` : `${restockTarget ? '재고 보충' : '병입하기'} (재고 과다 — 확인 필요)`) : restockTarget ? `「${restockTarget.name}」 재고 보충` : '병입하기'}</Button>
+              }}>{confirmNeeded ? (isArmed ? `정말 ${num(preview.bottles)}병 병입 — 한 번 더 누르면 병입합니다` : `${restockTarget ? '재고 보충' : '병입하기'} (${[guardedPicked.contaminated.length ? '오염 통' : '', strongStock ? '재고 과다' : ''].filter(Boolean).join(' · ')} — 확인 필요)`) : restockTarget ? `「${restockTarget.name}」 재고 보충` : '병입하기'}</Button>
             </div>
           )}
         </div>

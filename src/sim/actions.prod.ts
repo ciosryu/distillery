@@ -13,7 +13,7 @@ import { lotQuality } from './bulk';
 import { mod } from './modifiers';
 import { executeBlend, type BlendComponent, type BlendReveal, type BottleOptions } from './blending';
 import { knownProductQuality } from './productView';
-import { blenderOf, delegatePlan, findTarget, LAB, RARE, recordSample, SAMPLING, samplingCapacity, takeSample } from './blendTable';
+import { blenderOf, casksInAgeRange, delegatePlan, findTarget, LAB, PLAYER_FOCI, playerFocusLabel, playerTargetFor, RARE, recordSample, SAMPLING, samplingCapacity, takeSample, type AgeRange, type PlayerFocus } from './blendTable';
 import { canFinishInto, emptyCask, FINISH, finishCount, finishLabel, historyAfterTransfer, MAX_RECHAR, recharCask, vesselMaterial } from './maturation';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { validateRecipe } from './production';
@@ -27,6 +27,7 @@ import { addCost, scaleLedger, splitLedger } from './ledger';
 import { dropLots } from './lots';
 import { cooperageLeadMonths } from './prodKnobs';
 import { usesObservedValuation } from './valuation';
+import { rulesVersionOf } from './rules';
 
 // 플레이어 행동 — 생산·숙성·블렌딩 (PROD) (결정 #144 — 파일 쪼개기로 actions.ts에서 옮겨 왔다. 규칙 불변)
 // 행동을 더할 때: 아래 타입·처리기·현금 분류 세 곳만 고친다. 코어(actions.ts)는 이 파일의 타입을 통째로 합친다
@@ -56,7 +57,7 @@ export type ProdAction =
   /** 피니싱 (S-10 자리) — 캐스크 원액을 빈 캐스크로 옮겨 마무리한다. 규칙은 단계 P(PROD): 지금은 항상 실패 */
   | { type: 'transferCask'; fromCaskId: string; toCaskId: string }
   | { type: 'labAnalyze'; caskIds: string[] }
-  | { type: 'delegateBlend'; targetId: string; caskIds: string[]; bottles: number; options: BottleOptions }
+  | { type: 'delegateBlend'; targetId: string; caskIds: string[]; bottles: number; options: BottleOptions; /** [결정 #371] 「내 조건」 — 있으면 targetId 대신 숙성 범위 · 향미 목표로 맡긴다(채점 목표 없음) */ player?: { focus: PlayerFocus } & AgeRange }
   /** 입지 특성 (결정 #86~): 취수 증량 신청(제주), 대형 유통 납품(경기), 위탁생산(간토) */
   | { type: 'applyWaterPermit' }
   /** 품절 제품을 목록에서 지운다 (2026-11-09 오너 요청 — MVP는 품절 제품이 자동으로 사라지지 않는다). 재고가 남은 제품은 지울 수 없다 */
@@ -220,7 +221,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const p = s.commerce.products.find((x) => x.id === a.productId);
     if (!p) return fail(prev, '제품이 없습니다');
     if (a.months == null) { delete p.autoRestock; return { state: s, message: `${p.name} 자동 납품 끔` }; }
-    if (!autoRestockSupported(p)) return fail(prev, '이 제품은 자동 납품을 쓸 수 없습니다 (소주·진·고량주·싱글 몰트·그레인 위스키만, 면세 한정판 제외)');
+    if (!autoRestockSupported(p, s)) return fail(prev, `이 제품은 자동 납품을 쓸 수 없습니다 (소주·진·고량주·싱글 몰트·그레인 위스키${rulesVersionOf(s) !== 'legacy-v15' ? '·뉴본(통에서 쉬지 않은 몰트 스피릿)' : ''}만, 면세 한정판 제외)`);
     if (!(AUTO_RESTOCK_MONTHS as readonly number[]).includes(a.months)) return fail(prev, '유지 개월분은 1·2·3·6 중에서 고른다');
     p.autoRestock = a.months;
     // 쓸 통의 최소 숙성 (#267) — 위스키만, 법정 숙성 이상. 표기보다 높게도 된다(#297 ②). null/표기와 같으면 기본(표기)
@@ -488,6 +489,21 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     return { state: s, message: `실험실 분석 ${casks.length}건 — 피트·우디는 이제 정확히 안다(분석 결과를 샘플 기록에 남겼다)` };
   },
   delegateBlend: (s, prev, a) => {
+    if (a.player) {
+      // [결정 #371] 「내 조건」 — 숙성 범위 안 통만, 그 통들의 샘플 기록으로 만든 목표에 맞춘다. 블렌딩 목표 채점(#124)은 없다(targetId 없음)
+      const { focus, ...range } = a.player;
+      if (!PLAYER_FOCI.includes(focus)) return fail(prev, '향미 목표를 고르세요');
+      if (range.minMonths != null && range.maxMonths != null && range.minMonths > range.maxMonths) return fail(prev, '숙성 범위가 거꾸로다 — 최소가 최대보다 크다');
+      const ids = casksInAgeRange(s, a.caskIds, range);
+      if (!ids.length) return fail(prev, '숙성 범위 안에 맡길 캐스크가 없습니다');
+      const goal = playerTargetFor(s, ids, focus);
+      if (!goal) return fail(prev, '숙성 범위 안에 샘플 기록이 있는 캐스크가 없습니다 — 블렌더는 맛본 원액만 섞는다. 먼저 샘플을 뜨세요');
+      const plan = delegatePlan(s, goal, ids, a.bottles, a.options);
+      if ('error' in plan) return fail(prev, plan.error);
+      const res = executeBlend(s, plan.components, { firstPriceFactor: DEFAULT_POLICY_N, ...a.options, targetId: undefined, delegated: true });
+      if (res.error) return fail(prev, res.error);
+      return { state: s, message: `블렌더에게 맡김(내 조건 · ${playerFocusLabel(focus)}) — ${bottleMessage(res.product!, res.reveal)}${plan.unknown ? ` · 샘플 기록이 없는 ${plan.unknown}통은 뺐다` : ''}` };
+    }
     const target = findTarget(s, a.targetId);
     if (!target) return fail(prev, '목표가 없습니다');
     const plan = delegatePlan(s, target, a.caskIds, a.bottles, a.options);

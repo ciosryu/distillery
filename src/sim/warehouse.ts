@@ -264,6 +264,12 @@ export interface TanninOutlook {
   now: number;
   /** 칸 — 숙성 중이면 지금 칸, 빈 통이면 첫 숙성고 맨 아래 칸으로 본다 */
   slot: { w: string; tier: number };
+  /**
+   * [결정 #374] 옮긴 원액(피니싱 · 원액 빼기 뒤 다시 통입) — 이 통에 머문 개월(`monthsHere`)이 목재 개월보다 짧다. 앞 통의 활성도는 이력에 남지 않아
+   * 위 `tannin` · `penalty` · `now`는 목재 개월 전부를 이 통 활성도로 센 값이라 **너무 작게 나온다**(9차 판: 재통입 K386 화면 3.6 대 앞 통을 넣은 어림 10.8).
+   * 화면은 옮긴 원액이면 감점을 감추고 `addHere`(이 통에서 기준 개월까지 더해질 탄닌 어림 — 지금 탄닌을 위 `now`로 놓고 센다)를 보인다. 숨김 값(원액 맛)은 읽지 않는다
+   */
+  moved?: { monthsHere: number; addHere: number };
 }
 
 /** 위스키 품질식의 탄닌 상한 초과 감점 계수 (flavor.ts evaluate capPenalty와 같은 값) */
@@ -296,9 +302,13 @@ export function tanninOutlook(s: GameState, cask: Cask, atMonths = campaignMinOa
   }
   t = at;
   const cap = CATEGORY.whisky.caps.oak_tannin ?? 45;
+  // [결정 #374] 옮긴 원액 — 이 통에 머문 개월이 목재 개월보다 짧다(filledMonth는 통입 · 피니싱 때 이 통에 넣은 달). 앞 통 활성도를 몰라 절대값은 하한일 뿐
+  const monthsHere = cask.contents && cask.filledMonth != null ? Math.max(0, Math.min(elapsed, s.month - cask.filledMonth)) : elapsed;
+  const moved = cask.contents && monthsHere < elapsed ? { monthsHere, addHere: Math.round(Math.max(0, at - now) * 10) / 10 } : undefined;
   return {
     activity: Math.round(cask.activity * 100) / 100, atMonths, tannin: Math.round(t * 10) / 10, cap,
     penalty: Math.round(Math.max(0, t - cap) * CAP_PENALTY_PER_POINT * 10) / 10, now: Math.round(now * 10) / 10, slot: { w: view.id, tier },
+    ...(moved ? { moved } : {}),
   };
 }
 
@@ -318,6 +328,8 @@ export interface FinishTanninOutlook {
   /** 캠페인 기준 목재 개월(A = 144)에 닿기 전에 옮기면 그때 탄닌 · 감점 어림(이미 넘었으면 null) */
   at: { atMonths: number; tannin: number; penalty: number } | null;
   cap: number;
+  /** [결정 #374] 이미 옮겨 온 원액이다(이 통에 머문 개월 < 목재 개월) — 앞 통 활성도를 몰라 `now` · `at`의 절대값은 하한이다. 화면은 감점 대신 늘어나는 양(after − now)을 보인다 */
+  moved?: boolean;
 }
 
 /** 숙성 중인 통 `from`을 빈 통 `to`로 피니싱할 때의 탄닌 어림. 나무 통이 아니거나 활성도를 모르면(스팟 매입 6개월 전) null */
@@ -350,5 +362,6 @@ export function finishTanninOutlook(s: GameState, from: Cask, to: Cask, months: 
   return {
     activity: Math.round(to.activity * 100) / 100, now: r(now), after: r(after), months,
     at: at == null ? null : { atMonths, tannin: r(at), penalty: r(Math.max(0, at - cap) * CAP_PENALTY_PER_POINT) }, cap,
+    ...(from.filledMonth != null && s.month - from.filledMonth < elapsed ? { moved: true } : {}),
   };
 }

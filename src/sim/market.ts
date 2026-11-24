@@ -12,7 +12,7 @@ import { ownershipOversold, OWNERSHIP } from './investment';
 import { clamp } from './flavor';
 import { hexOf } from './blendRadar';
 import { RARE, trendFactor } from './blendTable';
-import { staffOf } from './util';
+import { calendar, staffOf } from './util';
 import { mod } from './modifiers';
 import { flavorTrendFactorOf, trendWalkOf } from './mktKnobs'; // F6b 난이도 손잡이(취향 #313)
 import { packagingAppealFactor } from './packaging';
@@ -221,6 +221,20 @@ export function domesticDemands(s: GameState, monthOfYear: number, region: Regio
   return new Map(alone.map(({ p, d }) => { const k = f.get(p.id) ?? 1; return [p.id, { ...d, split: k, demandBottles: d.demandBottles * k }]; }));
 }
 
+/**
+ * 품절 제품을 다시 채웠을 때의 이번 달 국내 수요 — 재고 있는 같은 범주 제품과 손님을 나눈 뒤 값(`domesticDemands`와 같은 나눔).
+ * 판매 화면 품절 배지 「다시 채우면 수요 약 n병/월」이 읽는다. 전에는 나누기 전 값(`demandFor(…, 1)`)이라 9차 판 134개월째 옹기소주가 2,062병(나눈 뒤 약 1,500)으로
+ * 크게 보였다(MKT 분석 `docs/playtest/9/mkt.md` 「134개월」 §4.1 · PM 2026-11-24). 상태 · 판매 셈 불변. 화면은 `knownState`를 넘겨 아는 품질로 센다
+ */
+export function restockedDemand(s: GameState, p: Product, monthOfYear: number, region: RegionDef = regionOf(s)): DemandBreakdown {
+  const q: Product = p.stockBottles > 0 ? p : { ...p, stockBottles: 1 };
+  const alone = [...s.commerce.products.filter((x) => x.stockBottles > 0 && x.id !== p.id), q].map((x) => ({ p: x, d: demandWithSplit(s, x, 1, monthOfYear, region) }));
+  const f = splitByCategory(alone.map((x) => ({ p: x.p, standaloneBottles: x.d.demandBottles })));
+  const d = alone.at(-1)!.d;
+  const k = f.get(p.id) ?? 1;
+  return { ...d, split: k, demandBottles: d.demandBottles * k };
+}
+
 function demandWithSplit(s: GameState, p: Product, split: number, monthOfYear: number, region: RegionDef): DemandBreakdown {
   const m = region.market[p.category];
   // 면세 전용 한정판은 국내 매대에 없다 (결정 #87). 입지 수요 배수(관광·인바운드, 결정 #86)
@@ -255,6 +269,29 @@ export function knownView(s: GameState, p: Product): Product {
 }
 
 /** F5d — 진열 전체를 아는 품질로 바꾼 상태 사본(계획 · 화면용). 옛 판은 같은 객체 */
+/**
+ * 소매 처리 역량 전망 (9차 판 64개월째 MKT 분석 §3 · PM 2026-11-24 — 화면만, 판매 셈 · 상태 불변) — 지금 진열 · 값 · 재고 그대로 두고 앞으로 months달 동안
+ * 달(계절)만 바꿔 국내 수요를 9L 케이스로 센다. **플레이어가 아는 정보로만**(`knownState` — F5d 참 품질이 새지 않게, I2). 제품마다 지금 재고까지만 센다
+ * (앞으로 병입 · 보충은 모른다). 잡음 없는 기댓값. 첫 칸 = 다음 결산 달
+ */
+export function retailCapacityOutlook(s: GameState, months = 12): { monthsAhead: number; monthOfYear: number; cases: number; capacity: number }[] {
+  const ks = knownState(s);
+  const capacity = retailCapacityCases(s);
+  const moy0 = calendar(s).monthOfYear;
+  const out: { monthsAhead: number; monthOfYear: number; cases: number; capacity: number }[] = [];
+  for (let k = 0; k < months; k++) {
+    const monthOfYear = ((moy0 - 1 + k) % 12) + 1;
+    const d = domesticDemands(ks, monthOfYear);
+    let cases = 0;
+    for (const p of ks.commerce.products) {
+      const x = d.get(p.id);
+      if (x) cases += (Math.min(x.demandBottles, p.stockBottles) * p.bottleMl) / 9000;
+    }
+    out.push({ monthsAhead: k + 1, monthOfYear, cases: Math.round(cases), capacity });
+  }
+  return out;
+}
+
 export function knownState(s: GameState): GameState {
   return hidesProductQuality(s) ? { ...s, commerce: { ...s.commerce, products: s.commerce.products.map((x) => knownView(s, x)) } } : s;
 }
