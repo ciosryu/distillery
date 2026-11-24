@@ -19,6 +19,7 @@ import type { ExportEntry, ExportSale, GameState, MonthReport, Product, ProductC
 import { EXPORT_MARKETS, EXPORT_SALES, tariffKey, type ExportMarketDef } from './content/exports';
 import { rngFor, type Rng } from './rng';
 import { sellFromLots } from './lots'; // F3 판매 사건(코어 입구) — 로트·사건만, stockBottles 차감은 여기서
+import { hidesProductQuality, knownProductQuality } from './productView'; // F5d 읽기 한 함수(코어)
 
 // 수요 공식 (PRD §9.2) — 수치 [튜닝]
 
@@ -241,8 +242,25 @@ function demandWithSplit(s: GameState, p: Product, split: number, monthOfYear: n
 /** 가격 비교 한 줄. lineup*은 국내 진열 전체(이 제품 포함) — 같은 카테고리 나눔(#154) 때문에 이 제품 값을 내리면 형제 제품 판매를 뺏어 온다([결정 #212]) */
 export interface PriceOption { price: number; consumer: number; demandBottles: number; sellBottles: number; revenue: number; contribution: number; lineupRevenue: number; lineupContribution: number }
 
-export function priceOptions(s: GameState, p: Product, monthOfYear: number, factors: readonly number[] = [0.8, 0.9, 1, 1.1, 1.25, 1.5]): PriceOption[] {
+/**
+ * F5d(#338 ④ · ⑤) — **계획**(가격 비교 · 자동 가격 · 가격 정책)은 아는 품질로 본다: 진열 전체의 품질을 `knownProductQuality`의 추정으로 바꾼 사본.
+ * 실제 판매(`runSales` 틱)는 참 품질 그대로 — 추정과 실적이 어긋나면 리뷰 갱신(reviews.ts)이 좁힌다. 옛 판 · 공개 제품은 그대로(같은 객체)
+ */
+export function knownView(s: GameState, p: Product): Product {
+  if (!hidesProductQuality(s) || !p.qualityKnown) return p;
+  return { ...p, quality: knownProductQuality(s, p).q };
+}
+
+/** F5d — 진열 전체를 아는 품질로 바꾼 상태 사본(계획 · 화면용). 옛 판은 같은 객체 */
+export function knownState(s: GameState): GameState {
+  return hidesProductQuality(s) ? { ...s, commerce: { ...s.commerce, products: s.commerce.products.map((x) => knownView(s, x)) } } : s;
+}
+
+export function priceOptions(s: GameState, p0: Product, monthOfYear: number, factors: readonly number[] = [0.8, 0.9, 1, 1.1, 1.25, 1.5]): PriceOption[] {
   const logistics = outboundLogistics(s);
+  // F5d: 이 제품과 형제 모두 아는 품질로(형제의 참값이 진열 나눔으로 새지 않게). 옛 판은 같은 배열 — 바이트 동일
+  const p = knownView(s, p0);
+  s = knownState(s);
   return factors.map((f) => {
     const q: Product = { ...p, price: Math.max(100, Math.round((p.price * f) / 100) * 100) };
     // 값이 바뀌면 같은 카테고리 안의 몫도 바뀐다 — 이 제품만 바꾼 진열로 다시 나눈다 (재고가 없으면 혼자일 때)

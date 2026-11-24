@@ -12,7 +12,7 @@ import { AXIS } from '../../sim/content/axes';
 import { ProfileRadar } from './Production';
 import { caskShort } from './Bottling';
 import { categoryName, consumerPrice, regionOf, traditionalTaxFactor } from '../../sim/content/regions';
-import { agedWhiteLabel, finishLabel, hexOf, HEX_AXES, HEX_LABEL, topNotes, type ProductCategory, type ProfileAxis, bottleMargin, calendar, coverage, demandFor, domesticDemands, DUTY_FREE, dutyFreeDemands, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, expectedPricePerL, priceOptions, productConsumerPrice, retailCapacityCases, suggestedPrice, type GameState, type Product } from '../../sim';
+import { agedWhiteLabel, finishLabel, hexOf, HEX_AXES, HEX_LABEL, topNotes, knownState, knownView, knownProductQuality, hidesProductQuality, type ProductCategory, type ProfileAxis, bottleMargin, calendar, coverage, demandFor, domesticDemands, DUTY_FREE, dutyFreeDemands, dutyFreeAgedAppeal, dutyFreeConsumerPrice, hasDutyFree, isWhiskyCategory, outboundLogistics, priceBreakdown, expectedPricePerL, priceOptions, productConsumerPrice, retailCapacityCases, suggestedPrice, type GameState, type Product } from '../../sim';
 import { awarenessOf, brandMarketing, brandOf, rebrandCost, secondBrands } from '../../sim/brands';
 import { BRANDS, DEFAULT_POLICY_N, defaultPolicyPrice } from '../../sim/content/market';
 import { isLocked } from '../../sim/scenario';
@@ -75,6 +75,17 @@ function PriceInput({ s, p, value, suggested, onSet }: { s: GameState; p: Produc
   );
 }
 
+/**
+ * F5d(#338 ②) 품질 표시 — 공개 제품(옛 판 · F5d 전 병입)은 참값, 가리는 판의 새 제품은 추정과 그 근거.
+ * "품질 추정 58 ±6 (병입 때)" / "품질 추정 61 ±2 (리뷰 7건)"
+ */
+function qualityText(s: GameState, p: Product): string {
+  const k = knownProductQuality(s, p);
+  if (k.public) return `품질 ${p.quality}`;
+  return `품질 추정 ${Math.round(k.q)} ±${Math.max(1, Math.round(k.sigma))} (${k.reviews > 0 ? `리뷰 ${k.reviews}건` : '병입 때'})`;
+}
+
+/** 권장가 — F5d(#338 ①): 화면이 부를 때는 아는 품질(`knownView`)로 넘긴다 */
 function currentSuggestedPrice(s: GameState, p: Product): number {
   const region = regionOf(s);
   const oak = isWhiskyCategory(p.category) ? p.oakMonths ?? (p.ageYears ?? 0) * 12 : null;
@@ -128,15 +139,17 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
   const region = regionOf(s);
   const active = sellingProducts(s);
   // 같은 카테고리 제품끼리 나눈 이번 달 수요 (#154). 재고 없는 제품은 혼자일 때의 수요(다시 채우면)
-  const domestic = domesticDemands(s, monthOfYear);
-  const dutyFree = dutyFreeDemands(s, monthOfYear);
+  // F5d(#338 ⑤): 화면의 수요 예상은 아는 품질로(가리는 판에서 참 품질이 수요 숫자로 새지 않게). 실제 판매는 틱이 참값으로
+  const ks = knownState(s);
+  const domestic = domesticDemands(ks, monthOfYear);
+  const dutyFree = dutyFreeDemands(ks, monthOfYear);
   const last = lastReport(s);
   const selected = compact ? active.find((p) => p.id === picked) : active.find((p) => p.id === picked) ?? active[0];
   const brandPick = secondBrands(s).length > 0 && !isLocked(s, 'action:setProductBrand');
 
   /** 제품 한 줄의 숫자 — 표 줄과 묶음 줄이 같이 쓴다 */
   const metrics = (p: Product) => {
-    const d = domestic.get(p.id) ?? demandFor(s, p, 1, monthOfYear);
+    const d = domestic.get(p.id) ?? demandFor(ks, knownView(s, p), 1, monthOfYear);
     // 면세 채널(제주, 결정 #87): 면세 전용 한정판은 국내 매대에 없다 → 면세가·면세 기준가로 보여 준다
     const df = dutyFree.get(p.id) ?? 0;
     const dfOnly = !!p.dutyFreeOnly;
@@ -145,7 +158,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
     const demand = (dfOnly ? 0 : d.demandBottles) + df;
     const sell = Math.min(p.stockBottles, Math.round(demand));
     const prev = last?.sales.find((x) => x.productId === p.id);
-    const suggested = dfOnly ? null : currentSuggestedPrice(s, p);
+    const suggested = dfOnly ? null : currentSuggestedPrice(s, knownView(s, p));
     const m = bottleMargin(p, dfOnly ? 1 : outboundLogistics(s));
     return { d, df, dfOnly, consumer, ratio, demand, sell, prev, suggested, m };
   };
@@ -183,7 +196,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
             {dfOnly && !p.localIngredient && dutyFreeAgedAppeal(p.ageYears) > 1 && <Badge tone="good">숙성 한정 · 수요 ×{dutyFreeAgedAppeal(p.ageYears)}</Badge>}
             {dfOnly && p.dfEdition && <Badge tone="warn">면세 Vol.{p.dfEdition.vol} · {s.month - p.createdMonth + 1}/{DUTY_FREE.sellOutMonths}개월</Badge>}
           </div>
-          <div className="text-xs font-normal text-stone-500">{p.bottleMl}ml · {pct(p.abv)} · 품질 {p.quality}</div>
+          <div className="text-xs font-normal text-stone-500">{p.bottleMl}ml · {pct(p.abv)} · {qualityText(s, p)}</div>
           {brandPick && (
             <div className="mt-1" title={rebrandCost(p) > 0 ? `이미 판 제품 — 옮기면 리브랜딩 ${rebrandCost(p).toLocaleString()}원` : '아직 안 판 제품 — 무료로 고른다'}>
               <Select label="브랜드" value={brandOf(s, p).id} onChange={(v) => dispatch({ type: 'setProductBrand', productId: p.id, brandId: v })} options={s.commerce.brands.map((b) => ({ value: b.id, label: b.isHouse ? `${b.name || '하우스'} (하우스)` : b.name }))} />
@@ -283,13 +296,13 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
         <Td className="font-medium">
           {productStem(p0.name)} <span className="text-xs font-normal text-stone-500">· 제품 {items.length}개 묶음</span>
           <div className="mt-0.5 flex flex-wrap gap-1"><Badge tone="info">{categoryName(region, p0.category, CATEGORY[p0.category].nameKo)}</Badge></div>
-          <div className="text-xs font-normal text-stone-500">{p0.bottleMl}ml · {pct(p0.abv)} · 품질 {Math.min(...items.map((p) => p.quality))}~{Math.max(...items.map((p) => p.quality))}</div>
+          <div className="text-xs font-normal text-stone-500">{p0.bottleMl}ml · {pct(p0.abv)} · {(() => { const qs = items.map((p) => Math.round(knownProductQuality(s, p).q)); const est = items.some((p) => !knownProductQuality(s, p).public); return `${est ? '품질 추정' : '품질'} ${Math.min(...qs)}~${Math.max(...qs)}`; })()}</div>
         </Td>
         <Td right>{num(stock)}{sell > 0 && <div className="text-xs text-stone-500">{stock / sell > 60 ? '5년 치 넘게' : `약 ${Math.max(1, Math.round(stock / sell))}개월 치`}</div>}</Td>
         <Td>
           {items.every((p) => p.autoPrice)
             ? <div className="text-sm tabular-nums">{lo === hi ? wonFull(lo) : `${num(lo)}~${num(hi)}원`} <Badge tone="good">자동</Badge></div>
-            : <PriceInput s={s} p={p0} value={lo} suggested={currentSuggestedPrice(s, p0)} onSet={(v) => { for (const p of items) { if (p.autoPrice) dispatch({ type: 'setAutoPrice', productId: p.id, on: false }); if (p.price !== v) dispatch({ type: 'setPrice', productId: p.id, price: v }); } }} />}
+            : <PriceInput s={s} p={p0} value={lo} suggested={currentSuggestedPrice(s, knownView(s, p0))} onSet={(v) => { for (const p of items) { if (p.autoPrice) dispatch({ type: 'setAutoPrice', productId: p.id, on: false }); if (p.price !== v) dispatch({ type: 'setPrice', productId: p.id, price: v }); } }} />}
           <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400"><input type="checkbox" className="accent-amber-700" checked={items.every((p) => p.autoPrice)} onChange={(e) => { for (const p of items) dispatch({ type: 'setAutoPrice', productId: p.id, on: e.target.checked }); }} /> 묶음 모두 자동 최적 가격</label>
           <div className="mt-0.5 text-xs text-stone-500" title="묶음 줄에서 값을 바꾸면 묶인 제품 모두 같은 값이 된다">{lo === hi ? '묶인 제품 모두 같은 값' : <>제품마다 {num(lo)}~{num(hi)}원 — 바꾸면 모두 같게 · <button className="underline decoration-dotted" onClick={() => { for (const p of items) if (p.price !== lo) dispatch({ type: 'setPrice', productId: p.id, price: lo }); }}>모두 {num(lo)}원으로</button></>}</div>
         </Td>
@@ -364,8 +377,17 @@ function ProductFlavor({ p }: { p: Product }) {
   const [cmpId, setCmpId] = useState('');
   const others = s.commerce.products.filter((x) => x.id !== p.id && sameAxes(p, x));
   const cmp = others.find((x) => x.id === cmpId);
-  const profile = productProfile(p);
-  const notes = topNotes(p.flavor);
+  // F5d(#338 ③): 가리는 판의 위스키 육각형은 병입 때 추정(`qualityKnown.hex`) — 없으면(샘플 없이 병입) "모름". 주종 레이더(탱크 원액)는 그대로
+  const hidden = hidesProductQuality(s);
+  const known = (x: Product) => knownProductQuality(s, x);
+  const estHex = (x: Product) => hidden && HEX_CATEGORIES.has(x.category) && !known(x).public;
+  const profileOf = (x: Product): ProfileAxis[] | null => {
+    if (!estHex(x)) return productProfile(x);
+    const h = known(x).hex;
+    return h ? HEX_AXES.map((a) => ({ id: a, label: HEX_LABEL[a], value: h[a] })) : null;
+  };
+  const profile = profileOf(p);
+  const notes = estHex(p) ? [] : topNotes(p.flavor);
   const facts = (x: Product) => [
     categoryName(region, x.category, CATEGORY[x.category].nameKo),
     x.ageYears != null ? `${x.ageYears}년` : null,
@@ -378,31 +400,34 @@ function ProductFlavor({ p }: { p: Product }) {
   ].filter(Boolean).join(' · ');
   return (
     <Card title={`${p.name} — 향미`} actions={others.length > 0 && (
-      <Select label="비교" value={cmp ? cmp.id : ''} onChange={setCmpId} options={[{ value: '', label: '(비교 안 함)' }, ...others.map((x) => ({ value: x.id, label: `${x.name} · 품질 ${x.quality}` }))]} />
+      <Select label="비교" value={cmp ? cmp.id : ''} onChange={setCmpId} options={[{ value: '', label: '(비교 안 함)' }, ...others.map((x) => ({ value: x.id, label: `${x.name} · ${qualityText(s, x)}` }))]} />
     )}>
       <div className="flex flex-wrap items-start gap-4">
-        <ProfileRadar draft={profile} base={cmp ? productProfile(cmp) : undefined} size={260} />
+        {profile
+          ? <ProfileRadar draft={profile} base={cmp ? profileOf(cmp) ?? undefined : undefined} size={260} />
+          : <div className="flex h-[260px] w-[260px] items-center justify-center rounded border border-dashed border-stone-300 p-4 text-center text-xs text-stone-500 dark:border-stone-700">향미 모름 — 샘플 없이 병입했다. 리뷰 · 피드로 짐작한다</div>}
         <div className="grid min-w-56 flex-1 gap-2 text-sm">
           <div>
-            <div className="flex items-baseline gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-amber-500/60" /><b>{p.name}</b> <span className="tabular-nums">품질 {p.quality}</span></div>
+            <div className="flex items-baseline gap-2"><span className="inline-block h-3 w-3 rounded-sm bg-amber-500/60" /><b>{p.name}</b> <span className="tabular-nums">{qualityText(s, p)}</span></div>
             <div className="text-xs text-stone-500">{facts(p)}</div>
             <div className="mt-1 text-xs">주요 향: {notes.length ? notes.map((n) => `${n.nameKo} ${n.value}`).join(' · ') : '뚜렷한 향 없음'}</div>
             {p.sourcedShare > 0 && <div className="text-xs text-stone-500">매입 원액 {pct(p.sourcedShare, 0)}</div>}
           </div>
           {cmp && (
             <div className="border-t border-stone-200 pt-2 dark:border-stone-700">
-              <div className="flex items-baseline gap-2"><span className="inline-block w-3 border-t-2 border-dashed border-stone-500" /><b>{cmp.name}</b> <span className="tabular-nums">품질 {cmp.quality}</span> <span className={`text-xs tabular-nums ${p.quality - cmp.quality >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>({p.quality - cmp.quality >= 0 ? '+' : '−'}{Math.abs(p.quality - cmp.quality).toFixed(1)})</span></div>
+              <div className="flex items-baseline gap-2"><span className="inline-block w-3 border-t-2 border-dashed border-stone-500" /><b>{cmp.name}</b> <span className="tabular-nums">{qualityText(s, cmp)}</span> {(() => { const dq = known(p).q - known(cmp).q; return <span className={`text-xs tabular-nums ${dq >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>({dq >= 0 ? '+' : '−'}{Math.abs(dq).toFixed(1)})</span>; })()}</div>
               <div className="text-xs text-stone-500">{facts(cmp)}</div>
               <div className="mt-1 text-xs">주요 향: {topNotes(cmp.flavor).map((n) => `${n.nameKo} ${n.value}`).join(' · ') || '뚜렷한 향 없음'}</div>
               {(() => {
                 // 많이 다른 축 3개 — 지금 제품 기준
-                const c = productProfile(cmp);
+                const c = profileOf(cmp);
+                if (!profile || !c) return null; // 향미 모름이면 축별 차이를 보이지 않는다
                 const diff = profile.map((a, i) => ({ label: a.label, d: a.value - c[i]!.value })).filter((x) => Math.abs(x.d) >= 1).sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).slice(0, 3);
                 return diff.length ? <div className="mt-1 text-xs">차이: {diff.map((x) => <span key={x.label} className={`mr-2 font-medium ${x.d > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>{x.label} {x.d > 0 ? '+' : '−'}{Math.abs(x.d).toFixed(0)}</span>)}</div> : null;
               })()}
             </div>
           )}
-          <p className="text-xs text-stone-500">병입 때 확정된 향미다(병 안에서는 변하지 않는다). {HEX_CATEGORIES.has(p.category) ? '위스키 육각형 — 숙성고 샘플·블렌딩 그래프와 같은 축.' : '주종 레이더 축.'}{others.length === 0 ? ' 같은 축의 다른 제품이 생기면 겹쳐 비교할 수 있다.' : ''}</p>
+          <p className="text-xs text-stone-500">{estHex(p) ? '병입 때 샘플로 짐작한 육각형이다(참 향미는 병 안에서 정해져 있고, 리뷰 · 피드로 드러난다). ' : '병입 때 확정된 향미다(병 안에서는 변하지 않는다). '}{HEX_CATEGORIES.has(p.category) ? '위스키 육각형 — 숙성고 샘플·블렌딩 그래프와 같은 축.' : '주종 레이더 축.'}{others.length === 0 ? ' 같은 축의 다른 제품이 생기면 겹쳐 비교할 수 있다.' : ''}</p>
         </div>
       </div>
     </Card>
@@ -417,9 +442,11 @@ function ProductDetail({ p }: { p: Product }) {
   const region = regionOf(s);
   if (p.dutyFreeOnly) return <Card title={`${p.name} — 면세 전용`}><p className="text-sm text-stone-600 dark:text-stone-300">면세 전용 한정판은 주세·부가세가 없습니다. 면세가 = 출고가 × 면세점 마진 {DUTY_FREE.markup}.</p></Card>;
   const b = priceBreakdown(s, p, region);
-  const d = domesticDemands(s, monthOfYear, region).get(p.id) ?? demandFor(s, p, 1, monthOfYear, region);
+  // F5d(#338 ⑤): 수요 분해 · 권장가는 아는 품질로(실제 판매는 참값)
+  const ks = knownState(s);
+  const d = domesticDemands(ks, monthOfYear, region).get(p.id) ?? demandFor(ks, knownView(s, p), 1, monthOfYear, region);
   // 가격 비교는 지금 값 근처 + 권장가 — 값이 기대가에서 멀리 벗어났을 때도 돌아갈 길이 보이게 (#198)
-  const suggested = currentSuggestedPrice(s, p);
+  const suggested = currentSuggestedPrice(s, knownView(s, p));
   const baseFactors = [0.8, 0.9, 1, 1.1, 1.25, 1.5];
   const sf = suggested / Math.max(1, p.price);
   const factors = baseFactors.some((f) => Math.abs(f / sf - 1) < 0.05) ? baseFactors : [...baseFactors, sf].sort((a, b) => a - b);
