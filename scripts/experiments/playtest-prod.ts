@@ -226,6 +226,52 @@ if (playlog) console.log(`- 플레이 기록: 시작 ${new Date(playlog.startedA
   console.log(`- 생산 0인 달: ${zero.join(', ') || '없음'} · 지시보다 덜 만든 달: ${notesOf(/배치 생산 못 함/).map((x) => x.month).join(', ') || '없음'}`);
 }
 
+// ── 9. 다음(F5d · 피니싱) 판 뒤 볼 것 — 병입 전 샘플 · 피니싱 통과 기간 · 승리 통 · 핸드필 (PM 2026-11-24, 빌드 6df3cb8) ──
+// 읽는 곳: 플레이 기록 `turns[].kinds`(달마다 행동 종류 횟수 — 판 전체) · 월 결산 `lossEvents`(sample · transfer LPA, 마지막 120개월) · `saleEvents`(cellar_door) ·
+// 제품 `qualityKnown`(F5d — 병입 때 추정이 리뷰로 좁혀진 지금 값) · `finish` · `caskMonthsMix` · 끝 세이브 통 `caskHistory`(finishOf).
+// 기록에 없는 것: 병입에 쓴 통 id · 그 통의 활성도(BottledLot.components에는 배치 · 목재 개월만 있다) → 아래 9c는 통 종류 · 품질 · 후보 수만 읽는다
+{
+  console.log('\n## 9. F5d · 피니싱 판 뒤 볼 것');
+  const reps = s.history.reports;
+  const turns = playlog?.turns ?? [];
+  const sumKinds = (k: string) => turns.reduce((a, x) => a + (x.kinds?.[k] ?? 0), 0);
+  const lossLpa = (m: number, k: string) => (reps.find((r) => r.month === m)?.lossEvents ?? []).filter((e) => e.kind === k).reduce((a, e) => a + e.lpa, 0);
+  // 9a 병입 전 샘플 — 병입한 달마다, 그 달까지 6개월 동안 손 샘플(sampleCask) · GC · 샘플 손실 LPA(자동 샘플 포함, 회당 0.1L)
+  const bottleMonths = [...new Set(turns.filter((x) => (x.kinds?.bottle ?? 0) > 0).map((x) => x.month))].sort((a, b) => a - b);
+  const win6 = (m: number, k: string) => turns.filter((x) => x.month > m - 6 && x.month <= m).reduce((a, x) => a + (x.kinds?.[k] ?? 0), 0);
+  const sampleL = (m: number) => { let l = 0; for (let k = m - 5; k <= m; k++) l += lossLpa(k, 'sample'); return l; };
+  console.log(`- 9a 병입 달 ${bottleMonths.length}개 · 손 샘플 ${sumKinds('sampleCask')}번 · GC ${sumKinds('labAnalyze')}번 · 블렌더 위임 ${sumKinds('delegateBlend')}번(판 전체, 플레이 기록)`);
+  const firstRep = reps[0]?.month ?? Infinity;
+  const judged = bottleMonths.filter((m) => m - 5 >= firstRep); // 앞 6개월 결산이 다 남은 달만 판정(자동 샘플은 결산 손실로만 보인다)
+  const noSample = judged.filter((m) => win6(m, 'sampleCask') + win6(m, 'labAnalyze') === 0 && sampleL(m) < 0.01);
+  console.log(`  - 앞 6개월에 손 샘플 · GC · 자동 샘플이 모두 없던 병입 달: ${noSample.join(', ') || '없음'} (판정한 병입 달 ${judged.length}개 — 월 결산 ${Number.isFinite(firstRep) ? firstRep : '—'}개월부터)`);
+  const hidden = [...s.commerce.products, ...s.commerce.productArchive].filter((p) => (p as Product).qualityKnown) as Product[];
+  if (hidden.length) {
+    console.log('  - F5d 제품 — 지금 아는 품질 대 참 품질 (추정은 병입 때 값이 리뷰로 좁혀진 것):');
+    for (const p of hidden.slice(-12)) { const k = p.qualityKnown!; console.log(`    - ${p.name} (${p.createdMonth}개월): 추정 ${k.est.toFixed(1)} ±${k.sigma.toFixed(1)} · 리뷰 ${k.reviews} · 참 ${p.quality.toFixed(1)} · 차이 ${(k.est - p.quality).toFixed(1)}`); }
+  } else console.log('  - F5d 제품 없음(규칙 전 판이거나 F5d 뒤 병입이 없다)');
+  // 9b 피니싱 — 옮긴 달 · 옮김 손실(원액 빼기 손실과 같은 종류) · 제품 표기 · 끝에 피니싱 중인 통
+  const tr = turns.filter((x) => (x.kinds?.transferCask ?? 0) > 0).map((x) => `${x.month}(${x.kinds!.transferCask})`);
+  console.log(`- 9b 피니싱(옮기기) ${sumKinds('transferCask')}번: ${tr.join(' · ') || '없음'}`);
+  const finProds = [...s.commerce.products].filter((p) => p.finish);
+  for (const p of finProds) { const mix = p.caskMonthsMix ?? p.caskMix ?? []; const f = mix.find((x) => x.typeId === p.finish); console.log(`  - 제품 ${p.name}: ${CASKS[p.finish!].nameKo} 피니시 · 개월 가중 몫 ${f ? (f.share * 100).toFixed(0) : '?'}% (숙성 ${p.oakMonths ?? '?'}개월 기준이면 약 ${f && p.oakMonths ? Math.round(f.share * p.oakMonths) : '?'}개월) · 품질 ${p.quality.toFixed(1)}`); }
+  const finCasks = s.inventory.casks.filter((c) => c.contents?.caskHistory && c.contents.caskHistory.length > 1);
+  for (const c of finCasks) { const h = c.contents!.caskHistory!; const last = h.at(-1)!; const closed = h.slice(0, -1).reduce((a, x) => a + x.months, 0); console.log(`  - 피니싱 중 ${c.id}: ${CASKS[last.typeId].nameKo} ${Math.max(0, c.contents!.oakMonths - closed)}개월째 · 활성도 ${c.activity.toFixed(2)} · 목재 ${c.contents!.oakMonths}개월`); }
+  // 9c 승리 통 — 승리 제품의 통 종류 · 품질 · 승리 앞뒤 적격 후보 수(월 결산 flagshipCandidates)
+  const win = s.progress.win;
+  if (win) {
+    const wp = [...s.commerce.products, ...s.commerce.productArchive].find((p) => p.id === win.productId) as Product | undefined;
+    const cand = reps.filter((r) => r.month >= win.month - 12 && r.month <= win.month).map((r) => `${r.month}:${r.flagshipCandidates ?? '—'}`);
+    console.log(`- 9c 승리 ${win.month}개월 · ${wp?.name ?? win.productId} · 참 품질 ${wp?.quality?.toFixed(1) ?? '?'} · 통 ${(wp?.caskMix ?? []).map((x) => `${CASKS[x.typeId].nameKo} ${(x.share * 100).toFixed(0)}%`).join(' · ') || '?'}${wp?.finish ? ` · ${CASKS[wp.finish].nameKo} 피니시` : ''}`);
+    console.log(`  - 승리 앞 12개월 적격 후보 수: ${cand.join(' ') || '—'}`);
+    console.log('  - 통별 활성도는 기록에 없다 — 12년 적격 통이 처음 생겨 자동 진행이 멈춘 달(#333)의 기록 내보내기가 있으면 그 세이브로 tanninOutlook을 다시 센다');
+  } else console.log('- 9c 승리 없음');
+  // 9d 핸드필 — 지정 · 판매 사건(cellar_door, 월 결산 기간) · 병·라벨 비용
+  const cd = reps.flatMap((r) => (r.saleEvents ?? []).filter((e) => e.kind === 'cellar_door'));
+  const hfCost = reps.reduce((a, r) => a + ((r.expenses as Record<string, number>)['핸드필 병·라벨'] ?? 0), 0);
+  console.log(`- 9d 핸드필 통 지정 ${sumKinds('setHandfillCask')}번 · 판매 ${n0(cd.reduce((a, e) => a + e.bottles, 0))}병 · 매출 ${man(cd.reduce((a, e) => a + e.bottles * e.unitPrice, 0))} · 병·라벨 ${man(hfCost)} (월 결산 ${reps.length}개월)`);
+}
+
 // ── 7. 다른 판과 비교 ──
 if (other) {
   const Yo = yearly(other);
