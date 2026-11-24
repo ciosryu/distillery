@@ -1,4 +1,6 @@
 import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/catalog';
+import { bottledQualityKnown, hidesProductQuality, mergeQualityKnown, restockPrior } from './productView'; // F5d 아는 품질(코어)
+import { lotQuality } from './bulk'; // F5d 병입 보정량 — 샘플 기록과 같은 원액 품질 식
 import type { PackagingChoice } from './content/packaging';
 import { fixPackaging, nearestPresetId, packagingError, packagingPartsCost, presetChoice, productPackaging, sameChoice } from './packaging';
 import { brandOf } from './brands';
@@ -17,7 +19,7 @@ import { hexOf, matchScore, mixHex } from './blendRadar';
 import { COMMISSION, findTarget, knownReads, QUALITY_SIGMA_PER_HEX, revealNotes, sampleAxesOf } from './blendTable';
 import { productCountEver } from './lifecycle';
 import { agedWhitePerception, defaultPolicyPrice } from './content/market';
-import type { AxisId, CaskTypeId, Flavor, GameState, Hex, LedgerEntry, Product, ProductCategory, SpiritKind, SpiritLot } from './types';
+import type { AxisId, CaskTypeId, Flavor, GameState, Hex, LedgerEntry, Product, ProductCategory, QualityKnown, SpiritKind, SpiritLot } from './types';
 import { coalesce, ledgerOf, splitLedger } from './ledger';
 import { addLot } from './lots';
 
@@ -468,9 +470,51 @@ export function restockedProduct(old: Product, batch: Product): Product {
   return merged;
 }
 
+/**
+ * 병입 단계 보정량(F5d) — 이 블렌드의 병입 평가 품질 − 섞는 원액 품질(알코올 가중 평균). 샘플 기록 · 사전값은 원액 하나의 품질(`lotQuality`)을 읽으므로
+ * 희석 · 칠 필터 · 섞을 때 생기는 향미 상호작용이 빠진다. 이 차는 **원액 품질을 몰라도 같은 블렌드라면 병입 공정이 주는 몫**이라 블렌더가 안다고 본다 —
+ * 추정의 오차는 샘플 오차만 남는다(참 품질을 더 드러내지 않는다). 통 · 탱크 모두 estimateBlend와 같은 원액 품질 식을 쓴다
+ */
+export function bottlingOffset(s: GameState, components: BlendComponent[], evaluationQuality: number): number {
+  let w = 0; let q = 0;
+  for (const c of components) {
+    if (c.liters <= 0) continue;
+    const lot = lotOf(s, c);
+    if (!lot) continue;
+    const wi = c.liters * lot.abv;
+    w += wi;
+    q += wi * (c.source === 'cask' ? lotQuality(lot) : evaluate(lot.flavor, lotCategory(lot, regionOf(s).whisky)).quality);
+  }
+  return w > 0 ? evaluationQuality - q / w : 0;
+}
+
+/**
+ * 이번 배치의 아는 품질(F5d) — 병입 행동과 화면 미리보기(Bottling 보충 줄 · 첫 출고가)가 **같은 값**을 쓰도록 한 함수로. 원액을 빼기 **전에** 부른다.
+ * 탱크 원액만이면 병입 평가 그대로(σ 0) · 통이 섞이면 샘플 추정 + 병입 보정량 · 같은 레시피 보충이면 그 제품의 추정을 잇는다(#346). 옛 판은 undefined
+ */
+export function batchQualityKnown(s: GameState, components: BlendComponent[], p: Pick<BlendPreview, 'kind' | 'evaluation' | 'flavor'>, restockId?: string): QualityKnown | undefined {
+  if (!hidesProductQuality(s) || !p.evaluation) return undefined;
+  const estB = estimateBlend(s, components);
+  if (!estB.fromCasks) return { est: Math.round(p.evaluation.quality * 10) / 10, sigma: 0, reviews: 0, month: s.month, hex: hexOf(p.flavor) };
+  const target = restockId ? s.commerce.products.find((x) => x.id === restockId) : undefined;
+  const carried = target ? restockPrior(s, target, recipeIdsOf(s, components)) : undefined;
+  return bottledQualityKnown(estB, p.kind ?? 'malt', s.month, carried, bottlingOffset(s, components, p.evaluation.quality));
+}
+
+/** 섞는 원액의 레시피 집합(#243) — 원액을 빼기 **전에** 읽는다. 병입 · 보충 미리보기(#346 같은 레시피 판정)가 같이 쓴다 */
+export function recipeIdsOf(s: GameState, components: BlendComponent[]): string[] {
+  return [...new Set(components.filter((c) => c.liters > 0).map((c) => lotOf(s, c)?.recipeId).filter((x): x is string => !!x))].sort();
+}
+
 export function executeBlend(s: GameState, components: BlendComponent[], opts: BottleOptions): { error?: string; product?: Product; reveal?: BlendReveal } {
   const p = previewBlend(s, components, opts);
   if (!p.ok || !p.category || !p.evaluation) return { error: p.errors.join(' / ') || '병입할 수 없습니다' };
+  // F5d(#338, ARCH 코어 대행): 병입 때 아는 품질 — 원액을 빼기 **전에** 추정한다(estimateBlend는 남은 원액을 읽는다). 옛 판은 쓰지 않는다(출력 불변)
+  // 통 원액이 없으면(탱크만 — 막 만든 원액이라 향미를 다 안다) 숨길 것이 없다 → 병입 평가 그대로(도수·여과 등 병입 단계 보정 포함, 오차 0).
+  // estimateBlend의 원액별 품질 가중 평균을 쓰면 병입 보정만큼(약 3점) 늘 낮고 오차 0이라 리뷰가 고치지 못했다(MKT F5d-2 진단 — 소주). 통이 섞이면 샘플 추정
+  // 탱크만이면 병입 평가 그대로 · 통이 섞이면 샘플 추정 + 병입 보정량 · 같은 레시피 보충이면 #346 잇기 — 화면 미리보기와 같은 한 함수
+  const knownBatch = batchQualityKnown(s, components, p, opts.restockId);
+  const carried = knownBatch && opts.restockId ? (() => { const t = s.commerce.products.find((x) => x.id === opts.restockId); return t ? restockPrior(s, t, recipeIdsOf(s, components)) : undefined; })() : undefined;
   // 블렌딩 테이블 (결정 #124): 원액을 빼기 전에 블렌더가 아는 값으로 예상 육각형을 만든다 (공개 연출용).
   // 캐스크는 샘플 기록(#157) — 기록이 없는 캐스크는 예상에서 빠진다. 탱크 원액은 우리가 막 만든 것이라 참값으로 안다(#162의 estimateBlend와 같은 규칙)
   const known = knownReads(s);
@@ -495,7 +539,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   const target = lineTarget ?? findTarget(s, opts.targetId);
   // 섞은 원액의 레시피 (#243) — 자동 납품이 다른 제품 몫 원액을 가져가지 않게(5차 판: 「안성 소주」 자동 납품이 탱크 소주를 다 써 「옹기소주」를 못 채움).
   // 원액을 빼기 **전에** 읽는다 — 다 쓴 탱크·통은 빼고 나면 원액이 없어 기록이 빠졌다(통째 병입한 위스키는 늘 비었다)
-  const recipeIds = [...new Set(components.filter((c) => c.liters > 0).map((c) => lotOf(s, c)?.recipeId).filter((x): x is string => !!x))].sort();
+  const recipeIds = recipeIdsOf(s, components);
   // F2 원장 지점 17·18: 병입 — 원천마다 뽑은 리터 비율로 분할해(손실 아님) 병입 로트에 이어 붙인다(평균 안 냄). 원장이 없는 원천은 합성(`ledgerOf` — 옛 판은 unknown)
   const bottledLedger: LedgerEntry[] = [];
   const takeLedger = (lot: SpiritLot, liters: number): LedgerEntry[] | undefined => {
@@ -557,11 +601,15 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     ...(p.peatShare > 0 ? { peatShare: p.peatShare } : {}),
     ...(recipeIds.length ? { recipeIds } : {}),
     ...(opts.dutyFreeOnly && p.dfEdition ? { dutyFreeOnly: true, dfEdition: { ...p.dfEdition } } : {}),
+    ...(knownBatch ? { qualityKnown: knownBatch } : {}),
   };
   // 기존 제품에 재고 보충 (#186) — 새 제품을 만들지 않고 가중 평균으로 합친다. 출시 효과·면세 판·블렌딩 목표 채점은 새 제품에만
   if (opts.restockId) {
     const idx = s.commerce.products.findIndex((x) => x.id === opts.restockId);
-    const merged = restockedProduct(s.commerce.products[idx]!, product);
+    const old = s.commerce.products[idx]!;
+    const merged = restockedProduct(old, product);
+    // F5d: 보충 — 남은 재고와 새 배치의 아는 품질을 병 수로 합친다(남은 재고가 F5d 전 공개 제품이면 그 몫은 참값을 안다)
+    if (knownBatch) merged.qualityKnown = mergeQualityKnown(old, knownBatch, p.bottles, s.month, !!carried);
     s.commerce.products[idx] = merged;
     // F3 로트 생성(보충 18 — 수동·자동 납품 공통): 보충마다 **새 병입 로트** — 제품 칸만 가중 평균으로 합치고 로트는 섞지 않는다(FIFO, "어린 제품 판매 + 적격 보충"으로 승리 0)
     addLot(s, merged.id, p.bottles, { components: coalesce(bottledLedger) });

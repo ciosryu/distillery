@@ -281,6 +281,23 @@ export interface BrandLine {
   marketingBudget?: number;
 }
 
+/**
+ * 병입 제품의 "아는 품질" (F5d · [결정 #328 · #338], architecture §10.10 P-ARCH-59) — 플레이어·추천·자동 가격이 읽는 값.
+ * 참 품질(`Product.quality`)은 시장 결과 엔진·판정만 읽는다. 병입 때 추정 1회(`estimateBlend` — 샘플 기록이 없는 몫은 사전값 · 큰 오차)를 쓰고,
+ * 팔린 뒤 리뷰가 좁힌다(MKT F5d-2). **새 캠페인(v16)·샌드박스의 F5d 뒤 병입만 쓴다** — 없으면 공개(옛 판·F5d 전 제품, #338 ①(가))
+ */
+export interface QualityKnown {
+  /** 추정 품질 */
+  est: number;
+  /** 추정 오차(1σ) */
+  sigma: number;
+  /** 이 추정에 반영된 리뷰 수 — 병입 때 0 */
+  reviews: number;
+  /** 마지막으로 갱신한 달 */
+  month: number;
+  /** 병입 때 추정한 향미 육각형 — 판매 화면 향미 카드가 그린다(#338 ②(가)). 샘플 기록이 하나도 없으면 없다("모름") */
+  hex?: Hex;
+}
 export interface Product {
   id: string;
   name: string;
@@ -302,7 +319,10 @@ export interface Product {
   /** 패키징 부품·원가·럭셔리 (#248) — 병입 때 고정. 없으면(옛 제품) packagingId 프리셋으로 읽는다(packaging.ts productPackaging) */
   packaging?: ProductPackaging;
   flavor: Flavor;
+  /** 참 품질 — 시장 결과 엔진·판정만 읽는다. 화면·추천·자동 가격은 `knownProductQuality`(productView.ts, F5d)로 */
   quality: number;
+  /** 아는 품질 (F5d) — 없으면 공개(옛 판·F5d 전 제품). 선택 필드라 스키마 v16 그대로 */
+  qualityKnown?: QualityKnown;
   typicity: number;
   style: string | null;
   sourcedShare: number;
@@ -529,6 +549,11 @@ export interface MonthReport {
   lossEvents?: { kind: LossKind; lpa: number; costKRW: number }[];
   /** 유상 출하 사건(F3 [결정 #308]) — 출고가 일어난 자리에서 쌓고 9단계 판정이 읽는다. 없으면 이달 유상 출하가 없다. 기록만 */
   saleEvents?: SaleEvent[];
+  /**
+   * F5d(#338) — 그달 커뮤니티 리뷰(위스키베이스 점수) 읽기. 틱이 남기고(MKT `updateProductKnowledge`, 틱 5 판매 뒤) 피드 화면은 이것을 읽는다 —
+   * 화면이 그릴 때 다시 뽑으면 보충으로 참 품질이 바뀐 뒤 지난달 점수가 어긋난다(MKT 제안). 선택 필드라 스키마 v16 그대로 · 없으면 그달 리뷰 없음
+   */
+  reviews?: { productId: string; scores: number[] }[];
   angelsShareL: number;
   liquorTaxRemitted: number;
   /** 이번 달 발생한 이벤트 제목 */
@@ -678,6 +703,8 @@ export interface ProductArchiveEntry {
   lastMonthSold: number;
   totalSold: number;
   quality: number;
+  /** F5d — 보관 때의 아는 품질 사본(없으면 공개) */
+  qualityKnown?: QualityKnown;
   price: number;
 }
 
