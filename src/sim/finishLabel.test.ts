@@ -15,16 +15,23 @@ const finished = (m: number, typeId: 'oloroso_butt' | 'ex_bourbon_barrel' = 'olo
   caskMonthsMix: [{ typeId: typeId === 'oloroso_butt' ? 'ex_bourbon_barrel' : 'oloroso_butt', share: (72 - m) / 72 }, { typeId, share: m / 72 }],
 });
 
+const V16 = { rulesVersion: 'v16' as const };
+const LEGACY = { rulesVersion: 'legacy-v15' as const };
+
 describe('finishMonthsOf · finishLabelOn', () => {
   it('한 통 원액이면 피니시 통에 머문 개월을 그대로 읽는다', () => {
     expect(finishMonthsOf(finished(6))).toBeCloseTo(6);
     expect(finishMonthsOf(finished(2))).toBeCloseTo(2);
   });
   it(`${FINISH_LABEL.minMonths}개월부터 켜진다 · 표기 없거나 기록 없는 제품(옛 세이브)은 꺼짐`, () => {
-    expect(finishLabelOn(finished(2))).toBe(false);
-    expect(finishLabelOn(finished(3))).toBe(true);
-    expect(finishLabelOn(base)).toBe(false);
-    expect(finishLabelOn({ ...base, finish: 'oloroso_butt' })).toBe(false); // caskMonthsMix 없음 — styleFit과 같은 중립 규칙
+    expect(finishLabelOn(finished(2), V16)).toBe(false);
+    expect(finishLabelOn(finished(3), V16)).toBe(true);
+    expect(finishLabelOn(base, V16)).toBe(false);
+    expect(finishLabelOn({ ...base, finish: 'oloroso_butt' }, V16)).toBe(false); // caskMonthsMix 없음 — styleFit과 같은 중립 규칙
+  });
+  it('옛 판(legacy-v15) · 판을 모를 때는 꺼짐 — 생성 때 규칙 고정(#308 · #343, PM 2026-11-24)', () => {
+    expect(finishLabelOn(finished(6), LEGACY)).toBe(false);
+    expect(finishLabelOn(finished(6), undefined)).toBe(false);
   });
   it('탱크 원액이 섞여 통 몫 합이 1보다 작아도 통 몫 안에서 센다', () => {
     const p = { ...base, finish: 'oloroso_butt' as const, caskMonthsMix: [{ typeId: 'ex_bourbon_barrel' as const, share: 0.4 }, { typeId: 'oloroso_butt' as const, share: 0.1 }] };
@@ -41,13 +48,28 @@ describe('효과 — A 매력도 · 기대 가격 ×1.08 · B 럭셔리 +10, 통
     expect(on / off).toBeCloseTo(FINISH_LABEL.appeal, 6);
   });
   it('기대 가격 ×1.08', () => {
-    expect(expectedPricePerL(region, finished(6)) / expectedPricePerL(region, base)).toBeCloseTo(FINISH_LABEL.expectedPrice, 6);
+    expect(expectedPricePerL(region, finished(6), s) / expectedPricePerL(region, base, s)).toBeCloseTo(FINISH_LABEL.expectedPrice, 6);
   });
   it('럭셔리 +10 · 품질 게이트(L_p ≤ 품질) 그대로', () => {
-    expect(productLuxury(finished(6)) - productLuxury(base)).toBe(FINISH_LABEL.luxury);
-    expect(productLuxury({ ...finished(6), quality: 20 })).toBe(20);
+    expect(productLuxury(finished(6), s) - productLuxury(base, s)).toBe(FINISH_LABEL.luxury);
+    expect(productLuxury({ ...finished(6), quality: 20 }, s)).toBe(20);
   });
   it('통 종류가 달라도 같은 배수(시장 차이는 styleFit만)', () => {
     expect(appeal(finished(6, 'ex_bourbon_barrel'), s, '') / appeal(finished(2, 'ex_bourbon_barrel'), s, '')).toBeCloseTo(FINISH_LABEL.appeal, 6);
+  });
+});
+
+describe('옛 판 세이브 — 피니시 기록이 있는 제품도 전후가 같다 (#362 범위, PM 2026-11-24)', () => {
+  const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'standard', loanAmount: 0, seed: 5 });
+  const old = { ...s, rulesVersion: 'legacy-v15' as const };
+  const region = regionOf(s);
+  it('매력도 · 기대 가격 · 럭셔리 모두 표기 효과 없음(2개월 피니시 = 효과 없는 제품과 같은 배수)', () => {
+    expect(appeal(finished(6), old, '') / appeal(finished(2), old, '')).toBeCloseTo(1, 9);
+    expect(expectedPricePerL(region, finished(6), old)).toBe(expectedPricePerL(region, base, old));
+    expect(productLuxury(finished(6), old)).toBe(productLuxury(base, old));
+  });
+  it('판을 넘기지 않은 옛 호출(s 없음)도 효과 없음', () => {
+    expect(expectedPricePerL(region, finished(6))).toBe(expectedPricePerL(region, base));
+    expect(productLuxury(finished(6))).toBe(productLuxury(base));
   });
 });

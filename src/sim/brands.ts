@@ -78,7 +78,7 @@ export function closeSecondBrand(s: GameState, brandId: string): BrandLine | str
 const WHISKY_CATEGORIES: readonly ProductCategory[] = ['whisky', 'blended_whisky', 'grain_whisky'];
 
 /** 제품 럭셔리 L_p(0~100) — 패키징 + 숙성 표기(위스키 연수 · 숙성 소주 표기 #217) + 희소성. 품질 게이트: L_p ≤ 품질. 가격은 넣지 않는다(§11.2 ①) */
-export function productLuxury(p: Pick<Product, 'packagingId' | 'packaging' | 'bottleMl' | 'category' | 'oakMonths' | 'ageYears' | 'restMonths' | 'rareSingleCask' | 'quality'> & Partial<Pick<Product, 'finish' | 'caskMonthsMix'>>): number {
+export function productLuxury(p: Pick<Product, 'packagingId' | 'packaging' | 'bottleMl' | 'category' | 'oakMonths' | 'ageYears' | 'restMonths' | 'rareSingleCask' | 'quality'> & Partial<Pick<Product, 'finish' | 'caskMonthsMix'>>, s?: Pick<GameState, 'rulesVersion'>): number {
   const L = BRAND_LUXURY;
   let v = packagingLuxury(p); // 패키징 0~30 — 병입 때 고정한 조합(#248), 옛 제품은 packagingId 프리셋
   if (WHISKY_CATEGORIES.includes(p.category)) {
@@ -89,7 +89,7 @@ export function productLuxury(p: Pick<Product, 'packagingId' | 'packaging' | 'bo
     if (months >= AGED_WHITE.minMonths) v += Math.min(L.agedWhiteCap, (months / 12) * L.agedWhitePerYear);
   }
   if (p.rareSingleCask) v += L.rare;
-  if (finishLabelOn(p)) v += FINISH_LABEL.luxury; // [결정 #362] 피니시 표기 — 럭셔리 라벨 항(#270 B, PRD §5.2). 품질 게이트(L_p ≤ 품질)는 그대로
+  if (finishLabelOn(p, s)) v += FINISH_LABEL.luxury; // [결정 #362] 피니시 표기 — 럭셔리 라벨 항(#270 B, PRD §5.2). 품질 게이트(L_p ≤ 품질)는 그대로
   return Math.max(0, Math.min(100, p.quality, v));
 }
 
@@ -111,7 +111,7 @@ export function updateBrandLuxury(s: GameState): void {
       const p = find(x.productId);
       if (!p) continue;
       const id = brandOf(s, p).id;
-      const lp = productLuxury(p);
+      const lp = productLuxury(p, s);
       const a = acc.get(id) ?? { n: 0, sum: 0, max: 0 };
       a.n += x.bottles; a.sum += x.bottles * lp; a.max = Math.max(a.max, lp);
       acc.set(id, a);
@@ -121,13 +121,13 @@ export function updateBrandLuxury(s: GameState): void {
     const a = acc.get(b.id);
     if (a && a.n > 0) { b.luxury = L.alpha * (a.sum / a.n) + (1 - L.alpha) * a.max; continue; }
     const live = s.commerce.products.filter((p) => p.stockBottles > 0 && brandOf(s, p).id === b.id);
-    if (live.length) b.luxury = live.reduce((t, p) => t + productLuxury(p), 0) / live.length;
+    if (live.length) b.luxury = live.reduce((t, p) => t + productLuxury(p, s), 0) / live.length;
   }
 }
 
 /** 브랜드 방패 매력도 배수 — 1 + κβ(B_b − L_p)/100. 꺼진 모드·브랜드 정보가 없으면 1 */
-export function brandLuxuryFactor(s: Partial<Pick<GameState, 'commerce' | 'scenario'>> | undefined, p: Product): number {
+export function brandLuxuryFactor(s: Partial<Pick<GameState, 'commerce' | 'scenario' | 'rulesVersion'>> | undefined, p: Product): number {
   if (!s?.commerce || !brandLuxuryOn(s as Pick<GameState, 'scenario'>)) return 1;
   const L = BRAND_LUXURY;
-  return 1 + (L.kappa * L.beta * (brandOf(s as Pick<GameState, 'commerce'>, p).luxury - productLuxury(p))) / 100;
+  return 1 + (L.kappa * L.beta * (brandOf(s as Pick<GameState, 'commerce'>, p).luxury - productLuxury(p, s as Pick<GameState, 'rulesVersion'>))) / 100;
 }

@@ -62,14 +62,14 @@ export function feedSignals(s: GameState, p: Product, sale: MonthReport['sales']
   const region = regionOf(s);
   const price = sale && sale.bottles > 0 ? Math.round(sale.revenue / sale.bottles) : p.price;
   const consumer = productConsumerPrice(s, { ...p, price }, region);
-  const expected = expectedPricePerL(region, p) * (p.bottleMl / 1000);
+  const expected = expectedPricePerL(region, p, s) * (p.bottleMl / 1000);
   const qpr = expected > 0 ? consumer / expected : 1;
   const prevPrice = prev && prev.bottles > 0 ? prev.revenue / prev.bottles : price;
   const qs = clamp((p.quality - 62) / 18, -1, 1);
   const ps = clamp((1 - qpr) * 2, -1, 1);
   const years = Math.floor((p.oakMonths ?? (p.ageYears ?? 0) * 12) / 12);
   const peat = (p.flavor.peat_smoke ?? 0) >= 30 || (p.flavor.dried_fruit ?? 0) >= 30;
-  const mania = clamp((p.abv >= 0.55 ? 0.4 : 0) + (p.rareSingleCask ? 0.3 : 0) + (years >= 10 ? 0.3 : 0) + (peat ? 0.2 : 0) + productLuxury(p) / 200, 0, 1);
+  const mania = clamp((p.abv >= 0.55 ? 0.4 : 0) + (p.rareSingleCask ? 0.3 : 0) + (years >= 10 ? 0.3 : 0) + (peat ? 0.2 : 0) + productLuxury(p, s) / 200, 0, 1);
   const bottles = sale?.bottles ?? 0;
   const mass = clamp((WHITE.includes(p.category) ? 0.5 : 0) + (qpr < 0.9 ? 0.2 : 0) + (bottles >= 500 ? 0.3 : 0), 0, 1);
   const extreme = qpr < 0.67 ? clamp((0.67 - qpr) / 0.3, 0, 1) : qpr > 1.5 ? clamp((qpr - 1.5) / 0.5, 0, 1) : 0;

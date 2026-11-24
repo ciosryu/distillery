@@ -457,7 +457,7 @@ function ProductDetail({ p }: { p: Product }) {
   const best = (ownOk.length ? ownOk : opts).reduce((a, x) => (x.lineupContribution > a.lineupContribution ? x : a), (ownOk.length ? ownOk : opts)[0]!);
   const bestRev = opts.reduce((a, x) => (x.lineupRevenue > a.lineupRevenue ? x : a), opts[0]!);
   // 기대 소비자가 (#198) — 여기서 멀어질수록 수요가 가파르게(비쌀 때) 또는 완만하게(쌀 때) 변한다
-  const expected = expectedPricePerL(region, p) * (p.bottleMl / 1000);
+  const expected = expectedPricePerL(region, p, s) * (p.bottleMl / 1000);
   const vsExpected = b.consumer / expected;
   const t = region.tax;
   const rows: [string, number, string?][] = [
