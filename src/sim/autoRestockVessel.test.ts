@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { newScenarioGame } from './newScenario';
 import { emptyCaskOf } from './newGame';
-import { autoRestockSources } from './economics';
+import { autoRestockSources, autoRestockVesselNeed } from './economics';
 import type { GameState, Product, SpiritLot } from './types';
 
 const soju = (id: string, extra: Partial<SpiritLot> = {}): SpiritLot => ({ id, name: id, kind: 'soju', volumeL: 300, abv: 0.48, flavor: { fresh_fruit: 20 }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 5000, recipeId: 'RX', ...extra });
@@ -40,5 +40,14 @@ describe('#369 용기에서 쉰 소주 제품의 자동 납품 원액', () => {
     const { s, p } = setup('v16');
     const src = autoRestockSources(s, { ...p, restMonths: 0 });
     expect(src.map((x) => x.comp.source)).toEqual(['lot']);
+  });
+  it('autoRestockVesselNeed — 화면과 같이 읽는 용기 · 개월 (표기 제품은 표기 개월, v16 용기 제품은 제품 개월)', () => {
+    const { s, p } = setup('v16');
+    expect(autoRestockVesselNeed(s, p)).toEqual({ vessel: 'onggi', months: 2 });
+    expect(autoRestockVesselNeed(s, { ...p, restMonths: 0, oakMonths: 3 })).toEqual({ vessel: 'oak', months: 3 });
+    expect(autoRestockVesselNeed(s, { ...p, restMonths: 0 })).toBeNull();
+    expect(autoRestockVesselNeed({ rulesVersion: 'legacy-v15' }, p)).toBeNull();
+    expect(autoRestockVesselNeed({ rulesVersion: 'legacy-v15' }, { ...p, restMonths: 26 })).toEqual({ vessel: 'onggi', months: 24 });
+    expect(autoRestockVesselNeed(s, { ...p, category: 'whisky', restMonths: 0, oakMonths: 36 })).toBeNull();
   });
 });
