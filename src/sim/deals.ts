@@ -204,7 +204,7 @@ export function startOem(s: GameState, o: OemOffer): OemContract | null {
   let ready = s.month;
   for (const id of OEM.dedicated.package) {
     const def = EQUIPMENT[id]!;
-    const inst = { id: nid(s, 'E'), catalogId: id, readyMonth: s.month + def.leadMonths, ...(def.kind === 'still' ? { feintsLPA: 0 } : {}) };
+    const inst = { id: nid(s, 'E'), catalogId: id, readyMonth: s.month + def.leadMonths, boughtMonth: s.month, ...(def.kind === 'still' ? { feintsLPA: 0 } : {}) }; // boughtMonth: #388 ① G4(ARCH 코어 PR · MKT 확인)
     s.production.equipment.push(inst);
     if (def.kind === 'still') stillId = inst.id;
     ready = Math.max(ready, inst.readyMonth);

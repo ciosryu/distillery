@@ -304,7 +304,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const cost = equipmentCost(s, def);
     if (s.finance.cash < cost) return fail(prev, '현금이 부족합니다');
     s.finance.cash -= cost;
-    s.production.equipment.push({ id: nid(s, 'E'), catalogId: def.id, readyMonth: s.month + def.leadMonths, ...(def.kind === 'still' ? { feintsLPA: 0 } : {}) });
+    s.production.equipment.push({ id: nid(s, 'E'), catalogId: def.id, readyMonth: s.month + def.leadMonths, boughtMonth: s.month, ...(def.kind === 'still' ? { feintsLPA: 0 } : {}) }); // boughtMonth: #388 ① G4 감가 나이(ARCH 코어 PR · PROD 동의)
     return { state: s, message: `${def.nameKo} 발주 — ${def.leadMonths}개월 후 설치` };
   },
   buyCasks: (s, prev, a) => {
