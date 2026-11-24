@@ -74,9 +74,11 @@ describe('valuation: 고객 소유·선판매·담보 권리 (REQ-CORE-5 2·3·4
 describe('valuation: rights.lien은 지금 아무 경로도 채우지 않는다 (MGT 검토 — 풀형 잔액 차감과 겹치면 이중 차감·가짜 마진콜)', () => {
   it('시뮬 코드에 `rights.lien =`·`rights: { lien` 쓰기가 없다 — 통별 lien 대출을 만들 때는 inventoryLoanRoom·inventoryMarginCall을 그 대출의 lien 통 기준으로 바꾼다', async () => {
     const { readdirSync, readFileSync } = await import('node:fs');
-    const dir = new URL('.', import.meta.url).pathname;
+    const { join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const dir = fileURLToPath(new URL('.', import.meta.url)); // `.pathname`은 한글 · 공백 · Windows 경로에서 깨진다(D2)
     const files = readdirSync(dir).filter((n) => n.endsWith('.ts') && !n.endsWith('.test.ts'));
-    const writers = files.filter((n) => /rights\s*[:=]\s*\{[^}]*lien|rights\.lien\s*=/.test(readFileSync(dir + n, 'utf8')));
+    const writers = files.filter((n) => /rights\s*[:=]\s*\{[^}]*lien|rights\.lien\s*=/.test(readFileSync(join(dir, n), 'utf8')));
     expect(writers).toEqual([]);
   });
 });
