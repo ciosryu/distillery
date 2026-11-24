@@ -13,6 +13,7 @@ import { overhangFactor } from '../../sim/retail'; // 제품 재고 적체 → �
 import { protectedCaskIds, reserveCaskIds } from '../../sim/tags';
 import { campaignMinOakMonths, campaignWon, isFlagshipCandidate, rulesVersionOf } from '../../sim';
 import { CaskTagChips } from '../CaskTags';
+import { mixTaint, taintShown } from '../../sim/taint'; // [결정 #382] 오염 원액 꼬리표(코어 · ARCH 화면)
 import { AGE_BANDS, bandCask, bandCounts, LADDER_SLACK_MONTHS, thinBands } from '../../sim/ageBand'; // [결정 #380] 숙성 연령 띠 (PROD 잎)
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
@@ -56,6 +57,10 @@ export function partialFill(c: Cask): number | null {
   const share = c.contents.volumeL / CASKS[c.typeId].sizeL;
   return share < 0.6 ? Math.round(share * 100) : null;
 }
+/** [결정 #382] 오염 원액 표시 — 아는 오염 통에서 꺼낸 원액이 5% 이상 섞였다(통 자체는 깨끗할 수 있다). 몫(참값 아님 — 아는 오염 · 부피로 센 것)만 쓰고 오염 종류는 보이지 않는다 */
+function TaintChip() {
+  return <span className="rounded border border-rose-400 px-1 py-px text-[11px] font-semibold text-rose-700 dark:border-rose-600 dark:text-rose-300" title="아는 오염 통에서 꺼낸 원액이 섞여 있다 — 이미 밴 결점 향(곰팡내)은 옮겨도 빠지지 않아 병입하면 제품에 섞인다">오염 원액</span>;
+}
 /** 통 표시: 종류 · 회차(1필 = 새 통, 숫자가 클수록 향이 약하다) · 피니시 */
 function CaskTag({ c }: { c: Cask }) {
   const f = c.contents ? finishOf(c.contents) : null;
@@ -64,6 +69,7 @@ function CaskTag({ c }: { c: Cask }) {
       <span className={`rounded px-1 py-px text-[11px] font-medium ${CASK_SHORT[c.typeId]?.cls ?? ''}`}>{caskShort(c.typeId)}</span>
       <span className="text-stone-500">{c.fills}필{f ? ` · ${finishLabel(f.typeId)} ${months(f.months)}` : ''}</span>
       {/* [결정 #365] 아는 오염만(F5b — 모르는 오염은 QC 전까지 보이지 않는다). 종류(곰팡이 · TCA)와 양은 참값이라 보이지 않는다 */}
+      {!c.contaminationKnown && taintShown(c.contents) && <TaintChip />}
       {c.contaminationKnown && <span className="rounded bg-rose-600 px-1 py-px text-[11px] font-semibold text-white dark:bg-rose-500" title="오염된 통 — 섞으면 결점 향(곰팡내)이 제품에 섞여 품질이 내려간다. 통에 둔 동안 결점 향이 매달 더 밴다">오염</span>}
       {/* 핸드필 지정 통 (9차 중간 기록: 지정 통 K306을 병입에 써서 핸드필이 메모 없이 끝났다 — 표에 표시가 없었다) */}
       {c.handfill && <span className="rounded bg-amber-100 px-1 py-px text-[11px] font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-200" title="핸드필 존에 내놓은 통 — 방문객이 이 통에서 직접 담아 간다">핸드필</span>}
@@ -98,7 +104,7 @@ export function Bottling() {
       const vol = lots.reduce((t, l) => t + l.volumeL, 0);
       const lpa = lots.reduce((t, l) => t + l.volumeL * l.abv, 0);
       const newest = [...lots].sort((a, b) => b.createdMonth - a.createdMonth)[0]!;
-      const lot = { ...newest, name: lots.length > 1 ? `${newest.name.split(' · ')[0]} — 탱크 ${lots.length}개 배치` : newest.name, volumeL: vol, abv: lpa / vol, flavor: weightedAverage(lots.map((l) => ({ flavor: l.flavor, weight: l.volumeL * l.abv }))) };
+      const lot = { ...newest, name: lots.length > 1 ? `${newest.name.split(' · ')[0]} — 탱크 ${lots.length}개 배치` : newest.name, volumeL: vol, abv: lpa / vol, flavor: weightedAverage(lots.map((l) => ({ flavor: l.flavor, weight: l.volumeL * l.abv }))), knownTaint: mixTaint(lots.map((l) => ({ taint: l.knownTaint, lpa: l.volumeL * l.abv }))) }; // #382 탱크 묶음 꼬리표 = 배치 LPA 몫
       return { key: `tank:${g}`, source: 'lot' as const, id: newest.id, ids: lots.map((l) => l.id), lot, where: '탱크', cask: undefined as Cask | undefined };
     });
     return [...casks, ...tanks];
@@ -141,6 +147,8 @@ export function Bottling() {
     const contaminated = ids.filter((id) => s.inventory.casks.find((x) => x.id === id)?.contaminationKnown);
     return { reserve: ids.filter((id) => reserve.has(id)), other: ids.filter((id) => prot.has(id) && !reserve.has(id)), candidate, candidatesLeft, contaminated };
   }, [s, reserve, components]);
+  // [결정 #382] 오염 원액이 섞인 원액(아는 오염 통이 아닌 통 · 탱크) — #365와 같이 막지 않고 알리며 두 번 눌러야 병입된다
+  const taintedPicked = Object.keys(picked).flatMap((k) => { const x = sources.find((y) => y.key === k); return x && !x.cask?.contaminationKnown && taintShown(x.lot) ? [x.cask ? x.cask.id : x.where] : []; });
   // 시나리오 게임(MVP)은 캐스크의 참 향미·품질을 숨긴다 (#136·#159) — 샘플 기록으로 추정한 값만 보여 주고, 병입하면 공개된다. 샌드박스는 개발용으로 참값을 보여 준다
   const hide = !!s.scenario;
   const known = useMemo(() => (hide ? knownReads(s) : null), [hide, s]);
@@ -195,7 +203,7 @@ export function Bottling() {
   })();
   const strongStock = (!!stock && stock.months > STOCK_STRONG_WARN_MONTHS) || (!!restockStock && restockStock.after > STOCK_STRONG_WARN_MONTHS);
   /** 두 번 눌러야 병입하는가 — 재고 과다 또는 아는 오염 통(#365) */
-  const confirmNeeded = strongStock || guardedPicked.contaminated.length > 0;
+  const confirmNeeded = strongStock || guardedPicked.contaminated.length > 0 || taintedPicked.length > 0;
   // 두 번 눌러 확인 — 고른 원액·옵션이 바뀌면 다시 묻는다
   const blendKey = JSON.stringify([components, opts]);
   const [armed, setArmed] = useState<string | null>(null);
@@ -297,9 +305,9 @@ export function Bottling() {
         {!sources.length ? <Empty>병입할 원액이 없습니다</Empty> : (
           <Table head={['', '원액 · 위치', '주종', '보유', '도수', '숙성', '주요 향', '사용량(L)']}>
             {shown.map((x) => (
-              <tr key={x.key} className={x.cask?.contaminationKnown ? (picked[x.key] != null ? 'bg-rose-100 dark:bg-rose-950/50' : 'bg-rose-50 dark:bg-rose-950/20') : picked[x.key] != null ? 'bg-amber-50 dark:bg-amber-950/30' : ''}>
+              <tr key={x.key} className={x.cask?.contaminationKnown || taintShown(x.lot) ? (picked[x.key] != null ? 'bg-rose-100 dark:bg-rose-950/50' : 'bg-rose-50 dark:bg-rose-950/20') : picked[x.key] != null ? 'bg-amber-50 dark:bg-amber-950/30' : ''}>
                 <Td><input type="checkbox" checked={picked[x.key] != null} onChange={() => toggle(x.key, x.lot.volumeL)} aria-label={`${x.lot.name} 선택`} className="accent-amber-700" /></Td>
-                <Td className="text-xs font-medium"><div className="w-44 truncate" title={x.lot.name}>{x.lot.name.split(' → ')[0]}</div><div className="w-44 whitespace-normal font-normal text-stone-500">{x.cask ? <span className="inline-flex flex-wrap items-center gap-1">{x.where} <CaskTag c={x.cask} /><CaskTagChips s={s} c={x.cask} reserve={reserve} /></span> : x.where}</div></Td>
+                <Td className="text-xs font-medium"><div className="w-44 truncate" title={x.lot.name}>{x.lot.name.split(' → ')[0]}</div><div className="w-44 whitespace-normal font-normal text-stone-500">{x.cask ? <span className="inline-flex flex-wrap items-center gap-1">{x.where} <CaskTag c={x.cask} /><CaskTagChips s={s} c={x.cask} reserve={reserve} /></span> : taintShown(x.lot) ? <span className="inline-flex flex-wrap items-center gap-1">{x.where} <TaintChip /></span> : x.where}</div></Td>
                 <Td><Badge>{sourceCategory(x.lot, minMonths)}</Badge></Td>
                 <Td right>{liters(x.lot.volumeL)}</Td>
                 <Td right>{pct(x.lot.abv)}</Td>
@@ -558,12 +566,17 @@ export function Bottling() {
                   ⚠ 오염된 통 {guardedPicked.contaminated.join(', ')}을 섞는다 — 결점 향(곰팡내)이 제품에 섞여 품질이 내려간다. 막지는 않는다(한 번 더 눌러야 병입된다)
                 </p>
               )}
+              {taintedPicked.length > 0 && (
+                <p role="alert" className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200">
+                  ⚠ 오염 원액이 섞인 원액({taintedPicked.join(', ')})을 쓴다 — 아는 오염 통에서 꺼낸 원액이라 이미 밴 결점 향(곰팡내)이 제품에 섞여 품질이 내려간다. 막지는 않는다(한 번 더 눌러야 병입된다)
+                </p>
+              )}
               <Button variant="primary" disabled={!preview.ok} onClick={() => {
                 if (confirmNeeded && !isArmed) { setArmed(blendKey); return; }
                 setArmed(null);
                 const r = bottleWithHeritage(s, dispatch, components, opts); // 10년 이상·플래그십이면 연표 창 (#244)
                 if (r !== false) { setPicked({}); setOpts({ ...opts, name: '' }); if (r) setReveal(r); }
-              }}>{confirmNeeded ? (isArmed ? `정말 ${num(preview.bottles)}병 병입 — 한 번 더 누르면 병입합니다` : `${restockTarget ? '재고 보충' : '병입하기'} (${[guardedPicked.contaminated.length ? '오염 통' : '', strongStock ? '재고 과다' : ''].filter(Boolean).join(' · ')} — 확인 필요)`) : restockTarget ? `「${restockTarget.name}」 재고 보충` : '병입하기'}</Button>
+              }}>{confirmNeeded ? (isArmed ? `정말 ${num(preview.bottles)}병 병입 — 한 번 더 누르면 병입합니다` : `${restockTarget ? '재고 보충' : '병입하기'} (${[guardedPicked.contaminated.length ? '오염 통' : '', taintedPicked.length ? '오염 원액' : '', strongStock ? '재고 과다' : ''].filter(Boolean).join(' · ')} — 확인 필요)`) : restockTarget ? `「${restockTarget.name}」 재고 보충` : '병입하기'}</Button>
             </div>
           )}
         </div>
