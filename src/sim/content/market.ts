@@ -127,6 +127,13 @@ export const STYLE_WEIGHTS: Record<string, { peat: number; casks: Partial<Record
 /** 구조 규칙(결정 #290 B1-9): 스타일 보너스 × 향미 트렌드 ≤ capWithTrend — 트렌드만으로 넘는 몫은 그대로 두고, 스타일 보너스(>1)만 줄인다 */
 export const STYLE = { capWithTrend: 1.5 };
 
+/**
+ * 피니시 표기의 판매 효과 ([결정 #270] 방향 · [결정 #362] 통 추가와 한 묶음, PRD §5.2) `[튜닝]` — "○○ 캐스크 피니시" 표기를 단 제품(`Product.finish`)이
+ * 피니시 통에 minMonths 이상 머물렀을 때만. A 매력도 · 기대 가격 배수, B 럭셔리 라벨 항(L_p). **통 종류마다 값을 가르지 않는다** —
+ * 시장마다의 통 차이는 `styleFit`(STYLE_WEIGHTS)이 이미 맡는다(두 번 세지 않게, #362)
+ */
+export const FINISH_LABEL = { minMonths: 3, appeal: 1.08, expectedPrice: 1.08, luxury: 10 } as const;
+
 // ── 럭셔리 지수 · 브랜드 방패 ([결정 #235] A, PRD §11.2 ①~③ 최소 구현 · §11.2.1) [튜닝] ──
 /**
  * 제품 럭셔리 L_p(0~100) = 패키징(packaging.ts packagingLuxury 0~30, #248) + 숙성 표기 + 희소성 (라벨 속성은 연구 — 아직 0), 품질 게이트 L_p ≤ 품질.
