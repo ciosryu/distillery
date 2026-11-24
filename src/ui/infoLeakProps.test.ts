@@ -7,6 +7,7 @@
 // `highQualityProduct`(참 품질 72↑ 제품이 있을 때만 「품평회 수상」 `competition_medal`) — 이벤트가 뜨는 것 자체가 신호다. **[제안] 의도된 공개 신호로 본다**(수상은 바깥 평가가
 // 품질을 드러내는 일 — 리뷰와 같은 결) — MGT 확인 · 그 밖의 이벤트 효과(events.ts 210 · 225 — 가장 좋은 제품 품질로 효과 크기)는 MGT가 화면 문구에 값이 드러나는지 본다 ·
 // 결과 화면 연표의 플래그십 품질은 승리 뒤 공개(#344 HeritageReveal과 같은 자리)라 누수로 보지 않는다.
+// L7(MKT 제안 2026-11-24): 피드 향 문구가 참 향미를 읽는다 — 품질이 아니라 향미가 새는 길(판매 화면 향미 카드는 추정 육각형). `it.fails`로 목록에 둔다(고칠지 · 의도로 볼지는 MKT 몫)
 // 지금 새는 길은 `it.fails`로 적어 둔다 — 고치면 이 시험이 "통과해 버려서" 실패하므로, 고친 PR이 `it.fails`를 `it`으로 바꾼다(목록이 줄어들기만 한다)
 import { describe, expect, it } from 'vitest';
 import { calendar, domesticDemands, knownState, knownView, newScenarioGame, priceOptions, type GameState, type Product } from '../sim';
@@ -15,12 +16,12 @@ import { retailPriceBasis } from '../sim/deals';
 import { stockoutSoon } from './alerts';
 
 /** 위스키 제품 하나(아는 품질 60 ±8 · 리뷰 3)를 진열한 v16 캠페인 판 — 참 품질만 인자로 */
-function withProduct(trueQuality: number): { s: GameState; p: Product } {
+function withProduct(trueQuality: number, flavor: Product['flavor'] = {}): { s: GameState; p: Product } {
   const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5, rules: 'v16' });
   s.month = 40;
   const p: Product = {
     id: 'P1', name: '싱글 몰트 1', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard',
-    flavor: {}, quality: trueQuality, typicity: 70, style: null, sourcedShare: 0, stockBottles: 400, price: 60_000, unitCost: 20_000,
+    flavor, quality: trueQuality, typicity: 70, style: null, sourcedShare: 0, stockBottles: 400, price: 60_000, unitCost: 20_000,
     createdMonth: 30, lastMonthSold: 30, totalSold: 300,
     qualityKnown: { est: 60, sigma: 8, reviews: 3, month: 39 },
   } as Product;
@@ -52,5 +53,13 @@ describe('I2 — 같은 공개 정보 · 다른 참 품질이면 화면 읽기 �
   });
   it.fails('[누수 L3] 커뮤니티 피드 `feedFor` — 위스키베이스 점수 밖의 글 분위기 · 비교 글이 참 품질을 읽는다(feed.ts 68 · 283)', () => {
     expect(feedFor(high.s, 3, 40).map((x) => x.text)).toEqual(feedFor(low.s, 3, 40).map((x) => x.text));
+  });
+  it.fails('[누수 L7 후보 — MKT 2026-11-24] 피드 글의 향 문구 — `topNotes(p.flavor)` · `offNote`가 참 향미를 읽는다(feed.ts 169). 판매 화면 향미 카드는 병입 때 추정한 육각형(`qualityKnown.hex`)', () => {
+    // 품질 · 아는 품질 · 공개 정보는 같고 참 향미만 다르다(시트러스 대 열대과일)
+    // 판매 기록 10개월(시드 5 — 21개 글 중 1개가 「시트러스 기본기 탄탄함」처럼 참 향미 축 이름을 쓴다)
+    const tenMonths = (x: { s: GameState }) => { for (let m = 29; m >= 30 - 9; m--) x.s.history.reports.unshift({ month: m, sales: [{ productId: 'P1', name: '싱글 몰트 1', bottles: 30 + m, revenue: 1_800_000, demandBottles: 40 }], notes: [], expenses: {} } as never); return x.s; };
+    const a = tenMonths(withProduct(60, { citrus: 0.8, tropical: 0.1 }));
+    const b = tenMonths(withProduct(60, { citrus: 0.1, tropical: 0.8 }));
+    expect(feedFor(a, 10, 40).map((x) => x.text)).toEqual(feedFor(b, 10, 40).map((x) => x.text));
   });
 });
