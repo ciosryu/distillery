@@ -204,7 +204,9 @@ export const FINISH = {
 export const canFinishInto = (typeId: CaskTypeId): boolean => CASKS[typeId]?.seasoningType !== 'none';
 
 /** 라벨 문구 — "셰리 캐스크 피니시" */
-export const finishLabel = (typeId: CaskTypeId): string => `${CASKS[typeId].seasoningType === 'sherry' ? '셰리' : '버번'} 캐스크 피니시`;
+/** 피니시 표기의 술 이름 — 통이 전에 담았던 술(#355: 셰리 · 버번 둘만이던 것을 종류별로. 그대로 두면 와인 통 피니시가 "버번"으로 찍힌다) */
+const FINISH_NAME: Record<string, string> = { bourbon: '버번', sherry: '셰리', wine: '와인', port: '포트' };
+export const finishLabel = (typeId: CaskTypeId): string => `${FINISH_NAME[CASKS[typeId].seasoningType] ?? CASKS[typeId].nameKo} 캐스크 피니시`;
 
 /** 피니싱 중(또는 마친) 원액의 마지막 구간 — 캐스크 종류와 그 통에서 지난 개월. 피니싱하지 않았으면 null */
 export function finishOf(lot: Pick<SpiritLot, 'caskHistory' | 'oakMonths'>): { typeId: CaskTypeId; months: number } | null {

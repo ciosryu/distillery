@@ -24,3 +24,11 @@ input[type='number']::-webkit-inner-spin-button {
 @layer base {
   .grid > * { min-width: 0; }
 }
+
+/*
+ * 바로가기 이동의 위 여백 = 고정 머리글 높이 + 여유 — App.tsx가 머리글 높이를 --hdr-h로 넣는다(빌드 변경 띠 · 현금 경고로 머리글이 커져도 가리지 않게).
+ * 층 밖(unlayered) 규칙이라 Tailwind 유틸리티 .scroll-mt-28(7rem 고정)보다 우선한다. 변수가 없으면(시험 · 첫 그리기) 예전 값 7rem
+ */
+.scroll-mt-28 {
+  scroll-margin-top: calc(var(--hdr-h, 6.25rem) + 0.75rem);
+}

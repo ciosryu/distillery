@@ -107,9 +107,13 @@ export const PRODUCTION_EQUIPMENT: Record<string, EquipmentDef> = {
 };
 
 // ── 캐스크 ──
+/** 시즈닝 종류 — 통이 전에 담았던 술. 시즈닝 향(SEASONING_EXTRACT) · 피니시 표기(finishLabel)를 가른다. [결정 #355] 와인 · 포트 추가 */
+export type SeasoningType = 'bourbon' | 'sherry' | 'wine' | 'port' | 'none';
+/** 시즈닝 계약(쿠퍼리지가 새 통을 길들여 줌)이 되는 종류 — 버번 · 셰리 계열만. 와인 · 포트는 그 업계에서 쓰던 통을 사 온다(#355 PROD) */
+export const SEASONING_CONTRACT: readonly SeasoningType[] = ['bourbon', 'sherry'];
 export interface CaskDef {
   id: CaskTypeId; nameKo: string; sizeL: number; wood: WoodId; price: number;
-  activity: number; seasoning: number; seasoningType: 'bourbon' | 'sherry' | 'none'; char: number;
+  activity: number; seasoning: number; seasoningType: SeasoningType; char: number;
   /** 누수 위험 배수 (미즈나라는 결이 성겨 잘 샌다) */
   leakFactor?: number;
   /** 용기 재질 (S-10). 없으면 나무 — 지금 콘텐츠는 모두 나무다. 옹기·스테인리스 용기는 단계 P(PROD)에서 향미 모델(flavor-model §4.5 확장)과 함께 넣는다 */
@@ -137,6 +141,15 @@ export const CASKS: Record<CaskTypeId, CaskDef> = {
   mizunara_hogshead: { id: 'mizunara_hogshead', nameKo: '미즈나라 혹스헤드 250L, 신품', sizeL: 250, wood: 'mizunara', price: 3_500_000, activity: 1.2, seasoning: 0, seasoningType: 'none', char: 2, leakFactor: 3 },
   // 옹기 항아리 (#161) — 나무 향 없이 미세 기공으로 숨 쉬며 부드러워진다. 화이트 스피릿(소주·백주) 숙성용. 오크 숙성 개월에 안 들어간다. 크기·가격 [튜닝]·[확인 불가]
   onggi_jar: { id: 'onggi_jar', nameKo: '옹기 항아리 200L (숨 쉬는 독)', sizeL: 200, wood: 'none', price: 400_000, activity: 0, seasoning: 0, seasoningType: 'none', char: 0, material: 'onggi' },
+  // ── [결정 #355] 일반 4종 (2026-11-24 오너 요청 · 판 뒤) — 용량은 오너 값, 나머지는 PROD 초안 [튜닝]. 프렌치 · 포르투갈 오크는 european으로 묶는다 ──
+  // 셰리 혹스헤드: 벗과 같은 올로로소 시즈닝 · 활성도. 값 = 벗 L당 값 × 250L × 1.2(작은 통 웃돈). 크기 계수 0.93이라 벗(0.74)보다 빨리 익고 탄닌도 빨리 찬다
+  sherry_hogshead: { id: 'sherry_hogshead', nameKo: '셰리 혹스헤드 250L', sizeL: 250, wood: 'european_oak', price: 1_100_000, activity: 1.0, seasoning: 1.0, seasoningType: 'sherry', char: 1 },
+  // 와인 바리끄: 보르도 225L. 와인 2~3빈티지를 쓴 통(활성도 0.9) · 일부러 길들인 통이 아니라 시즈닝 0.8 · 굽기만(탄화 0). 흔한 통이라 싸다
+  wine_barrique: { id: 'wine_barrique', nameKo: '와인 바리끄 225L', sizeL: 225, wood: 'european_oak', price: 700_000, activity: 0.9, seasoning: 0.8, seasoningType: 'wine', char: 0 },
+  // 포트 파이프: 550~650L. 오래 쓴 통(0.9) · 진한 주정강화 와인(시즈닝 1.0). L당 약 3,400원(벗 3,600원) — 숙성고 2칸(#360)이라 L당 값은 올리지 않는다(오너)
+  port_pipe: { id: 'port_pipe', nameKo: '포트 파이프 650L', sizeL: 650, wood: 'european_oak', price: 2_200_000, activity: 0.9, seasoning: 1.0, seasoningType: 'port', char: 0 },
+  // 버진 오크: 버번 업계의 새 탄화 통(탄화 4) · 시즈닝 없음. 활성도 1.4(한국 참나무 1.3과 같은 쪽) — 3년용(3년 탄닌이 버번 통의 1.3배, 12년이면 감점이 크다)
+  virgin_oak_barrel: { id: 'virgin_oak_barrel', nameKo: '버진 오크 배럴 200L, 신품', sizeL: 200, wood: 'american_oak', price: 600_000, activity: 1.4, seasoning: 0, seasoningType: 'none', char: 4 },
 };
 
 /** 목재별 월간 추출 기여 (activity·속도 1 기준) */
@@ -150,9 +163,12 @@ export const WOOD_EXTRACT: Record<WoodId, Flavor> = {
 };
 
 /** 시즈닝 향 월간 기여 (seasoning 1 기준) */
-export const SEASONING_EXTRACT: Record<'bourbon' | 'sherry' | 'none', Flavor> = {
+export const SEASONING_EXTRACT: Record<SeasoningType, Flavor> = {
   bourbon: { vanilla_caramel: 0.8, sweetness: 0.4, tropical: 0.2 },
   sherry: { dried_fruit: 2.0, nutty_rancio: 0.3, sweetness: 0.5, color: 1.0 },
+  // [결정 #355] 위스키 품질식이 세는 축(과일 · 건과일 등)에 주로 싣고, 서명 축(vinous — 품질식이 세지 않음)은 1/3 이하. 세는 몫: wine 1.0 · port 1.4 (bourbon 1.0 · sherry 2.3 사이) [튜닝]
+  wine: { fresh_fruit: 0.6, dried_fruit: 0.4, vinous: 0.5, color: 0.6 },
+  port: { dried_fruit: 1.4, sweetness: 0.8, vinous: 0.5, color: 1.4 },
   none: {},
 };
 
