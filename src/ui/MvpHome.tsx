@@ -4,7 +4,7 @@ import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { CaskTagBar, CaskTagChips } from './CaskTags';
 import { TurnBrief } from './TurnBrief';
 import { AutoFillRow } from './panels/AutoFill';
-import { CaskCareRow } from './panels/CaskCare'; // #345 GAP-PROD-7 (PROD)
+import { CaskCareRow, NewCaskOutlook } from './panels/CaskCare'; // #345 GAP-PROD-7 · #355 탄닌 전망 (PROD)
 import { FinishRow } from './panels/FinishRow'; // #345 GAP-PROD-4 피니싱 (PROD 부품 · ARCH 끼움)
 import { getPlaylog, recentActionCount } from '../store/playlog';
 import { PendingEventChoices } from './panels/Events';
@@ -648,6 +648,8 @@ function SpaceCard() {
         <div className="grid min-w-0 content-start gap-2">
           <div className="text-xs font-semibold text-stone-700 dark:text-stone-200">빈 통 사기</div>
           <Select value={buyType} options={(Object.keys(CASKS) as CaskTypeId[]).map((k) => ({ value: k, label: `${CASKS[k].nameKo} — ${won(regionalCaskPrice(s, k))}${caskSlots(s, CASKS[k].sizeL) > 1 ? ' (숙성고 2칸)' : ''}` }))} onChange={setBuyType} />
+          {/* #355 — 고른 통의 탄닌 어림(3년 · 12년 · 다시 쓰면) — 버진 오크는 3년용, 시즈닝 통은 피니싱용이라는 성격을 숫자로 (PROD NewCaskOutlook) */}
+          <div className="text-xs"><NewCaskOutlook typeId={buyType} /></div>
           <div className="flex flex-wrap items-end gap-2">
             <NumberField label="개수" value={buyN} min={1} max={100} width="w-16" onCommit={setBuyN} />
             <Button small disabled={needFor(buyType, buyN) > free} onClick={() => dispatch({ type: 'buyCasks', caskType: buyType, qty: buyN })} title={`${cooperageLeadMonths(s)}개월 뒤 도착`}>주문 {won(price * buyN)}</Button>
