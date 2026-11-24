@@ -34,7 +34,9 @@ export type CondenserType = 'copper_shell' | 'worm_tub';
 /** 숙성 용기 재질 (S-10, #143) — 나무 캐스크 외에 옹기·스테인리스 휴지. 재질은 콘텐츠(CaskDef.material)에 있고 캐스크 인스턴스는 typeId로 찾는다 */
 export type VesselMaterial = 'wood' | 'onggi' | 'steel';
 /** 숙성 용기 종류 — 나무 캐스크 + 비목재 용기(옹기, #161). 재질은 CaskDef.material */
-export type CaskTypeId = 'ex_bourbon_barrel' | 'oloroso_butt' | 'korean_oak_quarter' | 'mizunara_hogshead' | 'onggi_jar';
+export type CaskTypeId = 'ex_bourbon_barrel' | 'oloroso_butt' | 'korean_oak_quarter' | 'mizunara_hogshead' | 'onggi_jar'
+  // [결정 #355] 일반 4종 (2026-11-24 오너) — 값은 PROD 초안 [튜닝]
+  | 'sherry_hogshead' | 'wine_barrique' | 'port_pipe' | 'virgin_oak_barrel';
 /** 'none' = 나무가 아닌 용기(옹기 등) — 목재 추출이 없다. 용기 재질 판정은 CaskDef.material이 한다 */
 export type WoodId = 'american_oak' | 'european_oak' | 'korean_oak' | 'mizunara' | 'none';
 export type StaffRole = 'distiller' | 'warehouse' | 'sales' | 'office' | 'blender';
