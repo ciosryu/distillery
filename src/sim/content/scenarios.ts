@@ -92,6 +92,12 @@ export interface LateGoalDef {
   hint: string;
 }
 
+/**
+ * [#388 ① G3] 띠 목표 `ladder_mid`가 보이는 창 — **이 상수 하나**가 시작 달 · 기한을 정한다.
+ * 지금 값은 ARCH 첫 안(120 ~ 156). MGT · PM 안은 72 ~ 144(120에 통입한 원액은 156에 목재 36이라 5 ~ 9년 띠에 못 든다) — **오너 안건 ⓐ 답 뒤 이 값만 바꾼다** `[결정 대기]`
+ */
+export const LADDER_MID_WINDOW = { opens: 120, byMonth: 156 } as const;
+
 export interface MidGoalDef {
   id: 'aged3_sold' | 'commission_done' | 'export_open' | 'revenue_8' | 'reserve_casks';
   /** 이 달(경과 개월) 말까지 */
@@ -189,7 +195,7 @@ export const MVP_KR: ScenarioDef = {
   ],
   // [#388 ① G3] 후반 목표 사다리 — ARCH · MGT 맞춤 목록(endgame.md §7.2, 2026-11-24). 문턱 [튜닝 — 단계 T]. 판정 MGT(lateGoals.ts lateGoalMet)
   lateGoalsV16: [
-    { id: 'ladder_mid', opens: { month: 72 }, byMonth: 144, title: '숙성고 5 ~ 9년 띠 6통 — 12년 뒤를 이을 원액', hint: '12년만 보고 통을 비우지 말고 지금 넣은 통을 남겨 둔다(통입 · 통 사기)' },
+    { id: 'ladder_mid', opens: { month: LADDER_MID_WINDOW.opens }, byMonth: LADDER_MID_WINDOW.byMonth, title: '숙성고 5 ~ 9년 띠 6통 — 12년 뒤를 이을 원액', hint: '12년만 보고 통을 비우지 말고 지금 넣은 통을 남겨 둔다(통입 · 통 사기)' },
     { id: 'lounge_3', opens: { month: 108 }, byMonth: 168, title: 'VIP 라운지 — 최근 12개월 관광 매출 3억', hint: 'VIP 테이스팅 라운지(설비)를 짓는다' },
     { id: 'flagship_300', opens: 'win', title: '12년 싱글 몰트 누적 300병 출하', hint: '12년 후보 통을 지키고 자동 채우기 연수 보호를 쓴다' },
     { id: 'aged15_sold', opens: 'win', title: '15년 싱글 몰트 첫 출하', hint: '15년까지 묵힐 통을 보호 태그로 묶는다' },

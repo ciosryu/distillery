@@ -5,6 +5,7 @@ import { newScenarioGame } from './index';
 import { lateGoalsOf, updateLateGoals, visibleLateGoals } from './lateGoals';
 import { caskEligibility } from './ledger';
 import type { GameState, MonthReport } from './types';
+import { LADDER_MID_WINDOW } from './content/scenarios';
 
 // [#388 ① G3] 후반 목표 그릇 — 판정(lateGoalMet)은 MGT ①-c. 여기서는 열림 · 늦게 본 목표 건너뛰기 · 놓침 기록 · 옛 판을 본다
 const load = (): GameState => migrateSave(JSON.parse(readFileSync('docs/playtest/9/distillery-mvp-standard-y12m2-202611241000.json', 'utf8')).save)!;
@@ -16,15 +17,18 @@ describe('#388 ① G3 후반 목표 그릇', () => {
     const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5, rules: 'legacy-v15' });
     expect(lateGoalsOf(s)).toEqual([]);
   });
-  it('새 판: 72개월에 띠 목표가 열린다 · 108개월에 라운지', () => {
+  it('새 판: 108개월에 라운지 · 띠 목표는 LADDER_MID_WINDOW.opens(상수 하나 — 오너 안건 ⓐ 대기)에 열린다', () => {
     const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5, rules: 'v16' });
     expect(ids(s)).toEqual([]);
-    s.month = 72; expect(ids(s)).toEqual(['ladder_mid']);
-    s.month = 108; expect(ids(s)).toEqual(['ladder_mid', 'lounge_3']);
+    s.month = 108; expect(ids(s)).toEqual(['lounge_3']);
+    s.month = LADDER_MID_WINDOW.opens; expect(ids(s)).toEqual(['ladder_mid', 'lounge_3']);
   });
-  it('9차 134(승리 전): 띠 · 라운지 두 개 · 승리 뒤 300병 · 15년이 더해지고 18년은 15년 뒤', () => {
+  it('9차 134(승리 전): 띠 · 라운지 두 개 — 늦게 본 목표로 건너뛰지 않고 기록도 없다(실패로 찍히지 않음) · 승리 뒤 300병 · 15년이 더해지고 18년은 15년 뒤', () => {
     const s = load();
     expect(ids(s)).toEqual(['ladder_mid', 'lounge_3']);
+    const r = rep(); updateLateGoals(s, r);
+    expect(s.progress.lateGoals ?? []).toEqual([]);
+    expect(r.notes.filter((n) => n.startsWith('후반 목표'))).toEqual([]);
     s.progress.win = { month: s.month, productId: 'P', lotId: 'L', kind: 'retail', unitPrice: 1, bottles: 1 } as never;
     expect(ids(s)).toEqual(['ladder_mid', 'lounge_3', 'flagship_300', 'aged15_sold']);
     s.progress.lateGoals = [{ id: 'aged15_sold', month: s.month, result: 'done' }];
@@ -32,12 +36,12 @@ describe('#388 ① G3 후반 목표 그릇', () => {
   });
   it('처음 볼 때 기한이 지났으면 적지 않고 보이지 않는다(진행 중 세이브) — 기한 달에 이르면 놓침으로 적는다', () => {
     const s = load();
-    s.month = 150; // ladder_mid 기한 144를 넘긴 세이브
+    s.month = LADDER_MID_WINDOW.byMonth + 6; // ladder_mid 기한을 넘긴 세이브
     updateLateGoals(s, rep());
     expect(s.progress.lateGoals ?? []).toEqual([]);
     expect(ids(s)).not.toContain('ladder_mid');
     const t = load();
-    t.month = 143; // 기한 달(s.month + 1 = 144)
+    t.month = LADDER_MID_WINDOW.byMonth - 1; // 기한 달(s.month + 1 = byMonth)
     const r = rep();
     updateLateGoals(t, r);
     expect(t.progress.lateGoals?.find((g) => g.id === 'ladder_mid')?.result).toBe('missed');
