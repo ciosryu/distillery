@@ -12,7 +12,7 @@ import { ownershipOversold, OWNERSHIP } from './investment';
 import { clamp } from './flavor';
 import { hexOf } from './blendRadar';
 import { RARE, trendFactor } from './blendTable';
-import { calendar, staffOf } from './util';
+import { staffOf } from './util';
 import { mod } from './modifiers';
 import { flavorTrendFactorOf, trendWalkOf } from './mktKnobs'; // F6b 난이도 손잡이(취향 #313)
 import { packagingAppealFactor } from './packaging';
@@ -181,7 +181,7 @@ function splitByCategory(items: readonly { p: Product; standaloneBottles: number
 //   ln 수요 = −ε·ln(E/기준가) − ε·((소비자가/E)^K − 1)/K          K → 0이면 옛 공식
 
 /** 이 제품을 사는 사람이 기대하는 소비자가(원/L) — 권장 출고가(blending.ts suggestedPrice)가 맞추는 값과 같다 */
-export function expectedPricePerL(region: RegionDef, p: Pick<Product, 'category' | 'abv' | 'quality' | 'oakMonths' | 'ageYears' | 'restMonths'> & Partial<Pick<Product, 'finish'>> & { finishMonths?: number }): number {
+export function expectedPricePerL(region: RegionDef, p: Pick<Product, 'category' | 'abv' | 'quality' | 'oakMonths' | 'ageYears' | 'restMonths'> & Pick<Product, 'finish' | 'finishMonths'>): number {
   const aged = isWhiskyCategory(p.category);
   // 위스키는 숙성 인식, 숙성 소주·고량주는 숙성 표기(#217) — 매력도(appeal)와 같은 배수
   const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths);
@@ -255,29 +255,6 @@ export function knownView(s: GameState, p: Product): Product {
 }
 
 /** F5d — 진열 전체를 아는 품질로 바꾼 상태 사본(계획 · 화면용). 옛 판은 같은 객체 */
-/**
- * 소매 처리 역량 전망 (9차 판 64개월째 MKT 분석 §3 · PM 2026-11-24 — 화면만, 판매 셈 · 상태 불변) — 지금 진열 · 값 · 재고 그대로 두고 앞으로 months달 동안
- * 달(계절)만 바꿔 국내 수요를 9L 케이스로 센다. **플레이어가 아는 정보로만**(`knownState` — F5d 참 품질이 새지 않게, I2). 제품마다 지금 재고까지만 센다
- * (앞으로 병입 · 보충은 모른다). 잡음 없는 기댓값. 첫 칸 = 다음 결산 달
- */
-export function retailCapacityOutlook(s: GameState, months = 12): { monthsAhead: number; monthOfYear: number; cases: number; capacity: number }[] {
-  const ks = knownState(s);
-  const capacity = retailCapacityCases(s);
-  const moy0 = calendar(s).monthOfYear;
-  const out: { monthsAhead: number; monthOfYear: number; cases: number; capacity: number }[] = [];
-  for (let k = 0; k < months; k++) {
-    const monthOfYear = ((moy0 - 1 + k) % 12) + 1;
-    const d = domesticDemands(ks, monthOfYear);
-    let cases = 0;
-    for (const p of ks.commerce.products) {
-      const x = d.get(p.id);
-      if (x) cases += (Math.min(x.demandBottles, p.stockBottles) * p.bottleMl) / 9000;
-    }
-    out.push({ monthsAhead: k + 1, monthOfYear, cases: Math.round(cases), capacity });
-  }
-  return out;
-}
-
 export function knownState(s: GameState): GameState {
   return hidesProductQuality(s) ? { ...s, commerce: { ...s.commerce, products: s.commerce.products.map((x) => knownView(s, x)) } } : s;
 }

@@ -16,8 +16,6 @@ import { agedWhiteLabel, finishLabel, hexOf, HEX_AXES, HEX_LABEL, topNotes, know
 import { awarenessOf, brandMarketing, brandOf, rebrandCost, secondBrands } from '../../sim/brands';
 import { BRANDS, DEFAULT_POLICY_N, defaultPolicyPrice } from '../../sim/content/market';
 import { isLocked } from '../../sim/scenario';
-import { retailCapacityOutlook } from '../../sim/market';
-import { OVERHANG, overhangFactor, overhangMonths } from '../../sim/retail';
 import { useGame } from '../../store/game';
 import { num, pct, won, wonFull } from '../format';
 import { Badge, Button, Card, ConfirmButton, Empty, Meter, NumberField, Select, Stat, Table, Td, TextField } from '../kit';
@@ -205,9 +203,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
             </div>
           )}
         </Td>
-        <Td right>{num(p.stockBottles)}{p.stockBottles > 0 && sell > 0 && <div className="text-xs text-stone-500">{p.stockBottles / sell > 60 ? '5년 치 넘게' : `약 ${Math.max(1, Math.round(p.stockBottles / sell))}개월 치`}</div>}
-          {/* 재고 적체(overhangFactor) — 9차 판 64개월째: 오크소주 · 뉴본 피티드가 수요 ×0.60인데 화면에 없었다(PM 2026-11-24). 문구는 PROD 병입 보충 줄과 같다 */}
-          {overhangFactor(p, s.month) < 1 && <div className={`text-xs ${overhangFactor(p, s.month) <= OVERHANG.floor ? 'text-red-700 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'}`} title={`판매 평균의 ${OVERHANG.months}개월 치를 넘게 쌓이면 할인 이미지로 수요가 줄어든다(최저 ×${OVERHANG.floor}). 값을 내리거나 보충을 멈춰 재고를 줄이면 돌아온다`}>재고 {(overhangMonths(p, s.month) ?? 0).toFixed(1)}개월 치(판매 평균 기준) · {OVERHANG.months}개월 넘게 쌓여 수요 ×{overhangFactor(p, s.month).toFixed(2)}</div>}</Td>
+        <Td right>{num(p.stockBottles)}{p.stockBottles > 0 && sell > 0 && <div className="text-xs text-stone-500">{p.stockBottles / sell > 60 ? '5년 치 넘게' : `약 ${Math.max(1, Math.round(p.stockBottles / sell))}개월 치`}</div>}</Td>
         <Td>
           {p.autoPrice
             ? <div className="text-sm tabular-nums" title="매달 판매 직전에 고른 정책대로 값이 바뀐다">{wonFull(p.price)} <Badge tone="good">자동 {(PRICE_MODE_LABEL[priceModeOf(p) ?? 'turnover']).split(' ')[0]}</Badge></div>
@@ -540,7 +536,6 @@ export function Sales() {
         <div className="rounded-lg border border-stone-200 bg-white px-3 py-2 dark:border-stone-800 dark:bg-stone-900">
           <Meter label="소매 처리 역량 (9L 케이스/월, 지난달)" value={last?.retailSoldCases ?? 0} max={last?.retailCapacityCases ?? cap} />
           <div className="mt-1 text-xs text-stone-500">{(last?.lostSalesBottles ?? 0) > 0 ? `지난달 ${num(last!.lostSalesBottles!)}병을 역량이 모자라 못 팔았다` : `출고가 → 소비자가 × ${sample.toFixed(2)} (700ml 40%)`}</div>
-          <RetailOutlookLine s={s} />
         </div>
         <div className="rounded-lg border border-stone-200 bg-white px-3 py-2 dark:border-stone-800 dark:bg-stone-900">
           <div className="text-xs text-stone-500">월 마케팅 예산{secondBrands(s).length ? ' (하우스)' : ''}</div>
@@ -606,18 +601,4 @@ function BrandLines() {
       </p>
     </Card>
   );
-}
-
-/**
- * 소매 처리 역량 전망 한 줄 (9차 판 64개월째 MKT 분석 §3 · PM 2026-11-24) — 지금 진열 · 값 · 재고 그대로 앞으로 12개월 중 가장 붐비는 달.
- * 아는 정보로만 센다(`retailCapacityOutlook` — knownState). 역량을 넘으면 넘친 몫이 수수료 채널로 간다는 것을 미리 보인다
- */
-function RetailOutlookLine({ s }: { s: GameState }) {
-  const o = retailCapacityOutlook(s, 12);
-  if (!o.length) return null;
-  const peak = o.reduce((a, x) => (x.cases > a.cases ? x : a), o[0]!);
-  const over = o.filter((x) => x.cases > x.capacity);
-  return over.length
-    ? <div className="mt-1 text-xs text-amber-700 dark:text-amber-400" title="지금 값 · 재고 · 진열 그대로의 기댓값이다(계절만 바꿈). 넘친 몫은 역량만큼 수수료 30% 채널로 팔고, 그 너머는 못 판다">앞으로 12개월: {over.map((x) => `${x.monthOfYear}월`).join(' · ')} 약 {num(peak.cases)}케이스 — 역량({num(peak.capacity)}케이스)을 넘을 수 있다</div>
-    : <div className="mt-1 text-xs text-stone-500" title="지금 값 · 재고 · 진열 그대로의 기댓값이다(계절만 바꿈)">앞으로 12개월 가장 붐비는 달 {peak.monthOfYear}월 약 {num(peak.cases)}케이스(역량 안)</div>;
 }

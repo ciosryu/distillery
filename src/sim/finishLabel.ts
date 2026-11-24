@@ -13,5 +13,5 @@ export const FINISH_EFFECT_MIN_MONTHS: number = FINISH_LABEL.minMonths;
  * 개월은 병입 때 PROD가 남기는 `Product.finishMonths`(#878 — 섞으면 짧은 쪽, 표기와 같은 보수 규칙)만 읽는다. `caskMonthsMix`는 지역 통 선호(`styleFit`, #361) 전용.
  * `finishMonths`는 v16 판 병입에서만 쓰이므로 옛 판(legacy-v15) · 옛 제품은 저절로 중립이다 — 판을 받지 않는다(PM 범위 판단 #308 · #343과 같은 결과)
  */
-export const finishLabelOn = (p: Partial<Pick<Product, 'finish'>> & { finishMonths?: number }): boolean =>
+export const finishLabelOn = (p: Pick<Product, 'finish' | 'finishMonths'>): boolean =>
   !!p.finish && (p.finishMonths ?? 0) >= FINISH_EFFECT_MIN_MONTHS;

@@ -4,7 +4,7 @@
 
 import { isFlagshipCandidate } from '../sim/delegateCheck';
 import { regionOf } from '../sim/content/regions';
-import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, spotQuote, warehouseCapacity, whiskyMinMonths, type Action, type CashFlowKey, type GameState, type MonthReport, type Product, stagesOf } from '../sim';
+import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, knownState, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, slotsDifferFromCasks, slotsUsed, spotQuote, warehouseCapacity, whiskyMinMonths, type Action, type CashFlowKey, type GameState, type MonthReport, type Product, stagesOf } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
@@ -132,7 +132,8 @@ function stockMonths(s: GameState, inCat: (c: string) => boolean): { stock: numb
  * 판매 화면과 같은 수요 계산(domesticDemands)이다. 실제 판매는 ±10%·소매 역량에 따라 조금 다르다
  */
 export function stockoutSoon(s: GameState): { soon: { id: string; name: string; stock: number; demand: number }[]; empty: { id: string; name: string }[] } {
-  const d = domesticDemands(s, calendar(s).monthOfYear);
+  // F5d(#338) · 외부 검토 D1 누수 L2: 판매 화면처럼 아는 품질로 센 수요(`knownState`) — 참 품질 수요로 세면 결품 판정이 참 품질을 드러낸다
+  const d = domesticDemands(knownState(s), calendar(s).monthOfYear);
   const soon: { id: string; name: string; stock: number; demand: number }[] = [];
   const empty: { id: string; name: string }[] = [];
   for (const p of s.commerce.products) {
@@ -265,7 +266,7 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'sample'];
+export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'sample'];
 // 꼬리 4개(defense·whisky·soju·sample)는 info만 낸다 — warn·danger를 낼 수 있는 새 id는 그 앞에 둔다(warn이 info 뒤에 묻히지 않게, PM 대조 7차 완료: soju-glut)
 // 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
@@ -447,16 +448,20 @@ export function monthTodos(s: GameState): Todo[] {
   // [제안 P-ARCH-64]: 합계와 가장 긴 개월을 한 문장에 섞지 않고 로트별로 — 오래 기다린 순
   const lotText = waits.filter((x) => x.m >= 3).sort((a, b) => b.m - a.m).map((x) => `${x.l.name.split(' · ')[0]} ${Math.round(x.l.volumeL).toLocaleString()}L ${x.m}개월째`).join(' · ');
   const waitText = fillLevel === 'info' ? '' : ` — 통에 들어가지 않은 원액: ${lotText}. 통에 넣어야 숙성이 시작된다 — 3년 위스키·12년 후보가 그만큼 늦어진다`;
+  // [결정 #360] 숙성고 칸 넘침 — v16 캠페인에서 400L↑ 통이 2칸이 되어 진행 중인 판이 정원을 넘을 수 있다. 통은 그대로 두고 새 통만 막힌다(cask-types.md §9.1 (가))
+  const overSlots = slotsUsed(s) - warehouseCapacity(s);
+  // [결정 #363] 넘친 판은 통을 그대로 두고 새 통만 막는다 — 진행 중 세이브를 불러온 사람에게 규칙이 바뀐 것을 이 한 줄로 알린다(v16 캠페인 · 넘친 판에서만 뜬다)
+  if (overSlots > 0) out.push({ id: 'slots-over', level: 'warn', text: `숙성고 ${overSlots}칸 넘침(${slotsUsed(s)}/${warehouseCapacity(s)}칸) — 이 빌드부터 400L 이상 통은 2칸을 쓴다. 들어 있는 통은 그대로이고 새 통만 사거나 주문할 수 없다. 한 번 이상 쓴 빈 큰 통을 팔거나(중고 매각) 숙성고를 증축하라`, action: '숙성고 공간', target: { anchor: 'mvp-space' } });
   // 자동 통입(#239)이 켜져 있으면 넣을 통이 있는 동안은 안내하지 않는다 — 빈 통이 모자랄 때만 "통을 사라"로 줄인다
   const af = s.inventory.autoFill;
   const afLeft = af && tankMalt >= 50 ? autoFillPreview(s, af).leftL : 0;
   if (tankMalt >= 50 && (!af || afLeft >= 50)) {
     // 몰트·그레인을 넣을 **나무** 통만 센다(P-ARCH-64 — 7차 판: 빈 통 26개 중 6개가 소주용 옹기). 아는 오염만 뺀다(F5b I1 — 숨은 값 직접 읽기 없음)
     const empties = s.inventory.casks.filter((c) => !c.contents && !c.contaminationKnown && vesselMaterial(c) === 'wood').length;
-    const free = Math.max(0, warehouseCapacity(s) - s.inventory.casks.length);
+    const free = Math.max(0, warehouseCapacity(s) - slotsUsed(s)); // #360 칸
     out.push(af
-      ? { id: 'fill', level: fillLevel, text: `자동 통입이 켜져 있지만 빈 나무 통이 모자라 탱크 몰트·그레인 ${Math.round(afLeft).toLocaleString()}L가 남는다 — 빈 나무 통 ${empties}개 · 남은 자리 ${free}통. 통을 사거나 숙성고를 늘리세요${waitText}`, action: '통 사기', target: { anchor: 'mvp-space' } }
-      : { id: 'fill', level: fillLevel, text: `탱크 몰트·그레인 ${Math.round(tankMalt).toLocaleString()}L 통입 대기 — 빈 나무 통 ${empties}개 · 남은 자리 ${free}통 (통에 넣어야 숙성이 시작된다 · 자동 통입을 켜 둘 수 있다)${waitText}`, action: empties > 0 ? '통입' : '통 사기', target: { anchor: empties > 0 ? 'mvp-fill' : 'mvp-space' } });
+      ? { id: 'fill', level: fillLevel, text: `자동 통입이 켜져 있지만 빈 나무 통이 모자라 탱크 몰트·그레인 ${Math.round(afLeft).toLocaleString()}L가 남는다 — 빈 나무 통 ${empties}개 · 남은 자리 ${free}${slotsDifferFromCasks(s) ? '칸' : '통'}. 통을 사거나 숙성고를 늘리세요${waitText}`, action: '통 사기', target: { anchor: 'mvp-space' } }
+      : { id: 'fill', level: fillLevel, text: `탱크 몰트·그레인 ${Math.round(tankMalt).toLocaleString()}L 통입 대기 — 빈 나무 통 ${empties}개 · 남은 자리 ${free}${slotsDifferFromCasks(s) ? '칸' : '통'} (통에 넣어야 숙성이 시작된다 · 자동 통입을 켜 둘 수 있다)${waitText}`, action: empties > 0 ? '통입' : '통 사기', target: { anchor: empties > 0 ? 'mvp-fill' : 'mvp-space' } });
   }
   // [제안 P-ARCH-65] 확장 — 7차 판 오너 답 "자동 통입이 어딨는지 못찾았다"(155개월 · 손 통입 405번): 통입 대기 줄에서 **바로 켠다**. 끄기는 통입 카드에서(되돌릴 수 있는 설정)
   // PROD #729: 이동 버튼도 자동 통입 줄(AUTOFILL_ANCHOR)로 — 오너 "어딨는지 못찾았다". 손 통입은 그 줄 바로 아래 통입 카드라 같은 자리다
