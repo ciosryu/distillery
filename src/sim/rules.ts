@@ -38,7 +38,7 @@ export const sampleNoiseId = (s: Pick<GameState, 'rulesVersion' | 'scenario'>, c
 export const BIG_CASK_LITERS = 400;
 /**
  * 통 하나가 차지하는 숙성고 칸 ([결정 #360]) — **v16 캠페인(시나리오가 있는 v16 판)이고 용량 ≥ 400L면 2칸**, 그 밖(옛 판 `legacy-v15` · 샌드박스)은 1칸 그대로.
- * 칸 셈은 모두 이 함수와 `util.ts slotsUsed`를 쓴다(빈 통 포함 — 지금처럼 숙성고에 놓인 통은 비어도 자리를 차지한다). `[제안 P-ARCH-80]` · cask-types.md §9.1
+ * 칸 셈은 모두 이 함수와 `util.ts slotsUsed`를 쓴다(빈 통 포함 — 지금처럼 숙성고에 놓인 통은 비어도 자리를 차지한다). 넘침 처리 `[결정 #363]` · cask-types.md §9.1
  */
 export const caskSlots = (s: Pick<GameState, 'rulesVersion' | 'scenario'>, sizeL: number): number =>
   rulesVersionOf(s) === 'v16' && !!s.scenario && sizeL >= BIG_CASK_LITERS ? 2 : 1;
