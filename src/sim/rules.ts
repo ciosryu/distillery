@@ -25,6 +25,15 @@ export const BASE_WAGE_DRIFT_V16 = 0.01;
  */
 export const baseWageDrift = (s: Pick<GameState, 'rulesVersion' | 'scenario'>): number => (rulesVersionOf(s) === 'v16' && s.scenario?.locked.includes('system:hr') ? BASE_WAGE_DRIFT_V16 : 0);
 
+/**
+ * 샘플 읽기 난수 키의 통 몫 ([결정 #351]) — **v16 캠페인(시나리오가 있는 v16 판)이면 통 id + 채움 번호**, 그 밖(옛 판 `legacy-v15` · 샌드박스)은 통 id 그대로.
+ * 왜: 키가 통 id + `cask.samples`뿐이었고 `samples`는 채울 때 · 비울 때 비워지므로, 한 통의 첫 읽기 오차가 그 통의 **모든 채움**에 붙었다(앞뒤 채움 오차 상관 0.97, architecture §10.10).
+ * 같은 채움 안에서는 그대로다 — 자동 샘플(#201)이 같은 내용물을 다시 떠도 같은 값(참값으로 수렴하지 않음). 새 값 없음.
+ * 쓰는 곳: `blendTable.ts` 육각형 읽기(`perceive`) · 축 읽기(`perceive-axes`) · 품질 읽기(`sample-quality`) 세 키
+ */
+export const sampleNoiseId = (s: Pick<GameState, 'rulesVersion' | 'scenario'>, cask: { id: string; fills: number }): string =>
+  rulesVersionOf(s) === 'v16' && !!s.scenario ? `${cask.id}#f${cask.fills}` : cask.id;
+
 // ───────────── 난이도 읽기 (F6, [결정 #314] — architecture §10.10 [제안 P-ARCH-58]) ─────────────
 /** 판의 난이도 스냅샷 — 없으면(옛 판·샌드박스) Normal */
 export const difficultyOf = (s: Pick<GameState, 'difficulty'>): DifficultyConfig => s.difficulty ?? DIFFICULTY_NORMAL;

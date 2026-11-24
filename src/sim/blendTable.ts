@@ -8,6 +8,7 @@ import { CATEGORY } from './content/categories';
 import { regionOf } from './content/regions';
 import type { BlendComponent, BottleOptions } from './blending';
 import { nid, staffOf } from './util';
+import { sampleNoiseId } from './rules'; // [결정 #351] v16 캠페인은 채움마다 읽기 잡음을 새로
 
 // 블렌딩 테이블 (결정 #124, docs/design/blending-minigame.md) — 1차 범위:
 //   P1 정보 구매(샘플링·실험실 분석) · P2 도달 가능 영역 · P5 목표 3종(트렌드·의뢰·코어 레인지) · P6 결과 공개 · P7 위임 · P8 레어 캐스크
@@ -63,7 +64,7 @@ export const LAB = {
 export function readCask(s: GameState, cask: Cask): Hex | null {
   if (!cask.contents) return null;
   const actual = hexOf(cask.contents.flavor);
-  const seen = perceivedHex(actual, s.seed, cask.id, blenderOf(s), cask.samples ?? 0);
+  const seen = perceivedHex(actual, s.seed, sampleNoiseId(s, cask), blenderOf(s), cask.samples ?? 0);
   if (cask.labAnalyzed) for (const a of LAB.axes) seen[a] = actual[a];
   return seen;
 }
@@ -84,7 +85,7 @@ export function readCaskAxes(s: GameState, cask: Cask): Partial<Record<AxisId, n
   if (!lot || !axes) return null;
   const blender = blenderOf(s);
   const sd = sampledSigma(blender, cask.samples ?? 0);
-  const r = rngFor(s.seed, 0, `perceive-axes:${cask.id}:${blender?.id ?? 'owner'}:${cask.samples ?? 0}`);
+  const r = rngFor(s.seed, 0, `perceive-axes:${sampleNoiseId(s, cask)}:${blender?.id ?? 'owner'}:${cask.samples ?? 0}`);
   const out: Partial<Record<AxisId, number>> = {};
   for (const a of axes) out[a] = Math.max(0, (lot.flavor[a] ?? 0) + r.normal(0, sd));
   return out;
@@ -103,7 +104,7 @@ export const QUALITY_SIGMA_PER_HEX = 1;
 export function recordSample(s: GameState, cask: Cask, trueQuality: number): SampleRecord {
   const hex = readCask(s, cask)!;
   const sigma = readSigma(s, cask);
-  const r = rngFor(s.seed, 0, `sample-quality:${cask.id}:${cask.samples ?? 0}`);
+  const r = rngFor(s.seed, 0, `sample-quality:${sampleNoiseId(s, cask)}:${cask.samples ?? 0}`);
   const axes = readCaskAxes(s, cask);
   const rec: SampleRecord = { month: s.month, hex, sigma, estQuality: Math.round(clamp(trueQuality + r.normal(0, sigma * QUALITY_SIGMA_PER_HEX), 0, 100)), ...(axes ? { axes } : {}) };
   cask.sampleLog = [...(cask.sampleLog ?? []), rec].slice(-SAMPLE_LOG_KEPT);
