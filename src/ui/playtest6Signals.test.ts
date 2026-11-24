@@ -91,7 +91,13 @@ describe('핸드필 빈 개월 · 자동 진행 중 지나간 결정 (6차 판 �
     const s = p6();
     expect(handfillIdle(s)).toMatchObject({ months: 16 });
     expect(handfillIdle(s)!.monthly).toBeGreaterThan(1_000_000);
-    expect(todo(s, 'handfill')!.text).toMatch(/통이 빈 지 16개월째\(비기 전 월 약/);
+    expect(todo(s, 'handfill')!.text).toMatch(/핸드필 판매가 멈춘 지 16개월째\(그 전 월 약/);
+  });
+  it('9차 판 64개월 — 지정 통이 "비었다" 메모 없이 풀려도(병입에 쓰임) 마지막 핸드필 판매 달부터 센다(화면 20 → 기록 16개월)', () => {
+    const r = parsePlayFile(readFileSync('docs/playtest/9/distillery-mvp-standard-y6m5-202611240759.json', 'utf8'));
+    if ('error' in r) throw new Error(r.error);
+    expect(handfillIdle(r.save)).toMatchObject({ months: 16 });
+    expect(todo(r.save, 'handfill')!.text).toMatch(/핸드필 판매가 멈춘 지 16개월째/);
   });
   it('여러 달 진행 소식 — 고르지 않은 선택은 "기본값" 표시 · 답 없이 사라진 IB 입찰은 그렇다고 붙인다', () => {
     const s = p6();

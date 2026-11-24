@@ -98,8 +98,9 @@ describe('caskRunway — 빈 나무 통이 떨어지는 때', () => {
     expect(used).toBeGreaterThanOrEqual(maltLpa / 0.635 / 200 - 1); // 탱크에 둔 끝자리는 통 하나 미만
     expect(s.inventory.casks.filter((c) => c.contents && c.contents.volumeL < 180).length).toBe(0); // 생산이 이어지는 동안은 꽉 차는 통만(증발로 조금 준 것 제외)
   });
-  it('생산 지시를 끄면 남은 끝자리도 그 달에 넣는다 — 탱크에 영영 남지 않는다', () => {
+  it('옛 판(legacy-v15): 생산 지시를 끄면 남은 끝자리도 그 달에 넣는다 — 탱크에 영영 남지 않는다', () => {
     let s = order(game(), [0, 2, 0]);
+    s.rulesVersion = 'legacy-v15';
     s = advanceMonth(s); // 탱크에 몰트 한 달 치
     s = applyAction(s, { type: 'setAutoFill', settings: {} }).state;
     const tank = () => s.inventory.lots.filter((l) => l.kind === 'malt').reduce((t, l) => t + l.volumeL, 0);
@@ -110,6 +111,20 @@ describe('caskRunway — 빈 나무 통이 떨어지는 때', () => {
     expect(autoFillPreview(s, s.inventory.autoFill!).heldL).toBe(0);
     s = advanceMonth(s);
     expect(tank()).toBeLessThan(1);
+  });
+  it('[결정 #372] v16: 생산 지시를 꺼도 덜 찰 통에는 넣지 않는다 — 끝자리는 탱크에 남는다', () => {
+    let s = order(game(), [0, 2, 0]);
+    expect(s.rulesVersion).toBe('v16');
+    s = advanceMonth(s);
+    s = applyAction(s, { type: 'setAutoFill', settings: {} }).state;
+    s = order(s, [0, 0, 0]);
+    const held = autoFillPreview(s, s.inventory.autoFill!).heldL;
+    expect(held).toBeGreaterThan(0); // 지시가 꺼져도 끝자리를 둔다
+    s = advanceMonth(s);
+    const tank = s.inventory.lots.filter((l) => l.kind === 'malt').reduce((t, l) => t + l.volumeL, 0);
+    expect(tank).toBeGreaterThan(0);
+    expect(tank).toBeLessThan((200 * 0.635) / 0.6); // 통 하나를 꽉 채우지 못하는 몫만 남는다
+    expect(s.inventory.casks.filter((c) => c.contents && c.contents.volumeL < 180).length).toBe(0); // 덜 찬 통이 없다
   });
   it('탱크에 이미 쌓인 원액이 빈 통보다 많으면 0개월(이미 모자람)', () => {
     let s = order(game(), [0, 4, 0]);
@@ -171,10 +186,24 @@ describe('자동 통입 — 섞인 통 크기 (결정 #332 후속, 7차 판 전 
     expect(p!.heldL).toBeCloseTo(277 - (200 * 0.635) / 0.735, 6); // 끝자리는 탱크에 — 빈 통(B1·E2)이 남아 있으니 "모자람"이 아니다
     expect(p!.leftL).toBe(0);
   });
-  it('생산이 꺼져 있으면 예전처럼 차례로 넣는다(마지막 통이 덜 차도)', async () => {
+  it('[결정 #372] v16: 생산이 꺼져 있어도 덜 찰 통은 건너뛴다(마지막 통을 덜 채우지 않는다)', async () => {
     const { autoFillPlan } = await import('./autoFill');
     const { emptyCaskOf } = await import('./index');
     let s = order(game(), [0, 0, 0]);
+    s.inventory.casks = [];
+    for (const [id, t] of [['B1', 'oloroso_butt'], ['E1', 'ex_bourbon_barrel'], ['E2', 'ex_bourbon_barrel']] as const) { const c = emptyCaskOf(s, t); c.id = id; c.fills = 0; c.activity = id === 'B1' ? 2 : 1; s.inventory.casks.push(c); }
+    s.inventory.lots = [{ id: 'T', name: '몰트', kind: 'malt', volumeL: 277, abv: 0.735, flavor: {}, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 10_000, batchId: 'BT' }];
+    s = applyAction(s, { type: 'setAutoFill', settings: {} }).state;
+    const [p] = autoFillPlan(s, s.inventory.autoFill!);
+    expect(p!.caskIds).toEqual(['E1']);
+    expect(p!.heldL).toBeCloseTo(277 - (200 * 0.635) / 0.735, 6);
+    expect(p!.leftL).toBe(0);
+  });
+  it('옛 판(legacy-v15): 생산이 꺼져 있으면 예전처럼 차례로 넣는다(마지막 통이 덜 차도)', async () => {
+    const { autoFillPlan } = await import('./autoFill');
+    const { emptyCaskOf } = await import('./index');
+    let s = order(game(), [0, 0, 0]);
+    s.rulesVersion = 'legacy-v15';
     s.inventory.casks = [];
     for (const [id, t] of [['B1', 'oloroso_butt'], ['E1', 'ex_bourbon_barrel']] as const) { const c = emptyCaskOf(s, t); c.id = id; c.fills = 0; c.activity = id === 'B1' ? 2 : 1; s.inventory.casks.push(c); }
     s.inventory.lots = [{ id: 'T', name: '몰트', kind: 'malt', volumeL: 277, abv: 0.735, flavor: {}, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 10_000, batchId: 'BT' }];

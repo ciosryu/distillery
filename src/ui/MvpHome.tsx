@@ -4,7 +4,7 @@ import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { CaskTagBar, CaskTagChips } from './CaskTags';
 import { TurnBrief } from './TurnBrief';
 import { AutoFillRow } from './panels/AutoFill';
-import { CaskCareRow } from './panels/CaskCare'; // #345 GAP-PROD-7 (PROD)
+import { CaskCareRow, NewCaskOutlook } from './panels/CaskCare'; // #345 GAP-PROD-7 · #355 탄닌 전망 (PROD)
 import { FinishRow } from './panels/FinishRow'; // #345 GAP-PROD-4 피니싱 (PROD 부품 · ARCH 끼움)
 import { getPlaylog, recentActionCount } from '../store/playlog';
 import { PendingEventChoices } from './panels/Events';
@@ -28,7 +28,7 @@ import { CashFlowLine, JourneyStrip, MonthTodo, OPEN_FOLD_EVENT } from './Alerts
 import { AutoSampleSettingsRow } from './panels/AutoSample';
 import { HandfillRow } from './panels/Handfill';
 import { flagshipCaskHint } from './gradeHints'; // 결정 #339 등급 화면 힌트
-import { cashAlert, flagshipCandidates, flagshipImpact, flagshipReady, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
+import { cashAlert, flagshipCandidates, flagshipImpact, knownContaminated, flagshipReady, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
 import { monthlyFixedBreakdown } from '../sim/loans';
 import { PriceDesk } from './panels/Sales';
 import { FeedCard } from './FeedCard'; // 커뮤니티 반응 요약 (#247, MKT — 오너 요청 2026-11-14)
@@ -227,13 +227,21 @@ function Headline() {
   const left = sc && legacyRules ? sc.goal.months - s.month : null;
   // 12년 플래그십 후보 통 (#240) — 판이 끝나기 전에 플래그십 숙성을 채울 수 있는 통. 목표까지 남은 달이 플래그십 숙성보다 짧아지면
   // 새로 넣는 통은 후보가 될 수 없다 → 그 뒤 후보 0이면 15년 목표(플래그십 판매)를 이룰 수 없다(5차 판, mvp.md §7.16)
-  const cands = sc ? flagshipCandidates(s).length : 0;
+  const candList = sc ? flagshipCandidates(s) : [];
+  const cands = candList.length;
+  // [결정 #379] 후보 원액 양 — 「후보 n통 · 약 x L(약 y병 · 덜 찬 통 k)」(9차 판: 후보 5통 ≈ 741L인데 통 수만 보였다). 부피 · 도수는 공개 정보.
+  // 병 수는 46% · 700ml로 센 어림(병입 도수 · 손실에 따라 다르다), 덜 찬 통 = 원액이 통 크기의 절반 미만
+  const candL = candList.reduce((t, c) => t + (c.contents?.volumeL ?? 0), 0);
+  const candBottles = candList.reduce((t, c) => t + (c.contents ? (c.contents.volumeL * c.contents.abv) / (0.46 * 0.7) : 0), 0);
+  const candThin = candList.filter((c) => (c.contents?.volumeL ?? 0) < c.sizeL * 0.5).length;
+  const candAmount = cands > 0 ? ` · 약 ${Math.round(candL).toLocaleString()}L(약 ${(Math.round(candBottles / 10) * 10).toLocaleString()}병${candThin ? ` · 덜 찬 통 ${candThin}` : ''})` : '';
+  const candBad = knownContaminated(candList); // [결정 #365 고침] 아는 오염 통도 후보로 센다(판정 그대로) — 빼지 않고 함께 보인다
   const flagDone = campaignWon(s);
   // 12년 적격 (6차 판 arch.md ① — 적격 달에 "0개월 뒤 도달"만 보여 12개월 늦게 병입): 승리 판정과 같은 적격(caskEligibility)으로 "지금 병입하면 승리"를 말한다
   const win12 = flagshipReady(s);
   const win12Hint = win12?.bottled ? `플래그십 12년 · 「${win12.bottled.name}」 병입 완료 — 팔리면 캠페인 승리` : win12?.casks.length ? `플래그십 12년 · 적격 ${win12.casks.length}통 — 지금 병입해 팔면 캠페인 승리` : null;
   const noMoreNew = legacyRules && left != null && left < flagMin; // 새 캠페인(v16)은 판 끝이 없어 새 통도 언젠가 후보가 된다
-  const flagHint = !sc ? null : flagDone ? (legacyRules ? '플래그십 판매 완료' : `캠페인 승리(${s.progress.win ? winChannelLabel(s.progress.win) : '첫 출하'}) — 12년 싱글 몰트 첫 출하 완료`) : cands > 0 ? `후보 ${cands}통 · 예비 ${reserveCaskIds(s).size}통${noMoreNew ? ' — 새 통은 더 후보가 될 수 없다' : legacyRules ? '' : ' (후보 = 3년 안에 12년이 되는 통 · 예비 = 승리용으로 남겨 두는 통)'}` : legacyRules ? (noMoreNew ? '후보 0통 — 15년 안에 플래그십을 낼 수 없다' : `후보 0통 — ${Math.max(0, (sc.goal.months - flagMin) - s.month)}개월 안에 넣은 통이 후보가 된다`) : `후보 0통 — 목재 ${flagMin - HINT_HORIZON_MONTHS}개월을 넘긴 자가 몰트 통이 후보가 된다 · 예비 ${reserveCaskIds(s).size}통 보호 중`;
+  const flagHint = !sc ? null : flagDone ? (legacyRules ? '플래그십 판매 완료' : `캠페인 승리(${s.progress.win ? winChannelLabel(s.progress.win) : '첫 출하'}) — 12년 싱글 몰트 첫 출하 완료`) : cands > 0 ? `후보 ${cands}통${candAmount}${candBad ? ` — ⚠ 그중 ${candBad}통은 아는 오염(결점 향이 섞인다)` : ''} · 예비 ${reserveCaskIds(s).size}통${noMoreNew ? ' — 새 통은 더 후보가 될 수 없다' : legacyRules ? '' : ' (후보 = 3년 안에 12년이 되는 통 · 예비 = 승리용으로 남겨 두는 통)'}` : legacyRules ? (noMoreNew ? '후보 0통 — 15년 안에 플래그십을 낼 수 없다' : `후보 0통 — ${Math.max(0, (sc.goal.months - flagMin) - s.month)}개월 안에 넣은 통이 후보가 된다`) : `후보 0통 — 목재 ${flagMin - HINT_HORIZON_MONTHS}개월을 넘긴 자가 몰트 통이 후보가 된다 · 예비 ${reserveCaskIds(s).size}통 보호 중`;
   return (
     <Card title="현금과 순자산 — 지금 정리하면 받을 수 있는 돈">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -461,6 +469,10 @@ function WarehouseCard() {
           <div className="text-[11px] text-stone-500">자동 샘플은 통당 횟수({SAMPLING.maxSamples}회)를 쓰지 않지만 오차도 줄이지 않는다 — 오차를 줄이려면 직접 고른다.</div>
         </div>
       )}
+      {/* [결정 #374] 「12년 감점」 풀이 한 줄 — 9차 판 오너 "의미를 몰랐다"(뜻은 마우스를 올려야 보이는 title에만 있었다). 요령(빼서 재사용 통에)은 알리지 않는다(#367) */}
+      {filled.some((c) => c.contents && (c.contents.kind === 'malt' || c.contents.kind === 'grain') && vesselMaterial(c) === 'wood') && (
+        <p className="mb-1 text-xs text-stone-600 dark:text-stone-400"><b>12년 감점</b> — 지금 통 그대로 12년(144개월)까지 두면 나무 맛(탄닌)이 위스키 상한을 넘어 품질에서 깎일 것으로 보이는 점수(활성도로 센 어림). 활성도가 높은 새 통일수록 크다.</p>
+      )}
       {!filled.length ? <Empty>숙성 중인 캐스크가 없습니다. 아래에서 탱크의 몰트(또는 소주) 원액을 빈 통에 통입하세요.</Empty> : (
         <Table head={['', '캐스크', '원액', '숙성', '남은 양', '표기', '마지막 샘플 (추정 품질 ±오차 · 강한 향 · 변화)', '']}>
           {(all ? shownCasks : shownCasks.slice(0, LIST_FIRST)).map((c) => {
@@ -648,6 +660,8 @@ function SpaceCard() {
         <div className="grid min-w-0 content-start gap-2">
           <div className="text-xs font-semibold text-stone-700 dark:text-stone-200">빈 통 사기</div>
           <Select value={buyType} options={(Object.keys(CASKS) as CaskTypeId[]).map((k) => ({ value: k, label: `${CASKS[k].nameKo} — ${won(regionalCaskPrice(s, k))}${caskSlots(s, CASKS[k].sizeL) > 1 ? ' (숙성고 2칸)' : ''}` }))} onChange={setBuyType} />
+          {/* #355 — 고른 통의 탄닌 어림(3년 · 12년 · 다시 쓰면) — 버진 오크는 3년용, 시즈닝 통은 피니싱용이라는 성격을 숫자로 (PROD NewCaskOutlook) */}
+          <div className="text-xs"><NewCaskOutlook typeId={buyType} /></div>
           <div className="flex flex-wrap items-end gap-2">
             <NumberField label="개수" value={buyN} min={1} max={100} width="w-16" onCommit={setBuyN} />
             <Button small disabled={needFor(buyType, buyN) > free} onClick={() => dispatch({ type: 'buyCasks', caskType: buyType, qty: buyN })} title={`${cooperageLeadMonths(s)}개월 뒤 도착`}>주문 {won(price * buyN)}</Button>
