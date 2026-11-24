@@ -142,10 +142,11 @@ export function restockPrior(s: Pick<GameState, 'rulesVersion' | 'commerce'>, ta
 /**
  * 면세 전용 제품의 짝 (#338 ③(가)) — 같은 달에 같은 범주·같은 레시피 원액으로 병입한 **일반 제품**(면세 전용 아님) 중 아는 품질이 있는 것.
  * 여럿이면 리뷰가 많은 것 → id 순. 면세 전용 제품은 커뮤니티 피드에 나오지 않아 리뷰가 붙지 않으므로, 짝의 리뷰 추정을 빌린다
+ * 피니시 표기(`finish`)도 같아야 짝이다 — 같은 원액이라도 한쪽만 피니싱했으면 다른 술이다(통 추가 첫 묶음 · cask-types.md §9.2 · §1 구멍). 개월(`finishMonths`)은 보지 않는다(표기가 같은지만 묻는다)
  */
 export function dutyFreePair(s: Pick<GameState, 'commerce'>, p: Product): Product | null {
   if (!p.dutyFreeOnly) return null;
-  const cands = s.commerce.products.filter((x) => x.id !== p.id && !x.dutyFreeOnly && x.qualityKnown && x.createdMonth === p.createdMonth && x.category === p.category && sameList(x.recipeIds, p.recipeIds));
+  const cands = s.commerce.products.filter((x) => x.id !== p.id && !x.dutyFreeOnly && x.qualityKnown && x.createdMonth === p.createdMonth && x.category === p.category && x.finish === p.finish && sameList(x.recipeIds, p.recipeIds));
   cands.sort((x, y) => (y.qualityKnown!.reviews - x.qualityKnown!.reviews) || x.id.localeCompare(y.id));
   return cands[0] ?? null;
 }

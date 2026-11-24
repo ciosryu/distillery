@@ -42,6 +42,11 @@ const CASK_SHORT: Record<CaskTypeId, { name: string; cls: string }> = {
   korean_oak_quarter: { name: '한국 참나무', cls: 'bg-lime-100 text-lime-900 dark:bg-lime-900/50 dark:text-lime-200' },
   mizunara_hogshead: { name: '미즈나라', cls: 'bg-violet-100 text-violet-900 dark:bg-violet-900/50 dark:text-violet-200' },
   onggi_jar: { name: '옹기', cls: 'bg-stone-200 text-stone-800 dark:bg-stone-700 dark:text-stone-100' },
+  // #355 일반 4종 — 14색은 구분이 안 돼 계열별 색(셰리 · 포트 = 장미, 와인 = 보라, 새 통 = 연두)
+  sherry_hogshead: { name: '셰리 혹스헤드', cls: 'bg-rose-100 text-rose-900 dark:bg-rose-900/50 dark:text-rose-200' },
+  port_pipe: { name: '포트 파이프', cls: 'bg-rose-200 text-rose-950 dark:bg-rose-800/60 dark:text-rose-100' },
+  wine_barrique: { name: '와인 바리끄', cls: 'bg-purple-100 text-purple-900 dark:bg-purple-900/50 dark:text-purple-200' },
+  virgin_oak_barrel: { name: '버진 오크', cls: 'bg-lime-100 text-lime-900 dark:bg-lime-900/50 dark:text-lime-200' },
 };
 export const caskShort = (t: CaskTypeId) => CASK_SHORT[t]?.name ?? CASKS[t]?.nameKo ?? t;
 /** 덜 채운 통 (화면 진행 메모 B2 — 218L를 통입하면 200L + 52L 두 통이 되는데 표시가 없었다) — 통 크기의 60% 미만이면 채운 비율(%), 아니면 null. 증발로 준 것과는 구별하지 않는다 */
@@ -57,6 +62,8 @@ function CaskTag({ c }: { c: Cask }) {
     <span className="inline-flex flex-wrap items-center gap-1">
       <span className={`rounded px-1 py-px text-[11px] font-medium ${CASK_SHORT[c.typeId]?.cls ?? ''}`}>{caskShort(c.typeId)}</span>
       <span className="text-stone-500">{c.fills}필{f ? ` · ${finishLabel(f.typeId)} ${months(f.months)}` : ''}</span>
+      {/* 핸드필 지정 통 (9차 중간 기록: 지정 통 K306을 병입에 써서 핸드필이 메모 없이 끝났다 — 표에 표시가 없었다) */}
+      {c.handfill && <span className="rounded bg-amber-100 px-1 py-px text-[11px] font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-200" title="핸드필 존에 내놓은 통 — 방문객이 이 통에서 직접 담아 간다">핸드필</span>}
       {partialFill(c) != null && <span className="rounded bg-stone-100 px-1 py-px text-[11px] text-stone-700 dark:bg-stone-800 dark:text-stone-300" title="통 크기보다 원액이 많이 적다 — 통입할 때 원액이 모자라 덜 채운 통이다. 숙성·증발은 같은 규칙으로 돈다">{partialFill(c)}% 채움</span>}
     </span>
   );
@@ -493,6 +500,17 @@ export function Bottling() {
                 );
               })()}
               {/* 이 병입 자체가 12년(가장 어린 원액도 목재 A 이상)이면 후보를 제대로 쓰는 것이라 알리지 않는다 */}
+              {(() => {
+                // 핸드필 지정 통을 병입에 쓰면 핸드필이 빈다 — 다음 통을 지정해야 다시 판다(9차 중간 기록 · PM 2026-11-24)
+                const hf = sources.filter((x) => picked[x.key] != null && (picked[x.key] ?? 0) > 0 && x.cask?.handfill);
+                if (!hf.length) return null;
+                const all = hf.filter((x) => (picked[x.key] ?? 0) >= x.lot.volumeL - 0.05);
+                return (
+                  <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                    ⚠ 핸드필 통 {hf.map((x) => x.id).join(' · ')}을 쓴다{all.length ? ` — ${all.map((x) => x.id).join(' · ')}은 다 써서 핸드필이 빈다. 핸드필 존에 다음 통을 지정해야 방문객 판매가 이어진다` : ' — 남은 양이 줄어 핸드필이 일찍 빈다'}
+                  </p>
+                );
+              })()}
               {guardedPicked.candidate.length > 0 && !(preview && preview.minOakMonths >= campaignMinOakMonths(s)) && (() => {
                 const need = campaignMinOakMonths(s);
                 const list = guardedPicked.candidate.map((c) => `${c.id}(${c.oak >= need ? '이미 12년' : `${need - c.oak}개월 뒤 12년`})`);

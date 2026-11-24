@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { BANKRUPT_AFTER_MONTHS, isLocked, monthLabel, type GameState, type RegionId, rulesVersionOf } from './sim';
 import { REGIONS, siteOf } from './sim/content/regions';
 import { SCENARIOS } from './sim/content/scenarios';
@@ -86,9 +86,21 @@ export default function App() {
   }, [toast, clearToast]);
 
   const running = s.status === 'running';
+  // 고정 머리글 높이를 CSS 변수(--hdr-h)로 — 바로가기 이동(scrollIntoView)의 위 여백(.scroll-mt-28, index.css)이 머리글 아래에 멈추게.
+  // 「판 도중 빌드가 바뀌었다」 띠 · 현금 경고가 뜨면 머리글이 190px까지 커져 112px 고정 여백으로는 이동한 줄의 머리가 가려졌다(PM 2026-11-24 · 1,440 × 900)
+  const headerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const set = () => document.documentElement.style.setProperty('--hdr-h', `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-10 border-b border-stone-200 bg-white/90 backdrop-blur dark:border-stone-800 dark:bg-stone-900/90">
+      <header ref={headerRef} className="sticky top-0 z-10 border-b border-stone-200 bg-white/90 backdrop-blur dark:border-stone-800 dark:bg-stone-900/90">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div>
             <h1 className="text-base font-bold">{s.distilleryName} <ModeBadge s={s} /> <span className="text-xs font-normal text-stone-500">Distillery Tycoon · {s.siteId ? `${REGIONS[s.regionId].nameKo.replace(/\s*\(.*\)$/, '')} (${siteOf(s).nameKo})` : REGIONS[s.regionId].nameKo}</span></h1>
