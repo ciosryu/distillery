@@ -7,6 +7,7 @@
 // `highQualityProduct`(참 품질 72↑ 제품이 있을 때만 「품평회 수상」 `competition_medal`) — 이벤트가 뜨는 것 자체가 신호다. **[제안] 의도된 공개 신호로 본다**(수상은 바깥 평가가
 // 품질을 드러내는 일 — 리뷰와 같은 결) — MGT 확인 · 그 밖의 이벤트 효과(events.ts 210 · 225 — 가장 좋은 제품 품질로 효과 크기)는 MGT가 화면 문구에 값이 드러나는지 본다 ·
 // 결과 화면 연표의 플래그십 품질은 승리 뒤 공개(#344 HeritageReveal과 같은 자리)라 누수로 보지 않는다.
+// L6′(MGT P-MGT-62 2026-11-24): 평론가 판정 문구의 품질 숫자(참값) — 판정 구간은 문턱 신호라 빼고 숫자만 시험한다. 오너 답(최소안 = 숫자만 뺌) 뒤 MGT 수리와 함께 it으로
 // L7(MKT 제안 2026-11-24): 피드 향 문구가 참 향미를 읽는다 — 품질이 아니라 향미가 새는 길(판매 화면 향미 카드는 추정 육각형). `it.fails`로 목록에 둔다(고칠지 · 의도로 볼지는 MKT 몫)
 // 지금 새는 길은 `it.fails`로 적어 둔다 — 고치면 이 시험이 "통과해 버려서" 실패하므로, 고친 PR이 `it.fails`를 `it`으로 바꾼다(목록이 줄어들기만 한다)
 import { describe, expect, it } from 'vitest';
@@ -14,6 +15,8 @@ import { calendar, domesticDemands, knownState, knownView, newScenarioGame, pric
 import { feedFor } from '../sim/feed';
 import { retailPriceBasis } from '../sim/deals';
 import { stockoutSoon } from './alerts';
+import { applyEffects } from '../sim/events';
+import { rngFor } from '../sim/rng';
 
 /** 위스키 제품 하나(아는 품질 60 ±8 · 리뷰 3)를 진열한 v16 캠페인 판 — 참 품질만 인자로 */
 function withProduct(trueQuality: number, flavor: Product['flavor'] = {}): { s: GameState; p: Product } {
@@ -61,5 +64,13 @@ describe('I2 — 같은 공개 정보 · 다른 참 품질이면 화면 읽기 �
     const a = tenMonths(withProduct(60, { citrus: 0.8, tropical: 0.1 }));
     const b = tenMonths(withProduct(60, { citrus: 0.1, tropical: 0.8 }));
     expect(feedFor(a, 10, 40).map((x) => x.text)).toEqual(feedFor(b, 10, 40).map((x) => x.text));
+  });
+  it.fails('[누수 L6′ — MGT P-MGT-62 2026-11-24] 평론가 판정 문구에 최고 참 품질 숫자 — `criticVerdict`가 「무난한 평가 — 품질 ${best}」(참 p.quality)를 이벤트 기록(이벤트 탭 · 소식 창)에 쓴다(events.ts 209)', () => {
+    // 판정(극찬 · 무난 · 혹평)은 문턱 신호라 빼고 **숫자만** 본다 — 두 품질 모두 「무난」 구간(murray_visit 문턱 rave 80 · pan 62)
+    const effect = { type: 'criticVerdict', rave: 80, pan: 62, raveEffects: [], panEffects: [], mildEffects: [] } as const;
+    const say = (q: number) => { const { s } = withProduct(q); return applyEffects(s, [effect as never], rngFor(s.seed, s.month, 'event:test'), '평론가').join(' '); };
+    expect(say(65)).toContain('무난한 평가');
+    expect(say(75)).toContain('무난한 평가');
+    expect(say(75)).toEqual(say(65));
   });
 });
