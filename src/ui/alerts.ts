@@ -509,6 +509,10 @@ export function monthTodos(s: GameState): Todo[] {
   // 자동 통입(#239)이 켜져 있으면 넣을 통이 있는 동안은 안내하지 않는다 — 빈 통이 모자랄 때만 "통을 사라"로 줄인다
   const af = s.inventory.autoFill;
   const afLeft = af && tankMalt >= 50 ? autoFillPreview(s, af).leftL : 0;
+  // [결정 #372] (가)(PROD #932) 뒤 v16 자동 통입은 생산 지시가 꺼져도 덜 찰 통에 넣지 않는다 — 통 하나에 모자란 끝자리가 탱크에 남는다.
+  // 그 끝자리가 2개월 넘게 기다리면 warn이 아니라 info 한 줄(PROD 문구). 매달 생기는 끝자리(생산 중 · 다음 달 합침)는 2개월 문턱 아래라 뜨지 않는다
+  const afHeld = af && tankMalt >= 50 && afLeft < 50 ? autoFillPreview(s, af).heldL : 0;
+  if (afHeld >= 50 && waitM >= 2) out.push({ id: 'fill', level: 'info', text: `탱크 몰트·그레인 ${Math.round(afHeld).toLocaleString()}L — 통 하나를 꽉 채우기에 모자라 기다린다(생산을 다시 켜면 합쳐 넣는다 · 손 통입으로 덜 채운 통에 넣을 수도 있다) · ${waitM}개월째`, action: '통입', target: { anchor: AUTOFILL_ROW_ANCHOR } });
   if (tankMalt >= 50 && (!af || afLeft >= 50)) {
     // 몰트·그레인을 넣을 **나무** 통만 센다(P-ARCH-64 — 7차 판: 빈 통 26개 중 6개가 소주용 옹기). 아는 오염만 뺀다(F5b I1 — 숨은 값 직접 읽기 없음)
     const empties = s.inventory.casks.filter((c) => !c.contents && !c.contaminationKnown && vesselMaterial(c) === 'wood').length;
@@ -519,7 +523,17 @@ export function monthTodos(s: GameState): Todo[] {
   }
   // [제안 P-ARCH-65] 확장 — 7차 판 오너 답 "자동 통입이 어딨는지 못찾았다"(155개월 · 손 통입 405번): 통입 대기 줄에서 **바로 켠다**. 끄기는 통입 카드에서(되돌릴 수 있는 설정)
   // PROD #729: 이동 버튼도 자동 통입 줄(AUTOFILL_ANCHOR)로 — 오너 "어딨는지 못찾았다". 손 통입은 그 줄 바로 아래 통입 카드라 같은 자리다
-  if (!af) { const fill = out.find((t) => t.id === 'fill'); if (fill) fill.target = { anchor: AUTOFILL_ROW_ANCHOR }; if (fill) fill.quick = { label: '자동 통입 켜기', action: { type: 'setAutoFill', settings: {} }, done: '자동 통입을 켰다 — 진행할 때마다 꽉 차는 통에 넣는다(통입 카드에서 끌 수 있다)' }; }
+  // [결정 #372] (나) 켜는 순간의 약속 · (다) 켜면 무엇을 넣는지 — 9차 판 오너 "200L가 안 되는데 마음대로 통입해 통을 낭비한 사례(앞선 판)가 있어 불신 · 타이밍을 내가 조정하고 싶었다".
+  // 설정 줄(PROD AutoFill)의 「n개월 뒤 진행 때 넣는다: 빈 통 k통」은 켜야만 보였다 → 켜기 전 할 일 줄에 같은 미리 보기(`autoFillPreview`, 기본 설정 = 버튼이 켜는 설정)
+  if (!af) {
+    const fill = out.find((t) => t.id === 'fill');
+    if (fill) {
+      const pv = autoFillPreview(s, {});
+      fill.target = { anchor: AUTOFILL_ROW_ANCHOR };
+      if (pv.casks > 0 || pv.heldL >= 1) fill.text += ` · 자동 통입을 켜면 이번 진행 때 꽉 차는 통 ${pv.casks}통에 넣는다${pv.heldL >= 1 ? `(통을 다 채우지 못하는 ${Math.round(pv.heldL).toLocaleString()}L는 탱크에 두고 다음에 합친다)` : ''}`;
+      fill.quick = { label: '자동 통입 켜기', action: { type: 'setAutoFill', settings: {} }, done: '자동 통입을 켰다 — 꽉 차는 통만 넣는다(통 하나를 채울 만큼 모이기 전에는 넣지 않는다) · 간격(매달 · 3 · 6개월)은 통입 카드의 자동 통입 줄에서 정하고, 거기서 끌 수 있다' };
+    }
+  }
   // 위스키 재고가 떨어져 가는데 숙성을 채운 통이 있다
   // A7(PROD 화면 메모): 병입 권고는 플래그십 예비 통(#260)을 세지 않는다 — 예비 통을 권하면 "예비를 지켜라" 경고와 부딪친다. 남은 통이 예비뿐이면 그 사실과 대가를 한 줄로
   const { ready, readyReserved } = bottleableNow(s);
