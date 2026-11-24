@@ -28,6 +28,10 @@ import { dropLots } from './lots';
 import { cooperageLeadMonths } from './prodKnobs';
 import { usesObservedValuation } from './valuation';
 import { rulesVersionOf } from './rules';
+import { taintOnExtract } from './taint'; // [결정 #382] 꼬리표 잇기(PROD) — 정의는 코어 taint.ts
+import { taintField } from './production';
+/** [결정 #382] 꺼낼 때 꼬리표 — 판 가드는 코어 `taintOnExtract(s, cask)`가 한다(옛 판은 새 꼬리표를 만들지 않음) */
+const extractTaint = (s: GameState, cask: Cask) => taintOnExtract(s, cask);
 
 // 플레이어 행동 — 생산·숙성·블렌딩 (PROD) (결정 #144 — 파일 쪼개기로 actions.ts에서 옮겨 왔다. 규칙 불변)
 // 행동을 더할 때: 아래 타입·처리기·현금 분류 세 곳만 고친다. 코어(actions.ts)는 이 파일의 타입을 통째로 합친다
@@ -159,7 +163,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
       const caskShare = CASKS[cask.typeId].price * CASK_COST_SHARE_PER_FILL;
       const costPerLPA = Math.max(0, lot.costPerLPA - (lpa > 0 ? caskShare / lpa : 0));
       // F2 원장 지점 5: 통입 취소 — LPA·목재 개월 그대로, 통값 배분만 되돌린다(로트 원가가 바뀐 만큼)
-      s.inventory.lots.push({ ...lot, id: nid(s, 'L'), name: `${name} (통입 취소 ${cask.id})`, costPerLPA, ...(lot.components?.length ? { components: addCost(lot.components, (costPerLPA - lot.costPerLPA) * lpa) } : {}) });
+      s.inventory.lots.push({ ...lot, ...taintField(extractTaint(s, cask)), id: nid(s, 'L'), name: `${name} (통입 취소 ${cask.id})`, costPerLPA, ...(lot.components?.length ? { components: addCost(lot.components, (costPerLPA - lot.costPerLPA) * lpa) } : {}) });
       const { contents: _c, filledMonth: _f, slot: _s, rare: _r, rareKnown: _k, ...rest } = cask;
       s.inventory.casks[ci] = { ...rest, fills: Math.max(0, cask.fills - 1) };
       return { state: s, message: `${cask.id} 통입 취소 — 원액 ${Math.round(lot.volumeL).toLocaleString()}L(${(lot.abv * 100).toFixed(1)}%, 물을 탄 도수)를 탱크로 되돌렸다. 통은 넣기 전 그대로` };
@@ -167,7 +171,8 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     // 그 뒤에는 옮겨 붓는 것 — 손실 0.75%(피니싱 옮기기와 같다), 통은 한 번 쓴 통이 된다. 원액은 오크·옹기 개월을 지닌 채 탱크에(다시 통입하면 이어서 숙성)
     const kept = 1 - FINISH.lossShare;
     // F2 원장 지점 6: 원액 빼기 — 이동 손실만큼 원가도 함께 나간다(유출 — 피니싱 옮기기 12와 다르다, P-PROD-55 Q2). 목재 개월은 그대로
-    s.inventory.lots.push({ ...lot, id: nid(s, 'L'), name: `${name} (${cask.id}에서 뺌)`, volumeL: lot.volumeL * kept, ...(lot.components?.length ? { components: scaleLedger(lot.components, kept, 'leak') } : {}) });
+    // [결정 #382] 아는 오염 통에서 꺼낸 원액은 꼬리표를 지닌다(모르는 오염은 따라가지 않는다 — taintOnExtract)
+    s.inventory.lots.push({ ...lot, ...taintField(extractTaint(s, cask)), id: nid(s, 'L'), name: `${name} (${cask.id}에서 뺌)`, volumeL: lot.volumeL * kept, ...(lot.components?.length ? { components: scaleLedger(lot.components, kept, 'leak') } : {}) });
     s.inventory.casks[ci] = emptyCask(cask);
     return { state: s, message: `${cask.id}에서 원액 ${Math.round(lot.volumeL * kept).toLocaleString()}L를 빼 탱크로 옮겼다(손실 ${(FINISH.lossShare * 100).toFixed(2)}%) — 숙성 ${lot.oakMonths}개월은 원액에 남고, 통은 한 번 쓴 통이 된다` };
   },
@@ -475,7 +480,8 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     s.inventory.casks[ti] = {
       ...to, fills: to.fills + 1, filledMonth: s.month, slot: from.slot, rare: undefined, rareKnown: undefined, samples: undefined, sampleLog: undefined, labAnalyzed: undefined,
       // F2 원장 지점 12: 피니싱 옮기기 — 이동 손실은 원가를 남기고(보존) 새 통값 배분을 더한다. 목재 개월은 그대로 이어서 센다(#308 목재 구간의 실제 합)
-      contents: { ...lot, name: `${lot.name} → ${to.id}`, volumeL, costPerLPA: lot.costPerLPA / keep + caskShare / lpa, caskHistory: historyAfterTransfer(lot, from.typeId, to.typeId, s.month), ...(lot.components?.length ? { components: addCost(scaleLedger(lot.components, keep, 'preserve'), caskShare) } : {}) },
+      // [결정 #382] 아는 오염 원액은 옮겨도 꼬리표가 따라간다(9차: K11 → K675에서 「오염」 표시가 사라졌다)
+      contents: { ...lot, ...taintField(extractTaint(s, from)), name: `${lot.name} → ${to.id}`, volumeL, costPerLPA: lot.costPerLPA / keep + caskShare / lpa, caskHistory: historyAfterTransfer(lot, from.typeId, to.typeId, s.month), ...(lot.components?.length ? { components: addCost(scaleLedger(lot.components, keep, 'preserve'), caskShare) } : {}) },
     };
     s.inventory.casks[fi] = emptyCask(from);
     return { state: s, message: `${from.id} → ${to.id} ${finishLabel(to.typeId)} 시작 (손실 ${(lot.volumeL - volumeL).toFixed(1)}L) — 권장 ${FINISH.recommendedMonths[0]}~${FINISH.recommendedMonths[1]}개월` };

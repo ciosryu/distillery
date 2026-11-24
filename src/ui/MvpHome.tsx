@@ -4,6 +4,7 @@ import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { CaskTagBar, CaskTagChips } from './CaskTags';
 import { TurnBrief } from './TurnBrief';
 import { AutoFillRow } from './panels/AutoFill';
+import { AGE_BANDS, bandCounts, thinBands, THIN_BAND_CASKS } from '../sim/ageBand'; // #380 연령 띠 정의(PROD)
 import { CaskCareRow, NewCaskOutlook } from './panels/CaskCare'; // #345 GAP-PROD-7 · #355 탄닌 전망 (PROD)
 import { FinishRow } from './panels/FinishRow'; // #345 GAP-PROD-4 피니싱 (PROD 부품 · ARCH 끼움)
 import { getPlaylog, recentActionCount } from '../store/playlog';
@@ -202,6 +203,7 @@ function WarehouseFold() {
           {hasHandfillZone(s) && !handfillCask(s) && <Badge tone="warn">핸드필 통 없음 — 펼쳐서 고르기</Badge>}
           {/* [결정 #360] v16 캠페인은 칸으로(400L↑ 통은 2칸) — 옛 판 · 샌드박스는 통 = 칸 */}
           <span className={slotsUsed(s) > warehouseCapacity(s) ? 'font-medium text-rose-700 dark:text-rose-400' : 'text-stone-600 dark:text-stone-300'}>자리 {slotsUsed(s)}/{warehouseCapacity(s)}{slotsDifferFromCasks(s) ? '칸' : ''}</span>
+          <AgeBandStrip s={s} />
         </FoldBar>
       </Card>
       {open && <WarehouseCard />}
@@ -387,6 +389,26 @@ function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead |
  * PM 대조: 감점 0만 보이면 "많이 쓴 통일수록 좋다"로 읽힌다. 원액 맛은 읽지 않는다(활성도만) */
 export const LOW_ACTIVITY_NOTE = 0.1;
 
+/**
+ * [결정 #380] 숙성 연령 띠 — 숙성고 카드 머리(접혀 있어도 보인다)에 「연령 0 ~ 2년 n · 3 ~ 4년 n · 5 ~ 9년 n · 10년 이상 n」.
+ * 정의 · 얇은 띠 판정은 PROD `ageBand.ts`(병입 「숙성 사다리」 · #386 자동 채우기와 같은 정의). 얇은 띠는 호박색 — 12년 출하 뒤 이을 원액이 모자란다는 뜻
+ * (9차 판: 찬 통 54개 중 60 ~ 119개월 3통인데 이를 보이는 화면이 없었다). 공개 정보(목재 개월 · 통 수 · L)만
+ */
+function AgeBandStrip({ s }: { s: GameState }) {
+  const counts = bandCounts(s);
+  if (!AGE_BANDS.some((b) => counts[b.id].casks > 0)) return null;
+  const thin = new Set(thinBands(counts));
+  return (
+    <span className="text-stone-600 dark:text-stone-300" title={`몰트 · 그레인 나무 통의 목재 숙성 연령별 통 수(L) — 더 오래된 띠가 있는데 ${THIN_BAND_CASKS}통 미만인 띠는 호박색: 그 나이대 원액이 얇아 위 띠를 다 쓴 뒤 이을 통이 모자란다`}>
+      연령{' '}
+      {AGE_BANDS.map((b, i) => (
+        <span key={b.id} className={thin.has(b.id) ? 'font-medium text-amber-700 dark:text-amber-300' : undefined}>
+          {i ? ' · ' : ''}{b.label.replace(' ~ ', '–').replace('10년 이상', '10년+')} {counts[b.id].casks}{thin.has(b.id) ? ' ⚠' : ''}
+        </span>
+      ))}
+    </span>
+  );
+}
 /** [결정 #368] 아는 오염 통 줄의 알림 — 원액이 든 동안만 매달 결점 향(곰팡내)이 더해진다(warehouse.ts · 곰팡이 +1 · TCA +1.5 · 상한 40). "빼면 낫는다"로 읽히지 않게 "더 늘지 않는다 · 이미 밴 것은 남는다"를 한 문장에 — 다른 통에 다시 넣으라는 안내는 넣지 않는다(#367) · 문구 PROD 제안 */
 const CONTAM_HOLD_NOTE = '통에 둔 동안 결점 향이 매달 더 밴다 — [원액 빼기]로 꺼내면 더 늘지 않는다(이미 밴 결점 향은 남는다)';
 
@@ -395,6 +417,15 @@ function TanninLine({ s, c }: { s: GameState; c: Cask }) {
   if (!o) return <div className="text-[11px] text-stone-500" title="스팟 통의 활성도는 6개월 숙성 뒤에 드러난다">활성도 ?</div>;
   const yrs = Math.floor(o.atMonths / 12);
   const weak = o.activity < LOW_ACTIVITY_NOTE;
+  // [결정 #374] 옮긴 원액(원액 빼기 → 다시 통입 · 피니싱) — 앞 통 활성도가 남지 않아 감점 절대값이 너무 작게 나온다(9차 재현 3.6 대 어림 10.8). 감점 숫자는 감추고
+  // 이 통에서 기준 개월까지 더해질 탄닌만 보인다(PROD `tanninOutlook().moved` — 활성도 · 목재 개월 · 통에 넣은 달만 읽는다)
+  if (o.moved) {
+    return (
+      <div className="text-[11px] text-stone-500" title={`다른 통에서 옮겨 온 원액 — 이 통에서 ${o.moved.monthsHere}개월째. 앞 통에서 밴 탄닌은 기록이 없어 12년 감점 숫자를 셀 수 없다(앞 통 몫을 빼고 세면 실제보다 작게 나온다). 이 통 활성도로 ${yrs}년(${o.atMonths}개월)까지 더해질 탄닌만 어림한다`}>
+        활성도 {o.activity.toFixed(2)} · 옮긴 원액 · 이 통에서 {yrs}년까지 탄닌 +{Math.round(o.moved.addHere)}
+      </div>
+    );
+  }
   return (
     <div className={`text-[11px] ${o.penalty >= 5 || weak ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`${yrs}년(${o.atMonths}개월) 무렵 오크·탄닌 약 ${Math.round(o.tannin)}(위스키 상한 ${o.cap}) → 품질 감점 약 ${Math.round(o.penalty)} · 지금까지 약 ${Math.round(o.now)} — 비울 때마다 활성도 ×${EMPTY_ACTIVITY_FACTOR} · 3년 위스키는 활성도 높은 통(새 통)이 빨리 익는다. 12년은 2~5번 쓴 통(활성도 0.6~0.13)이 가장 낫고, 0.1 아래는 나무 향이 모자라 12년 품질도 다시 내려간다. 어림(기상 이상치·재해 제외)`}>
       활성도 {o.activity.toFixed(2)} · {yrs}년 {o.penalty >= 0.5 ? `감점 약 ${Math.round(o.penalty)}` : '감점 없음'}{weak && <div>나무 향이 약해진 통 — 12년 품질이 다시 내려간다</div>}

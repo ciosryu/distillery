@@ -12,7 +12,7 @@ import { undefendedDisasters } from '../sim/events';
 import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { exportShortfalls } from '../sim/market';
 import { retailBreakRemaining, retailCancellationCost } from '../sim/deals';
-import { overhangFactor } from '../sim/retail';
+import { OVERHANG, overhangFactor, overhangMonths } from '../sim/retail';
 import { ibAgedCaskCount } from '../sim/bulk';
 import { autoFillPreview } from '../sim/autoFill';
 import { autoRestockPlan, autoRestockSources, autoRestockSupported, guardedFlagshipCasks, productMonthlyPace } from '../sim/economics';
@@ -472,14 +472,14 @@ export function monthTodos(s: GameState): Todo[] {
     const bad = flagshipCandidates(s).filter((c) => c.contaminationKnown && !campaignWon(s));
     if (bad.length) out.push({ id: 'contam-cand', level: 'warn', text: `12년 후보 통 가운데 ${bad.length}통(${bad.slice(0, 3).map((c) => c.id).join(' · ')}${bad.length > 3 ? ' …' : ''})이 아는 오염 통이다 — 후보로는 세지만, 병입하면 결점 향(곰팡내 등)이 섞여 품질이 깎인다`, action: '숙성 중인 캐스크', target: { anchor: 'mvp-warehouse' } });
   }
-  // 재고 적체(9차 판 64개월 — 오크소주 · 뉴본 피티드가 20개월 치 넘게 쌓였는데 할 일에 신호가 없었다, PROD 제안 2026-11-24): 팔 재고가 판매의 6개월 치를 넘으면
-  // 국내 수요가 깎인다(`retail.ts overhangFactor`, 하한 ×0.6 — 판매 셈과 같은 함수). 홈 「돈 흐름」의 재고 과잉(overstock)은 주종 묶음 금액이라 "수요가 준다"는 보이지 않는다.
+  // 재고 적체(9차 판 64개월 — 오크소주 · 뉴본 피티드가 20개월 치 넘게 쌓였는데 할 일에 신호가 없었다, PROD 제안 2026-11-24): 팔 재고가 판매의 `OVERHANG.months` 개월 치를 넘으면
+  // 국내 수요가 깎인다(`retail.ts overhangFactor` · `overhangMonths`, 하한 `OVERHANG.floor` — 판매 셈과 같은 함수). 홈 「돈 흐름」의 재고 과잉(overstock)은 주종 묶음 금액이라 "수요가 준다"는 보이지 않는다.
   // 가장 많이 깎인 제품 하나 + "외 n개" 한 줄. 값은 재고 · 판매 추세(공개 정보)라 I2 누수가 아니다
   {
-    const hit = s.commerce.products.filter((p) => !p.dutyFreeOnly && p.stockBottles > 0).map((p) => ({ p, f: overhangFactor(p, s.month), m: p.stockBottles / Math.max(1, p.salesEma ?? 0) })).filter((x) => x.f < 1).sort((a, b) => a.f - b.f || b.m - a.m || a.p.id.localeCompare(b.p.id)); // 하한(×0.6)에 여럿이면 더 많이 쌓인 제품
+    const hit = s.commerce.products.filter((p) => !p.dutyFreeOnly && p.stockBottles > 0).map((p) => ({ p, f: overhangFactor(p, s.month), m: overhangMonths(p, s.month) ?? 0 })).filter((x) => x.f < 1).sort((a, b) => a.f - b.f || b.m - a.m || a.p.id.localeCompare(b.p.id)); // 하한(×0.6)에 여럿이면 더 많이 쌓인 제품
     if (hit.length) {
       const { p, f, m } = hit[0]!;
-      out.push({ id: 'overhang', level: 'warn', text: `「${p.name}」 재고 ${m.toFixed(1)}개월 치 — 수요 ×${f.toFixed(2)}(팔 재고가 6개월 치를 넘게 쌓이면 줄어든다)${hit.length > 1 ? ` 외 ${hit.length - 1}개 제품` : ''} · 값을 내리거나 보충 · 병입을 멈춘다`, action: '판매', target: { tab: 'sales' } });
+      out.push({ id: 'overhang', level: 'warn', text: `「${p.name}」 재고 ${m.toFixed(1)}개월 치 — 수요 ×${f.toFixed(2)}(팔 재고가 ${OVERHANG.months}개월 치를 넘게 쌓이면 줄어든다)${hit.length > 1 ? ` 외 ${hit.length - 1}개 제품` : ''} · 값을 내리거나 보충 · 병입을 멈춘다`, action: '판매', target: { tab: 'sales' } });
     }
   }
   // A4(PROD 화면 메모): 빈 통이 곧 바닥난다 — 계산은 PROD `economics.ts caskRunway`(이번 달 가능 배치 · 탱크 적체 먼저 · 자동 통입 올림 반영)를 그대로 쓴다.

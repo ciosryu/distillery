@@ -24,6 +24,7 @@ import { isLocked } from './scenario';
 import type { ProductCategory, SpiritKind } from './types';
 import { PROD_TUNING } from './prodTuning';
 import { ledgerOf, mergeLedgers, newEntry, siteIdOf } from './ledger';
+import { mixTaint } from './taint'; // [결정 #382] 코어 잎
 
 type StillDef = Extract<EquipmentDef, { kind: 'still' }>;
 
@@ -333,8 +334,13 @@ export function mergeIntoTank(tank: SpiritLot, fresh: SpiritLot, recipeName: str
     costPerLPA: (tank.costPerLPA * a + fresh.costPerLPA * b) / (a + b),
     createdMonth: Math.min(tank.createdMonth, fresh.createdMonth),
     ...(mashShare ? { mashShare } : {}),
+    // [결정 #382] 아는 오염 꼬리표는 LPA 몫으로 묽힌다 — 둘 다 없으면 필드 없음(지금 출력 그대로)
+    ...taintField(mixTaint([{ taint: tank.knownTaint, lpa: a }, { taint: fresh.knownTaint, lpa: b }])),
   };
 }
+
+/** [결정 #382] 꼬리표 필드 — 없으면 키를 넣지 않는다(세이브 · 출력 바이트 그대로) */
+export const taintField = (t: SpiritLot['knownTaint']): Pick<SpiritLot, 'knownTaint'> => (t ? { knownTaint: t } : {});
 
 /** 대량 구매 할인 배수 — 지난달 실제 구매량(kg) 기준 공급 등급 (주문만 크게 넣는 꼼수 방지) */
 export function volumeDiscounts(s: GameState): Record<string, number> {
