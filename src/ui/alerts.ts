@@ -450,6 +450,10 @@ export function monthTodos(s: GameState): Todo[] {
   // 자동 통입(#239)이 켜져 있으면 넣을 통이 있는 동안은 안내하지 않는다 — 빈 통이 모자랄 때만 "통을 사라"로 줄인다
   const af = s.inventory.autoFill;
   const afLeft = af && tankMalt >= 50 ? autoFillPreview(s, af).leftL : 0;
+  // [결정 #372] (가)(PROD #932) 뒤 v16 자동 통입은 생산 지시가 꺼져도 덜 찰 통에 넣지 않는다 — 통 하나에 모자란 끝자리가 탱크에 남는다.
+  // 그 끝자리가 2개월 넘게 기다리면 warn이 아니라 info 한 줄(PROD 문구). 매달 생기는 끝자리(생산 중 · 다음 달 합침)는 2개월 문턱 아래라 뜨지 않는다
+  const afHeld = af && tankMalt >= 50 && afLeft < 50 ? autoFillPreview(s, af).heldL : 0;
+  if (afHeld >= 50 && waitM >= 2) out.push({ id: 'fill', level: 'info', text: `탱크 몰트·그레인 ${Math.round(afHeld).toLocaleString()}L — 통 하나를 꽉 채우기에 모자라 기다린다(생산을 다시 켜면 합쳐 넣는다 · 손 통입으로 덜 채운 통에 넣을 수도 있다) · ${waitM}개월째`, action: '통입', target: { anchor: AUTOFILL_ROW_ANCHOR } });
   if (tankMalt >= 50 && (!af || afLeft >= 50)) {
     // 몰트·그레인을 넣을 **나무** 통만 센다(P-ARCH-64 — 7차 판: 빈 통 26개 중 6개가 소주용 옹기). 아는 오염만 뺀다(F5b I1 — 숨은 값 직접 읽기 없음)
     const empties = s.inventory.casks.filter((c) => !c.contents && !c.contaminationKnown && vesselMaterial(c) === 'wood').length;

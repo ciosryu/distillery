@@ -15,4 +15,16 @@ describe('#372 — 통입 대기 할 일의 자동 통입 미리 보기 · 약�
     expect(t.quick?.done).toContain('꽉 차는 통만 넣는다');
     expect(t.quick?.done).toContain('간격(매달 · 3 · 6개월)');
   });
+  it('자동 통입이 켜져 있고 통 하나에 모자란 끝자리만 2개월 넘게 남으면 warn이 아니라 info 한 줄(#372 (가) 뒤 · PROD 문구)', () => {
+    const r = parsePlayFile(readFileSync('docs/playtest/9/distillery-mvp-standard-y6m5-202611240759.json', 'utf8')); if ('error' in r) throw new Error(r.error);
+    const s = r.save;
+    s.inventory.autoFill = {};
+    const pv = autoFillPreview(s, {});
+    expect(pv.leftL).toBeLessThan(50);
+    expect(pv.heldL).toBeGreaterThanOrEqual(50);
+    const t = monthTodos(s).filter((x) => x.id === 'fill');
+    expect(t).toHaveLength(1);
+    expect(t[0]!.level).toBe('info');
+    expect(t[0]!.text).toContain('통 하나를 꽉 채우기에 모자라 기다린다');
+  });
 });
