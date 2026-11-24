@@ -86,6 +86,12 @@ export interface SpiritLot {
   restMonths?: number;
   /** 거쳐 온 숙성 용기 (피니싱 이력, S-10). 없으면 지금 캐스크 하나뿐 */
   caskHistory?: CaskStint[];
+  /**
+   * [결정 #382] 아는 오염 원액 꼬리표 — 아는 오염 통(`Cask.contaminationKnown`)에서 꺼낸 원액에 붙고(피니싱 · 원액 빼기), 섞이면 LPA 몫(`share` 0 ~ 1)으로 묽어진다.
+   * **옮길 때 이미 알던 오염만** 붙인다(모르는 오염은 따라가지 않는다 — #310 · I1 / I2). 표시 문턱은 `taint.ts TAINT_SHOW_SHARE`. 판정(12년 적격 · 후보 · 병입)은 그대로(#365 · #382 — 경고만).
+   * 선택 필드 — 없으면 꼬리표 없음(버전 올림 없음 #187)
+   */
+  knownTaint?: { kind: 'tca' | 'mold'; share: number };
   sourced: boolean;
   /** 누적 원가(원/LPA) — 원재료·에너지·매입가 */
   costPerLPA: number;
