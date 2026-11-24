@@ -1,8 +1,8 @@
 import { create } from 'zustand';
-import { createLocalEngine, DEFAULT_STOPS, newGame, setInvariantMode, newScenarioGame, type Action, type BusinessPlan, type GameState, type RegionId, type StopReason } from '../sim';
+import { createLocalEngine, DEFAULT_STOPS, OPS_STOPS, newGame, setInvariantMode, newScenarioGame, type Action, type BusinessPlan, type GameState, type RegionId, type StopReason } from '../sim';
 import { flushSave, loadGame, queueSave, saveNow } from './persist';
 import { useUi } from './ui';
-import { advanceKindOf, fillTally, parsePlayFile, recordAction, recordFill, recordBuild, recordTurns, recordUndo, replacePlaylog, resetPlaylog, setNextAdvance } from './playlog';
+import { advanceKindOf, fillTally, recordAdvance, parsePlayFile, recordAction, recordFill, recordBuild, recordTurns, recordUndo, replacePlaylog, resetPlaylog, setNextAdvance } from './playlog';
 import { BUILD_ID } from '../build';
 
 // 불변식 매달 검사 (INV-ARCH-1, architecture §9.5) — 개발 빌드(vite dev)만 콘솔에 적는다. 배포 빌드는 불러올 때만(persist.ts)
@@ -21,6 +21,8 @@ const STOP_LABEL: Record<StopReason, string> = {
   forecast: '새 예보',
   commission: '새 블렌딩 의뢰',
   flagshipReady: '12년 적격 통이 생겼다 — 병입해 팔면 캠페인 승리',
+  caskBid: '새 IB 입찰 제안(2개월 안에 답)',
+  goalDone: '목표 달성',
   maxMonths: '',
 };
 
@@ -28,7 +30,8 @@ interface GameStore {
   state: GameState;
   dispatch: (a: Action) => boolean;
   /** n개월 진행. 여러 달(분기·1년)이면 현금 부족·파산·게임 종료·목표 판정에서 멈춘다 */
-  advance: (months: number) => void;
+  /** ops: 종반 운영 모드(#388 ① A1) — 여러 달 진행이 결정이 필요한 것(선택 이벤트 · 의뢰 · IB 입찰 · 목표 달성)에서도 멈춘다 */
+  advance: (months: number, ops?: boolean) => void;
   /** 멈춤 조건이 생길 때까지 최대 n개월 — 한 달마다 화면에 제어권을 돌려준다 (PRD §2.1) */
   advanceUntil: (maxMonths: number, stopOn?: StopReason[]) => Promise<void>;
   cancelAdvance: () => void;
@@ -85,13 +88,14 @@ export const useGame = create<GameStore>((set) => {
       if (before && a.type === 'fillCasks') recordFill(fillTally(before, engine.snapshot(), a.caskIds)); // 손 통입 통 수 · 덜 찬 통 수 (P-ARCH-88)
       return true;
     },
-    advance: (months) => {
+    advance: (months, ops = false) => {
       const before = engine.snapshot() as GameState;
       setNextAdvance(advanceKindOf(months));
-      const res = engine.advance({ months, stopOn: months > 1 ? SAFETY_STOPS : [] });
+      const res = engine.advance({ months, stopOn: months > 1 ? (ops ? OPS_STOPS : SAFETY_STOPS) : [] });
       setNextAdvance(undefined);
+      recordAdvance({ month: before.month, kind: advanceKindOf(months), ops, asked: months, went: res.months, ...(res.stoppedBy !== 'maxMonths' && res.months < months ? { stop: res.stoppedBy } : {}) }); // #388 ① A1 — 분기 진행이 끝까지 갔나
       if (res.months > 0) { undoState = before; set({ undoInfo: { month: before.month, months: res.months } }); }
-      if (res.stoppedBy !== 'maxMonths' && res.months < months) toast(res.stoppedBy === 'verdict' || res.stoppedBy === 'flagshipReady' ? 'ok' : 'error', `${res.months}개월 진행 후 멈춤 — ${STOP_LABEL[res.stoppedBy]}`);
+      if (res.stoppedBy !== 'maxMonths' && res.months < months) toast(res.stoppedBy === 'verdict' || res.stoppedBy === 'flagshipReady' || res.stoppedBy === 'goalDone' || res.stoppedBy === 'caskBid' || res.stoppedBy === 'commission' || res.stoppedBy === 'pendingEvent' ? 'ok' : 'error', `${res.months}개월 진행 후 멈춤 — ${STOP_LABEL[res.stoppedBy]}`);
     },
     advanceUntil: async (maxMonths, stopOn = DEFAULT_STOPS) => {
       const ui = useUi.getState();
