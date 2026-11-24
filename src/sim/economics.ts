@@ -895,7 +895,8 @@ export function applyAutoRestock(s: GameState, report: MonthReport, monthOfYear 
     if (contest) report.notes.push(`자동 납품 「${p.name}」이 어린 통 ${contest.youngCasks}개를 가져간다 — 「${contest.rival.name}」(${Math.floor(contest.rivalFloor / 12)}년 이상 통)은 통이 모자라 못 채우는 중. 이 제품의 통 하한을 ${Math.floor(contest.rivalFloor / 12)}년으로 올리거나 자동 납품을 끄세요`);
     const plan = autoRestockPlan(s, p, monthOfYear);
     if (!plan) {
-      if (p.stockBottles < Math.ceil(productMonthlyPace(s, p, monthOfYear) * (p.autoRestock ?? 0))) report.notes.push(`자동 납품 「${p.name}」 — 쓸 원액이 없어 못 채웠다${isWhiskyCategory(p.category) ? ` (${p.ageYears ? `${p.ageYears}년 이상` : '법정 숙성 이상'} 숙성·같은 피니시·도수 ${Math.round(p.abv * 1000) / 10}% 이상 통이 필요)` : ' (탱크 원액 필요)'}`);
+      // 원액이 있는데 계획이 빈 달(모자란 양이 1병 안팎이라 원액 0.5L 미만 — 9차 판 65개월째 뉴본 그레인)은 「원액이 없다」가 틀린 안내라 메모하지 않는다(채우는 양은 그대로)
+      if (p.stockBottles < Math.ceil(productMonthlyPace(s, p, monthOfYear) * (p.autoRestock ?? 0)) && !autoRestockSources(s, p).length) report.notes.push(`자동 납품 「${p.name}」 — 쓸 원액이 없어 못 채웠다${isWhiskyCategory(p.category) ? ` (${p.ageYears ? `${p.ageYears}년 이상` : '법정 숙성 이상'} 숙성·같은 피니시·도수 ${Math.round(p.abv * 1000) / 10}% 이상 통이 필요)` : ' (탱크 원액 필요)'}`);
       continue;
     }
     const pv = previewBlend(s, plan.components, plan.opts);
