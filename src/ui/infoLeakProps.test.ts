@@ -8,7 +8,7 @@
 // 품질을 드러내는 일 — 리뷰와 같은 결) — MGT 확인 · 그 밖의 이벤트 효과(events.ts 210 · 225 — 가장 좋은 제품 품질로 효과 크기)는 MGT가 화면 문구에 값이 드러나는지 본다 ·
 // 결과 화면 연표의 플래그십 품질은 승리 뒤 공개(#344 HeritageReveal과 같은 자리)라 누수로 보지 않는다.
 // L6′(MGT P-MGT-62 2026-11-24): 평론가 판정 문구의 품질 숫자(참값) — 판정 구간은 문턱 신호라 빼고 숫자만 시험한다. 오너 답(최소안 = 숫자만 뺌) 뒤 MGT 수리와 함께 it으로
-// L7(MKT 제안 2026-11-24): 피드 향 문구가 참 향미를 읽는다 — 품질이 아니라 향미가 새는 길(판매 화면 향미 카드는 추정 육각형). `it.fails`로 목록에 둔다(고칠지 · 의도로 볼지는 MKT 몫)
+// L7 [결정 #366]: 피드 글의 상위 향 이름 · 방향은 **의도된 공개 신호**(참 향 그대로 — 시트러스 대 열대처럼 향 이름이 다른 두 판은 글이 달라도 된다 · 2026-11-24 MKT 재현). 결함 신호인 잡내 문구만 추정 경로(커뮤니티 품질)를 거친다 → 시험은 잡내 축만 다른 두 판
 // 지금 새는 길은 `it.fails`로 적어 둔다 — 고치면 이 시험이 "통과해 버려서" 실패하므로, 고친 PR이 `it.fails`를 `it`으로 바꾼다(목록이 줄어들기만 한다)
 import { describe, expect, it } from 'vitest';
 import { calendar, domesticDemands, knownState, knownView, newScenarioGame, priceOptions, type GameState, type Product } from '../sim';
@@ -57,12 +57,14 @@ describe('I2 — 같은 공개 정보 · 다른 참 품질이면 화면 읽기 �
   it.fails('[누수 L3] 커뮤니티 피드 `feedFor` — 위스키베이스 점수 밖의 글 분위기 · 비교 글이 참 품질을 읽는다(feed.ts 68 · 283)', () => {
     expect(feedFor(high.s, 3, 40).map((x) => x.text)).toEqual(feedFor(low.s, 3, 40).map((x) => x.text));
   });
-  it.fails('[누수 L7 후보 — MKT 2026-11-24] 피드 글의 향 문구 — `topNotes(p.flavor)` · `offNote`가 참 향미를 읽는다(feed.ts 169). 판매 화면 향미 카드는 병입 때 추정한 육각형(`qualityKnown.hex`)', () => {
-    // 품질 · 아는 품질 · 공개 정보는 같고 참 향미만 다르다(시트러스 대 열대과일)
-    // 판매 기록 10개월(시드 5 — 21개 글 중 1개가 「시트러스 기본기 탄탄함」처럼 참 향미 축 이름을 쓴다)
+  it('[L7 — #366 지킴] 피드 잡내 문구는 참 잡내 축(퓨젤 · 자극 등)을 드러내지 않는다 — 품질 · 아는 품질 · 향 이름이 같고 잡내 축만 다른 두 판의 글이 같다', () => {
+    // 향 이름 차이는 #366에서 의도된 공개 신호(위 주석)라 시험하지 않는다.
+    // [사실 2026-11-24] 지금 main 피드로는 잡내 축 차이가 글에 드러나는 조합을 찾지 못했다(아는 품질 40 · 50 · 60 × 참 품질 40 · 50 · 60 × 시드 1 · 3 · 5, 판매 10개월) —
+    // 잡내 문구가 참 잡내 축을 읽는 길(offNote)은 코드에 있으므로, MKT #862(#366 수리 · L3 커뮤니티 품질)가 들어온 뒤에도 이 지킴이 통과해야 한다
     const tenMonths = (x: { s: GameState }) => { for (let m = 29; m >= 30 - 9; m--) x.s.history.reports.unshift({ month: m, sales: [{ productId: 'P1', name: '싱글 몰트 1', bottles: 30 + m, revenue: 1_800_000, demandBottles: 40 }], notes: [], expenses: {} } as never); return x.s; };
-    const a = tenMonths(withProduct(60, { citrus: 0.8, tropical: 0.1 }));
-    const b = tenMonths(withProduct(60, { citrus: 0.1, tropical: 0.8 }));
+    const base = { fresh_fruit: 30 };
+    const a = tenMonths(withProduct(45, { ...base, feinty: 20, harshness: 60 }));
+    const b = tenMonths(withProduct(45, base));
     expect(feedFor(a, 10, 40).map((x) => x.text)).toEqual(feedFor(b, 10, 40).map((x) => x.text));
   });
   it.fails('[누수 L6′ — MGT P-MGT-62 2026-11-24] 평론가 판정 문구에 최고 참 품질 숫자 — `criticVerdict`가 「무난한 평가 — 품질 ${best}」(참 p.quality)를 이벤트 기록(이벤트 탭 · 소식 창)에 쓴다(events.ts 209)', () => {
