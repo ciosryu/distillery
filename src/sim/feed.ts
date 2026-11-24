@@ -1,12 +1,12 @@
 import { CATEGORY } from './content/categories';
 import { regionOf } from './content/regions';
-import { CAFE_CLOSE, CAFE_LINES, CAFE_OPEN, COMPARE_LINES, COMPARE_REASON, DCJ_CLOSE, DCJ_LINES, DCJ_OFFTOPIC, DCJ_OPEN, DCW_CLOSE, DCW_FEATURE, DCW_LINES, DCW_OPEN, FEED_AUTHORS, FEED_BENCHMARKS, FEED_COMMUNITIES, REPLIES, WB_FINISH, WB_NOSE_ADJ, WB_VERDICT, type FeedFeature, type FeedSituation, type FeedStyle, type Harsh } from './content/feed';
+import { FEED_GENERIC_OFF, CAFE_CLOSE, CAFE_LINES, CAFE_OPEN, COMPARE_LINES, COMPARE_REASON, DCJ_CLOSE, DCJ_LINES, DCJ_OFFTOPIC, DCJ_OPEN, DCW_CLOSE, DCW_FEATURE, DCW_LINES, DCW_OPEN, FEED_AUTHORS, FEED_BENCHMARKS, FEED_COMMUNITIES, REPLIES, WB_FINISH, WB_NOSE_ADJ, WB_VERDICT, type FeedFeature, type FeedSituation, type FeedStyle, type Harsh } from './content/feed';
 import { AXIS } from './content/axes';
 import { productLuxury } from './brands';
 import { topNotes } from './flavor';
 import { expectedPricePerL, productConsumerPrice } from './market';
 import { rngFor, type Rng } from './rng';
-import { hidesProductQuality } from './productView'; // F5d (#338)
+import { hidesProductQuality, knownProductQuality } from './productView'; // F5d (#338)
 import type { AxisId, GameState, MonthReport, Product } from './types';
 
 // 가상 주류 커뮤니티 피드 ([결정 #247] → v2 [결정 #254], 오너 2026-11-10) — 파트 MKT. **순수 연출: 판매·인지도에 영향 없음.**
@@ -48,6 +48,10 @@ export interface FeedSignals {
   priceChange: number;
   /** 감정 −1~1 = 0.6 × 품질 + 0.4 × 가성비 */
   sentiment: number;
+  /** 글에 나오는 잡내 이름(없으면 null) — 공개 판은 참 잡내 축(`offNote`), 가리는 판은 커뮤니티 품질로만([결정 #366]) */
+  off: string | null;
+  /** 「bad」 글의 {off} 자리(잡내 이름이 없을 때 채우는 말) */
+  offWord: string;
   mania: number;
   mass: number;
   extreme: number;
@@ -57,24 +61,41 @@ const WHITE: readonly string[] = ['soju_distilled', 'gin', 'baijiu'];
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));
 const fmtPrice = (won: number) => (won >= 10_000 ? `${(won / 10_000).toFixed(won >= 100_000 ? 0 : 1).replace(/\.0$/, '')}만 원` : `${Math.round(won / 100) * 100}원`);
 
+/**
+ * 커뮤니티가 말하는 품질 (외부 검토 I2 누수 L3, 2026-11-24 · MKT) — 피드의 글 분위기 · 비교 글 · 매니아 비중이 읽는 값.
+ * 가리는 판(F5d, v16)의 아는 품질이 있는 제품: **그달 전 12개월 위스키베이스 점수 읽기의 평균**(틱이 남긴 `MonthReport.reviews` — 플레이어가 피드에서 이미 본 점수,
+ * 아는 품질 추정에도 이미 들어간 정보), 점수가 없으면 아는 품질(`knownProductQuality`). 공개 판 · 공개 제품은 참 품질 그대로(바이트 동일).
+ * 그달 점수는 넣지 않는다 — 틱(리뷰를 뽑기 전)과 화면이 같은 값을 쓰게. 읽기 식은 reviews.ts `reviewReading`과 같다(순환 import를 피해 여기 적는다)
+ */
+export function communityQuality(s: Pick<GameState, 'rulesVersion' | 'commerce' | 'history'>, p: Product, month: number): number {
+  if (!hidesProductQuality(s) || !p.qualityKnown) return p.quality;
+  const scores = s.history.reports.filter((r) => r.month < month && r.month >= month - 12).flatMap((r) => r.reviews?.find((v) => v.productId === p.id)?.scores ?? []);
+  return scores.length ? scores.reduce((t, sc) => t + (sc - 60) / 0.38, 0) / scores.length : knownProductQuality(s, p).q;
+}
+
 /** 그 달의 판매가(매출 ÷ 병)로 본 반응 재료. 판매가 없으면 지금 출고가 */
 export function feedSignals(s: GameState, p: Product, sale: MonthReport['sales'][number] | undefined, prev: MonthReport['sales'][number] | undefined, month: number): FeedSignals {
   const region = regionOf(s);
   const price = sale && sale.bottles > 0 ? Math.round(sale.revenue / sale.bottles) : p.price;
   const consumer = productConsumerPrice(s, { ...p, price }, region);
-  const expected = expectedPricePerL(region, p) * (p.bottleMl / 1000);
+  const quality = communityQuality(s, p, month); // I2 L3 — 가리는 판은 참 품질이 아니라 커뮤니티가 본 점수로(가성비의 기대 가격도 같은 값)
+  // [결정 #366] I2 L7 (라): 잡내 · 자극 문구는 품질 신호라, 가리는 판에서는 참 잡내 축 대신 커뮤니티 품질로만 낸다(향 이름 · 방향은 공개 그대로)
+  const hidden = hidesProductQuality(s) && !!p.qualityKnown;
+  const off = hidden ? (quality < FEED_GENERIC_OFF.below ? FEED_GENERIC_OFF.word : null) : offNote(p);
+  const seen = quality === p.quality ? p : { ...p, quality };
+  const expected = expectedPricePerL(region, seen) * (p.bottleMl / 1000);
   const qpr = expected > 0 ? consumer / expected : 1;
   const prevPrice = prev && prev.bottles > 0 ? prev.revenue / prev.bottles : price;
-  const qs = clamp((p.quality - 62) / 18, -1, 1);
+  const qs = clamp((quality - 62) / 18, -1, 1);
   const ps = clamp((1 - qpr) * 2, -1, 1);
   const years = Math.floor((p.oakMonths ?? (p.ageYears ?? 0) * 12) / 12);
   const peat = (p.flavor.peat_smoke ?? 0) >= 30 || (p.flavor.dried_fruit ?? 0) >= 30;
-  const mania = clamp((p.abv >= 0.55 ? 0.4 : 0) + (p.rareSingleCask ? 0.3 : 0) + (years >= 10 ? 0.3 : 0) + (peat ? 0.2 : 0) + productLuxury(p) / 200, 0, 1);
+  const mania = clamp((p.abv >= 0.55 ? 0.4 : 0) + (p.rareSingleCask ? 0.3 : 0) + (years >= 10 ? 0.3 : 0) + (peat ? 0.2 : 0) + productLuxury(seen) / 200, 0, 1);
   const bottles = sale?.bottles ?? 0;
   const mass = clamp((WHITE.includes(p.category) ? 0.5 : 0) + (qpr < 0.9 ? 0.2 : 0) + (bottles >= 500 ? 0.3 : 0), 0, 1);
   const extreme = qpr < 0.67 ? clamp((0.67 - qpr) / 0.3, 0, 1) : qpr > 1.5 ? clamp((qpr - 1.5) / 0.5, 0, 1) : 0;
   return {
-    quality: p.quality, qpr, consumer, bottles,
+    quality, qpr, consumer, bottles, off, offWord: off ?? (hidden ? FEED_GENERIC_OFF.word : '알코올 자극'),
     stockout: !!sale && sale.bottles > 0 && sale.demandBottles > sale.bottles * 1.05,
     launch: (!!p.launchBoost && month < p.launchBoost.untilMonth) || month - p.createdMonth <= 1,
     priceChange: prevPrice > 0 ? price / prevPrice - 1 : 0,
@@ -167,11 +188,11 @@ function featuresOf(p: Product): FeedFeature[] {
 /** forcedScore — F5d(v16): 틱에서 그린 위스키베이스 점수(`MonthReport.reviews`). 있으면 그 점수와 그 점수가 말하는 품질로 쓴다(참 품질을 글에 새지 않게) */
 function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style: FeedStyle, month: number, i: number, forcedScore?: number): FeedPost {
   const notes = topNotes(p.flavor, 3).map((n) => n.nameKo);
-  const off = offNote(p);
+  const off = g.off;
   const years = Math.floor((p.oakMonths ?? (p.ageYears ?? 0) * 12) / 12);
   const vars: Record<string, string> = {
     name: p.name, n1: notes[0] ?? '은은한 곡물', n2: notes[1] ?? notes[0] ?? '단맛', n3: notes[2] ?? notes[1] ?? '여운',
-    off: off ?? '알코올 자극', price: fmtPrice(g.consumer), bench: benchmarkFor(p, g.consumer), cat: CATEGORY[p.category].nameKo,
+    off: g.offWord, price: fmtPrice(g.consumer), bench: benchmarkFor(p, g.consumer), cat: CATEGORY[p.category].nameKo,
     abv: `${Math.round(p.abv * 100)}%`, age: years > 0 ? `${years}년` : '어린',
   };
   const white = WHITE.includes(p.category);
@@ -280,7 +301,7 @@ export function feedFor(s: GameState, months = 3, maxPosts = 14): FeedPost[] {
       const j = (i + 1 + rng.int(0, list.length - 2)) % list.length; // i와 다른 제품
       const [win, lose] = list[i]!.g.sentiment >= list[j]!.g.sentiment ? [list[i]!, list[j]!] : [list[j]!, list[i]!];
       const style = pickStyle(rng, styleWeights(win.p, win.g));
-      const reason = win.p.quality - lose.p.quality >= 5 ? COMPARE_REASON.quality : COMPARE_REASON.price;
+      const reason = win.g.quality - lose.g.quality >= 5 ? COMPARE_REASON.quality : COMPARE_REASON.price; // I2 L3 — 커뮤니티가 본 품질로(공개 판은 참 품질과 같다)
       const text = fill(rng.pick(COMPARE_LINES[style]), { winner: win.p.name, loser: lose.p.name, reason });
       const white = WHITE.includes(win.p.category);
       all.push({ id: `${r.month}:cmp:${win.p.id}:${lose.p.id}`, month: r.month, style, community: FEED_COMMUNITIES[style][white ? 'white' : 'whisky'], author: rng.pick(FEED_AUTHORS[style]), productId: win.p.id, productName: `${win.p.name} vs ${lose.p.name}`, text, tone: 'neu', harsh: style === 'dc_jugal' ? 1 : style === 'dc_whisky' ? 0.5 : 0 });

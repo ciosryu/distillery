@@ -5,7 +5,8 @@ import { acceptExportOffer, cancelExport } from './exportDeals';
 import { recordPendingCash } from './cashflow';
 import { EXPORT_MARKETS, type ExportMarketId } from './content/exports';
 import { OEM, RETAIL_DEAL, retailCancellationCost, startOem, startRetail } from './deals';
-import { warehouseCapacity } from './util';
+import { slotsUsed, warehouseCapacity } from './util';
+import { caskSlots } from './rules';
 import { BRANDS } from './content/market';
 import { assignProductBrand, brandOf, closeSecondBrand, openSecondBrand } from './brands';
 import { fail, type CashKeys, type Handlers } from './actionKit';
@@ -130,7 +131,7 @@ export const MKT_HANDLERS: Handlers<MktAction> = {
   buyBrokerCask: (s, prev, a) => {
     const o = s.b2b.brokerOffers.find((x) => x.id === a.offerId);
     if (!o) return fail(prev, '매물이 없습니다');
-    if (s.inventory.casks.length + 1 > warehouseCapacity(s)) return fail(prev, '숙성고 용량 부족');
+    if (slotsUsed(s) + caskSlots(s, o.cask.sizeL) > warehouseCapacity(s)) return fail(prev, '숙성고 용량 부족'); // #360 칸
     if (s.finance.cash < o.price) return fail(prev, '현금이 부족합니다');
     s.finance.cash -= o.price;
     s.inventory.casks.push(o.cask);
