@@ -20,7 +20,16 @@ export interface PlayTurn {
   kinds?: Record<string, number>;
   /** 어떤 진행으로 넘어왔나 — 1개월 · 분기 · 1년 · 다음 알림까지(6차 판은 같은 시간 도장으로 추정했다). 옛 기록에는 없다 */
   advance?: AdvanceKind;
+  /**
+   * 이 달로 넘어오기 전 손 통입(`fillCasks`)으로 새로 찬 통 수 · 그중 통 크기의 `PARTIAL_FILL_SHARE` 미만으로 찬 통 수 ([제안 P-ARCH-88] — 9차 판:
+   * 행동 수만 있어 덜 찬 통이 덜 채운 것인지 일부 병입한 것인지 가릴 수 없었다). 손 통입이 없던 턴 · 옛 기록에는 없다
+   */
+  fill?: FillTally;
 }
+
+export interface FillTally { casks: number; partial: number }
+/** 이보다 덜 차면 "덜 찬 통"으로 센다 — 원액 부피 ÷ 통 크기 (P-ARCH-88) */
+export const PARTIAL_FILL_SHARE = 0.95;
 
 export type AdvanceKind = 'month' | 'quarter' | 'year' | 'until' | 'other';
 export const advanceKindOf = (months: number): AdvanceKind => (months === 1 ? 'month' : months === 3 ? 'quarter' : months === 12 ? 'year' : 'other');
@@ -39,6 +48,8 @@ export interface Playlog {
   buildAck?: string;
   /** 다음 턴 기록에 붙일, 이번 턴에 한 행동 종류별 횟수(기록하면 비운다) */
   pendingKinds?: Record<string, number>;
+  /** 다음 턴 기록에 붙일, 이번 턴 손 통입 합계(기록하면 비운다 · P-ARCH-88) */
+  pendingFill?: FillTally;
 }
 
 /** 기록 내보내기 파일 */
@@ -64,10 +75,11 @@ export function withTurns(log: Playlog, fromMonth: number, toMonth: number, adva
   if (toMonth <= fromMonth) return log;
   const add: PlayTurn[] = [];
   const kinds = log.pendingKinds && Object.keys(log.pendingKinds).length ? log.pendingKinds : undefined;
+  const fill = log.pendingFill && log.pendingFill.casks > 0 ? log.pendingFill : undefined;
   for (let m = fromMonth + 1; m <= toMonth; m++) {
-    add.push({ month: m, activeMs: log.activeMs, actions: log.actions, ...(m === fromMonth + 1 && kinds ? { kinds } : {}), ...(advance ? { advance } : {}) });
+    add.push({ month: m, activeMs: log.activeMs, actions: log.actions, ...(m === fromMonth + 1 && kinds ? { kinds } : {}), ...(m === fromMonth + 1 && fill ? { fill } : {}), ...(advance ? { advance } : {}) });
   }
-  const { pendingKinds: _done, ...rest } = log;
+  const { pendingKinds: _done, pendingFill: _fill, ...rest } = log;
   return { ...rest, turns: [...log.turns, ...add] };
 }
 
@@ -83,6 +95,27 @@ export function recentActionCount(log: Pick<Playlog, 'turns' | 'pendingKinds'>, 
 export function withAction(log: Playlog, type?: string): Playlog {
   if (!type) return { ...log, actions: log.actions + 1 };
   return { ...log, actions: log.actions + 1, pendingKinds: { ...log.pendingKinds, [type]: (log.pendingKinds?.[type] ?? 0) + 1 } };
+}
+
+/**
+ * 손 통입 한 번의 결과 (순수 함수 · P-ARCH-88) — 고른 통 가운데 전에는 비었고 지금은 원액이 든 통 수, 그중 원액이 통 크기의 `PARTIAL_FILL_SHARE` 미만인 통 수.
+ * 상태는 읽기만 한다(세이브 · sim 출력 불변)
+ */
+export function fillTally(before: Pick<GameState, 'inventory'>, after: Pick<GameState, 'inventory'>, caskIds: readonly string[]): FillTally {
+  let casks = 0, partial = 0;
+  for (const id of caskIds) {
+    const was = before.inventory.casks.find((c) => c.id === id);
+    const now = after.inventory.casks.find((c) => c.id === id);
+    if (!was || was.contents || !now?.contents) continue;
+    casks++;
+    if (now.contents.volumeL < now.sizeL * PARTIAL_FILL_SHARE) partial++;
+  }
+  return { casks, partial };
+}
+export function withFill(log: Playlog, t: FillTally): Playlog {
+  if (!t.casks) return log;
+  const p = log.pendingFill ?? { casks: 0, partial: 0 };
+  return { ...log, pendingFill: { casks: p.casks + t.casks, partial: p.partial + t.partial } };
 }
 
 /** 빌드가 바뀌었으면 기록한다 (순수 함수) — 마지막으로 남긴 빌드와 같으면 그대로 */
@@ -128,6 +161,8 @@ export function replacePlaylog(l: Playlog | null): void { log = l?.v === 1 ? l :
 /** 머리글 경고에서 "이 빌드로 계속" (#241) — 기록(builds)은 그대로 남는다 */
 export function ackBuild(build: string): void { log = { ...log, buildAck: build }; store(); }
 export function recordAction(type?: string): void { log = withAction(log, type); store(); }
+/** 손 통입 결과를 이번 턴 합계에 더한다 (P-ARCH-88) */
+export function recordFill(t: FillTally): void { const next = withFill(log, t); if (next !== log) { log = next; store(); } }
 /** 다음 진행의 종류 — store가 엔진을 부르기 직전에 정하고, 달이 넘어간 기록에 붙인 뒤 비운다 */
 let nextAdvance: AdvanceKind | undefined;
 export function setNextAdvance(k: AdvanceKind | undefined): void { nextAdvance = k; }
