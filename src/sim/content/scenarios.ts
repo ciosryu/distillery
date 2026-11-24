@@ -172,7 +172,8 @@ export const MVP_KR: ScenarioDef = {
     { id: 'revenue_8', byMonth: 156, title: '연 매출 8억(최근 12개월)', rewardAwareness: 0.03 },
   ],
   // #321 대안 ⓐ: 「해외 바이어 문의」(수출 주문 300병)는 새 캠페인에서 잠근다 — events.ts eligibleAt가 `event:<id>` 키를 본다. 옛 판·샌드박스는 키가 없어 불변
-  lockedV16: ['event:export_inquiry'],
+  // P-MGT-63 (b): 「대형 블렌더 장기 계약 제안」도 잠근다 — 계약 받기(`action:acceptContract` · `system:contracts`)가 v16 내내 잠겨 있어 [계약] 버튼이 늘 실패했다(9차 81 · 110개월째). 이벤트별 난수라 다른 이벤트는 그대로
+  lockedV16: ['event:export_inquiry', 'event:mega_contract'],
   // #311·#322: 그레인(기본 블렌드 재료) 포함 — 그레인 프리셋(PROD P-PROD-57)은 v16 새 판에만 뒤에 이어 붙인다(옛 레시피 id 보존)
   kindsV16: ['soju', 'malt', 'grain'],
   defaultTier: 'micro',
