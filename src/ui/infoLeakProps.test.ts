@@ -57,15 +57,12 @@ describe('I2 — 같은 공개 정보 · 다른 참 품질이면 화면 읽기 �
   it.fails('[누수 L3] 커뮤니티 피드 `feedFor` — 위스키베이스 점수 밖의 글 분위기 · 비교 글이 참 품질을 읽는다(feed.ts 68 · 283)', () => {
     expect(feedFor(high.s, 3, 40).map((x) => x.text)).toEqual(feedFor(low.s, 3, 40).map((x) => x.text));
   });
-  it('[L7 — #366 지킴] 피드 잡내 문구는 참 잡내 축(퓨젤 · 자극 등)을 드러내지 않는다 — 품질 · 아는 품질 · 향 이름이 같고 잡내 축만 다른 두 판의 글이 같다', () => {
-    // 향 이름 차이는 #366에서 의도된 공개 신호(위 주석)라 시험하지 않는다.
-    // [사실 2026-11-24] 지금 main 피드로는 잡내 축 차이가 글에 드러나는 조합을 찾지 못했다(아는 품질 40 · 50 · 60 × 참 품질 40 · 50 · 60 × 시드 1 · 3 · 5, 판매 10개월) —
-    // 잡내 문구가 참 잡내 축을 읽는 길(offNote)은 코드에 있으므로, MKT #862(#366 수리 · L3 커뮤니티 품질)가 들어온 뒤에도 이 지킴이 통과해야 한다
-    const tenMonths = (x: { s: GameState }) => { for (let m = 29; m >= 30 - 9; m--) x.s.history.reports.unshift({ month: m, sales: [{ productId: 'P1', name: '싱글 몰트 1', bottles: 30 + m, revenue: 1_800_000, demandBottles: 40 }], notes: [], expenses: {} } as never); return x.s; };
+  it.fails('[누수 L7 — #366] 피드 잡내 문구 — 위스키베이스 시음 글의 「옅은 {잡내}」가 참 잡내 축(퓨젤 · 자극 등)을 읽는다(feed.ts offNote). #366 수리(MKT #862) 뒤 it', () => {
+    // 품질 · 아는 품질 · 향 이름이 같고 잡내 축만 다르다. 가리는 판의 시음 글은 틱이 남긴 리뷰 점수로만 써지므로 지난달 결산에 리뷰를 둔다(MKT 재현 2026-11-24 —
+    // 깨끗 「Palate: 여운.」 대 잡내 「Palate: 여운, 옅은 퓨젤(후류취).」). 향 이름 차이는 #366에서 의도된 공개 신호(위 주석)라 시험하지 않는다
+    const mk = (flavor: Product['flavor']) => { const { s } = withProduct(60, flavor); (s.history.reports.at(-1) as { reviews?: unknown }).reviews = [{ productId: 'P1', scores: [83, 84] }]; return s; };
     const base = { fresh_fruit: 30 };
-    const a = tenMonths(withProduct(45, { ...base, feinty: 20, harshness: 60 }));
-    const b = tenMonths(withProduct(45, base));
-    expect(feedFor(a, 10, 40).map((x) => x.text)).toEqual(feedFor(b, 10, 40).map((x) => x.text));
+    expect(feedFor(mk({ ...base, feinty: 20, harshness: 60 }), 3, 40).map((x) => x.text)).toEqual(feedFor(mk(base), 3, 40).map((x) => x.text));
   });
   it.fails('[누수 L6′ — MGT P-MGT-62 2026-11-24] 평론가 판정 문구에 최고 참 품질 숫자 — `criticVerdict`가 「무난한 평가 — 품질 ${best}」(참 p.quality)를 이벤트 기록(이벤트 탭 · 소식 창)에 쓴다(events.ts 209)', () => {
     // 판정(극찬 · 무난 · 혹평)은 문턱 신호라 빼고 **숫자만** 본다 — 두 품질 모두 「무난」 구간(murray_visit 문턱 rave 80 · pan 62)
