@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { winChannelLabel } from './winLabel'; // F5c-2 승리 채널 문구
 import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { CaskTagBar, CaskTagChips } from './CaskTags';
@@ -22,6 +22,7 @@ import { CATEGORY } from '../sim/content/categories';
 import { equipmentCost } from '../sim/sites';
 import { caskSlots, pendingOrderSlots, slotsDifferFromCasks, slotsUsed, GRADE, campaignMinOakMonths, campaignWon, caskTagIds, HINT_HORIZON_MONTHS, rulesVersionOf, reserveCaskIds, isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
 import { useGame } from '../store/game';
+import { markFacilitiesSeen, useUnseenFacilities } from './seenFacilities'; // #388 ① A3
 import { useUi } from '../store/ui';
 import { FixedCostLine } from './panels/FixedCost';
 import { LineChart } from './charts';
@@ -308,15 +309,29 @@ const LIST_FIRST = 30;
 function CraftingFold() {
   // "이번 달 할 일"의 [설비에서 짓기](비지터 센터)가 이 블록을 열고 설비로 스크롤한다 (3차 MVP 플레이테스트: 비지터 센터를 못 찾았다)
   const [open, toggle] = useFold('mvp-craft', false, ['mvp-equipment']);
+  // [#388 ① A3] 새로 열린 시설(9차 판: 108개월에 열린 VIP 라운지를 몰랐다 — 이 묶음은 기본 접힘이다). 접힌 머리에 「새로 열림 n」, 설비 목록이 화면에 보이면 본 것으로 친다
+  const s = useGame((g) => g.state);
+  const unseen = useUnseenFacilities(s);
+  const equipRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = equipRef.current;
+    if (!open || !el || !unseen.length) return;
+    const ids = unseen.map((f) => f.id);
+    if (typeof IntersectionObserver === 'undefined') { markFacilitiesSeen(s.seed, ids); return; }
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) markFacilitiesSeen(s.seed, ids); });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [open, unseen, s.seed]);
   return (
     <div className="grid gap-4">
-      <div>
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" onClick={toggle}>{open ? '▾' : '▸'} 레시피·크래프팅 레버 · 설비(비지터 센터·증류기) {open ? '접기' : '펼치기'}</Button>
+        {unseen.length > 0 && <span title={`단계가 열려 지을 수 있게 된 시설 — 설비 목록에서 값 · 효과를 본다: ${unseen.map((f) => f.name).join(' · ')}`}><Badge tone="warn">새로 열림 {unseen.length}</Badge> <span className="text-xs text-stone-600 dark:text-stone-300">{unseen.slice(0, 2).map((f) => f.name.replace(/^비지터 센터 — /, '')).join(' · ')}{unseen.length > 2 ? ` 외 ${unseen.length - 2}` : ''}</span></span>}
       </div>
       {open && (
         <>
           <RecipeEditor />
-          <div id="mvp-equipment" className="scroll-mt-28"><Equipment /></div>
+          <div id="mvp-equipment" ref={equipRef} className="scroll-mt-28"><Equipment /></div>
         </>
       )}
     </div>
