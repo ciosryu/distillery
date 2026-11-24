@@ -1,0 +1,44 @@
+// [결정 #369] 옹기 · 오크에서 쉰 원액으로 만든 소주 제품(숙성 표기 6개월 미만)의 자동 납품은 탱크가 아니라 같은 용기의 통에서 채운다 (v16만)
+import { describe, expect, it } from 'vitest';
+import { newScenarioGame } from './newScenario';
+import { emptyCaskOf } from './newGame';
+import { autoRestockSources } from './economics';
+import type { GameState, Product, SpiritLot } from './types';
+
+const soju = (id: string, extra: Partial<SpiritLot> = {}): SpiritLot => ({ id, name: id, kind: 'soju', volumeL: 300, abv: 0.48, flavor: { fresh_fruit: 20 }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 5000, recipeId: 'RX', ...extra });
+
+function setup(rules: 'v16' | 'legacy-v15', withJar = true) {
+  const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'standard', loanAmount: 0, seed: 1 });
+  s.rulesVersion = rules;
+  s.inventory.lots.push(soju('TANK'));
+  if (withJar) {
+    const jar = emptyCaskOf(s, 'onggi_jar');
+    jar.contents = soju('JAR', { restMonths: 3 });
+    s.inventory.casks.push(jar);
+  }
+  const p = { id: 'P1', name: '옹기소주', category: 'soju_distilled', abv: 0.25, bottleMl: 375, restMonths: 2, oakMonths: 0, recipeIds: ['RX'], stockBottles: 0 } as unknown as Product;
+  return { s, p };
+}
+
+describe('#369 용기에서 쉰 소주 제품의 자동 납품 원액', () => {
+  it('v16: 옹기 2개월 제품은 옹기에서 2개월 이상 쉰 통에서 채운다(탱크 아님)', () => {
+    const { s, p } = setup('v16');
+    const src = autoRestockSources(s, p);
+    expect(src.length).toBe(1);
+    expect(src[0]!.comp.source).toBe('cask');
+  });
+  it('v16: 옹기 통이 없으면 탱크로 대신하지 않는다', () => {
+    const { s, p } = setup('v16', false);
+    expect(autoRestockSources(s, p)).toEqual([]);
+  });
+  it('옛 판(legacy-v15)은 지금대로 탱크 원액 — X0L 바이트 동일', () => {
+    const { s, p } = setup('legacy-v15');
+    const src = autoRestockSources(s, p);
+    expect(src.map((x) => x.comp.source)).toEqual(['lot']);
+  });
+  it('용기에서 쉬지 않은 제품(옹기 · 오크 0개월)은 v16에서도 탱크', () => {
+    const { s, p } = setup('v16');
+    const src = autoRestockSources(s, { ...p, restMonths: 0 });
+    expect(src.map((x) => x.comp.source)).toEqual(['lot']);
+  });
+});

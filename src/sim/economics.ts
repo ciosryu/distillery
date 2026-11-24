@@ -15,7 +15,7 @@ import { calendar, warehouseCapacity } from './util';
 import { FLAGSHIP_RESERVE_TAG, preferredCaskIds, protectedCaskIds, reserveCaskIds, tagDef } from './tags';
 import { spotBidPerLPA } from './bulk';
 import { categoryMonthlyDemand, SALES_LOOKBACK } from './salesPace';
-import { campaignMinOakMonths } from './rules';
+import { campaignMinOakMonths, rulesVersionOf } from './rules';
 import { campaignWon } from './ledger';
 import { cooperageLeadMonths } from './prodKnobs';
 import { hidesProductQuality, knownProductQuality } from './productView';
@@ -779,10 +779,14 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
   const sameRecipe = recipeFilter(p);
   if (!isWhiskyCategory(p.category)) {
     const minAbv = isCaskStrength(p) ? 0.4 : p.abv - 1e-9;
-    // 숙성 소주 표기 제품 (#221) — 탱크 원액을 섞으면 표기가 빠지므로, 표기 개월 이상 쉰 같은 용기(옹기/오크)의 통에서 어린 통부터
-    if (agedWhiteLabel(p.category, p.oakMonths, p.restMonths)) {
+    // 숙성 소주 표기 제품 (#221) — 탱크 원액을 섞으면 표기가 빠지므로, 표기 개월 이상 쉰 같은 용기(옹기/오크)의 통에서 어린 통부터.
+    // [결정 #369] v16: 표기(6개월↑)가 없어도 용기에서 쉰 원액으로 만든 제품(옹기 · 오크 개월 > 0)은 같은 용기에서 제품 개월 이상 쉰 통으로 채운다 —
+    // 9차 판 「옹기소주」(옹기 2개월)가 표기 문턱 아래라 탱크 소주로 채워졌다(오너). 통이 모자라도 탱크로 대신하지 않는다. 옛 판은 지금대로
+    const labeled = !!agedWhiteLabel(p.category, p.oakMonths, p.restMonths);
+    const vesselMade = rulesVersionOf(s) !== 'legacy-v15' && Math.max(p.restMonths ?? 0, p.oakMonths ?? 0) > 0;
+    if (labeled || vesselMade) {
       const onggi = (p.restMonths ?? 0) >= (p.oakMonths ?? 0);
-      const need = agedWhiteLabelMonths(Math.max(p.restMonths ?? 0, p.oakMonths ?? 0));
+      const need = labeled ? agedWhiteLabelMonths(Math.max(p.restMonths ?? 0, p.oakMonths ?? 0)) : Math.max(p.restMonths ?? 0, p.oakMonths ?? 0);
       const months = (l: SpiritLot) => (onggi ? l.restMonths ?? 0 : l.oakMonths);
       const excluded = autoRestockExcluded(s, p);
       const pref = preferredCaskIds(s);
