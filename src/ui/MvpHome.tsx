@@ -395,6 +395,15 @@ function TanninLine({ s, c }: { s: GameState; c: Cask }) {
   if (!o) return <div className="text-[11px] text-stone-500" title="스팟 통의 활성도는 6개월 숙성 뒤에 드러난다">활성도 ?</div>;
   const yrs = Math.floor(o.atMonths / 12);
   const weak = o.activity < LOW_ACTIVITY_NOTE;
+  // [결정 #374] 옮긴 원액(원액 빼기 → 다시 통입 · 피니싱) — 앞 통 활성도가 남지 않아 감점 절대값이 너무 작게 나온다(9차 재현 3.6 대 어림 10.8). 감점 숫자는 감추고
+  // 이 통에서 기준 개월까지 더해질 탄닌만 보인다(PROD `tanninOutlook().moved` — 활성도 · 목재 개월 · 통에 넣은 달만 읽는다)
+  if (o.moved) {
+    return (
+      <div className="text-[11px] text-stone-500" title={`다른 통에서 옮겨 온 원액 — 이 통에서 ${o.moved.monthsHere}개월째. 앞 통에서 밴 탄닌은 기록이 없어 12년 감점 숫자를 셀 수 없다(앞 통 몫을 빼고 세면 실제보다 작게 나온다). 이 통 활성도로 ${yrs}년(${o.atMonths}개월)까지 더해질 탄닌만 어림한다`}>
+        활성도 {o.activity.toFixed(2)} · 옮긴 원액 · 이 통에서 {yrs}년까지 탄닌 +{Math.round(o.moved.addHere)}
+      </div>
+    );
+  }
   return (
     <div className={`text-[11px] ${o.penalty >= 5 || weak ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`${yrs}년(${o.atMonths}개월) 무렵 오크·탄닌 약 ${Math.round(o.tannin)}(위스키 상한 ${o.cap}) → 품질 감점 약 ${Math.round(o.penalty)} · 지금까지 약 ${Math.round(o.now)} — 비울 때마다 활성도 ×${EMPTY_ACTIVITY_FACTOR} · 3년 위스키는 활성도 높은 통(새 통)이 빨리 익는다. 12년은 2~5번 쓴 통(활성도 0.6~0.13)이 가장 낫고, 0.1 아래는 나무 향이 모자라 12년 품질도 다시 내려간다. 어림(기상 이상치·재해 제외)`}>
       활성도 {o.activity.toFixed(2)} · {yrs}년 {o.penalty >= 0.5 ? `감점 약 ${Math.round(o.penalty)}` : '감점 없음'}{weak && <div>나무 향이 약해진 통 — 12년 품질이 다시 내려간다</div>}
