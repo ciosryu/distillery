@@ -387,6 +387,9 @@ function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead |
  * PM 대조: 감점 0만 보이면 "많이 쓴 통일수록 좋다"로 읽힌다. 원액 맛은 읽지 않는다(활성도만) */
 export const LOW_ACTIVITY_NOTE = 0.1;
 
+/** [결정 #368] 아는 오염 통 줄의 알림 — 원액이 든 동안만 매달 결점 향(곰팡내)이 더해진다(warehouse.ts · 곰팡이 +1 · TCA +1.5 · 상한 40). "빼면 낫는다"로 읽히지 않게 "더 늘지 않는다 · 이미 밴 것은 남는다"를 한 문장에 — 다른 통에 다시 넣으라는 안내는 넣지 않는다(#367) · 문구 PROD 제안 */
+const CONTAM_HOLD_NOTE = '통에 둔 동안 결점 향이 매달 더 밴다 — [원액 빼기]로 꺼내면 더 늘지 않는다(이미 밴 결점 향은 남는다)';
+
 function TanninLine({ s, c }: { s: GameState; c: Cask }) {
   const o = tanninOutlook(s, c);
   if (!o) return <div className="text-[11px] text-stone-500" title="스팟 통의 활성도는 6개월 숙성 뒤에 드러난다">활성도 ?</div>;
@@ -485,7 +488,7 @@ function WarehouseCard() {
               <tr>
                 <Td><input type="checkbox" aria-label={`${c.id} 선택`} title={can ? undefined : '샘플은 못 뜨지만(횟수 다 씀·고객 소유) 태그는 붙일 수 있다'} disabled={!!c.owner} checked={picked.includes(c.id)} onChange={() => toggle(c.id)} /></Td>
                 <Td className="text-xs">{c.id} · {CASKS[c.typeId].nameKo}{c.fills > 1 && vesselMaterial(c) === 'wood' ? ` (${c.fills}필)` : ''}<CaskTagChips s={s} c={c} reserve={reserve} /></Td>
-                <Td className="max-w-48 truncate text-xs">{lot.name}{lot.sourced && <> <Badge tone="info">매입</Badge></>}{c.owner && <> <Badge tone="info">고객 소유</Badge></>}{c.rareKnown && <> <Badge tone="good">레어</Badge></>}{c.contaminationKnown && <> <Badge tone="bad">오염</Badge></>}</Td>
+                <Td className="max-w-48 truncate text-xs">{lot.name}{lot.sourced && <> <Badge tone="info">매입</Badge></>}{c.owner && <> <Badge tone="info">고객 소유</Badge></>}{c.rareKnown && <> <Badge tone="good">레어</Badge></>}{c.contaminationKnown && <> <Badge tone="bad">오염</Badge><div className="whitespace-normal text-[11px] font-medium text-rose-700 dark:text-rose-400">{CONTAM_HOLD_NOTE}</div></>}</Td>
                 <Td right>{vesselMaterial(c) === 'wood' ? <>{months(lot.oakMonths)}{(lot.kind === 'malt' || lot.kind === 'grain') && <TanninLine s={s} c={c} />}</> : <>옹기 {months(lot.restMonths ?? 0)}{lot.oakMonths > 0 && <div className="text-xs text-stone-500">오크 {months(lot.oakMonths)}</div>}</>}</Td>
                 <Td right>{liters(lot.volumeL)}{partialFill(c) != null && <div className="text-[11px] text-stone-500" title="통 크기보다 원액이 많이 적다 — 공기에 닿는 면이 넓어 증발·나무 추출이 빠를 수 있다(병입 화면과 같은 기준: 60% 미만)">덜 찬 통 {partialFill(c)}%</div>}</Td>
                 <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>{vesselMaterial(c) === 'onggi' ? '옹기 ' : ''}숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : vesselMaterial(c) !== 'wood' && lot.oakMonths < minM ? <Badge tone="warn">옹기 — 위스키 숙성에 안 들어감</Badge> : lot.oakMonths >= minM ? <Badge tone="good">위스키{lot.oakMonths < 36 ? ' (어림)' : ''}</Badge> : <Badge tone="warn">{minM - lot.oakMonths}개월 남음</Badge>}</Td>
@@ -499,7 +502,7 @@ function WarehouseCard() {
                     const f = flagshipImpact(s, [c.id]);
                     return <ConfirmButton small variant="ghost" armKey={`unfill-${c.id}@${s.month}`} armedLabel="한 번 더 누르면 빼기" onConfirm={() => dispatch({ type: 'unfillCask', caskId: c.id })}
                       title="원액을 빼 탱크로 옮긴다 — 손실 0.75%, 숙성 개월은 원액에 남고 통은 한 번 쓴 통이 된다"
-                      preview={() => <>{c.id} 원액 {num(lot.volumeL * 0.9925)}L를 탱크로(손실 {num(lot.volumeL * 0.0075, 1)}L) · 숙성 {months(lot.oakMonths)}은 원액에 남지만 탱크에서는 숙성이 멈춘다 · 통은 한 번 쓴 통이 된다{f.using ? <b className="block">⚠ 12년 플래그십 후보 통 — 다시 통에 넣기 전까지 후보에서 빠진다(남은 후보 {f.before} → {f.left}통)</b> : null}{reserve.has(c.id) ? <b className="block">⚠ 플래그십 예비 통이다(#260) — 빼면 다음 후보로 예비가 옮겨 간다</b> : null}</>}>원액 빼기</ConfirmButton>;
+                      preview={() => <>{c.id} 원액 {num(lot.volumeL * 0.9925)}L를 탱크로(손실 {num(lot.volumeL * 0.0075, 1)}L) · 숙성 {months(lot.oakMonths)}은 원액에 남지만 탱크에서는 숙성이 멈춘다 · 통은 한 번 쓴 통이 된다{f.using ? <b className="block">⚠ 12년 플래그십 후보 통 — 다시 통에 넣기 전까지 후보에서 빠진다(남은 후보 {f.before} → {f.left}통)</b> : null}{reserve.has(c.id) ? <b className="block">⚠ 플래그십 예비 통이다(#260) — 빼면 다음 후보로 예비가 옮겨 간다</b> : null}{c.contaminationKnown ? <span className="block">오염 통 — 꺼내면 결점 향이 더 늘지 않는다(이미 밴 결점 향은 남는다)</span> : null}</>}>원액 빼기</ConfirmButton>;
                   })()}
                   {c.contaminationKnown && !c.owner && (
                     // 오염 통 폐기 (#240 — 코어 화면의 되돌릴 수 없는 행동)
