@@ -7,7 +7,8 @@
 // 결과 화면 연표의 플래그십 품질은 승리 뒤 공개(#344 HeritageReveal과 같은 자리)라 누수로 보지 않는다.
 // 지금 새는 길은 `it.fails`로 적어 둔다 — 고치면 이 시험이 "통과해 버려서" 실패하므로, 고친 PR이 `it.fails`를 `it`으로 바꾼다(목록이 줄어들기만 한다)
 import { describe, expect, it } from 'vitest';
-import { calendar, domesticDemands, feedFor, knownState, knownView, newScenarioGame, priceOptions, type GameState, type Product } from '../sim';
+import { calendar, domesticDemands, knownState, knownView, newScenarioGame, priceOptions, type GameState, type Product } from '../sim';
+import { feedFor } from '../sim/feed';
 import { retailPriceBasis } from '../sim/deals';
 import { stockoutSoon } from './alerts';
 
