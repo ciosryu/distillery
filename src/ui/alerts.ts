@@ -20,7 +20,7 @@ import { caskEligibility } from '../sim/ledger';
 import { specialistOffers, SPECIALIST_STAGE } from '../sim/hr';
 import { AUTO_RESTOCK_EXPENSE, caskRunway, CUTBACK_HINT, productionCutback, productionValue, sojuSupply, SOJU_STOCK_WARN_MONTHS, tankLotWaitMonths, whiskySupplyForecast } from '../sim/economics';
 import { monthlyFixedCost } from '../sim/loans';
-import { vesselMaterial } from '../sim/maturation';
+import { FINISH, finishLabel, finishOf, vesselMaterial } from '../sim/maturation';
 
 // ───────────── ① 파산 카운트다운 ─────────────
 
@@ -195,6 +195,8 @@ export function stageTarget(st: { unlock: readonly string[] }): { tab: string; l
   if (u('system:exports')) return { tab: 'exports', label: '수출' };
   if (u('system:caskBids') || u('system:siteDeals')) return { tab: 'b2b', label: '원액 B2B' };
   if (u('system:hr') || u('action:pickSpecialist')) return { tab: 'staff', label: '직원' };
+  // #345 ② 피니싱(GAP-PROD-4): 홈 「숙성 중인 캐스크」 칸에서 고른다 — 숙성고 탭은 샌드박스만
+  if (u('action:transferCask')) return { tab: 'home', label: '숙성 중인 캐스크' };
   return { tab: 'sales', label: '판매' };
 }
 
@@ -263,7 +265,7 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'sample'];
+export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'sample'];
 // 꼬리 4개(defense·whisky·soju·sample)는 info만 낸다 — warn·danger를 낼 수 있는 새 id는 그 앞에 둔다(warn이 info 뒤에 묻히지 않게, PM 대조 7차 완료: soju-glut)
 // 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
@@ -285,6 +287,18 @@ export function bottleableNow(s: GameState): { ready: number; readyReserved: num
   const ready = ripe.filter((c) => !reserved.has(c.id)).length;
   const tankSojuL = s.inventory.lots.filter((l) => l.kind === 'soju').reduce((t, l) => t + l.volumeL, 0);
   return { ready, readyReserved: ripe.length - ready, tankSojuL };
+}
+
+/**
+ * 피니싱이 권장 기간을 넘긴 통 (#345 ② GAP-PROD-4) — 마지막 통 구간(`finishOf`)이 권장 상한(`FINISH.recommendedMonths[1]`)을 넘은, 고객 소유가 아닌 통.
+ * 숙성 개월 · 통 종류만 읽는다(원액 맛 · 품질을 읽지 않음 — 넘었다고 반드시 나빠지는 것이 아니라 "시즈닝 향이 덮을 수 있다"는 안내)
+ */
+export function finishOverdue(s: GameState): { id: string; months: number; label: string }[] {
+  const hi = FINISH.recommendedMonths[1];
+  return s.inventory.casks.flatMap((c) => {
+    const f = c.contents && !c.owner ? finishOf(c.contents) : null;
+    return f && f.months > hi ? [{ id: c.id, months: f.months, label: finishLabel(f.typeId) }] : [];
+  });
 }
 
 export function monthTodos(s: GameState): Todo[] {
@@ -335,6 +349,12 @@ export function monthTodos(s: GameState): Todo[] {
       const why = whisky ? `${p.ageYears ? `${p.ageYears}년 이상` : '위스키 숙성 기간을 채운'} 같은 피니시 통이 없다${guarded ? ` (플래그십 후보 ${guarded}통은 자동 납품이 쓰지 않게 보호 중 — 직접 병입하면 쓸 수 있다)` : ''}` : recNames.length ? `같은 레시피(${recNames.join(', ')}) 탱크 원액이 없다 — 그 레시피를 생산 지시에 넣거나 늘리세요` : '탱크에 같은 주종 원액이 없다 — 생산 지시를 늘리세요';
       out.push({ id: 'restock-short', level: 'warn', text: `자동 납품 — 「${p.name}」 채울 원액이 없다(재고 ${p.stockBottles.toLocaleString()}병) — ${why}${short.length > 1 ? ` · 외 ${short.length - 1}개 제품` : ''}`, action: whisky ? '통입·병입' : '생산 지시로', target: whisky ? { tab: 'bottling' } : { anchor: 'mvp-orders' } });
     }
+  }
+  // #345 ② 피니싱 권장 기간을 넘긴 통 — 병입하거나 계속 둘지. 피니싱은 한 번만이라 다른 통으로 다시 옮길 수 없다(FINISH.maxFinishes)
+  const overdue = finishOverdue(s);
+  if (overdue.length) {
+    const o = overdue[0]!;
+    out.push({ id: 'finish-long', level: 'warn', text: `피니싱 ${overdue.length}통이 권장 기간(최대 ${FINISH.recommendedMonths[1]}개월)을 넘었다 — ${o.id} ${o.label} ${o.months}개월째${overdue.length > 1 ? ` 외 ${overdue.length - 1}통` : ''}. 오래 두면 시즈닝 향이 원래 성격을 덮어 품질이 내려갈 수 있다 — 샘플을 다시 떠 보고 병입할지 정하라(피니싱은 한 번만이라 다른 통으로 옮길 수 없다)`, action: '숙성 중인 캐스크', target: { anchor: 'mvp-warehouse' } });
   }
   // 핸드필 존 (#233) — 지었는데 지정한 통이 없다(처음, 또는 통이 비어 풀림). 숙성 중인 캐스크 칸이 접혀 있어 놓치기 쉽다
   if (s.scenario && hasHandfillZone(s) && !handfillCask(s) && s.production.equipment.some((e) => EQUIPMENT[e.catalogId]?.kind === 'visitor' && e.readyMonth <= s.month)) {

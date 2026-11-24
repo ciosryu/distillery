@@ -155,8 +155,11 @@ export function Badge({ children, tone = 'neutral' }: { children: ReactNode; ton
 
 export function Table({ head, children }: { head: ReactNode[]; children: ReactNode }) {
   return (
+    // 표는 칸 폭에 맞춰 줄바꿈한다 — 전에는 `min-w-max`로 줄바꿈을 막아 표가 본문 칸보다 넓어지고, 마지막 열의 버튼([피니싱] · [발주] · [내역] 등)이
+    // 표를 옆으로 밀어야만 보였다(PM 화면 확인 2026-11-24 · `scripts/ui-reach.cjs`). 버튼 글자는 줄바꿈하지 않고, 글은 띄어쓰기에서만 바꾼다(`break-keep` — "4,000만" · "내역"이 갈리지 않게).
+    // 줄바꿈으로도 못 줄이는 표(긴 숫자 · 버튼이 많은 행)만 예전처럼 옆으로 민다(overflow-x-auto는 남긴다)
     <div className="overflow-x-auto">
-      <table className="w-full min-w-max text-sm">
+      <table className="w-full break-keep text-sm [&_button]:whitespace-nowrap">
         <thead>
           <tr className="border-b border-stone-200 text-left text-xs text-stone-500 dark:border-stone-800 dark:text-stone-400">
             {head.map((h, i) => <th key={i} className="px-2 py-1.5 font-medium">{h}</th>)}

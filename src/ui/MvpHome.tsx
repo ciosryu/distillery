@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { winChannelLabel } from './winLabel'; // F5c-2 승리 채널 문구
 import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { CaskTagBar, CaskTagChips } from './CaskTags';
 import { TurnBrief } from './TurnBrief';
 import { AutoFillRow } from './panels/AutoFill';
 import { CaskCareRow } from './panels/CaskCare'; // #345 GAP-PROD-7 (PROD)
+import { FinishRow } from './panels/FinishRow'; // #345 GAP-PROD-4 피니싱 (PROD 부품 · ARCH 끼움)
 import { getPlaylog, recentActionCount } from '../store/playlog';
 import { PendingEventChoices } from './panels/Events';
 import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
@@ -13,7 +14,7 @@ import { AXIS } from '../sim/content/axes';
 import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
 import { cooperageLeadMonths } from '../sim/prodKnobs'; // F6c: 쿠퍼리지 납기 — 주문(actions.prod.ts)과 같은 값(Normal 2개월)
 import { fillShares, PARTIAL_FILL_HINT } from '../sim/autoFill'; // P-PROD-60: 손 통입 끝자리 안내 — 실제 통입과 같은 식
-import { EMPTY_ACTIVITY_FACTOR, vesselMaterial } from '../sim/maturation';
+import { EMPTY_ACTIVITY_FACTOR, finishOf, vesselMaterial } from '../sim/maturation';
 import { tanninOutlook } from '../sim/warehouse'; // P-PROD-66 a·b (PROD 계산)
 import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
@@ -398,6 +399,9 @@ function WarehouseCard() {
   // 캐스크 태그 (#249 ①) · 플래그십 예비 (#260) — 상태마다 한 번 계산
   const reserve = useMemo(() => reserveCaskIds(s), [s]);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  // #345 ② 피니싱 — 잠금(`action:transferCask`)이 풀린 판에서만 행마다 [피니싱]을 펼친다(한 번에 한 통)
+  const [finishFor, setFinishFor] = useState<string | null>(null);
+  const finishOpen = !isLocked(s, 'action:transferCask');
   const rules = regionOf(s).whisky;
   const minM = whiskyMinMonths(rules);
   const filled = s.inventory.casks.filter((c) => c.contents).sort((a, b) => ageOf(b) - ageOf(a) || a.id.localeCompare(b.id));
@@ -461,8 +465,11 @@ function WarehouseCard() {
           {(all ? shownCasks : shownCasks.slice(0, LIST_FIRST)).map((c) => {
             const lot = c.contents!;
             const can = sampleable(c);
+            const canFinish = finishOpen && !c.owner && vesselMaterial(c) === 'wood' && (lot.kind === 'malt' || lot.kind === 'grain');
+            const fin = canFinish ? finishOf(lot) : null;
             return (
-              <tr key={c.id}>
+              <Fragment key={c.id}>
+              <tr>
                 <Td><input type="checkbox" aria-label={`${c.id} 선택`} title={can ? undefined : '샘플은 못 뜨지만(횟수 다 씀·고객 소유) 태그는 붙일 수 있다'} disabled={!!c.owner} checked={picked.includes(c.id)} onChange={() => toggle(c.id)} /></Td>
                 <Td className="text-xs">{c.id} · {CASKS[c.typeId].nameKo}{c.fills > 1 && vesselMaterial(c) === 'wood' ? ` (${c.fills}필)` : ''}<CaskTagChips s={s} c={c} reserve={reserve} /></Td>
                 <Td className="max-w-48 truncate text-xs">{lot.name}{lot.sourced && <> <Badge tone="info">매입</Badge></>}{c.owner && <> <Badge tone="info">고객 소유</Badge></>}{c.rareKnown && <> <Badge tone="good">레어</Badge></>}{c.contaminationKnown && <> <Badge tone="bad">오염</Badge></>}</Td>
@@ -486,8 +493,12 @@ function WarehouseCard() {
                     <ConfirmButton small variant="ghost" armKey={`dump-${c.id}@${s.month}`} armedLabel="한 번 더 누르면 폐기" onConfirm={() => dispatch({ type: 'dumpCask', caskId: c.id })}
                       preview={() => { const f = flagshipImpact(s, [c.id]); return <>{c.id}의 오염된 원액 {num(lot.volumeL)}L를 버린다(숙성 {months(lot.oakMonths)}){f.using ? <b className="block">⚠ 12년 플래그십 후보 통이다 — 남은 후보 {f.before} → {f.left}통</b> : null}</>; }}>폐기</ConfirmButton>
                   )}
+                  {/* #345 ② 피니싱 (GAP-PROD-4) — PROD FinishRow를 아래 줄에 펼친다. 피니싱 중인 통은 몇 개월째인지가 버튼에 보인다 */}
+                  {canFinish && <Button small variant="ghost" onClick={() => setFinishFor((v) => (v === c.id ? null : c.id))} title={fin ? '피니싱 진행 — 권장 기간과 지금 개월' : '시즈닝 통(셰리 · 버번)으로 옮겨 마무리 숙성 — 고를 통 · 탄닌 어림 · 확인'}>{fin ? `피니싱 ${fin.months}개월째` : '피니싱'}</Button>}
                 </Td>
               </tr>
+              {canFinish && finishFor === c.id && <tr><td colSpan={8} className="pb-2"><FinishRow cask={c} onClose={() => setFinishFor(null)} /></td></tr>}
+              </Fragment>
             );
           })}
         </Table>
