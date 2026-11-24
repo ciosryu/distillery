@@ -1,5 +1,8 @@
 // [결정 #369] 옹기 · 오크에서 쉰 원액으로 만든 소주 제품(숙성 표기 6개월 미만)의 자동 납품은 탱크가 아니라 같은 용기의 통에서 채운다 (v16만)
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { migrateSave } from './migrate';
+import { advanceMonth } from './step';
 import { newScenarioGame } from './newScenario';
 import { emptyCaskOf } from './newGame';
 import { autoRestockSources, autoRestockVesselNeed } from './economics';
@@ -51,3 +54,45 @@ describe('#369 용기에서 쉰 소주 제품의 자동 납품 원액', () => {
     expect(autoRestockVesselNeed(s, { ...p, category: 'whisky', restMonths: 0, oakMonths: 36 })).toBeNull();
   });
 });
+
+// PM 요청(2026-11-24): 봇이 이 기능을 쓰지 않으므로 기능을 실제로 켠 시나리오로 확인한다 — 9차 세이브 「김포 옹기소주」(옹기 2개월 · R4)
+describe('#369 시나리오 — 9차 세이브에서 옹기소주 자동 납품을 켜고 진행', () => {
+  const load = (): GameState => migrateSave(JSON.parse(readFileSync('docs/playtest/9/distillery-mvp-standard-y6m5-202611240759.json', 'utf8')).save)!;
+  const onggiL = (s: GameState) => s.inventory.casks.filter((c) => c.typeId === 'onggi_jar' && c.contents?.recipeId === 'R4').reduce((t, c) => t + c.contents!.volumeL, 0);
+  const setup = () => {
+    const s = load();
+    const p = s.commerce.products.find((x) => x.name === '김포 옹기소주')!;
+    p.autoRestock = 3;
+    p.stockBottles = 0; // 모자라게 — 그달 반드시 채운다
+    return { s, id: p.id };
+  };
+  it('켠 달: 옹기 통에서만 채운다 — 옹기 원액이 줄고 재고가 늘며 메모에 통 id가 남는다(탱크가 아니다)', () => {
+    const { s, id } = setup();
+    const before = onggiL(s);
+    const next = advanceMonth(s);
+    const note = next.history.reports.at(-1)!.notes.find((n) => n.includes('「김포 옹기소주」'))!;
+    expect(note).toMatch(/\+[\d,]+병/);
+    expect(note).toMatch(/원액 K\d+/);
+    expect(note).not.toContain('탱크');
+    expect(onggiL(next)).toBeLessThan(before - 1);
+    expect(next.commerce.products.find((x) => x.id === id)!.stockBottles).toBeGreaterThan(0);
+  });
+  it('경계값: 옹기 2개월 이상 쉰 통만 — 1개월 쉰 통은 쓰지 않는다', () => {
+    const { s } = setup();
+    const p = s.commerce.products.find((x) => x.name === '김포 옹기소주')!;
+    for (const c of s.inventory.casks) if (c.typeId === 'onggi_jar' && c.contents) c.contents.restMonths = 1;
+    expect(autoRestockSources(s, p)).toEqual([]);
+    const k = s.inventory.casks.find((c) => c.typeId === 'onggi_jar' && c.contents)!;
+    k.contents!.restMonths = 2;
+    expect(autoRestockSources(s, p).map((x) => x.comp.id)).toEqual([k.id]);
+  });
+  it('모자랄 때: 맞는 옹기 통이 없으면 탱크로 대신하지 않고 알린다 — 재고 그대로', () => {
+    const { s, id } = setup();
+    for (const c of s.inventory.casks) if (c.typeId === 'onggi_jar' && c.contents) c.contents.restMonths = 0;
+    const next = advanceMonth(s);
+    const note = next.history.reports.at(-1)!.notes.find((n) => n.includes('「김포 옹기소주」'))!;
+    expect(note).toContain('옹기에서 2개월 이상 쉰 같은 레시피 통이 필요');
+    expect(next.commerce.products.find((x) => x.id === id)!.stockBottles).toBe(0);
+  });
+});
+
