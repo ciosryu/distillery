@@ -674,7 +674,25 @@ export const AUTO_RESTOCK_MONTHS = [1, 2, 3, 6] as const;
 
 /** 범주 → 원액 주종 (자동 납품을 지원하는 범주만). 블렌디드·몰트 스피릿·기타는 지원하지 않는다 */
 const RESTOCK_KIND: Partial<Record<ProductCategory, SpiritKind>> = { soju_distilled: 'soju', gin: 'gin', baijiu: 'baijiu', whisky: 'malt', grain_whisky: 'grain' };
-export const autoRestockSupported = (p: Product): boolean => !p.dutyFreeOnly && !!RESTOCK_KIND[p.category];
+/**
+ * [결정 #370] v16: 뉴본(몰트 스피릿 · 통에서 쉬지 않은 제품 — `oakMonths` 0)은 같은 레시피 탱크 원액(몰트 · 그레인)으로 자동 납품한다.
+ * 레시피 기록(`recipeIds`)이 있는 제품만 — 기록이 없으면 몰트 · 그레인을 가려 쓸 수 없다. 통에서 쉰 몰트 스피릿(oak > 0)은 범위 밖(통 규칙을 따로 정해야 한다).
+ * `s`를 주지 않으면(화면 호출) 판 규칙은 보지 않는다 — 옛 판의 켜기는 `setAutoRestock`이 막는다
+ */
+export const newmakeRestock = (p: Pick<Product, 'category' | 'oakMonths' | 'recipeIds'>, s?: Pick<GameState, 'rulesVersion'>): boolean =>
+  p.category === 'malt_spirit' && (p.oakMonths ?? 0) === 0 && !!p.recipeIds?.length && (!s || rulesVersionOf(s) !== 'legacy-v15');
+export const autoRestockSupported = (p: Product, s?: Pick<GameState, 'rulesVersion'>): boolean => !p.dutyFreeOnly && (!!RESTOCK_KIND[p.category] || newmakeRestock(p, s));
+/**
+ * [결정 #370] 뉴본 자동 납품이 한 달에 쓰는 탱크 원액(L) 어림 — 화면 "탱크 몰트를 월 약 n L 쓴다 — 그만큼 통입할 원액이 준다"(MKT 판매 줄).
+ * 판매 기대(`productMonthlyPace`) × 병당 알코올 ÷ 쓸 탱크 원액의 평균 도수(없으면 통입 도수 기준 63.5%). 뉴본이 아니면 null. 상태를 바꾸지 않는다
+ */
+export function newmakeTankUseL(s: GameState, p: Product, monthOfYear = calendar(s).monthOfYear): number | null {
+  if (!newmakeRestock(p, s)) return null;
+  const lots = autoRestockSources(s, p).map((x) => x.lot);
+  const vol = lots.reduce((t, l) => t + l.volumeL, 0);
+  const abv = vol > 0 ? lots.reduce((t, l) => t + l.volumeL * l.abv, 0) / vol : 0.635;
+  return (productMonthlyPace(s, p, monthOfYear) * (p.bottleMl / 1000) * p.abv) / abv;
+}
 
 /** 이 제품의 한 달 판매 기대 — 이번 달 수요(같은 범주 나눔 반영, 품절이면 혼자일 때)와 최근 3개월 판매 중 큰 값 */
 export function productMonthlyPace(s: GameState, p: Product, monthOfYear = calendar(s).monthOfYear): number {
@@ -787,6 +805,14 @@ export function autoRestockVesselNeed(s: Pick<GameState, 'rulesVersion'>, p: Pic
 
 /** 자동 납품 원액 후보 — 쓸 순서대로. 위스키는 숙성 표기를 채우고 피니시가 같고 도수가 충분한 나무 통, **같은 레시피**(#293), 보호 태그 통 빼고, "먼저 쓰기" 태그 통 먼저, 그다음 어린 통부터 */
 export function autoRestockSources(s: GameState, p: Product): { comp: Omit<BlendComponent, 'liters'>; lot: SpiritLot }[] {
+  // [결정 #370] 뉴본 — 같은 레시피 탱크 몰트 · 그레인, 오래된 것부터(소주 탱크와 같은 순서). 매입 원액 · 통 원액은 쓰지 않는다
+  if (newmakeRestock(p, s)) {
+    const sameRecipe = recipeFilter(p);
+    const minAbv = p.abv - 1e-9;
+    return s.inventory.lots.filter((l) => (l.kind === 'malt' || l.kind === 'grain') && l.abv >= minAbv && !l.sourced && l.oakMonths === 0 && sameRecipe(l))
+      .sort((a, b) => a.createdMonth - b.createdMonth || a.id.localeCompare(b.id))
+      .map((l) => ({ comp: { source: 'lot' as const, id: l.id }, lot: l }));
+  }
   const kind = RESTOCK_KIND[p.category];
   if (!kind) return [];
   // 같은 레시피 원액만 (#243 탱크 · #293 위스키·숙성 소주 통) — 숙성 표기만 맞는 다른 레시피 통으로 채워 제품의 레시피·스타일(#290 B1-9 피트 비중)이
@@ -881,7 +907,7 @@ export function supplyHorizon(s: GameState, p: Product, soonMonths = 12): Supply
 
 /** 이번 달 자동 납품 계획 — 채울 병 수만큼 원액을 고른다. 필요 없거나 원액이 없으면 null */
 export function autoRestockPlan(s: GameState, p: Product, monthOfYear = calendar(s).monthOfYear): { components: BlendComponent[]; opts: BottleOptions; target: number; need: number } | null {
-  if (!p.autoRestock || !autoRestockSupported(p)) return null;
+  if (!p.autoRestock || !autoRestockSupported(p, s)) return null;
   const target = Math.ceil(productMonthlyPace(s, p, monthOfYear) * p.autoRestock);
   const need = target - p.stockBottles;
   if (need < 1) return null;
