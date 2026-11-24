@@ -5,7 +5,7 @@ import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './H
 import { BOTTLE_SIZES, CASKS, PACKAGING } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
-import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, restockMix, restockPrior, recipeIdsOf, batchQualityKnown } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, restockMix, restockPrior, recipeIdsOf, batchQualityKnown, hidesProductQuality } from '../../sim';
 import { agedWhitePerception } from '../../sim/content/market';
 import { regionOf } from '../../sim/content/regions';
 import { STANDARD_BOTTLE, stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
@@ -140,6 +140,9 @@ export function Bottling() {
   // 이번 배치의 아는 품질 — 병입 행동(executeBlend)과 같은 한 함수(샘플 추정 + 병입 보정량 · #346 잇기). 첫 출고가 · 보충 줄이 함께 쓴다
   const knownBatch = masked && preview?.ok ? batchQualityKnown(s, components, preview, restockTarget?.id) : undefined;
   const knownEst = knownBatch?.est ?? null;
+  // 품질을 가리는 판(F5d)인가 — 옛 판 시나리오는 병입하면 공개된다. 화면의 "추정 품질"은 병입 뒤 제품에 남는 값(knownBatch)과 같게 보인다
+  const hideBottled = hidesProductQuality(s);
+  const shownQ = !masked ? null : hideBottled ? (knownBatch && !(est?.quality == null && !carried) ? { q: knownBatch.est, sigma: knownBatch.sigma } : null) : est?.quality != null ? { q: est.quality, sigma: est.sigma } : null;
   // 면세 한정판 예상 판매 (결정 #87) — 이번 달 면세 수요(권장 출고가)로 완판 기한 안에 몇 병 팔릴지
   const dfForecast = (() => {
     if (masked || !preview?.ok || !preview.dfEdition || !preview.category || !preview.evaluation) return null;
@@ -349,7 +352,7 @@ export function Bottling() {
                     ? '이 원액의 샘플 기록에 향 그래프용 읽기가 없다(이전 버전에서 뜬 기록) — 다시 샘플을 뜨면 그래프가 나온다. 추정 품질은 아래에 있다'
                     : '고른 캐스크에 샘플 기록이 없다 — 증류소 탭 아래쪽 "숙성 중인 캐스크"에서 통을 골라 샘플을 떠야 향·품질을 안다'}</Empty>
                   : preview.category && <Radar flavor={preview.flavor} axes={CATEGORY[preview.category].radarAxes} size={240} />}
-              {masked && <p className="text-xs text-stone-500">샘플 기록으로 추정한 향·품질·출고가 범위다{est && est.unknownShare >= 0.05 ? ` — 기록 없는 원액 ${pct(est.unknownShare, 0)}는 추정에서 빠졌다` : ''}. 실제 향·품질·권장 출고가는 병입하면 공개된다.{est && est.unknownShare >= 0.05 ? ' 샘플은 증류소 탭 아래쪽 "숙성 중인 캐스크"에서 뜬다(통 골라 샘플, 1회 3만 원).' : ''}</p>}
+              {masked && <p className="text-xs text-stone-500">샘플 기록으로 추정한 향·품질·출고가{hideBottled ? '' : ' 범위'}다{est && est.unknownShare >= 0.05 ? ` — 기록 없는 원액 ${pct(est.unknownShare, 0)}는 ${hideBottled ? '사전값(큰 오차)으로 섞었다' : '추정에서 빠졌다'}` : ''}. {hideBottled ? '병입해도 참 품질은 보이지 않는다 — 제품 품질은 이 추정으로 시작해 팔린 뒤 리뷰로 좁혀진다.' : '실제 향·품질·권장 출고가는 병입하면 공개된다.'}{est && est.unknownShare >= 0.05 ? ' 샘플은 증류소 탭 아래쪽 "숙성 중인 캐스크"에서 뜬다(통 골라 샘플, 1회 3만 원).' : ''}</p>}
               <div className="flex flex-wrap gap-1">
                 {preview.category && <Badge tone="info">{CATEGORY[preview.category].nameKo}</Badge>}
                 {preview.ageYears != null && <Badge tone="good">{preview.ageYears}년</Badge>}
@@ -368,11 +371,16 @@ export function Bottling() {
                 <dt className="text-stone-500">병 수</dt><dd className="text-right tabular-nums">{num(preview.bottles)}병</dd>
                 <dt className="text-stone-500">도수</dt><dd className="text-right tabular-nums">{pct(preview.finalAbv)} (원액 {pct(preview.mixAbv)})</dd>
                 {masked
-                  ? <><dt className="text-stone-500">추정 품질</dt><dd className="text-right tabular-nums">{est?.quality != null ? `${est.quality} ±${num(est.sigma, 1)}` : '모른다'}</dd></>
+                  ? <><dt className="text-stone-500" title={hideBottled ? '병입하면 제품에 남는 추정 — 샘플 추정에 병입 공정(희석·여과) 몫을 더하고, 기록 없는 원액은 사전값으로 섞는다' : undefined}>추정 품질</dt><dd className="text-right tabular-nums">{shownQ ? `${num(shownQ.q, 1)} ±${num(shownQ.sigma, 1)}` : '모른다'}</dd></>
                   : <><dt className="text-stone-500">품질 / 전형성</dt><dd className="text-right tabular-nums">{preview.evaluation?.quality ?? '—'} / {preview.evaluation?.typicity ?? '—'}</dd></>}
                 <dt className="text-stone-500">병당 원가</dt><dd className="text-right tabular-nums">{won(preview.unitCost)}</dd>
                 <dt className="text-stone-500" title={`병입하면 이 값으로 나온다 = 기준가(기대 소비자가에 맞춘 출고가) × ${DEFAULT_POLICY_N}(기본 정책). 면세 한정판은 기준가 그대로`}>{masked ? '예상 첫 출고가' : '첫 출고가'}</dt><dd className="text-right tabular-nums">{masked ? (() => {
-                  // 추정 품질 ± 오차로 매긴 범위 (#172) — 참 출고가는 병입하면 정해진다
+                  // F5d: 첫 출고가는 병입 행동(executeBlend firstBase)과 같은 한 값 — 아는 품질 추정의 기준가 × 기본 정책
+                  if (hideBottled && knownEst != null) {
+                    const base = priceAtQuality(s, preview, opts, knownEst);
+                    return base != null ? <>{won(defaultPolicyPrice(base))}{est?.quality == null && !carried && <span className="block text-xs text-stone-500">샘플 없음 — 사전값 추정 기준</span>}</> : '병입 후 정해짐';
+                  }
+                  // 옛 판: 추정 품질 ± 오차로 매긴 범위 (#172) — 참 출고가는 병입하면 정해진다
                   if (est?.quality == null) return '모른다 — 샘플 필요';
                   const lo = priceAtQuality(s, preview, opts, Math.max(0, est.quality - est.sigma));
                   const hi = priceAtQuality(s, preview, opts, Math.min(100, est.quality + est.sigma));
