@@ -425,8 +425,13 @@ export function Bottling() {
                       ? <span className="block font-medium">새 배치 {masked ? '예상' : '권장'} 출고가 ≈ {won(sug)} — 지금 출고가보다 높다. 보충 뒤 판매 화면에서 값을 올리세요{preview.ageYears != null && restockTarget.ageYears != null && preview.ageYears > restockTarget.ageYears ? ` (숙성 ${restockTarget.ageYears}년 → ${preview.ageYears}년)` : ''}</span>
                       : null;
                   })()}
+                  {/* [제안 P-ARCH-84] #346 잇기는 같은 레시피 목록일 때만 — 다르면 리뷰로 좁힌 추정을 잇지 않는다는 것을 미리 알린다(9차: 「블랜디드 퍼스트 배치」가 보충 뒤 리뷰 0 · ±12.4). 조건(sameList) 자체는 판 뒤 오너 안건 */}
+                  {hideBottled && masked && !carried && restockBefore && (() => {
+                    const rv = knownProductQuality(s, restockTarget).reviews;
+                    return rv > 0 ? <span className="block text-amber-800 dark:text-amber-300">이 제품과 원액 구성(레시피)이 달라 리뷰 {rv}건으로 좁힌 추정을 잇지 않는다 — 보충 뒤 새 병 몫은 「병입 때」 추정{knownBatch ? `(±${num(knownBatch.sigma, 1)})` : ""}으로 다시 시작</span> : null;
+                  })()}
                   {restockStock && (
-                    <span className={`block ${restockStock.after > STOCK_STRONG_WARN_MONTHS ? 'font-medium text-rose-700 dark:text-rose-400' : restockStock.after > STOCK_WARN_MONTHS ? 'text-amber-800 dark:text-amber-300' : ''}`}>
+                    <span title="판매 평균의 6개월 치를 넘게 쌓이면 할인 이미지로 수요가 줄어든다(최저 ×0.6). 재고를 줄이면 돌아온다 — 판매 화면 「재고 n개월 치 · 수요 ×f」와 같은 셈(MKT)" className={`block ${restockStock.after > STOCK_STRONG_WARN_MONTHS ? 'font-medium text-rose-700 dark:text-rose-400' : restockStock.after > STOCK_WARN_MONTHS ? 'text-amber-800 dark:text-amber-300' : ''}`}>
                       {restockStock.after > STOCK_WARN_MONTHS ? '⚠ ' : ''}이 제품 재고 {num(restockStock.before, 1)}개월 치 → 보충 뒤 <b>{num(restockStock.after, 1)}개월 치</b>(이 제품 판매 속도 월 {num(restockStock.rate)}병)
                       {restockStock.fAfter < 1 || restockStock.fNow < 1
                         ? <> · {STOCK_WARN_MONTHS}개월 치를 넘게 쌓이면 이 제품 수요가 줄어든다 — 지금 ×{restockStock.fNow.toFixed(2)} → 보충 뒤 <b>×{restockStock.fAfter.toFixed(2)}</b></>
