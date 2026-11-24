@@ -1015,6 +1015,11 @@ export interface HistorySlice {
   reports: MonthReport[];
   /** 연 요약 (오래된 기간의 장기 차트용) */
   years: YearSummary[];
+  /**
+   * 턴 사이 행동이 다음 결산에 남길 메모 (9차 판 — 손 병입으로 핸드필 통이 비어도 결산 메모가 없어 소식 창이 몰랐다). 행동은 `queueReportNote`로 넣고,
+   * 다음 틱이 그달 결산 `notes` 맨 앞으로 옮기고 지운다(현금의 `finance.pendingCash`와 같은 길). 선택 필드 — 없으면 빈 것(버전 올림 없음 #187)
+   */
+  pendingNotes?: string[];
 }
 /** 진출한 수출 시장 (#95) */
 /** 수출 시장 (#95, 확장 #100) */
