@@ -16,6 +16,7 @@ import { agedWhiteLabel, finishLabel, hexOf, HEX_AXES, HEX_LABEL, topNotes, know
 import { awarenessOf, brandMarketing, brandOf, rebrandCost, secondBrands } from '../../sim/brands';
 import { BRANDS, DEFAULT_POLICY_N, defaultPolicyPrice } from '../../sim/content/market';
 import { isLocked } from '../../sim/scenario';
+import { retailCapacityOutlook } from '../../sim/market';
 import { overhangFactor, overhangMonths } from '../../sim/retail';
 import { useGame } from '../../store/game';
 import { num, pct, won, wonFull } from '../format';
@@ -539,6 +540,7 @@ export function Sales() {
         <div className="rounded-lg border border-stone-200 bg-white px-3 py-2 dark:border-stone-800 dark:bg-stone-900">
           <Meter label="소매 처리 역량 (9L 케이스/월, 지난달)" value={last?.retailSoldCases ?? 0} max={last?.retailCapacityCases ?? cap} />
           <div className="mt-1 text-xs text-stone-500">{(last?.lostSalesBottles ?? 0) > 0 ? `지난달 ${num(last!.lostSalesBottles!)}병을 역량이 모자라 못 팔았다` : `출고가 → 소비자가 × ${sample.toFixed(2)} (700ml 40%)`}</div>
+          <RetailOutlookLine s={s} />
         </div>
         <div className="rounded-lg border border-stone-200 bg-white px-3 py-2 dark:border-stone-800 dark:bg-stone-900">
           <div className="text-xs text-stone-500">월 마케팅 예산{secondBrands(s).length ? ' (하우스)' : ''}</div>
@@ -606,3 +608,16 @@ function BrandLines() {
   );
 }
 
+/**
+ * 소매 처리 역량 전망 한 줄 (9차 판 64개월째 MKT 분석 §3 · PM 2026-11-24) — 지금 진열 · 값 · 재고 그대로 앞으로 12개월 중 가장 붐비는 달.
+ * 아는 정보로만 센다(`retailCapacityOutlook` — knownState). 역량을 넘으면 넘친 몫이 수수료 채널로 간다는 것을 미리 보인다
+ */
+function RetailOutlookLine({ s }: { s: GameState }) {
+  const o = retailCapacityOutlook(s, 12);
+  if (!o.length) return null;
+  const peak = o.reduce((a, x) => (x.cases > a.cases ? x : a), o[0]!);
+  const over = o.filter((x) => x.cases > x.capacity);
+  return over.length
+    ? <div className="mt-1 text-xs text-amber-700 dark:text-amber-400" title="지금 값 · 재고 · 진열 그대로의 기댓값이다(계절만 바꿈). 넘친 몫은 역량만큼 수수료 30% 채널로 팔고, 그 너머는 못 판다">앞으로 12개월: {over.map((x) => `${x.monthOfYear}월`).join(' · ')} 약 {num(peak.cases)}케이스 — 역량({num(peak.capacity)}케이스)을 넘을 수 있다</div>
+    : <div className="mt-1 text-xs text-stone-500" title="지금 값 · 재고 · 진열 그대로의 기댓값이다(계절만 바꿈)">앞으로 12개월 가장 붐비는 달 {peak.monthOfYear}월 약 {num(peak.cases)}케이스(역량 안)</div>;
+}
