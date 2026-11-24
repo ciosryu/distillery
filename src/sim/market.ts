@@ -1,5 +1,6 @@
 import { DISTRIBUTION, logisticsCost } from './content/catalog';
-import { agedWhitePerception, BRANDS, PRICE_CURVE, SKU, STYLE, STYLE_WEIGHTS } from './content/market';
+import { finishLabelOn } from './finishLabel';
+import { agedWhitePerception, BRANDS, FINISH_LABEL, PRICE_CURVE, SKU, STYLE, STYLE_WEIGHTS } from './content/market';
 import { rivalShare } from './rivals';
 import { awarenessOf, brandLuxuryFactor, brandMarketing, brandOf, houseBrand, secondBrands } from './brands';
 import { consumerPrice, refPricePerL, regionOf, siteOf, traditionalTaxFactor, type RegionDef } from './content/regions';
@@ -126,7 +127,8 @@ export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regi
   const edition = dutyFreeEditionAppeal(p);
   // 브랜드 방패 ([결정 #235] A): 브랜드 럭셔리 B_b와 제품 L_p의 차이 — 세컨드 브랜드가 열리는 모드에서만
   const shield = brandLuxuryFactor(s as Partial<GameState> | undefined, p);
-  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * brand * label * specialty * trend * premium * incense * edition * blendBonus * rare * shield * style;
+  const finish = finishLabelOn(p) ? FINISH_LABEL.appeal : 1; // [결정 #362] 피니시 표기 — 매력도 배수(#270 A, 통 종류와 무관)
+  return finish * Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * brand * label * specialty * trend * premium * incense * edition * blendBonus * rare * shield * style;
 }
 
 /** 브랜드 가치가 낮은 매입 원액 병입은 저가 하이볼 수요라 가격에 훨씬 민감하다 */
@@ -179,11 +181,12 @@ function splitByCategory(items: readonly { p: Product; standaloneBottles: number
 //   ln 수요 = −ε·ln(E/기준가) − ε·((소비자가/E)^K − 1)/K          K → 0이면 옛 공식
 
 /** 이 제품을 사는 사람이 기대하는 소비자가(원/L) — 권장 출고가(blending.ts suggestedPrice)가 맞추는 값과 같다 */
-export function expectedPricePerL(region: RegionDef, p: Pick<Product, 'category' | 'abv' | 'quality' | 'oakMonths' | 'ageYears' | 'restMonths'>): number {
+export function expectedPricePerL(region: RegionDef, p: Pick<Product, 'category' | 'abv' | 'quality' | 'oakMonths' | 'ageYears' | 'restMonths'> & Partial<Pick<Product, 'finish' | 'caskMonthsMix'>>): number {
   const aged = isWhiskyCategory(p.category);
   // 위스키는 숙성 인식, 숙성 소주·고량주는 숙성 표기(#217) — 매력도(appeal)와 같은 배수
   const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths);
-  return refPricePerL(region, p.category, p.abv) * Math.sqrt(Math.max(p.quality, 20) / 60) * ageBonus;
+  const finish = finishLabelOn(p) ? FINISH_LABEL.expectedPrice : 1; // [결정 #362] 피니시 표기 — 기대 가격 배수(#270 A)
+  return refPricePerL(region, p.category, p.abv) * Math.sqrt(Math.max(p.quality, 20) / 60) * ageBonus * finish;
 }
 
 /** 가격 계수 — consumer·ref·expected는 원/L, elasticity는 기대가에서의 탄력성 */

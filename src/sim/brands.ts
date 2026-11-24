@@ -1,4 +1,5 @@
-import { AGED_WHITE, BRAND_LUXURY, BRANDS } from './content/market';
+import { AGED_WHITE, BRAND_LUXURY, BRANDS, FINISH_LABEL } from './content/market';
+import { finishLabelOn } from './finishLabel';
 import { isLocked } from './scenario';
 import { packagingLuxury } from './packaging';
 import { nid } from './util';
@@ -77,7 +78,7 @@ export function closeSecondBrand(s: GameState, brandId: string): BrandLine | str
 const WHISKY_CATEGORIES: readonly ProductCategory[] = ['whisky', 'blended_whisky', 'grain_whisky'];
 
 /** 제품 럭셔리 L_p(0~100) — 패키징 + 숙성 표기(위스키 연수 · 숙성 소주 표기 #217) + 희소성. 품질 게이트: L_p ≤ 품질. 가격은 넣지 않는다(§11.2 ①) */
-export function productLuxury(p: Pick<Product, 'packagingId' | 'packaging' | 'bottleMl' | 'category' | 'oakMonths' | 'ageYears' | 'restMonths' | 'rareSingleCask' | 'quality'>): number {
+export function productLuxury(p: Pick<Product, 'packagingId' | 'packaging' | 'bottleMl' | 'category' | 'oakMonths' | 'ageYears' | 'restMonths' | 'rareSingleCask' | 'quality'> & Partial<Pick<Product, 'finish' | 'caskMonthsMix'>>): number {
   const L = BRAND_LUXURY;
   let v = packagingLuxury(p); // 패키징 0~30 — 병입 때 고정한 조합(#248), 옛 제품은 packagingId 프리셋
   if (WHISKY_CATEGORIES.includes(p.category)) {
@@ -88,6 +89,7 @@ export function productLuxury(p: Pick<Product, 'packagingId' | 'packaging' | 'bo
     if (months >= AGED_WHITE.minMonths) v += Math.min(L.agedWhiteCap, (months / 12) * L.agedWhitePerYear);
   }
   if (p.rareSingleCask) v += L.rare;
+  if (finishLabelOn(p)) v += FINISH_LABEL.luxury; // [결정 #362] 피니시 표기 — 럭셔리 라벨 항(#270 B, PRD §5.2). 품질 게이트(L_p ≤ 품질)는 그대로
   return Math.max(0, Math.min(100, p.quality, v));
 }
 
