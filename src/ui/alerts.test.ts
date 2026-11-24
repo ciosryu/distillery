@@ -440,3 +440,26 @@ describe('할 일 A1·A4·A7', () => {
     expect(monthTodos(s).some((x) => x.id === 'casks-low')).toBe(false);
   });
 });
+
+describe('피니싱 할 일 (#345 ② GAP-PROD-4)', () => {
+  it('권장 기간(최대 24개월)을 넘긴 피니싱 통만 「finish-long」으로 — 숙성 개월 · 통 종류만 읽는다', async () => {
+    const { finishOverdue, stageTarget } = await import('./alerts');
+    let s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 3, rules: 'v16' });
+    const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
+    s = applyAction(s, { type: 'setOrder', recipeId: malt.id, batchesPerMonth: 1 }).state;
+    s = advanceMonth(s);
+    const lot = s.inventory.lots.find((l) => l.kind === 'malt')!;
+    const finishing = (id: string, finishMonths: number) => ({
+      id, typeId: 'oloroso_butt', sizeL: 500, wood: 'european_oak', activity: 0.6, seasoning: 0.8, fills: 1, recharCount: 0, char: 'none',
+      contents: { ...lot, oakMonths: 36 + finishMonths, caskHistory: [{ typeId: 'ex_bourbon_barrel', fromMonth: 0, months: 36 }, { typeId: 'oloroso_butt', fromMonth: 36, months: 0 }] },
+    }) as unknown as GameState['inventory']['casks'][number];
+    s.inventory.casks.push(finishing('KF1', 24), finishing('KF2', 30));
+    expect(finishOverdue(s).map((x) => x.id)).toEqual(['KF2']); // 24개월째는 아직 권장 안
+    const t = monthTodos(s).find((x) => x.id === 'finish-long');
+    expect(t?.level).toBe('warn');
+    expect(t?.text).toContain('KF2');
+    expect(t?.text).toContain('30개월째');
+    expect(TODO_ORDER.indexOf('finish-long')).toBeLessThan(TODO_ORDER.indexOf('defense')); // warn은 info 꼬리 앞
+    expect(stageTarget({ unlock: ['action:transferCask'] })).toEqual({ tab: 'home', label: '숙성 중인 캐스크' });
+  });
+});
