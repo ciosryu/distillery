@@ -671,9 +671,9 @@ function FreeControls({ s, draft, set }: { s: GameState; draft: Draft; set: SetD
 export function Equipment() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
-  const fresh = new Map(newFacilities(s).map((f) => [f.id, f.openedMonth]));
+  const fresh = new Map(newFacilities(s).map((f) => [f.id, f.openedMonth])); // [#388 ① A3] 단계로 열렸고 아직 사지 않은 시설 — 사기 전까지 띠가 남는다
   // 선행 설비 — 이미 있으면 「… 있음」(9차 134: 베이직 투어를 4개월째부터 가졌는데 「베이직 투어 필요」로 떠 없는 것처럼 읽혔다 — PM 확인 2026-11-24)
-  const reqText = (req?: string) => (req ? ` · ${EQUIPMENT[req]?.nameKo ?? req} ${s.production.equipment.some((e) => e.catalogId === req) ? '있음 ✓' : '필요'}` : ''); // [#388 ① A3] 단계로 열렸고 아직 사지 않은 시설 — 사기 전까지 띠가 남는다
+  const reqText = (req?: string) => { if (!req) return ''; const own = s.production.equipment.filter((e) => e.catalogId === req); return ` · ${EQUIPMENT[req]?.nameKo ?? req} ${!own.length ? '필요' : own.some((e) => e.readyMonth <= s.month) ? '있음 ✓' : '설치 중(발주는 된다)'}`; }; // 짓는 중인 선행 설비도 발주는 된다(actions.prod buyEquipment) — 「있음」과 나눠 적는다(PROD 리뷰). 증류기는 수리 때도 readyMonth > 지금이라 선행 설비가 되면 「설치 중」으로 잘못 뜬다 — 지금 `requires`는 비지터 센터뿐(PROD 확인)
   return (
     <Card title="설비">
       <div className="grid gap-4 [&>*]:min-w-0">
