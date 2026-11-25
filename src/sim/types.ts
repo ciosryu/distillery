@@ -60,9 +60,19 @@ export interface Recipe {
   stillId: string;
 }
 
+/** [결정 #417 · #418] 단식 증류기 형태 — 본체 · 라인 암 · 특수 옵션(보일 볼 · 퓨리파이어) · 응축기. 값은 PROD `stillShape.ts stillParams` */
+export interface StillShape {
+  body: 'short' | 'standard' | 'tall';
+  lineArm: 'down' | 'level' | 'up';
+  option: 'none' | 'boil_ball';
+  condenser: 'shell' | 'worm';
+}
+
 export interface EquipmentInstance {
   id: string;
   catalogId: string;
+  /** [결정 #417 · #418] 단식 증류기 형태 — 없으면 카탈로그 값 그대로(옛 판 · 진행 중 세이브 · 봇). 선택 필드(#187) */
+  stillShape?: StillShape;
   /** 설치 완료 월 (그 전에는 사용 불가) */
   readyMonth: number;
   /** 증류기: 재사용 페인츠(LPA) */
