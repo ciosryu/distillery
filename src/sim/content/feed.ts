@@ -135,7 +135,7 @@ export const CAFE_LINES: Record<FeedSituation, Pool> = {
 
 // ───────────── 디시 위스키 갤러리 — 거칠지만 술에 진지 ─────────────
 
-export const DCW_OPEN: Pool = ['', '', '', '솔직후기) ', '노빠꾸 리뷰) ', '니트 3잔 박고 씀) ', '블라인드 결과) ', '병따고 3일차) ', '정보) '];
+// v4([결정 #400]): 위갤 앞머리(「솔직후기)」 등)는 위스키 마이너 갤러리 말머리(DCW_TAG)로 바꿨다 — 관찰 mkt-feed.md §4.1.1
 export const DCW_CLOSE: Pool = ['', '', ' ㅇㅇ', ' 반박시 니 말이 맞음', ' 개추 ㄱ', ' (캐스크 넘버까지 확인함)', ' 에어링 필수', ' 이상 위붕이 노트 끝'];
 export const DCW_LINES: Record<FeedSituation, Tiered> = {
   raise: { 0.5: [
