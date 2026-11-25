@@ -4,6 +4,7 @@
 // 공개 정보(단계 · 잠금 · 보유 설비 · 목표 기록 · 달)만 읽는다 — sim · 세이브에 닿지 않는다. "본 적 있음"은 화면 쪽(seenChoices.ts, 세이브 밖)
 import { campaignWon, rulesVersionOf, stagesOf, visibleLateGoals, type GameState } from '../sim';
 import { refillBlocker } from '../sim/actions.prod';
+import { onggiAutoFillOn } from '../sim/autoFill';
 import { ibAgedCaskCount } from '../sim/bulk';
 import { CASK_MARKET } from '../sim/content/catalog';
 import { newFacilities, stageTarget, type TodoTarget } from './alerts';
@@ -78,11 +79,15 @@ export function newChoices(s: GameState, opsOn: boolean): NewChoice[] {
     if (at == null || !recent(at)) continue;
     out.push({ key: `late:${g.def.id}`, openedMonth: at, title: `후반 목표 — ${g.def.title}`, text: `${g.def.hint}${g.def.byMonth != null ? ` · ${Math.floor((g.def.byMonth - 1) / 12) + 1}년 차까지` : ''} (보상 없음 · 기록만)`, go: { target: { anchor: 'mvp-journey' }, label: '목표 보기' } });
   }
+  // ⑤ [결정 #425] 옹기 자동 통입 — 빈 옹기가 생겨 놀기 시작한 달(PROD `onggiIdleSince`)부터. 오너가 놓친 자리가 「옹기를 산 뒤」였다(PROD 권장). 켜면 · 옹기가 차면 빠진다
+  if (rulesVersionOf(s) !== 'legacy-v15' && s.inventory.onggiIdleSince != null && recent(s.inventory.onggiIdleSince) && !onggiAutoFillOn(s)) {
+    out.push({ key: 'onggi-auto', openedMonth: s.inventory.onggiIdleSince, title: '자동 통입 — 소주 → 옹기', text: '옹기는 자동 통입이 저절로 채우지 않는다 — 통입 칸 자동 통입에서 「소주 → 옹기」를 켜면 진행할 때 탱크 소주를 빈 옹기에 넣는다(탱크 소주로 파는 제품의 몫은 남긴다)', go: { target: { anchor: 'mvp-fill' }, label: '통입 칸' } });
+  }
   // ④ 리필 통 주문(#408) — 새 판 처음부터. 판 첫 해에만
   if (rulesVersionOf(s) !== 'legacy-v15' && !refillBlocker(s) && recent(CASK_MARKET.refill.fromMonth)) {
     out.push({ key: 'refill', openedMonth: CASK_MARKET.refill.fromMonth, title: '리필(한 번 쓴 통) 주문', text: '빈 통을 살 때 새 통 대신 한 번 쓴 ex-버번 배럴을 새 통 값의 65%에 주문할 수 있다 — 통 줄의 활성도 · 「12년 감점」 숫자로 새 통과 견준다', go: { target: { anchor: 'mvp-space' }, label: '빈 통 사기' } });
   }
-  // 지을 수 있는 시설이 붙은 줄을 맨 앞에(오너: "VIP라운지나 어떤 시설을 지을수있게 되거나") → 운영 모드 → 단계 → 후반 목표 → 리필. 같은 무리는 최근 것 먼저
+  // 지을 수 있는 시설이 붙은 줄을 맨 앞에(오너: "VIP라운지나 어떤 시설을 지을수있게 되거나") → 운영 모드 → 단계 → 후반 목표 → 옹기 · 리필. 같은 무리는 최근 것 먼저
   const rank = (c: NewChoice) => (c.facilities?.length ? 0 : c.ops ? 1 : c.key.startsWith('stage:') ? 2 : c.key.startsWith('late:') ? 3 : 4);
   return out.sort((a, b) => rank(a) - rank(b) || b.openedMonth - a.openedMonth || a.key.localeCompare(b.key));
 }

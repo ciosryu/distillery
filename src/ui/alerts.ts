@@ -13,7 +13,7 @@ import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { exportShortfalls } from '../sim/market';
 import { retailBreakRemaining, retailCancellationCost } from '../sim/deals';
 import { OVERHANG, overhangFactor, overhangMonths } from '../sim/retail';
-import { autoFillPreview } from '../sim/autoFill';
+import { autoFillPreview, ONGGI_IDLE_NOTE_MONTHS, onggiAutoFillOn } from '../sim/autoFill';
 import { AUTO_RESTOCK_STARVED_WARN, autoRestockPlan, autoRestockShortReason, autoRestockSources, autoRestockStarvedMonths, autoRestockSupported, guardedFlagshipCasks, productMonthlyPace } from '../sim/economics';
 import { reserveCaskIds } from '../sim/tags';
 import { tanninOutlook } from '../sim/warehouse'; // [결정 #411] 12년 탄닌 전망(PROD 계산 — 통 표와 같은 값)
@@ -342,8 +342,8 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'overhang', 'contam-cand', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-starved', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'idle-cash', 'reserve-tannin', 'sample'];
-// 꼬리 6개(defense·whisky·soju·idle-cash·reserve-tannin·sample)는 info만 낸다 — warn·danger를 낼 수 있는 새 id는 그 앞에 둔다(warn이 info 뒤에 묻히지 않게, PM 대조 7차 완료: soju-glut)
+export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'overhang', 'contam-cand', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-starved', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'idle-cash', 'onggi-idle', 'reserve-tannin', 'sample'];
+// 꼬리 7개(defense·whisky·soju·idle-cash·onggi-idle·reserve-tannin·sample)는 info만 낸다 — warn·danger를 낼 수 있는 새 id는 그 앞에 둔다(warn이 info 뒤에 묻히지 않게, PM 대조 7차 완료: soju-glut)
 // `stage-<단계>` 할 일(#215)은 #416 맨 위 띠로 옮겼다 — 아래 순위 처리는 옛 id가 다시 들어와도 맨 위에 두려는 것
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
 // danger 등급은 새 기능 바로 아래로 올린다(같은 danger끼리는 위 순서) — 6차 판: 오래 통입 대기(fill danger)가 할 일 3번째에 묻혔다
@@ -397,6 +397,18 @@ export function reserveTanninNote(s: GameState): { ids: string[]; lo: number; hi
   if (!hits.length) return null;
   const pen = hits.map((x) => Math.round(x.o.penalty));
   return { ids: hits.map((x) => x.id), lo: Math.min(...pen), hi: Math.max(...pen) };
+}
+
+/**
+ * [결정 #425] 빈 옹기가 논 개월 — PROD `inventory.onggiIdleSince`(빈 옹기가 있는데 「소주 → 옹기」 자동 통입이 꺼진 상태가 시작된 달, 틱이 적고 지운다).
+ * 3개월(`ONGGI_IDLE_NOTE_MONTHS`) 미만 · 기록 없음 · 옛 판 · 켜져 있으면 null. 결산 메모는 3개월째와 그 뒤 12개월마다지만, 할 일은 풀릴 때까지 매달 보인다
+ */
+export function onggiIdle(s: GameState): { jars: number; months: number } | null {
+  const since = s.inventory.onggiIdleSince;
+  if (since == null || rulesVersionOf(s) === 'legacy-v15' || onggiAutoFillOn(s)) return null;
+  const months = s.month - since;
+  const jars = s.inventory.casks.filter((c) => !c.contents && !c.owner && vesselMaterial(c) === 'onggi').length;
+  return jars > 0 && months >= ONGGI_IDLE_NOTE_MONTHS ? { jars, months } : null;
 }
 
 export function monthTodos(s: GameState): Todo[] {
@@ -637,6 +649,11 @@ export function monthTodos(s: GameState): Todo[] {
   {
     const ss = sojuSupply(s);
     if (ss.months != null && ss.months >= SOJU_STOCK_WARN_MONTHS && ss.tankBottles > 0) out.push({ id: 'soju-glut', level: 'warn', text: `병입하지 않은 소주까지 ${Math.round(ss.months)}개월 치 — 탱크 ${Math.round(ss.tankL).toLocaleString()}L + 제품 ${ss.productBottles.toLocaleString()}병 · 지금 지시는 매달 약 ${Math.round(ss.madeBottlesPerMonth).toLocaleString()}병을 더 만든다(원료·에너지 월 ${fmtWon(ss.costPerMonth)})${ss.costPerBatch ? ` — 소주 지시를 1 줄이면 월 ${fmtWon(ss.costPerBatch)} 아낀다` : ''}`, action: '생산 지시', target: { anchor: 'mvp-orders' } });
+  }
+  // [결정 #425] 빈 옹기가 논다 — 「소주 → 옹기」 자동 통입을 켜라는 한 줄(9차: 옹기 12개가 끝까지 비었다 · 오너 "자동으로 들어가는줄 알았다")
+  {
+    const og = onggiIdle(s);
+    if (og) out.push({ id: 'onggi-idle', level: 'info', text: `빈 옹기 ${og.jars}개가 ${og.months}개월째 놀고 있다 — 통입 칸 자동 통입에서 「소주 → 옹기」를 켜면 진행할 때 탱크 소주를 옹기에 넣는다(탱크 소주로 파는 제품의 몫은 남긴다)`, action: '통입', target: { anchor: 'mvp-fill' } });
   }
   // [결정 #411] T1-b — 12년 후보(예비) 통이 지금 통 그대로면 12년 감점이 크다. 통 표(접힌 칸)에 이미 있는 숫자를 할 일로 올린다 — 알림만(리필 통 이야기는 붙이지 않는다, #367 · #408)
   {
