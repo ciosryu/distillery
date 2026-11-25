@@ -269,3 +269,19 @@ describe('[결정 #400] 피드 v4 — 조사 맞춤 · 카페는 전체 이름 �
     }
   });
 });
+
+describe('[결정 #400] feedDigest — 여러 달 요약 한 줄(고르기만)', () => {
+  it('화제 글은 피드 안의 글이고, 좋음 · 나쁨 · 전체 수가 피드와 같다 · 상태를 바꾸지 않는다', async () => {
+    const { feedDigest } = await import('./feed');
+    const s = world([product({ id: 'a', name: '김포 블랜디드 3년', quality: 70, price: 60_000 }), product({ id: 'u', name: '저평가 위스키', quality: 78, price: 15_000 })], 3, 300, 7);
+    const before = JSON.stringify(s);
+    const d = feedDigest(s, 3);
+    const posts = feedFor(s, 3, 200);
+    expect(d.total).toBe(posts.length);
+    expect(d.pos).toBe(posts.filter((p) => p.tone === 'pos').length);
+    expect(d.neg).toBe(posts.filter((p) => p.tone === 'neg').length);
+    expect(posts.map((p) => p.id)).toContain(d.top!.id);
+    expect(d.top!.signal).toBe('raise_price'); // 가격 신호가 있으면 그것이 화제 글
+    expect(JSON.stringify(s)).toBe(before);
+  });
+});

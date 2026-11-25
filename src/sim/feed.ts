@@ -488,3 +488,13 @@ export function briefPosts(posts: readonly FeedPost[], n: number): FeedPost[] {
   }
   return picked.slice(0, n);
 }
+
+/**
+ * [결정 #400] 여러 달 진행(분기 · 1년) 요약에 넣을 커뮤니티 한 줄 — 넘긴 달들의 피드에서 **고르기만** 한다(새로 만들지 않음 → 난수 · 상태 불변).
+ * 화제 글: 가격 신호(💡) → 댓글이 가장 많은 글 → 맨 위 글. 좋음 · 나쁨 = 그 글들의 분위기 수. ARCH 여러 달 요약(TurnBrief)이 읽는다
+ */
+export function feedDigest(s: GameState, months: number): { top: FeedPost | null; pos: number; neg: number; total: number } {
+  const posts = feedFor(s, Math.max(1, months), 200);
+  const top = posts.find((p) => p.signal === 'raise_price') ?? [...posts].sort((a, b) => (b.replies?.length ?? 0) - (a.replies?.length ?? 0))[0] ?? null;
+  return { top, pos: posts.filter((p) => p.tone === 'pos').length, neg: posts.filter((p) => p.tone === 'neg').length, total: posts.length };
+}
