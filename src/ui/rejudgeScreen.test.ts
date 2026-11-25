@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { parsePlayFile } from '../store/playlog';
 import { applyAction, bestVerdict, type GameState } from '../sim';
-import { rejudgeLine } from './Verdict';
+import { rejudgeLine, sGradeRows } from './Verdict';
+import { GRADE_NOTE } from './gradeHints';
 
 // [결정 #422] 재판정 화면 — 9차 159개월 세이브(150개월 승리 · A)에 재판정 S를 얹어 본다
 const load = (): GameState => {
@@ -33,5 +34,11 @@ describe('#422 rejudge screen', () => {
     const r = applyAction(s, { type: 'acknowledgeVerdict' });
     expect(show(r.state)).toBe(false);
     expect(rejudgeLine(r.state)).toContain('첫 출하로 S'); // 목표 칸 한 줄은 남는다
+  });
+  it('[결정 #427] 재판정의 S 조건 줄은 품질 · 인지도 둘 — 순자산 줄이 없고, 첫 판정은 셋 그대로', () => {
+    const s = withBest(load());
+    expect(sGradeRows(s.progress.verdictBest!, true).map((r) => r.id)).toEqual(['s-quality', 's-awareness']);
+    expect(sGradeRows(s.progress.verdict!).map((r) => r.id)).toEqual(['s-networth', 's-quality', 's-awareness']);
+    expect(GRADE_NOTE.once).toContain('품질 · 인지도만');
   });
 });
