@@ -359,3 +359,27 @@ describe('[결정 #418] 증류기 형태(공개 표기) 글 — 헤비 저숙성
     for (const q of [40, 90]) expect(heavy(texts({ stillStyle: 'heavy', ageYears: 3, oakMonths: 36, quality: q } as Partial<Product> & Still)).length).toBeGreaterThan(0);
   });
 });
+
+describe('[결정 #422] 15 · 18년 헤비 「명작」 글 — 공개 표기(증류기 형태 · 연수 · 셰리 표기)만', () => {
+  type Still = { stillStyle?: 'light' | 'medium' | 'heavy' };
+  const texts = (o: Partial<Product> & Still, seeds = 80) => {
+    const out: string[] = [];
+    for (let seed = 1; seed <= seeds; seed++) for (const x of feedFor(world([product({ id: 'm', name: '시험 몰트', price: 200_000, ...o } as Partial<Product>)], 3, 300, seed), 3, 100)) out.push(x.text);
+    return out;
+  };
+  const master = (xs: string[]) => xs.filter((t) => t.includes('헤비 스틸') && /명작|기다린/.test(t));
+  it('헤비 · 15년 · 이름에 「셰리」: 명작 글이 나오고 셰리 글도 나온다 — 기대 · 실망이 섞인다', () => {
+    const m = master(texts({ name: '시험 셰리 몰트 15년', stillStyle: 'heavy', ageYears: 15, oakMonths: 180, quality: 80 } as Partial<Product> & Still));
+    expect(m.length).toBeGreaterThan(0);
+    expect(m.some((t) => t.includes('셰리'))).toBe(true);
+  });
+  it('셰리 표기가 없으면 「헤비 스틸 … 셰리」 글은 없다 · 12년에는 명작 글이 없다', () => {
+    const noSherry = texts({ stillStyle: 'heavy', ageYears: 18, oakMonths: 216, quality: 80 } as Partial<Product> & Still);
+    expect(noSherry.filter((t) => t.includes('헤비 스틸') && t.includes('셰리'))).toEqual([]);
+    expect(master(noSherry).length).toBeGreaterThan(0); // 셰리를 말하지 않는 명작 글은 나온다
+    expect(master(texts({ name: '시험 셰리 몰트', stillStyle: 'heavy', ageYears: 12, oakMonths: 144, quality: 80 } as Partial<Product> & Still))).toEqual([]);
+  });
+  it('I2 — 명작 글은 참 품질과 무관하게 나온다(품질 45 · 90 모두)', () => {
+    for (const q of [45, 90]) expect(master(texts({ name: '시험 셰리 몰트', stillStyle: 'heavy', ageYears: 15, oakMonths: 180, quality: q } as Partial<Product> & Still)).length).toBeGreaterThan(0);
+  });
+});
