@@ -598,6 +598,11 @@ export interface MonthReport {
    * 화면이 그릴 때 다시 뽑으면 보충으로 참 품질이 바뀐 뒤 지난달 점수가 어긋난다(MKT 제안). 선택 필드라 스키마 v16 그대로 · 없으면 그달 리뷰 없음
    */
   reviews?: { productId: string; scores: number[] }[];
+  /**
+   * 품절 손실 어림([결정 #410] T8 · MKT) — 판매 전 재고 0이고 최근 6개월 안에 팔린 적이 있는 진열 제품마다, 다시 채웠다면 이번 달 국내 수요(병, 잡음 없음 ·
+   * 같은 범주 나눔 — `market.ts restockedDemand`와 같은 셈). 참 품질로 센다(판매 셈과 같은 길 — 화면은 아는 품질로 다시 세거나 병 수만). 없으면 그런 제품이 없다. 기록만 · 스키마 v16 그대로
+   */
+  stockoutDemand?: { productId: string; bottles: number }[];
   angelsShareL: number;
   liquorTaxRemitted: number;
   /** 이번 달 발생한 이벤트 제목 */
