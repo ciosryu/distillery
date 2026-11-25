@@ -1,6 +1,9 @@
 import { CATEGORY } from './content/categories';
 import { regionOf } from './content/regions';
-import { FEED_GENERIC_OFF, CAFE_CLOSE, CAFE_LINES, CAFE_OPEN, COMPARE_LINES, COMPARE_REASON, DCJ_CLOSE, DCJ_LINES, DCJ_OFFTOPIC, DCJ_OPEN, DCW_CLOSE, DCW_FEATURE, DCW_LINES, DCW_OPEN, FEED_AUTHORS, FEED_BENCHMARKS, FEED_COMMUNITIES, REPLIES, WB_FINISH, WB_NOSE_ADJ, WB_VERDICT, type FeedFeature, type FeedSituation, type FeedStyle, type Harsh } from './content/feed';
+import { FEED_GENERIC_OFF, CAFE_CLOSE, CAFE_LINES, CAFE_OPEN, COMPARE_LINES, COMPARE_REASON, DCJ_CLOSE, DCJ_LINES, DCJ_OFFTOPIC, DCJ_OPEN, DCW_CLOSE, DCW_FEATURE, DCW_LINES, DCW_TAG, FEED_AUTHORS, FEED_BENCHMARKS, FEED_COMMUNITIES, FEED_KIND_LINES, FEED_SEASON_LINES, FEED_SEASON_MONTHS, NOTE_PARTS, REPLIES, WB_FINISH, WB_KIND_LINES, WB_NOSE_ADJ, WB_VERDICT, type FeedFeature, type FeedKind, type FeedSeason, type FeedSituation, type FeedStyle, type Harsh } from './content/feed';
+import { finishLabelOn } from './finishLabel';
+import { hasDutyFree } from './dutyFree';
+import { finishLabel } from './maturation';
 import { AXIS } from './content/axes';
 import { productLuxury } from './brands';
 import { topNotes } from './flavor';
@@ -137,11 +140,84 @@ export function pickStyle(rng: Rng, w: Record<FeedStyle, number>): FeedStyle {
   return 'dc_jugal';
 }
 
-function benchmarkFor(p: Product, consumer: number): string {
+function benchmarkOf(p: Product, consumer: number): { name: string; co?: string } {
   const list = FEED_BENCHMARKS[p.category] ?? FEED_BENCHMARKS.whisky!;
   const peaty = (p.flavor.peat_smoke ?? 0) >= 30;
   const pool = peaty && list.some((b) => b.peat) ? list.filter((b) => b.peat) : list;
-  return pool.reduce((best, b) => (Math.abs(b.price - consumer) < Math.abs(best.price - consumer) ? b : best), pool[0]!).name;
+  return pool.reduce((best, b) => (Math.abs(b.price - consumer) < Math.abs(best.price - consumer) ? b : best), pool[0]!);
+}
+
+/**
+ * 줄임 이름 — 위스키 마이너 갤러리 관찰(브랜드 앞 글자 + 숫자, mkt-feed.md §4.1.1). 낱말마다 첫 글자(숫자 낱말은 빼고 앞 셋까지) + 이름 속 첫 숫자.
+ * 「김포 블랜디드 3년」 → 「김블3」. 한 낱말 이름은 그대로
+ */
+export function shortName(name: string): string {
+  const words = name.split(/\s+/).filter(Boolean);
+  if (words.length < 2) return name;
+  const heads = words.filter((w) => !/^\d/.test(w)).slice(0, 3).map((w) => w[0]).join('');
+  return `${heads}${name.match(/\d+/)?.[0] ?? ''}`;
+}
+
+/** 그달의 철 — 계절 글(FEED_SEASON_MONTHS). 설(1 · 2월)은 선물이 먼저 */
+export const seasonOf = (month: number): FeedSeason | null => {
+  const m = (month % 12) + 1;
+  return (['gift', 'summer', 'winter'] as const).find((k) => FEED_SEASON_MONTHS[k].includes(m)) ?? null;
+};
+
+/** 틀이 이 제품에 맞는가 — 공개 표기만 본다(F5d · PROD 합의: 통 이름은 피니시 표기뿐) */
+interface LineCtx { labelYears: number; finish: boolean; onggi: boolean; cs: boolean; co: boolean; limited: boolean; medal: boolean; dutyFree: boolean }
+function lineOk(line: string, c: LineCtx): boolean {
+  if (line.includes('{benchCo}') && !c.co) return false;
+  if (line.includes('한정') && !c.limited) return false;
+  if (line.includes('수상') && !c.medal) return false;
+  if (line.includes('면세') && !c.dutyFree) return false;
+  if ((line.includes('{finish}') || line.includes('피니시 몇 개월')) && !c.finish) return false;
+  if (line.includes('{age}') && c.labelYears <= 0) return false;
+  if (line.includes('숙성 표기 없는데') && c.labelYears > 0) return false;
+  if (line.includes('옹기') && !c.onggi) return false;
+  if (line.includes('캐스크 스트렝스') && !c.cs) return false;
+  if ((line.includes('숙성 연수 짧은데') || line.includes('어린 원액')) && c.labelYears > 3) return false;
+  return true;
+}
+/** 틀 고르기 — 맞는 틀 가운데 이 피드에서 아직 안 쓴 것 먼저(되풀이 피하기 — 화면 한 번에 같은 문장이 두 번 나오지 않게) */
+function pickLine(rng: Rng, pool: readonly string[] | undefined, c: LineCtx, used?: Set<string>): string | null {
+  const ok = (pool ?? []).filter((l) => lineOk(l, c));
+  if (!ok.length) return null;
+  const fresh = used ? ok.filter((l) => !used.has(l)) : ok;
+  const line = rng.pick(fresh.length ? fresh : ok);
+  used?.add(line);
+  return line;
+}
+
+/** 글 종류를 부르는 공개 사정 — 지난달 품절 뒤 재입고 · 수상 소식 · 유통 입점 · 면세 완판 · 철 */
+interface KindFlags { restock: boolean; medal: boolean; deal: boolean; season: FeedSeason | null }
+const KIND_TONE: Partial<Record<FeedKind, FeedPost['tone']>> = { proof: 'pos', restock: 'pos', soldout: 'pos', news: 'pos', qpr: 'pos', gift: 'pos', meetup: 'pos', starter: 'pos' };
+
+/**
+ * [결정 #400] 글 종류 비율 — 평가(지금 상황 글)는 2, 나머지는 공개 사정이 부른다. 0이면 나오지 않는다.
+ * 화면 전용 난수(`feed:kind:<제품>`)로 고른다 — 리뷰 셈(postCount · styleWeights · pickStyle)과 무관해 봇 출력이 바뀌지 않는다(#406)
+ */
+export function kindWeights(style: FeedStyle, p: Product, g: FeedSignals, x: FeedSituation, f: KindFlags): Partial<Record<FeedKind, number>> {
+  const white = WHITE.includes(p.category);
+  const label = !!p.ageYears || finishLabelOn(p) || (p.restMonths ?? 0) >= 6 || p.abv >= 0.55;
+  const cheap = g.qpr < 0.9;
+  if (style === 'whiskybase') return { eval: 3, scoreonly: 0.6, batch: f.restock ? 1 : 0.2, english: 0.4 + g.mania };
+  if (style === 'dc_whisky') {
+    return { eval: 2, question: 1, news: g.launch ? 3 : 0, proof: g.stockout || f.restock || f.medal ? 2 : 0.5, starter: cheap && !white ? 1 : 0.3, soldout: g.stockout ? 3 : 0,
+      qpr: cheap ? 1.5 : 0, label: label ? 1.5 : 0, bought: 1, meme: 0.4, longnote: white ? 0.3 : 1 };
+  }
+  if (style === 'dc_jugal') {
+    return { eval: toneOf(x) === 'neg' ? 2.5 : 2, question: 1.5, mart: white || cheap ? 1.5 : 0.7, mixer: white ? 1.5 : 0.8, meme: 2, proof: 0.6, soldout: g.stockout ? 2 : 0, season: f.season ? 1.5 : 0 };
+  }
+  return { eval: 2, question: 1, buyinfo: Math.abs(g.priceChange) > 0.1 || f.deal ? 2 : 0.5, restock: f.restock ? 3 : 0, meetup: 0.5, gift: f.season === 'gift' || !!p.ageYears ? 1 : 0.3,
+    season: f.season ? 1 : 0, longnote: 1 };
+}
+function pickKind(rng: Rng, w: Partial<Record<FeedKind, number>>): FeedKind {
+  const entries = Object.entries(w).filter(([, v]) => (v ?? 0) > 0) as [FeedKind, number][];
+  const total = entries.reduce((t, [, v]) => t + v, 0);
+  let r = rng.next() * total;
+  for (const [k, v] of entries) { r -= v; if (r <= 0) return k; }
+  return entries.at(-1)?.[0] ?? 'eval';
 }
 
 function offNote(p: Product): string | null {
@@ -152,22 +228,36 @@ function offNote(p: Product): string | null {
   return null;
 }
 
+/** 끝 글자에 받침이 있는가 — 한글은 받침, 숫자는 읽는 소리(0 영 · 1 일 · 3 삼 · 6 육 · 7 칠 · 8 팔), 그 밖은 없음으로 본다. ㄹ 받침은 'l' */
+function batchim(word: string): 'none' | 'l' | 'other' {
+  const ch = word.trim().replace(/[)\]」』'"%.!?~]+$/, '').slice(-1);
+  const c = ch.charCodeAt(0) - 0xac00;
+  if (c >= 0 && c < 11172) { const j = c % 28; return j === 0 ? 'none' : j === 8 ? 'l' : 'other'; }
+  if ('0136'.includes(ch)) return 'other';
+  if ('178'.includes(ch)) return 'l';
+  return 'none';
+}
+/** 빈칸 뒤 조사를 값의 받침에 맞춘다(「청사과·배이」 → 「청사과·배가」). 짝: 이/가 · 을/를 · 은/는 · 과/와 · 이랑/랑 · 으로/로 */
+const PARTICLE: Record<string, [string, string]> = { 이: ['이', '가'], 가: ['이', '가'], 을: ['을', '를'], 를: ['을', '를'], 은: ['은', '는'], 는: ['은', '는'], 과: ['과', '와'], 와: ['과', '와'], 이랑: ['이랑', '랑'], 랑: ['이랑', '랑'] };
 function fill(t: string, v: Record<string, string>): string {
-  return t.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? '');
+  return t.replace(/\{(\w+)\}(이랑|랑|으로|로|이|가|을|를|은|는|과|와)?(?=[\s,.!?~^ㅋㅎ…)\]/]|$)/g, (_, k: string, pt?: string) => {
+    const val = v[k] ?? '';
+    if (!pt) return val;
+    const b = batchim(val);
+    if (pt === '으로' || pt === '로') return val + (b === 'other' ? '으로' : '로');
+    const pair = PARTICLE[pt]!;
+    return val + (b === 'none' ? pair[1] : pair[0]);
+  }).replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? '');
 }
 
 /**
- * 디시 거친 말 수위 (v2, 오너 2026-11-10) — 위갤: 긍정 0.5 · 부정 1 · 심한 부정에서 25%만 2.
- * 주갤(욕설·뻘소리 중심): 칭찬도 1(욕 섞인 칭찬) · 부정은 60%가 2
+ * 디시 거친 말 수위 — 위갤: 긍정 0.5 · 부정 1. 주갤: 칭찬도 부정도 1(비속어 섞인 말).
+ * [결정 #403] 비속어는 넣고 욕설은 넣지 않는다 — 욕설 단계 2(#254)는 쓰지 않는다(단계 1까지). 문장 틀에도 단계 2 묶음이 없다(content/feed.ts)
  */
-function dcHarsh(rng: Rng, style: 'dc_whisky' | 'dc_jugal', x: FeedSituation, sentiment: number): Harsh {
+function dcHarsh(style: 'dc_whisky' | 'dc_jugal', x: FeedSituation): Harsh {
   const lines = style === 'dc_whisky' ? DCW_LINES[x] : DCJ_LINES[x];
-  if (style === 'dc_whisky') {
-    if (toneOf(x) !== 'neg') return lines[0.5] ? 0.5 : 1;
-    return sentiment <= -0.5 && lines[2] && rng.next() < 0.25 ? 2 : 1;
-  }
-  if (toneOf(x) !== 'neg') return 1;
-  return lines[2] && rng.next() < 0.6 ? 2 : 1;
+  if (style === 'dc_whisky' && toneOf(x) !== 'neg') return lines[0.5] ? 0.5 : 1;
+  return 1;
 }
 
 /** 제품 특징 — 위갤·위스키베이스 디테일 문장 */
@@ -185,16 +275,22 @@ function featuresOf(p: Product): FeedFeature[] {
   return out;
 }
 
-/** forcedScore — F5d(v16): 틱에서 그린 위스키베이스 점수(`MonthReport.reviews`). 있으면 그 점수와 그 점수가 말하는 품질로 쓴다(참 품질을 글에 새지 않게) */
-function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style: FeedStyle, month: number, i: number, forcedScore?: number): FeedPost {
+/**
+ * forcedScore — F5d(v16): 틱에서 그린 위스키베이스 점수(`MonthReport.reviews`). 있으면 그 점수와 그 점수가 말하는 품질로 쓴다(참 품질을 글에 새지 않게).
+ * kind — [결정 #400] 글 종류(평가 밖의 글). 맞는 틀이 없으면 평가로 돌아간다. used — 이 피드에서 쓴 틀(되풀이 피하기)
+ */
+function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style: FeedStyle, month: number, i: number, forcedScore?: number, kind: FeedKind = 'eval', used?: Set<string>, season: FeedSeason | null = null, medal = false, dutyFree = false): FeedPost {
   const notes = topNotes(p.flavor, 3).map((n) => n.nameKo);
   const off = g.off;
   const years = Math.floor((p.oakMonths ?? (p.ageYears ?? 0) * 12) / 12);
+  const bench = benchmarkOf(p, g.consumer);
+  const finish = finishLabelOn(p) && p.finish ? finishLabel(p.finish).replace(/ 피니시$/, '') : '오크 통';
   const vars: Record<string, string> = {
-    name: p.name, n1: notes[0] ?? '은은한 곡물', n2: notes[1] ?? notes[0] ?? '단맛', n3: notes[2] ?? notes[1] ?? '여운',
-    off: g.offWord, price: fmtPrice(g.consumer), bench: benchmarkFor(p, g.consumer), cat: CATEGORY[p.category].nameKo,
-    abv: `${Math.round(p.abv * 100)}%`, age: years > 0 ? `${years}년` : '어린',
+    name: p.name, short: style === 'cafe' ? p.name : shortName(p.name), n1: notes[0] ?? '은은한 곡물', n2: notes[1] ?? notes[0] ?? '단맛', n3: notes[2] ?? notes[1] ?? '여운',
+    off: g.offWord, price: fmtPrice(g.consumer), bench: bench.name, benchCo: bench.co ?? '', cat: CATEGORY[p.category].nameKo,
+    abv: `${Math.round(p.abv * 100)}%`, age: p.ageYears ? `${p.ageYears}년` : years > 0 ? `${years}년` : '어린', finish,
   };
+  const ctx: LineCtx = { labelYears: p.ageYears ?? 0, finish: finishLabelOn(p), onggi: (p.restMonths ?? 0) >= 6, cs: p.abv >= 0.55, co: !!bench.co, limited: !!p.rareSingleCask || !!p.dfEdition, medal, dutyFree };
   const white = WHITE.includes(p.category);
   const community = FEED_COMMUNITIES[style][white ? 'white' : 'whisky'];
   const author = rng.pick(FEED_AUTHORS[style]);
@@ -205,27 +301,52 @@ function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style
     const drawn = clamp(Math.round(60 + p.quality * 0.38 + rng.int(-3, 3)), 50, 98);
     const score = forcedScore ?? drawn;
     const q = forcedScore != null ? (forcedScore - 60) / 0.38 : p.quality; // 여운 문구도 점수가 말하는 품질로(reviews.ts reviewReading과 같은 식)
-    const finish = rng.pick(WB_FINISH[q >= 75 ? 'long' : q >= 60 ? 'mid' : 'short']);
+    const finishNote = rng.pick(WB_FINISH[q >= 75 ? 'long' : q >= 60 ? 'mid' : 'short']);
+    const line = kind !== 'eval' ? pickLine(rng, WB_KIND_LINES[kind], ctx, used) : null;
+    if (line) return { ...base, tone: 'neu', text: `${fill(line, vars)} ${score}점`, score, harsh: 0 };
     const palate = `${vars.n3}${off ? `, 옅은 ${off}` : ''}`;
     const verdict = fill(rng.pick(WB_VERDICT[x]), vars);
-    const tasting = ['stockout', 'priceUp', 'priceDown', 'forgotten'].includes(x) ? '' : `Nose: ${rng.pick(WB_NOSE_ADJ)} ${vars.n1}, ${vars.n2}. Palate: ${palate}. Finish: ${finish}. `;
+    const tasting = ['stockout', 'priceUp', 'priceDown', 'forgotten'].includes(x) ? '' : `Nose: ${rng.pick(WB_NOSE_ADJ)} ${vars.n1}, ${vars.n2}. Palate: ${palate}. Finish: ${finishNote}. `;
     return { ...base, text: `${tasting}${verdict} ${score}점`, score, harsh: 0 };
+  }
+  // [결정 #400] 평가 밖의 글 — 다섯 줄 노트 · 계절 · 종류별 틀. 맞는 틀이 없으면 아래 평가 글로
+  if (kind !== 'eval') {
+    let body: string | null = null;
+    if (kind === 'longnote' && (style === 'dc_whisky' || style === 'cafe')) {
+      const n = NOTE_PARTS[style];
+      body = [n.look, n.nose, n.palate, n.finish, n.verdict[tone]].map((pool) => fill(rng.pick(pool), vars)).join(' / ');
+    } else if (kind === 'season' && season && (style === 'dc_jugal' || style === 'cafe')) {
+      const line = pickLine(rng, FEED_SEASON_LINES[style][season], ctx, used);
+      body = line && fill(line, vars);
+    } else {
+      const line = pickLine(rng, FEED_KIND_LINES[style][kind], ctx, used);
+      body = line && fill(line, vars);
+    }
+    if (body) {
+      const kTone: FeedPost['tone'] = kind === 'longnote' ? tone : KIND_TONE[kind] ?? 'neu';
+      const { signal: _s, ...plain } = base;
+      if (style === 'dc_whisky') return { ...plain, tone: kTone, text: `${DCW_TAG[kind] ?? '[일반]'} ${body}${rng.pick(DCW_CLOSE)}`, harsh: 0.5, replies: replies(rng, style, kTone) };
+      if (style === 'dc_jugal') return { ...plain, tone: kTone, text: `${kind === 'meme' ? rng.pick(DCJ_OPEN) : ''}${body}${rng.pick(DCJ_CLOSE)}`, harsh: 1, replies: replies(rng, style, kTone) };
+      return { ...plain, tone: kTone, text: `${body}${rng.pick(CAFE_CLOSE)}`, harsh: 0, replies: replies(rng, style, kTone) };
+    }
   }
   if (style === 'cafe') {
     const text = `${rng.pick(CAFE_OPEN)}${fill(rng.pick(CAFE_LINES[x]), vars)}${rng.pick(CAFE_CLOSE)}`;
     return { ...base, text, harsh: 0, replies: replies(rng, style, tone) };
   }
-  const harsh = dcHarsh(rng, style, x, g.sentiment);
+  const harsh = dcHarsh(style, x);
   if (style === 'dc_whisky') {
     const pool = DCW_LINES[x][harsh] ?? DCW_LINES[x][1] ?? DCW_LINES[x][0.5]!;
     const feat = feats.length && rng.next() < 0.5 ? ` — ${fill(rng.pick(DCW_FEATURE[rng.pick(feats)]), vars)}` : '';
-    return { ...base, text: `${rng.pick(DCW_OPEN)}${fill(rng.pick(pool), vars)}${feat}${rng.pick(DCW_CLOSE)}`, harsh, replies: replies(rng, style, tone) };
+    // 위스키 마이너 갤러리 말머리(관찰 mkt-feed.md §4.1.1) — 평가 글은 [리뷰]
+    return { ...base, text: `${DCW_TAG.eval} ${fill(rng.pick(pool), vars)}${feat}${rng.pick(DCW_CLOSE)}`, harsh, replies: replies(rng, style, tone) };
   }
   // 주갤 — 30%는 뻘글(제품 이름만 걸친 헛소리). 가격 신호 글은 뻘글로 바꾸지 않는다
   if (x !== 'raise' && rng.next() < 0.3) {
     return { ...base, tone: 'neu', text: `${rng.pick(DCJ_OPEN)}${fill(rng.pick(DCJ_OFFTOPIC), vars)}${rng.pick(DCJ_CLOSE)}`, harsh: 1, replies: replies(rng, style, 'neu') };
   }
-  const pool = DCJ_LINES[x][harsh] ?? DCJ_LINES[x][1] ?? DCJ_LINES[x][0.5]!;
+  // 부정 글은 v4 평가 틀(FEED_KIND_LINES.dc_jugal.eval — 상황 밖의 짧은 실망)도 섞는다
+  const pool = [...(DCJ_LINES[x][harsh] ?? DCJ_LINES[x][1] ?? DCJ_LINES[x][0.5]!), ...(tone === 'neg' ? FEED_KIND_LINES.dc_jugal.eval ?? [] : [])];
   return { ...base, text: `${rng.pick(DCJ_OPEN)}${fill(rng.pick(pool), vars)}${rng.pick(DCJ_CLOSE)}`, harsh, replies: replies(rng, style, tone) };
 }
 
@@ -259,6 +380,8 @@ export function feedFor(s: GameState, months = 3, maxPosts = 14): FeedPost[] {
   // F5d(#338 ⑥): 품질을 가리는 판(v16)은 위스키베이스 글을 틱에서 그린 리뷰(`MonthReport.reviews`)로만 보인다 — 추정 갱신(reviews.ts)과 같은 점수.
   // 다른 커뮤니티 글은 그대로 이 함수가 그린다. 옛 판은 지금 그대로(바이트 동일)
   const hidden = hidesProductQuality(s);
+  const dutyFreeSite = hasDutyFree(s); // 면세 글은 면세점이 있는 입지에서만
+  const tpl = new Set<string>(); // [결정 #400] 이 피드에서 쓴 틀 — 같은 화면 창에 같은 문장이 되풀이되지 않게
   for (let k = reports.length - 1; k >= 0; k--) {
     const r = reports[k]!;
     const prevR = s.history.reports[s.history.reports.indexOf(r) - 1];
@@ -270,6 +393,15 @@ export function feedFor(s: GameState, months = 3, maxPosts = 14): FeedPost[] {
       if (g.bottles <= 0) continue;
       sold.push({ p, g });
       const rng = rngFor(s.seed, r.month, `feed:${p.id}`);
+      // [결정 #400] 글 종류는 화면 전용 난수로 — 리뷰 셈(reviews.ts)이 쓰는 postCount · styleWeights · pickStyle의 순서를 건드리지 않는다
+      const krng = rngFor(s.seed, r.month, `feed:kind:${p.id}`);
+      const prevSale = prevR?.sales.find((x) => x.productId === p.id);
+      const flags: KindFlags = {
+        restock: !!prevSale && prevSale.bottles > 0 && prevSale.demandBottles > prevSale.bottles * 1.05 && !g.stockout,
+        medal: (r.events ?? []).some((e) => e.includes('수상')),
+        deal: (s.commerce.retailContracts ?? []).some((c) => c.category === p.category) || (r.events ?? []).some((e) => e.includes('면세 한정판') && e.includes('완판')),
+        season: seasonOf(r.month),
+      };
       const w = styleWeights(p, g);
       const x = feedSituation(g);
       const events: FeedSituation[] = [];
@@ -282,14 +414,16 @@ export function feedFor(s: GameState, months = 3, maxPosts = 14): FeedPost[] {
       const used = new Set<string>();
       for (let i = 0; i < n; i++) {
         const sit = i < events.length && rng.next() < 0.7 ? events[i]! : x;
-        let post = writePost(rng, p, g, sit, pickStyle(rng, w), r.month, i);
-        for (let k = 0; k < 4 && used.has(post.text); k++) post = writePost(rng, p, g, sit, pickStyle(rng, w), r.month, i); // 같은 달 같은 문장 피하기
+        // 사건 글(출시 · 품절 · 가격 변동)과 가격 신호 글은 평가 그대로. 나머지는 글 종류를 고른다
+        const write = () => { const style = pickStyle(rng, w); const kind = sit === x && x !== 'raise' ? pickKind(krng, kindWeights(style, p, g, x, flags)) : 'eval'; return writePost(rng, p, g, sit, style, r.month, i, undefined, kind, tpl, flags.season, flags.medal, dutyFreeSite); };
+        let post = write();
+        for (let k = 0; k < 4 && used.has(post.text); k++) post = write(); // 같은 달 같은 문장 피하기
         if (used.has(post.text)) continue;
         if (hidden && post.style === 'whiskybase') continue; // 아래에서 틱의 리뷰로 다시 쓴다
         used.add(post.text);
         all.push(post);
       }
-      if (hidden) (r.reviews?.find((v) => v.productId === p.id)?.scores ?? []).forEach((sc, j) => all.push(writePost(rng, p, g, x, 'whiskybase', r.month, 10 + j, sc)));
+      if (hidden) (r.reviews?.find((v) => v.productId === p.id)?.scores ?? []).forEach((sc, j) => all.push(writePost(rng, p, g, x, 'whiskybase', r.month, 10 + j, sc, pickKind(krng, kindWeights('whiskybase', p, g, x, flags)), tpl, flags.season, flags.medal, dutyFreeSite)));
     }
     // 비교 글: 같은 주종 둘 이상
     const rng = rngFor(s.seed, r.month, 'feed:compare');
@@ -353,4 +487,14 @@ export function briefPosts(posts: readonly FeedPost[], n: number): FeedPost[] {
     picked.push(pool.splice(best, 1)[0]!);
   }
   return picked.slice(0, n);
+}
+
+/**
+ * [결정 #400] 여러 달 진행(분기 · 1년) 요약에 넣을 커뮤니티 한 줄 — 넘긴 달들의 피드에서 **고르기만** 한다(새로 만들지 않음 → 난수 · 상태 불변).
+ * 화제 글: 가격 신호(💡) → 댓글이 가장 많은 글 → 맨 위 글. 좋음 · 나쁨 = 그 글들의 분위기 수. ARCH 여러 달 요약(TurnBrief)이 읽는다
+ */
+export function feedDigest(s: GameState, months: number): { top: FeedPost | null; pos: number; neg: number; total: number } {
+  const posts = feedFor(s, Math.max(1, months), 200);
+  const top = posts.find((p) => p.signal === 'raise_price') ?? [...posts].sort((a, b) => (b.replies?.length ?? 0) - (a.replies?.length ?? 0))[0] ?? null;
+  return { top, pos: posts.filter((p) => p.tone === 'pos').length, neg: posts.filter((p) => p.tone === 'neg').length, total: posts.length };
 }

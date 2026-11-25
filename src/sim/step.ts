@@ -161,7 +161,7 @@ function phaseSettle(s: GameState, report: MonthReport, cashStart: number, offTu
   report.netCash = s.finance.cash - cashStart + sumCashFlows(offTurn);
   report.cashEnd = s.finance.cash;
   // 현금·평가액 곡선 (#138·#146) — 기록만 한다
-  report.netWorth = netWorth(s);
+  report.netWorth = netWorth(s, s.month + 1); // #398 설비 처분가는 달 단위 감가 — 달을 넘긴 뒤의 화면 순자산과 같게(결산 = 월말)
   report.investingCash = sumCashFlows(offTurn, 'investing');
   // 선급금 상계분은 영업(납품 매출)으로 올리고 같은 금액을 재무(선급금 상환)로 뺀다
   report.financingCash = sumCashFlows(offTurn, 'financing') - (report.expenses.principal ?? 0) - (report.prepayApplied ?? 0) - (report.prepayRefunded ?? 0);

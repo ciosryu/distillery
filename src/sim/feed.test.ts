@@ -59,23 +59,22 @@ describe('가상 커뮤니티 피드 (#247)', () => {
     expect(posts[0]!.signal).toBe('raise_price'); // 같은 달 안에서 맨 위
   });
 
-  it('거친 말 수위(v2): 카페·위스키베이스 0 · 위갤 긍정 ≤ 0.5 · 주갤은 칭찬도 1, 부정의 2 비율이 위갤보다 높다', () => {
-    const c = { w: { neg: 0, two: 0 }, j: { neg: 0, two: 0 } };
+  it('거친 말 수위([결정 #403]): 카페 · 위스키베이스 0 · 위갤 긍정 ≤ 0.5 · 주갤은 1 — 욕설 단계 2는 없다', () => {
+    let w = 0, j = 0;
     for (let seed = 1; seed <= 40; seed++) {
       const bad = product({ id: 'x', name: '창렬 위스키', quality: 40, price: 200_000, flavor: { solvent: 20, cereal: 10 } });
       const good = product({ id: 'y', name: '좋은 위스키', quality: 82, price: 70_000 });
       for (const p of feedFor(world([bad, good], 3, 300, seed), 3, 100)) {
         if (p.style === 'cafe' || p.style === 'whiskybase') expect(p.harsh).toBe(0);
         if (p.style === 'dc_whisky' && p.tone === 'pos') expect(p.harsh).toBeLessThanOrEqual(0.5);
-        if (p.style === 'dc_jugal') expect(p.harsh).toBeGreaterThanOrEqual(1);
-        if (p.tone === 'neg' && p.style === 'dc_whisky') { c.w.neg++; if (p.harsh === 2) c.w.two++; }
-        if (p.tone === 'neg' && p.style === 'dc_jugal') { c.j.neg++; if (p.harsh === 2) c.j.two++; }
+        if (p.style === 'dc_jugal') expect(p.harsh).toBe(1);
+        expect(p.harsh).not.toBe(2);
+        if (p.style === 'dc_whisky' && p.tone === 'neg') w++;
+        if (p.style === 'dc_jugal' && p.tone === 'neg') j++;
       }
     }
-    expect(c.w.neg).toBeGreaterThan(5);
-    expect(c.j.neg).toBeGreaterThan(5);
-    expect(c.w.two / c.w.neg).toBeLessThan(0.45); // 위갤: 욕은 가끔
-    expect(c.j.two / c.j.neg).toBeGreaterThan(c.w.two / c.w.neg); // 주갤: 욕설 중심
+    expect(w).toBeGreaterThan(5);
+    expect(j).toBeGreaterThan(5);
   });
 
   it('다양성(v2): 여러 판에서 글이 거의 겹치지 않고, 주갤 뻘글·댓글이 나온다', () => {
@@ -206,5 +205,83 @@ describe('[결정 #366] I2 L7 (라) — 가리는 판의 잡내 문구는 커뮤
     const old = await mk({ fresh_fruit: 30, feinty: 20 }, 60, 'legacy-v15');
     expect(feedSignals(old.s, old.p, sale, undefined, 40).off).not.toBe('잡내');
     expect(feedSignals(old.s, old.p, sale, undefined, 40).off).not.toBeNull();
+  });
+});
+
+describe('[결정 #400] 피드 v4 조건 — 글 종류 · 줄임 이름 · 철 · 틀 요건', () => {
+  it('줄임 이름: 낱말 첫 글자 + 숫자(위스키 마이너 갤 관찰)', async () => {
+    const { shortName } = await import('./feed');
+    expect(shortName('김포 블랜디드 3년')).toBe('김블3');
+    expect(shortName('김포 싱글몰트 셰리 6년')).toBe('김싱셰6');
+    expect(shortName('김포 소주')).toBe('김소');
+    expect(shortName('소주')).toBe('소주');
+  });
+  it('철: 1 · 2 · 9월 선물 · 7 · 8월 여름 · 12월 겨울 · 그 밖 없음', async () => {
+    const { seasonOf } = await import('./feed');
+    expect([0, 1, 8].map(seasonOf)).toEqual(['gift', 'gift', 'gift']);
+    expect([6, 7].map(seasonOf)).toEqual(['summer', 'summer']);
+    expect(seasonOf(11)).toBe('winter');
+    expect([2, 3, 4, 5, 9, 10].map(seasonOf)).toEqual([null, null, null, null, null, null]);
+  });
+  it('글 종류 비율: 출시 달에만 신상 · 품절 달에만 품절 · 표기 없으면 표기 얘기 없음 · 위스키베이스는 점수 글 종류만', async () => {
+    const { kindWeights } = await import('./feed');
+    const p = product({ id: 'k', name: '시험 위스키', quality: 70, price: 60_000 });
+    const g = { quality: 70, qpr: 1, consumer: 60_000, bottles: 30, stockout: false, launch: false, priceChange: 0, sentiment: 0, off: null, offWord: '', mania: 0.2, mass: 0.2, extreme: 0 };
+    const f = { restock: false, medal: false, deal: false, season: null };
+    const w = kindWeights('dc_whisky', { ...p, ageYears: undefined, finish: undefined, abv: 0.46 } as never, g, 'meh', f);
+    expect(w.news).toBe(0);
+    expect(w.soldout).toBe(0);
+    expect(w.label).toBe(0);
+    expect(kindWeights('dc_whisky', p, { ...g, launch: true, stockout: true }, 'meh', f).news).toBeGreaterThan(0);
+    expect(Object.keys(kindWeights('whiskybase', p, g, 'meh', f)).sort()).toEqual(['batch', 'english', 'eval', 'scoreonly']);
+    expect(kindWeights('cafe', p, g, 'meh', f).season).toBe(0);
+    expect(kindWeights('cafe', p, g, 'meh', { ...f, season: 'summer' }).season).toBeGreaterThan(0);
+  });
+  it('여러 시드에서 새 글 종류가 실제로 나온다 · 같은 피드 안에 같은 글이 없다 · 위갤 글은 말머리로 시작한다', () => {
+    const seen = new Set<string>();
+    for (let seed = 1; seed <= 30; seed++) {
+      const posts = feedFor(world([product({ id: 'a', name: '김포 블랜디드 3년', quality: 70, price: 60_000 }), product({ id: 'b', name: '김포 소주', category: 'soju_distilled', quality: 60, price: 9_000, abv: 0.25 })], 3, 300, seed), 3, 100);
+      const texts = posts.map((x) => x.text);
+      expect(new Set(texts).size).toBe(texts.length);
+      for (const x of posts) {
+        if (x.style === 'dc_whisky') expect(x.text).toMatch(/^\[(리뷰|질문|일반|소식)\] /);
+        if (/^\[(질문|일반|소식)\]/.test(x.text) || /^\[(정보|모임후기|모임공지)\]/.test(x.text) || /\(사진\)/.test(x.text)) seen.add(x.style + (x.text.match(/^\[[^\]]+\]/)?.[0] ?? '(사진)'));
+      }
+    }
+    expect(seen.size).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('[결정 #400] 피드 v4 — 조사 맞춤 · 카페는 전체 이름 · 한정 · 수상 · 면세 문장 요건', () => {
+  it('빈칸 뒤 조사를 받침에 맞춘다 — 한글 · 숫자 끝', () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      for (const x of feedFor(world([product({ id: 'a', name: '김포 블랜디드 3년', quality: 70, price: 60_000, flavor: { fresh_fruit: 40, cereal: 30 } })], 3, 300, seed), 3, 100)) {
+        expect(x.text).not.toMatch(/배이 |배을 |배은 |쌀가 |쌀를 |삼년가|3가 |3를 /);
+      }
+    }
+  });
+  it('카페 글은 줄임 이름을 쓰지 않는다 · 한정 · 수상 · 면세 문장은 그 사정이 있을 때만', () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      for (const x of feedFor(world([product({ id: 'a', name: '김포 블랜디드 3년', quality: 70, price: 60_000 })], 3, 300, seed), 3, 100)) {
+        if (x.style === 'cafe') expect(x.text).not.toContain('김블3');
+        expect(x.text).not.toMatch(/한정 번호|수상 소식|면세 한정판 소식/);
+      }
+    }
+  });
+});
+
+describe('[결정 #400] feedDigest — 여러 달 요약 한 줄(고르기만)', () => {
+  it('화제 글은 피드 안의 글이고, 좋음 · 나쁨 · 전체 수가 피드와 같다 · 상태를 바꾸지 않는다', async () => {
+    const { feedDigest } = await import('./feed');
+    const s = world([product({ id: 'a', name: '김포 블랜디드 3년', quality: 70, price: 60_000 }), product({ id: 'u', name: '저평가 위스키', quality: 78, price: 15_000 })], 3, 300, 7);
+    const before = JSON.stringify(s);
+    const d = feedDigest(s, 3);
+    const posts = feedFor(s, 3, 200);
+    expect(d.total).toBe(posts.length);
+    expect(d.pos).toBe(posts.filter((p) => p.tone === 'pos').length);
+    expect(d.neg).toBe(posts.filter((p) => p.tone === 'neg').length);
+    expect(posts.map((p) => p.id)).toContain(d.top!.id);
+    expect(d.top!.signal).toBe('raise_price'); // 가격 신호가 있으면 그것이 화제 글
+    expect(JSON.stringify(s)).toBe(before);
   });
 });

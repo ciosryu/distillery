@@ -24,7 +24,21 @@ export const GRADE = {
   sFlagshipQuality: 80,
   /** S: 브랜드 인지도 이 이상 */
   sAwareness: 0.2,
+  /**
+   * S 순자산 — 새 캠페인(v16)은 규모별 고정 금액(원, 설비 처분가를 넣은 순자산 기준) `[튜닝]` ([결정 #393] · MGT `mgt-grade-options.md` 「[결정 #393] · [결정 #398] 값 표」).
+   * 드묾 목표 「평범하게 운영하면 거의 못 받고, 통을 준비한 사람의 3 ~ 4명 중 1명」 — 봇 X0-R 40시드 13 · 11 / 40, X0 0 / 40. 없는 규모 · 옛 판은 `sNetWorthRatio` 식
+   */
+  sNetWorthV16: { standard: 2_000_000_000, micro: 2_550_000_000 } as Record<string, number>,
 };
+
+/** S 등급 순자산 문턱(원) — v16은 규모별 고정 금액, 옛 판(legacy-v15)이나 표에 없는 규모는 성과 기준 × `sNetWorthRatio`. 시나리오가 없으면 null */
+export function sNetWorthTarget(s: Pick<GameState, 'scenario' | 'rulesVersion'>): number | null {
+  const sc = s.scenario;
+  if (!sc) return null;
+  const byRatio = sc.equity * sc.goal.netWorthMultiple * GRADE.sNetWorthRatio;
+  if (rulesVersionOf(s) === 'legacy-v15') return byRatio;
+  return GRADE.sNetWorthV16[sc.tierId] ?? byRatio;
+}
 
 const oakMonthsOf = (p: Pick<Product, 'oakMonths' | 'ageYears'>) => p.oakMonths ?? (p.ageYears ?? 0) * 12;
 const flagshipMonths = campaignMinOakMonths;
@@ -48,8 +62,8 @@ export function netWorthLegacy(s: GameState): number {
  * 순자산 (#146·#317) — 새 판(v16, 샌드박스 포함)은 **처분 예상액**(`valuation.ts liquidationValue` — 통 원액은 관측 품질 q̂, 병 재고 초과분 할인, 선급 의무 부채),
  * 옛 판(`legacy-v15`)은 지금 식(`netWorthLegacy`, 참 품질 현물가 — 바이트 동일). 구기준선과는 `netWorthLegacy`로만 비교한다(P-MGT-47 리스크)
  */
-export function netWorth(s: GameState): number {
-  return usesObservedValuation(s) ? liquidationValue(s) : netWorthLegacy(s);
+export function netWorth(s: GameState, atMonth: number = s.month): number {
+  return usesObservedValuation(s) ? liquidationValue(s, atMonth) : netWorthLegacy(s); // atMonth: 설비 처분가 감가 기준 달(#398 — 결산이 다음 달 값을 적는다)
 }
 
 /** 이번 달에 처음 일어난 일 — 이미 기록한 마일스톤은 다시 보지 않는다 */
@@ -146,15 +160,16 @@ export function updateProgress(s: GameState, report: MonthReport): void {
  */
 export function judgeWin(s: GameState, month: number, quality?: number): GoalVerdict {
   const sc = s.scenario!;
-  const nw = netWorth(s);
+  const nw = netWorth(s, month); // [#398] 판정 달(승리 달 결산)의 설비 감가 기준 — 결산 report.netWorth와 같은 값
   const target = sc.equity * sc.goal.netWorthMultiple;
+  const sTarget = sNetWorthTarget(s)!; // [결정 #393] 규모별 S 순자산
   const checks: GoalCheck[] = [
     { id: 'survive', ok: true },
     { id: 'flagship', ok: true, ...(quality != null ? { value: quality } : {}) },
     { id: 'netWorth', ok: nw >= target, value: nw, target },
   ];
-  const grade: GoalVerdict['grade'] = nw >= target * GRADE.sNetWorthRatio && (quality ?? 0) >= GRADE.sFlagshipQuality && awarenessOf(s) >= GRADE.sAwareness ? 'S' : 'A';
-  return { month, result: 'heritage', grade, checks, netWorth: nw, ...(quality != null ? { flagshipQuality: quality } : {}), awareness: awarenessOf(s) };
+  const grade: GoalVerdict['grade'] = nw >= sTarget && (quality ?? 0) >= GRADE.sFlagshipQuality && awarenessOf(s) >= GRADE.sAwareness ? 'S' : 'A';
+  return { month, result: 'heritage', grade, checks, netWorth: nw, sNetWorthTarget: sTarget, ...(quality != null ? { flagshipQuality: quality } : {}), awareness: awarenessOf(s) };
 }
 
 /** 결과 화면 연표 — 연표에 보이는 마일스톤을 달 순서로 */

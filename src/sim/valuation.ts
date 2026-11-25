@@ -11,6 +11,20 @@ import { bulkValuePerLPA, isBulkKind, lotQuality, spotBidPerLPA } from './bulk';
 import { rulesVersionOf } from './rules';
 import type { Cask, EquipmentInstance, GameState, SpiritLot } from './types';
 import { EQUIPMENT } from './content/catalog';
+import { equipmentCost } from './sites';
+
+/**
+ * [결정 #398] 설비 처분가 계수 — MGT 값 표(#1030 `mgt-grade-options.md` 「[결정 #393] · [결정 #398] 값 표」) `[튜닝 — 단계 T]`.
+ * 회수율 r 0.3(범위 0.3 ~ 0.5의 아래 끝 — 「설비를 사서 등급 올리기」를 가장 단단히 막는다. r < 1이 원칙) · 잔존 바닥 원가의 10% · 종류별 내용 연수(개월).
+ * 면허 성격의 `kr_farm_registration`은 뺀다. **OEM 전용 설비**(위탁사가 설치비 60% 지원 — 간토)는 원가 전체로 센다 — r 0.3 × 원가가 플레이어가 낸 40%보다 낮아
+ * 「산 값보다 낮게」를 지킨다. **r을 0.4 이상으로 올리면 OEM 설비는 「낸 몫 × r」로 바꿔야 한다**(MGT)
+ */
+export const EQUIPMENT_SALVAGE = {
+  rate: 0.3,
+  floor: 0.1,
+  lifeMonths: { still: 180, fermenter: 120, warehouse: 240, visitor: 180, facility: 120 } as Record<string, number>,
+  exclude: ['kr_farm_registration'] as readonly string[],
+} as const;
 
 /**
  * [#388 ① G4] 설비를 산 달 — 처분가 감가 나이의 입구(G4 `equipmentSalvage`가 읽는다 · MGT 값 표). 새 세이브는 `boughtMonth`.
@@ -18,6 +32,24 @@ import { EQUIPMENT } from './content/catalog';
  * **다만 증류기는 0으로 본다** — 고장 수리(`events.ts` 증류기 중단)가 `readyMonth`를 덮어쓰고, 수리가 끝나면 `repairUntil`도 지워져 덮인 값인지 가릴 수 없다
  * (9차 133 세이브의 시작 증류기 readyMonth 124 — PROD 리뷰). 0으로 보면 감가가 커져 처분가가 낮게(보수적으로) 나온다 `[한계 — 옛 세이브에서 나중에 산 증류기는 실제보다 늙게]`
  */
+/**
+ * [결정 #398] 설비 처분가 — Σ r × 원가(입지 반영 `equipmentCost`) × max(바닥, 1 − 나이 ÷ 내용 연수). 나이 = 지금 달 − `boughtMonthOf`(공사 중이면 0 → r × 원가).
+ * **v16만**(`usesObservedValuation`) — 옛 판은 0(X0L 그대로). `rate`는 세 값마다 다르다: 장부가는 1(감가만), 추정 · 처분은 r
+ */
+export function equipmentSalvage(s: GameState, rate: number = EQUIPMENT_SALVAGE.rate, atMonth: number = s.month): number {
+  if (!usesObservedValuation(s)) return 0;
+  let total = 0;
+  for (const e of s.production.equipment) {
+    const def = EQUIPMENT[e.catalogId];
+    if (!def || EQUIPMENT_SALVAGE.exclude.includes(def.id)) continue;
+    const life = EQUIPMENT_SALVAGE.lifeMonths[def.kind];
+    if (!life) continue;
+    const age = e.readyMonth > atMonth ? 0 : Math.max(0, atMonth - boughtMonthOf(e));
+    total += rate * equipmentCost(s, def) * Math.max(EQUIPMENT_SALVAGE.floor, 1 - age / life);
+  }
+  return Math.round(total);
+}
+
 export function boughtMonthOf(e: Pick<EquipmentInstance, 'boughtMonth' | 'readyMonth' | 'catalogId'>): number {
   if (e.boughtMonth != null) return e.boughtMonth;
   const def = EQUIPMENT[e.catalogId];
@@ -75,21 +107,22 @@ export function bottleStockValue(s: GameState, mode: 'book' | 'est' | 'liq'): nu
 /** ① 장부 원가 — 원액은 쌓인 원가(`costPerLPA`), 병은 원가. 시장·관측과 무관 */
 export function bookValue(s: GameState): number {
   const spirits = [...tankLots(s), ...valuedCasks(s).map((c) => c.contents)].reduce((t, l) => t + lpaOf(l) * l.costPerLPA, 0);
-  return Math.round(s.finance.cash - loans(s) + receivables(s) + spirits + bottleStockValue(s, 'book'));
+  return Math.round(s.finance.cash - loans(s) + receivables(s) + spirits + bottleStockValue(s, 'book') + equipmentSalvage(s, 1)); // #398 장부가는 감가만(r 없이)
 }
 /** ② 추정 시장가치 — 통은 q̂, 탱크는 공개 품질. 전량 포화·매입 할인 없음 */
 export function estimatedValue(s: GameState): number {
   const known = knownReads(s);
   const tanks = tankLots(s).reduce((t, l) => t + lpaOf(l) * bulkValuePerLPA(s, l), 0);
   const casks = valuedCasks(s).reduce((t, c) => t + lpaOf(c.contents) * bulkValuePerLPA(s, c.contents, qHat(s, c, known)), 0);
-  return Math.round(s.finance.cash - loans(s) + receivables(s) + tanks + casks + bottleStockValue(s, 'est'));
+  return Math.round(s.finance.cash - loans(s) + receivables(s) + tanks + casks + bottleStockValue(s, 'est') + equipmentSalvage(s)); // #398
 }
 /** ③ 처분 예상액 — "지금 정리하면 받는 돈". 통은 q̂ 현물 매입가(할인·운송; 전량 매각 포화는 F7), 병은 원가(초과분 할인), 남은 납품 의무는 부채 */
-export function liquidationValue(s: GameState): number {
+/** `atMonth` — 설비 처분가의 감가 기준 달(결산은 달을 넘기기 전에 기록하므로 다음 달 값으로 맞춘다 — 화면 순자산 = 지난달 결산 순자산) */
+export function liquidationValue(s: GameState, atMonth: number = s.month): number {
   const known = knownReads(s);
   const tanks = tankLots(s).reduce((t, l) => t + lpaOf(l) * spotBidPerLPA(s, l), 0);
   const casks = valuedCasks(s).reduce((t, c) => t + lpaOf(c.contents) * spotBidPerLPA(s, c.contents, 0, qHat(s, c, known)), 0);
-  return Math.round(s.finance.cash - loans(s) + receivables(s) + tanks + casks + bottleStockValue(s, 'liq') - prepaidObligations(s));
+  return Math.round(s.finance.cash - loans(s) + receivables(s) + tanks + casks + bottleStockValue(s, 'liq') - prepaidObligations(s) + equipmentSalvage(s, EQUIPMENT_SALVAGE.rate, atMonth)); // #398 설비 처분가 — 순자산 자체에(등급용 값을 따로 두지 않는다)
 }
 /** 세 값 한 번에 — 화면·측정용 */
 export const valuation = (s: GameState) => ({ book: bookValue(s), est: estimatedValue(s), liq: liquidationValue(s) });
