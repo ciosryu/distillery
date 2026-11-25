@@ -259,7 +259,7 @@ export function newFacilities(s: GameState): { id: string; name: string; openedM
 
 /**
  * [결정 #407] 승리 미루기 알림 — 12년 적격 원액이 생긴 뒤(승리 전 · v16) S 등급 순자산 기준이 미룬 만큼 오른다는 한 줄. 값은 MGT `sNetWorthTarget`(이번 달에 팔면의 문턱).
- * 적격 기록이 없거나 · 승리했거나 · 옛 판이면 null
+ * 미룬 개월은 **출하할 수 있게 된 달(첫 적격 달 + 1)부터** 센다(MGT `sDelayMonths` — 판정 달 − 첫 적격 달 − 2, PM 확인 2026-11-25). 적격 기록이 없거나 · 승리했거나 · 옛 판이면 null
  */
 export function winDelayNote(s: GameState): string | null {
   const sc = s.scenario;
@@ -269,8 +269,8 @@ export function winDelayNote(s: GameState): string | null {
   if (!k || target == null) return null;
   const n = sDelayMonths(s);
   return n > 0
-    ? `S 등급 순자산 기준 ${fmtWon(target)} — 12년 출하를 미룬 만큼 오른다(${n}개월 × ${fmtWon(k)} = +${fmtWon(n * k)})`
-    : `12년 적격 원액이 있다 — ${GRADE.sDelayGraceMonths}개월 안에 출하하지 않으면 S 등급 순자산 기준(지금 ${fmtWon(target)})이 달마다 ${fmtWon(k)}씩 오른다`;
+    ? `12년 적격 원액을 출하할 수 있다 — 출하를 미루면 달마다 S 등급 순자산 기준이 ${fmtWon(k)}씩 오른다(지금 ${fmtWon(target)} · 출하할 수 있게 된 뒤 ${n}개월 미뤄 +${fmtWon(n * k)})`
+    : `12년 적격 원액을 출하할 수 있다 — 지금 출하하면 S 등급 순자산 기준은 그대로(${fmtWon(target)}), 미루면 다음 달부터 달마다 ${fmtWon(k)}씩 오른다`;
 }
 
 /** [결정 #385] 현금이 고정비 이만큼을 넘으면 「놀고 있는 현금」 줄 `[튜닝]` */
