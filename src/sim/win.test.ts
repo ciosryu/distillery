@@ -5,7 +5,7 @@ import { advanceMonth, advanceMonths, advanceUntil, applyAction, DEFAULT_STOPS, 
 import { caskEligibility } from './ledger';
 import { addLot, lotsOf, sellFromLots } from './lots';
 import { newScenarioGame } from './newScenario';
-import { updateProgress } from './progress';
+import { sNetWorthTarget, updateProgress } from './progress';
 
 const v16 = (seed = 4) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed });
 const legacy = (seed = 4) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed, rules: 'legacy-v15' });
@@ -43,11 +43,26 @@ describe('win: 미판매 running · 적격 실제 출고 1회 · 중복 0 ([결�
     expect(advanceMonth(s).month).toBe(152);
   });
 
-  it('등급: 승리 달 순자산 ≥ 목표 × 1.5 · 승리 로트 품질 ≥ 80 · 인지도 ≥ 20%면 S, 아니면 A — 핸드필 승리는 품질이 없어 A', () => {
+  it('[결정 #393] S 순자산 문턱 — v16은 규모별 고정 금액(표준 20억 · 마이크로 25.5억), 옛 판은 성과 기준 × 1.5', () => {
+    expect(sNetWorthTarget(v16())).toBe(2_550_000_000);
+    expect(sNetWorthTarget(newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'standard', loanAmount: 0, seed: 4 }))).toBe(2_000_000_000);
+    const old = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'standard', loanAmount: 0, seed: 4, rules: 'legacy-v15' });
+    expect(sNetWorthTarget(old)).toBe(old.scenario!.equity * old.scenario!.goal.netWorthMultiple * GRADE.sNetWorthRatio);
+  });
+
+  it('등급: 승리 달 순자산 ≥ S 문턱(#393) · 승리 로트 품질 ≥ 80 · 인지도 ≥ 20%면 S, 아니면 A — 핸드필 승리는 품질이 없어 A', () => {
+    // 문턱 바로 아래면 A — 판정이 규모별 문턱을 읽고 판정 결과에 적는다
+    const below = v16(); below.month = 150;
+    below.commerce.products.push(product());
+    addLot(below, 'P', 300, { month: 150, eligibleAtBottling: true });
+    houseBrand(below).awareness = GRADE.sAwareness + 0.05;
+    below.finance.cash = sNetWorthTarget(below)! - 1e8; // 설비 처분가 · 재고를 더해도 넘지 않을 만큼 아래
+    const rb = report(below); sellFromLots(below, rb, 'P', 1, SALE); updateProgress(below, rb);
+    expect(below.progress.verdict).toMatchObject({ result: 'heritage', grade: 'A', sNetWorthTarget: 2_550_000_000 });
     const s = v16(); s.month = 150;
     s.commerce.products.push(product());
     addLot(s, 'P', 300, { month: 150, eligibleAtBottling: true });
-    s.finance.cash = s.scenario!.equity * s.scenario!.goal.netWorthMultiple * GRADE.sNetWorthRatio + 1;
+    s.finance.cash = sNetWorthTarget(s)! + 1;
     houseBrand(s).awareness = GRADE.sAwareness + 0.05;
     const r = report(s); sellFromLots(s, r, 'P', 1, SALE); updateProgress(s, r);
     expect(s.progress.verdict).toMatchObject({ result: 'heritage', grade: 'S' });
