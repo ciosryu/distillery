@@ -60,9 +60,19 @@ export interface Recipe {
   stillId: string;
 }
 
+/** [결정 #417 · #418] 단식 증류기 형태 — 본체 · 라인 암 · 특수 옵션(보일 볼 · 퓨리파이어) · 응축기. 값은 PROD `stillShape.ts stillParams` */
+export interface StillShape {
+  body: 'short' | 'standard' | 'tall';
+  lineArm: 'down' | 'level' | 'up';
+  option: 'none' | 'boil_ball';
+  condenser: 'shell' | 'worm';
+}
+
 export interface EquipmentInstance {
   id: string;
   catalogId: string;
+  /** [결정 #417 · #418] 단식 증류기 형태 — 없으면 카탈로그 값 그대로(옛 판 · 진행 중 세이브 · 봇). 선택 필드(#187) */
+  stillShape?: StillShape;
   /** 설치 완료 월 (그 전에는 사용 불가) */
   readyMonth: number;
   /** 증류기: 재사용 페인츠(LPA) */
@@ -478,7 +488,14 @@ export interface Staff {
   morale?: number;
   /** 성격 특성 (#225). 없으면 없음 */
   traits?: StaffTrait[];
+  /** [결정 #412] 맡긴 일(분기에 한 번 고름 — MGT `hr.ts STAFF_TASKS`). 없으면 「평소 업무」 = 지금 효과(옛 세이브 · 봇 그대로) */
+  task?: StaffTaskId;
+  /** [결정 #412] 일을 맡긴 달(경과 개월) — 같은 분기(⌊달/3⌋)에는 다시 바꿀 수 없다(맡긴 그 달 안에서는 고쳐도 된다) */
+  taskMonth?: number;
 }
+
+/** [결정 #412] 직원에게 맡길 일 — 'routine' = 평소 업무(지금 효과). 나머지 일의 효과는 MGT `hr.ts`(PR2) */
+export type StaffTaskId = 'routine' | 'aging_check' | 'tasting' | 'patrol';
 
 /** 성격 특성 (#225, 1단계는 MGT 효과만): 멘토 / 철새 / 토박이 / 협상가 */
 export type StaffTrait = 'mentor' | 'drifter' | 'loyal' | 'negotiator';

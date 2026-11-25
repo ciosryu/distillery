@@ -25,7 +25,7 @@ describe('F5a — 단계·중반 목표는 규칙 묶음별 (콘텐츠를 매달
 
   it('새 판(v16): y7_retail(대형 유통) · y11_specialist(핵심 전문가) · reserve_casks · 그레인 열림 · export_inquiry 잠김', () => {
     const s = v16();
-    expect(stagesOf(s).map((x) => x.id)).toEqual(['y5_market', 'y5_finish', 'y7_retail', 'y9_casks', 'y11_specialist']);
+    expect(stagesOf(s).map((x) => x.id)).toEqual(['y1_staff', 'y5_market', 'y5_finish', 'y7_retail', 'y9_casks', 'y11_specialist']); // y1_staff: [결정 #412] 교육 · 해고 · 맡길 일(12개월)
     expect(midGoalsOf(s).map((g) => g.id)).toEqual(['aged3_sold', 'commission_done', 'reserve_casks', 'revenue_8']);
     expect(isLocked(s, 'kind:grain')).toBe(false);
     expect(isLocked(s, 'kind:gin')).toBe(true);
@@ -37,7 +37,7 @@ describe('F5a — 단계·중반 목표는 규칙 묶음별 (콘텐츠를 매달
   it('v16 84개월: 대형 유통(system:siteDeals·acceptRetail)이 열리고 수출은 끝까지 잠김 · 120개월: pickSpecialist만 열리고 hire·system:hr은 잠김', () => {
     let s = v16();
     s = jump(s, 84);
-    expect(s.scenario!.stagesDone).toEqual(['y5_market', 'y5_finish', 'y7_retail']);
+    expect(s.scenario!.stagesDone).toEqual(['y1_staff', 'y5_market', 'y5_finish', 'y7_retail']);
     expect(isLocked(s, 'system:siteDeals')).toBe(false);
     expect(isLocked(s, 'action:acceptRetail')).toBe(false);
     expect(isLocked(s, 'action:acceptOem')).toBe(true);
@@ -45,7 +45,7 @@ describe('F5a — 단계·중반 목표는 규칙 묶음별 (콘텐츠를 매달
     expect(isLocked(s, 'action:acceptExportOffer')).toBe(true);
     expect(s.history.reports.at(-1)!.notes.some((n) => n.includes('8년 차 — 대형 유통'))).toBe(true);
     s = jump(s, 120);
-    expect(s.scenario!.stagesDone).toEqual(['y5_market', 'y5_finish', 'y7_retail', 'y9_casks', 'y11_specialist']);
+    expect(s.scenario!.stagesDone).toEqual(['y1_staff', 'y5_market', 'y5_finish', 'y7_retail', 'y9_casks', 'y11_specialist']);
     expect(isLocked(s, 'action:pickSpecialist')).toBe(false);
     expect(isLocked(s, 'action:hire')).toBe(true);
     expect(isLocked(s, 'system:hr')).toBe(true);

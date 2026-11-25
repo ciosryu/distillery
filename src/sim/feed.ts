@@ -165,8 +165,19 @@ export const seasonOf = (month: number): FeedSeason | null => {
 };
 
 /** 틀이 이 제품에 맞는가 — 공개 표기만 본다(F5d · PROD 합의: 통 이름은 피니시 표기뿐) */
-interface LineCtx { labelYears: number; finish: boolean; onggi: boolean; cs: boolean; co: boolean; limited: boolean; medal: boolean; dutyFree: boolean; noCask: boolean; discount: boolean }
+interface LineCtx { still: StillStyle | null; labelYears: number; finish: boolean; onggi: boolean; cs: boolean; co: boolean; limited: boolean; medal: boolean; dutyFree: boolean; noCask: boolean; discount: boolean }
+/**
+ * [결정 #418] 증류기 형태(공개) — 병입 때 원액의 증류기 형태를 접은 값(PROD `Product.stillStyle?`, 코어 · PR ④). 아직 타입에 없으면 없음으로 읽는다.
+ * 피드는 이 **공개 표기**와 표기 연수로만 「헤비 스틸 3년은 거칠다」 · 「장기 숙성 헤비는 묵직하다」를 말한다 — 참 품질 · 원액 맛을 읽지 않는다(I2).
+ * 글은 한쪽으로 쏠리지 않게(「거칠다」와 「재우면 물건」 · 「생각보다 괜찮다」가 섞이게) 썼다
+ */
+type StillStyle = 'light' | 'medium' | 'heavy';
+const stillStyleOf = (p: Product): StillStyle | null => (p as Product & { stillStyle?: StillStyle }).stillStyle ?? null;
+/** 헤비 스틸 글의 나이 — 「오래」 · 「장기」가 든 글은 표기 12년↑, 나머지 헤비 글은 표기 5년 미만(오너 #418: 3 ~ 5년 저숙성 · 15년↑ 명작) */
+const HEAVY_OLD = /오래 재운|장기 숙성/;
 function lineOk(line: string, c: LineCtx): boolean {
+  if (line.includes('헤비 스틸') && (c.still !== 'heavy' || (HEAVY_OLD.test(line) ? c.labelYears < 12 : c.labelYears <= 0 || c.labelYears >= 5))) return false;
+  if (line.includes('라이트 스틸') && c.still !== 'light') return false;
   if (line.includes('{benchCo}') && !c.co) return false;
   if (c.noCask && CASK_WORDS.test(line)) return false;
   // 할인 · 행사 글은 그달 값이 실제로 내렸을 때만(9차 159개월: 값을 올린 12년에 「할인하길래 두 병 담음」 — PM 2026-11-25)
@@ -214,7 +225,8 @@ const KIND_TONE: Partial<Record<FeedKind, FeedPost['tone']>> = { proof: 'pos', r
  */
 export function kindWeights(style: FeedStyle, p: Product, g: FeedSignals, x: FeedSituation, f: KindFlags): Partial<Record<FeedKind, number>> {
   const white = WHITE.includes(p.category);
-  const label = !!p.ageYears || finishLabelOn(p) || (p.restMonths ?? 0) >= 6 || p.abv >= 0.55;
+  const still = stillStyleOf(p);
+  const label = !!p.ageYears || finishLabelOn(p) || (p.restMonths ?? 0) >= 6 || p.abv >= 0.55 || (still != null && still !== 'medium'); // #418 증류기 형태 표기도 「라벨」 글감
   const cheap = g.qpr < 0.9;
   // 고연수 · 고가 제품(표기 10년↑ 또는 소비자가 20만 원↑)에는 입문 추천 · 하이볼 글을 쓰지 않는다(9차 159개월: 30만 원 12년을 「첫 위스키면 하이볼로」 — PM 2026-11-25)
   const premium = (p.ageYears ?? 0) >= 10 || g.consumer >= 200_000;
@@ -308,7 +320,7 @@ function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style
     abv: `${Math.round(p.abv * 100)}%`, age: p.ageYears ? `${p.ageYears}년` : years > 0 ? `${years}년` : '어린', finish,
   };
   const noCask = WHITE.includes(p.category) || !((p.oakMonths ?? 0) > 0);
-  const ctx: LineCtx = { labelYears: p.ageYears ?? 0, finish: finishLabelOn(p), onggi: (p.restMonths ?? 0) >= 6, cs: p.abv >= 0.55, co: !!bench.co, limited: !!p.rareSingleCask || !!p.dfEdition, medal, dutyFree, noCask, discount: g.priceChange < -0.05 };
+  const ctx: LineCtx = { still: stillStyleOf(p), labelYears: p.ageYears ?? 0, finish: finishLabelOn(p), onggi: (p.restMonths ?? 0) >= 6, cs: p.abv >= 0.55, co: !!bench.co, limited: !!p.rareSingleCask || !!p.dfEdition, medal, dutyFree, noCask, discount: g.priceChange < -0.05 };
   const white = WHITE.includes(p.category);
   const community = FEED_COMMUNITIES[style][white ? 'white' : 'whisky'];
   const author = rng.pick(FEED_AUTHORS[style]);
