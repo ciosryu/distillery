@@ -536,6 +536,43 @@ export function batchQualityKnown(s: GameState, components: BlendComponent[], p:
   return bottledQualityKnown(estB, p.kind ?? 'malt', s.month, carried, bottlingOffset(s, components, p.evaluation.quality));
 }
 
+/** [결정 #426] 캐스크 스트렝스 비교 도수 — 위스키 논칠필터 표준(46%) */
+export const CS_COMPARE_ABV = 0.46;
+/**
+ * [결정 #426] 캐스크 스트렝스로 고른 병입을 46%로 냈다면 — 「46%로 내면 예상 품질 +n · 병 +m · 병당 기준 값 −k%」 한 줄의 값. 막지 않는다 · 상태 불변.
+ * 같은 원액 · 같은 병 · 같은 포장으로 `previewBlend`를 46%로 한 번 더 돌린다. 화면이 보이는 값과 같은 수준만 낸다(I2):
+ * 품질은 화면의 품질 칸과 같은 규칙 — 참값을 보이는 판(샌드박스 · 탱크 원액만)은 평가 품질, 가리는 판(F5d)은 병입 뒤 남는 아는 품질(`batchQualityKnown`),
+ * 옛 판 시나리오(샘플 추정만 보이고 병입 보정이 없다)와 샘플이 없는 원액은 null(품질 칸을 비운다).
+ * 병당 기준 값은 **같은 품질**로 두 도수의 기준가를 견준다(도수 · 병 크기 몫만 — 품질이 새지 않는다). 보충 · 면세 한정판 · 원액이 46% 이하면 null
+ */
+export function caskStrengthCompare(s: GameState, components: BlendComponent[], opts: BottleOptions): { abv: number; qualityDelta: number | null; bottles: number; bottlesDelta: number; priceRatio: number | null } | null {
+  if (opts.targetAbv !== 'cask' || opts.restockId || opts.dutyFreeOnly) return null;
+  const cs = previewBlend(s, components, opts);
+  if (!cs.ok || cs.dfEdition || cs.finalAbv <= CS_COMPARE_ABV + 0.0005) return null;
+  const o46: BottleOptions = { ...opts, targetAbv: CS_COMPARE_ABV };
+  const at46 = previewBlend(s, components, o46);
+  if (!at46.ok) return null;
+  const est = s.scenario ? estimateBlend(s, components) : null;
+  const masked = !!est?.fromCasks;
+  const shown = (pv: BlendPreview): number | null => {
+    if (!masked) return pv.evaluation?.quality ?? null;
+    if (!hidesProductQuality(s) || est?.quality == null) return null;
+    return batchQualityKnown(s, components, pv)?.est ?? null;
+  };
+  const qa = shown(cs);
+  const qb = shown(at46);
+  const qRef = qa ?? 50; // 기준 값 견줌은 같은 품질 — 모르면 중간값(비율에는 품질이 거의 닿지 않는다)
+  const pa = priceAtQuality(s, cs, opts, qRef);
+  const pb = priceAtQuality(s, at46, o46, qRef);
+  return {
+    abv: cs.finalAbv,
+    qualityDelta: qa != null && qb != null ? Math.round((qb - qa) * 10) / 10 : null,
+    bottles: cs.bottles,
+    bottlesDelta: at46.bottles - cs.bottles,
+    priceRatio: pa && pb ? pb / pa : null,
+  };
+}
+
 /**
  * [결정 #377] 섞는 원액의 레시피별 알코올(LPA) — 보충 잇기(`restockPrior`)가 "목록에 없던 레시피 몫"을 센다. 원액을 빼기 **전에** 읽는다.
  * 레시피 기록이 없는 원액(매입 등)은 '' — 어느 제품 목록에도 없는 몫. 병입 · 보충 미리보기(Bottling 보충 줄)가 같은 값을 쓴다

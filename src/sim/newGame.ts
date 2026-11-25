@@ -3,7 +3,7 @@ import { refreshBroker } from './broker';
 import { refreshContractOffers } from './bulk';
 import { refreshCandidates, salaryFor } from './hr';
 import { mulberry32 } from './rng';
-import type { Cask, CaskTypeId, GameState, Recipe, RegionId } from './types';
+import type { Cask, CaskTypeId, EquipmentInstance, GameState, Recipe, RegionId, StillShape } from './types';
 import { REGIONS, regionOf, siteOf } from './content/regions';
 import { nid } from './util';
 import { HOUSE_BRAND_ID } from './brands';
@@ -16,6 +16,8 @@ export interface NewGameOptions {
   region?: RegionId;
   /** 지역 안의 입지 (예: 대만 진먼섬, 한국 안동). 없으면 지역 기본 입지 */
   site?: string;
+  /** [결정 #417 · #418] 시작 단식 증류기의 형태 — 고르지 않으면 필드를 넣지 않는다(카탈로그 값 그대로 · 세이브 바이트도 지금과 같다). 값은 PROD `stillShape.ts` */
+  stillShape?: StillShape;
 }
 
 export const DEFAULT_STARTING_CASH = 500_000_000;
@@ -74,7 +76,7 @@ export function newGame(opts: NewGameOptions = {}): GameState {
   // 하우스 브랜드 = 회사명 (S-2)
   s.commerce.brands[0]!.name = s.distilleryName;
   // 초기 설비: 단식 증류기 1기 + 스테인리스 발효조 2기
-  const still = { id: nid(s, 'E'), catalogId: 'pot_onion_1000', readyMonth: 0, feintsLPA: 0, boughtMonth: 0 };
+  const still: EquipmentInstance = { id: nid(s, 'E'), catalogId: 'pot_onion_1000', readyMonth: 0, feintsLPA: 0, boughtMonth: 0, ...(opts.stillShape ? { stillShape: { ...opts.stillShape } } : {}) };
   s.production.equipment.push(still, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0, boughtMonth: 0 }, { id: nid(s, 'E'), catalogId: 'ferm_steel_2000', readyMonth: 0, boughtMonth: 0 });
   for (const r of presetRecipes(still.id, s.regionId, s.siteId)) s.production.recipes.push({ ...r, id: nid(s, 'R') });
   for (const t of regionOf(s).starter.casks) s.inventory.casks.push(emptyCaskOf(s, t));

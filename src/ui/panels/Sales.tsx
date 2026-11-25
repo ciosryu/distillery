@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { FeedCard } from '../FeedCard'; // 가상 커뮤니티 피드 (#247, MKT)
 import { ExportShortfallNote } from '../ExportShortfallNote'; // 수출이 국내를 굶기는지 (#257, MKT)
 import { SuggestedPriceNote } from '../SuggestedPriceNote'; // 권장가 표시의 정직성 (#283, MKT — PROD 대행)
+import { SellThroughNote } from '../SellThroughNote'; // [결정 #424] 재고를 6개월에 다 팔 값(MKT)
 import { PricePolicyAll, PricePolicyPicker } from '../PricePolicyPicker'; // 자동 가격 3정책 (#291, MKT)
 import { PRICE_MODE_LABEL, priceModeOf } from '../../sim/priceEngine';
 import { PRODUCT_NAME_MAX } from '../../sim/actions.prod';
@@ -295,6 +296,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
             <button className="mt-0.5 block text-xs text-amber-800 underline decoration-dotted dark:text-amber-300" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: defaultPolicyPrice(suggested) })} title={`기준가(기준 소비자가 × √(품질/60) × 숙성 인식에 맞춘 출고가) ${wonFull(suggested)} × ${DEFAULT_POLICY_N}(기본 정책)`}>권장 {wonFull(defaultPolicyPrice(suggested))} <span className="no-underline text-stone-500">= 기준가 × {DEFAULT_POLICY_N}(기본 정책)</span></button>
           )}
           {!dfOnly && <SuggestedPriceNote s={s} p={p} suggested={suggested} />}
+          {!dfOnly && <SellThroughNote ks={ks} p={p} suggested={suggested} monthOfYear={monthOfYear} />}
         </Td>
         <Td right>
           {wonFull(consumer)}

@@ -276,6 +276,37 @@ function demandWithSplit(s: GameState, p: Product, split: number, monthOfYear: n
   return { marketL, reach, split, appeal: a, consumerPricePerL, refPricePerL: ref, priceFactor, demandBottles };
 }
 
+/** [결정 #424] 「재고를 n개월에 다 팔 값」의 n — T9 문서 §6 `[튜닝]` */
+export const SELL_THROUGH_MONTHS = 6;
+/** 지금 값보다 이만큼 넘을 때만 보인다(작은 차이는 화면 잡음) `[튜닝]` */
+export const SELL_THROUGH_MIN_GAP = 1.05;
+
+/**
+ * [결정 #424] 판매 화면 「재고를 6개월에 다 팔 값 ≈ X」 (T9의 10차 전 최소 몫 · `mkt-suggested-price.md` §6) — **화면만**(틱이 부르지 않는다 · 상태 · 난수 불변).
+ * 앞으로 months달 국내 수요(같은 범주 나눔 · 잡음 없음)의 합이 지금 재고와 같아지는 출고가. 형제 제품 값 · 재고는 그대로 둔다고 본다(수출 · 면세 제외).
+ * **`ks`는 아는 품질 상태(`knownState`)여야 한다** — 참 품질을 읽지 않는다(I2). 지금 값으로 months달 안에 재고가 남으면(다 못 팔면) null.
+ * 계절은 모든 제품 수요에 같은 배수라 범주 나눔 비율이 그대로다 → 한 달 수요 × Σ계절 / 이달 계절로 센다(값마다 한 번만 센다)
+ */
+export function sellThroughPrice(ks: GameState, productId: string, monthOfYear: number, months: number = SELL_THROUGH_MONTHS): number | null {
+  const p = ks.commerce.products.find((x) => x.id === productId);
+  if (!p || p.dutyFreeOnly || p.stockBottles <= 0 || p.price <= 0) return null;
+  const seas = regionOf(ks).seasonality;
+  const now = seas[monthOfYear - 1]!;
+  if (!(now > 0)) return null;
+  const span = Array.from({ length: months }, (_, i) => seas[(monthOfYear - 1 + i) % 12]!).reduce((t, x) => t + x, 0) / now;
+  const demandAt = (price: number): number => {
+    const q = { ...p, price };
+    const t = { ...ks, commerce: { ...ks.commerce, products: ks.commerce.products.map((x) => (x.id === p.id ? q : x)) } };
+    return (domesticDemands(t, monthOfYear, regionOf(ks)).get(p.id)?.demandBottles ?? 0) * span;
+  };
+  if (demandAt(p.price) <= p.stockBottles) return null;
+  let lo = p.price, hi = p.price * 2;
+  for (let i = 0; i < 8 && demandAt(hi) > p.stockBottles; i++) { lo = hi; hi *= 2; }
+  if (demandAt(hi) > p.stockBottles) return null; // 256배로도 다 팔리면 셈이 뜻이 없다
+  for (let i = 0; i < 30 && hi - lo > 100; i++) { const m = (lo + hi) / 2; if (demandAt(m) > p.stockBottles) lo = m; else hi = m; }
+  return Math.round(hi / 100) * 100;
+}
+
 /** 가격을 바꾸면 — 판매 화면의 가격 비교. 판매 가능 = min(재고, 수요 기댓값). 소매 처리 역량·±10% 난수는 넣지 않는다 */
 /** 가격 비교 한 줄. lineup*은 국내 진열 전체(이 제품 포함) — 같은 카테고리 나눔(#154) 때문에 이 제품 값을 내리면 형제 제품 판매를 뺏어 온다([결정 #212]) */
 export interface PriceOption { price: number; consumer: number; demandBottles: number; sellBottles: number; revenue: number; contribution: number; lineupRevenue: number; lineupContribution: number }
