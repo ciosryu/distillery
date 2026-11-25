@@ -6,7 +6,7 @@
 import { CASK_COST_SHARE_PER_FILL, CASK_STORAGE, CASKS } from './content/catalog';
 import { regionOf, siteOf, traditionalTaxFactor } from './content/regions';
 import { defaultPolicyPrice } from './content/market'; // 기본 정책 가격 (B1-4, MKT)
-import { agedWhiteLabel, agedWhiteLabelMonths, executeBlend, isCaskStrength, isWhiskyCategory, previewBlend, suggestedPrice, whiskyMinMonths, type BlendComponent, type BottleOptions } from './blending';
+import { agedWhiteLabel, agedWhiteLabelMonths, executeBlend, isCaskStrength, isWhiskyCategory, previewBlend, restockFinishOff, suggestedPrice, whiskyMinMonths, type BlendComponent, type BottleOptions } from './blending';
 import { finishOf, matureCask, vesselMaterial } from './maturation';
 import { capacityReport, orderPlan, steadyBatch } from './production';
 import { demandFor, distributionCostPerBottle, domesticDemands, priceOptions } from './market';
@@ -1139,11 +1139,13 @@ export function applyAutoRestock(s: GameState, report: MonthReport, monthOfYear 
     const cost = Math.max(0, Math.round(pv.unitCost * pv.bottles - spirit));
     if (s.finance.cash < cost) { report.notes.push(`자동 납품 「${p.name}」 건너뜀 — 현금 부족(병입비 약 ${cost.toLocaleString()}원)`); continue; }
     const before = p.stockBottles;
+    const finishOff = restockFinishOff(p, pv.finishMonths); // [결정 #362] 이 보충으로 피니시 표기 효과가 꺼지면 알린다(채우는 것은 그대로 — 판단은 플레이어)
     const res = executeBlend(s, plan.components, plan.opts);
     if (res.error || !res.product) { report.notes.push(`자동 납품 「${p.name}」 실패 — ${res.error ?? ''}`); continue; }
     const used = plan.components.map((c) => c.source === 'cask' ? c.id : '탱크').filter((v, i, a) => a.indexOf(v) === i).join(', ');
     const short = res.product.stockBottles < plan.target ? ` — 원액이 모자라 목표의 ${Math.round((res.product.stockBottles / plan.target) * 100)}%까지만` : '';
     report.notes.push(`자동 납품 「${res.product.name}」 +${(res.product.stockBottles - before).toLocaleString()}병 (목표 ${plan.target.toLocaleString()}병 = ${p0.autoRestock}개월분, 원액 ${used})${short}`);
+    if (finishOff) report.notes.push(`자동 납품 「${res.product.name}」 — 피니시 ${finishOff.after}개월 원액이 섞여 피니시 표기 효과가 꺼졌다(${finishOff.min}개월 이상이어야 켜진다 · 전 ${finishOff.before}개월)`);
     // 결산표에 보이게 — 현금은 executeBlend가 이미 뺐다(리포트 표시용)
     report.expenses[AUTO_RESTOCK_EXPENSE] = (report.expenses[AUTO_RESTOCK_EXPENSE] ?? 0) + cost;
   }
