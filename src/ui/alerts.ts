@@ -638,7 +638,7 @@ export interface FlowPart { label: string; amount: number }
 
 const EXPENSE_GROUP: Record<string, string> = {
   production: '생산', distribution: '유통비', export_freight: '유통비', export_fixed: '유통비', penalty: '기타',
-  salaries: '고정비', overhead: '고정비', heating: '고정비', maintenance: '고정비', marketing: '고정비', storage: '고정비', insurance: '고정비', research: '고정비',
+  salaries: '고정비', overhead: '고정비', heating: '고정비', maintenance: '고정비', marketing: '고정비', storage: '고정비', insurance: '고정비', research: '고정비', warehousePatrol: '고정비', // [결정 #412] 숙성고 순찰 수당(MGT)
   interest: '대출 상환', principal: '대출 상환',
   hedge: '선도계약 정산', [AUTO_SAMPLE_EXPENSE]: '샘플·분석',
   // 자동 납품(#206)은 틱 안에서 병입한다 — 턴 사이 병입(offTurn.bottling)과 같은 "병입"으로 묶는다 (사후 검토: "기타"로 빠졌다)
