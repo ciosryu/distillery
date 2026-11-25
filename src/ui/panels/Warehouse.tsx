@@ -11,6 +11,7 @@ import { calendar } from '../../sim/util';
 import { regionOf } from '../../sim/content/regions';
 import { cooperageLeadMonths } from '../../sim/prodKnobs';
 import { fillShares, PARTIAL_FILL_HINT } from '../../sim/autoFill';
+import { RefillOrderButton } from './RefillOrder';
 import { useGame } from '../../store/game';
 import { liters, months, num, pct, won } from '../format';
 import { Badge, Button, Card, ConfirmButton, Empty, NumberField, Select, Table, Td } from '../kit';
@@ -153,12 +154,14 @@ function Casks() {
           <NumberField value={qty} min={1} max={100} width="w-16" onCommit={setQty} />
           <Button small onClick={() => dispatch({ type: 'buyCasks', caskType: buyType, qty })} title={`카탈로그가, ${cooperageLeadMonths(s)}개월 뒤 도착`}>쿠퍼리지 주문 ({won(regionalCaskPrice(s, buyType) * qty)})</Button>
           <Button small onClick={() => dispatch({ type: 'buySpotCasks', caskType: buyType, qty })} title={`즉시 입고, ×${CASK_MARKET.spotPremium} 웃돈, ${Math.round(CASK_MARKET.spotDudChance * 100)}% 확률로 골빈 통(추출이 약해 3년 위스키엔 손해 · 12년 탄닌은 적다)`}>스팟 즉시 ({won(regionalCaskPrice(s, buyType) * qty * CASK_MARKET.spotPremium)})</Button>
+          {/* [결정 #393 N1] 한 번 쓴 통(리필) — ex-버번 · 새 판만. 왜 좋은지는 말하지 않는다(#367) — 활성도만 보인다 */}
+          <RefillOrderButton caskType={buyType} qty={qty} />
           {SEASONING_CONTRACT.includes(CASKS[buyType].seasoningType) && <Button small onClick={() => dispatch({ type: 'orderSeasoning', caskType: buyType, qty })} title={`${CASK_MARKET.seasoningMonths}개월 시즈닝 후 최상급 통 도착`}>시즈닝 계약 ({won(regionalCaskPrice(s, buyType) * qty * CASK_MARKET.seasoningCostFactor)})</Button>}
         </div>
       }
     >
       <AgePolicyRow />{/* [결정 #399] 연령 띠 정책(자동 납품) */}
-      {!!s.inventory.caskOrders.length && <p className="mb-2 text-xs text-stone-500">도착 예정: {s.inventory.caskOrders.map((o) => `${CASKS[o.typeId].nameKo} ${o.qty}개(${o.source === 'seasoning' ? '시즈닝' : '쿠퍼리지'}, ${o.arriveMonth - s.month}개월 뒤)`).join(' · ')}</p>}
+      {!!s.inventory.caskOrders.length && <p className="mb-2 text-xs text-stone-500">도착 예정: {s.inventory.caskOrders.map((o) => `${CASKS[o.typeId].nameKo} ${o.qty}개(${o.source === 'seasoning' ? '시즈닝' : o.source === 'refill' ? '리필 · 한 번 쓴 통' : '쿠퍼리지'}, ${o.arriveMonth - s.month}개월 뒤)`).join(' · ')}</p>}
       {finishFor && filter === 'filled' && (() => {
         const from = s.inventory.casks.find((c) => c.id === finishFor);
         return from?.contents ? <FinishPanel from={from} onDone={() => setFinishFor(null)} /> : null;

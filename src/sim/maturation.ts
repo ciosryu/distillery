@@ -176,6 +176,10 @@ export function emptyCask(cask: Cask): Cask {
   return { ...cask, contents: undefined, filledMonth: undefined, slot: undefined, samples: undefined, sampleLog: undefined, labAnalyzed: undefined, rare: undefined, rareKnown: undefined, handfill: undefined, activity: cask.activity * EMPTY_ACTIVITY_FACTOR, seasoning: cask.seasoning * EMPTY_SEASONING_FACTOR, ...(cask.contamination ? { contaminationKnown: true } : {}) };
 }
 
+/** [결정 #393 N1] 리필(한 번 쓴 통)로 도착한 새 통의 상태 — 채웠다 뺀 통(`emptyCask`)과 같은 계수 · 1회 사용 */
+export const refillState = (c: Pick<Cask, 'activity' | 'seasoning'>): Pick<Cask, 'activity' | 'seasoning' | 'fills'> =>
+  ({ activity: c.activity * EMPTY_ACTIVITY_FACTOR, seasoning: c.seasoning * EMPTY_SEASONING_FACTOR, fills: 1 });
+
 /** 재탄화: 활성도 0.7까지 회복 (시즈닝은 회복 안 됨). 최대 2회 */
 export const MAX_RECHAR = 2;
 export function recharCask(cask: Cask): Cask {

@@ -64,6 +64,30 @@ describe('I2 — 같은 공개 정보 · 다른 참 품질이면 화면 읽기 �
   it('[누수 L3 — 고침 MKT #935 · 커뮤니티 품질] 커뮤니티 피드 `feedFor` — 위스키베이스 점수 밖의 글 분위기 · 비교 글이 참 품질을 읽는다(feed.ts 68 · 283)', () => {
     expect(feedFor(high.s, 3, 40).map((x) => x.text)).toEqual(feedFor(low.s, 3, 40).map((x) => x.text));
   });
+  it('[결정 #400] 피드 v4 — 새 글 종류(질문 · 인증 · 품절 · 재입고 · 계절 · 다섯 줄 노트 …)까지 글 전체(채널 · 글쓴이 · 분위기 · 본문 · 댓글)가 참 품질을 읽지 않는다', () => {
+    // 여러 시드 · 여러 달(출시 · 품절 · 재입고 · 가격 변동 · 리뷰)을 돌려 새 종류가 고루 나오게 한다. 두 판은 참 품질만 다르다
+    const mk = (q: number, seed: number) => {
+      const { s } = withProduct(q);
+      s.seed = seed;
+      s.month = 46;
+      s.history.reports = [
+        { month: 41, sales: [{ productId: 'P1', name: '싱글 몰트 1', bottles: 30, revenue: 1_800_000, demandBottles: 30 }], notes: [], expenses: {}, events: [] },
+        { month: 42, sales: [{ productId: 'P1', name: '싱글 몰트 1', bottles: 40, revenue: 2_400_000, demandBottles: 90 }], notes: [], expenses: {}, events: ['국제 품평회 수상'] },
+        { month: 43, sales: [{ productId: 'P1', name: '싱글 몰트 1', bottles: 35, revenue: 2_450_000, demandBottles: 36 }], notes: [], expenses: {}, events: [], reviews: [{ productId: 'P1', scores: [82] }] },
+        { month: 44, sales: [{ productId: 'P1', name: '싱글 몰트 1', bottles: 50, revenue: 2_500_000, demandBottles: 52 }], notes: [], expenses: {}, events: [] },
+        { month: 45, sales: [{ productId: 'P1', name: '싱글 몰트 1', bottles: 45, revenue: 2_700_000, demandBottles: 120 }], notes: [], expenses: {}, events: [], reviews: [{ productId: 'P1', scores: [80, 85] }] },
+      ] as never;
+      return s;
+    };
+    const kinds = new Set<string>();
+    for (let seed = 1; seed <= 25; seed++) {
+      const a = feedFor(mk(40, seed), 5, 200);
+      const b = feedFor(mk(85, seed), 5, 200);
+      expect(b).toEqual(a);
+      for (const x of a) kinds.add(x.text.match(/^\[[^\]]+\]/)?.[0] ?? x.style);
+    }
+    expect(kinds.size).toBeGreaterThanOrEqual(5); // 시험이 헛돌지 않게 — 말머리 · 채널이 여럿 나온다
+  });
   it('[누수 L7 — 고침 #366 · MKT #935] 피드 잡내 문구 — 위스키베이스 시음 글의 「옅은 {잡내}」가 참 잡내 축(퓨젤 · 자극 등)을 읽는다(feed.ts offNote). #366 수리(MKT #862) 뒤 it', () => {
     // 품질 · 아는 품질 · 향 이름이 같고 잡내 축만 다르다. 가리는 판의 시음 글은 틱이 남긴 리뷰 점수로만 써지므로 지난달 결산에 리뷰를 둔다(MKT 재현 2026-11-24 —
     // 깨끗 「Palate: 여운.」 대 잡내 「Palate: 여운, 옅은 퓨젤(후류취).」). 향 이름 차이는 #366에서 의도된 공개 신호(위 주석)라 시험하지 않는다
