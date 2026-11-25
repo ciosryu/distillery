@@ -21,7 +21,8 @@ import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
 import { equipmentCost } from '../sim/sites';
 import { equipmentSalvage } from '../sim/valuation'; // [결정 #398]
-import { caskSlots, pendingOrderSlots, slotsDifferFromCasks, slotsUsed, GRADE, campaignMinOakMonths, campaignWon, caskTagIds, HINT_HORIZON_MONTHS, rulesVersionOf, reserveCaskIds, isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
+import { sNetWorthTarget } from '../sim/progress'; // [결정 #393]
+import { caskSlots, pendingOrderSlots, slotsDifferFromCasks, slotsUsed, campaignMinOakMonths, campaignWon, caskTagIds, HINT_HORIZON_MONTHS, rulesVersionOf, reserveCaskIds, isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
 import { useGame } from '../store/game';
 import { markFacilitiesSeen, useUnseenFacilities } from './seenFacilities'; // #388 ① A3
 import { useUi } from '../store/ui';
@@ -223,6 +224,7 @@ function Headline() {
   const inv = nw - s.finance.cash + loans - s.finance.receivables.reduce((t, r) => t + r.amount, 0) - salvage;
   const sc = s.scenario;
   const target = sc ? sc.equity * sc.goal.netWorthMultiple : null;
+  const sTarget = sNetWorthTarget(s) ?? 0; // [결정 #393] v16은 규모별 고정 금액(표준 20억 · 마이크로 25.5억 — MGT `progress.ts`), 옛 판은 성과 기준 × 1.5
   const run = runway(s);
   const flagMin = campaignMinOakMonths(s);
   const oldest = s.inventory.casks.filter((c) => c.contents && !c.owner && !c.contents.sourced && (c.contents.kind === 'malt' || c.contents.kind === 'grain'))
@@ -254,7 +256,7 @@ function Headline() {
           hint={run.months != null ? `이 속도면 약 ${run.months}개월 버팀` : run.avg != null ? '자체 현금 흐름 흑자' : '기록 없음'} />
         {/* 순자산·재고 평가액은 참 품질 합계라 100만 원 단위로만 보인다 ([결정 #310] 1단계 — architecture §11.4 안 A, I3). 현금·대출·목표는 그대로 */}
         <Stat label="순자산" value={wonCoarse(nw)} tone={target != null && nw >= target ? 'good' : undefined}
-          hint={target == null ? `현금 − 대출 + 재고 평가액${salvage ? ` + 설비 처분가 ${wonCoarse(salvage)}` : ''}` : salvage ? `설비 처분가 ${wonCoarse(salvage)} 포함(산 값의 30%에서 감가) · ${legacyRules ? `목표 ${won(target)}의 ${pct(nw / target, 0)}` : `성과 지표(승리 조건 아님) · S 등급 기준 ${won(target * GRADE.sNetWorthRatio)}의 ${pct(nw / (target * GRADE.sNetWorthRatio), 0)}`}` : legacyRules ? `목표 ${won(target)}의 ${pct(nw / target, 0)}` : `성과 지표(승리 조건 아님) · S 등급 기준 ${won(target * GRADE.sNetWorthRatio)}의 ${pct(nw / (target * GRADE.sNetWorthRatio), 0)}`} />
+          hint={target == null ? `현금 − 대출 + 재고 평가액${salvage ? ` + 설비 처분가 ${wonCoarse(salvage)}` : ''}` : salvage ? `설비 처분가 ${wonCoarse(salvage)} 포함(산 값의 30%에서 감가) · ${legacyRules ? `목표 ${won(target)}의 ${pct(nw / target, 0)}` : `성과 지표(승리 조건 아님) · S 등급 기준 ${won(sTarget)}의 ${pct(nw / sTarget, 0)}`}` : legacyRules ? `목표 ${won(target)}의 ${pct(nw / target, 0)}` : `성과 지표(승리 조건 아님) · S 등급 기준 ${won(sTarget)}의 ${pct(nw / sTarget, 0)}`} />
         <Stat label="재고 평가액" value={wonCoarse(inv)} hint="원액 현물가 + 제품 재고 원가 (소주 원액 0) · 100만 원 단위" />
         <Stat label="대출 잔액" value={won(loans)} hint={loans ? `${s.finance.loans.length}건` : '없음'} />
         <Stat label="가장 오래된 자체 원액" value={months(oldest)} tone={oldest >= flagMin ? 'good' : sc && !flagDone && noMoreNew && cands === 0 ? 'bad' : undefined}
@@ -276,6 +278,7 @@ function CurveCard() {
   const s = useGame((g) => g.state);
   const sc = s.scenario;
   const target = sc ? sc.equity * sc.goal.netWorthMultiple : null;
+  const sTarget = sNetWorthTarget(s) ?? 0; // [결정 #393] v16은 규모별 고정 금액(표준 20억 · 마이크로 25.5억 — MGT `progress.ts`), 옛 판은 성과 기준 × 1.5
   const pts = useMemo(() => curvePoints(s), [s]);
   const xMax = sc?.goal.months ?? Math.max(120, (pts.at(-1)?.x ?? 0) + 12);
   return (
@@ -290,7 +293,7 @@ function CurveCard() {
             { label: '순자산', values: pts.map((p) => p.nw), stroke: 'stroke-amber-600', fill: 'fill-amber-600' },
             { label: '현금', values: pts.map((p) => p.cash), stroke: 'stroke-sky-600', fill: 'fill-sky-600' },
           ]}
-          refs={target == null ? [] : rulesVersionOf(s) === 'legacy-v15' ? [{ value: target, label: '순자산 목표' }] : [{ value: target * GRADE.sNetWorthRatio, label: 'S 등급 순자산 기준' }]}
+          refs={target == null ? [] : rulesVersionOf(s) === 'legacy-v15' ? [{ value: target, label: '순자산 목표' }] : [{ value: sTarget, label: 'S 등급 순자산 기준' }]}
           fmtY={won}
           fmtX={(m) => (m % 12 === 0 ? `${m / 12}년` : `${Math.floor(m / 12)}년 ${m % 12}개월`)}
           fmtTip={(m) => `${monthLabel(s.startYear, m - 1)} 말 (${m}개월째)`}
