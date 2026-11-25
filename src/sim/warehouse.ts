@@ -313,6 +313,22 @@ export function tanninOutlook(s: GameState, cask: Cask, atMonths = campaignMinOa
 }
 
 
+/**
+ * [결정 #410 T1-a] 통을 채울 때 12년 전망 — 고른 빈 나무 통들을 「지금 채우면」 기준 개월(A = 144)에 탄닌 · 감점이 얼마인지(통마다 `tanninOutlook`).
+ * 활성도 · 목재 · 칸 기후만 읽는다(원액 맛 · 품질은 읽지 않는다 — I2). 활성도를 모르는 스팟 통은 `unknown`으로 센다. 나무 통이 하나도 없으면 null
+ */
+export function fillTanninOutlook(s: GameState, casks: readonly Cask[], atMonths = campaignMinOakMonths(s)): { count: number; unknown: number; minPenalty: number; maxPenalty: number; minTannin: number; maxTannin: number; cap: number; atMonths: number } | null {
+  const outs = casks.filter((c) => !c.contents && vesselMaterial(c) === 'wood').map((c) => tanninOutlook(s, c, atMonths));
+  const known = outs.filter((o): o is TanninOutlook => !!o);
+  const unknown = outs.length - known.length;
+  if (!outs.length || !known.length) return outs.length ? { count: outs.length, unknown, minPenalty: 0, maxPenalty: 0, minTannin: 0, maxTannin: 0, cap: CATEGORY.whisky.caps.oak_tannin ?? 45, atMonths } : null;
+  return {
+    count: outs.length, unknown, atMonths, cap: known[0]!.cap,
+    minPenalty: Math.min(...known.map((o) => o.penalty)), maxPenalty: Math.max(...known.map((o) => o.penalty)),
+    minTannin: Math.min(...known.map((o) => o.tannin)), maxTannin: Math.max(...known.map((o) => o.tannin)),
+  };
+}
+
 // ───────────── 피니싱 탄닌 전망 (GAP-PROD-4, 결정 #345 — 화면 힌트, 값·판정 불변) ─────────────
 // 시즈닝 향(SEASONING_EXTRACT)은 탄닌을 더하지 않는다 → 피니싱 뒤 탄닌은 옮겨 간 통의 목재 추출 × 활성도로만 는다(matureCask ②).
 // 지금 탄닌은 원래 통의 활성도로 통입 달부터 센 어림(tanninOutlook과 같은 식)이고, 원액 맛(숨김 값)은 읽지 않는다. 칸은 옮겨도 그대로(transferCask가 slot을 넘긴다)
