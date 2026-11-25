@@ -97,6 +97,12 @@ export const YOUTH_SULFUR = { months: 60, fromSulfur: 1.0, k: 5, cats: ['whisky'
  * 균형(바디 약 26) · 라이트(15)는 0. `cap`은 웜 텁(바디 +8)이 황 몫과 겹쳐 두 번 크게 깎이지 않게
  */
 export const YOUTH_WEIGHT = { fromBody: 30, cap: 5, k: 3 } as const;
+const envNum = (name: string, d: number): number => {
+  const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.[name];
+  return v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : d;
+};
+/** [측정 전용 — 머지하지 않는 브랜치] 저숙성 계수 후보 */
+const MEASURE_K = { sulfur: envNum('PROD_YOUTH_K', YOUTH_SULFUR.k), weight: envNum('PROD_WEIGHT_K2', YOUTH_WEIGHT.k) };
 /** 평가 맥락 — 없으면 지금 식 그대로 */
 export interface EvalContext {
   /** 저숙성 황 이취를 셀 목재 개월(형태를 고른 증류기 원액이 섞였을 때만 준다) */
@@ -108,8 +114,9 @@ export function youthSulfurLoad(f: Flavor, cat: ProductCategory, ctx?: EvalConte
   if (ctx?.youthOakMonths == null || !YOUTH_SULFUR.cats.includes(cat)) return 0;
   const left = Math.max(0, 1 - ctx.youthOakMonths / YOUTH_SULFUR.months);
   if (left <= 0) return 0;
-  const sulfur = YOUTH_SULFUR.k * Math.max(0, get(f, 'sulfur_meaty') - YOUTH_SULFUR.fromSulfur);
-  const weight = YOUTH_WEIGHT.k * Math.min(YOUTH_WEIGHT.cap, Math.max(0, get(f, 'body') - YOUTH_WEIGHT.fromBody));
+  // 측정 전용 브랜치: 계수를 환경 변수로 바꾼다(PROD_YOUTH_K · PROD_WEIGHT_K2 — MGT 40시드 후보 비교). 기본은 코드 값 그대로
+  const sulfur = MEASURE_K.sulfur * Math.max(0, get(f, 'sulfur_meaty') - YOUTH_SULFUR.fromSulfur);
+  const weight = MEASURE_K.weight * Math.min(YOUTH_WEIGHT.cap, Math.max(0, get(f, 'body') - YOUTH_WEIGHT.fromBody));
   return (sulfur + weight) * left;
 }
 
