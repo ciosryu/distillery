@@ -1,5 +1,7 @@
 // T4(9차 판 뒤 PM 2026-11-25) — 통 종류 · 활성도별 12 · 15 · 18년 단일 통 품질 (MGT, 읽기 전용 측정 — 게임 규칙 함수 그대로)
 //   npx tsx scripts/experiments/mgt-aged-quality.ts [시드 수=20]
+//   [결정 #417 · #418 준비] 원액 성질 바꾸기: SPIRIT="body=+20,oily_waxy=+15,sulfur_meaty=+10,harshness=+8" — 통입 직후 그 통 원액의 향미 축에 더한다(헤비 원액 흉내 · 축 이름은 types.ts AxisId)
+//     AT_YEARS="3,5,12,15,18"(기본 12,15,18) · CASKS="새 올로로소 벗,리필 버번"(이름 일부로 거름). 증류기 형태 식(PROD)이 들어오면 SPIRIT 대신 그 증류기로 증류한 원액을 쓰게 넓힌다
 // 판마다: v16 표준 판을 만들고 현금을 크게 둔 뒤(파산 · 돈 걱정 빼기) 몰트를 1배치 증류해 아래 통에 하나씩 넣고 생산을 멈춘다.
 //   새 ex-버번(활성도 1.0) · 리필 ex-버번(#408 주문, 0.6) · 새 올로로소 벗 500L(1.0) · 셰리 혹스헤드 250L(1.0) · 2차 올로로소 벗(채웠다 뺀 상태로 놓음, 0.6)
 //   → 매달 넘기며 목재 144 · 180 · 216개월째에 그 통 하나만 46%로 병입했을 때의 참 품질(`previewBlend` evaluation.quality)과 탄닌 · 감점(`tanninOutlook`)을 적는다
@@ -14,6 +16,7 @@ import { refillState } from '../../src/sim/maturation';
 EVENTS.splice(0); // 사건 끔(화재 · 붕괴로 통이 사라지면 숙성만 볼 수 없다 — P8 옛 묶음과 같은 방식)
 
 const N = Number(process.argv[2] ?? 20);
+const CASK_FILTER = (process.env.CASKS ?? '').split(',').map((x) => x.trim()).filter(Boolean);
 const KINDS = [
   { key: '새 버번', buy: { caskType: 'ex_bourbon_barrel', refill: false } },
   { key: '리필 버번', buy: { caskType: 'ex_bourbon_barrel', refill: true } },
@@ -21,7 +24,10 @@ const KINDS = [
   { key: '셰리 혹스헤드', buy: { caskType: 'sherry_hogshead', refill: false } },
   { key: '2차 올로로소 벗', buy: { caskType: 'oloroso_butt', refill: false }, second: true },
 ] as { key: string; buy: { caskType: 'ex_bourbon_barrel' | 'oloroso_butt' | 'sherry_hogshead'; refill: boolean }; second?: boolean }[];
-const AT = [144, 180, 216];
+if (CASK_FILTER.length) KINDS.splice(0, KINDS.length, ...KINDS.filter((k) => CASK_FILTER.some((f) => k.key.includes(f))));
+const AT = (process.env.AT_YEARS ?? '12,15,18').split(',').map((y) => Math.round(Number(y) * 12));
+/** 통입 직후 원액 향미 축에 더할 값 — SPIRIT="축=+n,…" */
+const SPIRIT: [string, number][] = (process.env.SPIRIT ?? '').split(',').filter(Boolean).map((kv) => { const [k, v] = kv.split('='); return [k!.trim(), Number(v)]; });
 const act = (s: GameState, a: Parameters<typeof applyAction>[1]) => { const r = applyAction(s, a); if (r.error) throw new Error(`${a.type}: ${r.error}`); return r.state; };
 const out: Record<string, Record<number, { q: number[]; tan: number[]; pen: number[] }>> = {};
 for (const k of KINDS) out[k.key] = Object.fromEntries(AT.map((m) => [m, { q: [], tan: [], pen: [] }]));
@@ -45,6 +51,7 @@ for (let seed = 1; seed <= N; seed++) {
     if (!c || !lot) continue;
     if (k.second) { const cur = s.inventory.casks.find((x) => x.id === c.id)!; Object.assign(cur, refillState(cur)); } // 채웠다 뺀 벗과 같은 상태(활성도 ×0.6 · 시즈닝 ×0.35 · 1회 사용) — 사람은 원액 빼기(unfillCask)로 만든다. 측정용으로 상태만 맞춘다
     s = act(s, { type: 'fillCasks', lotId: lot.id, caskIds: [c.id], entryAbv: 0.635 });
+    if (SPIRIT.length) { const cur = s.inventory.casks.find((x) => x.id === c.id)!; for (const [k, v] of SPIRIT) (cur.contents!.flavor as Record<string, number>)[k] = Math.max(0, ((cur.contents!.flavor as Record<string, number>)[k] ?? 0) + v); }
     ids.set(k.key, c.id);
   }
   for (const r of s.production.recipes) { const a = applyAction(s, { type: 'setOrder', recipeId: r.id, batchesPerMonth: 0 }); if (!a.error) s = a.state; }
@@ -65,6 +72,7 @@ for (let seed = 1; seed <= N; seed++) {
 }
 const med = (a: number[]) => { const b = [...a].sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)]! : NaN; };
 const f = (v: number) => (Number.isFinite(v) ? v.toFixed(1) : '—');
+if (SPIRIT.length) console.log(`원액 성질 더함: ${SPIRIT.map(([k, v]) => `${k} ${v >= 0 ? '+' : ''}${v}`).join(' · ')}\n`);
 console.log(`| 통 | ${AT.map((m) => `${m / 12}년 품질 중앙 (P10 · P90) · n`).join(' | ')} | ${AT.map((m) => `${m / 12}년 탄닌 · 감점`).join(' | ')} |`);
 console.log(`|---|${AT.map(() => '---').join('|')}|${AT.map(() => '---').join('|')}|`);
 for (const k of KINDS) {
