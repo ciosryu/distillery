@@ -1,6 +1,6 @@
 // 판매 화면 자동 납품 줄의 문구 (MKT) — 무엇으로 채우는지. [결정 #369] 옹기 · 오크에서 쉰 소주 · [결정 #370] 뉴본 탱크.
 // 셈(원액 후보 · 쓰는 양)은 PROD `economics.ts`가 하고, 여기서는 문구만 만든다. 수요를 읽는 셈은 아는 품질 상태(`ks` = knownState)로 부른다(F5d)
-import { autoRestockRangeChoices, autoRestockSourceChoices, autoRestockSourceSelectable, autoRestockSources, autoRestockVesselNeed, CASK_TYPE_GROUPS, newmakeRestock, newmakeTankUseL } from '../sim/economics';
+import { autoRestockQualityChoices, autoRestockRangeChoices, autoRestockSourceChoices, autoRestockSourceSelectable, autoRestockSources, autoRestockVesselNeed, CASK_TYPE_GROUPS, newmakeRestock, newmakeTankUseL } from '../sim/economics';
 import { vesselMaterial } from '../sim/maturation';
 import { rulesVersionOf } from '../sim/rules';
 import { agedWhiteLabel, isWhiskyCategory, knownView, type GameState, type Product } from '../sim';
@@ -113,6 +113,23 @@ export function autoRestockRangeOptions(s: GameState, p: Product): { key: string
     const n = autoRestockSources(s, p).length;
     const yr = (m: number) => (m % 12 ? `${m}개월` : `${m / 12}년`);
     out.splice(1, 0, { key: rangeKey(cur), source: cur, text: `${yr(cur.months)} ~ ${cur.maxMonths != null ? yr(cur.maxMonths) : '상한 없음'}${cur.caskTypes?.length ? ' · 고른 통 종류' : ''} — ${n ? `통 ${n}개` : '통 없음'}`, empty: n === 0 });
+  }
+  return out;
+}
+
+/** [결정 #419] 「통 품질」 고르기의 값 — 조건 없음은 'none', 아니면 아는 품질(샘플 어림) 하한 */
+export const qualityKey = (src: Product['autoRestockSource'] | null | undefined): string => (src?.minKnownQuality != null ? String(src.minKnownQuality) : 'none');
+
+/**
+ * [결정 #419] 위스키 자동 납품 「통 품질」 선택지 — PROD `autoRestockQualityChoices` 그대로에 지금 쓸 수 있는 통 수 · 샘플이 없어 빠지는 통 수를 붙인다.
+ * 품질은 **샘플 어림**(아는 품질 — 참 품질이 아니다, I2)이라 문구에 그렇게 적는다. 고른 값이 목록에 없으면(다른 하한) 맨 앞 다음에 넣는다. 고를 수 없는 제품이면 빈 배열
+ */
+export function autoRestockQualityOptions(s: GameState, p: Product): { key: string; source: NonNullable<Product['autoRestockSource']>; text: string; empty: boolean }[] {
+  const tail = (available: number, unsampled: number) => `${available ? `통 ${available}개` : '통 없음'}${unsampled ? ` · 샘플 없는 통 ${unsampled}개는 못 씀` : ''}`;
+  const out = autoRestockQualityChoices(s, p).map((c) => ({ key: qualityKey(c.source), source: c.source, text: `${c.label} — ${tail(c.available, c.unsampled)}`, empty: c.available === 0 }));
+  const cur = p.autoRestockSource;
+  if (out.length && cur?.minKnownQuality != null && !out.some((o) => o.key === qualityKey(cur))) {
+    out.splice(1, 0, { key: qualityKey(cur), source: cur, text: `통 품질 ${cur.minKnownQuality} 이상(샘플 어림) — ${tail(autoRestockSources(s, p).length, 0)}`, empty: autoRestockSources(s, p).length === 0 });
   }
   return out;
 }
