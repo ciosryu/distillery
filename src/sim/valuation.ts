@@ -33,7 +33,7 @@ export const EQUIPMENT_SALVAGE = {
  * (9차 133 세이브의 시작 증류기 readyMonth 124 — PROD 리뷰). 0으로 보면 감가가 커져 처분가가 낮게(보수적으로) 나온다 `[한계 — 옛 세이브에서 나중에 산 증류기는 실제보다 늙게]`
  */
 /**
- * [결정 #398] 설비 처분가 — Σ r × 원가(입지 반영 `equipmentCost`) × max(바닥, 1 − 나이 ÷ 내용 연수). 나이 = 지금 달 − `boughtMonthOf`(공사 중이면 0 → r × 원가).
+ * [결정 #398] 설비 처분가 — Σ r × 원가(입지 반영 `equipmentCost`) × max(바닥, 1 − 나이 ÷ 내용 연수). 나이 = 지금 달 − `boughtMonthOf`(설치 공사 중이면 0 → r × 원가 — 개조 `refitUntil` · 고장 수리 `repairUntil` 중은 공사가 아니다).
  * **v16만**(`usesObservedValuation`) — 옛 판은 0(X0L 그대로). `rate`는 세 값마다 다르다: 장부가는 1(감가만), 추정 · 처분은 r
  */
 export function equipmentSalvage(s: GameState, rate: number = EQUIPMENT_SALVAGE.rate, atMonth: number = s.month): number {
@@ -44,7 +44,7 @@ export function equipmentSalvage(s: GameState, rate: number = EQUIPMENT_SALVAGE.
     if (!def || EQUIPMENT_SALVAGE.exclude.includes(def.id)) continue;
     const life = EQUIPMENT_SALVAGE.lifeMonths[def.kind];
     if (!life) continue;
-    const age = e.readyMonth > atMonth && e.refitUntil == null ? 0 : Math.max(0, atMonth - boughtMonthOf(e)); // [결정 #418] 개조 공사 중인 증류기는 새 설비가 아니다(감가 나이 그대로)
+    const age = e.readyMonth > atMonth && e.refitUntil == null && e.repairUntil == null ? 0 : Math.max(0, atMonth - boughtMonthOf(e)); // [결정 #418] 개조 · [P-MGT-66] 고장 수리 중인 증류기는 새 설비가 아니다(감가 나이 그대로)
     total += rate * equipmentCost(s, def) * Math.max(EQUIPMENT_SALVAGE.floor, 1 - age / life);
   }
   return Math.round(total);
