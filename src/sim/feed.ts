@@ -5,6 +5,7 @@ import { finishLabelOn } from './finishLabel';
 import { hasDutyFree } from './dutyFree';
 import { finishLabel } from './maturation';
 import { AXIS } from './content/axes';
+import { CASKS } from './content/production';
 import { productLuxury } from './brands';
 import { topNotes } from './flavor';
 import { expectedPricePerL, productConsumerPrice } from './market';
@@ -176,8 +177,15 @@ const stillStyleOf = (p: Product): StillStyle | null => (p as Product & { stillS
 /** 헤비 스틸 글의 나이 — 「명작」 · 「기다린」이 든 글은 표기 15년↑([결정 #422] 15 · 18년 명작), 「오래」 · 「장기」가 든 글은 표기 12년↑, 나머지 헤비 글은 표기 5년 미만(오너 #418: 3 ~ 5년 저숙성) */
 const HEAVY_OLD = /오래 재운|장기 숙성/;
 const HEAVY_MASTER = /명작|기다린/;
-/** 셰리 통이 공개 표기로 보이는가 — 피니시 표기(올로로소 · 셰리 혹스헤드) 또는 제품 이름의 「셰리」. 통 구성 기록(caskMix)은 읽지 않는다 */
-const sherryLabel = (p: Product): boolean => (finishLabelOn(p) && /oloroso|sherry/.test(p.finish ?? '')) || p.name.includes('셰리');
+/** 셰리 판정에 쓰는 통 구성 몫 — 셰리 시즈닝 통 몫이 이 이상이면 「셰리」 글을 쓴다(PROD 2026-11-25 권장) `[튜닝]` */
+const SHERRY_MIX_SHARE = 0.5;
+/**
+ * 셰리 통이 공개 값으로 보이는가 — 피니시 표기(셰리 시즈닝 통) · 제품 이름의 「셰리」 · 통 구성 기록(`caskMix` — 플레이어가 고른 통 종류의 몫, 공개 값 · 숨은 품질과 무관)의
+ * 셰리 계열 몫 0.5↑. 「처음부터 셰리 벗에서 15년」(#422 명작의 중심 길)은 피니시 표기가 붙지 않아 통 구성으로 본다(PROD 2026-11-25). 통 구성은 이 판정에만 읽는다
+ */
+const isSherryCask = (id: string): boolean => (CASKS as Record<string, { seasoningType?: string }>)[id]?.seasoningType === 'sherry';
+const sherryLabel = (p: Product): boolean =>
+  (finishLabelOn(p) && !!p.finish && isSherryCask(p.finish)) || p.name.includes('셰리') || (p.caskMix ?? []).filter((x) => isSherryCask(x.typeId)).reduce((t, x) => t + x.share, 0) >= SHERRY_MIX_SHARE;
 function lineOk(line: string, c: LineCtx): boolean {
   if (line.includes('헤비 스틸') && (c.still !== 'heavy' || (HEAVY_MASTER.test(line) ? c.labelYears < 15 : HEAVY_OLD.test(line) ? c.labelYears < 12 : c.labelYears <= 0 || c.labelYears >= 5))) return false;
   if (line.includes('헤비 스틸') && line.includes('셰리') && !c.sherry) return false;
