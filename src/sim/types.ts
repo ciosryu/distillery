@@ -1042,6 +1042,11 @@ export interface ProgressSlice {
   verdict?: GoalVerdict;
   /** 캠페인 승리(F3 모양 · F4가 쓴다 — [결정 #308]) — 적격 로트의 최초 정상 유상 출하 1회. 멈춤 사유가 아니라 알림(계속 운영) */
   win?: CampaignWin;
+  /**
+   * [결정 #407] 첫 12년 승리 적격 통이 생긴 달(경과 개월) — 승리를 미룬 만큼 S 순자산 문턱을 올리는 기준(`ledger.ts winDelayMonths`). v16 · 승리 전에만 적는다.
+   * 선택 필드(#187). 옛 세이브에 없으면 처음 보는 달에 가장 오래된 적격 통의 목재 개월로 거슬러 센다(`recordFirstEligible`) · 옛 판은 쓰지 않는다
+   */
+  firstEligibleMonth?: number;
   ending?: { reason: GameEnding; month: number };
 }
 

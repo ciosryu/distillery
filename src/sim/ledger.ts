@@ -183,3 +183,30 @@ export function isCampaignCandidate(s: Pick<GameState, 'scenario' | 'siteId' | '
   if (!cask.contents || cask.owner) return false;
   return ledgerEligibility(s, ledgerOf(s, cask.contents), Math.max(0, horizonMonths)).eligible;
 }
+
+// ───────────── [결정 #407] 승리 미루기 보강 — 첫 적격 통이 생긴 달 ─────────────
+
+/**
+ * 첫 12년 승리 적격 통이 생긴 달을 적는다(월말 `updateProgress`가 승리 판정 전에 부른다). v16 · 시나리오 · 승리 전 · 아직 없을 때만.
+ * 적격 통이 처음 보이면 **가장 오래된 적격 통이 기준 개월을 넘은 달**로 거슬러 적는다 — 진행 중 판은 그 달 그대로이고, 필드가 없던 옛 세이브(이미 적격 통이 있는)도
+ * 실제 달에 가깝게 잡힌다(목재 개월은 공개 값 · 통을 옮긴 원액도 구성 원장 개월로 센다). 상태 수치 · 난수에 닿지 않는다(기록만)
+ */
+export function recordFirstEligible(s: GameState): void {
+  if (!s.scenario || rulesVersionOf(s) === 'legacy-v15' || campaignWon(s) || s.progress.firstEligibleMonth != null) return;
+  const A = campaignMinOakMonths(s);
+  let oldest = -1;
+  for (const c of s.inventory.casks) {
+    const e = caskEligibility(s, c);
+    if (e.eligible) oldest = Math.max(oldest, e.woodMonths);
+  }
+  if (oldest < 0) return;
+  s.progress.firstEligibleMonth = Math.max(0, s.month - Math.max(0, oldest - A));
+}
+
+/**
+ * 승리를 미룬 개월 — 첫 적격 통 달부터 `atMonth`(기본 지금)까지. 기록이 없으면 0(아직 적격 통이 없었다 · 옛 판). MGT `sNetWorthTarget`이 k × 이 값을 더한다(#407)
+ */
+export function winDelayMonths(s: Pick<GameState, 'progress' | 'month'>, atMonth: number = s.month): number {
+  const f = s.progress.firstEligibleMonth;
+  return f == null ? 0 : Math.max(0, atMonth - f);
+}

@@ -1,7 +1,7 @@
 import { isWhiskyCategory } from './blending';
 import { awarenessOf, houseBrand } from './brands';
 import { SCENARIOS, midGoalsForRules, type MidGoalDef } from './content/scenarios';
-import { candidateHorizon, isCampaignCandidate } from './ledger';
+import { candidateHorizon, isCampaignCandidate, recordFirstEligible } from './ledger';
 import { liquidationValue, usesObservedValuation } from './valuation';
 import { isBulkKind, spotBidPerLPA } from './bulk';
 import { MILESTONES } from './content/milestones';
@@ -141,6 +141,7 @@ export function updateProgress(s: GameState, report: MonthReport): void {
   }
   // 새 판(v16, F4 [결정 #308]) — 승리 = 적격 로트의 최초 정상 유상 출하. 그달 결산의 사건에서 첫 승리 후보를 읽는다(틱 순서 = 출고 순서).
   // 강제 판정은 없다: `verdict`는 승리 달에 한 번(성과 등급) 또는 판이 끝날 때(failed)만 — [결정 #324]. 승리는 멈춤 사유가 아니다(계속 운영)
+  recordFirstEligible(s); // [결정 #407] 첫 적격 통 달 — 기록만(승리 미루기 문턱의 기준)
   if (!s.progress.win) {
     const e = firstEligibleSale(report.saleEvents ?? []);
     if (e) {
