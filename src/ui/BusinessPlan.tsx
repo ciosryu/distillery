@@ -6,7 +6,7 @@ import { useGame } from '../store/game';
 import { months, pct, won } from './format';
 import { Badge, Button, Card, Select, TextField } from './kit';
 import { EQUIPMENT } from '../sim/content/catalog';
-import { DEFAULT_STILL_SHAPE, STILL_SHAPE_PRESETS, stillParams, stillShapeNote } from '../sim/stillShape'; // [결정 #417 · #418] 증류기 형태 (PROD)
+import { DEFAULT_STILL_SHAPE, sameShape, STILL_PART_LABELS, STILL_PART_NAMES, STILL_PARTS, STILL_SHAPE_PRESETS, stillParams, stillShapeNote } from '../sim/stillShape'; // [결정 #417 · #418] 증류기 형태 (PROD)
 import type { StillShape } from '../sim/types';
 
 // 사업 계획서 — MVP 시나리오의 새 게임 입구 (skeleton S-8, #140·3)
@@ -17,17 +17,9 @@ const PRESETS: Exclude<DifficultyPreset, 'custom'>[] = ['easy', 'normal', 'hard'
 
 const STEP = 10_000_000;
 
-// [결정 #417 · #418] 증류기 형태 — 셀렉트 넷의 이름(오너 그림 · PROD prod-stills.md). 시작 증류기는 언제나 양파형 단식(`newGame.ts`)이라 기본 조합 = 지금 값
+// [결정 #417 · #418 · #420] 증류기 형태 — 칸 넷 · 이름표는 PROD `stillShape.ts`(STILL_PARTS · STILL_PART_NAMES · STILL_PART_LABELS)를 그대로 쓴다. 시작 증류기는 언제나 양파형 단식(`newGame.ts`)이라 기본 조합 = 지금 값
 type StillDef = Extract<(typeof EQUIPMENT)[string], { kind: 'still' }>;
 const START_STILL = EQUIPMENT.pot_onion_1000 as StillDef;
-const SHAPE_KO: { [K in keyof StillShape]: { label: string; options: Record<StillShape[K], string> } } = {
-  body: { label: '본체', options: { short: '숏 & 뚱뚱', standard: '스탠다드 스완 넥', tall: '톨 & 슬림' } },
-  lineArm: { label: '라인 암', options: { down: '하향', level: '수평', up: '상향' } },
-  option: { label: '특수 옵션', options: { none: '없음', boil_ball: '보일 볼 · 퓨리파이어' } },
-  condenser: { label: '응축기', options: { shell: '쉘 앤 튜브', worm: '웜 텁' } },
-};
-const SHAPE_KEYS = Object.keys(SHAPE_KO) as (keyof StillShape)[];
-const sameShape = (a: StillShape, b: StillShape) => SHAPE_KEYS.every((k) => a[k] === b[k]);
 
 export function BusinessPlan({ onClose, onSandbox }: { onClose?: () => void; onSandbox?: () => void }) {
   const startScenario = useGame((g) => g.startScenario);
@@ -166,8 +158,8 @@ export function BusinessPlan({ onClose, onSandbox }: { onClose?: () => void; onS
               })}
             </div>
             <div className="mt-2 flex flex-wrap items-end gap-2">
-              {SHAPE_KEYS.map((k) => (
-                <Select key={k} label={SHAPE_KO[k].label} value={shown[k] as string} options={Object.entries(SHAPE_KO[k].options).map(([value, label]) => ({ value, label: label as string }))} onChange={(v) => setShape({ ...shown, [k]: v } as StillShape)} />
+              {STILL_PARTS.map((k) => (
+                <Select key={k} label={STILL_PART_NAMES[k]} value={shown[k] as string} options={Object.entries(STILL_PART_LABELS[k]).map(([value, label]) => ({ value, label: label as string }))} onChange={(v) => setShape({ ...shown, [k]: v } as StillShape)} />
               ))}
             </div>
             <p className="mt-1 text-xs text-stone-600 dark:text-stone-300">{STILL_SHAPE_PRESETS.find((pr) => sameShape(shown, pr.shape))?.note ?? stillShapeNote(shown)} · 환류 {spec.reflux.toFixed(2)} · 구리 접촉 {spec.copperContact.toFixed(1)}</p>
