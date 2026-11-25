@@ -196,7 +196,7 @@ export const CASK_MARKET = {
   usedSalePerActivity: 0.4,
   /**
    * [결정 #393 N1] 한 번 쓴 버번 배럴(리필) — 쿠퍼리지 정상 주문으로 사고, 도착하면 채웠다 뺀 통과 같다(활성도 ×0.6 · 시즈닝 ×0.35 · 1회 사용).
-   * 값 · 열리는 달은 오너 확인 중 `[튜닝]`(MGT `mgt-grade-options.md` §N1 — 새 통의 60 ~ 70% · 판 처음부터 · 한도 없음). v16 판만
+   * [결정 #408] 오너 확정(2026-11-25): 새 통 값의 65% · 한도 없음 · 판 처음부터 — 값은 `[튜닝]`(MGT `mgt-grade-options.md` §N1). v16 판만
    */
   refill: { typeId: 'ex_bourbon_barrel' as const, priceShare: 0.65, fromMonth: 0 },
 };
