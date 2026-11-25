@@ -301,7 +301,7 @@ setP8Hooks({
       if (sh) (r.sherry as Record<string, unknown>).sale = { month: s.month, nw: netWorth(s, s.month), target: sNetWorthTarget(s, s.month), aw: +awarenessOf(s).toFixed(3) };
     }
     const bv = s.progress.verdictBest; // [결정 #422] 재판정으로 오른 등급(있으면)
-    if (bv && !r.best) r.best = { grade: bv.grade ?? undefined, month: bv.rejudged.month, q: bv.flagshipQuality, nw: bv.netWorth ?? undefined, aw: bv.awareness ?? undefined, age: s.commerce.products.find((x) => x.id === bv.rejudged.productId)?.ageYears, oak: s.commerce.products.find((x) => x.id === bv.rejudged.productId)?.oakMonths }; // nw · 나이 — 다른 재판정 규칙(순자산 · 15년+)을 판 밖에서 다시 세려고
+    if (bv && !r.best) r.best = { grade: bv.grade ?? undefined, month: bv.rejudged.month, q: bv.flagshipQuality, nw: bv.netWorth ?? undefined, aw: bv.awareness ?? undefined, age: s.commerce.products.find((x) => x.id === bv.rejudged.productId)?.ageYears ?? undefined, oak: s.commerce.products.find((x) => x.id === bv.rejudged.productId)?.oakMonths }; // nw · 나이 — 다른 재판정 규칙(순자산 · 15년+)을 판 밖에서 다시 세려고
     if (s.status !== 'running' && r.status == null) { r.status = s.status; r.endMonth = m + 1; }
     r.nwEnd = netWorth(s);
     r.months = m + 1;
