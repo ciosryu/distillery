@@ -165,7 +165,7 @@ export const seasonOf = (month: number): FeedSeason | null => {
 };
 
 /** 틀이 이 제품에 맞는가 — 공개 표기만 본다(F5d · PROD 합의: 통 이름은 피니시 표기뿐) */
-interface LineCtx { still: StillStyle | null; labelYears: number; finish: boolean; onggi: boolean; cs: boolean; co: boolean; limited: boolean; medal: boolean; dutyFree: boolean; noCask: boolean; discount: boolean }
+interface LineCtx { still: StillStyle | null; sherry: boolean; labelYears: number; finish: boolean; onggi: boolean; cs: boolean; co: boolean; limited: boolean; medal: boolean; dutyFree: boolean; noCask: boolean; discount: boolean }
 /**
  * [결정 #418] 증류기 형태(공개) — 병입 때 원액의 증류기 형태를 접은 값(PROD `Product.stillStyle?`, 코어 · PR ④). 아직 타입에 없으면 없음으로 읽는다.
  * 피드는 이 **공개 표기**와 표기 연수로만 「헤비 스틸 3년은 거칠다」 · 「장기 숙성 헤비는 묵직하다」를 말한다 — 참 품질 · 원액 맛을 읽지 않는다(I2).
@@ -173,10 +173,14 @@ interface LineCtx { still: StillStyle | null; labelYears: number; finish: boolea
  */
 type StillStyle = 'light' | 'medium' | 'heavy';
 const stillStyleOf = (p: Product): StillStyle | null => (p as Product & { stillStyle?: StillStyle }).stillStyle ?? null;
-/** 헤비 스틸 글의 나이 — 「오래」 · 「장기」가 든 글은 표기 12년↑, 나머지 헤비 글은 표기 5년 미만(오너 #418: 3 ~ 5년 저숙성 · 15년↑ 명작) */
+/** 헤비 스틸 글의 나이 — 「명작」 · 「기다린」이 든 글은 표기 15년↑([결정 #422] 15 · 18년 명작), 「오래」 · 「장기」가 든 글은 표기 12년↑, 나머지 헤비 글은 표기 5년 미만(오너 #418: 3 ~ 5년 저숙성) */
 const HEAVY_OLD = /오래 재운|장기 숙성/;
+const HEAVY_MASTER = /명작|기다린/;
+/** 셰리 통이 공개 표기로 보이는가 — 피니시 표기(올로로소 · 셰리 혹스헤드) 또는 제품 이름의 「셰리」. 통 구성 기록(caskMix)은 읽지 않는다 */
+const sherryLabel = (p: Product): boolean => (finishLabelOn(p) && /oloroso|sherry/.test(p.finish ?? '')) || p.name.includes('셰리');
 function lineOk(line: string, c: LineCtx): boolean {
-  if (line.includes('헤비 스틸') && (c.still !== 'heavy' || (HEAVY_OLD.test(line) ? c.labelYears < 12 : c.labelYears <= 0 || c.labelYears >= 5))) return false;
+  if (line.includes('헤비 스틸') && (c.still !== 'heavy' || (HEAVY_MASTER.test(line) ? c.labelYears < 15 : HEAVY_OLD.test(line) ? c.labelYears < 12 : c.labelYears <= 0 || c.labelYears >= 5))) return false;
+  if (line.includes('헤비 스틸') && line.includes('셰리') && !c.sherry) return false;
   if (line.includes('라이트 스틸') && c.still !== 'light') return false;
   if (line.includes('{benchCo}') && !c.co) return false;
   if (c.noCask && CASK_WORDS.test(line)) return false;
@@ -320,7 +324,7 @@ function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style
     abv: `${Math.round(p.abv * 100)}%`, age: p.ageYears ? `${p.ageYears}년` : years > 0 ? `${years}년` : '어린', finish,
   };
   const noCask = WHITE.includes(p.category) || !((p.oakMonths ?? 0) > 0);
-  const ctx: LineCtx = { still: stillStyleOf(p), labelYears: p.ageYears ?? 0, finish: finishLabelOn(p), onggi: (p.restMonths ?? 0) >= 6, cs: p.abv >= 0.55, co: !!bench.co, limited: !!p.rareSingleCask || !!p.dfEdition, medal, dutyFree, noCask, discount: g.priceChange < -0.05 };
+  const ctx: LineCtx = { still: stillStyleOf(p), sherry: sherryLabel(p), labelYears: p.ageYears ?? 0, finish: finishLabelOn(p), onggi: (p.restMonths ?? 0) >= 6, cs: p.abv >= 0.55, co: !!bench.co, limited: !!p.rareSingleCask || !!p.dfEdition, medal, dutyFree, noCask, discount: g.priceChange < -0.05 };
   const white = WHITE.includes(p.category);
   const community = FEED_COMMUNITIES[style][white ? 'white' : 'whisky'];
   const author = rng.pick(FEED_AUTHORS[style]);
