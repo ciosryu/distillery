@@ -4,7 +4,7 @@
 
 import { isFlagshipCandidate } from '../sim/delegateCheck';
 import { regionOf } from '../sim/content/regions';
-import { GRADE, sDelayMonths, sNetWorthTarget, winDelayMonths, calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, knownState, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, slotsDifferFromCasks, slotsUsed, spotQuote, warehouseCapacity, whiskyMinMonths, type Action, type Cask, type CashFlowKey, type GameState, type MonthReport, type Product, stagesOf } from '../sim';
+import { GRADE, sDelayMonths, sNetWorthTarget, calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, knownState, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, slotsDifferFromCasks, slotsUsed, spotQuote, warehouseCapacity, whiskyMinMonths, type Action, type Cask, type CashFlowKey, type GameState, type MonthReport, type Product, stagesOf } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
@@ -268,9 +268,8 @@ export function winDelayNote(s: GameState): string | null {
   const target = sNetWorthTarget(s);
   if (!k || target == null) return null;
   const n = sDelayMonths(s);
-  const since = winDelayMonths(s, s.month + 1);
   return n > 0
-    ? `S 등급 순자산 기준 ${fmtWon(target)} — 12년 적격 뒤 ${since}개월째, 출하를 미룬 만큼 오른다(${n}개월 × ${fmtWon(k)} = +${fmtWon(n * k)})`
+    ? `S 등급 순자산 기준 ${fmtWon(target)} — 12년 출하를 미룬 만큼 오른다(${n}개월 × ${fmtWon(k)} = +${fmtWon(n * k)})`
     : `12년 적격 원액이 있다 — ${GRADE.sDelayGraceMonths}개월 안에 출하하지 않으면 S 등급 순자산 기준(지금 ${fmtWon(target)})이 달마다 ${fmtWon(k)}씩 오른다`;
 }
 
