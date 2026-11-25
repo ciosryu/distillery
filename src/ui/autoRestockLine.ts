@@ -1,6 +1,6 @@
 // 판매 화면 자동 납품 줄의 문구 (MKT) — 무엇으로 채우는지. [결정 #369] 옹기 · 오크에서 쉰 소주 · [결정 #370] 뉴본 탱크.
 // 셈(원액 후보 · 쓰는 양)은 PROD `economics.ts`가 하고, 여기서는 문구만 만든다. 수요를 읽는 셈은 아는 품질 상태(`ks` = knownState)로 부른다(F5d)
-import { autoRestockSourceChoices, autoRestockSourceSelectable, autoRestockSources, autoRestockVesselNeed, newmakeRestock, newmakeTankUseL } from '../sim/economics';
+import { autoRestockRangeChoices, autoRestockSourceChoices, autoRestockSourceSelectable, autoRestockSources, autoRestockVesselNeed, CASK_TYPE_GROUPS, newmakeRestock, newmakeTankUseL } from '../sim/economics';
 import { vesselMaterial } from '../sim/maturation';
 import { rulesVersionOf } from '../sim/rules';
 import { agedWhiteLabel, isWhiskyCategory, knownView, type GameState, type Product } from '../sim';
@@ -89,6 +89,30 @@ export function autoRestockSourceOptions(s: GameState, p: Product): { key: strin
   if (cur && !out.some((o) => o.key === sourceKey(cur))) {
     const n = autoRestockSources(s, p).length;
     out.splice(1, 0, { key: sourceKey(cur), source: cur, text: `${cur.vessel === 'onggi' ? '옹기' : cur.vessel === 'oak' ? '오크' : '탱크'}${cur.vessel === 'tank' ? '' : ` ${cur.months}개월↑`} — ${unit(cur)} ${n ? `${n}개` : '없음'}`, empty: n === 0 });
+  }
+  return out;
+}
+
+/** [결정 #399] 위스키 「통 범위 · 통 종류」 고르기의 값 — 고르지 않음(지금 규칙)은 'auto'. 통 종류는 PROD 묶음(버번 · 셰리 계열) id, 맞는 묶음이 없으면 'custom' */
+export function rangeKey(src: Product['autoRestockSource'] | null | undefined): string {
+  if (!src) return 'auto';
+  const types = src.caskTypes ? [...src.caskTypes].sort().join(',') : '';
+  const group = !types ? 'any' : CASK_TYPE_GROUPS.find((g) => [...g.types].sort().join(',') === types)?.id ?? 'custom';
+  return `${src.vessel}:${src.months}:${src.maxMonths ?? '-'}:${group}`;
+}
+
+/**
+ * [결정 #399] 위스키 자동 납품 「통 범위 · 통 종류」 선택지 — PROD `autoRestockRangeChoices` 그대로에 지금 쓸 수 있는 통 수(띠 정책 반영)를 붙인다.
+ * 제품에 고른 값이 목록에 없으면(하한을 바꾼 뒤 등) 맨 앞 다음에 넣는다. 고를 수 없는 제품(옛 판 · 위스키 아님)이면 빈 배열
+ */
+export function autoRestockRangeOptions(s: GameState, p: Product): { key: string; source: Product['autoRestockSource'] | null; text: string; empty: boolean }[] {
+  const out = autoRestockRangeChoices(s, p).map((c) => ({ key: rangeKey(c.source), source: c.source, text: `${c.label} — ${c.available ? `통 ${c.available}개` : '통 없음'}`, empty: c.available === 0 }));
+  if (!out.length) return out;
+  const cur = p.autoRestockSource;
+  if (cur && !out.some((o) => o.key === rangeKey(cur))) {
+    const n = autoRestockSources(s, p).length;
+    const yr = (m: number) => (m % 12 ? `${m}개월` : `${m / 12}년`);
+    out.splice(1, 0, { key: rangeKey(cur), source: cur, text: `${yr(cur.months)} ~ ${cur.maxMonths != null ? yr(cur.maxMonths) : '상한 없음'}${cur.caskTypes?.length ? ' · 고른 통 종류' : ''} — ${n ? `통 ${n}개` : '통 없음'}`, empty: n === 0 });
   }
   return out;
 }

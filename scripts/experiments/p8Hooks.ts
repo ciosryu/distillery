@@ -48,6 +48,8 @@ export interface P8Hooks<P = any, R = any> {
   afterMonth?(s: S, p: P, m: number, seed: number): void;
   /** bottle() 안 일반 위스키 병입 판단 바로 앞(재고·목표 계산 전) — @hook:before-whisky-bottle */
   beforeWhiskyBottle?(s: S, p: P, api: P8Api<P>): S | void;
+  /** 승리 출시(p.launch)를 이달 해도 되는가 — false면 이달 출시하지 않는다(통 고르기 전에 묻는다 · 승리 미루기 측정 [결정 #407]). 돌려주지 않으면 P8 그대로 — @hook:launch-gate */
+  launchGate?(s: S, p: P): boolean | void;
   /** 일반 위스키 병입 후보에서 뺄 통 — @hook:bottle-skip */
   bottleSkip?(s: S, p: P, c: Cask): boolean;
   /** 병입 직후 가격 처리(P8의 pricePolicy·autoPrice 처리 앞). 상태를 돌려주면 P8 가격 처리를 건너뛴다 — @hook:price-after-bottle */

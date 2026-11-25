@@ -19,6 +19,17 @@ const CHECK_LABEL_V16: Record<GoalCheck['id'], string> = { survive: '파산하�
  * 새 캠페인(v16) S 등급 조건 세 줄 (6차 판 뒤 PM 배정 — 옛 칸은 "순자산 / 등급 기준 24억 (S는 ×1.5)" 한 줄이라 S에 실제로 필요한 36억과 품질·인지도 조건이 작은 글씨에만 있었다. S = 셋 모두, `judgeWin`).
  * 판정 결과(verdict)에 남은 값만 읽는다
  */
+/** [결정 #407] 결과 화면 풀이 — 「S 순자산 기준 = 기본 b + 12년 적격 뒤 n개월 미룸 × k」. 미룬 몫이 없거나 옛 판정이면 null */
+function delayLine(s: GameState, v: NonNullable<GameState['progress']['verdict']>): string | null {
+  const sc = s.scenario;
+  if (!sc || v.sNetWorthTarget == null) return null;
+  const base = GRADE.sNetWorthV16[sc.tierId];
+  const k = GRADE.sDelayPerMonthV16[sc.tierId];
+  if (base == null || !k || v.sNetWorthTarget <= base) return null;
+  const n = Math.round((v.sNetWorthTarget - base) / k);
+  return `S 순자산 기준 ${won(v.sNetWorthTarget)} = 기본 ${won(base)} + 12년 적격 뒤 출하를 ${n}개월 미뤄 ${n} × ${won(k)} — 미룬 만큼 기준이 오른다`;
+}
+
 export function sGradeRows(v: NonNullable<GameState['progress']['verdict']>): { id: string; label: string; ok: boolean; text: string }[] {
   const nwTarget = v.sNetWorthTarget ?? (v.checks.find((c) => c.id === 'netWorth')?.target ?? 0) * GRADE.sNetWorthRatio; // [결정 #393] v16은 판정이 적은 규모별 S 문턱
   const q = v.flagshipQuality ?? v.checks.find((c) => c.id === 'flagship')?.value;
@@ -78,6 +89,8 @@ export function Verdict({ s, onNewGame }: { s: GameState; onNewGame: () => void 
               </ul>
               {/* 결정 #339 — 등급은 승리 순간의 성적표 · 성과 기준은 15년 기준이라는 맥락(값·판정식은 단계 T) — 순자산 미달일 때만 */}
               {!sGradeRows(v).find((r) => r.id === 's-networth')!.ok && <p className="mt-1 text-xs text-stone-500">{GRADE_NOTE.netWorthShort}</p>}
+              {/* [결정 #407] 승리를 미룬 만큼 오른 문턱 — 판정에 적힌 문턱에서 기본값을 빼 미룬 개월을 거꾸로 센다(MGT: (문턱 − 기준) ÷ k) */}
+              {delayLine(s, v) && <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">⏳ {delayLine(s, v)}</p>}
             </>
           )}
           <p className="mt-2 text-xs text-stone-500">

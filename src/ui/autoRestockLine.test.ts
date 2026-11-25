@@ -2,9 +2,9 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { parsePlayFile } from '../store/playlog';
-import { autoRestockSourceLine, autoRestockSourceOptions, autoRestockTitle, sourceKey } from './autoRestockLine';
+import { autoRestockRangeOptions, autoRestockSourceLine, autoRestockSourceOptions, autoRestockTitle, rangeKey, sourceKey } from './autoRestockLine';
 import { applyAction } from '../sim';
-import { autoRestockSupported, newmakeTankUseL } from '../sim/economics';
+import { autoRestockShortReason, autoRestockSources, autoRestockSupported, newmakeTankUseL } from '../sim/economics';
 import { knownState, knownView, type GameState } from '../sim';
 
 const load = (f: string): GameState => { const r = parsePlayFile(readFileSync(`docs/playtest/9/${f}`, 'utf8')); if ('error' in r) throw new Error(r.error); return r.save; };
@@ -120,5 +120,41 @@ describe('[결정 #392] 채울 원액 고르기 — 선택지와 안내 줄', ()
     if (w) expect(autoRestockSourceOptions(s, w)).toEqual([]);
     s.rulesVersion = 'legacy-v15';
     expect(autoRestockSourceOptions(s, byName(s, '김포 옹기소주'))).toEqual([]);
+  });
+});
+
+describe('[결정 #399] 위스키 「통 범위 · 통 종류」 고르기 — 선택지 · 못 채운 까닭', () => {
+  const W = '김포 퍼스트 배치';
+  it('133개월 위스키: 첫 칸은 지금 규칙, 그다음 (상한 +12 · +24 · +36 · 없음) × (아무거나 · 버번 · 셰리) — 값(열쇠)은 모두 다르다', () => {
+    const s = m133();
+    const o = autoRestockRangeOptions(s, byName(s, W));
+    expect(o[0]!.key).toBe('auto');
+    expect(o[0]!.text).toMatch(/^지금 규칙\(.+ 이상 · 상한 없음\) — 통 (\d+개|없음)$/);
+    expect(new Set(o.map((x) => x.key)).size).toBe(o.length);
+    expect(o.some((x) => x.text.includes('버번 계열'))).toBe(true);
+    expect(o.some((x) => x.text.includes('셰리 계열'))).toBe(true);
+  });
+  it('하나를 고르면 제품 값의 열쇠가 그 칸과 같다(화면 select 값이 맞는다)', () => {
+    const s0 = m133();
+    const p0 = byName(s0, W);
+    const pick = autoRestockRangeOptions(s0, p0).find((x) => x.key !== 'auto' && x.text.includes('버번 계열'))!;
+    const s = applyAction(s0, { type: 'setAutoRestock', productId: p0.id, months: 3, source: pick.source }).state;
+    expect(rangeKey(byName(s, W).autoRestockSource)).toBe(pick.key);
+    expect(autoRestockRangeOptions(s, byName(s, W)).filter((x) => x.key === pick.key)).toHaveLength(1);
+  });
+  it('소주 · 뉴본 · 옛 판은 통 범위 고르기가 없다', () => {
+    const s = m133();
+    expect(autoRestockRangeOptions(s, byName(s, '김포 소주'))).toEqual([]);
+    expect(autoRestockRangeOptions(s, byName(s, '김포 뉴본 피티드'))).toEqual([]);
+    s.rulesVersion = 'legacy-v15';
+    expect(autoRestockRangeOptions(s, byName(s, W))).toEqual([]);
+  });
+  it('띠 정책이 모든 띠를 막으면 못 채운 까닭이 나온다(판매 줄 warn이 그대로 쓴다)', () => {
+    const s0 = m133();
+    const s = applyAction(s0, { type: 'setAgePolicy', policy: { '0-2': { auto: 'off' }, '3-4': { auto: 'off' }, '5-9': { auto: 'off' }, '10+': { auto: 'off' } } as never }).state;
+    const why = autoRestockShortReason(s, byName(s, W));
+    expect(autoRestockSources(s0, byName(s0, W)).length).toBeGreaterThan(0); // 정책 전에는 쓸 통이 있다(133개월: 21통) — 시험이 헛돌지 않게
+    expect(autoRestockShortReason(s0, byName(s0, W))).toBeNull();
+    expect(why).toMatch(/띠는 자동이 쓰지 않도록 정했다/);
   });
 });
