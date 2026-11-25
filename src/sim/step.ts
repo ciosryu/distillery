@@ -92,6 +92,7 @@ function phaseEvents(s: GameState, report: MonthReport): void {
     const name = EQUIPMENT[e.catalogId]?.nameKo ?? e.catalogId;
     // 고장 수리 끝(stillDown)은 새 설비 완공과 같은 달 비교로 잡히므로 구분한다(7차 판 — "가동 시작"이 새로 산 것처럼 읽혔다). 메모 글자만 다르고 수치는 그대로
     if (e.repairUntil === s.month) { report.notes.push(`${name} ${e.id} 수리 끝 — 다시 가동`); delete e.repairUntil; }
+    else if (e.refitUntil === s.month) { report.notes.push(`${name} ${e.id} 개조 끝 — 새 형태로 가동`); delete e.refitUntil; } // [결정 #418] 개조(PROD actions.prod refitStill)
     else report.notes.push(`${name} 가동 시작`);
   }
 }
