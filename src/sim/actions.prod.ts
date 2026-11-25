@@ -44,7 +44,7 @@ export type ProdAction =
   | { type: 'saveRecipe'; recipe: Omit<Recipe, 'id'> & { id?: string } }
   | { type: 'deleteRecipe'; recipeId: string }
   | { type: 'buyEquipment'; catalogId: string }
-  | { type: 'buyCasks'; caskType: CaskTypeId; qty: number }
+  | { type: 'buyCasks'; caskType: CaskTypeId; qty: number; /** [결정 #393 N1] 한 번 쓴 통(리필)으로 주문 — ex-버번만 · v16 */ refill?: boolean }
   | { type: 'fillCasks'; lotId: string; caskIds: string[]; entryAbv: number; warehouseId?: string }
   /** 스팟 마켓: 즉시 입고·웃돈·골빈 통 위험 */
   | { type: 'buySpotCasks'; caskType: CaskTypeId; qty: number }
@@ -97,6 +97,21 @@ function wholeRange(s: GameState, src: NonNullable<Product['autoRestockSource']>
   const types = [...new Set(src.caskTypes ?? [])];
   if (types.some((t) => !CASKS[t] || (CASKS[t].material ?? 'wood') !== 'wood')) return '통 종류는 나무 통 가운데 고른다';
   return { vessel: 'oak', months, ...(max != null ? { maxMonths: max } : {}), ...(types.length ? { caskTypes: types } : {}) };
+}
+
+/** [결정 #393 N1] 리필 통 주문 이름 — 화면 · 메시지가 같이 쓴다 */
+export const REFILL_NAME = '한 번 쓴 버번 배럴 200L(리필)';
+/** [결정 #393 N1] 리필 통 한 개 값 — 그 지역 새 통 값 × `CASK_MARKET.refill.priceShare` `[튜닝]` */
+export const refillUnitPrice = (s: GameState): number => {
+  const id = CASK_MARKET.refill.typeId;
+  return Math.round(regionalCaskPrice(s, id) * mod(s, `cask:${id}`) * CASK_MARKET.refill.priceShare);
+};
+/** [결정 #393 N1] 리필 통을 지금 주문할 수 없는 사유 — 없으면 null(옛 판 · 다른 통 종류 · 열리기 전) */
+export function refillBlocker(s: GameState, caskType: CaskTypeId = CASK_MARKET.refill.typeId): string | null {
+  if (rulesVersionOf(s) === 'legacy-v15') return '리필 통은 새 판에서만 주문할 수 있습니다';
+  if (caskType !== CASK_MARKET.refill.typeId) return `리필 통은 ${CASKS[CASK_MARKET.refill.typeId].nameKo}만 있습니다`;
+  if (s.month < CASK_MARKET.refill.fromMonth) return `리필 통은 ${CASK_MARKET.refill.fromMonth}개월째부터 주문할 수 있습니다`;
+  return null;
 }
 
 /** 제품 이름 최대 글자 수 (#236) */
@@ -367,12 +382,18 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     // [결정 #360] 칸으로 센다(v16 캠페인 400L↑ 2칸 · 옛 판 · 샌드박스는 통 = 칸이라 그대로)
     const pending = pendingOrderSlots(s);
     if (slotsUsed(s) + pending + slotsFor(s, a.caskType, qty) > warehouseCapacity(s)) return fail(prev, `숙성고 용량 부족 (${slotsUsed(s)}+주문 ${pending}/${warehouseCapacity(s)})`);
-    const unit = Math.round(regionalCaskPrice(s, def.id) * mod(s, `cask:${def.id}`));
+    // [결정 #393 N1] 리필(한 번 쓴 통) — ex-버번만 · v16만 · 열리는 달부터. 도착하면 채웠다 뺀 통과 같다(step 도착 · maturation.refillState)
+    const refill = !!a.refill;
+    if (refill) {
+      const block = refillBlocker(s, a.caskType);
+      if (block) return fail(prev, block);
+    }
+    const unit = refill ? refillUnitPrice(s) : Math.round(regionalCaskPrice(s, def.id) * mod(s, `cask:${def.id}`));
     if (s.finance.cash < unit * qty) return fail(prev, '현금이 부족합니다');
     s.finance.cash -= unit * qty;
     // 쿠퍼리지 정상 주문: 카탈로그가, 2개월 뒤 도착 (결정 #66)
-    s.inventory.caskOrders.push({ id: nid(s, 'O'), typeId: a.caskType, qty, arriveMonth: s.month + cooperageLeadMonths(s), source: 'cooperage' }); // F6b: 납기 손잡이(Normal 2개월 그대로)
-    return { state: s, message: `${def.nameKo} ${qty}개 쿠퍼리지 주문 — ${cooperageLeadMonths(s)}개월 뒤 도착` };
+    s.inventory.caskOrders.push({ id: nid(s, 'O'), typeId: a.caskType, qty, arriveMonth: s.month + cooperageLeadMonths(s), source: refill ? 'refill' : 'cooperage' }); // F6b: 납기 손잡이(Normal 2개월 그대로)
+    return { state: s, message: `${refill ? REFILL_NAME : def.nameKo} ${qty}개 쿠퍼리지 주문 — ${cooperageLeadMonths(s)}개월 뒤 도착` };
   },
   buySpotCasks: (s, prev, a) => {
     const def = CASKS[a.caskType];
