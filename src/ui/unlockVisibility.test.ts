@@ -36,6 +36,7 @@ describe('피니싱 단계 y5_finish ([결정 #354]) — 같은 달 y5_market과
   it('60개월을 넘기면 두 단계가 한 소식 창(turnNews 한 번)에 줄 두 개로 · 피니싱 줄은 홈 「숙성 중인 캐스크」로', async () => {
     const { advanceMonth } = await import('../sim');
     let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1, rules: 'v16' });
+    s.scenario!.stagesDone = ['y1_staff']; // [결정 #412] 12개월 단계는 이미 지난 판으로 — 60개월로 건너뛰면 같은 틱에 함께 열려 한 줄이 더 붙는다
     s.month = 60;
     s = advanceMonth(s);
     const { unlocks } = turnNews(s, 60);
