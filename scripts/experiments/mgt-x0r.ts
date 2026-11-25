@@ -56,6 +56,8 @@ const STAFF_TASK = process.env.XR_STAFF as 'aging_check' | undefined;
 /** [결정 #418] 증류기 형태 프리셋 · 셰리 벗 수 */
 const STILL_PRESET = process.env.XR_STILL ? STILL_SHAPE_PRESETS.find((x) => x.id === process.env.XR_STILL) : undefined;
 if (process.env.XR_STILL && !STILL_PRESET) throw new Error(`XR_STILL 프리셋 없음: ${process.env.XR_STILL}`);
+/** XR_SHAPE='{"condenser":"shell"}' — 프리셋 위에 부품 하나를 바꿔 원인을 가른다(측정 전용) */
+const SHAPE_OVERRIDE = process.env.XR_SHAPE ? (JSON.parse(process.env.XR_SHAPE) as Record<string, string>) : {};
 const SHERRY_N = Number(process.env.XR_SHERRY ?? 0);
 const SHERRY_AT = 180;
 const sherry = new Map<number, { set: Set<string>; launched?: number }>();
@@ -172,7 +174,7 @@ function launchOk(s: GameState): boolean {
 
 /** 판 처음: 증류기 형태 · 셰리 벗 주문 · (buy) 리필 통 주문 */
 function onCreate(s: GameState, r: Run): GameState {
-  if (STILL_PRESET) for (const e of s.production.equipment) if ((EQUIPMENT as Record<string, { kind?: string }>)[e.catalogId]?.kind === 'still') e.stillShape = STILL_PRESET.shape;
+  if (STILL_PRESET) for (const e of s.production.equipment) if ((EQUIPMENT as Record<string, { kind?: string }>)[e.catalogId]?.kind === 'still') e.stillShape = { ...STILL_PRESET.shape, ...SHAPE_OVERRIDE };
   if (SHERRY_N > 0) {
     const cash = s.finance.cash;
     const a = applyAction(s, { type: 'buyCasks', caskType: 'oloroso_butt', qty: SHERRY_N });
@@ -282,7 +284,7 @@ setP8Hooks({
     r.months = m + 1;
   },
   atEnd: () => {
-    for (const r of runs.values()) console.log('#G ' + JSON.stringify({ mode: XR ? 'x0r' : 'base', tier: process.env.TIER, xrAt: AT, xrN: N, ...(DELAY ? { delay: DELAY } : {}), ...(XR ? { xrMode: MODE, launch: LAUNCH } : {}), ...(STAFF_TASK ? { staffTask: STAFF_TASK } : {}), ...(STILL_PRESET ? { still: STILL_PRESET.id } : {}), ...(SHERRY_N ? { sherryN: SHERRY_N } : {}), ...(XR_CASK !== 'ex_bourbon_barrel' ? { xrCask: XR_CASK, buttN: BUTT_N } : {}), ...r }));
+    for (const r of runs.values()) console.log('#G ' + JSON.stringify({ mode: XR ? 'x0r' : 'base', tier: process.env.TIER, xrAt: AT, xrN: N, ...(DELAY ? { delay: DELAY } : {}), ...(XR ? { xrMode: MODE, launch: LAUNCH } : {}), ...(STAFF_TASK ? { staffTask: STAFF_TASK } : {}), ...(STILL_PRESET ? { still: STILL_PRESET.id } : {}), ...(process.env.XR_SHAPE ? { shape: SHAPE_OVERRIDE } : {}), ...(SHERRY_N ? { sherryN: SHERRY_N } : {}), ...(XR_CASK !== 'ex_bourbon_barrel' ? { xrCask: XR_CASK, buttN: BUTT_N } : {}), ...r }));
   },
 });
 process.env.P8 = '1';
