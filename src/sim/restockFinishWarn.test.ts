@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyAction } from './index';
 import { applyAutoRestock } from './economics';
-import { restockFinishOff } from './blending';
+import { newFinishShort, previewBlend, restockFinishOff } from './blending';
 import { FINISH_EFFECT_MIN_MONTHS, finishLabelOn } from './finishLabel';
 import { newScenarioGame } from './newScenario';
 import { emptyCaskOf } from './newGame';
@@ -59,5 +59,31 @@ describe('v16 판 — 셰리 피니시 제품을 짧게 쉰 원액으로 보충'
     expect(after.finishMonths).toBe(2);
     expect(finishLabelOn(after)).toBe(false);
     expect(report.notes.some((n) => n.includes('피니시 2개월 원액이 섞여 피니시 표기 효과가 꺼졌다(3개월 이상이어야 켜진다 · 전 4개월)'))).toBe(true);
+  });
+});
+
+describe('newFinishShort — 새 제품 피니시 3개월 미만 안내', () => {
+  it('v16 · 피니시가 있고 문턱 미만이면 { months, min } · 문턱 이상 · 피니시 없음 · 옛 판은 null', () => {
+    const v16 = { rulesVersion: 'v16' as const };
+    expect(newFinishShort(v16, { finish: 'oloroso_butt', finishMonths: 2 })).toEqual({ months: 2, min: FINISH_EFFECT_MIN_MONTHS });
+    expect(newFinishShort(v16, { finish: 'oloroso_butt', finishMonths: 3 })).toBeNull();
+    expect(newFinishShort(v16, { finish: null, finishMonths: null })).toBeNull();
+    expect(newFinishShort({ rulesVersion: 'legacy-v15' }, { finish: 'oloroso_butt', finishMonths: 1 })).toBeNull();
+  });
+  it('v16 판 미리보기 — 2개월 원액만 고르면 안내, 4개월 원액이면 없음 · 병입하면 표기는 붙고 효과는 꺼져 있다', () => {
+    const s: GameState = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'standard', loanAmount: 0, seed: 1 });
+    s.finance.cash = 1e10;
+    const lot2 = (id: string, oak: number): SpiritLot => ({ id, name: id, kind: 'malt', volumeL: 400, abv: 0.6, flavor: { vanilla_caramel: 20, dried_fruit: 10 }, createdMonth: 0, oakMonths: oak, sourced: false, costPerLPA: 8000, recipeId: 'R1',
+      caskHistory: [{ typeId: 'ex_bourbon_barrel', fromMonth: 0, months: 36 }, { typeId: 'oloroso_butt', fromMonth: 36, months: oak - 36 }] });
+    const a = emptyCaskOf(s, 'oloroso_butt'); a.contents = lot2('SHORT', 38); a.fills = 1;
+    const b = emptyCaskOf(s, 'oloroso_butt'); b.contents = lot2('LONG', 40); b.fills = 1;
+    s.inventory.casks.push(a, b);
+    const opts = { name: '짧은 피니시', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' };
+    expect(newFinishShort(s, previewBlend(s, [{ source: 'cask', id: a.id, liters: 40 }], opts))).toEqual({ months: 2, min: 3 });
+    expect(newFinishShort(s, previewBlend(s, [{ source: 'cask', id: b.id, liters: 40 }], opts))).toBeNull();
+    const r = applyAction(s, { type: 'bottle', components: [{ source: 'cask', id: a.id, liters: 40 }], options: opts });
+    const p = r.state.commerce.products.at(-1)!;
+    expect(p.finish).toBe('oloroso_butt');
+    expect(finishLabelOn(p)).toBe(false);
   });
 });
