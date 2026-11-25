@@ -1105,8 +1105,8 @@ export interface ProgressSlice {
   lateGoals?: { id: string; month: number; result: 'done' | 'missed' }[];
   verdict?: GoalVerdict;
   /**
-   * [결정 #422 · #427 — **#433으로 폐지**] 승리 뒤 재판정으로 오른 등급. 이제 아무 경로도 쓰지 않는다(등급은 승리 달 `verdict` 하나 — #433).
-   * #1148 ~ #433 사이에 만든 v16 세이브에만 남을 수 있어 타입만 둔다(읽지 않음). 선택 필드(#187)
+   * @deprecated [결정 #433] — 읽지 않음. #422 · #427 재판정으로 오른 등급이었다. 이제 아무 경로도 쓰지 않는다(등급은 승리 달 `verdict` 하나).
+   * #1148 ~ #433 사이에 만든 v16 세이브에만 남을 수 있어 타입만 둔다(migrate로 옮기지 않음 — ARCH 2026-11-25). 다음 스키마 정리 때 지운다. 선택 필드(#187)
    */
   verdictBest?: GoalVerdict & { rejudged: { month: number; productId: string; lotId: string } };
   /**
