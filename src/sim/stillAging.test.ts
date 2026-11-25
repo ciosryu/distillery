@@ -5,7 +5,7 @@ import { newScenarioGame } from './newScenario';
 import { evaluate, lotEvalCtx, YOUTH_SULFUR, YOUTH_WEIGHT } from './flavor';
 import { matureCask } from './maturation';
 import { emptyCaskOf } from './newGame';
-import { sameTank } from './production';
+import { sameTank, steadyBatch } from './production';
 import { tanninOutlook } from './warehouse';
 import { autoRestockSources } from './economics';
 import { DEFAULT_STILL_SHAPE, majorityShape, shapeWeight, STILL_SHAPE_PRESETS, stillStyleOf } from './stillShape';
@@ -142,5 +142,19 @@ describe('#422 원액 형태 · 제품 스타일 · 개조 전후 가름', () =>
   it('기본 조합 형태(균형)도 형태가 있으니 미디엄 — 무게 0이라 반응 · 저숙성 황은 0', () => {
     expect(stillStyleOf(DEFAULT_STILL_SHAPE)).toBe('medium');
     expect(shapeWeight(DEFAULT_STILL_SHAPE)).toBe(0);
+  });
+});
+
+describe('[P-PROD-74] 증류기 형태는 위스키 원액에만 — 소주는 카탈로그 증류기 값', () => {
+  it('헤비 · 하향 형태여도 소주 배치는 형태 없음과 같다 · 몰트 뉴메이크는 달라진다', () => {
+    const plain = game();
+    for (const sh of [preset('heavy'), { ...DEFAULT_STILL_SHAPE, lineArm: 'down' as const }]) {
+      const s = game();
+      s.production.equipment.find((e) => e.id === 'E1')!.stillShape = sh;
+      const soju = s.production.recipes.find((r) => r.kind === 'soju')!;
+      const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
+      expect(steadyBatch(s, soju)!.flavor).toEqual(steadyBatch(plain, soju)!.flavor);
+      expect(steadyBatch(s, malt)!.flavor).not.toEqual(steadyBatch(plain, malt)!.flavor);
+    }
   });
 });
