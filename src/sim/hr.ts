@@ -2,7 +2,7 @@ import { ROLE_INFO } from './content/catalog';
 import { regionOf } from './content/regions';
 import { clamp } from './flavor';
 import { rngFor, type Rng } from './rng';
-import type { Candidate, GameState, Staff, StaffRole, StaffTrait } from './types';
+import type { Candidate, GameState, Staff, StaffRole, StaffStats, StaffTaskId, StaffTrait } from './types';
 import { houseBrand } from './brands';
 import { stagesOf, systemOn } from './scenario';
 import { rulesVersionOf } from './rules';
@@ -212,7 +212,7 @@ export function salaryRaiseSinceStart(s: Pick<GameState, 'hr' | 'scenario' | 'mo
 /** 멘토링: 매달 더 얻는 XP. 부사수(마스터 곁) / 같은 직군에 레벨이 seniorGap 이상 높은 선배가 있으면 */
 export const MENTORING = { apprenticeXp: 8, seniorXp: 4, seniorGap: 2 };
 /** 교육 프로그램: 비용 = 월급 × costMonths, XP += xpPerLevel × 지금 레벨(반 레벨), 같은 직원은 cooldownMonths 뒤에 다시 */
-export const TRAINING = { costMonths: 2, xpPerLevel: 50, cooldownMonths: 12 };
+export const TRAINING = { costMonths: 2, xpPerLevel: 50, cooldownMonths: 12, /** [결정 #412] 「무엇을 가르칠까」 — 고른 능력치 +이만큼(상한 statCap) `[튜닝]` */ statGain: 3, statCap: 95 };
 /** 헤드헌팅: 비용 = 그 직군 기본급 × 지역 인건비 × costMonths, 스탯 평균 statMean(표준편차 statSd, 40~95) 후보 1명, 직군마다 한 달에 한 번 */
 export const HEADHUNT = { costMonths: 3, statMean: 68, statSd: 8 };
 
@@ -234,15 +234,18 @@ export function trainingCooldown(s: Pick<GameState, 'world' | 'month'>, staffId:
   return m ? m.untilMonth - s.month : 0;
 }
 /** 교육 — 비용을 내고 XP를 얻는다. 레벨업은 다음 결산의 gainXp가 처리한다. 실패하면 이유 */
-export function trainStaff(s: GameState, staffId: string): string | null {
+export function trainStaff(s: GameState, staffId: string, stat?: keyof StaffStats): string | null {
   const x = s.hr.staff.find((y) => y.id === staffId);
   if (!x) return '직원이 없습니다';
+  if (stat && !(['a', 'b', 'c'] as const).includes(stat)) return '가르칠 능력치가 없습니다';
   const wait = trainingCooldown(s, staffId);
   if (wait > 0) return `${wait}개월 뒤에 다시 교육할 수 있습니다`;
   const cost = trainingCost(x);
   if (s.finance.cash < cost) return '현금이 부족합니다';
   s.finance.cash -= cost;
   x.xp += TRAINING.xpPerLevel * x.level;
+  // [결정 #412] 「무엇을 가르칠까」 — 고른 능력치를 바로 올린다(고르지 않으면 지금 그대로: XP만 — 옛 판 · 샌드박스 불변)
+  if (stat) x.stats[stat] = Math.min(TRAINING.statCap, x.stats[stat] + TRAINING.statGain);
   if (moraleOn(s)) shiftMorale(x, MORALE.training);
   addModifier(s, `training:${staffId}`, 1, TRAINING.cooldownMonths, `${x.name} 교육`);
   return null;
@@ -429,3 +432,57 @@ export function runOffice(s: GameState, report: MonthReport, rng: Rng, mashKg: n
 export const taxAuditDefense = (s: GameState) => 0.7 * (Math.max(0, ...staffOf(s, 'office').map((x) => x.stats.a)) / 100);
 
 export const roleName = (r: StaffRole) => ROLE_INFO[r].nameKo;
+
+// ───────────── [결정 #412] 직원에게 맡길 일 — 그릇(분기에 한 번, 고르지 않으면 이어 함) ─────────────
+
+/** 맡길 일 하나 — 직군 · 이름 · 풀이. 효과는 `runStaffTasks`(PR2에서 일마다 더한다) */
+export interface StaffTaskDef {
+  id: StaffTaskId;
+  nameKo: string;
+  /** 이 일을 맡을 수 있는 직군 — 'routine'은 모두 */
+  roles: StaffRole[] | 'all';
+  /** 화면 풀이 한 줄(효과 · 비용 · 위험) */
+  text: string;
+}
+/** 고를 수 있는 일 목록 — PR1(그릇)은 평소 업무만. 일 셋(숙성 점검 · 시음회 · 순찰 강화)은 PR2에서 더한다 */
+export const STAFF_TASKS: StaffTaskDef[] = [
+  { id: 'routine', nameKo: '평소 업무', roles: 'all', text: '맡은 직무를 평소대로 한다(지금 효과 그대로)' },
+];
+/** 이 직원이 지금 하는 일(없으면 평소 업무) */
+export const staffTaskOf = (x: Pick<Staff, 'task'>): StaffTaskId => x.task ?? 'routine';
+/** 이 직원이 맡을 수 있는 일 */
+export const staffTasksFor = (x: Pick<Staff, 'role'>): StaffTaskDef[] => STAFF_TASKS.filter((t) => t.roles === 'all' || t.roles.includes(x.role));
+/** 분기 번호(⌊경과 개월 / 3⌋) */
+export const quarterOf = (month: number): number => Math.floor(month / 3);
+/** 이 직원의 일을 지금 바꿀 수 있나 — 아직 맡긴 적이 없거나, 맡긴 그 달이거나(고쳐 고르기), 분기가 바뀌었으면 */
+export const canReassign = (s: Pick<GameState, 'month'>, x: Pick<Staff, 'taskMonth'>): boolean =>
+  x.taskMonth == null || x.taskMonth === s.month || quarterOf(x.taskMonth) !== quarterOf(s.month);
+/** 다음에 바꿀 수 있는 달(경과 개월) — 지금 바꿀 수 있으면 지금 */
+export const nextReassignMonth = (s: Pick<GameState, 'month'>, x: Pick<Staff, 'taskMonth'>): number =>
+  canReassign(s, x) ? s.month : (quarterOf(s.month) + 1) * 3;
+
+/** [결정 #412] 교육 · 맡길 일을 연 단계 id(scenarios.ts stagesV16 — 12개월) */
+export const STAFF_STAGE = 'y1_staff';
+/**
+ * 새 캠페인에서 교육 · 맡길 일이 열렸나 — **단계 `y1_staff`가 지났을 때만**(ARCH 2026-11-25: 새 키는 이미 있는 v16 세이브의 잠금 목록에 없어 「열림」으로 읽히므로
+ * 잠금 키만 믿지 않고 단계 기록을 본다). 옛 판은 false(옛 판 교육은 `system:hr`이 정한다) · 시나리오 없는 판(샌드박스)은 true
+ */
+export function staffActionsOpen(s: Pick<GameState, 'scenario' | 'rulesVersion'>): boolean {
+  if (!s.scenario) return true;
+  if (rulesVersionOf(s) === 'legacy-v15') return false;
+  return !!s.scenario.stagesDone?.includes(STAFF_STAGE);
+}
+
+/** 일을 맡긴다 — 새 캠페인(v16) 단계 `y1_staff` 뒤 · 샌드박스. 실패하면 이유 */
+export function assignStaffTask(s: GameState, staffId: string, task: StaffTaskId): string | null {
+  if (!staffActionsOpen(s)) return rulesVersionOf(s) === 'legacy-v15' ? '이 판에서는 직원에게 일을 맡길 수 없습니다' : '2년 차(12개월)부터 직원에게 일을 맡길 수 있습니다';
+  const x = s.hr.staff.find((y) => y.id === staffId);
+  if (!x) return '직원이 없습니다';
+  const def = staffTasksFor(x).find((t) => t.id === task);
+  if (!def) return `${ROLE_INFO[x.role].nameKo}에게 맡길 수 없는 일입니다`;
+  if (staffTaskOf(x) === task) return `이미 「${def.nameKo}」을(를) 맡고 있습니다`;
+  if (!canReassign(s, x)) return `분기에 한 번만 바꿀 수 있습니다 — ${nextReassignMonth(s, x) - s.month}개월 뒤`;
+  if (task === 'routine') delete x.task; else x.task = task;
+  x.taskMonth = s.month;
+  return null;
+}

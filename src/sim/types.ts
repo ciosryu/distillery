@@ -60,9 +60,19 @@ export interface Recipe {
   stillId: string;
 }
 
+/** [결정 #417 · #418] 단식 증류기 형태 — 본체 · 라인 암 · 특수 옵션(보일 볼 · 퓨리파이어) · 응축기. 값은 PROD `stillShape.ts stillParams` */
+export interface StillShape {
+  body: 'short' | 'standard' | 'tall';
+  lineArm: 'down' | 'level' | 'up';
+  option: 'none' | 'boil_ball';
+  condenser: 'shell' | 'worm';
+}
+
 export interface EquipmentInstance {
   id: string;
   catalogId: string;
+  /** [결정 #417 · #418] 단식 증류기 형태 — 없으면 카탈로그 값 그대로(옛 판 · 진행 중 세이브 · 봇). 선택 필드(#187) */
+  stillShape?: StillShape;
   /** 설치 완료 월 (그 전에는 사용 불가) */
   readyMonth: number;
   /** 증류기: 재사용 페인츠(LPA) */
@@ -410,6 +420,11 @@ export interface Product {
     maxMonths?: number;
     /** [결정 #399] 위스키만 — 쓸 통 종류(지금 담긴 통의 종류). 없으면 아무거나(피니시 맞춤은 그대로) */
     caskTypes?: CaskTypeId[];
+    /**
+     * [결정 #419] 위스키만 — 쓸 통의 아는 품질(샘플 기록 `knownReads` — 자기 · 형제 기록) 하한. 기록이 없는 통은 쓰지 않는다.
+     * 참 품질 · 원액 맛은 읽지 않는다(I2). 없으면 품질 조건 없음(지금 동작)
+     */
+    minKnownQuality?: number;
   };
   /** 수출 안 함 (#266) — 켜면 이 제품은 수출 시장(공항 면세점 포함)에 내지 않는다. 국내·지정면세점(제주) 판매는 그대로. 옛 세이브에는 없다 = 수출에 낸다 */
   noExport?: boolean;
@@ -473,7 +488,14 @@ export interface Staff {
   morale?: number;
   /** 성격 특성 (#225). 없으면 없음 */
   traits?: StaffTrait[];
+  /** [결정 #412] 맡긴 일(분기에 한 번 고름 — MGT `hr.ts STAFF_TASKS`). 없으면 「평소 업무」 = 지금 효과(옛 세이브 · 봇 그대로) */
+  task?: StaffTaskId;
+  /** [결정 #412] 일을 맡긴 달(경과 개월) — 같은 분기(⌊달/3⌋)에는 다시 바꿀 수 없다(맡긴 그 달 안에서는 고쳐도 된다) */
+  taskMonth?: number;
 }
+
+/** [결정 #412] 직원에게 맡길 일 — 'routine' = 평소 업무(지금 효과). 나머지 일의 효과는 MGT `hr.ts`(PR2) */
+export type StaffTaskId = 'routine' | 'aging_check' | 'tasting' | 'patrol';
 
 /** 성격 특성 (#225, 1단계는 MGT 효과만): 멘토 / 철새 / 토박이 / 협상가 */
 export type StaffTrait = 'mentor' | 'drifter' | 'loyal' | 'negotiator';
@@ -598,6 +620,11 @@ export interface MonthReport {
    * 화면이 그릴 때 다시 뽑으면 보충으로 참 품질이 바뀐 뒤 지난달 점수가 어긋난다(MKT 제안). 선택 필드라 스키마 v16 그대로 · 없으면 그달 리뷰 없음
    */
   reviews?: { productId: string; scores: number[] }[];
+  /**
+   * 품절 손실 어림([결정 #410] T8 · MKT) — 판매 전 재고 0이고 최근 6개월 안에 팔린 적이 있는 진열 제품마다, 다시 채웠다면 이번 달 국내 수요(병, 잡음 없음 ·
+   * 같은 범주 나눔 — `market.ts restockedDemand`와 같은 셈). 참 품질로 센다(판매 셈과 같은 길 — 화면은 아는 품질로 다시 세거나 병 수만). 없으면 그런 제품이 없다. 기록만 · 스키마 v16 그대로
+   */
+  stockoutDemand?: { productId: string; bottles: number }[];
   angelsShareL: number;
   liquorTaxRemitted: number;
   /** 이번 달 발생한 이벤트 제목 */

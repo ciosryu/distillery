@@ -314,7 +314,8 @@ describe('핵심 전문가 1인 (#316)', () => {
     expect(x).toMatchObject({ role: 'warehouse', keySpecialist: true, stats: offer.stats, salary: offer.askSalary, hiredMonth: 120 });
     expect(specialistOffers(s)).toBeNull();
     expect(applyAction(s, { type: 'pickSpecialist', role: 'sales' }).error).toMatch(/이미/);
-    expect(applyAction(s, { type: 'fire', staffId: x.id }).error).toBeTruthy(); // 상세 HR은 1.0(#311)
+    expect(applyAction(s, { type: 'hire', candidateId: 'x' }).error).toBeTruthy(); // 채용은 1.0(#311) — 잠긴 채
+    expect(applyAction(s, { type: 'fire', staffId: x.id }).error).toBeUndefined(); // [결정 #412] 해고는 2년 차(y1_staff)부터 열린다
     expect(s.hr.staff.filter((y) => y.role === 'warehouse')).toHaveLength(1); // 숙성고 QC 효과는 staffOf('warehouse')가 그대로 읽는다
   });
 });

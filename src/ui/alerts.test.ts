@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { advanceMonth, advanceMonths, applyAction, BANKRUPT_AFTER_MONTHS, newScenarioGame, type GameState } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { cashAlert, flagshipCandidates, flagshipImpact, runway, lastMonthFlow, loanSchedule, maltStoppedMonths, monthTodos, paymentJump, SAMPLE_STALE_MONTHS, spotSaleStake, TODO_ORDER } from './alerts';
+import { newChoices } from './newChoices';
 import { AUTO_RESTOCK_EXPENSE, productionValue, whiskySupplyForecast } from '../sim/economics';
 import { spotQuote } from '../sim';
 
@@ -155,13 +156,12 @@ describe('3차 MVP 플레이테스트 대응 (#203) — 멈춘 몰트 생산 · 
     expect(TODO_ORDER.indexOf('stockout')).toBe(TODO_ORDER.indexOf('visitor') + 1);
   });
 
-  it('새로 열린 기능(#215)은 열린 뒤 3개월 동안 할 일 맨 위 — 결품·통입보다 위 (5차 전 점검)', async () => {
+  it('새로 열린 기능(#215)은 할 일이 아니라 맨 위 「새로 열림」 띠에 — [결정 #416] 한 곳에서만 알린다', async () => {
     const { advanceMonth } = await import('../sim');
     let s: GameState = advanceMonths(setMalt(mvp(), 2), 2); // 탱크 몰트 → 통입 할 일
     s.month = 59; s = advanceMonth(s); s = advanceMonth(s); // 60월 틱 — 6년 차 단계가 열린다
-    const ids = monthTodos(s).map((t) => t.id);
-    expect(ids[0]).toBe('stage-y5_market');
-    expect(ids.indexOf('stage-y5_market')).toBeLessThan(ids.indexOf('fill')); // 결품(#204)은 비지터 센터 다음, 통입·병입보다 위
+    expect(monthTodos(s).some((t) => t.id.startsWith('stage-'))).toBe(false);
+    expect(newChoices(s, false).map((c) => c.key)).toContain('stage:y5_market');
   });
 
   it('원액 현물 판매의 대가 — 지금 받는 돈은 B2B 견적, 위스키 병 수는 공급 전망(#178)의 탱크·통 몫 그대로, 탱크와 숙성 중인 통을 나눈다', () => {
@@ -213,8 +213,8 @@ describe('IB 캐스크 입찰 — 10년 차 해금 (#224)', () => {
   it('제안이 있으면 할 일에 값·만료·판단 기준을 올리고 원액 B2B 탭으로 보낸다, 열린 달에는 새로 열림 안내도 B2B로', () => {
     let s = mvp();
     s.month = 108; s = advanceMonth(s);
-    const stage = monthTodos(s).find((t) => t.id === 'stage-y9_casks');
-    expect(stage?.target).toEqual({ tab: 'b2b' });
+    const stage = newChoices(s, false).find((c) => c.key === 'stage:y9_casks'); // #416 맨 위 띠
+    expect(stage?.go?.target).toEqual({ tab: 'b2b' });
     expect(monthTodos(s).some((t) => t.id === 'cask-bid')).toBe(false);
     s.b2b.caskBids = [{ id: 'I1', buyerName: '테스트 병입자', caskId: 'KX', price: 3_800_000, expiresMonth: s.month + 2 }];
     const t = monthTodos(s).find((x) => x.id === 'cask-bid')!;
@@ -243,7 +243,7 @@ describe('수출이 국내를 굶김 (#257) · IB 해금 안내 통 수 (#259)',
   it('IB 해금 안내에 3년 이상 통 수 — 없으면 제안이 오지 않는다고 말한다', () => {
     let s = mvp();
     s.month = 108; s = advanceMonth(s);
-    expect(monthTodos(s).find((t) => t.id === 'stage-y9_casks')!.text).toContain('3년 이상 통이 없어 제안이 오지 않는다');
+    expect(newChoices(s, false).find((c) => c.key === 'stage:y9_casks')!.text).toContain('3년 이상 통이 없어 제안이 오지 않는다');
   });
 });
 

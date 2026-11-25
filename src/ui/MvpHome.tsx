@@ -6,7 +6,7 @@ import { TurnBrief } from './TurnBrief';
 import { AutoFillRow } from './panels/AutoFill';
 import { AGE_BANDS, agePolicyRows, agePolicyRuleText, bandCounts, thinBands, THIN_BAND_CASKS } from '../sim/ageBand'; // #380 연령 띠 정의 · #399 띠 정책(PROD)
 import { AgePolicyRow } from './panels/AgePolicy'; // #399 띠 정책 줄(PROD)
-import { CaskCareRow, NewCaskOutlook } from './panels/CaskCare'; // #345 GAP-PROD-7 · #355 탄닌 전망 (PROD)
+import { CaskCareRow, FillOutlookLine, NewCaskOutlook } from './panels/CaskCare'; // #345 GAP-PROD-7 · #355 탄닌 전망 (PROD)
 import { FinishRow } from './panels/FinishRow'; // #345 GAP-PROD-4 피니싱 (PROD 부품 · ARCH 끼움)
 import { getPlaylog, recentActionCount } from '../store/playlog';
 import { PendingEventChoices } from './panels/Events';
@@ -31,6 +31,7 @@ import { useUi } from '../store/ui';
 import { FixedCostLine } from './panels/FixedCost';
 import { LineChart } from './charts';
 import { CashFlowLine, JourneyStrip, MonthTodo, OPEN_FOLD_EVENT } from './AlertsView';
+import { NewChoicesBanner } from './NewChoicesBanner'; // [결정 #416]
 import { AutoSampleSettingsRow } from './panels/AutoSample';
 import { HandfillRow } from './panels/Handfill';
 import { flagshipCaskHint } from './gradeHints'; // 결정 #339 등급 화면 힌트
@@ -88,12 +89,14 @@ export function MvpHome() {
     <div className="grid grid-cols-1 gap-4 [&>*]:min-w-0">
       {/* 이번 달 소식 창 — 진행 뒤 고를 것·이벤트·새 기능이 있으면 (5차 오너 요청) */}
       <TurnBrief />
+      {/* [결정 #416] 새 시설 · 새 선택 — 첫 화면 맨 위 강조(본 뒤 닫힘). 9차 판: VIP 라운지 · 운영 모드를 "못봤다" */}
+      <NewChoicesBanner />
       {/* 선택 대기 이벤트 — 고르지 않으면 다음 달 기본값 (5차 MVP 플레이테스트: 대시보드에만 있어 못 찾았다) */}
       <PendingEventChoices />
       {/* ── 이번 달 ── 할 일 (1차 MVP 플레이테스트 대응 ③) */}
       <MonthTodo />
       {/* 15년 여정 — 단계 해금·중반 목표 (4차 MVP 플레이테스트) */}
-      <JourneyStrip />
+      <div id="mvp-journey" className="scroll-mt-28"><JourneyStrip /></div>
       <Headline />
       {/* ── 상태 ── 돈 흐름: 한 줄 요약, 현금 경고·재고 과잉·거치 종료 임박이면 기본 펼침 */}
       <MoneyFold />
@@ -663,6 +666,8 @@ function FillCard() {
                       </p>
                     );
                   })()}
+                  {/* [결정 #410] T1-a — 고른 빈 통에 채우면 12년에 탄닌 · 감점이 얼마일지(PROD FillOutlookLine · fillTanninOutlook — 활성도 · 칸 · 달만 읽는다). 옹기면 없음 · 「옮기라」는 말하지 않는다(#411) */}
+                  {lot!.kind !== 'soju' && <FillOutlookLine caskIds={ofType.slice(0, fillN).map((c) => c.id)} />}
                   {/* [제안 P-PROD-66] e · 결정 #339 — 판 초반(첫 2년) 나무 통에 몰트·그레인을 넣을 때 한 줄: 12년 품질은 통 활성도가 가른다(정보만) */}
                   {!onggi && lot!.kind !== 'soju' && flagshipCaskHint(s) && <p className="text-xs text-sky-800 dark:text-sky-300">{flagshipCaskHint(s)}</p>}
                   {onggi && <p className="text-xs text-amber-800 dark:text-amber-300">옹기: 나무 향 없이 숨을 쉬며 거친 맛이 풀린다 — 탱크 보관보다 빠르고 증발은 나무 통의 절반. 소주 숙성용{lot!.kind !== 'soju' ? ' — 몰트는 옹기에서 보낸 기간이 위스키 숙성(오크)에 들어가지 않는다' : ''}.</p>}

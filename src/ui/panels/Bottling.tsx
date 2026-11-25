@@ -14,7 +14,8 @@ import { protectedCaskIds, reserveCaskIds } from '../../sim/tags';
 import { campaignMinOakMonths, campaignWon, isFlagshipCandidate, rulesVersionOf } from '../../sim';
 import { CaskTagChips } from '../CaskTags';
 import { mixTaint, taintShown } from '../../sim/taint'; // [결정 #382] 오염 원액 꼬리표(코어 · ARCH 화면)
-import { AGE_BANDS, bandCask, bandCounts, LADDER_SLACK_MONTHS, thinBands } from '../../sim/ageBand'; // [결정 #380] 숙성 연령 띠 (PROD 잎)
+import { AGE_BANDS, bandCask, bandThinning, LADDER_SLACK_MONTHS, thinBands, THIN_BAND_CASKS } from '../../sim/ageBand'; // [결정 #380] 숙성 연령 띠 (PROD 잎)
+import { AGED_COMBO_ABVS, agedCombos, CASK_FAMILY_LABEL } from '../../sim/agedCombos'; // [결정 #410 T1-c] 12년 조합 비교
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
 import { ProfileRadar } from './Production';
@@ -286,6 +287,13 @@ export function Bottling() {
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_23rem]">
       {reveal && <HeritageReveal data={reveal} onClose={() => setReveal(null)} />}
       <Card title="원액 선택 (같은 주종끼리만 블렌딩)">
+        {/* [결정 #410 T1-c] 12년 병입 — 적격 통과 조합 · 도수별 병 수 · 예상 품질(아는 값). 고르면 아래 원액 표와 도수가 그 조합으로 바뀐다 */}
+        <AgedComboPanel onPick={(caskIds, abv) => {
+          touched.current = true;
+          setPicked(Object.fromEntries(caskIds.map((id) => { const c = s.inventory.casks.find((k) => k.id === id); return [`cask:${id}`, Math.floor((c?.contents?.volumeL ?? 0) * 10) / 10]; })));
+          setOpts((o) => ({ ...o, targetAbv: abv, restockId: undefined }));
+          setCat('전체');
+        }} />
         {!!sources.length && (
           <div className="mb-2 flex flex-wrap items-center gap-1">
             {[['전체', sources.length] as [string, number], ...counts].map(([k, n]) => (
@@ -537,11 +545,17 @@ export function Bottling() {
                 const caskComps = components.filter((c) => c.source === 'cask' && c.liters > 0);
                 const labelM = Math.floor(preview.minOakMonths / 12) * 12;
                 const old = caskComps.map((c) => s.inventory.casks.find((k) => k.id === c.id)).filter((k): k is Cask & { contents: SpiritLot } => !!k && bandCask(k) && k.contents.oakMonths > labelM + LADDER_SLACK_MONTHS);
-                if (!old.length) return null;
-                const before = bandCounts(s);
-                const after = bandCounts(s, new Map(caskComps.map((c) => [c.id, c.liters])));
+                // [결정 #410 T2-a] 표기와 무관하게 — 이 병입이 띠를 얇은 쪽(THIN_BAND_CASKS 미만)으로 만들거나 이미 얇은 띠에서 통을 비우면 알린다(9차: 「셰리 6년」이 5 ~ 9년 띠를 비웠는데 표기 + 2년 안쪽 통이라 줄이 뜨지 않았다)
+                const { before, after, thinning: thinIds } = bandThinning(s, new Map(caskComps.map((c) => [c.id, c.liters])));
                 const changed = AGE_BANDS.filter((b) => after[b.id].casks < before[b.id].casks);
                 const thin = new Set(thinBands(after));
+                const thinning = AGE_BANDS.filter((b) => thinIds.includes(b.id));
+                if (!old.length && !thinning.length) return null;
+                if (!old.length) return (
+                  <p className="text-xs font-medium text-amber-800 dark:text-amber-300" title={`숙성 연령 띠(목재 개월): 0 ~ 2 · 3 ~ 4 · 5 ~ 9 · 10년 이상 — 더 오래된 띠에 통이 있는데 ${THIN_BAND_CASKS}통 미만이면 얇은 띠(뒤를 이을 원액이 모자란다). 통 수 · 목재 개월만 센다. 막지 않는다`}>
+                    숙성 사다리 — 병입 뒤 {thinning.map((b) => `${b.label} ${before[b.id].casks} → ${after[b.id].casks}통`).join(' · ')} — {THIN_BAND_CASKS}통 아래로 얇아진다(뒤를 이을 원액)
+                  </p>
+                );
                 const oldest = Math.max(...old.map((k) => k.contents.oakMonths));
                 return (
                   <p className={`text-xs ${changed.some((b) => thin.has(b.id)) ? 'font-medium text-amber-800 dark:text-amber-300' : 'text-stone-600 dark:text-stone-400'}`} title="숙성 연령 띠(목재 개월): 0 ~ 2 · 3 ~ 4 · 5 ~ 9 · 10년 이상 — 어린 표기 제품에 오래된 통을 쓰면 값은 오르지만, 그 띠가 비면 몇 년 뒤 이을 원액이 없다. 막지는 않는다">
@@ -598,6 +612,60 @@ export function Bottling() {
           )}
         </div>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * [결정 #410 T1-c] 12년 병입 조합 비교 — 9차 판 오너: 「12년 버번 원액이 없어서」 · 「버번통이 별로 없던데?」(133개월에 버번 몰트 3통 · 샘플 77이 있었다).
+ * 적격 통(목재 기준 개월 이상)을 계열 · 원액 종류로 묶어, 조합마다 도수별 병 수 · 예상 품질(병입 미리보기와 같은 아는 값)을 한눈에 보인다. 고르기만 한다 — 병입은 아래에서
+ */
+function AgedComboPanel({ onPick }: { onPick: (caskIds: string[], abv: number | 'cask') => void }) {
+  const s = useGame((g) => g.state);
+  const [open, setOpen] = useState(false);
+  const v = useMemo(() => (open ? agedCombos(s) : null), [open, s]);
+  const any = useMemo(() => s.inventory.casks.some((c) => bandCask(c) && c.contents.oakMonths >= campaignMinOakMonths(s) && c.contents.volumeL >= 1), [s]);
+  if (!any) return null;
+  const yrs = Math.floor(campaignMinOakMonths(s) / 12);
+  const abvLabel = (a: number | 'cask') => (a === 'cask' ? '캐스크 도수' : `${Math.round(a * 100)}%`);
+  // 물 타기 효과 — 같은 조합에서 캐스크 도수보다 40%가 몇 점 높은가(가장 큰 차). 규칙: 독한 맛(harshness)이 도수와 함께 준다
+  const water = v ? Math.max(0, ...v.combos.map((c) => { const a = c.cells.find((x) => x.abv === 0.4)?.q; const b = c.cells.find((x) => x.abv === 'cask')?.q; return a != null && b != null ? a - b : 0; })) : 0;
+  return (
+    <div className="mb-3 rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs dark:border-amber-900 dark:bg-amber-950/30">
+      <button type="button" className="flex w-full items-center justify-between text-left font-medium text-amber-900 dark:text-amber-200" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span>{yrs}년 병입 — 적격 통과 조합 비교{!open && ' (눌러서 펼치기)'}</span><span>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && v && (
+        <div className="mt-2 grid gap-2">
+          <p className="text-stone-700 dark:text-stone-300">
+            목재 {v.atMonths}개월 이상 통: {v.groups.map((g) => `${CASK_FAMILY_LABEL[g.family]} ${g.kind === 'malt' ? '몰트' : '그레인'} ${g.casks}통 · ${liters(g.liters)}`).join(' / ')}
+            {v.excluded > 0 && <span className="text-stone-500"> · 아는 오염 · 핸드필 통 {v.excluded}개는 뺐다</span>}
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left tabular-nums">
+              <thead className="text-stone-500"><tr><th className="py-0.5 pr-2 font-normal">조합</th>{AGED_COMBO_ABVS.map((a) => <th key={String(a)} className="py-0.5 pr-2 font-normal">{abvLabel(a)}</th>)}</tr></thead>
+              <tbody>
+                {v.combos.map((c) => (
+                  <tr key={c.id} className="border-t border-amber-100 dark:border-amber-900/60">
+                    <td className="py-1 pr-2">{c.label}<div className="text-stone-500">{c.caskIds.length}통 · {liters(c.liters)}</div></td>
+                    {c.cells.map((x) => (
+                      <td key={String(x.abv)} className="py-1 pr-2">
+                        {x.q != null ? <>{x.bottles.toLocaleString()}병 · {v.known ? '예상 ' : ''}{num(x.q, 1)}{x.sigma >= 0.5 ? ` ±${num(x.sigma, 1)}` : ''}{x.ageYears != null && x.ageYears < yrs ? <span className="text-amber-800 dark:text-amber-300"> · {x.ageYears}년 표기</span> : null}</> : <span className="text-stone-400">—</span>}
+                        {x.q != null && <div><Button small variant="ghost" onClick={() => onPick(c.caskIds, x.abv)} title="이 통들을 남은 양 전부 고르고 도수를 맞춘다 — 병입은 아래 병입 칸에서">고르기</Button></div>}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-stone-600 dark:text-stone-400">
+            {v.known ? '예상 품질은 샘플 기록으로 어림한 값(병입 미리보기와 같은 값)이다 — 샘플이 오래됐거나 없으면 오차가 크다. ' : ''}
+            {water >= 1 && <>같은 통도 물을 타면 독한 맛이 줄어 예상 품질이 오른다(캐스크 도수 → 40%에서 최대 약 {Math.round(water)}점). 캐스크 도수는 병도 적다. </>}
+            계열을 섞으면 맛이 평균 쪽으로 간다 — 탄닌이 센 통(「12년 감점」이 큰 통)을 많이 넣을수록 품질이 내려간다.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
