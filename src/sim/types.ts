@@ -397,7 +397,15 @@ export interface Product {
    * [결정 #392] 자동 납품이 채울 원액(소주 · 진 · 고량주 — 위스키 아님) — 플레이어가 고른 「탱크 / 옹기 n개월↑ / 오크 n개월↑」. 보충으로 제품 `restMonths` · `oakMonths`가
    * 바뀌어도 이 값을 따른다(9차: 「옹기소주」가 탱크 소주 보충으로 restMonths 0이 되어 #369가 닿지 않았다). 없으면 지금 규칙(제품 값 — #221 · #369). v16 판만
    */
-  autoRestockSource?: { vessel: 'tank' | 'onggi' | 'oak'; /** 옹기 · 오크는 이 개월 이상 쉰 통(1 ~ 120) · 탱크는 0 */ months: number };
+  autoRestockSource?: {
+    vessel: 'tank' | 'onggi' | 'oak';
+    /** 옹기 · 오크는 이 개월 이상 쉰 통(1 ~ 120) · 탱크는 0. [결정 #399] 위스키는 `oak` · 통 하한(개월 — 옛 `autoRestockMinMonths`보다 먼저) */
+    months: number;
+    /** [결정 #399] 위스키만 — 쓸 통의 상한(목재 개월 · 이하). 없으면 상한 없음(지금 동작) */
+    maxMonths?: number;
+    /** [결정 #399] 위스키만 — 쓸 통 종류(지금 담긴 통의 종류). 없으면 아무거나(피니시 맞춤은 그대로) */
+    caskTypes?: CaskTypeId[];
+  };
   /** 수출 안 함 (#266) — 켜면 이 제품은 수출 시장(공항 면세점 포함)에 내지 않는다. 국내·지정면세점(제주) 판매는 그대로. 옛 세이브에는 없다 = 수출에 낸다 */
   noExport?: boolean;
   /**
@@ -909,7 +917,17 @@ export interface InventorySlice {
   tagDefs?: TagDef[];
   /** 플레이어가 "플래그십 예비"를 뗀 원액 id (#260) — 자동으로 다시 붙이지 않는다 */
   reserveOptOut?: string[];
+  /**
+   * [결정 #399 · #386] 연령 띠 정책 — 자동 납품(위스키)이 띠마다 쓸 수 있는가 · 몇 통을 남기나. 띠 id는 `ageBand.ts AGE_BANDS`와 같다.
+   * 새 판(v16)은 기본값으로 시작한다(`ageBand.ts defaultAgePolicy` — #399 A). 없으면 정책 없음(지금 동작 · 진행 중 세이브). 블렌더 맡기기 · IB 입찰은 읽지 않는다(#399 B)
+   */
+  agePolicy?: AgePolicy;
 }
+
+/** [결정 #399] 연령 띠 정책 한 줄 — `off`: 자동이 이 띠 통을 쓰지 않는다 · `keep`: 자동이 이 띠를 `keep`통 아래로 줄이지 않는다 */
+export type AgePolicyRule = { auto: 'off' } | { auto: 'keep'; keep: number };
+/** [결정 #399] 띠 id(`ageBand.ts AGE_BANDS`) → 규칙. 없는 띠는 제한 없음 */
+export type AgePolicy = Partial<Record<'0-2' | '3-4' | '5-9' | '10+', AgePolicyRule>>;
 
 /** 자동 통입 (#239, 5차 MVP 플레이테스트 — 통입을 "잊었고 귀찮았다") — 비운 칸은 기본값 */
 export interface AutoFillSettings {

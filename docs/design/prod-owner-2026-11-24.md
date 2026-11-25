@@ -236,6 +236,19 @@
 
 - **반론:** 설정이 두 겹(제품 줄 + 띠 표)이다. 띠 표 없이 제품 상한만으로도 9차 허리는 상당히 지켜진다(1 ~ 3년 표기 제품이 4년 넘는 통을 못 쓰므로) `[추정 — 봇 측정 전]`. 그래서 1단계는 **제품 범위만**, 띠 표는 2단계로 미루는 길도 있다 — 오너 안건 A와 함께 고를 수 있다.
 
+**⑤ 확정 · 구현 상태 (2026-11-25 — [결정 #399] 오너 "권장안대로": A 새 판만 · B 자동 납품만 · C 첫 병입 비율 · D 뺌)**
+
+| 단계 | 내용 | 상태 |
+|---|---|---|
+| 1 sim | `autoRestockSource` 위스키 넓힘(`maxMonths?` · `caskTypes?` — 코어 `types.ts`) · `whiskyRange` · `autoRestockCeiling` · `inventory.agePolicy?` + `setAgePolicy` · `ageBand.ts defaultAgePolicy` · `agePolicyFilter` · 새 판 기본값(`newScenario.ts`) · 사유 메모 `autoRestockShortReason` | 이 PR |
+| 2 화면 | `AgePolicyRow.tsx`(띠 정책 표 · 띠별 통 수 · 「자동이 지금 쓸 수 있는 통 n」) · 판매 줄 통 범위 고르기 선택지 함수(MKT) · 홈 띠 줄 자물쇠(ARCH) | 다음 |
+| 3 블렌디드 | `restockMix`(첫 병입 비율 — C) | 다음 |
+| 4 알리기 | 손 보충 3번 뒤 「자동 납품을 켜면」 한 줄 · 3달 연속 못 채움 warn | 다음 |
+
+- **설계와 달라진 이름:** `policyAllows(s, cask, drawL)` 대신 `agePolicyFilter(s, ordered)` — 자동 납품 후보를 쓸 순서대로 받아 정책이 허락하는 통만 순서 그대로 남긴다. `keep k` 띠는 (그 띠 통 수 − k)통만 앞에서부터 쓰고, 조금이라도 뽑는 통은 「쓴 통」으로 센다. 그래서 후보 목록(`autoRestockSources`)이 이미 정책을 지키고, 계획(`autoRestockPlan`) · 공급 지평(`supplyHorizon`) · 통 다툼(`autoRestockContest`)이 따로 셈하지 않는다.
+- **세는 통:** 띠 통 수는 `bandCounts`(나무 통 · 몰트 · 그레인 · 고객 소유 아님)다. 다른 제품 몫 · 보호 태그 통도 띠 통 수에 들어간다 — 「이 띠에 n통이 남는다」가 증류소 전체 기준이라서다.
+- **한계 `[한계]`:** 조금 뽑힌 통도 한 통으로 센다(부피가 아니라 통 수). 정책은 공개 값(목재 개월 · 통 수)만 읽는다.
+
 ## 7. 통 투자(#388 ② — 쿠퍼리지 · 통 길들이기 · #378 (나)) — 설계 메모만 `[메모]`
 
 > PM: ①(목표 · 평가 · 운영 모드)이 사람 판으로 확인된 뒤에 설계한다. 지금은 생각해 둔 뼈대만 적는다.

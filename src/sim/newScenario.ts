@@ -8,6 +8,7 @@ import { newGame } from './newGame';
 import { currentLoanPayment, monthlyFixedCost } from './loans';
 import type { GameState, RulesVersion, DifficultyConfig, DifficultyPreset } from './types';
 import { nid } from './util';
+import { defaultAgePolicy } from './ageBand';
 
 // 시나리오 새 게임 입구 (skeleton S-8, PRD §12.2) — "사업 계획서"(규모 티어 + 시작 자금 조달)로 GameState를 만든다.
 // 가상 이력 생성기(§12.2)가 들어올 자리: newScenarioGame이 만든 상태 위에 이력을 덧입힌다 (아직 없음)
@@ -69,6 +70,8 @@ export function newScenarioGame(plan: BusinessPlan): GameState {
   s.rulesVersion = rules;
   // F6: 난이도는 판 시작 스냅샷 — v16 새 판만. 옛 판(X0L)은 필드 자체를 두지 않아 바이트 동일(없음 = Normal)
   if (rules !== 'legacy-v15') s.difficulty = pinDifficultyValues(normalizeDifficulty(plan.difficulty)); // P-MGT-59: 시작 때 값 고정
+  // [결정 #399 A] 연령 띠 정책 기본값은 새 판(v16)에만 — 진행 중 세이브 · 옛 판은 필드가 없어 지금 동작(PROD ageBand.ts)
+  if (rules !== 'legacy-v15') s.inventory.agePolicy = defaultAgePolicy();
   // F6b 인건비 배수(finance.laborMul): newGame이 먼저 정한 시작 직원 급여를 난이도 반영 값으로 다시 정한다 — Normal(1)은 건너뛰어 바이트 동일
   if (laborMul(s) !== 1) for (const x of s.hr.staff) x.salary = salaryFor(x.role, x.stats, x.level, staffLaborCost(s));
   const locked = scenarioLockedKeys(d, rules); // F5a: v16 새 판은 kindsV16·lockedV16 — 옛 판(X0L)은 옛 키 그대로. 규칙은 **생성 때** 정해진다

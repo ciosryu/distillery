@@ -1,7 +1,8 @@
 // [결정 #380] 숙성 연령 띠 — 홈 숙성고 띠 줄(ARCH) · 병입 「숙성 사다리」 줄(PROD) · #386 자동 채우기 띠 정책이 같은 정의를 쓴다(PROD 잎 모듈 · 의존 최소).
 // 공개 정보만 읽는다 — 목재 개월 · 통 종류 · 부피(원액 맛 · 품질은 읽지 않는다). 9차 판: 찬 통 54개 중 60 ~ 119개월 3통인데 이를 보이는 화면이 없었다(prod.md §9.1)
 import { CASKS } from './content/catalog';
-import type { Cask, GameState } from './types';
+import { rulesVersionOf } from './rules';
+import type { AgePolicy, AgePolicyRule, Cask, GameState } from './types';
 
 /** 연령 띠 — 목재 개월 [lo, hi]. 문턱 `[튜닝]` (#380: 0 ~ 2 · 3 ~ 4 · 5 ~ 9 · 10년 이상) */
 export const AGE_BANDS = [
@@ -46,4 +47,44 @@ export function bandCounts(s: Pick<GameState, 'inventory'>, drawL?: ReadonlyMap<
 /** 얇은 띠 — 더 오래된 띠에 통이 있는데 이 띠가 `THIN_BAND_CASKS` 미만(가장 오래된 띠는 얇다고 하지 않는다) */
 export function thinBands(counts: BandCounts, k = THIN_BAND_CASKS): AgeBandId[] {
   return AGE_BANDS.filter((b, i) => counts[b.id].casks < k && AGE_BANDS.slice(i + 1).some((o) => counts[o.id].casks > 0)).map((b) => b.id);
+}
+
+// ───────────── [결정 #399 · #386] 연령 띠 정책 — 자동 납품(위스키)이 띠를 지킨다 ─────────────
+// 「고연수 캐스크를 막 빨아먹지 않게」(오너). 공개 값(목재 개월 · 통 수)만 읽는다. 자동 납품만 읽는다 — 손 병입 · 블렌더 맡기기 · IB 입찰은 읽지 않는다(#399 B)
+
+/** 띠 id가 코어 타입(`types.ts AgePolicy`)과 같은지 — 다르면 타입 검사에서 걸린다 */
+type _SameIds = [AgeBandId] extends [keyof AgePolicy] ? ([keyof AgePolicy] extends [AgeBandId] ? true : never) : never;
+const _sameIds: _SameIds = true;
+void _sameIds;
+
+/** 띠 정책 기본값 `[튜닝]` (#399 A — 새 판에만): 10년 이상은 자동이 쓰지 않는다(12년 후보 · 플래그십 예비 — 손 병입만) · 5 ~ 9년은 6통 아래로 줄이지 않는다(9차 허리 3통) */
+export const defaultAgePolicy = (): AgePolicy => ({ '10+': { auto: 'off' }, '5-9': { auto: 'keep', keep: THIN_BAND_CASKS } });
+
+/** 이 판의 띠 정책 — 옛 판(legacy-v15)은 없음 */
+export const agePolicyOf = (s: Pick<GameState, 'inventory' | 'rulesVersion'>): AgePolicy | undefined =>
+  rulesVersionOf(s) === 'legacy-v15' ? undefined : s.inventory.agePolicy;
+
+/** 띠 규칙 문구 — 「쓰지 않음」 · 「6통 남김」 · 「제한 없음」 */
+export const agePolicyRuleText = (r: AgePolicyRule | undefined): string => (!r ? '제한 없음' : r.auto === 'off' ? '자동이 쓰지 않음' : `${r.keep}통 남김`);
+
+/**
+ * 띠 정책 거르기 — 자동 납품 후보(쓸 순서대로 줄 세운 통)에서 정책이 허락하는 통만 순서 그대로 남긴다.
+ * `off` 띠의 통은 뺀다. `keep k` 띠는 그 띠의 통 수(`bandCounts` — 이 제품 후보가 아닌 통도 센다)에서 k를 뺀 만큼만, 앞에서부터 쓴다 —
+ * 자동이 손대는 통(조금이라도 뽑는 통)은 「쓴 통」으로 세므로 남기는 k통은 그대로 남는다. `held`는 정책 때문에 뺀 통 수(띠별 — 못 채운 사유 메모용)
+ */
+export function agePolicyFilter<C extends Cask & { contents: NonNullable<Cask['contents']> }>(s: Pick<GameState, 'inventory' | 'rulesVersion'>, ordered: readonly C[]): { allowed: C[]; held: Partial<Record<AgeBandId, number>> } {
+  const policy = agePolicyOf(s);
+  if (!policy || !Object.keys(policy).length) return { allowed: [...ordered], held: {} };
+  const counts = bandCounts(s);
+  const used: Partial<Record<AgeBandId, number>> = {};
+  const held: Partial<Record<AgeBandId, number>> = {};
+  const allowed: C[] = [];
+  for (const c of ordered) {
+    const band = ageBand(c.contents.oakMonths);
+    const rule = policy[band];
+    const ok = !rule || (rule.auto === 'keep' && (used[band] ?? 0) < counts[band].casks - rule.keep);
+    if (ok) { allowed.push(c); used[band] = (used[band] ?? 0) + 1; }
+    else held[band] = (held[band] ?? 0) + 1;
+  }
+  return { allowed, held };
 }
