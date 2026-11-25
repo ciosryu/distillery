@@ -122,6 +122,8 @@ export const STILL_SHAPE_PRESETS: { id: string; label: string; note: string; sha
 ];
 
 /** 공개 성격 문구 — 형태 표에서만 만든다(원액 맛을 읽지 않는다 — I2) */
+/** [결정 #429] 형태가 닿는 범위 — 화면(개조 · 사업 계획서)이 성격 문구 옆에 적는다 */
+export const STILL_SHAPE_SCOPE = '위스키 원액(몰트 · 그레인)에만 닿는다 — 소주 · 진 · 고량주는 지금 증류기 값 그대로';
 export function stillShapeNote(shape: StillShape): string {
   const parts = [
     shape.body === 'short' ? '헤비 · 오일리 · 몰트 고소함' : shape.body === 'tall' ? '라이트 · 플로럴 · 시트러스' : '균형',
