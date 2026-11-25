@@ -272,9 +272,13 @@ export function JourneyStrip() {
           <span className="font-medium text-stone-700 dark:text-stone-200">후반 목표</span>
           {visibleLateGoals(s).map(({ def: g, result: r }) => {
             const prog = r ? null : lateGoalProgress(s, g.id);
+            // [결정 #410] T2-b — 달성 ✓ 뒤에 지금 값이 기준 아래로 내려가면 「지금 n/m」을 덧붙인다(9차: 띠 6통 달성 표시 뒤 2통). 판정 · 기록은 그대로
+            const now = r?.result === 'done' ? lateGoalProgress(s, g.id) : null;
+            const slipped = now && now.have < now.need ? now : null;
             return (
               <span key={g.id} title={`할 수 있는 것: ${g.hint} · 보상 없음(기록 · 결과 화면)`} className={r?.result === 'done' ? 'text-emerald-700 dark:text-emerald-400' : r?.result === 'missed' ? 'text-stone-400 line-through' : 'text-amber-800 dark:text-amber-300'}>
                 {r?.result === 'done' ? '✓' : r?.result === 'missed' ? '✗' : '◎'} {g.title} <span className="opacity-70 no-underline">({r?.result === 'done' ? `${monthLabel(s.startYear, r.month)} 달성` : r?.result === 'missed' ? '놓침' : `${prog ? `${prog.have}/${prog.need} · ` : ''}${g.checkFrom != null && s.month < g.checkFrom ? `판정은 ${ym(g.checkFrom)}부터 · ` : ''}${g.byMonth == null ? '기한 없음' : g.byMonth - s.month > 0 ? `${ym(g.byMonth - 1)}까지 · ${g.byMonth - s.month}개월 남음` : '이번 턴에 판정'}`})</span>
+                {slipped && <span className="ml-1 font-medium text-amber-800 dark:text-amber-300" title="달성 기록은 남는다 — 지금 값이 기준 아래로 내려갔다">지금 {slipped.have}/{slipped.need}</span>}
               </span>
             );
           })}

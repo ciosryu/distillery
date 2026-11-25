@@ -1,6 +1,7 @@
 import { ROLE_INFO } from '../../sim/content/catalog';
 import type { GameState, Staff as StaffT } from '../../sim';
-import { ageOf, AGING_TENURE_MONTHS, APPRENTICE_MONTHS, departureHouseStyle, HEADHUNT, headhuntCost, headhuntedThisMonth, marketSalary, masterDistiller, mentoringXp, MORALE, moraleOf, moraleOn, payShortfall, RETIRE_AGE, SPECIALIST_STAGE, specialistOffers, tenureOf, TRAINING, trainingCooldown, trainingCost, TRAIT_INFO, type SpecialistRole } from '../../sim/hr';
+import { ageOf, AGING_TENURE_MONTHS, APPRENTICE_MONTHS, canReassign, departureHouseStyle, HEADHUNT, headhuntCost, headhuntedThisMonth, marketSalary, masterDistiller, mentoringXp, MORALE, moraleOf, moraleOn, nextReassignMonth, payShortfall, RETIRE_AGE, SPECIALIST_STAGE, specialistOffers, STAFF_STAGE, staffActionsOpen, staffTaskOf, staffTasksFor, tenureOf, TRAINING, trainingCooldown, trainingCost, TRAIT_INFO, type SpecialistRole } from '../../sim/hr';
+import { isLocked } from '../../sim/scenario';
 import { rulesVersionOf } from '../../sim/rules';
 import { wageDrift } from '../../sim/mgtKnobs';
 import { pendingStages } from '../../sim/scenario';
@@ -147,7 +148,7 @@ function SpecialistCard() {
   const offers = specialistOffers(s);
   const stage = pendingStages(s).find((st) => st.id === SPECIALIST_STAGE);
   const payroll = s.hr.staff.reduce((t, x) => t + x.salary, 0);
-  if (chosen) return <Card title="핵심 전문가"><p className="text-sm">{chosen.name}({ROLE_INFO[chosen.role].nameKo}) — {chosen.hiredMonth + 1}개월 차에 합류했다. 핵심 전문가는 한 사람만, 한 번만 고른다(바꾸거나 내보내기는 1.0의 상세 직원 관리에서).</p></Card>;
+  if (chosen) return <Card title="핵심 전문가"><p className="text-sm">{chosen.name}({ROLE_INFO[chosen.role].nameKo}) — {chosen.hiredMonth + 1}개월 차에 합류했다. 핵심 전문가는 한 사람만, 한 번만 고른다(바꾸기는 1.0의 상세 직원 관리에서 — 내보내기 · 교육 · 맡길 일은 위 직원 카드).</p></Card>;
   if (!offers) return stage ? <Card title="핵심 전문가 1인"><Empty>{Math.floor(stage.month / 12) + 1}년 차({stage.month + 1}개월 차)에 핵심 전문가 한 사람을 고를 수 있다 — {stage.month - s.month}개월 뒤. 숙성고 매니저 · 마스터 블렌더 · 영업 중 한 명</Empty></Card> : null;
   return (
     <Card title="핵심 전문가 1인 — 세 사람 중 한 명을 고른다(한 번만)">
@@ -167,16 +168,62 @@ function SpecialistCard() {
   );
 }
 
+/**
+ * [결정 #412] 새 캠페인(v16) 직원 카드의 행동 — 이번 분기 맡길 일 · 교육(가르칠 능력치) · 내보내기. 채용 · 사기는 잠근 채(`system:hr`).
+ * 분기에 한 번 바꾸고, 고르지 않으면 지난 일을 이어 한다 — 숙제가 되지 않게 지금 일과 다음에 바꿀 수 있는 때만 보인다
+ */
+function StaffActionsV16({ s, x }: { s: GameState; x: StaffT }) {
+  const dispatch = useGame((g) => g.dispatch);
+  const info = ROLE_INFO[x.role];
+  const tasks = staffTasksFor(x);
+  const cur = staffTaskOf(x);
+  const curDef = tasks.find((t) => t.id === cur);
+  const can = canReassign(s, x);
+  const wait = trainingCooldown(s, x.id);
+  const cost = trainingCost(x);
+  const soleDistiller = x.role === 'distiller' && isLocked(s, 'action:hire') && s.hr.staff.filter((y) => y.role === 'distiller').length === 1;
+  return (
+    <div className="grid gap-2">
+      <div className="rounded-md bg-stone-50 px-2 py-1.5 text-xs dark:bg-stone-800/50">
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="font-medium text-stone-600 dark:text-stone-300">이번 분기 맡길 일</span>
+          {tasks.map((t) => (
+            <Button key={t.id} small variant={t.id === cur ? 'primary' : 'secondary'} disabled={t.id === cur || !can} onClick={() => dispatch({ type: 'assignStaffTask', staffId: x.id, task: t.id })} title={t.text}>{t.nameKo}</Button>
+          ))}
+        </div>
+        <div className="mt-1 text-stone-500">{curDef?.text}{!can ? ` — 다음 분기(${nextReassignMonth(s, x) - s.month}개월 뒤)에 바꿀 수 있다` : x.taskMonth === s.month ? ' — 이번 달 안에는 다시 고를 수 있다' : ''}{tasks.length === 1 ? ' · 이 직군에 맡길 다른 일은 아직 없다' : ''}</div>
+      </div>
+      <div className="flex flex-wrap items-center gap-1 text-xs">
+        <span className="text-stone-500" title={`월급 ${TRAINING.costMonths}개월 치 · XP +${TRAINING.xpPerLevel * x.level} · 고른 능력치 +${TRAINING.statGain}(상한 ${TRAINING.statCap}) · 같은 사람은 ${TRAINING.cooldownMonths}개월에 한 번`}>교육 {wait > 0 ? `(${wait}개월 뒤)` : won(cost)}:</span>
+        {(['a', 'b', 'c'] as const).map((k, i) => (
+          <Button key={k} small disabled={wait > 0 || s.finance.cash < cost || x.stats[k] >= TRAINING.statCap} onClick={() => dispatch({ type: 'trainStaff', staffId: x.id, stat: k })}>{info.stats[i]} +{TRAINING.statGain}</Button>
+        ))}
+      </div>
+      <div>
+        {soleDistiller
+          ? <span className="text-xs text-stone-500">하나뿐인 디스틸러는 내보낼 수 없다(채용이 잠겨 다시 뽑을 수 없다)</span>
+          : <ConfirmButton small variant="danger" armKey={`fire-${x.id}@${s.month}`} armedLabel="한 번 더 누르면 내보낸다(다시 뽑을 수 없다)" preview={() => <FirePreview s={s} x={x} />} onConfirm={() => dispatch({ type: 'fire', staffId: x.id })}>내보내기 (위로금 1개월)</ConfirmButton>}
+      </div>
+    </div>
+  );
+}
+
 export function Staff() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
   // HR이 잠긴 시나리오(MVP)는 직원 관리 버튼을 숨기고 언제 열리는지 알린다 (#232 — 11년 차 단계)
   const hrOn = moraleOn(s);
   const opens = hrOn ? undefined : pendingStages(s).find((st) => st.unlock.includes('system:hr'));
-  const lockedNote = opens ? `직원 관리(채용·교육·헤드헌팅·해고)는 ${Math.floor(opens.month / 12) + 1}년 차에 열린다 — ${opens.month - s.month}개월 뒤` : rulesVersionOf(s) === 'v16' ? `새 캠페인에서는 채용·교육·해고(상세 직원 관리)가 1.0으로 미뤄졌다 — 11년 차의 핵심 전문가 1인은 위 카드에서 고른다.${wageDrift(s) > 1 ? ` 급여는 매년 1월 전 직원 ${Math.round((wageDrift(s) - 1) * 1000) / 10}% 오른다(정기 임금 상승)` : ''}` : '이 시나리오에서는 직원을 관리할 수 없다';
+  // [결정 #412] 새 캠페인: 교육 · 해고 · 맡길 일은 2년 차 단계(y1_staff)가 연다 — 채용 · 헤드헌팅 · 사기는 1.0
+  const v16 = rulesVersionOf(s) === 'v16';
+  const staffOpen = v16 && staffActionsOpen(s);
+  const staffStage = v16 && !staffOpen ? pendingStages(s).find((st) => st.id === STAFF_STAGE) : undefined;
+  const lockedNote = opens ? `직원 관리(채용·교육·헤드헌팅·해고)는 ${Math.floor(opens.month / 12) + 1}년 차에 열린다 — ${opens.month - s.month}개월 뒤` : v16 ? `새 캠페인에서는 채용·헤드헌팅(상세 직원 관리)이 1.0으로 미뤄졌다 — ${staffOpen ? '교육 · 내보내기 · 맡길 일은 위 직원 카드에서 한다' : '교육 · 내보내기 · 맡길 일은 2년 차에 직원 카드에서 열린다'}. 11년 차의 핵심 전문가 1인은 위 카드에서 고른다.${wageDrift(s) > 1 ? ` 급여는 매년 1월 전 직원 ${Math.round((wageDrift(s) - 1) * 1000) / 10}% 오른다(정기 임금 상승)` : ''}` : '이 시나리오에서는 직원을 관리할 수 없다';
   return (
     <div className="grid gap-4">
       <Card title={`직원 (${s.hr.staff.length}명 · 월 급여 ${won(s.hr.staff.reduce((t, x) => t + x.salary, 0))}) · 하우스 스타일 ${Math.round(s.hr.houseStyle)}`}>
+        {staffOpen && <p className="mb-3 text-xs text-stone-500">사람마다 <b>이번 분기 맡길 일</b>을 고른다 — 분기에 한 번 바꿀 수 있고, 고르지 않으면 지난 일을 이어 한다. 결과는 소식 창 「직원 일」로 뜬다.</p>}
+        {staffStage && <p className="mb-3 text-xs text-stone-500">{Math.floor(staffStage.month / 12) + 1}년 차({staffStage.month + 1}개월 차)부터 직원에게 일을 맡기고 · 가르치고 · 내보낼 수 있다 — {staffStage.month - s.month}개월 뒤</p>}
         {!s.hr.staff.length ? <Empty>직원이 없습니다. 디스틸러가 없으면 생산할 수 없습니다.</Empty> : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {s.hr.staff.map((x) => {
@@ -190,6 +237,7 @@ export function Staff() {
               const wait = trainingCooldown(s, x.id);
               const short = payShortfall(s, x);
               const morale = moraleOn(s) ? <MoraleBar value={moraleOf(x)} effect={moraleEffect(x)} title={`매달 ${MORALE.base} 쪽으로 돌아간다. 시세 ${won(Math.round(marketSalary(s, x)))}/월${short > 0 ? ` — ${Math.round(short * 100)}% 덜 받아 매달 −${(short * 100 * MORALE.payShortfall).toFixed(1)}` : ''}. 교육 +${MORALE.training}, 해고 때 남은 직원 −${MORALE.fired}, 1월 연봉 협상(인상 +${MORALE.raiseMorale} / 동결 ${MORALE.freezeMorale}). ${MORALE.quitBelow} 미만이면 이직할 수 있다`} /> : null;
+              if (staffOpen) return <Person key={x.id} x={x} month={s.month} tag={tag} morale={morale} action={<StaffActionsV16 s={s} x={x} />} />;
               return <Person key={x.id} x={x} month={s.month} tag={tag} morale={morale} extra={hrOn && wait === 0 ? <div className="mt-2 text-xs text-stone-500">{trainingImpact(s, x)}</div> : null} action={!hrOn ? null : <div className="flex flex-wrap gap-1">
                 <Button small disabled={wait > 0 || s.finance.cash < trainingCost(x)} onClick={() => dispatch({ type: 'trainStaff', staffId: x.id })} title={`교육 프로그램 — 월급 ${TRAINING.costMonths}개월 치, XP +${TRAINING.xpPerLevel * x.level}(반 레벨), 같은 직원은 ${TRAINING.cooldownMonths}개월에 한 번`}>{wait > 0 ? `교육 (${wait}개월 뒤)` : `교육 ${won(trainingCost(x))}`}</Button>
                 <ConfirmButton small variant="danger" armKey={`fire-${x.id}@${s.month}`} armedLabel="한 번 더 누르면 내보낸다" preview={() => <FirePreview s={s} x={x} />} onConfirm={() => dispatch({ type: 'fire', staffId: x.id })}>내보내기 (위로금 1개월)</ConfirmButton>
