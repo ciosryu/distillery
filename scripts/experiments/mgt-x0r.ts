@@ -20,6 +20,8 @@
 //   모든 벗이 목재 180개월이 되면 아는 오염 벗을 빼고 「셰리 15년」 새 제품으로 한 번에 병입(P8 bottleAs — 가격 · 판매는 봇 그대로) → 첫 출하 달에 재판정(#422). 승리는 따로(첫 12년 출시 그대로)
 // XR_CASK=oloroso_butt — [결정 #418 · PM 2026-11-25] 「채웠다 뺀 셰리 벗」 X0-R: refill 방식(XR_MODE 기본)의 통을 버번 배럴 대신 새 올로로소 벗 XR_BUTT_N개(기본 3)로.
 //   판 처음 벗을 주문(쿠퍼리지) → 도착하면 몰트 로트를 먼저 넣고(@hook:fill-lot) → XR_AT개월째(벗일 때 기본 6) 빼서 다시 넣어 2차 채움 셰리 벗(×0.6)으로 예비 꼬리표. 나머지(샘플 고르기 · 오염 떼기 · 병입 제외 · best 출시)는 같다
+// XR_REBOTTLE=1 — [결정 #427] 재판정 구멍 측정: 승리 다음 달(병입 앞) 남은 2차 채움 예비 통 가운데 아는 품질이 가장 좋은 적격 통 하나를
+//   「리필 12년 B」 새 제품으로 병입(P8 bottleAs) → 첫 출하 달에 재판정. 사람이 「승리 뒤 남은 좋은 통을 따로 낸다」를 흉내 낸다
 // 판마다 `#G {…}` 한 줄(grade-dist와 같은 칸 + 판정 달 설비 목록 `equip`([catalogId, 원가, 산 달 `boughtMonthOf`]) · 판 끝 상태 · X0-R 기록 `xr`)
 import { setP8Hooks } from './p8Hooks';
 import { applyAction } from '../../src/sim/actions';
@@ -60,6 +62,8 @@ if (process.env.XR_STILL && !STILL_PRESET) throw new Error(`XR_STILL 프리셋 �
 const SHAPE_OVERRIDE = process.env.XR_SHAPE ? (JSON.parse(process.env.XR_SHAPE) as Record<string, string>) : {};
 const SHERRY_N = Number(process.env.XR_SHERRY ?? 0);
 const SHERRY_AT = 180;
+const REBOTTLE = process.env.XR_REBOTTLE === '1';
+const rebottled = new Map<number, number>(); // seed → 다시 병입한 달
 const sherry = new Map<number, { set: Set<string>; launched?: number }>();
 
 type Verdict = { month: number; nw: number; q?: number; aw: number; grade?: string; sTarget?: number; fe?: number };
@@ -226,6 +230,22 @@ function launchSherry(s: GameState, p: unknown, r: Run, api: { bottleAs: (s: Gam
   return s;
 }
 
+/** XR_REBOTTLE: 승리 뒤 남은 2차 채움 예비 통 하나(아는 품질 최고 · 적격 · 아는 오염 없음)를 새 제품으로 */
+function rebottle(s: GameState, p: unknown, r: Run, api: { bottleAs: (s: GameState, p: any, comps: { source: 'lot' | 'cask'; id: string; liters: number }[], base: { name: string; targetAbv: number; bottleMl: number; chillFilter: boolean; packagingId: string }, cat: 'whisky') => GameState }): GameState {
+  const set = refill.get(s.seed);
+  if (!set) { rebottled.set(s.seed, -1); return s; }
+  const known = knownReads(s);
+  const cands = s.inventory.casks.filter((c) => set.has(c.id) && c.contents && !c.contaminationKnown && caskEligibility(s, c).eligible)
+    .sort((a, b) => (known.get(b.id)?.estQuality ?? 0) - (known.get(a.id)?.estQuality ?? 0) || b.contents!.oakMonths - a.contents!.oakMonths);
+  const c = cands[0];
+  if (!c) { rebottled.set(s.seed, -1); return s; }
+  const before = s;
+  s = api.bottleAs(s, p, [{ source: 'cask', id: c.id, liters: c.contents!.volumeL }], { name: '리필 12년 B', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' }, 'whisky');
+  rebottled.set(s.seed, s !== before ? s.month : -1);
+  if (s !== before) (r as Run & { rebottle?: unknown }).rebottle = { month: s.month, cask: c.id, est: known.get(c.id)?.estQuality, q: [...s.commerce.products].reverse().find((x) => x.name.startsWith('리필 12년 B'))?.quality };
+  return s;
+}
+
 const runOf = (s: GameState, p: { name: string }, seed: number): Run => {
   const pol = p.name.split(' ')[0]!;
   const k = `${pol}:${seed}`;
@@ -242,6 +262,7 @@ setP8Hooks({
       let t = s;
       if (buyArrive.has(t.seed)) t = fillBought(t, runOf(t, p, t.seed));
       if (sherry.has(t.seed)) t = launchSherry(t, p, runOf(t, p, t.seed), api);
+      if (REBOTTLE && campaignWon(t) && !rebottled.has(t.seed)) t = rebottle(t, p, runOf(t, p, t.seed), api);
       return t === s ? undefined : t;
     },
   } : {}),
