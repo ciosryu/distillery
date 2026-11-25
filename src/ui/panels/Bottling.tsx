@@ -5,7 +5,7 @@ import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './H
 import { BOTTLE_SIZES, CASKS, PACKAGING } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
-import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, restockMix, restockPrior, recipeSharesOf, RESTOCK_PRIOR_SIGMA_FLOOR, batchQualityKnown, hidesProductQuality } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, restockMix, restockPrior, recipeSharesOf, RESTOCK_PRIOR_SIGMA_FLOOR, batchQualityKnown, hidesProductQuality, restockFinishOff } from '../../sim';
 import { agedWhitePerception } from '../../sim/content/market';
 import { regionOf } from '../../sim/content/regions';
 import { STANDARD_BOTTLE, stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
@@ -455,6 +455,11 @@ export function Bottling() {
                     if (!carried) return <span className="block text-amber-800 dark:text-amber-300">이 제품과 겹치는 원액 레시피가 없어 리뷰 {k.reviews}건으로 좁힌 추정을 잇지 않는다 — 보충 뒤 새 병 몫은 「병입 때」 추정{knownBatch ? `(±${num(knownBatch.sigma, 1)})` : ''}으로 다시 시작</span>;
                     if (carried.newShare <= 0) return null;
                     return <span className="block text-stone-600 dark:text-stone-400" title="새 몫은 샘플 없는 원액과 같은 오차로 본다 — 추정값은 그대로, 리뷰 수도 잇는다. 리뷰가 쌓이면 다시 좁혀진다">이 제품 목록에 없던 원액 레시피가 {num(carried.newShare * 100, 0)}% 섞인다 — 리뷰 {k.reviews}건 추정을 잇되 오차를 넓힌다(±{num(Math.max(k.sigma, RESTOCK_PRIOR_SIGMA_FLOOR), 1)} → ±{num(carried.sigma, 1)})</span>;
+                  })()}
+                  {/* [결정 #362] 보충하면 피니시 표기 효과(매력도 · 기대 가격 ×1.08 · 럭셔리)가 꺼지는가 — 보충 뒤 피니시 개월은 매대에 섞이는 병 중 짧은 쪽(MKT 문턱 FINISH_EFFECT_MIN_MONTHS) */}
+                  {(() => {
+                    const off = restockFinishOff(restockTarget, preview.finishMonths);
+                    return off ? <span className="block font-medium text-amber-800 dark:text-amber-300">⚠ 보충 뒤 피니시 {off.before}개월 → <b>{off.after}개월</b> — {off.min}개월 미만이라 「{finishLabel(restockTarget.finish!)}」 표기 효과(매력도 · 기대 가격)가 꺼진다. 피니시 통에서 {off.min}개월 이상 쉰 원액으로 보충하세요(새 배치가 {off.min}개월 미만이면 재고를 다 판 뒤에도 꺼진다)</span> : null;
                   })()}
                   {restockStock && (
                     <span title="판매 평균의 6개월 치를 넘게 쌓이면 할인 이미지로 수요가 줄어든다(최저 ×0.6). 재고를 줄이면 돌아온다 — 판매 화면 「재고 n개월 치 · 수요 ×f」와 같은 셈(MKT)" className={`block ${restockStock.after > STOCK_STRONG_WARN_MONTHS ? 'font-medium text-rose-700 dark:text-rose-400' : restockStock.after > STOCK_WARN_MONTHS ? 'text-amber-800 dark:text-amber-300' : ''}`}>

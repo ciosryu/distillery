@@ -1,5 +1,6 @@
 import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/catalog';
 import { rulesVersionOf } from './rules'; // #362 finishMonths는 v16만
+import { FINISH_EFFECT_MIN_MONTHS, finishLabelOn } from './finishLabel'; // #362 피니시 표기 효과 문턱(MKT) — 보충 경고
 import { bottledQualityKnown, hidesProductQuality, mergeQualityKnown, restockPrior, type RecipeShare } from './productView'; // F5d 아는 품질(코어)
 import { lotQuality } from './bulk'; // F5d 병입 보정량 — 샘플 기록과 같은 원액 품질 식
 import type { PackagingChoice } from './content/packaging';
@@ -425,6 +426,17 @@ function mergeCaskMix(a: Product['caskMix'], wa: number, b: Product['caskMix'], 
 }
 
 /** 보충 뒤 제품 — 남은 재고(old)와 새 병(batch)의 가중 평균. 이름·출고가·출시 달·판매 기록·블렌딩 목표 기록은 그대로 */
+/**
+ * [결정 #362 · PROD 보충 경고] 보충하면 피니시 표기 효과(매력도 · 기대 가격 · 럭셔리 — MKT `finishLabelOn`)가 꺼지는가.
+ * 보충 뒤 `finishMonths`는 `restockedProduct`와 같은 규칙(남은 재고가 있으면 짧은 쪽, 재고 0이면 새 배치)으로 셈한다. 지금 켜져 있고 보충 뒤 문턱(`FINISH_EFFECT_MIN_MONTHS`) 아래로
+ * 내려갈 때만 `{ before, after, min }`, 아니면 null. 피니시 표기가 없거나 새 배치 피니시 개월을 모르면(옛 판) null
+ */
+export function restockFinishOff(old: Pick<Product, 'finish' | 'finishMonths' | 'stockBottles'>, batchFinishMonths: number | null | undefined): { before: number; after: number; min: number } | null {
+  if (!finishLabelOn(old) || batchFinishMonths == null) return null;
+  const after = old.stockBottles > 0 ? Math.min(old.finishMonths!, batchFinishMonths) : batchFinishMonths;
+  return after < FINISH_EFFECT_MIN_MONTHS ? { before: old.finishMonths!, after, min: FINISH_EFFECT_MIN_MONTHS } : null;
+}
+
 export function restockedProduct(old: Product, batch: Product): Product {
   const a = Math.max(0, old.stockBottles);
   const b = batch.stockBottles;
