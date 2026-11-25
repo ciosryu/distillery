@@ -5,6 +5,8 @@ import { inventoryCollateral, inventoryLoanRoom } from './loans';
 import { newScenarioGame } from './newScenario';
 import { netWorth, netWorthLegacy } from './progress';
 import { autoFillCasks } from './autoFill';
+import { EQUIPMENT } from './content/catalog';
+const EQUIPMENT_KIND = (id: string) => (EQUIPMENT as Record<string, { kind?: string }>)[id]?.kind;
 import { BOTTLE_LIQ, EQUIPMENT_SALVAGE, QHAT_PRIOR, bookValue, equipmentSalvage, bottleStockValue, collateralValue, estimatedValue, liquidationValue, prepaidObligations, qHat, recentSoldBottles, trueQualityOf } from './valuation';
 
 const v16 = (seed = 1) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed });
@@ -194,5 +196,21 @@ describe('[결정 #398] 설비 처분가 — 순자산 자체에 · 산 값보�
     // 결산 순자산(달을 넘기기 전 기록)은 넘긴 뒤 화면 순자산과 같다
     const m = advanceMonth(n);
     expect(m.history.reports.at(-1)!.netWorth).toBe(netWorth(m));
+  });
+});
+
+describe('[P-MGT-66] 고장 수리 중인 증류기는 새 설비가 아니다 — 처분가 감가 나이 그대로', () => {
+  it('증류기 중단(events.ts: readyMonth · repairUntil 덮어씀) 동안 처분가가 오르지 않고, 수리가 끝나도 같다', () => {
+    let s = v16();
+    for (let i = 0; i < 30; i++) s = advanceMonth(s);
+    const st = s.production.equipment.find((e) => EQUIPMENT_KIND(e.catalogId) === 'still')!;
+    const before = equipmentSalvage(s);
+    st.readyMonth = s.month + 3; st.repairUntil = st.readyMonth; // events.ts 증류기 중단과 같은 쓰기
+    expect(equipmentSalvage(s)).toBe(before);
+    // 수리 끝(step.ts가 repairUntil을 지움) 뒤에도 나이는 산 달(boughtMonth) 기준 — 수리하지 않은 판과 같다
+    const end = s.month + 3;
+    const fixed = structuredClone(s); delete fixed.production.equipment.find((e) => e.id === st.id)!.repairUntil;
+    expect(equipmentSalvage(fixed, EQUIPMENT_SALVAGE.rate, end)).toBe(equipmentSalvage({ ...s, production: { ...s.production, equipment: s.production.equipment.map((e) => (e === st ? { ...e, readyMonth: 0, repairUntil: undefined } : e)) } }, EQUIPMENT_SALVAGE.rate, end));
+    expect(equipmentSalvage(s, EQUIPMENT_SALVAGE.rate, s.month + 3)).toBe(equipmentSalvage({ ...s, production: { ...s.production, equipment: s.production.equipment.map((e) => (e === st ? { ...e, readyMonth: 0, repairUntil: undefined } : e)) } }, EQUIPMENT_SALVAGE.rate, s.month + 3));
   });
 });
