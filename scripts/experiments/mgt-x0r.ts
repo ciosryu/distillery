@@ -14,6 +14,7 @@
 //   도착한 달부터 그달 몰트 원액을 그 통에 먼저 넣고(@hook:before-bottle — 나머지는 P8 통입 그대로) 「플래그십 예비」 꼬리표. XR_AT 채웠다 빼기는 하지 않는다. 나머지(샘플 고르기 · 오염 떼기 · 병입 제외)는 같다
 // XR_LAUNCH=best — 승리 출시를 「아는 품질이 가장 좋은 예비(2차 채움) 통이 적격일 때」로(@hook:launch-gate). 기본 first = 적격 통이 생긴 첫 달(P8 그대로).
 //   XR_DELAY와 함께면 best 문이 처음 열린 달 + XR_DELAY부터. 예비 통이 하나도 없으면 문을 닫지 않는다
+// XR_STAFF=aging_check — [결정 #412] 디스틸러에게 「숙성 점검」을 맡긴다(단계 y1_staff가 연 다음 달 13개월째 한 번 — 사람이 쓸 수 있는 행동 `assignStaffTask`). XR=0이어도 걸린다(X0 + 점검)
 // 판마다 `#G {…}` 한 줄(grade-dist와 같은 칸 + 판정 달 설비 목록 `equip`([catalogId, 원가, 산 달 `boughtMonthOf`]) · 판 끝 상태 · X0-R 기록 `xr`)
 import { setP8Hooks } from './p8Hooks';
 import { applyAction } from '../../src/sim/actions';
@@ -39,6 +40,8 @@ const MODE = process.env.XR_MODE === 'buy' ? 'buy' : 'refill';
 const BUY_N = Number(process.env.XR_BUY_N ?? 6);
 /** 승리 출시 시점 — 'first' = 적격 통이 생긴 첫 달(P8) · 'best' = 아는 품질이 가장 좋은 예비 통이 적격일 때 */
 const LAUNCH = process.env.XR_LAUNCH === 'best' ? 'best' : 'first';
+/** [결정 #412] 맡길 일(디스틸러) — 없으면 맡기지 않는다 */
+const STAFF_TASK = process.env.XR_STAFF as 'aging_check' | undefined;
 
 type Verdict = { month: number; nw: number; q?: number; aw: number; grade?: string; sTarget?: number; fe?: number };
 interface Run { pol: string; seed: number; target: number; v?: Verdict; retail: number; retailAtVerdict?: number; nwEnd: number; months: number; equip?: [string, number, number][]; status?: string; endMonth?: number; xr?: { mode?: string; buyCost?: number; casks: string[]; lostL: number; activity: number[]; bestOpen?: number; usedAtWin?: number; untagged?: string[]; sampled?: [string, number][]; autoOff?: string[] } }
@@ -164,13 +167,14 @@ setP8Hooks({
     beforeBottle: (s: GameState, p: { name: string }) => (buyArrive.has(s.seed) ? fillBought(s, runOf(s, p, s.seed)) : undefined),
   } : {}),
   afterFill: (s: GameState, p: { name: string }, m: number) => {
-    if (!XR) return;
+    if (STAFF_TASK && m === 13) { const d = s.hr.staff.find((x) => x.role === 'distiller'); const a = d ? applyAction(s, { type: 'assignStaffTask', staffId: d.id, task: STAFF_TASK }) : undefined; if (a && !a.error) s = a.state; }
+    if (!XR) return STAFF_TASK && m === 13 ? s : undefined;
     if (m === AT && MODE === 'refill') return prepareRefill(s, runOf(s, p, s.seed));
     if (m === PICK) return pickBySample(s, runOf(s, p, s.seed));
     // 아는 오염(샘플 · 사건으로 드러난 것 — 사람과 같은 정보)이 생긴 2차 채움 통은 예비에서 뺀다 → 승리 출시가 깨끗한 통을 먼저 고른다
     const set = refill.get(s.seed);
     const bad = set ? s.inventory.casks.filter((c) => set.has(c.id) && c.contaminationKnown && (c.contents?.tagIds ?? []).includes(FLAGSHIP_RESERVE_TAG)).map((c) => c.id) : [];
-    if (!bad.length) return;
+    if (!bad.length) return STAFF_TASK && m === 13 ? s : undefined; // 13개월째 맡긴 일은 돌려줘야 이어진다
     const r = applyAction(s, { type: 'tagCasks', caskIds: bad, remove: [FLAGSHIP_RESERVE_TAG] });
     const run = runOf(s, p, s.seed);
     if (run.xr) run.xr.untagged = [...(run.xr.untagged ?? []), ...bad];
@@ -195,7 +199,7 @@ setP8Hooks({
     r.months = m + 1;
   },
   atEnd: () => {
-    for (const r of runs.values()) console.log('#G ' + JSON.stringify({ mode: XR ? 'x0r' : 'base', tier: process.env.TIER, xrAt: AT, xrN: N, ...(DELAY ? { delay: DELAY } : {}), ...(XR ? { xrMode: MODE, launch: LAUNCH } : {}), ...r }));
+    for (const r of runs.values()) console.log('#G ' + JSON.stringify({ mode: XR ? 'x0r' : 'base', tier: process.env.TIER, xrAt: AT, xrN: N, ...(DELAY ? { delay: DELAY } : {}), ...(XR ? { xrMode: MODE, launch: LAUNCH } : {}), ...(STAFF_TASK ? { staffTask: STAFF_TASK } : {}), ...r }));
   },
 });
 process.env.P8 = '1';
