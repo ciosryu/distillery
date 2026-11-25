@@ -157,17 +157,13 @@ function fill(t: string, v: Record<string, string>): string {
 }
 
 /**
- * 디시 거친 말 수위 (v2, 오너 2026-11-10) — 위갤: 긍정 0.5 · 부정 1 · 심한 부정에서 25%만 2.
- * 주갤(욕설·뻘소리 중심): 칭찬도 1(욕 섞인 칭찬) · 부정은 60%가 2
+ * 디시 거친 말 수위 — 위갤: 긍정 0.5 · 부정 1. 주갤: 칭찬도 부정도 1(비속어 섞인 말).
+ * [결정 #403] 비속어는 넣고 욕설은 넣지 않는다 — 욕설 단계 2(#254)는 쓰지 않는다(단계 1까지). 문장 틀에도 단계 2 묶음이 없다(content/feed.ts)
  */
-function dcHarsh(rng: Rng, style: 'dc_whisky' | 'dc_jugal', x: FeedSituation, sentiment: number): Harsh {
+function dcHarsh(style: 'dc_whisky' | 'dc_jugal', x: FeedSituation): Harsh {
   const lines = style === 'dc_whisky' ? DCW_LINES[x] : DCJ_LINES[x];
-  if (style === 'dc_whisky') {
-    if (toneOf(x) !== 'neg') return lines[0.5] ? 0.5 : 1;
-    return sentiment <= -0.5 && lines[2] && rng.next() < 0.25 ? 2 : 1;
-  }
-  if (toneOf(x) !== 'neg') return 1;
-  return lines[2] && rng.next() < 0.6 ? 2 : 1;
+  if (style === 'dc_whisky' && toneOf(x) !== 'neg') return lines[0.5] ? 0.5 : 1;
+  return 1;
 }
 
 /** 제품 특징 — 위갤·위스키베이스 디테일 문장 */
@@ -215,7 +211,7 @@ function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style
     const text = `${rng.pick(CAFE_OPEN)}${fill(rng.pick(CAFE_LINES[x]), vars)}${rng.pick(CAFE_CLOSE)}`;
     return { ...base, text, harsh: 0, replies: replies(rng, style, tone) };
   }
-  const harsh = dcHarsh(rng, style, x, g.sentiment);
+  const harsh = dcHarsh(style, x);
   if (style === 'dc_whisky') {
     const pool = DCW_LINES[x][harsh] ?? DCW_LINES[x][1] ?? DCW_LINES[x][0.5]!;
     const feat = feats.length && rng.next() < 0.5 ? ` — ${fill(rng.pick(DCW_FEATURE[rng.pick(feats)]), vars)}` : '';
