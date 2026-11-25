@@ -165,9 +165,10 @@ export const seasonOf = (month: number): FeedSeason | null => {
 };
 
 /** 틀이 이 제품에 맞는가 — 공개 표기만 본다(F5d · PROD 합의: 통 이름은 피니시 표기뿐) */
-interface LineCtx { labelYears: number; finish: boolean; onggi: boolean; cs: boolean; co: boolean; limited: boolean; medal: boolean; dutyFree: boolean }
+interface LineCtx { labelYears: number; finish: boolean; onggi: boolean; cs: boolean; co: boolean; limited: boolean; medal: boolean; dutyFree: boolean; noCask: boolean }
 function lineOk(line: string, c: LineCtx): boolean {
   if (line.includes('{benchCo}') && !c.co) return false;
+  if (c.noCask && CASK_WORDS.test(line)) return false;
   if (line.includes('한정') && !c.limited) return false;
   if (line.includes('수상') && !c.medal) return false;
   if (line.includes('면세') && !c.dutyFree) return false;
@@ -187,6 +188,17 @@ function pickLine(rng: Rng, pool: readonly string[] | undefined, c: LineCtx, use
   const line = rng.pick(fresh.length ? fresh : ok);
   used?.add(line);
   return line;
+}
+
+/**
+ * 통에서 쉬지 않은 제품(소주 · 진 · 고량주, 또는 오크 개월 0)에는 「캐스크」 · 「피니시」가 든 문장(맺음말 · 평가 · 특징 · 댓글)을 쓰지 않는다 — PM 2026-11-25
+ * (「[질문] 김소 … 도수 25%임 (캐스크 넘버까지 확인함)」). 걸러서 남는 것이 없으면 원래 묶음을 쓴다
+ */
+const CASK_WORDS = /캐스크|피니시/;
+function fit(pool: readonly string[], noCask: boolean): readonly string[] {
+  if (!noCask) return pool;
+  const ok = pool.filter((l) => !CASK_WORDS.test(l));
+  return ok.length ? ok : pool;
 }
 
 /** 글 종류를 부르는 공개 사정 — 지난달 품절 뒤 재입고 · 수상 소식 · 유통 입점 · 면세 완판 · 철 */
@@ -290,7 +302,8 @@ function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style
     off: g.offWord, price: fmtPrice(g.consumer), bench: bench.name, benchCo: bench.co ?? '', cat: CATEGORY[p.category].nameKo,
     abv: `${Math.round(p.abv * 100)}%`, age: p.ageYears ? `${p.ageYears}년` : years > 0 ? `${years}년` : '어린', finish,
   };
-  const ctx: LineCtx = { labelYears: p.ageYears ?? 0, finish: finishLabelOn(p), onggi: (p.restMonths ?? 0) >= 6, cs: p.abv >= 0.55, co: !!bench.co, limited: !!p.rareSingleCask || !!p.dfEdition, medal, dutyFree };
+  const noCask = WHITE.includes(p.category) || !((p.oakMonths ?? 0) > 0);
+  const ctx: LineCtx = { labelYears: p.ageYears ?? 0, finish: finishLabelOn(p), onggi: (p.restMonths ?? 0) >= 6, cs: p.abv >= 0.55, co: !!bench.co, limited: !!p.rareSingleCask || !!p.dfEdition, medal, dutyFree, noCask };
   const white = WHITE.includes(p.category);
   const community = FEED_COMMUNITIES[style][white ? 'white' : 'whisky'];
   const author = rng.pick(FEED_AUTHORS[style]);
@@ -305,7 +318,7 @@ function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style
     const line = kind !== 'eval' ? pickLine(rng, WB_KIND_LINES[kind], ctx, used) : null;
     if (line) return { ...base, tone: 'neu', text: `${fill(line, vars)} ${score}점`, score, harsh: 0 };
     const palate = `${vars.n3}${off ? `, 옅은 ${off}` : ''}`;
-    const verdict = fill(rng.pick(WB_VERDICT[x]), vars);
+    const verdict = fill(rng.pick(fit(WB_VERDICT[x], noCask)), vars);
     const tasting = ['stockout', 'priceUp', 'priceDown', 'forgotten'].includes(x) ? '' : `Nose: ${rng.pick(WB_NOSE_ADJ)} ${vars.n1}, ${vars.n2}. Palate: ${palate}. Finish: ${finishNote}. `;
     return { ...base, text: `${tasting}${verdict} ${score}점`, score, harsh: 0 };
   }
@@ -325,35 +338,35 @@ function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style
     if (body) {
       const kTone: FeedPost['tone'] = kind === 'longnote' ? tone : KIND_TONE[kind] ?? 'neu';
       const { signal: _s, ...plain } = base;
-      if (style === 'dc_whisky') return { ...plain, tone: kTone, text: `${DCW_TAG[kind] ?? '[일반]'} ${body}${rng.pick(DCW_CLOSE)}`, harsh: 0.5, replies: replies(rng, style, kTone) };
-      if (style === 'dc_jugal') return { ...plain, tone: kTone, text: `${kind === 'meme' ? rng.pick(DCJ_OPEN) : ''}${body}${rng.pick(DCJ_CLOSE)}`, harsh: 1, replies: replies(rng, style, kTone) };
-      return { ...plain, tone: kTone, text: `${body}${rng.pick(CAFE_CLOSE)}`, harsh: 0, replies: replies(rng, style, kTone) };
+      if (style === 'dc_whisky') return { ...plain, tone: kTone, text: `${DCW_TAG[kind] ?? '[일반]'} ${body}${rng.pick(fit(DCW_CLOSE, noCask))}`, harsh: 0.5, replies: replies(rng, style, kTone, noCask) };
+      if (style === 'dc_jugal') return { ...plain, tone: kTone, text: `${kind === 'meme' ? rng.pick(DCJ_OPEN) : ''}${body}${rng.pick(DCJ_CLOSE)}`, harsh: 1, replies: replies(rng, style, kTone, noCask) };
+      return { ...plain, tone: kTone, text: `${body}${rng.pick(CAFE_CLOSE)}`, harsh: 0, replies: replies(rng, style, kTone, noCask) };
     }
   }
   if (style === 'cafe') {
-    const text = `${rng.pick(CAFE_OPEN)}${fill(rng.pick(CAFE_LINES[x]), vars)}${rng.pick(CAFE_CLOSE)}`;
-    return { ...base, text, harsh: 0, replies: replies(rng, style, tone) };
+    const text = `${rng.pick(CAFE_OPEN)}${fill(rng.pick(fit(CAFE_LINES[x], noCask)), vars)}${rng.pick(CAFE_CLOSE)}`;
+    return { ...base, text, harsh: 0, replies: replies(rng, style, tone, noCask) };
   }
   const harsh = dcHarsh(style, x);
   if (style === 'dc_whisky') {
-    const pool = DCW_LINES[x][harsh] ?? DCW_LINES[x][1] ?? DCW_LINES[x][0.5]!;
-    const feat = feats.length && rng.next() < 0.5 ? ` — ${fill(rng.pick(DCW_FEATURE[rng.pick(feats)]), vars)}` : '';
+    const pool = fit(DCW_LINES[x][harsh] ?? DCW_LINES[x][1] ?? DCW_LINES[x][0.5]!, noCask);
+    const feat = feats.length && rng.next() < 0.5 ? ` — ${fill(rng.pick(fit(DCW_FEATURE[rng.pick(feats)], noCask)), vars)}` : '';
     // 위스키 마이너 갤러리 말머리(관찰 mkt-feed.md §4.1.1) — 평가 글은 [리뷰]
-    return { ...base, text: `${DCW_TAG.eval} ${fill(rng.pick(pool), vars)}${feat}${rng.pick(DCW_CLOSE)}`, harsh, replies: replies(rng, style, tone) };
+    return { ...base, text: `${DCW_TAG.eval} ${fill(rng.pick(pool), vars)}${feat}${rng.pick(fit(DCW_CLOSE, noCask))}`, harsh, replies: replies(rng, style, tone, noCask) };
   }
   // 주갤 — 30%는 뻘글(제품 이름만 걸친 헛소리). 가격 신호 글은 뻘글로 바꾸지 않는다
   if (x !== 'raise' && rng.next() < 0.3) {
-    return { ...base, tone: 'neu', text: `${rng.pick(DCJ_OPEN)}${fill(rng.pick(DCJ_OFFTOPIC), vars)}${rng.pick(DCJ_CLOSE)}`, harsh: 1, replies: replies(rng, style, 'neu') };
+    return { ...base, tone: 'neu', text: `${rng.pick(DCJ_OPEN)}${fill(rng.pick(DCJ_OFFTOPIC), vars)}${rng.pick(DCJ_CLOSE)}`, harsh: 1, replies: replies(rng, style, 'neu', noCask) };
   }
   // 부정 글은 v4 평가 틀(FEED_KIND_LINES.dc_jugal.eval — 상황 밖의 짧은 실망)도 섞는다
   const pool = [...(DCJ_LINES[x][harsh] ?? DCJ_LINES[x][1] ?? DCJ_LINES[x][0.5]!), ...(tone === 'neg' ? FEED_KIND_LINES.dc_jugal.eval ?? [] : [])];
-  return { ...base, text: `${rng.pick(DCJ_OPEN)}${fill(rng.pick(pool), vars)}${rng.pick(DCJ_CLOSE)}`, harsh, replies: replies(rng, style, tone) };
+  return { ...base, text: `${rng.pick(DCJ_OPEN)}${fill(rng.pick(fit(pool, noCask)), vars)}${rng.pick(DCJ_CLOSE)}`, harsh, replies: replies(rng, style, tone, noCask) };
 }
 
 /** 댓글 0~3개 (위갤·주갤은 더 많이, 카페는 0~2) */
-function replies(rng: Rng, style: Exclude<FeedStyle, 'whiskybase'>, tone: FeedPost['tone']): FeedPost['replies'] {
+function replies(rng: Rng, style: Exclude<FeedStyle, 'whiskybase'>, tone: FeedPost['tone'], noCask = false): FeedPost['replies'] {
   const n = style === 'cafe' ? rng.int(0, 2) : rng.int(0, 3);
-  const pool = REPLIES[style][tone];
+  const pool = fit(REPLIES[style][tone], noCask);
   const out: { author: string; text: string }[] = [];
   for (let k = 0; k < n; k++) {
     const text = rng.pick(pool);
