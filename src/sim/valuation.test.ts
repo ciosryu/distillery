@@ -207,6 +207,10 @@ describe('[P-MGT-66] 고장 수리 중인 증류기는 새 설비가 아니다 �
     const before = equipmentSalvage(s);
     st.readyMonth = s.month + 3; st.repairUntil = st.readyMonth; // events.ts 증류기 중단과 같은 쓰기
     expect(equipmentSalvage(s)).toBe(before);
+    // 수리 끝(step.ts가 repairUntil을 지움) 뒤에도 나이는 산 달(boughtMonth) 기준 — 수리하지 않은 판과 같다
+    const end = s.month + 3;
+    const fixed = structuredClone(s); delete fixed.production.equipment.find((e) => e.id === st.id)!.repairUntil;
+    expect(equipmentSalvage(fixed, EQUIPMENT_SALVAGE.rate, end)).toBe(equipmentSalvage({ ...s, production: { ...s.production, equipment: s.production.equipment.map((e) => (e === st ? { ...e, readyMonth: 0, repairUntil: undefined } : e)) } }, EQUIPMENT_SALVAGE.rate, end));
     expect(equipmentSalvage(s, EQUIPMENT_SALVAGE.rate, s.month + 3)).toBe(equipmentSalvage({ ...s, production: { ...s.production, equipment: s.production.equipment.map((e) => (e === st ? { ...e, readyMonth: 0, repairUntil: undefined } : e)) } }, EQUIPMENT_SALVAGE.rate, s.month + 3));
   });
 });
