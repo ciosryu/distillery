@@ -186,13 +186,14 @@ export const bestVerdict = (s: Pick<GameState, 'progress'>): GoalVerdict | undef
 export const MASTERPIECE_MIN_AGE = 15;
 
 /**
- * [결정 #433] 「명작」 칭호 — **등급과 따로**(S는 승리 달에 한 번만 · #422 재판정 · #427을 대체). 이번 달 판매 사건 가운데 승리 로트가 아닌 적격 로트의
+ * [결정 #433 · #435] 「명작」 칭호 — **등급과 따로**(S는 승리 달에 한 번만 · #422 재판정 · #427을 대체). 승리 달부터, 이번 달 판매 사건 가운데 적격 로트의
  * **첫 정상 유상 출하**가 있고, 그 제품이 **표기 15년 이상 · 품질 ≥ 80 · 그달 인지도 ≥ 20%**면 `progress.masterpiece`에 한 번 적는다. 순자산은 보지 않는다.
+ * [결정 #435] **승리 로트 자신도 본다** — 표기 15년 이상 제품으로 이긴 판은 승리 달에 명작이 된다(updateProgress가 승리를 적은 뒤 같은 달에 부른다).
  * 첫 출하인지는 남아 있는 결산(120개월 창)의 판매 사건으로 본다. 이미 명작이면 보지 않는다. 옛 판 · 승리 전은 아무 일도 없다
  */
 export function judgeMasterpiece(s: GameState, report: MonthReport): void {
   if (rulesVersionOf(s) === 'legacy-v15' || !s.progress.win || s.progress.masterpiece) return;
-  const fresh = (report.saleEvents ?? []).filter((e) => e.eligibleAtSale && e.kind !== 'b2b' && e.bottles > 0 && e.unitPrice > 0 && e.lotId !== s.progress.win!.lotId);
+  const fresh = (report.saleEvents ?? []).filter((e) => e.eligibleAtSale && e.kind !== 'b2b' && e.bottles > 0 && e.unitPrice > 0); // [결정 #435] 승리 로트도 본다
   if (!fresh.length) return;
   const seen = new Set<string>();
   for (const r of s.history.reports) for (const e of r.saleEvents ?? []) seen.add(e.lotId);

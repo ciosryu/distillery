@@ -89,9 +89,20 @@ describe('[결정 #433] 「명작」 — 등급과 따로', () => {
     s.month = 216; const r = report(s); sellFromLots(s, r, 'E', 1, SALE); updateProgress(s, r);
     expect(s.progress.masterpiece).toBe(m);
   });
-  it('승리 로트 자신 · 옛 판에는 아무 일도 없다', () => {
+  it('[결정 #435] 표기 15년 · 품질 85 제품으로 이긴 판은 승리 달에 명작 — 등급은 승리 판정 그대로', () => {
+    const s = v16(); s.month = 186;
+    s.progress.firstEligibleMonth = 144;
+    s.commerce.products.push(product({ id: 'W', name: '셰리 15년', ageYears: 15, oakMonths: 182, quality: 85 }));
+    addLot(s, 'W', 300, { month: 186, eligibleAtBottling: true });
+    houseBrand(s).awareness = GRADE.sAwareness + 0.1;
+    const r = report(s); sellFromLots(s, r, 'W', 1, SALE); updateProgress(s, r);
+    expect(s.progress.win).toMatchObject({ productId: 'W' });
+    expect(s.progress.masterpiece).toMatchObject({ month: 187, productId: 'W', lotId: s.progress.win!.lotId, ageYears: 15, quality: 85 });
+    expect(bestVerdict(s)).toBe(s.progress.verdict); // 등급은 승리 판정 하나(#433)
+  });
+  it('12년 승리 로트를 다시 팔아도 · 옛 판에는 아무 일도 없다', () => {
     const s = wonA();
-    s.month = 151; const r = report(s); sellFromLots(s, r, 'P', 1, SALE); updateProgress(s, r); // 승리 로트 다시
+    s.month = 151; const r = report(s); sellFromLots(s, r, 'P', 1, SALE); updateProgress(s, r); // 승리 로트 다시(12년)
     expect(s.progress.masterpiece).toBeUndefined();
     const old = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 4, rules: 'legacy-v15' });
     old.month = 150; old.commerce.products.push(product({ quality: 95, ageYears: 15 }));
