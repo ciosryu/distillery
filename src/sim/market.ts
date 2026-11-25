@@ -21,12 +21,13 @@ import { EXPORT_MARKETS, EXPORT_SALES, tariffKey, type ExportMarketDef } from '.
 import { rngFor, type Rng } from './rng';
 import { sellFromLots } from './lots'; // F3 판매 사건(코어 입구) — 로트·사건만, stockBottles 차감은 여기서
 import { hidesProductQuality, knownProductQuality } from './productView'; // F5d 읽기 한 함수(코어)
+import { coverageShare } from './staffTaskRules'; // [결정 #412] 시음회 맞바꿈(MGT 잎)
 
 // 수요 공식 (PRD §9.2) — 수치 [튜닝]
 
 /** 유통 커버리지: 영업 직원 네트워크 스탯 기반 */
 export function coverage(s: GameState): number {
-  return clamp(0.03 + staffOf(s, 'sales').reduce((t, x) => t + 0.04 + (x.stats.b / 100) * 0.12, 0), 0, 1);
+  return clamp(0.03 + staffOf(s, 'sales').reduce((t, x) => t + 0.04 * coverageShare(x) + (x.stats.b / 100) * 0.12 * coverageShare(x), 0), 0, 1); // [결정 #412] 시음회를 맡은 영업은 몫 × 0.5(MGT staffTaskRules) — 평소 업무면 × 1
 }
 
 /** 영업 협상 스탯: 유통 마진 최대 10% 절감 → 소비자가 배수 */
