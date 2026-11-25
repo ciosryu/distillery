@@ -3,7 +3,7 @@ import { monthlyFixedCost } from './loans';
 import { addScaled, clamp, clampFlavor, distillFlavor, heartsFraction } from './flavor';
 import { GI_LOCK, logisticsMultiplier, regionOf, siteOf, type WaterId } from './content/regions';
 import type { Rng } from './rng';
-import type { Flavor, FermenterType, GameState, Recipe, RegionId, Staff } from './types';
+import type { AxisId, Flavor, FermenterType, GameState, Recipe, RegionId, Staff } from './types';
 import { weatherOffset } from './weather';
 import type { MonthReport, SpiritLot } from './types';
 import { staffOf, bestBy, calendar, monthLabel, nid } from './util';
@@ -14,6 +14,7 @@ import type { TickContext } from './tick';
 import { OEM } from './deals';
 import { hasLocalIngredient, seasonalEnergyFactor, siteFreight } from './sites';
 import { waterPermitCap } from './waterPermit';
+import { stillParams, type StillSpec } from './stillShape'; // [결정 #417 · #418] 증류기 형태 (PROD)
 import { evaluate, type Evaluation } from './flavor';
 import { hexOf, HEX_AXES, HEX_LABEL } from './blendRadar';
 import { AXIS } from './content/axes';
@@ -87,11 +88,12 @@ export function fermentDaysAt(days: number, tempC: number): number {
   return days;
 }
 
-export function stillDefOf(state: GameState, stillId: string): StillDef | null {
+export function stillDefOf(state: GameState, stillId: string): StillSpec | null {
   const inst = state.production.equipment.find((e) => e.id === stillId);
   if (!inst) return null;
   const def = EQUIPMENT[inst.catalogId];
-  return def && def.kind === 'still' ? def : null;
+  // [결정 #417 · #418] 증류기 형태가 있으면 환류 · 구리 접촉 · 응축기를 덮는다(없으면 카탈로그 값 그대로 — 같은 객체)
+  return def && def.kind === 'still' ? stillParams(def, inst.stillShape) : null;
 }
 
 /** 레시피 검증 — 문제 목록(빈 배열이면 OK) */
@@ -281,6 +283,10 @@ export function simulateBatch(
     flavor.floral = (flavor.floral ?? 0) * 1.2;
     flavor.harshness = (flavor.harshness ?? 0) - 10;
   }
+  // [결정 #417 · #418] 증류기 형태의 새 원액 축 보정 — 보일 볼(곱하기) · 라인 암(더하기). 형태가 없거나 기본 조합이면 둘 다 없다(바이트 동일)
+  const spec = still as StillSpec;
+  if (spec.shapeMul) for (const [k, m] of Object.entries(spec.shapeMul) as [AxisId, number][]) flavor[k] = (flavor[k] ?? 0) * m;
+  if (spec.shapeAdd) for (const [k, a] of Object.entries(spec.shapeAdd) as [AxisId, number][]) { if (k === 'body') bodyBonus += a; else flavor[k] = Math.max(0, (flavor[k] ?? 0) + a); }
   if (still.condenser === 'worm_tub') bodyBonus += 8;
   flavor.body = (flavor.body ?? 0) + bodyBonus;
 

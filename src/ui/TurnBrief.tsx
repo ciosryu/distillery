@@ -13,7 +13,7 @@ import { PendingEventChoices } from './panels/Events';
 import { briefTodos, flagshipReady, monthTodos, stageTarget } from './alerts';
 import { TodoText, useGo } from './AlertsView';
 import { useUi } from '../store/ui';
-import { campaignMinOakMonths, lateGoalProgress, stagesOf, visibleLateGoals, type GameState } from '../sim';
+import { campaignMinOakMonths, lateGoalProgress, stagesOf, visibleLateGoals, type GameState, type MonthReport } from '../sim';
 import { AGE_BANDS, bandCounts, thinBands } from '../sim/ageBand'; // #380 연령 띠(PROD) — 분기 요약 한 줄
 
 const SEEN_KEY = 'distillery-tycoon/brief-seen';
@@ -66,7 +66,15 @@ export function turnNews(s: ReturnType<typeof useGame.getState>['state'], fromMo
  * [#388 ① A1 · ①-e2] 여러 달 진행(분기 · 1년)의 요약 — 넘긴 달들의 매출 합 · 현금 변화 · 위스키 병 판매 · 목표 진척 · 숙성 연령 띠.
  * 결산(`history.reports`)과 공개 상태만 읽는다(I1 · I2 — 품질 참값 없음). 한 달 진행이면 null
  */
-export function periodSummary(s: GameState, fromMonth: number): { months: number; revenue: number; cashDelta: number; bottles: number; goals: string; bands: string } | null {
+/** [결정 #410] T8 — 품절로 못 판 병(어림)의 합계 · 제품 수. 결산 `stockoutDemand`(MKT — 참 품질로 센 수요)는 **합계만** 보인다: 제품별 크기 순위는 품질 단서가 될 수 있어(F5d) 숨기고, 100병 단위로 묶는다. 기록이 없으면(옛 결산 · 품절 없음) null */
+export function stockoutSummary(span: readonly MonthReport[]): { bottles: number; products: number } | null {
+  const rows = span.flatMap((r) => r.stockoutDemand ?? []);
+  const total = rows.reduce((t, x) => t + x.bottles, 0);
+  if (!rows.length || total <= 0) return null;
+  return { bottles: Math.max(100, Math.round(total / 100) * 100), products: new Set(rows.map((x) => x.productId)).size };
+}
+
+export function periodSummary(s: GameState, fromMonth: number): { months: number; revenue: number; cashDelta: number; bottles: number; goals: string; bands: string; stockout: { bottles: number; products: number } | null } | null {
   const span = s.history.reports.filter((r) => r.month >= fromMonth && r.month < s.month);
   if (s.month - fromMonth < 2 || !span.length) return null;
   const before = s.history.reports.filter((r) => r.month < fromMonth).at(-1)?.cashEnd;
@@ -83,6 +91,7 @@ export function periodSummary(s: GameState, fromMonth: number): { months: number
     bottles: span.reduce((t, r) => t + r.sales.reduce((n, x) => n + x.bottles, 0), 0),
     goals: `${done ? `달성 ${done} · ` : ''}${open.length ? `진행 중 ${open.join(' · ')}` : '열린 후반 목표 없음'}`,
     bands,
+    stockout: stockoutSummary(span),
   };
 }
 
@@ -117,6 +126,7 @@ export function TurnBrief() {
             <div>매출 <b className="tabular-nums">{won(sum.revenue)}</b> · 현금 <b className={`tabular-nums ${sum.cashDelta < 0 ? 'text-rose-700 dark:text-rose-400' : ''}`}>{sum.cashDelta >= 0 ? '+' : ''}{won(sum.cashDelta)}</b> · 판매 <span className="tabular-nums">{sum.bottles.toLocaleString()}병</span></div>
             <div>목표 — {sum.goals}</div>
             <div title="몰트 · 그레인 나무 통의 목재 숙성 연령별 통 수 — ⚠ 얇은 띠(위 띠를 다 쓴 뒤 이을 원액이 모자란다)">숙성 연령 — {sum.bands}</div>
+            {sum.stockout && <div className="text-amber-800 dark:text-amber-300" title="재고가 0이라 진열하지 못한 제품의 어림 수요 합계(100병 단위) — 다시 채웠다면 팔렸을 병 수. 어느 제품인지는 할 일 「품절」 목록이 보인다">품절로 못 판 병(어림) — 약 {sum.stockout.bottles.toLocaleString()}병 · {sum.stockout.products}종</div>}
             {/* [결정 #400] 커뮤니티 한 줄(MKT feedDigest — feedFor에서 고르기만, 상태 · 난수 불변). 글이 없으면 뺀다 */}
             {feed.total > 0 && <div title="이번 진행 동안의 커뮤니티 글 — 화제 글은 가격 신호(💡) 글이 먼저, 없으면 댓글이 가장 많은 글">커뮤니티 — 글 {feed.total}개(좋음 {feed.pos} · 나쁨 {feed.neg}){feed.top ? <> · 화제: 「{feed.top.productName}」 {feed.top.community} "{feed.top.text.length > 40 ? `${feed.top.text.slice(0, 40)}…` : feed.top.text}"</> : null}</div>}
           </div>
