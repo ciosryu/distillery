@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { advanceMonth, applyAction } from './index';
 import { newScenarioGame } from './newScenario';
 import { CASK_MARKET, CASKS } from './content/catalog';
-import { emptyCask, EMPTY_ACTIVITY_FACTOR, EMPTY_SEASONING_FACTOR } from './maturation';
+import { emptyCask, EMPTY_ACTIVITY_FACTOR, EMPTY_SEASONING_FACTOR, refillState } from './maturation';
+import { tanninOutlook } from './warehouse';
+import { autoFillCasks } from './autoFill';
+import { usedCaskPrice } from './casks';
 import { emptyCaskOf, regionalCaskPrice } from './newGame';
 import { refillBlocker, refillUnitPrice } from './actions.prod';
 import type { GameState } from './types';
@@ -62,5 +65,28 @@ describe('#393 N1 리필 통', () => {
     const c = s.inventory.casks.find((x) => !before.has(x.id))!;
     expect(c.activity).toBe(CASKS.ex_bourbon_barrel.activity);
     expect(c.fills).toBe(0);
+  });
+
+  // ARCH 리뷰(2026-11-25): 리필 통이 12년 감점 풀이 · 자동 통입 순서 · 사용 횟수 표기에서 채웠다 뺀 통과 같은 길로 읽히는지
+  it('12년 탄닌 전망(#367 · #374 tanninOutlook)이 채웠다 뺀 통과 같다 — 활성도만 읽는다', () => {
+    const s = game();
+    const refill = Object.assign(emptyCaskOf(s, 'ex_bourbon_barrel'), refillState(CASKS.ex_bourbon_barrel));
+    const dumped = emptyCask({ ...emptyCaskOf(s, 'ex_bourbon_barrel'), fills: 1 });
+    const lot = { id: 'L', name: 'L', kind: 'malt' as const, volumeL: 190, abv: 0.635, flavor: { oak_tannin: 2 }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 1 };
+    const a = tanninOutlook(s, { ...refill, contents: { ...lot }, filledMonth: s.month, fills: 2 });
+    const b = tanninOutlook(s, { ...dumped, id: refill.id, contents: { ...lot }, filledMonth: s.month, fills: 2 });
+    expect(a).not.toBeNull();
+    expect(a).toEqual(b);
+  });
+  it('자동 통입 순서 · 사용 횟수 — 리필 통은 「재사용 통」(1회 사용)으로 읽힌다 · 중고 매각가도 같다', () => {
+    const s = game();
+    s.inventory.casks = [];
+    const fresh = emptyCaskOf(s, 'ex_bourbon_barrel');
+    const refill = Object.assign(emptyCaskOf(s, 'ex_bourbon_barrel'), refillState(CASKS.ex_bourbon_barrel));
+    s.inventory.casks.push(fresh, refill);
+    expect(autoFillCasks(s, { prefer: 'used' }).map((c) => c.id)).toEqual([refill.id, fresh.id]);
+    expect(autoFillCasks(s, {}).map((c) => c.id)).toEqual([fresh.id, refill.id]);
+    expect(refill.fills).toBe(1);
+    expect(usedCaskPrice(refill)).toBe(usedCaskPrice(emptyCask({ ...emptyCaskOf(s, 'ex_bourbon_barrel'), fills: 1 })));
   });
 });
