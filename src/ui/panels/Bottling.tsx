@@ -5,7 +5,7 @@ import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './H
 import { BOTTLE_SIZES, CASKS, PACKAGING } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
-import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, restockMix, restockPrior, recipeSharesOf, RESTOCK_PRIOR_SIGMA_FLOOR, batchQualityKnown, hidesProductQuality, restockFinishOff } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, restockMix, restockPrior, recipeSharesOf, RESTOCK_PRIOR_SIGMA_FLOOR, batchQualityKnown, hidesProductQuality, newFinishShort, restockFinishOff } from '../../sim';
 import { agedWhitePerception } from '../../sim/content/market';
 import { regionOf } from '../../sim/content/regions';
 import { autoRestockCeiling, autoRestockFloor, autoRestockHint, handRestockCount, STANDARD_BOTTLE, stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
@@ -396,7 +396,7 @@ export function Bottling() {
                 {preview.ageYears != null && <Badge tone="good">{preview.ageYears}년</Badge>}
                 {preview.agedLabel && <Badge tone="good">{preview.agedLabel}</Badge>}
                 {!masked && preview.evaluation?.style && <Badge>{preview.evaluation.style}</Badge>}
-                {preview.finish && <Badge tone="good">{finishLabel(preview.finish)}</Badge>}
+                {preview.finish && <Badge tone={newFinishShort(s, preview) ? 'warn' : 'good'}>{finishLabel(preview.finish)}{preview.finishMonths != null ? ` ${preview.finishMonths}개월` : ''}</Badge>}
                 {preview.sourcedShare > 0 && <Badge tone="warn">매입 원액 {pct(preview.sourcedShare, 0)} · 브랜드 가치 {Math.round(preview.sourcedPrestige * 100)}</Badge>}
                 {preview.premiumLabel && <Badge tone="good">{regionOf(s).whisky.premiumLabel?.name}</Badge>}
                 {preview.traditional && <Badge tone="good">{regionOf(s).traditionalRelief?.label}</Badge>}
@@ -405,6 +405,11 @@ export function Bottling() {
                 {preview.dfEdition && !preview.localIngredient && dutyFreeAgedAppeal(preview.ageYears) > 1 && <Badge tone="good">숙성 한정 · 수요 ×{dutyFreeAgedAppeal(preview.ageYears)}</Badge>}
                 {preview.dfEdition && <Badge tone="info">면세 한정판 Vol.{preview.dfEdition.vol}</Badge>}
               </div>
+              {/* [결정 #362] 새 제품 — 피니시 표기는 붙지만 피니시 통에 3개월(MKT 문턱) 미만 머물러 표기 효과가 없다(보충 쪽 경고는 보충 줄) */}
+              {!restockTarget && (() => {
+                const short = newFinishShort(s, preview);
+                return short ? <p className="text-xs text-amber-800 dark:text-amber-300">⚠ 피니시 통에서 {short.months}개월 — {short.min}개월 미만이라 「{finishLabel(preview.finish!)}」 표기는 붙지만 표기 효과(매력도 · 기대 가격)는 없다. 피니시 통에 {short.min}개월 이상 둔 뒤 병입하면 켜진다</p> : null;
+              })()}
               <dl className="grid grid-cols-2 gap-x-2 text-sm">
                 <dt className="text-stone-500">병 수</dt><dd className="text-right tabular-nums">{num(preview.bottles)}병</dd>
                 <dt className="text-stone-500">도수</dt><dd className="text-right tabular-nums">{pct(preview.finalAbv)} (원액 {pct(preview.mixAbv)})</dd>

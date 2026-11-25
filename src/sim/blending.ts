@@ -437,6 +437,15 @@ export function restockFinishOff(old: Pick<Product, 'finish' | 'finishMonths' | 
   return after < FINISH_EFFECT_MIN_MONTHS ? { before: old.finishMonths!, after, min: FINISH_EFFECT_MIN_MONTHS } : null;
 }
 
+/**
+ * [결정 #362 · PROD 새 제품 안내] 새 제품으로 병입할 때 피니시 표기는 붙지만 피니시 통에 머문 개월이 문턱(`FINISH_EFFECT_MIN_MONTHS`) 미만이라 표기 효과가 없는가.
+ * v16 판만(옛 판은 `finishMonths`를 남기지 않아 효과가 늘 중립 — 알릴 것이 없다). 피니시가 없으면 null
+ */
+export function newFinishShort(s: Pick<GameState, 'rulesVersion'>, pv: Pick<BlendPreview, 'finish' | 'finishMonths'>): { months: number; min: number } | null {
+  if (rulesVersionOf(s) === 'legacy-v15' || !pv.finish || pv.finishMonths == null) return null;
+  return pv.finishMonths < FINISH_EFFECT_MIN_MONTHS ? { months: pv.finishMonths, min: FINISH_EFFECT_MIN_MONTHS } : null;
+}
+
 export function restockedProduct(old: Product, batch: Product): Product {
   const a = Math.max(0, old.stockBottles);
   const b = batch.stockBottles;
