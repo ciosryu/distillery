@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { migrateSave } from './migrate';
 import { newScenarioGame } from './index';
-import { lateGoalsOf, updateLateGoals, visibleLateGoals } from './lateGoals';
+import { lateGoalProgress, lateGoalsOf, updateLateGoals, visibleLateGoals } from './lateGoals';
 import { caskEligibility } from './ledger';
 import type { GameState, MonthReport } from './types';
 import { LADDER_MID_WINDOW } from './content/scenarios';
@@ -17,11 +17,11 @@ describe('#388 ① G3 후반 목표 그릇', () => {
     const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5, rules: 'legacy-v15' });
     expect(lateGoalsOf(s)).toEqual([]);
   });
-  it('새 판: 108개월에 라운지 · 띠 목표는 LADDER_MID_WINDOW.opens(상수 하나 — 오너 안건 ⓐ 대기)에 열린다', () => {
+  it('새 판: 띠 목표는 72개월(#395)에 보이고 · 108개월에 라운지', () => {
     const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5, rules: 'v16' });
     expect(ids(s)).toEqual([]);
-    s.month = 108; expect(ids(s)).toEqual(['lounge_3']);
-    s.month = LADDER_MID_WINDOW.opens; expect(ids(s)).toEqual(['ladder_mid', 'lounge_3']);
+    s.month = LADDER_MID_WINDOW.opens; expect(LADDER_MID_WINDOW.opens).toBe(72); expect(ids(s)).toEqual(['ladder_mid']);
+    s.month = 108; expect(ids(s)).toEqual(['ladder_mid', 'lounge_3']);
   });
   it('9차 134(승리 전): 띠 · 라운지 두 개 — 늦게 본 목표로 건너뛰지 않고 기록도 없다(실패로 찍히지 않음) · 승리 뒤 300병 · 15년이 더해지고 18년은 15년 뒤', () => {
     const s = load();
@@ -56,5 +56,24 @@ describe('#388 ① G3 후반 목표 그릇', () => {
     expect(w).toBeGreaterThan(100); // 9차 134 — 가장 오래된 통
     expect(caskEligibility(s, c, w + 1).reasons.some((r) => r.startsWith('목재 숙성'))).toBe(true);
     expect(caskEligibility(s, c, w).reasons.some((r) => r.startsWith('목재 숙성'))).toBe(false);
+  });
+});
+
+describe('[결정 #395] ladder_mid checkFrom — 72에 보이고 120부터 판정', () => {
+  it('9차 134 세이브의 5 ~ 9년 띠를 6통 넘게 채워도 119개월까지는 기록하지 않고, 120개월에 달성으로 적는다(MGT 판정 그대로)', () => {
+    const s = load();
+    // 몰트 통 8개를 목재 70개월(5 ~ 9년 띠)로 — 판정 재료만 바꾼다
+    for (const c of s.inventory.casks.filter((x) => x.contents && x.contents.kind === 'malt').slice(0, 8)) c.contents!.oakMonths = 70;
+    expect(lateGoalProgress(s, 'ladder_mid')!.have).toBeGreaterThanOrEqual(6);
+    s.progress.lateGoals = [];
+    s.month = LADDER_MID_WINDOW.checkFrom - 1;
+    updateLateGoals(s, rep());
+    expect(s.progress.lateGoals).toEqual([]); // 판정 전 — 보이기만
+    expect(ids(s)).toContain('ladder_mid');
+    s.month = LADDER_MID_WINDOW.checkFrom;
+    const r = rep();
+    updateLateGoals(s, r);
+    expect(s.progress.lateGoals.find((g) => g.id === 'ladder_mid')?.result).toBe('done');
+    expect(r.notes.some((n) => n.startsWith('후반 목표 달성 — 숙성고'))).toBe(true);
   });
 });
