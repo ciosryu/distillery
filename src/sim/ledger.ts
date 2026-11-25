@@ -183,3 +183,24 @@ export function isCampaignCandidate(s: Pick<GameState, 'scenario' | 'siteId' | '
   if (!cask.contents || cask.owner) return false;
   return ledgerEligibility(s, ledgerOf(s, cask.contents), Math.max(0, horizonMonths)).eligible;
 }
+
+// ───────────── [결정 #407] 승리 미루기 보강 — 첫 적격 통이 생긴 달 ─────────────
+
+/**
+ * 첫 12년 승리 적격 원액이 생긴 달을 적는다(월말 `updateProgress`가 승리 판정 전에 부른다). v16 · 시나리오 · 승리 전 · 아직 없을 때만.
+ * 적격 = 승리 판정과 같은 `caskEligibility`인 통이 하나라도 있거나, 적격으로 병입한 로트(`commerce.lots[].eligibleAtBottling`)가 남아 있음(MGT 제안 — 병입만 하고 팔지 않아도 미룸).
+ * **그 달을 그대로 적는다**(거슬러 세지 않는다 — MGT · "벌하지 않음"): 필드가 없던 옛 세이브는 새 빌드로 처음 넘긴 달부터 센다. 상태 수치 · 난수에 닿지 않는다(기록만)
+ */
+export function recordFirstEligible(s: GameState): void {
+  if (!s.scenario || rulesVersionOf(s) === 'legacy-v15' || campaignWon(s) || s.progress.firstEligibleMonth != null) return;
+  const ready = (s.commerce.lots ?? []).some((l) => l.eligibleAtBottling && l.bottles > 0) || s.inventory.casks.some((c) => caskEligibility(s, c).eligible);
+  if (ready) s.progress.firstEligibleMonth = s.month;
+}
+
+/**
+ * 승리를 미룬 개월 — 첫 적격 통 달부터 `atMonth`(기본 지금)까지. 기록이 없으면 0(아직 적격 통이 없었다 · 옛 판). MGT `sNetWorthTarget`이 k × 이 값을 더한다(#407)
+ */
+export function winDelayMonths(s: Pick<GameState, 'progress' | 'month'>, atMonth: number = s.month): number {
+  const f = s.progress.firstEligibleMonth;
+  return f == null ? 0 : Math.max(0, atMonth - f);
+}
