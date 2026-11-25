@@ -682,7 +682,13 @@ const RESTOCK_KIND: Partial<Record<ProductCategory, SpiritKind>> = { soju_distil
  */
 export const newmakeRestock = (p: Pick<Product, 'category' | 'oakMonths' | 'recipeIds'>, s?: Pick<GameState, 'rulesVersion'>): boolean =>
   p.category === 'malt_spirit' && (p.oakMonths ?? 0) === 0 && !!p.recipeIds?.length && (!s || rulesVersionOf(s) !== 'legacy-v15');
-export const autoRestockSupported = (p: Product, s?: Pick<GameState, 'rulesVersion'>): boolean => !p.dutyFreeOnly && (!!RESTOCK_KIND[p.category] || newmakeRestock(p, s));
+/**
+ * [결정 #399 C] 블렌디드 위스키 자동 납품 — 첫 병입 비율(`restockMix`)이 있는 v16 제품만. 레시피마다 그 비율대로 몰트 · 그레인 통을 함께 고른다.
+ * `s`를 주지 않으면(화면 호출) 판 규칙은 보지 않는다
+ */
+export const blendedRestock = (p: Pick<Product, 'category' | 'restockMix'>, s?: Pick<GameState, 'rulesVersion'>): boolean =>
+  p.category === 'blended_whisky' && !!p.restockMix?.length && (!s || rulesVersionOf(s) !== 'legacy-v15');
+export const autoRestockSupported = (p: Product, s?: Pick<GameState, 'rulesVersion'>): boolean => !p.dutyFreeOnly && (!!RESTOCK_KIND[p.category] || newmakeRestock(p, s) || blendedRestock(p, s));
 /**
  * [결정 #370] 뉴본 자동 납품이 한 달에 쓰는 탱크 원액(L) 어림 — 화면 "탱크 몰트를 월 약 n L 쓴다 — 그만큼 통입할 원액이 준다"(MKT 판매 줄).
  * 판매 기대(`productMonthlyPace`) × 병당 알코올 ÷ 쓸 탱크 원액의 평균 도수(없으면 통입 도수 기준 63.5%). 뉴본이 아니면 null. 상태를 바꾸지 않는다
@@ -826,7 +832,7 @@ export const autoRestockSourceSelectable = (s: Pick<GameState, 'rulesVersion'>, 
   rulesVersionOf(s) !== 'legacy-v15' && !p.dutyFreeOnly && !!RESTOCK_KIND[p.category] && !isWhiskyCategory(p.category);
 /** [결정 #399] 이 위스키 제품이 「통 범위 · 통 종류」를 고를 수 있나 — v16 · 자동 납품 지원 싱글 몰트 · 그레인 위스키(블렌디드는 아직 아님) */
 export const autoRestockRangeSelectable = (s: Pick<GameState, 'rulesVersion'>, p: Product): boolean =>
-  rulesVersionOf(s) !== 'legacy-v15' && !p.dutyFreeOnly && !!RESTOCK_KIND[p.category] && isWhiskyCategory(p.category);
+  rulesVersionOf(s) !== 'legacy-v15' && !p.dutyFreeOnly && isWhiskyCategory(p.category) && (!!RESTOCK_KIND[p.category] || blendedRestock(p, s));
 /**
  * 화면 고르기 줄(MKT 판매 줄)의 선택지 — 「지금 규칙(제품 값)」 · 탱크 · 옹기 n개월↑ · 오크 n개월↑와, 지금 그 조건으로 쓸 수 있는 통 수(탱크는 탱크 로트 수).
  * 고른 값을 바꾸지 않고 센다(상태 불변)
@@ -853,6 +859,7 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
       .sort((a, b) => a.createdMonth - b.createdMonth || a.id.localeCompare(b.id))
       .map((l) => ({ comp: { source: 'lot' as const, id: l.id }, lot: l }));
   }
+  if (blendedRestock(p, s)) return whiskyCasks(s, p).allowed.map((c) => ({ comp: { source: 'cask' as const, id: c.id }, lot: c.contents }));
   const kind = RESTOCK_KIND[p.category];
   if (!kind) return [];
   // 같은 레시피 원액만 (#243 탱크 · #293 위스키·숙성 소주 통) — 숙성 표기만 맞는 다른 레시피 통으로 채워 제품의 레시피·스타일(#290 B1-9 피트 비중)이
@@ -887,9 +894,13 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
  * `held`는 띠 정책 때문에 뺀 통 수(띠별)
  */
 function whiskyCasks(s: GameState, p: Product, skip: { ceiling?: boolean; types?: boolean; policy?: boolean } = {}): { allowed: (Cask & { contents: SpiritLot })[]; held: Partial<Record<AgeBandId, number>> } {
+  // [결정 #399 C] 블렌디드 — 섞는 비율에 든 레시피의 몰트 · 그레인 통. 그 밖에는 범주의 원액 종류 · 제품 레시피 기록
+  const blended = blendedRestock(p, s);
   const kind = RESTOCK_KIND[p.category];
-  if (!kind) return { allowed: [], held: {} };
-  const sameRecipe = recipeFilter(p);
+  if (!kind && !blended) return { allowed: [], held: {} };
+  const mixRecipes = blended ? new Set(p.restockMix!.map((x) => x.recipeId)) : null;
+  const kindOk = (k: SpiritKind) => (blended ? k === 'malt' || k === 'grain' : k === kind);
+  const sameRecipe = mixRecipes ? (l: Pick<SpiritLot, 'recipeId'>) => !!l.recipeId && mixRecipes.has(l.recipeId) : recipeFilter(p);
   const minOak = autoRestockFloor(s, p);
   const maxOak = skip.ceiling ? Infinity : autoRestockCeiling(s, p);
   const types = skip.types ? null : whiskyRange(s, p)?.caskTypes?.length ? new Set<string>(whiskyRange(s, p)!.caskTypes) : null;
@@ -899,7 +910,7 @@ function whiskyCasks(s: GameState, p: Product, skip: { ceiling?: boolean; types?
   const excluded = autoRestockExcluded(s, p);
   const pref = preferredCaskIds(s);
   const ordered = s.inventory.casks.filter((c): c is Cask & { contents: SpiritLot } => !!c.contents && !c.owner && !c.handfill && !c.contaminationKnown && vesselMaterial(c) === 'wood'
-      && c.contents.kind === kind && !c.contents.sourced && c.contents.oakMonths >= minOak && c.contents.oakMonths <= maxOak && (!types || types.has(c.typeId))
+      && kindOk(c.contents.kind) && !c.contents.sourced && c.contents.oakMonths >= minOak && c.contents.oakMonths <= maxOak && (!types || types.has(c.typeId))
       && c.contents.abv >= minAbv && (finishOf(c.contents)?.typeId ?? null) === finish
       && !excluded.has(c.id) && sameRecipe(c.contents))
     .sort((a, b) => Number(pref.has(b.id)) - Number(pref.has(a.id)) || a.contents.oakMonths - b.contents.oakMonths || a.id.localeCompare(b.id));
@@ -912,10 +923,17 @@ function whiskyCasks(s: GameState, p: Product, skip: { ceiling?: boolean; types?
  * 결산 메모 · 판매 줄 경고가 같은 문구를 쓴다. 상태를 바꾸지 않는다
  */
 export function autoRestockShortReason(s: GameState, p: Product): string | null {
-  if (!isWhiskyCategory(p.category) || !RESTOCK_KIND[p.category]) return null;
+  if (!isWhiskyCategory(p.category) || (!RESTOCK_KIND[p.category] && !blendedRestock(p, s))) return null;
   const now = whiskyCasks(s, p);
-  if (now.allowed.length) return null;
   const parts: string[] = [];
+  // [결정 #399 C] 블렌디드 — 비율에 든 레시피 가운데 쓸 통이 없는 레시피가 있으면 그달은 채우지 못한다
+  if (blendedRestock(p, s) && now.allowed.length) {
+    const has = new Set(now.allowed.map((c) => c.contents.recipeId));
+    const miss = p.restockMix!.filter((x) => !has.has(x.recipeId));
+    if (!miss.length) return null;
+    parts.push(`섞는 비율대로 채울 ${miss.map((x) => `「${s.production.recipes.find((r) => r.id === x.recipeId)?.name ?? x.recipeId}」`).join(' · ')} 통이 없다`);
+  }
+  if (now.allowed.length && !parts.length) return null;
   const policy = agePolicyOf(s);
   for (const b of AGE_BANDS) {
     const n = now.held[b.id];
@@ -990,14 +1008,25 @@ export function autoRestockPlan(s: GameState, p: Product, monthOfYear = calendar
   if (need < 1) return null;
   const lpaNeed = (need + 1) * (p.bottleMl / 1000) * p.abv; // 병 수 내림을 생각해 1병 여유
   const components: BlendComponent[] = [];
-  let got = 0;
-  for (const x of autoRestockSources(s, p)) {
-    if (got >= lpaNeed) break;
-    const liters = Math.min(x.lot.volumeL, (lpaNeed - got) / x.lot.abv);
-    if (liters < 0.5) continue;
-    components.push({ ...x.comp, liters: Math.floor(liters * 10) / 10 });
-    got += Math.floor(liters * 10) / 10 * x.lot.abv;
-  }
+  const take = (list: { comp: Omit<BlendComponent, 'liters'>; lot: SpiritLot }[], lpa: number) => {
+    let got = 0;
+    for (const x of list) {
+      if (got >= lpa) break;
+      const liters = Math.min(x.lot.volumeL, (lpa - got) / x.lot.abv);
+      if (liters < 0.5) continue;
+      components.push({ ...x.comp, liters: Math.floor(liters * 10) / 10 });
+      got += Math.floor(liters * 10) / 10 * x.lot.abv;
+    }
+    return got;
+  };
+  if (blendedRestock(p, s)) {
+    // [결정 #399 C] 블렌디드 — 레시피마다 비율만큼(어린 통부터). 한 레시피라도 모자라면 모두 같은 몫으로 줄여 비율을 지킨다(어느 레시피든 통이 없으면 채우지 않는다)
+    const src = autoRestockSources(s, p);
+    const byRecipe = p.restockMix!.map((m) => ({ m, list: src.filter((x) => x.lot.recipeId === m.recipeId), avail: src.filter((x) => x.lot.recipeId === m.recipeId).reduce((t, x) => t + x.lot.volumeL * x.lot.abv, 0) }));
+    const f = Math.min(1, ...byRecipe.map((r) => (r.m.share > 0 ? r.avail / (lpaNeed * r.m.share) : Infinity)));
+    if (!(f > 0) || f * lpaNeed < (p.bottleMl / 1000) * p.abv) return null;
+    for (const r of byRecipe) take(r.list, lpaNeed * r.m.share * f);
+  } else take(autoRestockSources(s, p), lpaNeed);
   if (!components.length) return null;
   const opts: BottleOptions = { name: '', targetAbv: isCaskStrength(p) ? 'cask' : p.abv, bottleMl: p.bottleMl, chillFilter: p.chillFiltered, packagingId: p.packagingId, restockId: p.id , ...(p.packaging ? { packaging: p.packaging } : {}) };
   return { components, opts, target, need };
@@ -1031,7 +1060,7 @@ export function applyAutoRestock(s: GameState, report: MonthReport, monthOfYear 
     const plan = autoRestockPlan(s, p, monthOfYear);
     if (!plan) {
       // 원액이 있는데 계획이 빈 달(모자란 양이 1병 안팎이라 원액 0.5L 미만 — 9차 판 65개월째 뉴본 그레인)은 「원액이 없다」가 틀린 안내라 메모하지 않는다(채우는 양은 그대로)
-      if (p.stockBottles < Math.ceil(productMonthlyPace(s, p, monthOfYear) * (p.autoRestock ?? 0)) && !autoRestockSources(s, p).length) report.notes.push(`자동 납품 「${p.name}」 — 쓸 원액이 없어 못 채웠다${isWhiskyCategory(p.category) ? whiskyShortText(s, p) : vesselNeedText(s, p) ?? ' (탱크 원액 필요)'}`);
+      if (p.stockBottles < Math.ceil(productMonthlyPace(s, p, monthOfYear) * (p.autoRestock ?? 0)) && (!autoRestockSources(s, p).length || (blendedRestock(p, s) && autoRestockShortReason(s, p)))) report.notes.push(`자동 납품 「${p.name}」 — 쓸 원액이 없어 못 채웠다${isWhiskyCategory(p.category) ? whiskyShortText(s, p) : vesselNeedText(s, p) ?? ' (탱크 원액 필요)'}`);
       continue;
     }
     const pv = previewBlend(s, plan.components, plan.opts);

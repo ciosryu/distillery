@@ -242,7 +242,7 @@
 |---|---|---|
 | 1 sim | `autoRestockSource` 위스키 넓힘(`maxMonths?` · `caskTypes?` — 코어 `types.ts`) · `whiskyRange` · `autoRestockCeiling` · `inventory.agePolicy?` + `setAgePolicy` · `ageBand.ts defaultAgePolicy` · `agePolicyFilter` · 새 판 기본값(`newScenario.ts`) · 사유 메모 `autoRestockShortReason` | 이 PR |
 | 2 화면 | `AgePolicyRow.tsx`(띠 정책 표 · 띠별 통 수 · 「자동이 지금 쓸 수 있는 통 n」) · 판매 줄 통 범위 고르기 선택지 함수(MKT) · 홈 띠 줄 자물쇠(ARCH) | 다음 |
-| 3 블렌디드 | `restockMix`(첫 병입 비율 — C) | 다음 |
+| 3 블렌디드 | `restockMix`(첫 병입 비율 — C) · 레시피마다 비율만큼 · 모자라면 같은 몫으로 줄임 · 한 레시피 통이 없으면 건너뛰고 사유 메모 | ③ PR(①위) |
 | 4 알리기 | 손 보충 3번 뒤 「자동 납품을 켜면」 한 줄 · 3달 연속 못 채움 warn | 다음 |
 
 - **설계와 달라진 이름:** `policyAllows(s, cask, drawL)` 대신 `agePolicyFilter(s, ordered)` — 자동 납품 후보를 쓸 순서대로 받아 정책이 허락하는 통만 순서 그대로 남긴다. `keep k` 띠는 (그 띠 통 수 − k)통만 앞에서부터 쓰고, 조금이라도 뽑는 통은 「쓴 통」으로 센다. 그래서 후보 목록(`autoRestockSources`)이 이미 정책을 지키고, 계획(`autoRestockPlan`) · 공급 지평(`supplyHorizon`) · 통 다툼(`autoRestockContest`)이 따로 셈하지 않는다.

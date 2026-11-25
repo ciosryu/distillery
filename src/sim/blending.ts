@@ -475,6 +475,9 @@ export function restockedProduct(old: Product, batch: Product): Product {
   // 레시피 — 남은 재고가 있으면 합집합, 한쪽이라도 기록이 없으면(옛 제품) 기록 없음(모든 원액)
   const rec = fresh ? batch.recipeIds : old.recipeIds && batch.recipeIds ? [...new Set([...old.recipeIds, ...batch.recipeIds])].sort() : undefined;
   if (rec?.length) merged.recipeIds = rec; else delete merged.recipeIds;
+  // [결정 #399 C] 섞는 비율은 처음 남긴 값을 지킨다 — 없던 옛 제품은 이번 배치(손 보충)의 비율을 남긴다
+  const mix = old.restockMix ?? batch.restockMix;
+  if (mix) merged.restockMix = mix; else delete merged.restockMix;
   if (!merged.restMonths) delete merged.restMonths;
   return merged;
 }
@@ -524,6 +527,14 @@ export function recipeSharesOf(s: GameState, components: BlendComponent[]): Reci
   return [...m.entries()].map(([recipeId, lpa]) => ({ recipeId, lpa })).sort((a, b) => a.recipeId.localeCompare(b.recipeId));
 }
 
+/** [결정 #399 C] 레시피별 LPA → 섞는 비율(합 1, 소수 넷째 자리). 레시피 없는 몫('')이 있거나 레시피가 둘 미만이면 undefined */
+export function restockMixOf(shares: readonly RecipeShare[]): { recipeId: string; share: number }[] | undefined {
+  const total = shares.reduce((t, x) => t + x.lpa, 0);
+  if (!(total > 0) || shares.some((x) => !x.recipeId && x.lpa > 0)) return undefined;
+  const out = shares.filter((x) => x.lpa > 0).map((x) => ({ recipeId: x.recipeId, share: Math.round((x.lpa / total) * 10000) / 10000 }));
+  return out.length >= 2 ? out : undefined;
+}
+
 /** 섞는 원액의 레시피 집합(#243) — 원액을 빼기 **전에** 읽는다. 제품 레시피 기록(`recipeIds`)에 쓴다 */
 export function recipeIdsOf(s: GameState, components: BlendComponent[]): string[] {
   return [...new Set(components.filter((c) => c.liters > 0).map((c) => lotOf(s, c)?.recipeId).filter((x): x is string => !!x))].sort();
@@ -566,6 +577,8 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   // 섞은 원액의 레시피 (#243) — 자동 납품이 다른 제품 몫 원액을 가져가지 않게(5차 판: 「안성 소주」 자동 납품이 탱크 소주를 다 써 「옹기소주」를 못 채움).
   // 원액을 빼기 **전에** 읽는다 — 다 쓴 탱크·통은 빼고 나면 원액이 없어 기록이 빠졌다(통째 병입한 위스키는 늘 비었다)
   const recipeIds = recipeIdsOf(s, components);
+  // [결정 #399 C] 블렌디드의 섞는 비율(레시피별 LPA 몫) — 원액을 빼기 **전에** 읽는다. v16 · 블렌디드만 · 레시피 기록 없는 원액이 섞이면 남기지 않는다
+  const mix = p.category === 'blended_whisky' && rulesVersionOf(s) !== 'legacy-v15' ? restockMixOf(recipeSharesOf(s, components)) : undefined;
   // F2 원장 지점 17·18: 병입 — 원천마다 뽑은 리터 비율로 분할해(손실 아님) 병입 로트에 이어 붙인다(평균 안 냄). 원장이 없는 원천은 합성(`ledgerOf` — 옛 판은 unknown)
   const bottledLedger: LedgerEntry[] = [];
   const takeLedger = (lot: SpiritLot, liters: number): LedgerEntry[] | undefined => {
@@ -627,6 +640,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     ...(caskMonthsMix?.length ? { caskMonthsMix } : {}),
     ...(p.peatShare > 0 ? { peatShare: p.peatShare } : {}),
     ...(recipeIds.length ? { recipeIds } : {}),
+    ...(mix ? { restockMix: mix } : {}),
     ...(opts.dutyFreeOnly && p.dfEdition ? { dutyFreeOnly: true, dfEdition: { ...p.dfEdition } } : {}),
     ...(knownBatch ? { qualityKnown: knownBatch } : {}),
   };
