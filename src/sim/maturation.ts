@@ -1,5 +1,5 @@
 import { CASKS, NON_WOOD_VESSEL, SEASONING_EXTRACT, WOOD_EXTRACT } from './content/catalog';
-import { SHERRY_BIND } from './stillShape'; // [결정 #422 (b)]
+import { BOURBON_ESTER, SHERRY_BIND } from './stillShape'; // [결정 #422 (b) · #430]
 import { clamp, clampFlavor } from './flavor';
 import type { AxisId, Cask, CaskTypeId, Flavor, LossKind, MonthReport, SpiritLot, VesselMaterial } from './types';
 
@@ -102,6 +102,15 @@ export function matureCask(cask: Cask, climate: Climate, opts: MatureOptions): {
     if (rho > 0 && sigma > 0) {
       f.oak_tannin = Math.max(0, (f.oak_tannin ?? 0) - SHERRY_BIND.tanninPerMonth * rho * sigma);
       bump('integration', SHERRY_BIND.integrationPerMonth * rho * sigma);
+    }
+  }
+  // [결정 #430] 버번 × 에스테르 반응 — 형태를 고른 증류기의 가벼운 원액만(바디가 낮을수록). 버번 시즈닝 통 · 6년 뒤
+  if (lot.stillShape && seasoningType === 'bourbon' && months > BOURBON_ESTER.fromMonths) {
+    const lam = Math.min(1, Math.max(0, (BOURBON_ESTER.bodyTo - (f.body ?? 0)) / BOURBON_ESTER.bodySpan));
+    if (lam > 0) {
+      bump('fresh_fruit', BOURBON_ESTER.fruitPerMonth * lam, 80);
+      bump('floral', BOURBON_ESTER.floralPerMonth * lam, 80);
+      bump('integration', BOURBON_ESTER.integrationPerMonth * lam);
     }
   }
   if ((cask.wood === 'korean_oak' || cask.wood === 'mizunara') && months > 72) bump('incense', cask.wood === 'mizunara' ? 0.18 : 0.12);
