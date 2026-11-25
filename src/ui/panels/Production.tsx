@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { rulesVersionOf, RETAIL_DEAL } from '../../sim';
+import { rulesVersionOf, RETAIL_DEAL, slotsDifferFromCasks } from '../../sim';
 import { BOTANICALS, EQUIPMENT, INGREDIENTS, YEASTS } from '../../sim/content/catalog';
 import {
   basePresetOf, craftPresets, equipmentCost, flavorProfile, leverEffects, leverSummary, describeLeverEffect, monthLabel, presetAsRecipe, steadyBatch, stillDefOf, validateRecipe,
@@ -15,6 +15,7 @@ import { logisticsMultiplier, regionOf, REGIONS, siteOf } from '../../sim/conten
 import { liters, num, pct, won } from '../format';
 import { sojuSupply, SOJU_STOCK_WARN_MONTHS } from '../../sim/economics';
 import { Badge, Button, Card, ConfirmButton, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
+import { newFacilities } from '../alerts'; // #388 ① A3 새로 열린 시설 띠(ARCH · PROD 동의)
 
 const KIND_LABEL: Record<SpiritKind, string> = { soju: '증류식 소주·쇼추', gin: '진', malt: '몰트', grain: '그레인', baijiu: '백주(고량주)' };
 
@@ -299,7 +300,7 @@ function WhiskySupply() {
         숙성 {min}개월을 채워 "위스키"가 되는 때로 셉니다(증발 연 5% 근사). <span className="text-red-700">빨강</span> = 수요 속도의 80% 미만(그해 팔 위스키가 모자람),{' '}
         <span className="text-emerald-700">초록</span> = 적정, <span className="text-amber-700">노랑</span> = 2배 넘음(재고가 쌓임). 지금 생산을 줄이면 {Math.ceil(min / 12)}년 뒤 칸부터 줄어듭니다.
         {tank.liters > 0 && (
-          <> 탱크 몰트 {liters(tank.liters)}는 지금 통입한다고 본 값입니다 — 200L 통 약 {num(tank.casks200)}개가 필요하고 숙성고 남은 자리는 {num(tank.freeSlots)}개{tank.casks200 > tank.freeSlots ? <b className="text-red-700"> (자리 부족 — 숙성고를 늘리지 않으면 그만큼 늦어집니다)</b> : ''}.</>
+          <> 탱크 몰트 {liters(tank.liters)}는 지금 통입한다고 본 값입니다 — 200L 통 약 {num(tank.casks200)}개{slotsDifferFromCasks(s) ? `(${num(tank.casks200)}칸)` : ''}가 필요하고 숙성고 남은 자리는 {num(tank.freeSlots)}{slotsDifferFromCasks(s) ? '칸' : '개'}{/* #360 — 자리는 칸으로 센다(tankFillNeed.freeSlots = 정원 − slotsUsed) · 200L 통은 1칸 (PM 2026-11-24) */}{tank.casks200 > tank.freeSlots ? <b className="text-red-700"> (자리 부족 — 숙성고를 늘리지 않으면 그만큼 늦어집니다)</b> : ''}.</>
         )}
       </p>
     </div>
@@ -670,6 +671,9 @@ function FreeControls({ s, draft, set }: { s: GameState; draft: Draft; set: SetD
 export function Equipment() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
+  const fresh = new Map(newFacilities(s).map((f) => [f.id, f.openedMonth])); // [#388 ① A3] 단계로 열렸고 아직 사지 않은 시설 — 사기 전까지 띠가 남는다
+  // 선행 설비 — 이미 있으면 「… 있음」(9차 134: 베이직 투어를 4개월째부터 가졌는데 「베이직 투어 필요」로 떠 없는 것처럼 읽혔다 — PM 확인 2026-11-24)
+  const reqText = (req?: string) => { if (!req) return ''; const own = s.production.equipment.filter((e) => e.catalogId === req); return ` · ${EQUIPMENT[req]?.nameKo ?? req} ${!own.length ? '필요' : own.some((e) => e.readyMonth <= s.month) ? '있음 ✓' : '설치 중(발주는 된다)'}`; }; // 짓는 중인 선행 설비도 발주는 된다(actions.prod buyEquipment) — 「있음」과 나눠 적는다(PROD 리뷰). 증류기는 수리 때도 readyMonth > 지금이라 선행 설비가 되면 「설치 중」으로 잘못 뜬다 — 지금 `requires`는 비지터 센터뿐(PROD 확인)
   return (
     <Card title="설비">
       <div className="grid gap-4 [&>*]:min-w-0">
@@ -693,9 +697,9 @@ export function Equipment() {
           <Table head={['설비', '사양', '가격', '설치 기간', '']}>
             {Object.values(EQUIPMENT).filter((d) => !(d.kind === 'facility' && d.regions && !d.regions.includes(s.regionId)) && !isLocked(s, `facility:${d.id}`)).map((d) => (
               <tr key={d.id}>
-                <Td>{d.nameKo}</Td>
+                <Td>{d.nameKo}{fresh.has(d.id) && <> <Badge tone="warn">새로 열림 · {Math.max(0, s.month - fresh.get(d.id)!) ? `${s.month - fresh.get(d.id)!}개월 전` : '이번 달'}</Badge></>}</Td>
                 <Td className="text-xs text-stone-500">
-                  {d.kind === 'still' ? `월 ${d.runsPerMonth}회 · 환류 ${d.reflux}${d.vacuum ? ' · 감압' : ''}${d.ginBasket ? ' · 진 바스켓' : ''}` : d.kind === 'fermenter' ? `${d.capacityL.toLocaleString()}L` : d.kind === 'warehouse' ? `+${d.casks} 캐스크 · ${d.warehouseType === 'dunnage' ? '더니지' : '랙'} ${d.tiers}단` : d.kind === 'facility' ? `${d.note}${d.requires ? ` · ${EQUIPMENT[d.requires]?.nameKo ?? d.requires} 필요` : ''}` : `${d.note ?? `방문객 월 ${d.visitorsPerMonth}명 · 1인 ${won(d.spendPerVisitor)}`}${d.requires ? ` · ${EQUIPMENT[d.requires]?.nameKo} 필요` : ''}`}
+                  {d.kind === 'still' ? `월 ${d.runsPerMonth}회 · 환류 ${d.reflux}${d.vacuum ? ' · 감압' : ''}${d.ginBasket ? ' · 진 바스켓' : ''}` : d.kind === 'fermenter' ? `${d.capacityL.toLocaleString()}L` : d.kind === 'warehouse' ? `+${d.casks} 캐스크 · ${d.warehouseType === 'dunnage' ? '더니지' : '랙'} ${d.tiers}단` : d.kind === 'facility' ? `${d.note}${reqText(d.requires)}` : `${d.note ?? `방문객 월 ${d.visitorsPerMonth}명 · 1인 ${won(d.spendPerVisitor)}`}${reqText(d.requires)}`}
                 </Td>
                 <Td right>{won(equipmentCost(s, d))}{equipmentCost(s, d) !== d.cost && <div className="text-xs text-stone-500">입지 반영 (기준 {won(d.cost)})</div>}</Td>
                 <Td right>{d.leadMonths}개월</Td>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonths, newScenarioGame, SAVE_VERSION } from '../sim';
-import { activeMsAt, advanceKindOf, buildDrift, freshPlaylog, parsePlayFile, recentActionCount, withAction, withBuild, withTurns, type PlayFile } from './playlog';
+import { activeMsAt, advanceKindOf, buildDrift, freshPlaylog, opsAdvanceSummary, parsePlayFile, recentActionCount, withAction, withAdvance, withBuild, withTurns, type PlayFile } from './playlog';
 
 // 플레이 기록 (mvp.md §7.2) — 순수한 부분만. 시계(입력·화면 보임)는 브라우저에서만 돈다
 
@@ -73,5 +73,22 @@ describe('플레이 기록', () => {
     expect(recentActionCount(l, 'fillCasks', 13 - 12)).toBe(2); // 1월 턴(month 1)은 기준(1) 이하라 빠진다
     expect(recentActionCount(l, 'fillCasks', 0)).toBe(4);
     expect(recentActionCount({ turns: [{ month: 5, activeMs: 0, actions: 0 }] }, 'fillCasks', 0)).toBe(0); // 옛 기록(종류 없음)
+  });
+});
+
+// [#388 ① A1] 운영 모드 진행 기록 — 1개월 진행은 남기지 않고, 분기 진행의 끝까지 · 멈춤 사유를 센다
+describe('#388 ① A1 advances 기록', () => {
+  it('여러 달 진행만 남기고 요약한다', () => {
+    let l = freshPlaylog(0);
+    l = withAdvance(l, { month: 130, kind: 'month', ops: false, asked: 1, went: 1 });
+    l = withAdvance(l, { month: 131, kind: 'quarter', ops: true, asked: 3, went: 3 });
+    l = withAdvance(l, { month: 134, kind: 'quarter', ops: true, asked: 3, went: 2, stop: 'caskBid' });
+    l = withAdvance(l, { month: 136, kind: 'quarter', ops: false, asked: 3, went: 3 });
+    expect(l.advances).toHaveLength(3);
+    const s = opsAdvanceSummary(l.advances);
+    expect(s.opsRuns).toBe(2);
+    expect(s.opsFirstMonth).toBe(131);
+    expect(s.quarter[0]).toEqual({ ops: true, tried: 2, full: 1, stops: { caskBid: 1 } });
+    expect(s.quarter[1]).toEqual({ ops: false, tried: 1, full: 1, stops: {} });
   });
 });

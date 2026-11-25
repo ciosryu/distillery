@@ -1,5 +1,8 @@
-import { useEffect, useState, type ReactElement } from 'react';
-import { BANKRUPT_AFTER_MONTHS, isLocked, monthLabel, type GameState, type RegionId, rulesVersionOf } from './sim';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { BANKRUPT_AFTER_MONTHS, campaignWon, isLocked, monthLabel, type GameState, type RegionId, rulesVersionOf } from './sim';
+
+/** [#388 ① A1] 운영 모드를 켤 수 있는 달(경과 개월) — 승리 뒤에는 언제나 `[튜닝]` */
+const OPS_MODE_FROM = 120;
 import { REGIONS, siteOf } from './sim/content/regions';
 import { SCENARIOS } from './sim/content/scenarios';
 
@@ -10,6 +13,7 @@ import { BusinessPlan } from './ui/BusinessPlan';
 import { ackBuild, buildDrift, exportPlayFile, getPlaylog, recordBuild, startPlayClock } from './store/playlog';
 import { BUILD_ID } from './build';
 import { MvpHome } from './ui/MvpHome';
+import { useUnseenFacilities } from './ui/seenFacilities';
 import { CashBanner, SkipBanner } from './ui/AlertsView';
 import { Verdict } from './ui/Verdict';
 import { useUi } from './store/ui';
@@ -72,6 +76,12 @@ export default function App() {
   const rawTab = useUi((u) => u.tab);
   const setTab = useUi((u) => u.setTab);
   const tabs = visibleTabs(s);
+  const opsMode = useUi((u) => u.opsMode);
+  const setOpsMode = useUi((u) => u.setOpsMode);
+  // [#388 ① A1] 운영 모드는 시나리오 판의 종반(120개월 또는 승리 뒤)에만 — 켜 둔 채 새 판을 열면 초반에는 꺼진 것으로 본다
+  const opsOffered = !!s.scenario && (s.month >= OPS_MODE_FROM || campaignWon(s));
+  const opsOn = opsOffered && opsMode;
+  const unseenFacilities = useUnseenFacilities(s); // #388 ① A3 — 증류소 탭 점
   const tab = tabs.some((x) => x.id === rawTab) ? rawTab : tabs[0]!.id;
   const [planOpen, setPlanOpen] = useState(startedFresh);
   const [newGameOpen, setNewGameOpen] = useState(false);
@@ -86,9 +96,21 @@ export default function App() {
   }, [toast, clearToast]);
 
   const running = s.status === 'running';
+  // 고정 머리글 높이를 CSS 변수(--hdr-h)로 — 바로가기 이동(scrollIntoView)의 위 여백(.scroll-mt-28, index.css)이 머리글 아래에 멈추게.
+  // 「판 도중 빌드가 바뀌었다」 띠 · 현금 경고가 뜨면 머리글이 190px까지 커져 112px 고정 여백으로는 이동한 줄의 머리가 가려졌다(PM 2026-11-24 · 1,440 × 900)
+  const headerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const set = () => document.documentElement.style.setProperty('--hdr-h', `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-10 border-b border-stone-200 bg-white/90 backdrop-blur dark:border-stone-800 dark:bg-stone-900/90">
+      <header ref={headerRef} className="sticky top-0 z-10 border-b border-stone-200 bg-white/90 backdrop-blur dark:border-stone-800 dark:bg-stone-900/90">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div>
             <h1 className="text-base font-bold">{s.distilleryName} <ModeBadge s={s} /> <span className="text-xs font-normal text-stone-500">Distillery Tycoon · {s.siteId ? `${REGIONS[s.regionId].nameKo.replace(/\s*\(.*\)$/, '')} (${siteOf(s).nameKo})` : REGIONS[s.regionId].nameKo}</span></h1>
@@ -102,9 +124,15 @@ export default function App() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="primary" disabled={!running || !!advancing} onClick={() => advance(1)}>1개월 진행</Button>
-            <Button disabled={!running || !!advancing} onClick={() => advance(3)}>분기 진행</Button>
-            <Button disabled={!running || !!advancing} onClick={() => advance(12)}>1년 진행</Button>
+            {/* [#388 ① A1] 종반 운영 모드 — 120개월 또는 승리 뒤에 켤 수 있다. 켜면 기본 버튼이 「분기 진행」이고, 분기 · 1년 진행이 선택 이벤트 · 의뢰 · IB 입찰 · 목표 달성에서도 멈춘다(OPS_STOPS) */}
+            {opsOffered && (
+              <label className="flex items-center gap-1 text-xs text-stone-600 dark:text-stone-300" title="종반 운영 모드 — 분기 단위로 굴린다. 분기 · 1년 진행이 현금 경고 · 판정 · 12년 적격에 더해 선택 이벤트 · 블렌딩 의뢰 · IB 입찰 제안 · 목표 달성에서 멈춘다. 자동 채우기 · 자동 통입은 따로 켠다(설정은 이 브라우저에만 남는다)">
+                <input type="checkbox" checked={opsMode} onChange={(e) => setOpsMode(e.target.checked)} className="accent-amber-700" /> 운영 모드
+              </label>
+            )}
+            <Button variant={opsOn ? undefined : 'primary'} disabled={!running || !!advancing} onClick={() => advance(1)}>1개월 진행</Button>
+            <Button variant={opsOn ? 'primary' : undefined} disabled={!running || !!advancing} onClick={() => advance(3, opsOn)}>분기 진행</Button>
+            <Button disabled={!running || !!advancing} onClick={() => advance(12, opsOn)}>1년 진행</Button>
             {advancing
               ? <Button variant="ghost" onClick={cancelAdvance}>자동 진행 중 {advancing.done}/{advancing.total} — 멈춤</Button>
               : <Button disabled={!running} onClick={() => void advanceUntil(24)} title="선택 이벤트·예보·현금 경고·설비 가동 시작·블렌딩 의뢰·12년 적격 통 중 하나가 생기면 멈춘다 (최대 24개월)">다음 알림까지</Button>}
@@ -153,6 +181,7 @@ export default function App() {
           {tabs.map((t) => (
             <button key={t.id} onClick={() => setTab(t.id)} className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm ${tab === t.id ? 'border-amber-700 font-semibold text-amber-800 dark:border-amber-400 dark:text-amber-300' : 'border-transparent text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100'}`}>
               {t.label}
+              {t.id === 'home' && unseenFacilities.length > 0 && <span className="ml-1 inline-block h-2 w-2 rounded-full bg-amber-500 align-middle" title={`새로 열린 시설 ${unseenFacilities.length} — 증류소 탭 「설비」 묶음`} aria-label={`새로 열린 시설 ${unseenFacilities.length}`} />}
             </button>
           ))}
         </nav>

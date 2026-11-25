@@ -9,9 +9,17 @@ import { rulesVersionOf } from './rules';
 // Godot 이식(Phase G)에서는 C# 라이브러리가 같은 모양을 구현한다. 화면·store는 이 계약만 안다.
 
 /** 자동 진행이 멈추는 이유 (PRD §2.1 "다음 이벤트·알림까지 진행") */
-export type StopReason = 'pendingEvent' | 'cashWarning' | 'bankrupt' | 'gameOver' | 'verdict' | 'equipmentReady' | 'forecast' | 'commission' | 'flagshipReady' | 'maxMonths';
+export type StopReason = 'pendingEvent' | 'cashWarning' | 'bankrupt' | 'gameOver' | 'verdict' | 'equipmentReady' | 'forecast' | 'commission' | 'flagshipReady' | 'caskBid' | 'goalDone' | 'maxMonths';
 
 export const DEFAULT_STOPS: StopReason[] = ['pendingEvent', 'cashWarning', 'bankrupt', 'gameOver', 'verdict', 'equipmentReady', 'forecast', 'commission', 'flagshipReady'];
+
+/**
+ * [#388 ① A1] 종반 운영 모드의 여러 달 진행 — 안전 정지(현금 · 파산 · 끝 · 판정 · 12년 적격)에 더해 **결정이 필요한 것**에서 멈춘다:
+ * 선택 이벤트 · 블렌딩 의뢰(6개월 마감) · IB 입찰 제안(2개월 안에 답) · 중반 · 후반 목표 달성. 9차 판: 133번 모두 1개월 진행 — 분기 진행은 이것들을 지나쳤다(endgame.md §7.4)
+ */
+export const OPS_STOPS: StopReason[] = ['cashWarning', 'bankrupt', 'gameOver', 'verdict', 'flagshipReady', 'pendingEvent', 'commission', 'caskBid', 'goalDone'];
+
+const doneGoals = (s: GameState) => (s.progress.midGoals ?? []).filter((g) => g.result === 'done').length + (s.progress.lateGoals ?? []).filter((g) => g.result === 'done').length;
 
 /**
  * 새 캠페인(v16) 승리 전 — 승리 적격 통(승리 판정과 같은 `caskEligibility`)이 하나라도 있는가.
@@ -53,6 +61,9 @@ export function stopReasonOf(prev: GameState, next: GameState, stopOn: StopReaso
   if (on.has('commission') && next.commerce.commissions.some((c) => !prev.commerce.commissions.some((d) => d.id === c.id))) return 'commission';
   // 12년 적격 통이 처음 생긴 달 — 판에서 가장 큰 소식(승리 출고 재료). 상태는 읽기만 해 출력 불변
   if (on.has('flagshipReady') && hasWinReadyCask(next) && !hasWinReadyCask(prev)) return 'flagshipReady';
+  // [#388 ① A1] IB 입찰 제안(2개월 안에 답) · 목표 달성 — 읽기만 한다(출력 불변)
+  if (on.has('caskBid') && next.b2b.caskBids.some((b) => !prev.b2b.caskBids.some((c) => c.id === b.id))) return 'caskBid';
+  if (on.has('goalDone') && doneGoals(next) > doneGoals(prev)) return 'goalDone';
   return null;
 }
 

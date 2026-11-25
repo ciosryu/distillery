@@ -1,10 +1,11 @@
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { winChannelLabel } from './winLabel'; // F5c-2 승리 채널 문구
 import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { CaskTagBar, CaskTagChips } from './CaskTags';
 import { TurnBrief } from './TurnBrief';
 import { AutoFillRow } from './panels/AutoFill';
-import { CaskCareRow } from './panels/CaskCare'; // #345 GAP-PROD-7 (PROD)
+import { AGE_BANDS, bandCounts, thinBands, THIN_BAND_CASKS } from '../sim/ageBand'; // #380 연령 띠 정의(PROD)
+import { CaskCareRow, NewCaskOutlook } from './panels/CaskCare'; // #345 GAP-PROD-7 · #355 탄닌 전망 (PROD)
 import { FinishRow } from './panels/FinishRow'; // #345 GAP-PROD-4 피니싱 (PROD 부품 · ARCH 끼움)
 import { getPlaylog, recentActionCount } from '../store/playlog';
 import { PendingEventChoices } from './panels/Events';
@@ -19,8 +20,9 @@ import { tanninOutlook } from '../sim/warehouse'; // P-PROD-66 a·b (PROD 계산
 import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
 import { equipmentCost } from '../sim/sites';
-import { GRADE, campaignMinOakMonths, campaignWon, caskTagIds, HINT_HORIZON_MONTHS, rulesVersionOf, reserveCaskIds, isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
+import { caskSlots, pendingOrderSlots, slotsDifferFromCasks, slotsUsed, GRADE, campaignMinOakMonths, campaignWon, caskTagIds, HINT_HORIZON_MONTHS, rulesVersionOf, reserveCaskIds, isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
 import { useGame } from '../store/game';
+import { markFacilitiesSeen, useUnseenFacilities } from './seenFacilities'; // #388 ① A3
 import { useUi } from '../store/ui';
 import { FixedCostLine } from './panels/FixedCost';
 import { LineChart } from './charts';
@@ -28,7 +30,7 @@ import { CashFlowLine, JourneyStrip, MonthTodo, OPEN_FOLD_EVENT } from './Alerts
 import { AutoSampleSettingsRow } from './panels/AutoSample';
 import { HandfillRow } from './panels/Handfill';
 import { flagshipCaskHint } from './gradeHints'; // 결정 #339 등급 화면 힌트
-import { cashAlert, flagshipCandidates, flagshipImpact, flagshipReady, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
+import { cashAlert, contamNote, flagshipCandidates, flagshipImpact, flagshipReady, taintedSpirit, TAINT_SPIRIT_NOTE, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
 import { monthlyFixedBreakdown } from '../sim/loans';
 import { PriceDesk } from './panels/Sales';
 import { FeedCard } from './FeedCard'; // 커뮤니티 반응 요약 (#247, MKT — 오너 요청 2026-11-14)
@@ -200,7 +202,9 @@ function WarehouseFold() {
           {stale > 0 && <Badge tone="warn">샘플 시기 {stale}통</Badge>}
           {/* 핸드필 통이 빈 것을 접힌 칸에서도 (5차 판: "빈 사실을 확인하기 힘들다") */}
           {hasHandfillZone(s) && !handfillCask(s) && <Badge tone="warn">핸드필 통 없음 — 펼쳐서 고르기</Badge>}
-          <span className="text-stone-600 dark:text-stone-300">자리 {s.inventory.casks.length}/{warehouseCapacity(s)}</span>
+          {/* [결정 #360] v16 캠페인은 칸으로(400L↑ 통은 2칸) — 옛 판 · 샌드박스는 통 = 칸 */}
+          <span className={slotsUsed(s) > warehouseCapacity(s) ? 'font-medium text-rose-700 dark:text-rose-400' : 'text-stone-600 dark:text-stone-300'}>자리 {slotsUsed(s)}/{warehouseCapacity(s)}{slotsDifferFromCasks(s) ? '칸' : ''}</span>
+          <AgeBandStrip s={s} />
         </FoldBar>
       </Card>
       {open && <WarehouseCard />}
@@ -226,13 +230,21 @@ function Headline() {
   const left = sc && legacyRules ? sc.goal.months - s.month : null;
   // 12년 플래그십 후보 통 (#240) — 판이 끝나기 전에 플래그십 숙성을 채울 수 있는 통. 목표까지 남은 달이 플래그십 숙성보다 짧아지면
   // 새로 넣는 통은 후보가 될 수 없다 → 그 뒤 후보 0이면 15년 목표(플래그십 판매)를 이룰 수 없다(5차 판, mvp.md §7.16)
-  const cands = sc ? flagshipCandidates(s).length : 0;
+  const candList = sc ? flagshipCandidates(s) : [];
+  const cands = candList.length;
+  // [결정 #379] 후보 원액 양 — 「후보 n통 · 약 x L(약 y병 · 덜 찬 통 k)」(9차 판: 후보 5통 ≈ 741L인데 통 수만 보였다). 부피 · 도수는 공개 정보.
+  // 병 수는 46% · 700ml로 센 어림(병입 도수 · 손실에 따라 다르다), 덜 찬 통 = 원액이 통 크기의 절반 미만
+  const candL = candList.reduce((t, c) => t + (c.contents?.volumeL ?? 0), 0);
+  const candBottles = candList.reduce((t, c) => t + (c.contents ? (c.contents.volumeL * c.contents.abv) / (0.46 * 0.7) : 0), 0);
+  const candThin = candList.filter((c) => (c.contents?.volumeL ?? 0) < c.sizeL * 0.5).length;
+  const candAmount = cands > 0 ? ` · 약 ${Math.round(candL).toLocaleString()}L(약 ${(Math.round(candBottles / 10) * 10).toLocaleString()}병${candThin ? ` · 덜 찬 통 ${candThin}` : ''})` : '';
+  const candBad = contamNote(candList); // [결정 #365 고침 · #382] 아는 오염 통 · 오염 원액이 든 통도 후보로 센다(판정 그대로) — 빼지 않고 함께 보인다
   const flagDone = campaignWon(s);
   // 12년 적격 (6차 판 arch.md ① — 적격 달에 "0개월 뒤 도달"만 보여 12개월 늦게 병입): 승리 판정과 같은 적격(caskEligibility)으로 "지금 병입하면 승리"를 말한다
   const win12 = flagshipReady(s);
   const win12Hint = win12?.bottled ? `플래그십 12년 · 「${win12.bottled.name}」 병입 완료 — 팔리면 캠페인 승리` : win12?.casks.length ? `플래그십 12년 · 적격 ${win12.casks.length}통 — 지금 병입해 팔면 캠페인 승리` : null;
   const noMoreNew = legacyRules && left != null && left < flagMin; // 새 캠페인(v16)은 판 끝이 없어 새 통도 언젠가 후보가 된다
-  const flagHint = !sc ? null : flagDone ? (legacyRules ? '플래그십 판매 완료' : `캠페인 승리(${s.progress.win ? winChannelLabel(s.progress.win) : '첫 출하'}) — 12년 싱글 몰트 첫 출하 완료`) : cands > 0 ? `후보 ${cands}통 · 예비 ${reserveCaskIds(s).size}통${noMoreNew ? ' — 새 통은 더 후보가 될 수 없다' : legacyRules ? '' : ' (후보 = 3년 안에 12년이 되는 통 · 예비 = 승리용으로 남겨 두는 통)'}` : legacyRules ? (noMoreNew ? '후보 0통 — 15년 안에 플래그십을 낼 수 없다' : `후보 0통 — ${Math.max(0, (sc.goal.months - flagMin) - s.month)}개월 안에 넣은 통이 후보가 된다`) : `후보 0통 — 목재 ${flagMin - HINT_HORIZON_MONTHS}개월을 넘긴 자가 몰트 통이 후보가 된다 · 예비 ${reserveCaskIds(s).size}통 보호 중`;
+  const flagHint = !sc ? null : flagDone ? (legacyRules ? '플래그십 판매 완료' : `캠페인 승리(${s.progress.win ? winChannelLabel(s.progress.win) : '첫 출하'}) — 12년 싱글 몰트 첫 출하 완료`) : cands > 0 ? `후보 ${cands}통${candAmount}${candBad} · 예비 ${reserveCaskIds(s).size}통${noMoreNew ? ' — 새 통은 더 후보가 될 수 없다' : legacyRules ? '' : ' (후보 = 3년 안에 12년이 되는 통 · 예비 = 승리용으로 남겨 두는 통)'}` : legacyRules ? (noMoreNew ? '후보 0통 — 15년 안에 플래그십을 낼 수 없다' : `후보 0통 — ${Math.max(0, (sc.goal.months - flagMin) - s.month)}개월 안에 넣은 통이 후보가 된다`) : `후보 0통 — 목재 ${flagMin - HINT_HORIZON_MONTHS}개월을 넘긴 자가 몰트 통이 후보가 된다 · 예비 ${reserveCaskIds(s).size}통 보호 중`;
   return (
     <Card title="현금과 순자산 — 지금 정리하면 받을 수 있는 돈">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -297,15 +309,29 @@ const LIST_FIRST = 30;
 function CraftingFold() {
   // "이번 달 할 일"의 [설비에서 짓기](비지터 센터)가 이 블록을 열고 설비로 스크롤한다 (3차 MVP 플레이테스트: 비지터 센터를 못 찾았다)
   const [open, toggle] = useFold('mvp-craft', false, ['mvp-equipment']);
+  // [#388 ① A3] 새로 열린 시설(9차 판: 108개월에 열린 VIP 라운지를 몰랐다 — 이 묶음은 기본 접힘이다). 접힌 머리에 「새로 열림 n」, 설비 목록이 화면에 보이면 본 것으로 친다
+  const s = useGame((g) => g.state);
+  const unseen = useUnseenFacilities(s);
+  const equipRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = equipRef.current;
+    if (!open || !el || !unseen.length) return;
+    const ids = unseen.map((f) => f.id);
+    if (typeof IntersectionObserver === 'undefined') { markFacilitiesSeen(s.seed, ids); return; }
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) markFacilitiesSeen(s.seed, ids); });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [open, unseen, s.seed]);
   return (
     <div className="grid gap-4">
-      <div>
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" onClick={toggle}>{open ? '▾' : '▸'} 레시피·크래프팅 레버 · 설비(비지터 센터·증류기) {open ? '접기' : '펼치기'}</Button>
+        {unseen.length > 0 && <span title={`단계가 열려 지을 수 있게 된 시설 — 설비 목록에서 값 · 효과를 본다: ${unseen.map((f) => f.name).join(' · ')}`}><Badge tone="warn">새로 열림 {unseen.length}</Badge> <span className="text-xs text-stone-600 dark:text-stone-300">{unseen.slice(0, 2).map((f) => f.name.replace(/^비지터 센터 — /, '')).join(' · ')}{unseen.length > 2 ? ` 외 ${unseen.length - 2}` : ''}</span></span>}
       </div>
       {open && (
         <>
           <RecipeEditor />
-          <div id="mvp-equipment" className="scroll-mt-28"><Equipment /></div>
+          <div id="mvp-equipment" ref={equipRef} className="scroll-mt-28"><Equipment /></div>
         </>
       )}
     </div>
@@ -378,11 +404,43 @@ function SampleCell({ s, c, known }: { s: GameState; c: Cask; known: KnownRead |
  * PM 대조: 감점 0만 보이면 "많이 쓴 통일수록 좋다"로 읽힌다. 원액 맛은 읽지 않는다(활성도만) */
 export const LOW_ACTIVITY_NOTE = 0.1;
 
+/**
+ * [결정 #380] 숙성 연령 띠 — 숙성고 카드 머리(접혀 있어도 보인다)에 「연령 0 ~ 2년 n · 3 ~ 4년 n · 5 ~ 9년 n · 10년 이상 n」.
+ * 정의 · 얇은 띠 판정은 PROD `ageBand.ts`(병입 「숙성 사다리」 · #386 자동 채우기와 같은 정의). 얇은 띠는 호박색 — 12년 출하 뒤 이을 원액이 모자란다는 뜻
+ * (9차 판: 찬 통 54개 중 60 ~ 119개월 3통인데 이를 보이는 화면이 없었다). 공개 정보(목재 개월 · 통 수 · L)만
+ */
+function AgeBandStrip({ s }: { s: GameState }) {
+  const counts = bandCounts(s);
+  if (!AGE_BANDS.some((b) => counts[b.id].casks > 0)) return null;
+  const thin = new Set(thinBands(counts));
+  return (
+    <span className="text-stone-600 dark:text-stone-300" title={`몰트 · 그레인 나무 통의 목재 숙성 연령별 통 수(L) — 더 오래된 띠가 있는데 ${THIN_BAND_CASKS}통 미만인 띠는 호박색: 그 나이대 원액이 얇아 위 띠를 다 쓴 뒤 이을 통이 모자란다`}>
+      연령{' '}
+      {AGE_BANDS.map((b, i) => (
+        <span key={b.id} className={thin.has(b.id) ? 'font-medium text-amber-700 dark:text-amber-300' : undefined}>
+          {i ? ' · ' : ''}{b.label.replace(' ~ ', '–').replace('10년 이상', '10년+')} {counts[b.id].casks}{thin.has(b.id) ? ' ⚠' : ''}
+        </span>
+      ))}
+    </span>
+  );
+}
+/** [결정 #368] 아는 오염 통 줄의 알림 — 원액이 든 동안만 매달 결점 향(곰팡내)이 더해진다(warehouse.ts · 곰팡이 +1 · TCA +1.5 · 상한 40). "빼면 낫는다"로 읽히지 않게 "더 늘지 않는다 · 이미 밴 것은 남는다"를 한 문장에 — 다른 통에 다시 넣으라는 안내는 넣지 않는다(#367) · 문구 PROD 제안 */
+const CONTAM_HOLD_NOTE = '통에 둔 동안 결점 향이 매달 더 밴다 — [원액 빼기]로 꺼내면 더 늘지 않는다(이미 밴 결점 향은 남는다)';
+
 function TanninLine({ s, c }: { s: GameState; c: Cask }) {
   const o = tanninOutlook(s, c);
   if (!o) return <div className="text-[11px] text-stone-500" title="스팟 통의 활성도는 6개월 숙성 뒤에 드러난다">활성도 ?</div>;
   const yrs = Math.floor(o.atMonths / 12);
   const weak = o.activity < LOW_ACTIVITY_NOTE;
+  // [결정 #374] 옮긴 원액(원액 빼기 → 다시 통입 · 피니싱) — 앞 통 활성도가 남지 않아 감점 절대값이 너무 작게 나온다(9차 재현 3.6 대 어림 10.8). 감점 숫자는 감추고
+  // 이 통에서 기준 개월까지 더해질 탄닌만 보인다(PROD `tanninOutlook().moved` — 활성도 · 목재 개월 · 통에 넣은 달만 읽는다)
+  if (o.moved) {
+    return (
+      <div className="text-[11px] text-stone-500" title={`다른 통에서 옮겨 온 원액 — 이 통에서 ${o.moved.monthsHere}개월째. 앞 통에서 밴 탄닌은 기록이 없어 12년 감점 숫자를 셀 수 없다(앞 통 몫을 빼고 세면 실제보다 작게 나온다). 이 통 활성도로 ${yrs}년(${o.atMonths}개월)까지 더해질 탄닌만 어림한다`}>
+        활성도 {o.activity.toFixed(2)} · 옮긴 원액 · 이 통에서 {yrs}년까지 탄닌 +{Math.round(o.moved.addHere)}
+      </div>
+    );
+  }
   return (
     <div className={`text-[11px] ${o.penalty >= 5 || weak ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`${yrs}년(${o.atMonths}개월) 무렵 오크·탄닌 약 ${Math.round(o.tannin)}(위스키 상한 ${o.cap}) → 품질 감점 약 ${Math.round(o.penalty)} · 지금까지 약 ${Math.round(o.now)} — 비울 때마다 활성도 ×${EMPTY_ACTIVITY_FACTOR} · 3년 위스키는 활성도 높은 통(새 통)이 빨리 익는다. 12년은 2~5번 쓴 통(활성도 0.6~0.13)이 가장 낫고, 0.1 아래는 나무 향이 모자라 12년 품질도 다시 내려간다. 어림(기상 이상치·재해 제외)`}>
       활성도 {o.activity.toFixed(2)} · {yrs}년 {o.penalty >= 0.5 ? `감점 약 ${Math.round(o.penalty)}` : '감점 없음'}{weak && <div>나무 향이 약해진 통 — 12년 품질이 다시 내려간다</div>}
@@ -460,6 +518,10 @@ function WarehouseCard() {
           <div className="text-[11px] text-stone-500">자동 샘플은 통당 횟수({SAMPLING.maxSamples}회)를 쓰지 않지만 오차도 줄이지 않는다 — 오차를 줄이려면 직접 고른다.</div>
         </div>
       )}
+      {/* [결정 #374] 「12년 감점」 풀이 한 줄 — 9차 판 오너 "의미를 몰랐다"(뜻은 마우스를 올려야 보이는 title에만 있었다). 요령(빼서 재사용 통에)은 알리지 않는다(#367) */}
+      {filled.some((c) => c.contents && (c.contents.kind === 'malt' || c.contents.kind === 'grain') && vesselMaterial(c) === 'wood') && (
+        <p className="mb-1 text-xs text-stone-600 dark:text-stone-400"><b>12년 감점</b> — 지금 통 그대로 12년(144개월)까지 두면 나무 맛(탄닌)이 위스키 상한을 넘어 품질에서 깎일 것으로 보이는 점수(활성도로 센 어림). 활성도가 높은 새 통일수록 크다.</p>
+      )}
       {!filled.length ? <Empty>숙성 중인 캐스크가 없습니다. 아래에서 탱크의 몰트(또는 소주) 원액을 빈 통에 통입하세요.</Empty> : (
         <Table head={['', '캐스크', '원액', '숙성', '남은 양', '표기', '마지막 샘플 (추정 품질 ±오차 · 강한 향 · 변화)', '']}>
           {(all ? shownCasks : shownCasks.slice(0, LIST_FIRST)).map((c) => {
@@ -472,7 +534,7 @@ function WarehouseCard() {
               <tr>
                 <Td><input type="checkbox" aria-label={`${c.id} 선택`} title={can ? undefined : '샘플은 못 뜨지만(횟수 다 씀·고객 소유) 태그는 붙일 수 있다'} disabled={!!c.owner} checked={picked.includes(c.id)} onChange={() => toggle(c.id)} /></Td>
                 <Td className="text-xs">{c.id} · {CASKS[c.typeId].nameKo}{c.fills > 1 && vesselMaterial(c) === 'wood' ? ` (${c.fills}필)` : ''}<CaskTagChips s={s} c={c} reserve={reserve} /></Td>
-                <Td className="max-w-48 truncate text-xs">{lot.name}{lot.sourced && <> <Badge tone="info">매입</Badge></>}{c.owner && <> <Badge tone="info">고객 소유</Badge></>}{c.rareKnown && <> <Badge tone="good">레어</Badge></>}{c.contaminationKnown && <> <Badge tone="bad">오염</Badge></>}</Td>
+                <Td className="max-w-48 truncate text-xs">{lot.name}{lot.sourced && <> <Badge tone="info">매입</Badge></>}{c.owner && <> <Badge tone="info">고객 소유</Badge></>}{c.rareKnown && <> <Badge tone="good">레어</Badge></>}{c.contaminationKnown && <> <Badge tone="bad">오염</Badge><div className="whitespace-normal text-[11px] font-medium text-rose-700 dark:text-rose-400">{CONTAM_HOLD_NOTE}</div></>}{taintedSpirit(c) && <> <Badge tone="bad">오염 원액</Badge><div className="whitespace-normal text-[11px] font-medium text-rose-700 dark:text-rose-400">{TAINT_SPIRIT_NOTE}</div></>}</Td>
                 <Td right>{vesselMaterial(c) === 'wood' ? <>{months(lot.oakMonths)}{(lot.kind === 'malt' || lot.kind === 'grain') && <TanninLine s={s} c={c} />}</> : <>옹기 {months(lot.restMonths ?? 0)}{lot.oakMonths > 0 && <div className="text-xs text-stone-500">오크 {months(lot.oakMonths)}</div>}</>}</Td>
                 <Td right>{liters(lot.volumeL)}{partialFill(c) != null && <div className="text-[11px] text-stone-500" title="통 크기보다 원액이 많이 적다 — 공기에 닿는 면이 넓어 증발·나무 추출이 빠를 수 있다(병입 화면과 같은 기준: 60% 미만)">덜 찬 통 {partialFill(c)}%</div>}</Td>
                 <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>{vesselMaterial(c) === 'onggi' ? '옹기 ' : ''}숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : vesselMaterial(c) !== 'wood' && lot.oakMonths < minM ? <Badge tone="warn">옹기 — 위스키 숙성에 안 들어감</Badge> : lot.oakMonths >= minM ? <Badge tone="good">위스키{lot.oakMonths < 36 ? ' (어림)' : ''}</Badge> : <Badge tone="warn">{minM - lot.oakMonths}개월 남음</Badge>}</Td>
@@ -486,7 +548,7 @@ function WarehouseCard() {
                     const f = flagshipImpact(s, [c.id]);
                     return <ConfirmButton small variant="ghost" armKey={`unfill-${c.id}@${s.month}`} armedLabel="한 번 더 누르면 빼기" onConfirm={() => dispatch({ type: 'unfillCask', caskId: c.id })}
                       title="원액을 빼 탱크로 옮긴다 — 손실 0.75%, 숙성 개월은 원액에 남고 통은 한 번 쓴 통이 된다"
-                      preview={() => <>{c.id} 원액 {num(lot.volumeL * 0.9925)}L를 탱크로(손실 {num(lot.volumeL * 0.0075, 1)}L) · 숙성 {months(lot.oakMonths)}은 원액에 남지만 탱크에서는 숙성이 멈춘다 · 통은 한 번 쓴 통이 된다{f.using ? <b className="block">⚠ 12년 플래그십 후보 통 — 다시 통에 넣기 전까지 후보에서 빠진다(남은 후보 {f.before} → {f.left}통)</b> : null}{reserve.has(c.id) ? <b className="block">⚠ 플래그십 예비 통이다(#260) — 빼면 다음 후보로 예비가 옮겨 간다</b> : null}</>}>원액 빼기</ConfirmButton>;
+                      preview={() => <>{c.id} 원액 {num(lot.volumeL * 0.9925)}L를 탱크로(손실 {num(lot.volumeL * 0.0075, 1)}L) · 숙성 {months(lot.oakMonths)}은 원액에 남지만 탱크에서는 숙성이 멈춘다 · 통은 한 번 쓴 통이 된다{f.using ? <b className="block">⚠ 12년 플래그십 후보 통 — 다시 통에 넣기 전까지 후보에서 빠진다(남은 후보 {f.before} → {f.left}통)</b> : null}{reserve.has(c.id) ? <b className="block">⚠ 플래그십 예비 통이다(#260) — 빼면 다음 후보로 예비가 옮겨 간다</b> : null}{c.contaminationKnown ? <span className="block">오염 통 — 꺼내면 결점 향이 더 늘지 않는다(이미 밴 결점 향은 남는다)</span> : null}</>}>원액 빼기</ConfirmButton>;
                   })()}
                   {c.contaminationKnown && !c.owner && (
                     // 오염 통 폐기 (#240 — 코어 화면의 되돌릴 수 없는 행동)
@@ -609,27 +671,35 @@ function SpaceCard() {
   const cap = warehouseCapacity(s);
   const casks = s.inventory.casks;
   const empties = casks.filter((c) => !c.contents);
-  const pendingOrders = s.inventory.caskOrders.reduce((t, o) => t + o.qty, 0);
-  const free = Math.max(0, cap - casks.length - pendingOrders);
+  // [결정 #360] 칸으로 센다 — v16 캠페인은 400L↑ 통이 2칸(옛 판 · 샌드박스는 통 = 칸이라 그대로)
+  const used = slotsUsed(s);
+  const pendingOrders = pendingOrderSlots(s);
+  const free = Math.max(0, cap - used - pendingOrders);
+  const over = Math.max(0, used - cap);
+  const bigCasks = casks.filter((c) => caskSlots(s, c.sizeL) > 1).length;
+  const byCell = slotsDifferFromCasks(s);
+  const unit = byCell ? '칸' : '통';
+  const needFor = (k: CaskTypeId, n: number) => n * caskSlots(s, CASKS[k].sizeL);
   const building = s.production.equipment.filter((e) => EQUIPMENT[e.catalogId]?.kind === 'warehouse' && e.readyMonth > s.month);
   const [buyType, setBuyType] = useState<CaskTypeId>('ex_bourbon_barrel');
   const [buyN, setBuyN] = useState(4);
   const price = regionalCaskPrice(s, buyType);
   return (
-    <Card title={`숙성고 공간 — ${casks.length} / ${cap}통 (빈 통 ${empties.length})`}>
+    <Card title={byCell ? `숙성고 공간 — 통 ${casks.length} · ${used} / ${cap}칸 (${bigCasks ? `큰 통 ${bigCasks}개는 2칸 · ` : ''}빈 통 ${empties.length})` : `숙성고 공간 — ${casks.length} / ${cap}통 (빈 통 ${empties.length})`}>
       {/* [결정 #345] GAP-PROD-7 — 빈 통 관리(재탄화 · 중고 매각 · 시즈닝 통 주문)를 홈으로. 컴포넌트 · 문구는 PROD(CaskCare.tsx), 숙성고 탭은 열지 않는다(#136) */}
       <CaskCareRow />
       <div className="grid gap-4 md:grid-cols-2">
         <div className="grid min-w-0 content-start gap-2">
-          <Meter label="자리 사용 (빈 통·주문 중 포함)" value={casks.length + pendingOrders} max={cap} />
+          <Meter label="자리 사용 (빈 통·주문 중 포함)" value={used + pendingOrders} max={cap} />
+          {over > 0 && <div className="text-xs font-medium text-rose-700 dark:text-rose-400">숙성고 {over}칸 넘침 — 들어 있는 통은 그대로 두지만 새 통은 살 수 없다. 한 번 이상 쓴 빈 큰 통을 팔거나(중고 매각 — 큰 통 하나에 2칸) 증축하면 다시 산다</div>}
           <div className="text-xs text-stone-600 dark:text-stone-300">
-            남은 자리 <b className="tabular-nums">{free}</b>통{pendingOrders ? ` · 쿠퍼리지 도착 예정 ${pendingOrders}통` : ''}
+            남은 자리 <b className="tabular-nums">{free}</b>{unit}{pendingOrders ? ` · 쿠퍼리지 도착 예정 ${pendingOrders}${unit}` : ''}
             {building.map((e) => <div key={e.id}>건설 중: {EQUIPMENT[e.catalogId]!.nameKo} — {e.readyMonth - s.month}개월 뒤</div>)}
           </div>
           <div className="flex flex-wrap gap-2">
             {WAREHOUSE_EXPANSIONS.filter((d) => !isLocked(s, `facility:${d.id}`)).map((d) => (
               <Button key={d.id} small disabled={s.finance.cash < equipmentCost(s, d)} onClick={() => dispatch({ type: 'buyEquipment', catalogId: d.id })} title={`${d.leadMonths}개월 뒤 완공 · 월 유지비 ${won(d.maintenance ?? 0)}`}>
-                증설 +{(d as { casks: number }).casks}통 ({won(equipmentCost(s, d))})
+                증설 +{(d as { casks: number }).casks}{byCell ? '칸' : '통'} ({won(equipmentCost(s, d))})
               </Button>
             ))}
           </div>
@@ -638,11 +708,13 @@ function SpaceCard() {
 
         <div className="grid min-w-0 content-start gap-2">
           <div className="text-xs font-semibold text-stone-700 dark:text-stone-200">빈 통 사기</div>
-          <Select value={buyType} options={(Object.keys(CASKS) as CaskTypeId[]).map((k) => ({ value: k, label: `${CASKS[k].nameKo} — ${won(regionalCaskPrice(s, k))}` }))} onChange={setBuyType} />
+          <Select value={buyType} options={(Object.keys(CASKS) as CaskTypeId[]).map((k) => ({ value: k, label: `${CASKS[k].nameKo} — ${won(regionalCaskPrice(s, k))}${caskSlots(s, CASKS[k].sizeL) > 1 ? ' (숙성고 2칸)' : ''}` }))} onChange={setBuyType} />
+          {/* #355 — 고른 통의 탄닌 어림(3년 · 12년 · 다시 쓰면) — 버진 오크는 3년용, 시즈닝 통은 피니싱용이라는 성격을 숫자로 (PROD NewCaskOutlook) */}
+          <div className="text-xs"><NewCaskOutlook typeId={buyType} /></div>
           <div className="flex flex-wrap items-end gap-2">
             <NumberField label="개수" value={buyN} min={1} max={100} width="w-16" onCommit={setBuyN} />
-            <Button small disabled={buyN > free} onClick={() => dispatch({ type: 'buyCasks', caskType: buyType, qty: buyN })} title={`${cooperageLeadMonths(s)}개월 뒤 도착`}>주문 {won(price * buyN)}</Button>
-            <Button small disabled={buyN > free} onClick={() => dispatch({ type: 'buySpotCasks', caskType: buyType, qty: buyN })} title={`즉시 입고 · ×${CASK_MARKET.spotPremium} 웃돈 · ${Math.round(CASK_MARKET.spotDudChance * 100)}% 확률로 골빈 통(추출이 약해 3년 위스키엔 손해 · 12년 탄닌은 적다 — [제안 P-PROD-66] c, #339)`}>즉시 {won(price * buyN * CASK_MARKET.spotPremium)}</Button>
+            <Button small disabled={needFor(buyType, buyN) > free} onClick={() => dispatch({ type: 'buyCasks', caskType: buyType, qty: buyN })} title={`${cooperageLeadMonths(s)}개월 뒤 도착`}>주문 {won(price * buyN)}</Button>
+            <Button small disabled={needFor(buyType, buyN) > free} onClick={() => dispatch({ type: 'buySpotCasks', caskType: buyType, qty: buyN })} title={`즉시 입고 · ×${CASK_MARKET.spotPremium} 웃돈 · ${Math.round(CASK_MARKET.spotDudChance * 100)}% 확률로 골빈 통(추출이 약해 3년 위스키엔 손해 · 12년 탄닌은 적다 — [제안 P-PROD-66] c, #339)`}>즉시 {won(price * buyN * CASK_MARKET.spotPremium)}</Button>
           </div>
           <p className="text-xs text-stone-500">쿠퍼리지 주문은 {cooperageLeadMonths(s)}개월 뒤 도착(자리는 지금 잡힌다). 즉시 구매는 웃돈이 붙고 가끔 활성이 약한 통이 섞인다.</p>
         </div>

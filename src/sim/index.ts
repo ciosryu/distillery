@@ -57,3 +57,5 @@ export * from './rules';
 export * from './valuation';
 export * from './productView'; // F5d 아는 품질 (#338)
 export * from './ledger';
+export * from './taint';
+export * from './lateGoals'; // [#388 ① G3] 후반 목표

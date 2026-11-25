@@ -11,6 +11,7 @@ import type { Rng } from './rng';
 import type { GameState, MonthReport, OemContract, OemOffer, Product, ProductCategory, RetailContract, RetailOffer } from './types';
 import { nid } from './util';
 import { sellFromLots } from './lots';
+import { knownProductQuality } from './productView'; // 검토 D1: 상한은 공개 정보(아는 품질)로 — 판매 화면 기준가와 같은 값
 import { categoryMonthlySales } from './salesPace';
 
 // 입지 대표 거래 (결정 #88·#89, docs/design/regions.md §6.2) — 경기: 대형 유통 납품 / 간토: 위탁생산(OEM). 수치 [튜닝]
@@ -97,12 +98,16 @@ export function retailDrawEligible(s: Pick<GameState, 'rulesVersion' | 'scenario
  */
 export const RETAIL_PRICE_CAP_MULT = 4;
 
-/** 납품 단가를 매기는 판매가 — v16 캠페인은 min(판매가, 기준가 × 4). 옛 판 · 샌드박스는 판매가 그대로(바이트 동일, #337과 같은 범위 원칙) */
+/**
+ * 납품 단가를 매기는 판매가 — v16 캠페인은 min(판매가, 기준가 × 4). 옛 판 · 샌드박스는 판매가 그대로(바이트 동일, #337과 같은 범위 원칙).
+ * 기준가는 **아는 품질**(`knownProductQuality`, F5d)로 센다 — 판매 화면 기준가(`currentSuggested`)와 같은 값. 참 `p.quality`로 세면 화면(B2B.tsx)과
+ * 정산(`fulfillRetail`)이 숨은 품질을 드러냈다(검토 D1, STATUS 2026-11-24: 공개 추정이 같아도 숨은 품질 40 · 80에서 상한이 갈림). 아는 품질이 없는 제품은 공개라 참값 그대로
+ */
 export function retailPriceBasis(s: Pick<GameState, 'rulesVersion' | 'scenario' | 'commerce'> & Parameters<typeof regionOf>[0], p: Product): { price: number; capped: boolean; cap: number } {
   if (!retailRules337(s)) return { price: p.price, capped: false, cap: Infinity }; // 범위 = #337과 같은 함수(v16 캠페인)
   const region = regionOf(s);
   const oak = isWhiskyCategory(p.category) ? p.oakMonths ?? (p.ageYears ?? 0) * 12 : null;
-  const base = suggestedPrice(region, p.category, p.bottleMl, p.quality, oak, p.abv, traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL), { oakMonths: p.oakMonths, restMonths: p.restMonths });
+  const base = suggestedPrice(region, p.category, p.bottleMl, knownProductQuality(s, p).q, oak, p.abv, traditionalTaxFactor(region, p.traditional, s.commerce.traditionalReleasedL, s.commerce.traditionalPrevYearL), { oakMonths: p.oakMonths, restMonths: p.restMonths });
   const cap = Math.round(base * RETAIL_PRICE_CAP_MULT);
   return p.price > cap ? { price: cap, capped: true, cap } : { price: p.price, capped: false, cap };
 }
@@ -199,7 +204,7 @@ export function startOem(s: GameState, o: OemOffer): OemContract | null {
   let ready = s.month;
   for (const id of OEM.dedicated.package) {
     const def = EQUIPMENT[id]!;
-    const inst = { id: nid(s, 'E'), catalogId: id, readyMonth: s.month + def.leadMonths, ...(def.kind === 'still' ? { feintsLPA: 0 } : {}) };
+    const inst = { id: nid(s, 'E'), catalogId: id, readyMonth: s.month + def.leadMonths, boughtMonth: s.month, ...(def.kind === 'still' ? { feintsLPA: 0 } : {}) }; // boughtMonth: #388 ① G4(ARCH 코어 PR · MKT 확인)
     s.production.equipment.push(inst);
     if (def.kind === 'still') stillId = inst.id;
     ready = Math.max(ready, inst.readyMonth);

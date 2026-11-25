@@ -167,3 +167,84 @@ describe('[결정 #341] 납품 단가의 판매가 상한 — 기준가 × 4 (v1
     expect(await run(10_000_000, true)).toBe(8_000_000_000);
   });
 });
+
+describe('검토 D1 — 납품 단가 상한은 공개 정보로만 센다 (F5d 품질 누수, STATUS 2026-11-24)', () => {
+  // 검토 재현: 공개 추정 60 ±8을 고정하고 숨은 품질만 40 → 80으로 바꾸면, 고치기 전에는 표시 단가(B2B 화면 = retailPriceBasis)와
+  // 정산(fulfillRetail)이 121,280 → 171,520원으로 갈렸다. 공개 정보가 같은 두 상태는 화면 표시도 실제 정산도 같아야 한다
+  const known = { est: 60, sigma: 8, reviews: 0, month: 90 };
+  const whisky = (quality: number, price: number) => ({ id: 'P', name: '시험 몰트', category: 'whisky', ageYears: 5, oakMonths: 60, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality, qualityKnown: { ...known }, typicity: 70, style: null, sourcedShare: 0, stockBottles: 3000, price, unitCost: 20000, createdMonth: 90, lastMonthSold: 0, totalSold: 0 }) as unknown as GameState['commerce']['products'][number];
+  const contract = { id: 'U1', partner: '가온마트', category: 'whisky' as const, bottlesPerMonth: 1000, priceFactor: 0.8, termMonths: 12, paymentDelay: 2, penaltyPerBottle: 7680, startMonth: 99, monthsDone: 1, delivered: 1000, shortfall: 0 };
+  const game = async (quality: number, price: number) => {
+    const { newScenarioGame } = await import('./newScenario');
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'standard', loanAmount: 0, seed: 5 });
+    s.month = 100; s.commerce.products = [whisky(quality, price)]; s.commerce.retailContracts = [{ ...contract }];
+    return s;
+  };
+  const settle = async (quality: number, price: number) => {
+    const { advanceMonth } = await import('./step');
+    return advanceMonth(await game(quality, price)).history.reports.at(-1)!.retailDealRevenue ?? 0;
+  };
+  it('화면 상한 — 숨은 품질 40 · 80에서 같다', async () => {
+    const { retailPriceBasis } = await import('./deals');
+    const lo = retailPriceBasis(await game(40, 10_000_000), whisky(40, 10_000_000));
+    const hi = retailPriceBasis(await game(80, 10_000_000), whisky(80, 10_000_000));
+    expect(lo.capped && hi.capped).toBe(true);
+    expect(hi.cap).toBe(lo.cap);
+  });
+  it('실제 정산 — 숨은 품질 40 · 80에서 같다(상한에 걸린 값)', async () => {
+    expect(await settle(80, 10_000_000)).toBe(await settle(40, 10_000_000));
+  });
+  it('상한은 판매 화면 기준가(currentSuggested — 아는 품질)의 4배와 같다', async () => {
+    const { retailPriceBasis, RETAIL_PRICE_CAP_MULT } = await import('./deals');
+    const { currentSuggested } = await import('./economics');
+    const s = await game(80, 10_000_000);
+    const p = s.commerce.products[0]!;
+    expect(retailPriceBasis(s, p).cap).toBe(Math.round(currentSuggested(s, p) * RETAIL_PRICE_CAP_MULT));
+  });
+  it('아는 품질이 없는 제품(옛 제품 · 공개)은 참 품질 그대로 — 지금 값 유지', async () => {
+    const { retailPriceBasis } = await import('./deals');
+    const s = await game(70, 10_000_000);
+    const pub = { ...whisky(70, 10_000_000) }; delete (pub as { qualityKnown?: unknown }).qualityKnown;
+    const est70 = { ...whisky(70, 10_000_000), qualityKnown: { ...known, est: 70 } } as typeof pub;
+    expect(retailPriceBasis(s, pub).cap).toBe(retailPriceBasis(s, est70).cap);
+  });
+});
+
+describe('소매 처리 역량 전망 · 재고 적체 개월 (9차 판 64개월째 MKT 분석 · 화면만)', () => {
+  const withProduct = async (trueQuality: number) => {
+    const { newScenarioGame } = await import('./newScenario');
+    const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5, rules: 'v16' });
+    s.month = 40;
+    s.commerce.products.push({
+      id: 'P1', name: '싱글 몰트 1', category: 'whisky', ageYears: 3, oakMonths: 36, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard',
+      flavor: {}, quality: trueQuality, typicity: 70, style: null, sourcedShare: 0, stockBottles: 4000, price: 60_000, unitCost: 20_000,
+      createdMonth: 30, lastMonthSold: 30, totalSold: 300, qualityKnown: { est: 60, sigma: 8, reviews: 3, month: 39 },
+    } as GameState['commerce']['products'][number]);
+    return s;
+  };
+  it('12달 · 첫 칸은 다음 결산 달 · 역량은 retailCapacityCases', async () => {
+    const { retailCapacityOutlook } = await import('./market');
+    const { retailCapacityCases } = await import('./retail');
+    const { calendar } = await import('./util');
+    const s = await withProduct(60);
+    const o = retailCapacityOutlook(s, 12);
+    expect(o).toHaveLength(12);
+    expect(o[0]!.monthOfYear).toBe(calendar(s).monthOfYear);
+    expect(o.every((x) => x.capacity === retailCapacityCases(s))).toBe(true);
+  });
+  it('공개 정보가 같고 참 품질만 다르면 같다(I2 — 아는 정보로만 센다)', async () => {
+    const { retailCapacityOutlook } = await import('./market');
+    expect(retailCapacityOutlook(await withProduct(80))).toEqual(retailCapacityOutlook(await withProduct(40)));
+  });
+  it('overhangMonths — overhangFactor와 같은 셈(재고 ÷ 판매 평균), 출시 6개월 전 · 평균 없으면 null', async () => {
+    const { overhangFactor, overhangMonths } = await import('./retail');
+    const p = { stockBottles: 2400, salesEma: 100, createdMonth: 0 };
+    expect(overhangMonths(p, 12)).toBe(24);
+    expect(overhangFactor(p, 12)).toBeCloseTo(Math.max(0.6, Math.sqrt(6 / 24)), 9);
+    const { OVERHANG } = await import('./retail');
+    expect(OVERHANG).toEqual({ months: 6, floor: 0.6, graceMonths: 6 }); // 값은 그대로 — 이름만(화면 셋이 같은 문턱을 읽게)
+    expect(overhangFactor({ stockBottles: 600, salesEma: 100, createdMonth: 0 }, 12)).toBe(1); // 문턱(6개월) 그대로면 1
+    expect(overhangMonths({ ...p, createdMonth: 8 }, 12)).toBeNull();
+    expect(overhangMonths({ stockBottles: 10, createdMonth: 0 }, 12)).toBeNull();
+  });
+});

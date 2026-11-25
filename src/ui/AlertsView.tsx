@@ -1,6 +1,6 @@
 // 위기 경고·이번 달 할 일·지난달 현금 흐름·대출 상환 예정 — 화면 (코어 UI, 1차 MVP 플레이테스트 대응 ①~④, 계산은 alerts.ts)
 // 파일 이름이 alerts.ts와 대소문자만 다르면 대소문자를 가리지 않는 파일 시스템(macOS·Windows 기본)에서 './Alerts'가 alerts.ts로 풀릴 수 있어 AlertsView로 둔다
-import { BANKRUPT_AFTER_MONTHS, midGoalProgress, midGoalsOf, monthLabel, whiskySkipCheck, stagesOf, difficultyOf, rulesVersionOf } from '../sim';
+import { BANKRUPT_AFTER_MONTHS, lateGoalProgress, visibleLateGoals, midGoalProgress, midGoalsOf, monthLabel, whiskySkipCheck, stagesOf, difficultyOf, rulesVersionOf } from '../sim';
 import { DIFFICULTY_DOMAINS } from '../sim/content/difficulty';
 import { LOCKED_DOMAINS, difficultyLabel, domainLevelLabel } from './difficultyLabel';
 import { productionValue } from '../sim/economics';
@@ -8,7 +8,7 @@ import { loanRoomTotal, monthlyFixedCost } from '../sim/loans';
 import { won } from './format';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
-import { cashAlert, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, spotSaleStake, type TodoTarget } from './alerts';
+import { cashAlert, contamNote, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, reserveCandidateCasks, spotSaleStake, type TodoTarget } from './alerts';
 import { Button } from './kit';
 import { PolicySwitchHint } from './PricePolicyPicker'; // 자동 가격 정책 정보 한 줄 (#291 ⑥, MKT)
 
@@ -16,7 +16,7 @@ import { PolicySwitchHint } from './PricePolicyPicker'; // 자동 가격 정책 
 export const OPEN_FOLD_EVENT = 'mvp-open-fold';
 
 /** 탭 이동 또는 증류소 화면 안의 카드로 스크롤 — 접혀 있으면 먼저 연다 */
-function useGo() {
+export function useGo() {
   const setTab = useUi((u) => u.setTab);
   return (t: TodoTarget) => {
     if ('tab' in t) { setTab(t.tab); return; }
@@ -145,6 +145,8 @@ export function MonthTodo() {
   if (s.status !== 'running') return null;
   const todos = monthTodos(s);
   const tone = { danger: 'text-rose-700 dark:text-rose-400', warn: 'text-amber-800 dark:text-amber-300', info: 'text-stone-700 dark:text-stone-300' } as const;
+  // [결정 #373] warn · danger 줄은 크게 · 옅은 배경 · 왼쪽 굵은 테두리, 요약(첫 「 — 」 앞)은 굵게 · 설명은 아랫줄 작은 글자 — 9차 판 오너가 할 일 첫 줄 warn을 "못 봤다"(모든 줄이 12px · 색만 달랐다)
+  const box = { danger: 'rounded-md border-l-4 border-rose-500 bg-rose-50 px-2 py-1.5 dark:bg-rose-950/40', warn: 'rounded-md border-l-4 border-amber-500 bg-amber-50 px-2 py-1.5 dark:bg-amber-950/40', info: '' } as const;
   return (
     <div className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm dark:border-stone-800 dark:bg-stone-900">
       <div className="mb-1 font-medium">이번 달 할 일 <span className="text-xs font-normal text-stone-500">— {monthLabel(s.startYear, s.month)} · 놓치기 쉬운 것만 (안내일 뿐, 꼭 할 필요는 없다)</span></div>
@@ -153,8 +155,10 @@ export function MonthTodo() {
         : (
           <ul className="grid gap-1">
             {todos.map((t) => (
-              <li key={t.id} className="flex flex-wrap items-center justify-between gap-2">
-                <span className={`min-w-0 text-xs ${tone[t.level]}`}>{t.level === 'danger' ? '‼ ' : t.level === 'warn' ? '⚠ ' : '• '}{t.text}</span>
+              <li key={t.id} className={`flex flex-wrap items-center justify-between gap-2 ${box[t.level]}`}>
+                {t.level === 'info'
+                  ? <span className={`min-w-0 text-xs ${tone.info}`}>• {t.text}</span>
+                  : <TodoText level={t.level} text={t.text} tone={tone[t.level]} />}
                 <span className="flex gap-1">
                   {t.quick && <Button small variant="primary" onClick={() => dispatch(t.quick!.action)} title={t.quick.done}>{t.quick.label}</Button>}
                   <Button small variant="ghost" onClick={() => go(t.target)}>{t.action} →</Button>
@@ -164,6 +168,19 @@ export function MonthTodo() {
           </ul>
         )}
     </div>
+  );
+}
+
+/** warn · danger 할 일 글 — 요약(첫 「 — 」 앞)은 text-sm 굵게, 나머지 설명은 아랫줄 작은 글자 ([결정 #373]) — 소식 창의 「새 할 일」도 같은 모양 */
+export function TodoText({ level, text, tone }: { level: 'warn' | 'danger'; text: string; tone: string }) {
+  const i = text.indexOf(' — ');
+  const head = i > 0 ? text.slice(0, i) : text;
+  const rest = i > 0 ? text.slice(i + 3) : '';
+  return (
+    <span className={`min-w-0 ${tone}`}>
+      <span className="text-sm font-semibold">{level === 'danger' ? '‼ ' : '⚠ '}{head}</span>
+      {rest && <span className="block text-xs opacity-90">{rest}</span>}
+    </span>
   );
 }
 
@@ -242,11 +259,25 @@ export function JourneyStrip() {
           const prog = r ? null : midGoalProgress(s, g.id); // F5c-2: 아직 판정 전인 수치 목표는 "후보 n/3"
           return (
             <span key={g.id} title={`보상: 인지도 +${Math.round(g.rewardAwareness * 100)}%p`} className={r?.result === 'done' ? 'text-emerald-700 dark:text-emerald-400' : r?.result === 'missed' ? 'text-stone-400 line-through' : 'text-amber-800 dark:text-amber-300'}>
-              {r?.result === 'done' ? '✓' : r?.result === 'missed' ? '✗' : '◎'} {g.title} <span className="opacity-70 no-underline">({r?.result === 'done' ? `${monthLabel(s.startYear, r.month)} 달성` : r?.result === 'missed' ? '놓침' : `${prog ? `후보 ${prog.have}/${prog.need} · ` : ''}${g.byMonth - s.month > 0 ? `${ym(g.byMonth - 1)}까지 · ${g.byMonth - s.month}개월 남음` : '이번 턴에 판정'}`})</span>
+              {r?.result === 'done' ? '✓' : r?.result === 'missed' ? '✗' : '◎'} {g.title} <span className="opacity-70 no-underline">({r?.result === 'done' ? `${monthLabel(s.startYear, r.month)} 달성` : r?.result === 'missed' ? '놓침' : `${prog ? `후보 ${prog.have}/${prog.need}${g.id === 'reserve_casks' ? contamNote(reserveCandidateCasks(s)) : ''} · ` : ''}${g.byMonth - s.month > 0 ? `${ym(g.byMonth - 1)}까지 · ${g.byMonth - s.month}개월 남음` : '이번 턴에 판정'}`})</span>
             </span>
           );
         })}
       </div>
+      {/* [#388 ① G3] 후반 목표 — 열린 것만(승리 전 2 · 승리 뒤 최대 3). 보상 없음(기록만) — 짝 행동 한 줄을 마우스 풀이로 */}
+      {visibleLateGoals(s).length > 0 && (
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="font-medium text-stone-700 dark:text-stone-200">후반 목표</span>
+          {visibleLateGoals(s).map(({ def: g, result: r }) => {
+            const prog = r ? null : lateGoalProgress(s, g.id);
+            return (
+              <span key={g.id} title={`할 수 있는 것: ${g.hint} · 보상 없음(기록 · 결과 화면)`} className={r?.result === 'done' ? 'text-emerald-700 dark:text-emerald-400' : r?.result === 'missed' ? 'text-stone-400 line-through' : 'text-amber-800 dark:text-amber-300'}>
+                {r?.result === 'done' ? '✓' : r?.result === 'missed' ? '✗' : '◎'} {g.title} <span className="opacity-70 no-underline">({r?.result === 'done' ? `${monthLabel(s.startYear, r.month)} 달성` : r?.result === 'missed' ? '놓침' : `${prog ? `${prog.have}/${prog.need} · ` : ''}${g.checkFrom != null && s.month < g.checkFrom ? `판정은 ${ym(g.checkFrom)}부터 · ` : ''}${g.byMonth == null ? '기한 없음' : g.byMonth - s.month > 0 ? `${ym(g.byMonth - 1)}까지 · ${g.byMonth - s.month}개월 남음` : '이번 턴에 판정'}`})</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -13,6 +13,13 @@ import type { GameState, Hex, Product, QualityKnown, SpiritKind } from './types'
 export const UNKNOWN_QUALITY_SIGMA = 15;
 /** [결정 #346] 같은 레시피 보충에서 이어받는 추정의 오차 하한 `[튜닝]` — 보충 원액이 이전과 조금 달라도 이 안(PROD 측정: 같은 제품 보충의 참 품질 변화 평균 3.0 · 중앙 2.4점) */
 export const RESTOCK_PRIOR_SIGMA_FLOOR = 4;
+/**
+ * [결정 #377] 보충 원액에 제품 레시피 목록에 없던 원액이 섞이면 이어 받는 추정의 오차를 넓힌다 — 새 몫은 "모르는 원액"과 같은 오차로 본다 `[튜닝]`
+ * (MKT 제안 2026-11-24: σ' = √(max(σ, 하한)² + (새 몫 × 이 값)²), 평균은 그대로)
+ */
+export const RESTOCK_NEW_RECIPE_SIGMA = UNKNOWN_QUALITY_SIGMA;
+/** 보충 원액의 레시피별 알코올(LPA) — 레시피 기록이 없는 원액(매입 등)은 `recipeId` ''(어느 제품 목록에도 없다) */
+export interface RecipeShare { recipeId: string; lpa: number }
 
 /** 화면·추천·자동 가격이 읽는 품질 — `public`이면 참값(옛 판·F5d 전 제품), 아니면 추정 */
 export interface KnownQuality {
@@ -106,22 +113,40 @@ export function restockMix(before: { q: number; sigma: number }, beforeBottles: 
 const sameList = (a?: readonly string[], b?: readonly string[]) => (a ?? []).join('|') === (b ?? []).join('|');
 
 /**
- * [결정 #346] 같은 레시피 보충 — 보충할 제품과 이번 원액의 레시피 집합이 같으면(비어 있지 않게) 그 제품의 지금 아는 품질을 돌려준다.
- * `bottledQualityKnown`의 모르는 몫 사전값 · `mergeQualityKnown`의 리뷰 잇기에 쓴다. 다르면 undefined(전역 사전값 — 통 구성이 다른 술)
+ * 보충 원액 가운데 제품 레시피 목록에 없던 몫(LPA 비율 0~1) — 겹치는 레시피가 하나도 없거나 제품 목록이 비면 null(잇지 않는다).
+ * 문자열 목록이면 레시피마다 같은 무게로 센다(옛 호출 · 시험 호환)
  */
-export function restockPrior(s: Pick<GameState, 'rulesVersion' | 'commerce'>, target: Product, recipeIds: readonly string[]): { est: number; sigma: number } | undefined {
-  if (!recipeIds.length || !sameList(target.recipeIds, recipeIds)) return undefined;
+export function newRecipeShare(target: Pick<Product, 'recipeIds'>, recipes: readonly string[] | readonly RecipeShare[]): number | null {
+  const own = new Set(target.recipeIds ?? []);
+  const shares = (recipes as readonly (string | RecipeShare)[]).map((r) => (typeof r === 'string' ? { recipeId: r, lpa: 1 } : r)).filter((x) => x.lpa > 0);
+  const total = shares.reduce((t, x) => t + x.lpa, 0);
+  if (!own.size || total <= 0) return null;
+  const fresh = shares.reduce((t, x) => t + (own.has(x.recipeId) ? 0 : x.lpa), 0);
+  return fresh >= total - 1e-12 ? null : fresh / total;
+}
+
+/**
+ * [결정 #346 → #377] 보충에서 그 제품의 지금 아는 품질을 잇는다. `bottledQualityKnown`의 모르는 몫 사전값 · `mergeQualityKnown`의 리뷰 잇기에 쓴다.
+ * (1) 보충 원액의 레시피가 제품 목록 안(부분집합)이면 그대로 잇는다(#346 — 오차 하한은 `bottledQualityKnown`이 건다)
+ * (2) 겹치는 레시피가 있고 목록에 없던 원액도 섞이면 잇되 오차를 새 몫만큼 넓힌다(`RESTOCK_NEW_RECIPE_SIGMA` — 평균은 그대로)
+ * (3) 겹치는 레시피가 없거나 제품에 레시피 기록이 없으면 undefined(전역 사전값 — 통 구성이 다른 술)
+ */
+export function restockPrior(s: Pick<GameState, 'rulesVersion' | 'commerce'>, target: Product, recipes: readonly string[] | readonly RecipeShare[]): { est: number; sigma: number; newShare: number } | undefined {
+  const n = newRecipeShare(target, recipes);
+  if (n == null) return undefined;
   const k = knownProductQuality(s, target);
-  return { est: k.q, sigma: k.sigma };
+  if (n <= 0) return { est: k.q, sigma: k.sigma, newShare: 0 };
+  return { est: k.q, sigma: Math.sqrt(Math.max(k.sigma, RESTOCK_PRIOR_SIGMA_FLOOR) ** 2 + (n * RESTOCK_NEW_RECIPE_SIGMA) ** 2), newShare: n };
 }
 
 /**
  * 면세 전용 제품의 짝 (#338 ③(가)) — 같은 달에 같은 범주·같은 레시피 원액으로 병입한 **일반 제품**(면세 전용 아님) 중 아는 품질이 있는 것.
  * 여럿이면 리뷰가 많은 것 → id 순. 면세 전용 제품은 커뮤니티 피드에 나오지 않아 리뷰가 붙지 않으므로, 짝의 리뷰 추정을 빌린다
+ * 피니시 표기(`finish`)도 같아야 짝이다 — 같은 원액이라도 한쪽만 피니싱했으면 다른 술이다(통 추가 첫 묶음 · cask-types.md §9.2 · §1 구멍). 개월(`finishMonths`)은 보지 않는다(표기가 같은지만 묻는다)
  */
 export function dutyFreePair(s: Pick<GameState, 'commerce'>, p: Product): Product | null {
   if (!p.dutyFreeOnly) return null;
-  const cands = s.commerce.products.filter((x) => x.id !== p.id && !x.dutyFreeOnly && x.qualityKnown && x.createdMonth === p.createdMonth && x.category === p.category && sameList(x.recipeIds, p.recipeIds));
+  const cands = s.commerce.products.filter((x) => x.id !== p.id && !x.dutyFreeOnly && x.qualityKnown && x.createdMonth === p.createdMonth && x.category === p.category && x.finish === p.finish && sameList(x.recipeIds, p.recipeIds));
   cands.sort((x, y) => (y.qualityKnown!.reviews - x.qualityKnown!.reviews) || x.id.localeCompare(y.id));
   return cands[0] ?? null;
 }

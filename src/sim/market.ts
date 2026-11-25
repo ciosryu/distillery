@@ -1,5 +1,6 @@
 import { DISTRIBUTION, logisticsCost } from './content/catalog';
-import { agedWhitePerception, BRANDS, PRICE_CURVE, SKU, STYLE, STYLE_WEIGHTS } from './content/market';
+import { finishLabelOn } from './finishLabel';
+import { agedWhitePerception, BRANDS, FINISH_LABEL, PRICE_CURVE, SKU, STYLE, STYLE_WEIGHTS } from './content/market';
 import { rivalShare } from './rivals';
 import { awarenessOf, brandLuxuryFactor, brandMarketing, brandOf, houseBrand, secondBrands } from './brands';
 import { consumerPrice, refPricePerL, regionOf, siteOf, traditionalTaxFactor, type RegionDef } from './content/regions';
@@ -11,7 +12,7 @@ import { ownershipOversold, OWNERSHIP } from './investment';
 import { clamp } from './flavor';
 import { hexOf } from './blendRadar';
 import { RARE, trendFactor } from './blendTable';
-import { staffOf } from './util';
+import { calendar, staffOf } from './util';
 import { mod } from './modifiers';
 import { flavorTrendFactorOf, trendWalkOf } from './mktKnobs'; // F6b 난이도 손잡이(취향 #313)
 import { packagingAppealFactor } from './packaging';
@@ -126,7 +127,8 @@ export function appeal(p: Product, s?: Pick<GameState, 'world' | 'month' | 'regi
   const edition = dutyFreeEditionAppeal(p);
   // 브랜드 방패 ([결정 #235] A): 브랜드 럭셔리 B_b와 제품 L_p의 차이 — 세컨드 브랜드가 열리는 모드에서만
   const shield = brandLuxuryFactor(s as Partial<GameState> | undefined, p);
-  return Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * brand * label * specialty * trend * premium * incense * edition * blendBonus * rare * shield * style;
+  const finish = finishLabelOn(p) ? FINISH_LABEL.appeal : 1; // [결정 #362] 피니시 표기 — 매력도 배수(#270 A, 통 종류와 무관)
+  return finish * Math.pow(Math.max(p.quality, 1) / 60, 1.6) * (0.6 + 0.4 * (p.typicity / 100)) * lux * ageBonus * brand * label * specialty * trend * premium * incense * edition * blendBonus * rare * shield * style;
 }
 
 /** 브랜드 가치가 낮은 매입 원액 병입은 저가 하이볼 수요라 가격에 훨씬 민감하다 */
@@ -179,11 +181,12 @@ function splitByCategory(items: readonly { p: Product; standaloneBottles: number
 //   ln 수요 = −ε·ln(E/기준가) − ε·((소비자가/E)^K − 1)/K          K → 0이면 옛 공식
 
 /** 이 제품을 사는 사람이 기대하는 소비자가(원/L) — 권장 출고가(blending.ts suggestedPrice)가 맞추는 값과 같다 */
-export function expectedPricePerL(region: RegionDef, p: Pick<Product, 'category' | 'abv' | 'quality' | 'oakMonths' | 'ageYears' | 'restMonths'>): number {
+export function expectedPricePerL(region: RegionDef, p: Pick<Product, 'category' | 'abv' | 'quality' | 'oakMonths' | 'ageYears' | 'restMonths'> & Pick<Product, 'finish' | 'finishMonths'>): number {
   const aged = isWhiskyCategory(p.category);
   // 위스키는 숙성 인식, 숙성 소주·고량주는 숙성 표기(#217) — 매력도(appeal)와 같은 배수
   const ageBonus = aged ? agePerception(p.oakMonths ?? (p.ageYears ?? 0) * 12, p.category) : agedWhitePerception(p.category, p.oakMonths, p.restMonths);
-  return refPricePerL(region, p.category, p.abv) * Math.sqrt(Math.max(p.quality, 20) / 60) * ageBonus;
+  const finish = finishLabelOn(p) ? FINISH_LABEL.expectedPrice : 1; // [결정 #362] 피니시 표기 — 기대 가격 배수(#270 A)
+  return refPricePerL(region, p.category, p.abv) * Math.sqrt(Math.max(p.quality, 20) / 60) * ageBonus * finish;
 }
 
 /** 가격 계수 — consumer·ref·expected는 원/L, elasticity는 기대가에서의 탄력성 */
@@ -216,6 +219,20 @@ export function domesticDemands(s: GameState, monthOfYear: number, region: Regio
   const alone = s.commerce.products.filter((p) => p.stockBottles > 0).map((p) => ({ p, d: demandWithSplit(s, p, 1, monthOfYear, region) }));
   const f = splitByCategory(alone.map((x) => ({ p: x.p, standaloneBottles: x.d.demandBottles })));
   return new Map(alone.map(({ p, d }) => { const k = f.get(p.id) ?? 1; return [p.id, { ...d, split: k, demandBottles: d.demandBottles * k }]; }));
+}
+
+/**
+ * 품절 제품을 다시 채웠을 때의 이번 달 국내 수요 — 재고 있는 같은 범주 제품과 손님을 나눈 뒤 값(`domesticDemands`와 같은 나눔).
+ * 판매 화면 품절 배지 「다시 채우면 수요 약 n병/월」이 읽는다. 전에는 나누기 전 값(`demandFor(…, 1)`)이라 9차 판 134개월째 옹기소주가 2,062병(나눈 뒤 약 1,500)으로
+ * 크게 보였다(MKT 분석 `docs/playtest/9/mkt.md` 「134개월」 §4.1 · PM 2026-11-24). 상태 · 판매 셈 불변. 화면은 `knownState`를 넘겨 아는 품질로 센다
+ */
+export function restockedDemand(s: GameState, p: Product, monthOfYear: number, region: RegionDef = regionOf(s)): DemandBreakdown {
+  const q: Product = p.stockBottles > 0 ? p : { ...p, stockBottles: 1 };
+  const alone = [...s.commerce.products.filter((x) => x.stockBottles > 0 && x.id !== p.id), q].map((x) => ({ p: x, d: demandWithSplit(s, x, 1, monthOfYear, region) }));
+  const f = splitByCategory(alone.map((x) => ({ p: x.p, standaloneBottles: x.d.demandBottles })));
+  const d = alone.at(-1)!.d;
+  const k = f.get(p.id) ?? 1;
+  return { ...d, split: k, demandBottles: d.demandBottles * k };
 }
 
 function demandWithSplit(s: GameState, p: Product, split: number, monthOfYear: number, region: RegionDef): DemandBreakdown {
@@ -252,6 +269,29 @@ export function knownView(s: GameState, p: Product): Product {
 }
 
 /** F5d — 진열 전체를 아는 품질로 바꾼 상태 사본(계획 · 화면용). 옛 판은 같은 객체 */
+/**
+ * 소매 처리 역량 전망 (9차 판 64개월째 MKT 분석 §3 · PM 2026-11-24 — 화면만, 판매 셈 · 상태 불변) — 지금 진열 · 값 · 재고 그대로 두고 앞으로 months달 동안
+ * 달(계절)만 바꿔 국내 수요를 9L 케이스로 센다. **플레이어가 아는 정보로만**(`knownState` — F5d 참 품질이 새지 않게, I2). 제품마다 지금 재고까지만 센다
+ * (앞으로 병입 · 보충은 모른다). 잡음 없는 기댓값. 첫 칸 = 다음 결산 달
+ */
+export function retailCapacityOutlook(s: GameState, months = 12): { monthsAhead: number; monthOfYear: number; cases: number; capacity: number }[] {
+  const ks = knownState(s);
+  const capacity = retailCapacityCases(s);
+  const moy0 = calendar(s).monthOfYear;
+  const out: { monthsAhead: number; monthOfYear: number; cases: number; capacity: number }[] = [];
+  for (let k = 0; k < months; k++) {
+    const monthOfYear = ((moy0 - 1 + k) % 12) + 1;
+    const d = domesticDemands(ks, monthOfYear);
+    let cases = 0;
+    for (const p of ks.commerce.products) {
+      const x = d.get(p.id);
+      if (x) cases += (Math.min(x.demandBottles, p.stockBottles) * p.bottleMl) / 9000;
+    }
+    out.push({ monthsAhead: k + 1, monthOfYear, cases: Math.round(cases), capacity });
+  }
+  return out;
+}
+
 export function knownState(s: GameState): GameState {
   return hidesProductQuality(s) ? { ...s, commerce: { ...s.commerce, products: s.commerce.products.map((x) => knownView(s, x)) } } : s;
 }

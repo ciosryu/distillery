@@ -8,7 +8,7 @@ import { CATEGORY } from './content/categories';
 import { regionOf } from './content/regions';
 import type { BlendComponent, BottleOptions } from './blending';
 import { nid, staffOf } from './util';
-import { sampleNoiseId } from './rules'; // [결정 #351] v16 캠페인은 채움마다 읽기 잡음을 새로
+import { rulesVersionOf, sampleNoiseId } from './rules'; // [결정 #351] v16 캠페인은 채움마다 읽기 잡음을 새로
 
 // 블렌딩 테이블 (결정 #124, docs/design/blending-minigame.md) — 1차 범위:
 //   P1 정보 구매(샘플링·실험실 분석) · P2 도달 가능 영역 · P5 목표 3종(트렌드·의뢰·코어 레인지) · P6 결과 공개 · P7 위임 · P8 레어 캐스크
@@ -259,8 +259,11 @@ export function autoSamplePicks(s: GameState, known: Map<string, KnownRead> = kn
   if (s.inventory.casks.some((c) => c.contents && c.sampleLog?.at(-1)?.month === s.month)) return [];
   // 매 턴 여력만큼 오래 안 뜬 통부터 (#201) — 통당 횟수 제한 없음. 설정(#207)으로 묶음·최소 숙성·다시 뜨는 간격·월 최대 통 수를 좁힌다
   const groups = cfg.groups?.length ? new Set(cfg.groups) : null;
+  // [결정 #383] v16: 아는 오염 통은 건너뛴다 — 9차 판: 오염이 드러난 뒤에도 K11 · K388에 자동 샘플이 떠 샘플비만 썼다. 손 샘플 · 옛 판은 그대로
+  const skipTainted = rulesVersionOf(s) !== 'legacy-v15';
   const ok = (c: Cask): boolean => {
     if (!autoSampleable(c)) return false;
+    if (skipTainted && c.contaminationKnown) return false;
     if (groups) { const g = autoSampleGroupOf(s, c); if (!g || !groups.has(g)) return false; }
     if (cfg.minAgeMonths && caskAge(c) < cfg.minAgeMonths) return false;
     if (cfg.minGapMonths) { const own = c.sampleLog?.at(-1); if (own && s.month - own.month < cfg.minGapMonths) return false; }
@@ -472,12 +475,56 @@ export { hexDistance, matchScore };
 
 // ───────────── P7 위임 — 블렌더가 비율을 정한다 ─────────────
 
+/** 맡길 수 있는 통 — 원액이 있고 고객 소유 · 아는 오염이 아닌 통 */
+const delegateUsable = (s: GameState, caskIds: string[]): Cask[] =>
+  caskIds.map((id) => s.inventory.casks.find((c) => c.id === id)).filter((c): c is Cask => !!c?.contents && !c.owner && !(c.contamination && c.contaminationKnown));
+
+// ───────────── [결정 #371] 블렌딩 조건 — 숙성 범위 · 향미 목표 (「내 조건」) ─────────────
+// 숨김 정보(#338 · F5d): 샘플 기록(knownReads)만 읽는다 — 참 향미 · 참 품질을 읽지 않는다. 숙성 개월은 통 표에 보이는 공개 값.
+// 「내 조건」 블렌드는 시장 · 의뢰 목표가 아니라 블렌딩 목표 채점(#124)이 없다(병입 targetId 없음)
+
+/** 향미 목표 — 한 축 「위주」 또는 「밸런스」 */
+export type PlayerFocus = HexAxis | 'balance';
+export const PLAYER_FOCI: readonly PlayerFocus[] = [...HEX_AXES, 'balance'];
+/** 「○○ 위주」에서 그 축의 거리 가중치 `[튜닝]` (나머지 축 1) */
+export const PLAYER_FOCUS_WEIGHT = 3;
+/** 숙성 범위(목재 개월) — 없는 쪽은 열림 */
+export interface AgeRange { minMonths?: number; maxMonths?: number }
+export const inAgeRange = (oakMonths: number, r?: AgeRange): boolean => !r || ((r.minMonths == null || oakMonths >= r.minMonths) && (r.maxMonths == null || oakMonths <= r.maxMonths));
+export const playerFocusLabel = (f: PlayerFocus): string => (f === 'balance' ? '밸런스' : `${HEX_LABEL[f]} 위주`);
+
+/**
+ * 「내 조건」 목표 육각형 — 순수 함수. 고른 통들의 **샘플 기록 육각형**(known)만 읽는다.
+ * 「○○ 위주」: 그 축은 기록이 닿는 최대(`reachableEnvelope`), 나머지 축은 기록 평균 · 가중치 그 축 3 · 나머지 1.
+ * 「밸런스」: 여섯 축 모두 기록 평균의 평균(같은 높이) · 가중치 1 — 축 사이 편차가 가장 작은 비율을 찾게 된다. 기록이 없으면 null
+ */
+export function playerTarget(known: Hex[], focus: PlayerFocus): { id: string; label: string; hex: Hex; tolerance: number; weights?: Partial<Record<HexAxis, number>> } | null {
+  const env = reachableEnvelope(known);
+  if (!env) return null;
+  const mean = Object.fromEntries(HEX_AXES.map((a) => [a, known.reduce((t, h) => t + h[a], 0) / known.length])) as Hex;
+  if (focus === 'balance') {
+    const level = HEX_AXES.reduce((t, a) => t + mean[a], 0) / HEX_AXES.length;
+    return { id: 'player:balance', label: '내 조건 — 밸런스', hex: Object.fromEntries(HEX_AXES.map((a) => [a, level])) as Hex, tolerance: TREND_TOLERANCE };
+  }
+  return { id: `player:${focus}`, label: `내 조건 — ${HEX_LABEL[focus]} 위주`, hex: { ...mean, [focus]: env.max[focus] }, tolerance: TREND_TOLERANCE, weights: { [focus]: PLAYER_FOCUS_WEIGHT } };
+}
+
+/** 맡길 통 가운데 숙성 범위 안 — 화면 후보와 행동이 같이 쓴다 */
+export const casksInAgeRange = (s: GameState, caskIds: string[], range?: AgeRange): string[] =>
+  delegateUsable(s, caskIds).filter((c) => inAgeRange(c.contents!.oakMonths, range)).map((c) => c.id);
+
+/** 이 통들로 만든 「내 조건」 목표 — 맡길 통(숙성 범위 안)의 샘플 기록만으로. 화면 미리보기와 `delegateBlend`가 같은 목표를 쓴다 */
+export function playerTargetFor(s: GameState, caskIds: string[], focus: PlayerFocus, range?: AgeRange): ReturnType<typeof playerTarget> {
+  const known = knownReads(s);
+  return playerTarget(casksInAgeRange(s, caskIds, range).flatMap((id) => { const r = known.get(id); return r ? [r.hex] : []; }), focus);
+}
+
 /**
  * 목표에 맞춰 블렌더가 고른 캐스크별 사용량(L). 블렌더가 기록해 둔 육각형(knownReads)으로 최적화하므로, 서툰 블렌더나 오래된 샘플의 계획은 실제로는 빗나간다.
  * 기록이 없는 캐스크는 뺀다(unknown = 뺀 수). 병 수가 재고보다 많으면 가능한 만큼만 쓴다
  */
-export function delegatePlan(s: GameState, target: BlendTarget, caskIds: string[], bottles: number, opts: BottleOptions): { components: BlendComponent[]; unknown: number } | { error: string } {
-  const usable = caskIds.map((id) => s.inventory.casks.find((c) => c.id === id)).filter((c): c is Cask => !!c?.contents && !c.owner && !(c.contamination && c.contaminationKnown));
+export function delegatePlan(s: GameState, target: Pick<BlendTarget, 'hex' | 'weights'>, caskIds: string[], bottles: number, opts: BottleOptions): { components: BlendComponent[]; unknown: number } | { error: string } {
+  const usable = delegateUsable(s, caskIds);
   if (!usable.length) return { error: '맡길 캐스크가 없습니다' };
   if (bottles <= 0) return { error: '병 수를 정하세요' };
   // 블렌더는 맛본(기록이 있는) 원액만 섞는다 (#157)

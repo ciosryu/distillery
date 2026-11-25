@@ -138,8 +138,8 @@ describe('피니싱 (PRD §5.2, #158)', () => {
     expect(lot.oakMonths).toBe(before.oakMonths);
     expect(lot.volumeL).toBeCloseTo(before.volumeL * (1 - FINISH.lossShare), 6);
     expect(lot.caskHistory).toEqual([
-      { typeId: from.typeId, fromMonth: t.month - before.oakMonths, months: before.oakMonths },
-      { typeId: 'oloroso_butt', fromMonth: t.month, months: 0 },
+      { typeId: from.typeId, fromMonth: t.month - before.oakMonths, months: before.oakMonths, caskId }, // [결정 #391] 구간마다 통 id
+      { typeId: 'oloroso_butt', fromMonth: t.month, months: 0, caskId: sherry },
     ]);
     expect(caskOf(t, caskId).contents).toBeUndefined();
     expect(caskOf(t, sherry).slot).toEqual(from.slot);
