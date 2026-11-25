@@ -38,11 +38,10 @@ function delayLine(s: GameState, v: NonNullable<GameState['progress']['verdict']
   const base = GRADE.sNetWorthV16[sc.tierId];
   const k = GRADE.sDelayPerMonthV16[sc.tierId];
   if (base == null || !k || v.sNetWorthTarget <= base) return null;
+  // [결정 #427] 재판정은 순자산을 보지 않는다 — 풀이 없음(첫 판정만)
+  if (s.progress.verdictBest === v) return null;
   const n = Math.round((v.sNetWorthTarget - base) / k);
-  // [결정 #422] 재판정은 승리 뒤 그달까지 센다(같은 식) — "미뤘다"가 아니라 첫 적격 원액 뒤 지난 개월
-  return s.progress.verdictBest === v
-    ? `S 순자산 기준 ${won(v.sNetWorthTarget)} = 기본 ${won(base)} + 12년 원액을 출하할 수 있게 된 뒤 ${n}개월 × ${won(k)} — 재판정도 승리 때와 같은 식(지난 개월만큼 기준이 오른다)`
-    : `S 순자산 기준 ${won(v.sNetWorthTarget)} = 기본 ${won(base)} + 12년 원액을 출하할 수 있게 된 뒤 ${n}개월 미뤄 ${n} × ${won(k)} — 미룬 만큼 기준이 오른다`;
+  return `S 순자산 기준 ${won(v.sNetWorthTarget)} = 기본 ${won(base)} + 12년 원액을 출하할 수 있게 된 뒤 ${n}개월 미뤄 ${n} × ${won(k)} — 미룬 만큼 기준이 오른다`;
 }
 
 export function sGradeRows(v: NonNullable<GameState['progress']['verdict']>, rejudged = false): { id: string; label: string; ok: boolean; text: string }[] {
@@ -50,7 +49,8 @@ export function sGradeRows(v: NonNullable<GameState['progress']['verdict']>, rej
   const q = v.flagshipQuality ?? v.checks.find((c) => c.id === 'flagship')?.value;
   const aw = v.awareness ?? 0;
   return [
-    { id: 's-networth', label: '순자산', ok: (v.netWorth ?? 0) >= nwTarget, text: `${won(v.netWorth ?? 0)} / S 조건 ${won(nwTarget)}` },
+    // [결정 #427] 재판정은 품질 · 인지도만 본다 — 순자산 줄을 내지 않는다
+    ...(rejudged ? [] : [{ id: 's-networth', label: '순자산', ok: (v.netWorth ?? 0) >= nwTarget, text: `${won(v.netWorth ?? 0)} / S 조건 ${won(nwTarget)}` }]),
     { id: 's-quality', label: rejudged ? '재판정 제품 품질(12년 이상 싱글 몰트)' : '12년 싱글 몰트 품질', ok: (q ?? 0) >= GRADE.sFlagshipQuality, text: `${q != null ? q.toFixed(1) : '—'} / S 조건 ${GRADE.sFlagshipQuality}` },
     { id: 's-awareness', label: '브랜드 인지도', ok: aw >= GRADE.sAwareness, text: `${(aw * 100).toFixed(1)}% / S 조건 ${GRADE.sAwareness * 100}%` },
   ];
@@ -75,7 +75,7 @@ export function Verdict({ s, onNewGame }: { s: GameState; onNewGame: () => void 
   const nextGoals = lateGoalsOf(s).filter((g) => !doneIds.has(g.id) && (g.opens === 'win' || 'month' in g.opens) && (g.byMonth == null || s.month + 1 <= g.byMonth)).slice(0, 2).map((g) => g.title.split(' — ')[0]!);
   return (
     <Card title={`${s.distilleryName} — ${rejudged ? `등급이 올랐다 — ${v.grade}` : TITLE[v.result]}`}>
-      {rejudged && <p className="mb-3 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">⬆ {rejudged} — 승리 뒤 새 12년 이상 원액을 처음 팔아 다시 본 성과 판정이다. 등급은 오르기만 한다</p>}
+      {rejudged && <p className="mb-3 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">⬆ {rejudged} — 승리 뒤 새 12년 이상 원액을 처음 팔아 다시 본 성과 판정이다(품질 · 인지도만 본다). 등급은 오르기만 한다</p>}
       <div className="grid gap-4 md:grid-cols-[auto_1fr_1fr]">
         <div className="flex flex-col items-center justify-center rounded-lg border border-stone-200 px-6 py-3 dark:border-stone-700">
           <div className="text-xs text-stone-500">등급</div>
@@ -95,7 +95,7 @@ export function Verdict({ s, onNewGame }: { s: GameState; onNewGame: () => void 
           {!legacy && (
             <>
               {/* 6차 판 뒤(PM 배정): 순자산 칸을 "등급 S 조건"으로 — 세 조건을 모두 채우면 S, 하나라도 모자라면 A(승리 조건은 위 한 줄뿐) */}
-              <h3 className="mb-1 mt-3 text-sm font-semibold">등급 S 조건 <span className="font-normal text-stone-500">— 셋 다 채우면 S, 아니면 A</span></h3>
+              <h3 className="mb-1 mt-3 text-sm font-semibold">등급 S 조건 <span className="font-normal text-stone-500">— {rejudged ? '재판정은 품질 · 인지도 둘 다 채우면 S(순자산은 보지 않는다)' : '셋 다 채우면 S, 아니면 A'}</span></h3>
               <p className="mb-1 text-xs text-stone-500">{GRADE_NOTE.meaning}</p>
               <ul className="space-y-1 text-sm">
                 {sGradeRows(v, !!rejudged).map((r) => (
@@ -106,7 +106,7 @@ export function Verdict({ s, onNewGame }: { s: GameState; onNewGame: () => void 
                 ))}
               </ul>
               {/* 결정 #339 — 등급은 승리 순간의 성적표 · 성과 기준은 15년 기준이라는 맥락(값·판정식은 단계 T) — 순자산 미달일 때만 */}
-              {!sGradeRows(v).find((r) => r.id === 's-networth')!.ok && <p className="mt-1 text-xs text-stone-500">{GRADE_NOTE.netWorthShort}</p>}
+              {!rejudged && !sGradeRows(v).find((r) => r.id === 's-networth')!.ok && <p className="mt-1 text-xs text-stone-500">{GRADE_NOTE.netWorthShort}</p>}
               {/* [결정 #407] 승리를 미룬 만큼 오른 문턱 — 판정에 적힌 문턱에서 기본값을 빼 미룬 개월을 거꾸로 센다(MGT: (문턱 − 기준) ÷ k) */}
               {delayLine(s, v) && <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">⏳ {delayLine(s, v)}</p>}
             </>
