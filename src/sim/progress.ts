@@ -174,40 +174,40 @@ export function updateProgress(s: GameState, report: MonthReport): void {
       if (!s.progress.verdict) s.progress.verdict = judgeWin(s, s.month + 1, quality);
     }
   }
-  if (s.progress.win) rejudge(s, report); // [결정 #422] 승리 뒤 — 새 적격 로트의 첫 출하 달에만 등급이 오를 수 있다
+  if (s.progress.win) judgeMasterpiece(s, report); // [결정 #433] 승리 뒤 — 새 적격 로트의 첫 출하 달에 15년+ · 80 · 20%면 「명작」(등급은 그대로)
   if (ended && !s.progress.verdict) { const v = judgeGoal(s, s.month + 1); if (v) s.progress.verdict = v; }
 }
 
-/** [결정 #422] 지금 등급 — 재판정으로 오른 등급이 있으면 그것, 없으면 승리 달 판정 */
-export const bestVerdict = (s: Pick<GameState, 'progress'>): GoalVerdict | undefined => s.progress.verdictBest ?? s.progress.verdict;
+/** 지금 등급 — [결정 #433] 등급은 승리 달 첫 판정(`verdict`) 하나다(재판정 없음 · 옛 `verdictBest`는 읽지 않는다). 화면이 부르는 이름은 그대로 둔다 */
+export const bestVerdict = (s: Pick<GameState, 'progress'>): GoalVerdict | undefined => s.progress.verdict;
+
+/** [결정 #433] 「명작」 제품 표기 연수 하한 */
+export const MASTERPIECE_MIN_AGE = 15;
 
 /**
- * [결정 #422 · #427] 승리 뒤 재판정 — **오르기만 한다**. 이번 달 판매 사건 가운데 승리 로트가 아닌 12년+ 적격 로트의 **첫 정상 유상 출하**가 있으면
- * 그 제품 품질 ≥ 80 · 그달 인지도 ≥ 20%면 S로 `verdictBest`에 적는다. **[결정 #427] 순자산은 보지 않는다**(#422의 「미룬 몫 포함 순자산 문턱」을 대체 —
- * 승리 달 첫 판정의 순자산 조건 #393 · #407 · #423은 그대로). 그달 순자산은 기록(`netWorth`)으로만 남기고 S 문턱(`sNetWorthTarget`)은 적지 않는다(문턱이 있었다고 읽히지 않게).
- * 첫 출하인지는 남아 있는 결산(120개월 창)의 판매 사건으로 본다. 이미 S면 보지 않는다. 옛 판 · 승리 전은 아무 일도 없다
+ * [결정 #433] 「명작」 칭호 — **등급과 따로**(S는 승리 달에 한 번만 · #422 재판정 · #427을 대체). 이번 달 판매 사건 가운데 승리 로트가 아닌 적격 로트의
+ * **첫 정상 유상 출하**가 있고, 그 제품이 **표기 15년 이상 · 품질 ≥ 80 · 그달 인지도 ≥ 20%**면 `progress.masterpiece`에 한 번 적는다. 순자산은 보지 않는다.
+ * 첫 출하인지는 남아 있는 결산(120개월 창)의 판매 사건으로 본다. 이미 명작이면 보지 않는다. 옛 판 · 승리 전은 아무 일도 없다
  */
-export function rejudge(s: GameState, report: MonthReport): void {
-  if (rulesVersionOf(s) === 'legacy-v15' || !s.progress.win) return;
-  const cur = bestVerdict(s);
-  if (!cur || cur.result !== 'heritage' || cur.grade === 'S') return;
+export function judgeMasterpiece(s: GameState, report: MonthReport): void {
+  if (rulesVersionOf(s) === 'legacy-v15' || !s.progress.win || s.progress.masterpiece) return;
   const fresh = (report.saleEvents ?? []).filter((e) => e.eligibleAtSale && e.kind !== 'b2b' && e.bottles > 0 && e.unitPrice > 0 && e.lotId !== s.progress.win!.lotId);
   if (!fresh.length) return;
   const seen = new Set<string>();
   for (const r of s.history.reports) for (const e of r.saleEvents ?? []) seen.add(e.lotId);
-  let best: { e: (typeof fresh)[number]; q: number } | undefined;
+  let best: { e: (typeof fresh)[number]; q: number; age: number } | undefined;
   for (const e of fresh) {
     if (seen.has(e.lotId)) continue;
-    const q = s.commerce.products.find((p) => p.id === e.productId)?.quality;
-    if (q != null && (!best || q > best.q)) best = { e, q };
+    const p = s.commerce.products.find((x) => x.id === e.productId);
+    if (p?.quality == null || (p.ageYears ?? 0) < MASTERPIECE_MIN_AGE) continue;
+    if (!best || p.quality > best.q) best = { e, q: p.quality, age: p.ageYears! };
   }
-  if (!best) return;
-  if (best.q < GRADE.sFlagshipQuality || awarenessOf(s) < GRADE.sAwareness) return; // [결정 #427] 품질 · 인지도만
-  const { sNetWorthTarget: _noTarget, ...v } = judgeWin(s, s.month + 1, best.q); // 기록(순자산 · 품질 · 인지도 · checks)만 쓴다 — 등급은 위 두 조건
-  // acknowledged는 비워 둔다(judgeWin은 새 객체 — 첫 판정을 펼쳐 복사하지 않는다): 오른 달에 결과 화면이 다시 뜬다(ARCH 화면)
-  s.progress.verdictBest = { ...v, grade: 'S', acknowledged: undefined, rejudged: { month: s.month + 1, productId: best.e.productId, lotId: best.e.lotId } };
+  if (!best || best.q < GRADE.sFlagshipQuality) return;
+  const aw = awarenessOf(s);
+  if (aw < GRADE.sAwareness) return;
+  s.progress.masterpiece = { month: s.month + 1, productId: best.e.productId, lotId: best.e.lotId, quality: best.q, awareness: aw, ageYears: best.age };
   const name = s.commerce.products.find((p) => p.id === best!.e.productId)?.name ?? best.e.productId;
-  report.notes.push(`등급이 올랐다 — 「${name}」 첫 출하로 다시 본 성과 판정: S (승리 달 ${cur.grade} → S)`);
+  report.notes.push(`명작 — 「${name}」(${best.age}년 · 품질 ${best.q.toFixed(1)}) 첫 출하로 「명작」 칭호를 받았다 (등급은 승리 달 그대로)`);
 }
 
 /**

@@ -24,7 +24,7 @@ describe('#422 rejudge screen', () => {
   it('「12년으로 승리(A · 승리 달) → 「제품」 첫 출하로 S(재판정 달)」', () => {
     const s = withBest(load());
     expect(rejudgeLine(s)).toBe('12년으로 승리(A · 2039년 7월) → 「김포 셰리캐스크 피니시 12년」 첫 출하로 S(2040년 2월)');
-    expect(bestVerdict(s)!.grade).toBe('S');
+    expect(bestVerdict(s)!.grade).toBe('A'); // [결정 #433] 등급은 승리 달 첫 판정 하나 — 옛 verdictBest는 읽지 않는다(화면 줄은 ARCH 화면 PR이 「명작」으로 바꾼다)
   });
   it('결과 화면은 재판정이 닫히지 않은 동안만 다시 뜬다 — 같은 버튼이 재판정을 닫는다(첫 판정은 이미 닫혀 있다)', () => {
     const s = withBest(load());

@@ -1105,10 +1105,15 @@ export interface ProgressSlice {
   lateGoals?: { id: string; month: number; result: 'done' | 'missed' }[];
   verdict?: GoalVerdict;
   /**
-   * [결정 #422] 승리 뒤 재판정으로 오른 등급(오르기만 — 내려가지 않음). 없으면 `verdict`가 등급이다. 읽기는 `bestVerdict(s)` 하나.
-   * 승리 뒤 새 12년+ 적격 로트의 첫 정상 유상 출하 달에만 MGT `progress.ts rejudge`가 쓴다. 선택 필드(#187)
+   * [결정 #422 · #427 — **#433으로 폐지**] 승리 뒤 재판정으로 오른 등급. 이제 아무 경로도 쓰지 않는다(등급은 승리 달 `verdict` 하나 — #433).
+   * #1148 ~ #433 사이에 만든 v16 세이브에만 남을 수 있어 타입만 둔다(읽지 않음). 선택 필드(#187)
    */
   verdictBest?: GoalVerdict & { rejudged: { month: number; productId: string; lotId: string } };
+  /**
+   * [결정 #433] 「명작」 칭호 — 승리 뒤 새 적격 로트의 첫 정상 유상 출하 달에, 그 제품이 표기 15년 이상 · 품질 ≥ 80 · 그달 인지도 ≥ 20%면 한 번 쓴다(등급과 따로 · 순자산 안 봄).
+   * 처음 한 번만(덮어쓰지 않음). `acknowledged`는 화면이 한 번 띄우고 닫는다(ARCH). MGT `progress.ts judgeMasterpiece`. 선택 필드(#187)
+   */
+  masterpiece?: { month: number; productId: string; lotId: string; quality: number; awareness: number; ageYears: number; acknowledged?: boolean };
   /** 캠페인 승리(F3 모양 · F4가 쓴다 — [결정 #308]) — 적격 로트의 최초 정상 유상 출하 1회. 멈춤 사유가 아니라 알림(계속 운영) */
   win?: CampaignWin;
   /**
