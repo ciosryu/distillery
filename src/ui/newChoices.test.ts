@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { parsePlayFile } from '../store/playlog';
 import { newScenarioGame, type GameState } from '../sim';
 import { NEW_CHOICE_MONTHS, newChoices, opsOpenedMonth } from './newChoices';
+import { stageTarget } from './alerts';
 
 // [결정 #416] 새 시설 · 새 선택 — 첫 화면 맨 위. 9차 판 세이브 두 개(133 · 159개월)와 새 판으로 본다
 const load = (f: string): GameState => {
@@ -53,5 +54,9 @@ describe('#416 newChoices', () => {
     expect(opsOpenedMonth(s)).toBe(120);
     expect(keys(s)).toEqual(['late:aged15_sold']);
     expect(keys(s133())).toEqual([]); // 133개월: 120 · 108에 열린 것은 12개월이 지났다
+  });
+
+  it('#412 직원 단계(MGT y1_staff — 행동 키만 연다)도 직원 탭으로 간다', () => {
+    expect(stageTarget({ unlock: ['action:trainStaff', 'action:fire', 'action:assignStaffTask'] })).toEqual({ tab: 'staff', label: '직원' });
   });
 });

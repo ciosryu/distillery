@@ -227,7 +227,8 @@ export function stageTarget(st: { unlock: readonly string[] }): { tab: string; l
   if (u('system:commissions')) return { tab: 'blendlab', label: '블렌딩 테이블' };
   if (u('system:exports')) return { tab: 'exports', label: '수출' };
   if (u('system:caskBids') || u('system:siteDeals')) return { tab: 'b2b', label: '원액 B2B' };
-  if (u('system:hr') || u('action:pickSpecialist')) return { tab: 'staff', label: '직원' };
+  // [결정 #412] 직원 맡길 일 · 교육 · 해고 단계(MGT `y1_staff` — system:hr는 잠근 채 행동 키만 연다)도 직원 탭
+  if (u('system:hr') || u('action:pickSpecialist') || u('action:assignStaffTask') || u('action:trainStaff')) return { tab: 'staff', label: '직원' };
   // #345 ② 피니싱(GAP-PROD-4): 홈 「숙성 중인 캐스크」 칸에서 고른다 — 숙성고 탭은 샌드박스만
   if (u('action:transferCask')) return { tab: 'home', label: '숙성 중인 캐스크' };
   return { tab: 'sales', label: '판매' };
