@@ -27,7 +27,7 @@ function delayLine(s: GameState, v: NonNullable<GameState['progress']['verdict']
   const k = GRADE.sDelayPerMonthV16[sc.tierId];
   if (base == null || !k || v.sNetWorthTarget <= base) return null;
   const n = Math.round((v.sNetWorthTarget - base) / k);
-  return `S 순자산 기준 ${won(v.sNetWorthTarget)} = 기본 ${won(base)} + 12년 적격 뒤 출하를 ${n}개월 미뤄 ${n} × ${won(k)} — 미룬 만큼 기준이 오른다`;
+  return `S 순자산 기준 ${won(v.sNetWorthTarget)} = 기본 ${won(base)} + 12년 원액을 출하할 수 있게 된 뒤 ${n}개월 미뤄 ${n} × ${won(k)} — 미룬 만큼 기준이 오른다`;
 }
 
 export function sGradeRows(v: NonNullable<GameState['progress']['verdict']>): { id: string; label: string; ok: boolean; text: string }[] {

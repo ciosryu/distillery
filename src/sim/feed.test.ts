@@ -285,3 +285,18 @@ describe('[결정 #400] feedDigest — 여러 달 요약 한 줄(고르기만)',
     expect(JSON.stringify(s)).toBe(before);
   });
 });
+
+describe('통에서 쉬지 않은 제품 — 「캐스크」 문장 없음 (PM 2026-11-25)', () => {
+  it('소주 글 · 댓글에 「캐스크」 · 「피니시 몇 개월」이 나오지 않는다(위갤 맺음말 「(캐스크 넘버까지 확인함)」 포함)', () => {
+    let n = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      for (const x of feedFor(world([product({ id: 's', name: '김포 소주', category: 'soju_distilled', quality: 60, price: 9_000, abv: 0.25, oakMonths: 0 }), product({ id: 'g', name: '김포 진', category: 'soju_distilled', quality: 70, price: 12_000, abv: 0.25, oakMonths: 0 })], 3, 300, seed), 3, 100)) {
+        if (x.productName.includes(' vs ')) continue;
+        n++;
+        expect(x.text).not.toMatch(/캐스크/);
+        for (const r of x.replies ?? []) expect(r.text).not.toMatch(/캐스크|피니시 몇 개월/);
+      }
+    }
+    expect(n).toBeGreaterThan(50);
+  });
+});

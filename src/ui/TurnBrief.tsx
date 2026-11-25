@@ -8,6 +8,7 @@ import { EVENTS } from '../sim/content/events';
 import { useGame } from '../store/game';
 import { Badge, Button } from './kit';
 import { won } from './format';
+import { feedDigest } from '../sim/feed'; // [결정 #400] 커뮤니티 한 줄(MKT)
 import { PendingEventChoices } from './panels/Events';
 import { briefTodos, flagshipReady, monthTodos, stageTarget } from './alerts';
 import { TodoText, useGo } from './AlertsView';
@@ -100,6 +101,7 @@ export function TurnBrief() {
   const todos = monthTodos(s);
   const { fresh, continuing } = briefTodos(todos, readSeenTodos(s.seed));
   const sum = periodSummary(s, from); // 여러 달 진행이면 요약이 있으니 소식이 없어도 창을 띄운다(운영 모드 · 분기 진행)
+  const feed = sum ? feedDigest(s, sum.months) : { total: 0, pos: 0, neg: 0, top: null }; // [결정 #400]
   if (seen === s.month || (!pending && !events.length && !notes.length && !unlocks.length && !fresh.length && !sum)) return null;
   const close = () => { writeSeen(s.seed, s.month); writeSeenTodos(s.seed, todos.filter((t) => t.level !== 'info').map((t) => t.id)); setSeen(s.month); };
   const span = s.month - from > 1 ? `${monthLabel(s.startYear, from)} ~ ${monthLabel(s.startYear, s.month - 1)}` : monthLabel(s.startYear, s.month - 1);
@@ -115,6 +117,8 @@ export function TurnBrief() {
             <div>매출 <b className="tabular-nums">{won(sum.revenue)}</b> · 현금 <b className={`tabular-nums ${sum.cashDelta < 0 ? 'text-rose-700 dark:text-rose-400' : ''}`}>{sum.cashDelta >= 0 ? '+' : ''}{won(sum.cashDelta)}</b> · 판매 <span className="tabular-nums">{sum.bottles.toLocaleString()}병</span></div>
             <div>목표 — {sum.goals}</div>
             <div title="몰트 · 그레인 나무 통의 목재 숙성 연령별 통 수 — ⚠ 얇은 띠(위 띠를 다 쓴 뒤 이을 원액이 모자란다)">숙성 연령 — {sum.bands}</div>
+            {/* [결정 #400] 커뮤니티 한 줄(MKT feedDigest — feedFor에서 고르기만, 상태 · 난수 불변). 글이 없으면 뺀다 */}
+            {feed.total > 0 && <div title="이번 진행 동안의 커뮤니티 글 — 화제 글은 가격 신호(💡) 글이 먼저, 없으면 댓글이 가장 많은 글">커뮤니티 — 글 {feed.total}개(좋음 {feed.pos} · 나쁨 {feed.neg}){feed.top ? <> · 화제: 「{feed.top.productName}」 {feed.top.community} "{feed.top.text.length > 40 ? `${feed.top.text.slice(0, 40)}…` : feed.top.text}"</> : null}</div>}
           </div>
         )}
         {pending > 0 && <div className="mb-3"><PendingEventChoices /><p className="mt-1 text-xs text-stone-500">고르지 않으면 다음 달 기본값(파란 버튼)으로 처리된다. 창을 닫아도 증류소 탭 맨 위에 남는다.</p></div>}
