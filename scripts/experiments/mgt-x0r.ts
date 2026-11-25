@@ -288,10 +288,12 @@ setP8Hooks({
   afterMonth: (s: GameState, p: { name: string }, m: number, seed: number) => {
     const r = runOf(s, p, seed);
     r.retail += s.history.reports.at(-1)?.retailDealRevenue ?? 0;
+    { const rep = s.history.reports.at(-1); (r as Run & { bulkRev?: number; bulkRevAtWin?: number }).bulkRev = ((r as Run & { bulkRev?: number }).bulkRev ?? 0) + (rep?.bulkRevenue ?? 0); } // 원액 B2B · 스팟 매출 누계(PROD 물음 — 형태별 뉴메이크 값)
     const v = s.progress.verdict;
     if (v && !r.v && v.result === 'heritage') {
       r.v = { month: v.month, nw: v.netWorth ?? netWorth(s), q: v.flagshipQuality, aw: v.awareness, grade: v.grade ?? undefined, sTarget: v.sNetWorthTarget, fe: s.progress.firstEligibleMonth };
       r.retailAtVerdict = r.retail;
+      (r as Run & { bulkRevAtWin?: number; bulkRev?: number }).bulkRevAtWin = (r as Run & { bulkRev?: number }).bulkRev ?? 0;
       r.equip = s.production.equipment.map((e) => [e.catalogId, (EQUIPMENT as Record<string, { cost?: number }>)[e.catalogId]?.cost ?? 0, boughtMonthOf(e)]); // [#1014] 산 달 — readyMonth는 수리 때 덮어쓴다
       if (r.xr && bestOpen.has(seed)) r.xr.bestOpen = bestOpen.get(seed);
       if (r.xr) r.xr.usedAtWin = r.xr.casks.filter((id) => !s.inventory.casks.find((c) => c.id === id)?.contents).length; // 승리 달까지 비워진(병입된) 2차 채움 통 수
