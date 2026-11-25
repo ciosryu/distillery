@@ -168,6 +168,11 @@ export const MVP_KR: ScenarioDef = {
   // 수출(84개월)·상세 HR(120개월) 해금은 1.0으로(#311): 시작 잠금을 단계가 풀지 않는다 — 코드 삭제 0. 치환 #319: 대형 유통 납품 · 12년 후보 통 3개. #316: 핵심 전문가 1인
   // 입지: `site`를 비워 지역 기본 입지(경기)로 시작한다 — 사업 계획서 화면에 입지 선택이 없어 사실상 고정이다(y7_retail은 경기 `deals: ['retail']`에서만 뜻이 있다 — F5a 확인 ③)
   stagesV16: [
+    // [결정 #412] 직원 상호작용(#409 · 오너 "(나) 교육·해고 / (다) 직원마다 분기에 한 번 맡길 일") — 채용 · 사기(`system:hr`)는 잠근 채, 교육 · 해고 · 맡길 일만 연다.
+    // 12개월 `[튜닝]` — 첫해는 배우는 해. 새 id라 이미 지난 세이브도 다음 틱에 열린다(y5_finish와 같은 방식). 하나뿐인 디스틸러는 해고할 수 없다(actions.mgt fire)
+    { id: 'y1_staff', month: 12, title: '2년 차 — 직원에게 일을 맡기고, 가르치고, 내보낼 수 있다',
+      unlock: ['action:trainStaff', 'action:fire', 'action:assignStaffTask'],
+      text: '직원 탭에서 사람마다 이번 분기에 맡길 일을 고른다(분기에 한 번, 고르지 않으면 지난 일을 이어 한다). 교육은 가르칠 능력치를 골라 월급 2개월 치를 낸다(같은 사람은 1년에 한 번). 내보내면 위로금 1개월 치 — 새 판에서는 다시 뽑을 수 없다' },
     { id: 'y5_market', month: 60, title: '6년 차 — 시장이 움직이고, 의뢰가 들어온다',
       unlock: ['system:events', 'system:commissions', 'action:delegateBlend', 'action:labAnalyze', 'facility:facility_storm', 'facility:facility_snow', 'facility:facility_heating', 'facility:facility_dehumid'],
       text: '랜덤 이벤트(재해·원재료 값·트렌드·평론가 방문)가 시작되고, 블렌딩 테이블 탭에서 평론가·바이어의 블렌딩 의뢰를 받을 수 있다. 재해에 대비한 방재 설비(배수·제설·난방·제습)도 지을 수 있다' },
@@ -206,7 +211,8 @@ export const MVP_KR: ScenarioDef = {
   ],
   // #321 대안 ⓐ: 「해외 바이어 문의」(수출 주문 300병)는 새 캠페인에서 잠근다 — events.ts eligibleAt가 `event:<id>` 키를 본다. 옛 판·샌드박스는 키가 없어 불변
   // P-MGT-63 (b): 「대형 블렌더 장기 계약 제안」도 잠근다 — 계약 받기(`action:acceptContract` · `system:contracts`)가 v16 내내 잠겨 있어 [계약] 버튼이 늘 실패했다(9차 81 · 110개월째). 이벤트별 난수 스트림이라 다른 이벤트의 확률은 그대로 — 다만 월 상한 안의 빈 자리를 다른 이벤트가 받고 nid가 당겨져 결과는 달라진다
-  lockedV16: ['event:export_inquiry', 'event:mega_contract'],
+  // [결정 #412] 직원 교육 · 맡길 일은 2년 차 단계(y1_staff)가 연다 — 옛 판은 키가 없어 불변(교육은 옛 판에서 `system:hr`이 막는다). 해고(`action:fire`)는 공통 잠금에 있다
+  lockedV16: ['event:export_inquiry', 'event:mega_contract', 'action:trainStaff', 'action:assignStaffTask'],
   // #311·#322: 그레인(기본 블렌드 재료) 포함 — 그레인 프리셋(PROD P-PROD-57)은 v16 새 판에만 뒤에 이어 붙인다(옛 레시피 id 보존)
   kindsV16: ['soju', 'malt', 'grain'],
   defaultTier: 'micro',

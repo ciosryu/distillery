@@ -2,7 +2,7 @@ import { forwardRoomKg, marketIndex } from './forwards';
 import { FORWARD, INGREDIENTS } from './content/catalog';
 import { LOAN_OFFERS } from './content/catalog';
 import { awarenessOf } from './brands';
-import { handleDeparture, headhunt, masterDistiller, MORALE, moraleOn, pickSpecialist, shiftMorale, TRAINING, trainingCost, trainStaff, type SpecialistRole } from './hr';
+import { assignStaffTask, handleDeparture, headhunt, masterDistiller, MORALE, moraleOn, pickSpecialist, shiftMorale, STAFF_TASKS, staffActionsOpen, TRAINING, trainingCost, trainStaff, type SpecialistRole } from './hr';
 import { ROLE_INFO } from './content/catalog';
 import { isLocked } from './scenario';
 import { INVESTMENT_OFFERS } from './content/catalog';
@@ -11,7 +11,12 @@ import { ensureBoard } from './board';
 import { isBulkKind, spotQuote } from './bulk';
 import { resolvePending } from './events';
 import { bankScreening, currentLoanPayment, effectiveOffer, inventoryLoanRoom, inventoryLtv } from './loans';
-import { annuityPayment, nid } from './util';
+import { annuityPayment, nid, staffOf } from './util';
+import { rulesVersionOf } from './rules';
+import type { StaffStats, StaffTaskId } from './types';
+
+/** 능력치 키 → ROLE_INFO.stats 자리 */
+const STAT_INDEX = { a: 0, b: 1, c: 2 } as const;
 import { fail, type CashKeys, type Handlers } from './actionKit';
 import { TECH_BY_ID } from './content/tech';
 import { isUnlocked, researchBlocker } from './research';
@@ -42,8 +47,10 @@ export type MgtAction =
   /** 대출 상환 — amount가 없거나 잔액 이상이면 전액, 있으면 일부(#181: 남은 기간 그대로 월 납부를 다시 계산) */
   | { type: 'repayLoan'; loanId: string; amount?: number }
   | { type: 'resolveEvent'; eventId: string; choice: number }
-  /** 교육 프로그램 (#222) — 비용을 내고 XP */
-  | { type: 'trainStaff'; staffId: string }
+  /** 교육 프로그램 (#222) — 비용을 내고 XP. [결정 #412] `stat`을 고르면 그 능력치도 오른다(「무엇을 가르칠까」) */
+  | { type: 'trainStaff'; staffId: string; stat?: keyof StaffStats }
+  /** [결정 #412] 직원에게 이번 분기 맡길 일 — 분기에 한 번, 고르지 않으면 지난 일을 이어 한다(새 캠페인만) */
+  | { type: 'assignStaffTask'; staffId: string; task: StaffTaskId }
   /** 헤드헌팅 (#222) — 비용을 내고 스탯 높은 후보 1명 */
   | { type: 'headhunt'; role: 'distiller' | 'warehouse' | 'sales' | 'office' | 'blender' }
   /** 핵심 전문가 1인 (새 캠페인 v16, F5a [결정 #316]) — 11년 차부터 숙성고 매니저·마스터 블렌더·영업 중 한 사람을 1회. 안 고를 수도 있다 */
@@ -72,6 +79,8 @@ export const MGT_CASH_KEY: CashKeys<MgtAction> = {
   // 교육·헤드헌팅 비용 — 전용 항목이 없어 '기타 행동'으로 센다
   trainStaff: 'other',
   headhunt: 'other',
+  // 일을 맡기는 것 자체는 돈이 들지 않는다 — 일의 비용은 그 달 틱에서(PR2)
+  assignStaffTask: null,
   // 핵심 전문가는 채용 비용이 없다(급여만 매달) — hire와 같다
   pickSpecialist: null,
 };
@@ -165,12 +174,22 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
     return { state: s, message: `캐스크 ${cask.id} 오너십 판매 ${price.toLocaleString()}원 — ${cask.owner.deliverMonth - s.month}개월 뒤 인도` };
   },
   trainStaff: (s, prev, a) => {
-    if (isLocked(s, 'system:hr')) return fail(prev, '이 시나리오에서는 직원을 관리할 수 없습니다');
+    // [결정 #412] 새 캠페인(v16)은 `action:trainStaff` 키(단계 y1_staff가 연다 — actions.ts 공통 검사)로 연다. 옛 판은 상세 HR(`system:hr`)이 열려야 그대로
+    if (rulesVersionOf(s) === 'legacy-v15' ? isLocked(s, 'system:hr') : isLocked(s, 'system:hr') && !staffActionsOpen(s)) return fail(prev, rulesVersionOf(s) === 'legacy-v15' ? '이 시나리오에서는 직원을 관리할 수 없습니다' : '2년 차(12개월)부터 직원을 교육할 수 있습니다');
     const x = s.hr.staff.find((y) => y.id === a.staffId);
     const cost = x ? trainingCost(x) : 0;
-    const why = trainStaff(s, a.staffId);
+    const before = x && a.stat ? x.stats[a.stat] : undefined;
+    const why = trainStaff(s, a.staffId, a.stat);
     if (why) return fail(prev, why);
-    return { state: s, message: `${x!.name} 교육 — ${cost.toLocaleString()}원, XP +${TRAINING.xpPerLevel * x!.level} (${TRAINING.cooldownMonths}개월 뒤 다시 가능)` };
+    const statNote = a.stat && before != null ? ` · ${ROLE_INFO[x!.role].stats[STAT_INDEX[a.stat]]} ${before} → ${x!.stats[a.stat]}` : '';
+    return { state: s, message: `${x!.name} 교육 — ${cost.toLocaleString()}원, XP +${TRAINING.xpPerLevel * x!.level}${statNote} (${TRAINING.cooldownMonths}개월 뒤 다시 가능)` };
+  },
+  assignStaffTask: (s, prev, a) => {
+    const x = s.hr.staff.find((y) => y.id === a.staffId);
+    const why = assignStaffTask(s, a.staffId, a.task);
+    if (why) return fail(prev, why);
+    const def = STAFF_TASKS.find((t) => t.id === a.task)!;
+    return { state: s, message: `${x!.name}에게 「${def.nameKo}」을(를) 맡겼다 — 바꾸지 않으면 다음 분기에도 이어 한다` };
   },
   headhunt: (s, prev, a) => {
     if (isLocked(s, 'system:hr')) return fail(prev, '이 시나리오에서는 직원을 관리할 수 없습니다');
@@ -204,6 +223,8 @@ export const MGT_HANDLERS: Handlers<MgtAction> = {
   fire: (s, prev, a) => {
     const x = s.hr.staff.find((y) => y.id === a.staffId);
     if (!x) return fail(prev, '직원이 없습니다');
+    // [결정 #412] 채용이 잠긴 판(새 캠페인)은 다시 뽑을 수 없다 — 하나뿐인 디스틸러는 내보낼 수 없다. 채용이 열린 판(샌드박스 · 옛 판 11년 차 뒤)은 그대로
+    if (isLocked(s, 'action:hire') && x.role === 'distiller' && staffOf(s, 'distiller').length === 1) return fail(prev, '하나뿐인 디스틸러는 내보낼 수 없습니다 — 채용이 잠겨 있어 다시 뽑을 수 없다');
     s.finance.cash -= x.salary; // 퇴직 위로금 1개월분
     const notes: string[] = [];
     handleDeparture(s, x, notes);
