@@ -2,7 +2,8 @@ import { BOTTLING_LABOR_PER_BOTTLE, PACKAGING, packagingCost } from './content/c
 import { rulesVersionOf } from './rules'; // #362 finishMonths는 v16만
 import { FINISH_EFFECT_MIN_MONTHS, finishLabelOn } from './finishLabel'; // #362 피니시 표기 효과 문턱(MKT) — 보충 경고
 import { bottledQualityKnown, hidesProductQuality, mergeQualityKnown, restockPrior, type RecipeShare } from './productView'; // F5d 아는 품질(코어)
-import { lotQuality } from './bulk'; // F5d 병입 보정량 — 샘플 기록과 같은 원액 품질 식
+import { lotQuality } from './bulk';
+import { majorityShape, stillStyleOf } from './stillShape'; // [결정 #422] 공개 증류 스타일 // F5d 병입 보정량 — 샘플 기록과 같은 원액 품질 식
 import type { PackagingChoice } from './content/packaging';
 import { fixPackaging, nearestPresetId, packagingError, packagingPartsCost, presetChoice, productPackaging, sameChoice } from './packaging';
 import { brandOf } from './brands';
@@ -10,7 +11,7 @@ import { CATEGORY } from './content/categories';
 import { BULK, INGREDIENTS } from './content/catalog';
 import { DEFAULT_WHISKY_RULES, priceForConsumer, refPricePerL, regionOf, traditionalTaxFactor, type RegionDef, type WhiskyRules } from './content/regions';
 import { PROD_TUNING } from './prodTuning';
-import { clampFlavor, evaluate, weightedAverage, type Evaluation } from './flavor';
+import { clampFlavor, evaluate, lotEvalCtx, weightedAverage, type Evaluation } from './flavor';
 import { emptyCask, finishLabel, finishOf } from './maturation';
 import { ownsFacility } from './util';
 import { siteFreight } from './sites';
@@ -274,7 +275,8 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   const spiritCost = items.reduce((t, i) => t + i.liters * i.lot.abv * i.lot.costPerLPA, 0);
   const perBottleFixed = packagingUnitCost(s, opts) + BOTTLING_LABOR_PER_BOTTLE;
   const unitCost = bottles > 0 ? spiritCost / bottles + perBottleFixed : 0;
-  const evaluation = evaluate(flavor, category);
+  // [결정 #422 (c)] 형태를 고른 증류기 원액이 섞였으면 저숙성 황을 가장 어린 원액 개월로 센다(섞인 황 그대로 — 적게 섞이면 작다)
+  const evaluation = evaluate(flavor, category, items.some((i) => i.lot.stillShape) ? { youthOakMonths: minOakMonths } : undefined);
   if (opts.restockId) restockChecks(s, opts, { category, finalAbv, finish, ageYears, premiumLabel, traditional, specialty: specialty?.id ?? null, oakMonths: minOakMonths, restMonths: minRestMonths }, errors, warnings);
   return {
     ok: errors.length === 0, errors, warnings, kind, category, volumeL: finalVolume, lpa, mixAbv, finalAbv, bottles,
@@ -315,7 +317,7 @@ export function estimateBlend(s: GameState, components: BlendComponent[]): { qua
     } else {
       // 탱크 원액은 막 만든 것이라 참값을 안다 — 소주·진·고량주는 레이더 축도 참값
       const ax = sampleAxesOf(lot.kind);
-      parts.push({ w, q: evaluate(lot.flavor, lotCategory(lot, regionOf(s).whisky)).quality, sd: 0, hex: hexOf(lot.flavor), key: `lot:${c.id}`, axes: ax ? Object.fromEntries(ax.map((a) => [a, lot.flavor[a] ?? 0])) : undefined });
+      parts.push({ w, q: evaluate(lot.flavor, lotCategory(lot, regionOf(s).whisky), lotEvalCtx(lot)).quality, sd: 0, hex: hexOf(lot.flavor), key: `lot:${c.id}`, axes: ax ? Object.fromEntries(ax.map((a) => [a, lot.flavor[a] ?? 0])) : undefined });
     }
   }
   const kw = parts.reduce((t, p) => t + p.w, 0);
@@ -516,7 +518,7 @@ export function bottlingOffset(s: GameState, components: BlendComponent[], evalu
     if (!lot) continue;
     const wi = c.liters * lot.abv;
     w += wi;
-    q += wi * (c.source === 'cask' ? lotQuality(lot) : evaluate(lot.flavor, lotCategory(lot, regionOf(s).whisky)).quality);
+    q += wi * (c.source === 'cask' ? lotQuality(lot) : evaluate(lot.flavor, lotCategory(lot, regionOf(s).whisky), lotEvalCtx(lot)).quality);
   }
   return w > 0 ? evaluationQuality - q / w : 0;
 }
@@ -532,6 +534,43 @@ export function batchQualityKnown(s: GameState, components: BlendComponent[], p:
   const target = restockId ? s.commerce.products.find((x) => x.id === restockId) : undefined;
   const carried = target ? restockPrior(s, target, recipeSharesOf(s, components)) : undefined;
   return bottledQualityKnown(estB, p.kind ?? 'malt', s.month, carried, bottlingOffset(s, components, p.evaluation.quality));
+}
+
+/** [결정 #426] 캐스크 스트렝스 비교 도수 — 위스키 논칠필터 표준(46%) */
+export const CS_COMPARE_ABV = 0.46;
+/**
+ * [결정 #426] 캐스크 스트렝스로 고른 병입을 46%로 냈다면 — 「46%로 내면 예상 품질 +n · 병 +m · 병당 기준 값 −k%」 한 줄의 값. 막지 않는다 · 상태 불변.
+ * 같은 원액 · 같은 병 · 같은 포장으로 `previewBlend`를 46%로 한 번 더 돌린다. 화면이 보이는 값과 같은 수준만 낸다(I2):
+ * 품질은 화면의 품질 칸과 같은 규칙 — 참값을 보이는 판(샌드박스 · 탱크 원액만)은 평가 품질, 가리는 판(F5d)은 병입 뒤 남는 아는 품질(`batchQualityKnown`),
+ * 옛 판 시나리오(샘플 추정만 보이고 병입 보정이 없다)와 샘플이 없는 원액은 null(품질 칸을 비운다).
+ * 병당 기준 값은 **같은 품질**로 두 도수의 기준가를 견준다(도수 · 병 크기 몫만 — 품질이 새지 않는다). 보충 · 면세 한정판 · 원액이 46% 이하면 null
+ */
+export function caskStrengthCompare(s: GameState, components: BlendComponent[], opts: BottleOptions): { abv: number; qualityDelta: number | null; bottles: number; bottlesDelta: number; priceRatio: number | null } | null {
+  if (opts.targetAbv !== 'cask' || opts.restockId || opts.dutyFreeOnly) return null;
+  const cs = previewBlend(s, components, opts);
+  if (!cs.ok || cs.dfEdition || cs.finalAbv <= CS_COMPARE_ABV + 0.0005) return null;
+  const o46: BottleOptions = { ...opts, targetAbv: CS_COMPARE_ABV };
+  const at46 = previewBlend(s, components, o46);
+  if (!at46.ok) return null;
+  const est = s.scenario ? estimateBlend(s, components) : null;
+  const masked = !!est?.fromCasks;
+  const shown = (pv: BlendPreview): number | null => {
+    if (!masked) return pv.evaluation?.quality ?? null;
+    if (!hidesProductQuality(s) || est?.quality == null) return null;
+    return batchQualityKnown(s, components, pv)?.est ?? null;
+  };
+  const qa = shown(cs);
+  const qb = shown(at46);
+  const qRef = qa ?? 50; // 기준 값 견줌은 같은 품질 — 모르면 중간값(비율에는 품질이 거의 닿지 않는다)
+  const pa = priceAtQuality(s, cs, opts, qRef);
+  const pb = priceAtQuality(s, at46, o46, qRef);
+  return {
+    abv: cs.finalAbv,
+    qualityDelta: qa != null && qb != null ? Math.round((qb - qa) * 10) / 10 : null,
+    bottles: cs.bottles,
+    bottlesDelta: at46.bottles - cs.bottles,
+    priceRatio: pa && pb ? pb / pa : null,
+  };
 }
 
 /**
@@ -600,6 +639,11 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
   const recipeIds = recipeIdsOf(s, components);
   // [결정 #399 C] 블렌디드의 섞는 비율(레시피별 LPA 몫) — 원액을 빼기 **전에** 읽는다. v16 · 블렌디드만 · 레시피 기록 없는 원액이 섞이면 남기지 않는다
   const mix = p.category === 'blended_whisky' && rulesVersionOf(s) !== 'legacy-v15' ? restockMixOf(recipeSharesOf(s, components)) : undefined;
+  // [결정 #418 · #422] 공개 증류 스타일 — 섞은 원액 중 LPA가 가장 많은 원액의 형태를 접는다(원액을 빼기 전에 읽는다). 형태 없는 원액이 많으면 없음
+  const styleShape = majorityShape(components.filter((c) => c.liters > 0).map((c) => {
+    const lot = c.source === 'cask' ? s.inventory.casks.find((k) => k.id === c.id)?.contents : s.inventory.lots.find((l) => l.id === c.id);
+    return { lot: lot ?? {}, lpa: lot ? c.liters * lot.abv : 0 };
+  }));
   // F2 원장 지점 17·18: 병입 — 원천마다 뽑은 리터 비율로 분할해(손실 아님) 병입 로트에 이어 붙인다(평균 안 냄). 원장이 없는 원천은 합성(`ledgerOf` — 옛 판은 unknown)
   const bottledLedger: LedgerEntry[] = [];
   const takeLedger = (lot: SpiritLot, liters: number): LedgerEntry[] | undefined => {
@@ -662,6 +706,7 @@ export function executeBlend(s: GameState, components: BlendComponent[], opts: B
     ...(p.peatShare > 0 ? { peatShare: p.peatShare } : {}),
     ...(recipeIds.length ? { recipeIds } : {}),
     ...(mix ? { restockMix: mix } : {}),
+    ...(styleShape ? { stillStyle: stillStyleOf(styleShape) } : {}),
     ...(opts.dutyFreeOnly && p.dfEdition ? { dutyFreeOnly: true, dfEdition: { ...p.dfEdition } } : {}),
     ...(knownBatch ? { qualityKnown: knownBatch } : {}),
   };

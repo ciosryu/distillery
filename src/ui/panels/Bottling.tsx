@@ -5,7 +5,7 @@ import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './H
 import { BOTTLE_SIZES, CASKS, PACKAGING } from '../../sim/content/catalog';
 import { CATEGORY } from '../../sim/content/categories';
 import { AXIS } from '../../sim/content/axes';
-import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, restockMix, restockPrior, recipeSharesOf, RESTOCK_PRIOR_SIGMA_FLOOR, batchQualityKnown, hidesProductQuality, newFinishShort, restockFinishOff } from '../../sim';
+import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, restockMix, restockPrior, recipeSharesOf, RESTOCK_PRIOR_SIGMA_FLOOR, batchQualityKnown, hidesProductQuality, newFinishShort, restockFinishOff, caskStrengthCompare, CS_COMPARE_ABV } from '../../sim';
 import { agedWhitePerception } from '../../sim/content/market';
 import { regionOf } from '../../sim/content/regions';
 import { autoRestockCeiling, autoRestockFloor, autoRestockHint, handRestockCount, STANDARD_BOTTLE, stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
@@ -441,6 +441,18 @@ export function Bottling() {
                 {preview.agedLabel && preview.category && <><dt className="text-stone-500" title="옹기·오크에서 6개월 이상 쉰 증류식 소주·고량주 — 권장 출고가와 매력도에 같이 곱한다. 1년 +0.08, 3년 상한 ×1.24 (#217)">숙성 표기 프리미엄</dt><dd className="text-right tabular-nums">×{agedWhitePerception(preview.category, preview.minOakMonths, preview.minRestMonths).toFixed(2)}</dd></>}
                 {dfForecast && <><dt className="text-stone-500">예상 면세 판매</dt><dd className={`text-right tabular-nums ${dfForecast.window < preview.bottles ? 'text-amber-800 dark:text-amber-300' : ''}`}>월 {num(dfForecast.perMonth)}병 · {DUTY_FREE.sellOutMonths}개월 {num(dfForecast.window)}병</dd></>}
               </dl>
+              {/* [결정 #426] 캐스크 스트렝스 — 46%로 냈다면(막지 않음 · 아는 값만: 품질은 위 품질 칸과 같은 규칙, 기준 값은 같은 품질로 견준다) */}
+              {opts.targetAbv === 'cask' && (() => {
+                const r = caskStrengthCompare(s, components, opts);
+                if (!r) return null;
+                const sign = (x: number, d = 0) => `${x >= 0 ? '+' : '−'}${num(Math.abs(x), d)}`;
+                const parts = [
+                  r.qualityDelta != null ? `${masked ? '추정 ' : ''}품질 ${sign(r.qualityDelta, 1)}` : null,
+                  `병 ${sign(r.bottlesDelta)}(${num(r.bottles)} → ${num(r.bottles + r.bottlesDelta)}병)`,
+                  r.priceRatio != null ? `병당 기준 값 ${sign((r.priceRatio - 1) * 100)}%` : null,
+                ].filter(Boolean);
+                return <p className="text-xs text-stone-600 dark:text-stone-400" title="캐스크 스트렝스는 물을 타지 않아 거친 맛이 남고(품질 ↓) 병 수가 적다(도수 비만큼). 병당 기준 값은 도수에 따라 오르지만 캐스크 스트렝스 표기 자체에 붙는 값 보상은 없다">캐스크 스트렝스 {pct(r.abv)} — {Math.round(CS_COMPARE_ABV * 100)}%로 내면 {parts.join(' · ')}</p>;
+              })()}
               {preview.dfEdition && !preview.localIngredient && dutyFreeAgedAppeal(preview.ageYears) > 1 && <p className="text-xs text-stone-500">숙성 한정판 보너스는 수요만 올립니다. 숙성 연수에 따른 값은 권장 출고가의 숙성 프리미엄에 이미 들어 있습니다</p>}
               {dfForecast && dfForecast.window < preview.bottles && <p className="text-xs text-amber-800 dark:text-amber-300">⚠ 이번 달 수요(계절·인지도 반영)로는 {DUTY_FREE.sellOutMonths}개월 안에 {num(preview.bottles)}병을 다 팔기 어렵습니다 — 사용량을 줄이면 완판 보너스를 노릴 수 있습니다</p>}
               {preview.warnings.map((w) => <p key={w} className="text-xs text-amber-800 dark:text-amber-300">⚠ {w}</p>)}

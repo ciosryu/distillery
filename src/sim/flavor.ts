@@ -85,14 +85,33 @@ export interface Evaluation {
   offnotes: number;
 }
 
-export function offnoteLoad(f: Flavor, cat: ProductCategory): number {
+/**
+ * [결정 #418 · #422 (c)] 저숙성 황 이취 `[튜닝]` — 위스키(싱글 몰트 · 블렌디드)에서 목재 `months` 미만이면 황(미티) 중 `fromSulfur`를 넘는 몫을 이취로 센다:
+ * k × max(0, 황 − fromSulfur) × (1 − 목재 ÷ months). 5년이 넘으면 0 — 황은 「미티 · 개성」이 된다. 형태를 고른 증류기 원액에만(`EvalContext.youth` — 부르는 쪽이 정한다).
+ * fromSulfur는 균형 원액 3년 황(약 0.4) 위 — 균형 · 라이트 원액은 0(PR ④ 측정: 헤비 3년 황 2.5 ~ 4.0)
+ */
+export const YOUTH_SULFUR = { months: 60, fromSulfur: 1.0, k: 10, cats: ['whisky', 'blended_whisky'] as ProductCategory[] } as const;
+/** 평가 맥락 — 없으면 지금 식 그대로 */
+export interface EvalContext {
+  /** 저숙성 황 이취를 셀 목재 개월(형태를 고른 증류기 원액이 섞였을 때만 준다) */
+  youthOakMonths?: number;
+}
+/** 원액 하나의 평가 맥락 — 형태를 고른 증류기 원액이면 그 목재 개월로 저숙성 황을 센다 */
+export const lotEvalCtx = (lot: { stillShape?: unknown; oakMonths: number }): EvalContext | undefined => (lot.stillShape ? { youthOakMonths: lot.oakMonths } : undefined);
+export function youthSulfurLoad(f: Flavor, cat: ProductCategory, ctx?: EvalContext): number {
+  if (ctx?.youthOakMonths == null || !YOUTH_SULFUR.cats.includes(cat)) return 0;
+  const left = Math.max(0, 1 - ctx.youthOakMonths / YOUTH_SULFUR.months);
+  return left > 0 ? YOUTH_SULFUR.k * Math.max(0, get(f, 'sulfur_meaty') - YOUTH_SULFUR.fromSulfur) * left : 0;
+}
+
+export function offnoteLoad(f: Flavor, cat: ProductCategory, ctx?: EvalContext): number {
   const schema = CATEGORY[cat];
   const sulfur = get(f, 'sulfur_meaty');
   return get(f, 'solvent') + get(f, 'feinty') + get(f, 'acetic') + get(f, 'musty') +
-    (schema.sulfurIsOffnote ? sulfur * 0.6 : Math.max(0, sulfur - 35) * 0.5);
+    (schema.sulfurIsOffnote ? sulfur * 0.6 : Math.max(0, sulfur - 35) * 0.5) + youthSulfurLoad(f, cat, ctx);
 }
 
-export function evaluate(f: Flavor, cat: ProductCategory): Evaluation {
+export function evaluate(f: Flavor, cat: ProductCategory, ctx?: EvalContext): Evaluation {
   const schema = CATEGORY[cat];
   const axes = schema.radarAxes.filter((a) => AXIS[a].polarity !== 'structure');
   // 레이더 밖이지만 의미 있는 숙성 향도 복합성에 포함
@@ -112,7 +131,7 @@ export function evaluate(f: Flavor, cat: ProductCategory): Evaluation {
   }
   const complexity = entropy * 22 * Math.min(1, total / 80);
   const intensity = Math.min(18, total / 8);
-  const off = offnoteLoad(f, cat);
+  const off = offnoteLoad(f, cat, ctx);
   const capPenalty = Object.entries(schema.caps).reduce((s, [a, cap]) => s + Math.max(0, get(f, a as AxisId) - (cap as number)) * 0.8, 0);
   const quality = clamp(38 + complexity + intensity + get(f, 'integration') * 0.25 - off * 0.7 - get(f, 'harshness') * 0.18 - capPenalty, 0, 100);
 

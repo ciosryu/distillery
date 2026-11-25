@@ -44,7 +44,7 @@ const LAUNCH = process.env.XR_LAUNCH === 'best' ? 'best' : 'first';
 const STAFF_TASK = process.env.XR_STAFF as 'aging_check' | undefined;
 
 type Verdict = { month: number; nw: number; q?: number; aw: number; grade?: string; sTarget?: number; fe?: number };
-interface Run { pol: string; seed: number; target: number; v?: Verdict; retail: number; retailAtVerdict?: number; nwEnd: number; months: number; equip?: [string, number, number][]; status?: string; endMonth?: number; xr?: { mode?: string; buyCost?: number; casks: string[]; lostL: number; activity: number[]; bestOpen?: number; usedAtWin?: number; untagged?: string[]; sampled?: [string, number][]; autoOff?: string[] } }
+interface Run { best?: { grade?: string; month: number; q?: number }; pol: string; seed: number; target: number; v?: Verdict; retail: number; retailAtVerdict?: number; nwEnd: number; months: number; equip?: [string, number, number][]; status?: string; endMonth?: number; xr?: { mode?: string; buyCost?: number; casks: string[]; lostL: number; activity: number[]; bestOpen?: number; usedAtWin?: number; untagged?: string[]; sampled?: [string, number][]; autoOff?: string[] } }
 const runs = new Map<string, Run>();
 const refill = new Map<number, Set<string>>(); // seed → 2차 채움 예비 통
 const buyArrive = new Map<number, number>(); // seed → 리필 통 도착 달(buy)
@@ -194,6 +194,8 @@ setP8Hooks({
       if (r.xr && bestOpen.has(seed)) r.xr.bestOpen = bestOpen.get(seed);
       if (r.xr) r.xr.usedAtWin = r.xr.casks.filter((id) => !s.inventory.casks.find((c) => c.id === id)?.contents).length; // 승리 달까지 비워진(병입된) 2차 채움 통 수
     }
+    const bv = s.progress.verdictBest; // [결정 #422] 재판정으로 오른 등급(있으면)
+    if (bv && !r.best) r.best = { grade: bv.grade ?? undefined, month: bv.rejudged.month, q: bv.flagshipQuality };
     if (s.status !== 'running' && r.status == null) { r.status = s.status; r.endMonth = m + 1; }
     r.nwEnd = netWorth(s);
     r.months = m + 1;

@@ -14,6 +14,12 @@ export const META_CASH_KEY: CashKeys<MetaAction> = {
 export const META_HANDLERS: Handlers<MetaAction> = {
   acknowledgeVerdict: (s, prev, _a) => {
     if (!s.progress.verdict) return fail(prev, '아직 목표 판정이 없습니다');
+    // [결정 #422] 재판정으로 등급이 오른 결과 화면이 떠 있으면 그것을 먼저 닫는다(같은 버튼)
+    if (s.progress.verdictBest && !s.progress.verdictBest.acknowledged) {
+      s.progress.verdictBest = { ...s.progress.verdictBest, acknowledged: true };
+      if (!s.progress.verdict.acknowledged) s.progress.verdict = { ...s.progress.verdict, acknowledged: true };
+      return { state: s, message: '계속 운영합니다 — 등급이 올랐다' };
+    }
     if (s.progress.verdict.acknowledged) return { state: prev };
     s.progress.verdict = { ...s.progress.verdict, acknowledged: true };
     return { state: s, message: '계속 운영합니다 — 이제 목표 없이 자유롭게' };
