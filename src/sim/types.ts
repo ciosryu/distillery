@@ -67,6 +67,8 @@ export interface StillShape {
   option: 'none' | 'boil_ball';
   condenser: 'shell' | 'worm';
 }
+/** [결정 #418 · #422] 제품의 공개 증류 스타일 — 원액을 만든 증류기 형태를 접은 값(`stillShape.ts stillStyleOf`). MKT 피드 · 리뷰 문구가 읽는다(#1108) */
+export type StillStyle = 'light' | 'medium' | 'heavy';
 
 export interface EquipmentInstance {
   id: string;
@@ -121,6 +123,11 @@ export interface SpiritLot {
   mashShare?: Record<string, number>;
   /** 입지 원료(제주 차조·청귤 등)를 쓴 원액 — 면세 기념품 매력도 (결정 #87) */
   localIngredient?: boolean;
+  /**
+   * [결정 #418 · #422] 이 원액을 만든 단식 증류기의 형태 — 형태를 고른 증류기(사업 계획서 · 개조)에서 증류한 원액에만 붙는다(공개 값). 통입 · 빼기 · 옮겨 붓기에서 원액과 함께 간다.
+   * 탱크는 형태가 같을 때만 합친다(개조 전후 원액 가름). 저숙성 황 이취 · 셰리 × 미티 반응은 이 필드가 있는 원액에만 건다(봇 · 옛 판 · 진행 중 세이브는 없음 → 출력 그대로). 선택 필드(#187)
+   */
+  stillShape?: StillShape;
   /**
    * 캐스크 태그 (#249 ①, qol.md §4) — **원액에 붙는다**. 통입·원액 빼기·옮겨 붓기에서 원액과 함께 간다(`{...lot}` 복사),
    * 통이 비면 함께 사라진다. 여러 원액을 섞어 병입하면 제품에는 남지 않는다. 정의는 `inventory.tagDefs`·`tags.ts BUILTIN_TAGS`
@@ -410,6 +417,8 @@ export interface Product {
    * 없는 옛 제품은 한 번 손으로 보충하면 그 비율을 남긴다. 레시피 기록이 없는 원액(매입 등)이 섞이면 남기지 않는다(같은 비율로 다시 섞을 수 없다)
    */
   restockMix?: { recipeId: string; share: number }[];
+  /** [결정 #418 · #422] 공개 증류 스타일 — 처음 병입할 때 섞은 원액 중 LPA가 가장 많은 원액의 형태를 접는다. 형태가 없으면 필드 없음(MKT 글 · 바이트 그대로). 선택 필드(#187) */
+  stillStyle?: StillStyle;
   /**
    * [결정 #392] 자동 납품이 채울 원액(소주 · 진 · 고량주 — 위스키 아님) — 플레이어가 고른 「탱크 / 옹기 n개월↑ / 오크 n개월↑」. 보충으로 제품 `restMonths` · `oakMonths`가
    * 바뀌어도 이 값을 따른다(9차: 「옹기소주」가 탱크 소주 보충으로 restMonths 0이 되어 #369가 닿지 않았다). 없으면 지금 규칙(제품 값 — #221 · #369). v16 판만
@@ -957,6 +966,8 @@ export interface InventorySlice {
    * 새 판(v16)은 기본값으로 시작한다(`ageBand.ts defaultAgePolicy` — #399 A). 없으면 정책 없음(지금 동작 · 진행 중 세이브). 블렌더 맡기기 · IB 입찰은 읽지 않는다(#399 B)
    */
   agePolicy?: AgePolicy;
+  /** [결정 #425] 빈 옹기가 있는데 「소주 → 옹기」 자동 통입이 꺼진 상태가 시작된 달 — 3개월째에 알린다(그 뒤 12개월마다). 상태가 풀리면 지운다. 선택 필드(#187) · v16만 · 난수 · 수치에 닿지 않는다 */
+  onggiIdleSince?: number;
 }
 
 /** [결정 #399] 연령 띠 정책 한 줄 — `off`: 자동이 이 띠 통을 쓰지 않는다 · `keep`: 자동이 이 띠를 `keep`통 아래로 줄이지 않는다 */
@@ -968,8 +979,8 @@ export type AgePolicy = Partial<Record<'0-2' | '3-4' | '5-9' | '10+', AgePolicyR
 export interface AutoFillSettings {
   /** 몇 개월마다 — 1·3·6, 없으면 1(매달) */
   everyMonths?: number;
-  /** 통에 넣을 원액 — 없으면 몰트·그레인 모두 */
-  kinds?: ('malt' | 'grain')[];
+  /** 통에 넣을 원액 — 없으면 몰트·그레인 모두. [결정 #425] 'soju'를 넣으면(켜야 동작 · v16만) 탱크 소주를 빈 옹기에 넣는다 — 몰트·그레인은 나무 통에만, 소주는 옹기에만 */
+  kinds?: ('malt' | 'grain' | 'soju')[];
   /** 빈 통 순서 — 'new' 새 통(첫 통입) 먼저(기본) · 'used' 재사용 통 먼저 */
   prefer?: 'new' | 'used';
   /** 통입 도수 — 없으면 0.635 (원액이 더 낮으면 원액 그대로) */

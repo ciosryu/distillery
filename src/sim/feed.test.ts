@@ -359,3 +359,75 @@ describe('[결정 #418] 증류기 형태(공개 표기) 글 — 헤비 저숙성
     for (const q of [40, 90]) expect(heavy(texts({ stillStyle: 'heavy', ageYears: 3, oakMonths: 36, quality: q } as Partial<Product> & Still)).length).toBeGreaterThan(0);
   });
 });
+
+describe('[결정 #422] 15 · 18년 헤비 「명작」 글 — 공개 표기(증류기 형태 · 연수 · 셰리 표기)만', () => {
+  type Still = { stillStyle?: 'light' | 'medium' | 'heavy' };
+  const texts = (o: Partial<Product> & Still, seeds = 80) => {
+    const out: string[] = [];
+    for (let seed = 1; seed <= seeds; seed++) for (const x of feedFor(world([product({ id: 'm', name: '시험 몰트', price: 200_000, ...o } as Partial<Product>)], 3, 300, seed), 3, 100)) out.push(x.text);
+    return out;
+  };
+  const master = (xs: string[]) => xs.filter((t) => t.includes('헤비 스틸') && /명작|기다린/.test(t));
+  it('헤비 · 15년 · 이름에 「셰리」: 명작 글이 나오고 셰리 글도 나온다 — 기대 · 실망이 섞인다', () => {
+    const m = master(texts({ name: '시험 셰리 몰트 15년', stillStyle: 'heavy', ageYears: 15, oakMonths: 180, quality: 80 } as Partial<Product> & Still));
+    expect(m.length).toBeGreaterThan(0);
+    expect(m.some((t) => t.includes('셰리'))).toBe(true);
+  });
+  it('셰리 표기가 없으면 「헤비 스틸 … 셰리」 글은 없다 · 12년에는 명작 글이 없다', () => {
+    const noSherry = texts({ stillStyle: 'heavy', ageYears: 18, oakMonths: 216, quality: 80 } as Partial<Product> & Still);
+    expect(noSherry.filter((t) => t.includes('헤비 스틸') && t.includes('셰리'))).toEqual([]);
+    expect(master(noSherry).length).toBeGreaterThan(0); // 셰리를 말하지 않는 명작 글은 나온다
+    expect(master(texts({ name: '시험 셰리 몰트', stillStyle: 'heavy', ageYears: 12, oakMonths: 144, quality: 80 } as Partial<Product> & Still))).toEqual([]);
+  });
+  it('I2 — 명작 글은 참 품질과 무관하게 나온다(품질 45 · 90 모두)', () => {
+    for (const q of [45, 90]) expect(master(texts({ name: '시험 셰리 몰트', stillStyle: 'heavy', ageYears: 15, oakMonths: 180, quality: q } as Partial<Product> & Still)).length).toBeGreaterThan(0);
+  });
+});
+
+describe('[결정 #422] 명작 글의 셰리 판정 — 통 구성(caskMix) 셰리 몫 0.5↑도 공개 값으로 본다(PROD 2026-11-25)', () => {
+  type X = { stillStyle?: 'heavy'; caskMix?: { typeId: string; share: number }[] };
+  const sherryHeavy = (o: Partial<Product> & X) => {
+    const out: string[] = [];
+    for (let seed = 1; seed <= 80; seed++) for (const x of feedFor(world([product({ id: 'm', name: '시험 몰트', price: 200_000, stillStyle: 'heavy', ageYears: 15, oakMonths: 180, quality: 80, ...o } as Partial<Product>)], 3, 300, seed), 3, 100)) if (x.text.includes('헤비 스틸') && x.text.includes('셰리')) out.push(x.text);
+    return out;
+  };
+  it('이름 · 피니시 표기에 셰리가 없어도 처음부터 셰리 벗(caskMix 셰리 0.8)이면 셰리 명작 글이 나온다', () => {
+    expect(sherryHeavy({ caskMix: [{ typeId: 'oloroso_butt', share: 0.8 }, { typeId: 'ex_bourbon_barrel', share: 0.2 }] } as Partial<Product> & X).length).toBeGreaterThan(0);
+  });
+  it('셰리 몫 0.5 미만 · 버번 통만이면 셰리 글이 없다', () => {
+    expect(sherryHeavy({ caskMix: [{ typeId: 'oloroso_butt', share: 0.4 }, { typeId: 'ex_bourbon_barrel', share: 0.6 }] } as Partial<Product> & X)).toEqual([]);
+    expect(sherryHeavy({ caskMix: [{ typeId: 'ex_bourbon_barrel', share: 1 }] } as Partial<Product> & X)).toEqual([]);
+  });
+});
+
+describe('[제안 P-MKT-50] (가) 「창렬」 글 — 커뮤니티 품질 75↑이면 내용물 탓 문장 없이 「잘 만든 건 인정, 값이 문제」', () => {
+  const BLAME = /품질 개에반|숙성 1도 안|숙성감 부족|내용물이 따라오지/;
+  const PRAISE = /잘 만든 건 인정|내용물은 훌륭|맛은 인정|맛은 정말 좋은데/;
+  const texts = (quality: number) => {
+    const out: string[] = [];
+    for (let seed = 1; seed <= 60; seed++) for (const x of feedFor(world([product({ id: 'r', name: '시험 고가 몰트', quality, price: 400_000, ageYears: 15, oakMonths: 180 })], 3, 300, seed), 3, 100)) out.push(x.text);
+    return out;
+  };
+  it('품질 85 · 값 2배↑: 내용물 탓 문장이 없고 「잘 만든 건 인정」 꼴이 나온다', () => {
+    const t = texts(85);
+    expect(t.filter((x) => BLAME.test(x))).toEqual([]);
+    expect(t.some((x) => PRAISE.test(x))).toBe(true);
+  });
+  it('품질 55 · 같은 값: 「잘 만든 건 인정」 꼴은 없고 내용물 탓 문장은 그대로 나온다', () => {
+    const t = texts(55);
+    expect(t.filter((x) => PRAISE.test(x))).toEqual([]);
+    expect(t.some((x) => BLAME.test(x))).toBe(true);
+  });
+  it('I2 — 가리는 판: 아는 품질이 같으면 참 품질 40 · 90에서 글이 같다 · 내용물 탓 여부는 아는 품질을 따른다', async () => {
+    const { newScenarioGame } = await import('./newScenario');
+    const mk = (trueQ: number, est: number) => {
+      const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5, rules: 'v16' });
+      s.month = 40;
+      s.commerce.products.push({ ...product({ id: 'P1', name: '시험 고가 몰트', quality: trueQ, price: 400_000, ageYears: 15, oakMonths: 180 }), qualityKnown: { est, sigma: 4, reviews: 6, month: 39 } } as Product);
+      s.history.reports.push({ month: 39, sales: [{ productId: 'P1', name: '시험 고가 몰트', bottles: 30, revenue: 12_000_000, demandBottles: 40 }], notes: [], expenses: {} } as never);
+      return feedFor(s, 3, 60).map((x) => x.text);
+    };
+    expect(mk(90, 85)).toEqual(mk(40, 85));
+    expect(mk(60, 85).some((x) => BLAME.test(x))).toBe(false); // 아는 품질 85 → 내용물 탓 없음(참 품질 60이어도)
+  });
+});

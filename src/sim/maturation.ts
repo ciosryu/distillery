@@ -1,4 +1,5 @@
 import { CASKS, NON_WOOD_VESSEL, SEASONING_EXTRACT, WOOD_EXTRACT } from './content/catalog';
+import { SHERRY_BIND } from './stillShape'; // [결정 #422 (b)]
 import { clamp, clampFlavor } from './flavor';
 import type { AxisId, Cask, CaskTypeId, Flavor, LossKind, MonthReport, SpiritLot, VesselMaterial } from './types';
 
@@ -93,6 +94,16 @@ export function matureCask(cask: Cask, climate: Climate, opts: MatureOptions): {
   bump('floral', 0.05, 80);
   bump('integration', 0.9);
   if (months > 96) bump('nutty_rancio', 0.15);
+  // [결정 #422 (b)] 셰리 × 미티 반응 — 형태를 고른 증류기 원액만(공개 필드 `stillShape`가 있을 때). 세기 ρ는 원액 바디(참값), σ는 통 시즈닝이 남은 몫
+  if (lot.stillShape && seasoningType === 'sherry' && months > SHERRY_BIND.fromMonths) {
+    const rho = Math.min(1, Math.max(0, ((f.body ?? 0) - SHERRY_BIND.bodyFrom) / SHERRY_BIND.bodySpan));
+    const def = CASKS[cask.typeId];
+    const sigma = def.seasoning > 0 ? Math.min(1, cask.seasoning / def.seasoning) : 0;
+    if (rho > 0 && sigma > 0) {
+      f.oak_tannin = Math.max(0, (f.oak_tannin ?? 0) - SHERRY_BIND.tanninPerMonth * rho * sigma);
+      bump('integration', SHERRY_BIND.integrationPerMonth * rho * sigma);
+    }
+  }
   if ((cask.wood === 'korean_oak' || cask.wood === 'mizunara') && months > 72) bump('incense', cask.wood === 'mizunara' ? 0.18 : 0.12);
 
   // 증발로 LPA가 줄면 남은 원액의 LPA당 원가가 오른다
