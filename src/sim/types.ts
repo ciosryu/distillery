@@ -1110,7 +1110,7 @@ export interface ProgressSlice {
    */
   verdictBest?: GoalVerdict & { rejudged: { month: number; productId: string; lotId: string } };
   /**
-   * [결정 #433] 「명작」 칭호 — 승리 뒤 새 적격 로트의 첫 정상 유상 출하 달에, 그 제품이 표기 15년 이상 · 품질 ≥ 80 · 그달 인지도 ≥ 20%면 한 번 쓴다(등급과 따로 · 순자산 안 봄).
+   * [결정 #433 · #435] 「명작」 칭호 — 승리 달부터 적격 로트(승리 로트 포함 — #435)의 첫 정상 유상 출하 달에, 그 제품이 표기 15년 이상 · 품질 ≥ 80 · 그달 인지도 ≥ 20%면 한 번 쓴다(등급과 따로 · 순자산 안 봄).
    * 처음 한 번만(덮어쓰지 않음). `acknowledged`는 화면이 한 번 띄우고 닫는다(ARCH). MGT `progress.ts judgeMasterpiece`. 선택 필드(#187)
    */
   masterpiece?: { month: number; productId: string; lotId: string; quality: number; awareness: number; ageYears: number; acknowledged?: boolean };

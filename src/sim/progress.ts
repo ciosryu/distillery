@@ -33,8 +33,9 @@ export const GRADE = {
    * [결정 #407] 승리를 미룬 만큼 S 순자산 문턱을 올린다 — 첫 12년 적격 통이 생긴 달부터 승리 달까지 한 달에 이만큼(원) `[튜닝]`.
    * [결정 #423] 출시를 미룬 판의 순자산 기울기(봇 X0-R best 출시, 미룸 6 ~ 36개월) 표준 0.18 · 마이크로 0.25억/월 — 미뤄서 얻는 순자산을 지우고 15년 길을 벌하지 않는다(MGT `mgt-grade-options.md` #418 절).
    * 처음 값 0.22 · 0.28(#407)은 플래그십을 팔던 봇의 146 → 180개월 기울기라 오래 미룰수록 S를 깎았다(36개월 S 14 → 9)
+   * [결정 #434] 표준 0.25 · 마이크로 0.32억/월 — #433으로 15년 길이 승리 미루기가 아니라 「명작」 칭호가 되어, k는 6 · 12개월 짧은 미룸만 맡는다(최종 트리 40시드: 0.18 · 0.25에서 미룸 6 · 12의 S 17 ~ 20 → 띠 10 ~ 14 쪽으로).
    */
-  sDelayPerMonthV16: { standard: 18_000_000, micro: 25_000_000 } as Record<string, number>,
+  sDelayPerMonthV16: { standard: 25_000_000, micro: 32_000_000 } as Record<string, number>, // [결정 #434] 0.25 · 0.32억(#423의 0.18 · 0.25를 대체 — 6 · 12개월 짧은 미룸을 지움)
   /**
    * [결정 #407] 미룸으로 세지 않는 개월 — 곧바로 이긴 판의 판정 달 − 첫 적격 달 = 2(첫 적격은 월말 결산에 생기고 → 다음 달 출시 · 판매 → 판정 달은 그 다음 경과 개월).
    * 봇 X0-R 곧바로 승리 3판 모두 2(MGT 측정). 이만큼은 벌하지 않는다 `[튜닝]`
@@ -185,13 +186,14 @@ export const bestVerdict = (s: Pick<GameState, 'progress'>): GoalVerdict | undef
 export const MASTERPIECE_MIN_AGE = 15;
 
 /**
- * [결정 #433] 「명작」 칭호 — **등급과 따로**(S는 승리 달에 한 번만 · #422 재판정 · #427을 대체). 이번 달 판매 사건 가운데 승리 로트가 아닌 적격 로트의
+ * [결정 #433 · #435] 「명작」 칭호 — **등급과 따로**(S는 승리 달에 한 번만 · #422 재판정 · #427을 대체). 승리 달부터, 이번 달 판매 사건 가운데 적격 로트의
  * **첫 정상 유상 출하**가 있고, 그 제품이 **표기 15년 이상 · 품질 ≥ 80 · 그달 인지도 ≥ 20%**면 `progress.masterpiece`에 한 번 적는다. 순자산은 보지 않는다.
+ * [결정 #435] **승리 로트 자신도 본다** — 표기 15년 이상 제품으로 이긴 판은 승리 달에 명작이 된다(updateProgress가 승리를 적은 뒤 같은 달에 부른다).
  * 첫 출하인지는 남아 있는 결산(120개월 창)의 판매 사건으로 본다. 이미 명작이면 보지 않는다. 옛 판 · 승리 전은 아무 일도 없다
  */
 export function judgeMasterpiece(s: GameState, report: MonthReport): void {
   if (rulesVersionOf(s) === 'legacy-v15' || !s.progress.win || s.progress.masterpiece) return;
-  const fresh = (report.saleEvents ?? []).filter((e) => e.eligibleAtSale && e.kind !== 'b2b' && e.bottles > 0 && e.unitPrice > 0 && e.lotId !== s.progress.win!.lotId);
+  const fresh = (report.saleEvents ?? []).filter((e) => e.eligibleAtSale && e.kind !== 'b2b' && e.bottles > 0 && e.unitPrice > 0); // [결정 #435] 승리 로트도 본다
   if (!fresh.length) return;
   const seen = new Set<string>();
   for (const r of s.history.reports) for (const e of r.saleEvents ?? []) seen.add(e.lotId);
