@@ -59,23 +59,22 @@ describe('가상 커뮤니티 피드 (#247)', () => {
     expect(posts[0]!.signal).toBe('raise_price'); // 같은 달 안에서 맨 위
   });
 
-  it('거친 말 수위(v2): 카페·위스키베이스 0 · 위갤 긍정 ≤ 0.5 · 주갤은 칭찬도 1, 부정의 2 비율이 위갤보다 높다', () => {
-    const c = { w: { neg: 0, two: 0 }, j: { neg: 0, two: 0 } };
+  it('거친 말 수위([결정 #403]): 카페 · 위스키베이스 0 · 위갤 긍정 ≤ 0.5 · 주갤은 1 — 욕설 단계 2는 없다', () => {
+    let w = 0, j = 0;
     for (let seed = 1; seed <= 40; seed++) {
       const bad = product({ id: 'x', name: '창렬 위스키', quality: 40, price: 200_000, flavor: { solvent: 20, cereal: 10 } });
       const good = product({ id: 'y', name: '좋은 위스키', quality: 82, price: 70_000 });
       for (const p of feedFor(world([bad, good], 3, 300, seed), 3, 100)) {
         if (p.style === 'cafe' || p.style === 'whiskybase') expect(p.harsh).toBe(0);
         if (p.style === 'dc_whisky' && p.tone === 'pos') expect(p.harsh).toBeLessThanOrEqual(0.5);
-        if (p.style === 'dc_jugal') expect(p.harsh).toBeGreaterThanOrEqual(1);
-        if (p.tone === 'neg' && p.style === 'dc_whisky') { c.w.neg++; if (p.harsh === 2) c.w.two++; }
-        if (p.tone === 'neg' && p.style === 'dc_jugal') { c.j.neg++; if (p.harsh === 2) c.j.two++; }
+        if (p.style === 'dc_jugal') expect(p.harsh).toBe(1);
+        expect(p.harsh).not.toBe(2);
+        if (p.style === 'dc_whisky' && p.tone === 'neg') w++;
+        if (p.style === 'dc_jugal' && p.tone === 'neg') j++;
       }
     }
-    expect(c.w.neg).toBeGreaterThan(5);
-    expect(c.j.neg).toBeGreaterThan(5);
-    expect(c.w.two / c.w.neg).toBeLessThan(0.45); // 위갤: 욕은 가끔
-    expect(c.j.two / c.j.neg).toBeGreaterThan(c.w.two / c.w.neg); // 주갤: 욕설 중심
+    expect(w).toBeGreaterThan(5);
+    expect(j).toBeGreaterThan(5);
   });
 
   it('다양성(v2): 여러 판에서 글이 거의 겹치지 않고, 주갤 뻘글·댓글이 나온다', () => {
