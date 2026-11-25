@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { BANKRUPT_AFTER_MONTHS, campaignWon, isLocked, monthLabel, type GameState, type RegionId, rulesVersionOf } from './sim';
 
-/** [#388 ① A1] 운영 모드를 켤 수 있는 달(경과 개월) — 승리 뒤에는 언제나 `[튜닝]` */
-const OPS_MODE_FROM = 120;
+import { OPS_MODE_FROM } from './ui/newChoices'; // [#388 ① A1] 운영 모드를 켤 수 있는 달 — 맨 위 「새로 열림」(#416)과 같은 값
 import { REGIONS, siteOf } from './sim/content/regions';
 import { SCENARIOS } from './sim/content/scenarios';
 

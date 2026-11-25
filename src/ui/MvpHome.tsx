@@ -31,6 +31,7 @@ import { useUi } from '../store/ui';
 import { FixedCostLine } from './panels/FixedCost';
 import { LineChart } from './charts';
 import { CashFlowLine, JourneyStrip, MonthTodo, OPEN_FOLD_EVENT } from './AlertsView';
+import { NewChoicesBanner } from './NewChoicesBanner'; // [결정 #416]
 import { AutoSampleSettingsRow } from './panels/AutoSample';
 import { HandfillRow } from './panels/Handfill';
 import { flagshipCaskHint } from './gradeHints'; // 결정 #339 등급 화면 힌트
@@ -88,12 +89,14 @@ export function MvpHome() {
     <div className="grid grid-cols-1 gap-4 [&>*]:min-w-0">
       {/* 이번 달 소식 창 — 진행 뒤 고를 것·이벤트·새 기능이 있으면 (5차 오너 요청) */}
       <TurnBrief />
+      {/* [결정 #416] 새 시설 · 새 선택 — 첫 화면 맨 위 강조(본 뒤 닫힘). 9차 판: VIP 라운지 · 운영 모드를 "못봤다" */}
+      <NewChoicesBanner />
       {/* 선택 대기 이벤트 — 고르지 않으면 다음 달 기본값 (5차 MVP 플레이테스트: 대시보드에만 있어 못 찾았다) */}
       <PendingEventChoices />
       {/* ── 이번 달 ── 할 일 (1차 MVP 플레이테스트 대응 ③) */}
       <MonthTodo />
       {/* 15년 여정 — 단계 해금·중반 목표 (4차 MVP 플레이테스트) */}
-      <JourneyStrip />
+      <div id="mvp-journey" className="scroll-mt-28"><JourneyStrip /></div>
       <Headline />
       {/* ── 상태 ── 돈 흐름: 한 줄 요약, 현금 경고·재고 과잉·거치 종료 임박이면 기본 펼침 */}
       <MoneyFold />
