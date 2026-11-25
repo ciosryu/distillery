@@ -196,7 +196,8 @@ export default function App() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-4">
-        {s.progress.verdict && !s.progress.verdict.acknowledged && !planOpen && (
+        {/* [결정 #422] 재판정으로 등급이 오른 달에도 결과 화면을 다시 띄운다(오너 선택) — 닫기는 같은 버튼(acknowledgeVerdict가 재판정을 먼저 닫는다) */}
+        {s.progress.verdict && (!s.progress.verdict.acknowledged || (s.progress.verdictBest != null && !s.progress.verdictBest.acknowledged)) && !planOpen && (
           <div className="mb-4">
             <Verdict s={s} onNewGame={() => setPlanOpen(true)} />
           </div>
