@@ -96,7 +96,7 @@ export const YOUTH_SULFUR = { months: 60, fromSulfur: 1.0, k: 5, cats: ['whisky'
  * kW × min(cap, max(0, 바디 − fromBody)) × (1 − 목재 ÷ 60). 황만 보면 「숏 + 하향 + 쉘」(공개 스타일 헤비)이 저숙성 감점을 피해 가 뉴메이크 · 소주 값만 얻었다(MGT 40시드 2026-11-25).
  * 균형(바디 약 26) · 라이트(15)는 0. `cap`은 웜 텁(바디 +8)이 황 몫과 겹쳐 두 번 크게 깎이지 않게
  */
-export const YOUTH_WEIGHT = { fromBody: 30, cap: 5, k: 3 } as const;
+export const YOUTH_WEIGHT = { fromBody: 30, cap: 5, k: 1.5 } as const;
 /** 평가 맥락 — 없으면 지금 식 그대로 */
 export interface EvalContext {
   /** 저숙성 황 이취를 셀 목재 개월(형태를 고른 증류기 원액이 섞였을 때만 준다) */
