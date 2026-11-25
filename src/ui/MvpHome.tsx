@@ -6,7 +6,7 @@ import { TurnBrief } from './TurnBrief';
 import { AutoFillRow } from './panels/AutoFill';
 import { AGE_BANDS, agePolicyRows, agePolicyRuleText, bandCounts, thinBands, THIN_BAND_CASKS } from '../sim/ageBand'; // #380 연령 띠 정의 · #399 띠 정책(PROD)
 import { AgePolicyRow } from './panels/AgePolicy'; // #399 띠 정책 줄(PROD)
-import { CaskCareRow, NewCaskOutlook } from './panels/CaskCare'; // #345 GAP-PROD-7 · #355 탄닌 전망 (PROD)
+import { CaskCareRow, FillOutlookLine, NewCaskOutlook } from './panels/CaskCare'; // #345 GAP-PROD-7 · #355 탄닌 전망 (PROD)
 import { FinishRow } from './panels/FinishRow'; // #345 GAP-PROD-4 피니싱 (PROD 부품 · ARCH 끼움)
 import { getPlaylog, recentActionCount } from '../store/playlog';
 import { PendingEventChoices } from './panels/Events';
@@ -663,6 +663,8 @@ function FillCard() {
                       </p>
                     );
                   })()}
+                  {/* [결정 #410] T1-a — 고른 빈 통에 채우면 12년에 탄닌 · 감점이 얼마일지(PROD FillOutlookLine · fillTanninOutlook — 활성도 · 칸 · 달만 읽는다). 옹기면 없음 · 「옮기라」는 말하지 않는다(#411) */}
+                  {lot!.kind !== 'soju' && <FillOutlookLine caskIds={ofType.slice(0, fillN).map((c) => c.id)} />}
                   {/* [제안 P-PROD-66] e · 결정 #339 — 판 초반(첫 2년) 나무 통에 몰트·그레인을 넣을 때 한 줄: 12년 품질은 통 활성도가 가른다(정보만) */}
                   {!onggi && lot!.kind !== 'soju' && flagshipCaskHint(s) && <p className="text-xs text-sky-800 dark:text-sky-300">{flagshipCaskHint(s)}</p>}
                   {onggi && <p className="text-xs text-amber-800 dark:text-amber-300">옹기: 나무 향 없이 숨을 쉬며 거친 맛이 풀린다 — 탱크 보관보다 빠르고 증발은 나무 통의 절반. 소주 숙성용{lot!.kind !== 'soju' ? ' — 몰트는 옹기에서 보낸 기간이 위스키 숙성(오크)에 들어가지 않는다' : ''}.</p>}
