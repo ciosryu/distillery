@@ -16,6 +16,7 @@ import { OVERHANG, overhangFactor, overhangMonths } from '../sim/retail';
 import { autoFillPreview } from '../sim/autoFill';
 import { AUTO_RESTOCK_STARVED_WARN, autoRestockPlan, autoRestockShortReason, autoRestockSources, autoRestockStarvedMonths, autoRestockSupported, guardedFlagshipCasks, productMonthlyPace } from '../sim/economics';
 import { reserveCaskIds } from '../sim/tags';
+import { tanninOutlook } from '../sim/warehouse'; // [결정 #411] 12년 탄닌 전망(PROD 계산 — 통 표와 같은 값)
 import { candidateHorizon, caskEligibility, isCampaignCandidate } from '../sim/ledger';
 import { specialistOffers, SPECIALIST_STAGE } from '../sim/hr';
 import { AUTO_RESTOCK_EXPENSE, caskRunway, CUTBACK_HINT, productionCutback, productionValue, sojuSupply, SOJU_STOCK_WARN_MONTHS, tankLotWaitMonths, whiskySupplyForecast } from '../sim/economics';
@@ -341,8 +342,8 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'overhang', 'contam-cand', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-starved', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'idle-cash', 'sample'];
-// 꼬리 5개(defense·whisky·soju·idle-cash·sample)는 info만 낸다 — warn·danger를 낼 수 있는 새 id는 그 앞에 둔다(warn이 info 뒤에 묻히지 않게, PM 대조 7차 완료: soju-glut)
+export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'overhang', 'contam-cand', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-starved', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'idle-cash', 'reserve-tannin', 'sample'];
+// 꼬리 6개(defense·whisky·soju·idle-cash·reserve-tannin·sample)는 info만 낸다 — warn·danger를 낼 수 있는 새 id는 그 앞에 둔다(warn이 info 뒤에 묻히지 않게, PM 대조 7차 완료: soju-glut)
 // `stage-<단계>` 할 일(#215)은 #416 맨 위 띠로 옮겼다 — 아래 순위 처리는 옛 id가 다시 들어와도 맨 위에 두려는 것
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
 // danger 등급은 새 기능 바로 아래로 올린다(같은 danger끼리는 위 순서) — 6차 판: 오래 통입 대기(fill danger)가 할 일 3번째에 묻혔다
@@ -375,6 +376,27 @@ export function finishOverdue(s: GameState): { id: string; months: number; label
     const f = c.contents && !c.owner ? finishOf(c.contents) : null;
     return f && f.months > hi ? [{ id: c.id, months: f.months, label: finishLabel(f.typeId) }] : [];
   });
+}
+
+/** [결정 #411] T1-b — 이 이상이면 알린다(12년 예상 탄닌 감점) `[튜닝 — 단계 T]` */
+export const RESERVE_TANNIN_WARN = 10;
+/** [결정 #411] 목재 이 개월까지만 — 새 셰리 벗은 약 48개월에 탄닌 상한을 넘어 그 뒤에는 손쓸 수 있는 것이 거의 없다(9차 arch.md 「159개월」 ③) */
+export const RESERVE_TANNIN_UNTIL = 48;
+/**
+ * [결정 #411] 12년 후보(플래그십 예비 — 통 표 「◆ 플래그십 예비」) 통 가운데 목재 48개월 이하 · 12년 감점 어림이 10 이상인 통 — 감점 큰 순.
+ * 값은 통 표와 같은 PROD `tanninOutlook`(활성도 · 칸 · 달만 읽는다 — 숨김 값 없음). 옮긴 원액(앞 통 활성도를 모름)은 뺀다. 없으면 null
+ */
+export function reserveTanninNote(s: GameState): { ids: string[]; lo: number; hi: number } | null {
+  if (!s.scenario || campaignWon(s)) return null;
+  const reserve = reserveCaskIds(s);
+  const hits = s.inventory.casks
+    .filter((c) => reserve.has(c.id) && c.contents && c.contents.oakMonths <= RESERVE_TANNIN_UNTIL)
+    .map((c) => ({ id: c.id, o: tanninOutlook(s, c) }))
+    .filter((x): x is { id: string; o: NonNullable<typeof x.o> } => !!x.o && !x.o.moved && x.o.penalty >= RESERVE_TANNIN_WARN)
+    .sort((a, b) => b.o.penalty - a.o.penalty || a.id.localeCompare(b.id));
+  if (!hits.length) return null;
+  const pen = hits.map((x) => Math.round(x.o.penalty));
+  return { ids: hits.map((x) => x.id), lo: Math.min(...pen), hi: Math.max(...pen) };
 }
 
 export function monthTodos(s: GameState): Todo[] {
@@ -615,6 +637,11 @@ export function monthTodos(s: GameState): Todo[] {
   {
     const ss = sojuSupply(s);
     if (ss.months != null && ss.months >= SOJU_STOCK_WARN_MONTHS && ss.tankBottles > 0) out.push({ id: 'soju-glut', level: 'warn', text: `병입하지 않은 소주까지 ${Math.round(ss.months)}개월 치 — 탱크 ${Math.round(ss.tankL).toLocaleString()}L + 제품 ${ss.productBottles.toLocaleString()}병 · 지금 지시는 매달 약 ${Math.round(ss.madeBottlesPerMonth).toLocaleString()}병을 더 만든다(원료·에너지 월 ${fmtWon(ss.costPerMonth)})${ss.costPerBatch ? ` — 소주 지시를 1 줄이면 월 ${fmtWon(ss.costPerBatch)} 아낀다` : ''}`, action: '생산 지시', target: { anchor: 'mvp-orders' } });
+  }
+  // [결정 #411] T1-b — 12년 후보(예비) 통이 지금 통 그대로면 12년 감점이 크다. 통 표(접힌 칸)에 이미 있는 숫자를 할 일로 올린다 — 알림만(리필 통 이야기는 붙이지 않는다, #367 · #408)
+  {
+    const rt = reserveTanninNote(s);
+    if (rt) out.push({ id: 'reserve-tannin', level: 'info', text: `12년 후보 ${rt.ids[0]}${rt.ids.length > 1 ? ` 외 ${rt.ids.length - 1}통` : ''}, 지금 통 그대로면 12년 감점 약 ${rt.lo === rt.hi ? rt.lo : `${rt.lo}~${rt.hi}`}`, action: '숙성 중인 캐스크', target: { anchor: 'mvp-warehouse' } });
   }
   // 샘플 시기 — 기록이 없거나 오래된 통 (시나리오 게임만: 샌드박스는 참값을 본다)
   if (s.scenario) {
