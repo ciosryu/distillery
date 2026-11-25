@@ -96,7 +96,10 @@ function wholeRange(s: GameState, src: NonNullable<Product['autoRestockSource']>
   if (max != null && !(max >= months)) return '통 상한은 하한 이상이어야 합니다';
   const types = [...new Set(src.caskTypes ?? [])];
   if (types.some((t) => !CASKS[t] || (CASKS[t].material ?? 'wood') !== 'wood')) return '통 종류는 나무 통 가운데 고른다';
-  return { vessel: 'oak', months, ...(max != null ? { maxMonths: max } : {}), ...(types.length ? { caskTypes: types } : {}) };
+  // [결정 #419] 아는 품질 하한(샘플 기록) — 0 ~ 100, 소수 첫째 자리까지
+  const q = src.minKnownQuality == null ? undefined : Math.round(src.minKnownQuality * 10) / 10;
+  if (q != null && !(q >= 0 && q <= 100)) return '통 품질 하한은 0 ~ 100';
+  return { vessel: 'oak', months, ...(max != null ? { maxMonths: max } : {}), ...(types.length ? { caskTypes: types } : {}), ...(q != null ? { minKnownQuality: q } : {}) };
 }
 
 /** [결정 #393 N1] 리필 통 주문 이름 — 화면 · 메시지가 같이 쓴다 */
