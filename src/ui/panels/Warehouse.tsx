@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AutoFillRow } from './AutoFill';
 import { HandfillRow } from './Handfill';
 import { AgePolicyRow } from './AgePolicy';
+import { FillOutlookLine } from './CaskCare';
 import { CASKS, RECHAR_COST, SEASONING_CONTRACT } from '../../sim/content/catalog';
 import { canFinishInto, evaluate, FINISH, vesselMaterial, finishCount, finishLabel, finishOf, isLocked, isUnlocked, lotCategory, unlockingNodes, MAX_RECHAR, regionalCaskPrice, topNotes, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type SpiritLot, knownReads } from '../../sim';
 import { CASK_MARKET } from '../../sim/content/catalog';
@@ -81,6 +82,8 @@ function Tanks() {
             if (dispatch({ type: 'fillCasks', lotId: fillFor, caskIds: emptyOfType.slice(0, count).map((c) => c.id), entryAbv: entry / 100 })) setFillFor(null);
           }}>통입</Button>
           <span className="text-xs text-stone-500">물을 섞어 통입 도수로 낮춥니다. 빈 통이 없으면 아래에서 구매하세요.</span>
+          {/* [결정 #410 T1-a] 이 통들에 넣으면 12년 무렵 탄닌 · 감점(PROD FillOutlookLine) */}
+          <span className="w-full"><FillOutlookLine caskIds={emptyOfType.slice(0, count).map((c) => c.id)} /></span>
           {(() => {
             // 끝자리 안내 (P-PROD-60) — 마지막 통이 절반도 안 차면 알리고 개수를 하나 줄이는 버튼을 준다(막지 않는다)
             const lot = s.inventory.lots.find((l) => l.id === fillFor);

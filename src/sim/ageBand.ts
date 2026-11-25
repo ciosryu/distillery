@@ -44,6 +44,17 @@ export function bandCounts(s: Pick<GameState, 'inventory'>, drawL?: ReadonlyMap<
   return out;
 }
 
+/**
+ * [결정 #410 T2-a] 손 병입이 띠를 얇게 만드는가 — `drawL`(통 id → 뽑을 L)로 통이 비어 통 수가 줄고, 병입 뒤 그 띠가 얇은 띠(`thinBands`)인 띠들.
+ * 표기와 무관하다(#380 「숙성 사다리」는 표기 + 2년 넘게 묵은 통을 쓸 때만 떴다). 공개 값(목재 개월 · 통 수)만 읽는다
+ */
+export function bandThinning(s: Pick<GameState, 'inventory'>, drawL: ReadonlyMap<string, number>): { before: BandCounts; after: BandCounts; thinning: AgeBandId[] } {
+  const before = bandCounts(s);
+  const after = bandCounts(s, drawL);
+  const thin = new Set(thinBands(after));
+  return { before, after, thinning: AGE_BANDS.filter((b) => after[b.id].casks < before[b.id].casks && thin.has(b.id)).map((b) => b.id) };
+}
+
 /** 얇은 띠 — 더 오래된 띠에 통이 있는데 이 띠가 `THIN_BAND_CASKS` 미만(가장 오래된 띠는 얇다고 하지 않는다) */
 export function thinBands(counts: BandCounts, k = THIN_BAND_CASKS): AgeBandId[] {
   return AGE_BANDS.filter((b, i) => counts[b.id].casks < k && AGE_BANDS.slice(i + 1).some((o) => counts[o.id].casks > 0)).map((b) => b.id);
