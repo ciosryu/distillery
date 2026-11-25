@@ -17,6 +17,8 @@ const STYLE_TONE: Record<FeedStyle, string> = {
   dc_jugal: 'border-l-rose-400 dark:border-l-rose-500',
 };
 const STYLE_LABEL: Record<FeedStyle, string> = { whiskybase: '리뷰', cafe: '카페', dc_whisky: '위갤', dc_jugal: '주갤' };
+/** 판매 카드 채널 탭 순서 — 디시 둘은 따로([결정 #406]) */
+const CHANNEL_TABS: FeedStyle[] = ['dc_whisky', 'dc_jugal', 'cafe', 'whiskybase'];
 
 function Post({ p, startYear }: { p: FeedPost; startYear: number }) {
   return (
@@ -60,6 +62,7 @@ function KnownLine({ s, productId }: { s: GameState; productId: string }) {
 export function FeedCard({ compact = false }: { compact?: boolean } = {}) {
   const s = useGame((g) => g.state);
   const [only, setOnly] = useState<string>('');
+  const [ch, setCh] = useState<FeedStyle | ''>(''); // [결정 #400 · #406] 채널 탭 — 전체 · 위스키 마이너 갤 · 주류 갤 · 카페 · 리뷰
   const [more, setMore] = useState(false);
   const posts = useMemo(() => feedFor(s, 3, 40), [s]);
   if (compact) {
@@ -86,14 +89,22 @@ export function FeedCard({ compact = false }: { compact?: boolean } = {}) {
     );
   }
   const ids = [...new Set(posts.map((p) => p.productId))];
-  const shown = (only ? posts.filter((p) => p.productId === only || p.productName.includes(s.commerce.products.find((x) => x.id === only)?.name ?? '\u0000')) : posts).slice(0, 12);
+  const byProduct = only ? posts.filter((p) => p.productId === only || p.productName.includes(s.commerce.products.find((x) => x.id === only)?.name ?? '\u0000')) : posts;
+  const shown = (ch ? byProduct.filter((p) => p.style === ch) : byProduct).slice(0, 12);
   const counts = posts.reduce((t, p) => ({ ...t, [p.style]: (t[p.style] ?? 0) + 1 }), {} as Partial<Record<FeedStyle, number>>);
   return (
     <Card
       title="커뮤니티 반응 (최근 3개월)"
       actions={
         <span className="flex flex-wrap items-center gap-2 text-xs text-stone-500">
-          {(['whiskybase', 'cafe', 'dc_whisky', 'dc_jugal'] as FeedStyle[]).map((k) => <span key={k}>{STYLE_LABEL[k]} {counts[k] ?? 0}</span>)}
+          <span role="tablist" aria-label="커뮤니티 채널" className="flex flex-wrap items-center gap-1">
+            {([['', '전체'], ...CHANNEL_TABS.map((k) => [k, STYLE_LABEL[k]])] as [FeedStyle | '', string][]).map(([k, label]) => (
+              <button key={k || 'all'} type="button" role="tab" aria-selected={ch === k} onClick={() => setCh(k)}
+                className={`rounded px-1.5 py-0.5 ${ch === k ? 'bg-stone-800 text-white dark:bg-stone-200 dark:text-stone-900' : 'hover:bg-stone-100 dark:hover:bg-stone-800'}`}>
+                {label} {k ? counts[k] ?? 0 : posts.length}
+              </button>
+            ))}
+          </span>
           <select className="rounded border border-stone-300 bg-white px-1 py-0.5 dark:border-stone-700 dark:bg-stone-900" value={only} onChange={(e) => setOnly(e.target.value)}>
             <option value="">모든 제품</option>
             {ids.map((id) => <option key={id} value={id}>{s.commerce.products.find((x) => x.id === id)?.name ?? id}</option>)}
@@ -102,7 +113,7 @@ export function FeedCard({ compact = false }: { compact?: boolean } = {}) {
       }
     >
       {only && <KnownLine s={s} productId={only} />}
-      {!shown.length ? <Empty>아직 반응이 없습니다 — 제품이 팔리면 커뮤니티에 글이 올라옵니다</Empty> : (
+      {!shown.length ? <Empty>{ch && byProduct.length ? `이 채널에는 최근 3개월 글이 없습니다` : '아직 반응이 없습니다 — 제품이 팔리면 커뮤니티에 글이 올라옵니다'}</Empty> : (
         <ul className="space-y-1.5">{shown.map((p) => <Post key={p.id} p={p} startYear={s.startYear} />)}</ul>
       )}
       <p className="mt-2 text-xs text-stone-500">{footNote(s)} 반응은 그 달의 판매가·판매량·품절과 제품의 품질·향으로 정해집니다.</p>
