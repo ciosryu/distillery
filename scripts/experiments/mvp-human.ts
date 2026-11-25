@@ -471,7 +471,7 @@ function bottle(s: GameState, p: Policy, t: { firstWhisky: number; flagshipDone?
   // 어린 병이 먼저 나가 승리가 늦다 — MKT P-MKT-38) · 'restock' = 가장 잘 팔리는 위스키 제품에 보충(X0W-R 대조). 가격은 정책 그대로(기본 A).
   // 출시 제품은 자동 납품을 켜지 않는다(bottleAs가 「플래그십」 이름은 건너뛴다). 병입이 막히면 다음 달 다시 — 그 달을 winFail에 적는다. 승리 뒤에는 하지 않는다.
   // 옛 판(legacy-v15)에서는 하지 않는다 — 옛 판도 새로 증류한 원액은 원장에 'self'로 남아 적격이 될 수 있지만 승리 판정은 v16만이다(X0L = 승리 시도 없음, 바이트 동일)
-  if (p.launch && !t.launchDone && rulesVersionOf(s) === 'v16' && !campaignWon(s)) {
+  if (p.launch && !t.launchDone && rulesVersionOf(s) === 'v16' && !campaignWon(s) && H.launchGate?.(s, p) !== false) { // @hook:launch-gate
     const reserve = reserveCaskIds(s);
     const pick = s.inventory.casks.filter((c) => caskEligibility(s, c).eligible)
       .sort((a, b) => Number(reserve.has(b.id)) - Number(reserve.has(a.id)) || b.contents!.oakMonths - a.contents!.oakMonths || a.id.localeCompare(b.id)).slice(0, 2);

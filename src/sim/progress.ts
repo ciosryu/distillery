@@ -1,7 +1,7 @@
 import { isWhiskyCategory } from './blending';
 import { awarenessOf, houseBrand } from './brands';
 import { SCENARIOS, midGoalsForRules, type MidGoalDef } from './content/scenarios';
-import { candidateHorizon, isCampaignCandidate } from './ledger';
+import { candidateHorizon, isCampaignCandidate, recordFirstEligible, winDelayMonths } from './ledger';
 import { liquidationValue, usesObservedValuation } from './valuation';
 import { isBulkKind, spotBidPerLPA } from './bulk';
 import { MILESTONES } from './content/milestones';
@@ -29,15 +29,36 @@ export const GRADE = {
    * 드묾 목표 「평범하게 운영하면 거의 못 받고, 통을 준비한 사람의 3 ~ 4명 중 1명」 — 봇 X0-R 40시드 13 · 11 / 40, X0 0 / 40. 없는 규모 · 옛 판은 `sNetWorthRatio` 식
    */
   sNetWorthV16: { standard: 2_000_000_000, micro: 2_550_000_000 } as Record<string, number>,
+  /**
+   * [결정 #407] 승리를 미룬 만큼 S 순자산 문턱을 올린다 — 첫 12년 적격 통이 생긴 달부터 승리 달까지 한 달에 이만큼(원) `[튜닝]`.
+   * 봇 X0-R 평균 순자산 증가(146 → 180개월) 표준 0.22 · 마이크로 0.28억/월 — 미뤄서 얻는 순자산을 지운다(MGT `mgt-grade-options.md` 3절)
+   */
+  sDelayPerMonthV16: { standard: 22_000_000, micro: 28_000_000 } as Record<string, number>,
+  /**
+   * [결정 #407] 미룸으로 세지 않는 개월 — 곧바로 이긴 판의 판정 달 − 첫 적격 달 = 2(첫 적격은 월말 결산에 생기고 → 다음 달 출시 · 판매 → 판정 달은 그 다음 경과 개월).
+   * 봇 X0-R 곧바로 승리 3판 모두 2(MGT 측정). 이만큼은 벌하지 않는다 `[튜닝]`
+   */
+  sDelayGraceMonths: 2,
 };
 
-/** S 등급 순자산 문턱(원) — v16은 규모별 고정 금액, 옛 판(legacy-v15)이나 표에 없는 규모는 성과 기준 × `sNetWorthRatio`. 시나리오가 없으면 null */
-export function sNetWorthTarget(s: Pick<GameState, 'scenario' | 'rulesVersion'>): number | null {
+/** [결정 #407] S 문턱에 더할 미룬 개월 — 판정 달 `verdictMonth`(경과 개월 — `judgeWin`의 month) − 첫 적격 달 − 유예(`GRADE.sDelayGraceMonths`). 첫 적격 기록이 없으면 0 */
+export function sDelayMonths(s: Pick<GameState, 'progress' | 'month'>, verdictMonth: number = s.month + 1): number {
+  return Math.max(0, winDelayMonths(s, verdictMonth) - GRADE.sDelayGraceMonths);
+}
+
+/**
+ * S 등급 순자산 문턱(원) — v16은 규모별 고정 금액 + [결정 #407] 승리를 미룬 개월(`sDelayMonths`) × 규모별 k.
+ * `verdictMonth` = 판정 달(경과 개월). 기본 = 이번 달에 팔면 판정될 달(s.month + 1) — 화면은 「지금 이기면」 문턱을 그대로 읽는다.
+ * 옛 판(legacy-v15)이나 표에 없는 규모는 성과 기준 × `sNetWorthRatio`(미룸 없음). 시나리오가 없으면 null
+ */
+export function sNetWorthTarget(s: Pick<GameState, 'scenario' | 'rulesVersion' | 'progress' | 'month'>, verdictMonth: number = s.month + 1): number | null {
   const sc = s.scenario;
   if (!sc) return null;
   const byRatio = sc.equity * sc.goal.netWorthMultiple * GRADE.sNetWorthRatio;
   if (rulesVersionOf(s) === 'legacy-v15') return byRatio;
-  return GRADE.sNetWorthV16[sc.tierId] ?? byRatio;
+  const base = GRADE.sNetWorthV16[sc.tierId];
+  if (base == null) return byRatio;
+  return base + (GRADE.sDelayPerMonthV16[sc.tierId] ?? 0) * sDelayMonths(s, verdictMonth);
 }
 
 const oakMonthsOf = (p: Pick<Product, 'oakMonths' | 'ageYears'>) => p.oakMonths ?? (p.ageYears ?? 0) * 12;
@@ -141,6 +162,7 @@ export function updateProgress(s: GameState, report: MonthReport): void {
   }
   // 새 판(v16, F4 [결정 #308]) — 승리 = 적격 로트의 최초 정상 유상 출하. 그달 결산의 사건에서 첫 승리 후보를 읽는다(틱 순서 = 출고 순서).
   // 강제 판정은 없다: `verdict`는 승리 달에 한 번(성과 등급) 또는 판이 끝날 때(failed)만 — [결정 #324]. 승리는 멈춤 사유가 아니다(계속 운영)
+  recordFirstEligible(s); // [결정 #407] 첫 적격 통 달 — 기록만(승리 미루기 문턱의 기준)
   if (!s.progress.win) {
     const e = firstEligibleSale(report.saleEvents ?? []);
     if (e) {
@@ -162,7 +184,7 @@ export function judgeWin(s: GameState, month: number, quality?: number): GoalVer
   const sc = s.scenario!;
   const nw = netWorth(s, month); // [#398] 판정 달(승리 달 결산)의 설비 감가 기준 — 결산 report.netWorth와 같은 값
   const target = sc.equity * sc.goal.netWorthMultiple;
-  const sTarget = sNetWorthTarget(s)!; // [결정 #393] 규모별 S 순자산
+  const sTarget = sNetWorthTarget(s, month)!; // [결정 #393] 규모별 S 순자산 + [결정 #407] 승리 달까지 미룬 개월 × k
   const checks: GoalCheck[] = [
     { id: 'survive', ok: true },
     { id: 'flagship', ok: true, ...(quality != null ? { value: quality } : {}) },
