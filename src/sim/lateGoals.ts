@@ -98,6 +98,7 @@ export function updateLateGoals(s: GameState, report: MonthReport): void {
   if (!defs.length || s.status !== 'running') return;
   for (const g of defs) {
     if (recordOf(s, g.id) || !lateGoalOpen(s, g) || skippedLate(s, g)) continue;
+    if (g.checkFrom != null && s.month < g.checkFrom) continue; // [결정 #395] 판정 전 — 보이기만 한다
     if (lateGoalMet(s, g.id)) {
       s.progress.lateGoals = [...(s.progress.lateGoals ?? []), { id: g.id, month: s.month, result: 'done' }];
       report.notes.push(`후반 목표 달성 — ${g.title}`);
