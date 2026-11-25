@@ -1104,6 +1104,11 @@ export interface ProgressSlice {
   /** [#388 ① G3] 후반 목표 결과(content/scenarios.ts lateGoalsV16 · lateGoals.ts) — 선택 필드(#187). 처음 볼 때 이미 기한이 지난 목표는 적지 않는다 */
   lateGoals?: { id: string; month: number; result: 'done' | 'missed' }[];
   verdict?: GoalVerdict;
+  /**
+   * [결정 #422] 승리 뒤 재판정으로 오른 등급(오르기만 — 내려가지 않음). 없으면 `verdict`가 등급이다. 읽기는 `bestVerdict(s)` 하나.
+   * 승리 뒤 새 12년+ 적격 로트의 첫 정상 유상 출하 달에만 MGT `progress.ts rejudge`가 쓴다. 선택 필드(#187)
+   */
+  verdictBest?: GoalVerdict & { rejudged: { month: number; productId: string; lotId: string } };
   /** 캠페인 승리(F3 모양 · F4가 쓴다 — [결정 #308]) — 적격 로트의 최초 정상 유상 출하 1회. 멈춤 사유가 아니라 알림(계속 운영) */
   win?: CampaignWin;
   /**
