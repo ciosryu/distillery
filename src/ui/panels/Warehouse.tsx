@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AutoFillRow } from './AutoFill';
 import { HandfillRow } from './Handfill';
+import { AgePolicyRow } from './AgePolicy';
 import { CASKS, RECHAR_COST, SEASONING_CONTRACT } from '../../sim/content/catalog';
 import { canFinishInto, evaluate, FINISH, vesselMaterial, finishCount, finishLabel, finishOf, isLocked, isUnlocked, lotCategory, unlockingNodes, MAX_RECHAR, regionalCaskPrice, topNotes, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type SpiritLot, knownReads } from '../../sim';
 import { CASK_MARKET } from '../../sim/content/catalog';
@@ -156,6 +157,7 @@ function Casks() {
         </div>
       }
     >
+      <AgePolicyRow />{/* [결정 #399] 연령 띠 정책(자동 납품) */}
       {!!s.inventory.caskOrders.length && <p className="mb-2 text-xs text-stone-500">도착 예정: {s.inventory.caskOrders.map((o) => `${CASKS[o.typeId].nameKo} ${o.qty}개(${o.source === 'seasoning' ? '시즈닝' : '쿠퍼리지'}, ${o.arriveMonth - s.month}개월 뒤)`).join(' · ')}</p>}
       {finishFor && filter === 'filled' && (() => {
         const from = s.inventory.casks.find((c) => c.id === finishFor);
