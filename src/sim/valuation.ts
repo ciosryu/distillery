@@ -44,7 +44,7 @@ export function equipmentSalvage(s: GameState, rate: number = EQUIPMENT_SALVAGE.
     if (!def || EQUIPMENT_SALVAGE.exclude.includes(def.id)) continue;
     const life = EQUIPMENT_SALVAGE.lifeMonths[def.kind];
     if (!life) continue;
-    const age = e.readyMonth > atMonth ? 0 : Math.max(0, atMonth - boughtMonthOf(e));
+    const age = e.readyMonth > atMonth && e.refitUntil == null ? 0 : Math.max(0, atMonth - boughtMonthOf(e)); // [결정 #418] 개조 공사 중인 증류기는 새 설비가 아니다(감가 나이 그대로)
     total += rate * equipmentCost(s, def) * Math.max(EQUIPMENT_SALVAGE.floor, 1 - age / life);
   }
   return Math.round(total);

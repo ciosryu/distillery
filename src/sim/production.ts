@@ -14,7 +14,7 @@ import type { TickContext } from './tick';
 import { OEM } from './deals';
 import { hasLocalIngredient, seasonalEnergyFactor, siteFreight } from './sites';
 import { waterPermitCap } from './waterPermit';
-import { stillParams, type StillSpec } from './stillShape'; // [결정 #417 · #418] 증류기 형태 (PROD)
+import { batchWaterL, stillParams, type StillSpec } from './stillShape'; // [결정 #417 · #418] 증류기 형태 (PROD)
 import { evaluate, type Evaluation } from './flavor';
 import { hexOf, HEX_AXES, HEX_LABEL } from './blendRadar';
 import { AXIS } from './content/axes';
@@ -26,6 +26,7 @@ import type { ProductCategory, SpiritKind } from './types';
 import { PROD_TUNING } from './prodTuning';
 import { ledgerOf, mergeLedgers, newEntry, siteIdOf } from './ledger';
 import { mixTaint } from './taint'; // [결정 #382] 코어 잎
+import { effectiveProcess } from './staffTaskRules';
 
 type StillDef = Extract<EquipmentDef, { kind: 'still' }>;
 
@@ -206,7 +207,7 @@ export function simulateBatch(
     flavor.tropical = (flavor.tropical ?? 0) + 2.5 * hot;
     if (hot > 0 && env?.rng) {
       chargeLPA *= clamp(1 + env.rng.normal(0, 0.015 * hot), 0.8, 1.1);
-      const qc = distiller?.stats.b ?? 0;
+      const qc = distiller ? effectiveProcess(distiller) : 0; // [결정 #412] 숙성 점검 중이면 × 0.7(PROD 2026-11-25 — 287행과 같이)
       if (env.rng.chance(0.025 * hot * (1 - qc / 120))) {
         flavor.acetic = (flavor.acetic ?? 0) + 25;
         flavor.sulfur_meaty = (flavor.sulfur_meaty ?? 0) + 8;
@@ -290,7 +291,7 @@ export function simulateBatch(
   flavor.body = (flavor.body ?? 0) + bodyBonus;
 
   // 디스틸러: 공정 스탯이 이취를 줄임 (결과 확률 아님 — 결정론적 보정)
-  const offMul = distiller ? 1.25 - 0.5 * (distiller.stats.b / 100) : 1.4;
+  const offMul = distiller ? 1.25 - 0.5 * (effectiveProcess(distiller) / 100) : 1.4; // [결정 #412] 숙성 점검을 맡은 디스틸러는 「공정」 × 0.7(MGT staffTaskRules) — 평소 업무면 stats.b 그대로
   for (const k of ['solvent', 'feinty', 'acetic'] as const) flavor[k] = (flavor[k] ?? 0) * offMul;
   if (distiller) flavor.fresh_fruit = (flavor.fresh_fruit ?? 0) * (1 + 0.1 * (distiller.stats.a / 100));
   else warnings.push('디스틸러 없이 생산 — 품질 저하');
@@ -411,12 +412,12 @@ export function runProduction(s: GameState, report: MonthReport, ctx: TickContex
     for (let b = 0; b < c.batchesPerMonth; b++) {
       const stillInst = stills.find((e) => (stillRuns.get(e.id) ?? 0) >= OEM.runs);
       const still = stillInst ? stillDefOf(s, stillInst.id) : null;
-      if (!stillInst || !still || distillerRuns < OEM.runs || waterLeftL < still.chargeL) break;
+      if (!stillInst || !still || distillerRuns < OEM.runs || waterLeftL < batchWaterL(still)) break;
       const need = fermentDaysAt(OEM.fermentDays, fermC) + 2;
       const ferm = fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need && f.type !== 'onggi');
       if (!ferm) break;
       ferm.daysLeft -= need;
-      waterLeftL -= still.chargeL;
+      waterLeftL -= batchWaterL(still); // [결정 #418] 형태로 고른 웜 텁은 × 1.5
       stillRuns.set(stillInst.id, (stillRuns.get(stillInst.id) ?? 0) - OEM.runs);
       distillerRuns -= OEM.runs;
       runsUsed += OEM.runs;
@@ -467,7 +468,7 @@ export function runProduction(s: GameState, report: MonthReport, ctx: TickContex
     for (let b = 0; b < order.batchesPerMonth; b++) {
       if ((stillRuns.get(stillInst.id) ?? 0) < recipe.runs) { blocked = '증류기 가동 한도'; break; }
       if (distillerRuns < recipe.runs) { blocked = distillers.length ? '디스틸러 운전 한도' : '디스틸러 없음'; break; }
-      if (recipe.kind !== 'gin' && waterLeftL < still.chargeL) { blocked = '취수 허가량'; waterBlocked = true; break; }
+      if (recipe.kind !== 'gin' && waterLeftL < batchWaterL(still)) { blocked = '취수 허가량'; waterBlocked = true; break; }
       let ferm: FermenterSlot | undefined;
       if (recipe.kind !== 'gin') {
         // 발효실 온도에 따라 발효 기간이 늘거나 준다 (결정 #67)
@@ -476,7 +477,7 @@ export function runProduction(s: GameState, report: MonthReport, ctx: TickContex
           ?? fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need);
         if (!ferm) { blocked = '발효조 부족'; break; }
         ferm.daysLeft -= need;
-        waterLeftL -= still.chargeL;
+        waterLeftL -= batchWaterL(still); // [결정 #418] 형태로 고른 웜 텁은 × 1.5
       }
       stillRuns.set(stillInst.id, (stillRuns.get(stillInst.id) ?? 0) - recipe.runs);
       distillerRuns -= recipe.runs;
@@ -587,12 +588,12 @@ export function orderPlan(s: GameState, opts: { steady?: boolean } = {}): OrderP
     for (let b = 0; b < c.batchesPerMonth; b++) {
       const stillInst = stills.find((e) => (stillRuns.get(e.id) ?? 0) >= OEM.runs);
       const still = stillInst ? stillDefOf(s, stillInst.id) : null;
-      if (!stillInst || !still || distillerRuns < OEM.runs || waterLeftL < still.chargeL) break;
+      if (!stillInst || !still || distillerRuns < OEM.runs || waterLeftL < batchWaterL(still)) break;
       const need = fermentDaysAt(OEM.fermentDays, fermC) + 2;
       const ferm = fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need && f.type !== 'onggi');
       if (!ferm) break;
       ferm.daysLeft -= need;
-      waterLeftL -= still.chargeL;
+      waterLeftL -= batchWaterL(still); // [결정 #418] 형태로 고른 웜 텁은 × 1.5
       stillRuns.set(stillInst.id, (stillRuns.get(stillInst.id) ?? 0) - OEM.runs);
       distillerRuns -= OEM.runs;
     }
@@ -611,14 +612,14 @@ export function orderPlan(s: GameState, opts: { steady?: boolean } = {}): OrderP
     for (let b = 0; b < o.batchesPerMonth; b++) {
       if ((stillRuns.get(stillInst.id) ?? 0) < recipe.runs) { blocked = '증류기 가동 한도'; break; }
       if (distillerRuns < recipe.runs) { blocked = hasDistiller ? '디스틸러 운전 한도' : '디스틸러 없음'; break; }
-      if (recipe.kind !== 'gin' && waterLeftL < still.chargeL) { blocked = '취수 허가량'; break; }
+      if (recipe.kind !== 'gin' && waterLeftL < batchWaterL(still)) { blocked = '취수 허가량'; break; }
       if (recipe.kind !== 'gin') {
         const need = fermentDaysAt(recipe.fermentDays, fermC) + 2;
         const ferm = fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need && (recipe.kind === 'soju' || f.type !== 'onggi'))
           ?? fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need);
         if (!ferm) { blocked = '발효조 부족'; break; }
         ferm.daysLeft -= need;
-        waterLeftL -= still.chargeL;
+        waterLeftL -= batchWaterL(still); // [결정 #418] 형태로 고른 웜 텁은 × 1.5
       }
       stillRuns.set(stillInst.id, (stillRuns.get(stillInst.id) ?? 0) - recipe.runs);
       distillerRuns -= recipe.runs;
