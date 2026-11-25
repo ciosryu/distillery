@@ -669,6 +669,21 @@ function FreeControls({ s, draft, set }: { s: GameState; draft: Draft; set: SetD
   );
 }
 
+/**
+ * 설비 「구매」 줄 — 지역 밖 시설 · 잠긴 시설은 뺀다. 한 번만 사는 것(비지터 센터 · 방재 시설 — actions.prod가 두 번째 발주를 「이미 있습니다」로 거절)을
+ * 이미 샀으면 `done`으로 표시해 **맨 아래로** 내린다(취소선 · 버튼 대신 「보유」 · 「공사 중」). 여러 개 사는 것(증류기 · 발효조 · 숙성고)은 막지 않고 「보유 n」만.
+ * 숨기지 않는 까닭: 무엇을 샀는지 구매 칸에서도 보인다(PM 권장)
+ */
+export function buyRows(s: GameState) {
+  const rows = Object.values(EQUIPMENT)
+    .filter((d) => !(d.kind === 'facility' && d.regions && !d.regions.includes(s.regionId)) && !isLocked(s, `facility:${d.id}`))
+    .map((d) => {
+      const owned = s.production.equipment.filter((e) => e.catalogId === d.id);
+      return { d, owned, done: (d.kind === 'visitor' || d.kind === 'facility') && owned.length > 0 };
+    });
+  return [...rows.filter((r) => !r.done), ...rows.filter((r) => r.done)];
+}
+
 /** MVP 증류소 탭이 접어서 끼운다 (비지터 센터 베이직 투어·감압 증류기 등) */
 export function Equipment() {
   const s = useGame((g) => g.state);
@@ -699,15 +714,18 @@ export function Equipment() {
         <div>
           <h3 className="mb-1 text-xs font-semibold text-stone-500">구매</h3>
           <Table head={['설비', '사양', '가격', '설치 기간', '']}>
-            {Object.values(EQUIPMENT).filter((d) => !(d.kind === 'facility' && d.regions && !d.regions.includes(s.regionId)) && !isLocked(s, `facility:${d.id}`)).map((d) => (
-              <tr key={d.id}>
-                <Td>{d.nameKo}{fresh.has(d.id) && <> <Badge tone="warn">새로 열림 · {Math.max(0, s.month - fresh.get(d.id)!) ? `${s.month - fresh.get(d.id)!}개월 전` : '이번 달'}</Badge></>}</Td>
+            {buyRows(s).map(({ d, owned, done }) => (
+              <tr key={d.id} className={done ? 'text-stone-400' : undefined}>
+                <Td><span className={done ? 'line-through' : undefined}>{d.nameKo}</span>{owned.length > 0 && !done && <span className="text-xs text-stone-500"> · 보유 {owned.length}</span>}{fresh.has(d.id) && <> <Badge tone="warn">새로 열림 · {Math.max(0, s.month - fresh.get(d.id)!) ? `${s.month - fresh.get(d.id)!}개월 전` : '이번 달'}</Badge></>}</Td>
                 <Td className="text-xs text-stone-500">
                   {d.kind === 'still' ? `월 ${d.runsPerMonth}회 · 환류 ${d.reflux}${d.vacuum ? ' · 감압' : ''}${d.ginBasket ? ' · 진 바스켓' : ''}` : d.kind === 'fermenter' ? `${d.capacityL.toLocaleString()}L` : d.kind === 'warehouse' ? `+${d.casks} 캐스크 · ${d.warehouseType === 'dunnage' ? '더니지' : '랙'} ${d.tiers}단` : d.kind === 'facility' ? `${d.note}${reqText(d.requires)}` : `${d.note ?? `방문객 월 ${d.visitorsPerMonth}명 · 1인 ${won(d.spendPerVisitor)}`}${reqText(d.requires)}`}
                 </Td>
                 <Td right>{won(equipmentCost(s, d))}{equipmentCost(s, d) !== d.cost && <div className="text-xs text-stone-500">입지 반영 (기준 {won(d.cost)})</div>}</Td>
                 <Td right>{d.leadMonths}개월</Td>
-                <Td>{(d.kind === 'visitor' || d.kind === 'facility') && d.requires && !s.production.equipment.some((e) => e.catalogId === d.requires)
+                <Td>{done
+                  // 한 번만 사는 시설(비지터 센터 · 방재 시설)을 이미 샀다 — 발주가 「이미 있습니다」로 거절되니 버튼 대신 상태를 둔다(오너 10차 시작: "발주하면 … 발주버튼이 사라지게 … 취소선")
+                  ? (owned.some((e) => e.readyMonth <= s.month) ? <Badge tone="good">보유</Badge> : <Badge tone="warn">공사 중 — {Math.max(1, Math.min(...owned.map((e) => e.readyMonth)) - s.month)}개월 뒤</Badge>)
+                  : (d.kind === 'visitor' || d.kind === 'facility') && d.requires && !s.production.equipment.some((e) => e.catalogId === d.requires)
                   // 선행 설비가 없으면 발주는 거절된다(actions.prod) — 누르기 전에 알린다 (화면 진행 메모 A8)
                   ? <span className="text-xs text-stone-500">{EQUIPMENT[d.requires]?.nameKo ?? d.requires}부터</span>
                   : equipmentCost(s, d) >= BIG_PURCHASE
