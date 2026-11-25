@@ -227,6 +227,21 @@ function fit(pool: readonly string[], noCask: boolean): readonly string[] {
   return ok.length ? ok : pool;
 }
 
+/**
+ * [제안 P-MKT-50] (가) — PM 2026-11-25 「오너 결정 없이 넣어도 됨(④와 같은 꼴의 수리)」. 「창렬」(ripoff)은 가성비만으로도 판정되므로(qpr > 1.8),
+ * 품질 높은 제품을 시장 값에 팔면 「내용물이 따라오지 못한다」처럼 **내용물을 탓하는** 문장이 사실과 반대로 나왔다(15 · 18년 명작 #422와 어긋남).
+ * 커뮤니티 품질(리뷰로 본 값 — 참 품질 아님, I2)이 문턱 이상이면 내용물 탓 문장을 빼고, 문턱 아래면 「잘 만든 건 인정」 꼴 문장을 뺀다. 판정 · 분위기 · 건수는 그대로
+ */
+export const RIPOFF_GOOD_QUALITY = 75;
+const CONTENT_BLAME = /품질 개에반|숙성 1도 안|숙성감 부족|내용물이 따라오지/;
+const CONTENT_PRAISE = /잘 만든 건 인정|내용물은 훌륭|맛은 인정|맛은 정말 좋은데/;
+function qualityFit(pool: readonly string[], x: FeedSituation, quality: number): readonly string[] {
+  if (x !== 'ripoff') return pool;
+  const good = quality >= RIPOFF_GOOD_QUALITY;
+  const ok = pool.filter((l) => !(good ? CONTENT_BLAME : CONTENT_PRAISE).test(l));
+  return ok.length ? ok : pool;
+}
+
 /** 글 종류를 부르는 공개 사정 — 지난달 품절 뒤 재입고 · 수상 소식 · 유통 입점 · 면세 완판 · 철 */
 interface KindFlags { restock: boolean; medal: boolean; deal: boolean; season: FeedSeason | null }
 const KIND_TONE: Partial<Record<FeedKind, FeedPost['tone']>> = { proof: 'pos', restock: 'pos', soldout: 'pos', news: 'pos', qpr: 'pos', gift: 'pos', meetup: 'pos', starter: 'pos' };
@@ -347,7 +362,7 @@ function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style
     const line = kind !== 'eval' ? pickLine(rng, WB_KIND_LINES[kind], ctx, used) : null;
     if (line) return { ...base, tone: 'neu', text: `${fill(line, vars)} ${score}점`, score, harsh: 0 };
     const palate = `${vars.n3}${off ? `, 옅은 ${off}` : ''}`;
-    const verdict = fill(rng.pick(fit(WB_VERDICT[x], noCask)), vars);
+    const verdict = fill(rng.pick(qualityFit(fit(WB_VERDICT[x], noCask), x, g.quality)), vars);
     const tasting = ['stockout', 'priceUp', 'priceDown', 'forgotten'].includes(x) ? '' : `Nose: ${rng.pick(WB_NOSE_ADJ)} ${vars.n1}, ${vars.n2}. Palate: ${palate}. Finish: ${finishNote}. `;
     return { ...base, text: `${tasting}${verdict} ${score}점`, score, harsh: 0 };
   }
@@ -375,12 +390,12 @@ function writePost(rng: Rng, p: Product, g: FeedSignals, x: FeedSituation, style
   if (style === 'cafe') {
     // 「단종?」 · 품절 글은 시음기 · 후기가 아니다 — 앞머리([후기] · [시음기] · [정보])를 붙이지 않는다(PM 2026-11-25)
     const open = x === 'forgotten' || x === 'stockout' ? '' : rng.pick(CAFE_OPEN);
-    const text = `${open}${fill(rng.pick(fit(CAFE_LINES[x], noCask)), vars)}${rng.pick(CAFE_CLOSE)}`;
+    const text = `${open}${fill(rng.pick(qualityFit(fit(CAFE_LINES[x], noCask), x, g.quality)), vars)}${rng.pick(CAFE_CLOSE)}`;
     return { ...base, text, harsh: 0, replies: replies(rng, style, tone, noCask) };
   }
   const harsh = dcHarsh(style, x);
   if (style === 'dc_whisky') {
-    const pool = fit(DCW_LINES[x][harsh] ?? DCW_LINES[x][1] ?? DCW_LINES[x][0.5]!, noCask);
+    const pool = qualityFit(fit(DCW_LINES[x][harsh] ?? DCW_LINES[x][1] ?? DCW_LINES[x][0.5]!, noCask), x, g.quality);
     const feat = feats.length && rng.next() < 0.5 ? ` — ${fill(rng.pick(fit(DCW_FEATURE[rng.pick(feats)], noCask)), vars)}` : '';
     // 위스키 마이너 갤러리 말머리(관찰 mkt-feed.md §4.1.1) — 평가 글은 [리뷰]
     return { ...base, text: `${DCW_TAG.eval} ${fill(rng.pick(pool), vars)}${feat}${rng.pick(fit(DCW_CLOSE, noCask))}`, harsh, replies: replies(rng, style, tone, noCask) };
