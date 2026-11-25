@@ -1,5 +1,5 @@
 import { runBoard } from './board';
-import { EQUIPMENT, LOAN_OFFERS, type LoanOfferDef } from './content/catalog';
+import { LOAN_OFFERS, type LoanOfferDef } from './content/catalog';
 import { BANK_SCREENING } from './content/finance';
 import { siteOf } from './content/regions';
 import type { GameState, MonthReport } from './types';
@@ -14,6 +14,7 @@ import { isLocked } from './scenario';
 import { houseBrand } from './brands';
 import { AWARENESS } from './market';
 import { mod } from './modifiers';
+import { equipmentMaintenance } from './stillShape'; // [결정 #418] 형태로 고른 웜 텁 +20% · 보일 볼 +10%(PROD — 형태가 없으면 카탈로그 값)
 import { inventoryLtvMul, loanGraceMul, loanLimitMul, loanRateMul, mul } from './mgtKnobs';
 
 // 대출·재고 담보대출·월 고정비·재무 단계(틱 7) (파트 MGT, 결정 #144 — 파일 쪼개기로 옮겨 왔다. 규칙·수치 불변)
@@ -149,7 +150,7 @@ export function monthlyFixedBreakdown(s: GameState): { id: string; label: string
     { id: 'marketing', label: '마케팅', amount: s.commerce.marketingBudget, adjustable: true },
     { id: 'secondBrand', label: '세컨드 브랜드', amount: secondBrandMonthlyCost(s) },
     // 짓는 중인 설비는 유지비를 내지 않는다 (runFinance와 같은 조건)
-    { id: 'maintenance', label: '설비 유지비', amount: s.production.equipment.reduce((t, e) => t + (e.readyMonth <= s.month ? (EQUIPMENT[e.catalogId]?.maintenance ?? 0) : 0), 0) },
+    { id: 'maintenance', label: '설비 유지비', amount: s.production.equipment.reduce((t, e) => t + (e.readyMonth <= s.month ? equipmentMaintenance(e) : 0), 0) },
     { id: 'storage', label: '통 보관비', amount: caskStorageCost(s) },
     { id: 'loans', label: '대출 원리금', amount: s.finance.loans.reduce((t, l) => t + currentLoanPayment(s, l), 0) },
     { id: 'insurance', label: '보험료', amount: s.finance.insurance.reduce((t, x) => t + x.premiumPerMonth, 0) },
@@ -198,7 +199,7 @@ export function runFinance(s: GameState, report: MonthReport, monthOfYear: numbe
   pay('salaries', s.hr.staff.reduce((t, x) => t + x.salary, 0));
   pay('overhead', siteOverhead(s));
   pay('heating', heatingCost(s, monthOfYear));
-  pay('maintenance', s.production.equipment.reduce((t, e) => t + (e.readyMonth <= s.month ? (EQUIPMENT[e.catalogId]?.maintenance ?? 0) : 0), 0));
+  pay('maintenance', s.production.equipment.reduce((t, e) => t + (e.readyMonth <= s.month ? equipmentMaintenance(e) : 0), 0));
   pay('marketing', s.commerce.marketingBudget);
   pay('storage', caskStorageCost(s));
   // 보험료 (#171) — 가입한 달부터 매달
