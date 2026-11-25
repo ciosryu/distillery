@@ -15,7 +15,7 @@ import { retailBreakRemaining, retailCancellationCost } from '../sim/deals';
 import { OVERHANG, overhangFactor, overhangMonths } from '../sim/retail';
 import { ibAgedCaskCount } from '../sim/bulk';
 import { autoFillPreview } from '../sim/autoFill';
-import { autoRestockPlan, autoRestockSources, autoRestockSupported, guardedFlagshipCasks, productMonthlyPace } from '../sim/economics';
+import { AUTO_RESTOCK_STARVED_WARN, autoRestockPlan, autoRestockShortReason, autoRestockSources, autoRestockStarvedMonths, autoRestockSupported, guardedFlagshipCasks, productMonthlyPace } from '../sim/economics';
 import { reserveCaskIds } from '../sim/tags';
 import { candidateHorizon, caskEligibility, isCampaignCandidate } from '../sim/ledger';
 import { specialistOffers, SPECIALIST_STAGE } from '../sim/hr';
@@ -259,7 +259,7 @@ export function newFacilities(s: GameState): { id: string; name: string; openedM
 
 /**
  * [결정 #407] 승리 미루기 알림 — 12년 적격 원액이 생긴 뒤(승리 전 · v16) S 등급 순자산 기준이 미룬 만큼 오른다는 한 줄. 값은 MGT `sNetWorthTarget`(이번 달에 팔면의 문턱).
- * 적격 기록이 없거나 · 승리했거나 · 옛 판이면 null
+ * 미룬 개월은 **출하할 수 있게 된 달(첫 적격 달 + 1)부터** 센다(MGT `sDelayMonths` — 판정 달 − 첫 적격 달 − 2, PM 확인 2026-11-25). 적격 기록이 없거나 · 승리했거나 · 옛 판이면 null
  */
 export function winDelayNote(s: GameState): string | null {
   const sc = s.scenario;
@@ -269,8 +269,8 @@ export function winDelayNote(s: GameState): string | null {
   if (!k || target == null) return null;
   const n = sDelayMonths(s);
   return n > 0
-    ? `S 등급 순자산 기준 ${fmtWon(target)} — 12년 출하를 미룬 만큼 오른다(${n}개월 × ${fmtWon(k)} = +${fmtWon(n * k)})`
-    : `12년 적격 원액이 있다 — ${GRADE.sDelayGraceMonths}개월 안에 출하하지 않으면 S 등급 순자산 기준(지금 ${fmtWon(target)})이 달마다 ${fmtWon(k)}씩 오른다`;
+    ? `12년 적격 원액을 출하할 수 있다 — 출하를 미루면 달마다 S 등급 순자산 기준이 ${fmtWon(k)}씩 오른다(지금 ${fmtWon(target)} · 출하할 수 있게 된 뒤 ${n}개월 미뤄 +${fmtWon(n * k)})`
+    : `12년 적격 원액을 출하할 수 있다 — 지금 출하하면 S 등급 순자산 기준은 그대로(${fmtWon(target)}), 미루면 다음 달부터 달마다 ${fmtWon(k)}씩 오른다`;
 }
 
 /** [결정 #385] 현금이 고정비 이만큼을 넘으면 「놀고 있는 현금」 줄 `[튜닝]` */
@@ -341,7 +341,7 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'overhang', 'contam-cand', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'idle-cash', 'sample'];
+export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'overhang', 'contam-cand', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-starved', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'idle-cash', 'sample'];
 // 꼬리 5개(defense·whisky·soju·idle-cash·sample)는 info만 낸다 — warn·danger를 낼 수 있는 새 id는 그 앞에 둔다(warn이 info 뒤에 묻히지 않게, PM 대조 7차 완료: soju-glut)
 // 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
@@ -414,9 +414,19 @@ export function monthTodos(s: GameState): Todo[] {
       out.push({ id: 'export-starve', level: 'warn', text: `수출이 국내 재고를 먼저 가져갔다 — 지난달 국내 ${unmet.toLocaleString()}병 품절(「${short[0]!.name}」${short.length > 1 ? ` 외 ${short.length - 1}개` : ''}). 국내 판매만 인지도를 키운다 — 재고를 늘리거나, 수출가 배수를 약 0.9 아래로 낮추거나, 그 제품을 「수출 안 함」(#266)으로 두면 국내가 먼저 채워진다`, action: '판매', target: { tab: 'sales' } });
     }
   }
+  // [결정 #399 · #386 ④] 자동 납품이 연달아 못 채운 제품(PROD `autoRestockStarvedMonths` — 결산 메모로 센다) — 띠 정책 · 통 범위가 막았으면 그 사유(`autoRestockShortReason`).
+  // 아래 「채울 원액이 없다」(이번 달 한 번)보다 앞서 보이고, 같은 제품은 아래 줄에서 뺀다
+  const starved = s.scenario ? s.commerce.products.map((p) => ({ p, n: autoRestockStarvedMonths(s, p) })).filter((x) => x.n >= AUTO_RESTOCK_STARVED_WARN).sort((a, b) => b.n - a.n || a.p.id.localeCompare(b.p.id)) : [];
+  if (starved.length) {
+    const { p, n } = starved[0]!;
+    const why = autoRestockShortReason(s, p);
+    const byPolicy = !!why && why.includes('띠는');
+    out.push({ id: 'restock-starved', level: 'warn', text: `「${p.name}」 자동 납품이 ${n}달째 못 채웠다${why ? ` — ${why}` : ''}. 띠 정책 · 통 범위를 바꾸거나 몰트 생산을 늘리세요${starved.length > 1 ? ` · 외 ${starved.length - 1}개 제품` : ''}`, action: byPolicy ? '숙성고 띠 정책' : '판매', target: byPolicy ? { anchor: 'mvp-warehouse' } : { tab: 'sales' } });
+  }
+  const starvedIds = new Set(starved.map((x) => x.p.id));
   // 자동 납품이 원액을 못 찾는 제품 (#243, 5차 판: 「안성 소주」가 탱크를 다 써 「옹기소주」가 못 채워졌는데 이유를 몰랐다)
   if (s.scenario) {
-    const short = s.commerce.products.filter((p) => p.autoRestock && autoRestockSupported(p) && p.stockBottles < productMonthlyPace(s, p) && !autoRestockSources(s, p).length);
+    const short = s.commerce.products.filter((p) => !starvedIds.has(p.id) && p.autoRestock && autoRestockSupported(p) && p.stockBottles < productMonthlyPace(s, p) && !autoRestockSources(s, p).length);
     if (short.length) {
       const p = short[0]!;
       const recNames = (p.recipeIds ?? []).map((id) => s.production.recipes.find((r) => r.id === id)?.name ?? id);
