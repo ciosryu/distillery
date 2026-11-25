@@ -966,6 +966,8 @@ export interface InventorySlice {
    * 새 판(v16)은 기본값으로 시작한다(`ageBand.ts defaultAgePolicy` — #399 A). 없으면 정책 없음(지금 동작 · 진행 중 세이브). 블렌더 맡기기 · IB 입찰은 읽지 않는다(#399 B)
    */
   agePolicy?: AgePolicy;
+  /** [결정 #425] 빈 옹기가 있는데 「소주 → 옹기」 자동 통입이 꺼진 상태가 시작된 달 — 3개월째에 알린다(그 뒤 12개월마다). 상태가 풀리면 지운다. 선택 필드(#187) · v16만 · 난수 · 수치에 닿지 않는다 */
+  onggiIdleSince?: number;
 }
 
 /** [결정 #399] 연령 띠 정책 한 줄 — `off`: 자동이 이 띠 통을 쓰지 않는다 · `keep`: 자동이 이 띠를 `keep`통 아래로 줄이지 않는다 */
@@ -977,8 +979,8 @@ export type AgePolicy = Partial<Record<'0-2' | '3-4' | '5-9' | '10+', AgePolicyR
 export interface AutoFillSettings {
   /** 몇 개월마다 — 1·3·6, 없으면 1(매달) */
   everyMonths?: number;
-  /** 통에 넣을 원액 — 없으면 몰트·그레인 모두 */
-  kinds?: ('malt' | 'grain')[];
+  /** 통에 넣을 원액 — 없으면 몰트·그레인 모두. [결정 #425] 'soju'를 넣으면(켜야 동작 · v16만) 탱크 소주를 빈 옹기에 넣는다 — 몰트·그레인은 나무 통에만, 소주는 옹기에만 */
+  kinds?: ('malt' | 'grain' | 'soju')[];
   /** 빈 통 순서 — 'new' 새 통(첫 통입) 먼저(기본) · 'used' 재사용 통 먼저 */
   prefer?: 'new' | 'used';
   /** 통입 도수 — 없으면 0.635 (원액이 더 낮으면 원액 그대로) */
