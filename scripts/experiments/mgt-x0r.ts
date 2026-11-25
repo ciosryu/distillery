@@ -8,6 +8,8 @@
 //   아는 오염이 생긴 2차 채움 통은 예비 꼬리표를 뗀다(사람과 같은 정보만 — 숨은 오염은 모른다)
 //   XR_PICK개월째(기본 138) 예비 통을 샘플로 맛보고, 아는 품질이 가장 좋은 통보다 XR_DROP(기본 15) 넘게 낮은 통은 예비에서 뺀다.
 //   같은 달 게임 자동 예비가 채운 첫 채움 통의 예비도 뗀다(승리 출시가 2차 채움 통만 쓰게)
+// XR_DELAY(기본 0 = 끼우지 않음)개월 — [결정 #407] 승리 미루기 측정: 첫 적격 통 달(`progress.firstEligibleMonth`)부터 이만큼 지난 달까지 승리 출시를 미룬다(@hook:launch-gate).
+//   X0 · X0-R 모두에 걸린다. 미루는 동안 일반 병입이 2차 채움 예비 통을 쓰지 않는 것은 그대로(@hook:bottle-skip)
 // 판마다 `#G {…}` 한 줄(grade-dist와 같은 칸 + 판정 달 설비 목록 `equip`([catalogId, 원가, 산 달 `boughtMonthOf`]) · 판 끝 상태 · X0-R 기록 `xr`)
 import { setP8Hooks } from './p8Hooks';
 import { applyAction } from '../../src/sim/actions';
@@ -26,8 +28,10 @@ const N = Number(process.env.XR_N ?? 99); // 기본 = XR_AT 전에 넣은 첫 �
 /** 승리 출시 전 예비 통 샘플 달 · 뺄 차이(아는 품질이 가장 좋은 통보다 이만큼 낮으면 예비에서 뺀다) */
 const PICK = Number(process.env.XR_PICK ?? 138);
 const DROP = Number(process.env.XR_DROP ?? 15); // 샘플 잡음(±7 ~ 20)이 커서 작게 잡으면 깨끗한 통까지 뺀다
+/** [결정 #407] 첫 적격 통 달부터 승리 출시를 미룰 개월(0 = 미루지 않음 — 끼움 자리를 걸지 않아 바이트 동일) */
+const DELAY = Number(process.env.XR_DELAY ?? 0);
 
-type Verdict = { month: number; nw: number; q?: number; aw: number; grade?: string };
+type Verdict = { month: number; nw: number; q?: number; aw: number; grade?: string; sTarget?: number; fe?: number };
 interface Run { pol: string; seed: number; target: number; v?: Verdict; retail: number; retailAtVerdict?: number; nwEnd: number; months: number; equip?: [string, number, number][]; status?: string; endMonth?: number; xr?: { casks: string[]; lostL: number; activity: number[]; usedAtWin?: number; untagged?: string[]; sampled?: [string, number][]; autoOff?: string[] } }
 const runs = new Map<string, Run>();
 const refill = new Map<number, Set<string>>(); // seed → 2차 채움 예비 통
@@ -102,13 +106,14 @@ setP8Hooks({
     if (run.xr) run.xr.untagged = [...(run.xr.untagged ?? []), ...bad];
     return r.error ? undefined : r.state;
   },
+  ...(DELAY > 0 ? { launchGate: (s: GameState) => s.progress.firstEligibleMonth != null && s.month - s.progress.firstEligibleMonth >= DELAY } : {}),
   bottleSkip: (s: GameState, _p: unknown, c: Cask) => XR && !campaignWon(s) && !!refill.get(s.seed)?.has(c.id),
   afterMonth: (s: GameState, p: { name: string }, m: number, seed: number) => {
     const r = runOf(s, p, seed);
     r.retail += s.history.reports.at(-1)?.retailDealRevenue ?? 0;
     const v = s.progress.verdict;
     if (v && !r.v && v.result === 'heritage') {
-      r.v = { month: v.month, nw: v.netWorth ?? netWorth(s), q: v.flagshipQuality, aw: v.awareness, grade: v.grade ?? undefined };
+      r.v = { month: v.month, nw: v.netWorth ?? netWorth(s), q: v.flagshipQuality, aw: v.awareness, grade: v.grade ?? undefined, sTarget: v.sNetWorthTarget, fe: s.progress.firstEligibleMonth };
       r.retailAtVerdict = r.retail;
       r.equip = s.production.equipment.map((e) => [e.catalogId, (EQUIPMENT as Record<string, { cost?: number }>)[e.catalogId]?.cost ?? 0, boughtMonthOf(e)]); // [#1014] 산 달 — readyMonth는 수리 때 덮어쓴다
       if (r.xr) r.xr.usedAtWin = r.xr.casks.filter((id) => !s.inventory.casks.find((c) => c.id === id)?.contents).length; // 승리 달까지 비워진(병입된) 2차 채움 통 수
@@ -118,7 +123,7 @@ setP8Hooks({
     r.months = m + 1;
   },
   atEnd: () => {
-    for (const r of runs.values()) console.log('#G ' + JSON.stringify({ mode: XR ? 'x0r' : 'base', tier: process.env.TIER, xrAt: AT, xrN: N, ...r }));
+    for (const r of runs.values()) console.log('#G ' + JSON.stringify({ mode: XR ? 'x0r' : 'base', tier: process.env.TIER, xrAt: AT, xrN: N, ...(DELAY ? { delay: DELAY } : {}), ...r }));
   },
 });
 process.env.P8 = '1';
