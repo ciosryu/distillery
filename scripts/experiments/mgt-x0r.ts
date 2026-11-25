@@ -17,7 +17,7 @@
 // XR_STAFF=aging_check — [결정 #412] 디스틸러에게 「숙성 점검」을 맡긴다(단계 y1_staff가 연 다음 달 13개월째 한 번 — 사람이 쓸 수 있는 행동 `assignStaffTask`). XR=0이어도 걸린다(X0 + 점검)
 // XR_STILL=light|heavy|balanced — [결정 #417 · #418] 판을 만든 직후 증류기에 형태 프리셋(PROD STILL_SHAPE_PRESETS)을 넣는다(사업 계획서에서 고르는 것과 같음)
 // XR_SHERRY=n — [결정 #418 · #422] 「셰리 15년 명작」 길: 판 처음 새 올로로소 벗 n개를 주문(쿠퍼리지) → 도착한 뒤 몰트 로트 통입을 이 벗에 먼저 한다(@hook:fill-lot — 다 차면 P8 그대로). 15년(목재 180개월) 전에는 어떤 병입도 쓰지 않는다(@hook:bottle-skip).
-//   모든 벗이 목재 180개월이 되면 「셰리 15년」 새 제품으로 한 번에 병입(P8 bottleAs — 가격 · 판매는 봇 그대로) → 첫 출하 달에 재판정(#422). 승리는 따로(첫 12년 출시 그대로)
+//   모든 벗이 목재 180개월이 되면 아는 오염 벗을 빼고 「셰리 15년」 새 제품으로 한 번에 병입(P8 bottleAs — 가격 · 판매는 봇 그대로) → 첫 출하 달에 재판정(#422). 승리는 따로(첫 12년 출시 그대로)
 // 판마다 `#G {…}` 한 줄(grade-dist와 같은 칸 + 판정 달 설비 목록 `equip`([catalogId, 원가, 산 달 `boughtMonthOf`]) · 판 끝 상태 · X0-R 기록 `xr`)
 import { setP8Hooks } from './p8Hooks';
 import { applyAction } from '../../src/sim/actions';
@@ -193,11 +193,13 @@ function fillSherry(s: GameState, lot: { id: string }, r: Run): GameState | unde
 function launchSherry(s: GameState, p: unknown, r: Run, api: { bottleAs: (s: GameState, p: any, comps: { source: 'lot' | 'cask'; id: string; liters: number }[], base: { name: string; targetAbv: number; bottleMl: number; chillFilter: boolean; packagingId: string }, cat: 'whisky') => GameState }): GameState {
   const sh = sherry.get(s.seed);
   if (!sh || sh.launched != null) return s;
-  const casks = s.inventory.casks.filter((c) => sh.set.has(c.id) && c.contents);
-  if (!casks.length || casks.some((c) => c.contents!.oakMonths < SHERRY_AT)) return s;
+  const all = s.inventory.casks.filter((c) => sh.set.has(c.id) && c.contents);
+  if (!all.length || all.some((c) => c.contents!.oakMonths < SHERRY_AT)) return s;
+  const casks = all.filter((c) => !c.contaminationKnown); // 사람과 같은 정보: 아는 오염(곰팡이 · TCA) 벗은 블렌드에서 뺀다(모르는 오염은 모른다)
+  if (!casks.length) { sh.launched = -1; if (r.sherry) (r.sherry as Record<string, unknown>).allSpoiled = true; return s; }
   const before = s;
   s = api.bottleAs(s, p, casks.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL })), { name: '셰리 15년', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' }, 'whisky');
-  if (s !== before) { sh.launched = s.month; if (r.sherry) { r.sherry.launch = s.month; const x = [...s.commerce.products].reverse().find((y) => y.name.startsWith('셰리 15년')); r.sherry.q = x?.quality; (r.sherry as Record<string, unknown>).name = x?.name; } }
+  if (s !== before) { sh.launched = s.month; if (r.sherry) { r.sherry.launch = s.month; (r.sherry as Record<string, unknown>).used = casks.length; const x = [...s.commerce.products].reverse().find((y) => y.name.startsWith('셰리 15년')); r.sherry.q = x?.quality; (r.sherry as Record<string, unknown>).name = x?.name; } }
   return s;
 }
 
