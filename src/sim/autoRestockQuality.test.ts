@@ -68,6 +68,21 @@ describe('#419 판매 줄 선택지', () => {
     expect(ranged.length).toBeGreaterThan(0);
     for (const x of ranged) expect(x.source!.minKnownQuality).toBe(60);
   });
+  it('MKT #1103 — 품질 하한이 있으면 「지금 규칙」 칸도 그 하한을 지닌다(null이 아니다) · 같은 값의 칸은 겹치지 않는다', () => {
+    const s0 = load();
+    expect(autoRestockRangeChoices(s0, prod(s0))[0]!.source).toBeNull(); // 품질 조건이 없으면 지금처럼 null
+    const s = applyAction(s0, { type: 'setAutoRestock', productId: P, months: 2, source: { vessel: 'oak', months: 36, minKnownQuality: 70 } }).state;
+    const c = autoRestockRangeChoices(s, prod(s));
+    expect(c[0]!.source).toEqual({ vessel: 'oak', months: 36, minKnownQuality: 70 });
+    expect(c[0]!.label).toBe('지금 규칙(3년 이상 · 상한 없음 · 통 품질 70 이상)');
+    expect(c[0]!.available).toBe(ids(s).length);
+    const keys = c.map((x) => JSON.stringify(x.source));
+    expect(new Set(keys).size).toBe(keys.length);
+    // 그 칸을 고르면 품질 하한이 남는다
+    const r = applyAction(s, { type: 'setAutoRestock', productId: P, months: 2, source: c[0]!.source });
+    expect(r.error).toBeUndefined();
+    expect(prod(r.state).autoRestockSource?.minKnownQuality).toBe(70);
+  });
   it('소주 · 옛 판은 선택지가 없다', () => {
     const s = load();
     expect(autoRestockQualityChoices(s, s.commerce.products.find((x) => x.category === 'soju_distilled')!)).toEqual([]);
