@@ -3,7 +3,7 @@ import { BUYERS, displayName, INDEPENDENT_BOTTLERS } from './content/names';
 import { regionOf, siteOf } from './content/regions';
 import { mod } from './modifiers';
 import { bulkWalkOf } from './mktKnobs'; // F6b 난이도 손잡이(거시 — 현물 지수 변동)
-import { clamp, evaluate } from './flavor';
+import { clamp, evaluate, lotEvalCtx } from './flavor';
 import { lotCategory } from './blending';
 import { rngFor, type Rng } from './rng';
 import { sampledSigma } from './blendRadar';
@@ -26,7 +26,7 @@ export function matchesStyle(lot: SpiritLot, style: ContractTerms['style']): boo
 }
 
 export function lotQuality(lot: SpiritLot): number {
-  return evaluate(lot.flavor, lotCategory(lot)).quality;
+  return evaluate(lot.flavor, lotCategory(lot), lotEvalCtx(lot)).quality; // [결정 #422 (c)] 형태를 고른 증류기 원액만 저숙성 황
 }
 
 /** 품질 계수: 35점 → 0.7, 75점 이상 → 1.3 */

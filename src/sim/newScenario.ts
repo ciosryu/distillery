@@ -6,7 +6,7 @@ import { salaryFor } from './hr';
 import { laborMul, staffLaborCost } from './mgtKnobs';
 import { newGame } from './newGame';
 import { currentLoanPayment, monthlyFixedCost } from './loans';
-import type { GameState, RulesVersion, DifficultyConfig, DifficultyPreset } from './types';
+import type { GameState, RulesVersion, DifficultyConfig, DifficultyPreset, StillShape } from './types';
 import { nid } from './util';
 import { defaultAgePolicy } from './ageBand';
 
@@ -24,6 +24,8 @@ export interface BusinessPlan {
   rules?: RulesVersion;
   /** 난이도 (F6 [결정 #314]) — 프리셋 이름 또는 6영역 값. 없으면 Normal(= 지금 값). v16 새 판에만 스냅샷으로 남는다(옛 판은 두지 않는다) */
   difficulty?: DifficultyConfig | DifficultyPreset;
+  /** [결정 #417 · #418] 시작 단식 증류기 형태(사업 계획서) — 없으면 지금 증류기 그대로 */
+  stillShape?: StillShape;
 }
 
 export function scenarioOf(id: string): ScenarioDef {
@@ -65,7 +67,7 @@ export function newScenarioGame(plan: BusinessPlan): GameState {
   const d = scenarioOf(plan.scenarioId);
   const tier = tierOf(d, plan.tierId);
   if (tier.locked) throw new Error(`${tier.nameKo}: ${tier.locked.reason}`);
-  let s = newGame({ seed: plan.seed, region: d.region, site: d.site, startingCash: tier.equity, distilleryName: plan.distilleryName });
+  let s = newGame({ seed: plan.seed, region: d.region, site: d.site, startingCash: tier.equity, distilleryName: plan.distilleryName, ...(plan.stillShape ? { stillShape: plan.stillShape } : {}) });
   const rules = plan.rules ?? defaultRules;
   s.rulesVersion = rules;
   // F6: 난이도는 판 시작 스냅샷 — v16 새 판만. 옛 판(X0L)은 필드 자체를 두지 않아 바이트 동일(없음 = Normal)

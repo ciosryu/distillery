@@ -6,7 +6,7 @@ import { clamp } from './flavor';
 import { type Climate, emptyCask, matureVessel, MIN_CASK_VOLUME_L, recordLoss, restLot, sizeFactor, tempFactor, vesselMaterial } from './maturation';
 import { advanceWood, lpaOf, scaleLedger } from './ledger';
 import { rngFor } from './rng';
-import type { Cask, GameState, MonthReport } from './types';
+import type { Cask, GameState, MonthReport, StillShape } from './types';
 import { staffOf, ownsFacility } from './util';
 import { weatherOffset } from './weather';
 import { mod } from './modifiers';
@@ -15,6 +15,7 @@ import { autoSample } from './blendTable';
 import { lotQuality } from './bulk';
 import { protectedCaskIds } from './tags';
 import { PROD_TUNING } from './prodTuning';
+import { SHERRY_BIND, shapeWeight } from './stillShape'; // [결정 #422 (b)] 12년 전망에 셰리 × 미티 반응(형태 표만 — I2)
 import { patrolDetect } from './staffTaskRules'; // [결정 #412] 순찰 강화(MGT 잎)
 
 // 숙성고: 공간·칸 배정·내부 기후·로테이션·오염 QC·월 숙성 단계(틱 3) (파트 PROD, 결정 #144 — 파일 쪼개기로 옮겨 왔다. 규칙·수치 불변)
@@ -280,7 +281,7 @@ export const CAP_PENALTY_PER_POINT = 0.8;
  * 통 하나의 12년 탄닌 전망. 숙성 중이면 통입한 달부터, 빈 통이면 "지금 채우면"으로 센다.
  * 나무 통이 아니거나, 활성도를 아직 모르면(스팟 매입 6개월 전, activityKnown === false) null
  */
-export function tanninOutlook(s: GameState, cask: Cask, atMonths = campaignMinOakMonths(s)): TanninOutlook | null {
+export function tanninOutlook(s: GameState, cask: Cask, atMonths = campaignMinOakMonths(s), fillShape?: StillShape): TanninOutlook | null {
   if (vesselMaterial(cask) !== 'wood' || cask.activityKnown === false) return null;
   const extract = WOOD_EXTRACT[cask.wood]?.oak_tannin ?? 0;
   if (!(extract > 0)) return null;
@@ -292,12 +293,17 @@ export function tanninOutlook(s: GameState, cask: Cask, atMonths = campaignMinOa
   const start = cask.contents ? (cask.filledMonth ?? s.month - elapsed) : s.month;
   const sf = sizeFactor(cask.sizeL);
   // 이미 기준을 넘긴 통(목재 > A)도 지금 값을 셀 수 있게 둘 중 긴 쪽까지 돈다
+  // [결정 #422 (b)] 셰리 × 미티 반응 — 원액의 증류기 형태(공개 값)로 무게를 어림한다(원액 맛은 읽지 않는다 — I2). 빈 통이면 「이 원액을 채우면」(`fillShape`)
+  const shape = cask.contents ? cask.contents.stillShape : fillShape;
+  const def = CASKS[cask.typeId];
+  const bind = shape && def?.seasoningType === 'sherry' && def.seasoning > 0 ? SHERRY_BIND.tanninPerMonth * shapeWeight(shape) * Math.min(1, cask.seasoning / def.seasoning) : 0;
   let t = 0;
   let now = 0;
   let at = 0;
   for (let k = 0; k < Math.max(atMonths, elapsed); k++) {
     const moy = ((start + k) % 12 + 12) % 12 + 1;
     t += extract * cask.activity * sf * tempFactor(slotClimateNormal(s, view, tier, moy).tempC) * Math.max(0, 1 - t / 100);
+    if (bind > 0 && k + 1 > SHERRY_BIND.fromMonths) t = Math.max(0, t - bind);
     if (k + 1 === elapsed) now = t;
     if (k + 1 === atMonths) at = t;
   }
@@ -318,8 +324,8 @@ export function tanninOutlook(s: GameState, cask: Cask, atMonths = campaignMinOa
  * [결정 #410 T1-a] 통을 채울 때 12년 전망 — 고른 빈 나무 통들을 「지금 채우면」 기준 개월(A = 144)에 탄닌 · 감점이 얼마인지(통마다 `tanninOutlook`).
  * 활성도 · 목재 · 칸 기후만 읽는다(원액 맛 · 품질은 읽지 않는다 — I2). 활성도를 모르는 스팟 통은 `unknown`으로 센다. 나무 통이 하나도 없으면 null
  */
-export function fillTanninOutlook(s: GameState, casks: readonly Cask[], atMonths = campaignMinOakMonths(s)): { count: number; unknown: number; minPenalty: number; maxPenalty: number; minTannin: number; maxTannin: number; cap: number; atMonths: number } | null {
-  const outs = casks.filter((c) => !c.contents && vesselMaterial(c) === 'wood').map((c) => tanninOutlook(s, c, atMonths));
+export function fillTanninOutlook(s: GameState, casks: readonly Cask[], atMonths = campaignMinOakMonths(s), fillShape?: StillShape): { count: number; unknown: number; minPenalty: number; maxPenalty: number; minTannin: number; maxTannin: number; cap: number; atMonths: number } | null {
+  const outs = casks.filter((c) => !c.contents && vesselMaterial(c) === 'wood').map((c) => tanninOutlook(s, c, atMonths, fillShape));
   const known = outs.filter((o): o is TanninOutlook => !!o);
   const unknown = outs.length - known.length;
   if (!outs.length || !known.length) return outs.length ? { count: outs.length, unknown, minPenalty: 0, maxPenalty: 0, minTannin: 0, maxTannin: 0, cap: CATEGORY.whisky.caps.oak_tannin ?? 45, atMonths } : null;

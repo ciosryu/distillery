@@ -3,7 +3,7 @@
 // 기본 조합(스탠다드 + 수평 + 없음 + 쉘) = 지금 `pot_onion_1000`과 같은 값 — 형태가 없거나 기본이면 증류 식 바이트 동일. 값은 모두 `[튜닝]`
 import type { EquipmentDef } from './content/production';
 import { EQUIPMENT } from './content/catalog';
-import type { AxisId, EquipmentInstance, StillShape } from './types';
+import type { AxisId, EquipmentInstance, SpiritLot, StillShape, StillStyle } from './types';
 
 type StillDef = Extract<EquipmentDef, { kind: 'still' }>;
 
@@ -131,3 +131,51 @@ export function stillShapeNote(shape: StillShape): string {
   ].filter(Boolean);
   return parts.join(' · ');
 }
+
+// ───────────── [결정 #422] PR ④ — 공개 스타일 · 무게(원액 형태에서만 — I2) ─────────────
+
+/** 형태의 환류(본체 + 라인 암 + 옵션) — 카탈로그 증류기 없이 형태 표만으로 */
+export const shapeReflux = (shape: StillShape): number =>
+  Math.round(Math.min(0.9, Math.max(0.1, STILL_BODY_REFLUX[shape.body] + STILL_LINE_ARM[shape.lineArm].reflux + STILL_OPTION[shape.option].reflux)) * 1000) / 1000;
+
+/** 공개 스타일 문턱 `[튜닝]` — 환류 ≤ 0.3이거나 웜 텁이면 헤비, 환류 ≥ 0.55면 라이트, 그 밖은 미디엄(MKT #1108과 맞춘 규칙) */
+export const STILL_STYLE_REFLUX = { heavy: 0.3, light: 0.55 } as const;
+/** 형태 → 공개 스타일(라이트 · 미디엄 · 헤비) */
+export function stillStyleOf(shape: StillShape): StillStyle {
+  const r = shapeReflux(shape);
+  if (shape.condenser === 'worm' || r <= STILL_STYLE_REFLUX.heavy) return 'heavy';
+  return r >= STILL_STYLE_REFLUX.light ? 'light' : 'medium';
+}
+export const STILL_STYLE_LABEL: Record<StillStyle, string> = { light: '라이트', medium: '미디엄', heavy: '헤비' };
+
+/**
+ * 형태의 「무게」 0 ~ 1 — 공개 형태 표에서만 어림한다(화면 · `tanninOutlook`용 — I2). 참 반응(`maturation.ts`)은 원액 바디로 센다(`SHERRY_BIND.bodyFrom` 위).
+ * 바디 어림 = 기본 원액 바디 + 1.3 × (12 × (0.4 − 환류) + 웜 텁 8 + 라인 암 바디) — 1.3은 환류가 오일리 · 곡물을 함께 남겨 바디가 더 붙는 몫(PR ④ 측정: 헤비 43 · 균형 27 · 라이트 15)
+ */
+export function shapeWeight(shape: StillShape): number {
+  const delta = 12 * (0.4 - shapeReflux(shape)) + (shape.condenser === 'worm' ? 8 : 0) + (STILL_LINE_ARM[shape.lineArm].add.body ?? 0);
+  return Math.min(1, Math.max(0, (SHERRY_BIND.baseBody + 1.3 * delta - SHERRY_BIND.bodyFrom) / SHERRY_BIND.bodySpan));
+}
+
+/**
+ * [결정 #422 (b)] 셰리 × 미티 반응 `[튜닝]` — 형태를 고른 증류기 원액(`SpiritLot.stillShape`)이 셰리 시즈닝 통에서 목재 `fromMonths`를 넘기면 매달
+ * 탄닌 τ × ρ × σ를 묶어 빼고(무거운 술이 진한 셰리 통을 버틴다) 어우러짐 ι × ρ × σ를 더한다. ρ = clamp((바디 − bodyFrom) ÷ bodySpan, 0, 1) — 균형 원액(바디 약 27)은 0,
+ * σ = 통 시즈닝 ÷ 카탈로그 시즈닝(1차 벗 1 · 2차 벗 약 0.35). 15 · 18년 「명작」(#422 (나))이 목표 — 12년은 70대 중반
+ */
+export const SHERRY_BIND = { fromMonths: 96, tanninPerMonth: 0.5, integrationPerMonth: 0.25, bodyFrom: 30, bodySpan: 12, baseBody: 27 } as const;
+
+/** 섞인 원액들의 형태 — LPA가 가장 많은 원액의 형태(형태 없는 원액이 가장 많으면 없음) */
+export function majorityShape(parts: readonly { lot: Pick<SpiritLot, 'stillShape'>; lpa: number }[]): StillShape | undefined {
+  const by = new Map<string, { shape: StillShape | undefined; lpa: number }>();
+  for (const p of parts) {
+    const k = p.lot.stillShape ? STILL_PARTS.map((x) => p.lot.stillShape![x]).join('|') : '';
+    const cur = by.get(k) ?? { shape: p.lot.stillShape, lpa: 0 };
+    cur.lpa += p.lpa;
+    by.set(k, cur);
+  }
+  let best: { shape: StillShape | undefined; lpa: number } | undefined;
+  for (const v of by.values()) if (!best || v.lpa > best.lpa) best = v;
+  return best?.shape ? { ...best.shape } : undefined;
+}
+/** 두 원액의 형태가 같은가(둘 다 없음 포함) — 탱크 합치기 · 자동 납품 가름 */
+export const sameLotShape = (a: StillShape | undefined, b: StillShape | undefined): boolean => (!a && !b) || (!!a && !!b && sameShape(a, b));

@@ -4,15 +4,22 @@ import { DIFFICULTY_DOMAINS, DIFFICULTY_DOMAIN_KO, normalizeDifficulty } from '.
 import { DOMAIN_WHAT, HARD_STACK_WARN_AT, hardMajorDomains, LEVEL_KO, LOCKED_DOMAINS, MINOR_DOMAINS, PRESET_KO, PRESET_WHAT, difficultyLabel, domainImpactLabel, hardCount } from './difficultyLabel';
 import { useGame } from '../store/game';
 import { months, pct, won } from './format';
-import { Badge, Button, Card, TextField } from './kit';
+import { Badge, Button, Card, Select, TextField } from './kit';
+import { EQUIPMENT } from '../sim/content/catalog';
+import { DEFAULT_STILL_SHAPE, sameShape, STILL_PART_LABELS, STILL_PART_NAMES, STILL_PARTS, STILL_SHAPE_PRESETS, stillParams, stillShapeNote } from '../sim/stillShape'; // [결정 #417 · #418] 증류기 형태 (PROD)
+import type { StillShape } from '../sim/types';
 
 // 사업 계획서 — MVP 시나리오의 새 게임 입구 (skeleton S-8, #140·3)
-// ① 규모 티어 ② 시작 자금 조달(기존 대출 상품을 미리 당겨 받는다) ③ 난이도(F6c, [결정 #313·#314] — 6영역 × 3단계, 프리셋/사용자 설정, 시작 스냅샷) ④ 재무 시뮬레이터(실시간 런웨이)
+// ① 규모 티어 ② 시작 자금 조달(기존 대출 상품을 미리 당겨 받는다) ③ 난이도(F6c, [결정 #313·#314] — 6영역 × 3단계, 프리셋/사용자 설정, 시작 스냅샷) ④ 증류기 형태([결정 #417 · #418]) ⑤ 재무 시뮬레이터(실시간 런웨이)
 
 const LEVELS: DifficultyLevel[] = [1, 2, 3];
 const PRESETS: Exclude<DifficultyPreset, 'custom'>[] = ['easy', 'normal', 'hard'];
 
 const STEP = 10_000_000;
+
+// [결정 #417 · #418 · #420] 증류기 형태 — 칸 넷 · 이름표는 PROD `stillShape.ts`(STILL_PARTS · STILL_PART_NAMES · STILL_PART_LABELS)를 그대로 쓴다. 시작 증류기는 언제나 양파형 단식(`newGame.ts`)이라 기본 조합 = 지금 값
+type StillDef = Extract<(typeof EQUIPMENT)[string], { kind: 'still' }>;
+const START_STILL = EQUIPMENT.pot_onion_1000 as StillDef;
 
 export function BusinessPlan({ onClose, onSandbox }: { onClose?: () => void; onSandbox?: () => void }) {
   const startScenario = useGame((g) => g.startScenario);
@@ -22,6 +29,10 @@ export function BusinessPlan({ onClose, onSandbox }: { onClose?: () => void; onS
   const [name, setName] = useState('');
   const [difficulty, setDifficulty] = useState<DifficultyConfig>(() => normalizeDifficulty('normal'));
   const [detail, setDetail] = useState(false);
+  // 고르지 않으면(null) 증류기에 형태 필드를 넣지 않는다 — 지금 증류기 그대로(= 균형 조합 값)
+  const [shape, setShape] = useState<StillShape | null>(null);
+  const shown = shape ?? DEFAULT_STILL_SHAPE;
+  const spec = stillParams(START_STILL, shown);
   const setLevel = (d: DifficultyDomain, lv: DifficultyLevel) => setDifficulty((c) => normalizeDifficulty({ preset: 'custom', levels: { ...c.levels, [d]: lv } }));
   const hards = hardCount(difficulty);
   const tier = scenario.tiers.find((t) => t.id === tierId)!;
@@ -133,15 +144,40 @@ export function BusinessPlan({ onClose, onSandbox }: { onClose?: () => void; onS
             </ul>
           </section>
 
+          <section>
+            <h3 className="mb-2 text-sm font-semibold">4. 증류기 <span className="ml-1 font-normal text-stone-500">— 단식 증류기 1기의 형태</span></h3>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="증류기 묶음">
+              {STILL_SHAPE_PRESETS.map((pr) => {
+                const on = sameShape(shown, pr.shape);
+                return (
+                  <button key={pr.id} type="button" role="radio" aria-checked={on} title={pr.note} onClick={() => setShape({ ...pr.shape })}
+                    className={`rounded-lg border px-3 py-1.5 text-sm ${on ? 'border-amber-600 bg-amber-50 dark:border-amber-400 dark:bg-amber-950' : 'border-stone-300 hover:border-amber-500 dark:border-stone-700'}`}>
+                    {pr.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-2 flex flex-wrap items-end gap-2">
+              {STILL_PARTS.map((k) => (
+                <Select key={k} label={STILL_PART_NAMES[k]} value={shown[k] as string} options={Object.entries(STILL_PART_LABELS[k]).map(([value, label]) => ({ value, label: label as string }))} onChange={(v) => setShape({ ...shown, [k]: v } as StillShape)} />
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-stone-600 dark:text-stone-300">{STILL_SHAPE_PRESETS.find((pr) => sameShape(shown, pr.shape))?.note ?? stillShapeNote(shown)} · 환류 {spec.reflux.toFixed(2)} · 구리 접촉 {spec.copperContact.toFixed(1)}</p>
+            <ul className="mt-1 space-y-0.5 text-xs text-stone-500">
+              <li>형태는 새로 뽑는 원액의 성격(가볍고 꽃 · 과일 ↔ 무겁고 기름진 육향)을 바꾼다. 무거운 원액은 어릴 때 거칠고, 오래 묵힐수록 빛난다. 판을 시작할 때 고른다.</li>
+              {shape == null && <li>고르지 않으면 지금 증류기 그대로(균형)로 시작한다.</li>}
+            </ul>
+          </section>
+
           <div className="flex flex-wrap items-end gap-2">
             <TextField label="증류소 이름" value={name} onChange={setName} />
-            <Button variant="primary" onClick={() => { startScenario({ scenarioId: scenario.id, tierId, loanAmount, distilleryName: name || undefined, difficulty }); onClose?.(); }}>사업 시작</Button>
+            <Button variant="primary" onClick={() => { startScenario({ scenarioId: scenario.id, tierId, loanAmount, distilleryName: name || undefined, difficulty, ...(shape ? { stillShape: shape } : {}) }); onClose?.(); }}>사업 시작</Button>
             {onSandbox && <Button variant="ghost" small onClick={onSandbox} title="모든 시스템이 켜지고 MVP 경제 설정이 없는 개발용 판 — 플레이테스트는 왼쪽 '사업 시작'">개발자용 샌드박스 (플레이테스트용 아님)</Button>}
           </div>
         </div>
 
         <section className="rounded-lg border border-stone-200 p-3 text-sm dark:border-stone-700" aria-live="polite">
-          <h3 className="mb-2 font-semibold">4. 재무 시뮬레이터</h3>
+          <h3 className="mb-2 font-semibold">5. 재무 시뮬레이터</h3>
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 tabular-nums">
             <dt className="text-stone-600 dark:text-stone-300">시작 현금</dt><dd className="text-right font-semibold">{won(p.cashStart)}</dd>
             <dt className="text-stone-600 dark:text-stone-300">예상 월 고정 지출</dt><dd className="text-right">{won(p.fixedMonthly)}</dd>
