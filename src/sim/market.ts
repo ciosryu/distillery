@@ -235,6 +235,26 @@ export function restockedDemand(s: GameState, p: Product, monthOfYear: number, r
   return { ...d, split: k, demandBottles: d.demandBottles * k };
 }
 
+/** 품절 손실 어림(T8)이 보는 기간 — 이 안에 팔린 적이 없으면 「그만 판 제품」으로 보고 뺀다 */
+export const STOCKOUT_LOOKBACK_MONTHS = 6;
+
+/**
+ * 품절 손실 어림 ([결정 #410] T8 · `docs/playtest/9/mkt.md` §4) — **판매 전** 재고 0이고 최근 6개월 결산에 판 병이 있는 진열 제품마다
+ * 「다시 채웠다면 이번 달 국내 수요」(`restockedDemand` — 품절 배지와 같은 셈, 같은 범주 나눔, 잡음 없음)를 병으로 적는다.
+ * 보관한 제품(`productArchive`) · 면세 전용 한정판은 빠진다. 판매 셈과 같은 길이라 참 품질로 센다 — 화면은 아는 품질로 다시 세거나 병 수만.
+ * 난수 · 상태 불변(기록만). 판매 중 바닥난 제품은 그달 `sales[].demandBottles`에 이미 있다
+ */
+export function stockoutDemands(s: GameState, monthOfYear: number): { productId: string; bottles: number }[] {
+  const sold = new Set(s.history.reports.slice(-STOCKOUT_LOOKBACK_MONTHS).flatMap((r) => r.sales.filter((x) => x.bottles > 0).map((x) => x.productId)));
+  const out: { productId: string; bottles: number }[] = [];
+  for (const p of s.commerce.products) {
+    if (p.stockBottles > 0 || p.dutyFreeOnly || !sold.has(p.id)) continue;
+    const bottles = Math.round(restockedDemand(s, p, monthOfYear).demandBottles);
+    if (bottles > 0) out.push({ productId: p.id, bottles });
+  }
+  return out;
+}
+
 function demandWithSplit(s: GameState, p: Product, split: number, monthOfYear: number, region: RegionDef): DemandBreakdown {
   const m = region.market[p.category];
   // 면세 전용 한정판은 국내 매대에 없다 (결정 #87). 입지 수요 배수(관광·인바운드, 결정 #86)
