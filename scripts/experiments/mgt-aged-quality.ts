@@ -1,6 +1,7 @@
 // T4(9차 판 뒤 PM 2026-11-25) — 통 종류 · 활성도별 12 · 15 · 18년 단일 통 품질 (MGT, 읽기 전용 측정 — 게임 규칙 함수 그대로)
 //   npx tsx scripts/experiments/mgt-aged-quality.ts [시드 수=20]
 //   [결정 #417 · #418 준비] 원액 성질 바꾸기: SPIRIT="body=+20,oily_waxy=+15,sulfur_meaty=+10,harshness=+8" — 통입 직후 그 통 원액의 향미 축에 더한다(헤비 원액 흉내 · 축 이름은 types.ts AxisId)
+//     STILL=light|heavy|balanced — 증류기 형태 프리셋(PROD #1104 STILL_SHAPE_PRESETS)으로 증류한 원액
 //     AT_YEARS="3,5,12,15,18"(기본 12,15,18) · CASKS="새 올로로소 벗,리필 버번"(이름 일부로 거름). 증류기 형태 식(PROD)이 들어오면 SPIRIT 대신 그 증류기로 증류한 원액을 쓰게 넓힌다
 // 판마다: v16 표준 판을 만들고 현금을 크게 둔 뒤(파산 · 돈 걱정 빼기) 몰트를 1배치 증류해 아래 통에 하나씩 넣고 생산을 멈춘다.
 //   새 ex-버번(활성도 1.0) · 리필 ex-버번(#408 주문, 0.6) · 새 올로로소 벗 500L(1.0) · 셰리 혹스헤드 250L(1.0) · 2차 올로로소 벗(채웠다 뺀 상태로 놓음, 0.6)
@@ -12,10 +13,15 @@ import { previewBlend } from '../../src/sim/blending';
 import { tanninOutlook } from '../../src/sim/warehouse';
 import { EVENTS } from '../../src/sim/content/events';
 import { refillState } from '../../src/sim/maturation';
+import { STILL_SHAPE_PRESETS } from '../../src/sim/stillShape';
+import { EQUIPMENT } from '../../src/sim/content/catalog';
 
 EVENTS.splice(0); // 사건 끔(화재 · 붕괴로 통이 사라지면 숙성만 볼 수 없다 — P8 옛 묶음과 같은 방식)
 
 const N = Number(process.argv[2] ?? 20);
+/** [결정 #417 · #418] 증류기 형태 프리셋(PROD stillShape.ts — light · heavy · balanced). 없으면 카탈로그 그대로 */
+const STILL = process.env.STILL ? STILL_SHAPE_PRESETS.find((p) => p.id === process.env.STILL) : undefined;
+if (process.env.STILL && !STILL) throw new Error(`STILL 프리셋 없음: ${process.env.STILL}`);
 const CASK_FILTER = (process.env.CASKS ?? '').split(',').map((x) => x.trim()).filter(Boolean);
 const KINDS = [
   { key: '새 버번', buy: { caskType: 'ex_bourbon_barrel', refill: false } },
@@ -35,6 +41,7 @@ for (const k of KINDS) out[k.key] = Object.fromEntries(AT.map((m) => [m, { q: []
 for (let seed = 1; seed <= N; seed++) {
   let s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'standard', loanAmount: 0, seed });
   s.finance.cash = 1e13;
+  if (STILL) for (const e of s.production.equipment) if ((EQUIPMENT as Record<string, { kind?: string }>)[e.catalogId]?.kind === 'still') e.stillShape = STILL.shape;
   const before = new Set(s.inventory.casks.map((c) => c.id));
   for (const k of KINDS) s = act(s, { type: 'buyCasks', caskType: k.buy.caskType, qty: 1, ...(k.buy.refill ? { refill: true } : {}) } as never);
   const malt = s.production.recipes.find((r) => r.kind === 'malt' && !r.mashBill.some((m) => m.ingredientId === 'malt_peated'))!.id;
@@ -72,6 +79,7 @@ for (let seed = 1; seed <= N; seed++) {
 }
 const med = (a: number[]) => { const b = [...a].sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)]! : NaN; };
 const f = (v: number) => (Number.isFinite(v) ? v.toFixed(1) : '—');
+if (STILL) console.log(`증류기 형태: ${STILL.label} — ${STILL.note}\n`);
 if (SPIRIT.length) console.log(`원액 성질 더함: ${SPIRIT.map(([k, v]) => `${k} ${v >= 0 ? '+' : ''}${v}`).join(' · ')}\n`);
 console.log(`| 통 | ${AT.map((m) => `${m / 12}년 품질 중앙 (P10 · P90) · n`).join(' | ')} | ${AT.map((m) => `${m / 12}년 탄닌 · 감점`).join(' | ')} |`);
 console.log(`|---|${AT.map(() => '---').join('|')}|${AT.map(() => '---').join('|')}|`);
