@@ -2,12 +2,13 @@
 // 설계 `docs/design/prod-stills.md` v2. 형태는 증류기 인스턴스의 선택 필드(`EquipmentInstance.stillShape`)이고, 이 파일이 카탈로그 값(환류 · 구리 접촉 · 응축기)을 덮는 실제 값을 낸다.
 // 기본 조합(스탠다드 + 수평 + 없음 + 쉘) = 지금 `pot_onion_1000`과 같은 값 — 형태가 없거나 기본이면 증류 식 바이트 동일. 값은 모두 `[튜닝]`
 import type { EquipmentDef } from './content/production';
-import type { AxisId, StillShape } from './types';
+import { EQUIPMENT } from './content/catalog';
+import type { AxisId, EquipmentInstance, StillShape } from './types';
 
 type StillDef = Extract<EquipmentDef, { kind: 'still' }>;
 
 /** 형태를 덮은 증류기 값 — 카탈로그 값 + 새 원액 축 보정(더하기 · 곱하기). 축 보정은 증류 뒤 원액에 건다(`production.ts simulateBatch`) */
-export type StillSpec = StillDef & { shapeAdd?: Partial<Record<AxisId, number>>; shapeMul?: Partial<Record<AxisId, number>> };
+export type StillSpec = StillDef & { shapeAdd?: Partial<Record<AxisId, number>>; shapeMul?: Partial<Record<AxisId, number>>; /** [PR ③] 배치당 취수 배수 — 형태로 고른 웜 텁만(카탈로그 웜 텁 증류기는 지금 그대로 1) */ waterMul?: number };
 
 /** 기본 조합 — 지금 양파형 단식 증류기와 같은 값 */
 export const DEFAULT_STILL_SHAPE: StillShape = { body: 'standard', lineArm: 'level', option: 'none', condenser: 'shell' };
@@ -57,7 +58,60 @@ export function stillParams(def: StillDef, shape?: StillShape): StillSpec {
   const mulAll: Partial<Record<AxisId, number>> = { ...STILL_BODY_MUL[shape.body] };
   for (const [k, m] of Object.entries(opt.mul) as [AxisId, number][]) mulAll[k] = (mulAll[k] ?? 1) * m;
   const mul = Object.keys(mulAll).length ? mulAll : undefined;
-  return { ...def, reflux, copperContact: cond.copperContact, condenser: cond.condenser, ...(add ? { shapeAdd: add } : {}), ...(mul ? { shapeMul: mul } : {}) };
+  const water = STILL_WATER_MUL[shape.condenser];
+  return { ...def, reflux, copperContact: cond.copperContact, condenser: cond.condenser, ...(add ? { shapeAdd: add } : {}), ...(mul ? { shapeMul: mul } : {}), ...(water !== 1 ? { waterMul: water } : {}) };
+}
+
+// ───────────── [결정 #418] PR ③ — 물 · 유지비 · 개조 (설계 §4 · §5) ─────────────
+
+/** 응축기 → 배치당 냉각수 배수 `[튜닝]` — 웜 텁은 × 1.5(입지 취수 허가량 #86에 닿는다) */
+export const STILL_WATER_MUL: Record<StillShape['condenser'], number> = { shell: 1, worm: 1.5 };
+/** 배치 하나가 쓰는 물(L) — 지금은 충전량(L) 그대로, 형태로 고른 웜 텁만 × 1.5 */
+export const batchWaterL = (still: Pick<StillSpec, 'chargeL' | 'waterMul'>): number => still.chargeL * (still.waterMul ?? 1);
+
+/** 유지비 할증 `[튜닝]` — 웜 텁 +20% · 보일 볼 +10%(더한다). 본체 · 라인 암은 ±0 */
+export const STILL_MAINT_ADD = { worm: 0.2, boil_ball: 0.1 } as const;
+export const stillMaintenanceMul = (shape: StillShape | undefined): number =>
+  !shape ? 1 : 1 + (shape.condenser === 'worm' ? STILL_MAINT_ADD.worm : 0) + (shape.option === 'boil_ball' ? STILL_MAINT_ADD.boil_ball : 0);
+/** 설비 한 대의 월 유지비 — 형태가 없거나 단식이 아니면 카탈로그 값 그대로(재무 단계 `loans.ts`가 읽는다) */
+export function equipmentMaintenance(e: Pick<EquipmentInstance, 'catalogId' | 'stillShape'>): number {
+  const def = EQUIPMENT[e.catalogId];
+  if (!def) return 0;
+  if (def.kind !== 'still' || !e.stillShape || !shapeable(def)) return def.maintenance;
+  return Math.round(def.maintenance * stillMaintenanceMul(e.stillShape));
+}
+
+/** 부품 이름(화면 · 사업 계획서 공용) */
+export const STILL_PART_LABELS = {
+  body: { short: '숏 & 뚱뚱', standard: '스탠다드 스완 넥', tall: '톨 & 슬림' },
+  lineArm: { down: '하향', level: '수평', up: '상향' },
+  option: { none: '없음', boil_ball: '보일 볼 · 퓨리파이어' },
+  condenser: { shell: '쉘 앤 튜브', worm: '웜 텁' },
+} as const satisfies { [K in keyof StillShape]: Record<StillShape[K], string> };
+export const STILL_PART_NAMES: Record<keyof StillShape, string> = { body: '본체', lineArm: '라인 암', option: '특수 옵션', condenser: '응축기' };
+export const STILL_PARTS = ['body', 'lineArm', 'option', 'condenser'] as const satisfies readonly (keyof StillShape)[];
+
+/**
+ * 형태 필드가 없는 증류기의 「지금 형태」 — 카탈로그 값에 가장 가까운 조합. 양파형 = 기본 조합(같은 값), 랜턴형 = 톨 & 슬림(환류 0.6 — ARCH 리뷰 #1104:
+ * 랜턴형에 「균형」을 고르면 환류가 0.6 → 0.4로 내려간다는 것을 화면이 보이게). 랜턴형은 톨의 가벼운 향 배수가 카탈로그에 없어 「가장 가까운」 조합이다
+ */
+export function catalogShapeOf(def: Pick<StillDef, 'stillType'>): StillShape {
+  return def.stillType === 'pot_lantern' ? { ...DEFAULT_STILL_SHAPE, body: 'tall' } : { ...DEFAULT_STILL_SHAPE };
+}
+export const shapeOf = (def: Pick<StillDef, 'stillType'>, e: Pick<EquipmentInstance, 'stillShape'>): StillShape => e.stillShape ?? catalogShapeOf(def);
+export const sameShape = (a: StillShape, b: StillShape): boolean => STILL_PARTS.every((k) => a[k] === b[k]);
+
+/** 개조 값 · 공사 기간(부품마다) `[튜닝]` (설계 §4) — 값은 입지 건설비 배수(`equipmentCost` ÷ 카탈로그 값)를 곱한다. 공사 기간은 바꾼 부품 중 가장 긴 것 */
+export const STILL_REFIT_PARTS: Record<keyof StillShape, { cost: number; months: number }> = {
+  body: { cost: 150_000_000, months: 3 },
+  lineArm: { cost: 30_000_000, months: 1 },
+  option: { cost: 50_000_000, months: 1 },
+  condenser: { cost: 80_000_000, months: 2 },
+};
+/** 개조 견적 — 바꾸는 부품 · 값(기준 값, 입지 배수 전) · 공사 개월. 바꾸는 것이 없으면 parts 빈 배열 */
+export function refitQuote(from: StillShape, to: StillShape): { parts: (keyof StillShape)[]; baseCost: number; months: number } {
+  const parts = STILL_PARTS.filter((k) => from[k] !== to[k]);
+  return { parts, baseCost: parts.reduce((t, k) => t + STILL_REFIT_PARTS[k].cost, 0), months: parts.reduce((m, k) => Math.max(m, STILL_REFIT_PARTS[k].months), 0) };
 }
 
 /** 오너 그림의 세 묶음(사업 계획서 · 개조 화면의 빠른 고르기) */

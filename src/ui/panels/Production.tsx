@@ -16,6 +16,8 @@ import { liters, num, pct, won } from '../format';
 import { sojuSupply, SOJU_STOCK_WARN_MONTHS } from '../../sim/economics';
 import { Badge, Button, Card, ConfirmButton, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
 import { newFacilities } from '../alerts'; // #388 ① A3 새로 열린 시설 띠(ARCH · PROD 동의)
+import { StillRefit, StillShapeLine } from './StillRefit'; // [결정 #418] 증류기 형태 줄 · 개조
+import { equipmentMaintenance } from '../../sim/stillShape';
 
 const KIND_LABEL: Record<SpiritKind, string> = { soju: '증류식 소주·쇼추', gin: '진', malt: '몰트', grain: '그레인', baijiu: '백주(고량주)' };
 
@@ -684,13 +686,15 @@ export function Equipment() {
               const d = EQUIPMENT[e.catalogId]!;
               return (
                 <tr key={e.id}>
-                  <Td>{d.nameKo}</Td>
-                  <Td>{e.readyMonth <= s.month ? <Badge tone="good">가동</Badge> : <Badge tone="warn">설치 중 · {monthLabel(s.startYear, e.readyMonth)}</Badge>}</Td>
-                  <Td right>{won(d.maintenance)}</Td>
+                  <Td>{d.nameKo}<StillShapeLine inst={e} /></Td>
+                  <Td>{e.readyMonth <= s.month ? <Badge tone="good">가동</Badge> : <Badge tone="warn">{e.refitUntil != null ? '개조 중' : e.repairUntil != null ? '수리 중' : '설치 중'} · {monthLabel(s.startYear, e.readyMonth)}</Badge>}</Td>
+                  <Td right>{won(equipmentMaintenance(e))}</Td>
                 </tr>
               );
             })}
           </Table>
+          {/* [결정 #418] 단식 증류기 개조(PROD StillRefit — v16 · 단식만, 그 밖은 아무것도 그리지 않는다) */}
+          <div className="mt-2 grid gap-2">{s.production.equipment.map((e) => <StillRefit key={e.id} inst={e} />)}</div>
         </div>
         <div>
           <h3 className="mb-1 text-xs font-semibold text-stone-500">구매</h3>
