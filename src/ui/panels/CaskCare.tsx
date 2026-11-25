@@ -3,6 +3,7 @@
 // 숨김 정보: 활성도는 빈 통 표가 원래 보이던 값이고(스팟 통은 6개월 숙성 전 "?"), 12년 감점 전망은 활성도만으로 센다(warehouse.ts tanninOutlook — 원액 맛을 읽지 않는다).
 // 안내 (#339 · #745): 재탄화는 활성도를 0.7까지 올린다 → 3년용 통에는 좋고, 12년용으로 아껴 둔 재사용 통(활성도 0.6~0.13)에는 탄닌이 다시 늘어 손해다
 import { useState } from 'react';
+import type { StillShape } from '../../sim/types';
 import { CASK_MARKET, CASKS, RECHAR_COST } from '../../sim/content/catalog';
 import { caskSlots, EMPTY_ACTIVITY_FACTOR, MAX_RECHAR, regionalCaskPrice, tanninOutlook, vesselMaterial, type Cask, type CaskTypeId } from '../../sim';
 import { fillTanninOutlook } from '../../sim/warehouse';
@@ -120,10 +121,10 @@ export function NewCaskOutlook({ typeId }: { typeId: CaskTypeId }) {
  * [결정 #410 T1-a] 통을 채울 때 12년 전망 한 줄 — 고른 빈 통에 지금 넣으면 12년(기준 개월) 무렵 탄닌 · 감점 어림. 숙성고 탭(PROD) · 홈 통입 줄(ARCH)이 같이 쓴다.
  * 활성도만 읽는다(원액 맛 · 품질 아님). 감점은 탄닌 몫이라 품질 전체가 아니다(9차 §10.3) — 그래서 「옮기라」는 권유는 하지 않는다(#411)
  */
-export function FillOutlookLine({ caskIds }: { caskIds: readonly string[] }) {
+export function FillOutlookLine({ caskIds, shape }: { caskIds: readonly string[]; /** [결정 #422] 채울 원액의 증류기 형태(공개 값) — 헤비 원액 × 셰리 통의 탄닌 반응을 전망에 넣는다 */ shape?: StillShape }) {
   const s = useGame((g) => g.state);
   const casks = s.inventory.casks.filter((c) => caskIds.includes(c.id));
-  const o = fillTanninOutlook(s, casks);
+  const o = fillTanninOutlook(s, casks, undefined, shape);
   if (!o) return null;
   const yrs = Math.round(o.atMonths / 12);
   const known = o.count - o.unknown;
