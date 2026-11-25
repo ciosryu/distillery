@@ -36,7 +36,7 @@ export function turnNews(s: ReturnType<typeof useGame.getState>['state'], fromMo
     return { ...e, urgent: !!def && URGENT.has(def.category), defaulted: tickResolved.has(e.title) };
   }).sort((a, b) => Number(b.urgent) - Number(a.urgent) || a.month - b.month);
   const notes = span
-    .flatMap((r) => r.notes.filter((n) => /^(새 기능 열림|중반 목표|후반 목표|등급이 올랐다|빈 옹기 \d+개가|옹기는 자동 통입이|마일스톤|핸드필 .*비었다|자동 통입 못 함|IB 입찰 제안|위스키 원액 생산을 건너뛰었다|플래그십 후보 \d+통에서|세이브 복구|정기 임금 조정|.+ 납품 제안 만료|직원 일 —)/.test(n)).map((n) => ({ month: r.month, text: n })))
+    .flatMap((r) => r.notes.filter((n) => /^(새 기능 열림|중반 목표|후반 목표|명작 — |빈 옹기 \d+개가|옹기는 자동 통입이|마일스톤|핸드필 .*비었다|자동 통입 못 함|IB 입찰 제안|위스키 원액 생산을 건너뛰었다|플래그십 후보 \d+통에서|세이브 복구|정기 임금 조정|.+ 납품 제안 만료|직원 일 —)/.test(n)).map((n) => ({ month: r.month, text: n })))
     // 여러 달 진행(분기·1년) 안에 온 IB 입찰은 답할 틈 없이 사라졌을 수 있다 — 지금 열린 입찰에 없으면 그렇다고 붙인다(P-ARCH-63)
     .map((n) => { const id = n.text.match(/^IB 입찰 제안 — .*?통 (K\d+)/)?.[1]; return id && s.month - fromMonth > 1 && !s.b2b.caskBids.some((b) => b.caskId === id) ? { ...n, text: `${n.text} → 진행 중에 답하지 않아 이미 사라졌다` } : n; });
   // 플래그십 후보가 줄었다 (#261) — 이번 진행 직전 결산과 마지막 결산의 후보 수. 자동 납품 몫은 위 메모가, 나머지는 손 병입·맡기기·판매·빼기 등

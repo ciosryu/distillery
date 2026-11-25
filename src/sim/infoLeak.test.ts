@@ -46,6 +46,7 @@ describe('I1 — 화면은 병입 제품의 참 품질(`.quality`)을 직접 읽
       'delta.quality', // 샘플 기록 두 번의 차(아는 값)
       '<Td right>{r.quality}</Td>', // 생산 화면 레시피 예상(탱크 원액 — 참값을 안다)
       'suggestedPrice(region, p.category, p.bottleMl, p.quality', // currentSuggestedPrice — 부르는 곳이 knownView 투영을 넘긴다
+      'ok: m.quality >= GRADE.sFlagshipQuality', // [결정 #433] 「명작」 칭호 판정 공개 — 판정 달 기록값(결과 화면의 판정 품질 flagshipQuality와 같은 자리)
     ];
     const bad = UI.flatMap((p) => ALLOW_FILES.has(rel(p)) ? [] : readFileSync(p, 'utf8').split('\n').flatMap((line, i) =>
       /\.quality\b(?!Known)/.test(line) && !ALLOW_LINE.some((a) => line.includes(a)) ? [`${rel(p)}:${i + 1}`] : []));

@@ -14,7 +14,13 @@ export const META_CASH_KEY: CashKeys<MetaAction> = {
 export const META_HANDLERS: Handlers<MetaAction> = {
   acknowledgeVerdict: (s, prev, _a) => {
     if (!s.progress.verdict) return fail(prev, '아직 목표 판정이 없습니다');
-    // [결정 #422] 재판정으로 등급이 오른 결과 화면이 떠 있으면 그것을 먼저 닫는다(같은 버튼)
+    // [결정 #433] 「명작」 결과 화면이 떠 있으면 그것을 먼저 닫는다(같은 버튼)
+    if (s.progress.masterpiece && !s.progress.masterpiece.acknowledged) {
+      s.progress.masterpiece = { ...s.progress.masterpiece, acknowledged: true };
+      if (!s.progress.verdict.acknowledged) s.progress.verdict = { ...s.progress.verdict, acknowledged: true };
+      return { state: s, message: '계속 운영합니다 — 명작' };
+    }
+    // 옛 세이브(#422 · #427 재판정 — #433으로 폐지)의 닫히지 않은 재판정 결과 화면도 같은 버튼으로 닫는다
     if (s.progress.verdictBest && !s.progress.verdictBest.acknowledged) {
       s.progress.verdictBest = { ...s.progress.verdictBest, acknowledged: true };
       if (!s.progress.verdict.acknowledged) s.progress.verdict = { ...s.progress.verdict, acknowledged: true };

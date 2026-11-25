@@ -302,8 +302,8 @@ setP8Hooks({
       const sh = s.history.reports.at(-1)?.saleEvents?.find((e) => e.kind !== 'b2b' && e.bottles > 0 && e.unitPrice > 0 && e.eligibleAtSale && e.productId === s.commerce.products.find((x) => x.name === (r.sherry as Record<string, unknown>).name)?.id);
       if (sh) (r.sherry as Record<string, unknown>).sale = { month: s.month, nw: netWorth(s, s.month), target: sNetWorthTarget(s, s.month), aw: +awarenessOf(s).toFixed(3) };
     }
-    const bv = s.progress.verdictBest; // [결정 #422] 재판정으로 오른 등급(있으면)
-    if (bv && !r.best) r.best = { grade: bv.grade ?? undefined, month: bv.rejudged.month, q: bv.flagshipQuality, nw: bv.netWorth ?? undefined, aw: bv.awareness ?? undefined, age: s.commerce.products.find((x) => x.id === bv.rejudged.productId)?.ageYears ?? undefined, oak: s.commerce.products.find((x) => x.id === bv.rejudged.productId)?.oakMonths }; // nw · 나이 — 다른 재판정 규칙(순자산 · 15년+)을 판 밖에서 다시 세려고
+    const mp = s.progress.masterpiece; // [결정 #433] 「명작」 칭호(등급과 따로)
+    if (mp && !(r as Run & { masterpiece?: unknown }).masterpiece) (r as Run & { masterpiece?: unknown }).masterpiece = { month: mp.month, q: mp.quality, age: mp.ageYears, aw: +mp.awareness.toFixed(3), nw: netWorth(s, s.month) };
     if (s.status !== 'running' && r.status == null) { r.status = s.status; r.endMonth = m + 1; }
     r.nwEnd = netWorth(s);
     r.months = m + 1;

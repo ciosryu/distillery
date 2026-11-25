@@ -10,7 +10,7 @@ import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
 import { cashAlert, contamNote, winDelayNote, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, reserveCandidateCasks, spotSaleStake, type TodoTarget } from './alerts';
 import { Button } from './kit';
-import { rejudgeLine } from './Verdict'; // [결정 #422] 재판정 한 줄(결과 화면과 같은 문구)
+import { masterpieceLine } from './Verdict'; // [결정 #433] 「명작」 한 줄(결과 화면과 같은 문구)
 import { PolicySwitchHint } from './PricePolicyPicker'; // 자동 가격 정책 정보 한 줄 (#291 ⑥, MKT)
 
 /** 증류소 탭의 접힌 블록을 여는 신호 — detail = 블록 id(= 스크롤 앵커). MvpHome의 useFold가 듣는다 (#182) */
@@ -267,8 +267,8 @@ export function JourneyStrip() {
       </div>
       {/* [결정 #407] 12년 적격 뒤 — 출하를 미룬 만큼 S 등급 순자산 기준이 오른다(지금 기준 금액을 숫자로) */}
       {winDelayNote(s) && <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">⏳ {winDelayNote(s)}</p>}
-      {/* [결정 #422] 재판정으로 오른 등급 — 결과 화면을 닫은 뒤에도 목표 칸에 한 줄 남긴다 */}
-      {rejudgeLine(s) && <p className="mt-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">⬆ 등급 — {rejudgeLine(s)}</p>}
+      {/* [결정 #433] 「명작」 칭호 — 결과 화면을 닫은 뒤에도 목표 칸에 한 줄. 후반 목표 「15년 첫 출하」(✓)와 따로 — 칭호는 품질 · 인지도까지 채운 것 */}
+      {masterpieceLine(s) && <p className="mt-1 text-xs font-medium text-amber-800 dark:text-amber-300">🏅 명작 — {masterpieceLine(s)}</p>}
       {/* [#388 ① G3] 후반 목표 — 열린 것만(승리 전 2 · 승리 뒤 최대 3). 보상 없음(기록만) — 짝 행동 한 줄을 마우스 풀이로 */}
       {visibleLateGoals(s).length > 0 && (
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
