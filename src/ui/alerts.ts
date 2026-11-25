@@ -4,7 +4,7 @@
 
 import { isFlagshipCandidate } from '../sim/delegateCheck';
 import { regionOf } from '../sim/content/regions';
-import { calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, knownState, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, slotsDifferFromCasks, slotsUsed, spotQuote, warehouseCapacity, whiskyMinMonths, type Action, type Cask, type CashFlowKey, type GameState, type MonthReport, type Product, stagesOf } from '../sim';
+import { GRADE, sDelayMonths, sNetWorthTarget, winDelayMonths, calendar, campaignMinOakMonths, campaignWon, rulesVersionOf, domesticDemands, knownState, BANKRUPT_AFTER_MONTHS, CASH_FLOW_LINES, isBulkKind, selfFundedCash, slotsDifferFromCasks, slotsUsed, spotQuote, warehouseCapacity, whiskyMinMonths, type Action, type Cask, type CashFlowKey, type GameState, type MonthReport, type Product, stagesOf } from '../sim';
 import { AUTO_SAMPLE_EXPENSE, AUTO_SAMPLE_MIN_AGE } from '../sim/blendTable';
 import { EQUIPMENT } from '../sim/content/catalog';
 import { isLocked } from '../sim/scenario';
@@ -255,6 +255,23 @@ export function newFacilities(s: GameState): { id: string; name: string; openedM
     }
   }
   return out.sort((a, b) => a.openedMonth - b.openedMonth || a.id.localeCompare(b.id));
+}
+
+/**
+ * [결정 #407] 승리 미루기 알림 — 12년 적격 원액이 생긴 뒤(승리 전 · v16) S 등급 순자산 기준이 미룬 만큼 오른다는 한 줄. 값은 MGT `sNetWorthTarget`(이번 달에 팔면의 문턱).
+ * 적격 기록이 없거나 · 승리했거나 · 옛 판이면 null
+ */
+export function winDelayNote(s: GameState): string | null {
+  const sc = s.scenario;
+  if (!sc || rulesVersionOf(s) === 'legacy-v15' || campaignWon(s) || s.progress.firstEligibleMonth == null) return null;
+  const k = GRADE.sDelayPerMonthV16[sc.tierId];
+  const target = sNetWorthTarget(s);
+  if (!k || target == null) return null;
+  const n = sDelayMonths(s);
+  const since = winDelayMonths(s, s.month + 1);
+  return n > 0
+    ? `S 등급 순자산 기준 ${fmtWon(target)} — 12년 적격 뒤 ${since}개월째, 출하를 미룬 만큼 오른다(${n}개월 × ${fmtWon(k)} = +${fmtWon(n * k)})`
+    : `12년 적격 원액이 있다 — ${GRADE.sDelayGraceMonths}개월 안에 출하하지 않으면 S 등급 순자산 기준(지금 ${fmtWon(target)})이 달마다 ${fmtWon(k)}씩 오른다`;
 }
 
 /** [결정 #385] 현금이 고정비 이만큼을 넘으면 「놀고 있는 현금」 줄 `[튜닝]` */

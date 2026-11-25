@@ -32,7 +32,7 @@ import { CashFlowLine, JourneyStrip, MonthTodo, OPEN_FOLD_EVENT } from './Alerts
 import { AutoSampleSettingsRow } from './panels/AutoSample';
 import { HandfillRow } from './panels/Handfill';
 import { flagshipCaskHint } from './gradeHints'; // 결정 #339 등급 화면 힌트
-import { cashAlert, contamNote, flagshipCandidates, flagshipImpact, flagshipReady, taintedSpirit, TAINT_SPIRIT_NOTE, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
+import { cashAlert, contamNote, winDelayNote, flagshipCandidates, flagshipImpact, flagshipReady, taintedSpirit, TAINT_SPIRIT_NOTE, fmtWon, lastMonthFlow, loanSchedule, paymentJump, runway, staleSampleCasks } from './alerts';
 import { monthlyFixedBreakdown } from '../sim/loans';
 import { PriceDesk } from './panels/Sales';
 import { FeedCard } from './FeedCard'; // 커뮤니티 반응 요약 (#247, MKT — 오너 요청 2026-11-14)
@@ -224,7 +224,8 @@ function Headline() {
   const inv = nw - s.finance.cash + loans - s.finance.receivables.reduce((t, r) => t + r.amount, 0) - salvage;
   const sc = s.scenario;
   const target = sc ? sc.equity * sc.goal.netWorthMultiple : null;
-  const sTarget = sNetWorthTarget(s) ?? 0; // [결정 #393] v16은 규모별 고정 금액(표준 20억 · 마이크로 25.5억 — MGT `progress.ts`), 옛 판은 성과 기준 × 1.5
+  const sTarget = sNetWorthTarget(s) ?? 0; // [결정 #393 · #407] v16은 규모별 고정 금액 + 승리를 미룬 만큼(MGT `progress.ts` — 이번 달에 팔면의 문턱), 옛 판은 성과 기준 × 1.5
+  const delayNote = winDelayNote(s); // [결정 #407]
   const run = runway(s);
   const flagMin = campaignMinOakMonths(s);
   const oldest = s.inventory.casks.filter((c) => c.contents && !c.owner && !c.contents.sourced && (c.contents.kind === 'malt' || c.contents.kind === 'grain'))
@@ -256,7 +257,7 @@ function Headline() {
           hint={run.months != null ? `이 속도면 약 ${run.months}개월 버팀` : run.avg != null ? '자체 현금 흐름 흑자' : '기록 없음'} />
         {/* 순자산·재고 평가액은 참 품질 합계라 100만 원 단위로만 보인다 ([결정 #310] 1단계 — architecture §11.4 안 A, I3). 현금·대출·목표는 그대로 */}
         <Stat label="순자산" value={wonCoarse(nw)} tone={target != null && nw >= target ? 'good' : undefined}
-          hint={target == null ? `현금 − 대출 + 재고 평가액${salvage ? ` + 설비 처분가 ${wonCoarse(salvage)}` : ''}` : salvage ? `설비 처분가 ${wonCoarse(salvage)} 포함(산 값의 30%에서 감가) · ${legacyRules ? `목표 ${won(target)}의 ${pct(nw / target, 0)}` : `성과 지표(승리 조건 아님) · S 등급 기준 ${won(sTarget)}의 ${pct(nw / sTarget, 0)}`}` : legacyRules ? `목표 ${won(target)}의 ${pct(nw / target, 0)}` : `성과 지표(승리 조건 아님) · S 등급 기준 ${won(sTarget)}의 ${pct(nw / sTarget, 0)}`} />
+          hint={target == null ? `현금 − 대출 + 재고 평가액${salvage ? ` + 설비 처분가 ${wonCoarse(salvage)}` : ''}` : salvage ? `설비 처분가 ${wonCoarse(salvage)} 포함(산 값의 30%에서 감가) · ${legacyRules ? `목표 ${won(target)}의 ${pct(nw / target, 0)}` : `성과 지표(승리 조건 아님) · S 등급 기준 ${won(sTarget)}의 ${pct(nw / sTarget, 0)}`}${delayNote ? ` · ${delayNote}` : ''}` : legacyRules ? `목표 ${won(target)}의 ${pct(nw / target, 0)}` : `성과 지표(승리 조건 아님) · S 등급 기준 ${won(sTarget)}의 ${pct(nw / sTarget, 0)}${delayNote ? ` · ${delayNote}` : ''}`} />
         <Stat label="재고 평가액" value={wonCoarse(inv)} hint="원액 현물가 + 제품 재고 원가 (소주 원액 0) · 100만 원 단위" />
         <Stat label="대출 잔액" value={won(loans)} hint={loans ? `${s.finance.loans.length}건` : '없음'} />
         <Stat label="가장 오래된 자체 원액" value={months(oldest)} tone={oldest >= flagMin ? 'good' : sc && !flagDone && noMoreNew && cands === 0 ? 'bad' : undefined}
