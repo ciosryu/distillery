@@ -158,3 +158,24 @@ describe('[P-PROD-74] 증류기 형태는 위스키 원액에만 — 소주는 �
     }
   });
 });
+
+describe('[결정 #430] 버번 × 에스테르 반응 — 버번 통 · 6년 뒤 · 가벼운 원액만', () => {
+  const lightFlavor: Flavor = { body: 15, oak_tannin: 40, integration: 60, fresh_fruit: 30, floral: 18 };
+  const step = (typeId: 'oloroso_butt' | 'ex_bourbon_barrel', lot: SpiritLot) => {
+    const c: Cask = { ...emptyCaskOf(game(), typeId), contents: lot };
+    return matureCask(c, { tempC: 12, humidity: 75 }, { control: 0 }).cask.contents!.flavor;
+  };
+  it('형태 있는 라이트 원액 · 버번 통 · 80개월 → 과일 · 꽃 · 어우러짐이 더 붙는다', () => {
+    const plain = step('ex_bourbon_barrel', lotOf(lightFlavor, { oakMonths: 80 }));
+    const shaped = step('ex_bourbon_barrel', lotOf(lightFlavor, { oakMonths: 80, stillShape: preset('light') }));
+    expect(shaped.fresh_fruit!).toBeGreaterThan(plain.fresh_fruit!);
+    expect(shaped.floral!).toBeGreaterThan(plain.floral!);
+    expect(shaped.integration!).toBeGreaterThan(plain.integration!);
+  });
+  it('6년 전 · 셰리 통 · 균형 바디(26)는 반응이 없다', () => {
+    expect(step('ex_bourbon_barrel', lotOf(lightFlavor, { oakMonths: 60, stillShape: preset('light') }))).toEqual(step('ex_bourbon_barrel', lotOf(lightFlavor, { oakMonths: 60 })));
+    expect(step('oloroso_butt', lotOf(lightFlavor, { oakMonths: 80, stillShape: preset('light') }))).toEqual(step('oloroso_butt', lotOf(lightFlavor, { oakMonths: 80 })));
+    const mid = { ...lightFlavor, body: 26 };
+    expect(step('ex_bourbon_barrel', lotOf(mid, { oakMonths: 80, stillShape: preset('balanced') }))).toEqual(step('ex_bourbon_barrel', lotOf(mid, { oakMonths: 80 })));
+  });
+});
