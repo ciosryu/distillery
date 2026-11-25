@@ -3,6 +3,7 @@ import { advanceMonth, applyAction, newScenarioGame, warehouseCapacity, type Act
 import { isBulkKind, lotQuality, spotBidPerLPA } from '../sim/bulk';
 import { readSigma } from '../sim/blendTable';
 import { netWorth } from '../sim/progress';
+import { equipmentSalvage } from '../sim/valuation';
 import { KPI_UNIT_WON, won, wonCoarse } from './format';
 
 // 정보 계약 I3 — 공개 KPI(순자산·재고 평가액)의 표시 해상도가 한 배치의 참 품질을 샘플 1회 오차보다 촘촘하게 풀지 않는다
@@ -12,7 +13,8 @@ const act = (s: GameState, a: Action) => applyAction(s, a).state;
 /** 참 품질 1점당 이 통의 평가액 변화(원) — 같은 달·같은 시세 */
 const slope = (s: GameState, c: Cask) => { const l = c.contents!; const q = lotQuality(l); return l.volumeL * l.abv * Math.abs(spotBidPerLPA(s, l, 0, q + 1) - spotBidPerLPA(s, l, 0, q)); };
 /** 증류소 탭 "재고 평가액"과 같은 식 */
-const inventoryShown = (s: GameState) => netWorth(s) - s.finance.cash + s.finance.loans.reduce((t, l) => t + l.balance, 0) - s.finance.receivables.reduce((t, r) => t + r.amount, 0);
+// 홈 「재고 평가액」과 같은 식 — 순자산에서 현금 · 대출 · 미수금 · 설비 처분가(#398)를 뺀다
+const inventoryShown = (s: GameState) => netWorth(s) - s.finance.cash + s.finance.loans.reduce((t, l) => t + l.balance, 0) - s.finance.receivables.reduce((t, r) => t + r.amount, 0) - equipmentSalvage(s);
 /** 안 A 전의 won() 단위 — 1억 미만 만 원 */
 const oldUnit = (v: number) => (Math.abs(v) >= 1e8 ? 1e6 : Math.abs(v) >= 1e4 ? 1e4 : 1);
 

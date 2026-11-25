@@ -5,7 +5,7 @@ import { inventoryCollateral, inventoryLoanRoom } from './loans';
 import { newScenarioGame } from './newScenario';
 import { netWorth, netWorthLegacy } from './progress';
 import { autoFillCasks } from './autoFill';
-import { BOTTLE_LIQ, QHAT_PRIOR, bookValue, bottleStockValue, collateralValue, estimatedValue, liquidationValue, prepaidObligations, qHat, recentSoldBottles, trueQualityOf } from './valuation';
+import { BOTTLE_LIQ, EQUIPMENT_SALVAGE, QHAT_PRIOR, bookValue, equipmentSalvage, bottleStockValue, collateralValue, estimatedValue, liquidationValue, prepaidObligations, qHat, recentSoldBottles, trueQualityOf } from './valuation';
 
 const v16 = (seed = 1) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed });
 const legacy = (seed = 1) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed, rules: 'legacy-v15' });
@@ -131,7 +131,7 @@ describe('valuation: 옛 판 보존 (REQ-CORE-5 6) · 새 판은 처분 예상�
   it('새 판의 순자산은 샘플을 뜨기 전에는 사전값(보수)으로 — 통이 생기면 옛 식보다 낮거나 같다', () => {
     const s = v16(); stripInventory(s);
     malt(s, 'A', { vanilla_caramel: 60, sherry_fruit: 50 }); // 참 품질이 높은 통
-    expect(netWorth(s)).toBeLessThanOrEqual(netWorthLegacy(s));
+    expect(netWorth(s) - equipmentSalvage(s)).toBeLessThanOrEqual(netWorthLegacy(s)); // 설비 처분가(#398)는 옛 식에 없는 항 — 원액 평가만 견준다
   });
 });
 
@@ -173,5 +173,26 @@ describe('숨은 오염 읽기 제거 (#310 2단계) — 자동 통입·통입·
     const t = structuredClone(s);
     for (const c of t.inventory.casks) if (c.contents) { c.contents.flavor.vanilla_caramel = (c.contents.flavor.vanilla_caramel ?? 0) + 30; c.contamination = 'tca'; }
     expect(inventoryLoanRoom(t)).toBe(inventoryLoanRoom(s));
+  });
+});
+
+describe('[결정 #398] 설비 처분가 — 순자산 자체에 · 산 값보다 낮게 · v16만', () => {
+  it('새 판 시작 설비: r × 원가(나이 0) · 옛 판은 0 · 면허는 빠진다 · 바닥 10% · 장부가는 r 없이', () => {
+    const n = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'standard', loanAmount: 0, seed: 5, rules: 'v16' });
+    const o = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'standard', loanAmount: 0, seed: 5, rules: 'legacy-v15' });
+    expect(equipmentSalvage(o)).toBe(0);
+    const full = equipmentSalvage(n, 1);
+    expect(full).toBeGreaterThan(0);
+    expect(equipmentSalvage(n)).toBe(Math.round(full * EQUIPMENT_SALVAGE.rate)); // 나이 0 — r × 원가
+    expect(liquidationValue(n) - equipmentSalvage(n)).toBe(liquidationValue({ ...n, production: { ...n.production, equipment: [] } }));
+    // 늙으면 감가 · 바닥 10%
+    const old = { ...n, month: 10_000 };
+    expect(equipmentSalvage(old, 1)).toBe(Math.round(full * EQUIPMENT_SALVAGE.floor));
+    // 면허는 빠진다
+    const lic = { ...n, production: { ...n.production, equipment: [{ id: 'EL', catalogId: 'kr_farm_registration', readyMonth: 0, boughtMonth: 0 }] } };
+    expect(equipmentSalvage(lic)).toBe(0);
+    // 결산 순자산(달을 넘기기 전 기록)은 넘긴 뒤 화면 순자산과 같다
+    const m = advanceMonth(n);
+    expect(m.history.reports.at(-1)!.netWorth).toBe(netWorth(m));
   });
 });
