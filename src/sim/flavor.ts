@@ -90,7 +90,13 @@ export interface Evaluation {
  * k × max(0, 황 − fromSulfur) × (1 − 목재 ÷ months). 5년이 넘으면 0 — 황은 「미티 · 개성」이 된다. 형태를 고른 증류기 원액에만(`EvalContext.youth` — 부르는 쪽이 정한다).
  * fromSulfur는 균형 원액 3년 황(약 0.4) 위 — 균형 · 라이트 원액은 0(PR ④ 측정: 헤비 3년 황 2.5 ~ 4.0)
  */
-export const YOUTH_SULFUR = { months: 60, fromSulfur: 1.0, k: 10, cats: ['whisky', 'blended_whisky'] as ProductCategory[] } as const;
+export const YOUTH_SULFUR = { months: 60, fromSulfur: 1.0, k: 5, cats: ['whisky', 'blended_whisky'] as ProductCategory[] } as const;
+/**
+ * [결정 #422 (c) 수리 · P-PROD-73] 저숙성 「무게」 이취 `[튜닝]` — 무거운 원액(바디가 `fromBody`를 넘는 몫, 최대 `cap`)도 어릴 때 덜 열린다:
+ * kW × min(cap, max(0, 바디 − fromBody)) × (1 − 목재 ÷ 60). 황만 보면 「숏 + 하향 + 쉘」(공개 스타일 헤비)이 저숙성 감점을 피해 가 뉴메이크 · 소주 값만 얻었다(MGT 40시드 2026-11-25).
+ * 균형(바디 약 26) · 라이트(15)는 0. `cap`은 웜 텁(바디 +8)이 황 몫과 겹쳐 두 번 크게 깎이지 않게
+ */
+export const YOUTH_WEIGHT = { fromBody: 30, cap: 5, k: 1.5 } as const;
 /** 평가 맥락 — 없으면 지금 식 그대로 */
 export interface EvalContext {
   /** 저숙성 황 이취를 셀 목재 개월(형태를 고른 증류기 원액이 섞였을 때만 준다) */
@@ -101,7 +107,10 @@ export const lotEvalCtx = (lot: { stillShape?: unknown; oakMonths: number }): Ev
 export function youthSulfurLoad(f: Flavor, cat: ProductCategory, ctx?: EvalContext): number {
   if (ctx?.youthOakMonths == null || !YOUTH_SULFUR.cats.includes(cat)) return 0;
   const left = Math.max(0, 1 - ctx.youthOakMonths / YOUTH_SULFUR.months);
-  return left > 0 ? YOUTH_SULFUR.k * Math.max(0, get(f, 'sulfur_meaty') - YOUTH_SULFUR.fromSulfur) * left : 0;
+  if (left <= 0) return 0;
+  const sulfur = YOUTH_SULFUR.k * Math.max(0, get(f, 'sulfur_meaty') - YOUTH_SULFUR.fromSulfur);
+  const weight = YOUTH_WEIGHT.k * Math.min(YOUTH_WEIGHT.cap, Math.max(0, get(f, 'body') - YOUTH_WEIGHT.fromBody));
+  return (sulfur + weight) * left;
 }
 
 export function offnoteLoad(f: Flavor, cat: ProductCategory, ctx?: EvalContext): number {
