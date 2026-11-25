@@ -30,7 +30,7 @@ const win = months.map((m) => all.filter((p) => p.month > m - 3 && p.month <= m)
 let seen = 0, tot = 0; for (const m of months) { const prev = new Set(all.filter((p) => p.month < m && p.month > m - 12).map((p) => key(p.text))); for (const p of all.filter((p) => p.month === m)) { tot++; if (prev.has(key(p.text))) seen++; } }
 console.log('share of posts whose template appeared in previous 11 months', (seen / tot * 100).toFixed(1) + '%');
 // 꾸밈(앞머리 · 끝말 · 위갤 특징 덧붙임)을 뗀 본문 틀
-const opens = [...C.CAFE_OPEN, ...C.DCW_OPEN, ...C.DCJ_OPEN].filter(Boolean).sort((a, b) => b.length - a.length);
+const opens = [...C.CAFE_OPEN, ...C.DCJ_OPEN].filter(Boolean).sort((a, b) => b.length - a.length);
 const closes = [...C.CAFE_CLOSE, ...C.DCW_CLOSE, ...C.DCJ_CLOSE].filter(Boolean).sort((a, b) => b.length - a.length);
 const core = (t: string) => { let k = key(t); for (const o of opens) if (k.startsWith(o)) { k = k.slice(o.length); break; } for (const c of closes) if (k.endsWith(c)) { k = k.slice(0, -c.length); break; } k = k.replace(/ — .*$/, ''); if (k.startsWith('Nose:')) k = k.replace(/^Nose:.*?Finish: [^.]*\. /, ''); return k; };
 const cc = new Map<string, number>(); for (const p of all) cc.set(core(p.text), (cc.get(core(p.text)) ?? 0) + 1);
