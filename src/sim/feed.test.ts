@@ -399,3 +399,35 @@ describe('[결정 #422] 명작 글의 셰리 판정 — 통 구성(caskMix) 셰�
     expect(sherryHeavy({ caskMix: [{ typeId: 'ex_bourbon_barrel', share: 1 }] } as Partial<Product> & X)).toEqual([]);
   });
 });
+
+describe('[제안 P-MKT-50] (가) 「창렬」 글 — 커뮤니티 품질 75↑이면 내용물 탓 문장 없이 「잘 만든 건 인정, 값이 문제」', () => {
+  const BLAME = /품질 개에반|숙성 1도 안|숙성감 부족|내용물이 따라오지/;
+  const PRAISE = /잘 만든 건 인정|내용물은 훌륭|맛은 인정|맛은 정말 좋은데/;
+  const texts = (quality: number) => {
+    const out: string[] = [];
+    for (let seed = 1; seed <= 60; seed++) for (const x of feedFor(world([product({ id: 'r', name: '시험 고가 몰트', quality, price: 400_000, ageYears: 15, oakMonths: 180 })], 3, 300, seed), 3, 100)) out.push(x.text);
+    return out;
+  };
+  it('품질 85 · 값 2배↑: 내용물 탓 문장이 없고 「잘 만든 건 인정」 꼴이 나온다', () => {
+    const t = texts(85);
+    expect(t.filter((x) => BLAME.test(x))).toEqual([]);
+    expect(t.some((x) => PRAISE.test(x))).toBe(true);
+  });
+  it('품질 55 · 같은 값: 「잘 만든 건 인정」 꼴은 없고 내용물 탓 문장은 그대로 나온다', () => {
+    const t = texts(55);
+    expect(t.filter((x) => PRAISE.test(x))).toEqual([]);
+    expect(t.some((x) => BLAME.test(x))).toBe(true);
+  });
+  it('I2 — 가리는 판: 아는 품질이 같으면 참 품질 40 · 90에서 글이 같다 · 내용물 탓 여부는 아는 품질을 따른다', async () => {
+    const { newScenarioGame } = await import('./newScenario');
+    const mk = (trueQ: number, est: number) => {
+      const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 5, rules: 'v16' });
+      s.month = 40;
+      s.commerce.products.push({ ...product({ id: 'P1', name: '시험 고가 몰트', quality: trueQ, price: 400_000, ageYears: 15, oakMonths: 180 }), qualityKnown: { est, sigma: 4, reviews: 6, month: 39 } } as Product);
+      s.history.reports.push({ month: 39, sales: [{ productId: 'P1', name: '시험 고가 몰트', bottles: 30, revenue: 12_000_000, demandBottles: 40 }], notes: [], expenses: {} } as never);
+      return feedFor(s, 3, 60).map((x) => x.text);
+    };
+    expect(mk(90, 85)).toEqual(mk(40, 85));
+    expect(mk(60, 85).some((x) => BLAME.test(x))).toBe(false); // 아는 품질 85 → 내용물 탓 없음(참 품질 60이어도)
+  });
+});

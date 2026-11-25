@@ -174,7 +174,39 @@ export function updateProgress(s: GameState, report: MonthReport): void {
       if (!s.progress.verdict) s.progress.verdict = judgeWin(s, s.month + 1, quality);
     }
   }
+  if (s.progress.win) rejudge(s, report); // [결정 #422] 승리 뒤 — 새 적격 로트의 첫 출하 달에만 등급이 오를 수 있다
   if (ended && !s.progress.verdict) { const v = judgeGoal(s, s.month + 1); if (v) s.progress.verdict = v; }
+}
+
+/** [결정 #422] 지금 등급 — 재판정으로 오른 등급이 있으면 그것, 없으면 승리 달 판정 */
+export const bestVerdict = (s: Pick<GameState, 'progress'>): GoalVerdict | undefined => s.progress.verdictBest ?? s.progress.verdict;
+
+/**
+ * [결정 #422] 승리 뒤 재판정 — **오르기만 한다**. 이번 달 판매 사건 가운데 승리 로트가 아닌 12년+ 적격 로트의 **첫 정상 유상 출하**가 있으면
+ * 그 제품 품질로 `judgeWin`과 같은 식(판정 달 = 이번 달 + 1 · S 순자산 문턱 = 기본값 + k × 미룬 개월 — #407 · #423 그대로)을 돌려, S면 `verdictBest`에 적는다.
+ * 첫 출하인지는 남아 있는 결산(120개월 창)의 판매 사건으로 본다. 이미 S면 보지 않는다. 옛 판 · 승리 전은 아무 일도 없다
+ */
+export function rejudge(s: GameState, report: MonthReport): void {
+  if (rulesVersionOf(s) === 'legacy-v15' || !s.progress.win) return;
+  const cur = bestVerdict(s);
+  if (!cur || cur.result !== 'heritage' || cur.grade === 'S') return;
+  const fresh = (report.saleEvents ?? []).filter((e) => e.eligibleAtSale && e.kind !== 'b2b' && e.bottles > 0 && e.unitPrice > 0 && e.lotId !== s.progress.win!.lotId);
+  if (!fresh.length) return;
+  const seen = new Set<string>();
+  for (const r of s.history.reports) for (const e of r.saleEvents ?? []) seen.add(e.lotId);
+  let best: { e: (typeof fresh)[number]; q: number } | undefined;
+  for (const e of fresh) {
+    if (seen.has(e.lotId)) continue;
+    const q = s.commerce.products.find((p) => p.id === e.productId)?.quality;
+    if (q != null && (!best || q > best.q)) best = { e, q };
+  }
+  if (!best) return;
+  const v = judgeWin(s, s.month + 1, best.q);
+  if (v.grade !== 'S') return;
+  // acknowledged는 비워 둔다(judgeWin은 새 객체 — 첫 판정을 펼쳐 복사하지 않는다): 오른 달에 결과 화면이 다시 뜬다(ARCH 화면). 그달 문턱은 checks.netWorth.target · sNetWorthTarget에 남는다
+  s.progress.verdictBest = { ...v, acknowledged: undefined, rejudged: { month: s.month + 1, productId: best.e.productId, lotId: best.e.lotId } };
+  const name = s.commerce.products.find((p) => p.id === best!.e.productId)?.name ?? best.e.productId;
+  report.notes.push(`등급이 올랐다 — 「${name}」 첫 출하로 다시 본 성과 판정: S (승리 달 ${cur.grade} → S)`);
 }
 
 /**
