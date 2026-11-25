@@ -4,8 +4,8 @@ import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { CaskTagBar, CaskTagChips } from './CaskTags';
 import { TurnBrief } from './TurnBrief';
 import { AutoFillRow } from './panels/AutoFill';
-import { AGE_BANDS, agePolicyRows, agePolicyRuleText, bandCounts, thinBands, THIN_BAND_CASKS } from '../sim/ageBand';
-import { AgePolicyRow } from './panels/AgePolicy'; // #399 (PROD) // #380 연령 띠 정의(PROD)
+import { AGE_BANDS, agePolicyRows, agePolicyRuleText, bandCounts, thinBands, THIN_BAND_CASKS } from '../sim/ageBand'; // #380 연령 띠 정의 · #399 띠 정책(PROD)
+import { AgePolicyRow } from './panels/AgePolicy'; // #399 띠 정책 줄(PROD)
 import { CaskCareRow, NewCaskOutlook } from './panels/CaskCare'; // #345 GAP-PROD-7 · #355 탄닌 전망 (PROD)
 import { FinishRow } from './panels/FinishRow'; // #345 GAP-PROD-4 피니싱 (PROD 부품 · ARCH 끼움)
 import { getPlaylog, recentActionCount } from '../store/playlog';
