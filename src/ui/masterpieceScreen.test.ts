@@ -50,4 +50,15 @@ describe('#433 masterpiece screen', () => {
     expect(GRADE_NOTE.once).toContain('명작');
     expect(GRADE_NOTE.once).not.toContain('재판정');
   });
+  it('[결정 #435] 15년 제품으로 이긴 달에 명작도 받으면 — 결과 화면 한 번 · 버튼 하나로 둘 다 닫힌다', () => {
+    const s = withMasterpiece(load());
+    s.progress.verdict = { ...s.progress.verdict!, acknowledged: undefined };
+    s.progress.masterpiece = { ...s.progress.masterpiece!, lotId: s.progress.win!.lotId, month: s.progress.verdict!.month };
+    expect(show(s)).toBe(true);
+    const r = applyAction(s, { type: 'acknowledgeVerdict' });
+    expect(r.state.progress.verdict!.acknowledged).toBe(true);
+    expect(r.state.progress.masterpiece!.acknowledged).toBe(true);
+    expect(show(r.state)).toBe(false);
+  });
 });
+

@@ -74,17 +74,20 @@ export function Verdict({ s, onNewGame }: { s: GameState; onNewGame: () => void 
   const v = bestVerdict(s);
   if (!v) return null;
   const mp = s.progress.masterpiece && !s.progress.masterpiece.acknowledged ? masterpieceLine(s) : null;
+  // [결정 #435] 15년 이상 제품으로 이긴 판은 승리 달에 명작도 받는다 — 두 화면을 따로 띄우지 않고 한 화면에 함께(명작 칸 위 · 승리 판정 아래), 버튼 하나로 둘 다 닫는다(acknowledgeVerdict)
+  const withWin = !!mp && !v.acknowledged;
+  const sameLot = !!mp && s.progress.masterpiece!.lotId === s.progress.win?.lotId;
   const ending = s.progress.ending;
   const legacy = rulesVersionOf(s) === 'legacy-v15';
   // 다음 목표 — 아직 결과가 없고, 앞 목표를 기다리지 않으며(18년은 15년 뒤), 기한이 남은 후반 목표 두 개까지(제목 앞부분)
   const doneIds = new Set((s.progress.lateGoals ?? []).map((g) => g.id));
   const nextGoals = lateGoalsOf(s).filter((g) => !doneIds.has(g.id) && (g.opens === 'win' || 'month' in g.opens) && (g.byMonth == null || s.month + 1 <= g.byMonth)).slice(0, 2).map((g) => g.title.split(' — ')[0]!);
   return (
-    <Card title={`${s.distilleryName} — ${mp ? '「명작」 칭호' : TITLE[v.result]}`}>
+    <Card title={`${s.distilleryName} — ${mp ? (withWin ? `${TITLE[v.result]} · 「명작」 칭호` : '「명작」 칭호') : TITLE[v.result]}`}>
       {mp && (
         <section className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-700 dark:bg-amber-950" aria-label="명작">
           <div className="font-semibold text-amber-900 dark:text-amber-200">🏅 명작 — {mp}</div>
-          <p className="text-xs text-stone-600 dark:text-stone-300">승리 뒤 표기 15년 이상 원액을 처음 팔아 받는 칭호다. 등급(아래 {v.grade ?? '—'})은 그대로 — 등급은 승리한 달에 한 번 매긴다.</p>
+          <p className="text-xs text-stone-600 dark:text-stone-300">{sameLot ? '표기 15년 이상 원액으로 승리해 함께 받는 칭호다.' : '승리 뒤 표기 15년 이상 원액을 처음 팔아 받는 칭호다.'} 등급(아래 {v.grade ?? '—'})과 따로 — 등급은 승리한 달에 한 번 매긴다.</p>
           <ul className="mt-1 space-y-0.5">
             {masterpieceRows(s).map((r) => (
               <li key={r.id} className="flex items-baseline justify-between gap-3"><span><span aria-hidden>{r.ok ? '✅' : '◇'}</span> {r.label}</span><span className="tabular-nums text-stone-600 dark:text-stone-300">{r.text}</span></li>
