@@ -4,7 +4,8 @@ import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { CaskTagBar, CaskTagChips } from './CaskTags';
 import { TurnBrief } from './TurnBrief';
 import { AutoFillRow } from './panels/AutoFill';
-import { AGE_BANDS, bandCounts, thinBands, THIN_BAND_CASKS } from '../sim/ageBand'; // #380 연령 띠 정의(PROD)
+import { AGE_BANDS, agePolicyRows, agePolicyRuleText, bandCounts, thinBands, THIN_BAND_CASKS } from '../sim/ageBand';
+import { AgePolicyRow } from './panels/AgePolicy'; // #399 (PROD) // #380 연령 띠 정의(PROD)
 import { CaskCareRow, NewCaskOutlook } from './panels/CaskCare'; // #345 GAP-PROD-7 · #355 탄닌 전망 (PROD)
 import { FinishRow } from './panels/FinishRow'; // #345 GAP-PROD-4 피니싱 (PROD 부품 · ARCH 끼움)
 import { getPlaylog, recentActionCount } from '../store/playlog';
@@ -207,6 +208,8 @@ function WarehouseFold() {
           <AgeBandStrip s={s} />
         </FoldBar>
       </Card>
+      {/* [결정 #399 · #386] 연령 띠 정책(자동 납품이 지키는 띠) — 숙성고 칸을 펼치면 맨 위에(PROD 부품 · 옛 판은 그리지 않는다). 접힌 머리의 띠 줄은 🔒로 정책이 걸린 띠를 보인다 */}
+      {open && <AgePolicyRow />}
       {open && <WarehouseCard />}
     </div>
   );
@@ -413,12 +416,13 @@ function AgeBandStrip({ s }: { s: GameState }) {
   const counts = bandCounts(s);
   if (!AGE_BANDS.some((b) => counts[b.id].casks > 0)) return null;
   const thin = new Set(thinBands(counts));
+  const locked = new Map(agePolicyRows(s).filter((r) => r.locked).map((r) => [r.id, r])); // [결정 #399] 자동 납품이 지키는 띠
   return (
-    <span className="text-stone-600 dark:text-stone-300" title={`몰트 · 그레인 나무 통의 목재 숙성 연령별 통 수(L) — 더 오래된 띠가 있는데 ${THIN_BAND_CASKS}통 미만인 띠는 호박색: 그 나이대 원액이 얇아 위 띠를 다 쓴 뒤 이을 통이 모자란다`}>
+    <span className="text-stone-600 dark:text-stone-300" title={`몰트 · 그레인 나무 통의 목재 숙성 연령별 통 수(L) — 더 오래된 띠가 있는데 ${THIN_BAND_CASKS}통 미만인 띠는 호박색: 그 나이대 원액이 얇아 위 띠를 다 쓴 뒤 이을 통이 모자란다${locked.size ? ` · 🔒 = 자동 납품이 지키는 띠(${[...locked.values()].map((r) => `${r.label} ${agePolicyRuleText(r.rule)}`).join(' · ')} — 펼쳐서 바꾼다)` : ''}`}>
       연령{' '}
       {AGE_BANDS.map((b, i) => (
         <span key={b.id} className={thin.has(b.id) ? 'font-medium text-amber-700 dark:text-amber-300' : undefined}>
-          {i ? ' · ' : ''}{b.label.replace(' ~ ', '–').replace('10년 이상', '10년+')} {counts[b.id].casks}{thin.has(b.id) ? ' ⚠' : ''}
+          {i ? ' · ' : ''}{locked.has(b.id) ? '🔒' : ''}{b.label.replace(' ~ ', '–').replace('10년 이상', '10년+')} {counts[b.id].casks}{thin.has(b.id) ? ' ⚠' : ''}
         </span>
       ))}
     </span>
