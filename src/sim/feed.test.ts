@@ -251,3 +251,21 @@ describe('[결정 #400] 피드 v4 조건 — 글 종류 · 줄임 이름 · 철 
     expect(seen.size).toBeGreaterThanOrEqual(4);
   });
 });
+
+describe('[결정 #400] 피드 v4 — 조사 맞춤 · 카페는 전체 이름 · 한정 · 수상 · 면세 문장 요건', () => {
+  it('빈칸 뒤 조사를 받침에 맞춘다 — 한글 · 숫자 끝', () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      for (const x of feedFor(world([product({ id: 'a', name: '김포 블랜디드 3년', quality: 70, price: 60_000, flavor: { fresh_fruit: 40, cereal: 30 } })], 3, 300, seed), 3, 100)) {
+        expect(x.text).not.toMatch(/배이 |배을 |배은 |쌀가 |쌀를 |삼년가|3가 |3를 /);
+      }
+    }
+  });
+  it('카페 글은 줄임 이름을 쓰지 않는다 · 한정 · 수상 · 면세 문장은 그 사정이 있을 때만', () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      for (const x of feedFor(world([product({ id: 'a', name: '김포 블랜디드 3년', quality: 70, price: 60_000 })], 3, 300, seed), 3, 100)) {
+        if (x.style === 'cafe') expect(x.text).not.toContain('김블3');
+        expect(x.text).not.toMatch(/한정 번호|수상 소식|면세 한정판 소식/);
+      }
+    }
+  });
+});
