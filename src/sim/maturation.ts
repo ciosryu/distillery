@@ -223,10 +223,11 @@ export const finishCount = (lot: Pick<SpiritLot, 'caskHistory'>): number => Math
  * 옮긴 뒤의 이력 — 지금 구간을 닫고(개월 확정) 새 구간을 연다. 이력이 없으면 첫 통입 구간부터 만든다
  * (첫 구간의 시작 달 = 지금 달 − 숙성 개월, 매입 원액처럼 통입 달을 모르는 경우도 같은 식)
  */
-export function historyAfterTransfer(lot: Pick<SpiritLot, 'caskHistory' | 'oakMonths'>, fromType: CaskTypeId, toType: CaskTypeId, month: number): NonNullable<SpiritLot['caskHistory']> {
-  const h = lot.caskHistory?.length ? lot.caskHistory.map((x) => ({ ...x })) : [{ typeId: fromType, fromMonth: month - lot.oakMonths, months: 0 }];
+export function historyAfterTransfer(lot: Pick<SpiritLot, 'caskHistory' | 'oakMonths'>, fromType: CaskTypeId, toType: CaskTypeId, month: number, fromId?: string, toId?: string): NonNullable<SpiritLot['caskHistory']> {
+  // [결정 #391] 구간마다 통 id를 남긴다(선택 필드 — 없으면 옛 이력 그대로). 첫 구간은 이력이 없을 때만 만들므로 그때만 fromId를 적는다
+  const h = lot.caskHistory?.length ? lot.caskHistory.map((x) => ({ ...x })) : [{ typeId: fromType, fromMonth: month - lot.oakMonths, months: 0, ...(fromId ? { caskId: fromId } : {}) }];
   const closed = h.slice(0, -1).reduce((t, x) => t + x.months, 0);
   h[h.length - 1]!.months = Math.max(0, lot.oakMonths - closed);
-  h.push({ typeId: toType, fromMonth: month, months: 0 });
+  h.push({ typeId: toType, fromMonth: month, months: 0, ...(toId ? { caskId: toId } : {}) });
   return h;
 }

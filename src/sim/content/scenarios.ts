@@ -88,15 +88,18 @@ export interface LateGoalDef {
   opens: { month: number } | 'win' | { after: LateGoalDef['id'] };
   /** 이 달(경과 개월) 말까지 — 없으면 기한 없음 */
   byMonth?: number;
+  /** [결정 #395] 이 달(경과 개월)부터 판정한다 — 그 전에는 보이기만 한다(진척 수치는 보인다). 없으면 열린 달부터 판정 */
+  checkFrom?: number;
   /** 할 일 · 결과 화면에 붙이는 짝 행동 한 줄(⑦ — 돈으로 하는 다른 종류의 일) */
   hint: string;
 }
 
 /**
- * [#388 ① G3] 띠 목표 `ladder_mid`가 보이는 창 — **이 상수 하나**가 시작 달 · 기한을 정한다.
- * 지금 값은 ARCH 첫 안(120 ~ 156). MGT · PM 안은 72 ~ 144(120에 통입한 원액은 156에 목재 36이라 5 ~ 9년 띠에 못 든다) — **오너 안건 ⓐ 답 뒤 이 값만 바꾼다** `[결정 대기]`
+ * [결정 #395] 띠 목표 `ladder_mid`의 창 — **72개월째부터 보이고, 120개월째부터 판정하며, 156개월째까지**(이 상수 하나).
+ * 봇의 5 ~ 9년 띠는 72 ~ 144개월에 중앙 12통이었다가 144개월째 0통이라 "아무 달이나" 판정이면 저절로 이뤄진다 — 겨누는 것은 12년 출하 무렵에도 허리가 남는가다(MGT).
+ * 72에 보이면 84개월까지 넣은 통이 144에 목재 60에 닿는다 `[튜닝]`
  */
-export const LADDER_MID_WINDOW = { opens: 120, byMonth: 156 } as const;
+export const LADDER_MID_WINDOW = { opens: 72, checkFrom: 120, byMonth: 156 } as const;
 
 export interface MidGoalDef {
   id: 'aged3_sold' | 'commission_done' | 'export_open' | 'revenue_8' | 'reserve_casks';
@@ -195,8 +198,8 @@ export const MVP_KR: ScenarioDef = {
   ],
   // [#388 ① G3] 후반 목표 사다리 — ARCH · MGT 맞춤 목록(endgame.md §7.2, 2026-11-24). 문턱 [튜닝 — 단계 T]. 판정 MGT(lateGoals.ts lateGoalMet)
   lateGoalsV16: [
-    { id: 'ladder_mid', opens: { month: LADDER_MID_WINDOW.opens }, byMonth: LADDER_MID_WINDOW.byMonth, title: '숙성고 5 ~ 9년 띠 6통 — 12년 뒤를 이을 원액', hint: '12년만 보고 통을 비우지 말고 지금 넣은 통을 남겨 둔다(통입 · 통 사기)' },
-    { id: 'lounge_3', opens: { month: 108 }, byMonth: 168, title: 'VIP 라운지 — 최근 12개월 관광 매출 3억', hint: 'VIP 테이스팅 라운지(설비)를 짓는다 — 비지터 센터 베이직 투어가 먼저 있어야 한다(베이직 투어부터)' },
+    { id: 'ladder_mid', opens: { month: LADDER_MID_WINDOW.opens }, checkFrom: LADDER_MID_WINDOW.checkFrom, byMonth: LADDER_MID_WINDOW.byMonth, title: '숙성고 5 ~ 9년 띠 6통 — 12년 뒤를 이을 원액', hint: '12년만 보고 통을 비우지 말고 지금 넣은 통을 남겨 둔다(통입 · 통 사기)' },
+    { id: 'lounge_3', opens: { month: 108 }, byMonth: 168, title: 'VIP 라운지 — 최근 12개월 관광 매출 3억', hint: 'VIP 테이스팅 라운지(설비)를 짓는다' },
     { id: 'flagship_300', opens: 'win', title: '12년 싱글 몰트 누적 300병 출하', hint: '12년 후보 통을 지키고 자동 채우기 연수 보호를 쓴다' },
     { id: 'aged15_sold', opens: 'win', title: '15년 싱글 몰트 첫 출하', hint: '15년까지 묵힐 통을 보호 태그로 묶는다' },
     { id: 'aged18_sold', opens: { after: 'aged15_sold' }, title: '18년 싱글 몰트 첫 출하', hint: '18년까지 묵힐 통을 남긴다' },
