@@ -8,7 +8,7 @@ import { loanRoomTotal, monthlyFixedCost } from '../sim/loans';
 import { won } from './format';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
-import { cashAlert, contamNote, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, reserveCandidateCasks, spotSaleStake, type TodoTarget } from './alerts';
+import { cashAlert, contamNote, winDelayNote, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, reserveCandidateCasks, spotSaleStake, type TodoTarget } from './alerts';
 import { Button } from './kit';
 import { PolicySwitchHint } from './PricePolicyPicker'; // 자동 가격 정책 정보 한 줄 (#291 ⑥, MKT)
 
@@ -264,6 +264,8 @@ export function JourneyStrip() {
           );
         })}
       </div>
+      {/* [결정 #407] 12년 적격 뒤 — 출하를 미룬 만큼 S 등급 순자산 기준이 오른다(지금 기준 금액을 숫자로) */}
+      {winDelayNote(s) && <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">⏳ {winDelayNote(s)}</p>}
       {/* [#388 ① G3] 후반 목표 — 열린 것만(승리 전 2 · 승리 뒤 최대 3). 보상 없음(기록만) — 짝 행동 한 줄을 마우스 풀이로 */}
       {visibleLateGoals(s).length > 0 && (
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
