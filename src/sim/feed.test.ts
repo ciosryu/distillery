@@ -383,3 +383,19 @@ describe('[결정 #422] 15 · 18년 헤비 「명작」 글 — 공개 표기(�
     for (const q of [45, 90]) expect(master(texts({ name: '시험 셰리 몰트', stillStyle: 'heavy', ageYears: 15, oakMonths: 180, quality: q } as Partial<Product> & Still)).length).toBeGreaterThan(0);
   });
 });
+
+describe('[결정 #422] 명작 글의 셰리 판정 — 통 구성(caskMix) 셰리 몫 0.5↑도 공개 값으로 본다(PROD 2026-11-25)', () => {
+  type X = { stillStyle?: 'heavy'; caskMix?: { typeId: string; share: number }[] };
+  const sherryHeavy = (o: Partial<Product> & X) => {
+    const out: string[] = [];
+    for (let seed = 1; seed <= 80; seed++) for (const x of feedFor(world([product({ id: 'm', name: '시험 몰트', price: 200_000, stillStyle: 'heavy', ageYears: 15, oakMonths: 180, quality: 80, ...o } as Partial<Product>)], 3, 300, seed), 3, 100)) if (x.text.includes('헤비 스틸') && x.text.includes('셰리')) out.push(x.text);
+    return out;
+  };
+  it('이름 · 피니시 표기에 셰리가 없어도 처음부터 셰리 벗(caskMix 셰리 0.8)이면 셰리 명작 글이 나온다', () => {
+    expect(sherryHeavy({ caskMix: [{ typeId: 'oloroso_butt', share: 0.8 }, { typeId: 'ex_bourbon_barrel', share: 0.2 }] } as Partial<Product> & X).length).toBeGreaterThan(0);
+  });
+  it('셰리 몫 0.5 미만 · 버번 통만이면 셰리 글이 없다', () => {
+    expect(sherryHeavy({ caskMix: [{ typeId: 'oloroso_butt', share: 0.4 }, { typeId: 'ex_bourbon_barrel', share: 0.6 }] } as Partial<Product> & X)).toEqual([]);
+    expect(sherryHeavy({ caskMix: [{ typeId: 'ex_bourbon_barrel', share: 1 }] } as Partial<Product> & X)).toEqual([]);
+  });
+});
