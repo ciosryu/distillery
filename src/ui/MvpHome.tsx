@@ -13,6 +13,7 @@ import { HEX_AXES, HEX_LABEL } from '../sim/blendRadar';
 import { knownReads, lastSample, readSigma, sampleAxesOf, SAMPLING, samplingCapacity, stalestCasks, type KnownRead } from '../sim/blendTable';
 import { AXIS } from '../sim/content/axes';
 import { CASK_MARKET, CASKS, EQUIPMENT } from '../sim/content/catalog';
+import { RefillOrderButton } from './panels/RefillOrder'; // #393 N1 (PROD)
 import { cooperageLeadMonths } from '../sim/prodKnobs'; // F6c: 쿠퍼리지 납기 — 주문(actions.prod.ts)과 같은 값(Normal 2개월)
 import { fillShares, PARTIAL_FILL_HINT } from '../sim/autoFill'; // P-PROD-60: 손 통입 끝자리 안내 — 실제 통입과 같은 식
 import { EMPTY_ACTIVITY_FACTOR, finishOf, vesselMaterial } from '../sim/maturation';
@@ -720,6 +721,8 @@ function SpaceCard() {
             <NumberField label="개수" value={buyN} min={1} max={100} width="w-16" onCommit={setBuyN} />
             <Button small disabled={needFor(buyType, buyN) > free} onClick={() => dispatch({ type: 'buyCasks', caskType: buyType, qty: buyN })} title={`${cooperageLeadMonths(s)}개월 뒤 도착`}>주문 {won(price * buyN)}</Button>
             <Button small disabled={needFor(buyType, buyN) > free} onClick={() => dispatch({ type: 'buySpotCasks', caskType: buyType, qty: buyN })} title={`즉시 입고 · ×${CASK_MARKET.spotPremium} 웃돈 · ${Math.round(CASK_MARKET.spotDudChance * 100)}% 확률로 골빈 통(추출이 약해 3년 위스키엔 손해 · 12년 탄닌은 적다 — [제안 P-PROD-66] c, #339)`}>즉시 {won(price * buyN * CASK_MARKET.spotPremium)}</Button>
+            {/* [결정 #393 N1] 리필(한 번 쓴) 버번 배럴 — ex-버번 · 새 판에서만 그린다(PROD 부품). 왜 좋은지는 말하지 않는다(#367) */}
+            <RefillOrderButton caskType={buyType} qty={buyN} disabled={needFor(buyType, buyN) > free} />
           </div>
           <p className="text-xs text-stone-500">쿠퍼리지 주문은 {cooperageLeadMonths(s)}개월 뒤 도착(자리는 지금 잡힌다). 즉시 구매는 웃돈이 붙고 가끔 활성이 약한 통이 섞인다.</p>
         </div>
