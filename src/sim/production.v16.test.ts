@@ -23,6 +23,7 @@ function v16(): GameState {
   const s = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
   s.inventory.casks = [];
   s.finance.cash = 5e9;
+  delete s.inventory.agePolicy; // 이 파일은 예비 보호(#260 · #325)만 본다 — 띠 정책(#399 새 판 기본)은 ageBandPolicy.test.ts
   return s;
 }
 /** 통 하나 — 원장 없이 만든다(새 판의 원장 없는 자가 원액은 `ledgerOf`가 self로 합성한다) */

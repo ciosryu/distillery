@@ -3,7 +3,8 @@ import { isWhiskyCategory, whiskyMinMonths } from './blending';
 import { DEFAULT_POLICY_N } from './content/market';
 import { resetFirstPriceOnAuto } from './pricePolicy'; // 기본 정책 배수 n (B1-4)
 import { regionOf } from './content/regions';
-import { AUTO_RESTOCK_MONTHS, autoRestockSourceSelectable, autoRestockSupported, autoRestockVesselNeed, bestAutoPrice, currentSuggested } from './economics';
+import { AUTO_RESTOCK_MONTHS, autoRestockRangeSelectable, autoRestockSourceSelectable, autoRestockSupported, autoRestockVesselNeed, bestAutoPrice, currentSuggested, whiskyRange } from './economics';
+import { AGE_BANDS, agePolicyOf, agePolicyRuleText, type AgeBandId } from './ageBand';
 import { CASK_COST_SHARE_PER_FILL, CASK_MARKET, CASKS, EQUIPMENT, RECHAR_COST, SEASONING_CONTRACT } from './content/catalog';
 import { assignSlot, rotateWarehouse, SlotIndex } from './warehouse';
 import { usedCaskPrice } from './casks';
@@ -20,7 +21,7 @@ import { validateRecipe } from './production';
 import { equipmentCost } from './sites';
 import { applyWaterPermit } from './waterPermit';
 import { HANDFILL, handfillBlocker } from './handfill';
-import type { AutoFillSettings, AutoSampleSettings, Cask, CaskTypeId, GameState, Product, Recipe } from './types';
+import type { AgePolicy, AutoFillSettings, AutoSampleSettings, Cask, CaskTypeId, GameState, Product, Recipe } from './types';
 import { nid, pendingOrderSlots, queueReportNote, slotsFor, slotsUsed, staffOf, warehouseCapacity } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
 import { addCost, scaleLedger, splitLedger } from './ledger';
@@ -71,7 +72,9 @@ export type ProdAction =
   /** 자동 최적 가격 켜기·끄기 (#200) — 켜면 바로 한 번 값을 정한다 */
   | { type: 'setAutoPrice'; productId: string; on: boolean }
   /** 자동 납품 (#206) — months: 유지할 재고 개월분(1·2·3·6), null이면 끔 */
-  | { type: 'setAutoRestock'; productId: string; months: number | null; minMonths?: number | null; /** [결정 #392] 채울 원액(소주 · 진 · 고량주, v16) — null이면 지운다(지금 규칙) */ source?: { vessel: 'tank' | 'onggi' | 'oak'; months: number } | null }
+  | { type: 'setAutoRestock'; productId: string; months: number | null; minMonths?: number | null; /** [결정 #392] 채울 원액(소주 · 진 · 고량주, v16) — null이면 지운다(지금 규칙) */ source?: Product['autoRestockSource'] | null }
+  /** [결정 #399 · #386] 연령 띠 정책(자동 납품이 띠를 지킨다) — null이면 정책 없음. 새 판만 */
+  | { type: 'setAgePolicy'; policy: AgePolicy | null }
   /** 자동 샘플 설정 (#207) — 비운 칸은 기본값 */
   | { type: 'setAutoSample'; settings: AutoSampleSettings }
   /** 자동 통입 (#239) — settings null이면 끔, 비운 칸은 기본값 */
@@ -80,6 +83,21 @@ export type ProdAction =
   | { type: 'setHandfillCask'; caskId: string | null }
   /** 판매 중인 제품 이름 바꾸기 (#236, 2026-11-10 오너 요청) — 무료, 판매 기록·표기는 그대로 */
   | { type: 'renameProduct'; productId: string; name: string };
+
+/**
+ * [결정 #399] 위스키 「통 범위」 입력 다듬기 — 오크 · 하한은 법정 숙성 이상 · 상한은 하한 이상 · 통 종류는 나무 통만(빈 목록이면 아무거나). 틀리면 사유 문자열
+ */
+function wholeRange(s: GameState, src: NonNullable<Product['autoRestockSource']>): NonNullable<Product['autoRestockSource']> | string {
+  if (src.vessel !== 'oak') return '위스키는 오크 통 범위로 고른다';
+  const legal = whiskyMinMonths(regionOf(s).whisky);
+  const months = Math.floor(src.months);
+  if (!(months >= legal && months <= 600)) return `통 하한은 법정 숙성 ${legal}개월 이상이어야 합니다`;
+  const max = src.maxMonths == null ? undefined : Math.floor(src.maxMonths);
+  if (max != null && !(max >= months)) return '통 상한은 하한 이상이어야 합니다';
+  const types = [...new Set(src.caskTypes ?? [])];
+  if (types.some((t) => !CASKS[t] || (CASKS[t].material ?? 'wood') !== 'wood')) return '통 종류는 나무 통 가운데 고른다';
+  return { vessel: 'oak', months, ...(max != null ? { maxMonths: max } : {}), ...(types.length ? { caskTypes: types } : {}) };
+}
 
 /** 제품 이름 최대 글자 수 (#236) */
 export const PRODUCT_NAME_MAX = 40;
@@ -91,6 +109,7 @@ export const PROD_CASH_KEY: CashKeys<ProdAction> = {
   unfillCask: null,
   setAutoPrice: null,
   setAutoRestock: null,
+  setAgePolicy: null,
   setAutoSample: null,
   setAutoFill: null,
   setHandfillCask: null,
@@ -211,6 +230,25 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     s.inventory.autoFill = clean;
     return { state: s };
   },
+  setAgePolicy: (s, prev, a) => {
+    if (rulesVersionOf(s) === 'legacy-v15') return fail(prev, '띠 정책은 새 판에서만 정한다');
+    if (a.policy === null) { delete s.inventory.agePolicy; return { state: s, message: '띠 정책 끔 — 자동 납품이 모든 띠의 통을 쓴다(통 범위 · 보호 태그는 그대로)' }; }
+    const out: AgePolicy = {};
+    for (const [id, rule] of Object.entries(a.policy)) {
+      if (!AGE_BANDS.some((b) => b.id === id)) return fail(prev, `알 수 없는 띠: ${id}`);
+      if (!rule) continue;
+      if (rule.auto === 'off') out[id as AgeBandId] = { auto: 'off' };
+      else if (rule.auto === 'keep') {
+        const keep = Math.floor(rule.keep);
+        if (!(keep >= 0 && keep <= 200)) return fail(prev, '남길 통 수는 0 ~ 200');
+        if (keep > 0) out[id as AgeBandId] = { auto: 'keep', keep };
+      } else return fail(prev, '띠 규칙은 「쓰지 않음」 · 「n통 남김」 가운데 고른다');
+    }
+    if (Object.keys(out).length) s.inventory.agePolicy = out;
+    else delete s.inventory.agePolicy;
+    const text = AGE_BANDS.filter((b) => out[b.id]).map((b) => `${b.label} ${agePolicyRuleText(out[b.id])}`).join(' · ');
+    return { state: s, message: `띠 정책 — ${text || '제한 없음'} (자동 납품만 지킨다 · 손 병입 · 맡기기는 그대로)` };
+  },
   setAutoSample: (s, _prev, a) => {
     const x = a.settings;
     const clean: AutoSampleSettings = {};
@@ -232,7 +270,14 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     // [결정 #392] 채울 원액 — 보충으로 제품 값이 바뀌어도 따른다. 옹기 · 오크는 n개월 이상(1개월↑), 탱크는 0
     if (a.source !== undefined) {
       if (a.source === null) delete p.autoRestockSource;
-      else {
+      else if (isWhiskyCategory(p.category)) {
+        // [결정 #399] 위스키 — 통 범위(하한 ~ 상한) · 통 종류. 옛 하한(#267)은 지운다(이 값이 먼저)
+        if (!autoRestockRangeSelectable(s, p)) return fail(prev, '통 범위는 새 판의 싱글 몰트 · 그레인 위스키 제품에서 고른다');
+        const r = wholeRange(s, a.source);
+        if (typeof r === 'string') return fail(prev, r);
+        p.autoRestockSource = r;
+        delete p.autoRestockMinMonths;
+      } else {
         if (!autoRestockSourceSelectable(s, p)) return fail(prev, '채울 원액은 소주 · 진 · 고량주 제품에서만 고른다(새 판)');
         const { vessel } = a.source;
         const months = Math.floor(a.source.months);
@@ -242,13 +287,21 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
       }
     }
     // 쓸 통의 최소 숙성 (#267) — 위스키만, 법정 숙성 이상. 표기보다 높게도 된다(#297 ②). null/표기와 같으면 기본(표기)
-    if (a.minMonths !== undefined && isWhiskyCategory(p.category)) {
+    const range = whiskyRange(s, p);
+    if (a.minMonths != null && a.source === undefined && range) {
+      // [결정 #399] 통 범위를 고른 제품 — 옛 하한 고르기는 범위의 하한을 바꾼다
+      const r = wholeRange(s, { ...range, months: a.minMonths });
+      if (typeof r === 'string') return fail(prev, r);
+      p.autoRestockSource = r;
+    } else if (a.minMonths !== undefined && isWhiskyCategory(p.category)) {
       const legal = whiskyMinMonths(regionOf(s).whisky);
       const label = p.ageYears ? p.ageYears * 12 : legal;
       if (a.minMonths == null || Math.floor(a.minMonths) === label) delete p.autoRestockMinMonths;
       else if (a.minMonths < legal) return fail(prev, `위스키 통은 법정 숙성 ${legal}개월 이상이어야 합니다`);
       else p.autoRestockMinMonths = Math.floor(a.minMonths);
     }
+    const wr = whiskyRange(s, p);
+    if (wr) return { state: s, message: `${p.name} 자동 납품 — 목재 ${wr.months}개월 이상${wr.maxMonths != null ? ` ~ ${wr.maxMonths}개월 이하` : ''}${wr.caskTypes?.length ? ` · ${wr.caskTypes.map((t) => CASKS[t]?.nameKo ?? t).join(' · ')}` : ''} 통만, 어린 통부터 쓴다${agePolicyOf(s) ? ' (띠 정책도 지킨다)' : ''}` };
     if (p.autoRestockMinMonths != null) return { state: s, message: `${p.name} 자동 납품 — ${Math.floor(p.autoRestockMinMonths / 12)}년(${p.autoRestockMinMonths}개월) 이상 통부터 쓴다. ${p.autoRestockMinMonths > (p.ageYears ? p.ageYears * 12 : whiskyMinMonths(regionOf(s).whisky)) ? '표기보다 오래된 통만 쓴다 — 표기는 그대로이고, 더 어린 통은 표기가 긴 제품 몫으로 남는다' : '표기보다 어린 통이 섞이면 보충 때 표기가 그만큼 내려간다'}` };
     const vn = autoRestockVesselNeed(s, p);
     return { state: s, message: `${p.name} 자동 납품 켬 — 매달 판매 전에 재고를 약 ${a.months}개월분으로 채운다${p.ageYears ? ` (${p.ageYears}년 이상 숙성 통만, 표기에 가까운 통부터)` : isWhiskyCategory(p.category) ? ' (법정 숙성 이상 통만, 어린 통부터)' : vn ? ` (${vn.vessel === 'onggi' ? '옹기' : '오크 통'}에서 ${vn.months}개월 이상 쉰 같은 레시피 통만 — 탱크로 대신하지 않는다)` : ' (탱크 원액, 먼저 만든 것부터)'}` };
