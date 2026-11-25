@@ -8,7 +8,7 @@ import { AXIS } from '../../sim/content/axes';
 import { agePerception, calendar, estimateBlend, finishOf, type Cask, type CaskTypeId, hexOf, whiskyMinMonths, type ProfileAxis, type SpiritLot, priceAtQuality, weightedAverage, finishLabel, HEX_AXES, HEX_LABEL, knownReads, type Hex, DUTY_FREE, isWhiskyCategory, dutyFreeAgedAppeal, dutyFreeSlotBlocker, hasDutyFree, nextDutyFreeEdition, previewBlend, productDutyFreeDemand, demandFor, topNotes, type BlendComponent, type BottleOptions, type Product, type SpiritKind, type AxisId, type KnownRead, vesselMaterial, sampleAxesOf, restockable, monthLabel, skuSplitEqual, isCaskStrength, knownProductQuality, restockMix, restockPrior, recipeSharesOf, RESTOCK_PRIOR_SIGMA_FLOOR, batchQualityKnown, hidesProductQuality, restockFinishOff } from '../../sim';
 import { agedWhitePerception } from '../../sim/content/market';
 import { regionOf } from '../../sim/content/regions';
-import { STANDARD_BOTTLE, stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
+import { autoRestockCeiling, autoRestockFloor, autoRestockHint, handRestockCount, STANDARD_BOTTLE, stockMonthsAfter, STOCK_STRONG_WARN_MONTHS, STOCK_WARN_MONTHS } from '../../sim/economics';
 import { overhangFactor } from '../../sim/retail'; // 제품 재고 적체 → 수요 배수(시장이 쓰는 그 함수 — 9차 중간 기록: 오크소주 31.8개월 ×0.60이 어느 화면에도 없었다)
 import { protectedCaskIds, reserveCaskIds } from '../../sim/tags';
 import { campaignMinOakMonths, campaignWon, isFlagshipCandidate, rulesVersionOf } from '../../sim';
@@ -336,6 +336,13 @@ export function Bottling() {
             <div className="grid gap-1">
               <Select label="보충할 제품" value={restockTarget.id} options={(restockChoices.some((p) => p.id === restockTarget.id) ? restockChoices : [restockTarget, ...restockChoices]).map((p) => ({ value: p.id, label: `${p.name} · ${p.bottleMl}ml ${Math.round(p.abv * 1000) / 10}% · 재고 ${num(p.stockBottles)}병 · 품질 ${(() => { const k = knownProductQuality(s, p); return k.public ? p.quality : `추정 ${num(k.q, 1)}${k.sigma >= 0.5 ? ` ±${num(k.sigma, 1)}` : ''}`; })()} · ${monthLabel(s.startYear, p.createdMonth)} 출시` }))} onChange={(id) => { const t1 = s.commerce.products.find((p) => p.id === id); if (t1) pickRestock(t1); }} />
               <p className="text-xs text-stone-500">병·도수·포장은 「{restockTarget.name}」과 같게 맞춘다: {restockTarget.bottleMl}ml · {isCaskStrength(restockTarget) ? `캐스크 스트렝스(지금 ${Math.round(restockTarget.abv * 1000) / 10}% — 통마다 달라 병 수로 평균)` : `${Math.round(restockTarget.abv * 1000) / 10}%`} · {restockTarget.chillFiltered ? '칠 필터링' : '논칠필터'} · {PACKAGING[restockTarget.packagingId]?.nameKo ?? restockTarget.packagingId}. 이름·출고가({won(restockTarget.price)})·판매 기록은 그대로, 품질·향·원가는 남은 재고와 새 병 수로 평균 낸다.</p>
+              {/* [결정 #399 · #386 ④] 손 보충이 잦은 위스키 — 자동 납품이 있다는 것을 알린다(판매 탭 제품 줄에서 켠다 · 통 범위 · 띠 정책을 지킨다) */}
+              {autoRestockHint(s, restockTarget) && (() => {
+                const lo = autoRestockFloor(s, restockTarget);
+                const hi = autoRestockCeiling(s, restockTarget);
+                const yr = (m: number) => (m % 12 ? `${m}개월` : `${m / 12}년`);
+                return <p className="text-xs text-sky-700 dark:text-sky-400">최근 12개월 손으로 {handRestockCount(s, restockTarget)}번 보충했다 — 판매 탭 이 제품 줄에서 <b>자동 납품</b>을 켜면 매달 판매 전에 {yr(lo)} 이상{hi < Infinity ? ` ~ ${yr(hi)} 이하` : ''} 통으로 알아서 채운다(어린 통부터 · 띠 정책 · 보호 태그는 지킨다).</p>;
+              })()}
             </div>
           ) : (
             <>
