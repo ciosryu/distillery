@@ -140,6 +140,9 @@ export function simulateBatch(
   feintsInLPA: number,
   env?: BatchEnv,
 ): BatchResult {
+  // [제안 P-PROD-74] 증류기 형태(#417 · #418)는 위스키 원액(몰트 · 그레인)에만 — 소주 · 진 · 고량주는 카탈로그 증류기 값으로 증류한다.
+  // MGT 40시드(2026-11-25): 형태의 순자산 이득 대부분이 소주 품질(하향 +0.9 · 헤비 쉘 +1.4)에서 왔다. 오너 그림은 위스키 이야기다. 형태가 없으면 같은 객체(바이트 그대로)
+  if (r.kind !== 'malt' && r.kind !== 'grain' && still !== EQUIPMENT[still.id] && EQUIPMENT[still.id]?.kind === 'still') still = EQUIPMENT[still.id] as StillDef;
   const at = env?.regionId;
   const logi = (native?: string[]) => (at ? logisticsMultiplier(native, at) : 1) * (env?.freight ?? 1);
   const warnings: string[] = [];

@@ -5,7 +5,7 @@ import { EQUIPMENT } from '../../sim/content/catalog';
 import { refitPlan } from '../../sim/actions.prod';
 import { stillDefOf } from '../../sim/production';
 import { rulesVersionOf } from '../../sim/rules';
-import { batchWaterL, equipmentMaintenance, sameShape, shapeable, shapeOf, STILL_PART_LABELS, STILL_PART_NAMES, STILL_PARTS, STILL_SHAPE_PRESETS, stillParams, stillShapeNote } from '../../sim/stillShape';
+import { batchWaterL, equipmentMaintenance, sameShape, shapeable, shapeOf, STILL_PART_LABELS, STILL_PART_NAMES, STILL_PARTS, STILL_SHAPE_PRESETS, stillParams, STILL_SHAPE_SCOPE, stillShapeNote } from '../../sim/stillShape';
 import { waterPermitCap } from '../../sim/waterPermit';
 import type { EquipmentInstance, GameState, StillShape } from '../../sim/types';
 import { useGame } from '../../store/game';
@@ -48,7 +48,8 @@ export function StillRefit({ inst }: { inst: EquipmentInstance }) {
     <details className="rounded border border-stone-200 p-2 text-sm dark:border-stone-700">
       <summary className="cursor-pointer text-xs font-semibold text-stone-600 dark:text-stone-300">증류기 개조 — {def.nameKo} ({inst.id}) · 지금 {shapeText(cur)}</summary>
       <div className="mt-2 grid gap-2 [&>*]:min-w-0">
-        <div className="text-xs text-stone-500">지금 성격: {stillShapeNote(cur)}</div>
+        <div className="text-xs text-stone-500">지금 성격(위스키 원액): {stillShapeNote(cur)}</div>
+        <div className="text-xs text-stone-500">형태는 {STILL_SHAPE_SCOPE}</div>
         <div className="flex flex-wrap gap-1">
           {STILL_SHAPE_PRESETS.map((p) => (
             <Button key={p.id} small variant={sameShape(to, p.shape) ? 'primary' : 'secondary'} onClick={() => setDraft({ ...p.shape })} title={p.note}>{p.label}</Button>
@@ -91,8 +92,8 @@ function RefitPreview({ s, inst, def, from, to }: { s: GameState; inst: Equipmen
       <div>값 <b>{won(plan.cost)}</b> · 공사 <b>{plan.months}개월</b>(그동안 이 증류기로 증류하지 못한다)</div>
       <div>환류 {arrow(a.reflux, b.reflux)} · 구리 접촉 {arrow(a.copperContact, b.copperContact)} · 월 유지비 {arrow(won(ma), won(mb))} · 배치당 물 {arrow(`${batchWaterL(a).toLocaleString()}L`, `${batchWaterL(b).toLocaleString()}L`)}</div>
       {Number.isFinite(cap) && batchWaterL(b) !== batchWaterL(a) && <div>이 입지 취수 허가(월 {cap.toLocaleString()}L)로 월 최대 {Math.floor(cap / batchWaterL(a))} → <b>{Math.floor(cap / batchWaterL(b))}배치</b></div>}
-      <div>새 성격: {stillShapeNote(to)}</div>
-      <div className="text-stone-500">개조 뒤 새 원액도 같은 레시피로 쌓인다 — 맛이 달라지므로 자동 납품 · 블렌딩에서 개조 전 원액과 섞일 수 있다</div>
+      <div>새 성격(위스키 원액): {stillShapeNote(to)}</div>
+      <div className="text-stone-500">개조 뒤 새 위스키 원액은 이름에 스타일(라이트 · 미디엄 · 헤비)이 붙고, 탱크 · 자동 납품에서 개조 전 원액과 따로 간다. 손 병입 · 블렌딩으로 섞는 것은 그대로 된다</div>
     </div>
   );
 }

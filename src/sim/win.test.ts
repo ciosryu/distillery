@@ -58,10 +58,10 @@ describe('win: 미판매 running · 적격 실제 출고 1회 · 중복 0 ([결�
     expect(sNetWorthTarget(s, 146)).toBe(2_550_000_000);
     expect(sDelayMonths(s, 158)).toBe(12);
     expect(sNetWorthTarget(s, 158)).toBe(2_550_000_000 + 12 * GRADE.sDelayPerMonthV16.micro!);
-    expect(sNetWorthTarget(s)).toBe(2_550_000_000 + 5 * 25_000_000); // 기본 = 이번 달(150)에 팔면 판정 달 151 → 151 − 144 − 2
+    expect(sNetWorthTarget(s)).toBe(2_550_000_000 + 5 * 32_000_000); // 기본 = 이번 달(150)에 팔면 판정 달 151 → 151 − 144 − 2
     const std = newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'standard', loanAmount: 0, seed: 4 });
     std.progress.firstEligibleMonth = 144;
-    expect(sNetWorthTarget(std, 152)).toBe(2_000_000_000 + 6 * 18_000_000);
+    expect(sNetWorthTarget(std, 152)).toBe(2_000_000_000 + 6 * 25_000_000);
     const old = legacy(); old.progress.firstEligibleMonth = 144;
     expect(sNetWorthTarget(old, 180)).toBe(old.scenario!.equity * old.scenario!.goal.netWorthMultiple * GRADE.sNetWorthRatio);
     // 판정은 판정 달의 문턱을 적는다 — 같은 순자산이라도 미룬 판은 A
@@ -71,7 +71,7 @@ describe('win: 미판매 running · 적격 실제 출고 1회 · 중복 0 ([결�
     houseBrand(late).awareness = GRADE.sAwareness + 0.05;
     late.finance.cash = 2_550_000_000 + 1;
     const rl = report(late); sellFromLots(late, rl, 'P', 1, SALE); updateProgress(late, rl);
-    expect(late.progress.verdict).toMatchObject({ month: 151, grade: 'A', sNetWorthTarget: 2_550_000_000 + 19 * 25_000_000 });
+    expect(late.progress.verdict).toMatchObject({ month: 151, grade: 'A', sNetWorthTarget: 2_550_000_000 + 19 * 32_000_000 });
   });
 
   it('등급: 승리 달 순자산 ≥ S 문턱(#393) · 승리 로트 품질 ≥ 80 · 인지도 ≥ 20%면 S, 아니면 A — 핸드필 승리는 품질이 없어 A', () => {

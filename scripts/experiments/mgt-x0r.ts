@@ -20,6 +20,8 @@
 //   모든 벗이 목재 180개월이 되면 아는 오염 벗을 빼고 「셰리 15년」 새 제품으로 한 번에 병입(P8 bottleAs — 가격 · 판매는 봇 그대로) → 첫 출하 달에 재판정(#422). 승리는 따로(첫 12년 출시 그대로)
 // XR_CASK=oloroso_butt — [결정 #418 · PM 2026-11-25] 「채웠다 뺀 셰리 벗」 X0-R: refill 방식(XR_MODE 기본)의 통을 버번 배럴 대신 새 올로로소 벗 XR_BUTT_N개(기본 3)로.
 //   판 처음 벗을 주문(쿠퍼리지) → 도착하면 몰트 로트를 먼저 넣고(@hook:fill-lot) → XR_AT개월째(벗일 때 기본 6) 빼서 다시 넣어 2차 채움 셰리 벗(×0.6)으로 예비 꼬리표. 나머지(샘플 고르기 · 오염 떼기 · 병입 제외 · best 출시)는 같다
+// XR_REBOTTLE=1 — [결정 #427] 재판정 구멍 측정: 승리 다음 달(병입 앞) 남은 2차 채움 예비 통 가운데 아는 품질이 가장 좋은 적격 통 하나를
+//   「리필 12년 B」 새 제품으로 병입(P8 bottleAs) → 첫 출하 달에 재판정. 사람이 「승리 뒤 남은 좋은 통을 따로 낸다」를 흉내 낸다
 // 판마다 `#G {…}` 한 줄(grade-dist와 같은 칸 + 판정 달 설비 목록 `equip`([catalogId, 원가, 산 달 `boughtMonthOf`]) · 판 끝 상태 · X0-R 기록 `xr`)
 import { setP8Hooks } from './p8Hooks';
 import { applyAction } from '../../src/sim/actions';
@@ -60,10 +62,14 @@ if (process.env.XR_STILL && !STILL_PRESET) throw new Error(`XR_STILL 프리셋 �
 const SHAPE_OVERRIDE = process.env.XR_SHAPE ? (JSON.parse(process.env.XR_SHAPE) as Record<string, string>) : {};
 const SHERRY_N = Number(process.env.XR_SHERRY ?? 0);
 const SHERRY_AT = 180;
+const REBOTTLE = process.env.XR_REBOTTLE === '1';
+/** XR_REBOTTLE_OAK=180 — 다시 병입할 통의 목재 개월 하한(15년 길: 승리 뒤 그 통을 15년까지 두었다 낸다). 기본 0 = 승리 다음 달 */
+const REBOTTLE_OAK = Number(process.env.XR_REBOTTLE_OAK ?? 0);
+const rebottled = new Map<number, number>(); // seed → 다시 병입한 달
 const sherry = new Map<number, { set: Set<string>; launched?: number }>();
 
 type Verdict = { month: number; nw: number; q?: number; aw: number; grade?: string; sTarget?: number; fe?: number };
-interface Run { sherry?: { casks: string[]; launch?: number; q?: number; cost?: number }; best?: { grade?: string; month: number; q?: number }; pol: string; seed: number; target: number; v?: Verdict; retail: number; retailAtVerdict?: number; nwEnd: number; months: number; equip?: [string, number, number][]; status?: string; endMonth?: number; xr?: { mode?: string; buyCost?: number; casks: string[]; lostL: number; activity: number[]; bestOpen?: number; usedAtWin?: number; untagged?: string[]; sampled?: [string, number][]; autoOff?: string[] } }
+interface Run { sherry?: { casks: string[]; launch?: number; q?: number; cost?: number }; best?: { grade?: string; month: number; q?: number; nw?: number; aw?: number; age?: number; oak?: number }; pol: string; seed: number; target: number; v?: Verdict; retail: number; retailAtVerdict?: number; nwEnd: number; months: number; equip?: [string, number, number][]; status?: string; endMonth?: number; xr?: { mode?: string; buyCost?: number; casks: string[]; lostL: number; activity: number[]; bestOpen?: number; usedAtWin?: number; untagged?: string[]; sampled?: [string, number][]; autoOff?: string[] } }
 const runs = new Map<string, Run>();
 const refill = new Map<number, Set<string>>(); // seed → 2차 채움 예비 통
 const buyArrive = new Map<number, number>(); // seed → 리필 통 도착 달(buy)
@@ -226,6 +232,22 @@ function launchSherry(s: GameState, p: unknown, r: Run, api: { bottleAs: (s: Gam
   return s;
 }
 
+/** XR_REBOTTLE: 승리 뒤 남은 2차 채움 예비 통 하나(아는 품질 최고 · 적격 · 아는 오염 없음)를 새 제품으로 */
+function rebottle(s: GameState, p: unknown, r: Run, api: { bottleAs: (s: GameState, p: any, comps: { source: 'lot' | 'cask'; id: string; liters: number }[], base: { name: string; targetAbv: number; bottleMl: number; chillFilter: boolean; packagingId: string }, cat: 'whisky') => GameState }): GameState {
+  const set = refill.get(s.seed);
+  if (!set) { rebottled.set(s.seed, -1); return s; }
+  const known = knownReads(s);
+  const cands = s.inventory.casks.filter((c) => set.has(c.id) && c.contents && !c.contaminationKnown && caskEligibility(s, c).eligible && c.contents.oakMonths >= REBOTTLE_OAK)
+    .sort((a, b) => (known.get(b.id)?.estQuality ?? 0) - (known.get(a.id)?.estQuality ?? 0) || b.contents!.oakMonths - a.contents!.oakMonths);
+  const c = cands[0];
+  if (!c) { if (!REBOTTLE_OAK || !s.inventory.casks.some((x) => set.has(x.id) && x.contents)) rebottled.set(s.seed, -1); return s; } // 15년 길은 통이 그 나이가 될 때까지 기다린다
+  const before = s;
+  s = api.bottleAs(s, p, [{ source: 'cask', id: c.id, liters: c.contents!.volumeL }], { name: '리필 12년 B', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' }, 'whisky');
+  rebottled.set(s.seed, s !== before ? s.month : -1);
+  if (s !== before) (r as Run & { rebottle?: unknown }).rebottle = { month: s.month, cask: c.id, est: known.get(c.id)?.estQuality, q: [...s.commerce.products].reverse().find((x) => x.name.startsWith('리필 12년 B'))?.quality };
+  return s;
+}
+
 const runOf = (s: GameState, p: { name: string }, seed: number): Run => {
   const pol = p.name.split(' ')[0]!;
   const k = `${pol}:${seed}`;
@@ -242,6 +264,7 @@ setP8Hooks({
       let t = s;
       if (buyArrive.has(t.seed)) t = fillBought(t, runOf(t, p, t.seed));
       if (sherry.has(t.seed)) t = launchSherry(t, p, runOf(t, p, t.seed), api);
+      if (REBOTTLE && campaignWon(t) && !rebottled.has(t.seed)) t = rebottle(t, p, runOf(t, p, t.seed), api);
       return t === s ? undefined : t;
     },
   } : {}),
@@ -261,14 +284,16 @@ setP8Hooks({
   },
   // 곧바로 출시 = 첫 적격 달(결산에 적힘)의 다음 달 → DELAY개월 미룸 = 그 달 + DELAY부터(판정 달 − 첫 적격 달 − 2 = DELAY — progress.ts sDelayMonths)
   ...(DELAY > 0 || (XR && LAUNCH === 'best') ? { launchGate: (s: GameState) => launchOk(s) } : {}),
-  bottleSkip: (s: GameState, _p: unknown, c: Cask) => (XR && !campaignWon(s) && !!refill.get(s.seed)?.has(c.id)) || (sherry.get(s.seed)?.set.has(c.id) === true && sherry.get(s.seed)!.launched == null),
+  bottleSkip: (s: GameState, _p: unknown, c: Cask) => (XR && (!campaignWon(s) || (REBOTTLE_OAK > 0 && !rebottled.has(s.seed))) && !!refill.get(s.seed)?.has(c.id)) || (sherry.get(s.seed)?.set.has(c.id) === true && sherry.get(s.seed)!.launched == null),
   afterMonth: (s: GameState, p: { name: string }, m: number, seed: number) => {
     const r = runOf(s, p, seed);
     r.retail += s.history.reports.at(-1)?.retailDealRevenue ?? 0;
+    { const rep = s.history.reports.at(-1); (r as Run & { bulkRev?: number; bulkRevAtWin?: number }).bulkRev = ((r as Run & { bulkRev?: number }).bulkRev ?? 0) + (rep?.bulkRevenue ?? 0); } // 원액 B2B · 스팟 매출 누계(PROD 물음 — 형태별 뉴메이크 값)
     const v = s.progress.verdict;
     if (v && !r.v && v.result === 'heritage') {
       r.v = { month: v.month, nw: v.netWorth ?? netWorth(s), q: v.flagshipQuality, aw: v.awareness, grade: v.grade ?? undefined, sTarget: v.sNetWorthTarget, fe: s.progress.firstEligibleMonth };
       r.retailAtVerdict = r.retail;
+      (r as Run & { bulkRevAtWin?: number; bulkRev?: number }).bulkRevAtWin = (r as Run & { bulkRev?: number }).bulkRev ?? 0;
       r.equip = s.production.equipment.map((e) => [e.catalogId, (EQUIPMENT as Record<string, { cost?: number }>)[e.catalogId]?.cost ?? 0, boughtMonthOf(e)]); // [#1014] 산 달 — readyMonth는 수리 때 덮어쓴다
       if (r.xr && bestOpen.has(seed)) r.xr.bestOpen = bestOpen.get(seed);
       if (r.xr) r.xr.usedAtWin = r.xr.casks.filter((id) => !s.inventory.casks.find((c) => c.id === id)?.contents).length; // 승리 달까지 비워진(병입된) 2차 채움 통 수
@@ -278,7 +303,7 @@ setP8Hooks({
       if (sh) (r.sherry as Record<string, unknown>).sale = { month: s.month, nw: netWorth(s, s.month), target: sNetWorthTarget(s, s.month), aw: +awarenessOf(s).toFixed(3) };
     }
     const bv = s.progress.verdictBest; // [결정 #422] 재판정으로 오른 등급(있으면)
-    if (bv && !r.best) r.best = { grade: bv.grade ?? undefined, month: bv.rejudged.month, q: bv.flagshipQuality };
+    if (bv && !r.best) r.best = { grade: bv.grade ?? undefined, month: bv.rejudged.month, q: bv.flagshipQuality, nw: bv.netWorth ?? undefined, aw: bv.awareness ?? undefined, age: s.commerce.products.find((x) => x.id === bv.rejudged.productId)?.ageYears ?? undefined, oak: s.commerce.products.find((x) => x.id === bv.rejudged.productId)?.oakMonths }; // nw · 나이 — 다른 재판정 규칙(순자산 · 15년+)을 판 밖에서 다시 세려고
     if (s.status !== 'running' && r.status == null) { r.status = s.status; r.endMonth = m + 1; }
     r.nwEnd = netWorth(s);
     r.months = m + 1;

@@ -2,10 +2,10 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonth, applyAction } from './index';
 import { newScenarioGame } from './newScenario';
-import { evaluate, lotEvalCtx, YOUTH_SULFUR } from './flavor';
+import { evaluate, lotEvalCtx, YOUTH_SULFUR, YOUTH_WEIGHT } from './flavor';
 import { matureCask } from './maturation';
 import { emptyCaskOf } from './newGame';
-import { sameTank } from './production';
+import { sameTank, steadyBatch } from './production';
 import { tanninOutlook } from './warehouse';
 import { autoRestockSources } from './economics';
 import { DEFAULT_STILL_SHAPE, majorityShape, shapeWeight, STILL_SHAPE_PRESETS, stillStyleOf } from './stillShape';
@@ -45,6 +45,16 @@ describe('#422 (c) 저숙성 황 이취 — 형태를 고른 증류기 원액 ·
     expect(evaluate(f, 'whisky', { youthOakMonths: 60 })).toEqual(base);
     expect(evaluate(f, 'grain_whisky', { youthOakMonths: 36 })).toEqual(evaluate(f, 'grain_whisky'));
     expect(evaluate({ ...f, sulfur_meaty: 0.4 }, 'whisky', { youthOakMonths: 36 })).toEqual(evaluate({ ...f, sulfur_meaty: 0.4 }, 'whisky')); // 균형 원액 황은 문턱 아래
+  });
+  it('[P-PROD-73] 무거운 원액(바디 30 넘는 몫, 최대 5)도 어릴 때 감점 — 쉘로 황을 낮춰도 피하지 못한다 · 균형 바디는 0', () => {
+    const lowS = { ...f, sulfur_meaty: 0.4 };
+    const heavy = { ...lowS, body: 34 };
+    const d = evaluate(heavy, 'whisky', { youthOakMonths: 36 }).offnotes - evaluate(heavy, 'whisky').offnotes;
+    expect(d).toBeCloseTo(YOUTH_WEIGHT.k * 4 * (1 - 36 / 60), 1);
+    const capped = evaluate({ ...lowS, body: 50 }, 'whisky', { youthOakMonths: 36 }).offnotes - evaluate({ ...lowS, body: 50 }, 'whisky').offnotes;
+    expect(capped).toBeCloseTo(YOUTH_WEIGHT.k * YOUTH_WEIGHT.cap * (1 - 36 / 60), 1);
+    expect(evaluate({ ...lowS, body: 26 }, 'whisky', { youthOakMonths: 36 })).toEqual(evaluate({ ...lowS, body: 26 }, 'whisky'));
+    expect(evaluate(heavy, 'whisky', { youthOakMonths: 60 })).toEqual(evaluate(heavy, 'whisky'));
   });
   it('원액 맥락은 형태가 있을 때만', () => {
     expect(lotEvalCtx(lotOf({}))).toBeUndefined();
@@ -132,5 +142,40 @@ describe('#422 원액 형태 · 제품 스타일 · 개조 전후 가름', () =>
   it('기본 조합 형태(균형)도 형태가 있으니 미디엄 — 무게 0이라 반응 · 저숙성 황은 0', () => {
     expect(stillStyleOf(DEFAULT_STILL_SHAPE)).toBe('medium');
     expect(shapeWeight(DEFAULT_STILL_SHAPE)).toBe(0);
+  });
+});
+
+describe('[P-PROD-74] 증류기 형태는 위스키 원액에만 — 소주는 카탈로그 증류기 값', () => {
+  it('헤비 · 하향 형태여도 소주 배치는 형태 없음과 같다 · 몰트 뉴메이크는 달라진다', () => {
+    const plain = game();
+    for (const sh of [preset('heavy'), { ...DEFAULT_STILL_SHAPE, lineArm: 'down' as const }]) {
+      const s = game();
+      s.production.equipment.find((e) => e.id === 'E1')!.stillShape = sh;
+      const soju = s.production.recipes.find((r) => r.kind === 'soju')!;
+      const malt = s.production.recipes.find((r) => r.kind === 'malt')!;
+      expect(steadyBatch(s, soju)!.flavor).toEqual(steadyBatch(plain, soju)!.flavor);
+      expect(steadyBatch(s, malt)!.flavor).not.toEqual(steadyBatch(plain, malt)!.flavor);
+    }
+  });
+});
+
+describe('[결정 #430] 버번 × 에스테르 반응 — 버번 통 · 6년 뒤 · 가벼운 원액만', () => {
+  const lightFlavor: Flavor = { body: 15, oak_tannin: 40, integration: 60, fresh_fruit: 30, floral: 18 };
+  const step = (typeId: 'oloroso_butt' | 'ex_bourbon_barrel', lot: SpiritLot) => {
+    const c: Cask = { ...emptyCaskOf(game(), typeId), contents: lot };
+    return matureCask(c, { tempC: 12, humidity: 75 }, { control: 0 }).cask.contents!.flavor;
+  };
+  it('형태 있는 라이트 원액 · 버번 통 · 80개월 → 과일 · 꽃 · 어우러짐이 더 붙는다', () => {
+    const plain = step('ex_bourbon_barrel', lotOf(lightFlavor, { oakMonths: 80 }));
+    const shaped = step('ex_bourbon_barrel', lotOf(lightFlavor, { oakMonths: 80, stillShape: preset('light') }));
+    expect(shaped.fresh_fruit!).toBeGreaterThan(plain.fresh_fruit!);
+    expect(shaped.floral!).toBeGreaterThan(plain.floral!);
+    expect(shaped.integration!).toBeGreaterThan(plain.integration!);
+  });
+  it('6년 전 · 셰리 통 · 균형 바디(26)는 반응이 없다', () => {
+    expect(step('ex_bourbon_barrel', lotOf(lightFlavor, { oakMonths: 60, stillShape: preset('light') }))).toEqual(step('ex_bourbon_barrel', lotOf(lightFlavor, { oakMonths: 60 })));
+    expect(step('oloroso_butt', lotOf(lightFlavor, { oakMonths: 80, stillShape: preset('light') }))).toEqual(step('oloroso_butt', lotOf(lightFlavor, { oakMonths: 80 })));
+    const mid = { ...lightFlavor, body: 26 };
+    expect(step('ex_bourbon_barrel', lotOf(mid, { oakMonths: 80, stillShape: preset('balanced') }))).toEqual(step('ex_bourbon_barrel', lotOf(mid, { oakMonths: 80 })));
   });
 });

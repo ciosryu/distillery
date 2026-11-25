@@ -122,6 +122,8 @@ export const STILL_SHAPE_PRESETS: { id: string; label: string; note: string; sha
 ];
 
 /** 공개 성격 문구 — 형태 표에서만 만든다(원액 맛을 읽지 않는다 — I2) */
+/** [결정 #429] 형태가 닿는 범위 — 화면(개조 · 사업 계획서)이 성격 문구 옆에 적는다 */
+export const STILL_SHAPE_SCOPE = '위스키 원액(몰트 · 그레인)에만 닿는다 — 소주 · 진 · 고량주는 지금 증류기 값 그대로';
 export function stillShapeNote(shape: StillShape): string {
   const parts = [
     shape.body === 'short' ? '헤비 · 오일리 · 몰트 고소함' : shape.body === 'tall' ? '라이트 · 플로럴 · 시트러스' : '균형',
@@ -163,6 +165,12 @@ export function shapeWeight(shape: StillShape): number {
  * σ = 통 시즈닝 ÷ 카탈로그 시즈닝(1차 벗 1 · 2차 벗 약 0.35). 15 · 18년 「명작」(#422 (나))이 목표 — 12년은 70대 중반
  */
 export const SHERRY_BIND = { fromMonths: 96, tanninPerMonth: 0.5, integrationPerMonth: 0.25, bodyFrom: 30, bodySpan: 12, baseBody: 27 } as const;
+/**
+ * [결정 #430] 버번 × 에스테르 반응(라이트 원액 보상 L1) `[튜닝]` — 형태를 고른 증류기 원액이 버번 시즈닝 통에서 목재 `fromMonths`(6년)를 넘기면 매달
+ * 청사과 · 플로럴 · 어우러짐이 λ만큼 더 붙는다. λ = clamp((bodyTo − 바디) ÷ bodySpan, 0, 1) — 라이트(바디 약 15)는 1, 균형(약 26)은 0.
+ * 크기는 **작게**(#430: 리필 버번 12년 +1 ~ 2). 헤비 × 셰리(15 · 18년)의 짝 — 라이트 = 버번 10 ~ 12년
+ */
+export const BOURBON_ESTER = { fromMonths: 72, fruitPerMonth: 0.15, floralPerMonth: 0.12, integrationPerMonth: 0.3, bodyTo: 22, bodySpan: 6 } as const;
 
 /** 섞인 원액들의 형태 — LPA가 가장 많은 원액의 형태(형태 없는 원액이 가장 많으면 없음) */
 export function majorityShape(parts: readonly { lot: Pick<SpiritLot, 'stillShape'>; lpa: number }[]): StillShape | undefined {
