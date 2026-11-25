@@ -102,6 +102,17 @@ function wholeRange(s: GameState, src: NonNullable<Product['autoRestockSource']>
   return { vessel: 'oak', months, ...(max != null ? { maxMonths: max } : {}), ...(types.length ? { caskTypes: types } : {}), ...(q != null ? { minKnownQuality: q } : {}) };
 }
 
+/**
+ * [결정 #425] 옹기를 산 달 알림 — v16 · 「소주 → 옹기」 자동 통입이 꺼져 있으면 그 달 결산 메모에 한 줄을 남기고 행동 메시지에도 붙인다(상태: 결산 대기 메모만).
+ * 9차 판: 옹기 12개가 끝까지 비었다(오너 「자동으로 들어가는 줄 알았다」)
+ */
+function onggiBuyNote(s: GameState, material: string | undefined): string {
+  if (material !== 'onggi' || rulesVersionOf(s) === 'legacy-v15' || s.inventory.autoFill?.kinds?.includes('soju')) return '';
+  const note = '옹기는 자동 통입이 저절로 채우지 않는다 — 자동 통입에서 「소주 → 옹기」를 켜면 진행할 때 탱크 소주를 빈 옹기에 넣는다(탱크 소주로 파는 제품의 몫은 남긴다)';
+  queueReportNote(s, note);
+  return ` · ${note}`;
+}
+
 /** [결정 #393 N1] 리필 통 주문 이름 — 화면 · 메시지가 같이 쓴다 */
 export const REFILL_NAME = '한 번 쓴 버번 배럴 200L(리필)';
 /** [결정 #393 N1] 리필 통 한 개 값 — 그 지역 새 통 값 × `CASK_MARKET.refill.priceShare` `[튜닝]` */
@@ -242,7 +253,10 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     const clean: AutoFillSettings = {};
     if (x.everyMonths && [3, 6].includes(x.everyMonths)) clean.everyMonths = x.everyMonths;
     const kinds = [...new Set(x.kinds ?? [])].filter((k) => k === 'malt' || k === 'grain');
-    if (kinds.length === 1) clean.kinds = kinds;
+    // [결정 #425] 소주 → 옹기는 켜야 동작 · v16만. 몰트 · 그레인을 고르지 않은 채 소주만 넣으면 몰트 · 그레인은 넣지 않는다(kinds = ['soju'])
+    const soju = rulesVersionOf(s) !== 'legacy-v15' && (x.kinds ?? []).includes('soju');
+    if (soju) clean.kinds = [...(x.kinds?.some((k) => k === 'malt' || k === 'grain') ? kinds : []), 'soju'];
+    else if (kinds.length === 1) clean.kinds = kinds;
     if (x.prefer === 'used') clean.prefer = 'used';
     if (x.entryAbv != null && x.entryAbv >= 0.4 && x.entryAbv <= 0.75 && Math.abs(x.entryAbv - 0.635) > 1e-9) clean.entryAbv = Math.round(x.entryAbv * 1000) / 1000;
     s.inventory.autoFill = clean;
@@ -396,7 +410,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     s.finance.cash -= unit * qty;
     // 쿠퍼리지 정상 주문: 카탈로그가, 2개월 뒤 도착 (결정 #66)
     s.inventory.caskOrders.push({ id: nid(s, 'O'), typeId: a.caskType, qty, arriveMonth: s.month + cooperageLeadMonths(s), source: refill ? 'refill' : 'cooperage' }); // F6b: 납기 손잡이(Normal 2개월 그대로)
-    return { state: s, message: `${refill ? REFILL_NAME : def.nameKo} ${qty}개 쿠퍼리지 주문 — ${cooperageLeadMonths(s)}개월 뒤 도착` };
+    return { state: s, message: `${refill ? REFILL_NAME : def.nameKo} ${qty}개 쿠퍼리지 주문 — ${cooperageLeadMonths(s)}개월 뒤 도착${onggiBuyNote(s, def.material)}` };
   },
   buySpotCasks: (s, prev, a) => {
     const def = CASKS[a.caskType];
@@ -422,7 +436,7 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
       c.activityKnown = rng.chance(observe / 120);
       s.inventory.casks.push(c);
     }
-    return { state: s, message: `스팟 마켓에서 ${def.nameKo} ${qty}개 즉시 매입 (개당 ${unit.toLocaleString()}원)${duds && observe >= 60 ? ` — QC가 의심스러운 통 ${duds}개를 지적` : ''}` };
+    return { state: s, message: `스팟 마켓에서 ${def.nameKo} ${qty}개 즉시 매입 (개당 ${unit.toLocaleString()}원)${duds && observe >= 60 ? ` — QC가 의심스러운 통 ${duds}개를 지적` : ''}${onggiBuyNote(s, def.material)}` };
   },
   orderSeasoning: (s, prev, a) => {
     const def = CASKS[a.caskType];
