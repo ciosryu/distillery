@@ -63,11 +63,13 @@ const SHAPE_OVERRIDE = process.env.XR_SHAPE ? (JSON.parse(process.env.XR_SHAPE) 
 const SHERRY_N = Number(process.env.XR_SHERRY ?? 0);
 const SHERRY_AT = 180;
 const REBOTTLE = process.env.XR_REBOTTLE === '1';
+/** XR_REBOTTLE_OAK=180 — 다시 병입할 통의 목재 개월 하한(15년 길: 승리 뒤 그 통을 15년까지 두었다 낸다). 기본 0 = 승리 다음 달 */
+const REBOTTLE_OAK = Number(process.env.XR_REBOTTLE_OAK ?? 0);
 const rebottled = new Map<number, number>(); // seed → 다시 병입한 달
 const sherry = new Map<number, { set: Set<string>; launched?: number }>();
 
 type Verdict = { month: number; nw: number; q?: number; aw: number; grade?: string; sTarget?: number; fe?: number };
-interface Run { sherry?: { casks: string[]; launch?: number; q?: number; cost?: number }; best?: { grade?: string; month: number; q?: number }; pol: string; seed: number; target: number; v?: Verdict; retail: number; retailAtVerdict?: number; nwEnd: number; months: number; equip?: [string, number, number][]; status?: string; endMonth?: number; xr?: { mode?: string; buyCost?: number; casks: string[]; lostL: number; activity: number[]; bestOpen?: number; usedAtWin?: number; untagged?: string[]; sampled?: [string, number][]; autoOff?: string[] } }
+interface Run { sherry?: { casks: string[]; launch?: number; q?: number; cost?: number }; best?: { grade?: string; month: number; q?: number; nw?: number; aw?: number; age?: number; oak?: number }; pol: string; seed: number; target: number; v?: Verdict; retail: number; retailAtVerdict?: number; nwEnd: number; months: number; equip?: [string, number, number][]; status?: string; endMonth?: number; xr?: { mode?: string; buyCost?: number; casks: string[]; lostL: number; activity: number[]; bestOpen?: number; usedAtWin?: number; untagged?: string[]; sampled?: [string, number][]; autoOff?: string[] } }
 const runs = new Map<string, Run>();
 const refill = new Map<number, Set<string>>(); // seed → 2차 채움 예비 통
 const buyArrive = new Map<number, number>(); // seed → 리필 통 도착 달(buy)
@@ -235,10 +237,10 @@ function rebottle(s: GameState, p: unknown, r: Run, api: { bottleAs: (s: GameSta
   const set = refill.get(s.seed);
   if (!set) { rebottled.set(s.seed, -1); return s; }
   const known = knownReads(s);
-  const cands = s.inventory.casks.filter((c) => set.has(c.id) && c.contents && !c.contaminationKnown && caskEligibility(s, c).eligible)
+  const cands = s.inventory.casks.filter((c) => set.has(c.id) && c.contents && !c.contaminationKnown && caskEligibility(s, c).eligible && c.contents.oakMonths >= REBOTTLE_OAK)
     .sort((a, b) => (known.get(b.id)?.estQuality ?? 0) - (known.get(a.id)?.estQuality ?? 0) || b.contents!.oakMonths - a.contents!.oakMonths);
   const c = cands[0];
-  if (!c) { rebottled.set(s.seed, -1); return s; }
+  if (!c) { if (!REBOTTLE_OAK || !s.inventory.casks.some((x) => set.has(x.id) && x.contents)) rebottled.set(s.seed, -1); return s; } // 15년 길은 통이 그 나이가 될 때까지 기다린다
   const before = s;
   s = api.bottleAs(s, p, [{ source: 'cask', id: c.id, liters: c.contents!.volumeL }], { name: '리필 12년 B', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' }, 'whisky');
   rebottled.set(s.seed, s !== before ? s.month : -1);
@@ -282,7 +284,7 @@ setP8Hooks({
   },
   // 곧바로 출시 = 첫 적격 달(결산에 적힘)의 다음 달 → DELAY개월 미룸 = 그 달 + DELAY부터(판정 달 − 첫 적격 달 − 2 = DELAY — progress.ts sDelayMonths)
   ...(DELAY > 0 || (XR && LAUNCH === 'best') ? { launchGate: (s: GameState) => launchOk(s) } : {}),
-  bottleSkip: (s: GameState, _p: unknown, c: Cask) => (XR && !campaignWon(s) && !!refill.get(s.seed)?.has(c.id)) || (sherry.get(s.seed)?.set.has(c.id) === true && sherry.get(s.seed)!.launched == null),
+  bottleSkip: (s: GameState, _p: unknown, c: Cask) => (XR && (!campaignWon(s) || (REBOTTLE_OAK > 0 && !rebottled.has(s.seed))) && !!refill.get(s.seed)?.has(c.id)) || (sherry.get(s.seed)?.set.has(c.id) === true && sherry.get(s.seed)!.launched == null),
   afterMonth: (s: GameState, p: { name: string }, m: number, seed: number) => {
     const r = runOf(s, p, seed);
     r.retail += s.history.reports.at(-1)?.retailDealRevenue ?? 0;
@@ -299,7 +301,7 @@ setP8Hooks({
       if (sh) (r.sherry as Record<string, unknown>).sale = { month: s.month, nw: netWorth(s, s.month), target: sNetWorthTarget(s, s.month), aw: +awarenessOf(s).toFixed(3) };
     }
     const bv = s.progress.verdictBest; // [결정 #422] 재판정으로 오른 등급(있으면)
-    if (bv && !r.best) r.best = { grade: bv.grade ?? undefined, month: bv.rejudged.month, q: bv.flagshipQuality };
+    if (bv && !r.best) r.best = { grade: bv.grade ?? undefined, month: bv.rejudged.month, q: bv.flagshipQuality, nw: bv.netWorth ?? undefined, aw: bv.awareness, age: s.commerce.products.find((x) => x.id === bv.rejudged.productId)?.ageYears, oak: s.commerce.products.find((x) => x.id === bv.rejudged.productId)?.oakMonths }; // nw · 나이 — 다른 재판정 규칙(순자산 · 15년+)을 판 밖에서 다시 세려고
     if (s.status !== 'running' && r.status == null) { r.status = s.status; r.endMonth = m + 1; }
     r.nwEnd = netWorth(s);
     r.months = m + 1;
