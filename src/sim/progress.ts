@@ -48,8 +48,8 @@ export function netWorthLegacy(s: GameState): number {
  * 순자산 (#146·#317) — 새 판(v16, 샌드박스 포함)은 **처분 예상액**(`valuation.ts liquidationValue` — 통 원액은 관측 품질 q̂, 병 재고 초과분 할인, 선급 의무 부채),
  * 옛 판(`legacy-v15`)은 지금 식(`netWorthLegacy`, 참 품질 현물가 — 바이트 동일). 구기준선과는 `netWorthLegacy`로만 비교한다(P-MGT-47 리스크)
  */
-export function netWorth(s: GameState): number {
-  return usesObservedValuation(s) ? liquidationValue(s) : netWorthLegacy(s);
+export function netWorth(s: GameState, atMonth: number = s.month): number {
+  return usesObservedValuation(s) ? liquidationValue(s, atMonth) : netWorthLegacy(s); // atMonth: 설비 처분가 감가 기준 달(#398 — 결산이 다음 달 값을 적는다)
 }
 
 /** 이번 달에 처음 일어난 일 — 이미 기록한 마일스톤은 다시 보지 않는다 */

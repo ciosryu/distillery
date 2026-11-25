@@ -20,6 +20,7 @@ import { tanninOutlook } from '../sim/warehouse'; // P-PROD-66 a·b (PROD 계산
 import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
 import { equipmentCost } from '../sim/sites';
+import { equipmentSalvage } from '../sim/valuation'; // [결정 #398]
 import { caskSlots, pendingOrderSlots, slotsDifferFromCasks, slotsUsed, GRADE, campaignMinOakMonths, campaignWon, caskTagIds, HINT_HORIZON_MONTHS, rulesVersionOf, reserveCaskIds, isLocked, monthLabel, netWorth, regionalCaskPrice, warehouseCapacity, whiskyMinMonths, type Cask, type CaskTypeId, type GameState, type SpiritLot } from '../sim';
 import { useGame } from '../store/game';
 import { markFacilitiesSeen, useUnseenFacilities } from './seenFacilities'; // #388 ① A3
@@ -218,7 +219,8 @@ function Headline() {
   const nw = netWorth(s);
   const loans = s.finance.loans.reduce((t, l) => t + l.balance, 0);
   // 재고 평가액 = 순자산 중 원액 현물가 + 제품 재고 원가 (progress.netWorth의 나머지 항을 빼서 얻는다)
-  const inv = nw - s.finance.cash + loans - s.finance.receivables.reduce((t, r) => t + r.amount, 0);
+  const salvage = equipmentSalvage(s); // [결정 #398] 설비 처분가(v16 — 순자산에 들어 있다)
+  const inv = nw - s.finance.cash + loans - s.finance.receivables.reduce((t, r) => t + r.amount, 0) - salvage;
   const sc = s.scenario;
   const target = sc ? sc.equity * sc.goal.netWorthMultiple : null;
   const run = runway(s);
@@ -252,7 +254,7 @@ function Headline() {
           hint={run.months != null ? `이 속도면 약 ${run.months}개월 버팀` : run.avg != null ? '자체 현금 흐름 흑자' : '기록 없음'} />
         {/* 순자산·재고 평가액은 참 품질 합계라 100만 원 단위로만 보인다 ([결정 #310] 1단계 — architecture §11.4 안 A, I3). 현금·대출·목표는 그대로 */}
         <Stat label="순자산" value={wonCoarse(nw)} tone={target != null && nw >= target ? 'good' : undefined}
-          hint={target == null ? '현금 − 대출 + 재고 평가액' : legacyRules ? `목표 ${won(target)}의 ${pct(nw / target, 0)}` : `성과 지표(승리 조건 아님) · S 등급 기준 ${won(target * GRADE.sNetWorthRatio)}의 ${pct(nw / (target * GRADE.sNetWorthRatio), 0)}`} />
+          hint={target == null ? `현금 − 대출 + 재고 평가액${salvage ? ` + 설비 처분가 ${wonCoarse(salvage)}` : ''}` : salvage ? `설비 처분가 ${wonCoarse(salvage)} 포함(산 값의 30%에서 감가) · ${legacyRules ? `목표 ${won(target)}의 ${pct(nw / target, 0)}` : `성과 지표(승리 조건 아님) · S 등급 기준 ${won(target * GRADE.sNetWorthRatio)}의 ${pct(nw / (target * GRADE.sNetWorthRatio), 0)}`}` : legacyRules ? `목표 ${won(target)}의 ${pct(nw / target, 0)}` : `성과 지표(승리 조건 아님) · S 등급 기준 ${won(target * GRADE.sNetWorthRatio)}의 ${pct(nw / (target * GRADE.sNetWorthRatio), 0)}`} />
         <Stat label="재고 평가액" value={wonCoarse(inv)} hint="원액 현물가 + 제품 재고 원가 (소주 원액 0) · 100만 원 단위" />
         <Stat label="대출 잔액" value={won(loans)} hint={loans ? `${s.finance.loans.length}건` : '없음'} />
         <Stat label="가장 오래된 자체 원액" value={months(oldest)} tone={oldest >= flagMin ? 'good' : sc && !flagDone && noMoreNew && cands === 0 ? 'bad' : undefined}
