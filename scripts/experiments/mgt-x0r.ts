@@ -18,6 +18,8 @@
 // XR_STILL=light|heavy|balanced — [결정 #417 · #418] 판을 만든 직후 증류기에 형태 프리셋(PROD STILL_SHAPE_PRESETS)을 넣는다(사업 계획서에서 고르는 것과 같음)
 // XR_SHERRY=n — [결정 #418 · #422] 「셰리 15년 명작」 길: 판 처음 새 올로로소 벗 n개를 주문(쿠퍼리지) → 도착한 뒤 몰트 로트 통입을 이 벗에 먼저 한다(@hook:fill-lot — 다 차면 P8 그대로). 15년(목재 180개월) 전에는 어떤 병입도 쓰지 않는다(@hook:bottle-skip).
 //   모든 벗이 목재 180개월이 되면 아는 오염 벗을 빼고 「셰리 15년」 새 제품으로 한 번에 병입(P8 bottleAs — 가격 · 판매는 봇 그대로) → 첫 출하 달에 재판정(#422). 승리는 따로(첫 12년 출시 그대로)
+// XR_CASK=oloroso_butt — [결정 #418 · PM 2026-11-25] 「채웠다 뺀 셰리 벗」 X0-R: refill 방식(XR_MODE 기본)의 통을 버번 배럴 대신 새 올로로소 벗 XR_BUTT_N개(기본 3)로.
+//   판 처음 벗을 주문(쿠퍼리지) → 도착하면 몰트 로트를 먼저 넣고(@hook:fill-lot) → XR_AT개월째(벗일 때 기본 6) 빼서 다시 넣어 2차 채움 셰리 벗(×0.6)으로 예비 꼬리표. 나머지(샘플 고르기 · 오염 떼기 · 병입 제외 · best 출시)는 같다
 // 판마다 `#G {…}` 한 줄(grade-dist와 같은 칸 + 판정 달 설비 목록 `equip`([catalogId, 원가, 산 달 `boughtMonthOf`]) · 판 끝 상태 · X0-R 기록 `xr`)
 import { setP8Hooks } from './p8Hooks';
 import { applyAction } from '../../src/sim/actions';
@@ -33,7 +35,11 @@ import type { GameState } from '../../src/sim';
 import type { Cask } from '../../src/sim/types';
 
 const XR = process.env.XR === '1';
-const AT = Number(process.env.XR_AT ?? 3);
+/** [PM 2026-11-25] X0-R 통 종류 — 기본 버번 배럴 · oloroso_butt = 채웠다 뺀 셰리 벗 */
+const XR_CASK = (process.env.XR_CASK ?? 'ex_bourbon_barrel') as 'ex_bourbon_barrel' | 'oloroso_butt';
+const BUTT_N = Number(process.env.XR_BUTT_N ?? 3);
+const buttFill = new Map<number, Set<string>>(); // seed → 첫 채움을 기다리는 새 벗(XR_CASK=oloroso_butt)
+const AT = Number(process.env.XR_AT ?? (XR_CASK === 'oloroso_butt' ? 6 : 3));
 const N = Number(process.env.XR_N ?? 99); // 기본 = XR_AT 전에 넣은 첫 채움 버번 전부(가장 오래된 통이 모두 2차 채움이어야 승리 출시 — 목재 긴 순 — 가 첫 채움을 섞지 않는다)
 /** 승리 출시 전 예비 통 샘플 달 · 뺄 차이(아는 품질이 가장 좋은 통보다 이만큼 낮으면 예비에서 뺀다) */
 const PICK = Number(process.env.XR_PICK ?? 138);
@@ -63,7 +69,7 @@ const bestOpen = new Map<number, number>(); // seed → best 문이 처음 열�
 
 /** XR_AT 전에 통입한 첫 채움 버번 배럴 — 통입 이른 순 · id 순 */
 const firstFillBourbon = (s: GameState): Cask[] => s.inventory.casks
-  .filter((c) => c.contents && !c.owner && c.typeId === 'ex_bourbon_barrel' && c.contents.kind === 'malt' && c.activity >= 0.99 && (c.filledMonth ?? s.month) < s.month)
+  .filter((c) => c.contents && !c.owner && c.typeId === XR_CASK && (XR_CASK === 'ex_bourbon_barrel' || !!buttFill.get(s.seed)?.has(c.id)) && c.contents.kind === 'malt' && c.activity >= 0.99 && (c.filledMonth ?? s.month) < s.month)
   .sort((a, b) => (a.filledMonth ?? 0) - (b.filledMonth ?? 0) || a.id.localeCompare(b.id));
 
 function prepareRefill(s: GameState, r: Run): GameState {
@@ -173,7 +179,22 @@ function onCreate(s: GameState, r: Run): GameState {
     if (!a.error) { s = a.state; sherry.set(s.seed, { set: new Set() }); r.sherry = { casks: [], cost: cash - s.finance.cash }; }
   }
   if (XR && MODE === 'buy') s = orderRefill(s, r);
+  if (XR && MODE === 'refill' && XR_CASK === 'oloroso_butt') {
+    const a = applyAction(s, { type: 'buyCasks', caskType: 'oloroso_butt', qty: BUTT_N });
+    if (!a.error) { s = a.state; buttFill.set(s.seed, new Set()); }
+  }
   return s;
+}
+
+/** XR_CASK=oloroso_butt: 도착한 새 벗(빈 · 0회 사용)에 몰트 로트를 먼저 넣는다(@hook:fill-lot) — XR_AT 전까지 */
+function fillButt(s: GameState, lot: { id: string }): GameState | undefined {
+  const set = buttFill.get(s.seed);
+  if (!set || s.month >= AT) return undefined;
+  for (const c of s.inventory.casks) if (set.size < BUTT_N && !set.has(c.id) && !c.contents && c.typeId === 'oloroso_butt' && c.fills === 0) set.add(c.id);
+  const ids = s.inventory.casks.filter((c) => set.has(c.id) && !c.contents && !c.contaminationKnown).map((c) => c.id);
+  if (!ids.length) return undefined;
+  const f = applyAction(s, { type: 'fillCasks', lotId: lot.id, caskIds: ids, entryAbv: 0.635 });
+  return f.error ? undefined : f.state;
 }
 
 /** P8 몰트 로트 통입 대신(@hook:fill-lot): 도착한 새 셰리 벗(빈 · 0회 사용)이 남아 있으면 이 로트를 먼저 넣는다. 다 찼으면 P8 그대로 */
@@ -212,9 +233,9 @@ const runOf = (s: GameState, p: { name: string }, seed: number): Run => {
 };
 
 setP8Hooks({
-  ...((XR && MODE === 'buy') || STILL_PRESET || SHERRY_N > 0 ? {
+  ...((XR && MODE === 'buy') || (XR && XR_CASK === 'oloroso_butt') || STILL_PRESET || SHERRY_N > 0 ? {
     afterCreate: (s: GameState, p: { name: string }, seed: number) => onCreate(s, runOf(s, p, seed)),
-    fillLot: (s: GameState, p: { name: string }, lot: { id: string }) => (sherry.has(s.seed) ? fillSherry(s, lot, runOf(s, p, s.seed)) : undefined),
+    fillLot: (s: GameState, p: { name: string }, lot: { id: string }) => (buttFill.has(s.seed) ? fillButt(s, lot) : undefined) ?? (sherry.has(s.seed) ? fillSherry(s, lot, runOf(s, p, s.seed)) : undefined),
     beforeBottle: (s: GameState, p: { name: string }, _m: number, api: any) => {
       let t = s;
       if (buyArrive.has(t.seed)) t = fillBought(t, runOf(t, p, t.seed));
@@ -261,7 +282,7 @@ setP8Hooks({
     r.months = m + 1;
   },
   atEnd: () => {
-    for (const r of runs.values()) console.log('#G ' + JSON.stringify({ mode: XR ? 'x0r' : 'base', tier: process.env.TIER, xrAt: AT, xrN: N, ...(DELAY ? { delay: DELAY } : {}), ...(XR ? { xrMode: MODE, launch: LAUNCH } : {}), ...(STAFF_TASK ? { staffTask: STAFF_TASK } : {}), ...(STILL_PRESET ? { still: STILL_PRESET.id } : {}), ...(SHERRY_N ? { sherryN: SHERRY_N } : {}), ...r }));
+    for (const r of runs.values()) console.log('#G ' + JSON.stringify({ mode: XR ? 'x0r' : 'base', tier: process.env.TIER, xrAt: AT, xrN: N, ...(DELAY ? { delay: DELAY } : {}), ...(XR ? { xrMode: MODE, launch: LAUNCH } : {}), ...(STAFF_TASK ? { staffTask: STAFF_TASK } : {}), ...(STILL_PRESET ? { still: STILL_PRESET.id } : {}), ...(SHERRY_N ? { sherryN: SHERRY_N } : {}), ...(XR_CASK !== 'ex_bourbon_barrel' ? { xrCask: XR_CASK, buttN: BUTT_N } : {}), ...r }));
   },
 });
 process.env.P8 = '1';
