@@ -21,7 +21,8 @@ import { validateRecipe } from './production';
 import { equipmentCost } from './sites';
 import { applyWaterPermit } from './waterPermit';
 import { HANDFILL, handfillBlocker } from './handfill';
-import type { AgePolicy, AutoFillSettings, AutoSampleSettings, Cask, CaskTypeId, GameState, Product, Recipe } from './types';
+import type { AgePolicy, AutoFillSettings, AutoSampleSettings, Cask, CaskTypeId, GameState, Product, Recipe, StillShape } from './types';
+import { catalogShapeOf, refitQuote, sameShape, shapeable, shapeOf, STILL_PART_LABELS, STILL_PART_NAMES, STILL_PARTS } from './stillShape';
 import { nid, pendingOrderSlots, queueReportNote, slotsFor, slotsUsed, staffOf, warehouseCapacity } from './util';
 import { fail, type CashKeys, type Handlers } from './actionKit';
 import { addCost, scaleLedger, splitLedger } from './ledger';
@@ -44,6 +45,8 @@ export type ProdAction =
   | { type: 'saveRecipe'; recipe: Omit<Recipe, 'id'> & { id?: string } }
   | { type: 'deleteRecipe'; recipeId: string }
   | { type: 'buyEquipment'; catalogId: string }
+  /** [결정 #418] 단식 증류기 개조 — 형태(본체 · 라인 암 · 특수 옵션 · 응축기)를 바꾼다. 바꾼 부품 값 · 공사 기간(그동안 증류 정지) · v16만 */
+  | { type: 'refitStill'; equipmentId: string; shape: StillShape }
   | { type: 'buyCasks'; caskType: CaskTypeId; qty: number; /** [결정 #393 N1] 한 번 쓴 통(리필)으로 주문 — ex-버번만 · v16 */ refill?: boolean }
   | { type: 'fillCasks'; lotId: string; caskIds: string[]; entryAbv: number; warehouseId?: string }
   /** 스팟 마켓: 즉시 입고·웃돈·골빈 통 위험 */
@@ -102,6 +105,28 @@ function wholeRange(s: GameState, src: NonNullable<Product['autoRestockSource']>
   return { vessel: 'oak', months, ...(max != null ? { maxMonths: max } : {}), ...(types.length ? { caskTypes: types } : {}), ...(q != null ? { minKnownQuality: q } : {}) };
 }
 
+/**
+ * [결정 #418] 증류기 개조 견적 — 바꾸는 부품 · 값(입지 건설비 배수 반영) · 공사 개월과, 지금 개조할 수 없는 사유(없으면 null). 화면 · 행동이 같이 쓴다(상태 불변).
+ * 막는 곳: 옛 판 · 단식(양파형 · 랜턴형)이 아님 · 설치 · 수리 · 개조 중 · 바꾸는 부품 없음 · 위탁생산 전용 증류기 · 현금 · 형태 값이 틀림
+ */
+export function refitPlan(s: GameState, equipmentId: string, shape: StillShape): { parts: (keyof StillShape)[]; cost: number; months: number; blocker: string | null } {
+  const inst = s.production.equipment.find((e) => e.id === equipmentId);
+  const def = inst ? EQUIPMENT[inst.catalogId] : undefined;
+  const none = (blocker: string) => ({ parts: [], cost: 0, months: 0, blocker });
+  if (!inst || !def || def.kind !== 'still') return none('증류기가 아닙니다');
+  if (rulesVersionOf(s) === 'legacy-v15') return none('증류기 개조는 새 판에서만 할 수 있습니다');
+  if (!shapeable(def)) return none('개조는 단식 증류기(양파형 · 랜턴형)만 됩니다');
+  if (!STILL_PARTS.every((k) => (shape?.[k] ?? '') in STILL_PART_LABELS[k])) return none('알 수 없는 형태');
+  const q = refitQuote(shapeOf(def, inst), shape);
+  const cost = Math.round(q.baseCost * (equipmentCost(s, def) / def.cost));
+  const plan = { parts: q.parts, cost, months: q.months };
+  if (!q.parts.length) return { ...plan, blocker: '지금 형태와 같습니다' };
+  if (inst.readyMonth > s.month) return { ...plan, blocker: inst.refitUntil != null ? '개조 공사 중입니다' : inst.repairUntil != null ? '수리 중입니다' : '설치 중입니다' };
+  if (s.b2b.oemContracts.some((c) => c.stillId === inst.id)) return { ...plan, blocker: '위탁생산 전용 증류기는 계약 중 개조할 수 없습니다' };
+  if (s.finance.cash < cost) return { ...plan, blocker: '현금이 부족합니다' };
+  return { ...plan, blocker: null };
+}
+
 /** [결정 #393 N1] 리필 통 주문 이름 — 화면 · 메시지가 같이 쓴다 */
 export const REFILL_NAME = '한 번 쓴 버번 배럴 200L(리필)';
 /** [결정 #393 N1] 리필 통 한 개 값 — 그 지역 새 통 값 × `CASK_MARKET.refill.priceShare` `[튜닝]` */
@@ -137,6 +162,7 @@ export const PROD_CASH_KEY: CashKeys<ProdAction> = {
   fillCasks: null,
   dumpCask: null,
   buyEquipment: 'equipment',
+  refitStill: 'equipment',
   buyCasks: 'casks',
   buySpotCasks: 'casks',
   orderSeasoning: 'casks',
@@ -377,6 +403,21 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     s.finance.cash -= cost;
     s.production.equipment.push({ id: nid(s, 'E'), catalogId: def.id, readyMonth: s.month + def.leadMonths, boughtMonth: s.month, ...(def.kind === 'still' ? { feintsLPA: 0 } : {}) }); // boughtMonth: #388 ① G4 감가 나이(ARCH 코어 PR · PROD 동의)
     return { state: s, message: `${def.nameKo} 발주 — ${def.leadMonths}개월 후 설치` };
+  },
+  refitStill: (s, prev, a) => {
+    const plan = refitPlan(s, a.equipmentId, a.shape);
+    if (plan.blocker) return fail(prev, plan.blocker);
+    const inst = s.production.equipment.find((e) => e.id === a.equipmentId)!;
+    const def = EQUIPMENT[inst.catalogId] as Extract<(typeof EQUIPMENT)[string], { kind: 'still' }>;
+    s.finance.cash -= plan.cost;
+    const shape: StillShape = { body: a.shape.body, lineArm: a.shape.lineArm, option: a.shape.option, condenser: a.shape.condenser };
+    // 양파형을 기본 조합으로 되돌리면 필드를 지운다 — 카탈로그 값과 같다(증류 바이트 동일). 랜턴형은 톨의 가벼운 향 배수가 카탈로그에 없어 필드로 남긴다
+    if (def.stillType === 'pot_onion' && sameShape(shape, catalogShapeOf(def))) delete inst.stillShape;
+    else inst.stillShape = shape;
+    inst.readyMonth = s.month + plan.months;
+    inst.refitUntil = inst.readyMonth;
+    const what = plan.parts.map((k) => `${STILL_PART_NAMES[k]} ${STILL_PART_LABELS[k][shape[k] as never]}`).join(' · ');
+    return { state: s, message: `${def.nameKo} 개조 — ${what} · ${plan.months}개월 공사(그동안 증류 정지)` };
   },
   buyCasks: (s, prev, a) => {
     const def = CASKS[a.caskType];
