@@ -300,3 +300,62 @@ describe('통에서 쉬지 않은 제품 — 「캐스크」 문장 없음 (PM 2
     expect(n).toBeGreaterThan(50);
   });
 });
+
+describe('어긋난 글 셋 (9차 159개월 · PM 2026-11-25)', () => {
+  it('고연수 · 고가(12년 · 30만 원)에는 입문 · 하이볼 글이 없고, 값이 내리지 않은 달에는 「할인」 · 「행사」 글이 없다', async () => {
+    const C = await import('./content/feed');
+    let n = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      for (const x of feedFor(world([product({ id: 'w', name: '김포 시그니처 12년', quality: 56, price: 300_000, ageYears: 12, oakMonths: 144 })], 3, 300, seed), 3, 100)) {
+        if (x.productName.includes(' vs ')) continue;
+        n++;
+        const { FEED_KIND_LINES } = C;
+        const starterOrMixer = [...(FEED_KIND_LINES.dc_whisky.starter ?? []), ...(FEED_KIND_LINES.dc_jugal.mixer ?? [])].map((l) => l.replace(/\{\w+\}\S*/g, '').trim().slice(0, 8)).filter((s) => s.length >= 4);
+        for (const frag of starterOrMixer) expect(x.text).not.toContain(frag);
+        expect(x.text).not.toMatch(/할인하길래|행사하길래|할인 스티커|할인 중이네요|행사 상품에/);
+      }
+    }
+    expect(n).toBeGreaterThan(30);
+  });
+  it('카페 「단종?」 · 품절 글에는 [시음기] · [후기] · [정보] 앞머리가 붙지 않는다', async () => {
+    const { CAFE_LINES } = await import('./content/feed');
+    for (let seed = 1; seed <= 40; seed++) {
+      for (const x of feedFor(world([product({ id: 'a', name: '시험 위스키', quality: 70, price: 60_000 })], 3, 300, seed), 3, 100)) {
+        if (x.style !== 'cafe') continue;
+        const body = (k: 'forgotten' | 'stockout') => CAFE_LINES[k].some((l) => x.text.includes(l.split('{name}').at(-1)!.slice(0, 8)));
+        if (body('forgotten') || body('stockout')) expect(x.text).not.toMatch(/^\[(시음기|후기|정보)\]/);
+      }
+    }
+  });
+});
+
+describe('[결정 #418] 증류기 형태(공개 표기) 글 — 헤비 저숙성 · 장기 숙성 · 라이트', () => {
+  type Still = { stillStyle?: 'light' | 'medium' | 'heavy' };
+  const texts = (o: Partial<Product> & Still, seeds = 60) => {
+    const out: string[] = [];
+    for (let seed = 1; seed <= seeds; seed++) for (const x of feedFor(world([product({ id: 'h', name: '시험 헤비 몰트', price: 60_000, ...o } as Partial<Product>)], 3, 300, seed), 3, 100)) out.push(x.text);
+    return out;
+  };
+  const heavy = (xs: string[]) => xs.filter((t) => t.includes('헤비 스틸'));
+  it('헤비 · 표기 3년: 헤비 저숙성 글이 나오고 장기 숙성 글은 없다', () => {
+    const h = heavy(texts({ stillStyle: 'heavy', ageYears: 3, oakMonths: 36, quality: 60 } as Partial<Product> & Still));
+    expect(h.length).toBeGreaterThan(0);
+    for (const t of h) expect(t).not.toMatch(/오래 재운|장기 숙성/);
+  });
+  it('헤비 · 표기 12년: 장기 숙성 글만(저숙성 「거칠다」 글 없음) · 표기 6년: 헤비 글 없음', () => {
+    const h = heavy(texts({ stillStyle: 'heavy', ageYears: 12, oakMonths: 144, quality: 70, price: 200_000 } as Partial<Product> & Still));
+    expect(h.length).toBeGreaterThan(0);
+    for (const t of h) expect(t).toMatch(/오래 재운|장기 숙성/);
+    expect(heavy(texts({ stillStyle: 'heavy', ageYears: 6, oakMonths: 72, quality: 70 } as Partial<Product> & Still))).toEqual([]);
+  });
+  it('증류기 형태가 없는 제품(지금 모든 판) · 미디엄 · 라이트에는 헤비 글이 없다 — 라이트 글은 라이트에만', () => {
+    for (const o of [{}, { stillStyle: 'medium' }, { stillStyle: 'light' }] as Still[]) {
+      const xs = texts({ ageYears: 3, oakMonths: 36, quality: 60, ...o } as Partial<Product> & Still, 30);
+      expect(heavy(xs)).toEqual([]);
+      if (o.stillStyle !== 'light') expect(xs.filter((t) => t.includes('라이트 스틸'))).toEqual([]);
+    }
+  });
+  it('I2 — 헤비 글은 참 품질과 무관하게 나온다(품질 40 · 90 모두)', () => {
+    for (const q of [40, 90]) expect(heavy(texts({ stillStyle: 'heavy', ageYears: 3, oakMonths: 36, quality: q } as Partial<Product> & Still)).length).toBeGreaterThan(0);
+  });
+});

@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { CASK_MARKET, CASKS, RECHAR_COST } from '../../sim/content/catalog';
 import { caskSlots, EMPTY_ACTIVITY_FACTOR, MAX_RECHAR, regionalCaskPrice, tanninOutlook, vesselMaterial, type Cask, type CaskTypeId } from '../../sim';
+import { fillTanninOutlook } from '../../sim/warehouse';
 import { usedCaskPrice } from '../../sim/casks';
 import { useGame } from '../../store/game';
 import { won } from '../format';
@@ -111,6 +112,26 @@ export function NewCaskOutlook({ typeId }: { typeId: CaskTypeId }) {
   return (
     <span className={shortUse ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'} title="새 통으로 지금 채우면 — 활성도만으로 센 탄닌 어림(평년 칸 기후). 시즈닝 향은 탄닌을 더하지 않는다. 비웠다 다시 쓰면 활성도가 ×0.6이 되어 탄닌이 덜 는다">
       탄닌 어림 3년 {Math.round(y3.tannin)} · {Math.round(y12.atMonths / 12)}년 {Math.round(y12.tannin)}(상한 {y12.cap}{y12.penalty >= 0.5 ? `, 감점 약 ${Math.round(y12.penalty)}` : ''}) · 다시 쓰면 {Math.round(y12.atMonths / 12)}년 감점 {refill.penalty >= 0.5 ? `약 ${Math.round(refill.penalty)}` : '없음'}{shortUse ? ' — 12년 본숙성보다 3년 · 피니싱용' : ''}
+    </span>
+  );
+}
+
+/**
+ * [결정 #410 T1-a] 통을 채울 때 12년 전망 한 줄 — 고른 빈 통에 지금 넣으면 12년(기준 개월) 무렵 탄닌 · 감점 어림. 숙성고 탭(PROD) · 홈 통입 줄(ARCH)이 같이 쓴다.
+ * 활성도만 읽는다(원액 맛 · 품질 아님). 감점은 탄닌 몫이라 품질 전체가 아니다(9차 §10.3) — 그래서 「옮기라」는 권유는 하지 않는다(#411)
+ */
+export function FillOutlookLine({ caskIds }: { caskIds: readonly string[] }) {
+  const s = useGame((g) => g.state);
+  const casks = s.inventory.casks.filter((c) => caskIds.includes(c.id));
+  const o = fillTanninOutlook(s, casks);
+  if (!o) return null;
+  const yrs = Math.round(o.atMonths / 12);
+  const known = o.count - o.unknown;
+  const pen = (n: number) => (n >= 0.5 ? `감점 약 ${Math.round(n)}` : '감점 없음');
+  const range = !known ? null : o.minPenalty === o.maxPenalty ? pen(o.maxPenalty) : `${pen(o.minPenalty)} ~ ${Math.round(o.maxPenalty)}`;
+  return (
+    <span className={`text-xs ${o.maxPenalty >= 5 ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`지금 채우면 — 통마다 활성도 · 칸 기후로 센 탄닌 어림(${yrs}년 = 목재 ${o.atMonths}개월, 위스키 탄닌 상한 ${o.cap}). 감점은 탄닌이 상한을 넘는 몫만이라 품질 전체가 아니다. 원액 맛은 읽지 않는다`}>
+      이 통{o.count > 1 ? ` ${o.count}개` : ''}에 넣으면 {yrs}년 무렵 {range ? `탄닌 ${Math.round(o.minTannin)}${o.maxTannin !== o.minTannin ? ` ~ ${Math.round(o.maxTannin)}` : ''} · ${range}` : ''}{o.unknown ? `${range ? ' · ' : ''}활성도 모르는 통 ${o.unknown}개(스팟 매입 — 6개월 숙성 뒤 드러남)` : ''}
     </span>
   );
 }

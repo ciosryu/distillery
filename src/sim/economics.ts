@@ -20,6 +20,7 @@ import { campaignWon } from './ledger';
 import { cooperageLeadMonths } from './prodKnobs';
 import { hidesProductQuality, knownProductQuality } from './productView';
 import { AGE_BANDS, agePolicyFilter, agePolicyOf, bandCounts, type AgeBandId } from './ageBand';
+import { knownReads } from './blendTable';
 import type { Cask, CaskTypeId, GameState, MonthReport, Product, ProductCategory, Recipe, SpiritKind, SpiritLot } from './types';
 
 /** 표준 병 — 소주는 대중 규격, 몰트는 위스키 규격 (봇·사전 점검과 같은 값) */
@@ -847,19 +848,46 @@ export const AUTO_RESTOCK_RANGE_SPANS = [12, 24, 36] as const;
 export function autoRestockRangeChoices(s: GameState, p: Product): { source: Product['autoRestockSource'] | null; label: string; available: number }[] {
   if (!autoRestockRangeSelectable(s, p)) return [];
   const floor = autoRestockFloor(s, p);
+  const keepQ = whiskyRange(s, p)?.minKnownQuality; // [결정 #419] 범위를 바꿔도 고른 품질 하한은 남긴다
   const count = (src: Product['autoRestockSource'] | null) => autoRestockSources(s, { ...p, autoRestockSource: src ?? undefined, ...(src ? { autoRestockMinMonths: undefined } : {}) }).length;
   const yr = (m: number) => (m % 12 ? `${m}개월` : `${m / 12}년`);
+  const ruleFloor = autoRestockFloor(s, { ...p, autoRestockSource: undefined });
+  // [결정 #419 · MKT #1103] 품질 하한이 있으면 「지금 규칙」 칸도 그 하한을 지닌다 — null을 보내면 품질 조건이 함께 풀렸다.
+  // 품질 조건은 `source`에만 실리므로 이 칸은 「지금 규칙 하한 · 상한 없음 · 아무 통 + 품질」 범위가 된다(그 값과 같은 아래 칸은 빼서 겹치지 않게)
+  const ruleSrc: Product['autoRestockSource'] | null = keepQ != null ? { vessel: 'oak', months: ruleFloor, minKnownQuality: keepQ } : null;
   const out: { source: Product['autoRestockSource'] | null; label: string; available: number }[] = [
-    { source: null, label: `지금 규칙(${yr(autoRestockFloor(s, { ...p, autoRestockSource: undefined }))} 이상 · 상한 없음)`, available: count(null) },
+    { source: ruleSrc, label: `지금 규칙(${yr(ruleFloor)} 이상 · 상한 없음${keepQ != null ? ` · 통 품질 ${keepQ} 이상` : ''})`, available: count(ruleSrc) },
   ];
   for (const span of [...AUTO_RESTOCK_RANGE_SPANS, null]) {
     for (const g of [null, ...CASK_TYPE_GROUPS]) {
       if (g && !g.types.length) continue;
-      const source = { vessel: 'oak' as const, months: floor, ...(span != null ? { maxMonths: floor + span } : {}), ...(g ? { caskTypes: g.types } : {}) };
+      if (ruleSrc && span == null && !g && floor === ruleFloor) continue; // 첫 칸과 같은 값
+      const source = { vessel: 'oak' as const, months: floor, ...(span != null ? { maxMonths: floor + span } : {}), ...(g ? { caskTypes: g.types } : {}), ...(keepQ != null ? { minKnownQuality: keepQ } : {}) };
       out.push({ source, label: `${yr(floor)} ~ ${span != null ? yr(floor + span) : '상한 없음'}${g ? ` · ${g.label}` : ''}`, available: count(source) });
     }
   }
   return out;
+}
+/** [결정 #419] 판매 줄 「통 품질」 고르기 — 아는 품질(샘플 기록) 하한 `[튜닝]` */
+export const AUTO_RESTOCK_QUALITY_STEPS = [60, 70, 80] as const;
+/**
+ * [결정 #419] 위스키 「통 품질 n 이상」 선택지 — 지금 통 범위(없으면 지금 하한 · 상한 없음)에 품질 하한만 바꾼 `source`와, 그 조건에서 자동 납품이 지금 쓸 수 있는 통 수 ·
+ * 샘플 기록이 없어 빠지는 통 수. 첫 칸은 「품질 조건 없음」. 상태 불변 — MKT 판매 줄이 `setAutoRestock { source }`로 보낸다
+ */
+export function autoRestockQualityChoices(s: GameState, p: Product): { source: NonNullable<Product['autoRestockSource']>; label: string; available: number; unsampled: number }[] {
+  if (!autoRestockRangeSelectable(s, p)) return [];
+  const range = whiskyRange(s, p);
+  const base: NonNullable<Product['autoRestockSource']> = range ? { ...range } : { vessel: 'oak', months: autoRestockFloor(s, p) };
+  delete base.minKnownQuality;
+  const reads = knownReads(s);
+  const withQ = (q: number | null) => (q == null ? base : { ...base, minKnownQuality: q });
+  const row = (q: number | null) => {
+    const src = withQ(q);
+    const pp = { ...p, autoRestockSource: src, autoRestockMinMonths: undefined };
+    const all = whiskyCasks(s, pp, { quality: true }).allowed;
+    return { source: src, label: q == null ? '통 품질 조건 없음' : `통 품질 ${q} 이상(샘플 어림)`, available: autoRestockSources(s, pp).length, unsampled: q == null ? 0 : all.filter((c) => !reads.has(c.id)).length };
+  };
+  return [row(null), ...AUTO_RESTOCK_QUALITY_STEPS.map((q) => row(q))];
 }
 /**
  * 화면 고르기 줄(MKT 판매 줄)의 선택지 — 「지금 규칙(제품 값)」 · 탱크 · 옹기 n개월↑ · 오크 n개월↑와, 지금 그 조건으로 쓸 수 있는 통 수(탱크는 탱크 로트 수).
@@ -921,7 +949,7 @@ export function autoRestockSources(s: GameState, p: Product): { comp: Omit<Blend
  * 위스키 자동 납품 후보 통 — 쓸 순서대로. `skip`으로 [결정 #399] 거름(상한 · 통 종류 · 띠 정책)을 하나씩 끄고 다시 셀 수 있다(못 채운 사유 메모 — `autoRestockShortReason`).
  * `held`는 띠 정책 때문에 뺀 통 수(띠별)
  */
-function whiskyCasks(s: GameState, p: Product, skip: { ceiling?: boolean; types?: boolean; policy?: boolean } = {}): { allowed: (Cask & { contents: SpiritLot })[]; held: Partial<Record<AgeBandId, number>> } {
+function whiskyCasks(s: GameState, p: Product, skip: { ceiling?: boolean; types?: boolean; policy?: boolean; quality?: boolean } = {}): { allowed: (Cask & { contents: SpiritLot })[]; held: Partial<Record<AgeBandId, number>> } {
   // [결정 #399 C] 블렌디드 — 섞는 비율에 든 레시피의 몰트 · 그레인 통. 그 밖에는 범주의 원액 종류 · 제품 레시피 기록
   const blended = blendedRestock(p, s);
   const kind = RESTOCK_KIND[p.category];
@@ -932,6 +960,10 @@ function whiskyCasks(s: GameState, p: Product, skip: { ceiling?: boolean; types?
   const minOak = autoRestockFloor(s, p);
   const maxOak = skip.ceiling ? Infinity : autoRestockCeiling(s, p);
   const types = skip.types ? null : whiskyRange(s, p)?.caskTypes?.length ? new Set<string>(whiskyRange(s, p)!.caskTypes) : null;
+  // [결정 #419] 아는 품질(샘플 기록) 하한 — 기록이 없는 통은 쓰지 않는다. 참값은 읽지 않는다(I2)
+  const minQ = skip.quality ? undefined : whiskyRange(s, p)?.minKnownQuality;
+  const reads = minQ != null ? knownReads(s) : null;
+  const qualityOk = (id: string) => !reads || (reads.get(id)?.estQuality ?? -Infinity) >= minQ! - 1e-9;
   const minAbv = isCaskStrength(p) ? 0.4 : p.abv - 1e-9; // 캐스크 스트렝스는 통 도수 그대로 병입한다
   const finish = p.finish ?? null;
   // 보호 태그 통은 빼고(#249 ② — 플래그십 예비 #260 포함), "먼저 쓰기" 태그 통을 먼저, 그다음 어린 통부터
@@ -940,7 +972,7 @@ function whiskyCasks(s: GameState, p: Product, skip: { ceiling?: boolean; types?
   const ordered = s.inventory.casks.filter((c): c is Cask & { contents: SpiritLot } => !!c.contents && !c.owner && !c.handfill && !c.contaminationKnown && vesselMaterial(c) === 'wood'
       && kindOk(c.contents.kind) && !c.contents.sourced && c.contents.oakMonths >= minOak && c.contents.oakMonths <= maxOak && (!types || types.has(c.typeId))
       && c.contents.abv >= minAbv && (finishOf(c.contents)?.typeId ?? null) === finish
-      && !excluded.has(c.id) && sameRecipe(c.contents))
+      && !excluded.has(c.id) && sameRecipe(c.contents) && qualityOk(c.id))
     .sort((a, b) => Number(pref.has(b.id)) - Number(pref.has(a.id)) || a.contents.oakMonths - b.contents.oakMonths || a.id.localeCompare(b.id));
   // [결정 #399] 띠 정책 — 쓸 순서 그대로, 정책이 허락하는 통만(새 판 기본: 10년+ 안 씀 · 5 ~ 9년 6통 남김). 정책이 없으면 그대로
   return skip.policy ? { allowed: ordered, held: {} } : agePolicyFilter(s, ordered);
@@ -971,6 +1003,12 @@ export function autoRestockShortReason(s: GameState, p: Product): string | null 
   const range = whiskyRange(s, p);
   if (range?.maxMonths != null && whiskyCasks(s, p, { ceiling: true }).allowed.length) parts.push(`상한 ${range.maxMonths}개월(${Math.floor(range.maxMonths / 12)}년) 안에 쓸 통이 없다`);
   if (range?.caskTypes?.length && whiskyCasks(s, p, { types: true }).allowed.length) parts.push('고른 통 종류에 쓸 통이 없다');
+  // [결정 #419] 품질 하한 — 샘플 기록이 없어서인지, 기록이 낮아서인지 함께 적는다
+  if (range?.minKnownQuality != null && whiskyCasks(s, p, { quality: true }).allowed.length) {
+    const reads = knownReads(s);
+    const noRead = whiskyCasks(s, p, { quality: true }).allowed.filter((c) => !reads.has(c.id)).length;
+    parts.push(`통 품질 ${range.minKnownQuality} 이상(샘플 어림)인 통이 없다${noRead ? ` — 샘플 기록이 없는 통 ${noRead}개(샘플을 뜨면 쓸 수 있다)` : ''}`);
+  }
   return parts.length ? parts.join(' · ') : null;
 }
 
