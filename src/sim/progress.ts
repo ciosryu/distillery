@@ -182,8 +182,9 @@ export function updateProgress(s: GameState, report: MonthReport): void {
 export const bestVerdict = (s: Pick<GameState, 'progress'>): GoalVerdict | undefined => s.progress.verdictBest ?? s.progress.verdict;
 
 /**
- * [결정 #422] 승리 뒤 재판정 — **오르기만 한다**. 이번 달 판매 사건 가운데 승리 로트가 아닌 12년+ 적격 로트의 **첫 정상 유상 출하**가 있으면
- * 그 제품 품질로 `judgeWin`과 같은 식(판정 달 = 이번 달 + 1 · S 순자산 문턱 = 기본값 + k × 미룬 개월 — #407 · #423 그대로)을 돌려, S면 `verdictBest`에 적는다.
+ * [결정 #422 · #427] 승리 뒤 재판정 — **오르기만 한다**. 이번 달 판매 사건 가운데 승리 로트가 아닌 12년+ 적격 로트의 **첫 정상 유상 출하**가 있으면
+ * 그 제품 품질 ≥ 80 · 그달 인지도 ≥ 20%면 S로 `verdictBest`에 적는다. **[결정 #427] 순자산은 보지 않는다**(#422의 「미룬 몫 포함 순자산 문턱」을 대체 —
+ * 승리 달 첫 판정의 순자산 조건 #393 · #407 · #423은 그대로). 그달 순자산은 기록(`netWorth`)으로만 남기고 S 문턱(`sNetWorthTarget`)은 적지 않는다(문턱이 있었다고 읽히지 않게).
  * 첫 출하인지는 남아 있는 결산(120개월 창)의 판매 사건으로 본다. 이미 S면 보지 않는다. 옛 판 · 승리 전은 아무 일도 없다
  */
 export function rejudge(s: GameState, report: MonthReport): void {
@@ -201,10 +202,10 @@ export function rejudge(s: GameState, report: MonthReport): void {
     if (q != null && (!best || q > best.q)) best = { e, q };
   }
   if (!best) return;
-  const v = judgeWin(s, s.month + 1, best.q);
-  if (v.grade !== 'S') return;
-  // acknowledged는 비워 둔다(judgeWin은 새 객체 — 첫 판정을 펼쳐 복사하지 않는다): 오른 달에 결과 화면이 다시 뜬다(ARCH 화면). 그달 문턱은 checks.netWorth.target · sNetWorthTarget에 남는다
-  s.progress.verdictBest = { ...v, acknowledged: undefined, rejudged: { month: s.month + 1, productId: best.e.productId, lotId: best.e.lotId } };
+  if (best.q < GRADE.sFlagshipQuality || awarenessOf(s) < GRADE.sAwareness) return; // [결정 #427] 품질 · 인지도만
+  const { sNetWorthTarget: _noTarget, ...v } = judgeWin(s, s.month + 1, best.q); // 기록(순자산 · 품질 · 인지도 · checks)만 쓴다 — 등급은 위 두 조건
+  // acknowledged는 비워 둔다(judgeWin은 새 객체 — 첫 판정을 펼쳐 복사하지 않는다): 오른 달에 결과 화면이 다시 뜬다(ARCH 화면)
+  s.progress.verdictBest = { ...v, grade: 'S', acknowledged: undefined, rejudged: { month: s.month + 1, productId: best.e.productId, lotId: best.e.lotId } };
   const name = s.commerce.products.find((p) => p.id === best!.e.productId)?.name ?? best.e.productId;
   report.notes.push(`등급이 올랐다 — 「${name}」 첫 출하로 다시 본 성과 판정: S (승리 달 ${cur.grade} → S)`);
 }

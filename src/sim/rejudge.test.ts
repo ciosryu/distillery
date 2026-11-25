@@ -1,10 +1,10 @@
-// [결정 #422] 승리 뒤 재판정 — 오르기만 · 새 적격 로트의 첫 정상 유상 출하 달에만 · 문턱은 그달의 미룬 몫 포함(#407 · #423) (MGT progress.ts rejudge)
+// [결정 #422 · #427] 승리 뒤 재판정 — 오르기만 · 새 적격 로트의 첫 정상 유상 출하 달에만 · 품질 · 인지도만 본다(순자산 조건 없음 — #427) (MGT progress.ts rejudge)
 import { describe, expect, it } from 'vitest';
 import { houseBrand } from './brands';
 import { GRADE, type GameState, type MonthReport, type Product } from './index';
 import { addLot, sellFromLots } from './lots';
 import { newScenarioGame } from './newScenario';
-import { bestVerdict, sNetWorthTarget, updateProgress } from './progress';
+import { bestVerdict, netWorth, sNetWorthTarget, updateProgress } from './progress';
 
 const v16 = (seed = 4) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed });
 const product = (over: Partial<Product> = {}): Product => ({ id: 'P', name: '12년', category: 'whisky', ageYears: 12, oakMonths: 150, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 80, style: null, sourcedShare: 0, stockBottles: 300, price: 120_000, unitCost: 30_000, createdMonth: 100, lastMonthSold: 0, totalSold: 0, ...over });
@@ -35,13 +35,13 @@ const sell15 = (s: GameState, month: number, q: number, lotMonth = month): Month
 };
 
 describe('[결정 #422] 재판정 — 오르기만', () => {
-  it('12년으로 A → 15년 새 로트(품질 85) 첫 출하 · 순자산 충분 → S, 승리 달 판정은 그대로 남는다', () => {
+  it('12년으로 A → 15년 새 로트(품질 85) 첫 출하 → S, 승리 달 판정은 그대로 남는다 · 순자산은 기록만(문턱은 적지 않는다)', () => {
     const s = wonA();
     const r = sell15(s, 182, 85);
     expect(s.progress.verdict!.grade).toBe('A');
-    expect(bestVerdict(s)).toMatchObject({ grade: 'S', rejudged: { month: 183, productId: 'Q' } });
-    expect(s.progress.verdictBest!.sNetWorthTarget).toBe(sNetWorthTarget(s, 183)); // 그달의 미룬 몫 포함(183 − 144 − 2 = 37개월)
-    expect(sNetWorthTarget(s, 183)).toBe(GRADE.sNetWorthV16.micro! + 37 * GRADE.sDelayPerMonthV16.micro!);
+    expect(bestVerdict(s)).toMatchObject({ grade: 'S', rejudged: { month: 183, productId: 'Q' }, flagshipQuality: 85 });
+    expect(s.progress.verdictBest!.netWorth).toBeTypeOf('number');
+    expect(s.progress.verdictBest!.sNetWorthTarget).toBeUndefined(); // [결정 #427] 재판정에는 순자산 문턱이 없다
     expect(r.notes.some((n) => n.startsWith('등급이 올랐다'))).toBe(true);
   });
   it('품질 79면 그대로 A', () => {
@@ -50,18 +50,26 @@ describe('[결정 #422] 재판정 — 오르기만', () => {
     expect(s.progress.verdictBest).toBeUndefined();
     expect(bestVerdict(s)!.grade).toBe('A');
   });
-  it('순자산이 그달 문턱(미룬 몫 포함) 밑이면 그대로 A — 기본값만 넘어도 오르지 않는다', () => {
+  it('[결정 #427] 순자산이 S 문턱(기본값 · 미룬 몫 포함) 밑이어도 품질 80 · 인지도 20%면 S', () => {
     const s = wonA();
-    s.finance.cash = GRADE.sNetWorthV16.micro! + 0.5e8; // 기본값 25.5억은 넘고, 미룸 37개월 몫(+9.25억)에는 못 미친다
+    s.finance.cash = 0; // 기본값 25.5억에도 한참 못 미친다
+    expect(netWorth(s, 183)).toBeLessThan(sNetWorthTarget(s, 183)!);
+    houseBrand(s).awareness = GRADE.sAwareness;
+    sell15(s, 182, GRADE.sFlagshipQuality);
+    expect(bestVerdict(s)).toMatchObject({ grade: 'S', rejudged: { month: 183 } });
+  });
+  it('인지도가 20% 밑이면 그대로 A', () => {
+    const s = wonA();
+    houseBrand(s).awareness = GRADE.sAwareness - 0.01;
     sell15(s, 182, 90);
     expect(s.progress.verdictBest).toBeUndefined();
   });
   it('같은 로트의 두 번째 판매는 다시 보지 않는다 — 첫 출하 달만', () => {
     const s = wonA();
-    s.finance.cash = GRADE.sNetWorthV16.micro! + 0.5e8;
-    sell15(s, 182, 90, 180); // 첫 출하 — 순자산 모자라 A
-    s.finance.cash = 9e9;
-    sell15(s, 183, 90, 180); // 같은 로트 다시 — 순자산이 넉넉해져도 보지 않는다
+    houseBrand(s).awareness = GRADE.sAwareness - 0.01;
+    sell15(s, 182, 90, 180); // 첫 출하 — 인지도 모자라 A
+    houseBrand(s).awareness = GRADE.sAwareness + 0.1;
+    sell15(s, 183, 90, 180); // 같은 로트 다시 — 인지도가 넉넉해져도 보지 않는다
     expect(s.progress.verdictBest).toBeUndefined();
     // 새 로트 첫 출하 → S (같은 제품은 FIFO라 옛 로트가 먼저 나가므로 다른 제품의 로트로)
     s.month = 184; s.commerce.products.push(product({ id: 'Q2', name: '셰리 15년 2', ageYears: 15, oakMonths: 184, quality: 90 }));
