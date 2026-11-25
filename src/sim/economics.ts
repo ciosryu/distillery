@@ -851,12 +851,17 @@ export function autoRestockRangeChoices(s: GameState, p: Product): { source: Pro
   const keepQ = whiskyRange(s, p)?.minKnownQuality; // [결정 #419] 범위를 바꿔도 고른 품질 하한은 남긴다
   const count = (src: Product['autoRestockSource'] | null) => autoRestockSources(s, { ...p, autoRestockSource: src ?? undefined, ...(src ? { autoRestockMinMonths: undefined } : {}) }).length;
   const yr = (m: number) => (m % 12 ? `${m}개월` : `${m / 12}년`);
+  const ruleFloor = autoRestockFloor(s, { ...p, autoRestockSource: undefined });
+  // [결정 #419 · MKT #1103] 품질 하한이 있으면 「지금 규칙」 칸도 그 하한을 지닌다 — null을 보내면 품질 조건이 함께 풀렸다.
+  // 품질 조건은 `source`에만 실리므로 이 칸은 「지금 규칙 하한 · 상한 없음 · 아무 통 + 품질」 범위가 된다(그 값과 같은 아래 칸은 빼서 겹치지 않게)
+  const ruleSrc: Product['autoRestockSource'] | null = keepQ != null ? { vessel: 'oak', months: ruleFloor, minKnownQuality: keepQ } : null;
   const out: { source: Product['autoRestockSource'] | null; label: string; available: number }[] = [
-    { source: null, label: `지금 규칙(${yr(autoRestockFloor(s, { ...p, autoRestockSource: undefined }))} 이상 · 상한 없음)`, available: count(null) },
+    { source: ruleSrc, label: `지금 규칙(${yr(ruleFloor)} 이상 · 상한 없음${keepQ != null ? ` · 통 품질 ${keepQ} 이상` : ''})`, available: count(ruleSrc) },
   ];
   for (const span of [...AUTO_RESTOCK_RANGE_SPANS, null]) {
     for (const g of [null, ...CASK_TYPE_GROUPS]) {
       if (g && !g.types.length) continue;
+      if (ruleSrc && span == null && !g && floor === ruleFloor) continue; // 첫 칸과 같은 값
       const source = { vessel: 'oak' as const, months: floor, ...(span != null ? { maxMonths: floor + span } : {}), ...(g ? { caskTypes: g.types } : {}), ...(keepQ != null ? { minKnownQuality: keepQ } : {}) };
       out.push({ source, label: `${yr(floor)} ~ ${span != null ? yr(floor + span) : '상한 없음'}${g ? ` · ${g.label}` : ''}`, available: count(source) });
     }
