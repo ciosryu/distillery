@@ -4,6 +4,7 @@
 // 위스키는 표준 조건(새 ex-버번 배럴·입지 연평균 기후)으로 숙성을 굴린 **예상**이다 — 실제 캐스크는 샘플로 확인한다. 게임 상태를 바꾸지 않는다.
 
 import { CASK_COST_SHARE_PER_FILL, CASK_STORAGE, CASKS } from './content/catalog';
+import { stillStyleOf } from './stillShape'; // [결정 #422] 자동 납품 스타일 가름
 import { regionOf, siteOf, traditionalTaxFactor } from './content/regions';
 import { defaultPolicyPrice } from './content/market'; // 기본 정책 가격 (B1-4, MKT)
 import { agedWhiteLabel, agedWhiteLabelMonths, executeBlend, isCaskStrength, isWhiskyCategory, previewBlend, restockFinishOff, suggestedPrice, whiskyMinMonths, type BlendComponent, type BottleOptions } from './blending';
@@ -803,9 +804,10 @@ export function autoRestockContest(s: GameState, p: Product, monthOfYear = calen
 export const AUTO_RESTOCK_LONG_FLOOR = 60;
 
 /** 자동 납품이 쓸 원액의 레시피 거름 (#243 · #293) — 제품의 레시피 기록(recipeIds)에 든 레시피의 원액만. 기록 없는 옛 제품은 모두 통과 */
-const recipeFilter = (p: Pick<Product, 'recipeIds'>): ((l: Pick<SpiritLot, 'recipeId'>) => boolean) => {
+const recipeFilter = (p: Pick<Product, 'recipeIds'> & Partial<Pick<Product, 'stillStyle'>>): ((l: Pick<SpiritLot, 'recipeId'> & Partial<Pick<SpiritLot, 'stillShape'>>) => boolean) => {
   const rec = p.recipeIds?.length ? new Set(p.recipeIds) : null;
-  return (l) => !rec || (!!l.recipeId && rec.has(l.recipeId));
+  // [결정 #422] 개조 전후 원액 가름 — 제품의 공개 증류 스타일과 원액 형태의 스타일이 같은 원액만(둘 다 없음 포함). 형태 없는 판(봇 · 옛 판)은 늘 참
+  return (l) => (!rec || (!!l.recipeId && rec.has(l.recipeId))) && (p.stillStyle ?? null) === (l.stillShape ? stillStyleOf(l.stillShape) : null);
 };
 
 /**
@@ -956,7 +958,8 @@ function whiskyCasks(s: GameState, p: Product, skip: { ceiling?: boolean; types?
   if (!kind && !blended) return { allowed: [], held: {} };
   const mixRecipes = blended ? new Set(p.restockMix!.map((x) => x.recipeId)) : null;
   const kindOk = (k: SpiritKind) => (blended ? k === 'malt' || k === 'grain' : k === kind);
-  const sameRecipe = mixRecipes ? (l: Pick<SpiritLot, 'recipeId'>) => !!l.recipeId && mixRecipes.has(l.recipeId) : recipeFilter(p);
+  const styleOk = recipeFilter({ stillStyle: p.stillStyle }); // [결정 #422] 블렌디드 비율 길도 스타일 가름
+  const sameRecipe = mixRecipes ? (l: Pick<SpiritLot, 'recipeId'> & Partial<Pick<SpiritLot, 'stillShape'>>) => !!l.recipeId && mixRecipes.has(l.recipeId) && styleOk(l) : recipeFilter(p);
   const minOak = autoRestockFloor(s, p);
   const maxOak = skip.ceiling ? Infinity : autoRestockCeiling(s, p);
   const types = skip.types ? null : whiskyRange(s, p)?.caskTypes?.length ? new Set<string>(whiskyRange(s, p)!.caskTypes) : null;
