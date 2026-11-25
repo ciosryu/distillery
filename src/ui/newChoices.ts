@@ -4,6 +4,7 @@
 // 공개 정보(단계 · 잠금 · 보유 설비 · 목표 기록 · 달)만 읽는다 — sim · 세이브에 닿지 않는다. "본 적 있음"은 화면 쪽(seenChoices.ts, 세이브 밖)
 import { campaignWon, rulesVersionOf, stagesOf, visibleLateGoals, type GameState } from '../sim';
 import { refillBlocker } from '../sim/actions.prod';
+import { ibAgedCaskCount } from '../sim/bulk';
 import { CASK_MARKET } from '../sim/content/catalog';
 import { newFacilities, stageTarget, type TodoTarget } from './alerts';
 
@@ -61,7 +62,9 @@ export function newChoices(s: GameState, opsOn: boolean): NewChoice[] {
     // 시설만 여는 단계(방재 설비 등)는 다 사면 더 보일 것이 없다
     if (onlyFacilities && !mine.length) continue;
     const t = stageTarget(st);
-    out.push({ key: `stage:${st.id}`, openedMonth: st.month, title: st.title, text: st.text, ...(onlyFacilities ? {} : { go: { target: { tab: t.tab }, label: `${t.label} 탭` } }), ...(mine.length ? { facilities: mine } : {}) });
+    // #259: IB 입찰 해금에 나이 조건(3년↑)을 채운 통 수 — 0이면 제안이 오지 않는다(할 일 「새로 열림」에 있던 것을 옮김)
+    const ibNote = st.unlock.includes('system:caskBids') ? (() => { const n = ibAgedCaskCount(s); return n ? ` 지금 3년 이상 통 ${n}개.` : ' 지금 3년 이상 통이 없어 제안이 오지 않는다 — 통 일부를 남겨 두라.'; })() : '';
+    out.push({ key: `stage:${st.id}`, openedMonth: st.month, title: st.title, text: `${st.text}${ibNote}`, ...(onlyFacilities ? {} : { go: { target: { tab: t.tab }, label: `${t.label} 탭` } }), ...(mine.length ? { facilities: mine } : {}) });
   }
   // ② 운영 모드 — 켜면 빠진다
   const opsAt = opsOpenedMonth(s);
