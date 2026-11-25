@@ -1060,6 +1060,47 @@ export function autoRestockPlan(s: GameState, p: Product, monthOfYear = calendar
   return { components, opts, target, need };
 }
 
+// ───────────── [결정 #399 · #386 ④] 알리기 — 「자동 납품을 켜면」 한 줄 · 연달아 못 채운 달 ─────────────
+
+/** 위스키 제품을 손으로 이만큼 보충했으면(최근 12개월, 자동 납품 꺼짐) 병입 화면 보충 줄에 「자동 납품을 켜면」을 보인다 `[튜닝]` */
+export const HAND_RESTOCK_HINT = 3;
+/** 「연달아 못 채움」 할 일(ARCH alerts)이 뜨는 달 수 `[튜닝]` */
+export const AUTO_RESTOCK_STARVED_WARN = 3;
+const restockNote = (p: Pick<Product, 'name'>) => `자동 납품 「${p.name}」 +`;
+const starvedNote = (p: Pick<Product, 'name'>) => `자동 납품 「${p.name}」 — 쓸 원액이 없어 못 채웠다`;
+
+/**
+ * 최근 `windowMonths`개월 동안 이 제품을 손으로 보충한 횟수 — 새 상태 없이 센다(ARCH 2026-11-25 권함):
+ * 그 제품의 병입 로트(남은 `commerce.lots` + 결산 판매 사건 `saleEvents`의 로트 id `제품:달:n`) 가운데 기간 안의 것 − 같은 기간 결산 메모 「자동 납품 「제품」 +n병」 수.
+ * 첫 병입(제품을 만든 달의 첫 로트)은 보충이 아니라 뺀다. 한계: 팔리지 않고 남지도 않은 로트는 없다고 보고 · 제품 이름을 바꾸면 그 전 메모는 세지 못한다 `[한계]`
+ */
+export function handRestockCount(s: GameState, p: Product, windowMonths = 12): number {
+  const from = s.month - windowMonths;
+  const ids = new Set<string>();
+  const monthOf = (id: string) => Number(id.split(':').at(-2));
+  for (const l of s.commerce.lots ?? []) if (l.productId === p.id && l.bottledMonth > from) ids.add(l.id);
+  for (const r of s.history.reports) {
+    if (r.month <= from) continue;
+    for (const e of r.saleEvents ?? []) if (e.productId === p.id && monthOf(e.lotId) > from) ids.add(e.lotId);
+  }
+  ids.delete(`${p.id}:${p.createdMonth}:0`);
+  const auto = s.history.reports.filter((r) => r.month > from && r.notes.some((n) => n.startsWith(restockNote(p)))).length;
+  return Math.max(0, ids.size - auto);
+}
+
+/** 「자동 납품을 켜면」 한 줄을 보일까 — v16 위스키 · 자동 납품을 쓸 수 있고 꺼져 있고 · 최근 12개월 손 보충 `HAND_RESTOCK_HINT`번 이상 */
+export const autoRestockHint = (s: GameState, p: Product): boolean =>
+  rulesVersionOf(s) !== 'legacy-v15' && isWhiskyCategory(p.category) && !p.autoRestock && autoRestockSupported(p, s) && handRestockCount(s, p) >= HAND_RESTOCK_HINT;
+
+/** 자동 납품이 연달아 못 채운 달 수 — 가장 최근 결산부터 「쓸 원액이 없어 못 채웠다」가 이어진 만큼. 자동 납품이 꺼져 있으면 0. ARCH 할 일 warn(`AUTO_RESTOCK_STARVED_WARN`)이 읽는다 */
+export function autoRestockStarvedMonths(s: GameState, p: Product): number {
+  if (!p.autoRestock) return 0;
+  const reps = s.history.reports;
+  let n = 0;
+  for (let i = reps.length - 1; i >= 0 && reps[i]!.notes.some((x) => x.startsWith(starvedNote(p))); i--) n++;
+  return n;
+}
+
 /** 용기 통이 필요한 제품의 "못 채웠다" 사유 (#369) — 탱크로 대신하지 않는다 */
 const vesselNeedText = (s: GameState, p: Product): string | null => {
   const vn = autoRestockVesselNeed(s, p);
