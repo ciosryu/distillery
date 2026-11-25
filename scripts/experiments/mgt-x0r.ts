@@ -15,12 +15,17 @@
 // XR_LAUNCH=best — 승리 출시를 「아는 품질이 가장 좋은 예비(2차 채움) 통이 적격일 때」로(@hook:launch-gate). 기본 first = 적격 통이 생긴 첫 달(P8 그대로).
 //   XR_DELAY와 함께면 best 문이 처음 열린 달 + XR_DELAY부터. 예비 통이 하나도 없으면 문을 닫지 않는다
 // XR_STAFF=aging_check — [결정 #412] 디스틸러에게 「숙성 점검」을 맡긴다(단계 y1_staff가 연 다음 달 13개월째 한 번 — 사람이 쓸 수 있는 행동 `assignStaffTask`). XR=0이어도 걸린다(X0 + 점검)
+// XR_STILL=light|heavy|balanced — [결정 #417 · #418] 판을 만든 직후 증류기에 형태 프리셋(PROD STILL_SHAPE_PRESETS)을 넣는다(사업 계획서에서 고르는 것과 같음)
+// XR_SHERRY=n — [결정 #418 · #422] 「셰리 15년 명작」 길: 판 처음 새 올로로소 벗 n개를 주문(쿠퍼리지) → 도착한 뒤 몰트 로트 통입을 이 벗에 먼저 한다(@hook:fill-lot — 다 차면 P8 그대로). 15년(목재 180개월) 전에는 어떤 병입도 쓰지 않는다(@hook:bottle-skip).
+//   모든 벗이 목재 180개월이 되면 「셰리 15년」 새 제품으로 한 번에 병입(P8 bottleAs — 가격 · 판매는 봇 그대로) → 첫 출하 달에 재판정(#422). 승리는 따로(첫 12년 출시 그대로)
 // 판마다 `#G {…}` 한 줄(grade-dist와 같은 칸 + 판정 달 설비 목록 `equip`([catalogId, 원가, 산 달 `boughtMonthOf`]) · 판 끝 상태 · X0-R 기록 `xr`)
 import { setP8Hooks } from './p8Hooks';
 import { applyAction } from '../../src/sim/actions';
 import { EQUIPMENT } from '../../src/sim/content/catalog';
+import { STILL_SHAPE_PRESETS } from '../../src/sim/stillShape';
 import { boughtMonthOf } from '../../src/sim/valuation';
-import { netWorth } from '../../src/sim/progress';
+import { netWorth, sNetWorthTarget } from '../../src/sim/progress';
+import { awarenessOf } from '../../src/sim/brands';
 import { campaignWon, caskEligibility } from '../../src/sim/ledger';
 import { FLAGSHIP_RESERVE_TAG, reserveCaskIds } from '../../src/sim/tags';
 import { knownReads } from '../../src/sim/blendTable';
@@ -42,9 +47,15 @@ const BUY_N = Number(process.env.XR_BUY_N ?? 6);
 const LAUNCH = process.env.XR_LAUNCH === 'best' ? 'best' : 'first';
 /** [결정 #412] 맡길 일(디스틸러) — 없으면 맡기지 않는다 */
 const STAFF_TASK = process.env.XR_STAFF as 'aging_check' | undefined;
+/** [결정 #418] 증류기 형태 프리셋 · 셰리 벗 수 */
+const STILL_PRESET = process.env.XR_STILL ? STILL_SHAPE_PRESETS.find((x) => x.id === process.env.XR_STILL) : undefined;
+if (process.env.XR_STILL && !STILL_PRESET) throw new Error(`XR_STILL 프리셋 없음: ${process.env.XR_STILL}`);
+const SHERRY_N = Number(process.env.XR_SHERRY ?? 0);
+const SHERRY_AT = 180;
+const sherry = new Map<number, { set: Set<string>; launched?: number }>();
 
 type Verdict = { month: number; nw: number; q?: number; aw: number; grade?: string; sTarget?: number; fe?: number };
-interface Run { best?: { grade?: string; month: number; q?: number }; pol: string; seed: number; target: number; v?: Verdict; retail: number; retailAtVerdict?: number; nwEnd: number; months: number; equip?: [string, number, number][]; status?: string; endMonth?: number; xr?: { mode?: string; buyCost?: number; casks: string[]; lostL: number; activity: number[]; bestOpen?: number; usedAtWin?: number; untagged?: string[]; sampled?: [string, number][]; autoOff?: string[] } }
+interface Run { sherry?: { casks: string[]; launch?: number; q?: number; cost?: number }; best?: { grade?: string; month: number; q?: number }; pol: string; seed: number; target: number; v?: Verdict; retail: number; retailAtVerdict?: number; nwEnd: number; months: number; equip?: [string, number, number][]; status?: string; endMonth?: number; xr?: { mode?: string; buyCost?: number; casks: string[]; lostL: number; activity: number[]; bestOpen?: number; usedAtWin?: number; untagged?: string[]; sampled?: [string, number][]; autoOff?: string[] } }
 const runs = new Map<string, Run>();
 const refill = new Map<number, Set<string>>(); // seed → 2차 채움 예비 통
 const buyArrive = new Map<number, number>(); // seed → 리필 통 도착 달(buy)
@@ -153,6 +164,43 @@ function launchOk(s: GameState): boolean {
   return s.month - bestOpen.get(s.seed)! >= DELAY;
 }
 
+/** 판 처음: 증류기 형태 · 셰리 벗 주문 · (buy) 리필 통 주문 */
+function onCreate(s: GameState, r: Run): GameState {
+  if (STILL_PRESET) for (const e of s.production.equipment) if ((EQUIPMENT as Record<string, { kind?: string }>)[e.catalogId]?.kind === 'still') e.stillShape = STILL_PRESET.shape;
+  if (SHERRY_N > 0) {
+    const cash = s.finance.cash;
+    const a = applyAction(s, { type: 'buyCasks', caskType: 'oloroso_butt', qty: SHERRY_N });
+    if (!a.error) { s = a.state; sherry.set(s.seed, { set: new Set() }); r.sherry = { casks: [], cost: cash - s.finance.cash }; }
+  }
+  if (XR && MODE === 'buy') s = orderRefill(s, r);
+  return s;
+}
+
+/** P8 몰트 로트 통입 대신(@hook:fill-lot): 도착한 새 셰리 벗(빈 · 0회 사용)이 남아 있으면 이 로트를 먼저 넣는다. 다 찼으면 P8 그대로 */
+function fillSherry(s: GameState, lot: { id: string }, r: Run): GameState | undefined {
+  const sh = sherry.get(s.seed);
+  if (!sh || sh.launched != null) return undefined;
+  for (const c of s.inventory.casks) if (sh.set.size < SHERRY_N && !sh.set.has(c.id) && !c.contents && c.typeId === 'oloroso_butt' && c.fills === 0) sh.set.add(c.id);
+  const ids = s.inventory.casks.filter((c) => sh.set.has(c.id) && !c.contents && !c.contaminationKnown).map((c) => c.id);
+  if (!ids.length) return undefined;
+  const f = applyAction(s, { type: 'fillCasks', lotId: lot.id, caskIds: ids, entryAbv: 0.635 });
+  if (f.error) return undefined;
+  if (r.sherry) r.sherry.casks = [...sh.set].filter((id) => f.state.inventory.casks.find((c) => c.id === id)?.contents);
+  return f.state;
+}
+
+/** 모든 셰리 벗이 목재 180개월 → 「셰리 15년」 한 번에 병입(P8 bottleAs — 가격 · 납품 처리 그대로) */
+function launchSherry(s: GameState, p: unknown, r: Run, api: { bottleAs: (s: GameState, p: any, comps: { source: 'lot' | 'cask'; id: string; liters: number }[], base: { name: string; targetAbv: number; bottleMl: number; chillFilter: boolean; packagingId: string }, cat: 'whisky') => GameState }): GameState {
+  const sh = sherry.get(s.seed);
+  if (!sh || sh.launched != null) return s;
+  const casks = s.inventory.casks.filter((c) => sh.set.has(c.id) && c.contents);
+  if (!casks.length || casks.some((c) => c.contents!.oakMonths < SHERRY_AT)) return s;
+  const before = s;
+  s = api.bottleAs(s, p, casks.map((c) => ({ source: 'cask' as const, id: c.id, liters: c.contents!.volumeL })), { name: '셰리 15년', targetAbv: 0.46, bottleMl: 700, chillFilter: false, packagingId: 'standard' }, 'whisky');
+  if (s !== before) { sh.launched = s.month; if (r.sherry) { r.sherry.launch = s.month; const x = [...s.commerce.products].reverse().find((y) => y.name.startsWith('셰리 15년')); r.sherry.q = x?.quality; (r.sherry as Record<string, unknown>).name = x?.name; } }
+  return s;
+}
+
 const runOf = (s: GameState, p: { name: string }, seed: number): Run => {
   const pol = p.name.split(' ')[0]!;
   const k = `${pol}:${seed}`;
@@ -162,9 +210,15 @@ const runOf = (s: GameState, p: { name: string }, seed: number): Run => {
 };
 
 setP8Hooks({
-  ...(XR && MODE === 'buy' ? {
-    afterCreate: (s: GameState, p: { name: string }, seed: number) => orderRefill(s, runOf(s, p, seed)),
-    beforeBottle: (s: GameState, p: { name: string }) => (buyArrive.has(s.seed) ? fillBought(s, runOf(s, p, s.seed)) : undefined),
+  ...((XR && MODE === 'buy') || STILL_PRESET || SHERRY_N > 0 ? {
+    afterCreate: (s: GameState, p: { name: string }, seed: number) => onCreate(s, runOf(s, p, seed)),
+    fillLot: (s: GameState, p: { name: string }, lot: { id: string }) => (sherry.has(s.seed) ? fillSherry(s, lot, runOf(s, p, s.seed)) : undefined),
+    beforeBottle: (s: GameState, p: { name: string }, _m: number, api: any) => {
+      let t = s;
+      if (buyArrive.has(t.seed)) t = fillBought(t, runOf(t, p, t.seed));
+      if (sherry.has(t.seed)) t = launchSherry(t, p, runOf(t, p, t.seed), api);
+      return t === s ? undefined : t;
+    },
   } : {}),
   afterFill: (s: GameState, p: { name: string }, m: number) => {
     if (STAFF_TASK && m === 13) { const d = s.hr.staff.find((x) => x.role === 'distiller'); const a = d ? applyAction(s, { type: 'assignStaffTask', staffId: d.id, task: STAFF_TASK }) : undefined; if (a && !a.error) s = a.state; }
@@ -182,7 +236,7 @@ setP8Hooks({
   },
   // 곧바로 출시 = 첫 적격 달(결산에 적힘)의 다음 달 → DELAY개월 미룸 = 그 달 + DELAY부터(판정 달 − 첫 적격 달 − 2 = DELAY — progress.ts sDelayMonths)
   ...(DELAY > 0 || (XR && LAUNCH === 'best') ? { launchGate: (s: GameState) => launchOk(s) } : {}),
-  bottleSkip: (s: GameState, _p: unknown, c: Cask) => XR && !campaignWon(s) && !!refill.get(s.seed)?.has(c.id),
+  bottleSkip: (s: GameState, _p: unknown, c: Cask) => (XR && !campaignWon(s) && !!refill.get(s.seed)?.has(c.id)) || (sherry.get(s.seed)?.set.has(c.id) === true && sherry.get(s.seed)!.launched == null),
   afterMonth: (s: GameState, p: { name: string }, m: number, seed: number) => {
     const r = runOf(s, p, seed);
     r.retail += s.history.reports.at(-1)?.retailDealRevenue ?? 0;
@@ -194,6 +248,10 @@ setP8Hooks({
       if (r.xr && bestOpen.has(seed)) r.xr.bestOpen = bestOpen.get(seed);
       if (r.xr) r.xr.usedAtWin = r.xr.casks.filter((id) => !s.inventory.casks.find((c) => c.id === id)?.contents).length; // 승리 달까지 비워진(병입된) 2차 채움 통 수
     }
+    if (r.sherry?.launch != null && !(r.sherry as Record<string, unknown>).sale) { // 셰리 15년 첫 유료 일반 판매 달: 재판정 조건 셋을 그 달 값으로 남긴다(왜 S가 아닌지)
+      const sh = s.history.reports.at(-1)?.saleEvents?.find((e) => e.kind !== 'b2b' && e.bottles > 0 && e.unitPrice > 0 && e.eligibleAtSale && e.productId === s.commerce.products.find((x) => x.name === (r.sherry as Record<string, unknown>).name)?.id);
+      if (sh) (r.sherry as Record<string, unknown>).sale = { month: s.month, nw: netWorth(s, s.month), target: sNetWorthTarget(s, s.month), aw: +awarenessOf(s).toFixed(3) };
+    }
     const bv = s.progress.verdictBest; // [결정 #422] 재판정으로 오른 등급(있으면)
     if (bv && !r.best) r.best = { grade: bv.grade ?? undefined, month: bv.rejudged.month, q: bv.flagshipQuality };
     if (s.status !== 'running' && r.status == null) { r.status = s.status; r.endMonth = m + 1; }
@@ -201,7 +259,7 @@ setP8Hooks({
     r.months = m + 1;
   },
   atEnd: () => {
-    for (const r of runs.values()) console.log('#G ' + JSON.stringify({ mode: XR ? 'x0r' : 'base', tier: process.env.TIER, xrAt: AT, xrN: N, ...(DELAY ? { delay: DELAY } : {}), ...(XR ? { xrMode: MODE, launch: LAUNCH } : {}), ...(STAFF_TASK ? { staffTask: STAFF_TASK } : {}), ...r }));
+    for (const r of runs.values()) console.log('#G ' + JSON.stringify({ mode: XR ? 'x0r' : 'base', tier: process.env.TIER, xrAt: AT, xrN: N, ...(DELAY ? { delay: DELAY } : {}), ...(XR ? { xrMode: MODE, launch: LAUNCH } : {}), ...(STAFF_TASK ? { staffTask: STAFF_TASK } : {}), ...(STILL_PRESET ? { still: STILL_PRESET.id } : {}), ...(SHERRY_N ? { sherryN: SHERRY_N } : {}), ...r }));
   },
 });
 process.env.P8 = '1';
