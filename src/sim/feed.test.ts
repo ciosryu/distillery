@@ -300,3 +300,31 @@ describe('통에서 쉬지 않은 제품 — 「캐스크」 문장 없음 (PM 2
     expect(n).toBeGreaterThan(50);
   });
 });
+
+describe('어긋난 글 셋 (9차 159개월 · PM 2026-11-25)', () => {
+  it('고연수 · 고가(12년 · 30만 원)에는 입문 · 하이볼 글이 없고, 값이 내리지 않은 달에는 「할인」 · 「행사」 글이 없다', async () => {
+    const C = await import('./content/feed');
+    let n = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      for (const x of feedFor(world([product({ id: 'w', name: '김포 시그니처 12년', quality: 56, price: 300_000, ageYears: 12, oakMonths: 144 })], 3, 300, seed), 3, 100)) {
+        if (x.productName.includes(' vs ')) continue;
+        n++;
+        const { FEED_KIND_LINES } = C;
+        const starterOrMixer = [...(FEED_KIND_LINES.dc_whisky.starter ?? []), ...(FEED_KIND_LINES.dc_jugal.mixer ?? [])].map((l) => l.replace(/\{\w+\}\S*/g, '').trim().slice(0, 8)).filter((s) => s.length >= 4);
+        for (const frag of starterOrMixer) expect(x.text).not.toContain(frag);
+        expect(x.text).not.toMatch(/할인하길래|행사하길래|할인 스티커|할인 중이네요|행사 상품에/);
+      }
+    }
+    expect(n).toBeGreaterThan(30);
+  });
+  it('카페 「단종?」 · 품절 글에는 [시음기] · [후기] · [정보] 앞머리가 붙지 않는다', async () => {
+    const { CAFE_LINES } = await import('./content/feed');
+    for (let seed = 1; seed <= 40; seed++) {
+      for (const x of feedFor(world([product({ id: 'a', name: '시험 위스키', quality: 70, price: 60_000 })], 3, 300, seed), 3, 100)) {
+        if (x.style !== 'cafe') continue;
+        const body = (k: 'forgotten' | 'stockout') => CAFE_LINES[k].some((l) => x.text.includes(l.split('{name}').at(-1)!.slice(0, 8)));
+        if (body('forgotten') || body('stockout')) expect(x.text).not.toMatch(/^\[(시음기|후기|정보)\]/);
+      }
+    }
+  });
+});
