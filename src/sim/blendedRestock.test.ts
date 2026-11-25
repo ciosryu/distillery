@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { migrateSave } from './migrate';
 import { advanceMonth, applyAction } from './index';
 import { recipeSharesOf, restockMixOf } from './blending';
-import { autoRestockPlan, autoRestockShortReason, autoRestockSources, autoRestockSupported, blendedRestock } from './economics';
+import { autoRestockPlan, autoRestockRangeChoices, autoRestockShortReason, autoRestockSources, autoRestockSupported, blendedRestock } from './economics';
 import type { GameState } from './types';
 
 // 9차 134개월 세이브 — 「김포 블랜디드 3년」(P906, 표기 2년 · R8 · R9 · R94 · 섞는 비율 기록 없음 — 옛 제품)
@@ -41,6 +41,10 @@ describe('#399 C 9차 134 세이브 — 블렌디드', () => {
     expect(p.restockMix).toEqual(want);
     expect(blendedRestock(p, s)).toBe(true);
     expect(applyAction(s, { type: 'setAutoRestock', productId: BL, months: 2 }).error).toBeUndefined();
+    // 통 범위 고르기(#1048 · MKT 판매 줄)도 비율이 있는 블렌디드에 열린다 — 비율이 없던 때는 빈 목록
+    expect(autoRestockRangeChoices(s, p).length).toBeGreaterThan(1);
+    const before = load();
+    expect(autoRestockRangeChoices(before, before.commerce.products.find((x) => x.id === BL)!)).toEqual([]);
   });
   it('자동 납품은 그 비율대로 섞는다(±2%p) — 비율에 든 레시피의 통만 · 한 달 진행해 채운다', () => {
     let s = load();

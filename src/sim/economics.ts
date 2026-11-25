@@ -830,9 +830,37 @@ export const AUTO_RESTOCK_SOURCE_MONTHS = [1, 2, 3, 6, 12, 24] as const;
 /** 이 제품이 「채울 원액」을 고를 수 있나 — v16 · 자동 납품 지원 · 소주 · 진 · 고량주(위스키 · 뉴본 아님) */
 export const autoRestockSourceSelectable = (s: Pick<GameState, 'rulesVersion'>, p: Product): boolean =>
   rulesVersionOf(s) !== 'legacy-v15' && !p.dutyFreeOnly && !!RESTOCK_KIND[p.category] && !isWhiskyCategory(p.category);
-/** [결정 #399] 이 위스키 제품이 「통 범위 · 통 종류」를 고를 수 있나 — v16 · 자동 납품 지원 싱글 몰트 · 그레인 위스키(블렌디드는 아직 아님) */
+/** [결정 #399] 이 위스키 제품이 「통 범위 · 통 종류」를 고를 수 있나 — v16 · 자동 납품 지원 싱글 몰트 · 그레인 위스키 · 섞는 비율이 있는 블렌디드(C) */
 export const autoRestockRangeSelectable = (s: Pick<GameState, 'rulesVersion'>, p: Product): boolean =>
   rulesVersionOf(s) !== 'legacy-v15' && !p.dutyFreeOnly && isWhiskyCategory(p.category) && (!!RESTOCK_KIND[p.category] || blendedRestock(p, s));
+/** [결정 #399] 위스키 통 종류 묶음 — 판매 줄 「통 종류」 고르기. 시즈닝 종류로 묶는다(ex-버번 · 셰리 벗 · 셰리 혹스헤드 …) */
+export const CASK_TYPE_GROUPS: { id: 'bourbon' | 'sherry'; label: string; types: CaskTypeId[] }[] = [
+  { id: 'bourbon', label: '버번 계열', types: (Object.keys(CASKS) as CaskTypeId[]).filter((k) => CASKS[k].seasoningType === 'bourbon') },
+  { id: 'sherry', label: '셰리 계열', types: (Object.keys(CASKS) as CaskTypeId[]).filter((k) => CASKS[k].seasoningType === 'sherry') },
+];
+/** [결정 #399] 통 범위 상한 고르기 — 하한 + n개월(없음 = 상한 없음) `[튜닝]` (설계 §6.3 기본 「표기 + 24개월」) */
+export const AUTO_RESTOCK_RANGE_SPANS = [12, 24, 36] as const;
+/**
+ * [결정 #399] 위스키 제품의 「통 범위 · 통 종류」 선택지 — MKT 판매 줄이 그대로 쓴다. 하한은 지금 하한(표기 · 옛 하한 · 고른 범위),
+ * 상한은 하한 + 12 · 24 · 36개월 또는 없음, 통 종류는 아무거나 · 버번 계열 · 셰리 계열. `available` = 그 조건에서 자동 납품이 지금 쓸 수 있는 통 수(띠 정책 반영). 상태 불변
+ */
+export function autoRestockRangeChoices(s: GameState, p: Product): { source: Product['autoRestockSource'] | null; label: string; available: number }[] {
+  if (!autoRestockRangeSelectable(s, p)) return [];
+  const floor = autoRestockFloor(s, p);
+  const count = (src: Product['autoRestockSource'] | null) => autoRestockSources(s, { ...p, autoRestockSource: src ?? undefined, ...(src ? { autoRestockMinMonths: undefined } : {}) }).length;
+  const yr = (m: number) => (m % 12 ? `${m}개월` : `${m / 12}년`);
+  const out: { source: Product['autoRestockSource'] | null; label: string; available: number }[] = [
+    { source: null, label: `지금 규칙(${yr(autoRestockFloor(s, { ...p, autoRestockSource: undefined }))} 이상 · 상한 없음)`, available: count(null) },
+  ];
+  for (const span of [...AUTO_RESTOCK_RANGE_SPANS, null]) {
+    for (const g of [null, ...CASK_TYPE_GROUPS]) {
+      if (g && !g.types.length) continue;
+      const source = { vessel: 'oak' as const, months: floor, ...(span != null ? { maxMonths: floor + span } : {}), ...(g ? { caskTypes: g.types } : {}) };
+      out.push({ source, label: `${yr(floor)} ~ ${span != null ? yr(floor + span) : '상한 없음'}${g ? ` · ${g.label}` : ''}`, available: count(source) });
+    }
+  }
+  return out;
+}
 /**
  * 화면 고르기 줄(MKT 판매 줄)의 선택지 — 「지금 규칙(제품 값)」 · 탱크 · 옹기 n개월↑ · 오크 n개월↑와, 지금 그 조건으로 쓸 수 있는 통 수(탱크는 탱크 로트 수).
  * 고른 값을 바꾸지 않고 센다(상태 불변)

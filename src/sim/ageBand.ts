@@ -88,3 +88,16 @@ export function agePolicyFilter<C extends Cask & { contents: NonNullable<Cask['c
   }
   return { allowed, held };
 }
+
+/** [결정 #399] 띠 정책 표 한 줄 — 화면(`AgePolicyRow` · ARCH 홈 띠 줄 자물쇠)이 같이 읽는다. `autoUsable` = 자동 납품이 이 띠에서 지금 손댈 수 있는 통 수(제품 거름 전 상한) */
+export interface AgePolicyRowView { id: AgeBandId; label: string; casks: number; liters: number; rule: AgePolicyRule | undefined; autoUsable: number; locked: boolean }
+export function agePolicyRows(s: Pick<GameState, 'inventory' | 'rulesVersion'>): AgePolicyRowView[] {
+  const counts = bandCounts(s);
+  const policy = agePolicyOf(s);
+  return AGE_BANDS.map((b) => {
+    const rule = policy?.[b.id];
+    const n = counts[b.id].casks;
+    const autoUsable = !rule ? n : rule.auto === 'off' ? 0 : Math.max(0, n - rule.keep);
+    return { id: b.id, label: b.label, casks: n, liters: counts[b.id].liters, rule, autoUsable, locked: !!rule };
+  });
+}
