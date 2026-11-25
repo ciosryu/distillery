@@ -282,10 +282,10 @@ export type FeedKind =
 
 /** 위스키 마이너 갤러리 말머리(관찰 — 일반 · 질문 · 리뷰 · 소식). 주류 갤러리는 말머리를 쓰지 않는다 */
 export const DCW_TAG: Partial<Record<FeedKind, string>> = {
-  eval: '[리뷰]', longnote: '[리뷰]', label: '[리뷰]', question: '[질문]', starter: '[일반]', news: '[소식]', proof: '[일반]', soldout: '[일반]', qpr: '[일반]', bought: '[일반]', season: '[일반]',
+  eval: '[리뷰]', longnote: '[리뷰]', label: '[리뷰]', question: '[질문]', starter: '[일반]', news: '[소식]', proof: '[일반]', soldout: '[일반]', qpr: '[일반]', bought: '[일반]', meme: '[일반]',
 };
 
-/** 계절 글 — 달로 고른다(명절 선물 1 · 2 · 9월 · 여름 하이볼 7 · 8월 · 겨울 12 · 1 · 2월) */
+/** 계절 글의 철 */
 export type FeedSeason = 'gift' | 'summer' | 'winter';
 
 export const FEED_KIND_LINES: Record<'dc_whisky' | 'dc_jugal' | 'cafe', Partial<Record<FeedKind, Pool>>> = {
@@ -453,16 +453,6 @@ export const FEED_KIND_LINES: Record<'dc_whisky' | 'dc_jugal' | 'cafe', Partial<
       '{short} 사이다에 타면 달달하니 괜찮음',
       '{name} 하이볼용으로 사기엔 좀 아깝다',
     ],
-    season: [
-      '명절에 {name} 들고 갔더니 큰아버지가 조용해짐',
-      '설 선물로 {short} 받음 개꿀',
-      '추석 선물 세트에 {name} 들어 있음 ㅋㅋ',
-      '여름엔 {short} 하이볼이 국룰',
-      '더워서 {name} 얼음 가득 넣어 마시는 중',
-      '겨울엔 {short} 따뜻하게 데워 마시면 됨?',
-      '{name} 눈 오는 날 한 잔 분위기 미쳤음',
-      '송년회에 {short} 들고 갔다가 혼자 다 마심',
-    ],
     meme: [
       '{name} 마시고 노래방에서 발라드 열 곡 연속 부름',
       '{short} 한 병 비우고 일어나니 소파였음 침대가 너무 멀었다',
@@ -573,14 +563,21 @@ export const FEED_KIND_LINES: Record<'dc_whisky' | 'dc_jugal' | 'cafe', Partial<
       '{name} 선물 받았는데 너무 아까워서 아직 못 땄어요 ㅎㅎ',
       '[정보] {short} 명절 선물 세트 나왔습니다. 참고하세요~',
     ],
-    season: [
-      '여름에는 역시 {short} 하이볼이네요. 레몬 한 조각 추천드려요~',
-      '날이 추워지니 {name} 니트 한 잔이 생각납니다.',
-      '명절 연휴에 가족들과 {short} 한 병 나눠 마셨습니다.',
-      '송년회에 {name} 가져가서 다들 좋아하셨어요^^',
-      '캠핑 가서 {short} 하이볼 만들어 마셨는데 분위기 최고였습니다.',
-      '눈 오는 날 {name} 한 잔, 오늘 같은 날 딱이네요.',
-    ],
+  },
+};
+
+/** 계절 글 — 달로 고른다([결정 #400] 설계 §4.1 · §4.2): 명절 선물 1 · 2 · 9월 · 여름 7 · 8월 · 겨울 12 · 1 · 2월(설은 선물이 먼저) */
+export const FEED_SEASON_MONTHS: Record<FeedSeason, readonly number[]> = { gift: [1, 2, 9], summer: [7, 8], winter: [12, 1, 2] };
+export const FEED_SEASON_LINES: Record<'dc_jugal' | 'cafe', Record<FeedSeason, Pool>> = {
+  dc_jugal: {
+    gift: ['명절에 {name} 들고 갔더니 큰아버지가 조용해짐', '설 선물로 {short} 받음 개꿀', '추석 선물 세트에 {name} 들어 있음 ㅋㅋ', '명절 끝나고 남은 {short} 혼자 처리 중'],
+    summer: ['여름엔 {short} 하이볼이 국룰', '더워서 {name} 얼음 가득 넣어 마시는 중', '캠핑 가서 {short} 하이볼 말아 먹음 개꿀'],
+    winter: ['겨울엔 {short} 따뜻하게 데워 마시면 됨?', '{name} 눈 오는 날 한 잔 분위기 미쳤음', '송년회에 {short} 들고 갔다가 혼자 다 마심'],
+  },
+  cafe: {
+    gift: ['명절 연휴에 가족들과 {short} 한 병 나눠 마셨습니다.', '[정보] {name} 명절 선물 세트 구성이 괜찮더라고요.'],
+    summer: ['여름에는 역시 {short} 하이볼이네요. 레몬 한 조각 추천드려요~', '캠핑 가서 {short} 하이볼 만들어 마셨는데 분위기 최고였습니다.'],
+    winter: ['날이 추워지니 {name} 니트 한 잔이 생각납니다.', '송년회에 {name} 가져가서 다들 좋아하셨어요^^', '눈 오는 날 {name} 한 잔, 오늘 같은 날 딱이네요.'],
   },
 };
 

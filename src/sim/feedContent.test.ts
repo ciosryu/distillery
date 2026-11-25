@@ -6,7 +6,7 @@ import * as C from './content/feed';
 const POOLS: Record<string, unknown> = {
   WB_VERDICT: C.WB_VERDICT, WB_FINISH: C.WB_FINISH, WB_NOSE_ADJ: C.WB_NOSE_ADJ, CAFE_OPEN: C.CAFE_OPEN, CAFE_CLOSE: C.CAFE_CLOSE, CAFE_LINES: C.CAFE_LINES,
   DCW_OPEN: C.DCW_OPEN, DCW_CLOSE: C.DCW_CLOSE, DCW_LINES: C.DCW_LINES, DCW_FEATURE: C.DCW_FEATURE, DCJ_OPEN: C.DCJ_OPEN, DCJ_CLOSE: C.DCJ_CLOSE, DCJ_LINES: C.DCJ_LINES,
-  DCJ_OFFTOPIC: C.DCJ_OFFTOPIC, REPLIES: C.REPLIES, COMPARE_LINES: C.COMPARE_LINES, FEED_KIND_LINES: C.FEED_KIND_LINES, NOTE_PARTS: C.NOTE_PARTS, WB_KIND_LINES: C.WB_KIND_LINES,
+  DCJ_OFFTOPIC: C.DCJ_OFFTOPIC, REPLIES: C.REPLIES, COMPARE_LINES: C.COMPARE_LINES, FEED_KIND_LINES: C.FEED_KIND_LINES, FEED_SEASON_LINES: C.FEED_SEASON_LINES, NOTE_PARTS: C.NOTE_PARTS, WB_KIND_LINES: C.WB_KIND_LINES,
 };
 const strings = (o: unknown): string[] => (typeof o === 'string' ? [o] : Array.isArray(o) ? o.flatMap(strings) : o && typeof o === 'object' ? Object.values(o).flatMap(strings) : []);
 const ALL = Object.values(POOLS).flatMap(strings);
@@ -36,9 +36,16 @@ describe('피드 문장 규칙', () => {
     expect(dup).toEqual([]);
   });
   it('채널마다 평가 밖 글 종류가 6가지 이상 · 문장 틀이 모두 480개 이상(설계 §0 약 500개)', () => {
-    for (const ch of ['dc_whisky', 'dc_jugal', 'cafe'] as const) expect(Object.keys(C.FEED_KIND_LINES[ch]).length).toBeGreaterThanOrEqual(6);
-    const body = [C.WB_VERDICT, C.CAFE_LINES, C.DCW_LINES, C.DCW_FEATURE, C.DCJ_LINES, C.DCJ_OFFTOPIC, C.COMPARE_LINES, C.FEED_KIND_LINES, C.NOTE_PARTS, C.WB_KIND_LINES].flatMap(strings);
+    // 글 종류 수 = FEED_KIND_LINES 종류 + 계절 글(FEED_SEASON_LINES) + 다섯 줄 시음 노트(NOTE_PARTS)
+    const kinds = (ch: 'dc_whisky' | 'dc_jugal' | 'cafe') => Object.keys(C.FEED_KIND_LINES[ch]).length + (ch in C.FEED_SEASON_LINES ? 1 : 0) + (ch in C.NOTE_PARTS ? 1 : 0);
+    for (const ch of ['dc_whisky', 'dc_jugal', 'cafe'] as const) expect(kinds(ch)).toBeGreaterThanOrEqual(6);
+    const body = [C.WB_VERDICT, C.CAFE_LINES, C.DCW_LINES, C.DCW_FEATURE, C.DCJ_LINES, C.DCJ_OFFTOPIC, C.COMPARE_LINES, C.FEED_KIND_LINES, C.FEED_SEASON_LINES, C.NOTE_PARTS, C.WB_KIND_LINES].flatMap(strings);
     expect(body.length).toBeGreaterThanOrEqual(480);
+  });
+  it('계절 글은 철마다 나뉜다 — 여름 글이 겨울에 나오지 않게', () => {
+    for (const ch of ['dc_jugal', 'cafe'] as const) for (const k of ['gift', 'summer', 'winter'] as const) expect(C.FEED_SEASON_LINES[ch][k].length).toBeGreaterThan(0);
+    expect(strings(C.FEED_SEASON_LINES.dc_jugal.summer).some((x) => /겨울|눈 오는|송년/.test(x))).toBe(false);
+    expect(strings(C.FEED_SEASON_LINES.dc_jugal.winter).some((x) => /여름|더워/.test(x))).toBe(false);
   });
   it('[결정 #402 · #406] 채널 넷 · 실명 — 위갤은 위스키 마이너 갤러리', () => {
     expect(Object.keys(C.FEED_COMMUNITIES).sort()).toEqual(['cafe', 'dc_jugal', 'dc_whisky', 'whiskybase']);
