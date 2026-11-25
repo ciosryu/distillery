@@ -24,7 +24,7 @@ export function sGradeRows(v: NonNullable<GameState['progress']['verdict']>): { 
   const q = v.flagshipQuality ?? v.checks.find((c) => c.id === 'flagship')?.value;
   const aw = v.awareness ?? 0;
   return [
-    { id: 's-networth', label: '순자산', ok: (v.netWorth ?? 0) >= nwTarget, text: `${won(v.netWorth ?? 0)} / S 조건 ${won(nwTarget)}` },
+    { id: 's-networth', label: '순자산', ok: (v.netWorth ?? 0) >= nwTarget, text: `${won(v.netWorth ?? 0)} / S 조건 ${won(nwTarget)}${v.sDelay ? ` (출하를 ${v.sDelay.months}개월 미뤄 +${won(v.sDelay.add)})` : ''}` }, // [결정 #407]
     { id: 's-quality', label: '12년 싱글 몰트 품질', ok: (q ?? 0) >= GRADE.sFlagshipQuality, text: `${q != null ? q.toFixed(1) : '—'} / S 조건 ${GRADE.sFlagshipQuality}` },
     { id: 's-awareness', label: '브랜드 인지도', ok: aw >= GRADE.sAwareness, text: `${(aw * 100).toFixed(1)}% / S 조건 ${GRADE.sAwareness * 100}%` },
   ];

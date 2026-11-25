@@ -191,7 +191,9 @@ export function judgeWin(s: GameState, month: number, quality?: number): GoalVer
     { id: 'netWorth', ok: nw >= target, value: nw, target },
   ];
   const grade: GoalVerdict['grade'] = nw >= sTarget && (quality ?? 0) >= GRADE.sFlagshipQuality && awarenessOf(s) >= GRADE.sAwareness ? 'S' : 'A';
-  return { month, result: 'heritage', grade, checks, netWorth: nw, sNetWorthTarget: sTarget, ...(quality != null ? { flagshipQuality: quality } : {}), awareness: awarenessOf(s) };
+  const delay = rulesVersionOf(s) === 'legacy-v15' || GRADE.sNetWorthV16[sc.tierId] == null ? 0 : sDelayMonths(s, month);
+  const sDelay = delay > 0 ? { months: delay, add: sTarget - GRADE.sNetWorthV16[sc.tierId]! } : undefined;
+  return { month, result: 'heritage', grade, checks, netWorth: nw, sNetWorthTarget: sTarget, ...(sDelay ? { sDelay } : {}), ...(quality != null ? { flagshipQuality: quality } : {}), awareness: awarenessOf(s) };
 }
 
 /** 결과 화면 연표 — 연표에 보이는 마일스톤을 달 순서로 */

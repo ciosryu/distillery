@@ -6,6 +6,7 @@ import { caskEligibility } from './ledger';
 import { addLot, lotsOf, sellFromLots } from './lots';
 import { newScenarioGame } from './newScenario';
 import { sDelayMonths, sNetWorthTarget, updateProgress } from './progress';
+import { sGradeRows } from '../ui/Verdict';
 
 const v16 = (seed = 4) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed });
 const legacy = (seed = 4) => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed, rules: 'legacy-v15' });
@@ -72,6 +73,8 @@ describe('win: 미판매 running · 적격 실제 출고 1회 · 중복 0 ([결�
     late.finance.cash = 2_550_000_000 + 1;
     const rl = report(late); sellFromLots(late, rl, 'P', 1, SALE); updateProgress(late, rl);
     expect(late.progress.verdict).toMatchObject({ month: 151, grade: 'A', sNetWorthTarget: 2_550_000_000 + 19 * 28_000_000 });
+    expect(late.progress.verdict!.sDelay).toEqual({ months: 19, add: 19 * 28_000_000 });
+    expect(sGradeRows(late.progress.verdict!).find((r) => r.id === 's-networth')!.text).toContain('출하를 19개월 미뤄 +');
   });
 
   it('등급: 승리 달 순자산 ≥ S 문턱(#393) · 승리 로트 품질 ≥ 80 · 인지도 ≥ 20%면 S, 아니면 A — 핸드필 승리는 품질이 없어 A', () => {

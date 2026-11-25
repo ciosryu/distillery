@@ -1026,6 +1026,8 @@ export interface GoalVerdict {
   netWorth: number;
   /** [결정 #393] 판정 때의 S 순자산 문턱(원) — v16 `judgeWin`이 적는다(규모별 고정 금액). 없으면(옛 판정) 성과 기준 × `GRADE.sNetWorthRatio` */
   sNetWorthTarget?: number;
+  /** [결정 #407] 승리를 미뤄 S 문턱에 더한 몫 — 미룬 개월(`progress.ts sDelayMonths`) · 더한 금액(원). 미루지 않았으면 없다 */
+  sDelay?: { months: number; add: number };
   flagshipQuality?: number;
   awareness: number;
   /** 플레이어가 결과 화면을 확인했다 — 그 뒤는 목표 없이 계속 운영(샌드박스) */

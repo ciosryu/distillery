@@ -8,7 +8,7 @@
 //   아는 오염이 생긴 2차 채움 통은 예비 꼬리표를 뗀다(사람과 같은 정보만 — 숨은 오염은 모른다)
 //   XR_PICK개월째(기본 138) 예비 통을 샘플로 맛보고, 아는 품질이 가장 좋은 통보다 XR_DROP(기본 15) 넘게 낮은 통은 예비에서 뺀다.
 //   같은 달 게임 자동 예비가 채운 첫 채움 통의 예비도 뗀다(승리 출시가 2차 채움 통만 쓰게)
-// XR_DELAY(기본 0 = 끼우지 않음)개월 — [결정 #407] 승리 미루기 측정: 첫 적격 통 달(`progress.firstEligibleMonth`)부터 이만큼 지난 달까지 승리 출시를 미룬다(@hook:launch-gate).
+// XR_DELAY(기본 0 = 끼우지 않음)개월 — [결정 #407] 승리 미루기 측정: 첫 적격 통 달(`progress.firstEligibleMonth`)부터 곧바로 출시할 수 있는 달(그다음 달)보다 이만큼 늦게 승리 출시한다(@hook:launch-gate — 판정 달 − 첫 적격 달 − 2 = XR_DELAY).
 //   X0 · X0-R 모두에 걸린다. 미루는 동안 일반 병입이 2차 채움 예비 통을 쓰지 않는 것은 그대로(@hook:bottle-skip)
 // 판마다 `#G {…}` 한 줄(grade-dist와 같은 칸 + 판정 달 설비 목록 `equip`([catalogId, 원가, 산 달 `boughtMonthOf`]) · 판 끝 상태 · X0-R 기록 `xr`)
 import { setP8Hooks } from './p8Hooks';
@@ -106,7 +106,8 @@ setP8Hooks({
     if (run.xr) run.xr.untagged = [...(run.xr.untagged ?? []), ...bad];
     return r.error ? undefined : r.state;
   },
-  ...(DELAY > 0 ? { launchGate: (s: GameState) => s.progress.firstEligibleMonth != null && s.month - s.progress.firstEligibleMonth >= DELAY } : {}),
+  // 곧바로 출시 = 첫 적격 달(결산에 적힘)의 다음 달 → DELAY개월 미룸 = 그 달 + DELAY부터(판정 달 − 첫 적격 달 − 2 = DELAY — progress.ts sDelayMonths)
+  ...(DELAY > 0 ? { launchGate: (s: GameState) => s.progress.firstEligibleMonth != null && s.month - s.progress.firstEligibleMonth >= DELAY + 1 } : {}),
   bottleSkip: (s: GameState, _p: unknown, c: Cask) => XR && !campaignWon(s) && !!refill.get(s.seed)?.has(c.id),
   afterMonth: (s: GameState, p: { name: string }, m: number, seed: number) => {
     const r = runOf(s, p, seed);
