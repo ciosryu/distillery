@@ -14,7 +14,7 @@ import type { TickContext } from './tick';
 import { OEM } from './deals';
 import { hasLocalIngredient, seasonalEnergyFactor, siteFreight } from './sites';
 import { waterPermitCap } from './waterPermit';
-import { stillParams, type StillSpec } from './stillShape'; // [결정 #417 · #418] 증류기 형태 (PROD)
+import { batchWaterL, stillParams, type StillSpec } from './stillShape'; // [결정 #417 · #418] 증류기 형태 (PROD)
 import { evaluate, type Evaluation } from './flavor';
 import { hexOf, HEX_AXES, HEX_LABEL } from './blendRadar';
 import { AXIS } from './content/axes';
@@ -412,12 +412,12 @@ export function runProduction(s: GameState, report: MonthReport, ctx: TickContex
     for (let b = 0; b < c.batchesPerMonth; b++) {
       const stillInst = stills.find((e) => (stillRuns.get(e.id) ?? 0) >= OEM.runs);
       const still = stillInst ? stillDefOf(s, stillInst.id) : null;
-      if (!stillInst || !still || distillerRuns < OEM.runs || waterLeftL < still.chargeL) break;
+      if (!stillInst || !still || distillerRuns < OEM.runs || waterLeftL < batchWaterL(still)) break;
       const need = fermentDaysAt(OEM.fermentDays, fermC) + 2;
       const ferm = fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need && f.type !== 'onggi');
       if (!ferm) break;
       ferm.daysLeft -= need;
-      waterLeftL -= still.chargeL;
+      waterLeftL -= batchWaterL(still); // [결정 #418] 형태로 고른 웜 텁은 × 1.5
       stillRuns.set(stillInst.id, (stillRuns.get(stillInst.id) ?? 0) - OEM.runs);
       distillerRuns -= OEM.runs;
       runsUsed += OEM.runs;
@@ -468,7 +468,7 @@ export function runProduction(s: GameState, report: MonthReport, ctx: TickContex
     for (let b = 0; b < order.batchesPerMonth; b++) {
       if ((stillRuns.get(stillInst.id) ?? 0) < recipe.runs) { blocked = '증류기 가동 한도'; break; }
       if (distillerRuns < recipe.runs) { blocked = distillers.length ? '디스틸러 운전 한도' : '디스틸러 없음'; break; }
-      if (recipe.kind !== 'gin' && waterLeftL < still.chargeL) { blocked = '취수 허가량'; waterBlocked = true; break; }
+      if (recipe.kind !== 'gin' && waterLeftL < batchWaterL(still)) { blocked = '취수 허가량'; waterBlocked = true; break; }
       let ferm: FermenterSlot | undefined;
       if (recipe.kind !== 'gin') {
         // 발효실 온도에 따라 발효 기간이 늘거나 준다 (결정 #67)
@@ -477,7 +477,7 @@ export function runProduction(s: GameState, report: MonthReport, ctx: TickContex
           ?? fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need);
         if (!ferm) { blocked = '발효조 부족'; break; }
         ferm.daysLeft -= need;
-        waterLeftL -= still.chargeL;
+        waterLeftL -= batchWaterL(still); // [결정 #418] 형태로 고른 웜 텁은 × 1.5
       }
       stillRuns.set(stillInst.id, (stillRuns.get(stillInst.id) ?? 0) - recipe.runs);
       distillerRuns -= recipe.runs;
@@ -588,12 +588,12 @@ export function orderPlan(s: GameState, opts: { steady?: boolean } = {}): OrderP
     for (let b = 0; b < c.batchesPerMonth; b++) {
       const stillInst = stills.find((e) => (stillRuns.get(e.id) ?? 0) >= OEM.runs);
       const still = stillInst ? stillDefOf(s, stillInst.id) : null;
-      if (!stillInst || !still || distillerRuns < OEM.runs || waterLeftL < still.chargeL) break;
+      if (!stillInst || !still || distillerRuns < OEM.runs || waterLeftL < batchWaterL(still)) break;
       const need = fermentDaysAt(OEM.fermentDays, fermC) + 2;
       const ferm = fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need && f.type !== 'onggi');
       if (!ferm) break;
       ferm.daysLeft -= need;
-      waterLeftL -= still.chargeL;
+      waterLeftL -= batchWaterL(still); // [결정 #418] 형태로 고른 웜 텁은 × 1.5
       stillRuns.set(stillInst.id, (stillRuns.get(stillInst.id) ?? 0) - OEM.runs);
       distillerRuns -= OEM.runs;
     }
@@ -612,14 +612,14 @@ export function orderPlan(s: GameState, opts: { steady?: boolean } = {}): OrderP
     for (let b = 0; b < o.batchesPerMonth; b++) {
       if ((stillRuns.get(stillInst.id) ?? 0) < recipe.runs) { blocked = '증류기 가동 한도'; break; }
       if (distillerRuns < recipe.runs) { blocked = hasDistiller ? '디스틸러 운전 한도' : '디스틸러 없음'; break; }
-      if (recipe.kind !== 'gin' && waterLeftL < still.chargeL) { blocked = '취수 허가량'; break; }
+      if (recipe.kind !== 'gin' && waterLeftL < batchWaterL(still)) { blocked = '취수 허가량'; break; }
       if (recipe.kind !== 'gin') {
         const need = fermentDaysAt(recipe.fermentDays, fermC) + 2;
         const ferm = fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need && (recipe.kind === 'soju' || f.type !== 'onggi'))
           ?? fermenters.find((f) => f.capacityL >= still.chargeL && f.daysLeft >= need);
         if (!ferm) { blocked = '발효조 부족'; break; }
         ferm.daysLeft -= need;
-        waterLeftL -= still.chargeL;
+        waterLeftL -= batchWaterL(still); // [결정 #418] 형태로 고른 웜 텁은 × 1.5
       }
       stillRuns.set(stillInst.id, (stillRuns.get(stillInst.id) ?? 0) - recipe.runs);
       distillerRuns -= recipe.runs;
