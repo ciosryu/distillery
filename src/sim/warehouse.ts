@@ -15,6 +15,7 @@ import { autoSample } from './blendTable';
 import { lotQuality } from './bulk';
 import { protectedCaskIds } from './tags';
 import { PROD_TUNING } from './prodTuning';
+import { patrolDetect } from './staffTaskRules'; // [결정 #412] 순찰 강화(MGT 잎)
 
 // 숙성고: 공간·칸 배정·내부 기후·로테이션·오염 QC·월 숙성 단계(틱 3) (파트 PROD, 결정 #144 — 파일 쪼개기로 옮겨 왔다. 규칙·수치 불변)
 
@@ -182,7 +183,7 @@ export function runContamination(s: GameState, report: MonthReport, monthOfYear:
       continue;
     }
     c.contents.flavor.musty = Math.min(40, (c.contents.flavor.musty ?? 0) + (c.contamination === 'tca' ? 1.5 : 1));
-    if (!c.contaminationKnown && rng.chance(qc.length ? 0.25 + 0.5 * (observe / 100) : 0.03)) {
+    if (!c.contaminationKnown && rng.chance(qc.length ? patrolDetect(s, 0.25 + 0.5 * (observe / 100)) : 0.03)) { // [결정 #412] 순찰 강화 중이면 × 1.6(상한 0.95, MGT staffTaskRules)
       c.contaminationKnown = true;
       report.notes.push(`QC: 캐스크 ${c.id}에서 ${c.contamination === 'tca' ? 'TCA(코르크·곰팡내)' : '곰팡이'} 오염 발견`);
     }

@@ -25,6 +25,7 @@ import type { ProductCategory, SpiritKind } from './types';
 import { PROD_TUNING } from './prodTuning';
 import { ledgerOf, mergeLedgers, newEntry, siteIdOf } from './ledger';
 import { mixTaint } from './taint'; // [결정 #382] 코어 잎
+import { effectiveProcess } from './staffTaskRules';
 
 type StillDef = Extract<EquipmentDef, { kind: 'still' }>;
 
@@ -284,7 +285,7 @@ export function simulateBatch(
   flavor.body = (flavor.body ?? 0) + bodyBonus;
 
   // 디스틸러: 공정 스탯이 이취를 줄임 (결과 확률 아님 — 결정론적 보정)
-  const offMul = distiller ? 1.25 - 0.5 * (distiller.stats.b / 100) : 1.4;
+  const offMul = distiller ? 1.25 - 0.5 * (effectiveProcess(distiller) / 100) : 1.4; // [결정 #412] 숙성 점검을 맡은 디스틸러는 「공정」 × 0.7(MGT staffTaskRules) — 평소 업무면 stats.b 그대로
   for (const k of ['solvent', 'feinty', 'acetic'] as const) flavor[k] = (flavor[k] ?? 0) * offMul;
   if (distiller) flavor.fresh_fruit = (flavor.fresh_fruit ?? 0) * (1 + 0.1 * (distiller.stats.a / 100));
   else warnings.push('디스틸러 없이 생산 — 품질 저하');

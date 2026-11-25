@@ -10,6 +10,8 @@ import { staffLaborCost, wageDrift } from './mgtKnobs';
 import { nid } from './util';
 import { addModifier, isActive, mod } from './modifiers';
 import type { MonthReport } from './types';
+import { staffTaskOf, TASK_VALUES } from './staffTaskRules';
+import { runStaffTasks } from './staffTasks';
 import { staffOf } from './util';
 
 const ROLES: StaffRole[] = ['distiller', 'warehouse', 'sales', 'office'];
@@ -382,6 +384,7 @@ export function runStaffLifecycle(s: GameState, report: MonthReport, rng: Rng): 
     }
   }
   runMorale(s, report);
+  runStaffTasks(s, report); // [결정 #412] 맡긴 일 — 맡긴 사람이 없으면 아무 일도 없다(상태 · 난수 불변)
 }
 
 // ───────────── 핵심 전문가 1인 (새 캠페인 v16 — F5a [결정 #316], MGT P-MGT-49) ─────────────
@@ -444,12 +447,14 @@ export interface StaffTaskDef {
   /** 화면 풀이 한 줄(효과 · 비용 · 위험) */
   text: string;
 }
-/** 고를 수 있는 일 목록 — PR1(그릇)은 평소 업무만. 일 셋(숙성 점검 · 시음회 · 순찰 강화)은 PR2에서 더한다 */
+/** 고를 수 있는 일 목록 — 직군마다 하나(#412 가장 작은 꼴). 값은 `staffTaskRules.ts TASK_VALUES` `[튜닝]` */
 export const STAFF_TASKS: StaffTaskDef[] = [
   { id: 'routine', nameKo: '평소 업무', roles: 'all', text: '맡은 직무를 평소대로 한다(지금 효과 그대로)' },
+  { id: 'aging_check', nameKo: '숙성 점검', roles: ['distiller'], text: `매달 목재 ${TASK_VALUES.agingCheck.minOakMonths / 12}년 넘은 통을 ${TASK_VALUES.agingCheck.perMonth}통까지 대신 맛보고(돈 안 듦) 오염을 찾는다 · 분기마다 12년 감점이 큰 통을 알린다 — 그동안 증류장을 비워 새 원액의 이취가 조금 는다` },
+  { id: 'tasting', nameKo: '시음회', roles: ['sales'], text: `분기마다 시음회를 연다(회당 ${TASK_VALUES.tasting.cost / 1e4}만 원) — 반응에 따라 인지도가 오른다(친화가 높을수록 성황). 맡은 동안 매장을 덜 돌아 유통 커버리지 몫이 절반` },
+  { id: 'patrol', nameKo: '순찰 강화', roles: ['warehouse'], text: `숙성고를 더 자주 돈다 — 오염을 더 잘 찾는다(발견 확률 ×${TASK_VALUES.patrol.detectMul}). 야근 수당 월 ${TASK_VALUES.patrol.costPerMonth / 1e4}만 원` },
 ];
-/** 이 직원이 지금 하는 일(없으면 평소 업무) */
-export const staffTaskOf = (x: Pick<Staff, 'task'>): StaffTaskId => x.task ?? 'routine';
+export { staffTaskOf } from './staffTaskRules';
 /** 이 직원이 맡을 수 있는 일 */
 export const staffTasksFor = (x: Pick<Staff, 'role'>): StaffTaskDef[] => STAFF_TASKS.filter((t) => t.roles === 'all' || t.roles.includes(x.role));
 /** 분기 번호(⌊경과 개월 / 3⌋) */
