@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { applyAction, type GameState, type MonthReport } from './index';
 import { newScenarioGame } from './newScenario';
 import { STAFF_TASKS, staffTasksFor } from './hr';
-import { agingCheckPicks, runStaffTasks, TASK_NOTE, taskEventMonth } from './staffTasks';
+import { agingCheckPicks, runStaffTasks, TASK_NOTE, taskEventMonth, tastingProduct } from './staffTasks';
 import { coverageShare, effectiveProcess, patrolDetect, TASK_VALUES } from './staffTaskRules';
 import { coverage } from './market';
 import { houseBrand } from './brands';
-import type { Staff } from './types';
+import type { Product, Staff } from './types';
 
 const report = (s: GameState): MonthReport => ({ month: s.month, revenue: 0, expenses: {}, netCash: 0, cashEnd: 0, sales: [], production: [], bulk: [], bulkRevenue: 0, angelsShareL: 0, liquorTaxRemitted: 0, events: [], notes: [] });
 const game = (): GameState => {
@@ -86,7 +86,8 @@ describe('[결정 #412] 디스틸러 「숙성 점검」', () => {
     runStaffTasks(s, r);
     expect(s.finance.cash).toBe(cash);
     expect(s.inventory.samplesThisMonth).toBe(used);
-    expect(old.filter((c) => (s.inventory.casks.find((x) => x.id === c.id)!.samples ?? 0) > 0)).toHaveLength(4);
+    expect(old.filter((c) => (s.inventory.casks.find((x) => x.id === c.id)!.sampleLog?.length ?? 0) > 0)).toHaveLength(4); // 자동 샘플과 같은 읽기 — 손 샘플 횟수(samples)는 늘지 않는다
+    expect(old.every((c) => !(s.inventory.casks.find((x) => x.id === c.id)!.samples))).toBe(true);
     expect(r.notes.some((n) => n.startsWith(`${TASK_NOTE} 숙성 점검`))).toBe(true);
   });
   it('숨은 오염 통은 맛보다가 찾을 수 있다(달마다 50%) — 찾으면 소식', () => {
@@ -107,21 +108,35 @@ describe('[결정 #412] 디스틸러 「숙성 점검」', () => {
   });
 });
 
+const product = (s: GameState, id: string): Product => {
+  const p = { id, name: `시험 ${id}`, category: 'whisky', ageYears: 3, oakMonths: 40, abv: 0.46, bottleMl: 700, chillFiltered: false, packagingId: 'standard', flavor: {}, quality: 70, typicity: 70, style: null, sourcedShare: 0, stockBottles: 300, price: 60_000, unitCost: 20_000, createdMonth: 50, lastMonthSold: 0, totalSold: 0 } as Product;
+  s.commerce.products.push(p);
+  return p;
+};
+const sold = (r: MonthReport, p: Product, bottles: number) => r.sales.push({ productId: p.id, name: p.name, bottles, revenue: bottles * p.price, demandBottles: bottles });
+
 describe('[결정 #412] 영업 「시음회」', () => {
-  it('분기 첫 달에 1,500만 원을 쓰고 인지도가 오른다 · 같은 분기 다음 달엔 열지 않는다', () => {
+  it('이번 달 가장 많이 팔린 제품으로 — 분기 첫 달에 1,500만 원 · 인지도 + · 리뷰 덧붙임 · 같은 분기 다음 달엔 열지 않는다', () => {
     const s = game(); // 96 = 분기 첫 달
+    const a = product(s, 'PA'); const b = product(s, 'PB');
     const x = role(s, 'sales');
     x.task = 'tasting'; x.taskMonth = 95;
     const aw = houseBrand(s).awareness;
     const cash = s.finance.cash;
     const r = report(s);
+    sold(r, a, 20); sold(r, b, 50);
+    expect(tastingProduct(s, r)!.id).toBe('PB');
+    r.reviews = [{ productId: 'PB', scores: [80] }];
     runStaffTasks(s, r);
+    const n = r.reviews!.find((y) => y.productId === 'PB')!.scores.length;
+    expect(n - 1).toBe(TASK_VALUES.tasting.reviews[(['great', 'normal', 'poor'] as const).find((k) => r.notes[0]!.includes({ great: '성황', normal: '보통', poor: '썰렁' }[k]))!]);
     expect(cash - s.finance.cash).toBe(TASK_VALUES.tasting.cost);
     expect(r.expenses.marketing).toBe(TASK_VALUES.tasting.cost);
     expect(houseBrand(s).awareness).toBeGreaterThan(aw);
-    expect(r.notes.find((n) => n.startsWith(`${TASK_NOTE} 시음회`))).toMatch(/성황|보통|썰렁/);
+    expect(r.notes.find((n) => n.startsWith(`${TASK_NOTE} 시음회`))).toMatch(/「시험 PB」: (성황|보통|썰렁)/);
     s.month = 97;
     const r2 = report(s);
+    sold(r2, b, 50);
     runStaffTasks(s, r2);
     expect(r2.notes).toHaveLength(0);
   });
@@ -131,6 +146,7 @@ describe('[결정 #412] 영업 「시음회」', () => {
     x.task = 'tasting'; x.taskMonth = s.month;
     s.finance.cash = 1_000_000;
     const r = report(s);
+    sold(r, product(s, 'PA'), 10);
     runStaffTasks(s, r);
     expect(s.finance.cash).toBe(1_000_000);
     expect(r.notes[0]).toContain('현금이 모자라');
@@ -146,7 +162,20 @@ describe('[결정 #412] 숙성고 「순찰 강화」', () => {
     const r = report(s);
     runStaffTasks(s, r);
     expect(cash - s.finance.cash).toBe(TASK_VALUES.patrol.costPerMonth);
-    expect(r.expenses.staffTask).toBe(TASK_VALUES.patrol.costPerMonth);
+    expect(r.expenses.warehousePatrol).toBe(TASK_VALUES.patrol.costPerMonth);
     expect(r.notes.some((n) => n.startsWith(`${TASK_NOTE} 순찰 강화`))).toBe(true);
+  });
+});
+
+describe('[결정 #412] 시음회 — 팔린 제품이 없으면 열지 않는다(돈 안 씀)', () => {
+  it('이번 달 판매 0이면 소식만', () => {
+    const s = game();
+    const x = role(s, 'sales');
+    x.task = 'tasting'; x.taskMonth = s.month;
+    const cash = s.finance.cash;
+    const r = report(s);
+    runStaffTasks(s, r);
+    expect(s.finance.cash).toBe(cash);
+    expect(r.notes[0]).toContain('팔린 제품이 없어');
   });
 });

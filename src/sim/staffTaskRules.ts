@@ -6,8 +6,8 @@ import type { GameState, Staff, StaffTaskId } from './types';
 export const TASK_VALUES = {
   /** 디스틸러 「숙성 점검」 — 매달 목재 minOakMonths↑ 통을 perMonth통까지 대신 맛본다(돈 · 월 샘플 여력 안 씀). 숨은 오염은 contamFind 확률로 안다. 맞바꿈: 그 달 새 원액 이취 보정에 쓰는 「공정」 × processMul */
   agingCheck: { minOakMonths: 84, perMonth: 4, contamFind: 0.5, processMul: 0.7, flagPenalty: 10 },
-  /** 영업 「시음회」 — 분기에 한 번 cost. 결과 성황 · 보통 · 썰렁(친화로 기움) → 회사 인지도 +. 맞바꿈: 맡은 동안 그 영업의 유통 커버리지 몫 × coverageMul */
-  tasting: { cost: 15_000_000, coverageMul: 0.5, awareness: { great: 0.015, normal: 0.008, poor: 0.002 } },
+  /** 영업 「시음회」 — 분기에 한 번 cost. 이번 달 가장 많이 팔린 제품으로. 결과 성황 · 보통 · 썰렁(친화로 기움) → 그 제품 브랜드 인지도 + · 리뷰 몇 건. 맞바꿈: 맡은 동안 그 영업의 유통 커버리지 몫 × coverageMul */
+  tasting: { cost: 15_000_000, coverageMul: 0.5, awareness: { great: 0.015, normal: 0.008, poor: 0.002 }, /** 그 제품 위스키베이스 리뷰 건수 — 작게(돈으로 품질을 사지 않게, MKT) */ reviews: { great: 3, normal: 1, poor: 0 } },
   /** 숙성고 「순찰 강화」 — 오염 발견 확률 × detectMul(상한 detectCap) · 월 costPerMonth(야근) */
   patrol: { detectMul: 1.6, detectCap: 0.95, costPerMonth: 3_000_000 },
 };

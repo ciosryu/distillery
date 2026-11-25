@@ -205,7 +205,7 @@ export function simulateBatch(
     flavor.tropical = (flavor.tropical ?? 0) + 2.5 * hot;
     if (hot > 0 && env?.rng) {
       chargeLPA *= clamp(1 + env.rng.normal(0, 0.015 * hot), 0.8, 1.1);
-      const qc = distiller?.stats.b ?? 0;
+      const qc = distiller ? effectiveProcess(distiller) : 0; // [결정 #412] 숙성 점검 중이면 × 0.7(PROD 2026-11-25 — 287행과 같이)
       if (env.rng.chance(0.025 * hot * (1 - qc / 120))) {
         flavor.acetic = (flavor.acetic ?? 0) + 25;
         flavor.sulfur_meaty = (flavor.sulfur_meaty ?? 0) + 8;
