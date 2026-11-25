@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { advanceMonth, applyAction } from './index';
 import { newScenarioGame } from './newScenario';
-import { evaluate, lotEvalCtx, YOUTH_SULFUR } from './flavor';
+import { evaluate, lotEvalCtx, YOUTH_SULFUR, YOUTH_WEIGHT } from './flavor';
 import { matureCask } from './maturation';
 import { emptyCaskOf } from './newGame';
 import { sameTank } from './production';
@@ -45,6 +45,16 @@ describe('#422 (c) 저숙성 황 이취 — 형태를 고른 증류기 원액 ·
     expect(evaluate(f, 'whisky', { youthOakMonths: 60 })).toEqual(base);
     expect(evaluate(f, 'grain_whisky', { youthOakMonths: 36 })).toEqual(evaluate(f, 'grain_whisky'));
     expect(evaluate({ ...f, sulfur_meaty: 0.4 }, 'whisky', { youthOakMonths: 36 })).toEqual(evaluate({ ...f, sulfur_meaty: 0.4 }, 'whisky')); // 균형 원액 황은 문턱 아래
+  });
+  it('[P-PROD-73] 무거운 원액(바디 30 넘는 몫, 최대 5)도 어릴 때 감점 — 쉘로 황을 낮춰도 피하지 못한다 · 균형 바디는 0', () => {
+    const lowS = { ...f, sulfur_meaty: 0.4 };
+    const heavy = { ...lowS, body: 34 };
+    const d = evaluate(heavy, 'whisky', { youthOakMonths: 36 }).offnotes - evaluate(heavy, 'whisky').offnotes;
+    expect(d).toBeCloseTo(YOUTH_WEIGHT.k * 4 * (1 - 36 / 60), 1);
+    const capped = evaluate({ ...lowS, body: 50 }, 'whisky', { youthOakMonths: 36 }).offnotes - evaluate({ ...lowS, body: 50 }, 'whisky').offnotes;
+    expect(capped).toBeCloseTo(YOUTH_WEIGHT.k * YOUTH_WEIGHT.cap * (1 - 36 / 60), 1);
+    expect(evaluate({ ...lowS, body: 26 }, 'whisky', { youthOakMonths: 36 })).toEqual(evaluate({ ...lowS, body: 26 }, 'whisky'));
+    expect(evaluate(heavy, 'whisky', { youthOakMonths: 60 })).toEqual(evaluate(heavy, 'whisky'));
   });
   it('원액 맥락은 형태가 있을 때만', () => {
     expect(lotEvalCtx(lotOf({}))).toBeUndefined();
