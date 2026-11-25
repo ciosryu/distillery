@@ -20,7 +20,7 @@ const CHECK_LABEL_V16: Record<GoalCheck['id'], string> = { survive: '파산하�
  * 판정 결과(verdict)에 남은 값만 읽는다
  */
 export function sGradeRows(v: NonNullable<GameState['progress']['verdict']>): { id: string; label: string; ok: boolean; text: string }[] {
-  const nwTarget = (v.checks.find((c) => c.id === 'netWorth')?.target ?? 0) * GRADE.sNetWorthRatio;
+  const nwTarget = v.sNetWorthTarget ?? (v.checks.find((c) => c.id === 'netWorth')?.target ?? 0) * GRADE.sNetWorthRatio; // [결정 #393] v16은 판정이 적은 규모별 S 문턱
   const q = v.flagshipQuality ?? v.checks.find((c) => c.id === 'flagship')?.value;
   const aw = v.awareness ?? 0;
   return [
@@ -31,7 +31,7 @@ export function sGradeRows(v: NonNullable<GameState['progress']['verdict']>): { 
 }
 
 function checkText(c: GoalCheck, legacy = true): string {
-  if (c.id === 'netWorth') return legacy ? `${won(c.value ?? 0)} / 목표 ${won(c.target ?? 0)}` : `${won(c.value ?? 0)} / 등급 기준 ${won(c.target ?? 0)} (S는 ×${GRADE.sNetWorthRatio})`;
+  if (c.id === 'netWorth') return legacy ? `${won(c.value ?? 0)} / 목표 ${won(c.target ?? 0)}` : `${won(c.value ?? 0)} / 성과 기준 ${won(c.target ?? 0)} (S 조건은 아래 줄)`;
   if (c.id === 'flagship') return c.ok ? `품질 ${c.value ?? '—'}` : '아직 없음';
   return c.ok ? '버텼다' : '게임이 끝났다';
 }

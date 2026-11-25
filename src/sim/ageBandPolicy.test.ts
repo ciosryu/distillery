@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { migrateSave } from './migrate';
 import { advanceMonth, applyAction } from './index';
 import { newScenarioGame } from './newScenario';
-import { AGE_BANDS, ageBand, agePolicyFilter, bandCounts, defaultAgePolicy, THIN_BAND_CASKS } from './ageBand';
-import { autoRestockCeiling, autoRestockFloor, autoRestockShortReason, autoRestockSources, whiskyRange } from './economics';
+import { AGE_BANDS, ageBand, agePolicyFilter, agePolicyRows, bandCounts, defaultAgePolicy, THIN_BAND_CASKS } from './ageBand';
+import { autoRestockCeiling, autoRestockFloor, autoRestockRangeChoices, autoRestockShortReason, autoRestockSources, CASK_TYPE_GROUPS, whiskyRange } from './economics';
 import type { Cask, GameState } from './types';
 
 // 9차 134개월 세이브 — 찬 통 54: 0 ~ 2년 29 · 3 ~ 4년 13 · 5 ~ 9년 3 · 10년+ 9. 진행 중 v16 세이브라 띠 정책 필드가 없다(#399 A)
@@ -160,5 +160,32 @@ describe('#399 setAgePolicy', () => {
     const on = applyAction(s, { type: 'setAgePolicy', policy: defaultAgePolicy() }).state;
     expect(applyAction(on, { type: 'setAgePolicy', policy: null }).state.inventory.agePolicy).toBeUndefined();
     expect(AGE_BANDS.map((b) => b.id)).toEqual(['0-2', '3-4', '5-9', '10+']);
+  });
+});
+
+describe('#399 ② 화면 함수 — 띠 정책 표 · 통 범위 선택지', () => {
+  it('agePolicyRows — 띠마다 통 수 · 규칙 · 자동이 쓸 수 있는 통(쓰지 않음 0 · n통 남김 = 통 수 − n)', () => {
+    const s = load();
+    expect(agePolicyRows(s).every((r) => !r.locked && r.autoUsable === r.casks)).toBe(true);
+    s.inventory.agePolicy = defaultAgePolicy();
+    const rows = Object.fromEntries(agePolicyRows(s).map((r) => [r.id, r]));
+    expect(rows['10+']).toMatchObject({ casks: 9, autoUsable: 0, locked: true });
+    expect(rows['5-9']).toMatchObject({ casks: 3, autoUsable: 0, locked: true }); // 3통 < 6
+    expect(rows['3-4']).toMatchObject({ casks: 13, autoUsable: 13, locked: false });
+  });
+  it('autoRestockRangeChoices — 지금 규칙 + (상한 12 · 24 · 36개월 · 없음) × (아무거나 · 버번 · 셰리), 통 수는 자동 납품 후보 수와 같다', () => {
+    const s = load();
+    const p = s.commerce.products.find((x) => x.id === SHERRY6)!;
+    const c = autoRestockRangeChoices(s, p);
+    expect(c[0]!.source).toBeNull();
+    expect(c[0]!.available).toBe(autoRestockSources(s, p).length);
+    expect(c.length).toBe(1 + 4 * (1 + CASK_TYPE_GROUPS.filter((g) => g.types.length).length));
+    const b24 = c.find((x) => x.label === '3년 ~ 5년 · 버번 계열')!;
+    expect(b24.source).toEqual({ vessel: 'oak', months: 36, maxMonths: 60, caskTypes: CASK_TYPE_GROUPS[0]!.types });
+    expect(b24.available).toBe(autoRestockSources(s, { ...p, autoRestockSource: b24.source! }).length);
+    // 고른 값을 바꾸지 않는다 · 블렌디드 · 소주는 빈 목록
+    expect(p.autoRestockSource).toBeUndefined();
+    const soju = s.commerce.products.find((x) => x.category === 'soju_distilled')!;
+    expect(autoRestockRangeChoices(s, soju)).toEqual([]);
   });
 });
