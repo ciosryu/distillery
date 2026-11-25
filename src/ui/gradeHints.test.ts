@@ -30,8 +30,10 @@ describe('판 초반 통 활성도 힌트 (P-PROD-66 e)', () => {
 });
 
 describe('결과 화면 문구 (#339, 문구 MGT)', () => {
-  it('세 줄 — 숫자 없음 · 재판정·최고 품질 약속·요령 없음', () => {
-    for (const t of Object.values(GRADE_NOTE)) { expect(t).not.toMatch(/\d+억|재판정|최고 품질|채웠다/); }
+  it('세 줄 — 숫자 없음 · 최고 품질 약속 · 요령 없음([결정 #422]부터 재판정은 알린다 — once 줄)', () => {
+    for (const t of Object.values(GRADE_NOTE)) { expect(t).not.toMatch(/\d+억|최고 품질|채웠다/); }
+    expect(GRADE_NOTE.once).toContain('재판정');
+    expect(GRADE_NOTE.once).toContain('오르기만');
     expect(GRADE_NOTE.netWorthShort).toContain('15년(180개월)');
   });
   it('7차 완료 세이브는 순자산 미달(14.14억 / 36억) → 미달 줄을 보일 조건', () => {
