@@ -696,7 +696,8 @@ export interface CaskOrder {
   typeId: CaskTypeId;
   qty: number;
   arriveMonth: number;
-  source: 'cooperage' | 'seasoning';
+  /** [결정 #393] `refill` — 한 번 쓴 통(리필) 주문: 도착할 때 채웠다 뺀 통과 같은 상태(`maturation.ts refillState`) */
+  source: 'cooperage' | 'seasoning' | 'refill';
 }
 
 export interface CaskBid { id: string; buyerName: string; caskId: string; price: number; expiresMonth: number }

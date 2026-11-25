@@ -12,6 +12,7 @@ import { runTourism } from './tourism';
 import { runHandfill } from './handfill';
 import { applyAutoFill } from './autoFill';
 import { emptyCaskOf } from './newGame';
+import { refillState } from './maturation';
 import { buildTickContext, type TickContext } from './tick';
 import { updateWeather, weatherOffset } from './weather';
 import { archiveSoldOutProducts, rollupYear } from './lifecycle';
@@ -72,9 +73,10 @@ function phasePrepare(s: GameState, report: MonthReport): void {
     for (let i = 0; i < o.qty; i++) {
       const c = emptyCaskOf(s, o.typeId);
       if (o.source === 'seasoning') { c.seasoning = Math.min(1.3, c.seasoning * 1.2); c.activity = Math.min(1.2, c.activity * 1.1); }
+      if (o.source === 'refill') Object.assign(c, refillState(c)); // [결정 #393 N1] 한 번 쓴 통 — 채웠다 뺀 통과 같은 상태(PROD)
       s.inventory.casks.push(c);
     }
-    report.notes.push(`${o.source === 'seasoning' ? '시즈닝 계약' : '쿠퍼리지 주문'} 캐스크 ${o.qty}개 도착`);
+    report.notes.push(`${o.source === 'seasoning' ? '시즈닝 계약' : o.source === 'refill' ? '리필(한 번 쓴) 통 주문' : '쿠퍼리지 주문'} 캐스크 ${o.qty}개 도착`);
   }
   s.inventory.caskOrders = s.inventory.caskOrders.filter((x) => x.arriveMonth > s.month);
   resolveWaterPermit(s, report);
