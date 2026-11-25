@@ -20,13 +20,14 @@ export const TASK_NOTE = '직원 일 —';
 /** 이 직원의 일이 「분기 사건」을 낼 달인가 — 맡긴 달, 또는 맡긴 채 맞은 각 분기 첫 달(달력 분기 ⌊month/3⌋) */
 export const taskEventMonth = (s: Pick<GameState, 'month'>, x: Pick<Staff, 'taskMonth'>): boolean => x.taskMonth === s.month || (s.month % 3 === 0 && (x.taskMonth ?? -1) < s.month);
 
-/** 숙성 점검이 맛볼 통 — 목재 기준↑ · 원액 있음 · 고객 소유 아님(자동 샘플과 같은 읽기라 횟수 제한 없음). 플래그십 예비 → 12년 감점 큰 통 → 오래 안 뜬 통 순 */
+/** 숙성 점검이 맛볼 통 — 목재 기준↑ · 원액 있음 · 고객 소유 · 핸드필 · 아는 오염 아님(자동 샘플과 같은 읽기라 횟수 제한 없음). 플래그십 예비 → 12년 감점 큰 통 → 오래 안 뜬 통 순 */
 export function agingCheckPicks(s: GameState, n = TASK_VALUES.agingCheck.perMonth): Cask[] {
   const V = TASK_VALUES.agingCheck;
   const last = (c: Cask) => c.sampleLog?.at(-1)?.month ?? -1;
   const pen = (c: Cask) => tanninOutlook(s, c)?.penalty ?? 0;
   return s.inventory.casks
-    .filter((c) => c.contents && !c.owner && c.contents.oakMonths >= V.minOakMonths)
+    // 핸드필 지정 통(고객 몫 — 판매량과 어긋남) · 이미 아는 오염 통은 맛보지 않는다(PROD 2026-11-25)
+    .filter((c) => c.contents && !c.owner && !c.handfill && !c.contaminationKnown && c.contents.oakMonths >= V.minOakMonths)
     .map((c) => ({ c, reserve: (c.contents!.tagIds ?? []).includes(FLAGSHIP_RESERVE_TAG) ? 1 : 0, pen: pen(c), last: last(c) }))
     .sort((a, b) => b.reserve - a.reserve || b.pen - a.pen || a.last - b.last || a.c.id.localeCompare(b.c.id))
     .slice(0, n).map((x) => x.c);
@@ -67,8 +68,11 @@ export function tastingProduct(s: GameState, report: MonthReport): Product | und
  * 영업 「시음회」 — 분기 첫 달(맡긴 달 포함) 한 번. 결과(성황 · 보통 · 썰렁)는 친화(a)로 기운 난수 — 품질과 무관(I2 안전).
  * 그 제품 브랜드 인지도 + · 위스키베이스 리뷰 몇 건(참 품질 + 잡음 — 리뷰가 원래 아는 품질을 좁히는 길, MKT). 리뷰는 틱 5′ 뒤라 결산 `reviews`에 덧붙인다
  */
-function runTasting(s: GameState, report: MonthReport, x: Staff): void {
+function runTasting(s: GameState, report: MonthReport, x: Staff, held: { tasting?: boolean }): void {
   if (!taskEventMonth(s, x)) return;
+  // 같은 달 시음회는 한 번 — 영업 둘이 맡아도 같은 제품 · 같은 리뷰 스트림이 두 번 붙지 않게(MKT 2026-11-25)
+  if (held.tasting) { report.notes.push(`${TASK_NOTE} 시음회(${x.name}): 이번 달 시음회는 이미 열렸다 — 다음 분기에 연다`); return; }
+  held.tasting = true;
   const V = TASK_VALUES.tasting;
   const p = tastingProduct(s, report);
   if (!p) { report.notes.push(`${TASK_NOTE} 시음회(${x.name}): 이번 달 팔린 제품이 없어 열지 않았다`); return; }
@@ -86,8 +90,9 @@ function runTasting(s: GameState, report: MonthReport, x: Staff): void {
   // 리뷰 — 별도 난수 스트림(평소 업무 판은 바이트 동일). 옛 판 · 품질이 공개된 판은 아는 품질을 건드리지 않는다
   const rr = rngFor(s.seed, s.month, `staff:tasting:${noiseKeyOf(p)}`);
   const scores = Array.from({ length: V.reviews[outcome] }, () => wbScore(p.quality, rr.int(-WB_SCORE.noise, WB_SCORE.noise)));
-  if (scores.length) {
-    if (hidesProductQuality(s) && p.qualityKnown) p.qualityKnown = applyReviews(p.qualityKnown, scores, s.month);
+  // 품질을 가리는 판(v16)만 리뷰를 기록한다 — 옛 판 · 공개 판은 결산 리뷰가 원래 비어 있다(MKT 2026-11-25)
+  if (scores.length && hidesProductQuality(s)) {
+    if (p.qualityKnown) p.qualityKnown = applyReviews(p.qualityKnown, scores, s.month);
     const line = (report.reviews ??= []).find((y) => y.productId === p.id);
     if (line) line.scores.push(...scores); else report.reviews.push({ productId: p.id, scores });
   }
@@ -107,10 +112,11 @@ function runPatrol(s: GameState, report: MonthReport, x: Staff): void {
 
 /** 이번 달 맡긴 일 — 틱 6단계(runStaffLifecycle 끝). 맡긴 사람이 없으면 바로 돌아간다 */
 export function runStaffTasks(s: GameState, report: MonthReport): void {
+  const held: { tasting?: boolean } = {};
   for (const x of s.hr.staff) {
     if (!x.task) continue;
     if (x.role === 'distiller' && onTask(x, 'aging_check')) runAgingCheck(s, report, x);
-    else if (x.role === 'sales' && onTask(x, 'tasting')) runTasting(s, report, x);
+    else if (x.role === 'sales' && onTask(x, 'tasting')) runTasting(s, report, x, held);
     else if (x.role === 'warehouse' && onTask(x, 'patrol')) runPatrol(s, report, x);
     else report.notes.push(`${TASK_NOTE} ${x.name}(${ROLE_INFO[x.role].nameKo})에게 맡긴 일을 이 직군은 할 수 없다 — 평소 업무로 본다`);
   }

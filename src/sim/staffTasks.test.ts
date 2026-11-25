@@ -179,3 +179,28 @@ describe('[결정 #412] 시음회 — 팔린 제품이 없으면 열지 않는�
     expect(r.notes[0]).toContain('팔린 제품이 없어');
   });
 });
+
+describe('[결정 #412] 검토 반영(PROD · MKT 2026-11-25)', () => {
+  it('영업 둘이 같은 달 시음회를 맡아도 한 번만 연다(돈 · 리뷰 한 번)', () => {
+    const s = game();
+    const a = role(s, 'sales');
+    a.task = 'tasting'; a.taskMonth = s.month;
+    s.hr.staff.push({ ...a, id: 'S-2', name: '영업 둘' });
+    const cash = s.finance.cash;
+    const r = report(s);
+    sold(r, product(s, 'PA'), 10);
+    runStaffTasks(s, r);
+    expect(cash - s.finance.cash).toBe(TASK_VALUES.tasting.cost);
+    expect(r.notes.some((n) => n.includes('이미 열렸다'))).toBe(true);
+  });
+  it('숙성 점검은 핸드필 통 · 이미 아는 오염 통을 맛보지 않는다', () => {
+    const s = game();
+    const h = agedCask(s, 130, { handfill: true });
+    const k = agedCask(s, 120, { contamination: 'tca', contaminationKnown: true });
+    const ok = agedCask(s, 110);
+    const ids = agingCheckPicks(s).map((c) => c.id);
+    expect(ids).toContain(ok.id);
+    expect(ids).not.toContain(h.id);
+    expect(ids).not.toContain(k.id);
+  });
+});
