@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { newScenarioGame, stagesOf, type GameState } from '../sim';
 import { monthTodos, stageTarget } from './alerts';
+import { newChoices } from './newChoices';
 import { turnNews } from './TurnBrief';
 
 const mvp = (): GameState => newScenarioGame({ scenarioId: 'mvp_kr', tierId: 'micro', loanAmount: 0, seed: 1 });
@@ -15,10 +16,11 @@ describe('새 기능 열림 → 그 탭', () => {
     expect(by('y7_retail').tab).toBe('b2b');
     expect(by('y9_casks').tab).toBe('b2b');
   });
-  it('할 일 "새로 열림 — 11년 차" 버튼이 직원 탭', () => {
+  it('맨 위 「새로 열림 — 11년 차」 버튼이 직원 탭(#416 — 할 일에서는 뺐다)', () => {
     const s = mvp(); s.month = 121; s.scenario!.stagesDone = [...(s.scenario!.stagesDone ?? []), 'y11_specialist'];
-    const t = monthTodos(s).find((x) => x.id === 'stage-y11_specialist')!;
-    expect(t).toMatchObject({ action: '직원', target: { tab: 'staff' } });
+    const c = newChoices(s, false).find((x) => x.key === 'stage:y11_specialist')!;
+    expect(c.go).toEqual({ target: { tab: 'staff' }, label: '직원 탭' });
+    expect(monthTodos(s).some((x) => x.id.startsWith('stage-'))).toBe(false);
   });
   it('소식 창: "새 기능 열림" 메모는 일반 줄에서 빼고 탭 버튼이 붙은 강조 줄로', () => {
     const s = mvp(); s.month = 121;

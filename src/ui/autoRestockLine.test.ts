@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { parsePlayFile } from '../store/playlog';
-import { autoRestockRangeOptions, autoRestockSourceLine, autoRestockSourceOptions, autoRestockTitle, rangeKey, sourceKey } from './autoRestockLine';
+import { autoRestockQualityOptions, autoRestockRangeOptions, autoRestockSourceLine, autoRestockSourceOptions, autoRestockTitle, qualityKey, rangeKey, sourceKey } from './autoRestockLine';
 import { applyAction } from '../sim';
 import { autoRestockShortReason, autoRestockSources, autoRestockSupported, newmakeTankUseL } from '../sim/economics';
 import { knownState, knownView, type GameState } from '../sim';
@@ -156,5 +156,40 @@ describe('[결정 #399] 위스키 「통 범위 · 통 종류」 고르기 — �
     expect(autoRestockSources(s0, byName(s0, W)).length).toBeGreaterThan(0); // 정책 전에는 쓸 통이 있다(133개월: 21통) — 시험이 헛돌지 않게
     expect(autoRestockShortReason(s0, byName(s0, W))).toBeNull();
     expect(why).toMatch(/띠는 자동이 쓰지 않도록 정했다/);
+  });
+});
+
+describe('[결정 #419] 위스키 「통 품질」 고르기 — 샘플 어림 하한 선택지', () => {
+  const W = '김포 싱글몰트 셰리 6년';
+  it('133개월: 첫 칸은 조건 없음, 그다음 60 · 70 · 80 — 문구에 「샘플 어림」 · 열쇠는 모두 다르다', () => {
+    const s = m133();
+    const o = autoRestockQualityOptions(s, byName(s, W));
+    expect(o.map((x) => x.key)).toEqual(['none', '60', '70', '80']);
+    expect(o[0]!.text).toMatch(/^통 품질 조건 없음 — 통 (\d+개|없음)$/);
+    for (const x of o.slice(1)) expect(x.text).toMatch(/샘플 어림/);
+  });
+  it('하나를 고르면 제품 값의 열쇠가 그 칸과 같다 · 통 범위 칸 값(rangeKey)은 품질을 보지 않는다', () => {
+    const s0 = m133();
+    const p0 = byName(s0, W);
+    const pick = autoRestockQualityOptions(s0, p0).find((x) => x.key === '70')!;
+    const s = applyAction(s0, { type: 'setAutoRestock', productId: p0.id, months: 3, source: pick.source }).state;
+    const p = byName(s, W);
+    expect(qualityKey(p.autoRestockSource)).toBe('70');
+    expect(autoRestockQualityOptions(s, p).filter((x) => x.key === '70')).toHaveLength(1);
+    expect(autoRestockRangeOptions(s, p).some((x) => x.key === rangeKey(p.autoRestockSource))).toBe(true);
+  });
+  it('샘플 기록이 없으면 조건을 건 칸은 통 없음 · 「샘플 없는 통 n개는 못 씀」 — 조건 없음 칸은 그대로', () => {
+    const s = m133();
+    const before = autoRestockQualityOptions(s, byName(s, W))[0]!.text;
+    for (const c of s.inventory.casks) if (c.contents) delete c.sampleLog;
+    const o = autoRestockQualityOptions(s, byName(s, W));
+    expect(o[0]!.text).toBe(before);
+    for (const x of o.slice(1)) { expect(x.empty).toBe(true); expect(x.text).toMatch(/— 통 없음 · 샘플 없는 통 [1-9]\d*개는 못 씀$/); }
+  });
+  it('소주 · 옛 판은 통 품질 고르기가 없다', () => {
+    const s = m133();
+    expect(autoRestockQualityOptions(s, byName(s, '김포 소주'))).toEqual([]);
+    s.rulesVersion = 'legacy-v15';
+    expect(autoRestockQualityOptions(s, byName(s, W))).toEqual([]);
   });
 });

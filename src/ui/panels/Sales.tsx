@@ -7,7 +7,7 @@ import { PRICE_MODE_LABEL, priceModeOf } from '../../sim/priceEngine';
 import { PRODUCT_NAME_MAX } from '../../sim/actions.prod';
 import { CATEGORY } from '../../sim/content/categories';
 import { AUTO_RESTOCK_LONG_FLOOR, autoRestockContest, autoRestockFloor, AUTO_RESTOCK_MONTHS, autoRestockShortReason, autoRestockSupported } from '../../sim/economics';
-import { autoRestockRangeOptions, autoRestockSourceLine, autoRestockSourceOptions, autoRestockTitle, rangeKey, sourceKey } from '../autoRestockLine';
+import { autoRestockQualityOptions, autoRestockRangeOptions, autoRestockSourceLine, autoRestockSourceOptions, autoRestockTitle, qualityKey, rangeKey, sourceKey } from '../autoRestockLine';
 import { whiskyMinMonths } from '../../sim/blending';
 import { AXIS } from '../../sim/content/axes';
 import { ProfileRadar } from './Production';
@@ -262,6 +262,18 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
                     <label className="mt-0.5 flex items-center gap-1" title="자동 납품이 쓸 통의 숙성 범위(하한 ~ 상한)와 통 종류. 상한을 두면 그보다 오래된 통은 남긴다(12년 후보 · 연령 띠 정책과 함께). 통 수는 지금 이 조건으로 쓸 수 있는 통이다(띠 정책 반영)">통 범위
                       <select className="rounded border border-stone-300 bg-white px-1 py-0 text-[11px] dark:border-stone-700 dark:bg-stone-800" value={rangeKey(p.autoRestockSource)} onChange={(e) => { const o = ranges.find((x) => x.key === e.target.value); if (o) dispatch({ type: 'setAutoRestock', productId: p.id, months: p.autoRestock!, source: o.source }); }} aria-label={`${p.name} 자동 납품 통 범위`}>
                         {ranges.map((o) => <option key={o.key} value={o.key}>{o.text}</option>)}
+                      </select>
+                    </label>
+                  );
+                })()}
+                {/* [결정 #419] 통 품질 — 샘플 기록의 아는 품질 하한(참 품질 아님). 선택지 · 통 수 · 샘플 없는 통 수는 PROD autoRestockQualityChoices */}
+                {(() => {
+                  const qs = autoRestockQualityOptions(s, p);
+                  if (!qs.length) return null;
+                  return (
+                    <label className="mt-0.5 flex items-center gap-1" title="자동 납품이 쓸 통의 품질 하한 — 샘플을 떠 본 기록의 어림(자기 통 · 같은 배치 형제 통)으로 고른다. 어림이라 실제와 다를 수 있다. 샘플 기록이 없는 통은 조건을 걸면 쓰지 않는다(자동 샘플을 켜면 기록이 찬다)">통 품질
+                      <select className="rounded border border-stone-300 bg-white px-1 py-0 text-[11px] dark:border-stone-700 dark:bg-stone-800" value={qualityKey(p.autoRestockSource)} onChange={(e) => { const o = qs.find((x) => x.key === e.target.value); if (o) dispatch({ type: 'setAutoRestock', productId: p.id, months: p.autoRestock!, source: o.source }); }} aria-label={`${p.name} 자동 납품 통 품질`}>
+                        {qs.map((o) => <option key={o.key} value={o.key}>{o.text}</option>)}
                       </select>
                     </label>
                   );
