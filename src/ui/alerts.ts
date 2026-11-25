@@ -13,7 +13,6 @@ import { handfillCask, hasHandfillZone } from '../sim/handfill';
 import { exportShortfalls } from '../sim/market';
 import { retailBreakRemaining, retailCancellationCost } from '../sim/deals';
 import { OVERHANG, overhangFactor, overhangMonths } from '../sim/retail';
-import { ibAgedCaskCount } from '../sim/bulk';
 import { autoFillPreview } from '../sim/autoFill';
 import { AUTO_RESTOCK_STARVED_WARN, autoRestockPlan, autoRestockShortReason, autoRestockSources, autoRestockStarvedMonths, autoRestockSupported, guardedFlagshipCasks, productMonthlyPace } from '../sim/economics';
 import { reserveCaskIds } from '../sim/tags';
@@ -227,7 +226,8 @@ export function stageTarget(st: { unlock: readonly string[] }): { tab: string; l
   if (u('system:commissions')) return { tab: 'blendlab', label: '블렌딩 테이블' };
   if (u('system:exports')) return { tab: 'exports', label: '수출' };
   if (u('system:caskBids') || u('system:siteDeals')) return { tab: 'b2b', label: '원액 B2B' };
-  if (u('system:hr') || u('action:pickSpecialist')) return { tab: 'staff', label: '직원' };
+  // [결정 #412] 직원 맡길 일 · 교육 · 해고 단계(MGT `y1_staff` — system:hr는 잠근 채 행동 키만 연다)도 직원 탭
+  if (u('system:hr') || u('action:pickSpecialist') || u('action:assignStaffTask') || u('action:trainStaff')) return { tab: 'staff', label: '직원' };
   // #345 ② 피니싱(GAP-PROD-4): 홈 「숙성 중인 캐스크」 칸에서 고른다 — 숙성고 탭은 샌드박스만
   if (u('action:transferCask')) return { tab: 'home', label: '숙성 중인 캐스크' };
   return { tab: 'sales', label: '판매' };
@@ -343,7 +343,7 @@ export function maltStoppedMonths(s: GameState): number {
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
 export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'overhang', 'contam-cand', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-starved', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'idle-cash', 'sample'];
 // 꼬리 5개(defense·whisky·soju·idle-cash·sample)는 info만 낸다 — warn·danger를 낼 수 있는 새 id는 그 앞에 둔다(warn이 info 뒤에 묻히지 않게, PM 대조 7차 완료: soju-glut)
-// 새로 열린 기능(#215, id `stage-<단계>`)은 "열린 뒤 3개월 할 일 맨 위" — 단계마다 id가 달라 목록에 없어 샘플 위로 밀려 있었다(5차 전 점검)
+// `stage-<단계>` 할 일(#215)은 #416 맨 위 띠로 옮겼다 — 아래 순위 처리는 옛 id가 다시 들어와도 맨 위에 두려는 것
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
 // danger 등급은 새 기능 바로 아래로 올린다(같은 danger끼리는 위 순서) — 6차 판: 오래 통입 대기(fill danger)가 할 일 3번째에 묻혔다
 const todoKey = (t: Todo) => (t.level === 'danger' && !t.id.startsWith('stage-') ? -1 + todoRank(t.id) / 100 : todoRank(t.id));
@@ -379,14 +379,7 @@ export function finishOverdue(s: GameState): { id: string; months: number; label
 
 export function monthTodos(s: GameState): Todo[] {
   const out: Todo[] = [];
-  // 새로 열린 기능 (#215) — 연 뒤 3개월 동안 할 일 맨 위에 둔다
-  for (const st of stagesOf(s)) { // F5a: 규칙 묶음별 단계
-    if (!s.scenario?.stagesDone?.includes(st.id) || s.month - st.month >= 3) continue;
-    const { tab, label } = stageTarget(st);
-    // #259: IB 입찰 해금 안내에 나이 조건(3년↑)을 채운 통 수 — 0이면 제안이 오지 않는다(후반 확인 판)
-    const ibNote = st.unlock.includes('system:caskBids') ? (() => { const n = ibAgedCaskCount(s); return n ? ` 지금 3년 이상 통 ${n}개.` : ' 지금 3년 이상 통이 없어 제안이 오지 않는다 — 통 일부를 남겨 두라.'; })() : '';
-    out.push({ id: `stage-${st.id}`, level: 'warn', text: `새로 열림 — ${st.title}. ${st.text}${ibNote}`, action: label, target: { tab } });
-  }
+  // 새로 열린 기능(#215)은 할 일에서 뺐다 — [결정 #416] 증류소 탭 맨 위 「새로 열림」 띠(NewChoicesBanner · newChoices.ts)가 한 곳에서 알린다(PM 2026-11-25: 겹침 정리)
   // 남은 플래그십 후보가 적다 (#261) — 옛 판: 후보 집합이 닫힌 뒤(목표까지 남은 달 < 플래그십 숙성)에만. 새 캠페인(v16, F4): 판 끝이 없으니 후보(목재 108개월↑, 안내 지평) 수만 본다. 0통은 증류소 탭 KPI가 빨갛게 말한다
   const legacyRules = rulesVersionOf(s) === 'legacy-v15';
   if (s.scenario && !campaignWon(s) && (!legacyRules || s.scenario.goal.months - s.month < campaignMinOakMonths(s))) {
