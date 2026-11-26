@@ -214,6 +214,8 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
           {p.autoPrice
             ? <div className="text-sm tabular-nums" title="매달 판매 직전에 고른 정책대로 값이 바뀐다">{wonFull(p.price)} <Badge tone="good">자동 {(PRICE_MODE_LABEL[priceModeOf(p) ?? 'turnover']).split(' ')[0]}</Badge></div>
             : <PriceInput s={s} p={p} value={p.price} suggested={suggested} onSet={(v) => dispatch({ type: 'setPrice', productId: p.id, price: v })} />}
+          {/* [결정 #424] 재고를 6개월에 다 팔 값 — 가격 칸 바로 아래(10차 U7: 맨 아래라 못 찾음). 자동 납품 제품은 재고 + 채울 원액. 손 가격이면 「이 값으로」 */}
+          {!dfOnly && <SellThroughNote s={s} ks={ks} p={p} suggested={suggested} monthOfYear={monthOfYear} onApply={p.autoPrice ? undefined : (v) => dispatch({ type: 'setPrice', productId: p.id, price: v })} />}
           {/* 자동 납품 (#206) — 매달 판매 전에 재고를 n개월분으로 채운다 */}
           {autoRestockSupported(p, s) && (
             <label className="mt-0.5 flex items-center gap-1 text-[11px] text-stone-600 dark:text-stone-400" title={autoRestockTitle(s, ks, p)}>
@@ -296,7 +298,6 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
             <button className="mt-0.5 block text-xs text-amber-800 underline decoration-dotted dark:text-amber-300" onClick={() => dispatch({ type: 'setPrice', productId: p.id, price: defaultPolicyPrice(suggested) })} title={`기준가(기준 소비자가 × √(품질/60) × 숙성 인식에 맞춘 출고가) ${wonFull(suggested)} × ${DEFAULT_POLICY_N}(기본 정책)`}>권장 {wonFull(defaultPolicyPrice(suggested))} <span className="no-underline text-stone-500">= 기준가 × {DEFAULT_POLICY_N}(기본 정책)</span></button>
           )}
           {!dfOnly && <SuggestedPriceNote s={s} p={p} suggested={suggested} />}
-          {!dfOnly && <SellThroughNote ks={ks} p={p} suggested={suggested} monthOfYear={monthOfYear} />}
         </Td>
         <Td right>
           {wonFull(consumer)}
