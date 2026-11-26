@@ -285,11 +285,13 @@ export const SELL_THROUGH_MIN_GAP = 1.05;
  * [결정 #424] 판매 화면 「재고를 6개월에 다 팔 값 ≈ X」 (T9의 10차 전 최소 몫 · `mkt-suggested-price.md` §6) — **화면만**(틱이 부르지 않는다 · 상태 · 난수 불변).
  * 앞으로 months달 국내 수요(같은 범주 나눔 · 잡음 없음)의 합이 지금 재고와 같아지는 출고가. 형제 제품 값 · 재고는 그대로 둔다고 본다(수출 · 면세 제외).
  * **`ks`는 아는 품질 상태(`knownState`)여야 한다** — 참 품질을 읽지 않는다(I2). 지금 값으로 months달 안에 재고가 남으면(다 못 팔면) null.
+ * `supplyBottles`를 주면 지금 재고 대신 그 병 수를 공급으로 본다 — 자동 납품 제품은 「재고 + 채울 원액」(PM 2026-11-26 U7 · 화면만). 공급 셈은 병 수뿐이라 품질을 읽지 않는다
  * 계절은 모든 제품 수요에 같은 배수라 범주 나눔 비율이 그대로다 → 한 달 수요 × Σ계절 / 이달 계절로 센다(값마다 한 번만 센다)
  */
-export function sellThroughPrice(ks: GameState, productId: string, monthOfYear: number, months: number = SELL_THROUGH_MONTHS): number | null {
+export function sellThroughPrice(ks: GameState, productId: string, monthOfYear: number, months: number = SELL_THROUGH_MONTHS, supplyBottles?: number): number | null {
   const p = ks.commerce.products.find((x) => x.id === productId);
   if (!p || p.dutyFreeOnly || p.stockBottles <= 0 || p.price <= 0) return null;
+  const supply = supplyBottles ?? p.stockBottles;
   const seas = regionOf(ks).seasonality;
   const now = seas[monthOfYear - 1]!;
   if (!(now > 0)) return null;
@@ -299,11 +301,11 @@ export function sellThroughPrice(ks: GameState, productId: string, monthOfYear: 
     const t = { ...ks, commerce: { ...ks.commerce, products: ks.commerce.products.map((x) => (x.id === p.id ? q : x)) } };
     return (domesticDemands(t, monthOfYear, regionOf(ks)).get(p.id)?.demandBottles ?? 0) * span;
   };
-  if (demandAt(p.price) <= p.stockBottles) return null;
+  if (demandAt(p.price) <= supply) return null;
   let lo = p.price, hi = p.price * 2;
-  for (let i = 0; i < 8 && demandAt(hi) > p.stockBottles; i++) { lo = hi; hi *= 2; }
-  if (demandAt(hi) > p.stockBottles) return null; // 256배로도 다 팔리면 셈이 뜻이 없다
-  for (let i = 0; i < 30 && hi - lo > 100; i++) { const m = (lo + hi) / 2; if (demandAt(m) > p.stockBottles) lo = m; else hi = m; }
+  for (let i = 0; i < 8 && demandAt(hi) > supply; i++) { lo = hi; hi *= 2; }
+  if (demandAt(hi) > supply) return null; // 256배로도 다 팔리면 셈이 뜻이 없다
+  for (let i = 0; i < 30 && hi - lo > 100; i++) { const m = (lo + hi) / 2; if (demandAt(m) > supply) lo = m; else hi = m; }
   return Math.round(hi / 100) * 100;
 }
 
