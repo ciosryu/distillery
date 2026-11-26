@@ -116,11 +116,24 @@ if (what === 'all' || what === 'tasting') {
     return { aw0, aw: awarenessOf(s), rev, nw: netWorth(s), note: s.history.reports.at(-3)!.notes.find((n) => n.includes('시음회')) ?? '' };
   };
   const rs = { none: branch('none'), tasting: branch('tasting'), marketing: branch('marketing') };
+  // 오너 판처럼 8개월 내내 맡긴 채 두기(26 ~ 33개월과 같은 길이) — 시음회는 분기마다 · 커버리지 × 0.5는 맡은 동안 내내(MKT 2026-11-26 지적)
+  const hold = (keep: boolean) => {
+    let s = clone(base);
+    if (keep) { const x = s.hr.staff.find((y) => y.id === sales.id)!; x.task = 'tasting'; x.taskMonth = s.month; }
+    let rev = 0; let bottles = 0; const aw0 = awarenessOf(s);
+    for (let m = 0; m < 8; m++) { s = advanceMonth(s); const r = s.history.reports.at(-1)!; rev += r.revenue; bottles += r.sales.reduce((a, x) => a + x.bottles, 0); }
+    return { rev, bottles, aw0, aw: awarenessOf(s), nw: netWorth(s), events: s.history.reports.slice(-8).flatMap((r) => r.notes.filter((n) => n.includes('시음회'))).length };
+  };
+  const h0 = hold(false); const h1 = hold(true);
   console.log(`\n# U4 — ${base.month}개월: 시음회 한 번 대 마케팅비 +1,500만 한 달 대 그대로 (3개월 뒤, 지금 월 마케팅비 ${Math.round(base.commerce.marketingBudget / 1e4)}만)\n`);
   console.log('| 갈래 | 인지도 시작 → 3개월 뒤 | 3개월 매출 | 3개월 뒤 순자산 |');
   console.log('|---|---|---|---|');
   for (const [k, r] of Object.entries(rs)) console.log(`| ${k} | ${(r.aw0 * 100).toFixed(2)}% → ${(r.aw * 100).toFixed(2)}% | ${eok(r.rev)}억 | ${eok(r.nw)}억 |`);
   console.log(`\n- 시음회 메모: ${rs.tasting.note}`);
+  console.log(`\n## 8개월 내내 맡김(오너 판 길이) 대 그대로\n`);
+  console.log('| 갈래 | 8개월 판매(병) | 8개월 매출 | 인지도 | 8개월 뒤 순자산 | 시음회 횟수 |');
+  console.log('|---|---|---|---|---|---|');
+  for (const [k, r] of [['그대로', h0], ['8개월 시음회', h1]] as const) console.log(`| ${k} | ${r.bottles} | ${eok(r.rev)}억 | ${(r.aw0 * 100).toFixed(2)} → ${(r.aw * 100).toFixed(2)}% | ${eok(r.nw)}억 | ${r.events} |`);
 }
 
 function median(xs: number[]): string {
