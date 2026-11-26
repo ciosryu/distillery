@@ -4,6 +4,7 @@ import { parsePlayFile } from '../store/playlog';
 import type { GameState } from '../sim';
 import { FLAGSHIP_RESERVE_TAG } from '../sim/tags';
 import { tanninOutlook } from '../sim/warehouse';
+import { caskOutlookQuality, refillOutlookQuality } from '../sim/agedOutlook';
 import { monthTodos, RESERVE_TANNIN_UNTIL, RESERVE_TANNIN_WARN, reserveTanninNote } from './alerts';
 
 // [결정 #411] T1-b — 12년 후보(예비) 통의 12년 감점이 크면 할 일 info. 9차 판 133개월 세이브의 K74(새 올로로소 벗 · 12년 감점 약 31)를 "어린 통"으로 돌려 본다
@@ -33,9 +34,13 @@ describe('#411 reserveTanninNote', () => {
     expect([n.lo, n.hi]).toEqual([19, 31]);
     const t = monthTodos(s).find((x) => x.id === 'reserve-tannin')!;
     expect(t.level).toBe('info');
-    expect(t.text).toBe('12년 후보 K74 외 1통, 지금 통 그대로면 12년 감점 약 19~31');
+    // [H1] 10차 오너 「무슨 말인지 이해가 안 갔다」 → 품질 점수(병입 탭 「12년 전망」과 같은 PROD caskOutlookQuality)와 할 일(리필 통) — 오너 결정으로 #411 (ㄱ) 「알림만」을 넘는다
+    const k74 = s.inventory.casks.find((c) => c.id === 'K74')!;
+    const o = caskOutlookQuality(s, k74 as typeof k74 & { contents: NonNullable<typeof k74.contents> })!;
+    const r = refillOutlookQuality(s, k74 as typeof k74 & { contents: NonNullable<typeof k74.contents> });
+    expect(t.text).toBe(`12년 후보 K74 외 1통 — 지금 통 그대로 12년이면 품질 어림 약 ${Math.round(o.q)}점(나무 맛이 넘쳐 약 ${Math.round(o.woodLoss)}점 깎임)${r && r.q - o.q >= 3 ? ` · 리필(한 번 쓴) 통이었다면 약 ${Math.round(r.q)}점 — 12년 제품용 원액은 다음부터 리필 통에` : ''}`);
+    expect(t.text).not.toMatch(/감점/);
     expect(t.target).toEqual({ anchor: 'mvp-warehouse' });
-    expect(t.text).not.toMatch(/리필|한 번 쓴/); // #411 (ㄱ) 알림만
   });
 
   it('49개월이면 빠진다 · 감점 10 미만(활성도 낮은 통)도 빠진다 · 옮긴 원액도 빠진다', () => {

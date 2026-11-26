@@ -6,7 +6,7 @@ import { CASKS } from './content/catalog';
 import { bandCask } from './ageBand';
 import { caskFamily, CASK_FAMILY_LABEL, type CaskFamily } from './agedCombos';
 import { evaluate, lotEvalCtx } from './flavor';
-import { matureCask } from './maturation';
+import { matureCask, refillState } from './maturation';
 import { steadyBatch } from './production';
 import { campaignMinOakMonths } from './rules';
 import { slotClimateNormal, warehousesOf } from './warehouse';
@@ -36,16 +36,42 @@ export interface AgedOutlookRow {
   woodLoss: number;
 }
 
+// 화면이 통마다 부르므로 캐시한다 — 레시피 미리보기는 상태마다(WeakMap), 숙성 어림은 입력이 같으면 상태를 넘어 같은 값(입력 문자열 열쇠)
+const batchCache = new WeakMap<GameState, Map<string, { flavor: Flavor; abv: number } | null>>();
+const outlookCache = new Map<string, { q: number; woodLoss: number }>();
+const OUTLOOK_CACHE_MAX = 4000;
+function recipeBatch(s: GameState, recipeId: string): { flavor: Flavor; abv: number } | null {
+  let m = batchCache.get(s);
+  if (!m) { m = new Map(); batchCache.set(s, m); }
+  if (!m.has(recipeId)) {
+    const recipe = s.production.recipes.find((r) => r.id === recipeId);
+    const b = recipe ? steadyBatch(s, recipe) : null;
+    m.set(recipeId, b ? { flavor: b.flavor, abv: b.abv } : null);
+  }
+  return m.get(recipeId) ?? null;
+}
+
 /** 레시피 미리보기 원액을 이 통(종류 · 활성도 · 시즈닝 · 칸)에 넣어 `atMonths`까지 평년 기후로 숙성한 뒤 46%로 낸 품질 — 공개 값만 */
-export function caskOutlookQuality(s: GameState, cask: Cask & { contents: SpiritLot }, atMonths = campaignMinOakMonths(s)): { q: number; woodLoss: number } | null {
-  const recipe = cask.contents.recipeId ? s.production.recipes.find((r) => r.id === cask.contents.recipeId) : undefined;
-  if (!recipe || cask.contents.sourced) return null;
-  const b = steadyBatch(s, recipe);
+export function caskOutlookQuality(s: GameState, cask: Cask & { contents: Pick<SpiritLot, 'recipeId' | 'kind' | 'oakMonths' | 'sourced' | 'stillShape'> }, atMonths = campaignMinOakMonths(s)): { q: number; woodLoss: number } | null {
+  if (!cask.contents.recipeId || cask.contents.sourced) return null;
+  const b = recipeBatch(s, cask.contents.recipeId);
   if (!b) return null;
   const views = warehousesOf(s);
   const view = views.find((w) => w.id === cask.slot?.w) ?? views[0];
   if (!view) return null;
   const tier = cask.slot && view.id === cask.slot.w ? cask.slot.tier : 0;
+  const start0 = (cask.filledMonth ?? s.month - cask.contents.oakMonths);
+  const key = JSON.stringify([b, cask.contents.kind, cask.contents.stillShape ?? null, cask.typeId, cask.wood, cask.char, cask.sizeL, Math.round(cask.activity * 1e4), Math.round(cask.seasoning * 1e4),
+    s.regionId, s.siteId ?? null, view.id, tier, ((start0 % 12) + 12) % 12, atMonths, s.hr.houseStyle, s.rulesVersion ?? null]);
+  const hit = outlookCache.get(key);
+  if (hit) return hit;
+  const r = projectOutlook(s, cask, b, view, tier, start0, atMonths);
+  if (outlookCache.size >= OUTLOOK_CACHE_MAX) outlookCache.clear();
+  outlookCache.set(key, r);
+  return r;
+}
+
+function projectOutlook(s: GameState, cask: Cask & { contents: Pick<SpiritLot, 'kind' | 'stillShape'> }, b: { flavor: Flavor; abv: number }, view: ReturnType<typeof warehousesOf>[number], tier: number, start: number, atMonths: number): { q: number; woodLoss: number } {
   const entry = Math.min(0.635, b.abv);
   const lot: SpiritLot = {
     id: 'outlook', name: 'outlook', kind: cask.contents.kind, volumeL: cask.sizeL, abv: entry, flavor: { ...b.flavor }, createdMonth: 0, oakMonths: 0, sourced: false, costPerLPA: 0,
@@ -53,7 +79,6 @@ export function caskOutlookQuality(s: GameState, cask: Cask & { contents: Spirit
   };
   // 활성도 · 시즈닝은 통입 때 값(숙성 중에는 바뀌지 않는다). 숨은 값(오염 · 레어)은 지운다
   let c: Cask = { ...cask, contents: lot, rare: undefined, rareKnown: undefined, contamination: undefined, contaminationKnown: undefined };
-  const start = (cask.filledMonth ?? s.month - cask.contents.oakMonths);
   for (let k = 0; k < atMonths; k++) {
     const moy = (((start + k) % 12) + 12) % 12 + 1;
     c = matureCask(c, slotClimateNormal(s, view, tier, moy), { control: 0 }).cask;
@@ -65,6 +90,38 @@ export function caskOutlookQuality(s: GameState, cask: Cask & { contents: Spirit
   if (s.hr.houseStyle > 0) f.integration = (f.integration ?? 0) + s.hr.houseStyle / 25;
   const ev = evaluate(f, cask.contents.kind === 'grain' ? 'grain_whisky' : 'whisky', lotEvalCtx({ ...out, oakMonths: atMonths }));
   return { q: Math.round(ev.quality * 10) / 10, woodLoss: Math.round(Math.max(0, (f.oak_tannin ?? 0) - TANNIN_CAP) * TANNIN_PER_POINT * 10) / 10 };
+}
+
+/**
+ * [H1] 같은 원액을 **리필(한 번 쓴) 통**에 넣었다면 — 같은 통 종류에 활성도 × 0.6 · 시즈닝 × 0.35(채웠다 뺀 상태, `refillState`)로 어림한다.
+ * 이미 두 번 이상 쓴 통이면 null(비교할 것이 없다)
+ */
+export function refillOutlookQuality(s: GameState, cask: Cask & { contents: Pick<SpiritLot, 'recipeId' | 'kind' | 'oakMonths' | 'sourced' | 'stillShape'> }, atMonths = campaignMinOakMonths(s)): { q: number; woodLoss: number } | null {
+  const filledBefore = cask.contents ? cask.fills - 1 : cask.fills; // 원액이 든 통은 지금 채움을 센다
+  if (filledBefore >= 1) return null;
+  return caskOutlookQuality(s, { ...cask, ...refillState(cask), fills: cask.fills }, atMonths);
+}
+
+/**
+ * [H1 · T1-a] 빈 통들에 이 원액을 지금 채우면 — 통마다 12년 품질 어림(최저 · 최고)과 나무 맛 손실, 첫 채움 통이면 리필 통 대안. 활성도를 모르는 통(스팟 6개월 전)은 센다만 한다
+ */
+export function fillOutlookQuality(s: GameState, casks: readonly Cask[], lot: Pick<SpiritLot, 'recipeId' | 'kind' | 'sourced' | 'stillShape'>, atMonths = campaignMinOakMonths(s)):
+  { count: number; unknown: number; qMin: number; qMax: number; lossMin: number; lossMax: number; refill: { q: number; woodLoss: number } | null } | null {
+  if (lot.kind !== 'malt' && lot.kind !== 'grain') return null;
+  const wood = casks.filter((c) => !c.contents && (CASKS[c.typeId]?.material ?? 'wood') === 'wood');
+  if (!wood.length) return null;
+  const known = wood.filter((c) => c.activityKnown !== false);
+  const outs = known.map((c) => ({ c, o: caskOutlookQuality(s, { ...c, contents: { ...lot, oakMonths: 0 }, filledMonth: s.month, fills: c.fills + 1 } as Cask & { contents: SpiritLot }, atMonths) }))
+    .filter((x): x is { c: Cask; o: { q: number; woodLoss: number } } => !!x.o);
+  if (!outs.length) return known.length ? null : { count: wood.length, unknown: wood.length, qMin: 0, qMax: 0, lossMin: 0, lossMax: 0, refill: null };
+  const first = outs.find((x) => x.c.fills === 0);
+  const refill = first ? caskOutlookQuality(s, { ...first.c, ...refillState(first.c), contents: { ...lot, oakMonths: 0 }, filledMonth: s.month, fills: 2 } as Cask & { contents: SpiritLot }, atMonths) : null;
+  return {
+    count: wood.length, unknown: wood.length - known.length,
+    qMin: Math.min(...outs.map((x) => x.o.q)), qMax: Math.max(...outs.map((x) => x.o.q)),
+    lossMin: Math.min(...outs.map((x) => x.o.woodLoss)), lossMax: Math.max(...outs.map((x) => x.o.woodLoss)),
+    refill,
+  };
 }
 
 /**

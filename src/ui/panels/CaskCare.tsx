@@ -7,6 +7,8 @@ import type { StillShape } from '../../sim/types';
 import { CASK_MARKET, CASKS, RECHAR_COST } from '../../sim/content/catalog';
 import { caskSlots, EMPTY_ACTIVITY_FACTOR, MAX_RECHAR, regionalCaskPrice, tanninOutlook, vesselMaterial, type Cask, type CaskTypeId } from '../../sim';
 import { fillTanninOutlook } from '../../sim/warehouse';
+import { fillOutlookQuality } from '../../sim/agedOutlook'; // [H1] 12년 품질 어림(점수)
+import { campaignMinOakMonths } from '../../sim/rules';
 import { usedCaskPrice } from '../../sim/casks';
 import { useGame } from '../../store/game';
 import { won } from '../format';
@@ -121,18 +123,33 @@ export function NewCaskOutlook({ typeId }: { typeId: CaskTypeId }) {
  * [결정 #410 T1-a] 통을 채울 때 12년 전망 한 줄 — 고른 빈 통에 지금 넣으면 12년(기준 개월) 무렵 탄닌 · 감점 어림. 숙성고 탭(PROD) · 홈 통입 줄(ARCH)이 같이 쓴다.
  * 활성도만 읽는다(원액 맛 · 품질 아님). 감점은 탄닌 몫이라 품질 전체가 아니다(9차 §10.3) — 그래서 「옮기라」는 권유는 하지 않는다(#411)
  */
-export function FillOutlookLine({ caskIds, shape }: { caskIds: readonly string[]; /** [결정 #422] 채울 원액의 증류기 형태(공개 값) — 헤비 원액 × 셰리 통의 탄닌 반응을 전망에 넣는다 */ shape?: StillShape }) {
+export function FillOutlookLine({ caskIds, shape, lotId }: { caskIds: readonly string[]; /** [결정 #422] 채울 원액의 증류기 형태(공개 값) — 헤비 원액 × 셰리 통의 탄닌 반응을 전망에 넣는다 */ shape?: StillShape; /** [H1] 채울 원액 — 있으면 12년 품질 어림(점수)으로 말한다(#1205 「12년 전망」과 같은 식) */ lotId?: string }) {
   const s = useGame((g) => g.state);
   const casks = s.inventory.casks.filter((c) => caskIds.includes(c.id));
+  const lot = lotId ? s.inventory.lots.find((l) => l.id === lotId) : undefined;
+  const yrs = Math.round(campaignMinOakMonths(s) / 12);
+  // [H1] 10차 오너: 「12년 감점 약 19」를 "무슨 말인지 이해가 안 갔다" → 품질 점수와 할 일로 말한다. 숫자는 병입 탭 「12년 전망」과 같은 PROD `caskOutlookQuality`(공개 값 — 레시피 미리보기 · 통 · 칸)
+  const fq = lot ? fillOutlookQuality(s, casks, lot) : null;
+  if (fq && fq.count > fq.unknown) {
+    const q = fq.qMin === fq.qMax ? `약 ${Math.round(fq.qMax)}점` : `약 ${Math.round(fq.qMin)} ~ ${Math.round(fq.qMax)}점`;
+    const loss = Math.round(fq.lossMax);
+    const better = fq.refill && fq.refill.q - fq.qMax >= 3 ? fq.refill : null;
+    return (
+      <span className={`text-xs ${loss >= 5 ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`이 원액 레시피(생산 미리보기)를 이 통에 넣어 ${yrs}년 동안 그 칸 평년 기후로 숙성해 46%로 낸 어림 — 원액 실제 맛 · 숨은 오염은 넣지 않는다. 지금 샘플 품질과는 다르다(새 통은 3 ~ 5년에 좋고 오래 두면 나무 맛이 넘친다)`}>
+        이 통{fq.count > 1 ? ` ${fq.count}개` : ''}에 넣어 {yrs}년을 채우면 품질 어림 {q}{loss >= 5 ? ` — 나무 맛(탄닌)이 넘쳐 약 ${loss}점 깎인다` : ''}
+        {better && <> · 리필(한 번 쓴) 통이면 약 {Math.round(better.q)}점 — {yrs}년 제품용 원액이면 리필 통에</>}
+        {fq.unknown ? ` · 활성도 모르는 통 ${fq.unknown}개(스팟 매입 — 6개월 숙성 뒤 드러남)` : ''}
+      </span>
+    );
+  }
   const o = fillTanninOutlook(s, casks, undefined, shape);
   if (!o) return null;
-  const yrs = Math.round(o.atMonths / 12);
   const known = o.count - o.unknown;
-  const pen = (n: number) => (n >= 0.5 ? `감점 약 ${Math.round(n)}` : '감점 없음');
-  const range = !known ? null : o.minPenalty === o.maxPenalty ? pen(o.maxPenalty) : `${pen(o.minPenalty)} ~ ${Math.round(o.maxPenalty)}`;
+  const pen = (n: number) => (n >= 0.5 ? `나무 맛이 넘쳐 품질 약 ${Math.round(n)}점 깎임` : '나무 맛 넘침 없음');
+  const range = !known ? null : o.minPenalty === o.maxPenalty ? pen(o.maxPenalty) : `${pen(o.minPenalty)} ~ ${Math.round(o.maxPenalty)}점`;
   return (
-    <span className={`text-xs ${o.maxPenalty >= 5 ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`지금 채우면 — 통마다 활성도 · 칸 기후로 센 탄닌 어림(${yrs}년 = 목재 ${o.atMonths}개월, 위스키 탄닌 상한 ${o.cap}). 감점은 탄닌이 상한을 넘는 몫만이라 품질 전체가 아니다. 원액 맛은 읽지 않는다`}>
-      이 통{o.count > 1 ? ` ${o.count}개` : ''}에 넣으면 {yrs}년 무렵 {range ? `탄닌 ${Math.round(o.minTannin)}${o.maxTannin !== o.minTannin ? ` ~ ${Math.round(o.maxTannin)}` : ''} · ${range}` : ''}{o.unknown ? `${range ? ' · ' : ''}활성도 모르는 통 ${o.unknown}개(스팟 매입 — 6개월 숙성 뒤 드러남)` : ''}
+    <span className={`text-xs ${o.maxPenalty >= 5 ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`지금 채우면 — 통마다 활성도 · 칸 기후로 센 탄닌 어림(${yrs}년 = 목재 ${o.atMonths}개월, 위스키 탄닌 상한 ${o.cap}). 탄닌이 상한을 넘는 몫만이라 품질 전체가 아니다. 원액 맛은 읽지 않는다`}>
+      이 통{o.count > 1 ? ` ${o.count}개` : ''}에 넣으면 {yrs}년 무렵 {range ?? ''}{o.unknown ? `${range ? ' · ' : ''}활성도 모르는 통 ${o.unknown}개(스팟 매입 — 6개월 숙성 뒤 드러남)` : ''}
     </span>
   );
 }
