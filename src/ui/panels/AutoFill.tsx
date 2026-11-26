@@ -86,6 +86,14 @@ export function AutoFillRow() {
       {sojuOn && pv.onggi && (
         <div className="mt-1 text-stone-600 dark:text-stone-400">
           소주 → 옹기: 탱크 소주 {liters(pv.onggi.tankL)}{pv.onggi.reservedL >= 1 ? ` 중 탱크 소주 제품 몫 ${liters(pv.onggi.reservedL)}는 남기고` : ''} → 빈 옹기 <b>{pv.onggi.casks}개</b>(빈 옹기 {pv.onggi.emptyJars}개){pv.onggi.leftL >= 1 ? <span className="text-amber-700 dark:text-amber-400"> · 빈 옹기가 모자라 {liters(pv.onggi.leftL)} 남는다</span> : ''}
+          {/* [P10-4] 빈 옹기가 있는데 0개 — 까닭을 말한다(10차 판 61 ~ 64개월: 탱크 소주가 모두 탱크 제품 몫이라 옹기가 비어도 결산에 아무 말이 없었다). 화면 전용 */}
+          {pv.onggi.casks === 0 && pv.onggi.emptyJars > 0 && (
+            <div className="text-amber-700 dark:text-amber-400">
+              {pv.onggi.tankL < 1
+                ? '→ 탱크에 소주가 없어 이번에 옹기에 넣지 못한다 — 소주 생산 지시를 확인한다'
+                : '→ 탱크 소주가 모두 탱크 소주 제품 몫이라 이번에 옹기에 넣지 못한다 — 소주 지시를 늘리면 남는 몫이 옹기로 간다'}
+            </div>
+          )}
         </div>
       )}
       {v16 && !sojuOn && emptyJars > 0 && tankSojuL >= 1 && (

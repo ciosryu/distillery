@@ -16,6 +16,7 @@ import { CaskTagChips } from '../CaskTags';
 import { mixTaint, taintShown } from '../../sim/taint'; // [결정 #382] 오염 원액 꼬리표(코어 · ARCH 화면)
 import { AGE_BANDS, bandCask, bandThinning, LADDER_SLACK_MONTHS, thinBands, THIN_BAND_CASKS } from '../../sim/ageBand'; // [결정 #380] 숙성 연령 띠 (PROD 잎)
 import { AGED_COMBO_ABVS, agedCombos, CASK_FAMILY_LABEL } from '../../sim/agedCombos'; // [결정 #410 T1-c] 12년 조합 비교
+import { agedOutlook, type AgedOutlookRow } from '../../sim/agedOutlook'; // [P10-2] 곧 12년이 되는 통 — 12년 품질 어림(공개 값)
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
 import { ProfileRadar } from './Production';
@@ -288,6 +289,8 @@ export function Bottling() {
       {reveal && <HeritageReveal data={reveal} onClose={() => setReveal(null)} />}
       <Card title="원액 선택 (같은 주종끼리만 블렌딩)">
         {/* [결정 #410 T1-c] 12년 병입 — 적격 통과 조합 · 도수별 병 수 · 예상 품질(아는 값). 고르면 아래 원액 표와 도수가 그 조합으로 바뀐다 */}
+        {/* [P10-2] 곧 12년이 되는 통 — 12년 품질 어림(공개 값 · 품질 점수). 10차 오너: 「12년 감점 약 19」를 이해하지 못했다 */}
+        <AgedOutlookPanel />
         <AgedComboPanel onPick={(caskIds, abv) => {
           touched.current = true;
           setPicked(Object.fromEntries(caskIds.map((id) => { const c = s.inventory.casks.find((k) => k.id === id); return [`cask:${id}`, Math.floor((c?.contents?.volumeL ?? 0) * 10) / 10]; })));
@@ -624,6 +627,43 @@ export function Bottling() {
           )}
         </div>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * [P10-2] 곧 12년이 되는 통의 12년 품질 어림 — 통 계열 · 원액 · 첫 채움 / 두 번째 채움으로 묶어 품질 점수로 보인다(감점 숫자가 아니라).
+ * 접혀 있어도 가장 높은 · 낮은 묶음을 한 줄로 보인다. PROD `agedOutlook`(레시피 미리보기 · 통 · 칸 평년 기후 — 원액 실제 맛 · 숨은 오염은 읽지 않는다)
+ */
+function AgedOutlookPanel() {
+  const s = useGame((g) => g.state);
+  const [open, setOpen] = useState(false);
+  const rows = useMemo(() => agedOutlook(s), [s]);
+  if (!rows.length) return null;
+  const yrs = Math.floor(campaignMinOakMonths(s) / 12);
+  const fam: Record<AgedOutlookRow['family'], string> = { bourbon: '버번 통', sherry: '셰리 통', wine: '와인 · 포트 통' };
+  const name = (r: AgedOutlookRow) => `${fam[r.family]} ${r.kind === 'malt' ? '몰트' : '그레인'} · ${r.refill ? '두 번째 채움' : '첫 채움'}`;
+  const best = rows[0]!;
+  const worst = rows[rows.length - 1]!;
+  return (
+    <div className="mb-3 rounded-md border border-sky-200 bg-sky-50/60 px-3 py-2 text-xs dark:border-sky-900 dark:bg-sky-950/30">
+      <button type="button" className="flex w-full items-center justify-between gap-2 text-left font-medium text-sky-900 dark:text-sky-200" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span>{yrs}년 전망 — 곧 {yrs}년이 되는 통: {name(best)} 약 {Math.round(best.q)}점{rows.length > 1 && best !== worst ? ` · ${name(worst)} 약 ${Math.round(worst.q)}점` : ''}{!open && ' (눌러서 펼치기)'}</span><span>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="mt-2 grid gap-1">
+          {rows.map((r) => (
+            <div key={`${r.family}:${r.kind}:${r.refill}`} className="text-stone-700 dark:text-stone-300">
+              <b>{name(r)}</b> {r.casks}통 · {liters(r.liters)} — {yrs}년까지 {r.monthsLeft}개월 · {yrs}년 품질 어림 <b className="tabular-nums">약 {Math.round(r.q)}점</b>
+              {r.woodLoss >= 5 && <span className="text-amber-800 dark:text-amber-300"> · 나무 맛(탄닌)이 너무 진해져 약 {Math.round(r.woodLoss)}점 깎인다</span>}
+            </div>
+          ))}
+          <p className="text-stone-600 dark:text-stone-400">
+            각 묶음에서 가장 오래된 통에 그 레시피 새 원액을 넣어 {yrs}년 동안 그 칸 평년 기후로 숙성해 46%로 낸 어림이다 — 원액 실제 맛 · 숨은 오염은 넣지 않는다.
+            같은 원액이라도 두 번째 채움(리필 · 다시 쓴 통)은 나무 맛이 덜 붙어 {yrs}년에 점수가 높다. 새 통은 3 ~ 5년에 좋고 오래 두면 나무 맛이 넘친다.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
