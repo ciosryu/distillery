@@ -128,7 +128,7 @@ export function FillOutlookLine({ caskIds, shape, lotId }: { caskIds: readonly s
   const casks = s.inventory.casks.filter((c) => caskIds.includes(c.id));
   const lot = lotId ? s.inventory.lots.find((l) => l.id === lotId) : undefined;
   const yrs = Math.round(campaignMinOakMonths(s) / 12);
-  // [H1] 10차 오너: 「12년 감점 약 19」를 "무슨 말인지 이해가 안 갔다" → 품질 점수와 할 일로 말한다. 숫자는 병입 탭 「12년 전망」과 같은 PROD `caskOutlookQuality`(공개 값 — 레시피 미리보기 · 통 · 칸)
+  // [H1] 10차 오너: 「12년 감점 약 19」를 "무슨 말인지 이해가 안 갔다" → 품질 점수와 리필 통 비교로 말한다(오너 승인 H1 표 — 「무엇을 하라」 권고는 붙이지 않는다, #367 · #411 오너 확인 전). 숫자는 병입 탭 「12년 전망」과 같은 PROD `caskOutlookQuality`(공개 값 — 레시피 미리보기 · 통 · 칸)
   const fq = lot ? fillOutlookQuality(s, casks, lot) : null;
   if (fq && fq.count > fq.unknown) {
     const q = fq.qMin === fq.qMax ? `약 ${Math.round(fq.qMax)}점` : `약 ${Math.round(fq.qMin)} ~ ${Math.round(fq.qMax)}점`;
@@ -137,7 +137,7 @@ export function FillOutlookLine({ caskIds, shape, lotId }: { caskIds: readonly s
     return (
       <span className={`text-xs ${loss >= 5 ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`이 원액 레시피(생산 미리보기)를 이 통에 넣어 ${yrs}년 동안 그 칸 평년 기후로 숙성해 46%로 낸 어림 — 원액 실제 맛 · 숨은 오염은 넣지 않는다. 지금 샘플 품질과는 다르다(새 통은 3 ~ 5년에 좋고 오래 두면 나무 맛이 넘친다)`}>
         이 통{fq.count > 1 ? ` ${fq.count}개` : ''}에 넣어 {yrs}년을 채우면 품질 어림 {q}{loss >= 5 ? ` — 나무 맛(탄닌)이 넘쳐 약 ${loss}점 깎인다` : ''}
-        {better && <> · 리필(한 번 쓴) 통이면 약 {Math.round(better.q)}점 — {yrs}년 제품용 원액이면 리필 통에</>}
+        {better && <> · 리필(한 번 쓴) 통이면 약 {Math.round(better.q)}점</>}
         {fq.unknown ? ` · 활성도 모르는 통 ${fq.unknown}개(스팟 매입 — 6개월 숙성 뒤 드러남)` : ''}
       </span>
     );

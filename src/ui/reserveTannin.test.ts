@@ -34,12 +34,13 @@ describe('#411 reserveTanninNote', () => {
     expect([n.lo, n.hi]).toEqual([19, 31]);
     const t = monthTodos(s).find((x) => x.id === 'reserve-tannin')!;
     expect(t.level).toBe('info');
-    // [H1] 10차 오너 「무슨 말인지 이해가 안 갔다」 → 품질 점수(병입 탭 「12년 전망」과 같은 PROD caskOutlookQuality)와 할 일(리필 통) — 오너 결정으로 #411 (ㄱ) 「알림만」을 넘는다
+    // [H1] 10차 오너 「무슨 말인지 이해가 안 갔다」 → 품질 점수(병입 탭 「12년 전망」과 같은 PROD caskOutlookQuality)와 리필 통 비교 점수 — 오너 결정(H1 표)으로 #411 (ㄱ) 「알림만」을 넘는다 · 「리필 통에」 권고는 없다(#367)
     const k74 = s.inventory.casks.find((c) => c.id === 'K74')!;
     const o = caskOutlookQuality(s, k74 as typeof k74 & { contents: NonNullable<typeof k74.contents> })!;
     const r = refillOutlookQuality(s, k74 as typeof k74 & { contents: NonNullable<typeof k74.contents> });
-    expect(t.text).toBe(`12년 후보 K74 외 1통 — 지금 통 그대로 12년이면 품질 어림 약 ${Math.round(o.q)}점(나무 맛이 넘쳐 약 ${Math.round(o.woodLoss)}점 깎임)${r && r.q - o.q >= 3 ? ` · 리필(한 번 쓴) 통이었다면 약 ${Math.round(r.q)}점 — 12년 제품용 원액은 다음부터 리필 통에` : ''}`);
+    expect(t.text).toBe(`12년 후보 K74 외 1통 — 지금 통 그대로 12년이면 품질 어림 약 ${Math.round(o.q)}점(나무 맛이 넘쳐 약 ${Math.round(o.woodLoss)}점 깎임)${r && r.q - o.q >= 3 ? ` · 리필(한 번 쓴) 통이었다면 약 ${Math.round(r.q)}점` : ''}`);
     expect(t.text).not.toMatch(/감점/);
+    expect(t.text).not.toMatch(/통에$|제품용/); // 권고는 오너 확인 전(#367)
     expect(t.target).toEqual({ anchor: 'mvp-warehouse' });
   });
 

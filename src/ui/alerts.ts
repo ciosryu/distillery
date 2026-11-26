@@ -686,17 +686,17 @@ export function monthTodos(s: GameState): Todo[] {
     const ai = agingCheckIdle(s);
     if (ai) out.push({ id: 'aging-check-idle', level: 'warn', text: `「숙성 점검」(${ai.names.join(' · ')}) — 지금 맛볼 ${TASK_VALUES.agingCheck.minOakMonths / 12}년 넘은 통이 0개라 이 일은 아무것도 하지 않는다(그동안 새 원액 이취가 아주 조금 는다)${ai.wait != null ? ` · 첫 통은 ${ai.wait}개월 뒤` : ''}. 그때까지 「평소 업무」로 돌릴 수 있다(분기에 한 번)`, action: '직원', target: { tab: 'staff' } });
   }
-  // [결정 #411] T1-b — 12년 후보(예비) 통이 지금 통 그대로면 12년 감점이 크다. 통 표(접힌 칸)에 이미 있는 숫자를 할 일로 올린다 — 알림만(리필 통 이야기는 붙이지 않는다, #367 · #408)
+  // [결정 #411] T1-b — 12년 후보(예비) 통이 지금 통 그대로면 12년 감점이 크다. 통 표(접힌 칸)에 이미 있는 숫자를 할 일로 올린다. [H1] 오너 결정(10차 H1 표)으로 리필 통 비교 점수를 붙인다 — #411 (ㄱ) 「알림만」을 넘어선다. 「리필 통에 넣으라」 권고는 붙이지 않는다(#367 · #408, 오너 확인 전)
   {
     const rt = reserveTanninNote(s);
     if (rt) {
-      // [H1] 10차 오너: 「12년 감점 약 19」를 "무슨 말인지 이해가 안 갔다" → 품질 점수와 할 일로. 숫자는 PROD `caskOutlookQuality`(병입 탭 「12년 전망」과 같은 식 — 공개 값)
+      // [H1] 10차 오너: 「12년 감점 약 19」를 "무슨 말인지 이해가 안 갔다" → 품질 점수와 리필 비교로. 숫자는 PROD `caskOutlookQuality`(병입 탭 「12년 전망」과 같은 식 — 공개 값)
       const head = `12년 후보 ${rt.ids[0]}${rt.ids.length > 1 ? ` 외 ${rt.ids.length - 1}통` : ''}`;
       const c0 = s.inventory.casks.find((c) => c.id === rt.ids[0]);
       const o = c0?.contents ? caskOutlookQuality(s, c0 as typeof c0 & { contents: NonNullable<typeof c0.contents> }) : null;
       const r = c0?.contents ? refillOutlookQuality(s, c0 as typeof c0 & { contents: NonNullable<typeof c0.contents> }) : null;
       const text = o
-        ? `${head} — 지금 통 그대로 12년이면 품질 어림 약 ${Math.round(o.q)}점(나무 맛이 넘쳐 약 ${Math.round(o.woodLoss)}점 깎임)${r && r.q - o.q >= 3 ? ` · 리필(한 번 쓴) 통이었다면 약 ${Math.round(r.q)}점 — 12년 제품용 원액은 다음부터 리필 통에` : ''}`
+        ? `${head} — 지금 통 그대로 12년이면 품질 어림 약 ${Math.round(o.q)}점(나무 맛이 넘쳐 약 ${Math.round(o.woodLoss)}점 깎임)${r && r.q - o.q >= 3 ? ` · 리필(한 번 쓴) 통이었다면 약 ${Math.round(r.q)}점` : ''}`
         : `${head}, 지금 통 그대로면 12년에 나무 맛이 넘쳐 품질 약 ${rt.lo === rt.hi ? rt.lo : `${rt.lo}~${rt.hi}`}점 깎임`;
       out.push({ id: 'reserve-tannin', level: 'info', text, action: '숙성 중인 캐스크', target: { anchor: 'mvp-warehouse' } });
     }
