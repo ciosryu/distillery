@@ -9,6 +9,8 @@ import { useGame } from '../../store/game';
 import { won } from '../format';
 import { Badge, Button, Card, ConfirmButton, Empty } from '../kit';
 import { Research } from './Research';
+import { agingCheckReach } from '../alerts';
+import { TASK_VALUES } from '../../sim/staffTaskRules';
 import { bottlenecks, hireImpact, moraleEffect, salaryReviewPreview, trainingImpact, type ImpactLine } from './staffImpact';
 
 const ROLE_EFFECT: Record<StaffT['role'], string> = {
@@ -191,6 +193,10 @@ function StaffActionsV16({ s, x }: { s: GameState; x: StaffT }) {
             <Button key={t.id} small variant={t.id === cur ? 'primary' : 'secondary'} disabled={t.id === cur || !can} onClick={() => dispatch({ type: 'assignStaffTask', staffId: x.id, task: t.id })} title={t.text}>{t.nameKo}</Button>
           ))}
         </div>
+        {/* U1(10차 70) — 「숙성 점검」이 맛볼 통이 지금 있는가: 고르기 전에 보이고, 맡긴 채 0이면 경고색(할 일 warn과 같은 사실) */}
+        {tasks.some((t) => t.id === 'aging_check') && (() => { const r = agingCheckReach(s); const idle = r.now === 0; return (
+          <div className={`mt-1 ${idle && cur === 'aging_check' ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-stone-500'}`}>숙성 점검이 지금 맛볼 통(목재 {TASK_VALUES.agingCheck.minOakMonths / 12}년↑): {r.now}개{idle ? (r.wait != null ? ` — 첫 통은 ${r.wait}개월 뒤` : ' — 기준에 닿을 나무 통이 없다') + (cur === 'aging_check' ? ' · 그때까지는 맛보는 일 없이 증류만 약해진다' : '') : ''}</div>
+        ); })()}
         <div className="mt-1 text-stone-500">{curDef?.text}{!can ? ` — 다음 분기(${nextReassignMonth(s, x) - s.month}개월 뒤)에 바꿀 수 있다` : x.taskMonth === s.month ? ' — 이번 달 안에는 다시 고를 수 있다' : ''}{tasks.length === 1 ? ' · 이 직군에 맡길 다른 일은 아직 없다' : ''}</div>
       </div>
       <div className="flex flex-wrap items-center gap-1 text-xs">

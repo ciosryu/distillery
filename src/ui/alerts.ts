@@ -19,6 +19,7 @@ import { reserveCaskIds } from '../sim/tags';
 import { tanninOutlook } from '../sim/warehouse'; // [결정 #411] 12년 탄닌 전망(PROD 계산 — 통 표와 같은 값)
 import { candidateHorizon, caskEligibility, isCampaignCandidate } from '../sim/ledger';
 import { specialistOffers, SPECIALIST_STAGE } from '../sim/hr';
+import { TASK_VALUES, onTask } from '../sim/staffTaskRules'; // U1(10차 70) — 「숙성 점검」 맛볼 통(MGT 값)
 import { AUTO_RESTOCK_EXPENSE, caskRunway, CUTBACK_HINT, productionCutback, productionValue, sojuSupply, SOJU_STOCK_WARN_MONTHS, tankLotWaitMonths, whiskySupplyForecast } from '../sim/economics';
 import { monthlyFixedCost } from '../sim/loans';
 import { capacityReport } from '../sim/production';
@@ -342,7 +343,7 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'overhang', 'contam-cand', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'export-starve', 'restock-starved', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'idle-cash', 'onggi-idle', 'reserve-tannin', 'sample'];
+export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'overhang', 'contam-cand', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'aging-check-idle', 'export-starve', 'restock-starved', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'idle-cash', 'onggi-idle', 'reserve-tannin', 'sample'];
 // 꼬리 7개(defense·whisky·soju·idle-cash·onggi-idle·reserve-tannin·sample)는 info만 낸다 — warn·danger를 낼 수 있는 새 id는 그 앞에 둔다(warn이 info 뒤에 묻히지 않게, PM 대조 7차 완료: soju-glut)
 // `stage-<단계>` 할 일(#215)은 #416 맨 위 띠로 옮겼다 — 아래 순위 처리는 옛 id가 다시 들어와도 맨 위에 두려는 것
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
@@ -397,6 +398,28 @@ export function reserveTanninNote(s: GameState): { ids: string[]; lo: number; hi
   if (!hits.length) return null;
   const pen = hits.map((x) => Math.round(x.o.penalty));
   return { ids: hits.map((x) => x.id), lo: Math.min(...pen), hi: Math.max(...pen) };
+}
+
+/**
+ * U1(10차 70개월 — 오너가 34개월에 맡겼는데 36개월 동안 맛볼 통이 0이었다) — 「숙성 점검」이 지금 맛볼 수 있는 통 수와, 0이면 첫 통이 기준(목재 7년)에 닿기까지 남은 개월.
+ * 고르는 통은 `staffTasks.ts agingCheckPicks`와 같은 거름(원액 있음 · 고객 소유 · 핸드필 · 아는 오염 제외). 기준에 닿을 나무 통이 하나도 없으면 `wait` null. 공개 정보(목재 개월 · 통 종류)만 읽는다
+ */
+export function agingCheckReach(s: GameState): { now: number; wait: number | null } {
+  const min = TASK_VALUES.agingCheck.minOakMonths;
+  const pool = s.inventory.casks.filter((c) => c.contents && !c.owner && !c.handfill && !c.contaminationKnown && vesselMaterial(c) === 'wood');
+  const now = pool.filter((c) => c.contents!.oakMonths >= min).length;
+  if (now > 0) return { now, wait: 0 };
+  const oldest = pool.reduce((m, c) => Math.max(m, c.contents!.oakMonths), -1);
+  return { now: 0, wait: oldest < 0 ? null : min - oldest };
+}
+
+/** U1 — 「숙성 점검」을 맡았는데 맛볼 통이 0인 디스틸러(이름). 없으면 null */
+export function agingCheckIdle(s: GameState): { names: string[]; wait: number | null } | null {
+  if (!s.scenario || rulesVersionOf(s) === 'legacy-v15') return null;
+  const on = s.hr.staff.filter((x) => onTask(x, 'aging_check'));
+  if (!on.length) return null;
+  const r = agingCheckReach(s);
+  return r.now > 0 ? null : { names: on.map((x) => x.name), wait: r.wait };
 }
 
 /**
@@ -654,6 +677,11 @@ export function monthTodos(s: GameState): Todo[] {
   {
     const og = onggiIdle(s);
     if (og) out.push({ id: 'onggi-idle', level: 'info', text: `빈 옹기 ${og.jars}개가 ${og.months}개월째 놀고 있다 — 통입 칸 자동 통입에서 「소주 → 옹기」를 켜면 진행할 때 탱크 소주를 옹기에 넣는다(탱크 소주로 파는 제품의 몫은 남긴다)`, action: '통입', target: { anchor: 'mvp-fill' } });
+  }
+  // U1(10차 70) — 「숙성 점검」을 맡겼는데 맛볼 통(목재 7년↑)이 없다: 맛보는 일 없이 증류만 약해진다. 결산 메모(분기마다 「0통을 맛봤다」)만으로는 놓쳤다
+  {
+    const ai = agingCheckIdle(s);
+    if (ai) out.push({ id: 'aging-check-idle', level: 'warn', text: `「숙성 점검」(${ai.names.join(' · ')}) — 지금 맛볼 ${TASK_VALUES.agingCheck.minOakMonths / 12}년 넘은 통이 0개라 맛보는 일 없이 그동안 증류만 약해진다(새 원액 이취가 조금 는다)${ai.wait != null ? ` · 첫 통은 ${ai.wait}개월 뒤` : ''}. 그때까지 「평소 업무」로 돌릴 수 있다(분기에 한 번)`, action: '직원', target: { tab: 'staff' } });
   }
   // [결정 #411] T1-b — 12년 후보(예비) 통이 지금 통 그대로면 12년 감점이 크다. 통 표(접힌 칸)에 이미 있는 숫자를 할 일로 올린다 — 알림만(리필 통 이야기는 붙이지 않는다, #367 · #408)
   {
