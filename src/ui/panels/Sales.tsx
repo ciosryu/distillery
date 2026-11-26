@@ -3,7 +3,7 @@ import { FeedCard } from '../FeedCard'; // 가상 커뮤니티 피드 (#247, MKT
 import { ExportShortfallNote } from '../ExportShortfallNote'; // 수출이 국내를 굶기는지 (#257, MKT)
 import { SuggestedPriceNote } from '../SuggestedPriceNote'; // 권장가 표시의 정직성 (#283, MKT — PROD 대행)
 import { SellThroughNote } from '../SellThroughNote'; // [결정 #424] 재고를 6개월에 다 팔 값(MKT)
-import { PricePolicyAll, PricePolicyPicker } from '../PricePolicyPicker'; // 자동 가격 3정책 (#291, MKT)
+import { PolicyBasisLegend, PricePolicyAll, PricePolicyPicker } from '../PricePolicyPicker'; // 자동 가격 3정책 (#291, MKT)
 import { PRICE_MODE_LABEL, priceModeOf } from '../../sim/priceEngine';
 import { PRODUCT_NAME_MAX } from '../../sim/actions.prod';
 import { CATEGORY } from '../../sim/content/categories';
@@ -381,6 +381,7 @@ export function PriceDesk({ compact = false }: { compact?: boolean }) {
         <PricePolicyAll s={s} />
       </span>}>
         {!compact && <SalesPrimer />}
+        {active.length > 0 && <PolicyBasisLegend />}
         {!active.length ? <Empty>{compact ? '판매 중인 제품이 없습니다 — 블렌딩·병입 탭에서 병입하세요.' : '판매 중인 제품이 없습니다. 블렌딩·병입 탭에서 병입하세요.'}</Empty> : (
           <Table head={['제품', '재고', '출고가(병)', '소비자가', '이번 달 수요 한도', '지난달 수요 → 판매', '예상 월 매출', '병당 공헌이익', '']}>
             {body}
