@@ -83,7 +83,7 @@ function Tanks() {
           }}>통입</Button>
           <span className="text-xs text-stone-500">물을 섞어 통입 도수로 낮춥니다. 빈 통이 없으면 아래에서 구매하세요.</span>
           {/* [결정 #410 T1-a] 이 통들에 넣으면 12년 무렵 탄닌 · 감점(PROD FillOutlookLine) */}
-          <span className="w-full"><FillOutlookLine caskIds={emptyOfType.slice(0, count).map((c) => c.id)} shape={s.inventory.lots.find((l) => l.id === fillFor)?.stillShape} /></span>
+          <span className="w-full"><FillOutlookLine caskIds={emptyOfType.slice(0, count).map((c) => c.id)} shape={s.inventory.lots.find((l) => l.id === fillFor)?.stillShape} lotId={fillFor} /></span>
           {(() => {
             // 끝자리 안내 (P-PROD-60) — 마지막 통이 절반도 안 차면 알리고 개수를 하나 줄이는 버튼을 준다(막지 않는다)
             const lot = s.inventory.lots.find((l) => l.id === fillFor);
@@ -170,7 +170,7 @@ function Casks() {
         return from?.contents ? <FinishPanel from={from} onDone={() => setFinishFor(null)} /> : null;
       })()}
       {!list.length ? <Empty>{filter === 'filled' ? '숙성 중인 캐스크가 없습니다' : '빈 캐스크가 없습니다'}</Empty> : (
-        <Table head={filter === 'filled' ? ['ID', '캐스크', '위치', '회차', '원액', '액량', '도수', '숙성', '주요 향', '품질', '표기', ''] : ['ID', '캐스크', '사용 횟수', '활성도', '재탄화', '']}>
+        <Table head={filter === 'filled' ? ['ID', '캐스크', '위치', '회차', '원액', '액량', '도수', '숙성', '주요 향', '지금 품질(샘플)', '표기', ''] : ['ID', '캐스크', '사용 횟수', '활성도', '재탄화', '']}>
           {list.map((c) => {
             const lot = c.contents;
             if (!lot) return (
@@ -195,7 +195,7 @@ function Casks() {
                 <Td right>{pct(lot.abv)}</Td>
                 <Td right>{vesselMaterial(c) === 'wood' ? months(lot.oakMonths) : <>옹기 {months(lot.restMonths ?? 0)}{lot.oakMonths > 0 && <div className="text-xs text-stone-500">오크 {months(lot.oakMonths)}</div>}</>}</Td>
                 <Td><Notes lot={lot} />{(() => { const f = finishOf(lot); if (!f) return null; const [lo, hi] = FINISH.recommendedMonths; return <div><Badge tone={f.months < lo ? 'warn' : f.months > hi ? 'bad' : 'good'}>{finishLabel(f.typeId)} {months(f.months)}{f.months < lo ? ' — 아직 짧다' : f.months > hi ? ' — 권장보다 길다' : ''}</Badge></div>; })()}</Td>
-                <Td right><span title="아는 값만 — 샘플 기록(가장 최근) 또는 형제 통 기록. 참 품질은 병입 뒤에 드러난다(#167·#310)">{(() => { const k = known.get(c.id); return k ? <>{Math.round(k.estQuality)}<span className="text-xs text-stone-400">{k.from === 'sibling' ? ' (형제)' : ''}</span></> : <span className="text-stone-400">—</span>; })()}</span></Td>
+                <Td right><span title="지금 품질 — 샘플 기록(가장 최근) 또는 형제 통 기록으로 아는 값. 12년이 되면 품질은 따로다(병입 탭 「12년 전망」). 참 품질은 병입 뒤에 드러난다(#167·#310)">{(() => { const k = known.get(c.id); return k ? <>{Math.round(k.estQuality)}<span className="text-xs text-stone-400">{k.from === 'sibling' ? ' (형제)' : ''}</span></> : <span className="text-stone-400">—</span>; })()}</span></Td>
                 <Td>{lot.kind === 'soju' || lot.kind === 'gin' ? <Badge>{vesselMaterial(c) === 'onggi' ? '옹기 ' : ''}숙성 {lot.kind === 'soju' ? '소주' : '진'}</Badge> : vesselMaterial(c) !== 'wood' && lot.oakMonths < minM ? <Badge tone="warn">옹기 — 위스키 숙성(오크)에 안 들어감</Badge> : lot.oakMonths >= minM ? <Badge tone="good">{lot.kind === 'grain' ? '그레인 위스키 가능' : '위스키 가능'}{rules.premiumLabel && lot.oakMonths >= rules.premiumLabel.minMonths && !lot.sourced ? ` · ${rules.premiumLabel.name}` : ''}{lot.oakMonths < 36 ? ' (어린 위스키)' : ''}</Badge> : <Badge tone="warn">{minM - lot.oakMonths}개월 남음</Badge>}</Td>
                 <Td className="flex gap-1">
                   {finishing && !c.owner && finishCount(lot) < FINISH.maxFinishes && <Button small variant={finishFor === c.id ? 'secondary' : 'ghost'} onClick={() => setFinishFor(finishFor === c.id ? null : c.id)} title="빈 버번·셰리 시즈닝 캐스크로 옮겨 마무리한다 — 손실 0.75%, 숙성 연수는 그대로">피니싱</Button>}
