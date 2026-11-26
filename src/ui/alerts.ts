@@ -20,6 +20,7 @@ import { tanninOutlook } from '../sim/warehouse'; // [결정 #411] 12년 탄닌 
 import { candidateHorizon, caskEligibility, isCampaignCandidate } from '../sim/ledger';
 import { specialistOffers, SPECIALIST_STAGE } from '../sim/hr';
 import { TASK_VALUES, onTask } from '../sim/staffTaskRules'; // U1(10차 70) — 「숙성 점검」 맛볼 통(MGT 값)
+import { agingCheckPicks } from '../sim/staffTasks';
 import { AUTO_RESTOCK_EXPENSE, caskRunway, CUTBACK_HINT, productionCutback, productionValue, sojuSupply, SOJU_STOCK_WARN_MONTHS, tankLotWaitMonths, whiskySupplyForecast } from '../sim/economics';
 import { monthlyFixedCost } from '../sim/loans';
 import { capacityReport } from '../sim/production';
@@ -402,13 +403,14 @@ export function reserveTanninNote(s: GameState): { ids: string[]; lo: number; hi
 
 /**
  * U1(10차 70개월 — 오너가 34개월에 맡겼는데 36개월 동안 맛볼 통이 0이었다) — 「숙성 점검」이 지금 맛볼 수 있는 통 수와, 0이면 첫 통이 기준(목재 7년)에 닿기까지 남은 개월.
- * 고르는 통은 `staffTasks.ts agingCheckPicks`와 같은 거름(원액 있음 · 고객 소유 · 핸드필 · 아는 오염 제외). 기준에 닿을 나무 통이 하나도 없으면 `wait` null. 공개 정보(목재 개월 · 통 종류)만 읽는다
+ * 지금 수는 `staffTasks.ts agingCheckPicks` 그대로, 기다릴 개월은 같은 거름의 나무 통 가운데 가장 긴 목재로 센다. 기준에 닿을 나무 통이 없으면 `wait` null. 공개 정보(목재 개월 · 통 종류)만 읽는다
  */
 export function agingCheckReach(s: GameState): { now: number; wait: number | null } {
   const min = TASK_VALUES.agingCheck.minOakMonths;
-  const pool = s.inventory.casks.filter((c) => c.contents && !c.owner && !c.handfill && !c.contaminationKnown && vesselMaterial(c) === 'wood');
-  const now = pool.filter((c) => c.contents!.oakMonths >= min).length;
+  // 지금 맛볼 통은 일이 실제로 고르는 함수 그대로(옹기로 옮긴 84개월↑ 원액도 맛본다 — MGT 확인). 기다릴 개월만 나무 통으로 센다(나무 밖에서는 목재 개월이 늘지 않는다)
+  const now = agingCheckPicks(s, Number.MAX_SAFE_INTEGER).length;
   if (now > 0) return { now, wait: 0 };
+  const pool = s.inventory.casks.filter((c) => c.contents && !c.owner && !c.handfill && !c.contaminationKnown && vesselMaterial(c) === 'wood');
   const oldest = pool.reduce((m, c) => Math.max(m, c.contents!.oakMonths), -1);
   return { now: 0, wait: oldest < 0 ? null : min - oldest };
 }
@@ -678,10 +680,10 @@ export function monthTodos(s: GameState): Todo[] {
     const og = onggiIdle(s);
     if (og) out.push({ id: 'onggi-idle', level: 'info', text: `빈 옹기 ${og.jars}개가 ${og.months}개월째 놀고 있다 — 통입 칸 자동 통입에서 「소주 → 옹기」를 켜면 진행할 때 탱크 소주를 옹기에 넣는다(탱크 소주로 파는 제품의 몫은 남긴다)`, action: '통입', target: { anchor: 'mvp-fill' } });
   }
-  // U1(10차 70) — 「숙성 점검」을 맡겼는데 맛볼 통(목재 7년↑)이 없다: 맛보는 일 없이 증류만 약해진다. 결산 메모(분기마다 「0통을 맛봤다」)만으로는 놓쳤다
+  // U1(10차 70) — 「숙성 점검」을 맡겼는데 맛볼 통(목재 7년↑)이 없다: 얻는 것 없이 대가(공정 ×0.7 — 새 원액 품질 약 −0.1, MGT #1194)만 낸다. 결산 메모(분기마다 「0통을 맛봤다」)만으로는 놓쳤다
   {
     const ai = agingCheckIdle(s);
-    if (ai) out.push({ id: 'aging-check-idle', level: 'warn', text: `「숙성 점검」(${ai.names.join(' · ')}) — 지금 맛볼 ${TASK_VALUES.agingCheck.minOakMonths / 12}년 넘은 통이 0개라 맛보는 일 없이 그동안 증류만 약해진다(새 원액 이취가 조금 는다)${ai.wait != null ? ` · 첫 통은 ${ai.wait}개월 뒤` : ''}. 그때까지 「평소 업무」로 돌릴 수 있다(분기에 한 번)`, action: '직원', target: { tab: 'staff' } });
+    if (ai) out.push({ id: 'aging-check-idle', level: 'warn', text: `「숙성 점검」(${ai.names.join(' · ')}) — 지금 맛볼 ${TASK_VALUES.agingCheck.minOakMonths / 12}년 넘은 통이 0개라 이 일은 아무것도 하지 않는다(그동안 새 원액 이취가 아주 조금 는다)${ai.wait != null ? ` · 첫 통은 ${ai.wait}개월 뒤` : ''}. 그때까지 「평소 업무」로 돌릴 수 있다(분기에 한 번)`, action: '직원', target: { tab: 'staff' } });
   }
   // [결정 #411] T1-b — 12년 후보(예비) 통이 지금 통 그대로면 12년 감점이 크다. 통 표(접힌 칸)에 이미 있는 숫자를 할 일로 올린다 — 알림만(리필 통 이야기는 붙이지 않는다, #367 · #408)
   {
