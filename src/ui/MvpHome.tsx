@@ -19,6 +19,7 @@ import { cooperageLeadMonths } from '../sim/prodKnobs'; // F6c: 쿠퍼리지 납
 import { fillShares, PARTIAL_FILL_HINT } from '../sim/autoFill'; // P-PROD-60: 손 통입 끝자리 안내 — 실제 통입과 같은 식
 import { EMPTY_ACTIVITY_FACTOR, finishOf, vesselMaterial } from '../sim/maturation';
 import { tanninOutlook } from '../sim/warehouse'; // P-PROD-66 a·b (PROD 계산)
+import { caskOutlookQuality } from '../sim/agedOutlook'; // [H1] 12년 품질 어림(PROD)
 import { regionOf } from '../sim/content/regions';
 import { CATEGORY } from '../sim/content/categories';
 import { equipmentCost } from '../sim/sites';
@@ -455,9 +456,12 @@ function TanninLine({ s, c }: { s: GameState; c: Cask }) {
       </div>
     );
   }
+  // [H1] 12년 품질 어림(점수) — 병입 탭 「12년 전망」 · 할 일과 같은 PROD `caskOutlookQuality`(레시피 미리보기 · 통 · 칸 — 공개 값). 레시피 기록이 없는 원액(매입 등)은 탄닌 손실만
+  const q = c.contents && (c.contents.kind === 'malt' || c.contents.kind === 'grain') ? caskOutlookQuality(s, c as Cask & { contents: NonNullable<Cask['contents']> }) : null;
+  const loss = q ? q.woodLoss : o.penalty;
   return (
-    <div className={`text-[11px] ${o.penalty >= 5 || weak ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`${yrs}년(${o.atMonths}개월) 무렵 오크·탄닌 약 ${Math.round(o.tannin)}(위스키 상한 ${o.cap}) → 품질 감점 약 ${Math.round(o.penalty)} · 지금까지 약 ${Math.round(o.now)} — 비울 때마다 활성도 ×${EMPTY_ACTIVITY_FACTOR} · 3년 위스키는 활성도 높은 통(새 통)이 빨리 익는다. 12년은 2~5번 쓴 통(활성도 0.6~0.13)이 가장 낫고, 0.1 아래는 나무 향이 모자라 12년 품질도 다시 내려간다. 어림(기상 이상치·재해 제외)`}>
-      활성도 {o.activity.toFixed(2)} · {yrs}년 {o.penalty >= 0.5 ? `감점 약 ${Math.round(o.penalty)}` : '감점 없음'}{weak && <div>나무 향이 약해진 통 — 12년 품질이 다시 내려간다</div>}
+    <div className={`text-[11px] ${loss >= 5 || weak ? 'text-amber-800 dark:text-amber-300' : 'text-stone-500'}`} title={`${yrs}년(${o.atMonths}개월) 무렵 오크·탄닌 약 ${Math.round(o.tannin)}(위스키 상한 ${o.cap})${q ? ` → 이 원액 레시피를 이 통에 넣어 ${yrs}년을 채운 46% 품질 어림 약 ${Math.round(q.q)}점(나무 맛이 넘쳐 약 ${Math.round(q.woodLoss)}점 깎임 — 원액 실제 맛 · 숨은 오염은 넣지 않는다. 지금 샘플 품질과 다르다)` : ` → 나무 맛이 넘쳐 품질 약 ${Math.round(o.penalty)}점 깎임`} · 지금까지 탄닌 약 ${Math.round(o.now)} — 비울 때마다 활성도 ×${EMPTY_ACTIVITY_FACTOR} · 3년 위스키는 활성도 높은 통(새 통)이 빨리 익는다. 12년은 2~5번 쓴 통(활성도 0.6~0.13)이 가장 낫고, 0.1 아래는 나무 향이 모자라 12년 품질도 다시 내려간다. 어림(기상 이상치·재해 제외)`}>
+      활성도 {o.activity.toFixed(2)} · {q ? <>{yrs}년 어림 약 {Math.round(q.q)}점{q.woodLoss >= 0.5 ? ` (나무 맛 −${Math.round(q.woodLoss)})` : ''}</> : <>{yrs}년 {o.penalty >= 0.5 ? `나무 맛 −${Math.round(o.penalty)}점` : '나무 맛 넘침 없음'}</>}{weak && <div>나무 향이 약해진 통 — 12년 품질이 다시 내려간다</div>}
     </div>
   );
 }
@@ -532,12 +536,12 @@ function WarehouseCard() {
           <div className="text-[11px] text-stone-500">자동 샘플은 통당 횟수({SAMPLING.maxSamples}회)를 쓰지 않지만 오차도 줄이지 않는다 — 오차를 줄이려면 직접 고른다.</div>
         </div>
       )}
-      {/* [결정 #374] 「12년 감점」 풀이 한 줄 — 9차 판 오너 "의미를 몰랐다"(뜻은 마우스를 올려야 보이는 title에만 있었다). 요령(빼서 재사용 통에)은 알리지 않는다(#367) */}
+      {/* [결정 #374] 「12년 감점」 풀이 한 줄 — 9차 판 오너 "의미를 몰랐다"(뜻은 마우스를 올려야 보이는 title에만 있었다). [H1] 이제 「12년 어림」(품질 점수)으로 풀이한다. 요령(빼서 재사용 통에)은 알리지 않는다(#367) — 리필 통 비교 점수는 통입 칸 · 할 일에만(오너 H1 표) */}
       {filled.some((c) => c.contents && (c.contents.kind === 'malt' || c.contents.kind === 'grain') && vesselMaterial(c) === 'wood') && (
-        <p className="mb-1 text-xs text-stone-600 dark:text-stone-400"><b>12년 감점</b> — 지금 통 그대로 12년(144개월)까지 두면 나무 맛(탄닌)이 위스키 상한을 넘어 품질에서 깎일 것으로 보이는 점수(활성도로 센 어림). 활성도가 높은 새 통일수록 크다.</p>
+        <p className="mb-1 text-xs text-stone-600 dark:text-stone-400"><b>12년 어림</b> — 지금 통 그대로 12년(144개월)을 채워 46%로 내면 품질이 몇 점쯤일지(그 원액 레시피 · 통 · 칸으로 센 어림). 괄호의 「나무 맛 −n」은 나무 맛(탄닌)이 넘쳐 깎이는 점수 — 활성도가 높은 새 통일수록 크다. <b>샘플 칸은 지금 품질</b>이라 12년 품질과 다르다.</p>
       )}
       {!filled.length ? <Empty>숙성 중인 캐스크가 없습니다. 아래에서 탱크의 몰트(또는 소주) 원액을 빈 통에 통입하세요.</Empty> : (
-        <Table head={['', '캐스크', '원액', '숙성', '남은 양', '표기', '마지막 샘플 (추정 품질 ±오차 · 강한 향 · 변화)', '']}>
+        <Table head={['', '캐스크', '원액', '숙성', '남은 양', '표기', '마지막 샘플 (지금 품질 추정 ±오차 · 강한 향 · 변화)', '']}>
           {(all ? shownCasks : shownCasks.slice(0, LIST_FIRST)).map((c) => {
             const lot = c.contents!;
             const can = sampleable(c);
@@ -667,7 +671,7 @@ function FillCard() {
                     );
                   })()}
                   {/* [결정 #410] T1-a — 고른 빈 통에 채우면 12년에 탄닌 · 감점이 얼마일지(PROD FillOutlookLine · fillTanninOutlook — 활성도 · 칸 · 달만 읽는다). 옹기면 없음 · 「옮기라」는 말하지 않는다(#411) */}
-                  {lot!.kind !== 'soju' && <FillOutlookLine caskIds={ofType.slice(0, fillN).map((c) => c.id)} shape={lot!.stillShape} />}
+                  {lot!.kind !== 'soju' && <FillOutlookLine caskIds={ofType.slice(0, fillN).map((c) => c.id)} shape={lot!.stillShape} lotId={lot!.id} />}
                   {/* [제안 P-PROD-66] e · 결정 #339 — 판 초반(첫 2년) 나무 통에 몰트·그레인을 넣을 때 한 줄: 12년 품질은 통 활성도가 가른다(정보만) */}
                   {!onggi && lot!.kind !== 'soju' && flagshipCaskHint(s) && <p className="text-xs text-sky-800 dark:text-sky-300">{flagshipCaskHint(s)}</p>}
                   {onggi && <p className="text-xs text-amber-800 dark:text-amber-300">옹기: 나무 향 없이 숨을 쉬며 거친 맛이 풀린다 — 탱크 보관보다 빠르고 증발은 나무 통의 절반. 소주 숙성용{lot!.kind !== 'soju' ? ' — 몰트는 옹기에서 보낸 기간이 위스키 숙성(오크)에 들어가지 않는다' : ''}.</p>}

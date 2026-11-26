@@ -327,7 +327,7 @@ export function Bottling() {
                 {/* 표가 옆으로 넘쳐 체크박스·이름이 밀려나지 않게 너비를 묶고 두 줄로 (플레이테스트 2026-11-07) */}
                 <Td className="text-xs"><div className="w-40 whitespace-normal">{hide && x.source === 'cask' ? (() => {
                   const k = known?.get(x.id);
-                  return k ? <span className={k.from === 'sibling' ? 'opacity-70' : ''}>{topKnown(k, x.lot.kind)}<span className="block text-stone-500">추정 {k.estQuality} · {s.month - k.month > 0 ? `${months(s.month - k.month)} 전` : '이번 달'}{k.from === 'sibling' ? ' 형제 통' : ''} 샘플</span></span> : <span className="text-stone-500">샘플 없음 — 모른다</span>;
+                  return k ? <span className={k.from === 'sibling' ? 'opacity-70' : ''}>{topKnown(k, x.lot.kind)}<span className="block text-stone-500">지금 품질 추정 {k.estQuality} · {s.month - k.month > 0 ? `${months(s.month - k.month)} 전` : '이번 달'}{k.from === 'sibling' ? ' 형제 통' : ''} 샘플</span></span> : <span className="text-stone-500">샘플 없음 — 모른다</span>;
                 })() : topNotes(x.lot.flavor).map((n) => n.nameKo).join(' · ')}</div></Td>
                 <Td>{picked[x.key] != null && <NumberField value={picked[x.key]!} min={0} max={Math.floor(x.lot.volumeL * 10) / 10} step={0.1} width="w-20" onCommit={(v) => setPicked((p) => ({ ...p, [x.key]: v }))} />}</Td>
               </tr>
@@ -648,7 +648,7 @@ function AgedOutlookPanel() {
   return (
     <div className="mb-3 rounded-md border border-sky-200 bg-sky-50/60 px-3 py-2 text-xs dark:border-sky-900 dark:bg-sky-950/30">
       <button type="button" className="flex w-full items-center justify-between gap-2 text-left font-medium text-sky-900 dark:text-sky-200" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <span>{yrs}년 전망 — 곧 {yrs}년이 되는 통: {name(best)} 약 {Math.round(best.q)}점{rows.length > 1 && best !== worst ? ` · ${name(worst)} 약 ${Math.round(worst.q)}점` : ''}{!open && ' (눌러서 펼치기)'}</span><span>{open ? '▲' : '▼'}</span>
+        <span>{yrs}년 전망(어림) — 곧 {yrs}년이 되는 통: {name(best)} 약 {Math.round(best.q)}점{rows.length > 1 && best !== worst ? ` · ${name(worst)} 약 ${Math.round(worst.q)}점` : ''}{!open && ' (눌러서 펼치기)'}</span><span>{open ? '▲' : '▼'}</span>
       </button>
       {open && (
         <div className="mt-2 grid gap-1">

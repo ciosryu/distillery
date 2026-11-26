@@ -2,7 +2,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { migrateSave } from './migrate';
-import { agedOutlook, AGED_OUTLOOK_FROM_MONTHS } from './agedOutlook';
+import { agedOutlook, AGED_OUTLOOK_FROM_MONTHS, caskOutlookQuality, fillOutlookQuality, refillOutlookQuality } from './agedOutlook';
+import { emptyCaskOf } from './newGame';
 import { sojuSupply, SOJU_SHORT_RATIO } from './economics';
 import type { GameState } from './types';
 
@@ -50,5 +51,29 @@ describe('[P10-5] 소주 생산 < 판매 수요', () => {
     const w = sojuSupply(s);
     expect(w.madeBottlesPerMonth).toBe(0);
     expect(w.madeBottlesPerMonth).toBeLessThan(w.demandPerMonth * SOJU_SHORT_RATIO);
+  });
+});
+
+describe('[H1] 할 일 · 통입 칸 · 숙성 표가 같은 숫자 — 12년 전망과 어긋나지 않는다', () => {
+  it('10차 70개월: 첫 채움 예비 통 K10 = 첫 채움 묶음 · 리필이었다면 = 두 번째 채움 묶음(±1) · 이미 두 번째 채움이면 리필 대안 없음', () => {
+    const s = load();
+    const rows = agedOutlook(s);
+    const first = rows.find((r) => r.family === 'bourbon' && r.kind === 'malt' && !r.refill)!;
+    const second = rows.find((r) => r.family === 'bourbon' && r.kind === 'malt' && r.refill)!;
+    const k10 = s.inventory.casks.find((c) => c.id === 'K10')! as Parameters<typeof caskOutlookQuality>[1];
+    expect(Math.abs(caskOutlookQuality(s, k10)!.q - first.q)).toBeLessThanOrEqual(1);
+    expect(Math.abs(refillOutlookQuality(s, k10)!.q - second.q)).toBeLessThanOrEqual(1);
+    const k19 = s.inventory.casks.find((c) => c.id === 'K19')! as Parameters<typeof caskOutlookQuality>[1];
+    expect(refillOutlookQuality(s, k19)).toBeNull();
+  });
+  it('T1-a: 새 버번에 몰트 원액을 지금 채우면 첫 채움 어림 · 리필 대안 — 소주 · 옹기는 없음', () => {
+    const s = load();
+    const lot = s.inventory.lots.find((l) => l.kind === 'malt')!;
+    const f = fillOutlookQuality(s, [emptyCaskOf(s, 'ex_bourbon_barrel')], lot)!;
+    expect(f.qMax).toBeGreaterThan(72);
+    expect(f.qMax).toBeLessThan(79);
+    expect(f.lossMax).toBeGreaterThan(10);
+    expect(f.refill!.q).toBeGreaterThan(f.qMax + 8);
+    expect(fillOutlookQuality(s, [emptyCaskOf(s, 'ex_bourbon_barrel')], { ...lot, kind: 'soju' })).toBeNull();
   });
 });
