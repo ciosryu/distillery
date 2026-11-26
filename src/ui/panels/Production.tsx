@@ -13,7 +13,7 @@ import { useGame } from '../../store/game';
 import { OPEN_FOLD_EVENT } from '../AlertsView';
 import { logisticsMultiplier, regionOf, REGIONS, siteOf } from '../../sim/content/regions';
 import { liters, num, pct, won } from '../format';
-import { sojuSupply, SOJU_STOCK_WARN_MONTHS } from '../../sim/economics';
+import { sojuSupply, SOJU_SHORT_RATIO, SOJU_STOCK_WARN_MONTHS } from '../../sim/economics';
 import { Badge, Button, Card, ConfirmButton, Empty, NumberField, Select, Table, Td, TextField } from '../kit';
 import { newFacilities } from '../alerts'; // #388 ① A3 새로 열린 시설 띠(ARCH · PROD 동의)
 import { StillRefit, StillShapeLine } from './StillRefit'; // [결정 #418] 증류기 형태 줄 · 개조
@@ -94,6 +94,7 @@ export function Orders() {
       <SkipLine />
       <ProductionValueLine />
       <SojuStockLine />
+      <SojuShortLine />
       <WhiskySupply />
       <p className="mt-2 text-xs text-stone-500">원액은 매달 말 탱크에 쌓입니다. 비숙성 주종(소주·진·고량주 등)은 바로 병입할 수 있고, 몰트는 {(() => { const w = regionOf(s).whisky; return w.minMonths > 0 ? `캐스크에 통입해 ${w.minMonths}개월 이상 숙성해야 "위스키"로 판매할 수 있습니다` : w.requiresOak ? '캐스크에 넣기만 하면 바로 "위스키"로 팔 수 있지만(법정 최소 숙성 없음) 3년 미만은 어린 위스키라 값을 덜 받습니다' : '숙성 없이도 "위스키"로 팔 수 있지만(법정 최소 숙성 없음) 3년 미만은 어린 위스키라 값을 덜 받습니다'; })()} 설비·인력 한도는 대시보드의 가동 계획에서 확인하세요.</p>
     </Card>
@@ -261,6 +262,22 @@ function SojuStockLine() {
           : <>지금 소주 지시는 없다 — 탱크 소주를 팔 만큼 병입하면 된다</>}
         <span className="text-stone-600 dark:text-stone-400"> · 탱크 소주는 375ml·25% 병으로 어림했다. 숙성용(옹기·오크)으로 남긴 몫이면 그대로 두어도 된다</span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * [P10-5] 소주 생산 < 판매 수요 — 10차 판: 소주 지시 월 1배치(약 130 LPA)로 소주 세 제품 수요(약 200 LPA)를 못 대 「옹기소주」 자동 납품이 넉 달 멈췄다(prod.md §3).
+ * 지금 지시로 매달 생기는 병(표준 병 환산) < 최근 3개월 판매 수요 × `SOJU_SHORT_RATIO`면 알린다. 화면 전용 — 상태 · 규칙 불변
+ */
+function SojuShortLine() {
+  const s = useGame((g) => g.state);
+  const v = useMemo(() => sojuSupply(s), [s]);
+  if (!(v.demandPerMonth > 0) || v.madeBottlesPerMonth >= v.demandPerMonth * SOJU_SHORT_RATIO) return null;
+  return (
+    <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+      <b>⚠ 소주 생산이 판매 수요보다 적다</b> — 지금 소주 지시는 매달 약 {num(v.madeBottlesPerMonth)}병을 만드는데 최근 3개월 소주 수요는 월 약 {num(Math.round(v.demandPerMonth))}병이다.
+      <div className="mt-0.5">탱크 · 옹기 · 오크 소주가 바닥나면 자동 납품이 못 채운다(옹기 · 오크 소주는 몇 달 쉬어야 쓸 수 있어 늦게 나타난다). 소주 지시를 늘리거나 값을 올린다 <span className="text-stone-600 dark:text-stone-400">· 375ml · 25% 병으로 어림했다</span></div>
     </div>
   );
 }

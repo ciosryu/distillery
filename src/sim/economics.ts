@@ -528,6 +528,8 @@ export interface SojuSupply {
   tankBottles: number;
   /** 최근 3개월 평균 판매 병/월 */
   perMonth: number;
+  /** [P10-5] 최근 3개월 평균 판매 **수요** 병/월(재고가 모자라 못 판 병 포함 — 결산 `demandBottles`) */
+  demandPerMonth: number;
   /** (제품 + 탱크) ÷ 월 판매 — 판매가 0이면 null */
   months: number | null;
   /** 지금 소주 지시로 매달 새로 생기는 병(정상 배치·표준 병 환산)과 그 원료·에너지 */
@@ -539,6 +541,8 @@ export interface SojuSupply {
 /** 화면이 경고하는 문턱 — 병입하지 않은 소주까지 이만큼 개월 치를 넘으면 (단계 T에서 튜닝) */
 export const SOJU_STOCK_WARN_MONTHS = 12;
 
+/** [P10-5] 소주 생산이 판매 수요보다 이만큼 적으면 알린다(생산 ÷ 수요) `[튜닝]` */
+export const SOJU_SHORT_RATIO = 0.9;
 export function sojuSupply(s: GameState): SojuSupply {
   const bottleLPA = (STANDARD_BOTTLE.soju.bottleMl / 1000) * STANDARD_BOTTLE.soju.abv;
   const products = s.commerce.products.filter((p) => p.category === 'soju_distilled' && !p.dutyFreeOnly);
@@ -549,6 +553,7 @@ export function sojuSupply(s: GameState): SojuSupply {
   const tankBottles = Math.floor(lots.reduce((t, l) => t + l.volumeL * l.abv, 0) / bottleLPA);
   const recent = s.history.reports.slice(-3);
   const perMonth = recent.length ? recent.reduce((t, r) => t + r.sales.filter((x) => ids.has(x.productId)).reduce((u, x) => u + x.bottles, 0), 0) / recent.length : 0;
+  const demandPerMonth = recent.length ? recent.reduce((t, r) => t + r.sales.filter((x) => ids.has(x.productId)).reduce((u, x) => u + (x.demandBottles ?? x.bottles), 0), 0) / recent.length : 0;
   let made = 0;
   let cost = 0;
   let costPerBatch: number | null = null;
@@ -562,7 +567,7 @@ export function sojuSupply(s: GameState): SojuSupply {
     costPerBatch ??= Math.round(b.cost);
   }
   return {
-    productBottles, tankL, tankBottles, perMonth,
+    productBottles, tankL, tankBottles, perMonth, demandPerMonth,
     months: perMonth > 0 ? (productBottles + tankBottles) / perMonth : null,
     madeBottlesPerMonth: Math.round(made), costPerMonth: Math.round(cost), costPerBatch,
   };
