@@ -56,6 +56,16 @@ export function hireImpact(s: GameState, c: Candidate): ImpactLine[] {
   return out;
 }
 
+/**
+ * P-MGT-71 (다)(10차 70개월 U4) — 영업 「시음회」의 맞바꿈: 맡겨 둔 동안 내내(여는 분기 첫 달만이 아니라) 그 영업의 커버리지 몫이 줄어든다.
+ * 이 영업이 평소 업무일 때와 시음회를 맡았을 때의 유통 커버리지(국내 도달에 곱한다 — market.ts). 시음회를 맡을 수 없는 직군이면 null
+ */
+export function tastingImpact(s: GameState, x: Staff): { routine: number; tasting: number; sales: number } | null {
+  if (x.role !== 'sales') return null;
+  const as = (task: Staff['task']): GameState => ({ ...s, hr: { ...s.hr, staff: s.hr.staff.map((y) => (y.id === x.id ? { ...y, task } : y)) } });
+  return { routine: coverage(as('routine')), tasting: coverage(as('tasting')), sales: staffOf(s, 'sales').length };
+}
+
 /** 지금 막힌 곳 — 어느 직군을 뽑으면 실제로 결과가 바뀌는지 (최근 3개월 결산 기준). 없으면 빈 배열 */
 export function bottlenecks(s: GameState): string[] {
   const rs = s.history.reports.slice(-3);
