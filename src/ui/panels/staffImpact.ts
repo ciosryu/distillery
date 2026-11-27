@@ -15,7 +15,7 @@ import { TECH_BY_ID } from '../../sim/content/tech';
 import { ROLE_INFO } from '../../sim/content/catalog';
 import { HR_TUNING, MORALE, TRAINING, hasTrait, masterDistiller, moraleOf, taxAuditDefense, xpMultiplier } from '../../sim/hr';
 import { bestBy, staffOf } from '../../sim/util';
-import { TASK_VALUES } from '../../sim/staffTaskRules';
+import { monthsToTasting, onTask, TASK_VALUES } from '../../sim/staffTaskRules';
 import { num, pct, won } from '../format';
 
 export interface ImpactLine { label: string; before: string; after: string; note?: string }
@@ -79,13 +79,14 @@ export function hireImpact(s: GameState, c: Candidate): ImpactLine[] {
 }
 
 /**
- * P-MGT-71 (다)(10차 70개월 U4) — 영업 「시음회」의 맞바꿈: 맡겨 둔 동안 내내(여는 분기 첫 달만이 아니라) 그 영업의 커버리지 몫이 줄어든다.
- * 이 영업이 평소 업무일 때와 시음회를 맡았을 때의 유통 커버리지(국내 도달에 곱한다 — market.ts). 시음회를 맡을 수 없는 직군이면 null
+ * P-MGT-71 (다) · [결정 #440] — 영업 「시음회」의 맞바꿈: 시음회가 열리는 달(맡긴 달부터 3개월마다)에만 그 영업의 커버리지 몫이 줄어든다.
+ * 이 영업이 평소 업무일 때와 시음회를 여는 달의 유통 커버리지(국내 도달에 곱한다 — market.ts) · 다음 여는 달까지 남은 개월(맡고 있지 않으면 지금 맡기면 이번 달 = 0). 영업이 아니면 null
  */
-export function tastingImpact(s: GameState, x: Staff): { routine: number; tasting: number; sales: number } | null {
+export function tastingImpact(s: GameState, x: Staff): { routine: number; tasting: number; sales: number; next: number } | null {
   if (x.role !== 'sales') return null;
-  const as = (task: Staff['task']): GameState => ({ ...s, hr: { ...s.hr, staff: s.hr.staff.map((y) => (y.id === x.id ? { ...y, task } : y)) } });
-  return { routine: coverage(as('routine')), tasting: coverage(as('tasting')), sales: staffOf(s, 'sales').length };
+  // 여는 달 값: 이번 달을 여는 달로 둔 사본(taskMonth = 지금) — 실제 다음 여는 달은 `next`
+  const as = (task: Staff['task']): GameState => ({ ...s, hr: { ...s.hr, staff: s.hr.staff.map((y) => (y.id === x.id ? { ...y, task, taskMonth: s.month } : y)) } });
+  return { routine: coverage(as('routine')), tasting: coverage(as('tasting')), sales: staffOf(s, 'sales').length, next: onTask(x, 'tasting') ? monthsToTasting(s, x) : 0 };
 }
 
 /** 교육 능력치 키 — 직군마다 뜻이 다르다(ROLE_INFO.stats[0~2]) */

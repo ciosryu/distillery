@@ -4,7 +4,7 @@ import { applyAction, type GameState, type MonthReport } from './index';
 import { newScenarioGame } from './newScenario';
 import { STAFF_TASKS, staffTasksFor } from './hr';
 import { agingCheckPicks, runStaffTasks, TASK_NOTE, taskEventMonth, tastingProduct } from './staffTasks';
-import { coverageShare, effectiveProcess, patrolDetect, TASK_VALUES } from './staffTaskRules';
+import { coverageShare, effectiveProcess, monthsToTasting, patrolDetect, TASK_VALUES, tastingEventMonth } from './staffTaskRules';
 import { coverage } from './market';
 import { houseBrand } from './brands';
 import type { Product, Staff } from './types';
@@ -59,7 +59,7 @@ describe('[결정 #412] 일 목록 — 직군마다 하나 + 평소 업무', () 
     const sales = role(s, 'sales');
     const cov = coverage(s);
     expect(effectiveProcess(d)).toBe(d.stats.b);
-    expect(coverageShare(sales)).toBe(1);
+    expect(coverageShare(sales, s)).toBe(1);
     expect(patrolDetect(s, 0.4)).toBe(0.4);
     d.task = 'aging_check'; sales.task = 'tasting';
     expect(effectiveProcess(d)).toBeCloseTo(d.stats.b * TASK_VALUES.agingCheck.processMul);
@@ -116,11 +116,11 @@ const product = (s: GameState, id: string): Product => {
 const sold = (r: MonthReport, p: Product, bottles: number) => r.sales.push({ productId: p.id, name: p.name, bottles, revenue: bottles * p.price, demandBottles: bottles });
 
 describe('[결정 #412] 영업 「시음회」', () => {
-  it('이번 달 가장 많이 팔린 제품으로 — 분기 첫 달에 1,500만 원 · 인지도 + · 리뷰 덧붙임 · 같은 분기 다음 달엔 열지 않는다', () => {
-    const s = game(); // 96 = 분기 첫 달
+  it('이번 달 가장 많이 팔린 제품으로 — 여는 달(맡긴 달 + 3k)에 1,500만 원 · 인지도 + · 리뷰 덧붙임 · 다음 달엔 열지 않는다', () => {
+    const s = game(); // 96 — [결정 #440] 93개월에 맡겼으면 96은 여는 달(93 + 3)
     const a = product(s, 'PA'); const b = product(s, 'PB');
     const x = role(s, 'sales');
-    x.task = 'tasting'; x.taskMonth = 95;
+    x.task = 'tasting'; x.taskMonth = 93;
     const aw = houseBrand(s).awareness;
     const cash = s.finance.cash;
     const r = report(s);
@@ -164,6 +164,34 @@ describe('[결정 #412] 숙성고 「순찰 강화」', () => {
     expect(cash - s.finance.cash).toBe(TASK_VALUES.patrol.costPerMonth);
     expect(r.expenses.warehousePatrol).toBe(TASK_VALUES.patrol.costPerMonth);
     expect(r.notes.some((n) => n.startsWith(`${TASK_NOTE} 순찰 강화`))).toBe(true);
+  });
+});
+
+describe('[결정 #440] 시음회 — 맞바꿈은 여는 달만 · 다음 사건은 3개월 뒤', () => {
+  it('맡긴 달 + 3k만 여는 달 · 커버리지 × 0.5도 그달만', () => {
+    const s = game();
+    const x = role(s, 'sales');
+    const cov = coverage(s);
+    x.task = 'tasting'; x.taskMonth = s.month; // 96에 맡김
+    const at = (m: number) => { s.month = m; return { event: tastingEventMonth(s, x), share: coverageShare(x, s), cov: coverage(s) }; };
+    expect(at(96)).toMatchObject({ event: true, share: TASK_VALUES.tasting.coverageMul });
+    expect(at(96).cov).toBeLessThan(cov);
+    for (const m of [97, 98, 100, 101]) expect(at(m)).toMatchObject({ event: false, share: 1 });
+    expect(at(97).cov).toBeCloseTo(cov, 10);
+    expect(at(99).event).toBe(true);
+    expect(at(102).event).toBe(true);
+  });
+  it('옛 규칙의 「맡긴 달 + 다음 분기 첫 달」처럼 두 달 사이로 붙지 않는다(10차 145 · 147)', () => {
+    const s = game();
+    const x = role(s, 'sales');
+    x.task = 'tasting'; x.taskMonth = 145;
+    const events = [145, 146, 147, 148, 149, 150, 151].filter((m) => tastingEventMonth({ month: m }, x));
+    expect(events).toEqual([145, 148, 151]);
+    expect(taskEventMonth({ month: 147 }, x)).toBe(true); // 숙성 점검 · 순찰 강화의 분기 메모는 옛 규칙 그대로
+  });
+  it('다음 여는 달까지 남은 개월', () => {
+    const x = { taskMonth: 145 };
+    expect([145, 146, 147, 148].map((m) => monthsToTasting({ month: m }, x))).toEqual([0, 2, 1, 0]);
   });
 });
 

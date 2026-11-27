@@ -10,7 +10,7 @@ import { staffLaborCost, wageDrift } from './mgtKnobs';
 import { nid } from './util';
 import { addModifier, isActive, mod } from './modifiers';
 import type { MonthReport } from './types';
-import { staffTaskOf, TASK_VALUES } from './staffTaskRules';
+import { staffTaskOf, TASK_VALUES, TASTING_EVERY_MONTHS } from './staffTaskRules';
 import { runStaffTasks } from './staffTasks';
 import { staffOf } from './util';
 
@@ -451,7 +451,7 @@ export interface StaffTaskDef {
 export const STAFF_TASKS: StaffTaskDef[] = [
   { id: 'routine', nameKo: '평소 업무', roles: 'all', text: '맡은 직무를 평소대로 한다(지금 효과 그대로)' },
   { id: 'aging_check', nameKo: '숙성 점검', roles: ['distiller'], text: `매달 목재 ${TASK_VALUES.agingCheck.minOakMonths / 12}년 넘은 통을 ${TASK_VALUES.agingCheck.perMonth}통까지 대신 맛보고(돈 안 듦 · 자동 샘플과 같은 읽기) 오염을 찾는다 · 분기마다 12년 감점이 큰 통을 알린다 — 그동안 증류장을 비워 새 원액(레시피 미리보기 포함)의 이취가 조금 는다` },
-  { id: 'tasting', nameKo: '시음회', roles: ['sales'], text: `분기마다 그달 가장 많이 팔린 제품으로 시음회를 연다(회당 ${TASK_VALUES.tasting.cost / 1e4}만 원) — 반응에 따라 그 브랜드 인지도가 오르고 리뷰가 몇 건 붙는다(친화가 높을수록 성황). 맡은 동안 매장을 덜 돌아 유통 커버리지 몫이 절반` },
+  { id: 'tasting', nameKo: '시음회', roles: ['sales'], text: `맡긴 달부터 ${TASTING_EVERY_MONTHS}개월마다 그달 가장 많이 팔린 제품으로 시음회를 연다(회당 ${TASK_VALUES.tasting.cost / 1e4}만 원) — 반응에 따라 그 브랜드 인지도가 오르고 리뷰가 몇 건 붙는다(친화가 높을수록 성황). 여는 달에는 매장을 덜 돌아 그달 유통 커버리지 몫이 절반` },
   { id: 'patrol', nameKo: '순찰 강화', roles: ['warehouse'], text: `숙성고를 더 자주 돈다 — 오염을 더 잘 찾는다(발견 확률 ×${TASK_VALUES.patrol.detectMul}). 야근 수당 월 ${TASK_VALUES.patrol.costPerMonth / 1e4}만 원` },
 ];
 export { staffTaskOf } from './staffTaskRules';
