@@ -67,3 +67,17 @@ describe('[P-PROD-81 ④] 판매 전 품절 달의 수요(stockoutDemand)도 센
     expect(sojuSupply(s).demandPerMonth).toBeCloseTo(before, 6);
   });
 });
+
+describe('[P-PROD-81] 소주 과잉 · 소주 공급은 같은 개월 치(수요 기준) — 같은 달에 반대로 말하지 않는다', () => {
+  it('10차 70개월 세이브를 행동 없이 76개월까지(ARCH 부분 판 P1): 두 줄이 함께 뜨지 않는다', async () => {
+    const { advanceMonth } = await import('../sim/step');
+    let s = migrateSave(JSON.parse(readFileSync('docs/playtest/10/distillery-mvp-standard-y6m11-202611261003.json', 'utf8')).save)!;
+    for (let m = 0; m < 12; m++) {
+      s = advanceMonth(s);
+      const ids = monthTodos(s).map((t) => t.id);
+      expect(ids.includes('soju-supply') && ids.includes('soju-glut')).toBe(false);
+    }
+    const v = sojuSupply(s);
+    expect(v.months).toBeCloseTo((v.productBottles + v.tankBottles) / Math.max(v.demandPerMonth, v.perMonth), 6);
+  });
+});

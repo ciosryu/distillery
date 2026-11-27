@@ -255,7 +255,7 @@ function SojuStockLine() {
   if (v.months == null || v.months < SOJU_STOCK_WARN_MONTHS || v.tankBottles <= 0) return null;
   return (
     <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
-      <b>⚠ 소주가 판매 약 {Math.round(v.months)}개월 치 있다</b> — 탱크 {liters(v.tankL)}(≈ {num(v.tankBottles)}병) + 제품 재고 {num(v.productBottles)}병 · 최근 3개월 판매 월 약 {num(v.perMonth)}병
+      <b>⚠ 소주가 수요 약 {Math.round(v.months)}개월 치 있다</b> — 탱크 {liters(v.tankL)}(≈ {num(v.tankBottles)}병) + 제품 재고 {num(v.productBottles)}병 · 최근 3개월 수요 월 약 {num(Math.max(v.demandPerMonth, v.perMonth))}병(품절로 못 판 병 포함)
       <div className="mt-0.5">
         {v.madeBottlesPerMonth > 0
           ? <>지금 소주 지시는 매달 약 {num(v.madeBottlesPerMonth)}병을 더 만든다(생산비 {won(v.costPerMonth)}/월){v.costPerBatch != null && <> — 1배치 줄이면 월 {won(v.costPerBatch)}을 아낀다</>}</>
