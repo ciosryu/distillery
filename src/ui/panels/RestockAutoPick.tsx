@@ -1,7 +1,8 @@
 // [결정 #437 ①] 재고 보충 「자동으로 골라 담기」 — 조건을 고르면 통 · L을 병입 칸에 담는다. 병입은 사람이 지금 「병입」으로 누른다(새 행동 없음 · 화면만)
 import { useState } from 'react';
 import type { Product } from '../../sim';
-import { restockAutoPick, restockLabelMonths, restockPickDefaultBottles, restockPickFamilies, type RestockFlavor, type RestockPickResult } from '../../sim/restockAutoPick';
+import { CASK_FAMILY_LABEL } from '../../sim/agedCombos';
+import { productFamilyShares, restockAutoPick, restockFamilyNote, restockLabelMonths, restockPickDefaultBottles, restockPickFamilies, type RestockFlavor, type RestockPickResult } from '../../sim/restockAutoPick';
 import { useGame } from '../../store/game';
 import { num } from '../format';
 import { Button, NumberField } from '../kit';
@@ -12,6 +13,14 @@ const METHOD: Record<RestockPickResult['method'], string> = {
   youngest: '어린 통부터 담았다(이 제품의 추정 향미 기록이 없다)',
 };
 
+/** [P-PROD-78] 고른 계열이 이 제품 통 구성 기록의 20% 미만이면 결과 줄 앞에 붙는 알림 */
+function familyNoteText(p: Product, flavor: RestockFlavor) {
+  if (flavor.kind !== 'family') return null;
+  const n = restockFamilyNote(p, flavor.family);
+  if (!n) return null;
+  return <b className="text-amber-700 dark:text-amber-400">이 제품의 통 구성은 {n.top.label} {Math.round(n.top.share * 100)}% — {CASK_FAMILY_LABEL[flavor.family]}로 채우면 이번 병들의 맛이 지금 제품과 달라질 수 있다(재고와 병 수 가중으로 섞인다). </b>;
+}
+
 export function RestockAutoPick({ p, onPick }: { p: Product; onPick: (picked: Record<string, number>) => void }) {
   const s = useGame((g) => g.state);
   const label = restockLabelMonths(s, p);
@@ -21,15 +30,17 @@ export function RestockAutoPick({ p, onPick }: { p: Product; onPick: (picked: Re
   const [minQ, setMinQ] = useState(0); // 0 = 품질 조건 없음
   const [flavorKey, setFlavorKey] = useState<string>('keep');
   const [bottles, setBottles] = useState(() => restockPickDefaultBottles(s, p));
-  const [last, setLast] = useState<RestockPickResult | null>(null);
+  const [last, setLast] = useState<(RestockPickResult & { flavor: RestockFlavor }) | null>(null);
   const minMonths = Math.round(minY * 12);
   const maxMonths = maxY > 0 ? Math.round(maxY * 12) : undefined;
   const families = restockPickFamilies(s, p, { minMonths, maxMonths });
+  // [P-PROD-78] 계열마다 이 제품 통 구성 기록 몫(공개) — 선택지 옆에 보이고, 20% 미만 계열로 채우면 결과 줄에 알린다(막지 않는다)
+  const shares = productFamilyShares(p);
   const flavor: RestockFlavor = flavorKey === 'keep' || !families.some((f) => f.family === flavorKey) ? { kind: 'keep' } : { kind: 'family', family: flavorKey as Extract<RestockFlavor, { kind: 'family' }>['family'] };
   const yr = (m: number) => (m % 12 ? `${num(m / 12, 1)}년` : `${m / 12}년`);
   const pick = () => {
     const r = restockAutoPick(s, p, { minMonths, maxMonths, minKnownQuality: minQ > 0 ? minQ : undefined, flavor, bottles });
-    setLast(r);
+    setLast({ ...r, flavor });
     if (r.components.length) onPick(Object.fromEntries(r.components.map((x) => [`cask:${x.caskId}`, x.liters])));
   };
   const heldText = (r: RestockPickResult) => [
@@ -57,7 +68,7 @@ export function RestockAutoPick({ p, onPick }: { p: Product; onPick: (picked: Re
             <span className="text-stone-600 dark:text-stone-300">향미 방향</span>
             <label className="inline-flex items-center gap-1"><input type="radio" name={`rap-${p.id}`} className="accent-amber-700" checked={flavor.kind === 'keep'} onChange={() => setFlavorKey('keep')} />지금 제품 맛과 가장 비슷하게</label>
             {families.map((f) => (
-              <label key={f.family} className="inline-flex items-center gap-1"><input type="radio" name={`rap-${p.id}`} className="accent-amber-700" checked={flavor.kind === 'family' && flavor.family === f.family} onChange={() => setFlavorKey(f.family)} />{f.label}만({f.casks}통)</label>
+              <label key={f.family} className="inline-flex items-center gap-1"><input type="radio" name={`rap-${p.id}`} className="accent-amber-700" checked={flavor.kind === 'family' && flavor.family === f.family} onChange={() => setFlavorKey(f.family)} />{f.label}만({f.casks}통{shares ? ` · 이 제품 기록 ${Math.round((shares.get(f.family) ?? 0) * 100)}%` : ''})</label>
             ))}
             {p.finish && <span className="text-stone-500">피니시 제품 — 같은 피니시 통만 보충된다(계열은 고르지 않는다)</span>}
           </div>
@@ -67,7 +78,7 @@ export function RestockAutoPick({ p, onPick }: { p: Product; onPick: (picked: Re
             <Button small variant="primary" onClick={pick}>자동으로 골라 담기</Button>
             {last && (last.error
               ? <span className="text-red-700 dark:text-red-400">{last.error}{heldText(last) ? ` — 뺀 통: ${heldText(last)}` : ''}</span>
-              : <span className="text-stone-600 dark:text-stone-300">{last.components.length}통 · 약 {num(last.bottles)}병{last.bottles < bottles * 0.97 ? `(원한 ${num(bottles)}병보다 적다 — 통이 모자라거나 한 통이 비율을 막았다)` : ''} 담음 — {METHOD[last.method]}{heldText(last) ? ` · 뺀 통: ${heldText(last)}` : ''}. 아래 미리보기를 보고 「병입」을 누른다</span>)}
+              : <span className="text-stone-600 dark:text-stone-300">{familyNoteText(p, last.flavor)}{last.components.length}통 · 약 {num(last.bottles)}병{last.bottles < bottles * 0.97 ? `(원한 ${num(bottles)}병보다 적다 — 통이 모자라거나 한 통이 비율을 막았다)` : ''} 담음 — {METHOD[last.method]}{heldText(last) ? ` · 뺀 통: ${heldText(last)}` : ''}. 아래 미리보기를 보고 「병입」을 누른다</span>)}
           </div>
         </div>
       )}

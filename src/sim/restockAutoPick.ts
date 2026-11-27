@@ -169,3 +169,29 @@ export function restockAutoPick(s: GameState, p: Product, cond: RestockPickCond)
   }
   return done(fillYoungest(allowed, needLPA), 'youngest');
 }
+
+// ───────────── [P-PROD-78] 계열 다름 알림 — 고른 계열이 제품 통 구성 기록과 다를 때 한 줄(화면만 · 막지 않는다) ─────────────
+
+/** 고른 계열이 제품 통 구성 기록에서 이 몫 미만이면 알린다 `[튜닝]` */
+export const RESTOCK_FAMILY_NOTE_SHARE = 0.2;
+
+/** 제품 통 구성 기록(`caskMix` — 공개)을 계열별 몫(합 1)으로. 기록이 없으면 null */
+export function productFamilyShares(p: Pick<Product, 'caskMix'>): Map<CaskFamily, number> | null {
+  if (!p.caskMix?.length) return null;
+  const m = new Map<CaskFamily, number>();
+  for (const x of p.caskMix) m.set(caskFamily(x), (m.get(caskFamily(x)) ?? 0) + x.share);
+  const sum = [...m.values()].reduce((t, x) => t + x, 0);
+  if (sum <= 0) return null;
+  for (const [f, v] of m) m.set(f, v / sum);
+  return m;
+}
+
+/** 이 계열로 채우면 알릴까 — 기록에서 그 계열 몫이 RESTOCK_FAMILY_NOTE_SHARE 미만. 기록이 없으면 알리지 않는다(null) */
+export function restockFamilyNote(p: Pick<Product, 'caskMix'>, family: CaskFamily): { share: number; top: { family: CaskFamily; label: string; share: number } } | null {
+  const m = productFamilyShares(p);
+  if (!m) return null;
+  const share = m.get(family) ?? 0;
+  if (share >= RESTOCK_FAMILY_NOTE_SHARE) return null;
+  const [tf, ts] = [...m].sort((a, b) => b[1] - a[1])[0]!;
+  return { share, top: { family: tf, label: CASK_FAMILY_LABEL[tf], share: ts } };
+}
