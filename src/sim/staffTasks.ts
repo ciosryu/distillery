@@ -52,7 +52,12 @@ function runAgingCheck(s: GameState, report: MonthReport, x: Staff): void {
   const old = s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.oakMonths >= V.minOakMonths);
   const flagged = old.map((c) => ({ c, t: tanninOutlook(s, c) })).filter((y) => (y.t?.penalty ?? 0) >= V.flagPenalty && !y.t?.moved).sort((a, b) => b.t!.penalty - a.t!.penalty);
   const pens = flagged.map((y) => y.t!.penalty);
-  const flagText = flagged.length ? ` · ${flagged[0]!.c.id}${flagged.length > 1 ? ` 외 ${flagged.length - 1}통` : ''}은 지금 통 그대로면 12년 감점 약 ${Math.round(Math.min(...pens))}${pens.length > 1 ? ` ~ ${Math.round(Math.max(...pens))}` : ''}` : old.length ? ' · 12년 감점이 큰 통은 없다' : '';
+  // P-MGT-72 (나)(10차 153개월): 「12년 감점이 큰 통은 없다」가 「품질에 문제가 없다」로 읽혔다 — 무엇을 봤는지(나무 맛 = 탄닌 상한 초과)를 쓰고, 첫 채움 통 수를 따로 센다.
+  // 무엇을 하라는 권고는 넣지 않는다([결정 #367] · #411 · 오너 H1 2026-11-26 — PROD 확인)
+  const firstFill = flagged.filter((y) => y.c.fills <= 1).length;
+  const flagText = flagged.length
+    ? ` · ${flagged[0]!.c.id}${flagged.length > 1 ? ` 외 ${flagged.length - 1}통` : ''}${firstFill ? `(첫 채움 ${firstFill}통)` : ''}은 지금 통 그대로면 12년에 나무 맛이 넘쳐 감점 약 ${Math.round(Math.min(...pens))}${pens.length > 1 ? ` ~ ${Math.round(Math.max(...pens))}` : ''}`
+    : old.length ? ` · 12년에 나무 맛 감점 ${V.flagPenalty}점 넘는 통은 없다(나무 맛만 본다 — 샘플 추정은 지금 품질이다)` : '';
   report.notes.push(`${TASK_NOTE} 숙성 점검(${x.name}): ${V.minOakMonths / 12}년 넘은 통 ${old.length}개 가운데 이번 달 ${picks.length}통을 맛봤다${flagText} — 그동안 증류장을 비워 새 원액의 이취가 조금 는다`);
 }
 
