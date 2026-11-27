@@ -3,6 +3,7 @@ import { FeedCard } from '../FeedCard'; // 가상 커뮤니티 피드 (#247, MKT
 import { ExportShortfallNote } from '../ExportShortfallNote'; // 수출이 국내를 굶기는지 (#257, MKT)
 import { SuggestedPriceNote } from '../SuggestedPriceNote'; // 권장가 표시의 정직성 (#283, MKT — PROD 대행)
 import { SellThroughNote } from '../SellThroughNote'; // [결정 #424] 재고를 6개월에 다 팔 값(MKT)
+import { PriceTable } from '../PriceTable'; // [결정 #438 묶음 ③] 한 화면 가격표(MKT)
 import { PolicyBasisLegend, PricePolicyAll, PricePolicyPicker } from '../PricePolicyPicker'; // 자동 가격 3정책 (#291, MKT)
 import { PRICE_MODE_LABEL, priceModeOf } from '../../sim/priceEngine';
 import { PRODUCT_NAME_MAX } from '../../sim/actions.prod';
@@ -596,6 +597,7 @@ export function Sales() {
 
       <ExportShortfallNote s={s} />
       <PriceDesk />
+      <PriceTable />
       <FeedCard />
       {!isLocked(s, 'action:openBrand') && <BrandLines />}
 
