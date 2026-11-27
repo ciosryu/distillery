@@ -52,8 +52,9 @@ export function policyExplain(ks: GameState, p0: Product, monthOfYear: number): 
   let warn: string | null = null;
   if (mode === 'profit' && t != null && d.price != null) {
     const stray = next < Math.min(p.price, t) - 50 || next > Math.max(p.price, t) + 50; // 지금 값과 목표 사이를 벗어남(반대쪽 · 목표 너머)
-    // ① 가드 기준이 지난번 정책 배수(lastFactor)라 지금 값과 목표 사이를 벗어날 때 — 정책을 끈 뒤 같은 정책을 다시 켜면 생긴다(엔진 그대로 · 수리는 판 뒤 P-MKT-51 (나))
-    if (stray) warn = `지난번 정책 배수(${fx(spec.lastFactor ?? next / sug)})에서 한 달 한 단계씩 움직여, 목표(${won(t)})를 벗어난 값으로 간다 — 정책을 끈 뒤 같은 정책을 다시 켜면 생긴다. 다른 정책으로 한 번 바꿨다 돌아오면 지금 값에서 다시 시작한다`;
+    // ① 가드 기준이 지난번 정책 배수(lastFactor)라 지금 값과 목표 사이를 벗어날 때. 엔진은 [결정 #438 ①](#1266)부터 끈 뒤 다시 켜면 배수를 버린다 —
+    //    그래서 지금 이 경고가 뜨는 것은 그 전에 다시 켠 채로 저장된 세이브뿐이다. 경고 자체는 남긴다(버전이 다른 세이브 대비 · mkt-pricing-postrun §1)
+    if (stray) warn = `지난번 정책 배수(${fx(spec.lastFactor ?? next / sug)})에서 한 달 한 단계씩 움직여, 목표(${won(t)})를 벗어난 값으로 간다 — 예전 빌드에서 남은 배수다. 자동 가격을 한 번 껐다 켜면 지금 값에서 다시 시작한다`;
     // ② 목표가 이 제품 판매를 크게 줄이는데, 형제 쪽 이익 때문일 때
     else if (t > p.price && atNow!.demandBottles > 0 && atTarget!.demandBottles < atNow!.demandBottles * POLICY_SIBLING_WARN
       && (atTarget!.lineupContribution - atTarget!.contribution) > (atNow!.lineupContribution - atNow!.contribution))
