@@ -530,7 +530,7 @@ export interface SojuSupply {
   perMonth: number;
   /** [P10-5] 최근 3개월 평균 판매 **수요** 병/월(재고가 모자라 못 판 병 포함 — 결산 `demandBottles` + 판매 전 품절 달의 `stockoutDemand`) */
   demandPerMonth: number;
-  /** (제품 + 탱크) ÷ 월 판매 — 판매가 0이면 null */
+  /** (제품 + 탱크) ÷ 월 수요(최근 3개월 — `demandPerMonth`, 판매가 더 크면 판매) — 둘 다 0이면 null. [P-PROD-81] 판매로 세면 품절이 이어진 달에 개월 치가 부풀어 「소주 과잉」과 「소주 생산 < 수요」가 같은 달에 함께 떴다(ARCH 부분 판 P1 · 10차 70 → 76개월) */
   months: number | null;
   /** 지금 소주 지시로 매달 새로 생기는 병(정상 배치·표준 병 환산)과 그 원료·에너지 */
   madeBottlesPerMonth: number;
@@ -574,7 +574,7 @@ export function sojuSupply(s: GameState): SojuSupply {
   const one = sojuRecipe ? steadyBatch(s, sojuRecipe) : null;
   return {
     productBottles, tankL, tankBottles, perMonth, demandPerMonth,
-    months: perMonth > 0 ? (productBottles + tankBottles) / perMonth : null,
+    months: Math.max(demandPerMonth, perMonth) > 0 ? (productBottles + tankBottles) / Math.max(demandPerMonth, perMonth) : null,
     madeBottlesPerMonth: Math.round(made), costPerMonth: Math.round(cost), costPerBatch,
     bottlesPerBatch: one ? Math.round(one.lpa / bottleLPA) : null,
   };
@@ -597,8 +597,8 @@ export const SOJU_LOW_WARN_MONTHS = 2;
 export function sojuSupplyAlert(s: GameState): { kind: 'zero' | 'short'; level: 'info' | 'warn'; months: number; demand: number; made: number; perBatch: number | null } | null {
   const v = sojuSupply(s);
   const demand = Math.max(v.demandPerMonth, v.perMonth);
-  if (!(demand > 0)) return null;
-  const months = (v.productBottles + v.tankBottles) / demand;
+  if (!(demand > 0) || v.months == null) return null;
+  const months = v.months; // 「소주 과잉」과 같은 개월 치(수요 기준)
   const out = (kind: 'zero' | 'short', level: 'info' | 'warn') => ({ kind, level, months, demand: Math.round(demand), made: v.madeBottlesPerMonth, perBatch: v.bottlesPerBatch });
   const hasOrder = s.production.orders.some((o) => o.batchesPerMonth > 0 && s.production.recipes.find((r) => r.id === o.recipeId)?.kind === 'soju');
   // 이번 달 결산에서 소주 제품이 품절(재고 0 · 수요 있음)이면 warn
