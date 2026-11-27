@@ -528,7 +528,7 @@ export interface SojuSupply {
   tankBottles: number;
   /** 최근 3개월 평균 판매 병/월 */
   perMonth: number;
-  /** [P10-5] 최근 3개월 평균 판매 **수요** 병/월(재고가 모자라 못 판 병 포함 — 결산 `demandBottles`) */
+  /** [P10-5] 최근 3개월 평균 판매 **수요** 병/월(재고가 모자라 못 판 병 포함 — 결산 `demandBottles` + 판매 전 품절 달의 `stockoutDemand`) */
   demandPerMonth: number;
   /** (제품 + 탱크) ÷ 월 판매 — 판매가 0이면 null */
   months: number | null;
@@ -555,7 +555,8 @@ export function sojuSupply(s: GameState): SojuSupply {
   const tankBottles = Math.floor(lots.reduce((t, l) => t + l.volumeL * l.abv, 0) / bottleLPA);
   const recent = s.history.reports.slice(-3);
   const perMonth = recent.length ? recent.reduce((t, r) => t + r.sales.filter((x) => ids.has(x.productId)).reduce((u, x) => u + x.bottles, 0), 0) / recent.length : 0;
-  const demandPerMonth = recent.length ? recent.reduce((t, r) => t + r.sales.filter((x) => ids.has(x.productId)).reduce((u, x) => u + (x.demandBottles ?? x.bottles), 0), 0) / recent.length : 0;
+  // [P-PROD-81 ④] 판매 전에 재고가 0이던 달은 `sales`에 줄이 없다 — 그달 못 판 수요는 결산 `stockoutDemand`(MKT [결정 #410] T8)에 있다. 둘을 더한다
+  const demandPerMonth = recent.length ? recent.reduce((t, r) => t + r.sales.filter((x) => ids.has(x.productId)).reduce((u, x) => u + (x.demandBottles ?? x.bottles), 0) + (r.stockoutDemand ?? []).filter((x) => ids.has(x.productId)).reduce((u, x) => u + x.bottles, 0), 0) / recent.length : 0;
   let made = 0;
   let cost = 0;
   let costPerBatch: number | null = null;
