@@ -846,10 +846,11 @@ export function autoRestockContest(s: GameState, p: Product, monthOfYear = calen
 export const AUTO_RESTOCK_LONG_FLOOR = 60;
 
 /** 자동 납품이 쓸 원액의 레시피 거름 (#243 · #293) — 제품의 레시피 기록(recipeIds)에 든 레시피의 원액만. 기록 없는 옛 제품은 모두 통과 */
-export const recipeFilter = (p: Pick<Product, 'recipeIds'> & Partial<Pick<Product, 'stillStyle'>>): ((l: Pick<SpiritLot, 'recipeId'> & Partial<Pick<SpiritLot, 'stillShape'>>) => boolean) => {
+export const recipeFilter = (p: Pick<Product, 'recipeIds'> & Partial<Pick<Product, 'stillStyle'>>): ((l: Pick<SpiritLot, 'recipeId'> & Partial<Pick<SpiritLot, 'stillShape' | 'kind'>>) => boolean) => {
   const rec = p.recipeIds?.length ? new Set(p.recipeIds) : null;
   // [결정 #422] 개조 전후 원액 가름 — 제품의 공개 증류 스타일과 원액 형태의 스타일이 같은 원액만(둘 다 없음 포함). 형태 없는 판(봇 · 옛 판)은 늘 참
-  return (l) => (!rec || (!!l.recipeId && rec.has(l.recipeId))) && (p.stillStyle ?? null) === (l.stillShape ? stillStyleOf(l.stillShape) : null);
+  // [P10-1 U5] 위스키 원액(몰트 · 그레인)에만 건다 — 이미 「라이트」가 붙은 소주 제품(10차 세이브)이 형태 없는 새 소주 원액과 어긋나 자동 납품이 멈추지 않게
+  return (l) => (!rec || (!!l.recipeId && rec.has(l.recipeId))) && (l.kind != null && l.kind !== 'malt' && l.kind !== 'grain' ? true : (p.stillStyle ?? null) === (l.stillShape ? stillStyleOf(l.stillShape) : null));
 };
 
 /**

@@ -321,6 +321,9 @@ export function simulateBatch(
 export const TANK_MERGE_KINDS: readonly SpiritKind[] = ['malt', 'grain'];
 
 /** 같은 탱크에 합칠 원액인가 — 같은 레시피의 자체 뉴메이크(매입·숙성 원액 아님), 합치는 주종, 입지 원료 표기가 같을 때 */
+/** [P10-1 U5 · 결정 #429] 증류기 형태(스타일)를 남기는 원액 — 위스키(몰트 · 그레인)만. 소주 · 진 · 고량주 배치는 카탈로그 값으로 증류하고(#429) 형태를 남기지 않는다 */
+export const WHISKY_SHAPE_KINDS: readonly SpiritKind[] = ['malt', 'grain'];
+
 export const sameTank = (a: SpiritLot, b: SpiritLot): boolean =>
   TANK_MERGE_KINDS.includes(a.kind) && !!a.recipeId && a.recipeId === b.recipeId && a.kind === b.kind && !a.sourced && !b.sourced && a.oakMonths === 0 && b.oakMonths === 0 && !!a.localIngredient === !!b.localIngredient
   && sameLotShape(a.stillShape, b.stillShape); // [결정 #422] 개조 전후(형태가 다른) 원액은 탱크를 가른다
@@ -514,7 +517,8 @@ export function runProduction(s: GameState, report: MonthReport, ctx: TickContex
       costPerLPA: cost / lpa,
       ...(hasLocalIngredient(site, recipe) ? { localIngredient: true } : {}),
       // [결정 #418 · #422] 형태를 고른 증류기의 원액에 형태를 남긴다(공개 값) — 형태가 없으면 필드 없음(바이트 그대로)
-      ...(stillInst.stillShape && shapeable(EQUIPMENT[stillInst.catalogId] as never) ? { stillShape: { ...stillInst.stillShape } } : {}),
+      // [P10-1 U5] 위스키 원액만 — 10차 판: 소주 탱크 · 제품에 「라이트」가 붙어 피드에 「라이트 스틸 소주」가 나왔다(MKT 읽기는 막음 · 여기서 쓰는 쪽도 막는다)
+      ...(stillInst.stillShape && shapeable(EQUIPMENT[stillInst.catalogId] as never) && WHISKY_SHAPE_KINDS.includes(recipe.kind) ? { stillShape: { ...stillInst.stillShape } } : {}),
     };
     if (fresh.stillShape) fresh.name = `${fresh.name} · ${STILL_STYLE_LABEL[stillStyleOf(fresh.stillShape)]}`;
     // F2 원장 지점 1: 생산 — 이 입지에서 자가 증류한 구성 원액 한 줄(목재 0개월). 여기서 원장이 처음 생기고, 뒤의 모든 지점이 이어서 갱신한다
