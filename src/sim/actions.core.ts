@@ -45,7 +45,8 @@ export const CORE_HANDLERS: Handlers<CoreAction> = {
       if (a.max !== undefined) q.max = a.max;
       if (a.target !== undefined) q.target = a.target;
       else if (a.mode === 'premium' && q.target == null) q.target = PRICE_POLICY.n;
-      if (p.pricePolicy?.mode !== a.mode) delete q.lastFactor; // 정책을 바꾸면 가드 기준을 새로 잡는다(지금 값 ÷ 기준가)
+      // 정책을 바꾸거나 · 꺼져 있던 것을 다시 켜면 가드 기준을 새로 잡는다(지금 값 ÷ 기준가). 끈 뒤 같은 정책을 켜면 지난 배수에서 출발하던 것을 막는다(10차 판 뒤 묶음 ① — MKT #1216 경고 ①)
+      if (p.pricePolicy?.mode !== a.mode || !p.autoPrice) delete q.lastFactor;
       const err = policyError(q);
       if (err) return fail(prev, `${p.name}: ${err}`);
       if (a.mode === 'turnover') resetFirstPriceOnAuto(p, currentSuggested(s, p)); // 결정 #304: A로 켤 때만 첫 출고가 → 기준가. B·C는 ×n 출발(P-PROD-53)
