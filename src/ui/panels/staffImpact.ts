@@ -5,8 +5,8 @@ import type { Candidate, GameState, Staff } from '../../sim';
 import { coverage, markupFactor } from '../../sim/market';
 import { RETAIL, hasPremiumChannel, retailCapacityCases } from '../../sim/retail';
 import { capacityReport, steadyBatch } from '../../sim/production';
-import { blenderOf, samplingCapacity } from '../../sim/blendTable';
-import { perceptionSigma } from '../../sim/blendRadar';
+import { blenderOf, QUALITY_SIGMA_PER_HEX, samplingCapacity } from '../../sim/blendTable';
+import { perceptionSigma, sampledSigma } from '../../sim/blendRadar';
 import { rotationCapacity } from '../../sim/warehouse';
 import { forecastSigma } from '../../sim/forecast';
 import { macroDetect } from '../../sim/earlyWarning';
@@ -22,6 +22,15 @@ export interface ImpactLine { label: string; before: string; after: string; note
 
 /** 이 직원이 더해진 얕은 사본 — 아래 함수들은 상태를 읽기만 한다 */
 const withStaff = (s: GameState, x: Staff): GameState => ({ ...s, hr: { ...s.hr, staff: [...s.hr.staff, x] } });
+
+/** 지난 n개월 결산의 숙성고 손실(누수 · 증발, LPA) — 결산 기록만 읽는다 */
+function recentLoss(s: GameState, n: number): { leakLPA: number; leaks: number; evapLPA: number } {
+  let leakLPA = 0, leaks = 0, evapLPA = 0;
+  for (const r of s.history.reports.slice(-n)) for (const e of r.lossEvents ?? []) {
+    if (e.kind === 'leak') { leakLPA += e.lpa; leaks++; } else if (e.kind === 'evaporation') evapLPA += e.lpa;
+  }
+  return { leakLPA, leaks, evapLPA };
+}
 
 /** 후보를 뽑으면 바뀌는 숫자 (직군별 1~3줄). 부사수로 뽑으면 급여만 60% — 능력 효과는 같다 */
 export function hireImpact(s: GameState, c: Candidate): ImpactLine[] {
@@ -45,11 +54,17 @@ export function hireImpact(s: GameState, c: Candidate): ImpactLine[] {
     case 'warehouse': {
       const had = staffOf(s, 'warehouse').length > 0;
       if (!had) out.push({ label: '숙성고 QC', before: '없음', after: '있음', note: '누수 손실↓·오염 통(TCA·곰팡이) 감지·증발↓' });
+      // P-MGT-73 (가)(10차 153개월): 「이 사람이 왜 필요한가」를 지난 결산의 숫자로 — 지난 12개월 누수 · 증발 손실(결산 lossEvents · 원액 LPA)
+      const lost = recentLoss(s, 12);
+      if (!had && (lost.leakLPA > 0 || lost.evapLPA > 0)) out.push({ label: '지난 12개월 숙성고 손실', before: `누수 ${num(lost.leakLPA, 0)} LPA(${lost.leaks}번) · 증발 ${num(lost.evapLPA, 0)} LPA`, after: '줄어든다', note: '얼마나 줄지는 그 사람의 관찰 · 환경통제 · 성실에 달렸다' });
       out.push({ label: '통 로테이션 여력', before: `${rotationCapacity(s)}통`, after: `${rotationCapacity(g)}통` });
       break;
     }
     case 'blender': {
       const had = staffOf(s, 'blender').length > 0;
+      // P-MGT-73 (가)(10차 153개월 — S가 「12년 후보 통을 제대로 읽는가」에서 갈렸는데 후보 카드가 이 숫자를 말하지 않았다): 샘플 한 번의 품질 추정 오차(blendTable readSigma와 같은 식)
+      const e0 = sampledSigma(blenderOf(s), 0) * QUALITY_SIGMA_PER_HEX, e1 = sampledSigma(blenderOf(g), 0) * QUALITY_SIGMA_PER_HEX;
+      if (e1 < e0 - 0.05) out.push({ label: '샘플 한 번의 품질 추정 오차', before: `±${num(e0, 1)}점`, after: `±${num(e1, 1)}점`, note: '통 품질을 읽는 눈 — 좋은 통을 만들지는 않지만, 12년 후보를 고를 때 추정이 덜 튄다' });
       out.push({ label: '월 샘플링 여력', before: `${samplingCapacity(s)}회`, after: `${samplingCapacity(g)}회`, note: had ? undefined : '대표가 직접 맛보던 블렌딩 테이블을 블렌더가 맡아 원액을 읽는 오차↓' });
       break;
     }
