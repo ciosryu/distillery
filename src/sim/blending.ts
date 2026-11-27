@@ -278,6 +278,14 @@ export function previewBlend(s: GameState, components: BlendComponent[], opts: B
   // [결정 #422 (c)] 형태를 고른 증류기 원액이 섞였으면 저숙성 황을 가장 어린 원액 개월로 센다(섞인 황 그대로 — 적게 섞이면 작다)
   const evaluation = evaluate(flavor, category, items.some((i) => i.lot.stillShape) ? { youthOakMonths: minOakMonths } : undefined);
   if (opts.restockId) restockChecks(s, opts, { category, finalAbv, finish, ageYears, premiumLabel, traditional, specialty: specialty?.id ?? null, oakMonths: minOakMonths, restMonths: minRestMonths }, errors, warnings);
+  // [P-PROD-83] 이름의 「n년」이 숙성 표기보다 높으면 알린다(막지 않는다) — 10차 판: 「싱글그레인 12년」이 표기 10년 · 「싱글몰트 5년」이 보충으로 표기 2년
+  if (hasMalt || hasGrain) {
+    const target = opts.restockId ? s.commerce.products.find((p) => p.id === opts.restockId) : undefined;
+    const name = target ? target.name : opts.name;
+    const label = target ? (target.ageYears == null || ageYears == null ? (target.ageYears ?? ageYears) : Math.min(target.ageYears, ageYears)) : ageYears;
+    const w = nameAgeMismatch(name, label);
+    if (w) warnings.push(w);
+  }
   return {
     ok: errors.length === 0, errors, warnings, kind, category, volumeL: finalVolume, lpa, mixAbv, finalAbv, bottles,
     minOakMonths, minRestMonths, agedLabel: agedWhiteLabel(category, minOakMonths, minRestMonths), ageYears, flavor, evaluation, unitCost: Math.round(unitCost), sourcedShare, sourcedPrestige, specialty: specialty?.id ?? null, premiumLabel, traditional,
@@ -373,6 +381,19 @@ export const STANDARD_BOTTLING_ABVS = [0.25, 0.3, 0.34, 0.38, 0.4, 0.43, 0.46, 0
  * 제품 도수는 병 수 가중 평균이 된다 (2026-11-09 오너 보고: 61.0% 제품에 61.0% 통을 보충할 수 없었다 — 실제로는 61.04% 대 61.0x%)
  */
 export const isCaskStrength = (p: Pick<Product, 'abv'>): boolean => !STANDARD_BOTTLING_ABVS.some((a) => Math.abs(a - p.abv) < 0.0005);
+
+/** [P-PROD-83] 제품 이름에 적힌 숙성 연수(「12년」 · 「12 년」) — 없으면 null. 여러 개면 가장 큰 값 */
+export function nameAgeClaim(name: string): number | null {
+  const ns = [...name.matchAll(/(\d{1,2})\s*년/g)].map((m) => Number(m[1]));
+  return ns.length ? Math.max(...ns) : null;
+}
+
+/** [P-PROD-83] 이름의 「n년」이 숙성 표기(없으면 표기 없음)보다 높을 때 한 줄 — 같거나 낮으면 null */
+export function nameAgeMismatch(name: string, ageYears: number | null): string | null {
+  const claim = nameAgeClaim(name);
+  if (claim == null || (ageYears != null && ageYears >= claim)) return null;
+  return `이름에 「${claim}년」이 있지만 숙성 표기는 ${ageYears != null ? `${ageYears}년` : '없음'}이다(가장 어린 원액 기준) — 이름은 그대로 팔린다`;
+}
 
 function restockChecks(s: GameState, opts: BottleOptions, b: { category: ProductCategory; finalAbv: number; finish: CaskTypeId | null; ageYears: number | null; premiumLabel: boolean; traditional: boolean; specialty: string | null; oakMonths: number; restMonths: number }, errors: string[], warnings: string[]): void {
   const t = s.commerce.products.find((p) => p.id === opts.restockId);
