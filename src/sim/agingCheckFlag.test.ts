@@ -15,9 +15,9 @@ describe('[P-PROD-79] 숙성 점검 — 12년 감점 큰 통 알림', () => {
     const s = advanceMonth(load());
     const note = agingNote(s)!;
     expect(note).toBeDefined();
-    expect(note).toMatch(/12년 감점 약 \d+/);
-    expect(note).not.toMatch(/12년 감점이 큰 통은 없다/);
-    expect(note).toMatch(/K\d+ 외 \d+통은 지금 통 그대로면/);
+    expect(note).toMatch(/12년에 나무 맛이 넘쳐 감점 약 \d+/);
+    expect(note).not.toMatch(/넘는 통은 없다/);
+    expect(note).toMatch(/K\d+ 외 \d+통(\(첫 채움 \d+통\))?은 지금 통 그대로면/);
   });
   it('결산 뒤 상태(화면)에서는 옮기지 않은 통에 moved가 없다 — 화면 값은 그대로', () => {
     const s = load();

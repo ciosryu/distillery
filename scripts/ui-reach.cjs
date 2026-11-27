@@ -8,7 +8,7 @@
 //   npm run build && npx vite preview --port 4317 --strictPort &
 //   node scripts/ui-reach.cjs http://localhost:4317/ <세이브.json> [<세이브.json> …] [--advance] [--widths 1280,1920]
 // --advance: 불러온 뒤 「1개월 진행」을 한 번 누른다(단계 해금 뒤 화면 — 예: 60개월 피니싱).
-// 증류소 탭은 「숙성 중인 캐스크」를 펼치고 "나머지 n통 더 보기"까지 누른다. 걸린 것이 하나라도 있으면 종료 코드 1.
+// 증류소 탭은 「숙성 중인 캐스크」를 펼치고 "나머지 n통 더 보기"까지 누른다. 판매 탭은 「한 화면 가격표」를 펼친다. 걸린 것이 하나라도 있으면 종료 코드 1.
 const { chromium } = require('playwright');
 
 const args = process.argv.slice(2);
@@ -58,6 +58,10 @@ function hiddenControls() {
           const fold = p.locator('#mvp-warehouse button').first();
           if (await fold.count()) { await fold.click().catch(() => {}); await p.waitForTimeout(400); }
           const more = p.getByRole('button', { name: /나머지 \d+통 더 보기/ }); if (await more.count()) { await more.click(); await p.waitForTimeout(300); }
+        }
+        if (name === '판매') { // 접힌 「한 화면 가격표」를 펼친다(#438 묶음 ③ · MKT, ARCH 동의 2026-11-27)
+          const pt = p.locator('button[aria-controls="price-table-body"][aria-expanded="false"]');
+          if (await pt.count()) { await pt.first().click().catch(() => {}); await p.waitForTimeout(400); }
         }
         const hid = await p.evaluate(hiddenControls);
         const docW = await p.evaluate(() => document.documentElement.scrollWidth);
