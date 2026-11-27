@@ -55,3 +55,15 @@ describe('[P-PROD-81] 소주 공급 할 일', () => {
     expect(TODO_ORDER.indexOf('soju-supply')).toBe(TODO_ORDER.indexOf('soju-glut') - 1);
   });
 });
+
+describe('[P-PROD-81 ④] 판매 전 품절 달의 수요(stockoutDemand)도 센다', () => {
+  it('최근 3개월에 소주 제품 품절 기록이 있으면 demandPerMonth가 그만큼(÷ 3) 는다', () => {
+    const s = load();
+    const before = sojuSupply(s).demandPerMonth;
+    const r = s.history.reports.at(-1)!;
+    r.stockoutDemand = [...(r.stockoutDemand ?? []), { productId: 'P59', bottles: 3000 }];
+    expect(sojuSupply(s).demandPerMonth).toBeCloseTo(before + 1000, 6);
+    r.stockoutDemand = [{ productId: 'P1892', bottles: 9999 }]; // 소주가 아닌 제품은 빼고 센다
+    expect(sojuSupply(s).demandPerMonth).toBeCloseTo(before, 6);
+  });
+});
