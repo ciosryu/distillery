@@ -19,6 +19,8 @@ export function PriceTable() {
   const [drafts, setDrafts] = useState<Record<string, number>>({});
   const [horizon, setHorizon] = useState<number>(6);
   const [supply, setSupply] = useState<SupplyMode>('bottles');
+  // 「적용 전 값으로」 — 한 번에 적용 직전 값들(그 달 안에서만). 엔진 되돌리기 없이 같은 setPrice를 옛 값으로 다시 보낸다(ARCH 2026-11-27)
+  const [undo, setUndo] = useState<{ month: number; prev: Record<string, number> } | null>(null);
   const moy = calendar(s).monthOfYear;
   const ks = useMemo(() => knownState(s), [s]);
   // 지금 값과 같은 초안은 지운다(상태가 바뀌어 지금 값이 따라온 경우)
@@ -28,11 +30,17 @@ export function PriceTable() {
   const after = useMemo(() => (open && Object.keys(live).length ? priceTableTotals(s, ks, moy, live) : null), [open, s, ks, moy, live]);
   const changed = Object.keys(live).length;
   const setDraft = (id: string, v: number) => setDrafts((d) => ({ ...d, [id]: Math.max(100, Math.round(v / 100) * 100) }));
-  const apply = () => { for (const [id, price] of Object.entries(live)) dispatch({ type: 'setPrice', productId: id, price }); setDrafts({}); };
+  const apply = () => {
+    const prev = Object.fromEntries(Object.keys(live).map((id) => [id, s.commerce.products.find((p) => p.id === id)!.price]));
+    for (const [id, price] of Object.entries(live)) dispatch({ type: 'setPrice', productId: id, price });
+    setDrafts({}); setUndo({ month: s.month, prev });
+  };
+  const undoable = undo && undo.month === s.month ? Object.entries(undo.prev).filter(([id, v]) => s.commerce.products.some((p) => p.id === id && !p.autoPrice && p.price !== v)) : [];
+  const revert = () => { for (const [id, price] of undoable) dispatch({ type: 'setPrice', productId: id, price }); setUndo(null); };
 
   return (
-    <Card title="한 화면 가격표" actions={<Button small variant="ghost" onClick={() => setOpen(!open)} title="제품 · 병 재고 · 맞는 통 원액 · 지금 값 · 수요 · 다 팔 값 · 지난 3개월을 한 표에서 보고, 여러 제품 값을 고친 뒤 한 번에 적용한다">{open ? '접기' : '펼치기'}</Button>}>
-      {!open ? <div className="text-xs text-stone-500">여러 제품 값을 한 표에서 고치고 합(판매 · 매출 · 공헌)을 본 뒤 한 번에 적용한다 — 펼쳐서 쓴다</div> : (
+    <Card title="한 화면 가격표" actions={<button type="button" className="inline-flex items-center justify-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-stone-600 transition hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="price-table-body" title="제품 · 병 재고 · 맞는 통 원액 · 지금 값 · 수요 · 다 팔 값 · 지난 3개월을 한 표에서 보고, 여러 제품 값을 고친 뒤 한 번에 적용한다">{open ? '접기' : '펼치기'}</button>}>
+      <div id="price-table-body">{!open ? <div className="text-xs text-stone-500">여러 제품 값을 한 표에서 고치고 합(판매 · 매출 · 공헌)을 본 뒤 한 번에 적용한다 — 펼쳐서 쓴다</div> : (
         <div className="grid gap-2">
           <div className="flex flex-wrap items-center gap-3 text-xs text-stone-600 dark:text-stone-400">
             <label className="flex items-center gap-1" title="다 팔 값 = 공급이 이 기간에 꼭 다 팔리는 출고가 — 기간이 길수록 천천히 팔아야 하니 값이 오른다(국내 수요 · 같은 범주 나눔 · 계절 · 잡음 없는 어림 · 아는 품질)">공급을 팔 기간
@@ -54,6 +62,7 @@ export function PriceTable() {
             )}
             <Button small variant="primary" disabled={!changed} onClick={apply} title="고친 값을 모두 적용한다(제품마다 출고가 변경)">{changed ? `${changed}개 값 한 번에 적용` : '고친 값 없음'}</Button>
             {changed > 0 && <Button small variant="ghost" onClick={() => setDrafts({})}>고친 값 지우기</Button>}
+            {!changed && undoable.length > 0 && <Button small variant="ghost" onClick={revert} title="이번 달 「한 번에 적용」 직전 값으로 되돌린다(같은 출고가 변경을 옛 값으로 다시 보낸다)">적용 전 값으로({undoable.length}개)</Button>}
           </div>
           <Table head={['제품', '병 재고', '맞는 원액', '값(고치기)', '기준가 배수', '이번 달 수요', `${horizon}개월에 다 팔 값`, '지난 3개월(병 · 값)']}>
             {rows.map((r) => {
@@ -85,7 +94,7 @@ export function PriceTable() {
           </Table>
           <div className="text-xs text-stone-500">수요 · 다 팔 값은 아는 품질(리뷰 · 샘플 어림)로 센 국내 어림이다 — 수출 · 면세 · 소매 처리 역량 · 달마다의 잡음은 넣지 않는다. 합은 이번 달 한 달 — 다 팔 값으로 올리면 이번 달 판매는 줄고 재고가 그 기간 동안 간다. 「이 값으로」는 고치는 값에만 넣고, 「한 번에 적용」을 눌러야 바뀐다</div>
         </div>
-      )}
+      )}</div>
     </Card>
   );
 }
