@@ -11,7 +11,7 @@ import { Badge, Button, Card, ConfirmButton, Empty } from '../kit';
 import { Research } from './Research';
 import { agingCheckReach } from '../alerts';
 import { TASK_VALUES } from '../../sim/staffTaskRules';
-import { bottlenecks, hireImpact, moraleEffect, salaryReviewPreview, tastingImpact, trainingImpact, type ImpactLine } from './staffImpact';
+import { bottlenecks, hireImpact, moraleEffect, salaryReviewPreview, statImpact, statImpactTitle, tastingImpact, trainingImpact, type ImpactLine } from './staffImpact';
 
 const ROLE_EFFECT: Record<StaffT['role'], string> = {
   distiller: '후각: 과일 에스테르↑ · 공정: 이취↓·운전 횟수↑ · 직관: 블렌딩 통합감↑',
@@ -206,9 +206,19 @@ function StaffActionsV16({ s, x }: { s: GameState; x: StaffT }) {
       <div className="flex flex-wrap items-center gap-1 text-xs">
         <span className="text-stone-500" title={`월급 ${TRAINING.costMonths}개월 치 · XP +${TRAINING.xpPerLevel * x.level} · 고른 능력치 +${TRAINING.statGain}(상한 ${TRAINING.statCap}) · 같은 사람은 ${TRAINING.cooldownMonths}개월에 한 번`}>교육 {wait > 0 ? `(${wait}개월 뒤)` : won(cost)}:</span>
         {(['a', 'b', 'c'] as const).map((k, i) => (
-          <Button key={k} small disabled={wait > 0 || s.finance.cash < cost || x.stats[k] >= TRAINING.statCap} onClick={() => dispatch({ type: 'trainStaff', staffId: x.id, stat: k })}>{info.stats[i]} +{TRAINING.statGain}</Button>
+          // 오너 요청(10차 판 도중) — 마우스를 올리면 그 능력치가 오를 때 바뀌는 것(전 → 후). 막힌 버튼에도 보이게 감싼 칸에도 같은 title
+          <span key={k} title={statImpactTitle(s, x, k)}><Button small disabled={wait > 0 || s.finance.cash < cost || x.stats[k] >= TRAINING.statCap} onClick={() => dispatch({ type: 'trainStaff', staffId: x.id, stat: k })} title={statImpactTitle(s, x, k)}>{info.stats[i]} +{TRAINING.statGain}</Button></span>
         ))}
       </div>
+      {/* 터치 화면은 마우스 올리기가 없다 — 같은 설명을 접힌 칸으로 */}
+      <details className="text-xs text-stone-500">
+        <summary className="cursor-pointer select-none">능력치가 오르면?</summary>
+        <ul className="mt-1 grid gap-1">
+          {(['a', 'b', 'c'] as const).map((k) => { const v = statImpact(s, x, k); return (
+            <li key={k}><span className="font-medium text-stone-600 dark:text-stone-300">{v.label} {v.from} → {v.to}</span>{v.lines.map((l, j) => <span key={j} className="block pl-2">· {l}</span>)}</li>
+          ); })}
+        </ul>
+      </details>
       <div>
         {soleDistiller
           ? <span className="text-xs text-stone-500">하나뿐인 디스틸러는 내보낼 수 없다(채용이 잠겨 다시 뽑을 수 없다)</span>
