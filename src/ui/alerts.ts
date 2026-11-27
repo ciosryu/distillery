@@ -23,7 +23,7 @@ import { specialistOffers, SPECIALIST_STAGE } from '../sim/hr';
 import { bestEligibleMaltQuality } from './sGrade'; // [결정 #439] ⏳ 줄의 품질 조건
 import { TASK_VALUES, onTask } from '../sim/staffTaskRules'; // U1(10차 70) — 「숙성 점검」 맛볼 통(MGT 값)
 import { agingCheckPicks } from '../sim/staffTasks';
-import { AUTO_RESTOCK_EXPENSE, caskRunway, CUTBACK_HINT, productionCutback, productionValue, sojuSupply, SOJU_STOCK_WARN_MONTHS, tankLotWaitMonths, whiskySupplyForecast } from '../sim/economics';
+import { AUTO_RESTOCK_EXPENSE, caskRunway, CUTBACK_HINT, productionCutback, productionValue, sojuSupply, sojuSupplyAlert, SOJU_RESTART_MONTHS, SOJU_STOCK_WARN_MONTHS, tankLotWaitMonths, whiskySupplyForecast } from '../sim/economics';
 import { monthlyFixedCost } from '../sim/loans';
 import { capacityReport } from '../sim/production';
 import { FINISH, finishLabel, finishOf, vesselMaterial } from '../sim/maturation';
@@ -349,7 +349,7 @@ export function maltStoppedMonths(s: GameState): number {
  * 결품(#204, 다음 달 매출을 잃는다)은 #203 뒤에 들어와 목록에 없었고 샘플 바로 위로 밀려 있었다 → 비지터 센터 다음
  */
 // IB 입찰(#224)은 답할 기한이 있는 제안이라 결품 바로 다음으로 올렸다 — 후반 확인 판 오너: 제안이 왔는데 못 봐서 사라졌다(#253)
-export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'overhang', 'contam-cand', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'aging-check-idle', 'export-starve', 'restock-starved', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-glut', 'defense', 'whisky', 'soju', 'idle-cash', 'onggi-idle', 'reserve-tannin', 'sample'];
+export const TODO_ORDER = ['flagship-low', 'flagship-ready', 'loan-jump', 'malt-stopped', 'cutback', 'visitor', 'stockout', 'retail-short', 'batch-short', 'overhang', 'contam-cand', 'slots-over', 'casks-low', 'cask-bid', 'specialist', 'aging-check-idle', 'export-starve', 'restock-starved', 'restock-short', 'finish-long', 'handfill', 'fill', 'soju-supply', 'soju-glut', 'defense', 'whisky', 'soju', 'idle-cash', 'onggi-idle', 'reserve-tannin', 'sample'];
 // 꼬리 7개(defense·whisky·soju·idle-cash·onggi-idle·reserve-tannin·sample)는 info만 낸다 — warn·danger를 낼 수 있는 새 id는 그 앞에 둔다(warn이 info 뒤에 묻히지 않게, PM 대조 7차 완료: soju-glut)
 // `stage-<단계>` 할 일(#215)은 #416 맨 위 띠로 옮겼다 — 아래 순위 처리는 옛 id가 다시 들어와도 맨 위에 두려는 것
 const todoRank = (id: string) => { if (id.startsWith('stage-')) return -1; const i = TODO_ORDER.indexOf(id); return i < 0 ? TODO_ORDER.indexOf('sample') - 0.5 : i; };
@@ -678,7 +678,19 @@ export function monthTodos(s: GameState): Todo[] {
   // 'soju'(제품 재고가 떨어져 간다 → 병입)와 하라는 일이 반대라 줄을 나눈다(PROD 권장) — 이쪽은 생산을 줄이라는 신호
   {
     const ss = sojuSupply(s);
-    if (ss.months != null && ss.months >= SOJU_STOCK_WARN_MONTHS && ss.tankBottles > 0) out.push({ id: 'soju-glut', level: 'warn', text: `병입하지 않은 소주까지 ${Math.round(ss.months)}개월 치 — 탱크 ${Math.round(ss.tankL).toLocaleString()}L + 제품 ${ss.productBottles.toLocaleString()}병 · 지금 지시는 매달 약 ${Math.round(ss.madeBottlesPerMonth).toLocaleString()}병을 더 만든다(원료·에너지 월 ${fmtWon(ss.costPerMonth)})${ss.costPerBatch ? ` — 소주 지시를 1 줄이면 월 ${fmtWon(ss.costPerBatch)} 아낀다` : ''}`, action: '생산 지시', target: { anchor: 'mvp-orders' } });
+    if (ss.months != null && ss.months >= SOJU_STOCK_WARN_MONTHS && ss.tankBottles > 0) out.push({ id: 'soju-glut', level: 'warn', text: `병입하지 않은 소주까지 ${Math.round(ss.months)}개월 치 — 탱크 ${Math.round(ss.tankL).toLocaleString()}L + 제품 ${ss.productBottles.toLocaleString()}병 · 지금 지시는 매달 약 ${Math.round(ss.madeBottlesPerMonth).toLocaleString()}병을 더 만든다(원료·에너지 월 ${fmtWon(ss.costPerMonth)})${ss.costPerBatch ? ` — 소주 지시를 1 줄이면 월 ${fmtWon(ss.costPerBatch)} 아낀다` : ''} · 소주가 ${SOJU_RESTART_MONTHS}개월 치 아래로 내려오면 다시 올리라고 알린다`, action: '생산 지시', target: { anchor: 'mvp-orders' } });
+  }
+  // [P-PROD-81] 소주 공급 — 10차 판: 「소주 과잉 — 1 줄이면」을 따라 지시를 0으로 내린 뒤 다시 올리라는 신호가 없어 16 · 5달 소주를 안 만들었다(오너 「가끔씩 소주 생산이 안되는데 왜그러지?」),
+  // 후반 결품은 「소주 생산 < 수요」가 생산 화면 한 줄뿐이었다. 둘을 한 줄로(PROD `sojuSupplyAlert` — 개월 치는 수요 기준)
+  {
+    const sa = sojuSupplyAlert(s);
+    if (sa) {
+      const m = sa.months < 1 ? '1개월 치도 안 된다' : `약 ${sa.months.toFixed(1)}개월 치`;
+      const text = sa.kind === 'zero'
+        ? `소주 지시가 0이다 — 지금 소주(탱크 + 제품)는 ${m}(수요 월 약 ${sa.demand.toLocaleString()}병)${sa.perBatch ? ` · 소주 지시 1배치면 월 약 ${sa.perBatch.toLocaleString()}병` : ''}`
+        : `소주 생산 < 수요 — 지금 지시로 월 약 ${sa.made.toLocaleString()}병 · 수요 월 약 ${sa.demand.toLocaleString()}병 · 소주 ${m}${sa.perBatch ? ` · 1배치 더하면 월 약 +${sa.perBatch.toLocaleString()}병` : ''}`;
+      out.push({ id: 'soju-supply', level: sa.level, text, action: '생산 지시', target: { anchor: 'mvp-orders' } });
+    }
   }
   // [결정 #425] 빈 옹기가 논다 — 「소주 → 옹기」 자동 통입을 켜라는 한 줄(9차: 옹기 12개가 끝까지 비었다 · 오너 "자동으로 들어가는줄 알았다")
   {
