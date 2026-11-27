@@ -1,5 +1,5 @@
 // 10차 판 153개월(완료) 기록 MGT 실험 (docs/playtest/10/mgt.md 「153개월」) — 읽기 전용. 세이브를 복제해 갈래를 나눠 돌린다(원본 세이브 · 게임 규칙 불변).
-//   npx tsx scripts/experiments/mgt-p153.ts <기록.json> [what=all|smiss|staff|mp|flag]
+//   npx tsx scripts/experiments/mgt-p153.ts <기록.json> [what=all|smiss|staff|mp|flag|hire] [hire 개월]
 // smiss — PM 물음 1: 승리(150개월) 뒤 세이브를 사람 행동 없이 앞으로 돌려, 리필 K19 · K71 · K72가 목재 144개월(12년)이 되는 달의 병입 품질(previewBlend — 승리 제품과
 //         같은 병입 설정 43% · 냉각 여과 · premium)과 그달 순자산 · 그 달에 냈다면의 S 순자산 문턱([결정 #434] 기본 20억 + 0.25억 × max(0, 판정 달 − 첫 적격 − 2))을 본다.
 //         「승리 전 144 ~ 149개월에 이 통을 아껴 두고 168개월에 냈다면」의 근사다 — 150개월 승리 출하(첫 채움 105병)와 그 뒤의 사람 행동은 되돌릴 수 없어 빠진다(아래 한계).
@@ -15,6 +15,8 @@ import { caskEligibility } from '../../src/sim/ledger';
 import { steadyBatch } from '../../src/sim/production';
 import { tanninOutlook } from '../../src/sim/warehouse';
 import { TASK_VALUES } from '../../src/sim/staffTaskRules';
+import { makeCandidate } from '../../src/sim/hr';
+import { rngFor } from '../../src/sim/rng';
 import type { Cask } from '../../src/sim/types';
 
 const file = process.argv[2];
@@ -114,4 +116,33 @@ if (what === 'all' || what === 'flag') {
   console.log(`- 틱 밖(화면 시점): 알릴 통 ${count(s)}개`);
   console.log(`- 틱 안(숙성 뒤 · 결산 전): 알릴 통 ${count(g)}개 — 「옮긴 원액」으로 잘못 읽힌 통 ${moved}개`);
   console.log(`- 통별 감점(틱 밖): ${old.map((c) => `${c.id} ${tanninOutlook(s, c)?.penalty}`).join(' · ')}`);
+}
+
+// hire — 오너 답(「딱히 더 뽑을 이유를 못 느낌 · 인건비는 큰 고정지출」): 그 시점에 직군마다 한 명(makeCandidate — 판의 후보 생성 그대로, 실험 전용 난수)을 더 두고
+//        N개월 돌린 갈래 대 그대로 — 순자산 · 매출 · 판매 병 · 새 원액 품질 · 그 사람 급여 합. v16은 채용이 잠겨 있어(action:hire) 실제로는 고를 수 없던 갈래다
+if (what === 'hire') {
+  const months = Number(process.argv[4] ?? 24);
+  const s0 = load();
+  const ROLES = ['distiller', 'sales', 'warehouse', 'blender', 'office'] as const;
+  const recipeOf = (s: GameState) => s.production.recipes.find((r) => r.id === s.production.orders.slice().sort((a, b) => b.batchesPerMonth - a.batchesPerMonth)[0]?.recipeId) ?? s.production.recipes[0]!;
+  const run = (s: GameState) => {
+    const nw0 = netWorth(s);
+    let rev = 0, bottles = 0;
+    for (let m = 0; m < months && s.status === 'running'; m++) { s = advanceMonth(s); const r = s.history.reports.at(-1)!; rev += r.revenue; bottles += (r.sales ?? []).reduce((a, x) => a + (x.bottles ?? 0), 0); }
+    return { s, dNw: netWorth(s) - nw0, rev, bottles, q: steadyBatch(s, recipeOf(s))?.evaluation.quality ?? NaN };
+  };
+  const base = run(structuredClone(s0));
+  console.log(`\n# 오너 답 — 한 명 더 (${s0.month}개월부터 ${months}개월 · 지금 ${s0.hr.staff.map((x) => x.role).join(' · ')})\n`);
+  console.log('| 갈래 | 그 사람(능력치 · 월급) | 순자산 변화 | 그대로 대비 | 매출 | 판매 병 | 새 원액 품질 | 급여 합 |');
+  console.log('|---|---|---|---|---|---|---|---|');
+  console.log(`| 그대로 | — | ${eok(base.dNw)} | — | ${eok(base.rev)} | ${base.bottles.toLocaleString()} | ${base.q.toFixed(1)} | — |`);
+  for (const role of ROLES) {
+    const s = structuredClone(s0);
+    const c = makeCandidate(s, rngFor(s.seed, s.month, `exp-hire:${role}`), role);
+    const { askSalary, ...rest } = c;
+    s.hr.staff.push({ ...rest, id: `S-exp-${role}`, salary: askSalary, hiredMonth: s.month });
+    const r = run(s);
+    const pay = r.s.hr.staff.find((x) => x.id === `S-exp-${role}`)?.salary ?? askSalary;
+    console.log(`| + ${role} | ${c.stats.a} · ${c.stats.b} · ${c.stats.c} · ${(askSalary / 1e4).toFixed(0)}만 | ${eok(r.dNw)} | ${eok(r.dNw - base.dNw)} | ${eok(r.rev)} | ${r.bottles.toLocaleString()} | ${r.q.toFixed(1)} | 약 ${eok(((askSalary + pay) / 2) * months)} |`);
+  }
 }
