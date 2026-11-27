@@ -681,7 +681,7 @@ export const AUTO_RESTOCK_EXPENSE = '자동 납품 병입';
 export const AUTO_RESTOCK_MONTHS = [1, 2, 3, 6] as const;
 
 /** 범주 → 원액 주종 (자동 납품을 지원하는 범주만). 블렌디드·몰트 스피릿·기타는 지원하지 않는다 */
-const RESTOCK_KIND: Partial<Record<ProductCategory, SpiritKind>> = { soju_distilled: 'soju', gin: 'gin', baijiu: 'baijiu', whisky: 'malt', grain_whisky: 'grain' };
+export const RESTOCK_KIND: Partial<Record<ProductCategory, SpiritKind>> = { soju_distilled: 'soju', gin: 'gin', baijiu: 'baijiu', whisky: 'malt', grain_whisky: 'grain' };
 /**
  * [결정 #370] v16: 뉴본(몰트 스피릿 · 통에서 쉬지 않은 제품 — `oakMonths` 0)은 같은 레시피 탱크 원액(몰트 · 그레인)으로 자동 납품한다.
  * 레시피 기록(`recipeIds`)이 있는 제품만 — 기록이 없으면 몰트 · 그레인을 가려 쓸 수 없다. 통에서 쉰 몰트 스피릿(oak > 0)은 범위 밖(통 규칙을 따로 정해야 한다).
@@ -809,7 +809,7 @@ export function autoRestockContest(s: GameState, p: Product, monthOfYear = calen
 export const AUTO_RESTOCK_LONG_FLOOR = 60;
 
 /** 자동 납품이 쓸 원액의 레시피 거름 (#243 · #293) — 제품의 레시피 기록(recipeIds)에 든 레시피의 원액만. 기록 없는 옛 제품은 모두 통과 */
-const recipeFilter = (p: Pick<Product, 'recipeIds'> & Partial<Pick<Product, 'stillStyle'>>): ((l: Pick<SpiritLot, 'recipeId'> & Partial<Pick<SpiritLot, 'stillShape'>>) => boolean) => {
+export const recipeFilter = (p: Pick<Product, 'recipeIds'> & Partial<Pick<Product, 'stillStyle'>>): ((l: Pick<SpiritLot, 'recipeId'> & Partial<Pick<SpiritLot, 'stillShape'>>) => boolean) => {
   const rec = p.recipeIds?.length ? new Set(p.recipeIds) : null;
   // [결정 #422] 개조 전후 원액 가름 — 제품의 공개 증류 스타일과 원액 형태의 스타일이 같은 원액만(둘 다 없음 포함). 형태 없는 판(봇 · 옛 판)은 늘 참
   return (l) => (!rec || (!!l.recipeId && rec.has(l.recipeId))) && (p.stillStyle ?? null) === (l.stillShape ? stillStyleOf(l.stillShape) : null);

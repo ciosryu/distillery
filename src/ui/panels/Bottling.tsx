@@ -18,6 +18,8 @@ import { AGE_BANDS, bandCask, bandThinning, LADDER_SLACK_MONTHS, thinBands, THIN
 import { AGED_COMBO_ABVS, agedCombos, CASK_FAMILY_LABEL } from '../../sim/agedCombos'; // [결정 #410 T1-c] 12년 조합 비교
 import { agedOutlook, type AgedOutlookRow } from '../../sim/agedOutlook'; // [P10-2] 곧 12년이 되는 통 — 12년 품질 어림(공개 값)
 import { restockStockTags, sortByStockTag } from './restockStockTag'; // [P-PROD-76] 보충할 제품 — 결품 · 결품 예정 표시
+import { RestockAutoPick } from './RestockAutoPick'; // [결정 #437 ①] 자동으로 골라 담기
+import { restockAutoPickSupported } from '../../sim/restockAutoPick';
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
 import { ProfileRadar } from './Production';
@@ -369,6 +371,8 @@ export function Bottling() {
                   </>
                 );
               })()}
+              {/* [결정 #437 ①] 조건으로 통 · L을 병입 칸에 담는다 — 병입은 아래 「병입」으로 사람이 누른다 */}
+              {restockAutoPickSupported(s, restockTarget) && <RestockAutoPick key={restockTarget.id} p={restockTarget} onPick={(m) => setPicked(m)} />}
               <p className="text-xs text-stone-500">병·도수·포장은 「{restockTarget.name}」과 같게 맞춘다: {restockTarget.bottleMl}ml · {isCaskStrength(restockTarget) ? `캐스크 스트렝스(지금 ${Math.round(restockTarget.abv * 1000) / 10}% — 통마다 달라 병 수로 평균)` : `${Math.round(restockTarget.abv * 1000) / 10}%`} · {restockTarget.chillFiltered ? '칠 필터링' : '논칠필터'} · {PACKAGING[restockTarget.packagingId]?.nameKo ?? restockTarget.packagingId}. 이름·출고가({won(restockTarget.price)})·판매 기록은 그대로, 품질·향·원가는 남은 재고와 새 병 수로 평균 낸다.</p>
               {/* [결정 #399 · #386 ④] 손 보충이 잦은 위스키 — 자동 납품이 있다는 것을 알린다(판매 탭 제품 줄에서 켠다 · 통 범위 · 띠 정책을 지킨다) */}
               {autoRestockHint(s, restockTarget) && (() => {
