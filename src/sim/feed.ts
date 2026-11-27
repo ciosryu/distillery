@@ -168,12 +168,16 @@ export const seasonOf = (month: number): FeedSeason | null => {
 /** 틀이 이 제품에 맞는가 — 공개 표기만 본다(F5d · PROD 합의: 통 이름은 피니시 표기뿐) */
 interface LineCtx { still: StillStyle | null; sherry: boolean; labelYears: number; finish: boolean; onggi: boolean; cs: boolean; co: boolean; limited: boolean; medal: boolean; dutyFree: boolean; noCask: boolean; discount: boolean }
 /**
- * [결정 #418] 증류기 형태(공개) — 병입 때 원액의 증류기 형태를 접은 값(PROD `Product.stillStyle?`, 코어 · PR ④). 아직 타입에 없으면 없음으로 읽는다.
+ * [결정 #418] 증류기 형태(공개) — 병입 때 원액의 증류기 형태를 접은 값(PROD `Product.stillStyle`, 코어 · PR ④).
  * 피드는 이 **공개 표기**와 표기 연수로만 「헤비 스틸 3년은 거칠다」 · 「장기 숙성 헤비는 묵직하다」를 말한다 — 참 품질 · 원액 맛을 읽지 않는다(I2).
- * 글은 한쪽으로 쏠리지 않게(「거칠다」와 「재우면 물건」 · 「생각보다 괜찮다」가 섞이게) 썼다
+ * 글은 한쪽으로 쏠리지 않게(「거칠다」와 「재우면 물건」 · 「생각보다 괜찮다」가 섞이게) 썼다.
+ * [결정 #429] 형태는 위스키 원액(몰트 · 그레인)에만 닿는다 — 위스키 3종과 몰트 스피릿(뉴본 · 숙성이 모자란 몰트 · 그레인 원액)만 읽고,
+ * 소주 · 진 · 고량주 · 가향 증류주에 붙은 값은 읽지 않는다(10차 U5: 「김포 소주 라이트 스틸 원액이라…」).
+ * 진행 중 세이브의 소주 제품에 이미 붙은 값도 여기서 막는다(PROD 권장 — 읽는 쪽에서 막기 · 세이브 버전 그대로)
  */
-type StillStyle = 'light' | 'medium' | 'heavy';
-const stillStyleOf = (p: Product): StillStyle | null => (p as Product & { stillStyle?: StillStyle }).stillStyle ?? null;
+type StillStyle = NonNullable<Product['stillStyle']>;
+const STILL_CATS: ReadonlySet<Product['category']> = new Set(['whisky', 'grain_whisky', 'blended_whisky', 'malt_spirit']);
+const stillStyleOf = (p: Product): StillStyle | null => (STILL_CATS.has(p.category) ? p.stillStyle ?? null : null);
 /** 헤비 스틸 글의 나이 — 「명작」 · 「기다린」이 든 글은 표기 15년↑([결정 #422] 15 · 18년 명작), 「오래」 · 「장기」가 든 글은 표기 12년↑, 나머지 헤비 글은 표기 5년 미만(오너 #418: 3 ~ 5년 저숙성) */
 const HEAVY_OLD = /오래 재운|장기 숙성/;
 const HEAVY_MASTER = /명작|기다린/;
