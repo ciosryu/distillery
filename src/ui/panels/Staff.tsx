@@ -10,7 +10,7 @@ import { pct, won } from '../format';
 import { Badge, Button, Card, ConfirmButton, Empty } from '../kit';
 import { Research } from './Research';
 import { agingCheckReach } from '../alerts';
-import { TASK_VALUES } from '../../sim/staffTaskRules';
+import { TASK_VALUES, TASTING_EVERY_MONTHS } from '../../sim/staffTaskRules';
 import { bottlenecks, hireImpact, moraleEffect, salaryReviewPreview, statImpact, statImpactTitle, tastingImpact, trainingImpact, type ImpactLine } from './staffImpact';
 
 const ROLE_EFFECT: Record<StaffT['role'], string> = {
@@ -197,9 +197,9 @@ function StaffActionsV16({ s, x }: { s: GameState; x: StaffT }) {
         {tasks.some((t) => t.id === 'aging_check') && (() => { const r = agingCheckReach(s); const idle = r.now === 0; return (
           <div className={`mt-1 ${idle && cur === 'aging_check' ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-stone-500'}`}>숙성 점검이 지금 맛볼 통(목재 {TASK_VALUES.agingCheck.minOakMonths / 12}년↑): {r.now}개{idle ? (r.wait != null ? ` — 첫 통은 ${r.wait}개월 뒤` : ' — 기준에 닿을 나무 통이 없다') + (cur === 'aging_check' ? ' · 그때까지 이 일은 하는 것이 없다' : '') : ''}</div>
         ); })()}
-        {/* P-MGT-71 (다)(10차 70 U4) — 시음회의 큰 대가는 회당 비용이 아니라 맡겨 둔 동안 내내 줄어드는 국내 판매: 고르기 전에 숫자로 */}
+        {/* P-MGT-71 (다) · [결정 #440] — 시음회의 대가는 여는 달의 국내 판매: 고르기 전에 숫자로 · 맡고 있으면 다음 여는 달 */}
         {(() => { const t = tastingImpact(s, x); if (!t || t.routine <= 0) return null; const cut = Math.round((1 - t.tasting / t.routine) * 100); return (
-          <div className={`mt-1 ${cur === 'tasting' ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-stone-500'}`}>시음회를 맡겨 둔 동안 내내(여는 달만이 아니라) 유통 커버리지 {pct(t.routine, 0)} → {pct(t.tasting, 0)} — 국내 판매가 약 {cut}% 준다{t.sales === 1 ? '(영업이 이 사람 하나뿐)' : ''}</div>
+          <div className={`mt-1 ${cur === 'tasting' && t.next === 0 ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-stone-500'}`}>시음회를 여는 달(맡긴 달부터 {TASTING_EVERY_MONTHS}개월마다)에만 유통 커버리지 {pct(t.routine, 0)} → {pct(t.tasting, 0)} — 그달 국내 판매가 약 {cut}% 준다{t.sales === 1 ? '(영업이 이 사람 하나뿐)' : ''}{cur === 'tasting' ? (t.next === 0 ? ' · 이번 달이 여는 달' : ` · 다음은 ${t.next}개월 뒤`) : ''}</div>
         ); })()}
         <div className="mt-1 text-stone-500">{curDef?.text}{!can ? ` — 다음 분기(${nextReassignMonth(s, x) - s.month}개월 뒤)에 바꿀 수 있다` : x.taskMonth === s.month ? ' — 이번 달 안에는 다시 고를 수 있다' : ''}{tasks.length === 1 ? ' · 이 직군에 맡길 다른 일은 아직 없다' : ''}</div>
       </div>
