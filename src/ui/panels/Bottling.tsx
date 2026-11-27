@@ -17,6 +17,7 @@ import { mixTaint, taintShown } from '../../sim/taint'; // [결정 #382] 오염 
 import { AGE_BANDS, bandCask, bandThinning, LADDER_SLACK_MONTHS, thinBands, THIN_BAND_CASKS } from '../../sim/ageBand'; // [결정 #380] 숙성 연령 띠 (PROD 잎)
 import { AGED_COMBO_ABVS, agedCombos, CASK_FAMILY_LABEL } from '../../sim/agedCombos'; // [결정 #410 T1-c] 12년 조합 비교
 import { agedOutlook, type AgedOutlookRow } from '../../sim/agedOutlook'; // [P10-2] 곧 12년이 되는 통 — 12년 품질 어림(공개 값)
+import { restockStockTags, sortByStockTag } from './restockStockTag'; // [P-PROD-76] 보충할 제품 — 결품 · 결품 예정 표시
 import { useGame } from '../../store/game';
 import { Radar } from '../charts';
 import { ProfileRadar } from './Production';
@@ -269,7 +270,9 @@ export function Bottling() {
   // 재고 보충 대상 (#186) — 고른 원액과 같은 범주 제품을 앞에
   // 보충 대상이 판매 목록에서 빠졌으면(보관 처리) 새 제품으로 돌아간다
   useEffect(() => { if (opts.restockId && !restockTarget) setOpts((o) => ({ ...o, restockId: undefined })); }, [opts.restockId, restockTarget]);
-  const restockChoices = restockable(s).filter((p) => !preview?.category || p.category === preview.category);
+  // [P-PROD-76] 결품 → 결품 예정 → 나머지 순(할 일 `stockout`과 같은 기준)
+  const stockTags = useMemo(() => restockStockTags(s), [s]);
+  const restockChoices = sortByStockTag(restockable(s).filter((p) => !preview?.category || p.category === preview.category), stockTags);
   // 캐스크 스트렝스 제품은 도수를 맞추지 않고 "캐스크 스트렝스"로 병입한다 (통마다 도수가 다르다)
   const pickRestock = (p: Product) => setOpts({ ...opts, packaging: p.packaging, restockId: p.id, name: '', bottleMl: p.bottleMl, targetAbv: isCaskStrength(p) ? 'cask' : p.abv, chillFilter: p.chillFiltered, packagingId: p.packagingId, dutyFreeOnly: false, targetId: undefined, line: undefined });
   // 보충 뒤 품질 예상 — 남은 재고와 새 병의 가중 평균(코어 `restockMix` — 병입 행동의 합치기와 같은 가중, F5d PROD 요청). 시나리오 게임은 새 원액을 병입 때 추정
@@ -345,7 +348,27 @@ export function Bottling() {
           </div>
           {restockTarget ? (
             <div className="grid gap-1">
-              <Select label="보충할 제품" value={restockTarget.id} options={(restockChoices.some((p) => p.id === restockTarget.id) ? restockChoices : [restockTarget, ...restockChoices]).map((p) => ({ value: p.id, label: `${p.name} · ${p.bottleMl}ml ${Math.round(p.abv * 1000) / 10}% · 재고 ${num(p.stockBottles)}병 · 품질 ${(() => { const k = knownProductQuality(s, p); return k.public ? p.quality : `추정 ${num(k.q, 1)}${k.sigma >= 0.5 ? ` ±${num(k.sigma, 1)}` : ''}`; })()} · ${monthLabel(s.startYear, p.createdMonth)} 출시` }))} onChange={(id) => { const t1 = s.commerce.products.find((p) => p.id === id); if (t1) pickRestock(t1); }} />
+              {/* [P-PROD-76] 10차 오너: 결품 · 결품 예정 제품을 색으로 — 브라우저 기본 목록은 option 색이 안 먹을 수 있어 글머리(● · ▲)도 붙이고, 고른 제품의 색을 칸 글자에도 입힌다. kit Select는 선택지 색을 받지 않아 같은 꼴의 select를 여기서 그린다 */}
+              {(() => {
+                const list = restockChoices.some((p) => p.id === restockTarget.id) ? restockChoices : [restockTarget, ...restockChoices];
+                const cur = stockTags.get(restockTarget.id);
+                const nEmpty = list.filter((p) => stockTags.get(p.id)?.kind === 'empty').length;
+                const nSoon = list.filter((p) => stockTags.get(p.id)?.kind === 'soon').length;
+                return (
+                  <>
+                    <label className="inline-flex min-w-0 max-w-full items-center gap-1 text-sm">
+                      <span className="shrink-0 text-stone-600 dark:text-stone-300">보충할 제품</span>
+                      <select className={`min-w-0 max-w-full truncate rounded-md border border-stone-300 bg-white px-2 py-1 text-sm tabular-nums dark:border-stone-700 dark:bg-stone-800 ${cur ? cur.cls : ''}`} value={restockTarget.id} aria-label="보충할 제품" onChange={(e) => { const t1 = s.commerce.products.find((p) => p.id === e.target.value); if (t1) pickRestock(t1); }}>
+                        {list.map((p) => {
+                          const tag = stockTags.get(p.id);
+                          return <option key={p.id} value={p.id} className={tag ? tag.cls : 'text-stone-900 dark:text-stone-100'}>{`${tag ? `${tag.mark} · ` : ''}${p.name} · ${p.bottleMl}ml ${Math.round(p.abv * 1000) / 10}% · 재고 ${num(p.stockBottles)}병 · 품질 ${(() => { const k = knownProductQuality(s, p); return k.public ? p.quality : `추정 ${num(k.q, 1)}${k.sigma >= 0.5 ? ` ±${num(k.sigma, 1)}` : ''}`; })()} · ${monthLabel(s.startYear, p.createdMonth)} 출시`}</option>;
+                        })}
+                      </select>
+                    </label>
+                    {(nEmpty > 0 || nSoon > 0) && <p className="text-xs text-stone-500" title="결품 예정 = 재고가 이번 달 수요(판매 탭과 같은 셈 — 아는 품질 기준)보다 적어 다음 달에 바닥난다. 할 일 「결품」과 같은 기준">{nEmpty > 0 && <span className="text-red-700 dark:text-red-400">● 결품 {nEmpty}개</span>}{nEmpty > 0 && nSoon > 0 && ' · '}{nSoon > 0 && <span className="text-amber-700 dark:text-amber-400">▲ 다음 달 결품 {nSoon}개</span>} — 목록 위에 모았다</p>}
+                  </>
+                );
+              })()}
               <p className="text-xs text-stone-500">병·도수·포장은 「{restockTarget.name}」과 같게 맞춘다: {restockTarget.bottleMl}ml · {isCaskStrength(restockTarget) ? `캐스크 스트렝스(지금 ${Math.round(restockTarget.abv * 1000) / 10}% — 통마다 달라 병 수로 평균)` : `${Math.round(restockTarget.abv * 1000) / 10}%`} · {restockTarget.chillFiltered ? '칠 필터링' : '논칠필터'} · {PACKAGING[restockTarget.packagingId]?.nameKo ?? restockTarget.packagingId}. 이름·출고가({won(restockTarget.price)})·판매 기록은 그대로, 품질·향·원가는 남은 재고와 새 병 수로 평균 낸다.</p>
               {/* [결정 #399 · #386 ④] 손 보충이 잦은 위스키 — 자동 납품이 있다는 것을 알린다(판매 탭 제품 줄에서 켠다 · 통 범위 · 띠 정책을 지킨다) */}
               {autoRestockHint(s, restockTarget) && (() => {
