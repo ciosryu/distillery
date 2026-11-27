@@ -355,6 +355,18 @@ describe('[결정 #418] 증류기 형태(공개 표기) 글 — 헤비 저숙성
       if (o.stillStyle !== 'light') expect(xs.filter((t) => t.includes('라이트 스틸'))).toEqual([]);
     }
   });
+  it('[결정 #429 · 10차 U5] 소주에 붙은 형태 값은 읽지 않는다 — 라이트 · 헤비 스틸 글이 없다. 같은 값의 위스키 · 뉴본(몰트 스피릿)은 나온다', () => {
+    const lite = (xs: string[]) => xs.filter((t) => t.includes('라이트 스틸'));
+    const soju = { name: '시험 소주', category: 'soju_distilled', ageYears: undefined, oakMonths: 0, abv: 0.25, quality: 60, price: 9_000 } as Partial<Product>;
+    for (const st of ['light', 'heavy'] as const) {
+      const xs = texts({ ...soju, stillStyle: st } as Partial<Product> & Still, 60);
+      expect(lite(xs)).toEqual([]);
+      expect(heavy(xs)).toEqual([]);
+    }
+    expect(lite(texts({ stillStyle: 'light', ageYears: 3, oakMonths: 36, quality: 60 } as Partial<Product> & Still, 60)).length).toBeGreaterThan(0);
+    // 뉴본(몰트 스피릿 — 몰트 · 그레인 원액)은 #429대로 형태가 닿으니 읽는다(PROD 10차 70개월)
+    expect(lite(texts({ name: '시험 뉴본', category: 'malt_spirit', ageYears: undefined, oakMonths: 0, abv: 0.6, stillStyle: 'light', quality: 60 } as Partial<Product> & Still, 60)).length).toBeGreaterThan(0);
+  });
   it('I2 — 헤비 글은 참 품질과 무관하게 나온다(품질 40 · 90 모두)', () => {
     for (const q of [40, 90]) expect(heavy(texts({ stillStyle: 'heavy', ageYears: 3, oakMonths: 36, quality: q } as Partial<Product> & Still)).length).toBeGreaterThan(0);
   });
