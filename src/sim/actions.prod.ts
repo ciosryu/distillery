@@ -371,8 +371,9 @@ export const PROD_HANDLERS: Handlers<ProdAction> = {
     if (!a.on) { delete p.autoPrice; return { state: s, message: `${p.name} 자동 가격 끔 — 지금 값 ${p.price.toLocaleString()}원 유지` }; }
     const first = resetFirstPriceOnAuto(p, currentSuggested(s, p)); // 결정 #304 — 첫 출고가 ×n은 수동 가격 판에만 (PROD 대행)
     const base = p.price; // 되돌린 직후 값(기준가) — 아래 bestAutoPrice가 값을 다시 고르기 전에 잡는다
+    const wasOn = !!p.autoPrice; // 꺼져 있다 켜면 지난 배수(lastFactor)를 버린다 — setPricePolicy와 같은 규칙(10차 판 뒤 묶음 ①)
     p.autoPrice = true;
-    if (p.pricePolicy && p.pricePolicy.mode !== 'turnover') { const { lastFactor: _drop, ...rest } = p.pricePolicy; void _drop; p.pricePolicy = { ...rest, mode: 'turnover' }; } // 옛 명령 = A 현금회전 ([결정 #291])
+    if (p.pricePolicy && (p.pricePolicy.mode !== 'turnover' || !wasOn)) { const { lastFactor: _drop, ...rest } = p.pricePolicy; void _drop; p.pricePolicy = { ...rest, mode: 'turnover' }; } // 옛 명령 = A 현금회전 ([결정 #291])
     const v = bestAutoPrice(s, p);
     if (v != null) p.price = v;
     // 첫 출고가를 기준가로 되돌렸으면 알린다(결정 #304 — 켜는 순간 값이 내려가 보이는 이유)
