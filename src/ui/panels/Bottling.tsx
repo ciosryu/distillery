@@ -16,8 +16,8 @@ import { CaskTagChips } from '../CaskTags';
 import { mixTaint, taintShown } from '../../sim/taint'; // [결정 #382] 오염 원액 꼬리표(코어 · ARCH 화면)
 import { AGE_BANDS, bandCask, bandThinning, LADDER_SLACK_MONTHS, thinBands, THIN_BAND_CASKS } from '../../sim/ageBand'; // [결정 #380] 숙성 연령 띠 (PROD 잎)
 import { AGED_COMBO_ABVS, agedCombos, CASK_FAMILY_LABEL } from '../../sim/agedCombos'; // [결정 #410 T1-c] 12년 조합 비교
-import { agedOutlook, type AgedOutlookRow } from '../../sim/agedOutlook';
-import { isWinBottling, sGradeNow } from '../sGrade'; // [결정 #439] 승리 병입 확인 창 // [P10-2] 곧 12년이 되는 통 — 12년 품질 어림(공개 값)
+import { agedOutlook, type AgedOutlookRow } from '../../sim/agedOutlook'; // [P10-2] 곧 12년이 되는 통 — 12년 품질 어림(공개 값)
+import { isWinBottling, sGradeNow } from '../sGrade'; // [결정 #439] 승리 병입 확인 창
 import { restockStockTags, sortByStockTag } from './restockStockTag'; // [P-PROD-76] 보충할 제품 — 결품 · 결품 예정 표시
 import { RestockAutoPick } from './RestockAutoPick'; // [결정 #437 ①] 자동으로 골라 담기
 import { restockAutoPickSupported } from '../../sim/restockAutoPick';
