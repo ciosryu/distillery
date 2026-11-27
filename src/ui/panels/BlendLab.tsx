@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react';
 import { bottleWithHeritage, HeritageReveal, type HeritageRevealData } from './HeritageReveal';
 import { knownProductQuality,
   blendTargets, blenderOf, previewBlend, HEX_AXES, HEX_LABEL, knownReads, LAB, matchScore, mixHex, optimizeShares, reachableEnvelope, SAMPLING, samplingCapacity,
-  casksInAgeRange, delegatePlan, estimateBlend, inAgeRange, PLAYER_FOCI, playerFocusLabel, playerTargetFor,
+  casksInAgeRange, delegatePlan, estimateBlend, inAgeRange, PLAYER_FOCI, playerFocusLabel, playerTargetFor, whiskyMinMonths,
   type AgeRange, type BlendComponent, type BlendTarget, type Cask, type Hex, type PlayerFocus,
 } from '../../sim';
 import { CASKS } from '../../sim/content/catalog';
+import { regionOf } from '../../sim/content/regions';
 import { useGame } from '../../store/game';
 import { delegateCheck, delegateDefaultIds } from '../../sim/delegateCheck';
 import { flagshipImpact } from '../alerts';
@@ -98,7 +99,9 @@ export function BlendLab() {
   // [결정 #371] 「내 조건」 — 숙성 범위(년) · 향미 목표(위주/밸런스). 샘플 기록만 읽는다(playerTargetFor). 블렌딩 목표 채점은 없다
   const isPlayer = targetId === 'player';
   const [focus, setFocus] = useState<PlayerFocus>('balance');
-  const [minY, setMinY] = useState(0);
+  // [P-PROD-80] 숙성 최소 기본값 = 위스키 법정 숙성(한국 목재 12개월) — 10차 판: 맡긴 블렌드 13개 중 6개가 어린 통이 섞여 몰트 스피릿이 됐다(기본값이 0년이었다)
+  const legalMonths = whiskyMinMonths(regionOf(s).whisky);
+  const [minY, setMinY] = useState(() => legalMonths / 12);
   const [maxY, setMaxY] = useState(30);
   const range: AgeRange | undefined = isPlayer ? { minMonths: Math.round(minY * 12), maxMonths: Math.round(maxY * 12) } : undefined;
 
@@ -189,6 +192,11 @@ export function BlendLab() {
                   <NumberField label="최대(년)" value={maxY} min={0} max={30} step={0.5} width="w-20" onCommit={setMaxY} />
                   <span className="text-stone-500">목재 개월(통 표의 숙성)로 맡길 통을 거른다 — 범위 안 샘플 기록 통 {delegateIds.length}개{minY > maxY ? ' · 최소가 최대보다 크다' : ''}</span>
                 </div>
+                {/* [P-PROD-80] 범위 안에 법정 숙성 미만 통이 있으면 — 섞으면 가장 어린 원액 기준으로 몰트 스피릿이 된다 */}
+                {(() => {
+                  const young = delegateIds.filter((id) => (s.inventory.casks.find((c) => c.id === id)?.contents?.oakMonths ?? Infinity) < legalMonths).length;
+                  return young > 0 ? <p className="text-amber-700 dark:text-amber-400">범위 안에 목재 {legalMonths}개월 미만 통 {young}개 — 블렌더가 섞으면 위스키가 아니라 <b>몰트 스피릿</b>으로 병입된다(가장 어린 원액 기준 · 위스키 법정 숙성 {legalMonths % 12 ? `${legalMonths}개월` : `${legalMonths / 12}년`})</p> : null;
+                })()}
                 <div className="flex flex-wrap gap-1">
                   {PLAYER_FOCI.map((f) => {
                     const fq = focusQuality?.[f];
