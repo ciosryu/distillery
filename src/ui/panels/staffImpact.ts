@@ -3,12 +3,19 @@
 // 후보를 넣은 얕은 사본으로 다시 불러 전→후를 잰다(규칙은 각 파트 파일에 있다 — 여기서 공식을 베끼지 않는다)
 import type { Candidate, GameState, Staff } from '../../sim';
 import { coverage, markupFactor } from '../../sim/market';
-import { retailCapacityCases } from '../../sim/retail';
-import { capacityReport } from '../../sim/production';
-import { samplingCapacity } from '../../sim/blendTable';
+import { RETAIL, hasPremiumChannel, retailCapacityCases } from '../../sim/retail';
+import { capacityReport, steadyBatch } from '../../sim/production';
+import { blenderOf, samplingCapacity } from '../../sim/blendTable';
+import { perceptionSigma } from '../../sim/blendRadar';
 import { rotationCapacity } from '../../sim/warehouse';
-import { HR_TUNING, MORALE, TRAINING, hasTrait, moraleOf, taxAuditDefense, xpMultiplier } from '../../sim/hr';
-import { staffOf } from '../../sim/util';
+import { forecastSigma } from '../../sim/forecast';
+import { macroDetect } from '../../sim/earlyWarning';
+import { infoBonus, researchRate } from '../../sim/research';
+import { TECH_BY_ID } from '../../sim/content/tech';
+import { ROLE_INFO } from '../../sim/content/catalog';
+import { HR_TUNING, MORALE, TRAINING, hasTrait, masterDistiller, moraleOf, taxAuditDefense, xpMultiplier } from '../../sim/hr';
+import { bestBy, staffOf } from '../../sim/util';
+import { TASK_VALUES } from '../../sim/staffTaskRules';
 import { num, pct, won } from '../format';
 
 export interface ImpactLine { label: string; before: string; after: string; note?: string }
@@ -65,6 +72,104 @@ export function tastingImpact(s: GameState, x: Staff): { routine: number; tastin
   const as = (task: Staff['task']): GameState => ({ ...s, hr: { ...s.hr, staff: s.hr.staff.map((y) => (y.id === x.id ? { ...y, task } : y)) } });
   return { routine: coverage(as('routine')), tasting: coverage(as('tasting')), sales: staffOf(s, 'sales').length };
 }
+
+/** 교육 능력치 키 — 직군마다 뜻이 다르다(ROLE_INFO.stats[0~2]) */
+export type StatKey = 'a' | 'b' | 'c';
+const STAT_KEYS: StatKey[] = ['a', 'b', 'c'];
+
+/**
+ * 오너 요청(10차 판 도중, 2026-11-27): 「교육 버튼에 마우스를 올리면 그 능력치가 오르면 무엇이 달라지는지」.
+ * 이 직원의 능력치 k를 교육만큼(+statGain, 상한 statCap) 올린 얕은 사본으로 각 파트의 규칙 함수를 다시 불러 전→후를 잰다 — 화면 계산만(상태 불변).
+ * 규칙이 다른 파트 파일 안 식으로만 있어 부를 함수가 없는 효과는 숫자 없이 「무엇에 쓰이는지」만 적는다(공식을 여기에 베끼지 않는다).
+ * 아는 값만 읽는다(I2): 원액 품질은 생산 탭 「월 생산 지시」 표의 미리보기(steadyBatch)와 같은 값 — 숨은 통 품질은 읽지 않는다
+ */
+export function statImpact(s: GameState, x: Staff, k: StatKey): { label: string; from: number; to: number; lines: string[] } {
+  const label = ROLE_INFO[x.role].stats[STAT_KEYS.indexOf(k)]!;
+  const from = x.stats[k];
+  const to = Math.min(TRAINING.statCap, from + TRAINING.statGain);
+  const lines: string[] = [];
+  if (to <= from) return { label, from, to, lines: [`이미 교육 상한(${TRAINING.statCap})이다`] };
+  const g: GameState = { ...s, hr: { ...s.hr, staff: s.hr.staff.map((y) => (y.id === x.id ? { ...y, stats: { ...y.stats, [k]: to } } : y)) } };
+  const pair = (name: string, a: string, b: string, tail = '') => lines.push(a === b ? `${name} ${a} — 그대로${tail}` : `${name} ${a} → ${b}${tail}`);
+  const best = (role: Staff['role']) => staffOf(s, role).filter((y) => y.id !== x.id).reduce((m, y) => Math.max(m, y.stats[k]), -1);
+  const notBest = (role: Staff['role']) => (best(role) >= to ? ` (같은 직군에 ${label} ${best(role)}인 사람이 있어 그 사람 값을 쓴다)` : '');
+  // 원액 품질 — 지시가 가장 많은 레시피(없으면 첫 레시피)의 정상 상태 미리보기. 리드 디스틸러(공정 최고)의 후각 · 공정을 쓴다
+  const recipeQuality = () => {
+    const orders = [...s.production.orders].filter((o) => o.batchesPerMonth > 0).sort((a, b) => b.batchesPerMonth - a.batchesPerMonth);
+    const r = s.production.recipes.find((y) => y.id === orders[0]?.recipeId) ?? s.production.recipes[0];
+    if (!r) return;
+    const q0 = steadyBatch(s, r)?.evaluation.quality, q1 = steadyBatch(g, r)?.evaluation.quality;
+    if (q0 == null || q1 == null) return;
+    const lead = (st: GameState) => bestBy(staffOf(st, 'distiller'), 'b')?.id === x.id; // steadyBatch가 쓰는 리드 디스틸러(production.ts)
+    const why = lead(s) || lead(g) ? ' — 이 레시피에서는 0.1 미만' : ' — 생산을 이끄는 디스틸러(공정이 가장 높은 사람)가 아니다';
+    pair(`새 원액 품질(「${r.name}」 미리보기)`, q0.toFixed(1), q1.toFixed(1), q0.toFixed(1) === q1.toFixed(1) ? why : '');
+  };
+  switch (x.role) {
+    case 'distiller':
+      if (k === 'a') { recipeQuality(); lines.push('후각: 새 원액의 과일 향을 조금 살린다'); }
+      if (k === 'b') {
+        recipeQuality();
+        pair('월 증류 운전 한도', `${capacityReport(s).distillerRunsCap}회`, `${capacityReport(g).distillerRunsCap}회`);
+        lines.push(`공정: 새 원액의 이취(솔벤트 · 후류 · 식초)를 줄인다 — 「숙성 점검」을 맡은 동안은 공정 × ${TASK_VALUES.agingCheck.processMul}로 친다`);
+      }
+      if (k === 'c') {
+        lines.push(`직관: 여러 통을 섞는 블렌드의 어우러짐(integration)을 올린다 — 디스틸러 가운데 직관이 가장 높은 사람 값${notBest('distiller')}`);
+        if (masterDistiller(s)?.id === x.id) lines.push('마스터 디스틸러라 매달 쌓이는 하우스 스타일도 조금 빨라진다');
+      }
+      break;
+    case 'sales':
+      if (k === 'a') lines.push(`친화: 값을 올려도 국내 수요가 덜 준다(가격 민감도↓) · 시음회가 성황일 확률↑ — 가격 민감도는 영업 가운데 친화가 가장 높은 사람 값${notBest('sales')}`);
+      if (k === 'b') {
+        const c0 = coverage(s), c1 = coverage(g);
+        pair('유통 커버리지', pct(c0, 1), pct(c1, 1), c0 > 0 && c1 !== c0 ? ` — 국내 수요 ×${(c1 / c0).toFixed(3)}` : '');
+        pair('소매 처리 한도', `${num(retailCapacityCases(s))}상자`, `${num(retailCapacityCases(g))}상자`);
+        if (!hasPremiumChannel(s)) lines.push(hasPremiumChannel(g) ? `프리미엄 채널이 열린다(네트워크 ${RETAIL.premiumNetwork}↑)` : `프리미엄 채널은 네트워크 ${RETAIL.premiumNetwork}부터(지금 ${from} → ${to})`);
+      }
+      if (k === 'c') { const m0 = markupFactor(s), m1 = markupFactor(g); pair('유통 마진(소비자가 배수)', `×${m0.toFixed(3)}`, `×${m1.toFixed(3)}`, m1 < m0 ? ' — 같은 출고가에 소비자가가 내려 수요↑' : notBest('sales')); }
+      break;
+    case 'warehouse':
+      if (k === 'a') lines.push(`관찰: 숙성고 QC가 오염 통(TCA · 곰팡이)을 찾을 확률↑ · 새는 통의 손실↓ · 현물로 산 빈 통의 불량을 미리 알아챌 확률↑ — 숙성고 매니저 가운데 가장 높은 값${notBest('warehouse')}`);
+      if (k === 'b') lines.push(`환경통제: 통 오염이 생길 확률↓ · 증발(엔젤스 셰어)↓ — 숙성고 매니저 가운데 가장 높은 값${notBest('warehouse')}`);
+      if (k === 'c') { pair('통 로테이션 여력', `${rotationCapacity(s)}통`, `${rotationCapacity(g)}통`); lines.push(`성실: 통이 샐 확률↓ — 숙성고 매니저 가운데 가장 높은 값${notBest('warehouse')}`); }
+      break;
+    case 'blender':
+      if (k === 'a' || k === 'b') {
+        const b0 = blenderOf(s), b1 = blenderOf(g);
+        pair('통을 한 번 맛볼 때 축별 오차', `±${perceptionSigma(b0).toFixed(1)}`, `±${perceptionSigma(b1).toFixed(1)}`, b0?.id !== x.id && b1?.id !== x.id ? ' — 블렌딩을 맡는 블렌더(후각 · 미각 평균 + 레벨이 가장 높은 사람)가 아니다' : '');
+        lines.push(`${label}: 블렌딩 테이블에서 원액을 읽는 정확도(후각 · 미각 평균)`);
+      }
+      if (k === 'c') {
+        pair('월 샘플링 여력', `${samplingCapacity(s)}회`, `${samplingCapacity(g)}회`);
+        lines.push('감정력: 샘플을 뜰 때 레어 캐스크를 알아볼 확률↑');
+      }
+      break;
+    case 'office':
+      if (k === 'a') pair('세무조사 추징 감면', pct(taxAuditDefense(s), 1), pct(taxAuditDefense(g), 1), ' — 세무조사가 와야 효과');
+      if (k === 'b') lines.push(s.production.wasteContractPerKg > 0 ? `협상: 드래프 · 지게미 사료 계약 단가는 이미 정해졌다(원재료 kg당 ${s.production.wasteContractPerKg}원) — 지금은 바뀌는 것이 없다` : `협상: 드래프 · 지게미 사료 판매 계약을 맺을 때 단가↑ — 사무직 가운데 가장 높은 값${notBest('office')}`);
+      if (k === 'c') {
+        if (infoBonus(s, 'ingredient_price').forecastMonths > 0) {
+          pair('조기 경보 감지율', pct(macroDetect(s), 1), pct(macroDetect(g), 1));
+          pair('원재료 가격 예측 오차(3개월 뒤)', pct(forecastSigma(s, 3), 1), pct(forecastSigma(g, 3), 1));
+        } else lines.push(`행정: 연구 「공급망 예측」(ENG-3) 뒤 조기 경보 감지율↑ · 원재료 가격 예측 오차↓ — 사무직 가운데 가장 높은 값${notBest('office')}`);
+      }
+      break;
+  }
+  // 이 직원이 이끄는 연구 — 그 연구가 쓰는 능력치면 진행 속도
+  for (const a of s.research.active) {
+    if (a.leadStaffId !== x.id || a.paused) continue;
+    const node = TECH_BY_ID[a.techId];
+    if (node?.research.leadStat !== k) continue;
+    const r0 = researchRate(s, a.techId, x.id), r1 = researchRate(g, a.techId, x.id);
+    if (r0 > 0) lines.push(`연구 「${node.nameKo}」 속도 +${((r1 / r0 - 1) * 100).toFixed(1)}%`);
+  }
+  return { label, from, to, lines };
+}
+
+/** 교육 버튼 title — 한 줄 머리 + 효과 줄 */
+export const statImpactTitle = (s: GameState, x: Staff, k: StatKey): string => {
+  const v = statImpact(s, x, k);
+  return [`${v.label} ${v.from} → ${v.to}`, ...v.lines.map((l) => `· ${l}`)].join('\n');
+};
 
 /** 지금 막힌 곳 — 어느 직군을 뽑으면 실제로 결과가 바뀌는지 (최근 3개월 결산 기준). 없으면 빈 배열 */
 export function bottlenecks(s: GameState): string[] {
