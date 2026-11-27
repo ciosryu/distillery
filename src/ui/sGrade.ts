@@ -6,6 +6,7 @@ import { campaignWon, GRADE, netWorth, rulesVersionOf, sNetWorthTarget, type Ble
 import { ledgerEligibility, ledgerOf } from '../sim/ledger';
 import { agedCombos } from '../sim/agedCombos';
 import { awarenessOf } from '../sim/brands';
+import { monthlyFixedCost } from '../sim/loans';
 
 export interface SGradeRow {
   id: 'quality' | 'netWorth' | 'awareness';
@@ -16,6 +17,8 @@ export interface SGradeRow {
   now: string | null;
   /** 채웠나 — 알 수 없으면 null */
   ok: boolean | null;
+  /** 채웠지만 문턱에 가깝다(여유 < 월 고정비) — 판정은 이번 달 결산 뒤 값이라 바뀔 수 있다(MGT 확인) */
+  close?: boolean;
 }
 
 const eok = (n: number) => `${(n / 1e8).toFixed(1)}억`;
@@ -44,8 +47,9 @@ export function sGradeNow(s: GameState, quality?: number | null): { rows: SGrade
   const nw = netWorth(s);
   const aw = awarenessOf(s);
   const rows: SGradeRow[] = [
-    { id: 'quality', label: '12년 싱글 몰트 품질', target: `${GRADE.sFlagshipQuality}`, now: q != null ? `${Math.round(q)}` : null, ok: q != null ? q >= GRADE.sFlagshipQuality : null },
-    { id: 'netWorth', label: '순자산', target: eok(target), now: eok(nw), ok: nw >= target },
+    { id: 'quality', label: '12년 싱글 몰트 품질(어림 · 샘플 기준)', target: `${GRADE.sFlagshipQuality}`, now: q != null ? `${Math.round(q)}` : null, ok: q != null ? q >= GRADE.sFlagshipQuality : null },
+    // 화면 순자산은 직전 결산 값, 판정은 이번 달 결산 뒤 값 — 한 달 손익 · 감가만큼 다르다(MGT). 여유가 월 고정비보다 작으면 「아슬아슬」
+    { id: 'netWorth', label: '순자산', target: eok(target), now: eok(nw), ok: nw >= target, ...(nw >= target && nw - target < monthlyFixedCost(s) ? { close: true } : {}) },
     { id: 'awareness', label: '인지도', target: `${Math.round(GRADE.sAwareness * 100)}%`, now: `${Math.round(aw * 100)}%`, ok: aw >= GRADE.sAwareness },
   ];
   const grade = rows.some((r) => r.ok === false) ? 'A' : rows.every((r) => r.ok) ? 'S' : null;
@@ -53,7 +57,7 @@ export function sGradeNow(s: GameState, quality?: number | null): { rows: SGrade
 }
 
 /** 한 줄 꼴 — 「12년 싱글 몰트 품질 80 (지금 77 ✗) · 순자산 21.0억 (지금 31.0억 ✓) · 인지도 20% (지금 74% ✓)」 */
-export const sGradeRowText = (r: SGradeRow): string => `${r.label} ${r.target}${r.now != null ? ` (지금 ${r.now} ${r.ok ? '✓' : '✗'})` : ' (지금 — 12년 적격 원액 없음)'}`;
+export const sGradeRowText = (r: SGradeRow): string => `${r.label} ${r.target}${r.now != null ? ` (지금 ${r.now} ${r.ok ? '✓' : '✗'}${r.close ? ' 아슬아슬 — 판정은 이번 달 결산 뒤 값' : ''})` : ' (지금 — 12년 적격 원액 없음)'}`;
 
 /**
  * 이 병입이 팔리면 캠페인 승리가 되는가 — 고른 원액의 구성 원장이 승리 적격(`ledgerEligibility`, 병입 로트 `eligibleAtBottling`과 같은 판정)이면 true.

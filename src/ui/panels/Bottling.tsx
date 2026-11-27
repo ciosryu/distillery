@@ -651,7 +651,7 @@ export function Bottling() {
               {winGrade && (
                 <div role="alert" className="rounded border border-amber-400 bg-amber-50 px-2 py-1.5 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
                   <div className="font-semibold">이 병이 팔리면 캠페인이 끝나고 등급이 정해진다(다음 달 판정 · 등급은 이때 한 번만 매긴다)</div>
-                  <div>지금 판정이면: {winGrade.rows.map((r) => `${r.id === 'quality' ? '12년 품질(이 병입 예상)' : r.label} ${r.now ?? '—'} / ${r.target} ${r.ok == null ? '?' : r.ok ? '✓' : '✗'}`).join(' · ')}{winGrade.grade && <> → <b>{winGrade.grade}</b></>}</div>
+                  <div>지금 판정이면: {winGrade.rows.map((r) => `${r.id === 'quality' ? '12년 품질(이 병입 예상 · 어림)' : r.label} ${r.now ?? '—'} / ${r.target} ${r.ok == null ? '?' : r.ok ? '✓' : '✗'}${r.close ? '(아슬아슬 — 판정은 이번 달 결산 뒤 값)' : ''}`).join(' · ')}{winGrade.grade && <> → <b>{winGrade.grade}</b></>}</div>
                 </div>
               )}
               <Button variant="primary" disabled={!preview.ok} onClick={() => {

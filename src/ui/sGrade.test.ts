@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { parsePlayFile } from '../store/playlog';
-import { GRADE, type GameState } from '../sim';
+import { GRADE, netWorth, sNetWorthTarget, type GameState } from '../sim';
 import { bestEligibleMaltQuality, isWinBottling, sGradeNow, sGradeRowText } from './sGrade';
 import { winDelayNote } from './alerts';
 
@@ -33,6 +33,16 @@ describe('S 등급 조건 미리 보기 (#439)', () => {
     expect(g.rows[2]!.ok).toBe(true);
     expect(g.grade).toBe('A');
     expect(sGradeRowText(g.rows[0]!)).toContain('(지금 ');
+  });
+  it('순자산이 문턱에 가까우면(여유 < 월 고정비) ✓ 이어도 「아슬아슬」', () => {
+    const s = beforeWin();
+    const far = sGradeNow(s)!.rows[1]!;
+    expect(far.close).toBeUndefined();
+    s.finance.cash -= netWorth(s) - sNetWorthTarget(s)! - 1_000_000; // 순자산을 문턱 100만 원 위로
+    const near = sGradeNow(s)!.rows[1]!;
+    expect(near.ok).toBe(true);
+    expect(near.close).toBe(true);
+    expect(sGradeRowText(near)).toContain('아슬아슬');
   });
   it('병입 미리보기 품질을 넘기면 그 값으로 본다 — 85면 S', () => {
     const g = sGradeNow(beforeWin(), 85)!;
