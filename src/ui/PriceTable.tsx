@@ -8,6 +8,17 @@ import { PRICE_TABLE_HORIZONS, priceTableRows, priceTableTotals, type SupplyMode
 // [결정 #438 묶음 ③] 한 화면 가격표 (MKT · 화면만 — mkt-pricing-postrun.md §6.6 (ㄴ)). 셈은 `priceTableCalc.ts`(아는 품질 상태만 · 읽기만).
 // 값을 여러 줄 고친 뒤 합(판매 · 매출 · 공헌)을 보고 「한 번에 적용」 — 적용은 있는 행동 `setPrice`를 줄마다 보낸다. 자동 가격을 켠 제품은 고치지 않는다(정책이 정함)
 
+// 펼침 기억 — 증류소 탭 접기와 같은 이름 공간(ARCH 2026-11-27: useFold는 꺼내지 않고 같은 꼴로 따로). 편의 기능이라 실패해도 그만(시크릿 창)
+const FOLD_KEY = 'distillery-tycoon/fold/price-table';
+/** 처음 보일 때 펼칠지 — [제안 P-MKT-53] 오너 결정 전까지 접힘(가). (나)면 true 한 줄 */
+const PRICE_TABLE_OPEN_DEFAULT = false;
+function readFold(): boolean | null {
+  try { const x = JSON.parse(localStorage.getItem(FOLD_KEY) ?? 'null'); return typeof x === 'boolean' ? x : null; } catch { return null; }
+}
+function writeFold(v: boolean) {
+  try { localStorage.setItem(FOLD_KEY, JSON.stringify(v)); } catch { /* 편의 기능 */ }
+}
+
 const monthsOf = (n: number, perMonth: number) => (perMonth > 0 ? n / perMonth : Infinity);
 const monthsText = (m: number) => (!Number.isFinite(m) ? '—' : m >= 60 ? '5년 치↑' : m < 1 ? '1개월 치 안' : `${Math.round(m)}개월 치`);
 const sign = (v: number) => (v > 0 ? '+' : v < 0 ? '−' : '±');
@@ -15,7 +26,8 @@ const sign = (v: number) => (v > 0 ? '+' : v < 0 ? '−' : '±');
 export function PriceTable() {
   const s = useGame((g) => g.state);
   const dispatch = useGame((g) => g.dispatch);
-  const [open, setOpen] = useState(false);
+  const [open, setOpenRaw] = useState<boolean>(() => readFold() ?? PRICE_TABLE_OPEN_DEFAULT);
+  const setOpen = (v: boolean) => { setOpenRaw(v); writeFold(v); };
   const [drafts, setDrafts] = useState<Record<string, number>>({});
   const [horizon, setHorizon] = useState<number>(6);
   const [supply, setSupply] = useState<SupplyMode>('bottles');
