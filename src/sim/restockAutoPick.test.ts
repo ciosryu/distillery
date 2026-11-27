@@ -7,7 +7,7 @@ import { agePolicyFilter } from './ageBand';
 import { caskFamily } from './agedCombos';
 import { knownReads } from './blendTable';
 import { reserveCaskIds } from './tags';
-import { restockAutoPick, restockAutoPickSupported, restockBottleOptions, restockLabelMonths, restockPickDefaultBottles, restockPickFamilies, type RestockPickCond } from './restockAutoPick';
+import { productFamilyShares, RESTOCK_FAMILY_NOTE_SHARE, restockFamilyNote, restockAutoPick, restockAutoPickSupported, restockBottleOptions, restockLabelMonths, restockPickDefaultBottles, restockPickFamilies, type RestockPickCond } from './restockAutoPick';
 import type { GameState, Product } from './types';
 
 const load = (): GameState => migrateSave(JSON.parse(readFileSync('docs/playtest/10/distillery-mvp-standard-y6m11-202611261003.json', 'utf8')).save)!;
@@ -91,5 +91,22 @@ describe('[결정 #437 ①] 자동으로 골라 담기', () => {
     expect(r.components.length).toBeGreaterThan(0);
     expect(restockAutoPickSupported(s, prod(s, '김포 소주'))).toBe(false);
     expect(restockAutoPickSupported(s, prod(s, '김포 뉴본 그레인'))).toBe(false);
+  });
+  it('[P-PROD-78] 계열 다름 알림 — 통 구성 기록(공개)의 20% 미만 계열만 알린다 · 이름이 아니라 기록 기준', () => {
+    const s = load();
+    const wine = prod(s, '김포 와인 바리끄'); // 이름과 달리 기록은 올로로소 98%(셰리 계열)
+    const sh = productFamilyShares(wine)!;
+    expect(sh.get('sherry')!).toBeGreaterThan(0.9);
+    expect([...sh.values()].reduce((t, x) => t + x, 0)).toBeCloseTo(1, 6);
+    expect(restockFamilyNote(wine, 'sherry')).toBeNull();
+    const nb = restockFamilyNote(wine, 'bourbon')!;
+    expect(nb.share).toBeLessThan(RESTOCK_FAMILY_NOTE_SHARE);
+    expect(nb.top.family).toBe('sherry');
+    expect(restockFamilyNote(wine, 'wine')!.share).toBe(0);
+    const virgin = prod(s, '김포 버진오크'); // 버번 77 · 셰리 21 · 버진 2 → 버번 · 새 통 계열 약 79%
+    expect(restockFamilyNote(virgin, 'bourbon')).toBeNull();
+    expect(restockFamilyNote(virgin, 'sherry')).toBeNull(); // 21% — 20% 이상이라 알리지 않는다
+    expect(restockFamilyNote(virgin, 'wine')).not.toBeNull();
+    expect(restockFamilyNote({ caskMix: undefined }, 'bourbon')).toBeNull(); // 기록 없으면 알리지 않는다
   });
 });
