@@ -534,6 +534,8 @@ export interface SojuSupply {
   months: number | null;
   /** 지금 소주 지시로 매달 새로 생기는 병(정상 배치·표준 병 환산)과 그 원료·에너지 */
   madeBottlesPerMonth: number;
+  /** [P-PROD-81] 소주 레시피 1배치(정상 배치 · 표준 병 환산) — 지시가 있는 첫 소주 레시피, 없으면 첫 소주 레시피. 소주 레시피가 없으면 null */
+  bottlesPerBatch: number | null;
   costPerMonth: number;
   /** 소주 1배치 원료·에너지 — 지시를 1 줄일 때 아끼는 돈 */
   costPerBatch: number | null;
@@ -566,11 +568,45 @@ export function sojuSupply(s: GameState): SojuSupply {
     cost += x.feasible * b.cost;
     costPerBatch ??= Math.round(b.cost);
   }
+  const ordered = s.production.orders.find((o) => o.batchesPerMonth > 0 && s.production.recipes.find((r) => r.id === o.recipeId)?.kind === 'soju');
+  const sojuRecipe = s.production.recipes.find((r) => r.id === ordered?.recipeId) ?? s.production.recipes.find((r) => r.kind === 'soju');
+  const one = sojuRecipe ? steadyBatch(s, sojuRecipe) : null;
   return {
     productBottles, tankL, tankBottles, perMonth, demandPerMonth,
     months: perMonth > 0 ? (productBottles + tankBottles) / perMonth : null,
     madeBottlesPerMonth: Math.round(made), costPerMonth: Math.round(cost), costPerBatch,
+    bottlesPerBatch: one ? Math.round(one.lpa / bottleLPA) : null,
   };
+}
+
+/** [P-PROD-81] 소주 지시가 0일 때 소주(탱크 + 제품)가 이 개월 치 아래면 「다시 올려라」를 알린다 `[튜닝]` — 「소주 과잉」(SOJU_STOCK_WARN_MONTHS)과 짝 */
+export const SOJU_RESTART_MONTHS = 4;
+/** [P-PROD-81] 지시로 만드는 병 < 수요 × SOJU_SHORT_RATIO이고 소주가 이 개월 치 아래면 「생산 < 수요」를 할 일로 `[튜닝]` */
+export const SOJU_SHORT_STOCK_MONTHS = 3;
+/** 이 개월 치 아래면 warn(곧 바닥) `[튜닝]` */
+export const SOJU_LOW_WARN_MONTHS = 2;
+
+/**
+ * [P-PROD-81] 소주 공급 할 일 — 10차 판: 「소주 과잉 — 지시를 1 줄이면」을 따라 지시를 0으로 내린 뒤 다시 올리라는 신호가 없어 16 · 5달 소주를 만들지 않았고,
+ * 후반에는 「소주 생산 < 수요」가 생산 화면 한 줄뿐이라 결품이 컸다. 둘을 한 줄로(같은 할 일 id):
+ * - zero: 소주 지시가 없고 소주가 SOJU_RESTART_MONTHS 아래
+ * - short: 지시는 있지만 지시로 만드는 병 < 수요 × SOJU_SHORT_RATIO이고 소주가 SOJU_SHORT_STOCK_MONTHS 아래
+ * 개월 치는 (탱크 + 제품) ÷ 최근 3개월 수요(못 판 병 포함 — 판매만 세면 결품 달에 개월이 부푼다). 소주 제품이 없거나 수요가 0이면 null. 상태를 바꾸지 않는다
+ */
+export function sojuSupplyAlert(s: GameState): { kind: 'zero' | 'short'; level: 'info' | 'warn'; months: number; demand: number; made: number; perBatch: number | null } | null {
+  const v = sojuSupply(s);
+  const demand = Math.max(v.demandPerMonth, v.perMonth);
+  if (!(demand > 0)) return null;
+  const months = (v.productBottles + v.tankBottles) / demand;
+  const out = (kind: 'zero' | 'short', level: 'info' | 'warn') => ({ kind, level, months, demand: Math.round(demand), made: v.madeBottlesPerMonth, perBatch: v.bottlesPerBatch });
+  const hasOrder = s.production.orders.some((o) => o.batchesPerMonth > 0 && s.production.recipes.find((r) => r.id === o.recipeId)?.kind === 'soju');
+  // 이번 달 결산에서 소주 제품이 품절(재고 0 · 수요 있음)이면 warn
+  const last = s.history.reports.at(-1);
+  const sojuIds = new Set(s.commerce.products.filter((p) => p.category === 'soju_distilled' && !p.dutyFreeOnly).map((p) => p.id));
+  const outNow = s.commerce.products.some((p) => sojuIds.has(p.id) && p.stockBottles <= 0 && (last?.sales.some((x) => x.productId === p.id && (x.demandBottles ?? x.bottles) > 0) ?? false));
+  if (!hasOrder) return months < SOJU_RESTART_MONTHS ? out('zero', months < SOJU_LOW_WARN_MONTHS || outNow ? 'warn' : 'info') : null;
+  if (v.madeBottlesPerMonth < demand * SOJU_SHORT_RATIO && months < SOJU_SHORT_STOCK_MONTHS) return out('short', months < SOJU_LOW_WARN_MONTHS || outNow ? 'warn' : 'info');
+  return null;
 }
 
 /** 1배치를 표준 조건(새 ex-버번 배럴·입지 연평균 기후)에서 0…n−1개월 숙성했을 때의 현물 평가액 — [k] = k개월 숙성. 상태를 바꾸지 않는다 */
