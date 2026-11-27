@@ -26,12 +26,22 @@ describe('[P-MKT-51 (가)] 자동 가격 정책 — 이번 달 왜 이 값', () 
     expect(r.error).toBeUndefined();
     expect(byName(r.state, name).price).toBe(e.next);
   });
-  it('끈 뒤 같은 정책을 다시 켜 지난 배수(×1.76)가 남은 「김포 소주」: 목표를 벗어난 값으로 간다는 경고', () => {
+  it('예전 빌드에서 다시 켠 채 지난 배수(×1.76)가 남은 「김포 소주」: 목표를 벗어난 값으로 간다는 경고 · 껐다 켜라는 안내', () => {
     const s = load();
     const p = on(s, '김포 소주', { ...byName(s, '김포 소주').pricePolicy!, mode: 'profit' });
     const e = ex(s, p)!;
     expect(e.warn).toMatch(/지난번 정책 배수\(×1\.76\)/);
+    expect(e.warn).toMatch(/한 번 껐다 켜면/);
+    expect(e.warn).not.toMatch(/다른 정책으로/);
     expect(e.next).toBeGreaterThan(p.price);
+  });
+  it('[결정 #438 ①] 지금 엔진으로 끈 「김포 소주」를 다시 켜면 배수가 지워져 경고 ①이 없다', () => {
+    const s = load();
+    const r = applyAction(s, { type: 'setPricePolicy', productId: byName(s, '김포 소주').id, mode: 'profit' });
+    expect(r.error).toBeUndefined();
+    const p = byName(r.state, '김포 소주');
+    expect(p.pricePolicy?.lastFactor ?? 0).not.toBeCloseTo(1.76, 2); // 지난 배수는 버리고 지금 값에서 새로 잡는다
+    expect(ex(r.state, p)?.warn ?? '').not.toMatch(/지난번 정책 배수/);
   });
   it('B 목표가 이 제품 판매를 크게 줄이고 형제 쪽 이익을 키울 때 형제 합산 경고(「김포 더 퍼스트」)', () => {
     const s = load();
