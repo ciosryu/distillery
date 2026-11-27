@@ -20,6 +20,7 @@ import { reserveCaskIds } from '../sim/tags';
 import { tanninOutlook } from '../sim/warehouse'; // [결정 #411] 12년 탄닌 전망(PROD 계산 — 통 표와 같은 값)
 import { candidateHorizon, caskEligibility, isCampaignCandidate } from '../sim/ledger';
 import { specialistOffers, SPECIALIST_STAGE } from '../sim/hr';
+import { bestEligibleMaltQuality } from './sGrade'; // [결정 #439] ⏳ 줄의 품질 조건
 import { TASK_VALUES, onTask } from '../sim/staffTaskRules'; // U1(10차 70) — 「숙성 점검」 맛볼 통(MGT 값)
 import { agingCheckPicks } from '../sim/staffTasks';
 import { AUTO_RESTOCK_EXPENSE, caskRunway, CUTBACK_HINT, productionCutback, productionValue, sojuSupply, SOJU_STOCK_WARN_MONTHS, tankLotWaitMonths, whiskySupplyForecast } from '../sim/economics';
@@ -272,9 +273,12 @@ export function winDelayNote(s: GameState): string | null {
   const target = sNetWorthTarget(s);
   if (!k || target == null) return null;
   const n = sDelayMonths(s);
+  // [결정 #439] 순자산만 말하면 「빨리 내라」로만 읽힌다(10차 판) — S의 품질 조건(80)과 지금 적격 원액의 예상을 나란히. 「기다리면 n개월 뒤」는 말하지 않는다
+  const q = bestEligibleMaltQuality(s);
+  const qText = ` · S는 12년 품질 ${GRADE.sFlagshipQuality}도 본다${q != null ? `(지금 적격 원액 예상 약 ${Math.round(q)} ${q >= GRADE.sFlagshipQuality ? '✓' : '✗'})` : ''}`;
   return n > 0
-    ? `12년 적격 원액을 출하할 수 있다 — 출하를 미루면 달마다 S 등급 순자산 기준이 ${fmtWon(k)}씩 오른다(지금 ${fmtWon(target)} · 출하할 수 있게 된 뒤 ${n}개월 미뤄 +${fmtWon(n * k)})`
-    : `12년 적격 원액을 출하할 수 있다 — 지금 출하하면 S 등급 순자산 기준은 그대로(${fmtWon(target)}), 미루면 다음 달부터 달마다 ${fmtWon(k)}씩 오른다`;
+    ? `12년 적격 원액을 출하할 수 있다 — 출하를 미루면 달마다 S 등급 순자산 기준이 ${fmtWon(k)}씩 오른다(지금 ${fmtWon(target)} · 출하할 수 있게 된 뒤 ${n}개월 미뤄 +${fmtWon(n * k)})${qText}`
+    : `12년 적격 원액을 출하할 수 있다 — 지금 출하하면 S 등급 순자산 기준은 그대로(${fmtWon(target)}), 미루면 다음 달부터 달마다 ${fmtWon(k)}씩 오른다${qText}`;
 }
 
 /** [결정 #385] 현금이 고정비 이만큼을 넘으면 「놀고 있는 현금」 줄 `[튜닝]` */

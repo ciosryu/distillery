@@ -17,6 +17,7 @@ import { mixTaint, taintShown } from '../../sim/taint'; // [결정 #382] 오염 
 import { AGE_BANDS, bandCask, bandThinning, LADDER_SLACK_MONTHS, thinBands, THIN_BAND_CASKS } from '../../sim/ageBand'; // [결정 #380] 숙성 연령 띠 (PROD 잎)
 import { AGED_COMBO_ABVS, agedCombos, CASK_FAMILY_LABEL } from '../../sim/agedCombos'; // [결정 #410 T1-c] 12년 조합 비교
 import { agedOutlook, type AgedOutlookRow } from '../../sim/agedOutlook'; // [P10-2] 곧 12년이 되는 통 — 12년 품질 어림(공개 값)
+import { isWinBottling, sGradeNow } from '../sGrade'; // [결정 #439] 승리 병입 확인 창
 import { restockStockTags, sortByStockTag } from './restockStockTag'; // [P-PROD-76] 보충할 제품 — 결품 · 결품 예정 표시
 import { RestockAutoPick } from './RestockAutoPick'; // [결정 #437 ①] 자동으로 골라 담기
 import { restockAutoPickSupported } from '../../sim/restockAutoPick';
@@ -208,7 +209,10 @@ export function Bottling() {
   })();
   const strongStock = (!!stock && stock.months > STOCK_STRONG_WARN_MONTHS) || (!!restockStock && restockStock.after > STOCK_STRONG_WARN_MONTHS);
   /** 두 번 눌러야 병입하는가 — 재고 과다 또는 아는 오염 통(#365) */
-  const confirmNeeded = strongStock || guardedPicked.contaminated.length > 0 || taintedPicked.length > 0;
+  // [결정 #439] 이 병입이 팔리면 캠페인이 끝나고 등급이 정해진다 — 한 번 더 누르게 하고 S 세 조건과 이 병입의 예상 품질을 보인다(「기다리면 n개월 뒤」는 말하지 않는다)
+  const winBottle = useMemo(() => (preview?.ok ? isWinBottling(s, components) : false), [s, preview?.ok, components]);
+  const winGrade = winBottle ? sGradeNow(s, masked ? (shownQ?.q ?? null) : preview?.evaluation ? preview.evaluation.quality : null) : null;
+  const confirmNeeded = strongStock || guardedPicked.contaminated.length > 0 || taintedPicked.length > 0 || winBottle;
   // 두 번 눌러 확인 — 고른 원액·옵션이 바뀌면 다시 묻는다
   const blendKey = JSON.stringify([components, opts]);
   const [armed, setArmed] = useState<string | null>(null);
@@ -644,12 +648,18 @@ export function Bottling() {
                   ⚠ 오염 원액이 섞인 원액({taintedPicked.join(', ')})을 쓴다 — 아는 오염 통에서 꺼낸 원액이라 이미 밴 결점 향(곰팡내)이 제품에 섞여 품질이 내려간다. 막지는 않는다(한 번 더 눌러야 병입된다)
                 </p>
               )}
+              {winGrade && (
+                <div role="alert" className="rounded border border-amber-400 bg-amber-50 px-2 py-1.5 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+                  <div className="font-semibold">이 병이 팔리면 캠페인이 끝나고 등급이 정해진다(다음 달 판정 · 등급은 이때 한 번만 매긴다)</div>
+                  <div>지금 판정이면: {winGrade.rows.map((r) => `${r.id === 'quality' ? '12년 품질(이 병입 예상 · 어림)' : r.label} ${r.now ?? '—'} / ${r.target} ${r.ok == null ? '?' : r.ok ? '✓' : '✗'}${r.close ? '(아슬아슬 — 판정은 이번 달 결산 뒤 값)' : ''}`).join(' · ')}{winGrade.grade && <> → <b>{winGrade.grade}</b></>}</div>
+                </div>
+              )}
               <Button variant="primary" disabled={!preview.ok} onClick={() => {
                 if (confirmNeeded && !isArmed) { setArmed(blendKey); return; }
                 setArmed(null);
                 const r = bottleWithHeritage(s, dispatch, components, opts); // 10년 이상·플래그십이면 연표 창 (#244)
                 if (r !== false) { setPicked({}); setOpts({ ...opts, name: '' }); if (r) setReveal(r); }
-              }}>{confirmNeeded ? (isArmed ? `정말 ${num(preview.bottles)}병 병입 — 한 번 더 누르면 병입합니다` : `${restockTarget ? '재고 보충' : '병입하기'} (${[guardedPicked.contaminated.length ? '오염 통' : '', taintedPicked.length ? '오염 원액' : '', strongStock ? '재고 과다' : ''].filter(Boolean).join(' · ')} — 확인 필요)`) : restockTarget ? `「${restockTarget.name}」 재고 보충` : '병입하기'}</Button>
+              }}>{confirmNeeded ? (isArmed ? `정말 ${num(preview.bottles)}병 병입 — 한 번 더 누르면 병입합니다` : `${restockTarget ? '재고 보충' : '병입하기'} (${[winBottle ? '캠페인이 끝난다' : '', guardedPicked.contaminated.length ? '오염 통' : '', taintedPicked.length ? '오염 원액' : '', strongStock ? '재고 과다' : ''].filter(Boolean).join(' · ')} — 확인 필요)`) : restockTarget ? `「${restockTarget.name}」 재고 보충` : '병입하기'}</Button>
             </div>
           )}
         </div>
