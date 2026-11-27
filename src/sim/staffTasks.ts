@@ -50,9 +50,18 @@ function runAgingCheck(s: GameState, report: MonthReport, x: Staff): void {
   if (rare.length) report.notes.push(`${TASK_NOTE} 숙성 점검(${x.name}): 레어 캐스크 발견 — ${rare.join(', ')}`);
   if (!taskEventMonth(s, x)) return;
   const old = s.inventory.casks.filter((c) => c.contents && !c.owner && c.contents.oakMonths >= V.minOakMonths);
-  const flagged = old.map((c) => ({ c, t: tanninOutlook(s, c) })).filter((y) => (y.t?.penalty ?? 0) >= V.flagPenalty && !y.t?.moved).sort((a, b) => b.t!.penalty - a.t!.penalty);
+  // P-MGT-72 (가) · P-PROD-79(10차 153개월): 여기(틱 6단계)는 3 숙성이 목재를 +1 한 뒤 · 9 결산이 달을 +1 하기 전이다. 그대로 부르면 `tanninOutlook`의
+  // `monthsHere = s.month − filledMonth`가 목재 개월보다 1 작아 **모든 통이 「옮긴 원액」(moved)으로 읽혀 알림에서 빠졌다**(121 ~ 150개월 메모 9번이 모두 「없다」).
+  // 결산 뒤(화면) 시점으로 센다 — 탄닌 값은 그대로이고 moved만 바로잡힌다. 맛볼 통 고르기(agingCheckPicks)는 moved를 보지 않아 손대지 않는다(봇 · 샘플 불변)
+  const settled: GameState = { ...s, month: s.month + 1 };
+  const flagged = old.map((c) => ({ c, t: tanninOutlook(settled, c) })).filter((y) => (y.t?.penalty ?? 0) >= V.flagPenalty && !y.t?.moved).sort((a, b) => b.t!.penalty - a.t!.penalty);
   const pens = flagged.map((y) => y.t!.penalty);
-  const flagText = flagged.length ? ` · ${flagged[0]!.c.id}${flagged.length > 1 ? ` 외 ${flagged.length - 1}통` : ''}은 지금 통 그대로면 12년 감점 약 ${Math.round(Math.min(...pens))}${pens.length > 1 ? ` ~ ${Math.round(Math.max(...pens))}` : ''}` : old.length ? ' · 12년 감점이 큰 통은 없다' : '';
+  const range = `${Math.round(Math.min(...pens))}${pens.length > 1 ? ` ~ ${Math.round(Math.max(...pens))}` : ''}`;
+  const firstFill = flagged.filter((y) => y.c.fills <= 1).length;
+  // P-MGT-72 (나): 「없다」가 「품질에 문제가 없다」로 읽히지 않게 무엇을 봤는지 쓴다 — 이 알림은 나무 맛(탄닌 상한 초과)만 본다
+  const flagText = flagged.length
+    ? ` · ${flagged[0]!.c.id}${flagged.length > 1 ? ` 외 ${flagged.length - 1}통` : ''}${firstFill ? `(첫 채움 ${firstFill}통)` : ''}은 지금 통 그대로면 12년에 나무 맛이 넘쳐 감점 약 ${range} — 리필 통 원액과 섞거나 활성이 낮은 통으로 옮기면 준다`
+    : old.length ? ` · 12년에 나무 맛 감점 ${V.flagPenalty}점 넘는 통은 없다(나무 맛만 본다 — 샘플 추정은 지금 품질이다)` : '';
   report.notes.push(`${TASK_NOTE} 숙성 점검(${x.name}): ${V.minOakMonths / 12}년 넘은 통 ${old.length}개 가운데 이번 달 ${picks.length}통을 맛봤다${flagText} — 그동안 증류장을 비워 새 원액의 이취가 조금 는다`);
 }
 
