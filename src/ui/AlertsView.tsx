@@ -8,6 +8,7 @@ import { loanRoomTotal, monthlyFixedCost } from '../sim/loans';
 import { won } from './format';
 import { useGame } from '../store/game';
 import { useUi } from '../store/ui';
+import { sGradeNow, sGradeRowText } from './sGrade';
 import { cashAlert, contamNote, winDelayNote, fmtWon, lastMonthFlow, loanSchedule, monthTodos, paymentJump, reserveCandidateCasks, spotSaleStake, type TodoTarget } from './alerts';
 import { Button } from './kit';
 import { masterpieceLine } from './Verdict'; // [결정 #433] 「명작」 한 줄(결과 화면과 같은 문구)
@@ -267,6 +268,12 @@ export function JourneyStrip() {
       </div>
       {/* [결정 #407] 12년 적격 뒤 — 출하를 미룬 만큼 S 등급 순자산 기준이 오른다(지금 기준 금액을 숫자로) */}
       {winDelayNote(s) && <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">⏳ {winDelayNote(s)}</p>}
+      {/* [결정 #439] 승리 전 — S 등급 세 조건과 지금 값(승리한 달에 한 번 판정 · #433). 품질은 병입 탭 조합 비교와 같은 아는 값 */}
+      {(() => { const g = sGradeNow(s); return g && (
+        <p className="mt-1 text-xs text-stone-600 dark:text-stone-300" title="S 등급은 12년 싱글 몰트를 처음 팔아 이긴 달에 한 번 매긴다 — 셋을 모두 채우면 S, 하나라도 모자라면 A. 품질은 지금 적격 원액으로 낸 12년의 예상(병입 탭 「12년 병입 — 적격 통과 조합 비교」와 같은 값 — 샘플로 어림)">
+          <span className="font-medium text-stone-700 dark:text-stone-200">S 등급 조건</span> — {g.rows.map(sGradeRowText).join(' · ')}
+        </p>
+      ); })()}
       {/* [결정 #433] 「명작」 칭호 — 결과 화면을 닫은 뒤에도 목표 칸에 한 줄. 후반 목표 「15년 첫 출하」(✓)와 따로 — 칭호는 품질 · 인지도까지 채운 것 */}
       {masterpieceLine(s) && <p className="mt-1 text-xs font-medium text-amber-800 dark:text-amber-300">🏅 명작 — {masterpieceLine(s)}</p>}
       {/* [#388 ① G3] 후반 목표 — 열린 것만(승리 전 2 · 승리 뒤 최대 3). 보상 없음(기록만) — 짝 행동 한 줄을 마우스 풀이로 */}

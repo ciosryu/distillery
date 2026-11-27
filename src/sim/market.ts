@@ -27,7 +27,7 @@ import { coverageShare } from './staffTaskRules'; // [결정 #412] 시음회 맞
 
 /** 유통 커버리지: 영업 직원 네트워크 스탯 기반 */
 export function coverage(s: GameState): number {
-  return clamp(0.03 + staffOf(s, 'sales').reduce((t, x) => t + 0.04 * coverageShare(x) + (x.stats.b / 100) * 0.12 * coverageShare(x), 0), 0, 1); // [결정 #412] 시음회를 맡은 영업은 몫 × 0.5(MGT staffTaskRules) — 평소 업무면 × 1
+  return clamp(0.03 + staffOf(s, 'sales').reduce((t, x) => t + 0.04 * coverageShare(x, s) + (x.stats.b / 100) * 0.12 * coverageShare(x, s), 0), 0, 1); // [결정 #412 · #440] 시음회가 열리는 달의 영업은 몫 × 0.5(MGT staffTaskRules) — 평소 업무 · 여는 달이 아니면 × 1
 }
 
 /** 영업 협상 스탯: 유통 마진 최대 10% 절감 → 소비자가 배수 */

@@ -11,7 +11,7 @@ import { ROLE_INFO } from './content/catalog';
 import { clamp } from './flavor';
 import { rngFor } from './rng';
 import { FLAGSHIP_RESERVE_TAG } from './tags';
-import { onTask, TASK_VALUES } from './staffTaskRules';
+import { onTask, TASK_VALUES, TASTING_EVERY_MONTHS, tastingEventMonth } from './staffTaskRules';
 import { tanninOutlook } from './warehouse';
 import type { Cask, GameState, MonthReport, Product, Staff } from './types';
 
@@ -65,18 +65,18 @@ export function tastingProduct(s: GameState, report: MonthReport): Product | und
 }
 
 /**
- * 영업 「시음회」 — 분기 첫 달(맡긴 달 포함) 한 번. 결과(성황 · 보통 · 썰렁)는 친화(a)로 기운 난수 — 품질과 무관(I2 안전).
+ * 영업 「시음회」 — [결정 #440] 맡긴 달부터 3개월마다(`tastingEventMonth`) 한 번. 맞바꿈(커버리지 × 0.5)도 그달만이다. 결과(성황 · 보통 · 썰렁)는 친화(a)로 기운 난수 — 품질과 무관(I2 안전).
  * 그 제품 브랜드 인지도 + · 위스키베이스 리뷰 몇 건(참 품질 + 잡음 — 리뷰가 원래 아는 품질을 좁히는 길, MKT). 리뷰는 틱 5′ 뒤라 결산 `reviews`에 덧붙인다
  */
 function runTasting(s: GameState, report: MonthReport, x: Staff, held: { tasting?: boolean }): void {
-  if (!taskEventMonth(s, x)) return;
+  if (!tastingEventMonth(s, x)) return;
   // 같은 달 시음회는 한 번 — 영업 둘이 맡아도 같은 제품 · 같은 리뷰 스트림이 두 번 붙지 않게(MKT 2026-11-25)
-  if (held.tasting) { report.notes.push(`${TASK_NOTE} 시음회(${x.name}): 이번 달 시음회는 이미 열렸다 — 다음 분기에 연다`); return; }
+  if (held.tasting) { report.notes.push(`${TASK_NOTE} 시음회(${x.name}): 이번 달 시음회는 이미 열렸다 — ${TASTING_EVERY_MONTHS}개월 뒤에 연다`); return; }
   held.tasting = true;
   const V = TASK_VALUES.tasting;
   const p = tastingProduct(s, report);
-  if (!p) { report.notes.push(`${TASK_NOTE} 시음회(${x.name}): 이번 달 팔린 제품이 없어 열지 않았다`); return; }
-  if (s.finance.cash < V.cost) { report.notes.push(`${TASK_NOTE} 시음회(${x.name}): 현금이 모자라 이번 분기에는 열지 못했다`); return; }
+  if (!p) { report.notes.push(`${TASK_NOTE} 시음회(${x.name}): 이번 달 팔린 제품이 없어 열지 않았다 — ${TASTING_EVERY_MONTHS}개월 뒤 다시`); return; }
+  if (s.finance.cash < V.cost) { report.notes.push(`${TASK_NOTE} 시음회(${x.name}): 현금이 모자라 이번에는 열지 못했다 — ${TASTING_EVERY_MONTHS}개월 뒤 다시`); return; }
   s.finance.cash -= V.cost;
   report.expenses.marketing = (report.expenses.marketing ?? 0) + V.cost;
   const charm = x.stats.a / 100;

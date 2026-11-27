@@ -311,7 +311,9 @@ export function tanninOutlook(s: GameState, cask: Cask, atMonths = campaignMinOa
   const cap = CATEGORY.whisky.caps.oak_tannin ?? 45;
   // [결정 #374] 옮긴 원액 — 이 통에 머문 개월이 목재 개월보다 짧다(filledMonth는 통입 · 피니싱 때 이 통에 넣은 달). 앞 통 활성도를 몰라 절대값은 하한일 뿐
   const monthsHere = cask.contents && cask.filledMonth != null ? Math.max(0, Math.min(elapsed, s.month - cask.filledMonth)) : elapsed;
-  const moved = cask.contents && monthsHere < elapsed ? { monthsHere, addHere: Math.round(Math.max(0, at - now) * 10) / 10 } : undefined;
+  // [P-PROD-79] 한 달은 너그럽게 — 월 진행 안(직원 일 「숙성 점검」)에서는 통의 목재 개월이 이미 1 늘었는데 `s.month`는 아직 그대로라
+  // 옮기지 않은 통도 monthsHere = elapsed − 1이 되어 모두 「옮긴 원액」으로 빠졌다(10차 판 121 ~ 150개월 「12년 감점이 큰 통은 없다」). 통입 · 피니싱으로 옮긴 원액은 여러 달 차이라 그대로 잡힌다
+  const moved = cask.contents && monthsHere + 1 < elapsed ? { monthsHere, addHere: Math.round(Math.max(0, at - now) * 10) / 10 } : undefined;
   return {
     activity: Math.round(cask.activity * 100) / 100, atMonths, tannin: Math.round(t * 10) / 10, cap,
     penalty: Math.round(Math.max(0, t - cap) * CAP_PENALTY_PER_POINT * 10) / 10, now: Math.round(now * 10) / 10, slot: { w: view.id, tier },
