@@ -1,5 +1,5 @@
-import { AUTO_PRICE_MAX_ROUNDS } from './economics';
-import { decidePolicyPrice, PRICE_POLICY, type PolicySpec } from './pricePolicy';
+import { AUTO_PRICE_MAX_ROUNDS, currentSuggested } from './economics';
+import { decidePolicyPrice, POLICY_GUARD, PRICE_POLICY, type PolicySpec } from './pricePolicy';
 import type { GameState, MonthReport, PriceLogEntry, PricePolicy, Product } from './types';
 
 // 자동 가격 3정책 실행 엔진 (코어 ARCH — [결정 #291], architecture §10.9 ④). 정책 함수(목표함수·정책 가드·범위)는 MKT `pricePolicy.ts`.
@@ -7,8 +7,8 @@ import type { GameState, MonthReport, PriceLogEntry, PricePolicy, Product } from
 //   → 확정 값으로 lastFactor 저장(그릇이 있을 때만) → 사유 한 줄(MonthReport.priceLog). 정책을 켜지 않은 판은 아무것도 바꾸지 않는다
 
 export type PriceModeId = PricePolicy['mode'];
-export const PRICE_MODE_IDS: readonly PriceModeId[] = ['turnover', 'profit', 'premium'];
-export const PRICE_MODE_LABEL: Record<PriceModeId, string> = { turnover: 'A 현금회전', profit: 'B 이익', premium: 'C 가격 유지' };
+export const PRICE_MODE_IDS: readonly PriceModeId[] = ['turnover', 'profit', 'premium', 'drain'];
+export const PRICE_MODE_LABEL: Record<PriceModeId, string> = { turnover: 'A 현금회전', profit: 'B 이익', premium: 'C 가격 유지', drain: 'D 원액 소화' };
 /** 플레이어가 정할 수 있는 배수의 바깥 한계 — MKT 범위 기본값과 같다 */
 export const POLICY_FACTOR_LIMITS = { min: PRICE_POLICY.min, max: PRICE_POLICY.max } as const;
 
@@ -27,6 +27,7 @@ export function policyError(q: Partial<PricePolicy>): string | null {
   }
   if (min != null && max != null && min > max) return '최소 배수가 최대 배수보다 큽니다';
   if (target != null && ((min != null && target < min) || (max != null && target > max))) return '목표 배수가 범위 밖입니다';
+  if (q.horizon != null && !PRICE_POLICY.drainHorizons.includes(q.horizon)) return `기간은 ${PRICE_POLICY.drainHorizons.join(' · ')}개월 중 하나여야 합니다`; // [결정 #441] D
   return null;
 }
 
@@ -42,7 +43,13 @@ export function runPricePolicies(s: GameState, report: MonthReport | null, month
   const live = s.commerce.products.filter((p) => { const m = priceModeOf(p); return m && (!only || only.has(p.id)); });
   if (!live.length) return;
   const start = new Map(live.map((p) => [p.id, p.price]));
-  const specs = new Map(live.map((p) => [p.id, { ...(p.pricePolicy ?? {}), mode: priceModeOf(p)! } as PolicySpec])); // 그달 시작의 lastFactor로 고정
+  // 그달 시작의 lastFactor로 고정. 한 달 가드(B · D)인데 lastFactor가 없으면(막 켬) 그달 시작 배수로 채운다 — 비워 두면 바퀴마다 「지금 값」이 기준이 되어
+  // 한 달에 최대 3단계 움직였다([결정 #441] D 시나리오에서 찾음: 「시그니처 블랜드」 켠 순간 ×2.42 → ×2.72). C는 lastFactor 없음 = 「처음 켠 달」이라 건드리지 않는다
+  const specs = new Map(live.map((p) => {
+    const spec = { ...(p.pricePolicy ?? {}), mode: priceModeOf(p)! } as PolicySpec;
+    if (spec.lastFactor == null && POLICY_GUARD[spec.mode]?.period === 'month') { const sug = currentSuggested(s, p); if (sug > 0 && p.price > 0) spec.lastFactor = p.price / sug; }
+    return [p.id, spec] as const;
+  }));
   const last = new Map<string, { factor: number | null; why: string }>();
   const order = [...live].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)); // id 순 — 배열 순서와 무관([결정 #300])
   for (let round = 1; round <= AUTO_PRICE_MAX_ROUNDS; round++) {
@@ -74,6 +81,7 @@ export function normalizePolicy(q: PricePolicy): PricePolicy {
   for (const k of ['min', 'max', 'target'] as const) { const v = clip(q[k]); if (v == null) delete next[k]; else next[k] = v; }
   // lastFactor는 자르지 않는다 — A는 범위가 없으면 [0.6, 2] 밖 값(지금 값 후보)도 고르고 그 배수를 적는다. 유한하지 않을 때만 지운다
   if (q.lastFactor != null && !Number.isFinite(q.lastFactor)) delete next.lastFactor;
+  if (q.horizon != null && !PRICE_POLICY.drainHorizons.includes(q.horizon)) delete next.horizon; // [결정 #441] D 기간 — 고르기 밖이면 지워 기본(12)으로
   if (next.min != null && next.max != null && next.min > next.max) [next.min, next.max] = [next.max, next.min];
   return JSON.stringify(next) === JSON.stringify(q) ? q : next;
 }

@@ -575,9 +575,11 @@ export type CashFlowKey =
 /** 항목별 현금 흐름. 부호: 입금 +, 출금 − */
 export type CashFlows = Partial<Record<CashFlowKey, number>>;
 
-/** 자동 가격 정책 그릇 ([결정 #291]) — A 현금회전(#200) · B 이익(다기간) · C 가격 유지(목표 배수). MKT `PolicySpec`과 같은 모양 */
+/** 자동 가격 정책 그릇 ([결정 #291]) — A 현금회전(#200) · B 이익(다기간) · C 가격 유지(목표 배수) · D 원액 소화([결정 #441]). MKT `PolicySpec`과 같은 모양 */
 export interface PricePolicy {
-  mode: 'turnover' | 'profit' | 'premium';
+  mode: 'turnover' | 'profit' | 'premium' | 'drain';
+  /** D의 기간(개월) — 공급(병 + 맞는 원액)을 이 기간에 나눠 판다. 없으면 MKT 기본(12). 다른 정책은 읽지 않는다 */
+  horizon?: number;
   /** C의 목표 배수(없으면 n = 1.3) */
   target?: number;
   /** 플레이어가 정한 범위(배수, 엣지 ⑦) — 없으면 MKT 기본 [0.6, 2](A는 범위 없이 #200 그대로) */
