@@ -20,7 +20,8 @@ export type CoreAction =
   | { type: 'deleteTag'; tagId: string }
   /**
    * 자동 가격 정책 ([결정 #291], architecture §10.9 ②) — productId 'all'이면 국내 판매 제품 전부(면세 한정판 제외).
-   * mode null = 끔(지금 값 유지, 정책 그릇은 남긴다). 고르면 그 제품만 바로 한 번 정한다(옛 setAutoPrice와 같다)
+   * mode null = 끔(지금 값 유지, 정책 그릇은 남긴다). **새로 켰거나 정책을 바꾼 제품만** 그 자리에서 한 번 정한다(옛 setAutoPrice와 같다).
+   * 켠 채 같은 정책을 다시 고르거나 기간(horizon) · 범위(min/max) · 목표(target)만 바꾸면 값은 그대로 두고 다음 판매 직전에 정한다([결정 #441] — 한 달 가드를 건너뛰지 않게)
    */
   | { type: 'setPricePolicy'; productId: string; mode: PricePolicy['mode'] | null; target?: number; min?: number; max?: number; horizon?: number };
 
@@ -47,8 +48,8 @@ export const CORE_HANDLERS: Handlers<CoreAction> = {
       if (a.min !== undefined) q.min = a.min;
       if (a.max !== undefined) q.max = a.max;
       if (a.target !== undefined) q.target = a.target;
-      if (a.horizon !== undefined) q.horizon = a.horizon; // [결정 #441] D 기간
       else if (a.mode === 'premium' && q.target == null) q.target = PRICE_POLICY.n;
+      if (a.horizon !== undefined) q.horizon = a.horizon; // [결정 #441] D 기간(넘기지 않으면 그릇의 값 유지)
       // 정책을 바꾸거나 · 꺼져 있던 것을 다시 켜면 가드 기준을 새로 잡는다(지금 값 ÷ 기준가). 끈 뒤 같은 정책을 켜면 지난 배수에서 출발하던 것을 막는다(10차 판 뒤 묶음 ① — MKT #1216 경고 ①)
       if (p.pricePolicy?.mode !== a.mode || !p.autoPrice) delete q.lastFactor;
       const err = policyError(q);
