@@ -217,11 +217,13 @@ export function decidePolicyPrice(s: GameState, p: Product, spec: PolicySpec, mo
     factor = t.price / sug;
     why = t.why;
   } else if (spec.mode === 'profit') {
-    const v = profitTarget(s, p, monthOfYear);
-    if (v == null) return { price: null, factor: null, why: '이익 — 이익 나는 값이 없어 그대로' };
+    const plan = profitPlan(s, p, monthOfYear);
+    if (plan == null) return { price: null, factor: null, why: '이익 — 이익 나는 값이 없어 그대로' };
+    const v = plan.price;
     const want = v / sug;
-    // [결정 #441] ③ 격자는 그대로(×2) — 「다 팔 값」 후보만 그 위로 갈 수 있다(플레이어가 상한을 정하지 않았을 때 · D 상한 ×4까지)
-    if (spec.max == null && want > max) max = Math.min(PRICE_POLICY.drainMax, want);
+    // [결정 #441] ③ 격자는 그대로(×2) — **고른 값이 「다 팔 값」 후보일 때만** 그 위로 갈 수 있다(플레이어가 상한을 정하지 않았을 때 · D 상한 ×4까지).
+    // 지금 값 후보(②-1)가 범위 밖이면 범위로 자른다 — 손 값 ×2.42 「김포 블렌디드」에 B를 켜면 그 자리에서 ×2.00(#1302에서는 지금 값이 그대로 남았다)
+    if (spec.max == null && want > max && plan.sellThrough != null && v === plan.sellThrough) max = Math.min(PRICE_POLICY.drainMax, want);
     factor = guardFactor(want, base, POLICY_GUARD.profit!.step);
     why = Math.abs(factor - want) > 1e-9 ? `이익 — ${PRICE_POLICY.profitHorizon}개월 이익 최대 ${fx(want)}, 가드로 한 단계(${fx(factor)})` : `이익 — ${PRICE_POLICY.profitHorizon}개월 이익 최대 ${fx(want)}`;
   } else if (spec.mode === 'drain') {
