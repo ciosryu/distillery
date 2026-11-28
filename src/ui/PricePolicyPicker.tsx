@@ -54,14 +54,14 @@ export function PricePolicyPicker({ s, p }: { s: GameState; p: Product }) {
         </select>
         {mode === 'premium' && (
           <span className="flex items-center gap-0.5">
-            × <input type="number" min={PRICE_POLICY.min} max={PRICE_POLICY.max} step={0.05} defaultValue={target} key={`${p.id}:${target}`} aria-label={`${p.name} 가격 유지 배수`}
+            × <input type="number" min={PRICE_POLICY.min} max={PRICE_POLICY.max} step={0.05} defaultValue={target} key={`${p.id}:${target}`} aria-label={`${p.name} 가격 유지 배수`} title="바꾸면 다음 분기 첫 달 판매 때 반영된다(이번 달 값은 그대로)"
               className="w-14 rounded border border-stone-300 bg-white px-1 py-0 text-[11px] tabular-nums dark:border-stone-700 dark:bg-stone-800"
               onBlur={(e) => { const v = Math.round(Number(e.target.value) * 100) / 100; if (Number.isFinite(v) && v !== target && v >= PRICE_POLICY.min && v <= PRICE_POLICY.max) set('premium', v); }} />
             <span className="text-stone-500">기준가</span>
           </span>
         )}
         {mode === 'drain' && (
-          <select className="rounded border border-stone-300 bg-white px-1 py-0 text-[11px] dark:border-stone-700 dark:bg-stone-800" value={horizon} onChange={(e) => set('drain', undefined, Number(e.target.value))} aria-label={`${p.name} 원액 소화 기간`} title="병 + 맞는 원액을 몇 개월에 나눠 팔까 — 길수록 천천히 팔아야 하니 값이 오른다">
+          <select className="rounded border border-stone-300 bg-white px-1 py-0 text-[11px] dark:border-stone-700 dark:bg-stone-800" value={horizon} onChange={(e) => set('drain', undefined, Number(e.target.value))} aria-label={`${p.name} 원액 소화 기간`} title="병 + 맞는 원액을 몇 개월에 나눠 팔까 — 길수록 천천히 팔아야 하니 값이 오른다. 바꾸면 다음 달 판매 때 반영된다(이번 달 값은 그대로)">
             {PRICE_POLICY.drainHorizons.map((h) => <option key={h} value={h}>{h}개월에</option>)}
           </select>
         )}

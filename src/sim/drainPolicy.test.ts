@@ -139,4 +139,11 @@ describe('[결정 #441] D 원액 소화', () => {
     expect(loaded.commerce.products.map((p) => p.pricePolicy)).toEqual(s.commerce.products.map((p) => p.pricePolicy));
     expect(JSON.stringify(advanceMonth(loaded))).toBe(JSON.stringify(advanceMonth(s)));
   });
+
+  it('[ARCH] C로 켜며 horizon을 넘겨도 C 기본 목표(n)가 들어간다 — else if 짝', () => {
+    const s = load(S153); const id = byName(s, '김포 블렌디드').id;
+    const q = byName(applyAction(s, { type: 'setPricePolicy', productId: id, mode: 'premium', horizon: 12 }).state, '김포 블렌디드').pricePolicy!;
+    expect(q.target).toBe(PRICE_POLICY.n);
+    expect(q.horizon).toBe(12);
+  });
 });
