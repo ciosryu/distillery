@@ -53,11 +53,11 @@ export const PRICE_POLICY = {
   premiumFloor: 0.9,
   premiumStuckFloor: 0.8,
   premiumStuckMonths: 3,
-  /** D: 기간 고르기 · 기본(12 — 6은 원액이 계속 들어오는 소주에서 너무 높게 나와 흔들린다, mkt-pricing-postrun §6.7) · 범위(D만 상한 ×4 — 원액이 없을 때 ×2 위로 가는 것이 D의 뜻, 153 세이브 시그니처 블랜드 ×3.62) */
+  /** `[튜닝]` D: 기간 고르기 · 기본(12 — 6은 원액이 계속 들어오는 소주에서 너무 높게 나와 흔들린다, mkt-pricing-postrun §6.7) · 범위(D만 상한 ×4 — 원액이 없을 때 ×2 위로 가는 것이 D의 뜻, 153 세이브 시그니처 블랜드 ×3.62) */
   drainHorizons: [6, 12, 24, 36] as readonly number[],
   drainHorizon: 12,
   drainMin: 0.6,
-  drainMax: 4,
+  drainMax: 4, // `[튜닝]` D 상한(기준가 배수) — 코어 POLICY_FACTOR_LIMITS(0.6 ~ 2)와 따로 둔다(ARCH (나) 안)
 } as const;
 
 /** 정책별 가드(공통 가드 장치의 값 — ARCH §10.9 ⑥3): A 없음(#200 그대로) · B 한 달 한 단계 · C는 분기 한 단계(내림만, premiumTarget 안에서) */

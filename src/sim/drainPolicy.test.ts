@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parsePlayFile } from '../store/playlog';
-import { applyAction, calendar, knownState, sellThroughPrice, type GameState } from './index';
+import { advanceMonth, applyAction, calendar, knownState, migrateSave, sellThroughPrice, type GameState } from './index';
 import { autoRestockSources, currentSuggested } from './economics';
 import { sellOutPrice } from './market';
 import { decidePolicyPrice, drainBounds, drainTarget, matchingCaskBottles, PRICE_POLICY } from './pricePolicy';
@@ -124,5 +124,19 @@ describe('[결정 #441] D 원액 소화', () => {
     expect(byName(applyAction(h6, { type: 'setPricePolicy', productId: 'all', mode: 'drain' }).state, '김포 시그니처 블랜드').price).toBe(v);
     // 다른 정책으로 바꾸면 그 자리에서 한 번 정한다(지금과 같다)
     expect(byName(applyAction(h6, { type: 'setPricePolicy', productId: id, mode: 'profit' }).state, '김포 시그니처 블랜드').price).not.toBe(v);
+  });
+
+  it('[ARCH] D 그릇(mode · horizon · lastFactor)을 가진 세이브를 저장 → 불러와도 그대로 · 왕복 뒤 같은 달 결과가 바이트 동일 · 옛 min/max는 지우지 않고 D가 읽지 않는다', () => {
+    let s = load(S153);
+    const id = byName(s, '김포 시그니처 블랜드').id;
+    s = applyAction(s, { type: 'setPricePolicy', productId: id, mode: 'profit', min: 0.8, max: 1.9 }).state;
+    s = applyAction(s, { type: 'setPricePolicy', productId: id, mode: 'drain', horizon: 24 }).state;
+    s = advanceMonth(s);
+    const pol = byName(s, '김포 시그니처 블랜드').pricePolicy!;
+    expect(pol).toMatchObject({ mode: 'drain', horizon: 24, min: 0.8, max: 1.9 });
+    expect(pol.lastFactor! * currentSuggested(knownState(s), byName(s, '김포 시그니처 블랜드'))).toBeGreaterThan(1.9 * currentSuggested(knownState(s), byName(s, '김포 시그니처 블랜드'))); // 옛 max(1.9)를 넘었다 — D는 읽지 않는다
+    const loaded = migrateSave(JSON.parse(JSON.stringify(s)))!;
+    expect(loaded.commerce.products.map((p) => p.pricePolicy)).toEqual(s.commerce.products.map((p) => p.pricePolicy));
+    expect(JSON.stringify(advanceMonth(loaded))).toBe(JSON.stringify(advanceMonth(s)));
   });
 });
