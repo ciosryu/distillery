@@ -4,14 +4,15 @@
 //   A 현금회전(turnover) = 지금 자동 가격 #200 그대로(이번 달 진열 공헌 최대 — bestAutoPrice)
 //   B 이익 극대화(profit) = 다기간 공헌 최대(지평 h = 3개월) + 한 달 한 단계 가드(기준 = lastFactor)
 //   C 프리미엄 유지(premium) = 목표 배수 유지(기본 n = 1.3), 분기 경계에서만 맞춘다. 적체면 분기에 한 단계 내림, 판매 0이 3개월이면 하한을 낮춘다
+//   D 원액 소화(drain, [결정 #441]) = 공급(병 재고 + 표기에 맞는 통 원액, 같은 원액을 쓰는 제품 수로 나눔)이 기간 H(기본 12개월)에 팔리는 값 + 한 달 한 단계 가드
 // 모든 배수는 기준가(currentSuggested — 권장가 식 그대로) 대비 한 가지 뜻이다(PROD AP3-PROD-1, P-PROD-53). 값은 100원 단위로 반올림한다(#200과 같다)
-import { AUTO_PRICE_FACTORS, bestAutoPrice, currentSuggested } from './economics';
-import { bottleMargin, priceOptions } from './market';
+import { AUTO_PRICE_FACTORS, autoRestockSources, bestAutoPrice, currentSuggested } from './economics';
+import { bottleMargin, knownState, priceOptions, sellOutPrice, STOCKOUT_LOOKBACK_MONTHS } from './market';
 import { outboundLogistics } from './sites';
 import { DEFAULT_POLICY_N, defaultPolicyPrice } from './content/market';
 import type { GameState, Product } from './types';
 
-export type PriceMode = 'turnover' | 'profit' | 'premium';
+export type PriceMode = 'turnover' | 'profit' | 'premium' | 'drain';
 
 /** 정책 그릇의 값(ARCH §10.9 ① (b) 안과 같은 모양 — 코어 타입이 들어오면 그쪽을 쓴다) */
 export interface PolicySpec {
@@ -23,6 +24,8 @@ export interface PolicySpec {
   max?: number;
   /** 정책이 마지막으로 정한 배수 — 가드 기준(재고 보충으로 값이 기준가로 돌아간 달에도 흔들리지 않게, MKT 0a182d1) */
   lastFactor?: number;
+  /** D의 기간(개월) — 없으면 PRICE_POLICY.drainHorizon */
+  horizon?: number;
 }
 
 /** 정책 결정 — price가 null이면 값을 바꾸지 않는다(why에 이유) */
@@ -50,6 +53,11 @@ export const PRICE_POLICY = {
   premiumFloor: 0.9,
   premiumStuckFloor: 0.8,
   premiumStuckMonths: 3,
+  /** `[튜닝]` D: 기간 고르기 · 기본(12 — 6은 원액이 계속 들어오는 소주에서 너무 높게 나와 흔들린다, mkt-pricing-postrun §6.7) · 범위(D만 상한 ×4 — 원액이 없을 때 ×2 위로 가는 것이 D의 뜻, 153 세이브 시그니처 블랜드 ×3.62) */
+  drainHorizons: [6, 12, 24, 36] as readonly number[],
+  drainHorizon: 12,
+  drainMin: 0.6,
+  drainMax: 4, // `[튜닝]` D 상한(기준가 배수) — 코어 POLICY_FACTOR_LIMITS(0.6 ~ 2)와 따로 둔다(ARCH (나) 안)
 } as const;
 
 /** 정책별 가드(공통 가드 장치의 값 — ARCH §10.9 ⑥3): A 없음(#200 그대로) · B 한 달 한 단계 · C는 분기 한 단계(내림만, premiumTarget 안에서) */
@@ -57,6 +65,7 @@ export const POLICY_GUARD: Record<PriceMode, { step: number; period: 'month' | '
   turnover: null,
   profit: { step: PRICE_POLICY.step, period: 'month' },
   premium: { step: PRICE_POLICY.step, period: 'quarter' },
+  drain: { step: PRICE_POLICY.step, period: 'month' },
 };
 
 const round100 = (v: number) => Math.max(100, Math.round(v / 100) * 100);
@@ -74,6 +83,54 @@ export function zeroSalesRun(s: GameState, productId: string, limit = 12): numbe
     n++;
   }
   return n;
+}
+
+/**
+ * [결정 #441] D의 「맞는 원액」(병) — 자동 납품이 이 제품에 쓸 수 있는 원액(`autoRestockSources` — 표기 · 레시피 · 스타일이 맞는 통 · 탱크, 자동 납품을 켜지 않아도)을 병으로 바꾼 값.
+ * **같은 원액을 쓸 수 있는 다른 진열 제품이 있으면 그 수로 나눈다**(겹쳐 세지 않게 — 단순한 안, PROD 자동 납품 우선순위와 맞추는 것은 뒤). 「진열 제품」 = 재고가 있거나
+ * 최근 6개월(`STOCKOUT_LOOKBACK_MONTHS` — T8과 같은 잣대) 안에 판 제품 · 면세 전용 제외. 원액 양은 보이는 값이라 품질을 읽지 않는다(I2)
+ */
+export function matchingCaskBottles(s: GameState, p: Product): number {
+  const perBottle = p.abv * (p.bottleMl / 1000);
+  if (perBottle <= 0) return 0;
+  const mine = autoRestockSources(s, p);
+  if (!mine.length) return 0;
+  const key = (x: { comp: { source: string; id: string } }) => `${x.comp.source}:${x.comp.id}`;
+  const sold = new Set(s.history.reports.slice(-STOCKOUT_LOOKBACK_MONTHS).flatMap((r) => r.sales.filter((x) => x.bottles > 0).map((x) => x.productId)));
+  const users = new Map<string, number>();
+  for (const x of s.commerce.products) {
+    if (x.id === p.id || x.dutyFreeOnly || (x.stockBottles <= 0 && !sold.has(x.id))) continue;
+    for (const y of autoRestockSources(s, x)) users.set(key(y), (users.get(key(y)) ?? 0) + 1);
+  }
+  return Math.floor(mine.reduce((t, x) => t + (x.lot.volumeL * x.lot.abv) / (1 + (users.get(key(x)) ?? 0)), 0) / perBottle);
+}
+
+/** D의 바닥 배수 — drainMin과 「병당 공헌 > 0」 중 높은 쪽(0.05 간격으로 찾는다, drainMax까지). 없으면 null */
+function drainFloor(s: GameState, p: Product, sug: number): number | null {
+  for (let f: number = PRICE_POLICY.drainMin; f <= PRICE_POLICY.drainMax + 1e-9; f += 0.05) if (profitable(s, p, round100(sug * f))) return f;
+  return null;
+}
+/** D가 값을 찾는 범위(원) — [바닥, 기준가 × drainMax]. 한 화면 가격표도 같은 범위로 찾는다(같은 숫자). 기준가 · 이익 나는 값이 없으면 null */
+export function drainBounds(s: GameState, p: Product): { lo: number; hi: number } | null {
+  const sug = currentSuggested(s, p);
+  if (sug <= 0) return null;
+  const floor = drainFloor(s, p, sug);
+  return floor == null ? null : { lo: sug * floor, hi: sug * PRICE_POLICY.drainMax };
+}
+
+/**
+ * D 원액 소화(가드 전) — 공급(병 재고 + 맞는 원액)이 기간 H에 국내에서 팔리는 값(아는 품질 · `sellOutPrice` — 한 화면 가격표와 같은 셈).
+ * 범위는 D 기본 [바닥, drainMax](플레이어 범위 칸을 쓰지 않는다). 재고 0이면 null(진열에 없으면 팔 수 없다)
+ */
+export function drainTarget(s: GameState, p: Product, monthOfYear: number, horizon: number = PRICE_POLICY.drainHorizon): { price: number; factor: number; at: 'cap' | 'floor' | null; stock: number; cask: number } | null {
+  if (p.dutyFreeOnly || p.stockBottles <= 0 || p.price <= 0) return null;
+  const sug = currentSuggested(s, p);
+  const b = drainBounds(s, p);
+  if (sug <= 0 || b == null) return null;
+  const cask = matchingCaskBottles(s, p);
+  const r = sellOutPrice(knownState(s), p.id, monthOfYear, horizon, p.stockBottles + cask, b.lo, b.hi);
+  if (!r) return null;
+  return { price: r.price, factor: r.price / sug, at: r.at, stock: p.stockBottles, cask };
 }
 
 /** A 현금회전 — #200 그대로 */
@@ -117,7 +174,8 @@ export function decidePolicyPrice(s: GameState, p: Product, spec: PolicySpec, mo
   if (p.stockBottles <= 0 || p.price <= 0) return { price: null, factor: null, why: '재고 없음 — 그대로' };
   const sug = currentSuggested(s, p);
   if (sug <= 0) return { price: null, factor: null, why: '기준가 없음 — 그대로' };
-  const min = spec.min ?? PRICE_POLICY.min, max = spec.max ?? PRICE_POLICY.max;
+  // D는 플레이어 범위 칸을 쓰지 않는다 — 다른 정책에서 남은 min/max가 그릇에 있어도 D 기본 범위(바닥은 drainTarget이 공헌 > 0으로 올린다)
+  const min = spec.mode === 'drain' ? PRICE_POLICY.drainMin : spec.min ?? PRICE_POLICY.min, max = spec.mode === 'drain' ? PRICE_POLICY.drainMax : spec.max ?? PRICE_POLICY.max;
   if (min > max) return { price: null, factor: null, why: `범위가 틀렸다(${fx(min)} > ${fx(max)}) — 그대로` };
   const now = p.price / sug;
   const base = spec.lastFactor ?? now;
@@ -137,6 +195,15 @@ export function decidePolicyPrice(s: GameState, p: Product, spec: PolicySpec, mo
     const want = v / sug;
     factor = guardFactor(want, base, POLICY_GUARD.profit!.step);
     why = Math.abs(factor - want) > 1e-9 ? `이익 — ${PRICE_POLICY.profitHorizon}개월 이익 최대 ${fx(want)}, 가드로 한 단계(${fx(factor)})` : `이익 — ${PRICE_POLICY.profitHorizon}개월 이익 최대 ${fx(want)}`;
+  } else if (spec.mode === 'drain') {
+    const h = spec.horizon ?? PRICE_POLICY.drainHorizon;
+    const d = drainTarget(s, p, monthOfYear, h);
+    if (d == null) return { price: null, factor: null, why: '원액 소화 — 이익 나는 값이 없어 그대로' };
+    const want = d.factor;
+    factor = guardFactor(want, base, POLICY_GUARD.drain!.step);
+    const edge = d.at === 'cap' ? ` — 상한 ${fx(PRICE_POLICY.drainMax)}에서도 다 팔린다` : d.at === 'floor' ? ' — 바닥 값에서도 남는다' : '';
+    const what = `원액 소화 — 병 ${d.stock.toLocaleString()} + 맞는 원액 ${d.cask.toLocaleString()}병을 ${h}개월에 팔 값 ${fx(want)}${edge}`;
+    why = Math.abs(factor - want) > 1e-9 ? `${what}, 가드로 한 단계(${fx(factor)})` : what;
   } else {
     const target = Math.min(max, Math.max(min, spec.target ?? PRICE_POLICY.n));
     const quarter = s.month % 3 === 0;

@@ -309,6 +309,31 @@ export function sellThroughPrice(ks: GameState, productId: string, monthOfYear: 
   return Math.round(hi / 100) * 100;
 }
 
+/**
+ * [결정 #441] ① 정책 D 「원액 소화」 · 한 화면 가격표 — 공급(병)이 months달 국내 수요 합과 같아지는 출고가를 [lo, hi] 안에서 **양쪽으로** 찾는다.
+ * `sellThroughPrice`와 같은 셈(아는 품질 `ks` · 계절 배수 · 같은 범주 나눔 · 잡음 없음 · 형제 값 그대로)인데, 지금 값보다 낮은 쪽도 찾는다(원액이 넉넉하면 내린다).
+ * hi에서도 다 팔리면 `{ price: hi, at: 'cap' }`, lo에서도 남으면 `{ price: lo, at: 'floor' }`. 값은 100원 단위. 진열에 없거나(재고 0) 계절이 0이면 null.
+ * 상태 · 난수 불변(읽기만)
+ */
+export function sellOutPrice(ks: GameState, productId: string, monthOfYear: number, months: number, supplyBottles: number, lo: number, hi: number): { price: number; at: 'cap' | 'floor' | null } | null {
+  const p = ks.commerce.products.find((x) => x.id === productId);
+  if (!p || p.dutyFreeOnly || p.stockBottles <= 0 || !(lo > 0) || !(hi >= lo)) return null;
+  const seas = regionOf(ks).seasonality;
+  const now = seas[monthOfYear - 1]!;
+  if (!(now > 0)) return null;
+  const span = Array.from({ length: months }, (_, i) => seas[(monthOfYear - 1 + i) % 12]!).reduce((t, x) => t + x, 0) / now;
+  const demandAt = (price: number): number => {
+    const t = { ...ks, commerce: { ...ks.commerce, products: ks.commerce.products.map((x) => (x.id === p.id ? { ...p, price } : x)) } };
+    return (domesticDemands(t, monthOfYear, regionOf(ks)).get(p.id)?.demandBottles ?? 0) * span;
+  };
+  const r100 = (v: number) => Math.max(100, Math.round(v / 100) * 100);
+  if (demandAt(hi) >= supplyBottles) return { price: r100(hi), at: 'cap' };
+  if (demandAt(lo) <= supplyBottles) return { price: r100(lo), at: 'floor' };
+  let a = lo, b = hi; // demandAt(a) > supply ≥ demandAt(b) — 수요는 값에 대해 줄어든다
+  for (let i = 0; i < 40 && b - a > 100; i++) { const m = (a + b) / 2; if (demandAt(m) > supplyBottles) a = m; else b = m; }
+  return { price: r100(b), at: null };
+}
+
 /** 가격을 바꾸면 — 판매 화면의 가격 비교. 판매 가능 = min(재고, 수요 기댓값). 소매 처리 역량·±10% 난수는 넣지 않는다 */
 /** 가격 비교 한 줄. lineup*은 국내 진열 전체(이 제품 포함) — 같은 카테고리 나눔(#154) 때문에 이 제품 값을 내리면 형제 제품 판매를 뺏어 온다([결정 #212]) */
 export interface PriceOption { price: number; consumer: number; demandBottles: number; sellBottles: number; revenue: number; contribution: number; lineupRevenue: number; lineupContribution: number }

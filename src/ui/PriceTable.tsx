@@ -60,7 +60,7 @@ export function PriceTable() {
                 {PRICE_TABLE_HORIZONS.map((h) => <option key={h} value={h}>{h}개월</option>)}
               </select>
             </label>
-            <label className="flex items-center gap-1" title="병 = 병입된 재고만 · 병 + 맞는 원액 = 자동 납품 후보와 같은 통 · 탱크 원액까지(다른 제품과 나눠 쓸 수 있어 넉넉하게 잡힐 수 있다)">공급
+            <label className="flex items-center gap-1" title="병 = 병입된 재고만 · 병 + 맞는 원액 = 자동 납품 후보와 같은 통 · 탱크 원액까지(같은 원액을 쓰는 진열 제품이 있으면 그 수로 나눠 센다 — 자동 가격 D와 같은 셈)">공급
               <select className="rounded border border-stone-300 bg-white px-1 py-0 dark:border-stone-700 dark:bg-stone-800" value={supply} onChange={(e) => setSupply(e.target.value as SupplyMode)} aria-label="다 팔 값 공급">
                 <option value="bottles">병 재고만</option>
                 <option value="withCasks">병 + 맞는 원액</option>
@@ -95,10 +95,11 @@ export function PriceTable() {
                   <Td right>{r.restocked && <span className="text-xs text-stone-500" title="병 재고가 0 — 다시 채웠다면 이번 달 국내 수요(품절 배지와 같은 셈)">채우면 </span>}{num(Math.round(r.demand))}병{Math.round(r.demand) !== Math.round(r.demandNow) && <div className="text-xs text-stone-500">지금 {num(Math.round(r.demandNow))}병</div>}</Td>
                   <Td right>{r.sellThrough != null ? <>
                     {wonFull(r.sellThrough)}
-                    {!r.autoPrice && r.sellThrough !== r.draft && <button className="ml-1 text-xs underline decoration-dotted" onClick={() => setDraft(r.id, r.sellThrough!)} aria-label={`${r.name} 다 팔 값을 고치는 값으로`}>이 값으로</button>}
-                  </> : r.coverMonths == null ? <span className="text-stone-400">—</span>
-                    : r.nearNow ? <span className="text-xs text-stone-600 dark:text-stone-400" title="지금 값이 이 기간에 공급을 거의 다 파는 값이다(5% 낮추면 다 팔린다)">≈ 지금 값</span>
-                    : <span className="text-xs text-stone-500" title="지금 값으로는 이 기간에 공급을 다 못 판다 — 다 팔 값은 지금 값보다 낮다(계절 없는 어림)">넉넉 · {monthsText(r.coverMonths)}</span>}</Td>
+                    {r.edge === 'cap' && <div className="text-xs text-stone-500" title="기준가 × 4(정책 D와 같은 상한)에서도 이 기간에 다 팔린다">상한 — 그래도 다 팔림</div>}
+                    {r.edge === 'floor' && <div className="text-xs text-stone-500" title="이익 나는 바닥 값(정책 D와 같은 바닥)에서도 이 기간에 다 못 판다(계절 없는 어림)">바닥 — 그래도 남음{r.coverMonths != null ? ` · ${monthsText(r.coverMonths)}` : ''}</div>}
+                    {r.nearNow ? <div className="text-xs text-stone-600 dark:text-stone-400" title="지금 값의 ±5% 안">≈ 지금 값</div>
+                      : !r.autoPrice && r.sellThrough !== r.draft && <button className="ml-1 text-xs underline decoration-dotted" onClick={() => setDraft(r.id, r.sellThrough!)} aria-label={`${r.name} 다 팔 값을 고치는 값으로`}>이 값으로</button>}
+                  </> : <span className="text-stone-400">—</span>}</Td>
                   <Td className="text-xs tabular-nums text-stone-600 dark:text-stone-400">{r.last3.map((x) => `${num(x.sold)}${x.price ? `·${Math.round(x.price / 1000)}k` : ''}`).join(' / ')}</Td>
                 </tr>
               );

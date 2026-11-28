@@ -7,7 +7,7 @@ import { runway } from './alerts';
 import { won, wonFull } from './format';
 
 // 자동 가격 3정책 화면 (파트 MKT — [결정 #291] ①·④·⑤·⑥, architecture §10.9 ③). 명령·그릇·사유 기록은 ARCH 엔진(#388 setPricePolicy · priceLog)
-//   제품별: 끔 / A 현금회전 / B 이익 / C 가격 유지(+ 목표 배수와 대가 한 줄) · 이번 달 사유 · 고를 때 한 줄 안내(P-MGT-43)
+//   제품별: 끔 / A 현금회전 / B 이익 / C 가격 유지(+ 목표 배수와 대가 한 줄) / D 원액 소화(+ 기간 — [결정 #441]) · 이번 달 사유 · 고를 때 한 줄 안내(P-MGT-43)
 //   판매 카드 머리: 모든 제품을 [정책]으로 · 현금 위기 배너: "A로 바꾸면 이번 달 +○원(추정)" — 정보만, 자동 전환 없음
 
 type Pick = PriceMode | 'off';
@@ -16,12 +16,14 @@ const OPTIONS: { value: Pick; label: string }[] = [
   { value: 'turnover', label: PRICE_MODE_LABEL.turnover },
   { value: 'profit', label: PRICE_MODE_LABEL.profit },
   { value: 'premium', label: PRICE_MODE_LABEL.premium },
+  { value: 'drain', label: PRICE_MODE_LABEL.drain },
 ];
 /** 정책마다 한 줄 — 무엇을 최대로 하나와 대가 */
 export const POLICY_HELP: Record<PriceMode, string> = {
   turnover: '이번 달 진열 공헌이 가장 큰 값 — 재고를 빨리 돈으로 바꾼다. 다음 달 이후는 보지 않는다',
   profit: `앞으로 ${PRICE_POLICY.profitHorizon}개월 이익이 가장 큰 값 — 같은 범주 형제 제품의 이익도 합쳐서 본다(형제 쪽으로 손님을 보내려고 이 제품 값을 올릴 수 있다). 한 달에 한 단계(기준가 × ${PRICE_POLICY.step})씩만 움직인다. 현금이 급할 때는 느리다`,
   premium: `정한 배수(기본 기준가 × ${PRICE_POLICY.n})를 지킨다 — 분기에만 맞추고, 재고가 ${PRICE_POLICY.premiumOverstockMonths}개월치를 넘으면 분기에 한 단계 내린다. 덜 팔리는 대신 값이 흔들리지 않는다`,
+  drain: `병 재고 + 표기에 맞는 통 원액(같은 원액을 쓰는 진열 제품이 있으면 나눠 셈)을 고른 기간에 나눠 팔 값 — 원액이 적으면 올려 소화를 늦추고(기준가 × ${PRICE_POLICY.drainMax}까지), 넉넉하면 내린다(이익 나는 값까지). 한 달에 한 단계(기준가 × ${PRICE_POLICY.step})씩만 움직인다. 「한 화면 가격표」의 「병 + 맞는 원액」 다 팔 값과 같은 셈이다. 이익이나 현금은 보지 않는다`,
 };
 /** 고를 때 한 줄 안내(P-MGT-43) — 런웨이 6개월 미만이면 A 쪽 */
 export const RUNWAY_HINT_MONTHS = 6;
@@ -35,7 +37,8 @@ export function PricePolicyPicker({ s, p }: { s: GameState; p: Product }) {
   const mode = priceModeOf(p);
   const pick: Pick = mode ?? 'off';
   const target = p.pricePolicy?.target ?? PRICE_POLICY.n;
-  const set = (m: Pick, t?: number) => dispatch({ type: 'setPricePolicy', productId: p.id, mode: m === 'off' ? null : m, ...(m === 'premium' && t != null ? { target: t } : {}) });
+  const horizon = p.pricePolicy?.horizon ?? PRICE_POLICY.drainHorizon;
+  const set = (m: Pick, t?: number, h?: number) => dispatch({ type: 'setPricePolicy', productId: p.id, mode: m === 'off' ? null : m, ...(m === 'premium' && t != null ? { target: t } : {}), ...(m === 'drain' && h != null ? { horizon: h } : {}) });
   const log = mode ? lastLog(s, p) : undefined;
   const cost = mode === 'premium' ? premiumCost(s, p, target, calendar(s).monthOfYear) : null;
   const r = runway(s);
@@ -51,11 +54,16 @@ export function PricePolicyPicker({ s, p }: { s: GameState; p: Product }) {
         </select>
         {mode === 'premium' && (
           <span className="flex items-center gap-0.5">
-            × <input type="number" min={PRICE_POLICY.min} max={PRICE_POLICY.max} step={0.05} defaultValue={target} key={`${p.id}:${target}`} aria-label={`${p.name} 가격 유지 배수`}
+            × <input type="number" min={PRICE_POLICY.min} max={PRICE_POLICY.max} step={0.05} defaultValue={target} key={`${p.id}:${target}`} aria-label={`${p.name} 가격 유지 배수`} title="바꾸면 다음 분기 첫 달 판매 때 반영된다(이번 달 값은 그대로)"
               className="w-14 rounded border border-stone-300 bg-white px-1 py-0 text-[11px] tabular-nums dark:border-stone-700 dark:bg-stone-800"
               onBlur={(e) => { const v = Math.round(Number(e.target.value) * 100) / 100; if (Number.isFinite(v) && v !== target && v >= PRICE_POLICY.min && v <= PRICE_POLICY.max) set('premium', v); }} />
             <span className="text-stone-500">기준가</span>
           </span>
+        )}
+        {mode === 'drain' && (
+          <select className="rounded border border-stone-300 bg-white px-1 py-0 text-[11px] dark:border-stone-700 dark:bg-stone-800" value={horizon} onChange={(e) => set('drain', undefined, Number(e.target.value))} aria-label={`${p.name} 원액 소화 기간`} title="병 + 맞는 원액을 몇 개월에 나눠 팔까 — 길수록 천천히 팔아야 하니 값이 오른다. 바꾸면 다음 달 판매 때 반영된다(이번 달 값은 그대로)">
+            {PRICE_POLICY.drainHorizons.map((h) => <option key={h} value={h}>{h}개월에</option>)}
+          </select>
         )}
       </label>
       {cost && <div className="text-stone-500">이 배수면 {wonFull(cost.price)} — A(이번 달 공헌 최대 {wonFull(cost.aPrice)}) 대비 이번 달 판매 {cost.pct >= 0 ? '+' : ''}{Math.round(cost.pct * 100)}%(추정)</div>}
@@ -77,6 +85,7 @@ export function PolicyBasisLegend() {
       <div>· {POLICY_BASIS.turnover}</div>
       <div>· {POLICY_BASIS.profit}</div>
       <div>· {POLICY_BASIS.premium}</div>
+      <div>· {POLICY_BASIS.drain}</div>
     </div>
   );
 }
