@@ -79,3 +79,25 @@ export function policyExplain(ks: GameState, p0: Product, monthOfYear: number): 
   }
   return { line, warn, next };
 }
+
+/**
+ * [제안 P-MKT-54 · PM 2026-11-28] 꺼진 제품을 B · C로 켜면 그 자리에서 정할 값 — 지금 값이 B · C 범위(플레이어가 고친 범위, 없으면 기준가 × 0.6 ~ 2) 밖일 때만.
+ * 켜는 순간 범위로 잘려 값이 크게 움직이는 것(153 「김포 블렌디드」 ×2.42 → B ×2.00, −19%)을 켜기 전에 보인다. 엔진과 같은 함수(`decidePolicyPrice`)로 센다 —
+ * B는 막 켠 달의 가드 기준 = 지금 배수(엔진 #1295), C는 「처음 켠 달」(목표 배수로). **읽기만** · 아는 품질(ks). A · D는 범위 밖 값도 쓰니 보이지 않는다
+ */
+export function enablePreview(ks: GameState, p0: Product, monthOfYear: number): { min: number; max: number; factor: number; profit: number | null; premium: number | null } | null {
+  if (p0.autoPrice || p0.dutyFreeOnly || p0.price <= 0 || p0.stockBottles <= 0) return null;
+  const p = ks.commerce.products.find((x) => x.id === p0.id) ?? p0;
+  const sug = currentSuggested(ks, p);
+  if (sug <= 0) return null;
+  const min = p.pricePolicy?.min ?? PRICE_POLICY.min, max = p.pricePolicy?.max ?? PRICE_POLICY.max;
+  const factor = p.price / sug;
+  if (factor >= min - 1e-9 && factor <= max + 1e-9) return null;
+  const { lastFactor: _drop, ...rest } = p.pricePolicy ?? { mode: 'profit' as const };
+  void _drop;
+  const at = (mode: 'profit' | 'premium', lastFactor?: number) => decidePolicyPrice(ks, p, { ...rest, mode, ...(lastFactor != null ? { lastFactor } : {}) } as PolicySpec, monthOfYear).price;
+  const keep = (v: number | null) => (v != null && v !== p.price ? v : null); // 켜도 값이 그대로면 보이지 않는다
+  const profit = keep(at('profit', factor)), premium = keep(at('premium'));
+  return profit == null && premium == null ? null : { min, max, factor, profit, premium };
+}
+
