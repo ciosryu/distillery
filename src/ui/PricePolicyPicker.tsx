@@ -1,5 +1,5 @@
 import { calendar, knownState, PRICE_MODE_LABEL, priceModeOf, type GameState, type Product } from '../sim';
-import { POLICY_BASIS, policyExplain } from './policyExplain'; // [제안 P-MKT-51] (가) 기준 · 이번 달 왜 이 값
+import { enablePreview, POLICY_BASIS, policyExplain } from './policyExplain'; // [제안 P-MKT-51] (가) 기준 · 이번 달 왜 이 값
 import { premiumCost, PRICE_POLICY, SUPPLY_HINT_MONTHS, supplyHintOf, switchToTurnoverGain, type PriceMode } from '../sim/pricePolicy';
 import { supplyHorizon } from '../sim/economics';
 import { useGame } from '../store/game';
@@ -45,6 +45,7 @@ export function PricePolicyPicker({ s, p }: { s: GameState; p: Product }) {
   const sh = supplyHorizon(s, p, SUPPLY_HINT_MONTHS);
   const hint = supplyHintOf(mode, sh);
   const ex = mode ? policyExplain(knownState(s), p, calendar(s).monthOfYear) : null; // 아는 품질로만(I2) · 읽기만
+  const pre = mode ? null : enablePreview(knownState(s), p, calendar(s).monthOfYear); // [P-MKT-54] 꺼진 제품 · 값이 B · C 범위 밖일 때만
   return (
     <div className="mt-0.5 text-[11px] text-stone-600 dark:text-stone-400">
       <label className="flex items-center gap-1" title={mode ? POLICY_HELP[mode] : `켜면 매달 판매 직전에 고른 정책대로 값을 정한다. 켤 때 미리 고른 값은 A — A로 켤 때 값이 아직 첫 출고가(기준가 × ${PRICE_POLICY.n})면 기준가에서 시작한다`}>
@@ -66,6 +67,11 @@ export function PricePolicyPicker({ s, p }: { s: GameState; p: Product }) {
           </select>
         )}
       </label>
+      {pre && (
+        <div className="text-amber-700 dark:text-amber-400" title={`B · C는 범위(기준가 × ${pre.min} ~ ${pre.max}) 안에서만 값을 정한다 — 지금 값(기준가 × ${pre.factor.toFixed(2)})은 범위 밖이라 켜는 순간 잘린다. A(현금회전) · D(원액 소화)는 범위 밖 값도 쓴다. 범위는 정책을 켠 뒤 바꿀 수 있다(어림 · 아는 품질)`}>
+          켜면 바로: {[pre.profit != null ? `B ${wonFull(pre.profit)}(${pre.profit >= p.price ? '+' : '−'}${Math.abs(Math.round((pre.profit / p.price - 1) * 100))}%)` : null, pre.premium != null ? `C ${wonFull(pre.premium)}(${pre.premium >= p.price ? '+' : '−'}${Math.abs(Math.round((pre.premium / p.price - 1) * 100))}%, 정한 배수 ×${target.toFixed(2)})` : null].filter(Boolean).join(' · ')} — 지금 값(기준가 × {pre.factor.toFixed(2)})이 B · C 범위(× {pre.min} ~ {pre.max}) {pre.factor > pre.max ? '위' : '아래'}라, 켜면 {[pre.profit != null ? 'B는 범위 끝으로' : null, pre.premium != null ? 'C는 정한 배수로' : null].filter(Boolean).join(' · ')} 간다. A · D는 범위 밖 값도 쓴다
+        </div>
+      )}
       {cost && <div className="text-stone-500">이 배수면 {wonFull(cost.price)} — A(이번 달 공헌 최대 {wonFull(cost.aPrice)}) 대비 이번 달 판매 {cost.pct >= 0 ? '+' : ''}{Math.round(cost.pct * 100)}%(추정)</div>}
       {ex && <div className="text-stone-700 dark:text-stone-300" title={`${POLICY_BASIS[mode!]} — 다음 판매 직전에 이 값으로 정한다(어림 · 아는 품질 · 다른 제품 값이 바뀌면 달라질 수 있다)`}>이번 달: {ex.line}</div>}
       {ex?.warn && <div className="text-amber-700 dark:text-amber-400">⚠ {ex.warn}</div>}
