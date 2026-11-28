@@ -2358,7 +2358,7 @@ npm run dev
 
 | 볼 것 | 어디서 · 무엇으로 | 기준선(같은 판 10차 101 ~ 112개월) `[사실 — 10차 기록 playlog.turns]` |
 |---|---|---|
-| ① D를 켠 제품 · 범주 · 끈 제품 | 판매 탭 제품별 「자동 가격」 → 「D 원액 소화」(+ 기간 6 · 12 · 24 · 36개월). 기록: 플레이 기록 `setPricePolicy` · 결산 `priceLog`의 mode `drain` | 10차 판 내내 정책 0번(`setPricePolicy` 0) |
+| ① D를 켠 제품 · 범주 · 끈 제품 | 판매 탭 제품별 「자동 가격」 → 「D 원액 소화」(+ 기간 6 · 12 · 24 · 36개월). 기록: 플레이 기록 `setPricePolicy` · 결산 `priceLog`의 mode `drain` | 101 ~ 112개월 정책 0번 · 판 전체 `setPricePolicy` 14번(턴 달 5 · 6 · 12 · 14 · 15 · 27 · 28 · 31 — 3년 차 뒤 0번) |
 | ② 손 가격 손질 횟수 · 시간 | 플레이 기록 `turns`(그달 `kinds.setPrice` · 누적 `activeMs` · `actions`의 차) | 12달에 **setPrice 37번(12달 중 10달) · 16.4분 · 행동 75** |
 
 - **판 빌드:** D가 든 빌드(#1295 · #1301 · #1311 · #1315 — main `1781f4a` 이후)다. P1 빌드(`6fb2bc7`)에는 D가 없다. P1이 끝난 뒤 PM이 `PLAY_BUILD.txt`를 새로 고정한다.
@@ -2375,7 +2375,8 @@ npm run dev
   - **D를 하나도 켜지 않는 것도 답이다.** 「몰라서」인지 「싫어서」인지는 질문 ①로 가린다.
   - 「재미가 줄었나」는 오너 한 사람 · 한 판의 답이다. 손질 횟수 · 시간으로 교차 확인한다.
   - 결산 `priceLog`는 최근 120개월만 남지만, 100 → 112개월이면 문제없다.
-- **기준선 셈**(다른 판에도 쓰도록 — 10차 153 세이브에서 a ~ b개월):
+- **달 표기:** 기준선은 **턴 달** 기준이다. `turns[].month`는 진행한 **뒤**의 달이라, 그 턴의 행동은 상태 달 `month − 1`에 한 것이다(10차 `arch.md` 70개월 절 머리의 약속). 턴 달 101 ~ 112 = 상태 달 100 ~ 111이다. 상태 달로 세면 setPrice는 36번이다. 카드 시작이 「100개월 무렵 기록」이라 턴 달 셈이 맞는다.
+- **기준선 셈**(다른 판에도 쓰도록 — 10차 153 세이브에서 턴 달 a ~ b):
 
 ```bash
 node -e "const t=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).playlog.turns,f=m=>t.find(x=>x.month===m),[a,b]=[+process.argv[2],+process.argv[3]];let sp=0,mp=0;for(const x of t)if(x.month>=a&&x.month<=b){const n=(x.kinds||{}).setPrice||0;sp+=n;if(n)mp++}console.log({setPrice:sp,monthsWithPrice:mp,min:((f(b).activeMs-f(a-1).activeMs)/6e4).toFixed(1),actions:f(b).actions-f(a-1).actions})" docs/playtest/10/distillery-mvp-standard-y13m10-202611270816.json 101 112
