@@ -596,8 +596,9 @@ export function Sales() {
       </div>
 
       <ExportShortfallNote s={s} />
-      <PriceDesk />
+      {/* P-MKT-53 · 오너 2026-11-28: 가격표를 제품별 카드(가격 정하기) 위에 — 표에서 값을 정하고 카드에서 세부를 본다. 아래에 두면 4,290px 밑이라 처음 화면에 안 보였다 */}
       <PriceTable />
+      <PriceDesk />
       <FeedCard />
       {!isLocked(s, 'action:openBrand') && <BrandLines />}
 
