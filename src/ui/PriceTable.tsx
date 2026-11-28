@@ -10,8 +10,8 @@ import { PRICE_TABLE_HORIZONS, priceTableRows, priceTableTotals, type SupplyMode
 
 // 펼침 기억 — 증류소 탭 접기와 같은 이름 공간(ARCH 2026-11-27: useFold는 꺼내지 않고 같은 꼴로 따로). 편의 기능이라 실패해도 그만(시크릿 창)
 const FOLD_KEY = 'distillery-tycoon/fold/price-table';
-/** 처음 보일 때 펼칠지 — [제안 P-MKT-53] 오너 결정 전까지 접힘(가). (나)면 true 한 줄 */
-const PRICE_TABLE_OPEN_DEFAULT = false;
+/** 처음 보일 때 펼칠지 — P-MKT-53 (나) 처음부터 펼침(오너 2026-11-28 PM 세션 「권장안대로」 — 10차 「다 팔 값」 줄이 있어도 "어딘지 모른다"). 접은 사람은 접힌 채로 기억한다 */
+const PRICE_TABLE_OPEN_DEFAULT = true;
 function readFold(): boolean | null {
   try { const x = JSON.parse(localStorage.getItem(FOLD_KEY) ?? 'null'); return typeof x === 'boolean' ? x : null; } catch { return null; }
 }
