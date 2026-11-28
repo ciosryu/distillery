@@ -8,7 +8,7 @@ import { decidePolicyPrice, drainTarget, PRICE_POLICY, profitTarget, type Policy
 /** 정책마다 「무엇을 기준으로 값을 정하나」 한 줄 — 판매 카드 머리 · 정책 풀이가 같이 쓴다 */
 export const POLICY_BASIS = {
   turnover: 'A 현금회전 — 이번 달 하나만 본다: 이번 달 판매 이익(같은 범주 제품 합)이 가장 큰 값',
-  profit: `B 이익 — 앞으로 ${PRICE_POLICY.profitHorizon}개월 이익이 가장 큰 값. 같은 범주 형제 제품의 이익도 합쳐서 본다. 한 달에 기준가 × ${PRICE_POLICY.step}씩만 움직인다`,
+  profit: `B 이익 — 앞으로 ${PRICE_POLICY.profitHorizon}개월 이익(같은 범주 형제 포함)이 가장 큰 값 근처(${Math.round(PRICE_POLICY.profitNearShare * 100)}% 안)에서 지금 값에 가장 가까운 값. 이 제품 판매를 ${Math.round((1 - PRICE_POLICY.profitOwnSalesFloor) * 100)}% 넘게 줄이는 값은 고르지 않는다. 「다 팔 값」도 후보다. 한 달에 기준가 × ${PRICE_POLICY.step}씩만 움직인다`,
   premium: `C 가격 유지 — 정한 배수(기본 기준가 × ${PRICE_POLICY.n})를 지킨다. 분기 첫 달에만 맞추고, 재고가 ${PRICE_POLICY.premiumOverstockMonths}개월치를 넘으면 분기에 한 단계 내린다`,
   drain: `D 원액 소화 — 병 재고 + 표기에 맞는 통 원액을 고른 기간(기본 ${PRICE_POLICY.drainHorizon}개월)에 나눠 팔 값. 원액이 적으면 올리고(기준가 × ${PRICE_POLICY.drainMax}까지) 넉넉하면 내린다(이익 나는 값까지). 한 달에 기준가 × ${PRICE_POLICY.step}씩만 움직인다`,
 } as const;
@@ -47,7 +47,7 @@ export function policyExplain(ks: GameState, p0: Product, monthOfYear: number): 
   else if (mode === 'profit') {
     line = t != null && Math.abs(t - next) >= 100
       ? `목표 ${won(t)}(기준가 ${fx(t / sug)}) · 한 달 한 단계 제한으로 이번 달 ${won(next)} · ${salesPart}`
-      : `${PRICE_POLICY.profitHorizon}개월 이익(형제 포함) 최대 ${won(next)}(기준가 ${fx(next / sug)}) · ${salesPart}`;
+      : `${PRICE_POLICY.profitHorizon}개월 이익(형제 포함) 최대 근처에서 지금 값에 가장 가까운 ${won(next)}(기준가 ${fx(next / sug)}) · ${salesPart}`;
   } else if (mode === 'drain') {
     const h = spec.horizon ?? PRICE_POLICY.drainHorizon;
     const dt = drainTarget(ks, p, monthOfYear, h);
