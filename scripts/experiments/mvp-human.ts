@@ -109,7 +109,7 @@ const AUTORESTOCK_RETIRE = process.env.AUTORESTOCK_RETIRE === '1';
 interface Policy { name: string; /** 「플래그십 출시」 승리 시도 (결정 #320 — 'new' 새 제품 · 'restock' 기존 제품 보충) */ launch?: 'new' | 'restock'; /** 게임 예비 보호(#260 4통 · 'reserve' 144)를 읽는다 — v16 판에서만(옛 판 X0L은 자기 규칙 그대로, 바이트 동일) */ gameTags?: boolean; /** 대형 유통 납품 수락(v16 `y7_retail` — MKT §1-c 규칙 사본): 그 달부터 위스키 제안은 받고 병입 목표에 납품량을 더한다, 다른 범주는 재고 6개월치↑일 때만 */ retailFrom?: number; /** 핵심 전문가 1인(#316): 열리면 이 직군을 고른다 · 'none' = 안 고름 */ specialist?: SpecialistRole | 'none'; soju: 'stock' | 'all'; loans: 'bot' | 'banner' | 'cheap' | 'none'; cut: 'none' | 'onCrisis' | 'at27' | 'y2to5' | 'p3'; visitor: boolean; farm: boolean; bigMalt: boolean; maltB?: number; sojuB?: number; sellNewMake?: boolean; mkt?: [number, number][]; fillEvery?: number; fillStopAt?: number; wipeAt?: number; maltOff?: [number, number]; skipBelow?: number; order?: 'old' | 'young'; labelFrom?: [number, number]; protect?: number; giftshopAt?: number; handfillAt?: number; exportFrom?: number; exportMax?: number; raiseIfCash?: number; exportPrice?: number; autoPrice?: boolean; lineup?: number; newMake?: { from: number; until: number; stock: number }; exportDemand?: boolean; maltFrom?: [number, number]; autoRestock?: number; visitorAt?: number; equipAt?: number; b2b?: { share: number; until: number }; flagship?: boolean; price?: 'table' | 'markup'; markup?: number; sojuOff?: [number, number]; overprod?: [number, number]; loansFrom?: number; fixAt?: number; buyAt?: [number, string][]; repayAt?: number; protectFrom?: [number, number]; salesAt?: number; pricePolicy?: Partial<Record<PriceKey, PriceGoal>>; engineA?: boolean; supplyHint?: boolean; /** 래퍼 고유 정책 값(p8Hooks.ts — interface를 글자로 고치지 않는다) */ ext?: Record<string, unknown>; /** 납품 수락 방식(F7 C-2): 'selective' = 위스키 제안도 재고 6개월치↑일 때만(기본 = 위스키는 늘 받음) */ retailMode?: 'selective' }
 /** 자동 가격 3정책(#288 — AP3) 봇 흉내: 범주별로 고른다. 플래그십 제품은 따로 */
 /** 자동 가격 3정책(결정 #291) — 엔진 이름과 1:1: A = 'turnover'(#200) · B = 'profit'(다기간 B′) · C = 'premium'(목표 배수 유지) */
-type PriceGoal = 'A' | 'B' | 'C';
+type PriceGoal = 'A' | 'B' | 'C' | 'D'; // D = 'drain'(#1295 — 「n개월에 다 팔 값」 · MGT B 수리 측정 2026-11-28)
 type PriceKey = 'soju_distilled' | 'malt_spirit' | 'whisky' | 'flagship';
 const P = (name: string, o: Partial<Policy>): Policy => ({ name, soju: 'stock', loans: 'banner', cut: 'none', visitor: true, farm: false, bigMalt: false, ...o });
 const POLICIES: Policy[] = [
@@ -178,7 +178,7 @@ const MKT8: [number, number][] = [[0, 3_500_000], [78, 4_000_000], [102, 2_000_0
 // 수출 84개월부터 5곳·가격 배수 1.25(사람 1.19~1.28). 보정 결과(6시드, standard): 166개월째 순자산 18.99억(사람 21.14억), 파산 0 — 수출 출발이 사람보다 1~2년 늦다
 // P8_POLICY=A|B|C (결정 #306 — #273 장기 숙성 경쟁력은 정책을 맞게 고른 판에서 판정): 정책을 따로 정하지 않은 P8 변형 전부(래퍼 prod-hold-p8.ts의 HA·HC·HD·HS 포함)를
 //   모든 계열 그 정책(3정책 엔진)으로 돌린다. 손 가격 변형(autoPrice: false)은 건드리지 않는다. 기본(없음) = 지금 그대로(X0 = A)
-const P8_POLICY = (['A', 'B', 'C'] as const).find((x) => x === process.env.P8_POLICY);
+const P8_POLICY = (['A', 'B', 'C', 'D'] as const).find((x) => x === process.env.P8_POLICY);
 const p8PolicyAll = (o: Partial<Policy>): Partial<Policy> => (P8_POLICY && !o.pricePolicy && o.autoPrice !== false ? { pricePolicy: { soju_distilled: P8_POLICY, malt_spirit: P8_POLICY, whisky: P8_POLICY, flagship: P8_POLICY } } : {});
 const P8 = (name: string, o: Partial<Policy>): Policy => P4(name, { mkt: MKT8, order: 'young', labelFrom: LABEL3, protect: 2, giftshopAt: 85, handfillAt: 86, exportFrom: 84, exportMax: 5, exportPrice: 1.25, raiseIfCash: 1_000_000_000, lineup: 3, autoPrice: true, newMake: { from: 5, until: 60, stock: 300 }, exportDemand: true, ...(AUTORESTOCK ? { autoRestock: AUTORESTOCK } : {}), ...o, ...p8PolicyAll(o) });
 /** 새 X0(v16): #320 승리 시도(출시 + 게임 예비 4통) + F5a 대형 유통 납품(84~) + 핵심 전문가(영업) */
@@ -371,7 +371,7 @@ function fill(s: GameState, p?: Policy, cnt: { contamFills: number } | null = FI
 
 // ── 자동 가격 3정책 = 게임 엔진(결정 #291) — P8은 정책을 고르기만 한다 ──
 // AP3-MGT-1의 봇 흉내(PRICE_POLICY·policyMonthly·priceSwitch)와 옛 이름('profit' = #200)은 B1-MGT-1 2단계에서 지웠다(엔진 'profit' = B′와 겹쳐서)
-const ENGINE_MODE = { A: 'turnover', B: 'profit', C: 'premium' } as const;
+const ENGINE_MODE = { A: 'turnover', B: 'profit', C: 'premium', D: 'drain' } as const;
 const priceKey = (x: { name: string; category: ProductCategory }): PriceKey | null => (x.name.startsWith('플래그십') ? 'flagship' : x.category === 'soju_distilled' || x.category === 'malt_spirit' || x.category === 'whisky' ? x.category : null);
 const goalOf = (p: Policy, x: { name: string; category: ProductCategory }): PriceGoal | undefined => { const k = priceKey(x); return k ? p.pricePolicy?.[k] : undefined; };
 /** 병입·보충 직후 — 이 범주 제품에 고른 정책을 엔진으로 건다(이미 같은 정책이면 그대로). 정책이 없는 범주는 autoPrice면 A */
