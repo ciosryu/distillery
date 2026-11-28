@@ -21,7 +21,7 @@ const OPTIONS: { value: Pick; label: string }[] = [
 /** 정책마다 한 줄 — 무엇을 최대로 하나와 대가 */
 export const POLICY_HELP: Record<PriceMode, string> = {
   turnover: '이번 달 진열 공헌이 가장 큰 값 — 재고를 빨리 돈으로 바꾼다. 다음 달 이후는 보지 않는다',
-  profit: `앞으로 ${PRICE_POLICY.profitHorizon}개월 이익이 가장 큰 값 — 같은 범주 형제 제품의 이익도 합쳐서 본다(형제 쪽으로 손님을 보내려고 이 제품 값을 올릴 수 있다). 한 달에 한 단계(기준가 × ${PRICE_POLICY.step})씩만 움직인다. 현금이 급할 때는 느리다`,
+  profit: `앞으로 ${PRICE_POLICY.profitHorizon}개월 이익(같은 범주 형제 제품 포함)이 가장 큰 값의 ${Math.round(PRICE_POLICY.profitNearShare * 100)}% 안에서 지금 값에 가장 가까운 값 — 값이 덜 흔들린다. 이 제품 판매를 ${Math.round((1 - PRICE_POLICY.profitOwnSalesFloor) * 100)}% 넘게 줄이는 값(형제 쪽으로 손님을 보내려는 값)은 고르지 않는다. 「6개월에 다 팔 값」도 후보로 본다(상한을 정하지 않았으면 기준가 × 2 위로도). 한 달에 한 단계(기준가 × ${PRICE_POLICY.step})씩만 움직인다. 현금이 급할 때는 느리다`,
   premium: `정한 배수(기본 기준가 × ${PRICE_POLICY.n})를 지킨다 — 분기에만 맞추고, 재고가 ${PRICE_POLICY.premiumOverstockMonths}개월치를 넘으면 분기에 한 단계 내린다. 덜 팔리는 대신 값이 흔들리지 않는다`,
   drain: `병 재고 + 표기에 맞는 통 원액(같은 원액을 쓰는 진열 제품이 있으면 나눠 셈)을 고른 기간에 나눠 팔 값 — 원액이 적으면 올려 소화를 늦추고(기준가 × ${PRICE_POLICY.drainMax}까지), 넉넉하면 내린다(이익 나는 값까지). 한 달에 한 단계(기준가 × ${PRICE_POLICY.step})씩만 움직인다. 「한 화면 가격표」의 「병 + 맞는 원액」 다 팔 값과 같은 셈이다. 이익이나 현금은 보지 않는다`,
 };
