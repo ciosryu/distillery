@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parsePlayFile } from '../store/playlog';
-import { calendar, knownState, type GameState } from './index';
+import { applyAction, calendar, knownState, type GameState } from './index';
 import { currentSuggested } from './economics';
 import { decidePolicyPrice, profitPlan } from './pricePolicy';
 import { sellThroughView } from '../ui/SellThroughNote';
@@ -14,14 +14,28 @@ const byName = (s: GameState, n: string) => s.commerce.products.find((p) => p.na
 const moy = (s: GameState) => calendar(s).monthOfYear;
 
 describe('[결정 #441] B 수리', () => {
-  it('「시그니처 블랜드」(병 317 · 원액 0 · 11만 원 ×2.42): 예전 B는 격자 끝 ×2.00 → 90,800원으로 내렸다 → 이제 내리지 않는다(②-1 지금 값이 최대의 95% 안)', () => {
+  it('「시그니처 블랜드」(병 317 · 원액 0 · 11만 원 ×2.42 — B 범위 밖): 다 팔 값(×3.6)은 후보에 있지만 고르지 않으므로 범위 상한 ×2.00으로 자른다(범위는 플레이어의 한계 · #291 ⑦)', () => {
     const s = load(S153); const p = byName(s, '김포 시그니처 블랜드');
     const sug = currentSuggested(knownState(s), p);
     const plan = profitPlan(s, p, moy(s))!;
-    expect(plan.sellThrough).not.toBeNull(); // ③ 다 팔 값(×3.6)은 후보에 있다 — 3개월 이익(보충을 가정)으로는 지금 값을 넘지 못한다(설계 §9 한계)
-    expect(plan.price).toBe(p.price);
-    const d = decidePolicyPrice(s, p, { mode: 'profit' }, moy(s));
-    expect(d.factor ?? p.price / sug).toBeGreaterThanOrEqual(p.price / sug - 1e-9);
+    expect(plan.sellThrough).not.toBeNull();
+    expect(plan.price).not.toBe(plan.sellThrough); // 3개월 이익(보충을 가정)으로는 다 팔 값이 뽑히지 않는다 — 올려서 늦추는 일은 D의 몫
+    const d = decidePolicyPrice(s, p, { mode: 'profit', lastFactor: p.price / sug }, moy(s));
+    expect(d.factor!).toBeCloseTo(2, 2);
+    expect(d.why).toMatch(/범위 상한 ×2\.00으로 자름/);
+  });
+  it('[#1302 구멍 수리] 손 값 ×2.42 「김포 블렌디드」에 B를 켜면 그 자리에서 범위 상한(×2.00 = 33,000원 · 기준가 16,500원)으로 — 지금 값 후보가 ×2 위를 열지 않는다', () => {
+    const s = load(S153); const p = byName(s, '김포 블렌디드');
+    const after = byName(applyAction(s, { type: 'setPricePolicy', productId: p.id, mode: 'profit' }).state, '김포 블렌디드');
+    expect(p.price).toBe(40_000);
+    expect(after.price).toBe(Math.round((2 * currentSuggested(knownState(s), p)) / 100) * 100); // 33,000원
+  });
+  it('[#1302 구멍 수리] 다 팔 값 후보가 뽑혀 ×2 위로 가는 길은 남는다 — 다만 플레이어가 상한을 정했으면 그 상한을 넘지 않는다', () => {
+    const s = load(S153); const p = byName(s, '김포 블렌디드');
+    const sug = currentSuggested(knownState(s), p);
+    // 범위를 정하면(×1.9) 지금 값 · 다 팔 값 모두 그 안
+    const d = decidePolicyPrice(s, p, { mode: 'profit', max: 1.9, lastFactor: p.price / sug }, moy(s));
+    expect(d.price!).toBeLessThanOrEqual(Math.round((1.9 * sug) / 100) * 100); // 100원 반올림
   });
   it('③ 다 팔 값 후보 = 판매 카드 「6개월에 다 팔 값」 줄의 값(같은 셈)', () => {
     for (const f of [S70, S153]) {
