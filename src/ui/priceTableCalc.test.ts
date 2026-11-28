@@ -20,14 +20,16 @@ describe('[#438 ③] 한 화면 가격표', () => {
     expect(s).toEqual(before);
   });
 
-  it('고친 값이 없으면 수요 = 아는 품질의 국내 수요 · 다 팔 값(6개월 · 병만) = 판매 화면 「다 팔 값」과 같은 셈', () => {
+  it('고친 값이 없으면 수요 = 아는 품질의 국내 수요 · 다 팔 값(6개월 · 병만)은 판매 화면 「다 팔 값」(위로만)과 같은 값 · 그것이 없으면 지금 값 근처나 아래(양쪽으로 찾음 · #441)', () => {
     const s = load();
     const { ks, moy } = ctx(s);
     const d = domesticDemands(ks, moy);
     for (const r of priceTableRows(s, ks, moy, {}, 6, 'bottles')) {
       if (r.stock <= 0) { expect(r.restocked).toBe(true); continue; }
       expect(r.demand).toBe(d.get(r.id)?.demandBottles ?? 0);
-      expect(r.sellThrough).toBe(sellThroughPrice(ks, r.id, moy));
+      const up = sellThroughPrice(ks, r.id, moy);
+      if (up != null && r.edge !== 'cap') expect(Math.abs(r.sellThrough! - up)).toBeLessThanOrEqual(100);
+      else if (up == null) expect(r.sellThrough == null || r.sellThrough <= r.price * 1.05).toBe(true);
       expect(r.draft).toBe(r.price);
     }
     // 10차 끝: 「김포 시그니처 블랜드」 317병 · 월 109병 → 6개월에 다 팔 값이 지금 값(11만)보다 높다
@@ -65,13 +67,12 @@ describe('[#438 ③] 한 화면 가격표', () => {
     // 다 팔 값은 고친 값에 끌려가지 않는다 — 「이 값으로」로 넣은 뒤에도 같은 값이 남는다
     const sig = (d: Record<string, number>) => priceTableRows(s, ks, moy, d, 6, 'bottles').find((r) => r.name === '김포 시그니처 블랜드')!.sellThrough;
     expect(sig({ [idOf(s, '김포 시그니처 블랜드')]: sig({})! })).toBe(sig({}));
-    // 적용 뒤(지금 값 = 다 팔 값)에는 다 팔 값이 없고 「≈ 지금 값」 — 공급이 그 기간쯤 간다
+    // 적용 뒤(지금 값 = 다 팔 값)에도 같은 다 팔 값이 남고 「≈ 지금 값」이다(양쪽으로 찾으니 지금 값과 무관)
     const applied = applyAction(s, { type: 'setPrice', productId: idOf(s, '김포 시그니처 블랜드'), price: sig({})! }).state;
     const a = priceTableRows(applied, knownState(applied), moy, {}, 6, 'bottles').find((r) => r.name === '김포 시그니처 블랜드')!;
-    expect(a.sellThrough).toBeNull();
+    expect(Math.abs(a.sellThrough! - sig({})!)).toBeLessThanOrEqual(100);
     expect(a.nearNow).toBe(true);
-    expect(a.coverMonths!).toBeGreaterThan(5);
-    expect(a.coverMonths!).toBeLessThan(7.5);
+    expect(a.edge).toBeNull();
     // 넉넉한 제품(「김포 싱글몰트 5년」 1,432병 · 월 70병)은 「≈ 지금 값」이 아니다
     expect(priceTableRows(s, ks, moy, {}, 6, 'bottles').find((r) => r.name === '김포 싱글몰트 5년')!.nearNow).toBe(false);
     let t = s;

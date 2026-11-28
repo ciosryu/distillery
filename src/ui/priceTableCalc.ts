@@ -2,10 +2,11 @@
 // 10차 판: 가격을 고친 93달이 199분(전체 268분의 74%). 목표는 손질 횟수가 아니라 한 번에 드는 시간 — 제품 · 병 재고 · 맞는 통 원액 · 지금 값 · 수요 ·
 // 다 팔 값(기간 H · 공급 고르기) · 지난 3개월을 한 표에, 바꾼 값의 합(판매 · 매출 · 공헌)을 바로 보이고 한 번에 적용한다.
 // **읽기만** — 수요 · 다 팔 값은 아는 품질 상태(`ks` = knownState)로만 센다(I2). 상태 · 규칙 · 봇 출력 그대로
-import { bottleMargin, domesticDemands, restockedDemand, sellThroughPrice, type GameState } from '../sim';
+import { bottleMargin, domesticDemands, restockedDemand, type GameState } from '../sim';
 import { currentSuggested } from '../sim/economics';
+import { sellOutPrice } from '../sim/market';
+import { drainBounds, matchingCaskBottles } from '../sim/pricePolicy';
 import { outboundLogistics } from '../sim/sites';
-import { autoRestockSupplyBottles } from './SellThroughNote';
 
 /** 다 팔 값의 기간 — 제품을 몇 개월 동안 팔 것인가 */
 export const PRICE_TABLE_HORIZONS = [6, 12, 24, 36] as const;
@@ -19,7 +20,7 @@ export interface PriceRow {
   autoPrice: boolean;
   autoRestock: boolean;
   stock: number;
-  /** 자동 납품 후보와 같은 「맞는 원액」을 병으로(통 · 탱크 — 자동 납품을 켜지 않아도 센다) */
+  /** 「맞는 원액」을 병으로 — 자동 납품 후보와 같은 통 · 탱크(자동 납품을 켜지 않아도), 같은 원액을 쓰는 진열 제품 수로 나눔. 정책 D와 같은 셈(`matchingCaskBottles` · [결정 #441]) */
   caskBottles: number;
   price: number;
   /** 고치는 중인 값(없으면 지금 값) */
@@ -31,11 +32,16 @@ export interface PriceRow {
   restocked: boolean;
   /** 지금 값들의 진열에서 이번 달 국내 수요(병) */
   demandNow: number;
-  /** 다 팔 값 — 이 기간 · 공급이면(이 제품은 지금 값에서 위로 찾고, 다른 제품은 고친 값). 지금 값으로 그 기간에 다 못 팔면(넉넉) null */
+  /**
+   * 다 팔 값 — 이 기간 · 공급이 국내에서 팔리는 값을 **양쪽으로** 찾는다(정책 D와 같은 셈 · 같은 범위 [이익 나는 바닥, 기준가 × 4] · 다른 제품은 고친 값).
+   * 공급이 0이거나 찾을 범위가 없으면 null
+   */
   sellThrough: number | null;
-  /** 다 팔 값이 없을 때(null) — 지금 값이면 공급이 몇 개월 가나(계절 없는 어림 · 다른 제품은 고친 값). 다 팔 값이 있으면 null */
+  /** 다 팔 값이 범위 끝에 닿았나 — 'cap' 상한에서도 다 팔린다 · 'floor' 바닥 값에서도 남는다 */
+  edge: 'cap' | 'floor' | null;
+  /** edge가 'floor'일 때 — 바닥 값이면 공급이 몇 개월 가나(계절 없는 어림). 아니면 null */
   coverMonths: number | null;
-  /** 다 팔 값이 없지만 지금 값이 거의 다 팔 값이다 — 5% 낮춘 값이면 이 기간에 다 팔린다(다 팔 값과 같은 셈 · 계절 포함) */
+  /** 다 팔 값이 지금 값의 ±5% 안이다 */
   nearNow: boolean;
   /** 지난 3개월(오래된 것부터) — 판매 병 · 판매 값 */
   last3: { month: number; sold: number; price: number | null }[];
@@ -58,17 +64,19 @@ export function priceTableRows(s: GameState, ks: GameState, monthOfYear: number,
   const lastR = reports.at(-1);
   return s.commerce.products.filter((p) => !p.dutyFreeOnly).map((p) => {
     const kp = ks.commerce.products.find((x) => x.id === p.id) ?? p;
-    const caskBottles = autoRestockSupplyBottles(s, p);
+    const caskBottles = matchingCaskBottles(s, p);
     const sup = p.stockBottles + (supply === 'withCasks' ? caskBottles : 0);
-    // 병 재고 0인데 맞는 원액을 공급으로 보면 — 그만큼 병입했다고 보고 센다(다 팔 값 셈은 진열에 재고가 있어야 돈다)
-    // 다 팔 값은 이 제품의 **지금 값**에서 찾는다(다른 제품은 고친 값) — 고친 값에서 찾으면 「이 값으로」를 누른 뒤 그 값이 「넉넉」으로 바뀌어 사라진다
-    const others = drafts[p.id] != null ? withPrices(draftState, { [p.id]: p.price }) : draftState;
-    const stState = p.stockBottles <= 0 && sup > 0 ? withStock(others, p.id, sup) : others;
-    const sellThrough = sup > 0 ? sellThroughPrice(stState, p.id, monthOfYear, horizon, sup) : null;
+    // 병 재고 0인데 맞는 원액을 공급으로 보면 — 그만큼 병입했다고 보고 센다(다 팔 값 셈은 진열에 재고가 있어야 돈다).
+    // 양쪽으로 찾으니 이 제품의 지금 값 · 고친 값과 무관하다 — 「이 값으로」를 눌러도 값이 그대로 남는다
+    const stState = p.stockBottles <= 0 && sup > 0 ? withStock(draftState, p.id, sup) : draftState;
+    const b = drainBounds(ks, kp);
+    const r = sup > 0 && b ? sellOutPrice(stState, p.id, monthOfYear, horizon, sup, b.lo, b.hi) : null;
+    const sellThrough = r?.price ?? null;
+    const edge = r?.at ?? null;
     const restocked = p.stockBottles <= 0;
-    const ownNow = (st: GameState) => { const q = st.commerce.products.find((x) => x.id === p.id)!; return q.stockBottles > 0 ? domesticDemands(st, monthOfYear).get(p.id)?.demandBottles ?? 0 : restockedDemand(st, q, monthOfYear).demandBottles; };
-    const nearNow = sellThrough == null && sup > 0 && p.price > 0 && sellThroughPrice(withPrices(stState, { [p.id]: Math.round(p.price * 0.95) }), p.id, monthOfYear, horizon, sup) != null;
-    const coverMonths = sellThrough == null && sup > 0 ? (() => { const d = ownNow(stState); return d > 0 ? sup / d : Infinity; })() : null;
+    const ownAt = (st: GameState, price: number) => { const q = { ...st.commerce.products.find((x) => x.id === p.id)!, price }; const t = { ...st, commerce: { ...st.commerce, products: st.commerce.products.map((x) => (x.id === p.id ? q : x)) } }; return domesticDemands(t, monthOfYear).get(p.id)?.demandBottles ?? 0; };
+    const nearNow = sellThrough != null && p.price > 0 && Math.abs(sellThrough - p.price) <= p.price * 0.05;
+    const coverMonths = edge === 'floor' && sellThrough != null ? (() => { const d = ownAt(stState, sellThrough); return d > 0 ? sup / d : Infinity; })() : null;
     const kd = draftState.commerce.products.find((x) => x.id === p.id) ?? kp;
     const demand = restocked ? restockedDemand(draftState, kd, monthOfYear).demandBottles : after.get(p.id)?.demandBottles ?? 0;
     const demandNow = restocked ? restockedDemand(ks, kp, monthOfYear).demandBottles : now.get(p.id)?.demandBottles ?? 0;
@@ -77,7 +85,7 @@ export function priceTableRows(s: GameState, ks: GameState, monthOfYear: number,
     return {
       id: p.id, name: p.name, ageYears: p.ageYears ?? null, autoPrice: !!p.autoPrice, autoRestock: !!p.autoRestock,
       stock: p.stockBottles, caskBottles, price: p.price, draft: drafts[p.id] ?? p.price, suggested: currentSuggested(ks, kp),
-      demand, restocked, demandNow, sellThrough, coverMonths, nearNow, last3, stockoutLast: so,
+      demand, restocked, demandNow, sellThrough, edge, coverMonths, nearNow, last3, stockoutLast: so,
     };
   });
 }
