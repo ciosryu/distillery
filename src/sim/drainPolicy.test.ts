@@ -122,8 +122,8 @@ describe('[결정 #441] D 원액 소화', () => {
     expect(byName(h6, '김포 시그니처 블랜드').price).toBe(v);
     expect(byName(h6, '김포 시그니처 블랜드').pricePolicy?.horizon).toBe(6);
     expect(byName(applyAction(h6, { type: 'setPricePolicy', productId: 'all', mode: 'drain' }).state, '김포 시그니처 블랜드').price).toBe(v);
-    // 다른 정책으로 바꾸면 그 자리에서 한 번 정한다(지금과 같다)
-    expect(byName(applyAction(h6, { type: 'setPricePolicy', productId: id, mode: 'profit' }).state, '김포 시그니처 블랜드').price).not.toBe(v);
+    // 다른 정책으로 바꾸면 그 자리에서 한 번 정한다(지금과 같다) — A(현금회전)로
+    expect(byName(applyAction(h6, { type: 'setPricePolicy', productId: id, mode: 'turnover' }).state, '김포 시그니처 블랜드').price).not.toBe(v);
   });
 
   it('[ARCH] D 그릇(mode · horizon · lastFactor)을 가진 세이브를 저장 → 불러와도 그대로 · 왕복 뒤 같은 달 결과가 바이트 동일 · 옛 min/max는 지우지 않고 D가 읽지 않는다', () => {

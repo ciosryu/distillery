@@ -7,7 +7,7 @@
 //   D 원액 소화(drain, [결정 #441]) = 공급(병 재고 + 표기에 맞는 통 원액, 같은 원액을 쓰는 제품 수로 나눔)이 기간 H(기본 12개월)에 팔리는 값 + 한 달 한 단계 가드
 // 모든 배수는 기준가(currentSuggested — 권장가 식 그대로) 대비 한 가지 뜻이다(PROD AP3-PROD-1, P-PROD-53). 값은 100원 단위로 반올림한다(#200과 같다)
 import { AUTO_PRICE_FACTORS, autoRestockSources, bestAutoPrice, currentSuggested } from './economics';
-import { bottleMargin, knownState, priceOptions, sellOutPrice, STOCKOUT_LOOKBACK_MONTHS } from './market';
+import { bottleMargin, knownState, priceOptions, SELL_THROUGH_MONTHS, sellOutPrice, STOCKOUT_LOOKBACK_MONTHS } from './market';
 import { outboundLogistics } from './sites';
 import { DEFAULT_POLICY_N, defaultPolicyPrice } from './content/market';
 import type { GameState, Product } from './types';
@@ -43,6 +43,10 @@ export const PRICE_POLICY = {
   n: DEFAULT_POLICY_N,
   /** B 지평(개월) — 2차 측정에서 3이 가장 고르다(6은 현금 부족에서, 12는 거의 모든 조건에서 무너짐) */
   profitHorizon: 3,
+  /** `[튜닝]` [결정 #441] ②-1 B 목표 고르기 — 최대 이익의 이 몫 안에 드는 후보 중 지금 값에 가장 가까운 것(지그재그 줄이기) */
+  profitNearShare: 0.95,
+  /** `[튜닝]` [결정 #441] ②-3 B는 이 제품의 지평 판매(병)를 지금 값 대비 이 몫 아래로 줄이는 후보를 고르지 않는다(형제 몫 때문에 이 제품을 굶기지 않게 — 10차 소주 277 → 21병) */
+  profitOwnSalesFloor: 0.7,
   /** 한 단계(배수) */
   step: 0.1,
   /** 범위 기본값 */
@@ -140,24 +144,46 @@ export function turnoverTarget(s: GameState, p: Product, monthOfYear: number): {
 }
 
 /**
- * B 이익 극대화(가드 전) — 후보 격자(기준가 × 0.6~2)마다 h개월 누적 공헌이 가장 큰 값.
+ * B 이익 극대화(가드 전) — 후보 격자(기준가 × 0.6~2) + **「다 팔 값」**([결정 #441] ③ — 판매 카드 줄과 같은 셈: 6개월 · 자동 납품이면 병 + 맞는 원액(나눔),
+ * 아니면 병만 · 양쪽 찾기 · [이익 나는 바닥, 기준가 × 4]) + 지금 값마다 h개월 누적 공헌.
  * 팔 수 있는 양 = 재고 + 판매 EMA × h(지금 판매 속도로 보충된다고 본다 — 리드타임 근사), 형제 공헌 변화 × h를 더한다(엣지 ③ 형제 잠식).
- * h개월 동안 형제 값이 그대로라고 가정한다(근사 — architecture §10.9 ⑥2)
+ * h개월 동안 형제 값이 그대로라고 가정한다(근사 — architecture §10.9 ⑥2).
+ * [결정 #441] ② 고르기:
+ *   ②-3 이 제품의 h개월 판매(병)를 지금 값 대비 `profitOwnSalesFloor`(0.7) 아래로 줄이는 후보는 뺀다(형제 몫 때문에 이 제품을 굶기지 않게).
+ *   ②-1 남은 후보 중 최대 이익의 `profitNearShare`(95%) 안에 드는 것 가운데 **지금 값에 가장 가까운** 값(지그재그 줄이기).
  */
-export function profitTarget(s: GameState, p: Product, monthOfYear: number, h: number = PRICE_POLICY.profitHorizon): number | null {
+export function profitPlan(s: GameState, p: Product, monthOfYear: number, h: number = PRICE_POLICY.profitHorizon): { price: number; sellThrough: number | null; best: number } | null {
   if (p.dutyFreeOnly || p.stockBottles <= 0 || p.price <= 0) return null;
   const sug = currentSuggested(s, p);
   if (sug <= 0) return null;
-  const opts = priceOptions(s, p, monthOfYear, AUTO_PRICE_FACTORS.map((f) => (sug * f) / p.price));
+  const ks = knownState(s);
+  const kp = ks.commerce.products.find((x) => x.id === p.id) ?? p;
+  const b = drainBounds(ks, kp);
+  const supply = p.stockBottles + (p.autoRestock ? matchingCaskBottles(s, p) : 0);
+  const st = b ? sellOutPrice(ks, p.id, monthOfYear, SELL_THROUGH_MONTHS, supply, b.lo, b.hi)?.price ?? null : null;
+  const prices = [...AUTO_PRICE_FACTORS.map((f) => sug * f), ...(st != null ? [st] : []), p.price];
+  const opts = priceOptions(s, p, monthOfYear, prices.map((v) => v / p.price));
   const logistics = outboundLogistics(s);
-  let best: { price: number; v: number } | null = null;
+  const cap = p.stockBottles + (p.salesEma ?? 0) * h;
+  const now = opts.at(-1)!;
+  const soldNow = Math.min(cap, now.demandBottles * h);
+  const scored: { price: number; v: number }[] = [];
   for (const o of opts) {
     const per = bottleMargin({ ...p, price: o.price }, logistics).perBottle;
     if (per <= 0) continue;
-    const v = Math.min(p.stockBottles + (p.salesEma ?? 0) * h, o.demandBottles * h) * per + (o.lineupContribution - o.contribution) * h;
-    if (!best || v > best.v) best = { price: o.price, v };
+    const sold = Math.min(cap, o.demandBottles * h);
+    if (soldNow > 0 && sold < soldNow * PRICE_POLICY.profitOwnSalesFloor) continue; // ②-3
+    scored.push({ price: o.price, v: sold * per + (o.lineupContribution - o.contribution) * h });
   }
-  return best?.price ?? null;
+  if (!scored.length) return null;
+  const top = Math.max(...scored.map((x) => x.v));
+  const near = top - Math.abs(top) * (1 - PRICE_POLICY.profitNearShare);
+  const pick = scored.filter((x) => x.v >= near).sort((a, b) => Math.abs(a.price - p.price) - Math.abs(b.price - p.price) || b.v - a.v)[0]!; // ②-1
+  return { price: pick.price, sellThrough: st, best: scored.find((x) => x.v === top)!.price };
+}
+/** B 목표 값(가드 전) — `profitPlan`의 값 */
+export function profitTarget(s: GameState, p: Product, monthOfYear: number, h: number = PRICE_POLICY.profitHorizon): number | null {
+  return profitPlan(s, p, monthOfYear, h)?.price ?? null;
 }
 
 /** 가드 — lastFactor(없으면 지금 배수)에서 ±step 안으로 자른다 */
@@ -175,7 +201,8 @@ export function decidePolicyPrice(s: GameState, p: Product, spec: PolicySpec, mo
   const sug = currentSuggested(s, p);
   if (sug <= 0) return { price: null, factor: null, why: '기준가 없음 — 그대로' };
   // D는 플레이어 범위 칸을 쓰지 않는다 — 다른 정책에서 남은 min/max가 그릇에 있어도 D 기본 범위(바닥은 drainTarget이 공헌 > 0으로 올린다)
-  const min = spec.mode === 'drain' ? PRICE_POLICY.drainMin : spec.min ?? PRICE_POLICY.min, max = spec.mode === 'drain' ? PRICE_POLICY.drainMax : spec.max ?? PRICE_POLICY.max;
+  const min = spec.mode === 'drain' ? PRICE_POLICY.drainMin : spec.min ?? PRICE_POLICY.min;
+  let max: number = spec.mode === 'drain' ? PRICE_POLICY.drainMax : spec.max ?? PRICE_POLICY.max;
   if (min > max) return { price: null, factor: null, why: `범위가 틀렸다(${fx(min)} > ${fx(max)}) — 그대로` };
   const now = p.price / sug;
   const base = spec.lastFactor ?? now;
@@ -193,6 +220,8 @@ export function decidePolicyPrice(s: GameState, p: Product, spec: PolicySpec, mo
     const v = profitTarget(s, p, monthOfYear);
     if (v == null) return { price: null, factor: null, why: '이익 — 이익 나는 값이 없어 그대로' };
     const want = v / sug;
+    // [결정 #441] ③ 격자는 그대로(×2) — 「다 팔 값」 후보만 그 위로 갈 수 있다(플레이어가 상한을 정하지 않았을 때 · D 상한 ×4까지)
+    if (spec.max == null && want > max) max = Math.min(PRICE_POLICY.drainMax, want);
     factor = guardFactor(want, base, POLICY_GUARD.profit!.step);
     why = Math.abs(factor - want) > 1e-9 ? `이익 — ${PRICE_POLICY.profitHorizon}개월 이익 최대 ${fx(want)}, 가드로 한 단계(${fx(factor)})` : `이익 — ${PRICE_POLICY.profitHorizon}개월 이익 최대 ${fx(want)}`;
   } else if (spec.mode === 'drain') {
