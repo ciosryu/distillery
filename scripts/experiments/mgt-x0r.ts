@@ -22,8 +22,11 @@
 //   판 처음 벗을 주문(쿠퍼리지) → 도착하면 몰트 로트를 먼저 넣고(@hook:fill-lot) → XR_AT개월째(벗일 때 기본 6) 빼서 다시 넣어 2차 채움 셰리 벗(×0.6)으로 예비 꼬리표. 나머지(샘플 고르기 · 오염 떼기 · 병입 제외 · best 출시)는 같다
 // XR_REBOTTLE=1 — [결정 #427] 재판정 구멍 측정: 승리 다음 달(병입 앞) 남은 2차 채움 예비 통 가운데 아는 품질이 가장 좋은 적격 통 하나를
 //   「리필 12년 B」 새 제품으로 병입(P8 bottleAs) → 첫 출하 달에 재판정. 사람이 「승리 뒤 남은 좋은 통을 따로 낸다」를 흉내 낸다
+// XR_PRICES=1 — [결정 #441] B 수리 측정(2026-11-28): 판마다 국내 제품 출고가가 바뀐 횟수(`priceChanges`)와 방향이 뒤집힌 횟수(`priceFlips` — 오르다 내리거나 그 반대)를 #G 줄에 더한다
+// NEAR=0.98 — 같은 측정: `PRICE_POLICY.profitNearShare`(#1302 ②-1 「최대 이익의 이 몫 안에서 지금 값에 가장 가까운 값」)를 바꾼다. 그 손잡이가 없는 빌드(옛 B)에서는 아무 일도 없다
 // 판마다 `#G {…}` 한 줄(grade-dist와 같은 칸 + 판정 달 설비 목록 `equip`([catalogId, 원가, 산 달 `boughtMonthOf`]) · 판 끝 상태 · X0-R 기록 `xr`)
 import { setP8Hooks } from './p8Hooks';
+import { PRICE_POLICY } from '../../src/sim/pricePolicy';
 import { applyAction } from '../../src/sim/actions';
 import { EQUIPMENT } from '../../src/sim/content/catalog';
 import { STILL_SHAPE_PRESETS } from '../../src/sim/stillShape';
@@ -256,6 +259,10 @@ const runOf = (s: GameState, p: { name: string }, seed: number): Run => {
   return r;
 };
 
+const PRICES = process.env.XR_PRICES === '1';
+if (process.env.NEAR && 'profitNearShare' in PRICE_POLICY) (PRICE_POLICY as Record<string, number>).profitNearShare = Number(process.env.NEAR);
+/** 판(시드)마다 제품별 지난 출고가 · 지난 방향 */
+const lastPrice = new Map<number, Map<string, { price: number; dir: number }>>();
 setP8Hooks({
   ...((XR && MODE === 'buy') || (XR && XR_CASK === 'oloroso_butt') || STILL_PRESET || SHERRY_N > 0 ? {
     afterCreate: (s: GameState, p: { name: string }, seed: number) => onCreate(s, runOf(s, p, seed)),
@@ -305,6 +312,20 @@ setP8Hooks({
     const mp = s.progress.masterpiece; // [결정 #433] 「명작」 칭호(등급과 따로)
     if (mp && !(r as Run & { masterpiece?: unknown }).masterpiece) (r as Run & { masterpiece?: unknown }).masterpiece = { month: mp.month, q: mp.quality, age: mp.ageYears, aw: +mp.awareness.toFixed(3), nw: netWorth(s, s.month) };
     if (s.status !== 'running' && r.status == null) { r.status = s.status; r.endMonth = m + 1; }
+    if (PRICES) { // XR_PRICES — 국내 제품(면세 전용 제외) 출고가의 바뀜 · 방향 뒤집힘
+      const book = lastPrice.get(seed) ?? new Map<string, { price: number; dir: number }>(); lastPrice.set(seed, book);
+      const rp = r as Run & { priceChanges?: number; priceFlips?: number };
+      for (const x of s.commerce.products) {
+        if (x.dutyFreeOnly) continue;
+        const prev = book.get(x.id);
+        if (prev && x.price !== prev.price) {
+          const dir = Math.sign(x.price - prev.price);
+          rp.priceChanges = (rp.priceChanges ?? 0) + 1;
+          if (prev.dir !== 0 && dir !== prev.dir) rp.priceFlips = (rp.priceFlips ?? 0) + 1;
+          book.set(x.id, { price: x.price, dir });
+        } else if (!prev) book.set(x.id, { price: x.price, dir: 0 });
+      }
+    }
     r.nwEnd = netWorth(s);
     r.months = m + 1;
   },
