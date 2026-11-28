@@ -1,7 +1,7 @@
 // [제안 P-MKT-51] (가) 자동 가격 정책 설명 (MKT · 10차 70개월 · 오너 "무슨 기준인지도 모르겠고" · PM 2026-11-26 오너 「권장안대로」)
 // 정책마다 「이번 달 왜 이 값인가」를 원 · 병으로, B가 형제 몫 때문에 이 제품 판매를 크게 줄이면 경고. **읽기만** — 엔진(`decidePolicyPrice`)이
 // 다음 판매 직전에 정할 값을 아는 품질 상태(`ks` = knownState)로 미리 셀 뿐, 상태 · 규칙 · 봇 출력은 그대로다(I2: 아는 품질만)
-import { priceModeOf, priceOptions, type GameState, type Product } from '../sim';
+import { priceModeOf, priceOptions, restockedDemand, type GameState, type Product } from '../sim';
 import { currentSuggested } from '../sim/economics';
 import { decidePolicyPrice, drainTarget, PRICE_POLICY, profitTarget, type PolicySpec } from '../sim/pricePolicy';
 
@@ -25,7 +25,13 @@ export interface PolicyExplain {
   warn: string | null;
   /** 다음 판매 직전에 정책이 정할 값(바꾸지 않으면 지금 값) */
   next: number;
+  /** 재고 0 제품 — 재고가 들어오는 달에 정할 값(그대로면 null). 재고가 있으면 없음 */
+  restock?: number | null;
 }
+
+/** 재고 0 제품을 1병 들인 진열 — 「재고가 들어오는 달」에 정책이 정할 값을 같은 함수로 미리 센다(어림 · 그달 보충 양은 모른다) */
+const withOneBottle = (ks: GameState, id: string): GameState =>
+  ({ ...ks, commerce: { ...ks.commerce, products: ks.commerce.products.map((x) => (x.id === id ? { ...x, stockBottles: 1 } : x)) } });
 
 /** 정책이 켜진 제품의 설명. 꺼져 있거나 셀 수 없으면 null. ks는 knownState(s) */
 export function policyExplain(ks: GameState, p0: Product, monthOfYear: number): PolicyExplain | null {
@@ -35,6 +41,15 @@ export function policyExplain(ks: GameState, p0: Product, monthOfYear: number): 
   const sug = currentSuggested(ks, p);
   if (sug <= 0) return null;
   const spec = { ...(p.pricePolicy ?? {}), mode } as PolicySpec;
+  // 재고 0 — 정책은 건너뛴다. 「예상 판매」(재고를 보지 않는 수요)는 틀린 신호라 「채우면 월 n병」(품절 배지 · 가격표와 같은 셈)으로, 재고가 들어오는 달의 값을 미리 보인다(PM 2026-11-28)
+  if (p.stockBottles <= 0) {
+    const ks1 = withOneBottle(ks, p.id);
+    const q = ks1.commerce.products.find((x) => x.id === p.id)!;
+    const r = decidePolicyPrice(ks1, q, { ...spec, ...(spec.lastFactor == null && mode !== 'premium' ? { lastFactor: p.price / sug } : {}) }, monthOfYear).price;
+    const refill = `채우면 월 ${Math.round(restockedDemand(ks, p, monthOfYear).demandBottles).toLocaleString()}병`;
+    const when = r != null && r !== p.price ? `재고가 들어오는 달에 ${won(r)}(기준가 ${fx(r / sug)} · 지금 대비 ${r > p.price ? '+' : '−'}${Math.abs(Math.round((r / p.price - 1) * 100))}%)으로 정한다` : '재고가 들어와도 지금 값 그대로일 것이다';
+    return { line: `재고 없음 — ${when} · ${refill}`, warn: null, next: p.price, restock: r != null && r !== p.price ? r : null };
+  }
   const d = decidePolicyPrice(ks, p, spec, monthOfYear);
   const next = d.price ?? p.price;
   const t = mode === 'profit' ? profitTarget(ks, p, monthOfYear) : null;
@@ -85,8 +100,11 @@ export function policyExplain(ks: GameState, p0: Product, monthOfYear: number): 
  * 켜는 순간 범위로 잘려 값이 크게 움직이는 것(153 「김포 블렌디드」 ×2.42 → B ×2.00, −19%)을 켜기 전에 보인다. 엔진과 같은 함수(`decidePolicyPrice`)로 센다 —
  * B는 막 켠 달의 가드 기준 = 지금 배수(엔진 #1295), C는 「처음 켠 달」(목표 배수로). **읽기만** · 아는 품질(ks). A · D는 범위 밖 값도 쓰니 보이지 않는다
  */
-export function enablePreview(ks: GameState, p0: Product, monthOfYear: number): { min: number; max: number; factor: number; profit: number | null; premium: number | null } | null {
-  if (p0.autoPrice || p0.dutyFreeOnly || p0.price <= 0 || p0.stockBottles <= 0) return null;
+export function enablePreview(ks0: GameState, p0: Product, monthOfYear: number): { min: number; max: number; factor: number; profit: number | null; premium: number | null; restock: boolean } | null {
+  if (p0.autoPrice || p0.dutyFreeOnly || p0.price <= 0) return null;
+  // 재고 0 — 켜도 정책은 건너뛰고, 재고가 들어오는 달에 정한다 → 그 달 값을 1병 들인 진열로 센다(「켜면 바로」라고 하지 않는다)
+  const restock = p0.stockBottles <= 0;
+  const ks = restock ? withOneBottle(ks0, p0.id) : ks0;
   const p = ks.commerce.products.find((x) => x.id === p0.id) ?? p0;
   const sug = currentSuggested(ks, p);
   if (sug <= 0) return null;
@@ -98,6 +116,6 @@ export function enablePreview(ks: GameState, p0: Product, monthOfYear: number): 
   const at = (mode: 'profit' | 'premium', lastFactor?: number) => decidePolicyPrice(ks, p, { ...rest, mode, ...(lastFactor != null ? { lastFactor } : {}) } as PolicySpec, monthOfYear).price;
   const keep = (v: number | null) => (v != null && v !== p.price ? v : null); // 켜도 값이 그대로면 보이지 않는다
   const profit = keep(at('profit', factor)), premium = keep(at('premium'));
-  return profit == null && premium == null ? null : { min, max, factor, profit, premium };
+  return profit == null && premium == null ? null : { min, max, factor, profit, premium, restock };
 }
 
