@@ -2,7 +2,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parsePlayFile } from '../store/playlog';
-import { applyAction, calendar, knownState, type GameState, type Product } from '../sim';
+import { applyAction, calendar, knownState, priceOptions, type GameState, type Product } from '../sim';
+import { PRICE_POLICY, profitTarget } from '../sim/pricePolicy';
 import { policyExplain } from './policyExplain';
 
 const load = (): GameState => { const r = parsePlayFile(readFileSync('docs/playtest/10/distillery-mvp-standard-y6m11-202611261003.json', 'utf8')); if ('error' in r) throw new Error(r.error); return r.save; };
@@ -43,10 +44,16 @@ describe('[P-MKT-51 (가)] 자동 가격 정책 — 이번 달 왜 이 값', () 
     expect(p.pricePolicy?.lastFactor ?? 0).not.toBeCloseTo(1.76, 2); // 지난 배수는 버리고 지금 값에서 새로 잡는다
     expect(ex(r.state, p)?.warn ?? '').not.toMatch(/지난번 정책 배수/);
   });
-  it('B 목표가 이 제품 판매를 크게 줄이고 형제 쪽 이익을 키울 때 형제 합산 경고(「김포 더 퍼스트」)', () => {
+  it('[결정 #441] ②-3 — 예전 B가 형제 몫 때문에 이 제품 판매를 크게 줄이던 「김포 더 퍼스트」: 이제 그런 값을 고르지 않아 형제 합산 경고가 없다', () => {
     const s = load();
-    const e = ex(s, on(s, '김포 더 퍼스트', { mode: 'profit' }))!;
-    expect(e.warn).toMatch(/같은 범주 형제 제품 쪽 이익/);
+    const p = on(s, '김포 더 퍼스트', { mode: 'profit' });
+    const e = ex(s, p)!;
+    expect(e.warn).toBeNull();
+    const ks = knownState(s); const kp = ks.commerce.products.find((x) => x.id === p.id)!;
+    const t = profitTarget(ks, kp, calendar(s).monthOfYear)!;
+    const [atT, atNow] = priceOptions(ks, kp, calendar(s).monthOfYear, [t / kp.price, 1]);
+    const cap = kp.stockBottles + (kp.salesEma ?? 0) * PRICE_POLICY.profitHorizon;
+    expect(Math.min(cap, atT!.demandBottles * 3)).toBeGreaterThanOrEqual(Math.min(cap, atNow!.demandBottles * 3) * PRICE_POLICY.profitOwnSalesFloor - 1e-6);
   });
   it('A · C도 한 줄 — C는 분기 사이면 「분기 첫 달에만 다시 맞춘다」', () => {
     const s = load();
