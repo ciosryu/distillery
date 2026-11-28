@@ -23,6 +23,7 @@
 // XR_REBOTTLE=1 — [결정 #427] 재판정 구멍 측정: 승리 다음 달(병입 앞) 남은 2차 채움 예비 통 가운데 아는 품질이 가장 좋은 적격 통 하나를
 //   「리필 12년 B」 새 제품으로 병입(P8 bottleAs) → 첫 출하 달에 재판정. 사람이 「승리 뒤 남은 좋은 통을 따로 낸다」를 흉내 낸다
 // XR_PRICES=1 — [결정 #441] B 수리 측정(2026-11-28): 판마다 국내 제품 출고가가 바뀐 횟수(`priceChanges`)와 방향이 뒤집힌 횟수(`priceFlips` — 오르다 내리거나 그 반대)를 #G 줄에 더한다
+// DRAIN_MAX=3 — 같은 측정(MKT 물음): `PRICE_POLICY.drainMax`(정책 D 상한 · 기준가 배수)를 바꾼다. 손잡이가 없는 빌드에서는 아무 일도 없다
 // NEAR=0.98 — 같은 측정: `PRICE_POLICY.profitNearShare`(#1302 ②-1 「최대 이익의 이 몫 안에서 지금 값에 가장 가까운 값」)를 바꾼다. 그 손잡이가 없는 빌드(옛 B)에서는 아무 일도 없다
 // 판마다 `#G {…}` 한 줄(grade-dist와 같은 칸 + 판정 달 설비 목록 `equip`([catalogId, 원가, 산 달 `boughtMonthOf`]) · 판 끝 상태 · X0-R 기록 `xr`)
 import { setP8Hooks } from './p8Hooks';
@@ -260,7 +261,8 @@ const runOf = (s: GameState, p: { name: string }, seed: number): Run => {
 };
 
 const PRICES = process.env.XR_PRICES === '1';
-if (process.env.NEAR && 'profitNearShare' in PRICE_POLICY) (PRICE_POLICY as Record<string, number>).profitNearShare = Number(process.env.NEAR);
+if (process.env.DRAIN_MAX && 'drainMax' in PRICE_POLICY) (PRICE_POLICY as unknown as Record<string, number>).drainMax = Number(process.env.DRAIN_MAX); // D 상한(MKT 물음 2026-11-28)
+if (process.env.NEAR && 'profitNearShare' in PRICE_POLICY) (PRICE_POLICY as unknown as Record<string, number>).profitNearShare = Number(process.env.NEAR);
 /** 판(시드)마다 제품별 지난 출고가 · 지난 방향 */
 const lastPrice = new Map<number, Map<string, { price: number; dir: number }>>();
 setP8Hooks({
